@@ -1,0 +1,1069 @@
+import pytest
+from clickhouse_connect.driver.client import Client
+
+from streambuild.clickhouse.render.helpers.create_kafka_table.main import (
+    render_create_kafka_table_ddl,
+)
+from streambuild.clickhouse.render.helpers.create_materialized_view.main import (
+    render_create_materialized_view_ddl,
+)
+from streambuild.clickhouse.render.helpers.create_table.main import render_create_table_ddl
+from streambuild.clickhouse.render.helpers.create_view.main import render_create_view_ddl
+from streambuild.compiler.compile.models import CompiledPipeline
+from streambuild.executor.audit_backfill.main import execute_audit_backfill
+from streambuild.executor.audit_backfill.models import (
+    AuditBackfillRequest,
+    AuditBackfillResult,
+    RootAuditResult,
+)
+from streambuild.executor.audit_backfill.types import AuditAssessment
+from streambuild.executor.backfill.main import execute_backfill
+from streambuild.integrations.clickhouse.client import ClickHouseClient
+from streambuild.integrations.clickhouse.models import ClickHouseConnectionConfig
+from tests.integration.src.streambuild.conftest import ClickHouseConnectionSettings
+from tests.integration.src.streambuild.executor.audit_backfill._test_types import (
+    AuditAfterDeletedActiveViewIntegrationTestCase,
+    AuditWithoutMetadataIntegrationTestCase,
+    DanglingActiveViewAuditIntegrationTestCase,
+    ExecuteAuditBackfillIntegrationTestCase,
+    OffsetAuditDegradedStateIntegrationTestCase,
+    ResolveAuditDeploymentIntegrationTestCase,
+)
+from tests.integration.src.streambuild.executor.backfill.helpers import (
+    build_offset_replay_compiled_pipeline,
+    build_offset_target_insert_select_sql,
+    build_raw_orders_row,
+    build_scalar_replay_compiled_pipeline,
+    build_scalar_replay_request,
+    build_scalar_target_insert_select_sql,
+    require_managed_source,
+)
+
+AUDIT_TEST_CASES: list[ExecuteAuditBackfillIntegrationTestCase] = [
+    ExecuteAuditBackfillIntegrationTestCase(
+        description="audits scalar timestamp replay deployment against active table",
+        replay_lineage_mode="timestamp",
+        deployment_id="20260409T160000Z_ab12cd",
+        active_deployment_id="20260409T155500Z_prev01",
+        created_at="2026-04-09 16:00:00.123",
+        boundary_time="2026-04-09 16:00:00.000",
+        staged_includes_live_row=True,
+        historical_row_time="2026-04-09 15:59:59.000",
+        live_row_time="2026-04-09 16:00:01.000",
+        expected_assessment=AuditAssessment.READY,
+        expected_root_name="tbl__orders_enriched",
+        expected_staged_physical_name="tbl__orders_enriched__20260409T160000Z_ab12cd",
+        expected_active_exists=True,
+        expected_active_row_count=2,
+        expected_staged_row_count=2,
+        expected_warning_codes=(),
+    ),
+    ExecuteAuditBackfillIntegrationTestCase(
+        description="audits offset replay deployment against active table",
+        replay_lineage_mode="offsets",
+        deployment_id="20260409T170000Z_ab12cd",
+        active_deployment_id="20260409T165500Z_prev02",
+        created_at="2026-04-09 17:00:00.123",
+        boundary_time="2026-04-09 17:00:00.000",
+        staged_includes_live_row=True,
+        historical_row_time="2026-04-09 15:59:59.000",
+        live_row_time="2026-04-09 16:00:01.000",
+        expected_assessment=AuditAssessment.READY,
+        expected_root_name="tbl__orders_enriched",
+        expected_staged_physical_name="tbl__orders_enriched__20260409T170000Z_ab12cd",
+        expected_active_exists=True,
+        expected_active_row_count=2,
+        expected_staged_row_count=2,
+        expected_warning_codes=(),
+    ),
+    ExecuteAuditBackfillIntegrationTestCase(
+        description="reports scalar replay deployment as not ready when staged data lags active",
+        replay_lineage_mode="timestamp",
+        deployment_id="20260409T171000Z_ab12cd",
+        active_deployment_id="20260409T170500Z_prev03",
+        created_at="2026-04-09 17:10:00.123",
+        boundary_time="2026-04-09 17:10:00.000",
+        staged_includes_live_row=False,
+        historical_row_time="2026-04-09 15:59:59.000",
+        live_row_time="2026-04-09 16:10:01.000",
+        expected_assessment=AuditAssessment.NOT_READY,
+        expected_root_name="tbl__orders_enriched",
+        expected_staged_physical_name="tbl__orders_enriched__20260409T171000Z_ab12cd",
+        expected_active_exists=True,
+        expected_active_row_count=2,
+        expected_staged_row_count=1,
+        expected_warning_codes=(),
+    ),
+    ExecuteAuditBackfillIntegrationTestCase(
+        description=(
+            "reports offset replay deployment as not ready when staged source freshness lags raw"
+        ),
+        replay_lineage_mode="offsets",
+        deployment_id="20260409T172000Z_ab12cd",
+        active_deployment_id="20260409T171500Z_prev04",
+        created_at="2026-04-09 17:20:00.123",
+        boundary_time="2026-04-09 17:20:00.000",
+        staged_includes_live_row=False,
+        historical_row_time="2026-04-09 15:59:59.000",
+        live_row_time="2026-04-09 16:10:01.000",
+        expected_assessment=AuditAssessment.NOT_READY,
+        expected_root_name="tbl__orders_enriched",
+        expected_staged_physical_name="tbl__orders_enriched__20260409T172000Z_ab12cd",
+        expected_active_exists=True,
+        expected_active_row_count=2,
+        expected_staged_row_count=1,
+        expected_warning_codes=(),
+    ),
+    ExecuteAuditBackfillIntegrationTestCase(
+        description=(
+            "reports deployment as not ready when active target has rows but staged table is empty"
+        ),
+        replay_lineage_mode="timestamp",
+        deployment_id="20260409T173000Z_ab12cd",
+        active_deployment_id="20260409T172500Z_prev05",
+        created_at="2026-04-09 17:30:00.123",
+        boundary_time="2026-04-09 17:30:00.000",
+        staged_includes_live_row=False,
+        staged_is_empty=True,
+        historical_row_time="2026-04-09 15:59:59.000",
+        live_row_time="2026-04-09 16:10:01.000",
+        expected_assessment=AuditAssessment.NOT_READY,
+        expected_root_name="tbl__orders_enriched",
+        expected_staged_physical_name="tbl__orders_enriched__20260409T173000Z_ab12cd",
+        expected_active_exists=True,
+        expected_active_row_count=2,
+        expected_staged_row_count=0,
+        expected_warning_codes=(),
+        expected_root_warnings=(
+            "staged row count is far below active row count for tbl__orders_enriched",
+        ),
+    ),
+    ExecuteAuditBackfillIntegrationTestCase(
+        description="reports deployment as caution when active target far exceeds staged rows",
+        replay_lineage_mode="timestamp",
+        deployment_id="20260409T174000Z_ab12cd",
+        active_deployment_id="20260409T173500Z_prev06",
+        created_at="2026-04-09 17:40:00.123",
+        boundary_time="2026-04-09 17:40:00.000",
+        staged_includes_live_row=True,
+        historical_row_time="2026-04-09 15:59:59.000",
+        live_row_time="2026-04-09 16:10:01.000",
+        expected_assessment=AuditAssessment.CAUTION,
+        expected_root_name="tbl__orders_enriched",
+        expected_staged_physical_name="tbl__orders_enriched__20260409T174000Z_ab12cd",
+        expected_active_exists=True,
+        expected_active_row_count=5,
+        expected_staged_row_count=2,
+        expected_warning_codes=(),
+        expected_root_warnings=(
+            "staged row count is far below active row count for tbl__orders_enriched",
+        ),
+        extra_active_only_rows=3,
+    ),
+]
+
+
+RESOLUTION_TEST_CASES: list[ResolveAuditDeploymentIntegrationTestCase] = [
+    ResolveAuditDeploymentIntegrationTestCase(
+        description="requires explicit choice with no active view and many staged deployments",
+        create_active_view=False,
+        first_deployment_id="20260409T200000Z_ab12cd",
+        second_deployment_id="20260409T200500Z_cd34ef",
+        expected_resolved_deployment_id=None,
+        expected_error_fragment="Audit deployment resolution is ambiguous",
+    ),
+    ResolveAuditDeploymentIntegrationTestCase(
+        description="auto resolves latest staged deployment newer than active view target",
+        create_active_view=True,
+        first_deployment_id="20260409T210000Z_ab12cd",
+        second_deployment_id="20260409T210500Z_cd34ef",
+        expected_resolved_deployment_id="20260409T210500Z_cd34ef",
+        expected_error_fragment=None,
+    ),
+]
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    AUDIT_TEST_CASES,
+    ids=[case.description for case in AUDIT_TEST_CASES],
+)
+def test_given_staged_backfill_when_auditing_then_it_returns_expected_comparison_signals(
+    test_case: ExecuteAuditBackfillIntegrationTestCase,
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    compiled_pipeline: CompiledPipeline
+    if test_case.replay_lineage_mode == "offsets":
+        compiled_pipeline = build_offset_replay_compiled_pipeline()
+    else:
+        compiled_pipeline = build_scalar_replay_compiled_pipeline(test_case.replay_lineage_mode)
+
+    clickhouse_client.command(
+        render_create_kafka_table_ddl(
+            require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+        )
+    )
+    clickhouse_client.command(
+        render_create_table_ddl(
+            require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+        )
+    )
+    clickhouse_client.command(
+        render_create_materialized_view_ddl(
+            require_managed_source(compiled_pipeline).materialized_view,
+            clickhouse_database,
+        )
+    )
+    active_physical_name: str = f"tbl__orders_enriched__{test_case.active_deployment_id}"
+    clickhouse_client.command(
+        render_create_table_ddl(
+            compiled_pipeline.transforms[0].target_table, clickhouse_database
+        ).replace(
+            f"{clickhouse_database}.{compiled_pipeline.transforms[0].target_table.name}",
+            f"{clickhouse_database}.{active_physical_name}",
+            1,
+        )
+    )
+    clickhouse_client.command(
+        render_create_view_ddl(
+            database=clickhouse_database,
+            view_name=compiled_pipeline.transforms[0].target_table.name,
+            target_table_name=active_physical_name,
+        )
+    )
+    clickhouse_client.insert(
+        table=f"{clickhouse_database}.{require_managed_source(compiled_pipeline).raw_table.name}",
+        data=[
+            build_raw_orders_row(
+                kafka_key="historical-order",
+                _replay_partition=0,
+                _replay_offset=1,
+                _replay_timestamp=test_case.historical_row_time,
+                _replay_landed_at=test_case.historical_row_time,
+            ),
+            build_raw_orders_row(
+                kafka_key="live-order",
+                _replay_partition=0,
+                _replay_offset=2,
+                _replay_timestamp=test_case.live_row_time,
+                _replay_landed_at=test_case.live_row_time,
+            ),
+        ],
+        column_names=[
+            "kafka_key",
+            "kafka_value",
+            "kafka_topic",
+            "_replay_partition",
+            "_replay_offset",
+            "_replay_timestamp",
+            "kafka_headers",
+            "_replay_landed_at",
+        ],
+    )
+    clickhouse_client.command(
+        f"INSERT INTO {clickhouse_database}.{active_physical_name} "
+        + (
+            build_offset_target_insert_select_sql(
+                database=clickhouse_database,
+                source_table_name=require_managed_source(compiled_pipeline).raw_table.name,
+            )
+            if test_case.replay_lineage_mode == "offsets"
+            else build_scalar_target_insert_select_sql(
+                replay_lineage_mode=test_case.replay_lineage_mode,
+                database=clickhouse_database,
+                source_table_name=require_managed_source(compiled_pipeline).raw_table.name,
+            )
+        )
+    )
+    if test_case.extra_active_only_rows > 0:
+        extra_row_index: int
+        for extra_row_index in range(test_case.extra_active_only_rows):
+            clickhouse_client.command(
+                f"INSERT INTO {clickhouse_database}.{active_physical_name} "
+                "(order_id, _replay_timestamp) VALUES "
+                f"('legacy-order-{extra_row_index}', "
+                f"toDateTime64('2026-04-09 15:00:0{extra_row_index}.000', 3))"
+            )
+    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+        ClickHouseConnectionConfig(
+            host=clickhouse_connection_settings.host,
+            port=clickhouse_connection_settings.port,
+            username=clickhouse_connection_settings.username,
+            password=clickhouse_connection_settings.password,
+            database=clickhouse_database,
+        )
+    )
+    staged_physical_name: str = f"tbl__orders_enriched__{test_case.deployment_id}"
+    clickhouse_client.command(
+        render_create_table_ddl(
+            compiled_pipeline.transforms[0].target_table, clickhouse_database
+        ).replace(
+            f"{clickhouse_database}.{compiled_pipeline.transforms[0].target_table.name}",
+            f"{clickhouse_database}.{staged_physical_name}",
+            1,
+        )
+    )
+    if test_case.replay_lineage_mode == "offsets":
+        clickhouse_client.command(
+            render_create_materialized_view_ddl(
+                compiled_pipeline.transforms[0].materialized_view,
+                clickhouse_database,
+            )
+            .replace(
+                f"{clickhouse_database}.{compiled_pipeline.transforms[0].materialized_view.name}",
+                f"{clickhouse_database}.mv__orders_enriched__{test_case.deployment_id}",
+                1,
+            )
+            .replace(
+                f"TO {clickhouse_database}.{compiled_pipeline.transforms[0].target_table.name}",
+                f"TO {clickhouse_database}.{staged_physical_name}",
+                1,
+            )
+        )
+
+    clickhouse_client.command(
+        f"INSERT INTO {clickhouse_database}.{staged_physical_name} "
+        + (
+            build_offset_target_insert_select_sql(
+                database=clickhouse_database,
+                source_table_name=require_managed_source(compiled_pipeline).raw_table.name,
+            )
+            if test_case.replay_lineage_mode == "offsets"
+            else build_scalar_target_insert_select_sql(
+                replay_lineage_mode=test_case.replay_lineage_mode,
+                database=clickhouse_database,
+                source_table_name=require_managed_source(compiled_pipeline).raw_table.name,
+            )
+        )
+        + (
+            " WHERE 0"
+            if test_case.staged_is_empty
+            else ""
+            if test_case.staged_includes_live_row
+            else " WHERE kafka_key = 'historical-order'"
+        )
+    )
+
+    try:
+        audit_result: AuditBackfillResult = execute_audit_backfill(
+            AuditBackfillRequest(
+                deployment_id=test_case.deployment_id,
+                metadata_database=clickhouse_database,
+                default_database=clickhouse_database,
+            ),
+            managed_client,
+        )
+    finally:
+        managed_client.close()
+
+    root_result: RootAuditResult = audit_result.root_results[0]
+
+    assert audit_result.deployment_id == test_case.deployment_id
+    assert audit_result.assessment == test_case.expected_assessment
+    assert audit_result.warning_codes == test_case.expected_warning_codes
+    assert root_result.root_key.name == test_case.expected_root_name
+    assert root_result.staged_physical_name == test_case.expected_staged_physical_name
+    assert root_result.staged_exists is True
+    assert root_result.active_exists is test_case.expected_active_exists
+    assert root_result.active_row_count == test_case.expected_active_row_count
+    assert root_result.staged_row_count == test_case.expected_staged_row_count
+    assert root_result.warnings == test_case.expected_root_warnings
+    assert root_result.assessment == test_case.expected_assessment
+    if test_case.replay_lineage_mode == "offsets":
+        assert root_result.offset_catchup_summary is not None
+        assert root_result.offset_catchup_summary.partitions_compared == 1
+    else:
+        assert root_result.scalar_catchup_summary is not None
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    RESOLUTION_TEST_CASES,
+    ids=[case.description for case in RESOLUTION_TEST_CASES],
+)
+def test_given_audit_request_without_deployment_id_when_resolving_then_it_behaves_as_expected(
+    test_case: ResolveAuditDeploymentIntegrationTestCase,
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    compiled_pipeline: CompiledPipeline = build_scalar_replay_compiled_pipeline("timestamp")
+    clickhouse_client.command(
+        render_create_kafka_table_ddl(
+            require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+        )
+    )
+    clickhouse_client.command(
+        render_create_table_ddl(
+            require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+        )
+    )
+    clickhouse_client.command(
+        render_create_materialized_view_ddl(
+            require_managed_source(compiled_pipeline).materialized_view,
+            clickhouse_database,
+        )
+    )
+    clickhouse_client.insert(
+        table=f"{clickhouse_database}.{require_managed_source(compiled_pipeline).raw_table.name}",
+        data=[
+            build_raw_orders_row(
+                kafka_key="historical-order",
+                _replay_partition=0,
+                _replay_offset=1,
+                _replay_timestamp="2026-04-09 20:59:59.000",
+                _replay_landed_at="2026-04-09 20:59:59.000",
+            )
+        ],
+        column_names=[
+            "kafka_key",
+            "kafka_value",
+            "kafka_topic",
+            "_replay_partition",
+            "_replay_offset",
+            "_replay_timestamp",
+            "kafka_headers",
+            "_replay_landed_at",
+        ],
+    )
+    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+        ClickHouseConnectionConfig(
+            host=clickhouse_connection_settings.host,
+            port=clickhouse_connection_settings.port,
+            username=clickhouse_connection_settings.username,
+            password=clickhouse_connection_settings.password,
+            database=clickhouse_database,
+        )
+    )
+
+    try:
+        execute_backfill(
+            build_scalar_replay_request(
+                database=clickhouse_database,
+                deployment_id=test_case.first_deployment_id,
+                created_at="2026-04-09 20:00:00.123",
+                boundary_time="2026-04-09 20:00:00.000",
+                replay_lineage_mode="timestamp",
+            ),
+            managed_client,
+        )
+        execute_backfill(
+            build_scalar_replay_request(
+                database=clickhouse_database,
+                deployment_id=test_case.second_deployment_id,
+                created_at="2026-04-09 20:05:00.123",
+                boundary_time="2026-04-09 20:05:00.000",
+                replay_lineage_mode="timestamp",
+            ),
+            managed_client,
+        )
+        if test_case.create_active_view:
+            clickhouse_client.command(
+                render_create_view_ddl(
+                    database=clickhouse_database,
+                    view_name="tbl__orders_enriched",
+                    target_table_name="tbl__orders_enriched__20260409T210000Z_ab12cd",
+                )
+            )
+
+        if test_case.expected_error_fragment is not None:
+            with pytest.raises(ValueError, match=test_case.expected_error_fragment):
+                execute_audit_backfill(
+                    AuditBackfillRequest(
+                        deployment_id=None,
+                        metadata_database=clickhouse_database,
+                        default_database=clickhouse_database,
+                    ),
+                    managed_client,
+                )
+            return
+
+        result: AuditBackfillResult = execute_audit_backfill(
+            AuditBackfillRequest(
+                deployment_id=None,
+                metadata_database=clickhouse_database,
+                default_database=clickhouse_database,
+            ),
+            managed_client,
+        )
+    finally:
+        managed_client.close()
+
+    assert result.deployment_id == test_case.expected_resolved_deployment_id
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        AuditWithoutMetadataIntegrationTestCase(
+            description="audits staged deployment after metadata deletion using live state only",
+            deployment_id="20260409T190000Z_ab12cd",
+            expected_assessment=AuditAssessment.READY,
+            expected_active_exists=False,
+        )
+    ],
+    ids=["audits staged deployment after metadata deletion using live state only"],
+)
+def test_given_deleted_audit_metadata_when_auditing_then_it_uses_live_clickhouse_state(
+    test_case: AuditWithoutMetadataIntegrationTestCase,
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    compiled_pipeline: CompiledPipeline = build_scalar_replay_compiled_pipeline("timestamp")
+    clickhouse_client.command(
+        render_create_kafka_table_ddl(
+            require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+        )
+    )
+    clickhouse_client.command(
+        render_create_table_ddl(
+            require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+        )
+    )
+    clickhouse_client.command(
+        render_create_materialized_view_ddl(
+            require_managed_source(compiled_pipeline).materialized_view,
+            clickhouse_database,
+        )
+    )
+    clickhouse_client.insert(
+        table=f"{clickhouse_database}.{require_managed_source(compiled_pipeline).raw_table.name}",
+        data=[
+            build_raw_orders_row(
+                kafka_key="historical-order",
+                _replay_partition=0,
+                _replay_offset=1,
+                _replay_timestamp="2026-04-09 18:59:59.000",
+                _replay_landed_at="2026-04-09 18:59:59.000",
+            ),
+            build_raw_orders_row(
+                kafka_key="live-order",
+                _replay_partition=0,
+                _replay_offset=2,
+                _replay_timestamp="2026-04-09 19:00:01.000",
+                _replay_landed_at="2026-04-09 19:00:01.000",
+            ),
+        ],
+        column_names=[
+            "kafka_key",
+            "kafka_value",
+            "kafka_topic",
+            "_replay_partition",
+            "_replay_offset",
+            "_replay_timestamp",
+            "kafka_headers",
+            "_replay_landed_at",
+        ],
+    )
+    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+        ClickHouseConnectionConfig(
+            host=clickhouse_connection_settings.host,
+            port=clickhouse_connection_settings.port,
+            username=clickhouse_connection_settings.username,
+            password=clickhouse_connection_settings.password,
+            database=clickhouse_database,
+        )
+    )
+
+    try:
+        execute_backfill(
+            build_scalar_replay_request(
+                database=clickhouse_database,
+                deployment_id=test_case.deployment_id,
+                created_at="2026-04-09 19:00:00.123",
+                boundary_time="2026-04-09 19:00:00.000",
+                replay_lineage_mode="timestamp",
+            ),
+            managed_client,
+        )
+        clickhouse_client.command(
+            f"DROP TABLE IF EXISTS {clickhouse_database}.streambuild_deployment_watermarks"
+        )
+        clickhouse_client.command(
+            f"DROP TABLE IF EXISTS {clickhouse_database}.streambuild_deployments"
+        )
+        clickhouse_client.command(
+            f"DROP TABLE IF EXISTS {clickhouse_database}.streambuild_object_state_snapshots"
+        )
+        audit_result: AuditBackfillResult = execute_audit_backfill(
+            AuditBackfillRequest(
+                deployment_id=test_case.deployment_id,
+                metadata_database=clickhouse_database,
+                default_database=clickhouse_database,
+            ),
+            managed_client,
+        )
+    finally:
+        managed_client.close()
+
+    root_result: RootAuditResult = audit_result.root_results[0]
+
+    assert audit_result.deployment_id == test_case.deployment_id
+    assert audit_result.assessment == test_case.expected_assessment
+    assert root_result.staged_exists is True
+    assert root_result.active_exists is test_case.expected_active_exists
+    assert root_result.active_row_count is None
+    assert root_result.staged_row_count == 2
+    assert root_result.assessment == test_case.expected_assessment
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DanglingActiveViewAuditIntegrationTestCase(
+            description="returns caution when the active stable view points to a missing table",
+            deployment_id="20260409T191000Z_ab12cd",
+            active_deployment_id="20260409T190500Z_prev04",
+            expected_assessment=AuditAssessment.CAUTION,
+        )
+    ],
+    ids=["returns caution when the active stable view points to a missing table"],
+)
+def test_given_dangling_active_view_when_auditing_then_it_returns_caution(
+    test_case: DanglingActiveViewAuditIntegrationTestCase,
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    compiled_pipeline: CompiledPipeline = build_scalar_replay_compiled_pipeline("timestamp")
+    clickhouse_client.command(
+        render_create_kafka_table_ddl(
+            require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+        )
+    )
+    clickhouse_client.command(
+        render_create_table_ddl(
+            require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+        )
+    )
+    clickhouse_client.command(
+        render_create_materialized_view_ddl(
+            require_managed_source(compiled_pipeline).materialized_view,
+            clickhouse_database,
+        )
+    )
+    clickhouse_client.insert(
+        table=f"{clickhouse_database}.{require_managed_source(compiled_pipeline).raw_table.name}",
+        data=[
+            build_raw_orders_row(
+                kafka_key="historical-order",
+                _replay_partition=0,
+                _replay_offset=1,
+                _replay_timestamp="2026-04-09 19:09:59.000",
+                _replay_landed_at="2026-04-09 19:09:59.000",
+            )
+        ],
+        column_names=[
+            "kafka_key",
+            "kafka_value",
+            "kafka_topic",
+            "_replay_partition",
+            "_replay_offset",
+            "_replay_timestamp",
+            "kafka_headers",
+            "_replay_landed_at",
+        ],
+    )
+    clickhouse_client.command(
+        render_create_table_ddl(
+            compiled_pipeline.transforms[0].target_table, clickhouse_database
+        ).replace(
+            f"{clickhouse_database}.{compiled_pipeline.transforms[0].target_table.name}",
+            f"{clickhouse_database}.tbl__orders_enriched__{test_case.active_deployment_id}",
+            1,
+        )
+    )
+    clickhouse_client.command(
+        render_create_view_ddl(
+            database=clickhouse_database,
+            view_name="tbl__orders_enriched",
+            target_table_name=(f"tbl__orders_enriched__{test_case.active_deployment_id}"),
+        )
+    )
+    clickhouse_client.command(
+        f"DROP TABLE {clickhouse_database}.tbl__orders_enriched__{test_case.active_deployment_id}"
+    )
+    clickhouse_client.command(
+        render_create_table_ddl(
+            compiled_pipeline.transforms[0].target_table, clickhouse_database
+        ).replace(
+            f"{clickhouse_database}.{compiled_pipeline.transforms[0].target_table.name}",
+            f"{clickhouse_database}.tbl__orders_enriched__{test_case.deployment_id}",
+            1,
+        )
+    )
+    clickhouse_client.command(
+        f"INSERT INTO {clickhouse_database}.tbl__orders_enriched__{test_case.deployment_id} "
+        + build_scalar_target_insert_select_sql(
+            replay_lineage_mode="timestamp",
+            database=clickhouse_database,
+            source_table_name=require_managed_source(compiled_pipeline).raw_table.name,
+        )
+    )
+    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+        ClickHouseConnectionConfig(
+            host=clickhouse_connection_settings.host,
+            port=clickhouse_connection_settings.port,
+            username=clickhouse_connection_settings.username,
+            password=clickhouse_connection_settings.password,
+            database=clickhouse_database,
+        )
+    )
+
+    try:
+        audit_result: AuditBackfillResult = execute_audit_backfill(
+            AuditBackfillRequest(
+                deployment_id=test_case.deployment_id,
+                metadata_database=clickhouse_database,
+                default_database=clickhouse_database,
+            ),
+            managed_client,
+        )
+    finally:
+        managed_client.close()
+
+    root_result: RootAuditResult = audit_result.root_results[0]
+
+    assert audit_result.assessment == test_case.expected_assessment
+    assert root_result.active_exists is True
+    assert root_result.active_row_count is None
+    assert root_result.staged_exists is True
+    assert root_result.assessment == test_case.expected_assessment
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        AuditAfterDeletedActiveViewIntegrationTestCase(
+            description="audits a staged deployment after the active stable view was deleted",
+            deployment_id="20260409T192000Z_ab12cd",
+            active_deployment_id="20260409T191500Z_prev05",
+            expected_assessment=AuditAssessment.READY,
+        )
+    ],
+    ids=["audits a staged deployment after the active stable view was deleted"],
+)
+def test_given_deleted_active_view_when_auditing_then_it_uses_live_staged_state(
+    test_case: AuditAfterDeletedActiveViewIntegrationTestCase,
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    compiled_pipeline: CompiledPipeline = build_scalar_replay_compiled_pipeline("timestamp")
+    clickhouse_client.command(
+        render_create_kafka_table_ddl(
+            require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+        )
+    )
+    clickhouse_client.command(
+        render_create_table_ddl(
+            require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+        )
+    )
+    clickhouse_client.command(
+        render_create_materialized_view_ddl(
+            require_managed_source(compiled_pipeline).materialized_view,
+            clickhouse_database,
+        )
+    )
+    clickhouse_client.command(
+        render_create_table_ddl(
+            compiled_pipeline.transforms[0].target_table, clickhouse_database
+        ).replace(
+            f"{clickhouse_database}.{compiled_pipeline.transforms[0].target_table.name}",
+            (f"{clickhouse_database}.tbl__orders_enriched__{test_case.active_deployment_id}"),
+            1,
+        )
+    )
+    clickhouse_client.command(
+        render_create_view_ddl(
+            database=clickhouse_database,
+            view_name="tbl__orders_enriched",
+            target_table_name=(f"tbl__orders_enriched__{test_case.active_deployment_id}"),
+        )
+    )
+    clickhouse_client.insert(
+        table=f"{clickhouse_database}.{require_managed_source(compiled_pipeline).raw_table.name}",
+        data=[
+            build_raw_orders_row(
+                kafka_key="historical-order",
+                _replay_partition=0,
+                _replay_offset=1,
+                _replay_timestamp="2026-04-09 19:19:59.000",
+                _replay_landed_at="2026-04-09 19:19:59.000",
+            )
+        ],
+        column_names=[
+            "kafka_key",
+            "kafka_value",
+            "kafka_topic",
+            "_replay_partition",
+            "_replay_offset",
+            "_replay_timestamp",
+            "kafka_headers",
+            "_replay_landed_at",
+        ],
+    )
+    clickhouse_client.command(
+        "INSERT INTO "
+        f"{clickhouse_database}.tbl__orders_enriched__{test_case.active_deployment_id} "
+        + build_scalar_target_insert_select_sql(
+            replay_lineage_mode="timestamp",
+            database=clickhouse_database,
+            source_table_name=require_managed_source(compiled_pipeline).raw_table.name,
+        )
+    )
+    clickhouse_client.command(
+        render_create_table_ddl(
+            compiled_pipeline.transforms[0].target_table, clickhouse_database
+        ).replace(
+            f"{clickhouse_database}.{compiled_pipeline.transforms[0].target_table.name}",
+            f"{clickhouse_database}.tbl__orders_enriched__{test_case.deployment_id}",
+            1,
+        )
+    )
+    clickhouse_client.command(
+        f"INSERT INTO {clickhouse_database}.tbl__orders_enriched__{test_case.deployment_id} "
+        + build_scalar_target_insert_select_sql(
+            replay_lineage_mode="timestamp",
+            database=clickhouse_database,
+            source_table_name=require_managed_source(compiled_pipeline).raw_table.name,
+        )
+    )
+    clickhouse_client.command(f"DROP VIEW {clickhouse_database}.tbl__orders_enriched")
+    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+        ClickHouseConnectionConfig(
+            host=clickhouse_connection_settings.host,
+            port=clickhouse_connection_settings.port,
+            username=clickhouse_connection_settings.username,
+            password=clickhouse_connection_settings.password,
+            database=clickhouse_database,
+        )
+    )
+
+    try:
+        audit_result: AuditBackfillResult = execute_audit_backfill(
+            AuditBackfillRequest(
+                deployment_id=test_case.deployment_id,
+                metadata_database=clickhouse_database,
+                default_database=clickhouse_database,
+            ),
+            managed_client,
+        )
+    finally:
+        managed_client.close()
+
+    root_result: RootAuditResult = audit_result.root_results[0]
+
+    assert audit_result.assessment == test_case.expected_assessment
+    assert root_result.active_exists is False
+    assert root_result.active_row_count is None
+    assert root_result.staged_exists is True
+    assert root_result.staged_row_count == 1
+    assert root_result.assessment == test_case.expected_assessment
+
+
+OFFSET_AUDIT_DEGRADED_STATE_TEST_CASES: list[OffsetAuditDegradedStateIntegrationTestCase] = [
+    OffsetAuditDegradedStateIntegrationTestCase(
+        description=(
+            "returns caution when the staged offset deployment is missing an active partition"
+        ),
+        deployment_id="20260409T193000Z_ab12cd",
+        active_deployment_id="20260409T192500Z_prev06",
+        scenario_kind="missing_staged_partition",
+        expected_assessment=AuditAssessment.CAUTION,
+    ),
+    OffsetAuditDegradedStateIntegrationTestCase(
+        description=(
+            "returns caution when the staged offset deployment has no source lookup "
+            "materialized view"
+        ),
+        deployment_id="20260409T194000Z_ab12cd",
+        active_deployment_id="20260409T193500Z_prev07",
+        scenario_kind="missing_source_lookup",
+        expected_assessment=AuditAssessment.CAUTION,
+    ),
+    OffsetAuditDegradedStateIntegrationTestCase(
+        description="returns caution when raw landing rows are missing for staged max offsets",
+        deployment_id="20260409T195000Z_ab12cd",
+        active_deployment_id="20260409T194500Z_prev08",
+        scenario_kind="missing_raw_rows_for_staged_offsets",
+        expected_assessment=AuditAssessment.CAUTION,
+    ),
+]
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    OFFSET_AUDIT_DEGRADED_STATE_TEST_CASES,
+    ids=[case.description for case in OFFSET_AUDIT_DEGRADED_STATE_TEST_CASES],
+)
+def test_given_degraded_offset_state_when_auditing_then_it_returns_caution(
+    test_case: OffsetAuditDegradedStateIntegrationTestCase,
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    compiled_pipeline: CompiledPipeline = build_offset_replay_compiled_pipeline()
+    active_physical_name: str = f"tbl__orders_enriched__{test_case.active_deployment_id}"
+    staged_physical_name: str = f"tbl__orders_enriched__{test_case.deployment_id}"
+    clickhouse_client.command(
+        render_create_kafka_table_ddl(
+            require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+        )
+    )
+    clickhouse_client.command(
+        render_create_table_ddl(
+            require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+        )
+    )
+    clickhouse_client.command(
+        render_create_materialized_view_ddl(
+            require_managed_source(compiled_pipeline).materialized_view,
+            clickhouse_database,
+        )
+    )
+    clickhouse_client.command(
+        render_create_table_ddl(
+            compiled_pipeline.transforms[0].target_table, clickhouse_database
+        ).replace(
+            f"{clickhouse_database}.{compiled_pipeline.transforms[0].target_table.name}",
+            f"{clickhouse_database}.{active_physical_name}",
+            1,
+        )
+    )
+    clickhouse_client.command(
+        render_create_table_ddl(
+            compiled_pipeline.transforms[0].target_table, clickhouse_database
+        ).replace(
+            f"{clickhouse_database}.{compiled_pipeline.transforms[0].target_table.name}",
+            f"{clickhouse_database}.{staged_physical_name}",
+            1,
+        )
+    )
+    clickhouse_client.command(
+        render_create_view_ddl(
+            database=clickhouse_database,
+            view_name="tbl__orders_enriched",
+            target_table_name=active_physical_name,
+        )
+    )
+    clickhouse_client.insert(
+        table=f"{clickhouse_database}.{require_managed_source(compiled_pipeline).raw_table.name}",
+        data=[
+            build_raw_orders_row(
+                kafka_key="order-p0-historical",
+                _replay_partition=0,
+                _replay_offset=1,
+                _replay_timestamp="2026-04-09 19:29:59.000",
+                _replay_landed_at="2026-04-09 19:29:59.000",
+            ),
+            build_raw_orders_row(
+                kafka_key="order-p1-live",
+                _replay_partition=1,
+                _replay_offset=2,
+                _replay_timestamp="2026-04-09 19:30:01.000",
+                _replay_landed_at="2026-04-09 19:30:01.000",
+            ),
+        ],
+        column_names=[
+            "kafka_key",
+            "kafka_value",
+            "kafka_topic",
+            "_replay_partition",
+            "_replay_offset",
+            "_replay_timestamp",
+            "kafka_headers",
+            "_replay_landed_at",
+        ],
+    )
+    clickhouse_client.command(
+        f"INSERT INTO {clickhouse_database}.{active_physical_name} "
+        + build_offset_target_insert_select_sql(
+            database=clickhouse_database,
+            source_table_name=require_managed_source(compiled_pipeline).raw_table.name,
+        )
+    )
+    if test_case.scenario_kind != "missing_source_lookup":
+        clickhouse_client.command(
+            render_create_materialized_view_ddl(
+                compiled_pipeline.transforms[0].materialized_view,
+                clickhouse_database,
+            )
+            .replace(
+                f"{clickhouse_database}.{compiled_pipeline.transforms[0].materialized_view.name}",
+                f"{clickhouse_database}.mv__orders_enriched__{test_case.deployment_id}",
+                1,
+            )
+            .replace(
+                f"TO {clickhouse_database}.{compiled_pipeline.transforms[0].target_table.name}",
+                f"TO {clickhouse_database}.{staged_physical_name}",
+                1,
+            )
+        )
+    if test_case.scenario_kind == "missing_staged_partition":
+        clickhouse_client.command(
+            f"INSERT INTO {clickhouse_database}.{staged_physical_name} "
+            + build_offset_target_insert_select_sql(
+                database=clickhouse_database,
+                source_table_name=require_managed_source(compiled_pipeline).raw_table.name,
+            )
+            + " "
+            "WHERE _replay_partition = 0"
+        )
+    elif test_case.scenario_kind == "missing_source_lookup":
+        clickhouse_client.command(
+            f"INSERT INTO {clickhouse_database}.{staged_physical_name} "
+            + build_offset_target_insert_select_sql(
+                database=clickhouse_database,
+                source_table_name=require_managed_source(compiled_pipeline).raw_table.name,
+            )
+        )
+    else:
+        raw_table_name: str = require_managed_source(compiled_pipeline).raw_table.name
+        clickhouse_client.command(
+            f"INSERT INTO {clickhouse_database}.{staged_physical_name} "
+            "(order_id, _replay_partition, _replay_offset) VALUES "
+            "('order-p0-historical', 0, 1), ('order-p1-live', 1, 2)"
+        )
+        clickhouse_client.command(
+            f"ALTER TABLE {clickhouse_database}.{raw_table_name} DELETE "
+            "WHERE _replay_partition = 1 AND _replay_offset = 2"
+        )
+        clickhouse_client.command(f"OPTIMIZE TABLE {clickhouse_database}.{raw_table_name} FINAL")
+    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+        ClickHouseConnectionConfig(
+            host=clickhouse_connection_settings.host,
+            port=clickhouse_connection_settings.port,
+            username=clickhouse_connection_settings.username,
+            password=clickhouse_connection_settings.password,
+            database=clickhouse_database,
+        )
+    )
+
+    try:
+        audit_result: AuditBackfillResult = execute_audit_backfill(
+            AuditBackfillRequest(
+                deployment_id=test_case.deployment_id,
+                metadata_database=clickhouse_database,
+                default_database=clickhouse_database,
+            ),
+            managed_client,
+        )
+    finally:
+        managed_client.close()
+
+    root_result: RootAuditResult = audit_result.root_results[0]
+
+    assert audit_result.assessment == test_case.expected_assessment
+    assert root_result.assessment == test_case.expected_assessment
+    assert root_result.offset_catchup_summary is not None

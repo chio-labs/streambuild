@@ -1,0 +1,54 @@
+from collections.abc import Callable, Mapping
+from typing import cast
+
+import pytest
+
+from streambuild.clickhouse.inspect.helpers.managed_tables import (
+    build_inspected_managed_table_state,
+)
+from streambuild.clickhouse.inspect.models import InspectedManagedTableState
+from streambuild.integrations.clickhouse.client import ClickHouseClient
+from tests.unit.src.streambuild.clickhouse.inspect._test_types import (
+    BuildInspectedManagedTableStateTestCase,
+)
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        BuildInspectedManagedTableStateTestCase(
+            description=(
+                "ignores materialized view deployment candidates in managed table inspection"
+            ),
+            system_rows=(
+                ("tbl__orders_enriched__dep_a", "MergeTree"),
+                ("raw__orders__dep_a", "MergeTree"),
+                ("mv__orders_enriched__dep_a", "MaterializedView"),
+            ),
+            expected_logical_names=("tbl__orders_enriched", "raw__orders"),
+        )
+    ],
+    ids=["ignores materialized view deployment candidates in managed table inspection"],
+)
+def test_given_physical_candidates_when_building_inspected_state_then_it_ignores_mv_candidates(
+    test_case: BuildInspectedManagedTableStateTestCase,
+) -> None:
+    class QueryingClient:
+        def query_many(
+            self,
+            statement: str,
+            *,
+            decode: Callable[[Mapping[str, object]], object],
+        ) -> tuple[object, ...]:
+            if "engine = 'View'" in statement:
+                return ()
+            return tuple(decode({"name": name}) for name, _engine in test_case.system_rows)
+
+    inspected_state: InspectedManagedTableState = build_inspected_managed_table_state(
+        client=cast(ClickHouseClient, QueryingClient()),
+        database="analytics",
+    )
+
+    assert tuple(candidate.logical_name for candidate in inspected_state.physical_candidates) == (
+        test_case.expected_logical_names
+    )

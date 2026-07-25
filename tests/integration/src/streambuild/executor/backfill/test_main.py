@@ -1,0 +1,3002 @@
+from collections.abc import Sequence
+from dataclasses import replace
+from datetime import datetime, timedelta
+
+import pytest
+from clickhouse_connect.driver.client import Client
+
+from streambuild.clickhouse.render.helpers.create_kafka_table.main import (
+    render_create_kafka_table_ddl,
+)
+from streambuild.clickhouse.render.helpers.create_materialized_view.main import (
+    render_create_materialized_view_ddl,
+)
+from streambuild.clickhouse.render.helpers.create_table.main import render_create_table_ddl
+from streambuild.clickhouse.render.helpers.create_view.main import render_create_view_ddl
+from streambuild.compiler.compile.models import CompiledPipeline, DesiredState
+from streambuild.compiler.desired_state.main import build_desired_state
+from streambuild.compiler.metadata_state.models import DeploymentWatermarkRecord
+from streambuild.compiler.planner.constants import (
+    REBUILD_EXECUTION_MODE_FULL,
+    REBUILD_EXECUTION_MODE_UNSEEDED_BOUNDED,
+)
+from streambuild.compiler.planner.models import DeploymentPlan, RebuildSubtree
+from streambuild.executor.backfill.helpers.replay import (
+    execute_offset_replay,
+    execute_scalar_replay,
+)
+from streambuild.executor.backfill.helpers.watermarks import (
+    persist_deployment_watermarks,
+    resolve_offset_watermarks,
+    resolve_scalar_watermarks,
+)
+from streambuild.executor.backfill.main import execute_backfill, execute_backfill_bootstrap
+from streambuild.executor.backfill.models import (
+    BackfillBootstrapRequest,
+    BackfillBootstrapResult,
+    BackfillExecutionResult,
+    RootBackfillReport,
+)
+from streambuild.executor.publish.main import execute_publish
+from streambuild.executor.publish.models import PublishRequest
+from streambuild.integrations.clickhouse.client import ClickHouseClient
+from streambuild.integrations.clickhouse.models import ClickHouseConnectionConfig
+from tests.integration.src.streambuild.conftest import ClickHouseConnectionSettings
+from tests.integration.src.streambuild.executor.backfill._test_types import (
+    BackfillAfterDeletedStagedTableIntegrationTestCase,
+    ExecuteAggregateBoundedOffsetReplayIntegrationTestCase,
+    ExecuteAggregateOffsetReplayIntegrationTestCase,
+    ExecuteBackfillBootstrapIntegrationTestCase,
+    ExecuteBackfillOffsetReplayIntegrationTestCase,
+    ExecuteBackfillScalarReplayIntegrationTestCase,
+    ExecuteBoundedReplayReportingIntegrationTestCase,
+    ExecuteExternalSourceCursorReplayIntegrationTestCase,
+    ExecuteExternalSourceOffsetReplayIntegrationTestCase,
+    ExecuteMixedRootBackfillReportingIntegrationTestCase,
+    ExecuteMultipleBackfillsIntegrationTestCase,
+    ExecutePublishedReferenceJoinBackfillIntegrationTestCase,
+    ExecuteReferenceJoinBackfillIntegrationTestCase,
+    ExecuteRepeatedPublishedBackfillIntegrationTestCase,
+    ExecuteSeededBoundedOffsetReplayIntegrationTestCase,
+    ExecuteSeededBoundedScalarReplayIntegrationTestCase,
+    ExecuteStartTimeReplayIntegrationTestCase,
+    ExecuteUnseededBoundedOffsetReplayIntegrationTestCase,
+    ExecuteUnseededBoundedScalarReplayIntegrationTestCase,
+    PersistWatermarksWithoutMetadataTableIntegrationTestCase,
+    ResolveAggregateUnsupportedReplayBehaviorIntegrationTestCase,
+)
+from tests.integration.src.streambuild.executor.backfill.helpers import (
+    build_aggregate_offset_replay_compiled_pipeline,
+    build_aggregate_offset_replay_request,
+    build_backfill_bootstrap_request,
+    build_changed_aggregate_offset_replay_compiled_pipeline,
+    build_changed_offset_replay_compiled_pipeline,
+    build_changed_scalar_replay_compiled_pipeline,
+    build_compiled_pipeline,
+    build_external_source_cursor_replay_compiled_pipeline,
+    build_external_source_cursor_replay_request,
+    build_external_source_offset_replay_compiled_pipeline,
+    build_external_source_offset_replay_request,
+    build_external_source_orders_row,
+    build_named_scalar_replay_compiled_pipeline,
+    build_offset_replay_compiled_pipeline,
+    build_offset_replay_request,
+    build_raw_orders_row,
+    build_reference_join_compiled_pipeline,
+    build_reference_join_region_lookup_only_compiled_pipeline,
+    build_reference_join_region_lookup_only_replay_request,
+    build_reference_join_replay_request,
+    build_scalar_replay_compiled_pipeline,
+    build_scalar_replay_request,
+    require_managed_source,
+)
+from tests.integration.src.streambuild.executor.backfill.scenario_models import (
+    StartTimeReplayScenarioResult,
+)
+from tests.integration.src.streambuild.executor.backfill.scenarios import (
+    run_start_time_replay_scenario,
+)
+
+BOOTSTRAP_TEST_CASES: list[ExecuteBackfillBootstrapIntegrationTestCase] = [
+    ExecuteBackfillBootstrapIntegrationTestCase(
+        description="creates metadata tables persists deployment and creates shadow objects",
+        deployment_id="20260409T120000Z_ab12cd",
+        created_at="2026-04-09 12:00:00.123",
+        precreate_live_landing_objects=True,
+        expected_live_kafka_table_name="kafka__orders",
+        expected_shadow_table_name="tbl__orders_enriched__20260409T120000Z_ab12cd",
+        expected_shadow_materialized_view_name="mv__orders_enriched__20260409T120000Z_ab12cd",
+        expected_deployment_status="backfilling",
+        expected_runtime_detail_anchor_physical_name="raw__orders",
+    ),
+    ExecuteBackfillBootstrapIntegrationTestCase(
+        description=(
+            "creates live kafka source table before staged landing objects in greenfield mode"
+        ),
+        deployment_id="20260409T120500Z_ef34gh",
+        created_at="2026-04-09 12:05:00.123",
+        precreate_live_landing_objects=False,
+        expected_live_kafka_table_name="kafka__orders",
+        expected_shadow_table_name="tbl__orders_enriched__20260409T120500Z_ef34gh",
+        expected_shadow_materialized_view_name="mv__orders_enriched__20260409T120500Z_ef34gh",
+        expected_deployment_status="backfilling",
+        expected_runtime_detail_anchor_physical_name="raw__orders",
+    ),
+]
+
+START_TIME_SCALAR_REPLAY_TEST_CASES: list[ExecuteStartTimeReplayIntegrationTestCase] = [
+    ExecuteStartTimeReplayIntegrationTestCase(
+        description="start time scalar replay keeps prefix and replays the explicit tail",
+        replay_lineage_mode="timestamp",
+        initial_deployment_id="20260409T170000Z_ab12cd",
+        changed_deployment_id="20260409T170500Z_cd34ef",
+        created_at="2026-04-09 17:00:00.123",
+        initial_boundary_time="2026-04-09 17:00:00.000",
+        changed_boundary_time="2026-04-09 17:05:00.000",
+        lower_bound_source_order_id="frontier-order",
+        lower_bound_offset_millis=500,
+        expected_shadow_table_name="tbl__orders_enriched__20260409T170500Z_cd34ef",
+        expected_shadow_rows=(
+            ("frontier-order", "source.orders.created"),
+            ("historical-order", ""),
+            ("live-order", "source.orders.created"),
+        ),
+    ),
+    ExecuteStartTimeReplayIntegrationTestCase(
+        description="start time scalar replay before history replays the full available window",
+        replay_lineage_mode="timestamp",
+        initial_deployment_id="20260409T170000Z_ab12cd",
+        changed_deployment_id="20260409T170500Z_ef56gh",
+        created_at="2026-04-09 17:00:00.123",
+        initial_boundary_time="2026-04-09 17:00:00.000",
+        changed_boundary_time="2026-04-09 17:05:00.000",
+        lower_bound_source_order_id="historical-order",
+        lower_bound_offset_millis=500,
+        expected_shadow_table_name="tbl__orders_enriched__20260409T170500Z_ef56gh",
+        expected_shadow_rows=(
+            ("frontier-order", "source.orders.created"),
+            ("historical-order", "source.orders.created"),
+            ("live-order", "source.orders.created"),
+        ),
+    ),
+]
+
+START_TIME_OFFSET_REPLAY_TEST_CASES: list[ExecuteStartTimeReplayIntegrationTestCase] = [
+    ExecuteStartTimeReplayIntegrationTestCase(
+        description="start time offset replay keeps prefix and replays the explicit tail",
+        replay_lineage_mode="offsets",
+        initial_deployment_id="20260409T171000Z_ab12cd",
+        changed_deployment_id="20260409T171500Z_cd34ef",
+        created_at="2026-04-09 17:10:00.123",
+        initial_boundary_time="2026-04-09 17:10:00.000",
+        changed_boundary_time="2026-04-09 17:15:00.000",
+        lower_bound_source_order_id="frontier-order",
+        lower_bound_offset_millis=0,
+        expected_shadow_table_name="tbl__orders_enriched__20260409T171500Z_cd34ef",
+        expected_shadow_rows=(
+            ("frontier-order", "source.orders.created"),
+            ("historical-order", ""),
+            ("live-order", "source.orders.created"),
+        ),
+    ),
+    ExecuteStartTimeReplayIntegrationTestCase(
+        description="start time offset replay before history replays the full available window",
+        replay_lineage_mode="offsets",
+        initial_deployment_id="20260409T171000Z_ab12cd",
+        changed_deployment_id="20260409T171500Z_gh78ij",
+        created_at="2026-04-09 17:10:00.123",
+        initial_boundary_time="2026-04-09 17:10:00.000",
+        changed_boundary_time="2026-04-09 17:15:00.000",
+        lower_bound_source_order_id="historical-order",
+        lower_bound_offset_millis=500,
+        expected_shadow_table_name="tbl__orders_enriched__20260409T171500Z_gh78ij",
+        expected_shadow_rows=(
+            ("frontier-order", "source.orders.created"),
+            ("historical-order", "source.orders.created"),
+            ("live-order", "source.orders.created"),
+        ),
+    ),
+]
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    BOOTSTRAP_TEST_CASES,
+    ids=[case.description for case in BOOTSTRAP_TEST_CASES],
+)
+def test_given_changed_pipeline_when_bootstrapping_then_it_creates_metadata_and_shadow_objects(
+    test_case: ExecuteBackfillBootstrapIntegrationTestCase,
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    compiled_pipeline: CompiledPipeline = build_compiled_pipeline()
+    if test_case.precreate_live_landing_objects:
+        clickhouse_client.command(
+            render_create_kafka_table_ddl(
+                require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+            )
+        )
+        clickhouse_client.command(
+            render_create_table_ddl(
+                require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+            )
+        )
+        clickhouse_client.command(
+            render_create_materialized_view_ddl(
+                require_managed_source(compiled_pipeline).materialized_view,
+                clickhouse_database,
+            )
+        )
+    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+        ClickHouseConnectionConfig(
+            host=clickhouse_connection_settings.host,
+            port=clickhouse_connection_settings.port,
+            username=clickhouse_connection_settings.username,
+            password=clickhouse_connection_settings.password,
+            database=clickhouse_database,
+        )
+    )
+
+    try:
+        result: BackfillBootstrapResult = execute_backfill_bootstrap(
+            build_backfill_bootstrap_request(
+                database=clickhouse_database,
+                deployment_id=test_case.deployment_id,
+                created_at=test_case.created_at,
+            ),
+            managed_client,
+        )
+    finally:
+        managed_client.close()
+
+    metadata_rows: Sequence[Sequence[object]] = clickhouse_client.query(
+        f"SELECT deployment_id, status FROM {clickhouse_database}.streambuild_deployments"
+    ).result_rows
+    runtime_detail_rows: Sequence[Sequence[object]] = clickhouse_client.query(
+        "SELECT root_object_name, replay_strategy, anchor_object_name, anchor_physical_name "
+        f"FROM {clickhouse_database}.streambuild_deployment_runtime_details "
+        "ORDER BY root_object_name"
+    ).result_rows
+    expected_object_names: tuple[str, str, str] = (
+        test_case.expected_live_kafka_table_name,
+        test_case.expected_shadow_table_name,
+        test_case.expected_shadow_materialized_view_name,
+    )
+    created_object_rows: Sequence[Sequence[object]] = clickhouse_client.query(
+        "SELECT name, engine FROM system.tables "
+        f"WHERE database = '{clickhouse_database}' "
+        f"AND name IN {expected_object_names} "
+        "ORDER BY name"
+    ).result_rows
+
+    assert result.deployment_id == test_case.deployment_id
+    assert result.root_reports[0].replay_strategy == "create_from_scratch"
+    assert metadata_rows == [(test_case.deployment_id, test_case.expected_deployment_status)]
+    assert runtime_detail_rows == [
+        (
+            "tbl__orders_enriched",
+            test_case.expected_runtime_detail_strategy,
+            test_case.expected_runtime_detail_anchor_name,
+            test_case.expected_runtime_detail_anchor_physical_name,
+        )
+    ]
+    assert created_object_rows == sorted(
+        [
+            (test_case.expected_live_kafka_table_name, "Kafka"),
+            (test_case.expected_shadow_materialized_view_name, "MaterializedView"),
+            (test_case.expected_shadow_table_name, "ReplacingMergeTree"),
+        ],
+        key=lambda row: str(row[0]),
+    )
+
+
+SCALAR_REPLAY_TEST_CASES: list[ExecuteBackfillScalarReplayIntegrationTestCase] = [
+    ExecuteBackfillScalarReplayIntegrationTestCase(
+        description="replays historical rows for kafka timestamp mode and persists watermarks",
+        replay_lineage_mode="timestamp",
+        deployment_id="20260409T130000Z_ab12cd",
+        created_at="2026-04-09 13:00:00.123",
+        boundary_time="2026-04-09 13:00:00.000",
+        expected_boundary_key="_replay_timestamp",
+        expected_shadow_table_name="tbl__orders_enriched__20260409T130000Z_ab12cd",
+        historical_raw_rows=(
+            build_raw_orders_row(
+                kafka_key="historical-order",
+                _replay_partition=0,
+                _replay_offset=1,
+                _replay_timestamp="2026-04-09 12:59:59.000",
+                _replay_landed_at="2026-04-09 12:59:59.100",
+            ),
+        ),
+        live_raw_rows=(
+            build_raw_orders_row(
+                kafka_key="live-order",
+                _replay_partition=0,
+                _replay_offset=2,
+                _replay_timestamp="2026-04-09 13:00:01.000",
+                _replay_landed_at="2026-04-09 13:00:01.100",
+            ),
+        ),
+        expected_shadow_order_ids=("historical-order", "live-order"),
+    ),
+    ExecuteBackfillScalarReplayIntegrationTestCase(
+        description="replays historical rows for kafka landed at mode and persists watermarks",
+        replay_lineage_mode="landed_at",
+        deployment_id="20260409T140000Z_ab12cd",
+        created_at="2026-04-09 14:00:00.123",
+        boundary_time="2026-04-09 14:00:00.000",
+        expected_boundary_key="_replay_landed_at",
+        expected_shadow_table_name="tbl__orders_enriched__20260409T140000Z_ab12cd",
+        historical_raw_rows=(
+            build_raw_orders_row(
+                kafka_key="historical-order",
+                _replay_partition=0,
+                _replay_offset=1,
+                _replay_timestamp="2026-04-09 13:59:58.000",
+                _replay_landed_at="2026-04-09 13:59:59.000",
+            ),
+        ),
+        live_raw_rows=(
+            build_raw_orders_row(
+                kafka_key="live-order",
+                _replay_partition=0,
+                _replay_offset=2,
+                _replay_timestamp="2026-04-09 14:00:01.000",
+                _replay_landed_at="2026-04-09 14:00:01.000",
+            ),
+        ),
+        expected_shadow_order_ids=("historical-order", "live-order"),
+    ),
+]
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    SCALAR_REPLAY_TEST_CASES,
+    ids=[case.description for case in SCALAR_REPLAY_TEST_CASES],
+)
+def test_given_scalar_replay_mode_when_executing_then_it_persists_watermarks_and_replays_rows(
+    test_case: ExecuteBackfillScalarReplayIntegrationTestCase,
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    compiled_pipeline: CompiledPipeline = build_scalar_replay_compiled_pipeline(
+        test_case.replay_lineage_mode
+    )
+    clickhouse_client.command(
+        render_create_kafka_table_ddl(
+            require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+        )
+    )
+    clickhouse_client.command(
+        render_create_table_ddl(
+            require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+        )
+    )
+    clickhouse_client.command(
+        render_create_materialized_view_ddl(
+            require_managed_source(compiled_pipeline).materialized_view,
+            clickhouse_database,
+        )
+    )
+    clickhouse_client.insert(
+        table=f"{clickhouse_database}.{require_managed_source(compiled_pipeline).raw_table.name}",
+        data=list(test_case.historical_raw_rows),
+        column_names=[
+            "kafka_key",
+            "kafka_value",
+            "kafka_topic",
+            "_replay_partition",
+            "_replay_offset",
+            "_replay_timestamp",
+            "kafka_headers",
+            "_replay_landed_at",
+        ],
+    )
+    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+        ClickHouseConnectionConfig(
+            host=clickhouse_connection_settings.host,
+            port=clickhouse_connection_settings.port,
+            username=clickhouse_connection_settings.username,
+            password=clickhouse_connection_settings.password,
+            database=clickhouse_database,
+        )
+    )
+
+    try:
+        result: BackfillExecutionResult = execute_backfill(
+            build_scalar_replay_request(
+                database=clickhouse_database,
+                deployment_id=test_case.deployment_id,
+                created_at=test_case.created_at,
+                boundary_time=test_case.boundary_time,
+                replay_lineage_mode=test_case.replay_lineage_mode,
+            ),
+            managed_client,
+        )
+        clickhouse_client.insert(
+            table=f"{clickhouse_database}.{require_managed_source(compiled_pipeline).raw_table.name}",
+            data=list(test_case.live_raw_rows),
+            column_names=[
+                "kafka_key",
+                "kafka_value",
+                "kafka_topic",
+                "_replay_partition",
+                "_replay_offset",
+                "_replay_timestamp",
+                "kafka_headers",
+                "_replay_landed_at",
+            ],
+        )
+    finally:
+        managed_client.close()
+
+    watermark_rows: Sequence[Sequence[object]] = clickhouse_client.query(
+        "SELECT boundary_key, cutoff_value FROM "
+        f"{clickhouse_database}.streambuild_deployment_watermarks"
+    ).result_rows
+    shadow_rows: Sequence[Sequence[object]] = clickhouse_client.query(
+        "SELECT order_id FROM "
+        f"{clickhouse_database}.{test_case.expected_shadow_table_name} "
+        "ORDER BY order_id"
+    ).result_rows
+
+    assert result.bootstrap.deployment_id == test_case.deployment_id
+    assert result.boundary_time == test_case.boundary_time
+    assert result.bootstrap.root_reports[0].replay_strategy == "create_from_scratch"
+    assert watermark_rows == [(test_case.expected_boundary_key, test_case.boundary_time)]
+    assert shadow_rows == [(order_id,) for order_id in test_case.expected_shadow_order_ids]
+
+
+OFFSET_REPLAY_TEST_CASES: list[ExecuteBackfillOffsetReplayIntegrationTestCase] = [
+    ExecuteBackfillOffsetReplayIntegrationTestCase(
+        description="replays kafka offsets history and persists partition watermarks",
+        deployment_id="20260409T150000Z_ab12cd",
+        created_at="2026-04-09 15:00:00.123",
+        boundary_time="2026-04-09 15:00:00.000",
+        expected_shadow_table_name="tbl__orders_enriched__20260409T150000Z_ab12cd",
+        raw_rows=(
+            build_raw_orders_row(
+                kafka_key="historical-partition-0",
+                _replay_partition=0,
+                _replay_offset=10,
+                _replay_timestamp="2026-04-09 14:59:58.000",
+                _replay_landed_at="2026-04-09 14:59:59.000",
+            ),
+            build_raw_orders_row(
+                kafka_key="historical-partition-1",
+                _replay_partition=1,
+                _replay_offset=20,
+                _replay_timestamp="2026-04-09 14:59:58.500",
+                _replay_landed_at="2026-04-09 14:59:59.500",
+            ),
+            build_raw_orders_row(
+                kafka_key="future-partition-0",
+                _replay_partition=0,
+                _replay_offset=11,
+                _replay_timestamp="2026-04-10 15:00:01.000",
+                _replay_landed_at="2026-04-10 15:00:01.000",
+            ),
+        ),
+        live_raw_rows=(
+            build_raw_orders_row(
+                kafka_key="live-partition-0",
+                _replay_partition=0,
+                _replay_offset=12,
+                _replay_timestamp="2026-04-09 15:00:02.000",
+                _replay_landed_at="2026-04-09 15:00:02.000",
+            ),
+        ),
+        expected_watermark_rows=(
+            ("_replay_partition=0", "10"),
+            ("_replay_partition=1", "20"),
+        ),
+        expected_shadow_order_ids=(
+            "historical-partition-0",
+            "historical-partition-1",
+            "live-partition-0",
+        ),
+    ),
+    ExecuteBackfillOffsetReplayIntegrationTestCase(
+        description="treats empty offset cutoffs as a no-op instead of failing",
+        deployment_id="20260409T151000Z_cd34ef",
+        created_at="2026-04-09 15:10:00.123",
+        boundary_time="2026-04-09 15:10:00.000",
+        expected_shadow_table_name="tbl__orders_enriched__20260409T151000Z_cd34ef",
+        raw_rows=(),
+        live_raw_rows=(),
+        expected_watermark_rows=(),
+        expected_shadow_order_ids=(),
+    ),
+]
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    OFFSET_REPLAY_TEST_CASES,
+    ids=[case.description for case in OFFSET_REPLAY_TEST_CASES],
+)
+def test_given_offset_replay_mode_when_executing_then_it_persists_partition_watermarks(
+    test_case: ExecuteBackfillOffsetReplayIntegrationTestCase,
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    compiled_pipeline: CompiledPipeline = build_offset_replay_compiled_pipeline()
+    clickhouse_client.command(
+        render_create_kafka_table_ddl(
+            require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+        )
+    )
+    clickhouse_client.command(
+        render_create_table_ddl(
+            require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+        )
+    )
+    clickhouse_client.command(
+        render_create_materialized_view_ddl(
+            require_managed_source(compiled_pipeline).materialized_view,
+            clickhouse_database,
+        )
+    )
+    clickhouse_client.insert(
+        table=f"{clickhouse_database}.{require_managed_source(compiled_pipeline).raw_table.name}",
+        data=list(test_case.raw_rows),
+        column_names=[
+            "kafka_key",
+            "kafka_value",
+            "kafka_topic",
+            "_replay_partition",
+            "_replay_offset",
+            "_replay_timestamp",
+            "kafka_headers",
+            "_replay_landed_at",
+        ],
+    )
+    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+        ClickHouseConnectionConfig(
+            host=clickhouse_connection_settings.host,
+            port=clickhouse_connection_settings.port,
+            username=clickhouse_connection_settings.username,
+            password=clickhouse_connection_settings.password,
+            database=clickhouse_database,
+        )
+    )
+
+    try:
+        result: BackfillExecutionResult = execute_backfill(
+            build_offset_replay_request(
+                database=clickhouse_database,
+                deployment_id=test_case.deployment_id,
+                created_at=test_case.created_at,
+                boundary_time=test_case.boundary_time,
+            ),
+            managed_client,
+        )
+        clickhouse_client.insert(
+            table=f"{clickhouse_database}.{require_managed_source(compiled_pipeline).raw_table.name}",
+            data=list(test_case.live_raw_rows),
+            column_names=[
+                "kafka_key",
+                "kafka_value",
+                "kafka_topic",
+                "_replay_partition",
+                "_replay_offset",
+                "_replay_timestamp",
+                "kafka_headers",
+                "_replay_landed_at",
+            ],
+        )
+    finally:
+        managed_client.close()
+
+    watermark_rows: Sequence[Sequence[object]] = clickhouse_client.query(
+        "SELECT boundary_key, cutoff_value FROM "
+        f"{clickhouse_database}.streambuild_deployment_watermarks ORDER BY boundary_key"
+    ).result_rows
+    shadow_rows: Sequence[Sequence[object]] = clickhouse_client.query(
+        "SELECT order_id FROM "
+        f"{clickhouse_database}.{test_case.expected_shadow_table_name} "
+        "ORDER BY order_id"
+    ).result_rows
+
+    assert result.bootstrap.deployment_id == test_case.deployment_id
+    assert result.boundary_time == test_case.boundary_time
+    assert result.bootstrap.root_reports[0].replay_strategy == "create_from_scratch"
+    assert watermark_rows == list(test_case.expected_watermark_rows)
+    assert shadow_rows == [(order_id,) for order_id in test_case.expected_shadow_order_ids]
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ExecuteReferenceJoinBackfillIntegrationTestCase(
+            description="executes backfill for staged reference joins across managed targets",
+            deployment_id="20260419T140000Z_ref123",
+            created_at="2026-04-19 14:00:00.123",
+            boundary_time="2026-04-19 14:00:00.000",
+            expected_region_lookup_shadow_name="tbl__region_lookup__20260419T140000Z_ref123",
+            expected_enriched_shadow_name="tbl__enriched_orders__20260419T140000Z_ref123",
+            expected_enriched_rows=(
+                ("north", "NORTH"),
+                ("south", "SOUTH"),
+            ),
+        )
+    ],
+    ids=["executes backfill for staged reference joins across managed targets"],
+)
+def test_given_reference_join_when_executing_then_it_replays_from_staged_reference_tables(
+    test_case: ExecuteReferenceJoinBackfillIntegrationTestCase,
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    compiled_pipeline: CompiledPipeline = build_reference_join_compiled_pipeline()
+    clickhouse_client.command(
+        render_create_kafka_table_ddl(
+            require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+        )
+    )
+    clickhouse_client.command(
+        render_create_table_ddl(
+            require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+        )
+    )
+    clickhouse_client.command(
+        render_create_materialized_view_ddl(
+            require_managed_source(compiled_pipeline).materialized_view,
+            clickhouse_database,
+        )
+    )
+    clickhouse_client.insert(
+        table=f"{clickhouse_database}.{require_managed_source(compiled_pipeline).raw_table.name}",
+        data=[
+            build_raw_orders_row(
+                kafka_key="north",
+                _replay_partition=0,
+                _replay_offset=1,
+                _replay_timestamp="2026-04-19 13:59:58.000",
+                _replay_landed_at="2026-04-19 13:59:58.000",
+            ),
+            build_raw_orders_row(
+                kafka_key="south",
+                _replay_partition=0,
+                _replay_offset=2,
+                _replay_timestamp="2026-04-19 13:59:59.000",
+                _replay_landed_at="2026-04-19 13:59:59.000",
+            ),
+        ],
+        column_names=[
+            "kafka_key",
+            "kafka_value",
+            "kafka_topic",
+            "_replay_partition",
+            "_replay_offset",
+            "_replay_timestamp",
+            "kafka_headers",
+            "_replay_landed_at",
+        ],
+    )
+    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+        ClickHouseConnectionConfig(
+            host=clickhouse_connection_settings.host,
+            port=clickhouse_connection_settings.port,
+            username=clickhouse_connection_settings.username,
+            password=clickhouse_connection_settings.password,
+            database=clickhouse_database,
+        )
+    )
+
+    try:
+        result: BackfillExecutionResult = execute_backfill(
+            build_reference_join_replay_request(
+                database=clickhouse_database,
+                deployment_id=test_case.deployment_id,
+                created_at=test_case.created_at,
+                boundary_time=test_case.boundary_time,
+            ),
+            managed_client,
+        )
+    finally:
+        managed_client.close()
+
+    region_lookup_rows: Sequence[Sequence[object]] = clickhouse_client.query(
+        "SELECT region, region_display FROM "
+        f"{clickhouse_database}.{test_case.expected_region_lookup_shadow_name} ORDER BY region"
+    ).result_rows
+    enriched_rows: Sequence[Sequence[object]] = clickhouse_client.query(
+        "SELECT order_id, region_display FROM "
+        f"{clickhouse_database}.{test_case.expected_enriched_shadow_name} ORDER BY order_id"
+    ).result_rows
+
+    assert result.bootstrap.deployment_id == test_case.deployment_id
+    assert region_lookup_rows == [("north", "NORTH"), ("south", "SOUTH")]
+    assert enriched_rows == list(test_case.expected_enriched_rows)
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ExecutePublishedReferenceJoinBackfillIntegrationTestCase(
+            description="replays reference joins against an already-published active managed ref",
+            initial_deployment_id="20260419T141000Z_refabc",
+            changed_deployment_id="20260419T141500Z_refdef",
+            created_at="2026-04-19 14:10:00.123",
+            boundary_time="2026-04-19 14:10:00.000",
+            expected_enriched_shadow_name="tbl__enriched_orders__20260419T141500Z_refdef",
+            expected_enriched_rows=(
+                ("north", "NORTH"),
+                ("south", "SOUTH"),
+            ),
+        )
+    ],
+    ids=["replays reference joins against an already-published active managed ref"],
+)
+def test_given_published_reference_join_dependency_when_backfilling_then_it_uses_active_logical_ref(
+    test_case: ExecutePublishedReferenceJoinBackfillIntegrationTestCase,
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    initial_compiled_pipeline: CompiledPipeline = (
+        build_reference_join_region_lookup_only_compiled_pipeline()
+    )
+    clickhouse_client.command(
+        render_create_kafka_table_ddl(
+            require_managed_source(initial_compiled_pipeline).kafka_table, clickhouse_database
+        )
+    )
+    clickhouse_client.command(
+        render_create_table_ddl(
+            require_managed_source(initial_compiled_pipeline).raw_table, clickhouse_database
+        )
+    )
+    clickhouse_client.command(
+        render_create_materialized_view_ddl(
+            require_managed_source(initial_compiled_pipeline).materialized_view,
+            clickhouse_database,
+        )
+    )
+    clickhouse_client.insert(
+        table=f"{clickhouse_database}.{require_managed_source(initial_compiled_pipeline).raw_table.name}",
+        data=[
+            build_raw_orders_row(
+                kafka_key="north",
+                _replay_partition=0,
+                _replay_offset=1,
+                _replay_timestamp="2026-04-19 14:09:58.000",
+                _replay_landed_at="2026-04-19 14:09:58.000",
+            ),
+            build_raw_orders_row(
+                kafka_key="south",
+                _replay_partition=0,
+                _replay_offset=2,
+                _replay_timestamp="2026-04-19 14:09:59.000",
+                _replay_landed_at="2026-04-19 14:09:59.000",
+            ),
+        ],
+        column_names=[
+            "kafka_key",
+            "kafka_value",
+            "kafka_topic",
+            "_replay_partition",
+            "_replay_offset",
+            "_replay_timestamp",
+            "kafka_headers",
+            "_replay_landed_at",
+        ],
+    )
+    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+        ClickHouseConnectionConfig(
+            host=clickhouse_connection_settings.host,
+            port=clickhouse_connection_settings.port,
+            username=clickhouse_connection_settings.username,
+            password=clickhouse_connection_settings.password,
+            database=clickhouse_database,
+        )
+    )
+
+    try:
+        execute_backfill(
+            build_reference_join_region_lookup_only_replay_request(
+                database=clickhouse_database,
+                deployment_id=test_case.initial_deployment_id,
+                created_at=test_case.created_at,
+                boundary_time=test_case.boundary_time,
+            ),
+            managed_client,
+        )
+        execute_publish(
+            PublishRequest(
+                deployment_id=test_case.initial_deployment_id,
+                metadata_database=clickhouse_database,
+                default_database=clickhouse_database,
+            ),
+            managed_client,
+        )
+        result: BackfillExecutionResult = execute_backfill(
+            build_reference_join_replay_request(
+                database=clickhouse_database,
+                deployment_id=test_case.changed_deployment_id,
+                created_at=test_case.created_at,
+                boundary_time=test_case.boundary_time,
+            ),
+            managed_client,
+        )
+    finally:
+        managed_client.close()
+
+    active_region_lookup_rows: Sequence[Sequence[object]] = clickhouse_client.query(
+        "SELECT region, region_display FROM "
+        f"{clickhouse_database}.tbl__region_lookup ORDER BY region"
+    ).result_rows
+    enriched_rows: Sequence[Sequence[object]] = clickhouse_client.query(
+        "SELECT order_id, region_display FROM "
+        f"{clickhouse_database}.{test_case.expected_enriched_shadow_name} ORDER BY order_id"
+    ).result_rows
+
+    assert result.bootstrap.deployment_id == test_case.changed_deployment_id
+    assert active_region_lookup_rows == [("north", "NORTH"), ("south", "SOUTH")]
+    assert enriched_rows == list(test_case.expected_enriched_rows)
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ExecuteExternalSourceOffsetReplayIntegrationTestCase(
+            description=(
+                "executes offset replay from an adopted external source table with aliased columns"
+            ),
+            deployment_id="20260409T151500Z_xy12za",
+            created_at="2026-04-09 15:15:00.123",
+            boundary_time="2026-04-09 15:15:00.000",
+            expected_shadow_table_name="tbl__orders_enriched__20260409T151500Z_xy12za",
+            source_rows=(
+                build_external_source_orders_row(
+                    order_id="historical-partition-0",
+                    event_partition=0,
+                    event_offset=10,
+                    event_timestamp="2026-04-09 14:59:58.000",
+                    event_landed_at="2026-04-09 14:59:59.000",
+                ),
+                build_external_source_orders_row(
+                    order_id="historical-partition-1",
+                    event_partition=1,
+                    event_offset=20,
+                    event_timestamp="2026-04-09 14:59:58.500",
+                    event_landed_at="2026-04-09 14:59:59.500",
+                ),
+                build_external_source_orders_row(
+                    order_id="future-partition-0",
+                    event_partition=0,
+                    event_offset=11,
+                    event_timestamp="2026-04-10 15:00:01.000",
+                    event_landed_at="2026-04-10 15:00:01.000",
+                ),
+            ),
+            expected_watermark_rows=(
+                ("_replay_partition=0", "10"),
+                ("_replay_partition=1", "20"),
+            ),
+            expected_shadow_order_ids=("historical-partition-0", "historical-partition-1"),
+        )
+    ],
+    ids=["executes offset replay from an adopted external source table with aliased columns"],
+)
+def test_given_external_source_offset_replay_when_executing_then_it_uses_declared_boundary_columns(
+    test_case: ExecuteExternalSourceOffsetReplayIntegrationTestCase,
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    compiled_pipeline: CompiledPipeline = build_external_source_offset_replay_compiled_pipeline()
+    clickhouse_client.command(
+        f"CREATE TABLE {clickhouse_database}.orders_existing ("
+        "order_id String, "
+        "event_partition Int64, "
+        "event_offset Int64, "
+        "event_timestamp DateTime64(3), "
+        "event_landed_at DateTime64(3)"
+        ") ENGINE = MergeTree() ORDER BY (order_id)"
+    )
+    clickhouse_client.insert(
+        table=f"{clickhouse_database}.orders_existing",
+        data=list(test_case.source_rows),
+        column_names=[
+            "order_id",
+            "event_partition",
+            "event_offset",
+            "event_timestamp",
+            "event_landed_at",
+        ],
+    )
+    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+        ClickHouseConnectionConfig(
+            host=clickhouse_connection_settings.host,
+            port=clickhouse_connection_settings.port,
+            username=clickhouse_connection_settings.username,
+            password=clickhouse_connection_settings.password,
+            database=clickhouse_database,
+        )
+    )
+
+    try:
+        result: BackfillExecutionResult = execute_backfill(
+            build_external_source_offset_replay_request(
+                database=clickhouse_database,
+                deployment_id=test_case.deployment_id,
+                created_at=test_case.created_at,
+                boundary_time=test_case.boundary_time,
+            ),
+            managed_client,
+        )
+    finally:
+        managed_client.close()
+
+    watermark_rows: Sequence[Sequence[object]] = clickhouse_client.query(
+        "SELECT boundary_key, cutoff_value FROM "
+        f"{clickhouse_database}.streambuild_deployment_watermarks ORDER BY boundary_key"
+    ).result_rows
+    shadow_rows: Sequence[Sequence[object]] = clickhouse_client.query(
+        "SELECT order_id FROM "
+        f"{clickhouse_database}.{compiled_pipeline.transforms[0].target_table_name}__"
+        f"{test_case.deployment_id} "
+        "ORDER BY order_id"
+    ).result_rows
+
+    assert result.bootstrap.deployment_id == test_case.deployment_id
+    assert result.boundary_time == test_case.boundary_time
+    assert result.bootstrap.root_reports[0].replay_strategy == "create_from_scratch"
+    assert watermark_rows == list(test_case.expected_watermark_rows)
+    assert shadow_rows == [(order_id,) for order_id in test_case.expected_shadow_order_ids]
+
+
+EXECUTE_EXTERNAL_SOURCE_CURSOR_REPLAY_INTEGRATION_TEST_CASES: list[
+    ExecuteExternalSourceCursorReplayIntegrationTestCase
+] = [
+    ExecuteExternalSourceCursorReplayIntegrationTestCase(
+        description="executes cursor replay from an adopted external stream table",
+        deployment_id="20260409T160000Z_cd34ef",
+        created_at="2026-04-09 16:00:00.123",
+        start_time=None,
+        expected_shadow_order_ids=("cursor-order-1", "cursor-order-2", "cursor-order-3"),
+        expected_cutoff_value="3",
+    ),
+    ExecuteExternalSourceCursorReplayIntegrationTestCase(
+        description="executes cursor replay from a requested start time",
+        deployment_id="20260409T160500Z_de45fg",
+        created_at="2026-04-09 16:05:00.123",
+        start_time="2026-04-09 16:00:02.000",
+        expected_shadow_order_ids=("cursor-order-2", "cursor-order-3"),
+        expected_cutoff_value="3",
+    ),
+]
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    EXECUTE_EXTERNAL_SOURCE_CURSOR_REPLAY_INTEGRATION_TEST_CASES,
+    ids=[case.description for case in EXECUTE_EXTERNAL_SOURCE_CURSOR_REPLAY_INTEGRATION_TEST_CASES],
+)
+def test_given_external_source_cursor_replay_when_executing_then_it_replays_by_cursor(
+    test_case: ExecuteExternalSourceCursorReplayIntegrationTestCase,
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    compiled_pipeline: CompiledPipeline = build_external_source_cursor_replay_compiled_pipeline()
+    clickhouse_client.command(
+        f"CREATE TABLE {clickhouse_database}.orders_existing ("
+        "order_id String, "
+        "event_cursor UInt64, "
+        "event_timestamp DateTime64(3)"
+        ") ENGINE = MergeTree() ORDER BY (order_id)"
+    )
+    clickhouse_client.command(
+        f"INSERT INTO {clickhouse_database}.orders_existing VALUES "
+        "('cursor-order-1', 1, toDateTime64('2026-04-09 16:00:01.000', 3)), "
+        "('cursor-order-2', 2, toDateTime64('2026-04-09 16:00:02.000', 3)), "
+        "('cursor-order-3', 3, toDateTime64('2026-04-09 16:00:03.000', 3))"
+    )
+    if test_case.start_time is not None:
+        assert clickhouse_client.query(
+            "SELECT min(event_cursor) FROM "
+            f"{clickhouse_database}.orders_existing "
+            f"WHERE event_timestamp >= toDateTime64('{test_case.start_time}', 3)"
+        ).result_rows == [(2,)]
+    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+        ClickHouseConnectionConfig(
+            host=clickhouse_connection_settings.host,
+            port=clickhouse_connection_settings.port,
+            username=clickhouse_connection_settings.username,
+            password=clickhouse_connection_settings.password,
+            database=clickhouse_database,
+        )
+    )
+
+    try:
+        result: BackfillExecutionResult = execute_backfill(
+            build_external_source_cursor_replay_request(
+                database=clickhouse_database,
+                deployment_id=test_case.deployment_id,
+                created_at=test_case.created_at,
+                start_time=test_case.start_time,
+            ),
+            managed_client,
+        )
+    finally:
+        managed_client.close()
+
+    watermark_rows: Sequence[Sequence[object]] = clickhouse_client.query(
+        "SELECT boundary_key, cutoff_value FROM "
+        f"{clickhouse_database}.streambuild_deployment_watermarks ORDER BY boundary_key"
+    ).result_rows
+    shadow_rows: Sequence[Sequence[object]] = clickhouse_client.query(
+        "SELECT order_id FROM "
+        f"{clickhouse_database}.{compiled_pipeline.transforms[0].target_table_name}__"
+        f"{test_case.deployment_id} ORDER BY order_id"
+    ).result_rows
+
+    assert result.bootstrap.deployment_id == test_case.deployment_id
+    assert (
+        result.bootstrap.deployment_plan.rebuild_subtrees[0].forced_start_time
+        == test_case.start_time
+    )
+    assert watermark_rows == [("_replay_cursor", test_case.expected_cutoff_value)]
+    assert shadow_rows == [(order_id,) for order_id in test_case.expected_shadow_order_ids]
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ExecuteAggregateOffsetReplayIntegrationTestCase(
+            description="executes aggregate offset replay by filtering anchor rows before group by",
+            deployment_id="20260409T152000Z_ef56gh",
+            created_at="2026-04-09 15:20:00.123",
+            boundary_time="2026-04-09 15:20:00.000",
+            expected_shadow_table_name="tbl__hourly_order_volume__20260409T152000Z_ef56gh",
+            raw_rows=(
+                build_raw_orders_row(
+                    kafka_key="historical-partition-0",
+                    _replay_partition=0,
+                    _replay_offset=10,
+                    _replay_timestamp="2026-04-09 14:59:58.000",
+                    _replay_landed_at="2026-04-09 14:59:59.000",
+                ),
+                build_raw_orders_row(
+                    kafka_key="historical-partition-1",
+                    _replay_partition=1,
+                    _replay_offset=20,
+                    _replay_timestamp="2026-04-09 14:59:58.500",
+                    _replay_landed_at="2026-04-09 14:59:59.500",
+                ),
+                build_raw_orders_row(
+                    kafka_key="future-partition-0",
+                    _replay_partition=0,
+                    _replay_offset=11,
+                    _replay_timestamp="2026-04-10 15:00:01.000",
+                    _replay_landed_at="2026-04-10 15:00:01.000",
+                ),
+            ),
+            expected_shadow_rows=(("2026-04-09 13:00:00.000", 2),),
+        )
+    ],
+    ids=["executes aggregate offset replay by filtering anchor rows before group by"],
+)
+def test_given_aggregate_offset_replay_when_executing_then_it_filters_anchor_rows_before_group_by(
+    test_case: ExecuteAggregateOffsetReplayIntegrationTestCase,
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    compiled_pipeline: CompiledPipeline = build_aggregate_offset_replay_compiled_pipeline()
+    clickhouse_client.command(
+        render_create_kafka_table_ddl(
+            require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+        )
+    )
+    clickhouse_client.command(
+        render_create_table_ddl(
+            require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+        )
+    )
+    clickhouse_client.command(
+        render_create_materialized_view_ddl(
+            require_managed_source(compiled_pipeline).materialized_view,
+            clickhouse_database,
+        )
+    )
+    clickhouse_client.insert(
+        table=f"{clickhouse_database}.{require_managed_source(compiled_pipeline).raw_table.name}",
+        data=list(test_case.raw_rows),
+        column_names=[
+            "kafka_key",
+            "kafka_value",
+            "kafka_topic",
+            "_replay_partition",
+            "_replay_offset",
+            "_replay_timestamp",
+            "kafka_headers",
+            "_replay_landed_at",
+        ],
+    )
+    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+        ClickHouseConnectionConfig(
+            host=clickhouse_connection_settings.host,
+            port=clickhouse_connection_settings.port,
+            username=clickhouse_connection_settings.username,
+            password=clickhouse_connection_settings.password,
+            database=clickhouse_database,
+        )
+    )
+
+    try:
+        result: BackfillExecutionResult = execute_backfill(
+            build_aggregate_offset_replay_request(
+                database=clickhouse_database,
+                deployment_id=test_case.deployment_id,
+                created_at=test_case.created_at,
+                boundary_time=test_case.boundary_time,
+            ),
+            managed_client,
+        )
+    finally:
+        managed_client.close()
+
+    shadow_rows: Sequence[Sequence[object]] = clickhouse_client.query(
+        "SELECT toString(event_hour), order_event_count FROM "
+        f"{clickhouse_database}.{test_case.expected_shadow_table_name} "
+        "ORDER BY event_hour"
+    ).result_rows
+
+    assert result.bootstrap.deployment_id == test_case.deployment_id
+    assert shadow_rows == list(test_case.expected_shadow_rows)
+
+
+RESOLVE_AGGREGATE_UNSUPPORTED_REPLAY_BEHAVIOR_TEST_CASES: list[
+    ResolveAggregateUnsupportedReplayBehaviorIntegrationTestCase
+] = [
+    ResolveAggregateUnsupportedReplayBehaviorIntegrationTestCase(
+        description="full policy resolves unsupported aggregate start time to full rebuild",
+        initial_deployment_id="20260409T160000Z_ab12cd",
+        changed_deployment_id="20260409T160500Z_cd34ef",
+        created_at="2026-04-09 16:00:00.123",
+        initial_boundary_time="2026-04-09 15:10:00.000",
+        changed_boundary_time="2026-04-09 15:15:00.000",
+        lower_bound_source_order_id="frontier-order",
+        lower_bound_offset_millis=1,
+        bounded_replay_fallback="full_refresh",
+        expected_execution_mode=REBUILD_EXECUTION_MODE_FULL,
+    ),
+    ResolveAggregateUnsupportedReplayBehaviorIntegrationTestCase(
+        description=(
+            "window only policy resolves unsupported aggregate start time to unseeded bounded"
+        ),
+        initial_deployment_id="20260409T161000Z_ab12cd",
+        changed_deployment_id="20260409T161500Z_cd34ef",
+        created_at="2026-04-09 16:10:00.123",
+        initial_boundary_time="2026-04-09 15:10:00.000",
+        changed_boundary_time="2026-04-09 15:15:00.000",
+        lower_bound_source_order_id="frontier-order",
+        lower_bound_offset_millis=1,
+        bounded_replay_fallback="bounded_without_history",
+        expected_execution_mode=REBUILD_EXECUTION_MODE_UNSEEDED_BOUNDED,
+    ),
+]
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    RESOLVE_AGGREGATE_UNSUPPORTED_REPLAY_BEHAVIOR_TEST_CASES,
+    ids=[case.description for case in RESOLVE_AGGREGATE_UNSUPPORTED_REPLAY_BEHAVIOR_TEST_CASES],
+)
+def test_given_aggregate_start_time_when_bootstrapping_then_it_resolves_policy_per_root(
+    test_case: ResolveAggregateUnsupportedReplayBehaviorIntegrationTestCase,
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    compiled_pipeline: CompiledPipeline = build_aggregate_offset_replay_compiled_pipeline()
+    clickhouse_client.command(
+        render_create_kafka_table_ddl(
+            require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+        )
+    )
+    clickhouse_client.command(
+        render_create_table_ddl(
+            require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+        )
+    )
+    clickhouse_client.command(
+        render_create_materialized_view_ddl(
+            require_managed_source(compiled_pipeline).materialized_view,
+            clickhouse_database,
+        )
+    )
+    clickhouse_client.insert(
+        table=f"{clickhouse_database}.{require_managed_source(compiled_pipeline).raw_table.name}",
+        data=[
+            build_raw_orders_row(
+                kafka_key="historical-order",
+                _replay_partition=0,
+                _replay_offset=10,
+                _replay_timestamp="2026-04-09 15:09:58.000",
+                _replay_landed_at="2026-04-09 15:09:58.000",
+            ),
+            build_raw_orders_row(
+                kafka_key="frontier-order",
+                _replay_partition=0,
+                _replay_offset=11,
+                _replay_timestamp="2026-04-09 15:09:59.000",
+                _replay_landed_at="2026-04-09 15:09:59.000",
+            ),
+        ],
+        column_names=[
+            "kafka_key",
+            "kafka_value",
+            "kafka_topic",
+            "_replay_partition",
+            "_replay_offset",
+            "_replay_timestamp",
+            "kafka_headers",
+            "_replay_landed_at",
+        ],
+    )
+    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+        ClickHouseConnectionConfig(
+            host=clickhouse_connection_settings.host,
+            port=clickhouse_connection_settings.port,
+            username=clickhouse_connection_settings.username,
+            password=clickhouse_connection_settings.password,
+            database=clickhouse_database,
+        )
+    )
+
+    try:
+        initial_result: BackfillExecutionResult = execute_backfill(
+            build_aggregate_offset_replay_request(
+                database=clickhouse_database,
+                deployment_id=test_case.initial_deployment_id,
+                created_at=test_case.created_at,
+                boundary_time=test_case.initial_boundary_time,
+            ),
+            managed_client,
+        )
+        execute_publish(
+            PublishRequest(
+                deployment_id=initial_result.bootstrap.deployment_id,
+                metadata_database=clickhouse_database,
+                default_database=clickhouse_database,
+            ),
+            managed_client,
+        )
+        changed_desired_state: DesiredState = build_desired_state(
+            (
+                build_changed_aggregate_offset_replay_compiled_pipeline(
+                    bounded_replay_fallback=test_case.bounded_replay_fallback
+                ),
+            )
+        )
+        frontier_timestamp: datetime = clickhouse_client.query(
+            "SELECT max(_replay_landed_at) FROM "
+            f"{clickhouse_database}.{require_managed_source(compiled_pipeline).raw_table.name} "
+            f"WHERE kafka_key = '{test_case.lower_bound_source_order_id}'"
+        ).result_rows[0][0]
+        converted_start_time: str = (
+            frontier_timestamp - timedelta(milliseconds=test_case.lower_bound_offset_millis)
+        ).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+        bootstrap_result: BackfillBootstrapResult = execute_backfill_bootstrap(
+            BackfillBootstrapRequest(
+                desired_state=changed_desired_state,
+                default_database=clickhouse_database,
+                metadata_database=clickhouse_database,
+                replay_lineage_mode="offsets",
+                deployment_id=test_case.changed_deployment_id,
+                created_at=test_case.created_at,
+                start_time_keys=frozenset({compiled_pipeline.transforms[0].target_table.key}),
+                start_time=converted_start_time,
+                boundary_time=test_case.changed_boundary_time,
+                stabilization_seconds=0.0,
+            ),
+            managed_client,
+        )
+    finally:
+        managed_client.close()
+
+    subtree: RebuildSubtree = bootstrap_result.deployment_plan.rebuild_subtrees[0]
+
+    assert subtree.execution_mode == test_case.expected_execution_mode
+    assert not subtree.history_preserving_bounded_supported
+    assert subtree.resolved_bounded_replay_fallback == test_case.bounded_replay_fallback
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ExecuteAggregateBoundedOffsetReplayIntegrationTestCase(
+            description=(
+                "aggregate start time falls back to full rebuild by default when "
+                "history-preserving replay is unsupported"
+            ),
+            initial_deployment_id="20260409T153000Z_ab12cd",
+            changed_deployment_id="20260409T153500Z_cd34ef",
+            created_at="2026-04-09 15:30:00.123",
+            initial_boundary_time="2026-04-09 15:10:00.000",
+            changed_boundary_time="2026-04-09 15:15:00.000",
+            lower_bound_source_order_id="frontier-order",
+            lower_bound_offset_millis=1,
+            expected_shadow_table_name="tbl__hourly_order_volume__20260409T153500Z_cd34ef",
+            expected_shadow_rows=(("2026-04-09 14:00:00.000", 2),),
+        )
+    ],
+    ids=[
+        (
+            "aggregate start time falls back to full rebuild by default when "
+            "history-preserving replay is unsupported"
+        )
+    ],
+)
+def test_given_aggregate_start_time_when_executing_then_it_falls_back_to_full_rebuild(
+    test_case: ExecuteAggregateBoundedOffsetReplayIntegrationTestCase,
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    compiled_pipeline: CompiledPipeline = build_aggregate_offset_replay_compiled_pipeline()
+    clickhouse_client.command(
+        render_create_kafka_table_ddl(
+            require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+        )
+    )
+    clickhouse_client.command(
+        render_create_table_ddl(
+            require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+        )
+    )
+    clickhouse_client.command(
+        render_create_materialized_view_ddl(
+            require_managed_source(compiled_pipeline).materialized_view,
+            clickhouse_database,
+        )
+    )
+    clickhouse_client.insert(
+        table=f"{clickhouse_database}.{require_managed_source(compiled_pipeline).raw_table.name}",
+        data=[
+            build_raw_orders_row(
+                kafka_key="historical-order",
+                _replay_partition=0,
+                _replay_offset=10,
+                _replay_timestamp="2026-04-09 15:09:58.000",
+                _replay_landed_at="2026-04-09 15:09:58.000",
+            ),
+            build_raw_orders_row(
+                kafka_key="frontier-order",
+                _replay_partition=0,
+                _replay_offset=11,
+                _replay_timestamp="2026-04-09 15:09:59.000",
+                _replay_landed_at="2026-04-09 15:09:59.000",
+            ),
+        ],
+        column_names=[
+            "kafka_key",
+            "kafka_value",
+            "kafka_topic",
+            "_replay_partition",
+            "_replay_offset",
+            "_replay_timestamp",
+            "kafka_headers",
+            "_replay_landed_at",
+        ],
+    )
+    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+        ClickHouseConnectionConfig(
+            host=clickhouse_connection_settings.host,
+            port=clickhouse_connection_settings.port,
+            username=clickhouse_connection_settings.username,
+            password=clickhouse_connection_settings.password,
+            database=clickhouse_database,
+        )
+    )
+
+    try:
+        initial_result: BackfillExecutionResult = execute_backfill(
+            build_aggregate_offset_replay_request(
+                database=clickhouse_database,
+                deployment_id=test_case.initial_deployment_id,
+                created_at=test_case.created_at,
+                boundary_time=test_case.initial_boundary_time,
+            ),
+            managed_client,
+        )
+        execute_publish(
+            PublishRequest(
+                deployment_id=initial_result.bootstrap.deployment_id,
+                metadata_database=clickhouse_database,
+                default_database=clickhouse_database,
+            ),
+            managed_client,
+        )
+        changed_desired_state: DesiredState = build_desired_state(
+            (build_changed_aggregate_offset_replay_compiled_pipeline(),)
+        )
+        frontier_timestamp: datetime = clickhouse_client.query(
+            "SELECT max(_replay_landed_at) FROM "
+            f"{clickhouse_database}.{require_managed_source(compiled_pipeline).raw_table.name} "
+            f"WHERE kafka_key = '{test_case.lower_bound_source_order_id}'"
+        ).result_rows[0][0]
+        converted_start_time: str = (
+            frontier_timestamp - timedelta(milliseconds=test_case.lower_bound_offset_millis)
+        ).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+        result: BackfillExecutionResult = execute_backfill(
+            BackfillBootstrapRequest(
+                desired_state=changed_desired_state,
+                default_database=clickhouse_database,
+                metadata_database=clickhouse_database,
+                replay_lineage_mode="offsets",
+                deployment_id=test_case.changed_deployment_id,
+                created_at=test_case.created_at,
+                start_time_keys=frozenset({compiled_pipeline.transforms[0].target_table.key}),
+                start_time=converted_start_time,
+                boundary_time=test_case.changed_boundary_time,
+                stabilization_seconds=0.0,
+            ),
+            managed_client,
+        )
+    finally:
+        managed_client.close()
+
+    shadow_rows: Sequence[Sequence[object]] = clickhouse_client.query(
+        "SELECT toString(event_hour), order_event_count FROM "
+        f"{clickhouse_database}.{test_case.expected_shadow_table_name} ORDER BY event_hour"
+    ).result_rows
+
+    assert (
+        result.bootstrap.deployment_plan.rebuild_subtrees[0].execution_mode
+        == REBUILD_EXECUTION_MODE_FULL
+    )
+    assert shadow_rows == list(test_case.expected_shadow_rows)
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ExecuteAggregateBoundedOffsetReplayIntegrationTestCase(
+            description=(
+                "unseeded bounded aggregate offset replay skips prefix copy and replays only "
+                "the tail"
+            ),
+            initial_deployment_id="20260409T154000Z_ab12cd",
+            changed_deployment_id="20260409T154500Z_cd34ef",
+            created_at="2026-04-09 15:40:00.123",
+            initial_boundary_time="2026-04-09 16:30:00.000",
+            changed_boundary_time="2026-04-09 16:30:00.000",
+            lower_bound_source_order_id="frontier-order",
+            lower_bound_offset_millis=1,
+            expected_shadow_table_name="tbl__hourly_order_volume__20260409T154500Z_cd34ef",
+            expected_shadow_rows=(
+                ("2026-04-09 15:00:00.000", 1),
+                ("2026-04-09 15:00:00.000", 1),
+            ),
+        )
+    ],
+    ids=["unseeded bounded aggregate offset replay skips prefix copy and replays only the tail"],
+)
+def test_given_unseeded_bounded_aggregate_offset_replay_when_executing_then_it_replays_tail(
+    test_case: ExecuteAggregateBoundedOffsetReplayIntegrationTestCase,
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    compiled_pipeline: CompiledPipeline = build_aggregate_offset_replay_compiled_pipeline()
+    clickhouse_client.command(
+        render_create_kafka_table_ddl(
+            require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+        )
+    )
+    clickhouse_client.command(
+        render_create_table_ddl(
+            require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+        )
+    )
+    clickhouse_client.command(
+        render_create_materialized_view_ddl(
+            require_managed_source(compiled_pipeline).materialized_view,
+            clickhouse_database,
+        )
+    )
+    clickhouse_client.insert(
+        table=f"{clickhouse_database}.{require_managed_source(compiled_pipeline).raw_table.name}",
+        data=[
+            build_raw_orders_row(
+                kafka_key="historical-order",
+                _replay_partition=0,
+                _replay_offset=10,
+                _replay_timestamp="2026-04-09 16:28:58.000",
+                _replay_landed_at="2026-04-09 16:28:58.000",
+            ),
+            build_raw_orders_row(
+                kafka_key="frontier-order",
+                _replay_partition=0,
+                _replay_offset=11,
+                _replay_timestamp="2026-04-09 16:29:59.000",
+                _replay_landed_at="2026-04-09 16:29:59.000",
+            ),
+        ],
+        column_names=[
+            "kafka_key",
+            "kafka_value",
+            "kafka_topic",
+            "_replay_partition",
+            "_replay_offset",
+            "_replay_timestamp",
+            "kafka_headers",
+            "_replay_landed_at",
+        ],
+    )
+    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+        ClickHouseConnectionConfig(
+            host=clickhouse_connection_settings.host,
+            port=clickhouse_connection_settings.port,
+            username=clickhouse_connection_settings.username,
+            password=clickhouse_connection_settings.password,
+            database=clickhouse_database,
+        )
+    )
+
+    try:
+        initial_result: BackfillExecutionResult = execute_backfill(
+            build_aggregate_offset_replay_request(
+                database=clickhouse_database,
+                deployment_id=test_case.initial_deployment_id,
+                created_at=test_case.created_at,
+                boundary_time=test_case.initial_boundary_time,
+            ),
+            managed_client,
+        )
+        execute_publish(
+            PublishRequest(
+                deployment_id=initial_result.bootstrap.deployment_id,
+                metadata_database=clickhouse_database,
+                default_database=clickhouse_database,
+            ),
+            managed_client,
+        )
+        changed_desired_state: DesiredState = build_desired_state(
+            (build_changed_aggregate_offset_replay_compiled_pipeline(),)
+        )
+        bootstrap_result: BackfillBootstrapResult = execute_backfill_bootstrap(
+            BackfillBootstrapRequest(
+                desired_state=changed_desired_state,
+                default_database=clickhouse_database,
+                metadata_database=clickhouse_database,
+                replay_lineage_mode="offsets",
+                deployment_id=test_case.changed_deployment_id,
+                created_at=test_case.created_at,
+                boundary_time=test_case.changed_boundary_time,
+                stabilization_seconds=0.0,
+            ),
+            managed_client,
+        )
+        unseeded_plan: DeploymentPlan = replace(
+            bootstrap_result.deployment_plan,
+            rebuild_subtrees=tuple(
+                replace(
+                    subtree,
+                    execution_mode=REBUILD_EXECUTION_MODE_UNSEEDED_BOUNDED,
+                    configured_backfill_mode="bounded",
+                    execution_lookback_seconds=1,
+                )
+                for subtree in bootstrap_result.deployment_plan.rebuild_subtrees
+            ),
+        )
+        deployment_watermarks: tuple[DeploymentWatermarkRecord, ...] = resolve_offset_watermarks(
+            client=managed_client,
+            deployment_id=test_case.changed_deployment_id,
+            deployment_plan=unseeded_plan,
+            desired_state=changed_desired_state,
+            default_database=clickhouse_database,
+            boundary_time=test_case.changed_boundary_time,
+        )
+        persist_deployment_watermarks(
+            client=managed_client,
+            metadata_database=clickhouse_database,
+            deployment_watermarks=deployment_watermarks,
+        )
+        execute_offset_replay(
+            client=managed_client,
+            deployment_plan=unseeded_plan,
+            desired_state=changed_desired_state,
+            default_database=clickhouse_database,
+            deployment_watermarks=deployment_watermarks,
+            boundary_time=test_case.changed_boundary_time,
+        )
+        clickhouse_client.insert(
+            table=f"{clickhouse_database}.{require_managed_source(compiled_pipeline).raw_table.name}",
+            data=[
+                build_raw_orders_row(
+                    kafka_key="live-order",
+                    _replay_partition=0,
+                    _replay_offset=12,
+                    _replay_timestamp="2026-04-09 16:30:01.000",
+                    _replay_landed_at="2026-04-09 16:30:01.000",
+                )
+            ],
+            column_names=[
+                "kafka_key",
+                "kafka_value",
+                "kafka_topic",
+                "_replay_partition",
+                "_replay_offset",
+                "_replay_timestamp",
+                "kafka_headers",
+                "_replay_landed_at",
+            ],
+        )
+    finally:
+        managed_client.close()
+
+    shadow_rows: Sequence[Sequence[object]] = clickhouse_client.query(
+        "SELECT toString(event_hour), order_event_count FROM "
+        f"{clickhouse_database}.{test_case.expected_shadow_table_name} ORDER BY event_hour"
+    ).result_rows
+
+    assert shadow_rows == list(test_case.expected_shadow_rows)
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ExecuteSeededBoundedScalarReplayIntegrationTestCase(
+            description="seeded bounded scalar replay preserves prefix and recomputes the tail",
+            initial_deployment_id="20260409T160000Z_ab12cd",
+            changed_deployment_id="20260409T160500Z_cd34ef",
+            created_at="2026-04-09 16:00:00.123",
+            initial_boundary_time="2026-04-09 16:00:00.000",
+            changed_boundary_time="2026-04-09 16:05:00.000",
+            expected_shadow_table_name="tbl__orders_enriched__20260409T160500Z_cd34ef",
+            expected_shadow_rows=(
+                ("frontier-order", "source.orders.created"),
+                ("historical-order", ""),
+                ("live-order", "source.orders.created"),
+            ),
+        )
+    ],
+    ids=["seeded bounded scalar replay preserves prefix and recomputes the tail"],
+)
+def test_given_seeded_bounded_scalar_replay_when_executing_then_it_copies_prefix_and_replays_tail(
+    test_case: ExecuteSeededBoundedScalarReplayIntegrationTestCase,
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    compiled_pipeline: CompiledPipeline = build_scalar_replay_compiled_pipeline("timestamp")
+    clickhouse_client.command(
+        render_create_kafka_table_ddl(
+            require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+        )
+    )
+    clickhouse_client.command(
+        render_create_table_ddl(
+            require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+        )
+    )
+    clickhouse_client.command(
+        render_create_materialized_view_ddl(
+            require_managed_source(compiled_pipeline).materialized_view,
+            clickhouse_database,
+        )
+    )
+    clickhouse_client.insert(
+        table=f"{clickhouse_database}.{require_managed_source(compiled_pipeline).raw_table.name}",
+        data=[
+            build_raw_orders_row(
+                kafka_key="historical-order",
+                _replay_partition=0,
+                _replay_offset=1,
+                _replay_timestamp="2026-04-09 15:59:58.000",
+                _replay_landed_at="2026-04-09 15:59:58.000",
+            ),
+            build_raw_orders_row(
+                kafka_key="frontier-order",
+                _replay_partition=0,
+                _replay_offset=2,
+                _replay_timestamp="2026-04-09 15:59:59.000",
+                _replay_landed_at="2026-04-09 15:59:59.000",
+            ),
+        ],
+        column_names=[
+            "kafka_key",
+            "kafka_value",
+            "kafka_topic",
+            "_replay_partition",
+            "_replay_offset",
+            "_replay_timestamp",
+            "kafka_headers",
+            "_replay_landed_at",
+        ],
+    )
+    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+        ClickHouseConnectionConfig(
+            host=clickhouse_connection_settings.host,
+            port=clickhouse_connection_settings.port,
+            username=clickhouse_connection_settings.username,
+            password=clickhouse_connection_settings.password,
+            database=clickhouse_database,
+        )
+    )
+
+    try:
+        initial_result: BackfillExecutionResult = execute_backfill(
+            build_scalar_replay_request(
+                database=clickhouse_database,
+                deployment_id=test_case.initial_deployment_id,
+                created_at=test_case.created_at,
+                boundary_time=test_case.initial_boundary_time,
+                replay_lineage_mode="timestamp",
+            ),
+            managed_client,
+        )
+        execute_publish(
+            PublishRequest(
+                deployment_id=initial_result.bootstrap.deployment_id,
+                metadata_database=clickhouse_database,
+                default_database=clickhouse_database,
+            ),
+            managed_client,
+        )
+        changed_desired_state: DesiredState = build_desired_state(
+            (build_changed_scalar_replay_compiled_pipeline("timestamp"),)
+        )
+        seeded_result: BackfillExecutionResult = execute_backfill(
+            BackfillBootstrapRequest(
+                desired_state=changed_desired_state,
+                default_database=clickhouse_database,
+                metadata_database=clickhouse_database,
+                replay_lineage_mode="timestamp",
+                deployment_id=test_case.changed_deployment_id,
+                created_at=test_case.created_at,
+                boundary_time=test_case.changed_boundary_time,
+                stabilization_seconds=0.0,
+            ),
+            managed_client,
+        )
+        clickhouse_client.insert(
+            table=f"{clickhouse_database}.{require_managed_source(compiled_pipeline).raw_table.name}",
+            data=[
+                build_raw_orders_row(
+                    kafka_key="live-order",
+                    _replay_partition=0,
+                    _replay_offset=3,
+                    _replay_timestamp="2026-04-09 16:05:01.000",
+                    _replay_landed_at="2026-04-09 16:05:01.000",
+                )
+            ],
+            column_names=[
+                "kafka_key",
+                "kafka_value",
+                "kafka_topic",
+                "_replay_partition",
+                "_replay_offset",
+                "_replay_timestamp",
+                "kafka_headers",
+                "_replay_landed_at",
+            ],
+        )
+    finally:
+        managed_client.close()
+
+    shadow_rows: Sequence[Sequence[object]] = clickhouse_client.query(
+        "SELECT order_id, kafka_topic FROM "
+        f"{clickhouse_database}.{test_case.expected_shadow_table_name} ORDER BY order_id"
+    ).result_rows
+
+    assert seeded_result.bootstrap.deployment_plan.rebuild_subtrees[0].execution_mode == (
+        "seeded_bounded_rebuild"
+    )
+    assert shadow_rows == list(test_case.expected_shadow_rows)
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    START_TIME_SCALAR_REPLAY_TEST_CASES,
+    ids=[case.description for case in START_TIME_SCALAR_REPLAY_TEST_CASES],
+)
+def test_given_start_time_scalar_replay_when_executing_then_it_replays_expected_rows(
+    test_case: ExecuteStartTimeReplayIntegrationTestCase,
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    scenario_result: StartTimeReplayScenarioResult = run_start_time_replay_scenario(
+        test_case=test_case,
+        connection_settings=clickhouse_connection_settings,
+        clickhouse_client=clickhouse_client,
+        clickhouse_database=clickhouse_database,
+    )
+
+    assert scenario_result.start_time_result.bootstrap.deployment_plan.rebuild_subtrees[
+        0
+    ].forced_start_time == (scenario_result.converted_start_time)
+    assert scenario_result.start_time_result.bootstrap.deployment_plan.rebuild_subtrees[
+        0
+    ].execution_mode == ("seeded_bounded_rebuild")
+    assert scenario_result.shadow_rows == test_case.expected_shadow_rows
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ExecuteUnseededBoundedScalarReplayIntegrationTestCase(
+            description=(
+                "unseeded bounded scalar replay skips prefix copy and replays only the tail"
+            ),
+            initial_deployment_id="20260409T162000Z_ab12cd",
+            changed_deployment_id="20260409T162500Z_cd34ef",
+            created_at="2026-04-09 16:20:00.123",
+            initial_boundary_time="2026-04-09 16:20:00.000",
+            changed_boundary_time="2026-04-09 16:25:00.000",
+            expected_shadow_table_name="tbl__orders_enriched__20260409T162500Z_cd34ef",
+            expected_shadow_rows=(
+                ("frontier-order", "source.orders.created"),
+                ("live-order", "source.orders.created"),
+            ),
+        )
+    ],
+    ids=["unseeded bounded scalar replay skips prefix copy and replays only the tail"],
+)
+def test_given_unseeded_bounded_scalar_replay_when_executing_then_it_replays_only_the_tail(
+    test_case: ExecuteUnseededBoundedScalarReplayIntegrationTestCase,
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    compiled_pipeline: CompiledPipeline = build_scalar_replay_compiled_pipeline("timestamp")
+    clickhouse_client.command(
+        render_create_kafka_table_ddl(
+            require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+        )
+    )
+    clickhouse_client.command(
+        render_create_table_ddl(
+            require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+        )
+    )
+    clickhouse_client.command(
+        render_create_materialized_view_ddl(
+            require_managed_source(compiled_pipeline).materialized_view,
+            clickhouse_database,
+        )
+    )
+    clickhouse_client.insert(
+        table=f"{clickhouse_database}.{require_managed_source(compiled_pipeline).raw_table.name}",
+        data=[
+            build_raw_orders_row(
+                kafka_key="historical-order",
+                _replay_partition=0,
+                _replay_offset=1,
+                _replay_timestamp="2026-04-09 16:19:58.000",
+                _replay_landed_at="2026-04-09 16:19:58.000",
+            ),
+            build_raw_orders_row(
+                kafka_key="frontier-order",
+                _replay_partition=0,
+                _replay_offset=2,
+                _replay_timestamp="2026-04-09 16:19:59.000",
+                _replay_landed_at="2026-04-09 16:19:59.000",
+            ),
+        ],
+        column_names=[
+            "kafka_key",
+            "kafka_value",
+            "kafka_topic",
+            "_replay_partition",
+            "_replay_offset",
+            "_replay_timestamp",
+            "kafka_headers",
+            "_replay_landed_at",
+        ],
+    )
+    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+        ClickHouseConnectionConfig(
+            host=clickhouse_connection_settings.host,
+            port=clickhouse_connection_settings.port,
+            username=clickhouse_connection_settings.username,
+            password=clickhouse_connection_settings.password,
+            database=clickhouse_database,
+        )
+    )
+
+    try:
+        initial_result: BackfillExecutionResult = execute_backfill(
+            build_scalar_replay_request(
+                database=clickhouse_database,
+                deployment_id=test_case.initial_deployment_id,
+                created_at=test_case.created_at,
+                boundary_time=test_case.initial_boundary_time,
+                replay_lineage_mode="timestamp",
+            ),
+            managed_client,
+        )
+        execute_publish(
+            PublishRequest(
+                deployment_id=initial_result.bootstrap.deployment_id,
+                metadata_database=clickhouse_database,
+                default_database=clickhouse_database,
+            ),
+            managed_client,
+        )
+        changed_desired_state: DesiredState = build_desired_state(
+            (build_changed_scalar_replay_compiled_pipeline("timestamp"),)
+        )
+        bootstrap_result: BackfillBootstrapResult = execute_backfill_bootstrap(
+            BackfillBootstrapRequest(
+                desired_state=changed_desired_state,
+                default_database=clickhouse_database,
+                metadata_database=clickhouse_database,
+                replay_lineage_mode="timestamp",
+                deployment_id=test_case.changed_deployment_id,
+                created_at=test_case.created_at,
+                boundary_time=test_case.changed_boundary_time,
+                stabilization_seconds=0.0,
+            ),
+            managed_client,
+        )
+        unseeded_plan: DeploymentPlan = replace(
+            bootstrap_result.deployment_plan,
+            rebuild_subtrees=tuple(
+                replace(subtree, execution_mode=REBUILD_EXECUTION_MODE_UNSEEDED_BOUNDED)
+                for subtree in bootstrap_result.deployment_plan.rebuild_subtrees
+            ),
+        )
+        deployment_watermarks: tuple[DeploymentWatermarkRecord, ...] = resolve_scalar_watermarks(
+            deployment_id=test_case.changed_deployment_id,
+            deployment_plan=unseeded_plan,
+            desired_state=changed_desired_state,
+            replay_lineage_mode="timestamp",
+            boundary_time=test_case.changed_boundary_time,
+        )
+        persist_deployment_watermarks(
+            client=managed_client,
+            metadata_database=clickhouse_database,
+            deployment_watermarks=deployment_watermarks,
+        )
+        execute_scalar_replay(
+            client=managed_client,
+            deployment_plan=unseeded_plan,
+            desired_state=changed_desired_state,
+            default_database=clickhouse_database,
+            replay_lineage_mode="timestamp",
+            deployment_watermarks=deployment_watermarks,
+            boundary_time=test_case.changed_boundary_time,
+        )
+        clickhouse_client.insert(
+            table=f"{clickhouse_database}.{require_managed_source(compiled_pipeline).raw_table.name}",
+            data=[
+                build_raw_orders_row(
+                    kafka_key="live-order",
+                    _replay_partition=0,
+                    _replay_offset=3,
+                    _replay_timestamp="2026-04-09 16:25:01.000",
+                    _replay_landed_at="2026-04-09 16:25:01.000",
+                )
+            ],
+            column_names=[
+                "kafka_key",
+                "kafka_value",
+                "kafka_topic",
+                "_replay_partition",
+                "_replay_offset",
+                "_replay_timestamp",
+                "kafka_headers",
+                "_replay_landed_at",
+            ],
+        )
+    finally:
+        managed_client.close()
+
+    shadow_rows: Sequence[Sequence[object]] = clickhouse_client.query(
+        "SELECT order_id, kafka_topic FROM "
+        f"{clickhouse_database}.{test_case.expected_shadow_table_name} ORDER BY order_id"
+    ).result_rows
+
+    assert shadow_rows == list(test_case.expected_shadow_rows)
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ExecuteUnseededBoundedOffsetReplayIntegrationTestCase(
+            description=(
+                "unseeded bounded offset replay skips prefix copy and replays only the tail"
+            ),
+            initial_deployment_id="20260409T163000Z_ab12cd",
+            changed_deployment_id="20260409T163500Z_cd34ef",
+            created_at="2026-04-09 16:30:00.123",
+            initial_boundary_time="2026-04-09 16:30:00.000",
+            changed_boundary_time="2026-04-09 16:35:00.000",
+            expected_shadow_table_name="tbl__orders_enriched__20260409T163500Z_cd34ef",
+            expected_shadow_rows=(
+                ("frontier-order", "source.orders.created"),
+                ("live-order", "source.orders.created"),
+            ),
+        )
+    ],
+    ids=["unseeded bounded offset replay skips prefix copy and replays only the tail"],
+)
+def test_given_unseeded_bounded_offset_replay_when_executing_then_it_replays_only_the_tail(
+    test_case: ExecuteUnseededBoundedOffsetReplayIntegrationTestCase,
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    compiled_pipeline: CompiledPipeline = build_offset_replay_compiled_pipeline()
+    clickhouse_client.command(
+        render_create_kafka_table_ddl(
+            require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+        )
+    )
+    clickhouse_client.command(
+        render_create_table_ddl(
+            require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+        )
+    )
+    clickhouse_client.command(
+        render_create_materialized_view_ddl(
+            require_managed_source(compiled_pipeline).materialized_view,
+            clickhouse_database,
+        )
+    )
+    clickhouse_client.insert(
+        table=f"{clickhouse_database}.{require_managed_source(compiled_pipeline).raw_table.name}",
+        data=[
+            build_raw_orders_row(
+                kafka_key="historical-order",
+                _replay_partition=0,
+                _replay_offset=10,
+                _replay_timestamp="2026-04-09 16:29:58.000",
+                _replay_landed_at="2026-04-09 16:29:58.000",
+            ),
+            build_raw_orders_row(
+                kafka_key="frontier-order",
+                _replay_partition=0,
+                _replay_offset=11,
+                _replay_timestamp="2026-04-09 16:29:59.000",
+                _replay_landed_at="2026-04-09 16:29:59.000",
+            ),
+        ],
+        column_names=[
+            "kafka_key",
+            "kafka_value",
+            "kafka_topic",
+            "_replay_partition",
+            "_replay_offset",
+            "_replay_timestamp",
+            "kafka_headers",
+            "_replay_landed_at",
+        ],
+    )
+    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+        ClickHouseConnectionConfig(
+            host=clickhouse_connection_settings.host,
+            port=clickhouse_connection_settings.port,
+            username=clickhouse_connection_settings.username,
+            password=clickhouse_connection_settings.password,
+            database=clickhouse_database,
+        )
+    )
+
+    try:
+        initial_result: BackfillExecutionResult = execute_backfill(
+            build_offset_replay_request(
+                database=clickhouse_database,
+                deployment_id=test_case.initial_deployment_id,
+                created_at=test_case.created_at,
+                boundary_time=test_case.initial_boundary_time,
+            ),
+            managed_client,
+        )
+        execute_publish(
+            PublishRequest(
+                deployment_id=initial_result.bootstrap.deployment_id,
+                metadata_database=clickhouse_database,
+                default_database=clickhouse_database,
+            ),
+            managed_client,
+        )
+        changed_desired_state: DesiredState = build_desired_state(
+            (build_changed_offset_replay_compiled_pipeline(),)
+        )
+        bootstrap_result: BackfillBootstrapResult = execute_backfill_bootstrap(
+            BackfillBootstrapRequest(
+                desired_state=changed_desired_state,
+                default_database=clickhouse_database,
+                metadata_database=clickhouse_database,
+                replay_lineage_mode="offsets",
+                deployment_id=test_case.changed_deployment_id,
+                created_at=test_case.created_at,
+                boundary_time=test_case.changed_boundary_time,
+                stabilization_seconds=0.0,
+            ),
+            managed_client,
+        )
+        unseeded_plan: DeploymentPlan = replace(
+            bootstrap_result.deployment_plan,
+            rebuild_subtrees=tuple(
+                replace(subtree, execution_mode=REBUILD_EXECUTION_MODE_UNSEEDED_BOUNDED)
+                for subtree in bootstrap_result.deployment_plan.rebuild_subtrees
+            ),
+        )
+        deployment_watermarks: tuple[DeploymentWatermarkRecord, ...] = resolve_offset_watermarks(
+            client=managed_client,
+            deployment_id=test_case.changed_deployment_id,
+            deployment_plan=unseeded_plan,
+            desired_state=changed_desired_state,
+            default_database=clickhouse_database,
+            boundary_time=test_case.changed_boundary_time,
+        )
+        persist_deployment_watermarks(
+            client=managed_client,
+            metadata_database=clickhouse_database,
+            deployment_watermarks=deployment_watermarks,
+        )
+        execute_offset_replay(
+            client=managed_client,
+            deployment_plan=unseeded_plan,
+            desired_state=changed_desired_state,
+            default_database=clickhouse_database,
+            deployment_watermarks=deployment_watermarks,
+            boundary_time=test_case.changed_boundary_time,
+        )
+        clickhouse_client.insert(
+            table=f"{clickhouse_database}.{require_managed_source(compiled_pipeline).raw_table.name}",
+            data=[
+                build_raw_orders_row(
+                    kafka_key="live-order",
+                    _replay_partition=0,
+                    _replay_offset=12,
+                    _replay_timestamp="2026-04-09 16:35:01.000",
+                    _replay_landed_at="2026-04-09 16:35:01.000",
+                )
+            ],
+            column_names=[
+                "kafka_key",
+                "kafka_value",
+                "kafka_topic",
+                "_replay_partition",
+                "_replay_offset",
+                "_replay_timestamp",
+                "kafka_headers",
+                "_replay_landed_at",
+            ],
+        )
+    finally:
+        managed_client.close()
+
+    shadow_rows: Sequence[Sequence[object]] = clickhouse_client.query(
+        "SELECT order_id, kafka_topic FROM "
+        f"{clickhouse_database}.{test_case.expected_shadow_table_name} ORDER BY order_id"
+    ).result_rows
+
+    assert shadow_rows == list(test_case.expected_shadow_rows)
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ExecuteSeededBoundedOffsetReplayIntegrationTestCase(
+            description="seeded bounded offset replay preserves prefix and recomputes the tail",
+            initial_deployment_id="20260409T161000Z_ab12cd",
+            changed_deployment_id="20260409T161500Z_cd34ef",
+            created_at="2026-04-09 16:10:00.123",
+            initial_boundary_time="2026-04-09 16:10:00.000",
+            changed_boundary_time="2026-04-09 16:15:00.000",
+            expected_shadow_table_name="tbl__orders_enriched__20260409T161500Z_cd34ef",
+            expected_shadow_rows=(
+                ("frontier-order", "source.orders.created"),
+                ("historical-order", ""),
+                ("live-order", "source.orders.created"),
+            ),
+        )
+    ],
+    ids=["seeded bounded offset replay preserves prefix and recomputes the tail"],
+)
+def test_given_seeded_bounded_offset_replay_when_executing_then_it_copies_prefix_and_replays_tail(
+    test_case: ExecuteSeededBoundedOffsetReplayIntegrationTestCase,
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    compiled_pipeline: CompiledPipeline = build_offset_replay_compiled_pipeline()
+    clickhouse_client.command(
+        render_create_kafka_table_ddl(
+            require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+        )
+    )
+    clickhouse_client.command(
+        render_create_table_ddl(
+            require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+        )
+    )
+    clickhouse_client.command(
+        render_create_materialized_view_ddl(
+            require_managed_source(compiled_pipeline).materialized_view,
+            clickhouse_database,
+        )
+    )
+    clickhouse_client.insert(
+        table=f"{clickhouse_database}.{require_managed_source(compiled_pipeline).raw_table.name}",
+        data=[
+            build_raw_orders_row(
+                kafka_key="historical-order",
+                _replay_partition=0,
+                _replay_offset=10,
+                _replay_timestamp="2026-04-09 16:09:58.000",
+                _replay_landed_at="2026-04-09 16:09:58.000",
+            ),
+            build_raw_orders_row(
+                kafka_key="frontier-order",
+                _replay_partition=0,
+                _replay_offset=11,
+                _replay_timestamp="2026-04-09 16:09:59.000",
+                _replay_landed_at="2026-04-09 16:09:59.000",
+            ),
+        ],
+        column_names=[
+            "kafka_key",
+            "kafka_value",
+            "kafka_topic",
+            "_replay_partition",
+            "_replay_offset",
+            "_replay_timestamp",
+            "kafka_headers",
+            "_replay_landed_at",
+        ],
+    )
+    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+        ClickHouseConnectionConfig(
+            host=clickhouse_connection_settings.host,
+            port=clickhouse_connection_settings.port,
+            username=clickhouse_connection_settings.username,
+            password=clickhouse_connection_settings.password,
+            database=clickhouse_database,
+        )
+    )
+
+    try:
+        initial_result: BackfillExecutionResult = execute_backfill(
+            build_offset_replay_request(
+                database=clickhouse_database,
+                deployment_id=test_case.initial_deployment_id,
+                created_at=test_case.created_at,
+                boundary_time=test_case.initial_boundary_time,
+            ),
+            managed_client,
+        )
+        execute_publish(
+            PublishRequest(
+                deployment_id=initial_result.bootstrap.deployment_id,
+                metadata_database=clickhouse_database,
+                default_database=clickhouse_database,
+            ),
+            managed_client,
+        )
+        changed_desired_state: DesiredState = build_desired_state(
+            (build_changed_offset_replay_compiled_pipeline(),)
+        )
+        seeded_result: BackfillExecutionResult = execute_backfill(
+            BackfillBootstrapRequest(
+                desired_state=changed_desired_state,
+                default_database=clickhouse_database,
+                metadata_database=clickhouse_database,
+                replay_lineage_mode="offsets",
+                deployment_id=test_case.changed_deployment_id,
+                created_at=test_case.created_at,
+                boundary_time=test_case.changed_boundary_time,
+                stabilization_seconds=0.0,
+            ),
+            managed_client,
+        )
+        clickhouse_client.insert(
+            table=f"{clickhouse_database}.{require_managed_source(compiled_pipeline).raw_table.name}",
+            data=[
+                build_raw_orders_row(
+                    kafka_key="live-order",
+                    _replay_partition=0,
+                    _replay_offset=12,
+                    _replay_timestamp="2026-04-09 16:15:01.000",
+                    _replay_landed_at="2026-04-09 16:15:01.000",
+                )
+            ],
+            column_names=[
+                "kafka_key",
+                "kafka_value",
+                "kafka_topic",
+                "_replay_partition",
+                "_replay_offset",
+                "_replay_timestamp",
+                "kafka_headers",
+                "_replay_landed_at",
+            ],
+        )
+    finally:
+        managed_client.close()
+
+    shadow_rows: Sequence[Sequence[object]] = clickhouse_client.query(
+        "SELECT order_id, kafka_topic FROM "
+        f"{clickhouse_database}.{test_case.expected_shadow_table_name} ORDER BY order_id"
+    ).result_rows
+
+    assert seeded_result.bootstrap.deployment_plan.rebuild_subtrees[0].execution_mode == (
+        "seeded_bounded_rebuild"
+    )
+    assert shadow_rows == list(test_case.expected_shadow_rows)
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    START_TIME_OFFSET_REPLAY_TEST_CASES,
+    ids=[case.description for case in START_TIME_OFFSET_REPLAY_TEST_CASES],
+)
+def test_given_start_time_offset_replay_when_executing_then_it_replays_expected_rows(
+    test_case: ExecuteStartTimeReplayIntegrationTestCase,
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    scenario_result: StartTimeReplayScenarioResult = run_start_time_replay_scenario(
+        test_case=test_case,
+        connection_settings=clickhouse_connection_settings,
+        clickhouse_client=clickhouse_client,
+        clickhouse_database=clickhouse_database,
+    )
+
+    assert (
+        scenario_result.start_time_result.bootstrap.deployment_plan.rebuild_subtrees[
+            0
+        ].forced_start_time
+        == scenario_result.converted_start_time
+    )
+    assert scenario_result.start_time_result.bootstrap.deployment_plan.rebuild_subtrees[
+        0
+    ].execution_mode == ("seeded_bounded_rebuild")
+    assert scenario_result.shadow_rows == test_case.expected_shadow_rows
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ExecuteMultipleBackfillsIntegrationTestCase(
+            description="allows two staged backfills before first publish in greenfield mode",
+            first_deployment_id="20260409T190000Z_ab12cd",
+            second_deployment_id="20260409T190500Z_cd34ef",
+            created_at="2026-04-09 19:00:00.123",
+            boundary_time="2026-04-09 19:00:00.000",
+            expected_staged_table_names=(
+                "tbl__orders_enriched__20260409T190000Z_ab12cd",
+                "tbl__orders_enriched__20260409T190500Z_cd34ef",
+            ),
+        )
+    ],
+    ids=["allows two staged backfills before first publish in greenfield mode"],
+)
+def test_given_two_staged_backfills_before_publish_when_executing_then_both_staged_tables_exist(
+    test_case: ExecuteMultipleBackfillsIntegrationTestCase,
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    compiled_pipeline: CompiledPipeline = build_scalar_replay_compiled_pipeline("timestamp")
+    clickhouse_client.command(
+        render_create_kafka_table_ddl(
+            require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+        )
+    )
+    clickhouse_client.command(
+        render_create_table_ddl(
+            require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+        )
+    )
+    clickhouse_client.command(
+        render_create_materialized_view_ddl(
+            require_managed_source(compiled_pipeline).materialized_view,
+            clickhouse_database,
+        )
+    )
+    clickhouse_client.insert(
+        table=f"{clickhouse_database}.{require_managed_source(compiled_pipeline).raw_table.name}",
+        data=[
+            build_raw_orders_row(
+                kafka_key="historical-order",
+                _replay_partition=0,
+                _replay_offset=1,
+                _replay_timestamp="2026-04-09 18:59:59.000",
+                _replay_landed_at="2026-04-09 18:59:59.000",
+            )
+        ],
+        column_names=[
+            "kafka_key",
+            "kafka_value",
+            "kafka_topic",
+            "_replay_partition",
+            "_replay_offset",
+            "_replay_timestamp",
+            "kafka_headers",
+            "_replay_landed_at",
+        ],
+    )
+    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+        ClickHouseConnectionConfig(
+            host=clickhouse_connection_settings.host,
+            port=clickhouse_connection_settings.port,
+            username=clickhouse_connection_settings.username,
+            password=clickhouse_connection_settings.password,
+            database=clickhouse_database,
+        )
+    )
+
+    try:
+        first_result: BackfillExecutionResult = execute_backfill(
+            build_scalar_replay_request(
+                database=clickhouse_database,
+                deployment_id=test_case.first_deployment_id,
+                created_at=test_case.created_at,
+                boundary_time=test_case.boundary_time,
+                replay_lineage_mode="timestamp",
+            ),
+            managed_client,
+        )
+        second_result: BackfillExecutionResult = execute_backfill(
+            build_scalar_replay_request(
+                database=clickhouse_database,
+                deployment_id=test_case.second_deployment_id,
+                created_at=test_case.created_at,
+                boundary_time=test_case.boundary_time,
+                replay_lineage_mode="timestamp",
+            ),
+            managed_client,
+        )
+    finally:
+        managed_client.close()
+
+    staged_names: tuple[str, ...] = test_case.expected_staged_table_names
+    staged_table_rows: Sequence[Sequence[object]] = clickhouse_client.query(
+        "SELECT name FROM system.tables "
+        f"WHERE database = '{clickhouse_database}' AND name IN {staged_names} "
+        "ORDER BY name"
+    ).result_rows
+
+    assert first_result.bootstrap.deployment_id == test_case.first_deployment_id
+    assert second_result.bootstrap.deployment_id == test_case.second_deployment_id
+    assert first_result.bootstrap.root_reports[0].replay_strategy == "create_from_scratch"
+    assert second_result.bootstrap.root_reports[0].replay_strategy == "full_rebuild_required"
+    assert staged_table_rows == [(name,) for name in sorted(test_case.expected_staged_table_names)]
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ExecuteBoundedReplayReportingIntegrationTestCase(
+            description="reports bounded replay when an active view exists",
+            first_deployment_id="20260409T230000Z_ab12cd",
+            second_deployment_id="20260409T230500Z_cd34ef",
+            created_at="2026-04-09 23:00:00.123",
+            boundary_time="2026-04-09 23:00:00.000",
+            expected_first_strategy="create_from_scratch",
+            expected_second_strategy="bounded_replay",
+            expected_active_deployment_id="20260409T230000Z_ab12cd",
+        )
+    ],
+    ids=["reports bounded replay when an active view exists"],
+)
+def test_given_active_view_when_backfilling_then_it_reports_bounded_replay_strategy(
+    test_case: ExecuteBoundedReplayReportingIntegrationTestCase,
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    compiled_pipeline: CompiledPipeline = build_scalar_replay_compiled_pipeline("timestamp")
+    clickhouse_client.command(
+        render_create_kafka_table_ddl(
+            require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+        )
+    )
+    clickhouse_client.command(
+        render_create_table_ddl(
+            require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+        )
+    )
+    clickhouse_client.command(
+        render_create_materialized_view_ddl(
+            require_managed_source(compiled_pipeline).materialized_view,
+            clickhouse_database,
+        )
+    )
+    clickhouse_client.insert(
+        table=f"{clickhouse_database}.{require_managed_source(compiled_pipeline).raw_table.name}",
+        data=[
+            build_raw_orders_row(
+                kafka_key="historical-order",
+                _replay_partition=0,
+                _replay_offset=1,
+                _replay_timestamp="2026-04-09 23:59:59.000",
+                _replay_landed_at="2026-04-09 23:59:59.000",
+            )
+        ],
+        column_names=[
+            "kafka_key",
+            "kafka_value",
+            "kafka_topic",
+            "_replay_partition",
+            "_replay_offset",
+            "_replay_timestamp",
+            "kafka_headers",
+            "_replay_landed_at",
+        ],
+    )
+    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+        ClickHouseConnectionConfig(
+            host=clickhouse_connection_settings.host,
+            port=clickhouse_connection_settings.port,
+            username=clickhouse_connection_settings.username,
+            password=clickhouse_connection_settings.password,
+            database=clickhouse_database,
+        )
+    )
+
+    try:
+        first_result: BackfillExecutionResult = execute_backfill(
+            build_scalar_replay_request(
+                database=clickhouse_database,
+                deployment_id=test_case.first_deployment_id,
+                created_at=test_case.created_at,
+                boundary_time=test_case.boundary_time,
+                replay_lineage_mode="timestamp",
+            ),
+            managed_client,
+        )
+        clickhouse_client.command(
+            render_create_view_ddl(
+                database=clickhouse_database,
+                view_name="tbl__orders_enriched",
+                target_table_name=f"tbl__orders_enriched__{test_case.first_deployment_id}",
+            )
+        )
+        second_result: BackfillExecutionResult = execute_backfill(
+            build_scalar_replay_request(
+                database=clickhouse_database,
+                deployment_id=test_case.second_deployment_id,
+                created_at=test_case.created_at,
+                boundary_time=test_case.boundary_time,
+                replay_lineage_mode="timestamp",
+            ),
+            managed_client,
+        )
+    finally:
+        managed_client.close()
+
+    first_report: RootBackfillReport = first_result.bootstrap.root_reports[0]
+    second_report: RootBackfillReport = second_result.bootstrap.root_reports[0]
+
+    assert first_report.replay_strategy == test_case.expected_first_strategy
+    assert second_report.replay_strategy == test_case.expected_second_strategy
+    assert second_report.active_deployment_id == test_case.expected_active_deployment_id
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ExecuteRepeatedPublishedBackfillIntegrationTestCase(
+            description="uses bounded replay after publish when raw root has stable view",
+            first_deployment_id="20260411T170000Z_ab12cd",
+            second_deployment_id="20260411T170500Z_cd34ef",
+            created_at="2026-04-11 17:00:00.123",
+            first_boundary_time="2026-04-11 17:00:00.000",
+            second_boundary_time="2026-04-11 17:05:00.000",
+            expected_raw_view_rows=(("raw__orders", "MergeTree"),),
+        )
+    ],
+    ids=["uses bounded replay after publish when raw root has stable view"],
+)
+def test_given_published_raw_root_when_backfilling_again_then_it_uses_bounded_replay(
+    test_case: ExecuteRepeatedPublishedBackfillIntegrationTestCase,
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    compiled_pipeline: CompiledPipeline = build_scalar_replay_compiled_pipeline("offsets")
+    clickhouse_client.command(
+        render_create_kafka_table_ddl(
+            require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+        )
+    )
+    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+        ClickHouseConnectionConfig(
+            host=clickhouse_connection_settings.host,
+            port=clickhouse_connection_settings.port,
+            username=clickhouse_connection_settings.username,
+            password=clickhouse_connection_settings.password,
+            database=clickhouse_database,
+        )
+    )
+
+    try:
+        first_result: BackfillExecutionResult = execute_backfill(
+            build_offset_replay_request(
+                database=clickhouse_database,
+                deployment_id=test_case.first_deployment_id,
+                created_at=test_case.created_at,
+                boundary_time=test_case.first_boundary_time,
+            ),
+            managed_client,
+        )
+        execute_publish(
+            PublishRequest(
+                deployment_id=test_case.first_deployment_id,
+                metadata_database=clickhouse_database,
+                default_database=clickhouse_database,
+            ),
+            managed_client,
+        )
+        second_result: BackfillExecutionResult = execute_backfill(
+            build_offset_replay_request(
+                database=clickhouse_database,
+                deployment_id=test_case.second_deployment_id,
+                created_at=test_case.created_at,
+                boundary_time=test_case.second_boundary_time,
+            ),
+            managed_client,
+        )
+    finally:
+        managed_client.close()
+
+    raw_view_rows: Sequence[Sequence[object]] = clickhouse_client.query(
+        "SELECT name, engine FROM system.tables "
+        f"WHERE database = '{clickhouse_database}' AND name = 'raw__orders'"
+    ).result_rows
+
+    assert first_result.bootstrap.root_reports[0].replay_strategy == "create_from_scratch"
+    assert second_result.bootstrap.root_reports[0].replay_strategy == "bounded_replay"
+    assert (
+        second_result.bootstrap.root_reports[0].active_deployment_id
+        == test_case.first_deployment_id
+    )
+    assert raw_view_rows == list(test_case.expected_raw_view_rows)
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ExecuteMixedRootBackfillReportingIntegrationTestCase(
+            description=(
+                "reports mixed per-root strategies when one root is active and another "
+                "root is missing its view"
+            ),
+            deployment_id="20260409T230800Z_ab12cd",
+            created_at="2026-04-09 23:08:00.123",
+            boundary_time="2026-04-09 23:08:00.000",
+            expected_report_rows=(
+                ("tbl__customers_enriched", "full_rebuild_required", None),
+                ("tbl__orders_enriched", "bounded_replay", "dep_orders"),
+            ),
+        )
+    ],
+    ids=["reports mixed per-root strategies for active-plus-missing-view state"],
+)
+def test_given_mixed_root_state_when_backfilling_then_it_reports_per_root_strategies(
+    test_case: ExecuteMixedRootBackfillReportingIntegrationTestCase,
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    orders_pipeline: CompiledPipeline = build_named_scalar_replay_compiled_pipeline(
+        replay_lineage_mode="timestamp",
+        pipeline_name="orders_pipeline",
+        source_name="orders",
+        transform_name="orders_enriched",
+        topic="source.orders.created",
+    )
+    customers_pipeline: CompiledPipeline = build_named_scalar_replay_compiled_pipeline(
+        replay_lineage_mode="timestamp",
+        pipeline_name="customers_pipeline",
+        source_name="customers",
+        transform_name="customers_enriched",
+        topic="source.customers.created",
+    )
+    compiled_pipeline: CompiledPipeline
+    for compiled_pipeline in (orders_pipeline, customers_pipeline):
+        clickhouse_client.command(
+            render_create_kafka_table_ddl(
+                require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+            )
+        )
+        clickhouse_client.command(
+            render_create_table_ddl(
+                require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+            )
+        )
+        clickhouse_client.command(
+            render_create_materialized_view_ddl(
+                require_managed_source(compiled_pipeline).materialized_view,
+                clickhouse_database,
+            )
+        )
+    clickhouse_client.command(
+        "CREATE TABLE "
+        f"{clickhouse_database}.tbl__orders_enriched__dep_orders "
+        "(order_id String, _replay_timestamp DateTime64(3)) "
+        "ENGINE = MergeTree ORDER BY (order_id)"
+    )
+    clickhouse_client.command(
+        "CREATE MATERIALIZED VIEW "
+        f"{clickhouse_database}.mv__orders_enriched__dep_orders "
+        f"TO {clickhouse_database}.tbl__orders_enriched__dep_orders AS "
+        "SELECT CAST(kafka_key AS String) AS order_id, "
+        "CAST(_replay_timestamp AS DateTime64(3)) AS _replay_timestamp "
+        f"FROM {clickhouse_database}.raw__orders"
+    )
+    clickhouse_client.command(
+        render_create_view_ddl(
+            database=clickhouse_database,
+            view_name="tbl__orders_enriched",
+            target_table_name="tbl__orders_enriched__dep_orders",
+        )
+    )
+    clickhouse_client.command(
+        "CREATE TABLE "
+        f"{clickhouse_database}.tbl__customers_enriched__dep_customers "
+        "(order_id String, _replay_timestamp DateTime64(3)) "
+        "ENGINE = MergeTree ORDER BY (order_id)"
+    )
+    clickhouse_client.command(
+        "CREATE MATERIALIZED VIEW "
+        f"{clickhouse_database}.mv__customers_enriched__dep_customers "
+        f"TO {clickhouse_database}.tbl__customers_enriched__dep_customers AS "
+        "SELECT CAST(kafka_key AS String) AS order_id, "
+        "CAST(_replay_timestamp AS DateTime64(3)) AS _replay_timestamp "
+        f"FROM {clickhouse_database}.raw__customers"
+    )
+
+    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+        ClickHouseConnectionConfig(
+            host=clickhouse_connection_settings.host,
+            port=clickhouse_connection_settings.port,
+            username=clickhouse_connection_settings.username,
+            password=clickhouse_connection_settings.password,
+            database=clickhouse_database,
+        )
+    )
+
+    try:
+        result: BackfillBootstrapResult = execute_backfill_bootstrap(
+            BackfillBootstrapRequest(
+                desired_state=build_desired_state((orders_pipeline, customers_pipeline)),
+                default_database=clickhouse_database,
+                metadata_database=clickhouse_database,
+                replay_lineage_mode="timestamp",
+                deployment_id=test_case.deployment_id,
+                created_at=test_case.created_at,
+                boundary_time=test_case.boundary_time,
+                stabilization_seconds=0.0,
+            ),
+            managed_client,
+        )
+    finally:
+        managed_client.close()
+
+    report_rows: tuple[tuple[str, str, str | None], ...] = tuple(
+        sorted(
+            (
+                report.root_key.name,
+                report.replay_strategy,
+                report.active_deployment_id,
+            )
+            for report in result.root_reports
+        )
+    )
+
+    assert report_rows == test_case.expected_report_rows
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        BackfillAfterDeletedStagedTableIntegrationTestCase(
+            description="fails predictably when rerunning after only the staged table was deleted",
+            deployment_id="20260409T231000Z_ab12cd",
+            created_at="2026-04-09 23:10:00.123",
+            boundary_time="2026-04-09 23:10:00.000",
+            expected_error_fragment="already exists",
+        )
+    ],
+    ids=["fails predictably when rerunning after only the staged table was deleted"],
+)
+def test_given_deleted_staged_table_after_bootstrap_when_rerunning_then_backfill_fails(
+    test_case: BackfillAfterDeletedStagedTableIntegrationTestCase,
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    compiled_pipeline: CompiledPipeline = build_scalar_replay_compiled_pipeline("timestamp")
+    clickhouse_client.command(
+        render_create_kafka_table_ddl(
+            require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+        )
+    )
+    clickhouse_client.command(
+        render_create_table_ddl(
+            require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+        )
+    )
+    clickhouse_client.command(
+        render_create_materialized_view_ddl(
+            require_managed_source(compiled_pipeline).materialized_view,
+            clickhouse_database,
+        )
+    )
+    clickhouse_client.insert(
+        table=f"{clickhouse_database}.{require_managed_source(compiled_pipeline).raw_table.name}",
+        data=[
+            build_raw_orders_row(
+                kafka_key="historical-order",
+                _replay_partition=0,
+                _replay_offset=1,
+                _replay_timestamp="2026-04-09 23:09:59.000",
+                _replay_landed_at="2026-04-09 23:09:59.000",
+            )
+        ],
+        column_names=[
+            "kafka_key",
+            "kafka_value",
+            "kafka_topic",
+            "_replay_partition",
+            "_replay_offset",
+            "_replay_timestamp",
+            "kafka_headers",
+            "_replay_landed_at",
+        ],
+    )
+    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+        ClickHouseConnectionConfig(
+            host=clickhouse_connection_settings.host,
+            port=clickhouse_connection_settings.port,
+            username=clickhouse_connection_settings.username,
+            password=clickhouse_connection_settings.password,
+            database=clickhouse_database,
+        )
+    )
+
+    try:
+        execute_backfill_bootstrap(
+            build_scalar_replay_request(
+                database=clickhouse_database,
+                deployment_id=test_case.deployment_id,
+                created_at=test_case.created_at,
+                boundary_time=test_case.boundary_time,
+                replay_lineage_mode="timestamp",
+            ),
+            managed_client,
+        )
+        clickhouse_client.command(
+            f"DROP TABLE {clickhouse_database}.tbl__orders_enriched__{test_case.deployment_id}"
+        )
+        with pytest.raises(Exception, match=test_case.expected_error_fragment):
+            execute_backfill(
+                build_scalar_replay_request(
+                    database=clickhouse_database,
+                    deployment_id=test_case.deployment_id,
+                    created_at=test_case.created_at,
+                    boundary_time=test_case.boundary_time,
+                    replay_lineage_mode="timestamp",
+                ),
+                managed_client,
+            )
+    finally:
+        managed_client.close()
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        PersistWatermarksWithoutMetadataTableIntegrationTestCase(
+            description="fails when the watermark metadata table is deleted before persistence",
+            deployment_id="20260409T232000Z_ab12cd",
+            created_at="2026-04-09 23:20:00.123",
+            boundary_time="2026-04-09 23:20:00.000",
+            expected_error_fragment="streambuild_deployment_watermarks",
+        )
+    ],
+    ids=["fails when the watermark metadata table is deleted before persistence"],
+)
+def test_given_deleted_watermark_table_when_persisting_backfill_watermarks_then_it_fails_explicitly(
+    test_case: PersistWatermarksWithoutMetadataTableIntegrationTestCase,
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    compiled_pipeline: CompiledPipeline = build_scalar_replay_compiled_pipeline("timestamp")
+    clickhouse_client.command(
+        render_create_kafka_table_ddl(
+            require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+        )
+    )
+    clickhouse_client.command(
+        render_create_table_ddl(
+            require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+        )
+    )
+    clickhouse_client.command(
+        render_create_materialized_view_ddl(
+            require_managed_source(compiled_pipeline).materialized_view,
+            clickhouse_database,
+        )
+    )
+    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+        ClickHouseConnectionConfig(
+            host=clickhouse_connection_settings.host,
+            port=clickhouse_connection_settings.port,
+            username=clickhouse_connection_settings.username,
+            password=clickhouse_connection_settings.password,
+            database=clickhouse_database,
+        )
+    )
+
+    try:
+        bootstrap_result: BackfillBootstrapResult = execute_backfill_bootstrap(
+            build_scalar_replay_request(
+                database=clickhouse_database,
+                deployment_id=test_case.deployment_id,
+                created_at=test_case.created_at,
+                boundary_time=test_case.boundary_time,
+                replay_lineage_mode="timestamp",
+            ),
+            managed_client,
+        )
+        clickhouse_client.command(
+            f"DROP TABLE {clickhouse_database}.streambuild_deployment_watermarks"
+        )
+        deployment_watermarks: tuple[DeploymentWatermarkRecord, ...] = resolve_scalar_watermarks(
+            deployment_id=test_case.deployment_id,
+            deployment_plan=bootstrap_result.deployment_plan,
+            desired_state=build_scalar_replay_request(
+                database=clickhouse_database,
+                deployment_id=test_case.deployment_id,
+                created_at=test_case.created_at,
+                boundary_time=test_case.boundary_time,
+                replay_lineage_mode="timestamp",
+            ).desired_state,
+            replay_lineage_mode="timestamp",
+            boundary_time=test_case.boundary_time,
+        )
+        with pytest.raises(Exception, match=test_case.expected_error_fragment):
+            persist_deployment_watermarks(
+                client=managed_client,
+                metadata_database=clickhouse_database,
+                deployment_watermarks=deployment_watermarks,
+            )
+    finally:
+        managed_client.close()

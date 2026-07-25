@@ -1,0 +1,313 @@
+import argparse
+from pathlib import Path
+
+
+def build_cli_parser() -> argparse.ArgumentParser:
+    parser: argparse.ArgumentParser = argparse.ArgumentParser(
+        prog="streambuild",
+        description="Declarative, versioned streaming data pipelines for ClickHouse.",
+    )
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser] = parser.add_subparsers(
+        dest="command", required=True
+    )
+
+    discover_parser: argparse.ArgumentParser = subparsers.add_parser(
+        "discover",
+        help="List discovered pipelines in a project",
+        description="Scan the project directory and list all discovered pipelines.",
+    )
+    discover_parser.add_argument(
+        "--project-dir",
+        type=Path,
+        help="Path to the project root containing pipelines/",
+    )
+
+    compile_parser: argparse.ArgumentParser = subparsers.add_parser(
+        "compile",
+        help="Compile pipelines into resolved SQL and ClickHouse DDL",
+        description=(
+            "Compile all pipeline models into resolved SQL, CREATE TABLE statements, "
+            "CREATE MATERIALIZED VIEW statements, and a numbered workflow."
+        ),
+    )
+    compile_parser.add_argument(
+        "--project-dir",
+        type=Path,
+        help="Path to the project root containing pipelines/",
+    )
+    compile_parser.add_argument(
+        "--target-dir",
+        type=Path,
+        help="Output directory for compiled artifacts (default: pipelines/target/)",
+    )
+
+    test_parser: argparse.ArgumentParser = subparsers.add_parser(
+        "test",
+        help="Execute SQL-native model tests against ClickHouse",
+        description=(
+            "Discover SQL-native tests under tests/, assemble their dependency chain, "
+            "and execute them against ClickHouse."
+        ),
+    )
+    _add_project_dir_arg(test_parser)
+    _add_clickhouse_args(test_parser)
+    _add_select_args(test_parser)
+    test_parser.add_argument(
+        "paths",
+        nargs="*",
+        type=Path,
+        help="Optional test files or directories to run",
+    )
+    test_parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Show all diff rows for failing tests",
+    )
+
+    plan_parser: argparse.ArgumentParser = subparsers.add_parser(
+        "plan",
+        help="Preview what would change without making any modifications",
+        description=(
+            "Compare SQL models against the current state in ClickHouse and show "
+            "what would change. No modifications are made."
+        ),
+    )
+    _add_project_dir_arg(plan_parser)
+    _add_clickhouse_args(plan_parser)
+    _add_select_args(plan_parser)
+    plan_parser.add_argument(
+        "--full-refresh",
+        action="store_true",
+        help="Force a full refresh of selected models (requires --select)",
+    )
+    plan_parser.add_argument(
+        "--start-time",
+        help="Replay from a specific time, e.g. '2026-04-17T18:00:00' (requires --select)",
+    )
+    plan_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output the plan as JSON",
+    )
+    plan_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show full schema diffs for changed models",
+    )
+
+    backfill_parser: argparse.ArgumentParser = subparsers.add_parser(
+        "backfill",
+        help="Create shadow tables and replay historical data",
+        description=(
+            "Run a plan, create shadow tables, and replay historical data into them. "
+            "Shows the plan and asks for confirmation before making changes."
+        ),
+    )
+    _add_project_dir_arg(backfill_parser)
+    _add_clickhouse_args(backfill_parser)
+    _add_select_args(backfill_parser)
+    backfill_parser.add_argument(
+        "--deployment-id",
+        help="Use a specific deployment ID (auto-generated if omitted)",
+    )
+    backfill_parser.add_argument(
+        "--full-refresh",
+        action="store_true",
+        help="Force a full refresh of selected models (requires --select)",
+    )
+    backfill_parser.add_argument(
+        "--start-time",
+        help="Replay from a specific time, e.g. '2026-04-17T18:00:00' (requires --select)",
+    )
+    backfill_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output as JSON",
+    )
+    backfill_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show full schema diffs for changed models",
+    )
+    backfill_parser.add_argument(
+        "--auto-approve",
+        action="store_true",
+        help="Skip the confirmation prompt",
+    )
+
+    audit_parser: argparse.ArgumentParser = subparsers.add_parser(
+        "audit",
+        help="Run SQL audits against live or staged data",
+        description=(
+            "Run user-defined SQL audits against published logical views, or use "
+            "`streambuild audit backfill` to audit a staged deployment before publishing."
+        ),
+    )
+    _add_project_dir_arg(audit_parser)
+    _add_clickhouse_args(audit_parser)
+    _add_select_args(audit_parser)
+    audit_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output as JSON",
+    )
+    audit_subparsers: argparse._SubParsersAction[argparse.ArgumentParser] = (
+        audit_parser.add_subparsers(dest="audit_command")
+    )
+    audit_backfill_parser: argparse.ArgumentParser = audit_subparsers.add_parser(
+        "backfill",
+        help="Audit a staged backfill deployment",
+        description=(
+            "Compare staged shadow tables against active tables to verify the backfill "
+            "produced correct results. If --deployment-id is omitted, lists available deployments."
+        ),
+    )
+    _add_project_dir_arg(audit_backfill_parser)
+    _add_clickhouse_args(audit_backfill_parser)
+    audit_backfill_parser.add_argument(
+        "--deployment-id",
+        help="Deployment to audit (omit to list available deployments)",
+    )
+    audit_backfill_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output as JSON",
+    )
+
+    publish_parser: argparse.ArgumentParser = subparsers.add_parser(
+        "publish",
+        help="Atomically swap views to point at new shadow tables",
+        description=(
+            "Publish a deployment by atomically swapping logical views to point at "
+            "the new shadow tables. If --deployment-id is omitted, lists available deployments."
+        ),
+    )
+    _add_project_dir_arg(publish_parser)
+    _add_clickhouse_args(publish_parser)
+    publish_parser.add_argument(
+        "--deployment-id",
+        help="Deployment to publish (omit to list available deployments)",
+    )
+    publish_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output as JSON",
+    )
+
+    reconcile_parser: argparse.ArgumentParser = subparsers.add_parser(
+        "reconcile",
+        help="Reconcile live metadata baseline",
+        description=(
+            "Reconcile the live metadata baseline for managed pipelines. "
+            "Use --apply to persist changes."
+        ),
+    )
+    _add_project_dir_arg(reconcile_parser)
+    _add_clickhouse_args(reconcile_parser)
+    _add_select_args(reconcile_parser)
+    reconcile_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output as JSON",
+    )
+    reconcile_parser.add_argument(
+        "--apply",
+        action="store_true",
+        help="Apply the reconciliation (dry-run by default)",
+    )
+
+    janitor_parser: argparse.ArgumentParser = subparsers.add_parser(
+        "janitor",
+        help="Clean up stale deployment artifacts",
+        description=(
+            "Identify and optionally remove stale shadow tables from previous deployments. "
+            "Dry-run by default; use --apply to drop tables."
+        ),
+    )
+    _add_clickhouse_args(janitor_parser)
+    janitor_parser.add_argument(
+        "--retention-days",
+        type=int,
+        default=7,
+        help="Keep deployments newer than this many days (default: 7)",
+    )
+    janitor_parser.add_argument(
+        "--apply",
+        action="store_true",
+        help="Actually drop stale tables (dry-run by default)",
+    )
+    janitor_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output as JSON",
+    )
+
+    doctor_parser: argparse.ArgumentParser = subparsers.add_parser(
+        "doctor",
+        help="Diagnose issues with active views and managed tables",
+        description=(
+            "Inspect the current state of managed tables in ClickHouse and report "
+            "any issues with logical views, shadow tables, or deployment references."
+        ),
+    )
+    _add_project_dir_arg(doctor_parser)
+    _add_clickhouse_args(doctor_parser)
+
+    repair_parser: argparse.ArgumentParser = subparsers.add_parser(
+        "repair",
+        help="Repair broken deployment state",
+        description="Repair broken logical views or deployment references.",
+    )
+    repair_subparsers: argparse._SubParsersAction[argparse.ArgumentParser] = (
+        repair_parser.add_subparsers(dest="repair_command", required=True)
+    )
+    repair_active_view_parser: argparse.ArgumentParser = repair_subparsers.add_parser(
+        "active-view",
+        help="Re-point a logical view at a specific deployment",
+        description=(
+            "Repair a broken logical view by re-pointing it at a specific "
+            "deployment's shadow table."
+        ),
+    )
+    _add_clickhouse_args(repair_active_view_parser)
+    repair_active_view_parser.add_argument(
+        "--table",
+        required=True,
+        help="The logical table name to repair, e.g. tbl__orders",
+    )
+    repair_active_view_parser.add_argument(
+        "--deployment-id",
+        required=True,
+        help="The deployment to point the view at",
+    )
+    return parser
+
+
+def _add_project_dir_arg(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--project-dir",
+        type=Path,
+        help="Path to the project root containing pipelines/",
+    )
+
+
+def _add_clickhouse_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--host", help="ClickHouse host")
+    parser.add_argument("--port", type=int, help="ClickHouse HTTP port")
+    parser.add_argument("--username", help="ClickHouse username")
+    parser.add_argument("--password", help="ClickHouse password")
+    parser.add_argument("--database", help="Target ClickHouse database")
+
+
+def _add_select_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--select",
+        action="append",
+        default=[],
+        help=(
+            "Select models or pipelines, e.g. --select daily_revenue "
+            "or --select pipeline:order_events (repeatable)"
+        ),
+    )

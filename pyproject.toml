@@ -1,0 +1,61 @@
+[build-system]
+requires = ["hatchling>=1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "streambuild"
+version = "0.1.0"
+description = "Declarative ClickHouse streaming pipeline planning tool"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+  "clickhouse-connect>=0.8.18",
+  "sqlglot>=27.13.2",
+  "PyYAML>=6.0.2",
+]
+
+[project.scripts]
+streambuild = "streambuild.cli.commands.main.entry.main:main"
+check-test-conventions = "scripts.testing.check_test_conventions:main"
+check-structure-conventions = "scripts.structure.check_structure_conventions:main"
+check-type-annotation-conventions = "scripts.type_annotations.check_type_annotation_conventions:main"
+
+[dependency-groups]
+dev = [
+  "commitizen>=4.9.1",
+  "kafka-python-ng>=2.2.3",
+  "pre-commit>=4.3.0",
+  "psycopg[binary]>=3.2.9",
+  "pytest>=8.4.2",
+  "pytest-cov>=7.0.0",
+  "ruff>=0.12.0",
+  "sqlfluff>=3.4.2",
+  "testcontainers>=4.13.0",
+  "ty>=0.0.1a19",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/streambuild", "scripts"]
+
+[tool.commitizen]
+name = "cz_conventional_commits"
+version_provider = "pep621"
+version_scheme = "semver2"
+update_changelog_on_bump = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+  "integration: marks tests that require real external services",
+  "e2e: marks tests that exercise full end-to-end workflows",
+]
+
+[tool.ruff]
+target-version = "py314"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["B", "E", "F", "I", "UP"]
+
+[tool.uv]
+package = true

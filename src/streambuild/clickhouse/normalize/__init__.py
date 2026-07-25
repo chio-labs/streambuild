@@ -1,0 +1,1 @@
+"""ClickHouse definition normalization."""

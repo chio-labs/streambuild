@@ -1,0 +1,1 @@
+"""Structure checker tests."""

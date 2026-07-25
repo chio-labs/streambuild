@@ -1,0 +1,1 @@
+"""Structure convention tooling."""

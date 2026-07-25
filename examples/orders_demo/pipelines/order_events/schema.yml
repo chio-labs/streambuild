@@ -1,0 +1,37 @@
+models:
+  - name: orders
+    columns:
+      - name: order_id
+        audits:
+          - not_null
+      - name: status
+        audits:
+          - accepted_values:
+              values: ["created", "paid", "shipped", "delivered", "cancelled", "refunded"]
+
+  - name: order_items
+    columns:
+      - name: order_id
+        audits:
+          - not_null
+      - name: line_total
+        audits:
+          - not_null:
+              severity: warning
+    audits:
+      - expression_is_true:
+          name: line total non negative when present
+          expression: "line_total >= 0 OR line_total IS NULL"
+
+  - name: daily_revenue
+    columns:
+      - name: event_day
+        audits:
+          - not_null
+      - name: category
+        audits:
+          - not_null
+    audits:
+      - expression_is_true:
+          name: order count is positive
+          expression: "order_event_count > 0"

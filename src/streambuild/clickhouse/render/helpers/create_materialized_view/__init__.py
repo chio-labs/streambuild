@@ -1,0 +1,1 @@
+"""Render CREATE MATERIALIZED VIEW DDL."""
