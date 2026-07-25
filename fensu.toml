@@ -1,0 +1,11 @@
+roots = ["src/streambuild"]
+tests = ["tests"]
+tooling = ["scripts"]
+select = ["FF"]
+
+[cache]
+enabled = true
+require_cacheable = true
+
+[evaluation]
+exclude = ["tests/e2e/fixtures/**"]

@@ -50,3 +50,5 @@ data/
 examples/flights_demo/.env
 examples/orders_demo/pipelines/target
 examples/orders_demo/target
+# Fensu
+.fensu/cache/
