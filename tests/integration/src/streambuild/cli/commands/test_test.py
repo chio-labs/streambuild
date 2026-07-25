@@ -52,7 +52,7 @@ TEST_CASES: list[CliTestCommandIntegrationTestCase] = [
             "1    expected  ord_001   25.0",
             "1    actual    ord_001   20.0",
             "Failed:",
-            "streambuild test tests/order_events/test_line_total.sql",
+            "stb test tests/order_events/test_line_total.sql",
         ),
     ),
     CliTestCommandIntegrationTestCase(
@@ -64,7 +64,7 @@ TEST_CASES: list[CliTestCommandIntegrationTestCase] = [
             "order_items, daily_revenue",
             "target: order_items",
             "target: daily_revenue",
-            "streambuild test tests/order_events/test_line_total.sql",
+            "stb test tests/order_events/test_line_total.sql",
         ),
     ),
 ]

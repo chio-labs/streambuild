@@ -62,7 +62,7 @@ def render_sql_test_results(
         lines.append("Failed:")
         failed_path: Path
         for failed_path in failed_paths:
-            lines.append(f"  streambuild test {_render_result_path(failed_path, project_dir)}")
+            lines.append(f"  stb test {_render_result_path(failed_path, project_dir)}")
     return "\n".join(lines)
 
 

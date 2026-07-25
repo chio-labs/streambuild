@@ -34,7 +34,7 @@ ERROR_RENDERING_TEST_CASES: list[CliExpectedErrorRenderingTestCase] = [
             "Publish could not start",
             "Database: flights_demo",
             "target ClickHouse database does not exist",
-            "run streambuild backfill first",
+            "run stb backfill first",
         ),
     ),
     CliExpectedErrorRenderingTestCase(
@@ -47,7 +47,7 @@ ERROR_RENDERING_TEST_CASES: list[CliExpectedErrorRenderingTestCase] = [
             "Publish could not start",
             "Database: flights_demo",
             "StreamBuild metadata tables do not exist",
-            "run streambuild backfill first",
+            "run stb backfill first",
         ),
     ),
     CliExpectedErrorRenderingTestCase(
@@ -97,7 +97,7 @@ def test_given_expected_clickhouse_error_when_rendering_then_it_returns_operator
             expected_error_fragments=(
                 "Publish could not start",
                 "Database: flights_demo",
-                "run streambuild backfill first",
+                "run stb backfill first",
             ),
         )
     ],

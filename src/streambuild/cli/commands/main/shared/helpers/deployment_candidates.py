@@ -44,7 +44,7 @@ def render_ambiguous_deployment_message(
     lines.append("")
     lines.append(style_section("Recommended"))
     candidate = sorted_candidates[0]
-    lines.append(f"- streambuild {command_name} --deployment-id {candidate.deployment_id}")
+    lines.append(f"- stb {command_name} --deployment-id {candidate.deployment_id}")
     return "\n".join(lines)
 
 
