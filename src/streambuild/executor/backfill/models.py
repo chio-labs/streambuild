@@ -1,5 +1,7 @@
 """Backfill executor runtime models."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 
 from streambuild.compiler.compile.models import DesiredState
