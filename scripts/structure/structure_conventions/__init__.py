@@ -1,1 +1,0 @@
-"""Repo structure convention checks."""
