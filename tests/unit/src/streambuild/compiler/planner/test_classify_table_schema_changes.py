@@ -1,17 +1,17 @@
 import pytest
 
 from streambuild.compiler.actual_state.models import ActualTable
+from streambuild.compiler.planner._helpers.diff import (
+    classify_object_change_type,
+    classify_table_schema_change_kind,
+    classify_table_seed_compatibility,
+)
 from streambuild.compiler.planner.constants import (
     PLANNED_CHANGE_TYPE_NO_OP,
     TABLE_SCHEMA_CHANGE_KIND_BREAKING,
     TABLE_SCHEMA_CHANGE_KIND_NON_BREAKING,
     TABLE_SCHEMA_SEED_COMPATIBILITY_NON_SEEDABLE,
     TABLE_SCHEMA_SEED_COMPATIBILITY_SEEDABLE,
-)
-from streambuild.compiler.planner.helpers.diff import (
-    classify_object_change_type,
-    classify_table_schema_change_kind,
-    classify_table_seed_compatibility,
 )
 from streambuild.compiler.shared.models import (
     Column,

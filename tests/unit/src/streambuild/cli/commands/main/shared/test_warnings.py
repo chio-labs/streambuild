@@ -4,7 +4,7 @@ from typing import cast
 
 import pytest
 
-from streambuild.cli.commands.main.shared.helpers.warnings import add_empty_replay_source_warnings
+from streambuild.cli.commands.main.shared._helpers.warnings import add_empty_replay_source_warnings
 from streambuild.compiler.compile.models import DesiredState
 from streambuild.compiler.planner.constants import REBUILD_STRATEGY_SHADOW
 from streambuild.compiler.planner.models import DeploymentPlan, RebuildSubtree

@@ -4,20 +4,20 @@ import json
 import sys
 from pathlib import Path
 
-from streambuild.cli.commands.main.compile.helpers.artifacts import (
+from streambuild.cli.commands.main.compile._helpers.artifacts import (
     format_clickhouse_sql,
     write_text,
 )
-from streambuild.cli.commands.main.compile.helpers.manifest import (
+from streambuild.cli.commands.main.compile._helpers.manifest import (
     pipeline_manifest_entry,
 )
-from streambuild.clickhouse.render.helpers.create_kafka_table.main import (
+from streambuild.clickhouse.render._helpers.create_kafka_table.main import (
     render_create_kafka_table_ddl,
 )
-from streambuild.clickhouse.render.helpers.create_materialized_view.main import (
+from streambuild.clickhouse.render._helpers.create_materialized_view.main import (
     render_create_materialized_view_ddl,
 )
-from streambuild.clickhouse.render.helpers.create_table.main import render_create_table_ddl
+from streambuild.clickhouse.render._helpers.create_table.main import render_create_table_ddl
 from streambuild.compiler.auditing.main import validate_sql_audits
 from streambuild.compiler.compile.exceptions import TransformSqlContractError
 from streambuild.compiler.compile.main import compile_pipeline
@@ -26,8 +26,8 @@ from streambuild.compiler.compile.models import (
     CompiledPipeline,
     CompiledTransformStep,
 )
-from streambuild.compiler.discovery.helpers.auditing.main import discover_sql_audits
-from streambuild.compiler.discovery.helpers.testing.main import discover_sql_tests
+from streambuild.compiler.discovery._helpers.auditing.main import discover_sql_audits
+from streambuild.compiler.discovery._helpers.testing.main import discover_sql_tests
 from streambuild.compiler.discovery.main import discover_pipelines
 from streambuild.compiler.shared.models import LoadedPipeline, LoadedSqlAudit
 from streambuild.compiler.testing.main import build_sql_test_cases

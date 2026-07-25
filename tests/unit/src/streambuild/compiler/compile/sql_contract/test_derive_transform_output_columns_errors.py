@@ -1,14 +1,14 @@
 import pytest
 
+from streambuild.compiler.compile._helpers.sql_contract import (
+    derive_transform_output_columns,
+)
 from streambuild.compiler.compile.exceptions import (
     TransformSqlDuplicateAliasError,
     TransformSqlMultipleStatementsError,
     TransformSqlStarProjectionError,
     TransformSqlTopLevelSetOperationError,
     TransformSqlUntypedProjectionError,
-)
-from streambuild.compiler.compile.helpers.sql_contract import (
-    derive_transform_output_columns,
 )
 from tests.unit.src.streambuild.compiler.compile.sql_contract._test_types import (
     DeriveTransformOutputColumnsErrorTestCase,

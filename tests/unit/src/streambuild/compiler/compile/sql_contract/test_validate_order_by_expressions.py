@@ -1,10 +1,10 @@
 import pytest
 
+from streambuild.compiler.compile._helpers.sql_contract import (
+    validate_order_by_expressions,
+)
 from streambuild.compiler.compile.exceptions import (
     TransformOrderByUnknownColumnError,
-)
-from streambuild.compiler.compile.helpers.sql_contract import (
-    validate_order_by_expressions,
 )
 from tests.unit.src.streambuild.compiler.compile.sql_contract._test_types import (
     ValidateOrderByExpressionsTestCase,

@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from streambuild.cli.commands.main.test.helpers.rendering import render_sql_test_results
-from streambuild.cli.commands.main.test.helpers.selection import select_loaded_sql_tests
+from streambuild.cli.commands.main.test._helpers.rendering import render_sql_test_results
+from streambuild.cli.commands.main.test._helpers.selection import select_loaded_sql_tests
 from streambuild.compiler.compile.main import compile_pipeline
 from streambuild.compiler.compile.models import CompiledPipeline
-from streambuild.compiler.discovery.helpers.testing.main import discover_sql_tests
+from streambuild.compiler.discovery._helpers.testing.main import discover_sql_tests
 from streambuild.compiler.discovery.main import discover_pipelines
 from streambuild.compiler.shared.models import LoadedPipeline, LoadedSqlTest
 from streambuild.compiler.testing.main import build_sql_test_cases

@@ -8,13 +8,13 @@ import pytest
 from clickhouse_connect.driver.client import Client
 from kafka import KafkaProducer
 
-from streambuild.clickhouse.render.helpers.create_kafka_table.main import (
+from streambuild.clickhouse.render._helpers.create_kafka_table.main import (
     render_create_kafka_table_ddl,
 )
-from streambuild.clickhouse.render.helpers.create_materialized_view.main import (
+from streambuild.clickhouse.render._helpers.create_materialized_view.main import (
     render_create_materialized_view_ddl,
 )
-from streambuild.clickhouse.render.helpers.create_table.main import render_create_table_ddl
+from streambuild.clickhouse.render._helpers.create_table.main import render_create_table_ddl
 from streambuild.compiler.compile.models import CompiledPipeline
 from streambuild.compiler.planner.types import RebuildExecutionMode
 from streambuild.executor.audit_backfill.types import AuditAssessment

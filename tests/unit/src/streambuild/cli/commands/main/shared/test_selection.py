@@ -4,7 +4,7 @@ from dataclasses import replace
 
 import pytest
 
-from streambuild.cli.commands.main.shared.helpers.selection import resolve_selection
+from streambuild.cli.commands.main.shared._helpers.selection import resolve_selection
 from streambuild.cli.commands.main.shared.models import SelectionResolution
 from streambuild.compiler.compile.models import CompiledPipeline
 from streambuild.spec.models.types import ReplayLineageMode

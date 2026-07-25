@@ -5,7 +5,7 @@ import sys
 
 from clickhouse_connect.driver.exceptions import DatabaseError, OperationalError
 
-from streambuild.cli.commands.main.shared.helpers.errors import render_expected_clickhouse_error
+from streambuild.cli.commands.main.shared._helpers.errors import render_expected_clickhouse_error
 from streambuild.executor.doctor.main import execute_doctor
 from streambuild.executor.doctor.models import DoctorRequest, DoctorResult
 from streambuild.integrations.clickhouse.client import ClickHouseClient

@@ -3,11 +3,11 @@
 import sys
 from pathlib import Path
 
-from streambuild.cli.commands.main.backfill.helpers.preview import build_backfill_preview_context
-from streambuild.cli.commands.main.backfill.helpers.rendering import render_backfill_result
+from streambuild.cli.commands.main.backfill._helpers.preview import build_backfill_preview_context
+from streambuild.cli.commands.main.backfill._helpers.rendering import render_backfill_result
 from streambuild.cli.commands.main.backfill.models import BackfillPreviewContext
-from streambuild.cli.commands.main.shared.helpers.plan_rendering import render_plan_result
-from streambuild.cli.commands.main.shared.helpers.timestamps import (
+from streambuild.cli.commands.main.shared._helpers.plan_rendering import render_plan_result
+from streambuild.cli.commands.main.shared._helpers.timestamps import (
     convert_utc_timestamp_for_clickhouse,
     normalize_cli_start_time,
 )

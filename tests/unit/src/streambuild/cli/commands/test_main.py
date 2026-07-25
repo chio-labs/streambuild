@@ -7,7 +7,7 @@ from typing import cast
 import pytest
 from clickhouse_connect.driver.exceptions import DatabaseError
 
-from streambuild.cli.commands.main.entry.helpers.entrypoint import resolve_clickhouse_connection
+from streambuild.cli.commands.main.entry._helpers.entrypoint import resolve_clickhouse_connection
 from streambuild.cli.commands.main.entry.main import _main_with_dependencies, main
 from streambuild.cli.commands.main.entry.models import (
     CliEntrypointHandlers,

@@ -1,6 +1,6 @@
 import pytest
 
-from streambuild.clickhouse.inspect.helpers.deployments import inspect_root_deployment_state
+from streambuild.clickhouse.inspect._helpers.deployments import inspect_root_deployment_state
 from streambuild.clickhouse.inspect.models import (
     InspectedActiveTableBinding,
     InspectedManagedTableState,

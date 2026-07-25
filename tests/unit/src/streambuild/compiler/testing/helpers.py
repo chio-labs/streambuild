@@ -2,11 +2,11 @@ from pathlib import Path
 
 from streambuild.compiler.compile.main import compile_pipeline
 from streambuild.compiler.compile.models import CompiledPipeline
-from streambuild.compiler.discovery.helpers.load import load_pipeline_file
-from streambuild.compiler.discovery.helpers.testing.main import discover_sql_tests
+from streambuild.compiler.discovery._helpers.load import load_pipeline_file
+from streambuild.compiler.discovery._helpers.testing.main import discover_sql_tests
 from streambuild.compiler.shared.models import LoadedSqlTest
-from tests.unit.src.streambuild.compiler.discovery.helpers.load.helpers import write_pipeline_file
-from tests.unit.src.streambuild.compiler.discovery.helpers.testing.helpers import (
+from tests.unit.src.streambuild.compiler.discovery._helpers.load.helpers import write_pipeline_file
+from tests.unit.src.streambuild.compiler.discovery._helpers.testing.helpers import (
     write_sql_test_file,
 )
 

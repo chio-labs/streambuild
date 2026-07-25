@@ -4,7 +4,7 @@ from typing import cast
 
 import pytest
 
-from streambuild.cli.commands.main.shared.helpers.timestamps import (
+from streambuild.cli.commands.main.shared._helpers.timestamps import (
     convert_utc_timestamp_for_clickhouse,
     normalize_cli_start_time,
 )

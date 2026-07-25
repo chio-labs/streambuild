@@ -2,7 +2,7 @@
 
 from streambuild.compiler.actual_state.models import ActualState
 from streambuild.compiler.compile.models import DesiredState
-from streambuild.compiler.planner.helpers.deployment import build_deployment_plan
+from streambuild.compiler.planner._helpers.deployment import build_deployment_plan
 from streambuild.compiler.planner.models import DeploymentPlan
 from streambuild.compiler.shared.models import ObjectKey
 

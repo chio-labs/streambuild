@@ -5,14 +5,14 @@ from datetime import datetime, timedelta
 import pytest
 from clickhouse_connect.driver.client import Client
 
-from streambuild.clickhouse.render.helpers.create_kafka_table.main import (
+from streambuild.clickhouse.render._helpers.create_kafka_table.main import (
     render_create_kafka_table_ddl,
 )
-from streambuild.clickhouse.render.helpers.create_materialized_view.main import (
+from streambuild.clickhouse.render._helpers.create_materialized_view.main import (
     render_create_materialized_view_ddl,
 )
-from streambuild.clickhouse.render.helpers.create_table.main import render_create_table_ddl
-from streambuild.clickhouse.render.helpers.create_view.main import render_create_view_ddl
+from streambuild.clickhouse.render._helpers.create_table.main import render_create_table_ddl
+from streambuild.clickhouse.render._helpers.create_view.main import render_create_view_ddl
 from streambuild.compiler.compile.models import CompiledPipeline, DesiredState
 from streambuild.compiler.desired_state.main import build_desired_state
 from streambuild.compiler.metadata_state.models import DeploymentWatermarkRecord
@@ -21,11 +21,11 @@ from streambuild.compiler.planner.constants import (
     REBUILD_EXECUTION_MODE_UNSEEDED_BOUNDED,
 )
 from streambuild.compiler.planner.models import DeploymentPlan, RebuildSubtree
-from streambuild.executor.backfill.helpers.replay import (
+from streambuild.executor.backfill._helpers.replay import (
     execute_offset_replay,
     execute_scalar_replay,
 )
-from streambuild.executor.backfill.helpers.watermarks import (
+from streambuild.executor.backfill._helpers.watermarks import (
     persist_deployment_watermarks,
     resolve_offset_watermarks,
     resolve_scalar_watermarks,
