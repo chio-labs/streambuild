@@ -6,29 +6,31 @@ from pathlib import Path
 
 from clickhouse_connect.driver.exceptions import DatabaseError, OperationalError
 
-from streambuild.cli.commands.main.audit_backfill.helpers.candidates import (
+from streambuild.cli.commands.main.audit_backfill._helpers.candidates import (
     candidate_root_names,
     enrich_candidates,
 )
-from streambuild.cli.commands.main.audit_backfill.helpers.rendering import (
+from streambuild.cli.commands.main.audit_backfill._helpers.rendering import (
     render_audit_backfill_result,
 )
-from streambuild.cli.commands.main.shared.helpers.deployment_candidates import (
+from streambuild.cli.commands.main.shared._helpers.deployment_candidates import (
     render_ambiguous_deployment_message,
     render_no_deployment_candidates_message,
 )
-from streambuild.cli.commands.main.shared.helpers.errors import render_expected_clickhouse_error
+from streambuild.cli.commands.main.shared._helpers.errors import render_expected_clickhouse_error
 from streambuild.clickhouse.inspect.main import inspect_managed_table_state
 from streambuild.clickhouse.inspect.models import InspectedManagedTableState
 from streambuild.compiler.auditing.main import validate_sql_audits
-from streambuild.compiler.compile.helpers.naming import transform_table_name
+from streambuild.compiler.compile._helpers.naming import transform_table_name
 from streambuild.compiler.compile.main import compile_pipeline
 from streambuild.compiler.compile.models import CompiledPipeline, CompiledTransformStep
-from streambuild.compiler.discovery.helpers.auditing.main import discover_sql_audits
+from streambuild.compiler.discovery._helpers.auditing.main import discover_sql_audits
 from streambuild.compiler.discovery.main import discover_pipelines
 from streambuild.compiler.shared.models import LoadedPipeline, LoadedSqlAudit
-from streambuild.executor.audit_backfill.helpers.metadata import load_audit_deployment
-from streambuild.executor.audit_backfill.helpers.resolution import build_audit_deployment_candidates
+from streambuild.executor.audit_backfill._helpers.metadata import load_audit_deployment
+from streambuild.executor.audit_backfill._helpers.resolution import (
+    build_audit_deployment_candidates,
+)
 from streambuild.executor.audit_backfill.main import execute_audit_backfill
 from streambuild.executor.audit_backfill.models import (
     AuditBackfillRequest,

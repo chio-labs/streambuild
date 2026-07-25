@@ -1,6 +1,6 @@
 """Inspect live ClickHouse managed table state."""
 
-from streambuild.clickhouse.inspect.helpers.managed_tables import (
+from streambuild.clickhouse.inspect._helpers.managed_tables import (
     build_inspected_managed_table_state,
 )
 from streambuild.clickhouse.inspect.models import InspectedManagedTableState

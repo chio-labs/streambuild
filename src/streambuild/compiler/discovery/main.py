@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from streambuild.compiler.discovery.helpers.load import (
+from streambuild.compiler.discovery._helpers.load import (
     load_pipeline_file,
     validate_unique_logical_names,
 )

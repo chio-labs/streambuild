@@ -3,19 +3,19 @@
 import sys
 from pathlib import Path
 
-from streambuild.cli.commands.main.shared.helpers.plan_rendering import render_plan_result
-from streambuild.cli.commands.main.shared.helpers.project import resolve_default_database
-from streambuild.cli.commands.main.shared.helpers.selection import resolve_selection
-from streambuild.cli.commands.main.shared.helpers.source_validation import (
+from streambuild.cli.commands.main.shared._helpers.plan_rendering import render_plan_result
+from streambuild.cli.commands.main.shared._helpers.project import resolve_default_database
+from streambuild.cli.commands.main.shared._helpers.selection import resolve_selection
+from streambuild.cli.commands.main.shared._helpers.source_validation import (
     validate_declared_external_sources,
 )
-from streambuild.cli.commands.main.shared.helpers.timestamps import (
+from streambuild.cli.commands.main.shared._helpers.timestamps import (
     convert_utc_timestamp_for_clickhouse,
     normalize_cli_start_time,
 )
-from streambuild.cli.commands.main.shared.helpers.warnings import add_empty_replay_source_warnings
+from streambuild.cli.commands.main.shared._helpers.warnings import add_empty_replay_source_warnings
 from streambuild.cli.commands.main.shared.models import SelectionResolution
-from streambuild.compiler.actual_state.helpers.load import load_actual_state
+from streambuild.compiler.actual_state._helpers.load import load_actual_state
 from streambuild.compiler.actual_state.models import ActualState
 from streambuild.compiler.compile.exceptions import TransformSqlContractError
 from streambuild.compiler.compile.main import compile_pipeline
@@ -24,7 +24,7 @@ from streambuild.compiler.discovery.main import discover_pipelines
 from streambuild.compiler.planner.main import plan_deployment
 from streambuild.compiler.planner.models import DeploymentPlan
 from streambuild.compiler.shared.models import LoadedPipeline
-from streambuild.executor.backfill.helpers.behavior import (
+from streambuild.executor.backfill._helpers.behavior import (
     resolve_unsupported_bounded_replay_behavior,
 )
 from streambuild.integrations.clickhouse.client import ClickHouseClient

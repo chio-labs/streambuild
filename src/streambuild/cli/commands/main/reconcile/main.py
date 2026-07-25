@@ -6,10 +6,10 @@ import json
 from pathlib import Path
 from typing import cast
 
-from streambuild.cli.commands.main.shared.helpers.project import resolve_default_database
-from streambuild.cli.commands.main.shared.helpers.selection import resolve_selection
+from streambuild.cli.commands.main.shared._helpers.project import resolve_default_database
+from streambuild.cli.commands.main.shared._helpers.selection import resolve_selection
 from streambuild.cli.commands.main.shared.models import SelectionResolution
-from streambuild.compiler.actual_state.helpers.load import load_actual_state
+from streambuild.compiler.actual_state._helpers.load import load_actual_state
 from streambuild.compiler.actual_state.models import ActualState
 from streambuild.compiler.compile.main import compile_pipeline
 from streambuild.compiler.compile.models import CompiledPipeline, DesiredState

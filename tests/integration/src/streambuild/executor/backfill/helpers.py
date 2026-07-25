@@ -5,7 +5,7 @@ from streambuild.compiler.compile.models import (
     DesiredState,
 )
 from streambuild.compiler.desired_state.main import build_desired_state
-from streambuild.compiler.discovery.helpers.load import load_pipeline_file
+from streambuild.compiler.discovery._helpers.load import load_pipeline_file
 from streambuild.compiler.shared.models import LoadedPipeline
 from streambuild.executor.backfill.models import BackfillBootstrapRequest
 from streambuild.spec.models.pipeline import Pipeline
@@ -24,7 +24,7 @@ from streambuild.spec.models.types import (
     ReplayLineageMode,
     SourceKind,
 )
-from tests.integration.src.streambuild.clickhouse.render.helpers.create_materialized_view.helpers import (  # noqa: E501
+from tests.integration.src.streambuild.clickhouse.render._helpers.create_materialized_view.helpers import (  # noqa: E501
     build_compiled_example_pipeline,
 )
 from tests.unit.src.streambuild.compiler.planner.helpers import EXAMPLE_PIPELINE_FILE_PATH

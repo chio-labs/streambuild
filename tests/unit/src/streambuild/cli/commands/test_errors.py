@@ -7,7 +7,7 @@ import pytest
 from clickhouse_connect.driver.exceptions import DatabaseError
 
 from streambuild.cli.commands.main.publish.main import run_publish
-from streambuild.cli.commands.main.shared.helpers.errors import render_expected_clickhouse_error
+from streambuild.cli.commands.main.shared._helpers.errors import render_expected_clickhouse_error
 from streambuild.integrations.clickhouse.client import ClickHouseClient
 from tests.unit.src.streambuild.cli.commands._test_types import (
     CliCommandErrorTestCase,

@@ -1,11 +1,11 @@
 import pytest
 
 from streambuild.compiler.compile.models import DesiredState
+from streambuild.compiler.planner._helpers.rebuild import emit_rebuild_subtrees_from_changes
 from streambuild.compiler.planner.constants import (
     PLANNED_CHANGE_TYPE_CREATE,
     PLANNED_CHANGE_TYPE_REBUILD,
 )
-from streambuild.compiler.planner.helpers.rebuild import emit_rebuild_subtrees_from_changes
 from streambuild.compiler.planner.models import PlannedObjectChange, RebuildSubtree
 from tests.unit.src.streambuild.compiler.planner._test_types import (
     PlannerCollapseSubtreesTestCase,

@@ -2,7 +2,7 @@ import pytest
 
 from streambuild.compiler.actual_state.models import ActualState
 from streambuild.compiler.compile.models import DesiredState
-from streambuild.compiler.planner.helpers.diff import classify_object_changes
+from streambuild.compiler.planner._helpers.diff import classify_object_changes
 from streambuild.compiler.planner.models import PlannedObjectChange
 from tests.unit.src.streambuild.compiler.planner._test_types import (
     PlannerObjectChangeTestCase,

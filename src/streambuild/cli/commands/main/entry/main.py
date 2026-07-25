@@ -9,10 +9,10 @@ from pathlib import Path
 
 from clickhouse_connect.driver.exceptions import DatabaseError, OperationalError
 
-from streambuild.cli.commands.main.entry.helpers.clickhouse import (
+from streambuild.cli.commands.main.entry._helpers.clickhouse import (
     build_clickhouse_client_for_connection,
 )
-from streambuild.cli.commands.main.entry.helpers.entrypoint import (
+from streambuild.cli.commands.main.entry._helpers.entrypoint import (
     argv_for_parse_args,
     resolve_clickhouse_connection,
     resolve_optional_int_arg,
@@ -22,14 +22,14 @@ from streambuild.cli.commands.main.entry.helpers.entrypoint import (
     resolve_project_dir,
     resolved_environment,
 )
-from streambuild.cli.commands.main.entry.helpers.parser import build_cli_parser
+from streambuild.cli.commands.main.entry._helpers.parser import build_cli_parser
 from streambuild.cli.commands.main.entry.models import (
     CliEntrypointHandlers,
     ResolvedClickHouseConnection,
     ResolvedCliProjectConfig,
 )
+from streambuild.cli.commands.main.shared._helpers.errors import render_expected_clickhouse_error
 from streambuild.cli.commands.main.shared.exceptions import CliUserError
-from streambuild.cli.commands.main.shared.helpers.errors import render_expected_clickhouse_error
 from streambuild.compiler.compile.exceptions import TransformSqlContractError
 from streambuild.integrations.clickhouse.client import ClickHouseClient
 

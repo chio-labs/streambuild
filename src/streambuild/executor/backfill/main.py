@@ -1,16 +1,16 @@
 """Backfill execution entrypoint."""
 
 from streambuild.compiler.metadata_state.models import DeploymentWatermarkRecord
-from streambuild.executor.backfill.helpers.bootstrap import execute_backfill_bootstrap
-from streambuild.executor.backfill.helpers.replay import (
+from streambuild.executor.backfill._helpers.bootstrap import execute_backfill_bootstrap
+from streambuild.executor.backfill._helpers.replay import (
     execute_offset_replay,
     execute_scalar_replay,
 )
-from streambuild.executor.backfill.helpers.timing import (
+from streambuild.executor.backfill._helpers.timing import (
     build_current_timestamp,
     wait_for_shadow_stabilization,
 )
-from streambuild.executor.backfill.helpers.watermarks import (
+from streambuild.executor.backfill._helpers.watermarks import (
     persist_deployment_watermarks,
     resolve_cursor_watermarks,
     resolve_offset_watermarks,

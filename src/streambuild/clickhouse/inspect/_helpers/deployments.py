@@ -1,0 +1,61 @@
+"""Helpers for resolving active deployment state from inspected objects."""
+
+from streambuild.clickhouse.inspect.models import (
+    InspectedManagedTableState,
+    RootDeploymentInspection,
+)
+from streambuild.compiler.shared._helpers.deployment_names import (
+    deployment_id_from_physical_name,
+    is_deployment_physical_name,
+)
+from streambuild.compiler.shared.models import ObjectKey
+
+
+def inspect_root_deployment_state(
+    *,
+    inspected_state: InspectedManagedTableState,
+    root_key: ObjectKey,
+) -> RootDeploymentInspection:
+    """Classify one managed root as active, greenfield, or damaged."""
+
+    active_binding_physical_names: tuple[str, ...] = tuple(
+        binding.physical_name
+        for binding in inspected_state.active_bindings
+        if binding.logical_name == root_key.name
+        and binding.database == (root_key.database or binding.database)
+    )
+    physical_candidate_names: tuple[str, ...] = tuple(
+        candidate.physical_name
+        for candidate in inspected_state.physical_candidates
+        if candidate.logical_name == root_key.name
+        and candidate.database == (root_key.database or candidate.database)
+    )
+    if len(active_binding_physical_names) == 1:
+        if not is_deployment_physical_name(active_binding_physical_names[0]):
+            return RootDeploymentInspection(
+                root_key=root_key,
+                state_kind="invalid_active_view",
+                active_deployment_id=None,
+            )
+        return RootDeploymentInspection(
+            root_key=root_key,
+            state_kind="active_view_present",
+            active_deployment_id=_deployment_id_from_physical_name(
+                active_binding_physical_names[0]
+            ),
+        )
+    if not physical_candidate_names:
+        return RootDeploymentInspection(
+            root_key=root_key,
+            state_kind="greenfield",
+            active_deployment_id=None,
+        )
+    return RootDeploymentInspection(
+        root_key=root_key,
+        state_kind="logical_view_missing",
+        active_deployment_id=None,
+    )
+
+
+def _deployment_id_from_physical_name(physical_name: str) -> str:
+    return deployment_id_from_physical_name(physical_name)

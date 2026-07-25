@@ -4,20 +4,20 @@ import sys
 
 from clickhouse_connect.driver.exceptions import DatabaseError, OperationalError
 
-from streambuild.cli.commands.main.publish.helpers.candidates import (
+from streambuild.cli.commands.main.publish._helpers.candidates import (
     candidate_root_names,
     enrich_candidates,
 )
-from streambuild.cli.commands.main.publish.helpers.rendering import render_publish_result
-from streambuild.cli.commands.main.shared.helpers.deployment_candidates import (
+from streambuild.cli.commands.main.publish._helpers.rendering import render_publish_result
+from streambuild.cli.commands.main.shared._helpers.deployment_candidates import (
     render_ambiguous_deployment_message,
     render_no_deployment_candidates_message,
 )
-from streambuild.cli.commands.main.shared.helpers.errors import render_expected_clickhouse_error
+from streambuild.cli.commands.main.shared._helpers.errors import render_expected_clickhouse_error
 from streambuild.clickhouse.inspect.main import inspect_managed_table_state
 from streambuild.clickhouse.inspect.models import InspectedManagedTableState
 from streambuild.executor.audit_backfill.models import AuditDeploymentCandidate
-from streambuild.executor.publish.helpers.resolution import build_publish_deployment_candidates
+from streambuild.executor.publish._helpers.resolution import build_publish_deployment_candidates
 from streambuild.executor.publish.main import execute_publish
 from streambuild.executor.publish.models import PublishRequest, PublishResult
 from streambuild.integrations.clickhouse.client import ClickHouseClient

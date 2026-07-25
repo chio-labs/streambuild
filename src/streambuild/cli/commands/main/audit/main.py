@@ -2,13 +2,13 @@
 
 from pathlib import Path
 
-from streambuild.cli.commands.main.audit.helpers.rendering import render_sql_audit_run_result
-from streambuild.cli.commands.main.audit.helpers.selection import select_loaded_sql_audits
+from streambuild.cli.commands.main.audit._helpers.rendering import render_sql_audit_run_result
+from streambuild.cli.commands.main.audit._helpers.selection import select_loaded_sql_audits
 from streambuild.compiler.auditing.main import validate_sql_audits
-from streambuild.compiler.compile.helpers.naming import transform_table_name
+from streambuild.compiler.compile._helpers.naming import transform_table_name
 from streambuild.compiler.compile.main import compile_pipeline
 from streambuild.compiler.compile.models import CompiledPipeline
-from streambuild.compiler.discovery.helpers.auditing.main import discover_sql_audits
+from streambuild.compiler.discovery._helpers.auditing.main import discover_sql_audits
 from streambuild.compiler.discovery.main import discover_pipelines
 from streambuild.compiler.shared.models import LoadedPipeline, LoadedSqlAudit
 from streambuild.executor.auditing.main import execute_sql_audits

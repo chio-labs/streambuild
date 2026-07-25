@@ -18,7 +18,7 @@ from streambuild.compiler.compile.models import (
     DesiredState,
 )
 from streambuild.compiler.desired_state.main import build_desired_state
-from streambuild.compiler.discovery.helpers.load import load_pipeline_file
+from streambuild.compiler.discovery._helpers.load import load_pipeline_file
 from streambuild.compiler.shared.models import DesiredMaterializedView, LoadedPipeline
 from streambuild.spec.models.pipeline import Pipeline
 from streambuild.spec.models.project import Project
@@ -36,6 +36,13 @@ from streambuild.spec.models.types import (
     ReplayBoundaryMode,
     ReplayLineageMode,
     SourceKind,
+)
+from tests.unit.src.streambuild.compiler.compile._helpers.builders import (
+    build_inline_sql_pipeline,
+    build_invalid_order_by_pipeline,
+    build_invalid_storage_expression_pipeline,
+    build_missing_source_ref_pipeline,
+    build_sql_file_pipeline,
 )
 from tests.unit.src.streambuild.compiler.compile._test_types import (
     CompilePipelineAdditionalRefDependencyTestCase,
@@ -57,14 +64,7 @@ from tests.unit.src.streambuild.compiler.compile._test_types import (
     CompilePipelineSqlModelDefaultOrderByTestCase,
     CompilePipelineUnsupportedReplayBehaviorTestCase,
 )
-from tests.unit.src.streambuild.compiler.compile.helpers.builders import (
-    build_inline_sql_pipeline,
-    build_invalid_order_by_pipeline,
-    build_invalid_storage_expression_pipeline,
-    build_missing_source_ref_pipeline,
-    build_sql_file_pipeline,
-)
-from tests.unit.src.streambuild.compiler.discovery.helpers.load.helpers import (
+from tests.unit.src.streambuild.compiler.discovery._helpers.load.helpers import (
     write_pipeline_file,
 )
 from tests.unit.src.streambuild.compiler.planner.helpers import (

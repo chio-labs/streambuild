@@ -4,12 +4,12 @@ import pytest
 
 from streambuild.compiler.discovery.main import discover_pipelines
 from streambuild.compiler.shared.models import LoadedPipeline
+from tests.unit.src.streambuild.compiler.discovery._helpers.load.helpers import (
+    write_pipeline_file,
+)
 from tests.unit.src.streambuild.compiler.discovery._test_types import (
     DiscoverPipelinesErrorTestCase,
     DiscoverPipelinesTestCase,
-)
-from tests.unit.src.streambuild.compiler.discovery.helpers.load.helpers import (
-    write_pipeline_file,
 )
 
 

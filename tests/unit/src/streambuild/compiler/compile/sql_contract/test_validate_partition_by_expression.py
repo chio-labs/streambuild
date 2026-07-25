@@ -1,10 +1,10 @@
 import pytest
 
+from streambuild.compiler.compile._helpers.sql_contract import (
+    validate_partition_by_expression,
+)
 from streambuild.compiler.compile.exceptions import (
     TransformPartitionByUnknownColumnError,
-)
-from streambuild.compiler.compile.helpers.sql_contract import (
-    validate_partition_by_expression,
 )
 from tests.unit.src.streambuild.compiler.compile.sql_contract._test_types import (
     ValidateSingleStorageExpressionTestCase,

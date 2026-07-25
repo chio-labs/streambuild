@@ -3,7 +3,7 @@ from typing import cast
 
 import pytest
 
-from streambuild.cli.commands.main.shared.helpers.source_validation import (
+from streambuild.cli.commands.main.shared._helpers.source_validation import (
     validate_declared_external_sources,
 )
 from streambuild.integrations.clickhouse.client import ClickHouseClient

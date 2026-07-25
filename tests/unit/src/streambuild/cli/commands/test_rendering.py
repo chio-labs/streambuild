@@ -1,14 +1,14 @@
 import pytest
 
-from streambuild.cli.commands.main.audit_backfill.helpers.rendering import (
+from streambuild.cli.commands.main.audit_backfill._helpers.rendering import (
     render_audit_backfill_result,
 )
-from streambuild.cli.commands.main.backfill.helpers.rendering import render_backfill_result
-from streambuild.cli.commands.main.publish.helpers.rendering import render_publish_result
-from streambuild.cli.commands.main.shared.helpers.deployment_candidates import (
+from streambuild.cli.commands.main.backfill._helpers.rendering import render_backfill_result
+from streambuild.cli.commands.main.publish._helpers.rendering import render_publish_result
+from streambuild.cli.commands.main.shared._helpers.deployment_candidates import (
     render_ambiguous_deployment_message,
 )
-from streambuild.cli.commands.main.shared.helpers.plan_rendering import render_plan_result
+from streambuild.cli.commands.main.shared._helpers.plan_rendering import render_plan_result
 from streambuild.compiler.compile.models import DesiredState
 from streambuild.compiler.desired_state.main import build_desired_state
 from streambuild.compiler.planner.constants import (

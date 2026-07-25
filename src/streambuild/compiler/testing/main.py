@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from streambuild.compiler.compile.models import CompiledPipeline
 from streambuild.compiler.shared.models import LoadedSqlTest
-from streambuild.compiler.testing.helpers.assembly import build_sql_test_case
+from streambuild.compiler.testing._helpers.assembly import build_sql_test_case
 from streambuild.compiler.testing.models import SqlTestCase
 
 

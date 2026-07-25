@@ -3,13 +3,13 @@ from dataclasses import replace
 import pytest
 
 from streambuild.compiler.compile.models import DesiredState
+from streambuild.compiler.planner._helpers.rebuild import emit_rebuild_subtrees_from_changes
 from streambuild.compiler.planner.constants import (
     PLANNED_CHANGE_TYPE_REBUILD,
     REBUILD_EXECUTION_MODE_FULL,
     REBUILD_EXECUTION_MODE_SEEDED_BOUNDED,
     REBUILD_EXECUTION_MODE_UNSEEDED_BOUNDED,
 )
-from streambuild.compiler.planner.helpers.rebuild import emit_rebuild_subtrees_from_changes
 from streambuild.compiler.planner.models import PlannedObjectChange, RebuildSubtree
 from tests.unit.src.streambuild.compiler.planner._test_types import PlannerExecutionModeTestCase
 from tests.unit.src.streambuild.compiler.planner.helpers import (

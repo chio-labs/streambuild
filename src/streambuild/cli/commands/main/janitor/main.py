@@ -1,6 +1,6 @@
 """CLI command for janitor preview."""
 
-from streambuild.cli.commands.main.janitor.helpers.rendering import render_janitor_result
+from streambuild.cli.commands.main.janitor._helpers.rendering import render_janitor_result
 from streambuild.executor.janitor.main import execute_janitor
 from streambuild.executor.janitor.models import (
     JanitorApplyResult,

@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from streambuild.compiler.compile.helpers.landing import (
+from streambuild.compiler.compile._helpers.landing import (
     compile_external_source,
     compile_kafka_landing,
 )
-from streambuild.compiler.compile.helpers.transforms import (
+from streambuild.compiler.compile._helpers.transforms import (
     compile_transform,
     relation_names_for_pipeline,
     relation_sqls_for_pipeline,

@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from streambuild.compiler.discovery.shared.helpers.macros.main import expand_project_sql_macros
+from streambuild.compiler.discovery.shared._helpers.macros.main import expand_project_sql_macros
 from tests.unit.src.streambuild.compiler.discovery.macros._test_types import (
     ExpandProjectSqlMacrosCollisionTestCase,
     ExpandProjectSqlMacrosErrorTestCase,

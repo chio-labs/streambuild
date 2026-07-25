@@ -13,11 +13,11 @@ from streambuild.compiler.compile.models import DesiredState
 from streambuild.compiler.metadata_state.models import ObjectStateRecord
 from streambuild.compiler.shared.constants import TRANSFORM_TABLE_NAME_PREFIX
 from streambuild.compiler.shared.models import DesiredMaterializedView, DesiredTable, ObjectKey
-from streambuild.executor.reconcile.constants import RECONCILE_DEPLOYMENT_ID_PREFIX
-from streambuild.executor.reconcile.helpers.persist import (
+from streambuild.executor.reconcile._helpers.persist import (
     apply_reconcile,
     build_object_state_record,
 )
+from streambuild.executor.reconcile.constants import RECONCILE_DEPLOYMENT_ID_PREFIX
 from streambuild.executor.reconcile.models import (
     ReconcilePreview,
     ReconcileRejectedTarget,

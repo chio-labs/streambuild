@@ -3,14 +3,14 @@ from pathlib import Path
 from streambuild.compiler.auditing.main import validate_sql_audits
 from streambuild.compiler.compile.main import compile_pipeline
 from streambuild.compiler.compile.models import CompiledPipeline
-from streambuild.compiler.discovery.helpers.auditing.main import discover_sql_audits
+from streambuild.compiler.discovery._helpers.auditing.main import discover_sql_audits
 from streambuild.compiler.discovery.main import discover_pipelines
 from streambuild.compiler.shared.models import LoadedSqlAudit
-from tests.unit.src.streambuild.compiler.discovery.helpers.auditing.helpers import (
+from tests.unit.src.streambuild.compiler.discovery._helpers.auditing.helpers import (
     write_schema_yaml_file,
     write_sql_audit_file,
 )
-from tests.unit.src.streambuild.compiler.discovery.helpers.load.helpers import write_pipeline_file
+from tests.unit.src.streambuild.compiler.discovery._helpers.load.helpers import write_pipeline_file
 
 
 def validate_project_sql_audits(

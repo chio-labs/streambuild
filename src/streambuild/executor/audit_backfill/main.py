@@ -2,9 +2,9 @@
 
 from streambuild.clickhouse.inspect.main import inspect_managed_table_state
 from streambuild.clickhouse.inspect.models import InspectedManagedTableState
-from streambuild.executor.audit_backfill.helpers.comparisons import build_root_audit_results
-from streambuild.executor.audit_backfill.helpers.metadata import load_audit_deployment
-from streambuild.executor.audit_backfill.helpers.resolution import resolve_audit_deployment_id
+from streambuild.executor.audit_backfill._helpers.comparisons import build_root_audit_results
+from streambuild.executor.audit_backfill._helpers.metadata import load_audit_deployment
+from streambuild.executor.audit_backfill._helpers.resolution import resolve_audit_deployment_id
 from streambuild.executor.audit_backfill.models import (
     AuditBackfillRequest,
     AuditBackfillResult,

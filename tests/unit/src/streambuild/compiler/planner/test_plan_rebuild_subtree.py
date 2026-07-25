@@ -1,9 +1,9 @@
 import pytest
 
 from streambuild.compiler.compile.models import DesiredState
+from streambuild.compiler.planner._helpers.graph import descendant_keys
+from streambuild.compiler.planner._helpers.rebuild import build_rebuild_subtree
 from streambuild.compiler.planner.constants import REBUILD_STRATEGY_SHADOW
-from streambuild.compiler.planner.helpers.graph import descendant_keys
-from streambuild.compiler.planner.helpers.rebuild import build_rebuild_subtree
 from streambuild.compiler.planner.models import RebuildSubtree
 from streambuild.compiler.shared.models import ObjectKey
 from tests.unit.src.streambuild.compiler.planner._test_types import (
