@@ -320,7 +320,7 @@ def run_streambuild_repair_active_view_cli(
 
 def _run_streambuild_cli(*, command: tuple[str, ...]) -> None:
     result: subprocess.CompletedProcess[str] = subprocess.run(
-        ["uv", "run", "streambuild", *command],
+        ["uv", "run", "stb", *command],
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
@@ -328,14 +328,14 @@ def _run_streambuild_cli(*, command: tuple[str, ...]) -> None:
     )
     if result.returncode != 0:
         raise AssertionError(
-            f"streambuild {' '.join(command)} failed with code {result.returncode}. "
+            f"stb {' '.join(command)} failed with code {result.returncode}. "
             f"stdout={result.stdout!r} stderr={result.stderr!r}"
         )
 
 
 def _run_streambuild_cli_json(*, command: tuple[str, ...]) -> dict[str, object]:
     result: subprocess.CompletedProcess[str] = subprocess.run(
-        ["uv", "run", "streambuild", *command],
+        ["uv", "run", "stb", *command],
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
@@ -343,7 +343,7 @@ def _run_streambuild_cli_json(*, command: tuple[str, ...]) -> dict[str, object]:
     )
     if result.returncode != 0:
         raise AssertionError(
-            f"streambuild {' '.join(command)} failed with code {result.returncode}. "
+            f"stb {' '.join(command)} failed with code {result.returncode}. "
             f"stdout={result.stdout!r} stderr={result.stderr!r}"
         )
     return json.loads(result.stdout)

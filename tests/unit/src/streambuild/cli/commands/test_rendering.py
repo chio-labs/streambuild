@@ -301,7 +301,7 @@ def test_given_non_ready_audit_result_when_rendering_text_then_it_avoids_publish
 
     for expected_fragment in test_case.expected_fragments:
         assert expected_fragment in rendered
-    assert "streambuild publish --deployment-id" not in rendered
+    assert "stb publish --deployment-id" not in rendered
 
 
 @pytest.mark.parametrize(
@@ -380,7 +380,7 @@ def test_given_active_caution_audit_result_when_rendering_text_then_it_shows_rel
 
     for expected_fragment in test_case.expected_fragments:
         assert expected_fragment in rendered
-    assert "streambuild publish --deployment-id" not in rendered
+    assert "stb publish --deployment-id" not in rendered
 
 
 @pytest.mark.parametrize(
@@ -442,7 +442,7 @@ def test_given_plan_with_multiple_live_targets_when_rendering_text_then_it_rende
                 "- transform query changed",
                 "Diffs",
                 "- tbl__orders_enriched",
-                "Run `streambuild plan --verbose` to show full diffs",
+                "Run `stb plan --verbose` to show full diffs",
             ),
         )
     ],
@@ -905,7 +905,7 @@ def test_given_forced_color_when_rendering_plan_then_it_includes_ansi_styles(
                 "Roots",
                 "- tbl__orders_enriched",
                 "strategy: create_from_scratch",
-                "streambuild audit backfill --deployment-id 20260410T000000Z_ab12cd",
+                "stb audit backfill --deployment-id 20260410T000000Z_ab12cd",
             ),
         )
     ],
@@ -1039,7 +1039,7 @@ def test_given_forced_color_when_rendering_audit_then_it_colors_root_names(
                 "staged rows: 42",
                 "active rows: n/a",
                 "Next",
-                "streambuild publish --deployment-id 20260410T000000Z_ab12cd",
+                "stb publish --deployment-id 20260410T000000Z_ab12cd",
             ),
         )
     ],
@@ -1136,7 +1136,7 @@ def test_given_publish_result_when_rendering_text_then_it_returns_operator_summa
                 "status: backfilling",
                 "roots: tbl__orders_enriched",
                 "Recommended",
-                "- streambuild audit backfill --deployment-id 20260410T000000Z_cd34ef",
+                "- stb audit backfill --deployment-id 20260410T000000Z_cd34ef",
             ),
         )
     ],

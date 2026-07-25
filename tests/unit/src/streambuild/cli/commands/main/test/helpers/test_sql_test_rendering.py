@@ -23,7 +23,7 @@ TEST_CASES: list[RenderSqlTestResultsTestCase] = [
             "1    expected  ord_001   25.0",
             "1    actual    ord_001   20.0",
             "Results: 0 passed, 1 failed",
-            "streambuild test tests/order_events/test_line_total.sql",
+            "stb test tests/order_events/test_line_total.sql",
         ),
     ),
     RenderSqlTestResultsTestCase(

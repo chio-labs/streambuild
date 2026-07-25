@@ -54,25 +54,25 @@ Services:
 Plan:
 
 ```bash
-uv run streambuild plan examples/orders_demo/pipelines
+uv run stb plan examples/orders_demo/pipelines
 ```
 
 Backfill:
 
 ```bash
-uv run streambuild backfill examples/orders_demo/pipelines
+uv run stb backfill examples/orders_demo/pipelines
 ```
 
 Audit:
 
 ```bash
-uv run streambuild audit backfill
+uv run stb audit backfill
 ```
 
 Publish:
 
 ```bash
-uv run streambuild publish
+uv run stb publish
 ```
 
 ## Producer Config

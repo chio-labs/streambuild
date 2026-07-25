@@ -188,7 +188,7 @@ def render_plan_result(
             desired_object_by_key=desired_object_by_key,
         ):
             lines.append(f"- {diff_target_name}")
-        lines.append("Run `streambuild plan --verbose` to show full diffs")
+        lines.append("Run `stb plan --verbose` to show full diffs")
         lines.append("")
     if verbose and plan.rebuild_subtrees:
         lines.append(style_section("Staged rollout objects"))

@@ -53,8 +53,8 @@ def render_backfill_result(
         [
             "",
             style_section("Next"),
-            f"- streambuild audit backfill --deployment-id {result.bootstrap.deployment_id}",
-            f"- streambuild publish --deployment-id {result.bootstrap.deployment_id}",
+            f"- stb audit backfill --deployment-id {result.bootstrap.deployment_id}",
+            f"- stb publish --deployment-id {result.bootstrap.deployment_id}",
         ]
     )
     return "\n".join(lines)

@@ -195,7 +195,7 @@ def render_audit_backfill_result(
     lines.append("")
     lines.append(style_section("Next"))
     if result.assessment == AuditAssessment.READY:
-        lines.append(f"- streambuild publish --deployment-id {result.deployment_id}")
+        lines.append(f"- stb publish --deployment-id {result.deployment_id}")
     else:
         affected_root_names: tuple[str, ...] = tuple(
             root_result.root_key.name

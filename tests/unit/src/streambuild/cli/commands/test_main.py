@@ -109,14 +109,14 @@ class PlanCommandRunner:
 TEST_CASES: list[CliMainTestCase] = [
     CliMainTestCase(
         description="prints discovered pipeline names as json",
-        argv=("streambuild", "discover", "--project-dir", "tests/fixtures/basic_project"),
+        argv=("stb", "discover", "--project-dir", "tests/fixtures/basic_project"),
         expected_exit_code=0,
         expected_output_fragments=("orders",),
     ),
     CliMainTestCase(
         description="prints backfill payload as json",
         argv=(
-            "streambuild",
+            "stb",
             "backfill",
             "--project-dir",
             "tests/fixtures/basic_project",
@@ -140,7 +140,7 @@ TEST_CASES: list[CliMainTestCase] = [
     CliMainTestCase(
         description="prints audit backfill payload as json",
         argv=(
-            "streambuild",
+            "stb",
             "audit",
             "backfill",
             "--project-dir",
@@ -166,7 +166,7 @@ TEST_CASES: list[CliMainTestCase] = [
     CliMainTestCase(
         description="prints live audit payload as json",
         argv=(
-            "streambuild",
+            "stb",
             "audit",
             "--project-dir",
             "tests/fixtures/basic_project",
@@ -191,7 +191,7 @@ TEST_CASES: list[CliMainTestCase] = [
     CliMainTestCase(
         description="prints publish payload as json",
         argv=(
-            "streambuild",
+            "stb",
             "publish",
             "--host",
             "localhost",
@@ -214,7 +214,7 @@ TEST_CASES: list[CliMainTestCase] = [
     CliMainTestCase(
         description="prints doctor payload as json",
         argv=(
-            "streambuild",
+            "stb",
             "doctor",
             "--host",
             "localhost",
@@ -236,7 +236,7 @@ TEST_CASES: list[CliMainTestCase] = [
     CliMainTestCase(
         description="prints repair active-view payload as json",
         argv=(
-            "streambuild",
+            "stb",
             "repair",
             "active-view",
             "--host",
@@ -355,7 +355,7 @@ def test_given_cli_args_when_running_main_then_it_prints_expected_json(
         CliAuditBackfillProjectContextTestCase(
             description="resolves project context for audit backfill",
             argv=(
-                "streambuild",
+                "stb",
                 "audit",
                 "backfill",
                 "--project-dir",
@@ -403,7 +403,7 @@ def test_given_audit_backfill_cli_args_when_running_main_then_it_forwards_projec
     [
         CliMainErrorTestCase(
             description="prints a clear transform sql contract error to stderr",
-            argv=("streambuild", "compile", "--project-dir", "BROKEN_PIPELINES_ROOT"),
+            argv=("stb", "compile", "--project-dir", "BROKEN_PIPELINES_ROOT"),
             expected_exit_code=1,
             expected_error_fragments=(
                 "orders_enriched",
@@ -462,7 +462,7 @@ PLAN_OUTPUT_TEST_CASES: list[CliMainIntegrationTestCase] = [
     CliMainIntegrationTestCase(
         description="prints deployment plan summary as text",
         argv=(
-            "streambuild",
+            "stb",
             "plan",
             "--project-dir",
             "tests/fixtures/basic_project",
@@ -488,7 +488,7 @@ PLAN_OUTPUT_TEST_CASES: list[CliMainIntegrationTestCase] = [
     CliMainIntegrationTestCase(
         description="prints deployment plan payload as json when requested",
         argv=(
-            "streambuild",
+            "stb",
             "plan",
             "--project-dir",
             "tests/fixtures/basic_project",
@@ -546,7 +546,7 @@ def test_given_cli_args_when_running_plan_then_it_prints_expected_output(
     [
         CliMainEnvResolutionTestCase(
             description="uses clickhouse env vars for plan defaults",
-            argv=("streambuild", "plan", "--project-dir", "tests/fixtures/basic_project"),
+            argv=("stb", "plan", "--project-dir", "tests/fixtures/basic_project"),
             env_vars={
                 "STREAMBUILD_CLICKHOUSE_HOST": "localhost",
                 "STREAMBUILD_CLICKHOUSE_PORT": "8123",
@@ -644,7 +644,7 @@ SELECT order_id::UInt64 AS order_id FROM __ref("orders")
     monkeypatch.chdir(project_root)
 
     exit_code: int = _main_with_dependencies(
-        ("streambuild", "plan"),
+        ("stb", "plan"),
         handlers=handlers,
         clickhouse_client=clickhouse_client,
     )
@@ -759,11 +759,11 @@ SELECT order_id::UInt64 AS order_id FROM __ref("orders")
 
     argv: tuple[str, ...]
     if test_case.command_name == "audit backfill":
-        argv = ("streambuild", "audit", "backfill")
+        argv = ("stb", "audit", "backfill")
     elif test_case.command_name == "publish":
-        argv = ("streambuild", "publish")
+        argv = ("stb", "publish")
     else:
-        argv = ("streambuild", "doctor")
+        argv = ("stb", "doctor")
 
     exit_code: int = _main_with_dependencies(
         argv,
@@ -837,11 +837,11 @@ SELECT order_id::UInt64 AS order_id FROM __ref("orders")
 
     argv: tuple[str, ...]
     if test_case.command_name == "audit backfill":
-        argv = ("streambuild", "audit", "backfill", "--project-dir", str(project_root))
+        argv = ("stb", "audit", "backfill", "--project-dir", str(project_root))
     elif test_case.command_name == "publish":
-        argv = ("streambuild", "publish", "--project-dir", str(project_root))
+        argv = ("stb", "publish", "--project-dir", str(project_root))
     else:
-        argv = ("streambuild", "doctor", "--project-dir", str(project_root))
+        argv = ("stb", "doctor", "--project-dir", str(project_root))
 
     exit_code: int = _main_with_dependencies(
         argv,
@@ -896,7 +896,7 @@ def test_given_project_clickhouse_defaults_when_resolving_connection_then_it_use
         CliMainJsonFlagTestCase(
             description="passes json flag through to plan command",
             argv=(
-                "streambuild",
+                "stb",
                 "plan",
                 "--project-dir",
                 "tests/fixtures/basic_project",
@@ -941,7 +941,7 @@ def test_given_json_flag_when_running_plan_then_it_passes_json_output_to_command
         CliSelectorForwardingTestCase(
             description="passes selectors and full refresh through to plan command",
             argv=(
-                "streambuild",
+                "stb",
                 "plan",
                 "--project-dir",
                 "tests/fixtures/basic_project",
@@ -982,7 +982,7 @@ def test_given_selectors_when_running_plan_then_it_passes_selection_kwargs_to_co
         CliJanitorApplyFlagTestCase(
             description="passes apply flag through to janitor command",
             argv=(
-                "streambuild",
+                "stb",
                 "janitor",
                 "--host",
                 "localhost",
@@ -1024,7 +1024,7 @@ CLI_EXPECTED_ERROR_TEST_CASES: list[CliMainErrorTestCase] = [
     CliMainErrorTestCase(
         description="prints command value errors without a traceback",
         argv=(
-            "streambuild",
+            "stb",
             "publish",
             "--host",
             "localhost",
@@ -1045,7 +1045,7 @@ CLI_EXPECTED_ERROR_TEST_CASES: list[CliMainErrorTestCase] = [
     CliMainErrorTestCase(
         description="renders clickhouse authentication errors without a traceback",
         argv=(
-            "streambuild",
+            "stb",
             "doctor",
             "--host",
             "localhost",
@@ -1107,7 +1107,7 @@ def test_given_expected_command_errors_when_running_entrypoint_then_it_prints_cl
         CliMainJsonFlagTestCase(
             description="passes json flag through to backfill command",
             argv=(
-                "streambuild",
+                "stb",
                 "backfill",
                 "--project-dir",
                 "tests/fixtures/basic_project",
@@ -1152,7 +1152,7 @@ def test_given_json_flag_when_running_backfill_then_it_passes_json_output_to_com
         CliSelectorForwardingTestCase(
             description="passes selectors and full refresh through to backfill command",
             argv=(
-                "streambuild",
+                "stb",
                 "backfill",
                 "--project-dir",
                 "tests/fixtures/basic_project",
@@ -1192,7 +1192,7 @@ def test_given_selectors_when_running_backfill_then_it_passes_selection_kwargs_t
         CliReconcileForwardingTestCase(
             description="passes selectors, apply, and json flags through to reconcile command",
             argv=(
-                "streambuild",
+                "stb",
                 "reconcile",
                 "--project-dir",
                 "tests/fixtures/basic_project",
@@ -1232,7 +1232,7 @@ COMPILE_ARTIFACT_TEST_CASES: list[CliCompileArtifactsTestCase] = [
     CliCompileArtifactsTestCase(
         description="writes compile artifacts to target layout",
         argv=(
-            "streambuild",
+            "stb",
             "compile",
             "--project-dir",
             ".",
@@ -1258,7 +1258,7 @@ COMPILE_ARTIFACT_TEST_CASES: list[CliCompileArtifactsTestCase] = [
     CliCompileArtifactsTestCase(
         description="writes default target under project root",
         argv=(
-            "streambuild",
+            "stb",
             "compile",
             "--project-dir",
             ".",

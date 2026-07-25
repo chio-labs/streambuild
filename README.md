@@ -16,15 +16,15 @@ The current product is centered on ClickHouse and streaming replay semantics. Ka
 
 Current implemented workflow:
 
-- `streambuild plan`
-- `streambuild backfill`
-- `streambuild audit backfill`
-- `streambuild publish`
-- `streambuild doctor`
-- `streambuild repair active-view`
-- `streambuild reconcile`
-- `streambuild compile`
-- `streambuild janitor`
+- `stb plan`
+- `stb backfill`
+- `stb audit backfill`
+- `stb publish`
+- `stb doctor`
+- `stb repair active-view`
+- `stb reconcile`
+- `stb compile`
+- `stb janitor`
 
 Current rollout model:
 
@@ -49,7 +49,7 @@ uv sync
 Run the CLI with:
 
 ```bash
-uv run streambuild --help
+uv run stb --help
 ```
 
 ## Project Shape
@@ -197,26 +197,26 @@ Current behavior:
 From a project directory:
 
 ```bash
-uv run streambuild plan
-uv run streambuild backfill
-uv run streambuild audit backfill
-uv run streambuild publish
-uv run streambuild doctor
-uv run streambuild repair active-view --table tbl__orders
-uv run streambuild reconcile
-uv run streambuild compile
-uv run streambuild janitor
+uv run stb plan
+uv run stb backfill
+uv run stb audit backfill
+uv run stb publish
+uv run stb doctor
+uv run stb repair active-view --table tbl__orders
+uv run stb reconcile
+uv run stb compile
+uv run stb janitor
 ```
 
 From outside the project directory:
 
 ```bash
-uv run streambuild plan --project-dir examples/orders_demo
+uv run stb plan --project-dir examples/orders_demo
 ```
 
 ## Compile Artifacts
 
-`streambuild compile` writes artifacts under project-level `target/`.
+`stb compile` writes artifacts under project-level `target/`.
 
 Current layout:
 

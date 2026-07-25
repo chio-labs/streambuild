@@ -28,7 +28,7 @@ def render_expected_clickhouse_error(
                 "Reason: the target ClickHouse database does not exist.",
                 "",
                 "If this is a fresh environment:",
-                "- run streambuild backfill first",
+                "- run stb backfill first",
                 "",
                 "If this database should already exist:",
                 "- verify your ClickHouse connection and database name",
@@ -43,7 +43,7 @@ def render_expected_clickhouse_error(
                 "Reason: StreamBuild metadata tables do not exist in this database yet.",
                 "",
                 "If this is a fresh environment:",
-                "- run streambuild backfill first",
+                "- run stb backfill first",
             ]
         )
 

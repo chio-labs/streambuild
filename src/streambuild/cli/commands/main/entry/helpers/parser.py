@@ -4,7 +4,7 @@ from pathlib import Path
 
 def build_cli_parser() -> argparse.ArgumentParser:
     parser: argparse.ArgumentParser = argparse.ArgumentParser(
-        prog="streambuild",
+        prog="stb",
         description="Declarative, versioned streaming data pipelines for ClickHouse.",
     )
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser] = parser.add_subparsers(
@@ -142,7 +142,7 @@ def build_cli_parser() -> argparse.ArgumentParser:
         help="Run SQL audits against live or staged data",
         description=(
             "Run user-defined SQL audits against published logical views, or use "
-            "`streambuild audit backfill` to audit a staged deployment before publishing."
+            "`stb audit backfill` to audit a staged deployment before publishing."
         ),
     )
     _add_project_dir_arg(audit_parser)
