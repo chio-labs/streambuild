@@ -1,0 +1,5 @@
+source:
+  kind: kafka
+  name: payments
+  broker_list: kafka:9092
+  topic: source.payments.created

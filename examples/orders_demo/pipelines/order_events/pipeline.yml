@@ -1,0 +1,7 @@
+replay_lineage_mode: offsets
+
+source:
+  kind: kafka
+  name: order_events
+  broker_list: redpanda:9092
+  topic: source.order_events.live

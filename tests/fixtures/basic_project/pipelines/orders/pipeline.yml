@@ -1,0 +1,5 @@
+source:
+  kind: kafka
+  name: orders
+  broker_list: kafka:9092
+  topic: source.orders.created

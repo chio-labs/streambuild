@@ -1,0 +1,83 @@
+import pytest
+
+from streambuild.compiler.compile.helpers.refs import replace_refs
+from tests.unit.src.streambuild.compiler.compile.helpers.refs._test_types import (
+    ReplaceRefsErrorTestCase,
+    ReplaceRefsTestCase,
+)
+from tests.unit.src.streambuild.compiler.compile.helpers.refs.helpers import build_ref_resolver
+
+TEST_CASES: list[ReplaceRefsTestCase] = [
+    ReplaceRefsTestCase(
+        description="replaces refs in plain and nested query positions",
+        sql=(
+            'SELECT * FROM __source("orders") WHERE customer_id IN '
+            '(SELECT customer_id FROM __ref("customers", ref_type="reference"))'
+        ),
+        resolver=build_ref_resolver(),
+        expected_sql_fragments=("FROM raw__orders", "FROM tbl__customers"),
+        expected_absent_fragments=(
+            '__source("orders")',
+            '__ref("customers", ref_type = "reference")',
+        ),
+    ),
+    ReplaceRefsTestCase(
+        description="does not replace ref text inside string literals",
+        sql='SELECT \'__source("orders")\' AS label FROM __source("orders")',
+        resolver=build_ref_resolver(),
+        expected_sql_fragments=(
+            "SELECT '__source(\"orders\")' AS label",
+            "FROM raw__orders",
+        ),
+        expected_absent_fragments=("'raw__orders' AS label",),
+    ),
+    ReplaceRefsTestCase(
+        description="replaces refs that declare ref_type",
+        sql=(
+            'SELECT * FROM __source("orders") LEFT JOIN '
+            '__ref("customers", ref_type="reference") USING customer_id'
+        ),
+        resolver=build_ref_resolver(),
+        expected_sql_fragments=("FROM raw__orders", "JOIN tbl__customers"),
+        expected_absent_fragments=(
+            '__source("orders")',
+            '__ref("customers", ref_type = "reference")',
+        ),
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    TEST_CASES,
+    ids=[case.description for case in TEST_CASES],
+)
+def test_given_sql_when_replacing_refs_then_it_rewrites_only_real_ref_calls(
+    test_case: ReplaceRefsTestCase,
+) -> None:
+    replaced_sql: str = replace_refs(test_case.sql, test_case.resolver)
+
+    for expected_sql_fragment in test_case.expected_sql_fragments:
+        assert expected_sql_fragment in replaced_sql
+    for expected_absent_fragment in test_case.expected_absent_fragments:
+        assert expected_absent_fragment not in replaced_sql
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ReplaceRefsErrorTestCase(
+            description="raises key error when ref is unresolved",
+            sql='SELECT * FROM __source("missing")',
+            resolver=build_ref_resolver(),
+            expected_error_type=KeyError,
+            expected_error_fragment="Unresolved ref: missing",
+        )
+    ],
+    ids=["raises key error when ref is unresolved"],
+)
+def test_given_unresolved_ref_when_replacing_then_it_raises_expected_error(
+    test_case: ReplaceRefsErrorTestCase,
+) -> None:
+    with pytest.raises(test_case.expected_error_type, match=test_case.expected_error_fragment):
+        replace_refs(test_case.sql, test_case.resolver)
