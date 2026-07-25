@@ -29,6 +29,7 @@ dev = [
   "psycopg[binary]>=3.2.9",
   "pytest>=8.4.2",
   "pytest-cov>=7.0.0",
+  "pytest-xdist>=3.6",
   "ruff>=0.12.0",
   "sqlfluff>=3.4.2",
   "testcontainers>=4.13.0",
