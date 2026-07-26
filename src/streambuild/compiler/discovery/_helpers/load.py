@@ -12,7 +12,9 @@ from streambuild.compiler.discovery.constants import (
     ALLOWED_PROJECT_KEYS,
     CLICKHOUSE_CONNECTION_KEYS,
     PIPELINE_FILE_NAME,
+    PIPELINE_NAME_KEY,
     PROJECT_FILE_NAME,
+    QUALIFIED_NAME_SEPARATOR,
 )
 from streambuild.compiler.discovery.exceptions import PipelineDiscoveryError
 from streambuild.compiler.shared.models import LoadedPipeline
@@ -57,7 +59,7 @@ def load_pipeline_yaml(file_path: Path) -> Pipeline:
     typed_pipeline_values: dict[str, Any] = pipeline_values
 
     pipeline_root: Path = file_path.parent
-    if "name" in typed_pipeline_values:
+    if PIPELINE_NAME_KEY in typed_pipeline_values:
         raise PipelineDiscoveryError(
             f"Pipeline file '{file_path}' must not define 'name'; pipeline name is inferred "
             f"from folder '{pipeline_root.name}'"
@@ -221,7 +223,7 @@ def _load_existing_table_source(
         raise PipelineDiscoveryError(
             f"Pipeline file '{file_path}' must define source.table_name as a non-empty string"
         )
-    if "." in table_name:
+    if QUALIFIED_NAME_SEPARATOR in table_name:
         raise PipelineDiscoveryError(
             f"Pipeline file '{file_path}' must define source.table_name as a bare table name; "
             "cross-database source adoption is not supported yet"

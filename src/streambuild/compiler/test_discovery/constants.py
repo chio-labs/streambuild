@@ -24,3 +24,6 @@ RESERVED_SQL_TEST_CTE_NAMES: frozenset[str] = frozenset(
         "__unexpected__",
     }
 )
+
+TEST_HEADER_NAME_KEY: str = "name"
+CEREMONIAL_SELECT_LITERAL: str = "1"

@@ -19,3 +19,7 @@ MACRO_SIGIL: str = "@"
 BLOCK_COMMENT_END: str = "*/"
 BLOCK_COMMENT_START: str = "/*"
 LINE_COMMENT_START: str = "--"
+
+MACRO_CALL_SIGIL: str = "@"
+ARGUMENT_LIST_OPEN: str = "("
+ARGUMENT_LIST_CLOSE: str = ")"
