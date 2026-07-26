@@ -2,8 +2,13 @@ from collections.abc import Callable
 
 from streambuild.compiler.compile.main.compile_pipeline import compile_pipeline
 from streambuild.compiler.compile.models import CompiledPipeline
-from streambuild.compiler.discovery.models import LoadedPipeline
-from streambuild.spec.models import KafkaLandingStep, KafkaSettings, Pipeline, TransformStep
+from streambuild.compiler.discovery.models import (
+    KafkaLandingStep,
+    KafkaSettings,
+    LoadedPipeline,
+    Pipeline,
+    TransformStep,
+)
 from tests.unit.src.streambuild.compiler.planner.helpers import EXAMPLE_PIPELINE_FILE_PATH
 
 

@@ -21,13 +21,13 @@ from streambuild.compiler.compile.models import (
     ExternalSourceReplayConfig,
     ObjectKey,
 )
+from streambuild.compiler.discovery.types import ReplayLineageMode
 from streambuild.compiler.metadata_state.main.build_metadata_state import build_metadata_state
 from streambuild.compiler.metadata_state.models import DeploymentWatermarkRecord, MetadataState
 from streambuild.compiler.planner.models import DeploymentPlan, RebuildSubtree
 from streambuild.executor.backfill.exceptions import BackfillExecutionError
 from streambuild.executor.backfill.models import OffsetWatermarkQueryRow
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
-from streambuild.spec.types import ReplayLineageMode
 
 
 def resolve_scalar_watermarks(

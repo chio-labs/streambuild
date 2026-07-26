@@ -3,8 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from streambuild.compiler.compile.models import DesiredState, ObjectKey
+from streambuild.compiler.discovery.types import ReplayLineageMode
 from streambuild.compiler.planner.models import DeploymentPlan
-from streambuild.spec.types import ReplayLineageMode
 
 
 @dataclass(frozen=True)

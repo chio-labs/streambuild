@@ -24,10 +24,13 @@ from streambuild.compiler.compile.models import (
 )
 from streambuild.compiler.desired_state.main.build_desired_state import build_desired_state
 from streambuild.compiler.discovery.main.discover_pipelines import discover_pipelines
-from streambuild.compiler.discovery.models import LoadedPipeline
+from streambuild.compiler.discovery.models import (
+    LoadedPipeline,
+    SchemaChangeBackfillPolicy,
+    SchemaChangeBackfillRule,
+)
+from streambuild.compiler.discovery.types import ReplayLineageMode, SchemaChangeBackfillMode
 from streambuild.executor.backfill.models import BackfillBootstrapRequest
-from streambuild.spec.models import SchemaChangeBackfillPolicy, SchemaChangeBackfillRule
-from streambuild.spec.types import ReplayLineageMode, SchemaChangeBackfillMode
 from tests.e2e.src.streambuild.executor.debug.live_shadow import (
     build_live_shadow_debug_message,
 )

@@ -20,7 +20,7 @@ from streambuild.compiler.audit_discovery.models import (
 )
 from streambuild.compiler.compile.main._extract_refs import extract_refs
 from streambuild.compiler.compile.models import ParsedRef
-from streambuild.spec.types import SqlRelationType
+from streambuild.compiler.discovery.types import SqlRelationType
 
 
 def discover_generic_sql_audit_definitions(

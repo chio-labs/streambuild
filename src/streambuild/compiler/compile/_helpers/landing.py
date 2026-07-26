@@ -30,7 +30,7 @@ from streambuild.compiler.compile.models import (
     TableStorage,
 )
 from streambuild.compiler.compile.models import KafkaSettings as ComparableKafkaSettings
-from streambuild.spec.models import (
+from streambuild.compiler.discovery.models import (
     ExternalTableSourceStep,
     KafkaLandingStep,
     KafkaSettings,

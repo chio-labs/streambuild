@@ -15,6 +15,7 @@ from streambuild.compiler.compile.constants import (
     TRANSFORM_TABLE_NAME_PREFIX,
 )
 from streambuild.compiler.compile.models import DesiredMaterializedView, ObjectKey
+from streambuild.compiler.discovery.types import ReplayLineageMode
 from streambuild.compiler.metadata_state.main.build_metadata_state import build_metadata_state
 from streambuild.compiler.metadata_state.models import (
     DeploymentRecord,
@@ -32,7 +33,6 @@ from streambuild.executor.backfill.constants import DEPLOYMENT_STATUS_BACKFILLIN
 from streambuild.executor.backfill.exceptions import BackfillExecutionError
 from streambuild.executor.backfill.models import RootBackfillReport
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
-from streambuild.spec.types import ReplayLineageMode
 
 
 def ensure_database_exists(*, client: ClickHouseClient, database: str) -> None:

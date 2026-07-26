@@ -22,15 +22,15 @@ from streambuild.compiler.compile.models import (
 from streambuild.compiler.compile.types import DesiredObjectType
 from streambuild.compiler.desired_state.main.build_desired_state import build_desired_state
 from streambuild.compiler.discovery._helpers.load import load_pipeline_file
-from streambuild.compiler.discovery.models import LoadedPipeline
-from streambuild.spec.models import (
+from streambuild.compiler.discovery.models import (
     KafkaLandingStep,
     KafkaSettings,
+    LoadedPipeline,
     Pipeline,
     SchemaChangeBackfillPolicy,
     TransformStep,
 )
-from streambuild.spec.types import (
+from streambuild.compiler.discovery.types import (
     ReplayAnchorMode,
     ReplayLineageMode,
 )

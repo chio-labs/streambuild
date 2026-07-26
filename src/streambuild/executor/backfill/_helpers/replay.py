@@ -26,6 +26,7 @@ from streambuild.compiler.compile.models import (
     ExternalSourceReplayConfig,
     ObjectKey,
 )
+from streambuild.compiler.discovery.types import ReplayLineageMode
 from streambuild.compiler.metadata_state.models import DeploymentWatermarkRecord
 from streambuild.compiler.planner.constants import (
     REBUILD_EXECUTION_MODE_SEEDED_BOUNDED,
@@ -40,7 +41,6 @@ from streambuild.executor.backfill.models import (
     TableColumnSystemRow,
 )
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
-from streambuild.spec.types import ReplayLineageMode
 
 
 def execute_scalar_replay(

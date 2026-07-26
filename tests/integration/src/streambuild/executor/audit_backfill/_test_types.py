@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 
+from streambuild.compiler.discovery.types import ReplayLineageMode
 from streambuild.executor.audit_backfill.types import AuditAssessment
-from streambuild.spec.types import ReplayLineageMode
 
 
 @dataclass(frozen=True)

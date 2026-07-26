@@ -1,4 +1,4 @@
-from streambuild.spec.models import KafkaLandingStep, KafkaSettings, Pipeline
+from streambuild.compiler.discovery.models import KafkaLandingStep, KafkaSettings, Pipeline
 
 
 def build_pipeline(

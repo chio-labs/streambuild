@@ -12,6 +12,10 @@ from streambuild.compiler.compile.models import (
     TableSpec,
     TableStorage,
 )
+from streambuild.compiler.discovery.models import (
+    SchemaChangeBackfillPolicy,
+    SchemaChangeBackfillRule,
+)
 from streambuild.compiler.planner.models import (
     DeploymentPlan,
     DeploymentStep,
@@ -21,7 +25,6 @@ from streambuild.compiler.planner.models import (
     PreparedShadowObject,
     RebuildSubtree,
 )
-from streambuild.spec.models import SchemaChangeBackfillPolicy, SchemaChangeBackfillRule
 
 
 def build_plan_preview() -> DeploymentPlan:

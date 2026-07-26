@@ -5,15 +5,15 @@ from pathlib import Path
 from streambuild.compiler.compile.main.compile_pipeline import compile_pipeline
 from streambuild.compiler.compile.models import CompiledPipeline
 from streambuild.compiler.discovery.main.discover_pipelines import discover_pipelines
-from streambuild.compiler.discovery.models import LoadedPipeline
-from streambuild.spec.models import (
+from streambuild.compiler.discovery.models import (
     ExternalTableSourceStep,
+    LoadedPipeline,
     Pipeline,
     ReplayBoundary,
     ReplayBoundaryColumns,
     TransformStep,
 )
-from streambuild.spec.types import ReplayBoundaryMode, ReplayLineageMode, SourceKind
+from streambuild.compiler.discovery.types import ReplayBoundaryMode, ReplayLineageMode, SourceKind
 
 SELECTOR_PIPELINES_ROOT: Path = Path("tests/fixtures/selector_project/pipelines")
 

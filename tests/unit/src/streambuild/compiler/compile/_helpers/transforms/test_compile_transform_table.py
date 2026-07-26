@@ -3,7 +3,7 @@ import pytest
 from streambuild.compiler.compile._helpers.sql_contract import derive_transform_output_columns
 from streambuild.compiler.compile._helpers.transforms import compile_transform_table
 from streambuild.compiler.compile.models import Column, DesiredTable, ObjectKey
-from streambuild.spec.models import TransformStep
+from streambuild.compiler.discovery.models import TransformStep
 from tests.unit.src.streambuild.compiler.compile._helpers.transforms._test_types import (
     CompileTransformTableTestCase,
 )

@@ -10,11 +10,11 @@ from clickhouse_connect.driver.exceptions import DatabaseError, OperationalError
 
 from streambuild.compiler.compile.models import ObjectKey
 from streambuild.compiler.compile.types import DesiredObjectType
+from streambuild.compiler.discovery.types import ReplayLineageMode
 from streambuild.compiler.metadata_state.models import DeploymentRecord, PreparedObjectMapping
 from streambuild.executor.janitor.models import DeploymentMetadataRow, PublishHistoryMetadataRow
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 from streambuild.integrations.clickhouse.constants import UNKNOWN_TABLE_ERROR_CODE
-from streambuild.spec.types import ReplayLineageMode
 
 
 def load_deployments(

@@ -8,7 +8,7 @@ from streambuild.compiler.discovery._helpers.load import (
     find_project_file,
     load_project_yaml,
 )
-from streambuild.spec.models import Project
+from streambuild.compiler.discovery.models import Project
 
 
 def load_project_for_path(path: Path) -> Project | None:

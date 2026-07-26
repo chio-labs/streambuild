@@ -1,6 +1,11 @@
 import pytest
 
 from streambuild.compiler.compile.models import DesiredState
+from streambuild.compiler.discovery.models import (
+    SchemaChangeBackfillPolicy,
+    SchemaChangeBackfillRule,
+)
+from streambuild.compiler.discovery.types import SchemaChangeBackfillMode
 from streambuild.compiler.planner._helpers.rebuild import emit_rebuild_subtrees_from_changes
 from streambuild.compiler.planner.constants import (
     PLANNED_CHANGE_TYPE_REBUILD,
@@ -9,8 +14,6 @@ from streambuild.compiler.planner.constants import (
     REBUILD_EXECUTION_MODE_UNSEEDED_BOUNDED,
 )
 from streambuild.compiler.planner.models import PlannedObjectChange, RebuildSubtree
-from streambuild.spec.models import SchemaChangeBackfillPolicy, SchemaChangeBackfillRule
-from streambuild.spec.types import SchemaChangeBackfillMode
 from tests.unit.src.streambuild.compiler.planner._test_types import PlannerExecutionModeTestCase
 from tests.unit.src.streambuild.compiler.planner.helpers import (
     build_example_desired_state_with_backfill_policy,

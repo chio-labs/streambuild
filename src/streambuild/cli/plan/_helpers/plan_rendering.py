@@ -11,6 +11,7 @@ from streambuild.compiler.compile.constants import (
     TRANSFORM_TABLE_NAME_PREFIX,
 )
 from streambuild.compiler.compile.models import DesiredMaterializedView, DesiredTable, ObjectKey
+from streambuild.compiler.discovery.types import BoundedReplayFallback, SchemaChangeBackfillMode
 from streambuild.compiler.planner.constants import (
     PLANNED_CHANGE_TYPE_CREATE,
     PLANNED_CHANGE_TYPE_NO_OP,
@@ -25,7 +26,6 @@ from streambuild.compiler.planner.models import (
     PlannedSqlDiff,
     RebuildSubtree,
 )
-from streambuild.spec.types import BoundedReplayFallback, SchemaChangeBackfillMode
 
 
 def object_key_payload(key: ObjectKey) -> dict[str, str | None]:

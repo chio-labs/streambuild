@@ -23,8 +23,8 @@ from streambuild.compiler.audit_discovery.models import (
 )
 from streambuild.compiler.compile.main._extract_refs import extract_refs
 from streambuild.compiler.compile.models import ParsedRef
+from streambuild.compiler.discovery.types import SqlRelationType
 from streambuild.compiler.macros.main._expand_macro_calls import expand_project_sql_macros
-from streambuild.spec.types import SqlRelationType
 
 
 def parse_sql_audit_file(file_path: Path) -> tuple[LoadedSqlAudit, ...]:

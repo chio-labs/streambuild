@@ -17,11 +17,11 @@ from streambuild.compiler.discovery.constants import (
     QUALIFIED_NAME_SEPARATOR,
 )
 from streambuild.compiler.discovery.exceptions import PipelineDiscoveryError
-from streambuild.compiler.discovery.models import LoadedPipeline
-from streambuild.spec.models import (
+from streambuild.compiler.discovery.models import (
     ExternalTableSourceStep,
     KafkaLandingStep,
     KafkaSettings,
+    LoadedPipeline,
     Pipeline,
     Project,
     ProjectClickHouseConfig,
@@ -29,7 +29,7 @@ from streambuild.spec.models import (
     ReplayBoundaryColumns,
     TransformStep,
 )
-from streambuild.spec.types import (
+from streambuild.compiler.discovery.types import (
     BoundedReplayFallback,
     ReplayBoundaryMode,
     ReplayLineageMode,
