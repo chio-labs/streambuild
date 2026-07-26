@@ -1,5 +1,6 @@
 """Inspect live and persisted inputs for actual-state assembly."""
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.clickhouse.inspect.main.inspect_managed_table_state import (
     inspect_managed_table_state,
 )
@@ -30,12 +31,11 @@ from streambuild.compiler.compile.models import (
     TableSpec,
 )
 from streambuild.compiler.metadata_state.models import ObjectStateRecord
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def load_actual_state_inspection(
     *,
-    client: ClickHouseClient,
+    client: AdapterConnection,
     desired_state: DesiredState,
     database: str,
 ) -> ActualStateInspection:

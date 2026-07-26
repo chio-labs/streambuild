@@ -3,8 +3,8 @@
 import sys
 from pathlib import Path
 
-from clickhouse_connect.driver.exceptions import DatabaseError, OperationalError
-
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.exceptions import AdapterWarehouseError
 from streambuild.cli.audit_backfill._helpers.audit_execution import (
     compile_audit_pipelines,
     execute_audit_quality_checks,
@@ -13,14 +13,13 @@ from streambuild.cli.audit_backfill._helpers.audit_execution import (
 from streambuild.cli.audit_backfill.main.render_audit_backfill_result import (
     render_audit_backfill_result,
 )
-from streambuild.cli.entry.main._errors import render_expected_clickhouse_error
+from streambuild.cli.entry.main._errors import render_expected_warehouse_error
 from streambuild.compiler.compile.models import CompiledPipeline
 from streambuild.executor.audit_backfill.main.execute_audit_backfill import execute_audit_backfill
 from streambuild.executor.audit_backfill.models import (
     AuditBackfillRequest,
     AuditBackfillResult,
 )
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def run_audit_backfill(
@@ -31,7 +30,7 @@ def run_audit_backfill(
     metadata_database: str | None,
     deployment_id: str | None,
     json_output: bool,
-    client: ClickHouseClient,
+    client: AdapterConnection,
 ) -> int:
     """Audit a staged backfill deployment and print the result payload."""
 
@@ -63,8 +62,8 @@ def run_audit_backfill(
             metadata_database=resolved_metadata_database,
             database=database,
         )
-    except (DatabaseError, OperationalError) as error:
-        rendered_error: str | None = render_expected_clickhouse_error(
+    except AdapterWarehouseError as error:
+        rendered_error: str | None = render_expected_warehouse_error(
             command_name="audit backfill",
             database=database,
             error=error,

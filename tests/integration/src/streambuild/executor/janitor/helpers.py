@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 
 from clickhouse_connect.driver.client import Client
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.clickhouse.render.main.render_create_kafka_table_ddl import (
     render_create_kafka_table_ddl,
 )
@@ -19,7 +20,6 @@ from streambuild.executor.backfill.main.execute_backfill import execute_backfill
 from streambuild.executor.janitor.models import JanitorPreviewCandidate
 from streambuild.executor.publish.main.execute_publish import execute_publish
 from streambuild.executor.publish.models import PublishRequest
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 from tests.integration.src.streambuild.executor.backfill.helpers import (
     build_raw_orders_row,
     build_scalar_replay_compiled_pipeline,
@@ -43,7 +43,7 @@ class JanitorIntegrationState:
 def build_janitor_integration_state(
     *,
     clickhouse_client: Client,
-    managed_client: ClickHouseClient,
+    managed_client: AdapterConnection,
     database: str,
 ) -> JanitorIntegrationState:
     compiled_pipeline: CompiledPipeline = build_scalar_replay_compiled_pipeline("timestamp")
@@ -188,7 +188,7 @@ def build_janitor_integration_state(
 
 def _execute_real_backfill(
     *,
-    managed_client: ClickHouseClient,
+    managed_client: AdapterConnection,
     database: str,
     deployment_id: str,
     created_at: str,
@@ -208,7 +208,7 @@ def _execute_real_backfill(
 
 def _execute_real_publish(
     *,
-    managed_client: ClickHouseClient,
+    managed_client: AdapterConnection,
     database: str,
     deployment_id: str,
 ) -> None:

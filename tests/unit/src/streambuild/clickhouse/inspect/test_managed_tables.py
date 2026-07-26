@@ -3,11 +3,11 @@ from typing import cast
 
 import pytest
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.clickhouse.inspect._helpers.managed_tables import (
     build_inspected_managed_table_state,
 )
 from streambuild.clickhouse.inspect.models import InspectedManagedTableState
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 from tests.unit.src.streambuild.clickhouse.inspect._test_types import (
     BuildInspectedManagedTableStateTestCase,
 )
@@ -50,7 +50,7 @@ def test_given_physical_candidates_when_building_inspected_state_then_it_ignores
             return tuple(decode(row) for row in next(self.response_rows))
 
     inspected_state: InspectedManagedTableState = build_inspected_managed_table_state(
-        client=cast(ClickHouseClient, QueryingClient()),
+        client=cast(AdapterConnection, QueryingClient()),
         database="analytics",
     )
 

@@ -3,6 +3,8 @@ from collections.abc import Callable
 from dataclasses import replace
 from typing import cast
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.models import AdapterConnectionConfig, AdapterQueryResult
 from streambuild.cli.audit.main._run_audit import run_audit
 from streambuild.cli.audit_backfill.main._run_audit_backfill import run_audit_backfill
 from streambuild.cli.backfill.main._run_backfill import run_backfill
@@ -27,6 +29,35 @@ def normalize_json_output(output: str) -> str:
 class FakeCliClickHouseClient:
     def close(self) -> None:
         return None
+
+
+class RecordingAdapterConnection(AdapterConnection):
+    def __init__(self) -> None:
+        self.statements: list[str] = []
+        self.closed: bool = False
+
+    def command(self, statement: str) -> None:
+        self.statements.append(statement)
+
+    def query(self, statement: str) -> AdapterQueryResult:
+        self.statements.append(statement)
+        return AdapterQueryResult(rows=())
+
+    def insert_rows(self, *, table: str, rows: tuple[dict[str, object], ...]) -> None:
+        del table, rows
+
+    def close(self) -> None:
+        self.closed = True
+
+
+class AdapterConnectionProvider:
+    def __init__(self, connection: RecordingAdapterConnection) -> None:
+        self.connection: RecordingAdapterConnection = connection
+        self.config: AdapterConnectionConfig | None = None
+
+    def __call__(self, config: AdapterConnectionConfig) -> RecordingAdapterConnection:
+        self.config = config
+        return self.connection
 
 
 class BackfillCommandRunnerAdapter:

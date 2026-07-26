@@ -5,13 +5,13 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.cli.entry.exceptions import CliUserError
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def convert_utc_timestamp_for_clickhouse(
     *,
-    client: ClickHouseClient,
+    client: AdapterConnection,
     utc_timestamp: str,
 ) -> str:
     timezone_rows: tuple[tuple[object, ...], ...] = client.query("SELECT timezone()").rows

@@ -2,6 +2,7 @@
 
 from collections.abc import Mapping
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.clickhouse.metadata_state.main.build_metadata_state_insert_statements import (
     build_metadata_state_insert_statements,
 )
@@ -27,7 +28,6 @@ from streambuild.compiler.metadata_state.models import DeploymentWatermarkRecord
 from streambuild.compiler.planner.models import DeploymentPlan, RebuildSubtree
 from streambuild.executor.backfill.exceptions import BackfillExecutionError
 from streambuild.executor.backfill.models import OffsetWatermarkQueryRow
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def resolve_scalar_watermarks(
@@ -63,7 +63,7 @@ def resolve_scalar_watermarks(
 
 def resolve_cursor_watermarks(
     *,
-    client: ClickHouseClient,
+    client: AdapterConnection,
     deployment_id: str,
     deployment_plan: DeploymentPlan,
     desired_state: DesiredState,
@@ -111,7 +111,7 @@ def resolve_cursor_watermarks(
 
 def resolve_offset_watermarks(
     *,
-    client: ClickHouseClient,
+    client: AdapterConnection,
     deployment_id: str,
     deployment_plan: DeploymentPlan,
     desired_state: DesiredState,
@@ -206,7 +206,7 @@ def _staged_table_name_if_present(
 
 def persist_deployment_watermarks(
     *,
-    client: ClickHouseClient,
+    client: AdapterConnection,
     metadata_database: str,
     deployment_watermarks: tuple[DeploymentWatermarkRecord, ...],
 ) -> None:
@@ -351,7 +351,7 @@ def _render_offset_cutoff_query(
 
 def _load_cursor_cutoff_value(
     *,
-    client: ClickHouseClient,
+    client: AdapterConnection,
     database: str,
     table_name: str,
     cursor_column_name: str,

@@ -1,27 +1,35 @@
-"""CLI-facing ClickHouse error translation helpers for main commands."""
+"""CLI-facing warehouse error translation helpers for main commands."""
 
-from streambuild.cli.entry.constants import (
-    METADATA_TABLE_NAME_PREFIX,
-    UNKNOWN_DATABASE_ERROR_MARKER,
+from streambuild.adapter.exceptions import (
+    AdapterAuthenticationError,
+    AdapterDatabaseNotFoundError,
+    AdapterRelationNotFoundError,
+    AdapterTimeoutError,
+    AdapterWarehouseError,
 )
-from streambuild.integrations.clickhouse.constants import (
-    AUTHENTICATION_FAILED_ERROR_CODE,
-    AUTHENTICATION_FAILED_MESSAGE,
-    UNKNOWN_TABLE_ERROR_CODE,
-)
+from streambuild.cli.entry.constants import METADATA_TABLE_NAME_PREFIX
 
 
-def render_expected_clickhouse_error(
+def render_expected_warehouse_error(
     *,
     command_name: str,
     database: str,
-    error: Exception,
+    error: AdapterWarehouseError,
 ) -> str | None:
+    """Render an operator-facing message for an expected warehouse failure."""
+
     error_message: str = str(error)
-    if (
-        AUTHENTICATION_FAILED_ERROR_CODE in error_message
-        or AUTHENTICATION_FAILED_MESSAGE in error_message
-    ):
+    if isinstance(error, AdapterTimeoutError):
+        return "\n".join(
+            [
+                f"{command_name.title()} could not complete",
+                f"Database: {database}",
+                "Reason: the ClickHouse operation timed out.",
+                "",
+                "Retry the command after checking warehouse availability.",
+            ]
+        )
+    if isinstance(error, AdapterAuthenticationError):
         return "\n".join(
             [
                 f"{command_name.title()} could not start",
@@ -33,7 +41,7 @@ def render_expected_clickhouse_error(
                 "- any project or environment defaults used for this command",
             ]
         )
-    if UNKNOWN_DATABASE_ERROR_MARKER in error_message:
+    if isinstance(error, AdapterDatabaseNotFoundError):
         return "\n".join(
             [
                 f"{command_name.title()} could not start",
@@ -48,7 +56,10 @@ def render_expected_clickhouse_error(
             ]
         )
 
-    if UNKNOWN_TABLE_ERROR_CODE in error_message and METADATA_TABLE_NAME_PREFIX in error_message:
+    if not isinstance(error, AdapterRelationNotFoundError):
+        return None
+
+    if METADATA_TABLE_NAME_PREFIX in error_message:
         return "\n".join(
             [
                 f"{command_name.title()} could not start",
@@ -60,13 +71,10 @@ def render_expected_clickhouse_error(
             ]
         )
 
-    if UNKNOWN_TABLE_ERROR_CODE in error_message:
-        return "\n".join(
-            [
-                f"{command_name.title()} could not start",
-                f"Database: {database}",
-                f"Reason: {error_message}",
-            ]
-        )
-
-    return None
+    return "\n".join(
+        [
+            f"{command_name.title()} could not start",
+            f"Database: {database}",
+            f"Reason: {error_message}",
+        ]
+    )

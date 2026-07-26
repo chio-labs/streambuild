@@ -1,0 +1,8 @@
+"""ClickHouse adapter constants."""
+
+CLICKHOUSE_ADAPTER_NAME: str = "clickhouse"
+UNKNOWN_TABLE_ERROR_CODE: str = "UNKNOWN_TABLE"
+UNKNOWN_DATABASE_ERROR_CODE: str = "UNKNOWN_DATABASE"
+AUTHENTICATION_FAILED_ERROR_CODE: str = "AUTHENTICATION_FAILED"
+AUTHENTICATION_FAILED_MESSAGE: str = "Authentication failed"
+TIMEOUT_ERROR_MARKERS: tuple[str, ...] = ("timeout", "timed out")

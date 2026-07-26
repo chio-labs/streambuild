@@ -2,6 +2,7 @@
 
 from collections.abc import Mapping
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.clickhouse.inspect.models import (
     ActiveBindingSystemRow,
     InspectedActiveTableBinding,
@@ -16,12 +17,11 @@ from streambuild.compiler.compile.constants import (
 from streambuild.compiler.planner.main.logical_name_from_physical_name import (
     logical_name_from_physical_name,
 )
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def build_inspected_managed_table_state(
     *,
-    client: ClickHouseClient,
+    client: AdapterConnection,
     database: str,
 ) -> InspectedManagedTableState:
     """Build inspected managed-table state from ClickHouse system metadata."""

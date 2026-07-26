@@ -1,0 +1,1 @@
+"""Neutral warehouse adapter contract."""

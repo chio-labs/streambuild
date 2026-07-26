@@ -5,6 +5,7 @@ import pytest
 from _pytest.capture import CaptureResult
 from clickhouse_connect.driver.client import Client
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.cli.audit.main._run_audit import run_audit
 from streambuild.cli.audit_backfill.main._run_audit_backfill import run_audit_backfill
 from streambuild.clickhouse.render.main.render_create_kafka_table_ddl import (
@@ -21,7 +22,6 @@ from streambuild.compiler.planner.main.build_deployment_physical_name import (
 )
 from streambuild.executor.backfill.main.execute_backfill import execute_backfill
 from streambuild.executor.backfill.models import BackfillExecutionResult
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 from tests.integration.src.streambuild.cli._test_types import (
     CliAuditBackfillCommandIntegrationTestCase,
     CliAuditCommandIntegrationTestCase,
@@ -121,7 +121,7 @@ def test_given_audit_project_when_running_live_audit_then_it_reports_expected_re
         data=[list(row) for row in test_case.order_items_rows],
         column_names=["order_id", "line_total"],
     )
-    managed_client: ClickHouseClient = build_managed_clickhouse_client(
+    managed_client: AdapterConnection = build_managed_clickhouse_client(
         clickhouse_connection_settings,
         database=clickhouse_database,
     )
@@ -208,7 +208,7 @@ def test_given_audit_project_when_running_audit_backfill_then_it_includes_qualit
             "_replay_landed_at",
         ],
     )
-    managed_client: ClickHouseClient = build_managed_clickhouse_client(
+    managed_client: AdapterConnection = build_managed_clickhouse_client(
         clickhouse_connection_settings,
         database=clickhouse_database,
     )

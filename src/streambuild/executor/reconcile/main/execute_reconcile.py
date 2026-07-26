@@ -2,17 +2,17 @@
 
 from __future__ import annotations
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.compiler.actual_state.models import ActualState
 from streambuild.compiler.compile.models import DesiredState, ObjectKey
 from streambuild.executor.reconcile._helpers.persist import apply_reconcile
 from streambuild.executor.reconcile._helpers.preview import build_reconcile_preview
 from streambuild.executor.reconcile.models import ReconcilePreview, ReconcileResult
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def execute_reconcile(
     *,
-    client: ClickHouseClient,
+    client: AdapterConnection,
     metadata_database: str,
     desired_state: DesiredState,
     actual_state: ActualState,

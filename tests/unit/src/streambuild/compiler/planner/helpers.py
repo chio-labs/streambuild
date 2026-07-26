@@ -11,6 +11,7 @@ from streambuild.compiler.actual_state.models import (
 )
 from streambuild.compiler.compile.main.compile_pipeline import compile_pipeline
 from streambuild.compiler.compile.models import (
+    CompiledPipeline,
     DesiredKafkaTable,
     DesiredMaterializedView,
     DesiredState,
@@ -25,16 +26,21 @@ from streambuild.compiler.compile.types import DesiredObjectType
 from streambuild.compiler.desired_state.main.build_desired_state import build_desired_state
 from streambuild.compiler.discovery._helpers.load import load_pipeline_file
 from streambuild.compiler.discovery.models import (
+    ExternalTableSourceStep,
     KafkaLandingStep,
     KafkaSettings,
     LoadedPipeline,
     Pipeline,
+    ReplayBoundary,
+    ReplayBoundaryColumns,
     SchemaChangeBackfillPolicy,
     TransformStep,
 )
 from streambuild.compiler.discovery.types import (
     ReplayAnchorMode,
+    ReplayBoundaryMode,
     ReplayLineageMode,
+    SourceKind,
 )
 
 EXAMPLE_PIPELINE_FILE_PATH: Path = Path(
@@ -95,6 +101,101 @@ def build_single_transform_desired_state(
         file_path=EXAMPLE_PIPELINE_FILE_PATH,
     )
     return build_desired_state((compile_pipeline(loaded_pipeline),))
+
+
+def build_preservation_matrix_compiled_pipeline(
+    *, source_ownership: str, replay_lineage_mode: ReplayLineageMode | str
+) -> CompiledPipeline:
+    resolved_replay_lineage_mode: ReplayLineageMode = ReplayLineageMode(replay_lineage_mode)
+    builder: Callable[[ReplayLineageMode], CompiledPipeline] = PRESERVATION_PIPELINE_BUILDERS[
+        source_ownership
+    ]
+    return builder(resolved_replay_lineage_mode)
+
+
+def _build_managed_preservation_compiled_pipeline(
+    replay_lineage_mode: ReplayLineageMode,
+) -> CompiledPipeline:
+    pipeline: Pipeline = Pipeline(
+        name="preservation_pipeline",
+        source=KafkaLandingStep(
+            name="orders",
+            kafka=KafkaSettings(
+                broker_list="kafka:9092",
+                topic="source.orders",
+            ),
+        ),
+        transforms=[_build_preservation_transform(replay_lineage_mode)],
+        replay_lineage_mode=replay_lineage_mode,
+    )
+    return compile_pipeline(LoadedPipeline(pipeline=pipeline, file_path=EXAMPLE_PIPELINE_FILE_PATH))
+
+
+def _build_adopted_preservation_compiled_pipeline(
+    replay_lineage_mode: ReplayLineageMode,
+) -> CompiledPipeline:
+    replay_boundary_mode: ReplayBoundaryMode = ReplayBoundaryMode(replay_lineage_mode)
+    pipeline: Pipeline = Pipeline(
+        name="preservation_pipeline",
+        source=ExternalTableSourceStep(
+            name="orders",
+            kind=PRESERVATION_EXTERNAL_SOURCE_KIND_BY_MODE[replay_lineage_mode],
+            table_name="orders_existing",
+            replay_boundary=ReplayBoundary(
+                mode=replay_boundary_mode,
+                columns=PRESERVATION_BOUNDARY_COLUMNS_BY_MODE[replay_lineage_mode],
+            ),
+        ),
+        transforms=[_build_preservation_transform(replay_lineage_mode)],
+    )
+    return compile_pipeline(LoadedPipeline(pipeline=pipeline, file_path=EXAMPLE_PIPELINE_FILE_PATH))
+
+
+def _build_preservation_transform(replay_lineage_mode: ReplayLineageMode) -> TransformStep:
+    return TransformStep(
+        name="orders_enriched",
+        source="orders",
+        engine="MergeTree()",
+        order_by=["order_id"],
+        query=(
+            "SELECT CAST(order_id AS String) AS order_id, "
+            + PRESERVATION_PROJECTION_BY_MODE[replay_lineage_mode]
+            + ' FROM __ref("orders")'
+        ),
+        replay_anchor=ReplayAnchorMode.NEVER,
+    )
+
+
+PRESERVATION_PIPELINE_BUILDERS: dict[str, Callable[[ReplayLineageMode], CompiledPipeline]] = {
+    "managed": _build_managed_preservation_compiled_pipeline,
+    "adopted": _build_adopted_preservation_compiled_pipeline,
+}
+PRESERVATION_EXTERNAL_SOURCE_KIND_BY_MODE: dict[ReplayLineageMode, SourceKind] = {
+    ReplayLineageMode.OFFSETS: SourceKind.KAFKA,
+    ReplayLineageMode.TIMESTAMP: SourceKind.KAFKA,
+    ReplayLineageMode.CURSOR: SourceKind.STREAM_TABLE,
+}
+PRESERVATION_BOUNDARY_COLUMNS_BY_MODE: dict[ReplayLineageMode, ReplayBoundaryColumns] = {
+    ReplayLineageMode.OFFSETS: ReplayBoundaryColumns(
+        partition="event_partition",
+        offset="event_offset",
+        timestamp="event_timestamp",
+    ),
+    ReplayLineageMode.TIMESTAMP: ReplayBoundaryColumns(timestamp="event_timestamp"),
+    ReplayLineageMode.CURSOR: ReplayBoundaryColumns(
+        timestamp="event_timestamp",
+        cursor="event_cursor",
+    ),
+}
+PRESERVATION_PROJECTION_BY_MODE: dict[ReplayLineageMode, str] = {
+    ReplayLineageMode.OFFSETS: (
+        "CAST(_replay_partition AS Int32) AS _replay_partition, "
+        "CAST(_replay_offset AS Int64) AS _replay_offset"
+    ),
+    ReplayLineageMode.TIMESTAMP: ("CAST(_replay_timestamp AS DateTime64(3)) AS _replay_timestamp"),
+    ReplayLineageMode.LANDED_AT: ("CAST(_replay_landed_at AS DateTime64(3)) AS _replay_landed_at"),
+    ReplayLineageMode.CURSOR: "CAST(_replay_cursor AS UInt64) AS _replay_cursor",
+}
 
 
 def build_mutable_ref_desired_state() -> DesiredState:

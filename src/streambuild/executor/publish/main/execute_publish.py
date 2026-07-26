@@ -1,13 +1,13 @@
 """Publish execution entrypoint."""
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.executor.publish._helpers.metadata import persist_publish_event
 from streambuild.executor.publish._helpers.resolution import resolve_publish_deployment_id
 from streambuild.executor.publish._helpers.views import publish_stable_views
 from streambuild.executor.publish.models import PublishedView, PublishRequest, PublishResult
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
-def execute_publish(*, request: PublishRequest, client: ClickHouseClient) -> PublishResult:
+def execute_publish(*, request: PublishRequest, client: AdapterConnection) -> PublishResult:
     """Publish a staged deployment by creating or replacing stable logical views."""
 
     resolved_deployment_id: str = resolve_publish_deployment_id(

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.cli.test._helpers.rendering import render_sql_test_results
 from streambuild.cli.test._helpers.selection import select_loaded_sql_tests
 from streambuild.compiler.compile.main.compile_pipeline import compile_pipeline
@@ -16,7 +17,6 @@ from streambuild.compiler.testing.main.build_sql_test_cases import build_sql_tes
 from streambuild.compiler.testing.models import SqlTestCase
 from streambuild.executor.testing.main.execute_sql_tests import execute_sql_tests
 from streambuild.executor.testing.models import SqlTestExecutionResult
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def run_test(
@@ -26,7 +26,7 @@ def run_test(
     selectors: tuple[str, ...],
     paths: tuple[Path, ...],
     verbose: bool,
-    client: ClickHouseClient,
+    client: AdapterConnection,
 ) -> int:
     """Discover, assemble, and execute SQL-native tests for a project."""
 

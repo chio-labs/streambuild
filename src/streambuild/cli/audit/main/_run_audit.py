@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.cli.audit._helpers.rendering import render_sql_audit_run_result
 from streambuild.cli.audit._helpers.selection import select_loaded_sql_audits
 from streambuild.compiler.audit_discovery.main.discover_sql_audits import discover_sql_audits
@@ -15,7 +16,6 @@ from streambuild.compiler.discovery.main.discover_pipelines import discover_pipe
 from streambuild.compiler.discovery.models import LoadedPipeline
 from streambuild.executor.auditing.main.execute_sql_audits import execute_sql_audits
 from streambuild.executor.auditing.models import SqlAuditRunResult
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def run_audit(
@@ -25,7 +25,7 @@ def run_audit(
     database: str,
     selectors: tuple[str, ...],
     json_output: bool,
-    client: ClickHouseClient,
+    client: AdapterConnection,
 ) -> int:
     """Run user-defined SQL audits against published logical views."""
 

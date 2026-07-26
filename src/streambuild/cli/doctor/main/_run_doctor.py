@@ -3,18 +3,17 @@
 import json
 import sys
 
-from clickhouse_connect.driver.exceptions import DatabaseError, OperationalError
-
-from streambuild.cli.entry.main._errors import render_expected_clickhouse_error
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.exceptions import AdapterWarehouseError
+from streambuild.cli.entry.main._errors import render_expected_warehouse_error
 from streambuild.executor.doctor.main.execute_doctor import execute_doctor
 from streambuild.executor.doctor.models import DoctorRequest, DoctorResult
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def run_doctor(
     *,
     database: str,
-    client: ClickHouseClient,
+    client: AdapterConnection,
 ) -> int:
     """Run runtime diagnosis and print the result payload."""
 
@@ -23,8 +22,8 @@ def run_doctor(
             request=DoctorRequest(default_database=database),
             client=client,
         )
-    except (DatabaseError, OperationalError) as error:
-        rendered_error: str | None = render_expected_clickhouse_error(
+    except AdapterWarehouseError as error:
+        rendered_error: str | None = render_expected_warehouse_error(
             command_name="doctor",
             database=database,
             error=error,

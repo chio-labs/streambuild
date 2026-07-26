@@ -1,3 +1,4 @@
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.clickhouse.inspect.models import InspectedManagedTableState
 from streambuild.compiler.compile.constants import (
     DESIRED_OBJECT_TYPE_TABLE,
@@ -15,13 +16,12 @@ from streambuild.executor.janitor.models import (
     JanitorPreviewResult,
     JanitorRequest,
 )
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def execute_janitor_for_managed_table_state(
     *,
     request: JanitorRequest,
-    client: ClickHouseClient,
+    client: AdapterConnection,
     managed_table_state: InspectedManagedTableState,
 ) -> JanitorPreviewResult | JanitorApplyResult:
     if request.apply:
@@ -43,7 +43,7 @@ def execute_janitor_for_managed_table_state(
 
 def _preview_janitor(
     *,
-    client: ClickHouseClient,
+    client: AdapterConnection,
     database: str,
     metadata_database: str,
     retention_days: int,
@@ -139,7 +139,7 @@ def _preview_janitor(
 
 def _apply_janitor(
     *,
-    client: ClickHouseClient,
+    client: AdapterConnection,
     database: str,
     metadata_database: str,
     retention_days: int,

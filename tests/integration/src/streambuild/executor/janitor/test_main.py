@@ -6,17 +6,15 @@ from typing import cast
 import pytest
 from clickhouse_connect.driver.client import Client
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.models import AdapterConnectionConfig
+from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from streambuild.executor.janitor.main.execute_janitor import execute_janitor
 from streambuild.executor.janitor.models import (
     JanitorApplyResult,
     JanitorPreviewResult,
     JanitorRequest,
 )
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
-from streambuild.integrations.clickhouse.main.connect_clickhouse import (
-    connect_clickhouse,
-)
-from streambuild.integrations.clickhouse.models import ClickHouseConnectionConfig
 from tests.integration.src.streambuild.conftest import ClickHouseConnectionSettings
 from tests.integration.src.streambuild.executor.janitor._test_types import (
     ExecuteJanitorApplyIntegrationTestCase,
@@ -55,8 +53,8 @@ def test_given_mixed_real_deployments_when_previewing_janitor_then_it_classifies
     clickhouse_client: Client,
     clickhouse_database: str,
 ) -> None:
-    managed_client: ClickHouseClient = connect_clickhouse(
-        ClickHouseConnectionConfig(
+    managed_client: AdapterConnection = ClickHouseAdapter().connect(
+        AdapterConnectionConfig(
             host=clickhouse_connection_settings.host,
             port=clickhouse_connection_settings.port,
             username=clickhouse_connection_settings.username,
@@ -129,8 +127,8 @@ def test_given_real_deletable_deployments_when_applying_janitor_then_it_drops_on
     clickhouse_client: Client,
     clickhouse_database: str,
 ) -> None:
-    managed_client: ClickHouseClient = connect_clickhouse(
-        ClickHouseConnectionConfig(
+    managed_client: AdapterConnection = ClickHouseAdapter().connect(
+        AdapterConnectionConfig(
             host=clickhouse_connection_settings.host,
             port=clickhouse_connection_settings.port,
             username=clickhouse_connection_settings.username,

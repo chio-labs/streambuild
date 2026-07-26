@@ -5,15 +5,15 @@ from shutil import copytree
 from typing import cast
 
 import pytest
-from clickhouse_connect.driver.exceptions import DatabaseError
 
-from streambuild.cli.entry._helpers.entrypoint import resolve_clickhouse_connection
-from streambuild.cli.entry.main.main import _main_with_dependencies, main
-from streambuild.cli.entry.models import (
-    CliEntrypointHandlers,
-    ResolvedClickHouseConnection,
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.exceptions import AdapterAuthenticationError
+from streambuild.adapter.models import AdapterConnectionConfig
+from streambuild.cli.entry._helpers.entrypoint import (
+    resolve_adapter_connection_config,
 )
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
+from streambuild.cli.entry.main.main import _main_with_dependencies, main
+from streambuild.cli.entry.models import CliEntrypointHandlers
 from tests.unit.src.streambuild.cli._test_types import (
     CliAuditBackfillProjectContextTestCase,
     CliCompileArtifactsTestCase,
@@ -311,7 +311,7 @@ def test_given_cli_args_when_running_main_then_it_prints_expected_json(
     test_case: CliMainJsonTestCase,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    clickhouse_client: ClickHouseClient = cast(ClickHouseClient, FakeCliClickHouseClient())
+    clickhouse_client: AdapterConnection = cast(AdapterConnection, FakeCliClickHouseClient())
     override_candidates: dict[str | None, PrintingCommandRunner] = {
         test_case.handler_name: PrintingCommandRunner(test_case.handler_output)
     }
@@ -324,7 +324,7 @@ def test_given_cli_args_when_running_main_then_it_prints_expected_json(
     exit_code: int = _main_with_dependencies(
         argv=test_case.argv,
         handlers=handlers,
-        clickhouse_client=clickhouse_client,
+        adapter_connection=clickhouse_client,
     )
     captured_output: str = capsys.readouterr().out
     normalized_output: str = normalize_json_output(captured_output)
@@ -371,7 +371,7 @@ def test_given_audit_backfill_cli_args_when_running_main_then_it_forwards_projec
     exit_code: int = _main_with_dependencies(
         argv=test_case.argv,
         handlers=handlers_with_overrides(run_audit_backfill=command_runner),
-        clickhouse_client=cast(ClickHouseClient, FakeCliClickHouseClient()),
+        adapter_connection=cast(AdapterConnection, FakeCliClickHouseClient()),
     )
 
     assert exit_code == test_case.expected_exit_code
@@ -506,12 +506,12 @@ def test_given_cli_args_when_running_plan_then_it_prints_expected_output(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     handlers: CliEntrypointHandlers = handlers_with_overrides(run_plan=PlanCommandRunner())
-    clickhouse_client: ClickHouseClient = cast(ClickHouseClient, FakeCliClickHouseClient())
+    clickhouse_client: AdapterConnection = cast(AdapterConnection, FakeCliClickHouseClient())
 
     exit_code: int = _main_with_dependencies(
         argv=test_case.argv,
         handlers=handlers,
-        clickhouse_client=clickhouse_client,
+        adapter_connection=clickhouse_client,
     )
     captured_output: str = capsys.readouterr().out
     normalized_output: str = OUTPUT_NORMALIZERS[test_case.expects_json_output](captured_output)
@@ -551,13 +551,13 @@ def test_given_clickhouse_env_vars_when_running_plan_then_it_uses_env_defaults(
 ) -> None:
     runner: RecordingCommandRunner = RecordingCommandRunner()
     handlers: CliEntrypointHandlers = handlers_with_overrides(run_plan=runner)
-    clickhouse_client: ClickHouseClient = cast(ClickHouseClient, FakeCliClickHouseClient())
+    clickhouse_client: AdapterConnection = cast(AdapterConnection, FakeCliClickHouseClient())
 
     exit_code: int = _main_with_dependencies(
         argv=test_case.argv,
         environment=test_case.env_vars,
         handlers=handlers,
-        clickhouse_client=clickhouse_client,
+        adapter_connection=clickhouse_client,
     )
 
     assert exit_code == test_case.expected_exit_code
@@ -620,13 +620,13 @@ SELECT order_id::UInt64 AS order_id FROM __ref("orders")
 
     runner: RecordingCommandRunner = RecordingCommandRunner()
     handlers: CliEntrypointHandlers = handlers_with_overrides(run_plan=runner)
-    clickhouse_client: ClickHouseClient = cast(ClickHouseClient, FakeCliClickHouseClient())
+    clickhouse_client: AdapterConnection = cast(AdapterConnection, FakeCliClickHouseClient())
     monkeypatch.chdir(project_root)
 
     exit_code: int = _main_with_dependencies(
         argv=("stb", "plan"),
         handlers=handlers,
-        clickhouse_client=clickhouse_client,
+        adapter_connection=clickhouse_client,
     )
 
     assert exit_code == 0
@@ -709,7 +709,7 @@ SELECT order_id::UInt64 AS order_id FROM __ref("orders")
     handlers: CliEntrypointHandlers = handlers_with_overrides(
         **{CLI_COMMAND_HANDLER_NAMES[test_case.command_name]: runner}
     )
-    clickhouse_client: ClickHouseClient = cast(ClickHouseClient, FakeCliClickHouseClient())
+    clickhouse_client: AdapterConnection = cast(AdapterConnection, FakeCliClickHouseClient())
     monkeypatch.chdir(project_root)
 
     argv: tuple[str, ...] = CLI_COMMAND_ARGV[test_case.command_name]
@@ -717,7 +717,7 @@ SELECT order_id::UInt64 AS order_id FROM __ref("orders")
     exit_code: int = _main_with_dependencies(
         argv=argv,
         handlers=handlers,
-        clickhouse_client=clickhouse_client,
+        adapter_connection=clickhouse_client,
     )
 
     assert exit_code == 0
@@ -793,7 +793,7 @@ SELECT order_id::UInt64 AS order_id FROM __ref("orders")
     handlers: CliEntrypointHandlers = handlers_with_overrides(
         **{CLI_COMMAND_HANDLER_NAMES[test_case.command_name]: runner}
     )
-    clickhouse_client: ClickHouseClient = cast(ClickHouseClient, FakeCliClickHouseClient())
+    clickhouse_client: AdapterConnection = cast(AdapterConnection, FakeCliClickHouseClient())
     monkeypatch.chdir(tmp_path)
 
     argv: tuple[str, ...] = (
@@ -805,7 +805,7 @@ SELECT order_id::UInt64 AS order_id FROM __ref("orders")
     exit_code: int = _main_with_dependencies(
         argv=argv,
         handlers=handlers,
-        clickhouse_client=clickhouse_client,
+        adapter_connection=clickhouse_client,
     )
 
     assert exit_code == 0
@@ -826,14 +826,14 @@ SELECT order_id::UInt64 AS order_id FROM __ref("orders")
 def test_given_project_clickhouse_defaults_when_resolving_connection_then_it_uses_them(
     test_case: CliProjectConnectionResolutionTestCase,
 ) -> None:
-    project_connection: ResolvedClickHouseConnection = ResolvedClickHouseConnection(
+    project_connection: AdapterConnectionConfig = AdapterConnectionConfig(
         host=test_case.expected_project_connection[0],
         port=test_case.expected_project_connection[1],
         username=test_case.expected_project_connection[2],
         password=test_case.expected_project_connection[3],
     )
 
-    resolved_connection: ResolvedClickHouseConnection = resolve_clickhouse_connection(
+    resolved_connection: AdapterConnectionConfig = resolve_adapter_connection_config(
         host=None,
         port=None,
         username=None,
@@ -841,7 +841,7 @@ def test_given_project_clickhouse_defaults_when_resolving_connection_then_it_use
         project_connection=project_connection,
     )
 
-    assert resolved_connection == ResolvedClickHouseConnection(
+    assert resolved_connection == AdapterConnectionConfig(
         host=test_case.expected_project_connection[0],
         port=test_case.expected_project_connection[1],
         username=test_case.expected_project_connection[2],
@@ -882,12 +882,12 @@ def test_given_json_flag_when_running_plan_then_it_passes_json_output_to_command
 ) -> None:
     runner: RecordingCommandRunner = RecordingCommandRunner()
     handlers: CliEntrypointHandlers = handlers_with_overrides(run_plan=runner)
-    clickhouse_client: ClickHouseClient = cast(ClickHouseClient, FakeCliClickHouseClient())
+    clickhouse_client: AdapterConnection = cast(AdapterConnection, FakeCliClickHouseClient())
 
     exit_code: int = _main_with_dependencies(
         argv=test_case.argv,
         handlers=handlers,
-        clickhouse_client=clickhouse_client,
+        adapter_connection=clickhouse_client,
     )
 
     assert exit_code == test_case.expected_exit_code
@@ -922,12 +922,12 @@ def test_given_selectors_when_running_plan_then_it_passes_selection_kwargs_to_co
 ) -> None:
     runner: RecordingCommandRunner = RecordingCommandRunner()
     handlers: CliEntrypointHandlers = handlers_with_overrides(run_plan=runner)
-    clickhouse_client: ClickHouseClient = cast(ClickHouseClient, FakeCliClickHouseClient())
+    clickhouse_client: AdapterConnection = cast(AdapterConnection, FakeCliClickHouseClient())
 
     exit_code: int = _main_with_dependencies(
         argv=test_case.argv,
         handlers=handlers,
-        clickhouse_client=clickhouse_client,
+        adapter_connection=clickhouse_client,
     )
 
     assert exit_code == test_case.expected_exit_code
@@ -966,12 +966,12 @@ def test_given_apply_flag_when_running_janitor_then_it_passes_apply_to_command(
 ) -> None:
     runner: RecordingCommandRunner = RecordingCommandRunner()
     handlers: CliEntrypointHandlers = handlers_with_overrides(run_janitor=runner)
-    clickhouse_client: ClickHouseClient = cast(ClickHouseClient, FakeCliClickHouseClient())
+    clickhouse_client: AdapterConnection = cast(AdapterConnection, FakeCliClickHouseClient())
 
     exit_code: int = _main_with_dependencies(
         argv=test_case.argv,
         handlers=handlers,
-        clickhouse_client=clickhouse_client,
+        adapter_connection=clickhouse_client,
     )
 
     assert exit_code == test_case.expected_exit_code
@@ -1037,17 +1037,17 @@ def test_given_expected_command_errors_when_running_entrypoint_then_it_prints_cl
             ValueError("Deployment 'dep_missing' has no staged physical tables to publish")
         ),
         run_doctor=FailingCommandRunner(
-            DatabaseError(
+            AdapterAuthenticationError(
                 "Code: 516. DB::Exception: Authentication failed. (AUTHENTICATION_FAILED)"
             )
         ),
     )
-    clickhouse_client: ClickHouseClient = cast(ClickHouseClient, FakeCliClickHouseClient())
+    clickhouse_client: AdapterConnection = cast(AdapterConnection, FakeCliClickHouseClient())
 
     exit_code: int = _main_with_dependencies(
         argv=test_case.argv,
         handlers=handlers,
-        clickhouse_client=clickhouse_client,
+        adapter_connection=clickhouse_client,
     )
     captured_error: str = capsys.readouterr().err
 
@@ -1090,12 +1090,12 @@ def test_given_json_flag_when_running_backfill_then_it_passes_json_output_to_com
 ) -> None:
     runner: RecordingCommandRunner = RecordingCommandRunner()
     handlers: CliEntrypointHandlers = handlers_with_overrides(run_backfill=runner)
-    clickhouse_client: ClickHouseClient = cast(ClickHouseClient, FakeCliClickHouseClient())
+    clickhouse_client: AdapterConnection = cast(AdapterConnection, FakeCliClickHouseClient())
 
     exit_code: int = _main_with_dependencies(
         argv=test_case.argv,
         handlers=handlers,
-        clickhouse_client=clickhouse_client,
+        adapter_connection=clickhouse_client,
     )
 
     assert exit_code == test_case.expected_exit_code
@@ -1129,12 +1129,12 @@ def test_given_selectors_when_running_backfill_then_it_passes_selection_kwargs_t
 ) -> None:
     runner: RecordingCommandRunner = RecordingCommandRunner()
     handlers: CliEntrypointHandlers = handlers_with_overrides(run_backfill=runner)
-    clickhouse_client: ClickHouseClient = cast(ClickHouseClient, FakeCliClickHouseClient())
+    clickhouse_client: AdapterConnection = cast(AdapterConnection, FakeCliClickHouseClient())
 
     exit_code: int = _main_with_dependencies(
         argv=test_case.argv,
         handlers=handlers,
-        clickhouse_client=clickhouse_client,
+        adapter_connection=clickhouse_client,
     )
 
     assert exit_code == test_case.expected_exit_code
@@ -1170,12 +1170,12 @@ def test_given_reconcile_flags_when_running_reconcile_then_it_passes_kwargs_to_c
 ) -> None:
     runner: RecordingCommandRunner = RecordingCommandRunner()
     handlers: CliEntrypointHandlers = handlers_with_overrides(run_reconcile=runner)
-    clickhouse_client: ClickHouseClient = cast(ClickHouseClient, FakeCliClickHouseClient())
+    clickhouse_client: AdapterConnection = cast(AdapterConnection, FakeCliClickHouseClient())
 
     exit_code: int = _main_with_dependencies(
         argv=test_case.argv,
         handlers=handlers,
-        clickhouse_client=clickhouse_client,
+        adapter_connection=clickhouse_client,
     )
 
     assert exit_code == test_case.expected_exit_code

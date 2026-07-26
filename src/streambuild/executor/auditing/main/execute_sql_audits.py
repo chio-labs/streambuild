@@ -4,20 +4,20 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.models import AdapterQueryResult
 from streambuild.compiler.audit_discovery.models import LoadedSqlAudit
 from streambuild.compiler.compile.main.replace_refs import replace_refs
 from streambuild.executor.auditing.constants import AUDIT_SAMPLE_LIMIT
 from streambuild.executor.auditing.exceptions import AuditExecutionError
 from streambuild.executor.auditing.models import SqlAuditResult, SqlAuditRunResult
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
-from streambuild.integrations.clickhouse.models import ClickHouseQueryResult
 
 
 def execute_sql_audits(
     *,
     loaded_audits: tuple[LoadedSqlAudit, ...],
     resolver: Mapping[str, str],
-    client: ClickHouseClient,
+    client: AdapterConnection,
 ) -> SqlAuditRunResult:
     """Execute discovered SQL audits with resolved model refs."""
 
@@ -37,14 +37,14 @@ def _execute_single_sql_audit(
     *,
     loaded_audit: LoadedSqlAudit,
     resolver: Mapping[str, str],
-    client: ClickHouseClient,
+    client: AdapterConnection,
 ) -> SqlAuditResult:
     resolved_query: str = replace_refs(sql=loaded_audit.query, resolver=dict(resolver))
     failing_row_count: int = _query_failing_row_count(query=resolved_query, client=client)
     sample_column_names: tuple[str, ...] = ()
     sample_rows: tuple[tuple[object, ...], ...] = ()
     if failing_row_count:
-        sample_result: ClickHouseQueryResult = client.query(
+        sample_result: AdapterQueryResult = client.query(
             f"SELECT * FROM ({resolved_query}) AS __streambuild_audit LIMIT {AUDIT_SAMPLE_LIMIT}"
         )
         sample_column_names = sample_result.column_names
@@ -62,8 +62,8 @@ def _execute_single_sql_audit(
     )
 
 
-def _query_failing_row_count(*, query: str, client: ClickHouseClient) -> int:
-    result: ClickHouseQueryResult = client.query(
+def _query_failing_row_count(*, query: str, client: AdapterConnection) -> int:
+    result: AdapterQueryResult = client.query(
         f"SELECT count() AS value FROM ({query}) AS __streambuild_audit"
     )
     if not result.rows:

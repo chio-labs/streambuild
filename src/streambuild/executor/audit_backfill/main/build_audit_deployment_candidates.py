@@ -1,5 +1,6 @@
 """Build the selectable audit deployment candidates for a target."""
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.clickhouse.inspect.main.inspect_managed_table_state import (
     inspect_managed_table_state,
 )
@@ -15,12 +16,11 @@ from streambuild.compiler.planner.main.deployment_id_from_physical_name import (
     deployment_id_from_physical_name,
 )
 from streambuild.executor.audit_backfill.models import AuditDeploymentCandidate
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def build_audit_deployment_candidates(
     *,
-    client: ClickHouseClient,
+    client: AdapterConnection,
     metadata_database: str,
     default_database: str,
 ) -> tuple[AuditDeploymentCandidate, ...]:

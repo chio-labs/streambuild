@@ -4,8 +4,8 @@ import pytest
 from _pytest.capture import CaptureResult
 from clickhouse_connect.driver.client import Client
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.cli.test.main._run_test import run_test
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 from tests.integration.src.streambuild.cli._test_types import (
     CliTestCommandIntegrationTestCase,
 )
@@ -151,7 +151,7 @@ def test_given_sql_native_test_project_when_running_test_command_then_it_reports
             tmp_path / "tests" / "order_events" / extra_test_file_name, extra_test_content
         )
 
-    managed_client: ClickHouseClient = build_managed_clickhouse_client(
+    managed_client: AdapterConnection = build_managed_clickhouse_client(
         clickhouse_connection_settings,
         database=clickhouse_database,
     )

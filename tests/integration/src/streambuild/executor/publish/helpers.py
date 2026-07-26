@@ -2,6 +2,9 @@ from collections.abc import Callable
 
 from clickhouse_connect.driver.client import Client
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.models import AdapterConnectionConfig
+from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from streambuild.clickhouse.render.main.render_create_kafka_table_ddl import (
     render_create_kafka_table_ddl,
 )
@@ -12,9 +15,6 @@ from streambuild.clickhouse.render.main.render_create_table_ddl import render_cr
 from streambuild.clickhouse.render.main.render_create_view_ddl import render_create_view_ddl
 from streambuild.compiler.compile.models import CompiledPipeline
 from streambuild.executor.backfill.main.execute_backfill import execute_backfill
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
-from streambuild.integrations.clickhouse.main.connect_clickhouse import connect_clickhouse
-from streambuild.integrations.clickhouse.models import ClickHouseConnectionConfig
 from tests.integration.src.streambuild.conftest import ClickHouseConnectionSettings
 from tests.integration.src.streambuild.executor.backfill.helpers import (
     build_raw_orders_row,
@@ -56,7 +56,7 @@ def prepare_publish_resolution_scenario(
     first_deployment_id: str,
     second_deployment_id: str,
     create_active_view: bool,
-) -> ClickHouseClient:
+) -> AdapterConnection:
     compiled_pipeline: CompiledPipeline = build_scalar_replay_compiled_pipeline("timestamp")
     clickhouse_client.command(
         render_create_kafka_table_ddl(
@@ -98,8 +98,8 @@ def prepare_publish_resolution_scenario(
             "_replay_landed_at",
         ],
     )
-    managed_client: ClickHouseClient = connect_clickhouse(
-        ClickHouseConnectionConfig(
+    managed_client: AdapterConnection = ClickHouseAdapter().connect(
+        AdapterConnectionConfig(
             host=connection_settings.host,
             port=connection_settings.port,
             username=connection_settings.username,

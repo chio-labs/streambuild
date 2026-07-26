@@ -5,6 +5,8 @@ from typing import cast
 
 import pytest
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.models import AdapterQueryResult
 from streambuild.cli.plan.main._warnings import add_empty_replay_source_warnings
 from streambuild.compiler.compile.models import (
     Column,
@@ -16,8 +18,6 @@ from streambuild.compiler.compile.models import (
 )
 from streambuild.compiler.planner.constants import REBUILD_STRATEGY_SHADOW
 from streambuild.compiler.planner.models import DeploymentPlan, RebuildSubtree
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
-from streambuild.integrations.clickhouse.models import ClickHouseQueryResult
 from tests.unit.src.streambuild.cli.plan.main._test_types import (
     CliReplaySourceWarningTestCase,
 )
@@ -80,8 +80,8 @@ def test_given_empty_replay_source_when_augmenting_plan_then_it_adds_warning(
         prepared_shadow_objects=(),
         warnings=(),
     )
-    client: ClickHouseClient = cast(
-        ClickHouseClient,
+    client: AdapterConnection = cast(
+        AdapterConnection,
         FakeReplaySourceWarningClient(
             replay_source_row_count=test_case.replay_source_row_count,
             active_row_count=test_case.active_row_count,
@@ -102,15 +102,15 @@ def test_given_empty_replay_source_when_augmenting_plan_then_it_adds_warning(
 
 class FakeReplaySourceWarningClient:
     def __init__(self, *, replay_source_row_count: int, active_row_count: int | None) -> None:
-        self._query_results: Iterator[ClickHouseQueryResult] = iter(
+        self._query_results: Iterator[AdapterQueryResult] = iter(
             (
-                ClickHouseQueryResult(rows=((1,),)),
-                ClickHouseQueryResult(rows=((replay_source_row_count,),)),
-                ClickHouseQueryResult(rows=((int(active_row_count is not None),),)),
-                ClickHouseQueryResult(rows=((active_row_count,),)),
+                AdapterQueryResult(rows=((1,),)),
+                AdapterQueryResult(rows=((replay_source_row_count,),)),
+                AdapterQueryResult(rows=((int(active_row_count is not None),),)),
+                AdapterQueryResult(rows=((active_row_count,),)),
             )
         )
 
-    def query(self, statement: str) -> ClickHouseQueryResult:
+    def query(self, statement: str) -> AdapterQueryResult:
         _ = statement
         return next(self._query_results)

@@ -1,0 +1,83 @@
+from collections.abc import Sequence
+from typing import cast
+
+import pytest
+from clickhouse_connect.driver.client import Client
+
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.models import AdapterConnectionConfig
+from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
+from streambuild.compiler.actual_state.models import ActualState
+from streambuild.compiler.compile.models import DesiredState
+from streambuild.executor.reconcile.constants import RECONCILE_DEPLOYMENT_ID_PREFIX
+from streambuild.executor.reconcile.main.execute_reconcile import execute_reconcile
+from streambuild.executor.reconcile.models import ReconcileResult
+from tests.integration.src.streambuild.conftest import ClickHouseConnectionSettings
+from tests.integration.src.streambuild.executor.reconcile._test_types import (
+    ReconcilePersistenceIntegrationTestCase,
+)
+from tests.integration.src.streambuild.executor.reconcile.helpers import (
+    build_matching_reconcile_states,
+)
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ReconcilePersistenceIntegrationTestCase(
+            description="persists compatible table and materialized-view baseline records",
+            expected_rows=(
+                ("materialized_view", "mv__orders", "SELECT order_id FROM raw__orders"),
+                ("table", "tbl__orders", None),
+            ),
+            expected_id_prefix_matches=(True, True),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_compatible_live_objects_when_applying_reconcile_then_persists_baseline(
+    test_case: ReconcilePersistenceIntegrationTestCase,
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    desired_state: DesiredState
+    actual_state: ActualState
+    desired_state, actual_state = build_matching_reconcile_states()
+    managed_client: AdapterConnection = ClickHouseAdapter().connect(
+        AdapterConnectionConfig(
+            host=clickhouse_connection_settings.host,
+            port=clickhouse_connection_settings.port,
+            username=clickhouse_connection_settings.username,
+            password=clickhouse_connection_settings.password,
+            database=clickhouse_database,
+        )
+    )
+    try:
+        result: ReconcileResult = cast(
+            ReconcileResult,
+            execute_reconcile(
+                client=managed_client,
+                metadata_database=clickhouse_database,
+                desired_state=desired_state,
+                actual_state=actual_state,
+                selected_model_keys=frozenset(),
+                apply=True,
+            ),
+        )
+    finally:
+        managed_client.close()
+
+    rows: Sequence[Sequence[object]] = clickhouse_client.query(
+        "SELECT deployment_id, object_type, object_name, normalized_query FROM "
+        f"{clickhouse_database}.streambuild_object_state_snapshots "
+        "ORDER BY object_type, object_name"
+    ).result_rows
+
+    assert tuple(tuple(row[1:]) for row in rows) == test_case.expected_rows
+    assert (
+        tuple(str(row[0]).startswith(RECONCILE_DEPLOYMENT_ID_PREFIX) for row in rows)
+        == test_case.expected_id_prefix_matches
+    )
+    assert result.reconcile_id.startswith(RECONCILE_DEPLOYMENT_ID_PREFIX)

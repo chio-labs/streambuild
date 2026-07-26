@@ -3,6 +3,7 @@
 from datetime import UTC, datetime
 from uuid import uuid4
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.compiler.actual_state.main.load_actual_state import load_actual_state
 from streambuild.compiler.actual_state.models import ActualState
 from streambuild.compiler.discovery.types import ReplayLineageMode
@@ -26,13 +27,12 @@ from streambuild.executor.backfill.models import (
     BackfillBootstrapResult,
     RootBackfillReport,
 )
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def execute_backfill_bootstrap(
     *,
     request: BackfillBootstrapRequest,
-    client: ClickHouseClient,
+    client: AdapterConnection,
 ) -> BackfillBootstrapResult:
     """Create the first real staged deployment boundary in ClickHouse."""
 

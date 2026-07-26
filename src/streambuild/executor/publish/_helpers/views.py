@@ -1,5 +1,6 @@
 """Stable logical view creation helpers for publish."""
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.clickhouse.inspect.main.inspect_managed_table_state import (
     inspect_managed_table_state,
 )
@@ -15,12 +16,11 @@ from streambuild.compiler.planner.main.build_deployment_physical_name import (
 )
 from streambuild.executor.publish.exceptions import PublishExecutionError
 from streambuild.executor.publish.models import PublishedView
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def publish_stable_views(
     *,
-    client: ClickHouseClient,
+    client: AdapterConnection,
     metadata_database: str,
     default_database: str,
     deployment_id: str,

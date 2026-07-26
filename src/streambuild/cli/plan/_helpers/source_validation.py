@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.cli.entry.exceptions import CliUserError
 from streambuild.cli.plan.constants import DATETIME_TYPE_MARKER
 from streambuild.compiler.compile.constants import (
@@ -17,7 +18,6 @@ from streambuild.compiler.compile.models import (
     CompiledExternalSource,
     ExternalSourceReplayConfig,
 )
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def build_external_source_replay_config(
@@ -66,7 +66,7 @@ def validate_injected_alias_collisions(
 
 def load_source_column_types(
     *,
-    client: ClickHouseClient,
+    client: AdapterConnection,
     database: str,
     table_name: str,
 ) -> dict[str, str]:

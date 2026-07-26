@@ -1,5 +1,6 @@
 """Build the per-root reports describing planned backfill work."""
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.clickhouse.inspect.main.inspect_managed_table_state import (
     inspect_managed_table_state,
 )
@@ -17,12 +18,11 @@ from streambuild.executor.backfill._helpers.reporting import (
     _build_root_backfill_report,
 )
 from streambuild.executor.backfill.models import RootBackfillReport
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def build_root_backfill_reports(
     *,
-    client: ClickHouseClient,
+    client: AdapterConnection,
     desired_state: DesiredState,
     database: str,
 ) -> tuple[RootBackfillReport, ...]:

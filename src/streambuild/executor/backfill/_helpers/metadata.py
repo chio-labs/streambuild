@@ -2,6 +2,7 @@
 
 from dataclasses import asdict
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.clickhouse.metadata_state.main.build_metadata_state_insert_statements import (
     build_metadata_state_insert_statements,
 )
@@ -32,10 +33,9 @@ from streambuild.executor.backfill._helpers.reporting import (
 from streambuild.executor.backfill.constants import DEPLOYMENT_STATUS_BACKFILLING
 from streambuild.executor.backfill.exceptions import BackfillExecutionError
 from streambuild.executor.backfill.models import RootBackfillReport
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
-def ensure_database_exists(*, client: ClickHouseClient, database: str) -> None:
+def ensure_database_exists(*, client: AdapterConnection, database: str) -> None:
     """Create a ClickHouse database if it does not already exist."""
 
     client.command(f"CREATE DATABASE IF NOT EXISTS {database}")
@@ -43,7 +43,7 @@ def ensure_database_exists(*, client: ClickHouseClient, database: str) -> None:
 
 def persist_deployment_metadata(
     *,
-    client: ClickHouseClient,
+    client: AdapterConnection,
     metadata_database: str,
     deployment_plan: DeploymentPlan,
     desired_objects: tuple[DesiredObject, ...],

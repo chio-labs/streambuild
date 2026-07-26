@@ -4,18 +4,18 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.compiler.compile.models import DesiredState
 from streambuild.compiler.discovery.types import ReplayLineageMode
 from streambuild.compiler.planner.models import DeploymentPlan, RebuildSubtree
 from streambuild.executor.backfill._helpers.behavior import (
     _resolve_subtree_behavior,
 )
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def resolve_unsupported_bounded_replay_behavior(
     *,
-    client: ClickHouseClient,
+    client: AdapterConnection,
     deployment_plan: DeploymentPlan,
     desired_state: DesiredState,
     default_database: str,

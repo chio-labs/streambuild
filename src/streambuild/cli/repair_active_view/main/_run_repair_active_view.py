@@ -3,12 +3,11 @@
 import json
 import sys
 
-from clickhouse_connect.driver.exceptions import DatabaseError, OperationalError
-
-from streambuild.cli.entry.main._errors import render_expected_clickhouse_error
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.exceptions import AdapterWarehouseError
+from streambuild.cli.entry.main._errors import render_expected_warehouse_error
 from streambuild.executor.repair.main.execute_repair_active_view import execute_repair_active_view
 from streambuild.executor.repair.models import RepairActiveViewRequest, RepairActiveViewResult
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def run_repair_active_view(
@@ -16,7 +15,7 @@ def run_repair_active_view(
     database: str,
     table: str,
     deployment_id: str,
-    client: ClickHouseClient,
+    client: AdapterConnection,
 ) -> int:
     """Repair a stable active view by rebinding it to a chosen deployment table."""
 
@@ -29,8 +28,8 @@ def run_repair_active_view(
             ),
             client=client,
         )
-    except (DatabaseError, OperationalError) as error:
-        rendered_error: str | None = render_expected_clickhouse_error(
+    except AdapterWarehouseError as error:
+        rendered_error: str | None = render_expected_warehouse_error(
             command_name="repair active-view",
             database=database,
             error=error,

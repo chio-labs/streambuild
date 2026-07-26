@@ -3,24 +3,21 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.cli.backfill.models import BackfillCommandOptions
-from streambuild.cli.entry._helpers.clickhouse import build_clickhouse_client_for_connection
-from streambuild.cli.entry._helpers.entrypoint import resolve_clickhouse_connection
 from streambuild.cli.entry.exceptions import CliUserError
 from streambuild.cli.entry.models import (
     CliEntrypointHandlers,
-    ResolvedClickHouseConnection,
     ResolvedCliInvocation,
 )
 from streambuild.cli.entry.types import CliCommand, CliSubcommand
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def dispatch_cli_command(
     *,
     invocation: ResolvedCliInvocation,
     handlers: CliEntrypointHandlers,
-    clickhouse_client: ClickHouseClient | None,
+    adapter_connection: AdapterConnection | None,
 ) -> int:
     args: argparse.Namespace = invocation.args
     if args.command == CliCommand.DISCOVER:
@@ -37,9 +34,8 @@ def dispatch_cli_command(
                 )
             ),
         )
-    client: ClickHouseClient = _resolve_client(
-        invocation=invocation,
-        clickhouse_client=clickhouse_client,
+    client: AdapterConnection = _resolve_connection(
+        adapter_connection=adapter_connection,
     )
     if args.command == CliCommand.TEST:
         return handlers.run_test(
@@ -142,21 +138,13 @@ def dispatch_cli_command(
     )
 
 
-def _resolve_client(
+def _resolve_connection(
     *,
-    invocation: ResolvedCliInvocation,
-    clickhouse_client: ClickHouseClient | None,
-) -> ClickHouseClient:
-    if clickhouse_client is not None:
-        return clickhouse_client
-    connection: ResolvedClickHouseConnection = resolve_clickhouse_connection(
-        host=invocation.clickhouse.host,
-        port=invocation.clickhouse.port,
-        username=invocation.clickhouse.username,
-        password=invocation.clickhouse.password,
-        project_connection=invocation.clickhouse.project_connection,
-    )
-    return build_clickhouse_client_for_connection(connection=connection)
+    adapter_connection: AdapterConnection | None,
+) -> AdapterConnection:
+    if adapter_connection is None:
+        raise CliUserError("Command requires a resolved adapter connection")
+    return adapter_connection
 
 
 def _require_pipelines_root(invocation: ResolvedCliInvocation) -> Path:

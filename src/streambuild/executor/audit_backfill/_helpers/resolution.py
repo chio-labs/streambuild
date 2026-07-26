@@ -1,16 +1,16 @@
 """Deployment resolution helpers for audit backfill."""
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.executor.audit_backfill.exceptions import AuditBackfillExecutionError
 from streambuild.executor.audit_backfill.main.build_audit_deployment_candidates import (
     build_audit_deployment_candidates,
 )
 from streambuild.executor.audit_backfill.models import AuditDeploymentCandidate
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def resolve_audit_deployment_id(
     *,
-    client: ClickHouseClient,
+    client: AdapterConnection,
     metadata_database: str,
     default_database: str,
     deployment_id: str | None,

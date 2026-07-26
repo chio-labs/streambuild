@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.clickhouse.inspect.models import InspectedManagedTableState
 from streambuild.compiler.compile.constants import (
     DESIRED_OBJECT_TYPE_TABLE,
@@ -10,7 +11,6 @@ from streambuild.executor.audit_backfill.models import (
     AuditDeploymentCandidate,
     LoadedAuditDeployment,
 )
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def candidate_root_names(inspected_state: InspectedManagedTableState) -> tuple[str, ...]:
@@ -39,7 +39,7 @@ def candidate_root_names(inspected_state: InspectedManagedTableState) -> tuple[s
 
 def enrich_candidates(
     *,
-    client: ClickHouseClient,
+    client: AdapterConnection,
     metadata_database: str,
     candidates: tuple[AuditDeploymentCandidate, ...],
 ) -> tuple[AuditDeploymentCandidate, ...]:

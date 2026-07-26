@@ -3,6 +3,9 @@ from collections.abc import Sequence
 import pytest
 from clickhouse_connect.driver.client import Client
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.models import AdapterConnectionConfig
+from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from streambuild.clickhouse.render.main.render_create_kafka_table_ddl import (
     render_create_kafka_table_ddl,
 )
@@ -16,11 +19,6 @@ from streambuild.executor.backfill.main.execute_backfill import execute_backfill
 from streambuild.executor.backfill.models import BackfillExecutionResult
 from streambuild.executor.publish.main.execute_publish import execute_publish
 from streambuild.executor.publish.models import PublishRequest, PublishResult
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
-from streambuild.integrations.clickhouse.main.connect_clickhouse import (
-    connect_clickhouse,
-)
-from streambuild.integrations.clickhouse.models import ClickHouseConnectionConfig
 from tests.integration.src.streambuild.conftest import ClickHouseConnectionSettings
 from tests.integration.src.streambuild.executor.backfill.helpers import (
     build_raw_orders_row,
@@ -54,6 +52,19 @@ from tests.integration.src.streambuild.executor.publish.helpers import (
             expected_view_name="tbl__orders_enriched",
             expected_target_table_name="tbl__orders_enriched__20260409T180000Z_ab12cd",
             expected_published_order_ids=("historical-order", "live-order"),
+            expected_full_layout=(
+                ("kafka__orders", "Kafka"),
+                ("mv__orders", "MaterializedView"),
+                ("mv__orders_enriched__20260409T180000Z_ab12cd", "MaterializedView"),
+                ("raw__orders", "MergeTree"),
+                ("streambuild_deployment_runtime_details", "ReplacingMergeTree"),
+                ("streambuild_deployment_watermarks", "ReplacingMergeTree"),
+                ("streambuild_deployments", "ReplacingMergeTree"),
+                ("streambuild_object_state_snapshots", "ReplacingMergeTree"),
+                ("streambuild_publish_history", "ReplacingMergeTree"),
+                ("tbl__orders_enriched", "View"),
+                ("tbl__orders_enriched__20260409T180000Z_ab12cd", "MergeTree"),
+            ),
         )
     ],
     ids=lambda case: case.description,
@@ -115,8 +126,8 @@ def test_given_greenfield_staged_deployment_when_publishing_then_it_creates_stab
             "_replay_landed_at",
         ],
     )
-    managed_client: ClickHouseClient = connect_clickhouse(
-        ClickHouseConnectionConfig(
+    managed_client: AdapterConnection = ClickHouseAdapter().connect(
+        AdapterConnectionConfig(
             host=clickhouse_connection_settings.host,
             port=clickhouse_connection_settings.port,
             username=clickhouse_connection_settings.username,
@@ -156,6 +167,10 @@ def test_given_greenfield_staged_deployment_when_publishing_then_it_creates_stab
         f"{clickhouse_database}.{test_case.expected_view_name} "
         "ORDER BY order_id"
     ).result_rows
+    full_layout_rows: Sequence[Sequence[object]] = clickhouse_client.query(
+        "SELECT name, engine FROM system.tables "
+        f"WHERE database = '{clickhouse_database}' ORDER BY name"
+    ).result_rows
 
     assert backfill_result.bootstrap.deployment_id == deployment_id
     assert publish_result.deployment_id == deployment_id
@@ -165,6 +180,7 @@ def test_given_greenfield_staged_deployment_when_publishing_then_it_creates_stab
     )
     assert system_view_rows == [(test_case.expected_view_name, "View")]
     assert published_rows == [(order_id,) for order_id in test_case.expected_published_order_ids]
+    assert full_layout_rows == list(test_case.expected_full_layout)
 
 
 @pytest.mark.integration
@@ -188,7 +204,7 @@ def test_given_active_view_when_resolving_publish_without_deployment_id_then_it_
     clickhouse_client: Client,
     clickhouse_database: str,
 ) -> None:
-    managed_client: ClickHouseClient = prepare_publish_resolution_scenario(
+    managed_client: AdapterConnection = prepare_publish_resolution_scenario(
         connection_settings=clickhouse_connection_settings,
         clickhouse_client=clickhouse_client,
         clickhouse_database=clickhouse_database,
@@ -233,7 +249,7 @@ def test_given_publish_request_without_deployment_id_when_resolution_is_ambiguou
     clickhouse_client: Client,
     clickhouse_database: str,
 ) -> None:
-    managed_client: ClickHouseClient = prepare_publish_resolution_scenario(
+    managed_client: AdapterConnection = prepare_publish_resolution_scenario(
         connection_settings=clickhouse_connection_settings,
         clickhouse_client=clickhouse_client,
         clickhouse_database=clickhouse_database,
@@ -327,8 +343,8 @@ def test_given_deleted_publish_metadata_when_publishing_then_it_uses_live_clickh
             "_replay_landed_at",
         ],
     )
-    managed_client: ClickHouseClient = connect_clickhouse(
-        ClickHouseConnectionConfig(
+    managed_client: AdapterConnection = ClickHouseAdapter().connect(
+        AdapterConnectionConfig(
             host=clickhouse_connection_settings.host,
             port=clickhouse_connection_settings.port,
             username=clickhouse_connection_settings.username,
@@ -435,8 +451,8 @@ def test_given_deleted_staged_table_when_publishing_then_it_fails_conservatively
             "_replay_landed_at",
         ],
     )
-    managed_client: ClickHouseClient = connect_clickhouse(
-        ClickHouseConnectionConfig(
+    managed_client: AdapterConnection = ClickHouseAdapter().connect(
+        AdapterConnectionConfig(
             host=clickhouse_connection_settings.host,
             port=clickhouse_connection_settings.port,
             username=clickhouse_connection_settings.username,
@@ -576,8 +592,8 @@ def test_given_deleted_active_view_when_publishing_then_it_recreates_stable_view
             source_table_name=require_managed_source(compiled_pipeline).raw_table.name,
         )
     )
-    managed_client: ClickHouseClient = connect_clickhouse(
-        ClickHouseConnectionConfig(
+    managed_client: AdapterConnection = ClickHouseAdapter().connect(
+        AdapterConnectionConfig(
             host=clickhouse_connection_settings.host,
             port=clickhouse_connection_settings.port,
             username=clickhouse_connection_settings.username,

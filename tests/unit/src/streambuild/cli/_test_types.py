@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 
+from streambuild.adapter.exceptions import AdapterWarehouseError
+
 
 @dataclass(frozen=True)
 class CliMainTestCase:
@@ -69,9 +71,55 @@ class CliRenderingTestCase:
 
 
 @dataclass(frozen=True)
+class CliPlanRenderingBaselineTestCase:
+    description: str
+    expected_payload: dict[str, object]
+    expected_compact_text: str
+    expected_verbose_text: str
+
+
+@dataclass(frozen=True)
+class CliHelpBaselineTestCase:
+    description: str
+    argv: tuple[str, ...]
+    expected_sha256: str
+
+
+@dataclass(frozen=True)
+class CliAdapterRejectionTestCase:
+    description: str
+    project_file_contents: str
+    argv: tuple[str, ...]
+    expected_exit_code: int
+    expected_error_fragments: tuple[str, ...]
+    expected_absent_error_fragments: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class CliAdapterPlanExecutionTestCase:
+    description: str
+    project_file_contents: str
+    argv: tuple[str, ...]
+    environment: dict[str, str]
+    expected_exit_code: int
+    expected_connection: tuple[str, int, str, str]
+    expected_query_count: int
+    expected_connection_closed: bool
+    expected_stdout: str
+    expected_redacted_secret: str
+
+
+@dataclass(frozen=True)
+class CliCredentialRedactionTestCase:
+    description: str
+    password: str
+    expected_absent_fragment: str
+
+
+@dataclass(frozen=True)
 class CliExpectedErrorRenderingTestCase:
     description: str
-    error_message: str
+    error: AdapterWarehouseError
     expected_fragments: tuple[str, ...]
 
 

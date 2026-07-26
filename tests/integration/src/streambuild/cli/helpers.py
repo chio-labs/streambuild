@@ -3,12 +3,10 @@ from pathlib import Path
 
 from clickhouse_connect.driver.client import Client
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.models import AdapterConnectionConfig
+from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from streambuild.executor.backfill.main._ensure_metadata_tables import ensure_metadata_tables
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
-from streambuild.integrations.clickhouse.main.connect_clickhouse import (
-    connect_clickhouse,
-)
-from streambuild.integrations.clickhouse.models import ClickHouseConnectionConfig
 from tests.integration.src.streambuild.conftest import ClickHouseConnectionSettings
 
 BACKFILL_PIPELINES_ROOT: Path = Path("tests/fixtures/basic_project/pipelines")
@@ -19,9 +17,9 @@ def build_managed_clickhouse_client(
     clickhouse_connection_settings: ClickHouseConnectionSettings,
     *,
     database: str,
-) -> ClickHouseClient:
-    return connect_clickhouse(
-        ClickHouseConnectionConfig(
+) -> AdapterConnection:
+    return ClickHouseAdapter().connect(
+        AdapterConnectionConfig(
             host=clickhouse_connection_settings.host,
             port=clickhouse_connection_settings.port,
             username=clickhouse_connection_settings.username,
@@ -275,7 +273,7 @@ def build_order_items_ddl(*, database: str, columns: str, order_by: str) -> str:
     )
 
 
-def ensure_backfill_metadata_tables(*, managed_client: ClickHouseClient, database: str) -> None:
+def ensure_backfill_metadata_tables(*, managed_client: AdapterConnection, database: str) -> None:
     """Create the metadata tables so absent rows mean no deployment was recorded."""
 
     ensure_metadata_tables(client=managed_client, metadata_database=database)

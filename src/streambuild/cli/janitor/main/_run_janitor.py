@@ -1,5 +1,6 @@
 """CLI command for janitor preview."""
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.cli.janitor._helpers.rendering import render_janitor_result
 from streambuild.executor.janitor.main.execute_janitor import execute_janitor
 from streambuild.executor.janitor.models import (
@@ -7,7 +8,6 @@ from streambuild.executor.janitor.models import (
     JanitorPreviewResult,
     JanitorRequest,
 )
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def run_janitor(
@@ -16,7 +16,7 @@ def run_janitor(
     retention_days: int,
     apply: bool,
     json_output: bool,
-    client: ClickHouseClient,
+    client: AdapterConnection,
 ) -> int:
     result: JanitorPreviewResult | JanitorApplyResult = execute_janitor(
         request=JanitorRequest(

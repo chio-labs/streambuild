@@ -4,20 +4,18 @@ from __future__ import annotations
 
 import json
 
-from clickhouse_connect.driver.exceptions import DatabaseError, OperationalError
-
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.exceptions import AdapterRelationNotFoundError
 from streambuild.executor.audit_backfill._helpers.metadata import (
     _decode_deployment_metadata_row,
     _object_key_from_payload,
 )
 from streambuild.executor.audit_backfill.models import DeploymentMetadataRow, LoadedAuditDeployment
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
-from streambuild.integrations.clickhouse.constants import UNKNOWN_TABLE_ERROR_CODE
 
 
 def load_audit_deployment(
     *,
-    client: ClickHouseClient,
+    client: AdapterConnection,
     metadata_database: str,
     deployment_id: str,
 ) -> LoadedAuditDeployment:
@@ -31,18 +29,16 @@ def load_audit_deployment(
             f"WHERE deployment_id = '{deployment_id}'",
             decode=_decode_deployment_metadata_row,
         )
-    except (DatabaseError, OperationalError) as error:
-        if UNKNOWN_TABLE_ERROR_CODE in str(error):
-            return LoadedAuditDeployment(
-                deployment_id=deployment_id,
-                created_at="",
-                status="metadata_missing",
-                replay_lineage_mode=None,
-                warning_codes=(),
-                root_keys=(),
-                prepared_object_mappings=(),
-            )
-        raise
+    except AdapterRelationNotFoundError:
+        return LoadedAuditDeployment(
+            deployment_id=deployment_id,
+            created_at="",
+            status="metadata_missing",
+            replay_lineage_mode=None,
+            warning_codes=(),
+            root_keys=(),
+            prepared_object_mappings=(),
+        )
     if row is None:
         return LoadedAuditDeployment(
             deployment_id=deployment_id,

@@ -4,11 +4,16 @@ from collections.abc import Callable, Mapping
 from typing import cast
 
 import pytest
-from clickhouse_connect.driver.exceptions import DatabaseError
 
-from streambuild.cli.entry.main._errors import render_expected_clickhouse_error
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.exceptions import (
+    AdapterAuthenticationError,
+    AdapterDatabaseNotFoundError,
+    AdapterRelationNotFoundError,
+    AdapterTimeoutError,
+)
+from streambuild.cli.entry.main._errors import render_expected_warehouse_error
 from streambuild.cli.publish.main._run_publish import run_publish
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 from tests.unit.src.streambuild.cli._test_types import (
     CliCommandErrorTestCase,
     CliExpectedErrorRenderingTestCase,
@@ -19,8 +24,18 @@ from tests.unit.src.streambuild.cli._test_types import (
     "test_case",
     [
         CliExpectedErrorRenderingTestCase(
+            description="renders timeout failure message",
+            error=AdapterTimeoutError("Request timed out"),
+            expected_fragments=(
+                "Publish could not complete",
+                "Database: flights_demo",
+                "ClickHouse operation timed out",
+                "Retry the command",
+            ),
+        ),
+        CliExpectedErrorRenderingTestCase(
             description="renders authentication failure message",
-            error_message=(
+            error=AdapterAuthenticationError(
                 "Code: 516. DB::Exception: Authentication failed. (AUTHENTICATION_FAILED)"
             ),
             expected_fragments=(
@@ -32,7 +47,7 @@ from tests.unit.src.streambuild.cli._test_types import (
         ),
         CliExpectedErrorRenderingTestCase(
             description="renders missing database message",
-            error_message=(
+            error=AdapterDatabaseNotFoundError(
                 "Code: 81. DB::Exception: Database flights_demo does not exist. (UNKNOWN_DATABASE)"
             ),
             expected_fragments=(
@@ -44,7 +59,7 @@ from tests.unit.src.streambuild.cli._test_types import (
         ),
         CliExpectedErrorRenderingTestCase(
             description="renders missing metadata table message",
-            error_message=(
+            error=AdapterRelationNotFoundError(
                 "Code: 60. DB::Exception: Unknown table expression identifier "
                 "streambuild_deployments. (UNKNOWN_TABLE)"
             ),
@@ -57,7 +72,7 @@ from tests.unit.src.streambuild.cli._test_types import (
         ),
         CliExpectedErrorRenderingTestCase(
             description="renders generic missing table message",
-            error_message=(
+            error=AdapterRelationNotFoundError(
                 "Code: 60. DB::Exception: Table flights_demo.tbl__orders does not exist. "
                 "(UNKNOWN_TABLE)"
             ),
@@ -70,13 +85,13 @@ from tests.unit.src.streambuild.cli._test_types import (
     ],
     ids=lambda case: case.description,
 )
-def test_given_expected_clickhouse_error_when_rendering_then_it_returns_operator_message(
+def test_given_expected_warehouse_error_when_rendering_then_it_returns_operator_message(
     test_case: CliExpectedErrorRenderingTestCase,
 ) -> None:
-    rendered: str | None = render_expected_clickhouse_error(
+    rendered: str | None = render_expected_warehouse_error(
         command_name="publish",
         database="flights_demo",
-        error=DatabaseError(test_case.error_message),
+        error=test_case.error,
     )
 
     assert rendered is not None
@@ -109,7 +124,7 @@ def test_given_missing_database_when_running_publish_then_it_prints_friendly_err
 ) -> None:
     class FailingClient:
         def query(self, _statement: str) -> object:
-            raise DatabaseError(test_case.error_message)
+            raise AdapterDatabaseNotFoundError(test_case.error_message)
 
         def query_many(
             self,
@@ -137,7 +152,7 @@ def test_given_missing_database_when_running_publish_then_it_prints_friendly_err
         metadata_database=None,
         deployment_id=None,
         json_output=False,
-        client=cast(ClickHouseClient, FailingClient()),
+        client=cast(AdapterConnection, FailingClient()),
     )
     captured_error: str = capsys.readouterr().err
 

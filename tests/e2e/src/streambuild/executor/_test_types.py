@@ -1,6 +1,8 @@
 from dataclasses import dataclass
+from pathlib import Path
 from typing import NamedTuple
 
+from streambuild.compiler.discovery.types import ReplayLineageMode
 from streambuild.compiler.planner.types import RebuildExecutionMode
 from streambuild.executor.audit_backfill.types import AuditAssessment
 
@@ -8,11 +10,13 @@ from streambuild.executor.audit_backfill.types import AuditAssessment
 @dataclass(frozen=True)
 class GreenfieldKafkaWorkflowE2ETestCase:
     description: str
+    fixture_project_dir: Path
     deployment_id: str
     created_at: str
     boundary_time: str
     expected_order_ids: tuple[str, ...]
     expected_audit_assessment: AuditAssessment
+    expected_replay_lineage_mode: ReplayLineageMode
 
 
 @dataclass(frozen=True)
@@ -81,3 +85,12 @@ class ExternalSourceCursorWorkflowE2ETestCase:
     description: str
     deployment_id: str
     expected_order_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class ExternalSourceOffsetWorkflowE2ETestCase:
+    description: str
+    deployment_id: str
+    expected_order_ids: tuple[str, ...]
+    expected_watermark_rows: tuple[tuple[str, str], ...]
+    expected_replay_lineage_mode: ReplayLineageMode

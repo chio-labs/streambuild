@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.clickhouse.metadata_state.main.build_metadata_state_insert_statements import (
     build_metadata_state_insert_statements,
 )
@@ -11,12 +12,11 @@ from streambuild.compiler.metadata_state.models import MetadataState, PublishEve
 from streambuild.executor.backfill.main._ensure_metadata_tables import ensure_metadata_tables
 from streambuild.executor.publish.constants import PUBLISH_HISTORY_TABLE_NAME
 from streambuild.executor.publish.models import PublishedView
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def persist_publish_event(
     *,
-    client: ClickHouseClient,
+    client: AdapterConnection,
     metadata_database: str,
     deployment_id: str,
     published_views: tuple[PublishedView, ...],

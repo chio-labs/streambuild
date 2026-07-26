@@ -6,9 +6,9 @@ import pytest
 from _pytest.capture import CaptureResult
 from clickhouse_connect.driver.client import Client
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.cli.backfill.main._run_backfill import run_backfill
 from streambuild.cli.backfill.models import BackfillCommandOptions
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 from tests.integration.src.streambuild.cli._test_types import (
     CliBackfillIntegrationTestCase,
 )
@@ -163,7 +163,7 @@ def test_given_backfill_command_when_running_then_it_behaves_as_expected(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    managed_client: ClickHouseClient = build_managed_clickhouse_client(
+    managed_client: AdapterConnection = build_managed_clickhouse_client(
         clickhouse_connection_settings,
         database=clickhouse_database,
     )

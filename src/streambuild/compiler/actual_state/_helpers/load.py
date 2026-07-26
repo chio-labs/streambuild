@@ -2,7 +2,12 @@
 
 from collections.abc import Mapping
 
-from streambuild.compiler.actual_state.constants import ENGINE_ARGUMENT_OPEN
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.compiler.actual_state.constants import (
+    BLANK_VALUES,
+    EMPTY_TUPLE_EXPRESSION,
+    ENGINE_ARGUMENT_OPEN,
+)
 from streambuild.compiler.actual_state.exceptions import ActualStateError
 from streambuild.compiler.actual_state.models import (
     TableColumnSystemRow,
@@ -10,14 +15,9 @@ from streambuild.compiler.actual_state.models import (
     TableStorageSystemRow,
 )
 from streambuild.compiler.compile.models import Column, TableSpec, TableStorage
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
-from streambuild.integrations.clickhouse.constants import (
-    BLANK_VALUES,
-    EMPTY_TUPLE_EXPRESSION,
-)
 
 
-def _load_existing_table_names(*, client: ClickHouseClient, database: str) -> set[str]:
+def _load_existing_table_names(*, client: AdapterConnection, database: str) -> set[str]:
     rows: tuple[TableNameSystemRow, ...] = client.query_many(
         statement=f"SELECT name FROM system.tables WHERE database = '{database}'",
         decode=_decode_table_name_system_row,
@@ -30,7 +30,7 @@ def _decode_table_name_system_row(row: Mapping[str, object]) -> TableNameSystemR
 
 
 def _load_active_table_specs(
-    *, client: ClickHouseClient, database: str, table_names: tuple[str, ...]
+    *, client: AdapterConnection, database: str, table_names: tuple[str, ...]
 ) -> dict[str, TableSpec]:
     if not table_names:
         return {}

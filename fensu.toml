@@ -1,7 +1,8 @@
 roots = ["src/streambuild"]
 tests = ["tests"]
 tooling = ["scripts"]
-select = ["FF"]
+rule_modules = ["scripts.fensu_policy.rules.adapter_ownership"]
+select = ["FF", "XSTB"]
 
 [cache]
 enabled = true

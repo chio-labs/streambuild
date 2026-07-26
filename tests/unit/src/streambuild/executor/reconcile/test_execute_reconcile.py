@@ -2,12 +2,12 @@ from typing import cast
 
 import pytest
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.compiler.actual_state.models import ActualState
 from streambuild.compiler.compile.models import DesiredState
 from streambuild.executor.reconcile.constants import RECONCILE_DEPLOYMENT_ID_PREFIX
 from streambuild.executor.reconcile.main.execute_reconcile import execute_reconcile
 from streambuild.executor.reconcile.models import ReconcilePreview
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 from tests.unit.src.streambuild.executor.reconcile._test_types import ExecuteReconcileTestCase
 from tests.unit.src.streambuild.executor.reconcile.helpers import (
     build_matching_reconcile_states,
@@ -50,7 +50,7 @@ def test_given_desired_and_actual_states_when_reconciling_then_classifies_target
     result: ReconcilePreview = cast(
         ReconcilePreview,
         execute_reconcile(
-            client=cast(ClickHouseClient, object()),
+            client=cast(AdapterConnection, object()),
             metadata_database="metadata",
             desired_state=desired_state,
             actual_state=actual_state,
