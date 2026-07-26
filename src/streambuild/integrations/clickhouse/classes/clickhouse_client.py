@@ -61,9 +61,10 @@ class ClickHouseClient:
             return
 
         column_names: tuple[str, ...] = tuple(rows[0].keys())
-        row_values: list[list[object]] = [
-            [row[column_name] for column_name in column_names] for row in rows
-        ]
+        row_values: list[list[object]] = []
+        row: dict[str, object]
+        for row in rows:
+            row_values.append([row[column_name] for column_name in column_names])
         self._raw_client.insert(table=table, data=row_values, column_names=list(column_names))
 
     def close(self) -> None:

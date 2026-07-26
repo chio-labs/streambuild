@@ -49,6 +49,7 @@ class PlannerObjectChangeTestCase:
 class PlannerCollapseSubtreesTestCase:
     description: str
     changed_keys: tuple[tuple[str | None, str, str], ...]
+    change_types: tuple[PlannedChangeType, ...]
     expected_root_keys: tuple[tuple[str | None, str, str], ...]
 
 

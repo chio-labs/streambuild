@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from streambuild.compiler.compile.models import ObjectKey
+from streambuild.compiler.actual_state.models import ActualMaterializedView, ActualTable
+from streambuild.compiler.compile.models import (
+    DesiredMaterializedView,
+    DesiredTable,
+    ObjectKey,
+)
 from streambuild.compiler.metadata_state.models import ObjectStateRecord
 
 
@@ -14,6 +19,15 @@ class ReconcileCandidate:
     target_key: ObjectKey
     target_name: str
     object_type: str
+
+
+@dataclass(frozen=True)
+class ReconcileObjectIndex:
+    desired_table_by_key: dict[ObjectKey, DesiredTable]
+    desired_mv_by_target_key: dict[ObjectKey, DesiredMaterializedView]
+    actual_table_by_key: dict[ObjectKey, ActualTable]
+    actual_mv_by_key: dict[ObjectKey, ActualMaterializedView]
+    target_keys: tuple[ObjectKey, ...]
 
 
 @dataclass(frozen=True)

@@ -98,3 +98,5 @@ LINEAGE_MODE_BY_REPLAY_BOUNDARY: Mapping[str, ReplayLineageMode] = {
 }
 
 REF_TYPE_KEYWORD: str = "ref_type"
+VALID_REF_ARGUMENT_COUNTS: frozenset[int] = frozenset({1, 2})
+REF_WITH_TYPE_ARGUMENT_COUNT: int = 2

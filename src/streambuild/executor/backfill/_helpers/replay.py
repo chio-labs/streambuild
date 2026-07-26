@@ -223,14 +223,15 @@ def execute_offset_replay(
         prepared.logical_key: prepared.physical_name
         for prepared in deployment_plan.prepared_shadow_objects
     }
-    watermark_by_root: dict[ObjectKey, tuple[DeploymentWatermarkRecord, ...]] = {
-        subtree.root_key: tuple(
-            watermark
-            for watermark in deployment_watermarks
-            if watermark.root_key == subtree.root_key
-        )
-        for subtree in deployment_plan.rebuild_subtrees
-    }
+    watermark_by_root: dict[ObjectKey, tuple[DeploymentWatermarkRecord, ...]] = {}
+    subtree: RebuildSubtree
+    for subtree in deployment_plan.rebuild_subtrees:
+        collected_watermarks: list[DeploymentWatermarkRecord] = []
+        watermark: DeploymentWatermarkRecord
+        for watermark in deployment_watermarks:
+            if watermark.root_key == subtree.root_key:
+                collected_watermarks.append(watermark)
+        watermark_by_root[subtree.root_key] = tuple(collected_watermarks)
     root_table_by_key: dict[ObjectKey, DesiredTable] = {
         object_.key: object_
         for object_ in desired_state.objects
@@ -245,7 +246,6 @@ def execute_offset_replay(
         desired_state=desired_state,
         deployment_plan=deployment_plan,
     )
-    subtree: RebuildSubtree
     for subtree in deployment_plan.rebuild_subtrees:
         root_table: DesiredTable = root_table_by_key[subtree.root_key]
         root_materialized_view: DesiredMaterializedView = root_materialized_view_by_target_name[

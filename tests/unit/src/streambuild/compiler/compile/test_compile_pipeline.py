@@ -1,5 +1,6 @@
 from dataclasses import replace
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -38,13 +39,6 @@ from streambuild.compiler.discovery.types import (
     ReplayLineageMode,
     SourceKind,
 )
-from tests.unit.src.streambuild.compiler.compile._helpers.builders import (
-    build_inline_sql_pipeline,
-    build_invalid_order_by_pipeline,
-    build_invalid_storage_expression_pipeline,
-    build_missing_source_ref_pipeline,
-    build_sql_file_pipeline,
-)
 from tests.unit.src.streambuild.compiler.compile._test_types import (
     CompilePipelineAdditionalRefDependencyTestCase,
     CompilePipelineAdoptedSourceTestCase,
@@ -64,6 +58,13 @@ from tests.unit.src.streambuild.compiler.compile._test_types import (
     CompilePipelineSqlFileTestCase,
     CompilePipelineSqlModelDefaultOrderByTestCase,
     CompilePipelineUnsupportedReplayBehaviorTestCase,
+)
+from tests.unit.src.streambuild.compiler.compile.helpers import (
+    build_inline_sql_pipeline,
+    build_invalid_order_by_pipeline,
+    build_invalid_storage_expression_pipeline,
+    build_missing_source_ref_pipeline,
+    build_sql_file_pipeline,
 )
 from tests.unit.src.streambuild.compiler.discovery._helpers.load.helpers import (
     write_pipeline_file,
@@ -348,9 +349,11 @@ def test_given_loaded_pipeline_when_compiling_then_it_resolves_effective_replay_
         base_loaded_pipeline.pipeline,
         replay_lineage_mode=test_case.pipeline_replay_lineage_mode,
     )
-    project: Project | None = None
-    if test_case.project_replay_lineage_mode is not None:
-        project = Project(replay_lineage_mode=test_case.project_replay_lineage_mode)
+    project_by_replay_lineage_mode: dict[ReplayLineageMode | str | None, Project | None] = {
+        None: None,
+        ReplayLineageMode.TIMESTAMP: Project(replay_lineage_mode=ReplayLineageMode.TIMESTAMP),
+    }
+    project: Project | None = project_by_replay_lineage_mode[test_case.project_replay_lineage_mode]
     loaded_pipeline: LoadedPipeline = LoadedPipeline(
         pipeline=pipeline,
         file_path=base_loaded_pipeline.file_path,
@@ -423,9 +426,20 @@ def test_given_loaded_pipeline_when_compiling_then_it_resolves_effective_unsuppo
         ],
         bounded_replay_fallback=test_case.pipeline_unsupported_replay_behavior,
     )
-    project: Project | None = None
-    if test_case.project_unsupported_replay_behavior is not None:
-        project = Project(bounded_replay_fallback=test_case.project_unsupported_replay_behavior)
+    project_by_unsupported_replay_behavior: dict[
+        BoundedReplayFallback | str | None, Project | None
+    ] = {
+        None: None,
+        BoundedReplayFallback.BOUNDED_WITHOUT_HISTORY: Project(
+            bounded_replay_fallback=BoundedReplayFallback.BOUNDED_WITHOUT_HISTORY
+        ),
+        BoundedReplayFallback.FULL_REFRESH: Project(
+            bounded_replay_fallback=BoundedReplayFallback.FULL_REFRESH
+        ),
+    }
+    project: Project | None = project_by_unsupported_replay_behavior[
+        test_case.project_unsupported_replay_behavior
+    ]
 
     compiled_pipeline: CompiledPipeline = compile_pipeline(
         LoadedPipeline(pipeline=pipeline, file_path=Path("pipeline.yml"), project=project)
@@ -904,10 +918,12 @@ def test_given_additional_ref_when_compiling_then_materialized_view_depends_on_t
             ),
         ),
     )
-    orders_enriched_mv: DesiredMaterializedView = next(
-        object_
-        for object_ in desired_state.objects
-        if isinstance(object_, DesiredMaterializedView) and object_.name == "mv__orders_enriched"
+    desired_objects_by_name: dict[str, object] = {
+        object_.name: object_ for object_ in desired_state.objects
+    }
+    orders_enriched_mv: DesiredMaterializedView = cast(
+        DesiredMaterializedView,
+        desired_objects_by_name["mv__orders_enriched"],
     )
 
     assert tuple(dependency.name for dependency in orders_enriched_mv.deps) == (
@@ -1035,7 +1051,3 @@ def test_given_invalid_transform_ttl_when_compiling_then_it_raises_a_clear_contr
     error_message: str = str(error_info.value)
     for expected_fragment in test_case.expected_message_fragments:
         assert expected_fragment in error_message
-
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-vv"])

@@ -1,5 +1,7 @@
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
+from typing import cast
 
 from streambuild.compiler.actual_state.models import (
     ActualKafkaTable,
@@ -183,6 +185,25 @@ def build_example_actual_state() -> ActualState:
     )
 
 
+def build_actual_state_matching_desired(desired_state: DesiredState) -> ActualState:
+    actual_object_builders: dict[type[object], Callable[..., object]] = {
+        DesiredKafkaTable: ActualKafkaTable,
+        DesiredMaterializedView: ActualMaterializedView,
+        DesiredTable: ActualTable,
+    }
+    actual_objects: tuple[ActualKafkaTable | ActualMaterializedView | ActualTable, ...] = tuple(
+        cast(
+            ActualKafkaTable | ActualMaterializedView | ActualTable,
+            actual_object_builders[type(desired_object)](
+                key=desired_object.key,
+                spec=desired_object.spec,
+            ),
+        )
+        for desired_object in desired_state.objects
+    )
+    return ActualState(objects=actual_objects)
+
+
 KeyParts: type = tuple[str | None, str, str]
 
 
@@ -195,6 +216,8 @@ def key_parts(key: ObjectKey) -> KeyParts:
 def optional_key_parts(key: ObjectKey | None) -> KeyParts | None:
     """Return a key as a comparable tuple, preserving an absent key as None."""
 
-    if key is None:
-        return None
-    return key_parts(key)
+    resolvers: dict[type[object], Callable[[], tuple[str | None, str, str] | None]] = {
+        type(None): lambda: None,
+        ObjectKey: lambda: key_parts(cast(ObjectKey, key)),
+    }
+    return resolvers[type(key)]()

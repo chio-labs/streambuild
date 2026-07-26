@@ -7,6 +7,7 @@ from _pytest.capture import CaptureResult
 from clickhouse_connect.driver.client import Client
 
 from streambuild.cli.backfill.main._run_backfill import run_backfill
+from streambuild.cli.backfill.models import BackfillCommandOptions
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 from tests.integration.src.streambuild.cli._test_types import (
     CliBackfillIntegrationTestCase,
@@ -171,16 +172,18 @@ def test_given_backfill_command_when_running_then_it_behaves_as_expected(
 
     try:
         exit_code: int = run_backfill(
-            pipelines_root=test_case.pipelines_root,
-            database=clickhouse_database,
-            metadata_database=clickhouse_database,
-            selectors=test_case.selectors,
-            deployment_id=None,
-            full_refresh=test_case.full_refresh,
-            start_time=test_case.start_time,
-            json_output=test_case.json_output,
-            verbose=test_case.verbose,
-            auto_approve=test_case.auto_approve,
+            options=BackfillCommandOptions(
+                pipelines_root=test_case.pipelines_root,
+                database=clickhouse_database,
+                metadata_database=clickhouse_database,
+                selectors=test_case.selectors,
+                deployment_id=None,
+                full_refresh=test_case.full_refresh,
+                start_time=test_case.start_time,
+                json_output=test_case.json_output,
+                verbose=test_case.verbose,
+                auto_approve=test_case.auto_approve,
+            ),
             client=managed_client,
         )
     finally:

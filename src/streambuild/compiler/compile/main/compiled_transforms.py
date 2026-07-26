@@ -10,11 +10,7 @@ from streambuild.compiler.compile.models import CompiledPipeline, CompiledTransf
 def compiled_transforms(
     *, compiled_pipelines: tuple[CompiledPipeline, ...]
 ) -> Iterator[CompiledTransformStep]:
-    """Yield each compiled transform, flattening the pipeline dimension.
-
-    Callers repeatedly need every transform across every pipeline. Naming that
-    traversal keeps their comprehensions single-generator.
-    """
+    """Yield each compiled transform, flattening the pipeline dimension."""
 
     compiled_pipeline: CompiledPipeline
     for compiled_pipeline in compiled_pipelines:

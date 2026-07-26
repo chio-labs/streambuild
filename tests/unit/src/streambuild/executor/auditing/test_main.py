@@ -62,5 +62,4 @@ def test_given_sql_audits_when_executing_then_it_returns_expected_results(
     assert result.audit_results[0].passed == test_case.expected_passed
     assert result.audit_results[0].failing_row_count == test_case.expected_failing_row_count
     assert "analytics.tbl__order_items" in client.queries[0]
-    if not test_case.expected_passed:
-        assert result.audit_results[0].sample_rows == test_case.sample_rows
+    assert result.audit_results[0].sample_rows == test_case.sample_rows

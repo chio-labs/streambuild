@@ -1,10 +1,25 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 from streambuild.compiler.compile.models import DesiredState, ObjectKey
 from streambuild.compiler.discovery.types import ReplayLineageMode
 from streambuild.compiler.planner.models import DeploymentPlan
+
+
+@dataclass(frozen=True)
+class BackfillCommandOptions:
+    pipelines_root: Path
+    database: str | None
+    metadata_database: str | None
+    selectors: tuple[str, ...]
+    deployment_id: str | None
+    full_refresh: bool
+    start_time: str | None
+    json_output: bool
+    verbose: bool
+    auto_approve: bool
 
 
 @dataclass(frozen=True)

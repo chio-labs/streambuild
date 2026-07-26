@@ -26,19 +26,7 @@ def render_sql_audit_run_result(
                 "error_failure_count": result.error_failure_count,
                 "warning_failure_count": result.warning_failure_count,
                 "audit_results": [
-                    {
-                        "file_path": _display_path(
-                            file_path=audit_result.file_path, project_dir=project_dir
-                        ),
-                        "name": audit_result.name,
-                        "severity": audit_result.severity,
-                        "passed": audit_result.passed,
-                        "referenced_model_names": list(audit_result.referenced_model_names),
-                        "description": audit_result.description,
-                        "failing_row_count": audit_result.failing_row_count,
-                        "sample_column_names": list(audit_result.sample_column_names),
-                        "sample_rows": [list(row) for row in audit_result.sample_rows],
-                    }
+                    _audit_result_payload(audit_result=audit_result, project_dir=project_dir)
                     for audit_result in result.audit_results
                 ],
             },
@@ -115,6 +103,20 @@ def _display_path(*, file_path: Path, project_dir: Path) -> str:
         return str(file_path.relative_to(project_dir))
     except ValueError:
         return str(file_path)
+
+
+def _audit_result_payload(*, audit_result: SqlAuditResult, project_dir: Path) -> dict[str, object]:
+    return {
+        "file_path": _display_path(file_path=audit_result.file_path, project_dir=project_dir),
+        "name": audit_result.name,
+        "severity": audit_result.severity,
+        "passed": audit_result.passed,
+        "referenced_model_names": list(audit_result.referenced_model_names),
+        "description": audit_result.description,
+        "failing_row_count": audit_result.failing_row_count,
+        "sample_column_names": list(audit_result.sample_column_names),
+        "sample_rows": [list(row) for row in audit_result.sample_rows],
+    }
 
 
 def _render_audit_heading(*, audit_result: SqlAuditResult, project_dir: Path) -> str:

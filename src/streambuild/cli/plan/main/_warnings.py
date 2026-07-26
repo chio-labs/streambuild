@@ -3,9 +3,12 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import cast
 
+from clickhouse_connect.driver.exceptions import DatabaseError, OperationalError
+
 from streambuild.compiler.compile.models import DesiredState
 from streambuild.compiler.planner.models import DeploymentPlan, PlannerWarning, RebuildSubtree
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
+from streambuild.integrations.clickhouse.constants import UNKNOWN_TABLE_ERROR_CODE
 
 
 def add_empty_replay_source_warnings(
@@ -69,12 +72,19 @@ def _safe_row_count(
     database: str,
     table_name: str,
 ) -> int | None:
+    table_rows: tuple[tuple[object, ...], ...] = client.query(
+        f"SELECT count() FROM system.tables WHERE database = '{database}' AND name = '{table_name}'"
+    ).rows
+    if not table_rows or int(cast(int, table_rows[0][0])) == 0:
+        return None
     try:
         rows: tuple[tuple[object, ...], ...] = client.query(
             f"SELECT count() FROM {database}.{table_name}"
         ).rows
-    except Exception:
-        return None
+    except (DatabaseError, OperationalError) as error:
+        if UNKNOWN_TABLE_ERROR_CODE in str(error):
+            return None
+        raise
     if not rows:
         return None
     return int(cast(int, rows[0][0]))

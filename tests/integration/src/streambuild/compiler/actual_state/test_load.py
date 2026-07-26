@@ -1,3 +1,5 @@
+from typing import cast
+
 import pytest
 from clickhouse_connect.driver.client import Client
 
@@ -656,11 +658,12 @@ def test_given_latest_object_state_record_when_loading_then_only_reconcile_overr
     finally:
         managed_client.close()
 
-    actual_materialized_view_query: str = next(
-        object_.query
-        for object_ in actual_state.objects
-        if isinstance(object_, ActualMaterializedView)
-        if object_.name == "mv__orders_enriched"
-    )
+    actual_object_by_name: dict[str, object] = {
+        object_.name: object_ for object_ in actual_state.objects
+    }
+    actual_materialized_view_query: str = cast(
+        ActualMaterializedView,
+        actual_object_by_name["mv__orders_enriched"],
+    ).query
 
     assert actual_materialized_view_query == test_case.expected_materialized_view_query

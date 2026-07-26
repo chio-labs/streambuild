@@ -1,3 +1,5 @@
+from collections.abc import Iterator
+
 from streambuild.integrations.clickhouse.models import ClickHouseQueryResult
 
 
@@ -13,9 +15,13 @@ class FakeAuditClickHouseClient:
         self.sample_column_names = sample_column_names
         self.sample_rows = sample_rows
         self.queries: list[str] = []
+        self.query_results: Iterator[ClickHouseQueryResult] = iter(
+            (
+                ClickHouseQueryResult(rows=count_result_rows, column_names=("value",)),
+                ClickHouseQueryResult(rows=sample_rows, column_names=sample_column_names),
+            )
+        )
 
     def query(self, statement: str) -> ClickHouseQueryResult:
         self.queries.append(statement)
-        if statement.startswith("SELECT count() AS value FROM ("):
-            return ClickHouseQueryResult(rows=self.count_result_rows, column_names=("value",))
-        return ClickHouseQueryResult(rows=self.sample_rows, column_names=self.sample_column_names)
+        return next(self.query_results)

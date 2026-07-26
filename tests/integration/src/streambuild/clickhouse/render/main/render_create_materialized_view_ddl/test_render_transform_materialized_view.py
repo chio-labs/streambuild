@@ -75,7 +75,3 @@ def test_given_compiled_transform_mv_when_applied_to_real_clickhouse_then_it_pop
             test_case.expected_order_total,
         )
     ]
-
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-vv"])

@@ -34,6 +34,7 @@ from tests.e2e.src.streambuild.conftest import (
 )
 from tests.e2e.src.streambuild.executor._test_types import (
     GreenfieldKafkaWorkflowE2ETestCase,
+    KafkaLiveShadowScenarioResult,
     KafkaLiveShadowWorkflowE2ETestCase,
     KafkaOffsetAuditWorkflowE2ETestCase,
     KafkaRecoveryWorkflowE2ETestCase,
@@ -51,6 +52,7 @@ from tests.e2e.src.streambuild.executor.helpers import (
     prepare_authored_e2e_project,
     produce_kafka_messages,
     require_managed_source,
+    run_kafka_live_shadow_scenario,
     run_streambuild_audit_backfill_cli,
     run_streambuild_backfill_cli,
     run_streambuild_doctor_cli,
@@ -60,10 +62,6 @@ from tests.e2e.src.streambuild.executor.helpers import (
     wait_for_table_exists,
     wait_for_table_missing,
     with_schema_change_backfill_policy,
-)
-from tests.e2e.src.streambuild.executor.scenario import (
-    KafkaLiveShadowScenarioResult,
-    run_kafka_live_shadow_scenario,
 )
 
 GREENFIELD_CREATED_AT: str
@@ -520,6 +518,7 @@ def test_given_offset_mode_staged_kafka_deployment_when_new_rows_arrive_then_aud
                 ("frontier-order", "source.orders.created"),
                 ("historical-order", ""),
             ),
+            topic_row_indexes=(0,),
         ),
         KafkaSchemaChangeWorkflowE2ETestCase(
             description=(
@@ -736,19 +735,14 @@ def test_given_published_kafka_pipeline_when_schema_changes_then_bounded_policy_
     ).result_rows
 
     expected_selected_rows: list[tuple[object, ...]] = list(test_case.expected_selected_rows)
-    if "kafka_topic" in test_case.expected_selected_columns:
-        actual_topic_name: str = require_managed_source(
-            changed_compiled_pipeline
-        ).kafka_table.spec.kafka.topic
-        expected_selected_rows = [
-            (
-                row[0],
-                actual_topic_name if row[0] == "frontier-order" and len(row) > 1 else row[1],
-            )
-            if len(row) == 2
-            else row
-            for row in expected_selected_rows
-        ]
+    actual_topic_name: str = require_managed_source(
+        changed_compiled_pipeline
+    ).kafka_table.spec.kafka.topic
+    topic_row_index: int
+    for topic_row_index in test_case.topic_row_indexes:
+        expected_row: list[object] = list(expected_selected_rows[topic_row_index])
+        expected_row[1] = actual_topic_name
+        expected_selected_rows[topic_row_index] = tuple(expected_row)
 
     assert (
         second_backfill_result.bootstrap.deployment_plan.rebuild_subtrees[0].execution_mode

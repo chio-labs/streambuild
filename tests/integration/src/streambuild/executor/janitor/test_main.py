@@ -25,6 +25,7 @@ from tests.integration.src.streambuild.executor.janitor._test_types import (
 from tests.integration.src.streambuild.executor.janitor.helpers import (
     JanitorIntegrationState,
     build_janitor_integration_state,
+    group_candidate_deployment_ids,
     load_existing_table_names,
 )
 
@@ -85,14 +86,13 @@ def test_given_mixed_real_deployments_when_previewing_janitor_then_it_classifies
     finally:
         managed_client.close()
 
-    assert (
-        tuple(candidate.deployment_id for candidate in result.candidates if candidate.deletable)
-        == test_case.expected_deletable_deployment_ids
+    deletable_deployment_ids: tuple[str, ...]
+    kept_deployment_ids: tuple[str, ...]
+    deletable_deployment_ids, kept_deployment_ids = group_candidate_deployment_ids(
+        result.candidates
     )
-    assert (
-        tuple(candidate.deployment_id for candidate in result.candidates if not candidate.deletable)
-        == test_case.expected_kept_deployment_ids
-    )
+    assert deletable_deployment_ids == test_case.expected_deletable_deployment_ids
+    assert kept_deployment_ids == test_case.expected_kept_deployment_ids
 
 
 @pytest.mark.integration

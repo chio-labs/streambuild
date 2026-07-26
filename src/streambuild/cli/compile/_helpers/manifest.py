@@ -6,6 +6,7 @@ from streambuild.compiler.compile.models import (
     CompiledExternalSource,
     CompiledManagedSource,
     CompiledPipeline,
+    CompiledTransformStep,
 )
 
 
@@ -32,33 +33,10 @@ def pipeline_manifest_entry(
         "relations": compiled_pipeline.relation_names,
         "landing": _pipeline_landing_manifest_entry(compiled_pipeline),
         "models": {
-            transform.transform.name: {
-                "name": transform.transform.name,
-                "source": transform.transform.source,
-                "refs": list(transform.refs),
-                "target_table_name": transform.target_table_name,
-                "materialized_view_name": transform.materialized_view.name,
-                "resolved_query_path": str(
-                    pipeline_target_dir / "compile" / "models" / f"{transform.transform.name}.sql"
-                ),
-                "table_ddl_path": str(
-                    pipeline_target_dir / "run" / "models" / f"{transform.transform.name}.table.sql"
-                ),
-                "mv_ddl_path": str(
-                    pipeline_target_dir / "run" / "models" / f"{transform.transform.name}.mv.sql"
-                ),
-                "spec": {
-                    "engine": transform.target_table.engine,
-                    "order_by": list(transform.target_table.order_by),
-                    "partition_by": transform.target_table.partition_by,
-                    "ttl": transform.target_table.ttl,
-                    "settings": transform.target_table.settings,
-                    "columns": [
-                        {"name": column.name, "type": column.type, "default": column.default}
-                        for column in transform.target_table.columns
-                    ],
-                },
-            }
+            transform.transform.name: _model_manifest_entry(
+                transform=transform,
+                pipeline_target_dir=pipeline_target_dir,
+            )
             for transform in compiled_pipeline.transforms
         },
         "workflow": {
@@ -89,6 +67,35 @@ def workflow_step_files(compiled_pipeline: CompiledPipeline) -> list[str]:
             for index, transform in enumerate(compiled_pipeline.transforms, start=1)
         ],
     ]
+
+
+def _model_manifest_entry(
+    *, transform: CompiledTransformStep, pipeline_target_dir: Path
+) -> dict[str, object]:
+    model_name: str = transform.transform.name
+    return {
+        "name": model_name,
+        "source": transform.transform.source,
+        "refs": list(transform.refs),
+        "target_table_name": transform.target_table_name,
+        "materialized_view_name": transform.materialized_view.name,
+        "resolved_query_path": str(
+            pipeline_target_dir / "compile" / "models" / f"{model_name}.sql"
+        ),
+        "table_ddl_path": str(pipeline_target_dir / "run" / "models" / f"{model_name}.table.sql"),
+        "mv_ddl_path": str(pipeline_target_dir / "run" / "models" / f"{model_name}.mv.sql"),
+        "spec": {
+            "engine": transform.target_table.engine,
+            "order_by": list(transform.target_table.order_by),
+            "partition_by": transform.target_table.partition_by,
+            "ttl": transform.target_table.ttl,
+            "settings": transform.target_table.settings,
+            "columns": [
+                {"name": column.name, "type": column.type, "default": column.default}
+                for column in transform.target_table.columns
+            ],
+        },
+    }
 
 
 def _pipeline_landing_manifest_entry(compiled_pipeline: CompiledPipeline) -> dict[str, object]:

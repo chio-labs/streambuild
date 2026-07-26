@@ -16,6 +16,7 @@ from streambuild.clickhouse.render.main.render_create_materialized_view_ddl impo
 from streambuild.clickhouse.render.main.render_create_table_ddl import render_create_table_ddl
 from streambuild.compiler.compile.models import CompiledPipeline
 from streambuild.executor.backfill.main.execute_backfill import execute_backfill
+from streambuild.executor.janitor.models import JanitorPreviewCandidate
 from streambuild.executor.publish.main.execute_publish import execute_publish
 from streambuild.executor.publish.models import PublishRequest
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
@@ -247,6 +248,19 @@ def load_existing_table_names(*, clickhouse_client: Client, database: str) -> tu
         f"SELECT name FROM system.tables WHERE database = '{database}' ORDER BY name"
     ).result_rows
     return tuple(str(row[0]) for row in rows)
+
+
+def group_candidate_deployment_ids(
+    candidates: tuple[JanitorPreviewCandidate, ...],
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    deployment_ids_by_deletable: dict[bool, list[str]] = {True: [], False: []}
+    candidate: JanitorPreviewCandidate
+    for candidate in candidates:
+        deployment_ids_by_deletable[candidate.deletable].append(candidate.deployment_id)
+    return (
+        tuple(deployment_ids_by_deletable[True]),
+        tuple(deployment_ids_by_deletable[False]),
+    )
 
 
 def _format_clickhouse_time(value: datetime) -> str:

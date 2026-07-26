@@ -25,7 +25,25 @@ from tests.unit.src.streambuild.compiler.compile.sql_contract.helpers import bui
             expected_error_type=None,
             expected_message_fragments=(),
             expected_error_attributes={},
-        ),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_valid_partition_by_expression_when_validating_then_it_returns_normally(
+    test_case: ValidateSingleStorageExpressionTestCase,
+) -> None:
+    validate_partition_by_expression(
+        transform_name="orders_enriched",
+        partition_by=test_case.expression,
+        available_columns=test_case.available_columns,
+    )
+
+    assert test_case.expected_error_attributes == {}
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
         ValidateSingleStorageExpressionTestCase(
             description="rejects partition by expressions that reference unknown derived columns",
             expression="toYYYYMM(missing_created_at)",
@@ -47,19 +65,13 @@ from tests.unit.src.streambuild.compiler.compile.sql_contract.helpers import bui
     ],
     ids=lambda case: case.description,
 )
-def test_given_partition_by_expression_when_validating_then_it_returns_or_raises_as_expected(
+def test_given_unknown_partition_column_when_validating_then_it_raises_contextual_error(
     test_case: ValidateSingleStorageExpressionTestCase,
 ) -> None:
-    if test_case.expected_error_type is None:
-        validate_partition_by_expression(
-            transform_name="orders_enriched",
-            partition_by=test_case.expression,
-            available_columns=test_case.available_columns,
-        )
-        assert test_case.expected_error_attributes == {}
-        return
+    expected_error_type: type[Exception] | None = test_case.expected_error_type
+    assert expected_error_type is not None
 
-    with pytest.raises(test_case.expected_error_type) as error_info:
+    with pytest.raises(expected_error_type) as error_info:
         validate_partition_by_expression(
             transform_name="orders_enriched",
             partition_by=test_case.expression,

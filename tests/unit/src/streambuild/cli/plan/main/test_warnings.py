@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 from typing import cast
 
 import pytest
@@ -101,13 +102,15 @@ def test_given_empty_replay_source_when_augmenting_plan_then_it_adds_warning(
 
 class FakeReplaySourceWarningClient:
     def __init__(self, *, replay_source_row_count: int, active_row_count: int | None) -> None:
-        self._replay_source_row_count: int = replay_source_row_count
-        self._active_row_count: int | None = active_row_count
+        self._query_results: Iterator[ClickHouseQueryResult] = iter(
+            (
+                ClickHouseQueryResult(rows=((1,),)),
+                ClickHouseQueryResult(rows=((replay_source_row_count,),)),
+                ClickHouseQueryResult(rows=((int(active_row_count is not None),),)),
+                ClickHouseQueryResult(rows=((active_row_count,),)),
+            )
+        )
 
     def query(self, statement: str) -> ClickHouseQueryResult:
-        if statement == "SELECT count() FROM flights_demo.raw__flight_states":
-            return ClickHouseQueryResult(rows=((self._replay_source_row_count,),))
-        if statement == "SELECT count() FROM flights_demo.tbl__flight_positions":
-            assert self._active_row_count is not None, "missing table"
-            return ClickHouseQueryResult(rows=((self._active_row_count,),))
-        raise AssertionError(f"Unexpected query: {statement}")
+        _ = statement
+        return next(self._query_results)

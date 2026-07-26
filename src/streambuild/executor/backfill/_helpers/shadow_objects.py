@@ -213,22 +213,40 @@ def _ordered_shadow_creation_keys(
     object_by_key: dict[ObjectKey, DesiredKafkaTable | DesiredTable | DesiredMaterializedView] = {
         object_.key: object_ for object_ in desired_state.objects
     }
-    ordered_keys: list[ObjectKey] = []
-    visited_keys: set[ObjectKey] = set()
-
-    def visit(key: ObjectKey) -> None:
-        if key not in planned_keys or key in visited_keys:
-            return
-        visited_keys.add(key)
-        desired_object: DesiredKafkaTable | DesiredTable | DesiredMaterializedView = object_by_key[
-            key
-        ]
-        dependency_key: ObjectKey
-        for dependency_key in desired_object.deps:
-            visit(dependency_key)
-        ordered_keys.append(key)
+    ordered_keys: tuple[ObjectKey, ...] = ()
+    visited_keys: frozenset[ObjectKey] = frozenset()
 
     desired_object: DesiredKafkaTable | DesiredTable | DesiredMaterializedView
     for desired_object in desired_state.objects:
-        visit(desired_object.key)
-    return tuple(ordered_keys)
+        ordered_keys, visited_keys = _visit_shadow_creation_key(
+            key=desired_object.key,
+            planned_keys=planned_keys,
+            object_by_key=object_by_key,
+            ordered_keys=ordered_keys,
+            visited_keys=visited_keys,
+        )
+    return ordered_keys
+
+
+def _visit_shadow_creation_key(
+    *,
+    key: ObjectKey,
+    planned_keys: set[ObjectKey],
+    object_by_key: dict[ObjectKey, DesiredKafkaTable | DesiredTable | DesiredMaterializedView],
+    ordered_keys: tuple[ObjectKey, ...],
+    visited_keys: frozenset[ObjectKey],
+) -> tuple[tuple[ObjectKey, ...], frozenset[ObjectKey]]:
+    if key not in planned_keys or key in visited_keys:
+        return ordered_keys, visited_keys
+    updated_visited_keys: frozenset[ObjectKey] = visited_keys | {key}
+    desired_object: DesiredKafkaTable | DesiredTable | DesiredMaterializedView = object_by_key[key]
+    dependency_key: ObjectKey
+    for dependency_key in desired_object.deps:
+        ordered_keys, updated_visited_keys = _visit_shadow_creation_key(
+            key=dependency_key,
+            planned_keys=planned_keys,
+            object_by_key=object_by_key,
+            ordered_keys=ordered_keys,
+            visited_keys=updated_visited_keys,
+        )
+    return (*ordered_keys, key), updated_visited_keys

@@ -23,27 +23,15 @@ repos:
         language: system
         types_or: [python, pyi]
 
-      - id: check-test-conventions
-        name: check test conventions
-        entry: uv run check-test-conventions tests
-        language: system
-        pass_filenames: false
-
-      - id: check-structure-conventions
-        name: check structure conventions
-        entry: uv run check-structure-conventions src/streambuild scripts
-        language: system
-        pass_filenames: false
-
-      - id: check-type-annotation-conventions
-        name: check type annotation conventions
-        entry: uv run check-type-annotation-conventions src tests
+      - id: fensu-check
+        name: fensu check
+        entry: uv run fensu check
         language: system
         pass_filenames: false
 
       - id: ty-check
         name: ty check
-        entry: bash -c 'uv run ty check src tests'
+        entry: bash -c 'uv run ty check src tests scripts'
         language: system
         pass_filenames: false
 

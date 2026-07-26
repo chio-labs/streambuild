@@ -1,16 +1,8 @@
 import pytest
 
-from streambuild.compiler.actual_state.models import (
-    ActualKafkaTable,
-    ActualMaterializedView,
-    ActualState,
-    ActualTable,
-)
+from streambuild.compiler.actual_state.models import ActualState
 from streambuild.compiler.compile.models import (
-    DesiredKafkaTable,
-    DesiredMaterializedView,
     DesiredState,
-    DesiredTable,
     ObjectKey,
 )
 from streambuild.compiler.planner.constants import REBUILD_EXECUTION_MODE_FULL
@@ -23,6 +15,7 @@ from tests.unit.src.streambuild.compiler.planner._test_types import (
     PlannerShadowIdentityTestCase,
 )
 from tests.unit.src.streambuild.compiler.planner.helpers import (
+    build_actual_state_matching_desired,
     build_example_actual_state,
     build_example_desired_state,
     build_mutable_ref_desired_state,
@@ -163,7 +156,7 @@ def test_given_deployment_id_when_planning_deployment_then_it_returns_prepared_s
         == test_case.expected_prepared_shadow_objects
     )
     assert (
-        tuple(step.physical_name for step in deployment_plan.steps if step.phase == "plan")
+        tuple(step.physical_name for step in deployment_plan.steps[:2])
         == test_case.expected_plan_step_physical_names
     )
     assert deployment_plan.sql_diffs != ()
@@ -185,22 +178,11 @@ def test_given_full_refresh_key_when_planning_deployment_then_it_forces_full_reb
     test_case: PlannerFullRefreshPlanTestCase,
 ) -> None:
     desired_state: DesiredState = build_example_desired_state()
-    actual_state: ActualState = ActualState(
-        objects=tuple(
-            ActualKafkaTable(key=object_.key, spec=object_.spec)
-            if isinstance(object_, DesiredKafkaTable)
-            else ActualTable(key=object_.key, spec=object_.spec)
-            if isinstance(object_, DesiredTable)
-            else ActualMaterializedView(key=object_.key, spec=object_.spec)
-            for object_ in desired_state.objects
-            if isinstance(object_, (DesiredKafkaTable, DesiredTable, DesiredMaterializedView))
-        )
-    )
-    full_refresh_key: ObjectKey = next(
-        object_.key
-        for object_ in desired_state.objects
-        if key_parts(object_.key) == test_case.full_refresh_key
-    )
+    actual_state: ActualState = build_actual_state_matching_desired(desired_state)
+    desired_keys_by_parts: dict[tuple[str | None, str, str], ObjectKey] = {
+        key_parts(object_.key): object_.key for object_ in desired_state.objects
+    }
+    full_refresh_key: ObjectKey = desired_keys_by_parts[test_case.full_refresh_key]
 
     deployment_plan: DeploymentPlan = plan_deployment(
         desired_state=desired_state,
