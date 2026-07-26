@@ -11,6 +11,7 @@ from streambuild.cli.commands.main.shared._helpers.timestamps import (
     convert_utc_timestamp_for_clickhouse,
     normalize_cli_start_time,
 )
+from streambuild.cli.commands.main.shared.constants import AFFIRMATIVE_RESPONSES
 from streambuild.cli.commands.main.shared.exceptions import CliUserError
 from streambuild.compiler.compile.exceptions import TransformSqlContractError
 from streambuild.executor.backfill.main import execute_backfill
@@ -110,4 +111,4 @@ def run_backfill(
 
 def _confirm_backfill() -> bool:
     response: str = input("Proceed with backfill? [y/N] ").strip().lower()
-    return response in {"y", "yes"}
+    return response in AFFIRMATIVE_RESPONSES

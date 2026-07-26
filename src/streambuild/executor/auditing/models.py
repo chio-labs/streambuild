@@ -5,6 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from streambuild.executor.auditing.constants import (
+    ERROR_SEVERITY,
+    WARNING_SEVERITY,
+)
+
 
 @dataclass(frozen=True)
 class SqlAuditResult:
@@ -32,7 +37,7 @@ class SqlAuditRunResult:
         return sum(
             1
             for audit_result in self.audit_results
-            if audit_result.severity == "error" and not audit_result.passed
+            if audit_result.severity == ERROR_SEVERITY and not audit_result.passed
         )
 
     @property
@@ -40,5 +45,5 @@ class SqlAuditRunResult:
         return sum(
             1
             for audit_result in self.audit_results
-            if audit_result.severity == "warning" and not audit_result.passed
+            if audit_result.severity == WARNING_SEVERITY and not audit_result.passed
         )

@@ -11,6 +11,7 @@ from streambuild.compiler.metadata_state.models import ObjectStateRecord
 from streambuild.compiler.shared.models import ObjectKey
 from streambuild.compiler.shared.types import DesiredObjectType
 from streambuild.integrations.clickhouse.client import ClickHouseClient
+from streambuild.integrations.clickhouse.constants import UNKNOWN_TABLE_ERROR_CODE
 
 
 def load_object_state_records(
@@ -52,7 +53,7 @@ def load_object_state_records_by_deployments(
             decode=_decode_object_state_metadata_row,
         )
     except (DatabaseError, OperationalError) as error:
-        if "UNKNOWN_TABLE" in str(error):
+        if UNKNOWN_TABLE_ERROR_CODE in str(error):
             return {}
         raise
     records_by_deployment: dict[str, list[ObjectStateRecord]] = {
@@ -104,7 +105,7 @@ def load_latest_object_state_records_by_keys(
             decode=_decode_object_state_metadata_row,
         )
     except (DatabaseError, OperationalError) as error:
-        if "UNKNOWN_TABLE" in str(error):
+        if UNKNOWN_TABLE_ERROR_CODE in str(error):
             return {}
         raise
     latest_records: dict[ObjectKey, ObjectStateRecord] = {}

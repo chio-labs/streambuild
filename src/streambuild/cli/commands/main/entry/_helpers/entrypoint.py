@@ -32,7 +32,7 @@ def resolve_optional_str_arg(
     if value is not None:
         return value
     env_value: str | None = environment.get(env_var_name)
-    if env_value is None or env_value == "":
+    if not env_value:
         return None
     return env_value
 
@@ -46,7 +46,7 @@ def resolve_optional_int_arg(
     if value is not None:
         return value
     env_value: str | None = environment.get(env_var_name)
-    if env_value is None or env_value == "":
+    if not env_value:
         return None
     return int(env_value)
 

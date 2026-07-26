@@ -9,6 +9,9 @@ import yaml
 
 from streambuild.compiler.discovery._helpers.constants import PROJECT_FILE_NAME
 from streambuild.compiler.discovery._helpers.model_sql import load_transform_from_sql_file
+from streambuild.compiler.discovery.constants import (
+    CLICKHOUSE_CONNECTION_KEYS,
+)
 from streambuild.compiler.discovery.exceptions import PipelineDiscoveryError
 from streambuild.compiler.shared.models import LoadedPipeline
 from streambuild.spec.models.pipeline import Pipeline
@@ -501,7 +504,7 @@ def _load_project_clickhouse_config(
     unknown_keys: list[str] = [
         key
         for key in typed_clickhouse_values
-        if key not in {"host", "port", "username", "password"}
+        if key not in CLICKHOUSE_CONNECTION_KEYS
     ]
     if unknown_keys:
         unknown_key_list: str = ", ".join(sorted(unknown_keys))

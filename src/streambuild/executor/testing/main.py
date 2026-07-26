@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 from streambuild.compiler.testing.models import SqlTestCase, SqlTestTargetCase
+from streambuild.executor.testing.constants import (
+    MISSING_DIFF_TYPE,
+    UNEXPECTED_DIFF_TYPE,
+)
 from streambuild.executor.testing.exceptions import SqlTestExecutionError
 from streambuild.executor.testing.models import SqlTestExecutionResult, SqlTestTargetExecutionResult
 from streambuild.integrations.clickhouse.client import ClickHouseClient
@@ -29,10 +33,10 @@ def execute_sql_tests(
             for raw_row in result.rows:
                 diff_type: object = raw_row[0]
                 data_row: tuple[object, ...] = raw_row[1:]
-                if diff_type == "missing":
+                if diff_type == MISSING_DIFF_TYPE:
                     missing_rows.append(data_row)
                     continue
-                if diff_type == "unexpected":
+                if diff_type == UNEXPECTED_DIFF_TYPE:
                     unexpected_rows.append(data_row)
                     continue
                 raise SqlTestExecutionError(

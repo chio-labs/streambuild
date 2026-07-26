@@ -9,7 +9,13 @@ from pathlib import Path
 from streambuild.compiler.discovery.shared._helpers.macros._helpers.registry import (
     load_project_macros,
 )
-from streambuild.compiler.discovery.shared._helpers.macros.constants import UNEXPANDED_MACRO_PATTERN
+from streambuild.compiler.discovery.shared._helpers.macros.constants import (
+    BACKTICK,
+    DOUBLE_QUOTE,
+    PYTHON_LITERAL_NAMES,
+    SINGLE_QUOTE,
+    UNEXPANDED_MACRO_PATTERN,
+)
 from streambuild.compiler.discovery.shared._helpers.macros.exceptions import MacroError
 from streambuild.compiler.discovery.shared._helpers.macros.models import LoadedMacro
 
@@ -193,7 +199,7 @@ def _evaluate_literal_ast_node(
     if isinstance(node, ast.Name):
         if node.id in placeholder_values:
             return placeholder_values[node.id]
-        if node.id in {"True", "False", "None"}:
+        if node.id in PYTHON_LITERAL_NAMES:
             return ast.literal_eval(node)
     if isinstance(node, ast.List):
         return [
@@ -244,13 +250,13 @@ def _find_next_macro_start(*, sql: str, start_index: int) -> int | None:
     index: int = start_index
     while index < len(sql):
         character: str = sql[index]
-        if character == "'":
+        if character == SINGLE_QUOTE:
             index = _skip_single_quoted_string(sql=sql, start_index=index)
             continue
-        if character == '"':
+        if character == DOUBLE_QUOTE:
             index = _skip_double_quoted_string(sql=sql, start_index=index)
             continue
-        if character == "`":
+        if character == BACKTICK:
             index = _skip_backtick_quoted_identifier(sql=sql, start_index=index)
             continue
         if sql.startswith("--", index):
@@ -289,13 +295,13 @@ def _find_matching_paren(*, sql: str, opening_paren_index: int) -> int:
     index: int = opening_paren_index + 1
     while index < len(sql):
         character: str = sql[index]
-        if character == "'":
+        if character == SINGLE_QUOTE:
             index = _skip_single_quoted_string(sql=sql, start_index=index)
             continue
-        if character == '"':
+        if character == DOUBLE_QUOTE:
             index = _skip_double_quoted_string(sql=sql, start_index=index)
             continue
-        if character == "`":
+        if character == BACKTICK:
             index = _skip_backtick_quoted_identifier(sql=sql, start_index=index)
             continue
         if sql.startswith("--", index):

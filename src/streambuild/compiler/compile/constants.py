@@ -26,3 +26,5 @@ RAW_LANDING_COLUMNS: tuple[Column, ...] = (
     Column(name=KAFKA_LANDED_AT_COLUMN_NAME, type="DateTime64(3)"),
     Column(name=REPLAY_LANDED_AT_COLUMN_NAME, type="DateTime64(3)"),
 )
+
+AGGREGATING_ENGINE_NAMES: tuple[str, ...] = ("summingmergetree", "aggregatingmergetree")

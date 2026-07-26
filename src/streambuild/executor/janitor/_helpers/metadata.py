@@ -13,6 +13,7 @@ from streambuild.compiler.shared.models import ObjectKey
 from streambuild.compiler.shared.types import DesiredObjectType
 from streambuild.executor.janitor.models import DeploymentMetadataRow, PublishHistoryMetadataRow
 from streambuild.integrations.clickhouse.client import ClickHouseClient
+from streambuild.integrations.clickhouse.constants import UNKNOWN_TABLE_ERROR_CODE
 from streambuild.spec.models.types import ReplayLineageMode
 
 
@@ -71,7 +72,7 @@ def load_latest_publish_times(
             decode=_decode_publish_history_metadata_row,
         )
     except (DatabaseError, OperationalError) as error:
-        if "UNKNOWN_TABLE" in str(error):
+        if UNKNOWN_TABLE_ERROR_CODE in str(error):
             return {}
         raise
     latest_publish_times: dict[str, datetime] = {}

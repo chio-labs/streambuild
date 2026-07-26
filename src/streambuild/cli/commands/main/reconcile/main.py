@@ -8,6 +8,7 @@ from typing import cast
 
 from streambuild.cli.commands.main.shared._helpers.project import resolve_default_database
 from streambuild.cli.commands.main.shared._helpers.selection import resolve_selection
+from streambuild.cli.commands.main.shared.constants import AFFIRMATIVE_RESPONSES
 from streambuild.cli.commands.main.shared.models import SelectionResolution
 from streambuild.compiler.actual_state._helpers.load import load_actual_state
 from streambuild.compiler.actual_state.models import ActualState
@@ -137,4 +138,4 @@ def _render_reconcile_result(*, result: ReconcileResult, json_output: bool) -> s
 
 def _confirm_reconcile() -> bool:
     response: str = input("Proceed with reconcile? [y/N] ").strip().lower()
-    return response in {"y", "yes"}
+    return response in AFFIRMATIVE_RESPONSES
