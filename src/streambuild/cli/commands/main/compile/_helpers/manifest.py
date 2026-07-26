@@ -10,6 +10,7 @@ from streambuild.compiler.compile.models import (
 
 
 def pipeline_manifest_entry(
+    *,
     compiled_pipeline: CompiledPipeline,
     target_dir: Path,
 ) -> dict[str, object]:

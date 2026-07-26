@@ -28,6 +28,7 @@ from streambuild.spec.models.types import ReplayLineageMode
 
 
 def execute_backfill_bootstrap(
+    *,
     request: BackfillBootstrapRequest,
     client: ClickHouseClient,
 ) -> BackfillBootstrapResult:
@@ -47,8 +48,8 @@ def execute_backfill_bootstrap(
         database=request.default_database,
     )
     deployment_plan: DeploymentPlan = plan_deployment(
-        request.desired_state,
-        actual_state,
+        desired_state=request.desired_state,
+        actual_state=actual_state,
         default_database=request.default_database,
         deployment_id=deployment_id,
         full_refresh_keys=request.full_refresh_keys,
@@ -63,8 +64,8 @@ def execute_backfill_bootstrap(
         replay_lineage_mode=replay_lineage_mode,
     )
 
-    ensure_database_exists(client, request.default_database)
-    ensure_metadata_tables(client, request.metadata_database)
+    ensure_database_exists(client=client, database=request.default_database)
+    ensure_metadata_tables(client=client, metadata_database=request.metadata_database)
     persist_deployment_metadata(
         client=client,
         metadata_database=request.metadata_database,

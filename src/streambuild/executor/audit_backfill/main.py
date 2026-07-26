@@ -16,6 +16,7 @@ from streambuild.integrations.clickhouse.client import ClickHouseClient
 
 
 def execute_audit_backfill(
+    *,
     request: AuditBackfillRequest,
     client: ClickHouseClient,
 ) -> AuditBackfillResult:
@@ -28,9 +29,9 @@ def execute_audit_backfill(
         deployment_id=request.deployment_id,
     )
     loaded_deployment: LoadedAuditDeployment = load_audit_deployment(
-        client,
-        request.metadata_database,
-        resolved_deployment_id,
+        client=client,
+        metadata_database=request.metadata_database,
+        deployment_id=resolved_deployment_id,
     )
     inspected_state: InspectedManagedTableState = inspect_managed_table_state(
         client=client,

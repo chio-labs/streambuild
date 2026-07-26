@@ -98,7 +98,8 @@ def test_given_clickhouse_state_when_loading_actual_state_then_it_returns_expect
     desired_state: DesiredState = build_desired_state((compiled_pipeline,))
     clickhouse_client.command(
         render_create_kafka_table_ddl(
-            require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).kafka_table,
+            database=clickhouse_database,
         )
     )
     if (
@@ -115,7 +116,7 @@ def test_given_clickhouse_state_when_loading_actual_state_then_it_returns_expect
         )
         clickhouse_client.command(
             render_create_materialized_view_ddl(
-                replace(
+                materialized_view=replace(
                     require_managed_source(compiled_pipeline).materialized_view,
                     key=replace(
                         require_managed_source(compiled_pipeline).materialized_view.key,
@@ -129,19 +130,20 @@ def test_given_clickhouse_state_when_loading_actual_state_then_it_returns_expect
                         query=require_managed_source(compiled_pipeline).materialized_view.query,
                     ),
                 ),
-                clickhouse_database,
+                database=clickhouse_database,
             )
         )
     else:
         clickhouse_client.command(
             render_create_table_ddl(
-                require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+                table=require_managed_source(compiled_pipeline).raw_table,
+                database=clickhouse_database,
             )
         )
         clickhouse_client.command(
             render_create_materialized_view_ddl(
-                require_managed_source(compiled_pipeline).materialized_view,
-                clickhouse_database,
+                materialized_view=require_managed_source(compiled_pipeline).materialized_view,
+                database=clickhouse_database,
             )
         )
     clickhouse_client.command(
@@ -152,7 +154,7 @@ def test_given_clickhouse_state_when_loading_actual_state_then_it_returns_expect
         )
         if False
         else render_create_table_ddl(
-            compiled_pipeline.transforms[0].target_table, clickhouse_database
+            table=compiled_pipeline.transforms[0].target_table, database=clickhouse_database
         )
     )
     if test_case.create_physical_candidates:
@@ -237,18 +239,19 @@ def test_given_conflicting_metadata_when_loading_actual_state_then_live_view_bin
     desired_state: DesiredState = build_desired_state((compiled_pipeline,))
     clickhouse_client.command(
         render_create_kafka_table_ddl(
-            require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).kafka_table,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.command(
         render_create_table_ddl(
-            require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).raw_table, database=clickhouse_database
         )
     )
     clickhouse_client.command(
         render_create_materialized_view_ddl(
-            require_managed_source(compiled_pipeline).materialized_view,
-            clickhouse_database,
+            materialized_view=require_managed_source(compiled_pipeline).materialized_view,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.insert(
@@ -285,22 +288,22 @@ def test_given_conflicting_metadata_when_loading_actual_state_then_live_view_bin
 
     try:
         execute_backfill(
-            build_scalar_replay_request(
+            request=build_scalar_replay_request(
                 database=clickhouse_database,
                 deployment_id="20260409T233000Z_ab12cd",
                 created_at="2026-04-09 23:30:00.123",
                 boundary_time="2026-04-09 23:30:00.000",
                 replay_lineage_mode="timestamp",
             ),
-            managed_client,
+            client=managed_client,
         )
         execute_publish(
-            PublishRequest(
+            request=PublishRequest(
                 deployment_id="20260409T233000Z_ab12cd",
                 metadata_database=clickhouse_database,
                 default_database=clickhouse_database,
             ),
-            managed_client,
+            client=managed_client,
         )
         clickhouse_client.command(
             "INSERT INTO "
@@ -401,18 +404,20 @@ def test_given_mixed_root_clickhouse_state_when_loading_then_it_preserves_per_ro
     for compiled_pipeline in (orders_pipeline, customers_pipeline):
         clickhouse_client.command(
             render_create_kafka_table_ddl(
-                require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+                table=require_managed_source(compiled_pipeline).kafka_table,
+                database=clickhouse_database,
             )
         )
         clickhouse_client.command(
             render_create_table_ddl(
-                require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+                table=require_managed_source(compiled_pipeline).raw_table,
+                database=clickhouse_database,
             )
         )
         clickhouse_client.command(
             render_create_materialized_view_ddl(
-                require_managed_source(compiled_pipeline).materialized_view,
-                clickhouse_database,
+                materialized_view=require_managed_source(compiled_pipeline).materialized_view,
+                database=clickhouse_database,
             )
         )
     if test_case.create_orders_candidates:
@@ -544,18 +549,19 @@ def test_given_published_state_when_metadata_is_deleted_then_load_actual_state_u
     desired_state: DesiredState = build_desired_state((compiled_pipeline,))
     clickhouse_client.command(
         render_create_kafka_table_ddl(
-            require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).kafka_table,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.command(
         render_create_table_ddl(
-            require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).raw_table, database=clickhouse_database
         )
     )
     clickhouse_client.command(
         render_create_materialized_view_ddl(
-            require_managed_source(compiled_pipeline).materialized_view,
-            clickhouse_database,
+            materialized_view=require_managed_source(compiled_pipeline).materialized_view,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.insert(
@@ -592,22 +598,22 @@ def test_given_published_state_when_metadata_is_deleted_then_load_actual_state_u
 
     try:
         execute_backfill(
-            build_scalar_replay_request(
+            request=build_scalar_replay_request(
                 database=clickhouse_database,
                 deployment_id="20260409T225000Z_ab12cd",
                 created_at="2026-04-09 22:50:00.123",
                 boundary_time="2026-04-09 22:50:00.000",
                 replay_lineage_mode="timestamp",
             ),
-            managed_client,
+            client=managed_client,
         )
         execute_publish(
-            PublishRequest(
+            request=PublishRequest(
                 deployment_id="20260409T225000Z_ab12cd",
                 metadata_database=clickhouse_database,
                 default_database=clickhouse_database,
             ),
-            managed_client,
+            client=managed_client,
         )
         clickhouse_client.command(
             f"DROP TABLE {clickhouse_database}.streambuild_object_state_snapshots"
@@ -677,18 +683,19 @@ def test_given_latest_object_state_record_when_loading_then_only_reconcile_overr
     desired_state: DesiredState = build_desired_state((compiled_pipeline,))
     clickhouse_client.command(
         render_create_kafka_table_ddl(
-            require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).kafka_table,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.command(
         render_create_table_ddl(
-            require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).raw_table, database=clickhouse_database
         )
     )
     clickhouse_client.command(
         render_create_materialized_view_ddl(
-            require_managed_source(compiled_pipeline).materialized_view,
-            clickhouse_database,
+            materialized_view=require_managed_source(compiled_pipeline).materialized_view,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.insert(
@@ -725,22 +732,22 @@ def test_given_latest_object_state_record_when_loading_then_only_reconcile_overr
 
     try:
         execute_backfill(
-            build_scalar_replay_request(
+            request=build_scalar_replay_request(
                 database=clickhouse_database,
                 deployment_id="20260409T225000Z_ab12cd",
                 created_at="2026-04-09 22:50:00.123",
                 boundary_time="2026-04-09 22:50:00.000",
                 replay_lineage_mode="timestamp",
             ),
-            managed_client,
+            client=managed_client,
         )
         execute_publish(
-            PublishRequest(
+            request=PublishRequest(
                 deployment_id="20260409T225000Z_ab12cd",
                 metadata_database=clickhouse_database,
                 default_database=clickhouse_database,
             ),
-            managed_client,
+            client=managed_client,
         )
         clickhouse_client.insert(
             table=f"{clickhouse_database}.streambuild_object_state_snapshots",

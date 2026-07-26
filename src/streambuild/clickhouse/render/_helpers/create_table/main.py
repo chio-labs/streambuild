@@ -3,7 +3,7 @@
 from streambuild.compiler.shared.models import Column, DesiredTable, TableStorage
 
 
-def render_create_table_ddl(table: DesiredTable, database: str) -> str:
+def render_create_table_ddl(*, table: DesiredTable, database: str) -> str:
     """Render CREATE TABLE DDL for a desired table."""
 
     column_definitions: str = ",\n    ".join(

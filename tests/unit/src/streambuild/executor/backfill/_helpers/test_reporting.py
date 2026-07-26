@@ -30,7 +30,7 @@ def test_given_root_reports_outside_selected_deployment_when_filtering_then_it_k
     hourly_volume_key: ObjectKey = ObjectKey(None, "table", "tbl__hourly_order_volume")
 
     filtered_reports: tuple[RootBackfillReport, ...] = filter_root_backfill_reports_for_deployment(
-        (
+        root_reports=(
             RootBackfillReport(
                 root_key=orders_key,
                 state_kind="active_view_present",
@@ -50,7 +50,7 @@ def test_given_root_reports_outside_selected_deployment_when_filtering_then_it_k
                 active_deployment_id="dep_active",
             ),
         ),
-        DeploymentPlan(
+        deployment_plan=DeploymentPlan(
             deployment_id="dep_new",
             object_changes=(),
             rebuild_subtrees=(

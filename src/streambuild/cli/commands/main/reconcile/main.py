@@ -24,8 +24,8 @@ from streambuild.integrations.clickhouse.client import ClickHouseClient
 
 
 def run_reconcile(
-    pipelines_root: Path,
     *,
+    pipelines_root: Path,
     database: str | None,
     metadata_database: str | None,
     selectors: tuple[str, ...],
@@ -35,9 +35,13 @@ def run_reconcile(
 ) -> int:
     loaded_pipelines: list[LoadedPipeline] = discover_pipelines(pipelines_root)
     compiled: list[CompiledPipeline] = [compile_pipeline(pipeline) for pipeline in loaded_pipelines]
-    resolved_database: str = resolve_default_database(loaded_pipelines, database)
+    resolved_database: str = resolve_default_database(
+        loaded_pipelines=loaded_pipelines, override=database
+    )
     resolved_metadata_database: str = metadata_database or resolved_database
-    selection: SelectionResolution = resolve_selection(tuple(compiled), selectors)
+    selection: SelectionResolution = resolve_selection(
+        compiled_pipelines=tuple(compiled), selectors=selectors
+    )
     desired_state: DesiredState = selection.desired_state
     actual_state: ActualState = load_actual_state(
         client=client, desired_state=desired_state, database=resolved_database
@@ -52,7 +56,7 @@ def run_reconcile(
             selected_model_keys=selection.selected_model_keys,
         ),
     )
-    print(_render_reconcile_preview(preview, json_output=json_output))
+    print(_render_reconcile_preview(preview=preview, json_output=json_output))
     if not apply:
         return 0
     if not _confirm_reconcile():
@@ -69,11 +73,11 @@ def run_reconcile(
             apply=True,
         ),
     )
-    print(_render_reconcile_result(result, json_output=json_output))
+    print(_render_reconcile_result(result=result, json_output=json_output))
     return 0
 
 
-def _render_reconcile_preview(preview: ReconcilePreview, *, json_output: bool) -> str:
+def _render_reconcile_preview(*, preview: ReconcilePreview, json_output: bool) -> str:
     if json_output:
         return json.dumps(
             {
@@ -105,7 +109,7 @@ def _render_reconcile_preview(preview: ReconcilePreview, *, json_output: bool) -
     return "\n".join(lines)
 
 
-def _render_reconcile_result(result: ReconcileResult, *, json_output: bool) -> str:
+def _render_reconcile_result(*, result: ReconcileResult, json_output: bool) -> str:
     if json_output:
         return json.dumps(
             {

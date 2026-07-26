@@ -45,7 +45,7 @@ def test_given_desired_table_when_rendering_then_it_returns_expected_create_tabl
     test_case: RenderCreateTableDdlTestCase,
 ) -> None:
     rendered_ddl: str = render_create_table_ddl(
-        build_table(
+        table=build_table(
             include_partition_by=test_case.include_partition_by,
             include_ttl=test_case.include_ttl,
             include_settings=test_case.include_settings,

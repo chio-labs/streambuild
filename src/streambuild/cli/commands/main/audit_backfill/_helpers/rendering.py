@@ -23,8 +23,8 @@ from streambuild.executor.audit_backfill.types import AuditAssessment
 
 
 def render_audit_backfill_result(
-    result: AuditBackfillResult,
     *,
+    result: AuditBackfillResult,
     database: str,
     json_output: bool,
     project_dir: Path | None = None,
@@ -98,7 +98,9 @@ def render_audit_backfill_result(
             ],
             "quality_check_results": [
                 {
-                    "file_path": _display_path(audit_result.file_path, project_dir),
+                    "file_path": _display_path(
+                        file_path=audit_result.file_path, project_dir=project_dir
+                    ),
                     "name": audit_result.name,
                     "severity": audit_result.severity,
                     "passed": audit_result.passed,
@@ -113,28 +115,30 @@ def render_audit_backfill_result(
 
     lines: list[str] = [
         style_title("Audit") + f": {style_assessment(result.assessment)}",
-        style_label_value("Database", database),
-        style_label_value("Deployment", result.deployment_id),
+        style_label_value(label="Database", value=database),
+        style_label_value(label="Deployment", value=result.deployment_id),
         style_label_value(
-            "Deployment status", humanize_deployment_status(result.deployment_status)
+            label="Deployment status", value=humanize_deployment_status(result.deployment_status)
         ),
     ]
     if result.replay_lineage_mode is not None:
-        lines.append(style_label_value("Replay lineage", result.replay_lineage_mode))
+        lines.append(style_label_value(label="Replay lineage", value=result.replay_lineage_mode))
     if result.warning_codes:
         lines.append(style_warning(f"Warnings: {', '.join(result.warning_codes)}"))
     lines.append("")
     lines.append(style_section("Roots"))
     for root_result in result.root_results:
         assessment: AuditAssessment = AuditAssessment(root_result.assessment)
-        lines.append(f"- {style_object_name(root_result.root_key.name, assessment=assessment)}")
+        lines.append(
+            f"- {style_object_name(text=root_result.root_key.name, assessment=assessment)}"
+        )
         lines.append(f"  {style_label('state')}: {root_result.state}")
         lines.append(f"  {style_label('assessment')}: {style_assessment(root_result.assessment)}")
         if root_result.replay_source_name is not None:
             lines.append(
                 "  "
                 f"{style_label('replay source')}: "
-                f"{style_object_name(root_result.replay_source_name)}"
+                f"{style_object_name(text=root_result.replay_source_name)}"
             )
             lines.append(
                 "  "
@@ -153,18 +157,18 @@ def render_audit_backfill_result(
             row_delta_text: str = f"{root_result.row_delta:+d}"
             row_ratio_text: str = format_percentage(root_result.row_ratio)
             if assessment != AuditAssessment.READY:
-                row_delta_text = style_assessment_value(row_delta_text, assessment)
-                row_ratio_text = style_assessment_value(row_ratio_text, assessment)
+                row_delta_text = style_assessment_value(text=row_delta_text, assessment=assessment)
+                row_ratio_text = style_assessment_value(text=row_ratio_text, assessment=assessment)
             lines.append(f"  {style_label('row delta')}: {row_delta_text}")
             lines.append(f"  {style_label('row ratio')}: {row_ratio_text}")
         if root_result.scalar_catchup_summary is not None:
             staged_range: str = format_range(
-                root_result.scalar_catchup_summary.staged_min_value,
-                root_result.scalar_catchup_summary.staged_max_value,
+                min_value=root_result.scalar_catchup_summary.staged_min_value,
+                max_value=root_result.scalar_catchup_summary.staged_max_value,
             )
             active_range: str = format_range(
-                root_result.scalar_catchup_summary.active_min_value,
-                root_result.scalar_catchup_summary.active_max_value,
+                min_value=root_result.scalar_catchup_summary.active_min_value,
+                max_value=root_result.scalar_catchup_summary.active_max_value,
             )
             lines.append(f"  {style_label('staged range')}: {staged_range}")
             lines.append(f"  {style_label('active range')}: {active_range}")
@@ -183,7 +187,9 @@ def render_audit_backfill_result(
             status: str = "PASS"
             if not audit_result.passed:
                 status = "WARN" if audit_result.severity == "warning" else "FAIL"
-            display_name: str = _display_path(audit_result.file_path, project_dir)
+            display_name: str = _display_path(
+                file_path=audit_result.file_path, project_dir=project_dir
+            )
             if audit_result.name is not None:
                 display_name = f"{display_name}  [{audit_result.name}]"
             lines.append(f"- {status}  {display_name}")
@@ -211,7 +217,7 @@ def render_audit_backfill_result(
     return "\n".join(lines)
 
 
-def _display_path(file_path: Path, project_dir: Path | None) -> str:
+def _display_path(*, file_path: Path, project_dir: Path | None) -> str:
     if project_dir is None:
         return str(file_path)
     try:

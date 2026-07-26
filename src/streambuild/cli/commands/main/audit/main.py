@@ -17,8 +17,8 @@ from streambuild.integrations.clickhouse.client import ClickHouseClient
 
 
 def run_audit(
-    pipelines_root: Path,
     *,
+    pipelines_root: Path,
     project_dir: Path,
     database: str,
     selectors: tuple[str, ...],
@@ -53,7 +53,7 @@ def run_audit(
     )
     print(
         render_sql_audit_run_result(
-            result,
+            result=result,
             database=database,
             project_dir=project_dir,
             json_output=json_output,

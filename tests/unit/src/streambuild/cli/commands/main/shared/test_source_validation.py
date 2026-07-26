@@ -51,11 +51,11 @@ class _FakeClickHouseClient:
 
     def query_many(
         self,
-        query: str,
         *,
+        statement: str,
         decode: Callable[[Mapping[str, object]], object],
     ) -> tuple[object, ...]:
-        del query
+        del statement
         decoded_rows: list[object] = []
         column_name: str
         for column_name in self._existing_column_names:

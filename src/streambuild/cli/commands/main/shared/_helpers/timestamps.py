@@ -29,6 +29,7 @@ def normalize_cli_start_time(raw_value: str) -> str:
 
 
 def convert_utc_timestamp_for_clickhouse(
+    *,
     client: ClickHouseClient,
     utc_timestamp: str,
 ) -> str:

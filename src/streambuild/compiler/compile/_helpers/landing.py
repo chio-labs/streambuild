@@ -125,6 +125,7 @@ def kafka_landing_columns(table_format: str) -> tuple[Column, ...]:
 
 
 def normalize_kafka_settings(
+    *,
     pipeline_name: str,
     source_name: str,
     kafka_settings: KafkaSettings,
@@ -171,7 +172,7 @@ def validate_kafka_setting_overrides(kafka_settings: KafkaSettings) -> None:
         )
 
 
-def default_consumer_group(pipeline_name: str, source_name: str) -> str:
+def default_consumer_group(*, pipeline_name: str, source_name: str) -> str:
     """Return the deterministic default consumer group for a landing step."""
 
     return f"streambuild_{pipeline_name}_{source_name}"

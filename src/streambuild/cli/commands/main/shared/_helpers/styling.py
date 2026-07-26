@@ -48,7 +48,7 @@ def format_percentage(value: float) -> str:
     return f"{value * 100:.1f}%"
 
 
-def format_range(min_value: str | None, max_value: str | None) -> str:
+def format_range(*, min_value: str | None, max_value: str | None) -> str:
     if min_value is None and max_value is None:
         return "n/a"
     return f"{min_value or 'n/a'} .. {max_value or 'n/a'}"
@@ -59,62 +59,92 @@ def style_diff_lines(diff_lines: tuple[str, ...]) -> list[str]:
     diff_line: str
     for diff_line in diff_lines:
         if diff_line.startswith("+++") or diff_line.startswith("---") or diff_line.startswith("@@"):
-            styled_lines.append(apply_style(diff_line, ANSI_DIM))
+            styled_lines.append(apply_style(text=diff_line, codes=(ANSI_DIM,)))
             continue
         if diff_line.startswith("+"):
-            styled_lines.append(apply_style(diff_line, ANSI_GREEN))
+            styled_lines.append(apply_style(text=diff_line, codes=(ANSI_GREEN,)))
             continue
         if diff_line.startswith("-"):
-            styled_lines.append(apply_style(diff_line, ANSI_RED))
+            styled_lines.append(apply_style(text=diff_line, codes=(ANSI_RED,)))
             continue
         styled_lines.append(diff_line)
     return styled_lines
 
 
 def style_title(text: str) -> str:
-    return apply_style(text, ANSI_BOLD, ANSI_BLUE)
+    return apply_style(
+        text=text,
+        codes=(
+            ANSI_BOLD,
+            ANSI_BLUE,
+        ),
+    )
 
 
 def style_section(text: str) -> str:
-    return apply_style(f"{text}:", ANSI_BOLD, ANSI_BLUE)
+    return apply_style(
+        text=f"{text}:",
+        codes=(
+            ANSI_BOLD,
+            ANSI_BLUE,
+        ),
+    )
 
 
 def style_subsection(text: str) -> str:
-    return apply_style(text, ANSI_BOLD)
+    return apply_style(text=text, codes=(ANSI_BOLD,))
 
 
 def style_label(text: str) -> str:
-    return apply_style(text, ANSI_DIM)
+    return apply_style(text=text, codes=(ANSI_DIM,))
 
 
-def style_label_value(label: str, value: str) -> str:
+def style_label_value(*, label: str, value: str) -> str:
     return f"{style_label(label)}: {value}"
 
 
-def style_object_name(text: str, *, assessment: AuditAssessment | None = None) -> str:
+def style_object_name(*, text: str, assessment: AuditAssessment | None = None) -> str:
     if assessment is None:
-        return apply_style(text, ANSI_BOLD)
-    return style_assessment_value(text, assessment, bold=True)
+        return apply_style(text=text, codes=(ANSI_BOLD,))
+    return style_assessment_value(text=text, assessment=assessment, bold=True)
 
 
 def style_warning(text: str) -> str:
-    return apply_style(text, ANSI_YELLOW)
+    return apply_style(text=text, codes=(ANSI_YELLOW,))
 
 
 def style_assessment(text: str) -> str:
-    return style_assessment_value(text, AuditAssessment(text))
+    return style_assessment_value(text=text, assessment=AuditAssessment(text))
 
 
-def style_assessment_value(text: str, assessment: AuditAssessment, *, bold: bool = False) -> str:
+def style_assessment_value(*, text: str, assessment: AuditAssessment, bold: bool = False) -> str:
     style_codes: tuple[str, ...] = (ANSI_BOLD,) if bold else ()
     if assessment == AuditAssessment.READY:
-        return apply_style(text, *style_codes, ANSI_GREEN)
+        return apply_style(
+            text=text,
+            codes=(
+                *style_codes,
+                ANSI_GREEN,
+            ),
+        )
     if assessment == AuditAssessment.NOT_READY:
-        return apply_style(text, *style_codes, ANSI_RED)
-    return apply_style(text, *style_codes, ANSI_YELLOW)
+        return apply_style(
+            text=text,
+            codes=(
+                *style_codes,
+                ANSI_RED,
+            ),
+        )
+    return apply_style(
+        text=text,
+        codes=(
+            *style_codes,
+            ANSI_YELLOW,
+        ),
+    )
 
 
-def apply_style(text: str, *codes: str) -> str:
+def apply_style(*, text: str, codes: tuple[str, ...]) -> str:
     if not color_enabled() or not text:
         return text
     return f"{''.join(codes)}{text}{ANSI_RESET}"

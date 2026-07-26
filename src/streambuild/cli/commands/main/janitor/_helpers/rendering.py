@@ -11,8 +11,8 @@ from streambuild.executor.janitor.models import (
 
 
 def render_janitor_result(
-    result: JanitorPreviewResult | JanitorApplyResult,
     *,
+    result: JanitorPreviewResult | JanitorApplyResult,
     apply: bool,
     json_output: bool,
 ) -> str:

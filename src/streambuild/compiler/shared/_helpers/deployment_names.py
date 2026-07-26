@@ -8,7 +8,7 @@ from streambuild.compiler.shared.constants import (
 )
 
 
-def build_deployment_physical_name(logical_name: str, deployment_id: str) -> str:
+def build_deployment_physical_name(*, logical_name: str, deployment_id: str) -> str:
     return f"{logical_name}__{deployment_id}"
 
 

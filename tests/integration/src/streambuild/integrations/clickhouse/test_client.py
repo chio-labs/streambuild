@@ -32,8 +32,8 @@ def test_given_real_clickhouse_when_using_client_then_it_executes_expected_opera
     )
 
     managed_clickhouse_client.insert_rows(
-        f"{clickhouse_database}.deployments",
-        test_case.inserted_rows,
+        table=f"{clickhouse_database}.deployments",
+        rows=test_case.inserted_rows,
     )
 
     result_rows: tuple[tuple[object, ...], ...] = managed_clickhouse_client.query(

@@ -86,7 +86,9 @@ def test_given_clickhouse_timezone_when_converting_then_it_returns_server_basis_
         FakeTimestampCliClickHouseClient(test_case.timezone_name),
     )
 
-    converted_value: str = convert_utc_timestamp_for_clickhouse(client, test_case.utc_timestamp)
+    converted_value: str = convert_utc_timestamp_for_clickhouse(
+        client=client, utc_timestamp=test_case.utc_timestamp
+    )
 
     assert converted_value == test_case.expected_converted_value
 

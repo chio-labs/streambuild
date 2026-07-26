@@ -23,6 +23,7 @@ def resolved_environment(environment: Mapping[str, str] | None) -> Mapping[str, 
 
 
 def resolve_optional_str_arg(
+    *,
     value: str | None,
     env_var_name: str,
     environment: Mapping[str, str],
@@ -36,6 +37,7 @@ def resolve_optional_str_arg(
 
 
 def resolve_optional_int_arg(
+    *,
     value: int | None,
     env_var_name: str,
     environment: Mapping[str, str],
@@ -131,13 +133,13 @@ def resolve_project_dir(
     return working_directory / project_dir
 
 
-def require_str_arg(value: str | None, arg_name: str, env_var_name: str) -> str:
+def require_str_arg(*, value: str | None, arg_name: str, env_var_name: str) -> str:
     if value is None:
         raise ValueError(f"Missing {arg_name}. Pass --{arg_name} or set {env_var_name}.")
     return value
 
 
-def require_int_arg(value: int | None, arg_name: str, env_var_name: str) -> int:
+def require_int_arg(*, value: int | None, arg_name: str, env_var_name: str) -> int:
     if value is None:
         raise ValueError(f"Missing {arg_name}. Pass --{arg_name} or set {env_var_name}.")
     return value
@@ -153,39 +155,39 @@ def resolve_clickhouse_connection(
 ) -> ResolvedClickHouseConnection:
     return ResolvedClickHouseConnection(
         host=require_str_arg(
-            host
+            value=host
             if host is not None
             else None
             if project_connection is None
             else project_connection.host,
-            "host",
-            "STREAMBUILD_CLICKHOUSE_HOST",
+            arg_name="host",
+            env_var_name="STREAMBUILD_CLICKHOUSE_HOST",
         ),
         port=require_int_arg(
-            port
+            value=port
             if port is not None
             else None
             if project_connection is None
             else project_connection.port,
-            "port",
-            "STREAMBUILD_CLICKHOUSE_PORT",
+            arg_name="port",
+            env_var_name="STREAMBUILD_CLICKHOUSE_PORT",
         ),
         username=require_str_arg(
-            username
+            value=username
             if username is not None
             else None
             if project_connection is None
             else project_connection.username,
-            "username",
-            "STREAMBUILD_CLICKHOUSE_USERNAME",
+            arg_name="username",
+            env_var_name="STREAMBUILD_CLICKHOUSE_USERNAME",
         ),
         password=require_str_arg(
-            password
+            value=password
             if password is not None
             else None
             if project_connection is None
             else project_connection.password,
-            "password",
-            "STREAMBUILD_CLICKHOUSE_PASSWORD",
+            arg_name="password",
+            env_var_name="STREAMBUILD_CLICKHOUSE_PASSWORD",
         ),
     )

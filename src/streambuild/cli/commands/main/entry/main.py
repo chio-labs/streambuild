@@ -66,8 +66,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 def _main_with_dependencies(
-    argv: Sequence[str] | None = None,
     *,
+    argv: Sequence[str] | None = None,
     handlers: CliEntrypointHandlers,
     environment: Mapping[str, str] | None = None,
     working_directory: Path | None = None,
@@ -111,24 +111,24 @@ def _main_with_dependencies(
             working_directory=current_working_directory,
         )
         resolved_host: str | None = resolve_optional_str_arg(
-            getattr(args, "host", None),
-            "STREAMBUILD_CLICKHOUSE_HOST",
-            resolved_env,
+            value=getattr(args, "host", None),
+            env_var_name="STREAMBUILD_CLICKHOUSE_HOST",
+            environment=resolved_env,
         )
         resolved_port: int | None = resolve_optional_int_arg(
-            getattr(args, "port", None),
-            "STREAMBUILD_CLICKHOUSE_PORT",
-            resolved_env,
+            value=getattr(args, "port", None),
+            env_var_name="STREAMBUILD_CLICKHOUSE_PORT",
+            environment=resolved_env,
         )
         resolved_username: str | None = resolve_optional_str_arg(
-            getattr(args, "username", None),
-            "STREAMBUILD_CLICKHOUSE_USERNAME",
-            resolved_env,
+            value=getattr(args, "username", None),
+            env_var_name="STREAMBUILD_CLICKHOUSE_USERNAME",
+            environment=resolved_env,
         )
         resolved_password: str | None = resolve_optional_str_arg(
-            getattr(args, "password", None),
-            "STREAMBUILD_CLICKHOUSE_PASSWORD",
-            resolved_env,
+            value=getattr(args, "password", None),
+            env_var_name="STREAMBUILD_CLICKHOUSE_PASSWORD",
+            environment=resolved_env,
         )
         if args.command == "discover":
             return handlers.run_discover(pipelines_root=pipelines_root)
@@ -160,11 +160,11 @@ def _main_with_dependencies(
                 return clickhouse_client
             if connection is None:
                 raise RuntimeError("CLI entrypoint failed to resolve a ClickHouse connection")
-            return build_clickhouse_client_for_connection(connection)
+            return build_clickhouse_client_for_connection(connection=connection)
 
         if args.command == "test":
             return handlers.run_test(
-                pipelines_root,
+                pipelines_root=pipelines_root,
                 project_dir=resolved_project_dir,
                 selectors=tuple(getattr(args, "select", [])),
                 paths=tuple(getattr(args, "paths", ())),
@@ -174,7 +174,7 @@ def _main_with_dependencies(
 
         if args.command == "backfill":
             return handlers.run_backfill(
-                pipelines_root,
+                pipelines_root=pipelines_root,
                 database=resolved_database,
                 metadata_database=getattr(args, "metadata_database", None),
                 selectors=tuple(getattr(args, "select", [])),
@@ -189,7 +189,7 @@ def _main_with_dependencies(
         if args.command == "audit":
             if getattr(args, "audit_command", None) == "backfill":
                 return handlers.run_audit_backfill(
-                    pipelines_root,
+                    pipelines_root=pipelines_root,
                     project_dir=(
                         resolved_project_dir
                         if resolved_project_dir is not None
@@ -204,7 +204,7 @@ def _main_with_dependencies(
             if pipelines_root is None:
                 raise RuntimeError("Audit command requires a resolved pipelines root")
             return handlers.run_audit(
-                pipelines_root,
+                pipelines_root=pipelines_root,
                 project_dir=resolved_project_dir or pipelines_root.parent,
                 database=resolved_database,
                 selectors=tuple(getattr(args, "select", [])),
@@ -221,7 +221,7 @@ def _main_with_dependencies(
             )
         if args.command == "reconcile":
             return handlers.run_reconcile(
-                pipelines_root,
+                pipelines_root=pipelines_root,
                 database=resolved_database,
                 metadata_database=getattr(args, "metadata_database", None),
                 selectors=tuple(getattr(args, "select", [])),
@@ -250,7 +250,7 @@ def _main_with_dependencies(
                 client=resolved_client(),
             )
         return handlers.run_plan(
-            pipelines_root,
+            pipelines_root=pipelines_root,
             database=resolved_database,
             selectors=tuple(getattr(args, "select", [])),
             full_refresh=bool(getattr(args, "full_refresh", False)),

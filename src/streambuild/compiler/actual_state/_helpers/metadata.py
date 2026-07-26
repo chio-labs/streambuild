@@ -44,7 +44,7 @@ def load_object_state_records_by_deployments(
 
     try:
         rows: tuple[ObjectStateMetadataRow, ...] = client.query_many(
-            "SELECT deployment_id, database_name, object_type, object_name, "
+            statement="SELECT deployment_id, database_name, object_type, object_name, "
             "normalized_fingerprint, "
             "normalized_query, recorded_at "
             f"FROM {metadata_database}.{METADATA_OBJECT_STATE_TABLE_NAME} "
@@ -96,7 +96,7 @@ def load_latest_object_state_records_by_keys(
     )
     try:
         rows: tuple[ObjectStateMetadataRow, ...] = client.query_many(
-            "SELECT deployment_id, database_name, object_type, object_name, "
+            statement="SELECT deployment_id, database_name, object_type, object_name, "
             "normalized_fingerprint, "
             "normalized_query, recorded_at "
             f"FROM {metadata_database}.{METADATA_OBJECT_STATE_TABLE_NAME} "

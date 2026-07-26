@@ -29,6 +29,7 @@ from streambuild.spec.models.types import ReplayLineageMode
 
 
 def resolve_scalar_watermarks(
+    *,
     deployment_id: str,
     deployment_plan: DeploymentPlan,
     desired_state: DesiredState,
@@ -59,6 +60,7 @@ def resolve_scalar_watermarks(
 
 
 def resolve_cursor_watermarks(
+    *,
     client: ClickHouseClient,
     deployment_id: str,
     deployment_plan: DeploymentPlan,
@@ -106,6 +108,7 @@ def resolve_cursor_watermarks(
 
 
 def resolve_offset_watermarks(
+    *,
     client: ClickHouseClient,
     deployment_id: str,
     deployment_plan: DeploymentPlan,
@@ -141,7 +144,7 @@ def resolve_offset_watermarks(
             )
         )
         rows: tuple[OffsetWatermarkQueryRow, ...] = client.query_many(
-            _render_offset_cutoff_query(
+            statement=_render_offset_cutoff_query(
                 database=database,
                 landing_table_name=landing_table_name,
                 boundary_time=boundary_time,
@@ -200,6 +203,7 @@ def _staged_table_name_if_present(
 
 
 def persist_deployment_watermarks(
+    *,
     client: ClickHouseClient,
     metadata_database: str,
     deployment_watermarks: tuple[DeploymentWatermarkRecord, ...],
@@ -227,10 +231,11 @@ def persist_deployment_watermarks(
     for statement in insert_statements:
         if not statement.rows:
             continue
-        client.insert_rows(_insert_table_name(statement.sql), statement.rows)
+        client.insert_rows(table=_insert_table_name(statement.sql), rows=statement.rows)
 
 
 def _scalar_boundary_key(
+    *,
     desired_state: DesiredState,
     anchor_key: ObjectKey,
     replay_lineage_mode: ReplayLineageMode,
@@ -287,6 +292,7 @@ def _scalar_boundary_key(
 
 
 def _landing_table_name_for_anchor(
+    *,
     desired_state: DesiredState,
     anchor_key: ObjectKey,
 ) -> str:
@@ -321,6 +327,7 @@ def _landing_table_name_for_anchor(
 
 
 def _render_offset_cutoff_query(
+    *,
     database: str,
     landing_table_name: str,
     boundary_time: str,
@@ -348,7 +355,7 @@ def _load_cursor_cutoff_value(
     cursor_column_name: str,
 ) -> str:
     row: OffsetWatermarkQueryRow | None = client.query_one(
-        "SELECT coalesce(toString(max("
+        statement="SELECT coalesce(toString(max("
         f"{cursor_column_name}"
         ")), '') AS cutoff_offset "
         f"FROM {database}.{table_name}",

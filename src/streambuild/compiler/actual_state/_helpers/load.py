@@ -235,7 +235,7 @@ def load_actual_state(
 
 def _load_existing_table_names(*, client: ClickHouseClient, database: str) -> set[str]:
     rows: tuple[TableNameSystemRow, ...] = client.query_many(
-        f"SELECT name FROM system.tables WHERE database = '{database}'",
+        statement=f"SELECT name FROM system.tables WHERE database = '{database}'",
         decode=_decode_table_name_system_row,
     )
     return {row.name for row in rows}
@@ -251,13 +251,13 @@ def _load_active_table_specs(
     if not table_names:
         return {}
     column_rows: tuple[TableColumnSystemRow, ...] = client.query_many(
-        "SELECT table, name, type, default_expression FROM system.columns "
+        statement="SELECT table, name, type, default_expression FROM system.columns "
         f"WHERE database = '{database}' AND table IN ({_quoted_sql_string_list(table_names)}) "
         "ORDER BY table, position",
         decode=_decode_table_column_system_row,
     )
     storage_rows: tuple[TableStorageSystemRow, ...] = client.query_many(
-        "SELECT name, engine, sorting_key, partition_key FROM system.tables "
+        statement="SELECT name, engine, sorting_key, partition_key FROM system.tables "
         f"WHERE database = '{database}' AND name IN ({_quoted_sql_string_list(table_names)})",
         decode=_decode_table_storage_system_row,
     )

@@ -19,6 +19,7 @@ from streambuild.spec.models.types import ReplayLineageMode
 
 
 def resolve_selection(
+    *,
     compiled_pipelines: tuple[CompiledPipeline, ...],
     selectors: tuple[str, ...],
 ) -> SelectionResolution:
@@ -28,14 +29,14 @@ def resolve_selection(
             desired_state=full_desired_state,
             selected_model_keys=frozenset(),
             replay_lineage_mode=_resolve_replay_lineage_mode(
-                compiled_pipelines,
+                compiled_pipelines=compiled_pipelines,
                 selected_model_keys=frozenset(),
             ),
         )
 
     selected_model_keys: frozenset[ObjectKey] = _resolve_selected_model_keys(
-        compiled_pipelines,
-        selectors,
+        compiled_pipelines=compiled_pipelines,
+        selectors=selectors,
     )
     included_keys: frozenset[ObjectKey] = _expand_included_keys(
         compiled_pipelines=compiled_pipelines,
@@ -43,16 +44,19 @@ def resolve_selection(
         selected_model_keys=selected_model_keys,
     )
     return SelectionResolution(
-        desired_state=_filter_desired_state(full_desired_state, included_keys),
+        desired_state=_filter_desired_state(
+            desired_state=full_desired_state, included_keys=included_keys
+        ),
         selected_model_keys=selected_model_keys,
         replay_lineage_mode=_resolve_replay_lineage_mode(
-            compiled_pipelines,
+            compiled_pipelines=compiled_pipelines,
             selected_model_keys=selected_model_keys,
         ),
     )
 
 
 def _resolve_selected_model_keys(
+    *,
     compiled_pipelines: tuple[CompiledPipeline, ...],
     selectors: tuple[str, ...],
 ) -> frozenset[ObjectKey]:
@@ -150,11 +154,12 @@ def _expand_included_keys(
 
 
 def _filter_desired_state(
+    *,
     desired_state: DesiredState,
     included_keys: frozenset[ObjectKey],
 ) -> DesiredState:
     ordered_keys: tuple[ObjectKey, ...] = topologically_order_keys(
-        desired_state, set(included_keys)
+        desired_state=desired_state, included_keys=set(included_keys)
     )
     object_by_key: dict[ObjectKey, DesiredKafkaTable | DesiredTable | DesiredMaterializedView] = {
         object_.key: object_ for object_ in desired_state.objects if object_.key in included_keys
@@ -192,8 +197,8 @@ def _pipeline_source_keys(compiled_pipeline: CompiledPipeline) -> frozenset[Obje
 
 
 def _resolve_replay_lineage_mode(
-    compiled_pipelines: tuple[CompiledPipeline, ...],
     *,
+    compiled_pipelines: tuple[CompiledPipeline, ...],
     selected_model_keys: frozenset[ObjectKey],
 ) -> ReplayLineageMode:
     replay_lineage_modes: set[ReplayLineageMode] = set()

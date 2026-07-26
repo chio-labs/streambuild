@@ -68,6 +68,8 @@ TEST_CASES: list[DeriveTransformOutputColumnsSuccessTestCase] = [
 def test_given_valid_transform_sql_when_deriving_output_columns_then_it_returns_expected_columns(
     test_case: DeriveTransformOutputColumnsSuccessTestCase,
 ) -> None:
-    derived_columns: tuple = derive_transform_output_columns("orders_enriched", test_case.query)
+    derived_columns: tuple = derive_transform_output_columns(
+        transform_name="orders_enriched", query=test_case.query
+    )
 
     assert derived_columns == test_case.expected_columns

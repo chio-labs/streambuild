@@ -13,6 +13,7 @@ from streambuild.compiler.shared.models import ObjectKey
 
 
 def build_metadata_state(
+    *,
     object_states: tuple[ObjectStateRecord, ...],
     deployments: tuple[DeploymentRecord, ...],
     deployment_watermarks: tuple[DeploymentWatermarkRecord, ...],

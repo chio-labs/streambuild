@@ -203,24 +203,25 @@ def test_given_staged_backfill_when_auditing_then_it_returns_expected_comparison
 
     clickhouse_client.command(
         render_create_kafka_table_ddl(
-            require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).kafka_table,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.command(
         render_create_table_ddl(
-            require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).raw_table, database=clickhouse_database
         )
     )
     clickhouse_client.command(
         render_create_materialized_view_ddl(
-            require_managed_source(compiled_pipeline).materialized_view,
-            clickhouse_database,
+            materialized_view=require_managed_source(compiled_pipeline).materialized_view,
+            database=clickhouse_database,
         )
     )
     active_physical_name: str = f"tbl__orders_enriched__{test_case.active_deployment_id}"
     clickhouse_client.command(
         render_create_table_ddl(
-            compiled_pipeline.transforms[0].target_table, clickhouse_database
+            table=compiled_pipeline.transforms[0].target_table, database=clickhouse_database
         ).replace(
             f"{clickhouse_database}.{compiled_pipeline.transforms[0].target_table.name}",
             f"{clickhouse_database}.{active_physical_name}",
@@ -299,7 +300,7 @@ def test_given_staged_backfill_when_auditing_then_it_returns_expected_comparison
     staged_physical_name: str = f"tbl__orders_enriched__{test_case.deployment_id}"
     clickhouse_client.command(
         render_create_table_ddl(
-            compiled_pipeline.transforms[0].target_table, clickhouse_database
+            table=compiled_pipeline.transforms[0].target_table, database=clickhouse_database
         ).replace(
             f"{clickhouse_database}.{compiled_pipeline.transforms[0].target_table.name}",
             f"{clickhouse_database}.{staged_physical_name}",
@@ -309,8 +310,8 @@ def test_given_staged_backfill_when_auditing_then_it_returns_expected_comparison
     if test_case.replay_lineage_mode == "offsets":
         clickhouse_client.command(
             render_create_materialized_view_ddl(
-                compiled_pipeline.transforms[0].materialized_view,
-                clickhouse_database,
+                materialized_view=compiled_pipeline.transforms[0].materialized_view,
+                database=clickhouse_database,
             )
             .replace(
                 f"{clickhouse_database}.{compiled_pipeline.transforms[0].materialized_view.name}",
@@ -349,12 +350,12 @@ def test_given_staged_backfill_when_auditing_then_it_returns_expected_comparison
 
     try:
         audit_result: AuditBackfillResult = execute_audit_backfill(
-            AuditBackfillRequest(
+            request=AuditBackfillRequest(
                 deployment_id=test_case.deployment_id,
                 metadata_database=clickhouse_database,
                 default_database=clickhouse_database,
             ),
-            managed_client,
+            client=managed_client,
         )
     finally:
         managed_client.close()
@@ -394,18 +395,19 @@ def test_given_audit_request_without_deployment_id_when_resolving_then_it_behave
     compiled_pipeline: CompiledPipeline = build_scalar_replay_compiled_pipeline("timestamp")
     clickhouse_client.command(
         render_create_kafka_table_ddl(
-            require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).kafka_table,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.command(
         render_create_table_ddl(
-            require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).raw_table, database=clickhouse_database
         )
     )
     clickhouse_client.command(
         render_create_materialized_view_ddl(
-            require_managed_source(compiled_pipeline).materialized_view,
-            clickhouse_database,
+            materialized_view=require_managed_source(compiled_pipeline).materialized_view,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.insert(
@@ -442,24 +444,24 @@ def test_given_audit_request_without_deployment_id_when_resolving_then_it_behave
 
     try:
         execute_backfill(
-            build_scalar_replay_request(
+            request=build_scalar_replay_request(
                 database=clickhouse_database,
                 deployment_id=test_case.first_deployment_id,
                 created_at="2026-04-09 20:00:00.123",
                 boundary_time="2026-04-09 20:00:00.000",
                 replay_lineage_mode="timestamp",
             ),
-            managed_client,
+            client=managed_client,
         )
         execute_backfill(
-            build_scalar_replay_request(
+            request=build_scalar_replay_request(
                 database=clickhouse_database,
                 deployment_id=test_case.second_deployment_id,
                 created_at="2026-04-09 20:05:00.123",
                 boundary_time="2026-04-09 20:05:00.000",
                 replay_lineage_mode="timestamp",
             ),
-            managed_client,
+            client=managed_client,
         )
         if test_case.create_active_view:
             clickhouse_client.command(
@@ -473,22 +475,22 @@ def test_given_audit_request_without_deployment_id_when_resolving_then_it_behave
         if test_case.expected_error_fragment is not None:
             with pytest.raises(ValueError, match=test_case.expected_error_fragment):
                 execute_audit_backfill(
-                    AuditBackfillRequest(
+                    request=AuditBackfillRequest(
                         deployment_id=None,
                         metadata_database=clickhouse_database,
                         default_database=clickhouse_database,
                     ),
-                    managed_client,
+                    client=managed_client,
                 )
             return
 
         result: AuditBackfillResult = execute_audit_backfill(
-            AuditBackfillRequest(
+            request=AuditBackfillRequest(
                 deployment_id=None,
                 metadata_database=clickhouse_database,
                 default_database=clickhouse_database,
             ),
-            managed_client,
+            client=managed_client,
         )
     finally:
         managed_client.close()
@@ -518,18 +520,19 @@ def test_given_deleted_audit_metadata_when_auditing_then_it_uses_live_clickhouse
     compiled_pipeline: CompiledPipeline = build_scalar_replay_compiled_pipeline("timestamp")
     clickhouse_client.command(
         render_create_kafka_table_ddl(
-            require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).kafka_table,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.command(
         render_create_table_ddl(
-            require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).raw_table, database=clickhouse_database
         )
     )
     clickhouse_client.command(
         render_create_materialized_view_ddl(
-            require_managed_source(compiled_pipeline).materialized_view,
-            clickhouse_database,
+            materialized_view=require_managed_source(compiled_pipeline).materialized_view,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.insert(
@@ -573,14 +576,14 @@ def test_given_deleted_audit_metadata_when_auditing_then_it_uses_live_clickhouse
 
     try:
         execute_backfill(
-            build_scalar_replay_request(
+            request=build_scalar_replay_request(
                 database=clickhouse_database,
                 deployment_id=test_case.deployment_id,
                 created_at="2026-04-09 19:00:00.123",
                 boundary_time="2026-04-09 19:00:00.000",
                 replay_lineage_mode="timestamp",
             ),
-            managed_client,
+            client=managed_client,
         )
         clickhouse_client.command(
             f"DROP TABLE IF EXISTS {clickhouse_database}.streambuild_deployment_watermarks"
@@ -592,12 +595,12 @@ def test_given_deleted_audit_metadata_when_auditing_then_it_uses_live_clickhouse
             f"DROP TABLE IF EXISTS {clickhouse_database}.streambuild_object_state_snapshots"
         )
         audit_result: AuditBackfillResult = execute_audit_backfill(
-            AuditBackfillRequest(
+            request=AuditBackfillRequest(
                 deployment_id=test_case.deployment_id,
                 metadata_database=clickhouse_database,
                 default_database=clickhouse_database,
             ),
-            managed_client,
+            client=managed_client,
         )
     finally:
         managed_client.close()
@@ -635,18 +638,19 @@ def test_given_dangling_active_view_when_auditing_then_it_returns_caution(
     compiled_pipeline: CompiledPipeline = build_scalar_replay_compiled_pipeline("timestamp")
     clickhouse_client.command(
         render_create_kafka_table_ddl(
-            require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).kafka_table,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.command(
         render_create_table_ddl(
-            require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).raw_table, database=clickhouse_database
         )
     )
     clickhouse_client.command(
         render_create_materialized_view_ddl(
-            require_managed_source(compiled_pipeline).materialized_view,
-            clickhouse_database,
+            materialized_view=require_managed_source(compiled_pipeline).materialized_view,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.insert(
@@ -673,7 +677,7 @@ def test_given_dangling_active_view_when_auditing_then_it_returns_caution(
     )
     clickhouse_client.command(
         render_create_table_ddl(
-            compiled_pipeline.transforms[0].target_table, clickhouse_database
+            table=compiled_pipeline.transforms[0].target_table, database=clickhouse_database
         ).replace(
             f"{clickhouse_database}.{compiled_pipeline.transforms[0].target_table.name}",
             f"{clickhouse_database}.tbl__orders_enriched__{test_case.active_deployment_id}",
@@ -692,7 +696,7 @@ def test_given_dangling_active_view_when_auditing_then_it_returns_caution(
     )
     clickhouse_client.command(
         render_create_table_ddl(
-            compiled_pipeline.transforms[0].target_table, clickhouse_database
+            table=compiled_pipeline.transforms[0].target_table, database=clickhouse_database
         ).replace(
             f"{clickhouse_database}.{compiled_pipeline.transforms[0].target_table.name}",
             f"{clickhouse_database}.tbl__orders_enriched__{test_case.deployment_id}",
@@ -719,12 +723,12 @@ def test_given_dangling_active_view_when_auditing_then_it_returns_caution(
 
     try:
         audit_result: AuditBackfillResult = execute_audit_backfill(
-            AuditBackfillRequest(
+            request=AuditBackfillRequest(
                 deployment_id=test_case.deployment_id,
                 metadata_database=clickhouse_database,
                 default_database=clickhouse_database,
             ),
-            managed_client,
+            client=managed_client,
         )
     finally:
         managed_client.close()
@@ -760,23 +764,24 @@ def test_given_deleted_active_view_when_auditing_then_it_uses_live_staged_state(
     compiled_pipeline: CompiledPipeline = build_scalar_replay_compiled_pipeline("timestamp")
     clickhouse_client.command(
         render_create_kafka_table_ddl(
-            require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).kafka_table,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.command(
         render_create_table_ddl(
-            require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).raw_table, database=clickhouse_database
         )
     )
     clickhouse_client.command(
         render_create_materialized_view_ddl(
-            require_managed_source(compiled_pipeline).materialized_view,
-            clickhouse_database,
+            materialized_view=require_managed_source(compiled_pipeline).materialized_view,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.command(
         render_create_table_ddl(
-            compiled_pipeline.transforms[0].target_table, clickhouse_database
+            table=compiled_pipeline.transforms[0].target_table, database=clickhouse_database
         ).replace(
             f"{clickhouse_database}.{compiled_pipeline.transforms[0].target_table.name}",
             (f"{clickhouse_database}.tbl__orders_enriched__{test_case.active_deployment_id}"),
@@ -823,7 +828,7 @@ def test_given_deleted_active_view_when_auditing_then_it_uses_live_staged_state(
     )
     clickhouse_client.command(
         render_create_table_ddl(
-            compiled_pipeline.transforms[0].target_table, clickhouse_database
+            table=compiled_pipeline.transforms[0].target_table, database=clickhouse_database
         ).replace(
             f"{clickhouse_database}.{compiled_pipeline.transforms[0].target_table.name}",
             f"{clickhouse_database}.tbl__orders_enriched__{test_case.deployment_id}",
@@ -851,12 +856,12 @@ def test_given_deleted_active_view_when_auditing_then_it_uses_live_staged_state(
 
     try:
         audit_result: AuditBackfillResult = execute_audit_backfill(
-            AuditBackfillRequest(
+            request=AuditBackfillRequest(
                 deployment_id=test_case.deployment_id,
                 metadata_database=clickhouse_database,
                 default_database=clickhouse_database,
             ),
-            managed_client,
+            client=managed_client,
         )
     finally:
         managed_client.close()
@@ -918,23 +923,24 @@ def test_given_degraded_offset_state_when_auditing_then_it_returns_caution(
     staged_physical_name: str = f"tbl__orders_enriched__{test_case.deployment_id}"
     clickhouse_client.command(
         render_create_kafka_table_ddl(
-            require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).kafka_table,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.command(
         render_create_table_ddl(
-            require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).raw_table, database=clickhouse_database
         )
     )
     clickhouse_client.command(
         render_create_materialized_view_ddl(
-            require_managed_source(compiled_pipeline).materialized_view,
-            clickhouse_database,
+            materialized_view=require_managed_source(compiled_pipeline).materialized_view,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.command(
         render_create_table_ddl(
-            compiled_pipeline.transforms[0].target_table, clickhouse_database
+            table=compiled_pipeline.transforms[0].target_table, database=clickhouse_database
         ).replace(
             f"{clickhouse_database}.{compiled_pipeline.transforms[0].target_table.name}",
             f"{clickhouse_database}.{active_physical_name}",
@@ -943,7 +949,7 @@ def test_given_degraded_offset_state_when_auditing_then_it_returns_caution(
     )
     clickhouse_client.command(
         render_create_table_ddl(
-            compiled_pipeline.transforms[0].target_table, clickhouse_database
+            table=compiled_pipeline.transforms[0].target_table, database=clickhouse_database
         ).replace(
             f"{clickhouse_database}.{compiled_pipeline.transforms[0].target_table.name}",
             f"{clickhouse_database}.{staged_physical_name}",
@@ -996,8 +1002,8 @@ def test_given_degraded_offset_state_when_auditing_then_it_returns_caution(
     if test_case.scenario_kind != "missing_source_lookup":
         clickhouse_client.command(
             render_create_materialized_view_ddl(
-                compiled_pipeline.transforms[0].materialized_view,
-                clickhouse_database,
+                materialized_view=compiled_pipeline.transforms[0].materialized_view,
+                database=clickhouse_database,
             )
             .replace(
                 f"{clickhouse_database}.{compiled_pipeline.transforms[0].materialized_view.name}",
@@ -1052,12 +1058,12 @@ def test_given_degraded_offset_state_when_auditing_then_it_returns_caution(
 
     try:
         audit_result: AuditBackfillResult = execute_audit_backfill(
-            AuditBackfillRequest(
+            request=AuditBackfillRequest(
                 deployment_id=test_case.deployment_id,
                 metadata_database=clickhouse_database,
                 default_database=clickhouse_database,
             ),
-            managed_client,
+            client=managed_client,
         )
     finally:
         managed_client.close()

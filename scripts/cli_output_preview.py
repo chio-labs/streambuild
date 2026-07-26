@@ -13,6 +13,7 @@ from streambuild.cli.commands.main.shared.helpers.deployment_candidates import (
     render_ambiguous_deployment_message,
 )
 from streambuild.cli.commands.main.shared.helpers.plan_rendering import render_plan_result
+
 from streambuild.compiler.compile.models import DesiredState
 from streambuild.compiler.planner.models import (
     DeploymentPlan,
@@ -86,15 +87,19 @@ def main() -> int:
     for index, scenario_name in enumerate(scenario_names):
         if index > 0:
             print("\n---\n")
-        print(render_scenario(scenario_name, json_output=args.json, verbose=args.verbose))
+        print(
+            render_scenario(
+                scenario_name=scenario_name, json_output=args.json, verbose=args.verbose
+            )
+        )
 
     return 0
 
 
-def render_scenario(scenario_name: str, *, json_output: bool, verbose: bool) -> str:
+def render_scenario(*, scenario_name: str, json_output: bool, verbose: bool) -> str:
     if scenario_name == "plan":
         return render_plan_result(
-            _build_plan_preview(),
+            plan=_build_plan_preview(),
             desired_state=_build_plan_preview_desired_state(),
             database="analytics",
             json_output=json_output,
@@ -102,7 +107,7 @@ def render_scenario(scenario_name: str, *, json_output: bool, verbose: bool) -> 
         )
     if scenario_name == "plan-multi":
         return render_plan_result(
-            _build_multi_target_plan_preview(),
+            plan=_build_multi_target_plan_preview(),
             desired_state=_build_multi_target_plan_preview_desired_state(),
             database="analytics",
             json_output=json_output,
@@ -110,7 +115,7 @@ def render_scenario(scenario_name: str, *, json_output: bool, verbose: bool) -> 
         )
     if scenario_name == "plan-type-change":
         return render_plan_result(
-            _build_type_change_plan_preview(),
+            plan=_build_type_change_plan_preview(),
             desired_state=_build_type_change_plan_preview_desired_state(),
             database="analytics",
             json_output=json_output,
@@ -118,25 +123,25 @@ def render_scenario(scenario_name: str, *, json_output: bool, verbose: bool) -> 
         )
     if scenario_name == "backfill":
         return render_backfill_result(
-            _build_backfill_preview(),
+            result=_build_backfill_preview(),
             database="analytics",
             json_output=json_output,
         )
     if scenario_name == "audit":
         return render_audit_backfill_result(
-            _build_audit_preview(),
+            result=_build_audit_preview(),
             database="analytics",
             json_output=json_output,
         )
     if scenario_name == "audit-caution":
         return render_audit_backfill_result(
-            _build_audit_caution_preview(),
+            result=_build_audit_caution_preview(),
             database="analytics",
             json_output=json_output,
         )
     if scenario_name == "publish":
         return render_publish_result(
-            _build_publish_preview(),
+            result=_build_publish_preview(),
             database="analytics",
             json_output=json_output,
         )

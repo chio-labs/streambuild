@@ -12,6 +12,7 @@ from streambuild.integrations.clickhouse.client import ClickHouseClient
 
 
 def execute_janitor(
+    *,
     request: JanitorRequest,
     client: ClickHouseClient,
 ) -> JanitorPreviewResult | JanitorApplyResult:
@@ -20,7 +21,7 @@ def execute_janitor(
         database=request.database,
     )
     return execute_janitor_for_managed_table_state(
-        request,
-        client,
+        request=request,
+        client=client,
         managed_table_state=managed_table_state,
     )

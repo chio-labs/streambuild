@@ -67,7 +67,9 @@ def _resolve_selected_model_names(
             base_model_name: str
             for base_model_name in base_model_names:
                 selected_model_names.update(
-                    _expand_graph_neighbors(base_model_name, upstream_names_by_model)
+                    _expand_graph_neighbors(
+                        start_name=base_model_name, neighbors_by_name=upstream_names_by_model
+                    )
                 )
     return frozenset(selected_model_names)
 
@@ -119,6 +121,7 @@ def _build_upstream_model_graph(
 
 
 def _expand_graph_neighbors(
+    *,
     start_name: str,
     neighbors_by_name: dict[str, tuple[str, ...]],
 ) -> frozenset[str]:

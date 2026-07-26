@@ -77,7 +77,9 @@ def _evaluate_macro_call(
             f"Unknown macro '@{macro_name}' in '{file_path}'. Available macros: "
             f"{available_macro_names}"
         )
-    opening_paren_index: int = _skip_whitespace(sql, call_start_index + 1 + len(macro_name))
+    opening_paren_index: int = _skip_whitespace(
+        sql=sql, start_index=call_start_index + 1 + len(macro_name)
+    )
     closing_paren_index: int = _find_matching_paren(
         sql=sql, opening_paren_index=opening_paren_index
     )
@@ -268,7 +270,7 @@ def _is_macro_call_start(*, sql: str, at_index: int) -> bool:
     cursor: int = at_index + 2
     while cursor < len(sql) and _is_identifier_continue(sql[cursor]):
         cursor += 1
-    cursor = _skip_whitespace(sql, cursor)
+    cursor = _skip_whitespace(sql=sql, start_index=cursor)
     return cursor < len(sql) and sql[cursor] == "("
 
 
@@ -311,7 +313,7 @@ def _find_matching_paren(*, sql: str, opening_paren_index: int) -> int:
     raise ValueError("Macro call could not be parsed: missing closing ')' ")
 
 
-def _skip_whitespace(sql: str, start_index: int) -> int:
+def _skip_whitespace(*, sql: str, start_index: int) -> int:
     index: int = start_index
     while index < len(sql) and sql[index].isspace():
         index += 1

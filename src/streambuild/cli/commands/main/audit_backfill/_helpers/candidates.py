@@ -47,9 +47,9 @@ def enrich_candidates(
     candidate: AuditDeploymentCandidate
     for candidate in candidates:
         loaded: LoadedAuditDeployment = load_audit_deployment(
-            client,
-            metadata_database,
-            candidate.deployment_id,
+            client=client,
+            metadata_database=metadata_database,
+            deployment_id=candidate.deployment_id,
         )
         root_names: tuple[str, ...] = loaded_deployment_root_names(loaded)
         enriched_candidates.append(

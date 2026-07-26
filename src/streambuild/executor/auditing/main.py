@@ -38,7 +38,7 @@ def _execute_single_sql_audit(
     resolver: Mapping[str, str],
     client: ClickHouseClient,
 ) -> SqlAuditResult:
-    resolved_query: str = replace_refs(loaded_audit.query, dict(resolver))
+    resolved_query: str = replace_refs(sql=loaded_audit.query, resolver=dict(resolver))
     failing_row_count: int = _query_failing_row_count(query=resolved_query, client=client)
     sample_column_names: tuple[str, ...] = ()
     sample_rows: tuple[tuple[object, ...], ...] = ()

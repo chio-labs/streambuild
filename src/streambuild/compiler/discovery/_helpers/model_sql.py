@@ -36,23 +36,31 @@ def load_transform_from_sql_file(file_path: Path) -> TransformStep:
     """Load one authored SQL model file into an internal transform step."""
 
     contents: str = file_path.read_text(encoding="utf-8")
-    header_values, query = parse_model_sql(contents, file_path)
+    header_values, query = parse_model_sql(contents=contents, file_path=file_path)
     return TransformStep(
         name=file_path.stem,
-        source=infer_transform_source(query, file_path),
-        engine=_sql_model_engine(header_values, file_path),
-        order_by=_sql_model_order_by(header_values, file_path),
-        partition_by=_optional_string(header_values, "partition_by", file_path),
-        ttl=_optional_string(header_values, "ttl", file_path),
-        settings=_optional_string_mapping(header_values, "settings", file_path),
-        replay_anchor=_optional_replay_anchor(header_values, file_path),
-        schema_change_backfill=_optional_schema_change_backfill(header_values, file_path),
-        bounded_replay_fallback=_optional_bounded_replay_fallback(header_values, file_path),
+        source=infer_transform_source(query=query, file_path=file_path),
+        engine=_sql_model_engine(header_values=header_values, file_path=file_path),
+        order_by=_sql_model_order_by(header_values=header_values, file_path=file_path),
+        partition_by=_optional_string(
+            header_values=header_values, key="partition_by", file_path=file_path
+        ),
+        ttl=_optional_string(header_values=header_values, key="ttl", file_path=file_path),
+        settings=_optional_string_mapping(
+            header_values=header_values, key="settings", file_path=file_path
+        ),
+        replay_anchor=_optional_replay_anchor(header_values=header_values, file_path=file_path),
+        schema_change_backfill=_optional_schema_change_backfill(
+            header_values=header_values, file_path=file_path
+        ),
+        bounded_replay_fallback=_optional_bounded_replay_fallback(
+            header_values=header_values, file_path=file_path
+        ),
         query=query,
     )
 
 
-def parse_model_sql(contents: str, file_path: Path) -> tuple[dict[str, Any], str]:
+def parse_model_sql(*, contents: str, file_path: Path) -> tuple[dict[str, Any], str]:
     """Parse the required `MODEL(...)` header and SQL query body."""
 
     header_match: re.Match[str] | None = MODEL_HEADER_PATTERN.match(contents)
@@ -62,7 +70,9 @@ def parse_model_sql(contents: str, file_path: Path) -> tuple[dict[str, Any], str
             "non-whitespace content"
         )
 
-    header_values: dict[str, Any] = _parse_model_header(header_match.group("header"), file_path)
+    header_values: dict[str, Any] = _parse_model_header(
+        header=header_match.group("header"), file_path=file_path
+    )
     query: str = expand_project_sql_macros(
         sql=header_match.group("sql").strip(),
         file_path=file_path,
@@ -72,7 +82,7 @@ def parse_model_sql(contents: str, file_path: Path) -> tuple[dict[str, Any], str
     return header_values, query
 
 
-def infer_transform_source(query: str, file_path: Path) -> str:
+def infer_transform_source(*, query: str, file_path: Path) -> str:
     """Infer the driving source from the single untyped relation reference."""
 
     parsed_refs: tuple[ParsedRef, ...] = tuple(extract_refs(query))
@@ -121,7 +131,7 @@ def infer_transform_source(query: str, file_path: Path) -> str:
     return next(iter(driving_ref_names))
 
 
-def _parse_model_header(header: str, file_path: Path) -> dict[str, Any]:
+def _parse_model_header(*, header: str, file_path: Path) -> dict[str, Any]:
     normalized_header: str = _normalize_model_header_yaml(header)
     parsed_header: Any = yaml.safe_load(normalized_header)
     if parsed_header is None:
@@ -150,21 +160,21 @@ def _normalize_model_header_yaml(header: str) -> str:
     return re.sub(r",(?=\s*(?:\n|$))", "", normalized_header)
 
 
-def _require_string(header_values: dict[str, Any], key: str, file_path: Path) -> str:
+def _require_string(*, header_values: dict[str, Any], key: str, file_path: Path) -> str:
     value: Any = header_values.get(key)
     if not isinstance(value, str) or not value:
         raise ValueError(f"MODEL(...) in '{file_path}' must define '{key}' as a non-empty string")
     return value
 
 
-def _sql_model_engine(header_values: dict[str, Any], file_path: Path) -> str:
+def _sql_model_engine(*, header_values: dict[str, Any], file_path: Path) -> str:
     value: Any = header_values.get("engine")
     if value is None:
         return DEFAULT_SQL_MODEL_ENGINE
-    return _require_string(header_values, "engine", file_path)
+    return _require_string(header_values=header_values, key="engine", file_path=file_path)
 
 
-def _require_string_list(header_values: dict[str, Any], key: str, file_path: Path) -> list[str]:
+def _require_string_list(*, header_values: dict[str, Any], key: str, file_path: Path) -> list[str]:
     value: Any = header_values.get(key)
     if not isinstance(value, list) or not value or not all(isinstance(item, str) for item in value):
         raise ValueError(
@@ -173,14 +183,14 @@ def _require_string_list(header_values: dict[str, Any], key: str, file_path: Pat
     return value
 
 
-def _sql_model_order_by(header_values: dict[str, Any], file_path: Path) -> list[str]:
+def _sql_model_order_by(*, header_values: dict[str, Any], file_path: Path) -> list[str]:
     value: Any = header_values.get("order_by")
     if value is None:
         return list(DEFAULT_SQL_MODEL_ORDER_BY)
-    return _require_string_list(header_values, "order_by", file_path)
+    return _require_string_list(header_values=header_values, key="order_by", file_path=file_path)
 
 
-def _optional_string(header_values: dict[str, Any], key: str, file_path: Path) -> str | None:
+def _optional_string(*, header_values: dict[str, Any], key: str, file_path: Path) -> str | None:
     value: Any = header_values.get(key)
     if value is None:
         return None
@@ -190,7 +200,7 @@ def _optional_string(header_values: dict[str, Any], key: str, file_path: Path) -
 
 
 def _optional_string_mapping(
-    header_values: dict[str, Any], key: str, file_path: Path
+    *, header_values: dict[str, Any], key: str, file_path: Path
 ) -> dict[str, str] | None:
     value: Any = header_values.get(key)
     if value is None:
@@ -200,7 +210,7 @@ def _optional_string_mapping(
     return {map_key: str(map_value) for map_key, map_value in value.items()}
 
 
-def _optional_replay_anchor(header_values: dict[str, Any], file_path: Path) -> ReplayAnchorMode:
+def _optional_replay_anchor(*, header_values: dict[str, Any], file_path: Path) -> ReplayAnchorMode:
     value: Any = header_values.get("replay_anchor")
     if value is None:
         return ReplayAnchorMode(ReplayAnchorMode.AUTO)
@@ -212,7 +222,7 @@ def _optional_replay_anchor(header_values: dict[str, Any], file_path: Path) -> R
 
 
 def _optional_schema_change_backfill(
-    header_values: dict[str, Any], file_path: Path
+    *, header_values: dict[str, Any], file_path: Path
 ) -> SchemaChangeBackfillPolicy | None:
     value: Any = header_values.get("schema_change_backfill")
     if value is None:
@@ -297,7 +307,7 @@ def _duration_seconds(*, duration_value: int, duration_unit: str) -> int:
 
 
 def _optional_bounded_replay_fallback(
-    header_values: dict[str, Any], file_path: Path
+    *, header_values: dict[str, Any], file_path: Path
 ) -> BoundedReplayFallback | None:
     value: Any = header_values.get("bounded_replay_fallback")
     if value is None:

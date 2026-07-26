@@ -23,8 +23,8 @@ def build_clickhouse_client(
 
 
 def build_clickhouse_client_for_connection(
-    connection: ResolvedClickHouseConnection,
     *,
+    connection: ResolvedClickHouseConnection,
     database: str | None = None,
 ) -> ClickHouseClient:
     return build_clickhouse_client(

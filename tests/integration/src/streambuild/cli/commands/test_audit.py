@@ -133,7 +133,7 @@ def test_given_audit_project_when_running_live_audit_then_it_reports_expected_re
 
     try:
         exit_code: int = run_audit(
-            tmp_path / "pipelines",
+            pipelines_root=tmp_path / "pipelines",
             project_dir=tmp_path,
             database=clickhouse_database,
             selectors=test_case.selectors,
@@ -179,13 +179,17 @@ def test_given_audit_project_when_running_audit_backfill_then_it_includes_qualit
     compiled_pipeline: CompiledPipeline = build_scalar_replay_compiled_pipeline("timestamp")
     managed_source: CompiledManagedSource = require_managed_source(compiled_pipeline)
     clickhouse_client.command(
-        render_create_kafka_table_ddl(managed_source.kafka_table, clickhouse_database)
+        render_create_kafka_table_ddl(
+            table=managed_source.kafka_table, database=clickhouse_database
+        )
     )
     clickhouse_client.command(
-        render_create_table_ddl(managed_source.raw_table, clickhouse_database)
+        render_create_table_ddl(table=managed_source.raw_table, database=clickhouse_database)
     )
     clickhouse_client.command(
-        render_create_materialized_view_ddl(managed_source.materialized_view, clickhouse_database)
+        render_create_materialized_view_ddl(
+            materialized_view=managed_source.materialized_view, database=clickhouse_database
+        )
     )
     clickhouse_client.insert(
         table=f"{clickhouse_database}.{managed_source.raw_table.name}",
@@ -216,25 +220,25 @@ def test_given_audit_project_when_running_audit_backfill_then_it_includes_qualit
 
     try:
         backfill_result: BackfillExecutionResult = execute_backfill(
-            build_scalar_replay_request(
+            request=build_scalar_replay_request(
                 database=clickhouse_database,
                 deployment_id=deployment_id,
                 created_at=created_at,
                 boundary_time=boundary_time,
                 replay_lineage_mode="timestamp",
             ),
-            managed_client,
+            client=managed_client,
         )
         staged_table_name: str = build_deployment_physical_name(
-            transform_table_name("orders_enriched"),
-            backfill_result.bootstrap.deployment_id,
+            logical_name=transform_table_name("orders_enriched"),
+            deployment_id=backfill_result.bootstrap.deployment_id,
         )
         clickhouse_client.command(
             f"ALTER TABLE {clickhouse_database}.{staged_table_name} "
             "UPDATE _replay_timestamp = toDateTime64('2026-04-19 23:59:59.000', 3) WHERE 1"
         )
         exit_code: int = run_audit_backfill(
-            tmp_path / "pipelines",
+            pipelines_root=tmp_path / "pipelines",
             project_dir=tmp_path,
             database=clickhouse_database,
             metadata_database=None,

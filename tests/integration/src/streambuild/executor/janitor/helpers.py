@@ -48,15 +48,18 @@ def build_janitor_integration_state(
     compiled_pipeline: CompiledPipeline = build_scalar_replay_compiled_pipeline("timestamp")
     clickhouse_client.command(
         render_create_kafka_table_ddl(
-            require_managed_source(compiled_pipeline).kafka_table, database
+            table=require_managed_source(compiled_pipeline).kafka_table, database=database
         )
     )
     clickhouse_client.command(
-        render_create_table_ddl(require_managed_source(compiled_pipeline).raw_table, database)
+        render_create_table_ddl(
+            table=require_managed_source(compiled_pipeline).raw_table, database=database
+        )
     )
     clickhouse_client.command(
         render_create_materialized_view_ddl(
-            require_managed_source(compiled_pipeline).materialized_view, database
+            materialized_view=require_managed_source(compiled_pipeline).materialized_view,
+            database=database,
         )
     )
     clickhouse_client.insert(
@@ -191,14 +194,14 @@ def _execute_real_backfill(
     boundary_time: str,
 ) -> None:
     execute_backfill(
-        build_scalar_replay_request(
+        request=build_scalar_replay_request(
             database=database,
             deployment_id=deployment_id,
             created_at=created_at,
             boundary_time=boundary_time,
             replay_lineage_mode="timestamp",
         ),
-        managed_client,
+        client=managed_client,
     )
 
 
@@ -209,12 +212,12 @@ def _execute_real_publish(
     deployment_id: str,
 ) -> None:
     execute_publish(
-        PublishRequest(
+        request=PublishRequest(
             deployment_id=deployment_id,
             metadata_database=database,
             default_database=database,
         ),
-        managed_client,
+        client=managed_client,
     )
 
 

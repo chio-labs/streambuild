@@ -22,12 +22,12 @@ def run_repair_active_view(
 
     try:
         result: RepairActiveViewResult = execute_repair_active_view(
-            RepairActiveViewRequest(
+            request=RepairActiveViewRequest(
                 default_database=database,
                 table_name=table,
                 deployment_id=deployment_id,
             ),
-            client,
+            client=client,
         )
     except (DatabaseError, OperationalError) as error:
         rendered_error: str | None = render_expected_clickhouse_error(

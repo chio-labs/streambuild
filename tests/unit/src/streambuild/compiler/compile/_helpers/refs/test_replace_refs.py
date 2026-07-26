@@ -55,7 +55,7 @@ TEST_CASES: list[ReplaceRefsTestCase] = [
 def test_given_sql_when_replacing_refs_then_it_rewrites_only_real_ref_calls(
     test_case: ReplaceRefsTestCase,
 ) -> None:
-    replaced_sql: str = replace_refs(test_case.sql, test_case.resolver)
+    replaced_sql: str = replace_refs(sql=test_case.sql, resolver=test_case.resolver)
 
     for expected_sql_fragment in test_case.expected_sql_fragments:
         assert expected_sql_fragment in replaced_sql
@@ -80,4 +80,4 @@ def test_given_unresolved_ref_when_replacing_then_it_raises_expected_error(
     test_case: ReplaceRefsErrorTestCase,
 ) -> None:
     with pytest.raises(test_case.expected_error_type, match=test_case.expected_error_fragment):
-        replace_refs(test_case.sql, test_case.resolver)
+        replace_refs(sql=test_case.sql, resolver=test_case.resolver)

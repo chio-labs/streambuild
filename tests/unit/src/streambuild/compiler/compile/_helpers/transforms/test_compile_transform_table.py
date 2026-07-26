@@ -35,7 +35,7 @@ def test_given_transform_when_compiling_transform_table_then_it_returns_expected
     transform: TransformStep = build_transform()
     assert transform.query is not None
     output_columns: tuple[Column, ...] = derive_transform_output_columns(
-        transform.name, transform.query
+        transform_name=transform.name, query=transform.query
     )
     target_table_key: ObjectKey = ObjectKey(
         database=None,
@@ -48,8 +48,8 @@ def test_given_transform_when_compiling_transform_table_then_it_returns_expected
         name="raw__orders",
     )
     compiled_table: DesiredTable = compile_transform_table(
-        transform,
-        output_columns,
+        transform=transform,
+        output_columns=output_columns,
         key=target_table_key,
         source_table_key=source_table_key,
         bounded_replay_fallback="full_refresh",

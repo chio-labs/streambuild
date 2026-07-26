@@ -89,7 +89,9 @@ def test_given_valid_selectors_when_resolving_then_it_returns_expected_filtered_
 ) -> None:
     compiled_pipelines: tuple[CompiledPipeline, ...] = compile_selector_project_pipelines()
 
-    resolution: SelectionResolution = resolve_selection(compiled_pipelines, test_case.selectors)
+    resolution: SelectionResolution = resolve_selection(
+        compiled_pipelines=compiled_pipelines, selectors=test_case.selectors
+    )
 
     assert tuple(sorted(key.name for key in resolution.selected_model_keys)) == tuple(
         sorted(test_case.expected_selected_model_names)
@@ -110,7 +112,7 @@ def test_given_invalid_selectors_when_resolving_then_it_raises_clear_error(
     compiled_pipelines: tuple[CompiledPipeline, ...] = compile_selector_project_pipelines()
 
     with pytest.raises(ValueError, match=test_case.expected_error_fragment):
-        resolve_selection(compiled_pipelines, test_case.selectors)
+        resolve_selection(compiled_pipelines=compiled_pipelines, selectors=test_case.selectors)
 
 
 @pytest.mark.parametrize(
@@ -143,4 +145,6 @@ def test_given_conflicting_selected_pipeline_modes_when_resolving_then_it_raises
     )
 
     with pytest.raises(ValueError, match=test_case.expected_error_fragment):
-        resolve_selection(mutated_compiled_pipelines, test_case.selectors)
+        resolve_selection(
+            compiled_pipelines=mutated_compiled_pipelines, selectors=test_case.selectors
+        )

@@ -35,6 +35,7 @@ from streambuild.spec.models.types import ReplayLineageMode
 
 
 def execute_scalar_replay(
+    *,
     client: ClickHouseClient,
     deployment_plan: DeploymentPlan,
     desired_state: DesiredState,
@@ -199,6 +200,7 @@ def execute_scalar_replay(
 
 
 def execute_offset_replay(
+    *,
     client: ClickHouseClient,
     deployment_plan: DeploymentPlan,
     desired_state: DesiredState,
@@ -360,6 +362,7 @@ def execute_offset_replay(
 
 
 def _render_scalar_replay_statement(
+    *,
     root_materialized_view: DesiredMaterializedView,
     shadow_target_name: str,
     anchor_table_name: str,
@@ -398,7 +401,7 @@ def _render_scalar_replay_statement(
     replay_boundary_expression: exp.Condition = exp.LTE(
         this=exp.column(boundary_key),
         expression=parse_one(
-            _render_cast_literal(cutoff_value, boundary_column_type),
+            _render_cast_literal(value=cutoff_value, column_type=boundary_column_type),
             dialect="clickhouse",
         ),
     )
@@ -407,7 +410,7 @@ def _render_scalar_replay_statement(
             exp.GTE(
                 this=exp.column(boundary_key),
                 expression=parse_one(
-                    _render_cast_literal(lower_bound_value, boundary_column_type),
+                    _render_cast_literal(value=lower_bound_value, column_type=boundary_column_type),
                     dialect="clickhouse",
                 ),
             ),
@@ -428,6 +431,7 @@ def _render_scalar_replay_statement(
 
 
 def _render_offset_replay_statement(
+    *,
     root_materialized_view: DesiredMaterializedView,
     shadow_target_name: str,
     anchor_table_name: str,
@@ -721,7 +725,7 @@ def _live_column_names(
     live_table_name: str,
 ) -> set[str]:
     live_columns: tuple[TableColumnSystemRow, ...] = client.query_many(
-        f"DESCRIBE TABLE {database}.{live_table_name}",
+        statement=f"DESCRIBE TABLE {database}.{live_table_name}",
         decode=_decode_table_column_system_row,
     )
     return {column.name for column in live_columns}
@@ -749,7 +753,7 @@ def _load_active_scalar_frontier(
     boundary_key: str,
 ) -> str | None:
     row: ActiveScalarFrontierQueryRow | None = client.query_one(
-        f"SELECT max({boundary_key}) AS cutoff_value FROM {database}.{live_table_name}",
+        statement=f"SELECT max({boundary_key}) AS cutoff_value FROM {database}.{live_table_name}",
         decode=_decode_active_scalar_frontier_query_row,
     )
     if row is None:
@@ -764,7 +768,8 @@ def _load_active_offset_frontiers(
     live_table_name: str,
 ) -> tuple[ActiveOffsetFrontierQueryRow, ...]:
     return client.query_many(
-        f"SELECT {REPLAY_PARTITION_COLUMN_NAME}, max({REPLAY_OFFSET_COLUMN_NAME}) AS cutoff_offset "
+        statement=f"SELECT {REPLAY_PARTITION_COLUMN_NAME}, "
+        f"max({REPLAY_OFFSET_COLUMN_NAME}) AS cutoff_offset "
         f"FROM {database}.{live_table_name} GROUP BY {REPLAY_PARTITION_COLUMN_NAME}",
         decode=_decode_active_offset_frontier_query_row,
     )
@@ -785,7 +790,7 @@ def _load_offset_frontiers_at_boundary_time(
         f"max({offset_column_name}) AS cutoff_offset "
     )
     return client.query_many(
-        select_sql + f"FROM {database}.{anchor_table_name} "
+        statement=select_sql + f"FROM {database}.{anchor_table_name} "
         f"WHERE {boundary_time_column_name} <= CAST('{lower_bound_time}' AS DateTime64(3)) "
         f"GROUP BY {partition_column_name}",
         decode=_decode_active_offset_frontier_query_row,
@@ -804,10 +809,11 @@ def _load_cursor_lower_bound_at_boundary_time(
     cursor_column_type: str,
 ) -> tuple[str | None, bool]:
     row: CursorLowerBoundQueryRow | None = client.query_one(
-        "SELECT min(" + cursor_column_name + ") AS lower_bound_cursor "
+        statement="SELECT min(" + cursor_column_name + ") AS lower_bound_cursor "
         f"FROM {database}.{anchor_table_name} "
         f"WHERE {timestamp_column_name} >= CAST('{lower_bound_time}' AS DateTime64(3)) "
-        f"AND {cursor_column_name} <= {_render_cast_literal(cutoff_value, cursor_column_type)}",
+        f"AND {cursor_column_name} <= "
+        f"{_render_cast_literal(value=cutoff_value, column_type=cursor_column_type)}",
         decode=_decode_cursor_lower_bound_query_row,
     )
     if row is None or row.lower_bound_cursor is None:
@@ -845,7 +851,8 @@ def _render_seeded_scalar_prefix_copy_statement(
         f"INSERT INTO {database}.{shadow_target_name} ({column_list_sql})\n"
         f"SELECT {column_list_sql}\n"
         f"FROM {database}.{live_table_name}\n"
-        f"WHERE {boundary_key} < {_render_cast_literal(lower_bound_value, boundary_column_type)}"
+        f"WHERE {boundary_key} < "
+        f"{_render_cast_literal(value=lower_bound_value, column_type=boundary_column_type)}"
     )
 
 
@@ -870,7 +877,7 @@ def _load_scalar_boundary_column_type(
                 external_source_replay_config.landed_at_column_name or boundary_key
             )
     row: TableColumnSystemRow | None = client.query_one(
-        "SELECT name, type FROM system.columns "
+        statement="SELECT name, type FROM system.columns "
         f"WHERE database = '{database}' AND table = '{table_name}' "
         f"AND name = '{physical_boundary_key}'",
         decode=_decode_table_column_system_row,
@@ -883,7 +890,7 @@ def _load_scalar_boundary_column_type(
     return row.type
 
 
-def _render_cast_literal(value: str, column_type: str) -> str:
+def _render_cast_literal(*, value: str, column_type: str) -> str:
     escaped_value: str = value.replace("'", "''")
     return f"CAST('{escaped_value}' AS {column_type})"
 

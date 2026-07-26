@@ -33,9 +33,9 @@ from streambuild.spec.models.steps import SchemaChangeBackfillRule
 
 
 def build_rebuild_subtree(
+    *,
     desired_state: DesiredState,
     root_key: ObjectKey,
-    *,
     execution_mode: RebuildExecutionMode = REBUILD_EXECUTION_MODE_FULL,
     forced_full_refresh: bool = False,
     forced_start_time: str | None = None,
@@ -46,10 +46,10 @@ def build_rebuild_subtree(
 
     return RebuildSubtree(
         root_key=root_key,
-        affected_keys=descendant_keys(desired_state, root_key),
+        affected_keys=descendant_keys(desired_state=desired_state, root_key=root_key),
         upstream_boundary_key=nearest_upstream_replay_anchor_key(
-            desired_state,
-            root_key,
+            desired_state=desired_state,
+            root_key=root_key,
             allow_root_key=False,
         ),
         strategy=REBUILD_STRATEGY_SHADOW,
@@ -62,6 +62,7 @@ def build_rebuild_subtree(
 
 
 def emit_rebuild_subtrees_from_changes(
+    *,
     desired_state: DesiredState,
     object_changes: tuple[PlannedObjectChange, ...],
 ) -> tuple[RebuildSubtree, ...]:
@@ -81,7 +82,7 @@ def emit_rebuild_subtrees_from_changes(
         for object_change in object_changes
         if object_change.change_type in {PLANNED_CHANGE_TYPE_CREATE, PLANNED_CHANGE_TYPE_REBUILD}
         and object_change.key.object_type != DESIRED_OBJECT_TYPE_KAFKA_TABLE
-        and not _is_stable_landing_object(desired_state, object_change.key)
+        and not _is_stable_landing_object(desired_state=desired_state, key=object_change.key)
     )
     sorted_candidate_subtrees: tuple[RebuildSubtree, ...] = tuple(
         sorted(
@@ -106,7 +107,7 @@ def emit_rebuild_subtrees_from_changes(
     return tuple(retained_subtrees)
 
 
-def _is_stable_landing_object(desired_state: DesiredState, key: ObjectKey) -> bool:
+def _is_stable_landing_object(*, desired_state: DesiredState, key: ObjectKey) -> bool:
     if key.object_type == DESIRED_OBJECT_TYPE_TABLE and key.name.startswith(RAW_TABLE_NAME_PREFIX):
         return True
     if key.object_type != DESIRED_OBJECT_TYPE_MATERIALIZED_VIEW:
@@ -139,8 +140,8 @@ def _build_rebuild_subtree_for_change(
 ) -> RebuildSubtree:
     if object_change.force_full_refresh:
         return build_rebuild_subtree(
-            desired_state,
-            object_change.key,
+            desired_state=desired_state,
+            root_key=object_change.key,
             execution_mode=REBUILD_EXECUTION_MODE_FULL,
             forced_full_refresh=True,
             configured_backfill_mode=SchemaChangeBackfillMode(SchemaChangeBackfillMode.FULL),
@@ -148,8 +149,8 @@ def _build_rebuild_subtree_for_change(
         )
     if object_change.forced_start_time is not None:
         return build_rebuild_subtree(
-            desired_state,
-            object_change.key,
+            desired_state=desired_state,
+            root_key=object_change.key,
             execution_mode=REBUILD_EXECUTION_MODE_SEEDED_BOUNDED,
             forced_start_time=object_change.forced_start_time,
             configured_backfill_mode=None,
@@ -162,8 +163,8 @@ def _build_rebuild_subtree_for_change(
         )
     )
     return build_rebuild_subtree(
-        desired_state,
-        object_change.key,
+        desired_state=desired_state,
+        root_key=object_change.key,
         execution_mode=resolved_execution_mode,
         configured_backfill_mode=configured_backfill_mode,
         execution_lookback_seconds=execution_lookback_seconds,

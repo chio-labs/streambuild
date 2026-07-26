@@ -36,8 +36,8 @@ def test_given_physical_candidates_when_building_inspected_state_then_it_ignores
     class QueryingClient:
         def query_many(
             self,
-            statement: str,
             *,
+            statement: str,
             decode: Callable[[Mapping[str, object]], object],
         ) -> tuple[object, ...]:
             if "engine = 'View'" in statement:

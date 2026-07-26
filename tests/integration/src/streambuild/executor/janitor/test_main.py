@@ -70,13 +70,13 @@ def test_given_mixed_real_deployments_when_previewing_janitor_then_it_classifies
         result: JanitorPreviewResult = cast(
             JanitorPreviewResult,
             execute_janitor(
-                JanitorRequest(
+                request=JanitorRequest(
                     database=clickhouse_database,
                     metadata_database=clickhouse_database,
                     retention_days=test_case.retention_days,
                     apply=False,
                 ),
-                managed_client,
+                client=managed_client,
             ),
         )
     finally:
@@ -145,13 +145,13 @@ def test_given_real_deletable_deployments_when_applying_janitor_then_it_drops_on
         result: JanitorApplyResult = cast(
             JanitorApplyResult,
             execute_janitor(
-                JanitorRequest(
+                request=JanitorRequest(
                     database=clickhouse_database,
                     metadata_database=clickhouse_database,
                     retention_days=test_case.retention_days,
                     apply=True,
                 ),
-                managed_client,
+                client=managed_client,
             ),
         )
     finally:

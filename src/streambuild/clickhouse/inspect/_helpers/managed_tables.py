@@ -25,12 +25,14 @@ def build_inspected_managed_table_state(
     """Build inspected managed-table state from ClickHouse system metadata."""
 
     active_binding_rows: tuple[ActiveBindingSystemRow, ...] = client.query_many(
-        "SELECT name, as_select FROM system.tables "
+        statement="SELECT name, as_select FROM system.tables "
         f"WHERE database = '{database}' AND engine = 'View'",
         decode=_decode_active_binding_system_row,
     )
     physical_candidate_rows: tuple[PhysicalCandidateSystemRow, ...] = client.query_many(
-        f"SELECT name FROM system.tables WHERE database = '{database}' AND engine != 'View'",
+        statement=(
+            f"SELECT name FROM system.tables WHERE database = '{database}' AND engine != 'View'"
+        ),
         decode=_decode_physical_candidate_system_row,
     )
 

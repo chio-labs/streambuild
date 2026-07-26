@@ -11,7 +11,7 @@ from streambuild.compiler.shared.models import (
 )
 
 
-def descendant_keys(desired_state: DesiredState, root_key: ObjectKey) -> tuple[ObjectKey, ...]:
+def descendant_keys(*, desired_state: DesiredState, root_key: ObjectKey) -> tuple[ObjectKey, ...]:
     """Return the transitive downstream object keys rooted at `root_key`."""
 
     object_by_key: dict[ObjectKey, DesiredObject] = {
@@ -30,7 +30,7 @@ def descendant_keys(desired_state: DesiredState, root_key: ObjectKey) -> tuple[O
         downstream_keys: tuple[ObjectKey, ...] = reverse_deps.get(current_key, ())
         stack.extend(reversed(downstream_keys))
 
-    return topologically_order_keys(desired_state, visited)
+    return topologically_order_keys(desired_state=desired_state, included_keys=visited)
 
 
 def build_reverse_deps(desired_state: DesiredState) -> dict[ObjectKey, tuple[ObjectKey, ...]]:
@@ -50,7 +50,7 @@ def build_reverse_deps(desired_state: DesiredState) -> dict[ObjectKey, tuple[Obj
 
 
 def topologically_order_keys(
-    desired_state: DesiredState, included_keys: set[ObjectKey]
+    *, desired_state: DesiredState, included_keys: set[ObjectKey]
 ) -> tuple[ObjectKey, ...]:
     """Return included desired-object keys in stable dependency order."""
 
@@ -89,9 +89,9 @@ def topologically_order_keys(
 
 
 def nearest_upstream_replay_anchor_key(
+    *,
     desired_state: DesiredState,
     root_key: ObjectKey,
-    *,
     allow_root_key: bool = True,
 ) -> ObjectKey:
     """Return the nearest eligible upstream replay-anchor table for rebuild planning."""

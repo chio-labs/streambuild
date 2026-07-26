@@ -27,8 +27,8 @@ from streambuild.integrations.clickhouse.client import ClickHouseClient
 
 
 def build_backfill_preview_context(
-    pipelines_root: Path,
     *,
+    pipelines_root: Path,
     database: str | None,
     metadata_database: str | None,
     selectors: tuple[str, ...],
@@ -39,14 +39,18 @@ def build_backfill_preview_context(
 ) -> BackfillPreviewContext:
     loaded_pipelines: list[LoadedPipeline] = discover_pipelines(pipelines_root)
     compiled: list[CompiledPipeline] = [compile_pipeline(pipeline) for pipeline in loaded_pipelines]
-    resolved_database: str = resolve_default_database(loaded_pipelines, database)
+    resolved_database: str = resolve_default_database(
+        loaded_pipelines=loaded_pipelines, override=database
+    )
     validate_declared_external_sources(
         client=client,
         compiled_pipelines=tuple(compiled),
         database=resolved_database,
     )
     resolved_metadata_database: str = metadata_database or resolved_database
-    selection: SelectionResolution = resolve_selection(tuple(compiled), selectors)
+    selection: SelectionResolution = resolve_selection(
+        compiled_pipelines=tuple(compiled), selectors=selectors
+    )
     desired_state: DesiredState = selection.desired_state
     actual_state: ActualState = load_actual_state(
         client=client,
@@ -54,8 +58,8 @@ def build_backfill_preview_context(
         database=resolved_database,
     )
     plan: DeploymentPlan = plan_deployment(
-        desired_state,
-        actual_state,
+        desired_state=desired_state,
+        actual_state=actual_state,
         default_database=resolved_database,
         deployment_id=deployment_id,
         full_refresh_keys=selection.selected_model_keys if full_refresh else frozenset(),

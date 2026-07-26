@@ -17,9 +17,9 @@ from streambuild.integrations.clickhouse.client import ClickHouseClient
 
 
 def execute_janitor_for_managed_table_state(
+    *,
     request: JanitorRequest,
     client: ClickHouseClient,
-    *,
     managed_table_state: InspectedManagedTableState,
 ) -> JanitorPreviewResult | JanitorApplyResult:
     if request.apply:

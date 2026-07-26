@@ -6,7 +6,7 @@ from streambuild.compiler.shared.models import DesiredMaterializedView, Material
 
 
 def render_create_materialized_view_ddl(
-    materialized_view: DesiredMaterializedView, database: str
+    *, materialized_view: DesiredMaterializedView, database: str
 ) -> str:
     """Render CREATE MATERIALIZED VIEW DDL for a desired materialized view."""
 
@@ -23,7 +23,7 @@ def render_create_materialized_view_ddl(
     )
 
 
-def _qualify_table_reference(query: str, table_name: str, database: str) -> str:
+def _qualify_table_reference(*, query: str, table_name: str, database: str) -> str:
     """Qualify unqualified table references in rendered materialized-view SQL."""
 
     expression: exp.Expr = parse_one(query, dialect="clickhouse")

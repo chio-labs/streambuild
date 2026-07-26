@@ -62,18 +62,19 @@ def run_kafka_live_shadow_scenario(
     target_table_name: str = compiled_pipeline.transforms[0].target_table_name
     clickhouse_client.command(
         render_create_kafka_table_ddl(
-            require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).kafka_table,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.command(
         render_create_table_ddl(
-            require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).raw_table, database=clickhouse_database
         )
     )
     clickhouse_client.command(
         render_create_materialized_view_ddl(
-            require_managed_source(compiled_pipeline).materialized_view,
-            clickhouse_database,
+            materialized_view=require_managed_source(compiled_pipeline).materialized_view,
+            database=clickhouse_database,
         )
     )
 

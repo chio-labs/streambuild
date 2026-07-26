@@ -4,7 +4,9 @@ from streambuild.compiler.shared.models import LoadedPipeline
 from streambuild.spec.models.project import Project
 
 
-def resolve_default_database(loaded_pipelines: list[LoadedPipeline], override: str | None) -> str:
+def resolve_default_database(
+    *, loaded_pipelines: list[LoadedPipeline], override: str | None
+) -> str:
     if override is not None:
         return override
 

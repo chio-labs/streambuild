@@ -229,7 +229,7 @@ def test_given_sql_native_test_project_when_running_test_command_then_it_reports
 
     try:
         exit_code: int = run_test(
-            tmp_path / "pipelines",
+            pipelines_root=tmp_path / "pipelines",
             project_dir=tmp_path,
             selectors=test_case.selectors,
             paths=(),

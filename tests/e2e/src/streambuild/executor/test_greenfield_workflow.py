@@ -166,18 +166,20 @@ def test_given_kafka_backed_greenfield_pipeline_when_running_then_it_publishes_e
     target_table_name: str = compiled_pipeline.transforms[0].target_table_name
     e2e_clickhouse_client.command(
         render_create_kafka_table_ddl(
-            require_managed_source(compiled_pipeline).kafka_table, e2e_clickhouse_database
+            table=require_managed_source(compiled_pipeline).kafka_table,
+            database=e2e_clickhouse_database,
         )
     )
     e2e_clickhouse_client.command(
         render_create_table_ddl(
-            require_managed_source(compiled_pipeline).raw_table, e2e_clickhouse_database
+            table=require_managed_source(compiled_pipeline).raw_table,
+            database=e2e_clickhouse_database,
         )
     )
     e2e_clickhouse_client.command(
         render_create_materialized_view_ddl(
-            require_managed_source(compiled_pipeline).materialized_view,
-            e2e_clickhouse_database,
+            materialized_view=require_managed_source(compiled_pipeline).materialized_view,
+            database=e2e_clickhouse_database,
         )
     )
 
@@ -279,18 +281,20 @@ def test_given_kafka_backed_published_deployment_when_view_is_deleted_then_repai
     target_table_name: str = compiled_pipeline.transforms[0].target_table_name
     e2e_clickhouse_client.command(
         render_create_kafka_table_ddl(
-            require_managed_source(compiled_pipeline).kafka_table, e2e_clickhouse_database
+            table=require_managed_source(compiled_pipeline).kafka_table,
+            database=e2e_clickhouse_database,
         )
     )
     e2e_clickhouse_client.command(
         render_create_table_ddl(
-            require_managed_source(compiled_pipeline).raw_table, e2e_clickhouse_database
+            table=require_managed_source(compiled_pipeline).raw_table,
+            database=e2e_clickhouse_database,
         )
     )
     e2e_clickhouse_client.command(
         render_create_materialized_view_ddl(
-            require_managed_source(compiled_pipeline).materialized_view,
-            e2e_clickhouse_database,
+            materialized_view=require_managed_source(compiled_pipeline).materialized_view,
+            database=e2e_clickhouse_database,
         )
     )
 
@@ -455,18 +459,20 @@ def test_given_offset_mode_staged_kafka_deployment_when_new_rows_arrive_then_aud
     )
     e2e_clickhouse_client.command(
         render_create_kafka_table_ddl(
-            require_managed_source(compiled_pipeline).kafka_table, e2e_clickhouse_database
+            table=require_managed_source(compiled_pipeline).kafka_table,
+            database=e2e_clickhouse_database,
         )
     )
     e2e_clickhouse_client.command(
         render_create_table_ddl(
-            require_managed_source(compiled_pipeline).raw_table, e2e_clickhouse_database
+            table=require_managed_source(compiled_pipeline).raw_table,
+            database=e2e_clickhouse_database,
         )
     )
     e2e_clickhouse_client.command(
         render_create_materialized_view_ddl(
-            require_managed_source(compiled_pipeline).materialized_view,
-            e2e_clickhouse_database,
+            materialized_view=require_managed_source(compiled_pipeline).materialized_view,
+            database=e2e_clickhouse_database,
         )
     )
 
@@ -575,18 +581,20 @@ def test_given_published_kafka_pipeline_when_schema_changes_then_bounded_policy_
     )
     e2e_clickhouse_client.command(
         render_create_kafka_table_ddl(
-            require_managed_source(initial_compiled_pipeline).kafka_table, e2e_clickhouse_database
+            table=require_managed_source(initial_compiled_pipeline).kafka_table,
+            database=e2e_clickhouse_database,
         )
     )
     e2e_clickhouse_client.command(
         render_create_table_ddl(
-            require_managed_source(initial_compiled_pipeline).raw_table, e2e_clickhouse_database
+            table=require_managed_source(initial_compiled_pipeline).raw_table,
+            database=e2e_clickhouse_database,
         )
     )
     e2e_clickhouse_client.command(
         render_create_materialized_view_ddl(
-            require_managed_source(initial_compiled_pipeline).materialized_view,
-            e2e_clickhouse_database,
+            materialized_view=require_managed_source(initial_compiled_pipeline).materialized_view,
+            database=e2e_clickhouse_database,
         )
     )
 
@@ -623,22 +631,22 @@ def test_given_published_kafka_pipeline_when_schema_changes_then_bounded_policy_
     )
     try:
         execute_backfill(
-            build_greenfield_workflow_request(
+            request=build_greenfield_workflow_request(
                 clickhouse_database=e2e_clickhouse_database,
                 compiled_pipeline=initial_compiled_pipeline,
                 deployment_id=test_case.initial_deployment_id,
                 created_at=initial_created_at,
                 boundary_time=initial_boundary_time,
             ),
-            managed_client,
+            client=managed_client,
         )
         execute_publish(
-            PublishRequest(
+            request=PublishRequest(
                 deployment_id=test_case.initial_deployment_id,
                 metadata_database=e2e_clickhouse_database,
                 default_database=e2e_clickhouse_database,
             ),
-            managed_client,
+            client=managed_client,
         )
     finally:
         managed_client.close()
@@ -675,14 +683,14 @@ def test_given_published_kafka_pipeline_when_schema_changes_then_bounded_policy_
     )
     try:
         second_backfill_result: BackfillExecutionResult = execute_backfill(
-            build_greenfield_workflow_request(
+            request=build_greenfield_workflow_request(
                 clickhouse_database=e2e_clickhouse_database,
                 compiled_pipeline=changed_compiled_pipeline,
                 deployment_id=test_case.changed_deployment_id,
                 created_at=changed_created_at,
                 boundary_time=changed_boundary_time,
             ),
-            managed_client,
+            client=managed_client,
         )
     finally:
         managed_client.close()
@@ -706,12 +714,12 @@ def test_given_published_kafka_pipeline_when_schema_changes_then_bounded_policy_
     )
     try:
         execute_publish(
-            PublishRequest(
+            request=PublishRequest(
                 deployment_id=test_case.changed_deployment_id,
                 metadata_database=e2e_clickhouse_database,
                 default_database=e2e_clickhouse_database,
             ),
-            managed_client,
+            client=managed_client,
         )
     finally:
         managed_client.close()

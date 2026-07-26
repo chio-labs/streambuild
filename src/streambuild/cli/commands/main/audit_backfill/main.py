@@ -45,8 +45,8 @@ from streambuild.integrations.clickhouse.client import ClickHouseClient
 
 
 def run_audit_backfill(
-    pipelines_root: Path | None,
     *,
+    pipelines_root: Path | None,
     project_dir: Path | None,
     database: str,
     metadata_database: str | None,
@@ -100,18 +100,18 @@ def run_audit_backfill(
                 )
                 return 1
         result: AuditBackfillResult = execute_audit_backfill(
-            AuditBackfillRequest(
+            request=AuditBackfillRequest(
                 deployment_id=deployment_id,
                 metadata_database=resolved_metadata_database,
                 default_database=database,
             ),
-            client,
+            client=client,
         )
         if project_dir is not None and compiled_pipelines:
             loaded_deployment: LoadedAuditDeployment = load_audit_deployment(
-                client,
-                resolved_metadata_database,
-                result.deployment_id,
+                client=client,
+                metadata_database=resolved_metadata_database,
+                deployment_id=result.deployment_id,
             )
             quality_check_result: SqlAuditRunResult = execute_sql_audits(
                 loaded_audits=_selected_backfill_sql_audits(
@@ -151,7 +151,7 @@ def run_audit_backfill(
         raise
     print(
         render_audit_backfill_result(
-            result,
+            result=result,
             database=database,
             json_output=json_output,
             project_dir=project_dir,
@@ -196,14 +196,15 @@ def _backfill_audit_resolver(
         compiled_transform: CompiledTransformStep
         for compiled_transform in compiled_pipeline.transforms:
             resolved_table_name: str = _resolved_audit_table_name(
-                compiled_transform.transform.name,
-                staged_name_by_logical_name,
+                model_name=compiled_transform.transform.name,
+                staged_name_by_logical_name=staged_name_by_logical_name,
             )
             resolver[compiled_transform.transform.name] = f"{database}.{resolved_table_name}"
     return resolver
 
 
 def _resolved_audit_table_name(
+    *,
     model_name: str,
     staged_name_by_logical_name: dict[str, str],
 ) -> str:

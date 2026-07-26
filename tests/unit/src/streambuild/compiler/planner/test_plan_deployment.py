@@ -59,8 +59,8 @@ def test_given_desired_and_actual_state_when_planning_deployment_then_it_returns
     actual_state: ActualState = build_example_actual_state()
 
     deployment_plan: DeploymentPlan = plan_deployment(
-        desired_state,
-        actual_state,
+        desired_state=desired_state,
+        actual_state=actual_state,
         default_database="analytics",
     )
 
@@ -100,8 +100,8 @@ def test_given_desired_state_with_mutable_refs_when_planning_deployment_then_it_
     actual_state: ActualState = build_example_actual_state()
 
     deployment_plan: DeploymentPlan = plan_deployment(
-        desired_state,
-        actual_state,
+        desired_state=desired_state,
+        actual_state=actual_state,
         default_database="analytics",
     )
 
@@ -145,8 +145,8 @@ def test_given_deployment_id_when_planning_deployment_then_it_returns_prepared_s
     actual_state: ActualState = build_example_actual_state()
 
     deployment_plan: DeploymentPlan = plan_deployment(
-        desired_state,
-        actual_state,
+        desired_state=desired_state,
+        actual_state=actual_state,
         default_database="analytics",
         deployment_id=test_case.deployment_id,
     )
@@ -203,8 +203,8 @@ def test_given_full_refresh_key_when_planning_deployment_then_it_forces_full_reb
     )
 
     deployment_plan: DeploymentPlan = plan_deployment(
-        desired_state,
-        actual_state,
+        desired_state=desired_state,
+        actual_state=actual_state,
         default_database="analytics",
         full_refresh_keys=frozenset({full_refresh_key}),
     )

@@ -46,9 +46,11 @@ class PrintingCommandRunner:
 
 class RecordingCommandRunner:
     def __init__(self) -> None:
+        self.pipelines_root: Path | None = None
         self.kwargs: dict[str, object] = {}
 
-    def __call__(self, *_args: object, **kwargs: object) -> int:
+    def __call__(self, *_args: object, pipelines_root: Path | None = None, **kwargs: object) -> int:
+        self.pipelines_root = pipelines_root
         self.kwargs.update(kwargs)
         return 0
 
@@ -337,7 +339,7 @@ def test_given_cli_args_when_running_main_then_it_prints_expected_json(
         )
 
     exit_code: int = _main_with_dependencies(
-        test_case.argv,
+        argv=test_case.argv,
         handlers=handlers,
         clickhouse_client=clickhouse_client,
     )
@@ -384,7 +386,7 @@ def test_given_audit_backfill_cli_args_when_running_main_then_it_forwards_projec
     command_runner: RecordingAuditBackfillCommandRunner = RecordingAuditBackfillCommandRunner()
 
     exit_code: int = _main_with_dependencies(
-        test_case.argv,
+        argv=test_case.argv,
         handlers=handlers_with_overrides(run_audit_backfill=command_runner),
         clickhouse_client=cast(ClickHouseClient, FakeCliClickHouseClient()),
     )
@@ -527,7 +529,7 @@ def test_given_cli_args_when_running_plan_then_it_prints_expected_output(
     clickhouse_client: ClickHouseClient = cast(ClickHouseClient, FakeCliClickHouseClient())
 
     exit_code: int = _main_with_dependencies(
-        test_case.argv,
+        argv=test_case.argv,
         handlers=handlers,
         clickhouse_client=clickhouse_client,
     )
@@ -574,7 +576,7 @@ def test_given_clickhouse_env_vars_when_running_plan_then_it_uses_env_defaults(
     clickhouse_client: ClickHouseClient = cast(ClickHouseClient, FakeCliClickHouseClient())
 
     exit_code: int = _main_with_dependencies(
-        test_case.argv,
+        argv=test_case.argv,
         environment=test_case.env_vars,
         handlers=handlers,
         clickhouse_client=clickhouse_client,
@@ -644,7 +646,7 @@ SELECT order_id::UInt64 AS order_id FROM __ref("orders")
     monkeypatch.chdir(project_root)
 
     exit_code: int = _main_with_dependencies(
-        ("stb", "plan"),
+        argv=("stb", "plan"),
         handlers=handlers,
         clickhouse_client=clickhouse_client,
     )
@@ -766,7 +768,7 @@ SELECT order_id::UInt64 AS order_id FROM __ref("orders")
         argv = ("stb", "doctor")
 
     exit_code: int = _main_with_dependencies(
-        argv,
+        argv=argv,
         handlers=handlers,
         clickhouse_client=clickhouse_client,
     )
@@ -844,7 +846,7 @@ SELECT order_id::UInt64 AS order_id FROM __ref("orders")
         argv = ("stb", "doctor", "--project-dir", str(project_root))
 
     exit_code: int = _main_with_dependencies(
-        argv,
+        argv=argv,
         handlers=handlers,
         clickhouse_client=clickhouse_client,
     )
@@ -926,7 +928,7 @@ def test_given_json_flag_when_running_plan_then_it_passes_json_output_to_command
     clickhouse_client: ClickHouseClient = cast(ClickHouseClient, FakeCliClickHouseClient())
 
     exit_code: int = _main_with_dependencies(
-        test_case.argv,
+        argv=test_case.argv,
         handlers=handlers,
         clickhouse_client=clickhouse_client,
     )
@@ -966,7 +968,7 @@ def test_given_selectors_when_running_plan_then_it_passes_selection_kwargs_to_co
     clickhouse_client: ClickHouseClient = cast(ClickHouseClient, FakeCliClickHouseClient())
 
     exit_code: int = _main_with_dependencies(
-        test_case.argv,
+        argv=test_case.argv,
         handlers=handlers,
         clickhouse_client=clickhouse_client,
     )
@@ -1010,7 +1012,7 @@ def test_given_apply_flag_when_running_janitor_then_it_passes_apply_to_command(
     clickhouse_client: ClickHouseClient = cast(ClickHouseClient, FakeCliClickHouseClient())
 
     exit_code: int = _main_with_dependencies(
-        test_case.argv,
+        argv=test_case.argv,
         handlers=handlers,
         clickhouse_client=clickhouse_client,
     )
@@ -1089,7 +1091,7 @@ def test_given_expected_command_errors_when_running_entrypoint_then_it_prints_cl
     clickhouse_client: ClickHouseClient = cast(ClickHouseClient, FakeCliClickHouseClient())
 
     exit_code: int = _main_with_dependencies(
-        test_case.argv,
+        argv=test_case.argv,
         handlers=handlers,
         clickhouse_client=clickhouse_client,
     )
@@ -1137,7 +1139,7 @@ def test_given_json_flag_when_running_backfill_then_it_passes_json_output_to_com
     clickhouse_client: ClickHouseClient = cast(ClickHouseClient, FakeCliClickHouseClient())
 
     exit_code: int = _main_with_dependencies(
-        test_case.argv,
+        argv=test_case.argv,
         handlers=handlers,
         clickhouse_client=clickhouse_client,
     )
@@ -1176,7 +1178,7 @@ def test_given_selectors_when_running_backfill_then_it_passes_selection_kwargs_t
     clickhouse_client: ClickHouseClient = cast(ClickHouseClient, FakeCliClickHouseClient())
 
     exit_code: int = _main_with_dependencies(
-        test_case.argv,
+        argv=test_case.argv,
         handlers=handlers,
         clickhouse_client=clickhouse_client,
     )
@@ -1217,7 +1219,7 @@ def test_given_reconcile_flags_when_running_reconcile_then_it_passes_kwargs_to_c
     clickhouse_client: ClickHouseClient = cast(ClickHouseClient, FakeCliClickHouseClient())
 
     exit_code: int = _main_with_dependencies(
-        test_case.argv,
+        argv=test_case.argv,
         handlers=handlers,
         clickhouse_client=clickhouse_client,
     )

@@ -113,8 +113,8 @@ def test_given_missing_database_when_running_publish_then_it_prints_friendly_err
 
         def query_many(
             self,
-            statement: str,
             *,
+            statement: str,
             decode: Callable[[Mapping[str, object]], object],
         ) -> tuple[object, ...]:
             self.query(statement)

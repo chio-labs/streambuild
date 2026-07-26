@@ -18,8 +18,8 @@ from streambuild.integrations.clickhouse.client import ClickHouseClient
 
 
 def run_backfill(
-    pipelines_root: Path,
     *,
+    pipelines_root: Path,
     database: str | None,
     metadata_database: str | None,
     selectors: tuple[str, ...],
@@ -47,8 +47,8 @@ def run_backfill(
     if start_time is not None:
         try:
             normalized_start_time = convert_utc_timestamp_for_clickhouse(
-                client,
-                normalize_cli_start_time(start_time),
+                client=client,
+                utc_timestamp=normalize_cli_start_time(start_time),
             )
         except ValueError as error:
             print(str(error), file=sys.stderr)
@@ -56,7 +56,7 @@ def run_backfill(
 
     try:
         preview_context: BackfillPreviewContext = build_backfill_preview_context(
-            pipelines_root,
+            pipelines_root=pipelines_root,
             database=database,
             metadata_database=metadata_database,
             selectors=selectors,
@@ -72,7 +72,7 @@ def run_backfill(
     if not json_output:
         print(
             render_plan_result(
-                preview_context.plan,
+                plan=preview_context.plan,
                 desired_state=preview_context.desired_state,
                 database=preview_context.resolved_database,
                 json_output=False,
@@ -84,7 +84,7 @@ def run_backfill(
         return 1
 
     result: BackfillExecutionResult = execute_backfill(
-        BackfillBootstrapRequest(
+        request=BackfillBootstrapRequest(
             desired_state=preview_context.desired_state,
             default_database=preview_context.resolved_database,
             metadata_database=preview_context.resolved_metadata_database,
@@ -94,12 +94,12 @@ def run_backfill(
             start_time_keys=preview_context.start_time_keys,
             start_time=preview_context.start_time,
         ),
-        client,
+        client=client,
     )
 
     print(
         render_backfill_result(
-            result,
+            result=result,
             database=preview_context.resolved_database,
             json_output=json_output,
         )
