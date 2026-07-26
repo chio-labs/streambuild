@@ -75,61 +75,6 @@ OFFSET_AUDIT_CREATED_AT: str
 OFFSET_AUDIT_BOUNDARY_TIME: str
 OFFSET_AUDIT_CREATED_AT, OFFSET_AUDIT_BOUNDARY_TIME = build_future_replay_times(seconds_from_now=40)
 
-SCHEMA_CHANGE_TEST_CASES: list[KafkaSchemaChangeWorkflowE2ETestCase] = [
-    KafkaSchemaChangeWorkflowE2ETestCase(
-        description="bounded non-breaking schema change seeds the prefix and replays the tail",
-        initial_pipeline_kind="base",
-        changed_pipeline_kind="add_column",
-        initial_deployment_id="20260410T005000Z_ab12cd",
-        changed_deployment_id="20260410T005500Z_cd34ef",
-        lookback_seconds=8,
-        expected_execution_mode=RebuildExecutionMode.SEEDED_BOUNDED_REBUILD,
-        expected_view_column_names=(
-            "order_id",
-            "_replay_timestamp",
-            "kafka_topic",
-        ),
-        expected_selected_columns=("order_id", "kafka_topic"),
-        expected_selected_rows=(
-            ("frontier-order", "source.orders.created"),
-            ("historical-order", ""),
-        ),
-    ),
-    KafkaSchemaChangeWorkflowE2ETestCase(
-        description=(
-            "bounded breaking remove-column change seeds the prefix and drops the removed column"
-        ),
-        initial_pipeline_kind="add_column",
-        changed_pipeline_kind="remove_column",
-        initial_deployment_id="20260410T006000Z_ab12cd",
-        changed_deployment_id="20260410T006500Z_cd34ef",
-        lookback_seconds=8,
-        expected_execution_mode=RebuildExecutionMode.SEEDED_BOUNDED_REBUILD,
-        expected_view_column_names=("order_id",),
-        expected_selected_columns=("order_id",),
-        expected_selected_rows=(
-            ("frontier-order",),
-            ("historical-order",),
-        ),
-    ),
-    KafkaSchemaChangeWorkflowE2ETestCase(
-        description="bounded breaking type change replays only the tail without seeding",
-        initial_pipeline_kind="add_column",
-        changed_pipeline_kind="type_change",
-        initial_deployment_id="20260410T007000Z_ab12cd",
-        changed_deployment_id="20260410T007500Z_cd34ef",
-        lookback_seconds=8,
-        expected_execution_mode=RebuildExecutionMode.UNSEEDED_BOUNDED_REBUILD,
-        expected_view_column_names=(
-            "order_id",
-            "_replay_timestamp",
-            "kafka_topic",
-        ),
-        expected_selected_columns=("order_id",),
-        expected_selected_rows=(("frontier-order",),),
-    ),
-]
-
 
 @pytest.mark.e2e
 @pytest.mark.parametrize(
@@ -553,7 +498,61 @@ def test_given_offset_mode_staged_kafka_deployment_when_new_rows_arrive_then_aud
 @pytest.mark.e2e
 @pytest.mark.parametrize(
     "test_case",
-    SCHEMA_CHANGE_TEST_CASES,
+    [
+        KafkaSchemaChangeWorkflowE2ETestCase(
+            description="bounded non-breaking schema change seeds the prefix and replays the tail",
+            initial_pipeline_kind="base",
+            changed_pipeline_kind="add_column",
+            initial_deployment_id="20260410T005000Z_ab12cd",
+            changed_deployment_id="20260410T005500Z_cd34ef",
+            lookback_seconds=8,
+            expected_execution_mode=RebuildExecutionMode.SEEDED_BOUNDED_REBUILD,
+            expected_view_column_names=(
+                "order_id",
+                "_replay_timestamp",
+                "kafka_topic",
+            ),
+            expected_selected_columns=("order_id", "kafka_topic"),
+            expected_selected_rows=(
+                ("frontier-order", "source.orders.created"),
+                ("historical-order", ""),
+            ),
+        ),
+        KafkaSchemaChangeWorkflowE2ETestCase(
+            description=(
+                "bounded breaking remove-column change seeds the prefix and drops the removed "
+                "column"
+            ),
+            initial_pipeline_kind="add_column",
+            changed_pipeline_kind="remove_column",
+            initial_deployment_id="20260410T006000Z_ab12cd",
+            changed_deployment_id="20260410T006500Z_cd34ef",
+            lookback_seconds=8,
+            expected_execution_mode=RebuildExecutionMode.SEEDED_BOUNDED_REBUILD,
+            expected_view_column_names=("order_id",),
+            expected_selected_columns=("order_id",),
+            expected_selected_rows=(
+                ("frontier-order",),
+                ("historical-order",),
+            ),
+        ),
+        KafkaSchemaChangeWorkflowE2ETestCase(
+            description="bounded breaking type change replays only the tail without seeding",
+            initial_pipeline_kind="add_column",
+            changed_pipeline_kind="type_change",
+            initial_deployment_id="20260410T007000Z_ab12cd",
+            changed_deployment_id="20260410T007500Z_cd34ef",
+            lookback_seconds=8,
+            expected_execution_mode=RebuildExecutionMode.UNSEEDED_BOUNDED_REBUILD,
+            expected_view_column_names=(
+                "order_id",
+                "_replay_timestamp",
+                "kafka_topic",
+            ),
+            expected_selected_columns=("order_id",),
+            expected_selected_rows=(("frontier-order",),),
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_published_kafka_pipeline_when_schema_changes_then_bounded_policy_behaves_as_expected(

@@ -20,26 +20,29 @@ from tests.unit.src.streambuild.compiler.discovery.macros.helpers import (
     write_project_file,
 )
 
-TEST_CASES: list[DiscoverSqlAuditsTestCase] = [
-    DiscoverSqlAuditsTestCase(
-        description="discovers a minimal audit with default severity",
-        relative_file_path="order_events/no_negative_line_totals.sql",
-        file_contents="""
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DiscoverSqlAuditsTestCase(
+            description="discovers a minimal audit with default severity",
+            relative_file_path="order_events/no_negative_line_totals.sql",
+            file_contents="""
         AUDIT ();
 
         SELECT order_id
         FROM __ref("order_items")
         WHERE line_total < 0
         """,
-        expected_audit_names=(None,),
-        expected_referenced_model_names=(("order_items",),),
-        expected_severities=("error",),
-        expected_descriptions=(None,),
-    ),
-    DiscoverSqlAuditsTestCase(
-        description="discovers multiple named audits from one file",
-        relative_file_path="singular/order_events/quality.sql",
-        file_contents="""
+            expected_audit_names=(None,),
+            expected_referenced_model_names=(("order_items",),),
+            expected_severities=("error",),
+            expected_descriptions=(None,),
+        ),
+        DiscoverSqlAuditsTestCase(
+            description="discovers multiple named audits from one file",
+            relative_file_path="singular/order_events/quality.sql",
+            file_contents="""
         AUDIT (name: "negative totals", severity: "warning");
 
         SELECT order_id
@@ -53,62 +56,12 @@ TEST_CASES: list[DiscoverSqlAuditsTestCase] = [
         LEFT JOIN __ref("orders") AS o ON oi.order_id = o.order_id
         WHERE o.order_id IS NULL
         """,
-        expected_audit_names=("negative totals", "missing orders"),
-        expected_referenced_model_names=(("order_items",), ("order_items", "orders")),
-        expected_severities=("warning", "error"),
-        expected_descriptions=(None, None),
-    ),
-]
-
-ERROR_TEST_CASES: list[DiscoverSqlAuditsErrorTestCase] = [
-    DiscoverSqlAuditsErrorTestCase(
-        description="rejects audits without refs",
-        relative_file_path="order_events/no_refs.sql",
-        file_contents="""
-        AUDIT ();
-
-        SELECT 1
-        """,
-        expected_error_fragment="must reference at least one model",
-    ),
-    DiscoverSqlAuditsErrorTestCase(
-        description="rejects unsupported severity",
-        relative_file_path="order_events/bad_severity.sql",
-        file_contents="""
-        AUDIT (severity: "info");
-
-        SELECT * FROM __ref("order_items")
-        """,
-        expected_error_fragment="must define severity as 'error' or 'warning'",
-    ),
-    DiscoverSqlAuditsErrorTestCase(
-        description="rejects source refs",
-        relative_file_path="order_events/source_ref.sql",
-        file_contents="""
-        AUDIT ();
-
-        SELECT * FROM __source("orders")
-        """,
-        expected_error_fragment=r"__source\(\.\.\.\) is not allowed",
-    ),
-    DiscoverSqlAuditsErrorTestCase(
-        description="rejects unnamed multi audit files",
-        relative_file_path="singular/order_events/unnamed_multi.sql",
-        file_contents="""
-        AUDIT ();
-        SELECT * FROM __ref("order_items");
-
-        AUDIT (name: "named");
-        SELECT * FROM __ref("orders")
-        """,
-        expected_error_fragment=r"contains multiple AUDIT\(\.\.\.\) blocks; each must define name",
-    ),
-]
-
-
-@pytest.mark.parametrize(
-    "test_case",
-    TEST_CASES,
+            expected_audit_names=("negative totals", "missing orders"),
+            expected_referenced_model_names=(("order_items",), ("order_items", "orders")),
+            expected_severities=("warning", "error"),
+            expected_descriptions=(None, None),
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_valid_sql_audit_files_when_discovering_then_it_returns_loaded_sql_audits(
@@ -139,7 +92,53 @@ def test_given_valid_sql_audit_files_when_discovering_then_it_returns_loaded_sql
 
 @pytest.mark.parametrize(
     "test_case",
-    ERROR_TEST_CASES,
+    [
+        DiscoverSqlAuditsErrorTestCase(
+            description="rejects audits without refs",
+            relative_file_path="order_events/no_refs.sql",
+            file_contents="""
+        AUDIT ();
+
+        SELECT 1
+        """,
+            expected_error_fragment="must reference at least one model",
+        ),
+        DiscoverSqlAuditsErrorTestCase(
+            description="rejects unsupported severity",
+            relative_file_path="order_events/bad_severity.sql",
+            file_contents="""
+        AUDIT (severity: "info");
+
+        SELECT * FROM __ref("order_items")
+        """,
+            expected_error_fragment="must define severity as 'error' or 'warning'",
+        ),
+        DiscoverSqlAuditsErrorTestCase(
+            description="rejects source refs",
+            relative_file_path="order_events/source_ref.sql",
+            file_contents="""
+        AUDIT ();
+
+        SELECT * FROM __source("orders")
+        """,
+            expected_error_fragment=r"__source\(\.\.\.\) is not allowed",
+        ),
+        DiscoverSqlAuditsErrorTestCase(
+            description="rejects unnamed multi audit files",
+            relative_file_path="singular/order_events/unnamed_multi.sql",
+            file_contents="""
+        AUDIT ();
+        SELECT * FROM __ref("order_items");
+
+        AUDIT (name: "named");
+        SELECT * FROM __ref("orders")
+        """,
+            expected_error_fragment=(
+                r"contains multiple AUDIT\(\.\.\.\) "
+                r"blocks; each must define name"
+            ),
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_invalid_sql_audit_files_when_discovering_then_it_raises_clear_errors(

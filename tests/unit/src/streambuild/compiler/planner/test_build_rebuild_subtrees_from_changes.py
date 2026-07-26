@@ -16,29 +16,27 @@ from tests.unit.src.streambuild.compiler.planner.helpers import (
     key_parts,
 )
 
-TEST_CASES: list[PlannerCollapseSubtreesTestCase] = [
-    PlannerCollapseSubtreesTestCase(
-        description="collapses descendant rebuild roots under an upstream changed table",
-        changed_keys=(
-            (None, "table", "raw__orders"),
-            (None, "table", "tbl__orders_enriched"),
-        ),
-        expected_root_keys=((None, "table", "tbl__orders_enriched"),),
-    ),
-    PlannerCollapseSubtreesTestCase(
-        description="ignores kafka table roots because kafka sources are live not shadowed",
-        changed_keys=(
-            (None, "kafka_table", "kafka__orders"),
-            (None, "table", "raw__orders"),
-        ),
-        expected_root_keys=(),
-    ),
-]
-
 
 @pytest.mark.parametrize(
     "test_case",
-    TEST_CASES,
+    [
+        PlannerCollapseSubtreesTestCase(
+            description="collapses descendant rebuild roots under an upstream changed table",
+            changed_keys=(
+                (None, "table", "raw__orders"),
+                (None, "table", "tbl__orders_enriched"),
+            ),
+            expected_root_keys=((None, "table", "tbl__orders_enriched"),),
+        ),
+        PlannerCollapseSubtreesTestCase(
+            description="ignores kafka table roots because kafka sources are live not shadowed",
+            changed_keys=(
+                (None, "kafka_table", "kafka__orders"),
+                (None, "table", "raw__orders"),
+            ),
+            expected_root_keys=(),
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_overlapping_changed_keys_when_building_subtrees_then_it_collapses_descendants(

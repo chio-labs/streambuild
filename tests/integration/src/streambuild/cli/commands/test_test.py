@@ -16,63 +16,61 @@ from tests.unit.src.streambuild.compiler.discovery._helpers.testing.helpers impo
     write_sql_test_file,
 )
 
-TEST_CASES: list[CliTestCommandIntegrationTestCase] = [
-    CliTestCommandIntegrationTestCase(
-        description="reports a passing SQL-native test result",
-        selectors=("order_items",),
-        expected_exit_code=0,
-        expected_output_fragments=(
-            "PASS",
-            "order_items",
-            "tests/order_events/test_line_total.sql",
-            "Results: 1 passed, 0 failed",
-        ),
-    ),
-    CliTestCommandIntegrationTestCase(
-        description="runs multiple sql tests from one file",
-        selectors=(),
-        expected_exit_code=0,
-        expected_output_fragments=(
-            "PASS",
-            "tests/order_events/test_line_total.sql  [line total computes correctly]",
-            "tests/order_events/test_line_total.sql  [line total remains stable on repeat]",
-            "Results: 2 passed, 0 failed",
-        ),
-    ),
-    CliTestCommandIntegrationTestCase(
-        description="renders grouped missing and unexpected rows for failures",
-        selectors=("order_items",),
-        expected_exit_code=1,
-        expected_output_fragments=(
-            "FAIL",
-            "order_items",
-            "diff (1 row differs):",
-            "columns: order_id, line_total",
-            "row  state     order_id  line_total",
-            "1    expected  ord_001   25.0",
-            "1    actual    ord_001   20.0",
-            "Failed:",
-            "stb test tests/order_events/test_line_total.sql",
-        ),
-    ),
-    CliTestCommandIntegrationTestCase(
-        description="renders grouped failures for multiple expected targets in one test",
-        selectors=("order_items",),
-        expected_exit_code=1,
-        expected_output_fragments=(
-            "FAIL",
-            "order_items, daily_revenue",
-            "target: order_items",
-            "target: daily_revenue",
-            "stb test tests/order_events/test_line_total.sql",
-        ),
-    ),
-]
-
 
 @pytest.mark.parametrize(
     "test_case",
-    TEST_CASES,
+    [
+        CliTestCommandIntegrationTestCase(
+            description="reports a passing SQL-native test result",
+            selectors=("order_items",),
+            expected_exit_code=0,
+            expected_output_fragments=(
+                "PASS",
+                "order_items",
+                "tests/order_events/test_line_total.sql",
+                "Results: 1 passed, 0 failed",
+            ),
+        ),
+        CliTestCommandIntegrationTestCase(
+            description="runs multiple sql tests from one file",
+            selectors=(),
+            expected_exit_code=0,
+            expected_output_fragments=(
+                "PASS",
+                "tests/order_events/test_line_total.sql  [line total computes correctly]",
+                "tests/order_events/test_line_total.sql  [line total remains stable on repeat]",
+                "Results: 2 passed, 0 failed",
+            ),
+        ),
+        CliTestCommandIntegrationTestCase(
+            description="renders grouped missing and unexpected rows for failures",
+            selectors=("order_items",),
+            expected_exit_code=1,
+            expected_output_fragments=(
+                "FAIL",
+                "order_items",
+                "diff (1 row differs):",
+                "columns: order_id, line_total",
+                "row  state     order_id  line_total",
+                "1    expected  ord_001   25.0",
+                "1    actual    ord_001   20.0",
+                "Failed:",
+                "stb test tests/order_events/test_line_total.sql",
+            ),
+        ),
+        CliTestCommandIntegrationTestCase(
+            description="renders grouped failures for multiple expected targets in one test",
+            selectors=("order_items",),
+            expected_exit_code=1,
+            expected_output_fragments=(
+                "FAIL",
+                "order_items, daily_revenue",
+                "target: order_items",
+                "target: daily_revenue",
+                "stb test tests/order_events/test_line_total.sql",
+            ),
+        ),
+    ],
     ids=lambda case: case.description,
 )
 @pytest.mark.integration

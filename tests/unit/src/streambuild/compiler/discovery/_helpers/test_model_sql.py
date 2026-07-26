@@ -19,20 +19,23 @@ from tests.unit.src.streambuild.compiler.discovery.macros.helpers import (
     write_sql_file,
 )
 
-TEST_CASES: list[ParseModelSqlHeaderTestCase] = [
-    ParseModelSqlHeaderTestCase(
-        description="accepts an empty model header",
-        contents="""
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ParseModelSqlHeaderTestCase(
+            description="accepts an empty model header",
+            contents="""
         MODEL ();
 
         SELECT kafka_key::String AS order_id FROM __source("orders")
         """,
-        expected_header_values={},
-        expected_query='SELECT kafka_key::String AS order_id FROM __source("orders")',
-    ),
-    ParseModelSqlHeaderTestCase(
-        description="accepts blank lines inside multiline schema change backfill header",
-        contents="""
+            expected_header_values={},
+            expected_query='SELECT kafka_key::String AS order_id FROM __source("orders")',
+        ),
+        ParseModelSqlHeaderTestCase(
+            description="accepts blank lines inside multiline schema change backfill header",
+            contents="""
         MODEL (
           engine: "MergeTree()",
 
@@ -47,20 +50,20 @@ TEST_CASES: list[ParseModelSqlHeaderTestCase] = [
 
         SELECT kafka_key::String AS order_id FROM __source("orders")
         """,
-        expected_header_values={
-            "engine": "MergeTree()",
-            "order_by": ["order_id"],
-            "replay_anchor": "never",
-            "schema_change_backfill": {
-                "breaking": "bounded(8s)",
-                "non_breaking": "bounded(8s)",
+            expected_header_values={
+                "engine": "MergeTree()",
+                "order_by": ["order_id"],
+                "replay_anchor": "never",
+                "schema_change_backfill": {
+                    "breaking": "bounded(8s)",
+                    "non_breaking": "bounded(8s)",
+                },
             },
-        },
-        expected_query='SELECT kafka_key::String AS order_id FROM __source("orders")',
-    ),
-    ParseModelSqlHeaderTestCase(
-        description="accepts mixed block and inline header mappings",
-        contents="""
+            expected_query='SELECT kafka_key::String AS order_id FROM __source("orders")',
+        ),
+        ParseModelSqlHeaderTestCase(
+            description="accepts mixed block and inline header mappings",
+            contents="""
         MODEL (
           engine: "MergeTree()",
           order_by: ["order_id"],
@@ -72,43 +75,38 @@ TEST_CASES: list[ParseModelSqlHeaderTestCase] = [
 
         SELECT kafka_key::String AS order_id FROM __source("orders")
         """,
-        expected_header_values={
-            "engine": "MergeTree()",
-            "order_by": ["order_id"],
-            "settings": {
-                "index_granularity": 8192,
-                "allow_nullable_key": 1,
+            expected_header_values={
+                "engine": "MergeTree()",
+                "order_by": ["order_id"],
+                "settings": {
+                    "index_granularity": 8192,
+                    "allow_nullable_key": 1,
+                },
+                "schema_change_backfill": {
+                    "breaking": "full",
+                    "non_breaking": "bounded(30m)",
+                },
             },
-            "schema_change_backfill": {
-                "breaking": "full",
-                "non_breaking": "bounded(30m)",
-            },
-        },
-        expected_query='SELECT kafka_key::String AS order_id FROM __source("orders")',
-    ),
-    ParseModelSqlHeaderTestCase(
-        description="accepts whitespace-only lines and indented header entries",
-        contents=(
-            "   \n"
-            'MODEL (\n    engine: "MergeTree()",\n  \n'
-            '    order_by: ["order_id"],\n'
-            "    bounded_replay_fallback: bounded_without_history,\n"
-            ");\n \n"
-            'SELECT kafka_key::String AS order_id FROM __source("orders")'
+            expected_query='SELECT kafka_key::String AS order_id FROM __source("orders")',
         ),
-        expected_header_values={
-            "engine": "MergeTree()",
-            "order_by": ["order_id"],
-            "bounded_replay_fallback": "bounded_without_history",
-        },
-        expected_query='SELECT kafka_key::String AS order_id FROM __source("orders")',
-    ),
-]
-
-
-@pytest.mark.parametrize(
-    "test_case",
-    TEST_CASES,
+        ParseModelSqlHeaderTestCase(
+            description="accepts whitespace-only lines and indented header entries",
+            contents=(
+                "   \n"
+                'MODEL (\n    engine: "MergeTree()",\n  \n'
+                '    order_by: ["order_id"],\n'
+                "    bounded_replay_fallback: bounded_without_history,\n"
+                ");\n \n"
+                'SELECT kafka_key::String AS order_id FROM __source("orders")'
+            ),
+            expected_header_values={
+                "engine": "MergeTree()",
+                "order_by": ["order_id"],
+                "bounded_replay_fallback": "bounded_without_history",
+            },
+            expected_query='SELECT kafka_key::String AS order_id FROM __source("orders")',
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_sql_model_header_variants_when_parsing_then_it_returns_expected_header_values(

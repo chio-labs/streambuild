@@ -39,50 +39,48 @@ from tests.integration.src.streambuild.executor.backfill.helpers import (
     require_managed_source,
 )
 
-TEST_CASES: list[CliAuditCommandIntegrationTestCase] = [
-    CliAuditCommandIntegrationTestCase(
-        description="reports warning audit results against published logical tables",
-        selectors=("order_items",),
-        expected_exit_code=0,
-        expected_output_fragments=(
-            "Audit Results",
-            "Warnings",
-            "audits/singular/order_events/negative_line_totals.sql",
-            "failing rows: 1",
-            "Result: PASS (0 errors, 1 warnings)",
-        ),
-    ),
-    CliAuditCommandIntegrationTestCase(
-        description="reports generic warning audit results against published logical tables",
-        selectors=("order_items",),
-        expected_exit_code=0,
-        expected_output_fragments=(
-            "Audit Results",
-            "Warnings",
-            "pipelines/order_events/schema.yml  [order items order id not null]",
-            "failing rows: 1",
-            "Result: PASS (0 errors, 1 warnings)",
-        ),
-    ),
-    CliAuditCommandIntegrationTestCase(
-        description="reports multiple singular audits from one file with names",
-        selectors=("order_items",),
-        expected_exit_code=0,
-        expected_output_fragments=(
-            "Audit Results",
-            "audits/singular/order_events/quality.sql  [negative line totals]",
-            "audits/singular/order_events/quality.sql  [missing order ids]",
-            "failing rows: 1",
-            "Result: PASS (0 errors, 2 warnings)",
-        ),
-    ),
-]
-
 
 @pytest.mark.integration
 @pytest.mark.parametrize(
     "test_case",
-    TEST_CASES,
+    [
+        CliAuditCommandIntegrationTestCase(
+            description="reports warning audit results against published logical tables",
+            selectors=("order_items",),
+            expected_exit_code=0,
+            expected_output_fragments=(
+                "Audit Results",
+                "Warnings",
+                "audits/singular/order_events/negative_line_totals.sql",
+                "failing rows: 1",
+                "Result: PASS (0 errors, 1 warnings)",
+            ),
+        ),
+        CliAuditCommandIntegrationTestCase(
+            description="reports generic warning audit results against published logical tables",
+            selectors=("order_items",),
+            expected_exit_code=0,
+            expected_output_fragments=(
+                "Audit Results",
+                "Warnings",
+                "pipelines/order_events/schema.yml  [order items order id not null]",
+                "failing rows: 1",
+                "Result: PASS (0 errors, 1 warnings)",
+            ),
+        ),
+        CliAuditCommandIntegrationTestCase(
+            description="reports multiple singular audits from one file with names",
+            selectors=("order_items",),
+            expected_exit_code=0,
+            expected_output_fragments=(
+                "Audit Results",
+                "audits/singular/order_events/quality.sql  [negative line totals]",
+                "audits/singular/order_events/quality.sql  [missing order ids]",
+                "failing rows: 1",
+                "Result: PASS (0 errors, 2 warnings)",
+            ),
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_audit_project_when_running_live_audit_then_it_reports_expected_results(

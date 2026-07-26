@@ -8,67 +8,67 @@ from tests.unit.src.streambuild.cli.commands.main.test._helpers._test_types impo
     RenderSqlTestResultsTestCase,
 )
 
-TEST_CASES: list[RenderSqlTestResultsTestCase] = [
-    RenderSqlTestResultsTestCase(
-        description="renders side by side diff for keyed row changes",
-        verbose=False,
-        expected_fragments=(
-            (
-                "FAIL  order_items  tests/order_events/test_line_total.sql  "
-                "[line total computes correctly]"
-            ),
-            "diff (1 row differs):",
-            "columns: order_id, line_total",
-            "row  state     order_id  line_total",
-            "1    expected  ord_001   25.0",
-            "1    actual    ord_001   20.0",
-            "Results: 0 passed, 1 failed",
-            "stb test tests/order_events/test_line_total.sql",
-        ),
-    ),
-    RenderSqlTestResultsTestCase(
-        description="renders aligned missing and unexpected tables when rows do not share a key",
-        verbose=False,
-        expected_fragments=(
-            "missing rows (1):",
-            "columns: order_id, line_total, region",
-            "order_id  line_total  region",
-            "ord_001   25.0        us-east",
-            "unexpected rows (1):",
-            "ord_004   99.0        ap-south",
-        ),
-    ),
-    RenderSqlTestResultsTestCase(
-        description="truncates long sections when not verbose",
-        verbose=False,
-        expected_fragments=(
-            "unexpected rows (12, showing first 10):",
-            "(2 more rows not shown, run with --verbose to see all)",
-        ),
-    ),
-    RenderSqlTestResultsTestCase(
-        description="renders all rows when verbose",
-        verbose=True,
-        expected_fragments=(
-            "unexpected rows (12):",
-            "ord_011",
-            "ord_012",
-        ),
-    ),
-    RenderSqlTestResultsTestCase(
-        description="renders blank lines between failed multi target sections",
-        verbose=False,
-        expected_fragments=(
-            "target: order_items\n  diff (1 row differs):",
-            "\n\n  target: daily_revenue\n  diff (1 row differs):",
-        ),
-    ),
-]
-
 
 @pytest.mark.parametrize(
     "test_case",
-    TEST_CASES,
+    [
+        RenderSqlTestResultsTestCase(
+            description="renders side by side diff for keyed row changes",
+            verbose=False,
+            expected_fragments=(
+                (
+                    "FAIL  order_items  tests/order_events/test_line_total.sql  "
+                    "[line total computes correctly]"
+                ),
+                "diff (1 row differs):",
+                "columns: order_id, line_total",
+                "row  state     order_id  line_total",
+                "1    expected  ord_001   25.0",
+                "1    actual    ord_001   20.0",
+                "Results: 0 passed, 1 failed",
+                "stb test tests/order_events/test_line_total.sql",
+            ),
+        ),
+        RenderSqlTestResultsTestCase(
+            description=(
+                "renders aligned missing and unexpected tables when rows do not share a key"
+            ),
+            verbose=False,
+            expected_fragments=(
+                "missing rows (1):",
+                "columns: order_id, line_total, region",
+                "order_id  line_total  region",
+                "ord_001   25.0        us-east",
+                "unexpected rows (1):",
+                "ord_004   99.0        ap-south",
+            ),
+        ),
+        RenderSqlTestResultsTestCase(
+            description="truncates long sections when not verbose",
+            verbose=False,
+            expected_fragments=(
+                "unexpected rows (12, showing first 10):",
+                "(2 more rows not shown, run with --verbose to see all)",
+            ),
+        ),
+        RenderSqlTestResultsTestCase(
+            description="renders all rows when verbose",
+            verbose=True,
+            expected_fragments=(
+                "unexpected rows (12):",
+                "ord_011",
+                "ord_012",
+            ),
+        ),
+        RenderSqlTestResultsTestCase(
+            description="renders blank lines between failed multi target sections",
+            verbose=False,
+            expected_fragments=(
+                "target: order_items\n  diff (1 row differs):",
+                "\n\n  target: daily_revenue\n  diff (1 row differs):",
+            ),
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_sql_test_results_when_rendering_then_it_returns_expected_sections(

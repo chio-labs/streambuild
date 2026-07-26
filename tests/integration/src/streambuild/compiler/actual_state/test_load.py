@@ -38,54 +38,52 @@ from tests.integration.src.streambuild.executor.backfill.helpers import (
     require_managed_source,
 )
 
-TEST_CASES: list[LoadActualStateIntegrationTestCase] = [
-    LoadActualStateIntegrationTestCase(
-        description="loads greenfield state when no stable view exists",
-        create_stable_view=False,
-        create_physical_candidates=False,
-        expected_actual_object_names=("kafka__orders", "mv__orders", "raw__orders"),
-        expected_error_fragment=None,
-    ),
-    LoadActualStateIntegrationTestCase(
-        description="loads active managed objects when stable view points at deployment table",
-        create_stable_view=True,
-        create_physical_candidates=True,
-        expected_actual_object_names=(
-            "kafka__orders",
-            "mv__orders",
-            "mv__orders_enriched",
-            "raw__orders",
-            "tbl__orders_enriched",
-        ),
-        expected_error_fragment=None,
-    ),
-    LoadActualStateIntegrationTestCase(
-        description=(
-            "ignores deployment-suffixed raw landing physicals without a stable raw interface"
-        ),
-        create_stable_view=True,
-        create_physical_candidates=True,
-        expected_actual_object_names=(
-            "kafka__orders",
-            "mv__orders_enriched",
-            "tbl__orders_enriched",
-        ),
-        expected_error_fragment=None,
-    ),
-    LoadActualStateIntegrationTestCase(
-        description="loads no active managed objects when view is missing but candidates exist",
-        create_stable_view=False,
-        create_physical_candidates=True,
-        expected_actual_object_names=("kafka__orders", "mv__orders", "raw__orders"),
-        expected_error_fragment=None,
-    ),
-]
-
 
 @pytest.mark.integration
 @pytest.mark.parametrize(
     "test_case",
-    TEST_CASES,
+    [
+        LoadActualStateIntegrationTestCase(
+            description="loads greenfield state when no stable view exists",
+            create_stable_view=False,
+            create_physical_candidates=False,
+            expected_actual_object_names=("kafka__orders", "mv__orders", "raw__orders"),
+            expected_error_fragment=None,
+        ),
+        LoadActualStateIntegrationTestCase(
+            description="loads active managed objects when stable view points at deployment table",
+            create_stable_view=True,
+            create_physical_candidates=True,
+            expected_actual_object_names=(
+                "kafka__orders",
+                "mv__orders",
+                "mv__orders_enriched",
+                "raw__orders",
+                "tbl__orders_enriched",
+            ),
+            expected_error_fragment=None,
+        ),
+        LoadActualStateIntegrationTestCase(
+            description=(
+                "ignores deployment-suffixed raw landing physicals without a stable raw interface"
+            ),
+            create_stable_view=True,
+            create_physical_candidates=True,
+            expected_actual_object_names=(
+                "kafka__orders",
+                "mv__orders_enriched",
+                "tbl__orders_enriched",
+            ),
+            expected_error_fragment=None,
+        ),
+        LoadActualStateIntegrationTestCase(
+            description="loads no active managed objects when view is missing but candidates exist",
+            create_stable_view=False,
+            create_physical_candidates=True,
+            expected_actual_object_names=("kafka__orders", "mv__orders", "raw__orders"),
+            expected_error_fragment=None,
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_clickhouse_state_when_loading_actual_state_then_it_returns_expected_result(
@@ -327,56 +325,53 @@ def test_given_conflicting_metadata_when_loading_actual_state_then_live_view_bin
     )
 
 
-MIXED_ROOT_TEST_CASES: list[LoadActualStateMixedRootsIntegrationTestCase] = [
-    LoadActualStateMixedRootsIntegrationTestCase(
-        description=(
-            "loads active objects only for the healthy root when another root is missing "
-            "its stable view"
-        ),
-        create_orders_active_view=True,
-        create_orders_candidates=True,
-        create_customers_active_view=False,
-        create_customers_candidates=True,
-        create_customers_invalid_view=False,
-        expected_actual_object_names=(
-            "kafka__customers",
-            "kafka__orders",
-            "mv__customers",
-            "mv__orders",
-            "mv__orders_enriched",
-            "raw__customers",
-            "raw__orders",
-            "tbl__orders_enriched",
-        ),
-    ),
-    LoadActualStateMixedRootsIntegrationTestCase(
-        description=(
-            "loads active objects only for the healthy root when another root has an "
-            "invalid active view"
-        ),
-        create_orders_active_view=True,
-        create_orders_candidates=True,
-        create_customers_active_view=False,
-        create_customers_candidates=False,
-        create_customers_invalid_view=True,
-        expected_actual_object_names=(
-            "kafka__customers",
-            "kafka__orders",
-            "mv__customers",
-            "mv__orders",
-            "mv__orders_enriched",
-            "raw__customers",
-            "raw__orders",
-            "tbl__orders_enriched",
-        ),
-    ),
-]
-
-
 @pytest.mark.integration
 @pytest.mark.parametrize(
     "test_case",
-    MIXED_ROOT_TEST_CASES,
+    [
+        LoadActualStateMixedRootsIntegrationTestCase(
+            description=(
+                "loads active objects only for the healthy root when another root is missing "
+                "its stable view"
+            ),
+            create_orders_active_view=True,
+            create_orders_candidates=True,
+            create_customers_active_view=False,
+            create_customers_candidates=True,
+            create_customers_invalid_view=False,
+            expected_actual_object_names=(
+                "kafka__customers",
+                "kafka__orders",
+                "mv__customers",
+                "mv__orders",
+                "mv__orders_enriched",
+                "raw__customers",
+                "raw__orders",
+                "tbl__orders_enriched",
+            ),
+        ),
+        LoadActualStateMixedRootsIntegrationTestCase(
+            description=(
+                "loads active objects only for the healthy root when another root has an "
+                "invalid active view"
+            ),
+            create_orders_active_view=True,
+            create_orders_candidates=True,
+            create_customers_active_view=False,
+            create_customers_candidates=False,
+            create_customers_invalid_view=True,
+            expected_actual_object_names=(
+                "kafka__customers",
+                "kafka__orders",
+                "mv__customers",
+                "mv__orders",
+                "mv__orders_enriched",
+                "raw__customers",
+                "raw__orders",
+                "tbl__orders_enriched",
+            ),
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_mixed_root_clickhouse_state_when_loading_then_it_preserves_per_root_state(
@@ -505,38 +500,33 @@ def test_given_mixed_root_clickhouse_state_when_loading_then_it_preserves_per_ro
     )
 
 
-ACTUAL_STATE_WITHOUT_METADATA_TEST_CASES: list[
-    LoadActualStateWithoutMetadataIntegrationTestCase
-] = [
-    LoadActualStateWithoutMetadataIntegrationTestCase(
-        description="loads active state after deleting all metadata tables",
-        drop_all_metadata_tables=True,
-        expected_actual_object_names=(
-            "kafka__orders",
-            "mv__orders",
-            "mv__orders_enriched",
-            "raw__orders",
-            "tbl__orders_enriched",
-        ),
-    ),
-    LoadActualStateWithoutMetadataIntegrationTestCase(
-        description="loads active state after deleting object state metadata only",
-        drop_all_metadata_tables=False,
-        expected_actual_object_names=(
-            "kafka__orders",
-            "mv__orders",
-            "mv__orders_enriched",
-            "raw__orders",
-            "tbl__orders_enriched",
-        ),
-    ),
-]
-
-
 @pytest.mark.integration
 @pytest.mark.parametrize(
     "test_case",
-    ACTUAL_STATE_WITHOUT_METADATA_TEST_CASES,
+    [
+        LoadActualStateWithoutMetadataIntegrationTestCase(
+            description="loads active state after deleting all metadata tables",
+            drop_all_metadata_tables=True,
+            expected_actual_object_names=(
+                "kafka__orders",
+                "mv__orders",
+                "mv__orders_enriched",
+                "raw__orders",
+                "tbl__orders_enriched",
+            ),
+        ),
+        LoadActualStateWithoutMetadataIntegrationTestCase(
+            description="loads active state after deleting object state metadata only",
+            drop_all_metadata_tables=False,
+            expected_actual_object_names=(
+                "kafka__orders",
+                "mv__orders",
+                "mv__orders_enriched",
+                "raw__orders",
+                "tbl__orders_enriched",
+            ),
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_published_state_when_metadata_is_deleted_then_load_actual_state_uses_live_clickhouse(
@@ -649,28 +639,28 @@ ACTIVE_BASELINE_QUERY: str = (
 )
 
 
-LATEST_OBJECT_STATE_TEST_CASES: list[LoadActualStateWithLatestObjectStateIntegrationTestCase] = [
-    LoadActualStateWithLatestObjectStateIntegrationTestCase(
-        description="reconcile object-state overrides active deployment query baseline",
-        latest_record_deployment_id=(f"{RECONCILE_DEPLOYMENT_ID_PREFIX}20260409T225500Z_ab12cd"),
-        latest_record_query=RECONCILE_OVERRIDE_QUERY,
-        expected_materialized_view_query=RECONCILE_OVERRIDE_QUERY,
-    ),
-    LoadActualStateWithLatestObjectStateIntegrationTestCase(
-        description=(
-            "non-reconcile latest object-state does not override active deployment query baseline"
-        ),
-        latest_record_deployment_id="20260409T225500Z_newdep0",
-        latest_record_query=RECONCILE_OVERRIDE_QUERY,
-        expected_materialized_view_query=ACTIVE_BASELINE_QUERY,
-    ),
-]
-
-
 @pytest.mark.integration
 @pytest.mark.parametrize(
     "test_case",
-    LATEST_OBJECT_STATE_TEST_CASES,
+    [
+        LoadActualStateWithLatestObjectStateIntegrationTestCase(
+            description="reconcile object-state overrides active deployment query baseline",
+            latest_record_deployment_id=(
+                f"{RECONCILE_DEPLOYMENT_ID_PREFIX}20260409T225500Z_ab12cd"
+            ),
+            latest_record_query=RECONCILE_OVERRIDE_QUERY,
+            expected_materialized_view_query=RECONCILE_OVERRIDE_QUERY,
+        ),
+        LoadActualStateWithLatestObjectStateIntegrationTestCase(
+            description=(
+                "non-reconcile latest object-state does not override active deployment query "
+                "baseline"
+            ),
+            latest_record_deployment_id="20260409T225500Z_newdep0",
+            latest_record_query=RECONCILE_OVERRIDE_QUERY,
+            expected_materialized_view_query=ACTIVE_BASELINE_QUERY,
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_latest_object_state_record_when_loading_then_only_reconcile_overrides_active_query(

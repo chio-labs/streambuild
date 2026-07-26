@@ -12,37 +12,35 @@ from tests.unit.src.streambuild.clickhouse.inspect._test_types import (
     InspectRootDeploymentStateTestCase,
 )
 
-TEST_CASES: list[InspectRootDeploymentStateTestCase] = [
-    InspectRootDeploymentStateTestCase(
-        description="classifies active view binding as active deployment",
-        active_bindings=(("tbl__orders_enriched", "tbl__orders_enriched__dep_a"),),
-        physical_candidates=(("tbl__orders_enriched", "tbl__orders_enriched__dep_a"),),
-        expected_state_kind="active_view_present",
-        expected_active_deployment_id="dep_a",
-    ),
-    InspectRootDeploymentStateTestCase(
-        description="classifies no view and no candidates as greenfield",
-        active_bindings=(),
-        physical_candidates=(),
-        expected_state_kind="greenfield",
-        expected_active_deployment_id=None,
-    ),
-    InspectRootDeploymentStateTestCase(
-        description="classifies no view with candidates as logical view missing",
-        active_bindings=(),
-        physical_candidates=(
-            ("tbl__orders_enriched", "tbl__orders_enriched__dep_a"),
-            ("tbl__orders_enriched", "tbl__orders_enriched__dep_b"),
-        ),
-        expected_state_kind="logical_view_missing",
-        expected_active_deployment_id=None,
-    ),
-]
-
 
 @pytest.mark.parametrize(
     "test_case",
-    TEST_CASES,
+    [
+        InspectRootDeploymentStateTestCase(
+            description="classifies active view binding as active deployment",
+            active_bindings=(("tbl__orders_enriched", "tbl__orders_enriched__dep_a"),),
+            physical_candidates=(("tbl__orders_enriched", "tbl__orders_enriched__dep_a"),),
+            expected_state_kind="active_view_present",
+            expected_active_deployment_id="dep_a",
+        ),
+        InspectRootDeploymentStateTestCase(
+            description="classifies no view and no candidates as greenfield",
+            active_bindings=(),
+            physical_candidates=(),
+            expected_state_kind="greenfield",
+            expected_active_deployment_id=None,
+        ),
+        InspectRootDeploymentStateTestCase(
+            description="classifies no view with candidates as logical view missing",
+            active_bindings=(),
+            physical_candidates=(
+                ("tbl__orders_enriched", "tbl__orders_enriched__dep_a"),
+                ("tbl__orders_enriched", "tbl__orders_enriched__dep_b"),
+            ),
+            expected_state_kind="logical_view_missing",
+            expected_active_deployment_id=None,
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_inspected_root_state_when_classifying_then_it_returns_expected_state_kind(

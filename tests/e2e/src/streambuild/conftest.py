@@ -2,9 +2,9 @@ import os
 import socket
 import time
 import uuid
-from textwrap import dedent
 from collections.abc import Iterator
 from dataclasses import dataclass
+from textwrap import dedent
 
 import clickhouse_connect
 import pytest

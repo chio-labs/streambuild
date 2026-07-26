@@ -17,71 +17,56 @@ from tests.unit.src.streambuild.cli.commands.main.shared.helpers import (
     compile_selector_project_pipelines,
 )
 
-RESOLUTION_TEST_CASES: list[CliSelectionResolutionTestCase] = [
-    CliSelectionResolutionTestCase(
-        description="bare model selector includes downstream closure and upstream deps",
-        selectors=("orders_clean",),
-        expected_selected_model_names=("tbl__orders_clean",),
-        expected_object_names=(
-            "kafka__orders",
-            "raw__orders",
-            "mv__orders",
-            "tbl__orders_clean",
-            "mv__orders_clean",
-            "tbl__orders_enriched",
-            "mv__orders_enriched",
-        ),
-    ),
-    CliSelectionResolutionTestCase(
-        description="pipeline selector includes all authored models in one pipeline only",
-        selectors=("pipeline:payments",),
-        expected_selected_model_names=("tbl__payments_enriched",),
-        expected_object_names=(
-            "kafka__payments",
-            "raw__payments",
-            "mv__payments",
-            "tbl__payments_enriched",
-            "mv__payments_enriched",
-        ),
-    ),
-    CliSelectionResolutionTestCase(
-        description="multiple selectors union before closure expansion",
-        selectors=("orders_clean", "pipeline:payments"),
-        expected_selected_model_names=("tbl__orders_clean", "tbl__payments_enriched"),
-        expected_object_names=(
-            "kafka__orders",
-            "raw__orders",
-            "mv__orders",
-            "tbl__orders_clean",
-            "mv__orders_clean",
-            "tbl__orders_enriched",
-            "mv__orders_enriched",
-            "kafka__payments",
-            "raw__payments",
-            "mv__payments",
-            "tbl__payments_enriched",
-            "mv__payments_enriched",
-        ),
-    ),
-]
-
-ERROR_TEST_CASES: list[CliSelectionResolutionErrorTestCase] = [
-    CliSelectionResolutionErrorTestCase(
-        description="plus syntax is rejected clearly",
-        selectors=("+orders_clean",),
-        expected_error_fragment="\\+.*is not supported",
-    ),
-    CliSelectionResolutionErrorTestCase(
-        description="unknown selector namespace is rejected clearly",
-        selectors=("tag:finance",),
-        expected_error_fragment="Unsupported selector namespace 'tag'",
-    ),
-]
-
 
 @pytest.mark.parametrize(
     "test_case",
-    RESOLUTION_TEST_CASES,
+    [
+        CliSelectionResolutionTestCase(
+            description="bare model selector includes downstream closure and upstream deps",
+            selectors=("orders_clean",),
+            expected_selected_model_names=("tbl__orders_clean",),
+            expected_object_names=(
+                "kafka__orders",
+                "raw__orders",
+                "mv__orders",
+                "tbl__orders_clean",
+                "mv__orders_clean",
+                "tbl__orders_enriched",
+                "mv__orders_enriched",
+            ),
+        ),
+        CliSelectionResolutionTestCase(
+            description="pipeline selector includes all authored models in one pipeline only",
+            selectors=("pipeline:payments",),
+            expected_selected_model_names=("tbl__payments_enriched",),
+            expected_object_names=(
+                "kafka__payments",
+                "raw__payments",
+                "mv__payments",
+                "tbl__payments_enriched",
+                "mv__payments_enriched",
+            ),
+        ),
+        CliSelectionResolutionTestCase(
+            description="multiple selectors union before closure expansion",
+            selectors=("orders_clean", "pipeline:payments"),
+            expected_selected_model_names=("tbl__orders_clean", "tbl__payments_enriched"),
+            expected_object_names=(
+                "kafka__orders",
+                "raw__orders",
+                "mv__orders",
+                "tbl__orders_clean",
+                "mv__orders_clean",
+                "tbl__orders_enriched",
+                "mv__orders_enriched",
+                "kafka__payments",
+                "raw__payments",
+                "mv__payments",
+                "tbl__payments_enriched",
+                "mv__payments_enriched",
+            ),
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_valid_selectors_when_resolving_then_it_returns_expected_filtered_desired_state(
@@ -103,7 +88,18 @@ def test_given_valid_selectors_when_resolving_then_it_returns_expected_filtered_
 
 @pytest.mark.parametrize(
     "test_case",
-    ERROR_TEST_CASES,
+    [
+        CliSelectionResolutionErrorTestCase(
+            description="plus syntax is rejected clearly",
+            selectors=("+orders_clean",),
+            expected_error_fragment="\\+.*is not supported",
+        ),
+        CliSelectionResolutionErrorTestCase(
+            description="unknown selector namespace is rejected clearly",
+            selectors=("tag:finance",),
+            expected_error_fragment="Unsupported selector namespace 'tag'",
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_invalid_selectors_when_resolving_then_it_raises_clear_error(

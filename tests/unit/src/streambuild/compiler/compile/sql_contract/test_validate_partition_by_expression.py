@@ -11,42 +11,40 @@ from tests.unit.src.streambuild.compiler.compile.sql_contract._test_types import
 )
 from tests.unit.src.streambuild.compiler.compile.sql_contract.helpers import build_expected_columns
 
-TEST_CASES: list[ValidateSingleStorageExpressionTestCase] = [
-    ValidateSingleStorageExpressionTestCase(
-        description="accepts partition by expressions that reference derived columns",
-        expression="toYYYYMM(created_at)",
-        available_columns=build_expected_columns(
-            ("order_id", "UInt64"),
-            ("created_at", "DateTime64(3)"),
-        ),
-        expected_error_type=None,
-        expected_message_fragments=(),
-        expected_error_attributes={},
-    ),
-    ValidateSingleStorageExpressionTestCase(
-        description="rejects partition by expressions that reference unknown derived columns",
-        expression="toYYYYMM(missing_created_at)",
-        available_columns=build_expected_columns(
-            ("order_id", "UInt64"),
-            ("created_at", "DateTime64(3)"),
-        ),
-        expected_error_type=TransformPartitionByUnknownColumnError,
-        expected_message_fragments=(
-            "invalid PARTITION BY expression",
-            "missing_created_at",
-            "Available columns: order_id, created_at",
-        ),
-        expected_error_attributes={
-            "expression": "toYYYYMM(missing_created_at)",
-            "unknown_column_names": ("missing_created_at",),
-        },
-    ),
-]
-
 
 @pytest.mark.parametrize(
     "test_case",
-    TEST_CASES,
+    [
+        ValidateSingleStorageExpressionTestCase(
+            description="accepts partition by expressions that reference derived columns",
+            expression="toYYYYMM(created_at)",
+            available_columns=build_expected_columns(
+                ("order_id", "UInt64"),
+                ("created_at", "DateTime64(3)"),
+            ),
+            expected_error_type=None,
+            expected_message_fragments=(),
+            expected_error_attributes={},
+        ),
+        ValidateSingleStorageExpressionTestCase(
+            description="rejects partition by expressions that reference unknown derived columns",
+            expression="toYYYYMM(missing_created_at)",
+            available_columns=build_expected_columns(
+                ("order_id", "UInt64"),
+                ("created_at", "DateTime64(3)"),
+            ),
+            expected_error_type=TransformPartitionByUnknownColumnError,
+            expected_message_fragments=(
+                "invalid PARTITION BY expression",
+                "missing_created_at",
+                "Available columns: order_id, created_at",
+            ),
+            expected_error_attributes={
+                "expression": "toYYYYMM(missing_created_at)",
+                "unknown_column_names": ("missing_created_at",),
+            },
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_partition_by_expression_when_validating_then_it_returns_or_raises_as_expected(

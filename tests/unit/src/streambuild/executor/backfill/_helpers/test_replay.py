@@ -17,23 +17,26 @@ from tests.unit.src.streambuild.executor.backfill._helpers.helpers import (
     normalize_clickhouse_sql,
 )
 
-TEST_CASES: list[RenderOffsetReplayStatementTestCase] = [
-    RenderOffsetReplayStatementTestCase(
-        description="renders aggregate offset replay against filtered anchor rows",
-        source_table_name="tbl__order_items",
-        target_table_name="tbl__hourly_order_volume",
-        shadow_target_name="tbl__hourly_order_volume__dep",
-        anchor_table_name="tbl__order_items",
-        query=(
-            "SELECT CAST(toStartOfHour(_replay_timestamp) AS DateTime64(3)) AS event_hour, "
-            "CAST(category AS String) AS category, "
-            "CAST(count() AS UInt64) AS order_event_count "
-            "FROM tbl__order_items AS item_rows "
-            "WHERE status = 'created' "
-            "GROUP BY event_hour, category"
-        ),
-        expected_statement=dedent(
-            """
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        RenderOffsetReplayStatementTestCase(
+            description="renders aggregate offset replay against filtered anchor rows",
+            source_table_name="tbl__order_items",
+            target_table_name="tbl__hourly_order_volume",
+            shadow_target_name="tbl__hourly_order_volume__dep",
+            anchor_table_name="tbl__order_items",
+            query=(
+                "SELECT CAST(toStartOfHour(_replay_timestamp) AS DateTime64(3)) AS event_hour, "
+                "CAST(category AS String) AS category, "
+                "CAST(count() AS UInt64) AS order_event_count "
+                "FROM tbl__order_items AS item_rows "
+                "WHERE status = 'created' "
+                "GROUP BY event_hour, category"
+            ),
+            expected_statement=dedent(
+                """
             INSERT INTO orders_demo.tbl__hourly_order_volume__dep
             WITH cutoff_offsets AS (
                 SELECT 0 AS _replay_partition, 9709 AS cutoff_offset
@@ -62,27 +65,29 @@ TEST_CASES: list[RenderOffsetReplayStatementTestCase] = [
             WHERE status = 'created'
             GROUP BY event_hour, category
             """
-        ).strip(),
-        replay_table_name_by_logical_name={
-            "tbl__order_items": "tbl__order_items",
-        },
-    ),
-    RenderOffsetReplayStatementTestCase(
-        description="renders offset replay with staged reference joins and preserved source alias",
-        source_table_name="tbl__orders",
-        target_table_name="tbl__enriched_orders",
-        shadow_target_name="tbl__enriched_orders__dep",
-        anchor_table_name="tbl__orders__dep",
-        query=(
-            "SELECT CAST(o.order_id AS String) AS order_id, "
-            "CAST(r.region_display AS String) AS region_display, "
-            "CAST(o._replay_partition AS Int64) AS _replay_partition, "
-            "CAST(o._replay_offset AS Int64) AS _replay_offset "
-            "FROM tbl__orders AS o "
-            "LEFT JOIN tbl__region_lookup AS r ON o.order_id = r.region"
+            ).strip(),
+            replay_table_name_by_logical_name={
+                "tbl__order_items": "tbl__order_items",
+            },
         ),
-        expected_statement=dedent(
-            """
+        RenderOffsetReplayStatementTestCase(
+            description=(
+                "renders offset replay with staged reference joins and preserved source alias"
+            ),
+            source_table_name="tbl__orders",
+            target_table_name="tbl__enriched_orders",
+            shadow_target_name="tbl__enriched_orders__dep",
+            anchor_table_name="tbl__orders__dep",
+            query=(
+                "SELECT CAST(o.order_id AS String) AS order_id, "
+                "CAST(r.region_display AS String) AS region_display, "
+                "CAST(o._replay_partition AS Int64) AS _replay_partition, "
+                "CAST(o._replay_offset AS Int64) AS _replay_offset "
+                "FROM tbl__orders AS o "
+                "LEFT JOIN tbl__region_lookup AS r ON o.order_id = r.region"
+            ),
+            expected_statement=dedent(
+                """
             INSERT INTO orders_demo.tbl__enriched_orders__dep
             WITH cutoff_offsets AS (
                 SELECT 0 AS _replay_partition, 9709 AS cutoff_offset
@@ -111,30 +116,30 @@ TEST_CASES: list[RenderOffsetReplayStatementTestCase] = [
                 OR replay_source._replay_offset >= active_start_offsets.start_offset
               )
             """
-        ).strip(),
-        replay_table_name_by_logical_name={
-            "tbl__orders": "tbl__orders__dep",
-            "tbl__region_lookup": "tbl__region_lookup__dep",
-        },
-    ),
-    RenderOffsetReplayStatementTestCase(
-        description=(
-            "renders offset replay with unstaged reference joins against active logical tables"
+            ).strip(),
+            replay_table_name_by_logical_name={
+                "tbl__orders": "tbl__orders__dep",
+                "tbl__region_lookup": "tbl__region_lookup__dep",
+            },
         ),
-        source_table_name="tbl__orders",
-        target_table_name="tbl__enriched_orders",
-        shadow_target_name="tbl__enriched_orders__dep",
-        anchor_table_name="tbl__orders__dep",
-        query=(
-            "SELECT CAST(o.order_id AS String) AS order_id, "
-            "CAST(r.region_display AS String) AS region_display, "
-            "CAST(o._replay_partition AS Int64) AS _replay_partition, "
-            "CAST(o._replay_offset AS Int64) AS _replay_offset "
-            "FROM tbl__orders AS o "
-            "LEFT JOIN tbl__region_lookup AS r ON o.order_id = r.region"
-        ),
-        expected_statement=dedent(
-            """
+        RenderOffsetReplayStatementTestCase(
+            description=(
+                "renders offset replay with unstaged reference joins against active logical tables"
+            ),
+            source_table_name="tbl__orders",
+            target_table_name="tbl__enriched_orders",
+            shadow_target_name="tbl__enriched_orders__dep",
+            anchor_table_name="tbl__orders__dep",
+            query=(
+                "SELECT CAST(o.order_id AS String) AS order_id, "
+                "CAST(r.region_display AS String) AS region_display, "
+                "CAST(o._replay_partition AS Int64) AS _replay_partition, "
+                "CAST(o._replay_offset AS Int64) AS _replay_offset "
+                "FROM tbl__orders AS o "
+                "LEFT JOIN tbl__region_lookup AS r ON o.order_id = r.region"
+            ),
+            expected_statement=dedent(
+                """
             INSERT INTO orders_demo.tbl__enriched_orders__dep
             WITH cutoff_offsets AS (
                 SELECT 0 AS _replay_partition, 9709 AS cutoff_offset
@@ -163,30 +168,30 @@ TEST_CASES: list[RenderOffsetReplayStatementTestCase] = [
                 OR replay_source._replay_offset >= active_start_offsets.start_offset
               )
             """
-        ).strip(),
-        replay_table_name_by_logical_name={
-            "tbl__orders": "tbl__orders__dep",
-            "tbl__region_lookup": "tbl__region_lookup",
-        },
-    ),
-    RenderOffsetReplayStatementTestCase(
-        description="renders offset replay with mixed staged and active reference joins",
-        source_table_name="tbl__orders",
-        target_table_name="tbl__enriched_orders",
-        shadow_target_name="tbl__enriched_orders__dep",
-        anchor_table_name="tbl__orders__dep",
-        query=(
-            "SELECT CAST(o.order_id AS String) AS order_id, "
-            "CAST(r.region_display AS String) AS region_display, "
-            "CAST(c.tier_name AS String) AS tier_name, "
-            "CAST(o._replay_partition AS Int64) AS _replay_partition, "
-            "CAST(o._replay_offset AS Int64) AS _replay_offset "
-            "FROM tbl__orders AS o "
-            "LEFT JOIN tbl__region_lookup AS r ON o.order_id = r.region "
-            "LEFT JOIN tbl__customer_tier AS c ON o.order_id = c.customer_id"
+            ).strip(),
+            replay_table_name_by_logical_name={
+                "tbl__orders": "tbl__orders__dep",
+                "tbl__region_lookup": "tbl__region_lookup",
+            },
         ),
-        expected_statement=dedent(
-            """
+        RenderOffsetReplayStatementTestCase(
+            description="renders offset replay with mixed staged and active reference joins",
+            source_table_name="tbl__orders",
+            target_table_name="tbl__enriched_orders",
+            shadow_target_name="tbl__enriched_orders__dep",
+            anchor_table_name="tbl__orders__dep",
+            query=(
+                "SELECT CAST(o.order_id AS String) AS order_id, "
+                "CAST(r.region_display AS String) AS region_display, "
+                "CAST(c.tier_name AS String) AS tier_name, "
+                "CAST(o._replay_partition AS Int64) AS _replay_partition, "
+                "CAST(o._replay_offset AS Int64) AS _replay_offset "
+                "FROM tbl__orders AS o "
+                "LEFT JOIN tbl__region_lookup AS r ON o.order_id = r.region "
+                "LEFT JOIN tbl__customer_tier AS c ON o.order_id = c.customer_id"
+            ),
+            expected_statement=dedent(
+                """
             INSERT INTO orders_demo.tbl__enriched_orders__dep
             WITH cutoff_offsets AS (
                 SELECT 0 AS _replay_partition, 9709 AS cutoff_offset
@@ -218,19 +223,14 @@ TEST_CASES: list[RenderOffsetReplayStatementTestCase] = [
                 OR replay_source._replay_offset >= active_start_offsets.start_offset
               )
             """
-        ).strip(),
-        replay_table_name_by_logical_name={
-            "tbl__orders": "tbl__orders__dep",
-            "tbl__region_lookup": "tbl__region_lookup__dep",
-            "tbl__customer_tier": "tbl__customer_tier",
-        },
-    ),
-]
-
-
-@pytest.mark.parametrize(
-    "test_case",
-    TEST_CASES,
+            ).strip(),
+            replay_table_name_by_logical_name={
+                "tbl__orders": "tbl__orders__dep",
+                "tbl__region_lookup": "tbl__region_lookup__dep",
+                "tbl__customer_tier": "tbl__customer_tier",
+            },
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_offset_replay_query_when_rendering_then_it_rewrites_anchor_and_reference_tables(

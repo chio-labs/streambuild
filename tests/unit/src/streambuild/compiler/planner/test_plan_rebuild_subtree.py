@@ -17,59 +17,33 @@ from tests.unit.src.streambuild.compiler.planner.helpers import (
     key_parts,
 )
 
-TEST_CASES: list[PlannerRebuildSubtreeTestCase] = [
-    PlannerRebuildSubtreeTestCase(
-        description="plans transform rebuild subtree from example desired state",
-        root_key=(None, "table", "tbl__orders_enriched"),
-        expected_descendant_keys=(
-            (None, "table", "tbl__orders_enriched"),
-            (None, "materialized_view", "mv__orders_enriched"),
-        ),
-        expected_upstream_boundary_key=(None, "table", "raw__orders"),
-        expected_strategy=REBUILD_STRATEGY_SHADOW,
-    ),
-    PlannerRebuildSubtreeTestCase(
-        description="plans landing rebuild subtree from example desired state",
-        root_key=(None, "table", "raw__orders"),
-        expected_descendant_keys=(
-            (None, "table", "raw__orders"),
-            (None, "materialized_view", "mv__orders"),
-            (None, "table", "tbl__orders_enriched"),
-            (None, "materialized_view", "mv__orders_enriched"),
-        ),
-        expected_upstream_boundary_key=(None, "table", "raw__orders"),
-        expected_strategy=REBUILD_STRATEGY_SHADOW,
-    ),
-]
-
-REPLAY_ANCHOR_SELECTION_TEST_CASES: list[PlannerReplayAnchorSelectionTestCase] = [
-    PlannerReplayAnchorSelectionTestCase(
-        description="uses upstream source instead of replaying a transform table from itself",
-        query=(
-            "SELECT CAST(order_id AS UInt64) AS order_id, "
-            "CAST(_replay_partition AS UInt64) AS _replay_partition, "
-            'CAST(_replay_offset AS UInt64) AS _replay_offset FROM __ref("orders")'
-        ),
-        expected_upstream_boundary_key=(None, "table", "raw__orders"),
-    ),
-    PlannerReplayAnchorSelectionTestCase(
-        description="falls back upstream when transform table is not replay-anchor-eligible",
-        query=(
-            "SELECT CAST(customer_id AS UInt64) AS customer_id, "
-            "CAST(count() AS UInt64) AS order_count, "
-            "CAST(_replay_partition AS UInt64) AS _replay_partition, "
-            "CAST(_replay_offset AS UInt64) AS _replay_offset "
-            'FROM __ref("orders") GROUP BY customer_id, _replay_partition, _replay_offset'
-        ),
-        order_by=("customer_id",),
-        expected_upstream_boundary_key=(None, "table", "raw__orders"),
-    ),
-]
-
 
 @pytest.mark.parametrize(
     "test_case",
-    TEST_CASES,
+    [
+        PlannerRebuildSubtreeTestCase(
+            description="plans transform rebuild subtree from example desired state",
+            root_key=(None, "table", "tbl__orders_enriched"),
+            expected_descendant_keys=(
+                (None, "table", "tbl__orders_enriched"),
+                (None, "materialized_view", "mv__orders_enriched"),
+            ),
+            expected_upstream_boundary_key=(None, "table", "raw__orders"),
+            expected_strategy=REBUILD_STRATEGY_SHADOW,
+        ),
+        PlannerRebuildSubtreeTestCase(
+            description="plans landing rebuild subtree from example desired state",
+            root_key=(None, "table", "raw__orders"),
+            expected_descendant_keys=(
+                (None, "table", "raw__orders"),
+                (None, "materialized_view", "mv__orders"),
+                (None, "table", "tbl__orders_enriched"),
+                (None, "materialized_view", "mv__orders_enriched"),
+            ),
+            expected_upstream_boundary_key=(None, "table", "raw__orders"),
+            expected_strategy=REBUILD_STRATEGY_SHADOW,
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_changed_desired_object_when_planning_rebuild_then_it_returns_expected_subtree(
@@ -99,7 +73,29 @@ def test_given_changed_desired_object_when_planning_rebuild_then_it_returns_expe
 
 @pytest.mark.parametrize(
     "test_case",
-    REPLAY_ANCHOR_SELECTION_TEST_CASES,
+    [
+        PlannerReplayAnchorSelectionTestCase(
+            description="uses upstream source instead of replaying a transform table from itself",
+            query=(
+                "SELECT CAST(order_id AS UInt64) AS order_id, "
+                "CAST(_replay_partition AS UInt64) AS _replay_partition, "
+                'CAST(_replay_offset AS UInt64) AS _replay_offset FROM __ref("orders")'
+            ),
+            expected_upstream_boundary_key=(None, "table", "raw__orders"),
+        ),
+        PlannerReplayAnchorSelectionTestCase(
+            description="falls back upstream when transform table is not replay-anchor-eligible",
+            query=(
+                "SELECT CAST(customer_id AS UInt64) AS customer_id, "
+                "CAST(count() AS UInt64) AS order_count, "
+                "CAST(_replay_partition AS UInt64) AS _replay_partition, "
+                "CAST(_replay_offset AS UInt64) AS _replay_offset "
+                'FROM __ref("orders") GROUP BY customer_id, _replay_partition, _replay_offset'
+            ),
+            order_by=("customer_id",),
+            expected_upstream_boundary_key=(None, "table", "raw__orders"),
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_transform_when_planning_rebuild_then_it_uses_expected_replay_anchor(

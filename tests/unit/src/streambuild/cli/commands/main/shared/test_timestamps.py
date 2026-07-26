@@ -16,28 +16,26 @@ from tests.unit.src.streambuild.cli.commands.main.shared._test_types import (
     CliStartTimeNormalizationTestCase,
 )
 
-NORMALIZATION_TEST_CASES: list[CliStartTimeNormalizationTestCase] = [
-    CliStartTimeNormalizationTestCase(
-        description="normalizes plain date to midnight utc",
-        raw_value="2026-04-01",
-        expected_normalized_value="2026-04-01 00:00:00.000",
-    ),
-    CliStartTimeNormalizationTestCase(
-        description="normalizes utc datetime without z suffix",
-        raw_value="2026-04-01T12:30:45",
-        expected_normalized_value="2026-04-01 12:30:45.000",
-    ),
-    CliStartTimeNormalizationTestCase(
-        description="normalizes fractional utc datetime with z suffix",
-        raw_value="2026-04-01T12:30:45.123Z",
-        expected_normalized_value="2026-04-01 12:30:45.123",
-    ),
-]
-
 
 @pytest.mark.parametrize(
     "test_case",
-    NORMALIZATION_TEST_CASES,
+    [
+        CliStartTimeNormalizationTestCase(
+            description="normalizes plain date to midnight utc",
+            raw_value="2026-04-01",
+            expected_normalized_value="2026-04-01 00:00:00.000",
+        ),
+        CliStartTimeNormalizationTestCase(
+            description="normalizes utc datetime without z suffix",
+            raw_value="2026-04-01T12:30:45",
+            expected_normalized_value="2026-04-01 12:30:45.000",
+        ),
+        CliStartTimeNormalizationTestCase(
+            description="normalizes fractional utc datetime with z suffix",
+            raw_value="2026-04-01T12:30:45.123Z",
+            expected_normalized_value="2026-04-01 12:30:45.123",
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_valid_cli_start_time_when_normalizing_then_it_returns_internal_timestamp(
