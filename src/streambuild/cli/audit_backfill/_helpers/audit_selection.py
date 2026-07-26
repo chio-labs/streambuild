@@ -1,0 +1,64 @@
+"""Audit selection helpers for the audit backfill command."""
+
+from pathlib import Path
+
+from streambuild.compiler.audit_discovery.main.discover_sql_audits import discover_sql_audits
+from streambuild.compiler.auditing.main.validate_sql_audits import validate_sql_audits
+from streambuild.compiler.compile.main.transform_table_name import transform_table_name
+from streambuild.compiler.compile.models import CompiledPipeline, CompiledTransformStep
+from streambuild.compiler.shared.models import LoadedSqlAudit
+from streambuild.executor.audit_backfill.models import (
+    LoadedAuditDeployment,
+)
+
+
+def selected_backfill_sql_audits(
+    *,
+    project_dir: Path,
+    compiled_pipelines: tuple[CompiledPipeline, ...],
+    staged_logical_table_names: frozenset[str],
+) -> tuple[LoadedSqlAudit, ...]:
+    loaded_audits: tuple[LoadedSqlAudit, ...] = validate_sql_audits(
+        loaded_audits=tuple(discover_sql_audits(project_dir / "audits")),
+        compiled_pipelines=compiled_pipelines,
+    )
+    return tuple(
+        loaded_audit
+        for loaded_audit in loaded_audits
+        if any(
+            transform_table_name(model_name) in staged_logical_table_names
+            for model_name in loaded_audit.referenced_model_names
+        )
+    )
+
+
+def backfill_audit_resolver(
+    *,
+    database: str,
+    compiled_pipelines: tuple[CompiledPipeline, ...],
+    loaded_deployment: LoadedAuditDeployment,
+) -> dict[str, str]:
+    staged_name_by_logical_name: dict[str, str] = {
+        logical_key.name: physical_name
+        for logical_key, physical_name in loaded_deployment.prepared_object_mappings
+    }
+    resolver: dict[str, str] = {}
+    compiled_pipeline: CompiledPipeline
+    for compiled_pipeline in compiled_pipelines:
+        compiled_transform: CompiledTransformStep
+        for compiled_transform in compiled_pipeline.transforms:
+            resolved_table_name: str = resolved_audit_table_name(
+                model_name=compiled_transform.transform.name,
+                staged_name_by_logical_name=staged_name_by_logical_name,
+            )
+            resolver[compiled_transform.transform.name] = f"{database}.{resolved_table_name}"
+    return resolver
+
+
+def resolved_audit_table_name(
+    *,
+    model_name: str,
+    staged_name_by_logical_name: dict[str, str],
+) -> str:
+    logical_table_name: str = transform_table_name(model_name)
+    return staged_name_by_logical_name.get(logical_table_name, logical_table_name)

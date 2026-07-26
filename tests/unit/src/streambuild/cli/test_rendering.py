@@ -5,10 +5,10 @@ from streambuild.cli.audit_backfill._helpers.rendering import (
 )
 from streambuild.cli.backfill._helpers.rendering import render_backfill_result
 from streambuild.cli.publish._helpers.rendering import render_publish_result
-from streambuild.cli.shared.main._deployment_candidates import (
+from streambuild.cli.shared.main._plan_rendering import render_plan_result
+from streambuild.cli.shared.main._render_ambiguous_deployment_message import (
     render_ambiguous_deployment_message,
 )
-from streambuild.cli.shared.main._plan_rendering import render_plan_result
 from streambuild.compiler.compile.models import DesiredState
 from streambuild.compiler.desired_state.main.build_desired_state import build_desired_state
 from streambuild.compiler.planner.constants import (

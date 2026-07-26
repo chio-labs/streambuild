@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import cast
 
-from streambuild.cli.shared.constants import AFFIRMATIVE_RESPONSES
-from streambuild.cli.shared.main._project import resolve_default_database
+from streambuild.cli.reconcile._helpers.rendering import (
+    confirm_reconcile,
+    render_reconcile_preview,
+    render_reconcile_result,
+)
+from streambuild.cli.shared.main._resolve_default_database import resolve_default_database
 from streambuild.cli.shared.main._selection import resolve_selection
 from streambuild.cli.shared.models import SelectionResolution
 from streambuild.compiler.actual_state.main.load_actual_state import load_actual_state
@@ -57,10 +60,10 @@ def run_reconcile(
             selected_model_keys=selection.selected_model_keys,
         ),
     )
-    print(_render_reconcile_preview(preview=preview, json_output=json_output))
+    print(render_reconcile_preview(preview=preview, json_output=json_output))
     if not apply:
         return 0
-    if not _confirm_reconcile():
+    if not confirm_reconcile():
         print("Reconcile cancelled.")
         return 1
     result: ReconcileResult = cast(
@@ -74,68 +77,5 @@ def run_reconcile(
             apply=True,
         ),
     )
-    print(_render_reconcile_result(result=result, json_output=json_output))
+    print(render_reconcile_result(result=result, json_output=json_output))
     return 0
-
-
-def _render_reconcile_preview(*, preview: ReconcilePreview, json_output: bool) -> str:
-    if json_output:
-        return json.dumps(
-            {
-                "database": preview.database,
-                "reconcile_id": preview.reconcile_id,
-                "eligible_target_names": sorted(
-                    {record.key.name for record in preview.eligible_records}
-                ),
-                "rejected_targets": [
-                    {
-                        "target_name": target.target_name,
-                        "reasons": list(target.reasons),
-                    }
-                    for target in preview.rejected_targets
-                ],
-            }
-        )
-    lines: list[str] = [f"Reconcile Preview\nDatabase: {preview.database}"]
-    eligible_target_names: tuple[str, ...] = tuple(
-        sorted({record.key.name for record in preview.eligible_records})
-    )
-    lines.append(f"Eligible targets: {len(eligible_target_names)}")
-    for target_name in eligible_target_names:
-        lines.append(f"- {target_name}")
-    if preview.rejected_targets:
-        lines.append("Rejected targets:")
-        for rejected in preview.rejected_targets:
-            lines.append(f"- {rejected.target_name}: {', '.join(rejected.reasons)}")
-    return "\n".join(lines)
-
-
-def _render_reconcile_result(*, result: ReconcileResult, json_output: bool) -> str:
-    if json_output:
-        return json.dumps(
-            {
-                "database": result.database,
-                "reconcile_id": result.reconcile_id,
-                "reconciled_target_names": sorted(
-                    {record.key.name for record in result.reconciled_records}
-                ),
-                "rejected_targets": [
-                    {
-                        "target_name": target.target_name,
-                        "reasons": list(target.reasons),
-                    }
-                    for target in result.rejected_targets
-                ],
-            }
-        )
-    return (
-        "Reconcile Applied\n"
-        f"Database: {result.database}\n"
-        f"Reconcile id: {result.reconcile_id}\n"
-        f"Reconciled targets: {len({record.key.name for record in result.reconciled_records})}"
-    )
-
-
-def _confirm_reconcile() -> bool:
-    response: str = input("Proceed with reconcile? [y/N] ").strip().lower()
-    return response in AFFIRMATIVE_RESPONSES

@@ -6,6 +6,10 @@ from pathlib import Path
 
 from clickhouse_connect.driver.exceptions import DatabaseError, OperationalError
 
+from streambuild.cli.audit_backfill._helpers.audit_selection import (
+    backfill_audit_resolver,
+    selected_backfill_sql_audits,
+)
 from streambuild.cli.audit_backfill._helpers.candidates import (
     candidate_root_names,
     enrich_candidates,
@@ -13,22 +17,21 @@ from streambuild.cli.audit_backfill._helpers.candidates import (
 from streambuild.cli.audit_backfill._helpers.rendering import (
     render_audit_backfill_result,
 )
-from streambuild.cli.shared.main._deployment_candidates import (
+from streambuild.cli.shared.main._errors import render_expected_clickhouse_error
+from streambuild.cli.shared.main._render_ambiguous_deployment_message import (
     render_ambiguous_deployment_message,
+)
+from streambuild.cli.shared.main._render_no_deployment_candidates_message import (
     render_no_deployment_candidates_message,
 )
-from streambuild.cli.shared.main._errors import render_expected_clickhouse_error
 from streambuild.clickhouse.inspect.main.inspect_managed_table_state import (
     inspect_managed_table_state,
 )
 from streambuild.clickhouse.inspect.models import InspectedManagedTableState
-from streambuild.compiler.audit_discovery.main.discover_sql_audits import discover_sql_audits
-from streambuild.compiler.auditing.main.validate_sql_audits import validate_sql_audits
 from streambuild.compiler.compile.main.compile_pipeline import compile_pipeline
-from streambuild.compiler.compile.main.transform_table_name import transform_table_name
-from streambuild.compiler.compile.models import CompiledPipeline, CompiledTransformStep
+from streambuild.compiler.compile.models import CompiledPipeline
 from streambuild.compiler.discovery.main.discover_pipelines import discover_pipelines
-from streambuild.compiler.shared.models import LoadedPipeline, LoadedSqlAudit
+from streambuild.compiler.shared.models import LoadedPipeline
 from streambuild.executor.audit_backfill.main.build_audit_deployment_candidates import (
     build_audit_deployment_candidates,
 )
@@ -116,7 +119,7 @@ def run_audit_backfill(
                 deployment_id=result.deployment_id,
             )
             quality_check_result: SqlAuditRunResult = execute_sql_audits(
-                loaded_audits=_selected_backfill_sql_audits(
+                loaded_audits=selected_backfill_sql_audits(
                     project_dir=project_dir,
                     compiled_pipelines=compiled_pipelines,
                     staged_logical_table_names=frozenset(
@@ -126,7 +129,7 @@ def run_audit_backfill(
                         )
                     ),
                 ),
-                resolver=_backfill_audit_resolver(
+                resolver=backfill_audit_resolver(
                     database=database,
                     compiled_pipelines=compiled_pipelines,
                     loaded_deployment=loaded_deployment,
@@ -160,55 +163,3 @@ def run_audit_backfill(
         )
     )
     return 0
-
-
-def _selected_backfill_sql_audits(
-    *,
-    project_dir: Path,
-    compiled_pipelines: tuple[CompiledPipeline, ...],
-    staged_logical_table_names: frozenset[str],
-) -> tuple[LoadedSqlAudit, ...]:
-    loaded_audits: tuple[LoadedSqlAudit, ...] = validate_sql_audits(
-        loaded_audits=tuple(discover_sql_audits(project_dir / "audits")),
-        compiled_pipelines=compiled_pipelines,
-    )
-    return tuple(
-        loaded_audit
-        for loaded_audit in loaded_audits
-        if any(
-            transform_table_name(model_name) in staged_logical_table_names
-            for model_name in loaded_audit.referenced_model_names
-        )
-    )
-
-
-def _backfill_audit_resolver(
-    *,
-    database: str,
-    compiled_pipelines: tuple[CompiledPipeline, ...],
-    loaded_deployment: LoadedAuditDeployment,
-) -> dict[str, str]:
-    staged_name_by_logical_name: dict[str, str] = {
-        logical_key.name: physical_name
-        for logical_key, physical_name in loaded_deployment.prepared_object_mappings
-    }
-    resolver: dict[str, str] = {}
-    compiled_pipeline: CompiledPipeline
-    for compiled_pipeline in compiled_pipelines:
-        compiled_transform: CompiledTransformStep
-        for compiled_transform in compiled_pipeline.transforms:
-            resolved_table_name: str = _resolved_audit_table_name(
-                model_name=compiled_transform.transform.name,
-                staged_name_by_logical_name=staged_name_by_logical_name,
-            )
-            resolver[compiled_transform.transform.name] = f"{database}.{resolved_table_name}"
-    return resolver
-
-
-def _resolved_audit_table_name(
-    *,
-    model_name: str,
-    staged_name_by_logical_name: dict[str, str],
-) -> str:
-    logical_table_name: str = transform_table_name(model_name)
-    return staged_name_by_logical_name.get(logical_table_name, logical_table_name)
