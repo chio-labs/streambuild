@@ -14,9 +14,9 @@ from tests.unit.src.streambuild.clickhouse.render.main.render_create_table_ddl.h
     [
         RenderCreateTableDdlTestCase(
             description="renders base create table ddl without optional clauses",
-            include_partition_by=False,
-            include_ttl=False,
-            include_settings=False,
+            partition_by=None,
+            ttl=None,
+            settings=None,
             expected_fragments=(
                 "CREATE TABLE analytics.tbl__orders_enriched",
                 "order_id String",
@@ -28,9 +28,9 @@ from tests.unit.src.streambuild.clickhouse.render.main.render_create_table_ddl.h
         ),
         RenderCreateTableDdlTestCase(
             description="renders optional partition ttl and sorted settings clauses",
-            include_partition_by=True,
-            include_ttl=True,
-            include_settings=True,
+            partition_by="toYYYYMM(_replay_landed_at)",
+            ttl="toDateTime(_replay_landed_at) + INTERVAL 30 DAY",
+            settings={"index_granularity": "8192", "allow_nullable_key": "1"},
             expected_fragments=(
                 "PARTITION BY toYYYYMM(_replay_landed_at)",
                 "TTL toDateTime(_replay_landed_at) + INTERVAL 30 DAY",
@@ -46,9 +46,9 @@ def test_given_desired_table_when_rendering_then_it_returns_expected_create_tabl
 ) -> None:
     rendered_ddl: str = render_create_table_ddl(
         table=build_table(
-            include_partition_by=test_case.include_partition_by,
-            include_ttl=test_case.include_ttl,
-            include_settings=test_case.include_settings,
+            partition_by=test_case.partition_by,
+            ttl=test_case.ttl,
+            settings=test_case.settings,
         ),
         database="analytics",
     )

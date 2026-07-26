@@ -7,7 +7,12 @@ from tests.unit.src.streambuild.compiler.auditing._test_types import (
     ValidateSqlAuditsErrorTestCase,
     ValidateSqlAuditsTestCase,
 )
-from tests.unit.src.streambuild.compiler.auditing.helpers import validate_project_sql_audits
+from tests.unit.src.streambuild.compiler.auditing.helpers import (
+    AUDIT_FILE_PATH,
+    GENERIC_DEFINITION_FILE_PATH,
+    SCHEMA_FILE_PATH,
+    validate_project_sql_audits,
+)
 
 
 @pytest.mark.parametrize(
@@ -15,25 +20,35 @@ from tests.unit.src.streambuild.compiler.auditing.helpers import validate_projec
     [
         ValidateSqlAuditsErrorTestCase(
             description="rejects unknown audit model refs",
-            audit_file_contents="""
+            project_files=(
+                (
+                    AUDIT_FILE_PATH,
+                    """
         AUDIT ();
 
         SELECT * FROM __ref("missing_model")
         """,
+                ),
+            ),
             expected_error_fragment="references unknown models: missing_model",
         ),
         ValidateSqlAuditsErrorTestCase(
             description="rejects unknown generic audit model refs",
-            audit_file_contents="",
             expected_error_fragment="references unknown models: missing_model",
-            generic_definition_file_contents="""
+            project_files=(
+                (
+                    GENERIC_DEFINITION_FILE_PATH,
+                    """
         AUDIT ();
 
         SELECT *
         FROM __ref("@model") AS source_model
         INNER JOIN __ref("@other_model") AS other_model ON 1 = 1
         """,
-            schema_file_contents="""
+                ),
+                (
+                    SCHEMA_FILE_PATH,
+                    """
         models:
           - name: order_items
             audits:
@@ -41,6 +56,8 @@ from tests.unit.src.streambuild.compiler.auditing.helpers import validate_projec
                   other_model: missing_model
                   name: missing model generic audit
         """,
+                ),
+            ),
         ),
     ],
     ids=lambda case: case.description,
@@ -52,9 +69,7 @@ def test_given_invalid_sql_audits_when_validating_then_it_raises_clear_errors(
     with pytest.raises(ValueError, match=test_case.expected_error_fragment):
         validate_project_sql_audits(
             tmp_path=tmp_path,
-            audit_file_contents=test_case.audit_file_contents,
-            generic_definition_file_contents=test_case.generic_definition_file_contents,
-            schema_file_contents=test_case.schema_file_contents,
+            project_files=test_case.project_files,
         )
 
 
@@ -63,23 +78,33 @@ def test_given_invalid_sql_audits_when_validating_then_it_raises_clear_errors(
     [
         ValidateSqlAuditsTestCase(
             description="returns validated audits when all refs exist",
-            audit_file_contents="""
+            project_files=(
+                (
+                    AUDIT_FILE_PATH,
+                    """
         AUDIT (severity: "warning");
 
         SELECT * FROM __ref("order_items") WHERE line_total < 0
         """,
+                ),
+            ),
             expected_referenced_model_names=("order_items",),
             expected_severity="warning",
         ),
         ValidateSqlAuditsTestCase(
             description="returns validated rendered generic audits when all refs exist",
-            audit_file_contents="",
-            generic_definition_file_contents="""
+            project_files=(
+                (
+                    GENERIC_DEFINITION_FILE_PATH,
+                    """
         AUDIT ();
 
         SELECT @column FROM __ref("@model") WHERE @column IS NULL
         """,
-            schema_file_contents="""
+                ),
+                (
+                    SCHEMA_FILE_PATH,
+                    """
         models:
           - name: order_items
             columns:
@@ -88,6 +113,8 @@ def test_given_invalid_sql_audits_when_validating_then_it_raises_clear_errors(
                   - not_null:
                       name: generic order id audit
         """,
+                ),
+            ),
             expected_referenced_model_names=("order_items",),
             expected_severity="error",
             expected_name="generic order id audit",
@@ -101,9 +128,7 @@ def test_given_valid_sql_audits_when_validating_then_it_returns_loaded_audits(
 ) -> None:
     loaded_audits: tuple[LoadedSqlAudit, ...] = validate_project_sql_audits(
         tmp_path=tmp_path,
-        audit_file_contents=test_case.audit_file_contents,
-        generic_definition_file_contents=test_case.generic_definition_file_contents,
-        schema_file_contents=test_case.schema_file_contents,
+        project_files=test_case.project_files,
     )
 
     assert loaded_audits[0].referenced_model_names == test_case.expected_referenced_model_names
