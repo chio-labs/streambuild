@@ -13,3 +13,7 @@ TRUTHY_ENV_VALUES: frozenset[str] = frozenset({"1", "true", "yes"})
 
 NOT_AVAILABLE: str = "n/a"
 UTC_SUFFIX: str = "Z"
+
+UPSTREAM_SELECTOR_PREFIX: str = "+"
+SELECTOR_NAMESPACE_SEPARATOR: str = ":"
+PIPELINE_SELECTOR_NAMESPACE: str = "pipeline"

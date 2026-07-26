@@ -5,7 +5,11 @@ from streambuild.compiler.compile._helpers.naming import (
     landing_mv_name,
     raw_table_name,
 )
-from streambuild.compiler.compile.constants import RAW_LANDING_COLUMNS
+from streambuild.compiler.compile.constants import (
+    FRAMEWORK_OWNED_KAFKA_SETTING_KEYS,
+    RAW_LANDING_COLUMNS,
+    SUPPORTED_KAFKA_TABLE_FORMAT,
+)
 from streambuild.compiler.compile.exceptions import PipelineCompileError
 from streambuild.compiler.compile.models import CompiledExternalSource, CompiledManagedSource
 from streambuild.compiler.shared.constants import (
@@ -123,7 +127,7 @@ def raw_landing_columns() -> tuple[Column, ...]:
 def kafka_landing_columns(table_format: str) -> tuple[Column, ...]:
     """Return the Kafka source-table columns for a supported source format."""
 
-    if table_format == "JSONAsString":
+    if table_format == SUPPORTED_KAFKA_TABLE_FORMAT:
         return (Column(name="message", type="String"),)
 
     raise PipelineCompileError(
@@ -160,17 +164,7 @@ def validate_kafka_setting_overrides(kafka_settings: KafkaSettings) -> None:
         return
 
     overlapping_keys: tuple[str, ...] = tuple(
-        sorted(
-            key
-            for key in kafka_settings.settings
-            if key
-            in {
-                "kafka_broker_list",
-                "kafka_topic_list",
-                "kafka_group_name",
-                "kafka_format",
-            }
-        )
+        sorted(key for key in kafka_settings.settings if key in FRAMEWORK_OWNED_KAFKA_SETTING_KEYS)
     )
     if overlapping_keys:
         raise PipelineCompileError(

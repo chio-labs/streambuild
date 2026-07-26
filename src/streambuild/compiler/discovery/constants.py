@@ -26,3 +26,19 @@ ALLOWED_MODEL_KEYS: frozenset[str] = frozenset(
 DEFAULT_SQL_MODEL_ENGINE: str = "MergeTree()"
 DEFAULT_SQL_MODEL_ORDER_BY: tuple[str, ...] = ("_replay_timestamp",)
 PROJECT_FILE_NAME: str = "streambuild_project.yml"
+
+PIPELINE_FILE_NAME: str = "pipeline.yml"
+ALLOWED_PROJECT_KEYS: frozenset[str] = frozenset(
+    {
+        "default_database",
+        "replay_lineage_mode",
+        "bounded_replay_fallback",
+        "clickhouse",
+    }
+)
+SECONDS_BY_DURATION_UNIT: dict[str, int] = {
+    "d": 24 * 60 * 60,
+    "h": 60 * 60,
+    "m": 60,
+    "s": 1,
+}

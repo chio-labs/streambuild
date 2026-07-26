@@ -9,7 +9,9 @@ import yaml
 
 from streambuild.compiler.discovery._helpers.model_sql import load_transform_from_sql_file
 from streambuild.compiler.discovery.constants import (
+    ALLOWED_PROJECT_KEYS,
     CLICKHOUSE_CONNECTION_KEYS,
+    PIPELINE_FILE_NAME,
     PROJECT_FILE_NAME,
 )
 from streambuild.compiler.discovery.exceptions import PipelineDiscoveryError
@@ -36,7 +38,7 @@ from streambuild.spec.types import (
 def load_pipeline_file(file_path: Path) -> LoadedPipeline:
     """Load a single pipeline definition file and return its top-level pipeline object."""
 
-    if file_path.name != "pipeline.yml":
+    if file_path.name != PIPELINE_FILE_NAME:
         raise PipelineDiscoveryError(f"Pipeline file '{file_path}' must be named 'pipeline.yml'")
 
     pipeline: Pipeline = load_pipeline_yaml(file_path)
@@ -416,15 +418,7 @@ def load_project_yaml(file_path: Path) -> Project:
     typed_project_values: dict[str, Any] = project_values
 
     unknown_keys: list[str] = [
-        key
-        for key in typed_project_values
-        if key
-        not in {
-            "default_database",
-            "replay_lineage_mode",
-            "bounded_replay_fallback",
-            "clickhouse",
-        }
+        key for key in typed_project_values if key not in ALLOWED_PROJECT_KEYS
     ]
     if unknown_keys:
         unknown_key_list: str = ", ".join(sorted(unknown_keys))

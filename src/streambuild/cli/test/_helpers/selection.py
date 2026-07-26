@@ -5,6 +5,11 @@ from __future__ import annotations
 from collections import defaultdict
 from pathlib import Path
 
+from streambuild.cli.shared.constants import (
+    PIPELINE_SELECTOR_NAMESPACE,
+    SELECTOR_NAMESPACE_SEPARATOR,
+    UPSTREAM_SELECTOR_PREFIX,
+)
 from streambuild.cli.shared.exceptions import CliUserError
 from streambuild.compiler.compile.models import CompiledPipeline, CompiledTransformStep, ParsedRef
 from streambuild.compiler.shared.main.compiled_transforms import compiled_transforms
@@ -72,10 +77,10 @@ def _resolve_selected_target_names(
     selected_target_names: set[str] = set()
     raw_selector: str
     for raw_selector in selectors:
-        include_upstream: bool = raw_selector.startswith("+")
+        include_upstream: bool = raw_selector.startswith(UPSTREAM_SELECTOR_PREFIX)
         include_downstream: bool = raw_selector.endswith("+")
-        selector: str = raw_selector.removeprefix("+").removesuffix("+")
-        if not selector or "+" in selector:
+        selector: str = raw_selector.removeprefix(UPSTREAM_SELECTOR_PREFIX).removesuffix("+")
+        if not selector or UPSTREAM_SELECTOR_PREFIX in selector:
             raise CliUserError(
                 f"Unsupported test selector syntax '{raw_selector}'. Use bare model names, "
                 "pipeline:<name>, or optional leading/trailing '+'."
@@ -111,14 +116,14 @@ def _resolve_selector_target_names(
     pipeline_model_names: dict[str, tuple[str, ...]],
     known_model_names: frozenset[str],
 ) -> tuple[str, ...]:
-    if ":" not in selector:
+    if SELECTOR_NAMESPACE_SEPARATOR not in selector:
         if selector not in known_model_names:
             raise CliUserError(f"Unknown SQL test selector model '{selector}'")
         return (selector,)
     selector_kind: str
     selector_value: str
-    selector_kind, selector_value = selector.split(":", 1)
-    if selector_kind != "pipeline":
+    selector_kind, selector_value = selector.split(SELECTOR_NAMESPACE_SEPARATOR, 1)
+    if selector_kind != PIPELINE_SELECTOR_NAMESPACE:
         raise CliUserError(f"Unsupported test selector namespace '{selector_kind}' in '{selector}'")
     pipeline_targets: tuple[str, ...] | None = pipeline_model_names.get(selector_value)
     if pipeline_targets is None:

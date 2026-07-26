@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from streambuild.cli.shared.constants import (
+    PIPELINE_SELECTOR_NAMESPACE,
+    SELECTOR_NAMESPACE_SEPARATOR,
+)
 from streambuild.cli.shared.exceptions import CliUserError
 from streambuild.compiler.compile.models import (
     CompiledExternalSource,
@@ -43,7 +47,7 @@ def resolve_selected_model_keys(
                 "'. StreamBuild selections already include required downstream closure, "
                 "so '+' is not supported."
             )
-        if ":" not in selector:
+        if SELECTOR_NAMESPACE_SEPARATOR not in selector:
             model_key: ObjectKey | None = model_key_by_name.get(selector)
             if model_key is None:
                 raise CliUserError(f"Unknown selected model '{selector}'")
@@ -52,8 +56,8 @@ def resolve_selected_model_keys(
 
         selector_kind: str
         selector_value: str
-        selector_kind, selector_value = selector.split(":", 1)
-        if selector_kind != "pipeline":
+        selector_kind, selector_value = selector.split(SELECTOR_NAMESPACE_SEPARATOR, 1)
+        if selector_kind != PIPELINE_SELECTOR_NAMESPACE:
             raise CliUserError(f"Unsupported selector namespace '{selector_kind}' in '{selector}'")
         pipeline_keys: tuple[ObjectKey, ...] | None = pipeline_model_keys.get(selector_value)
         if pipeline_keys is None:
