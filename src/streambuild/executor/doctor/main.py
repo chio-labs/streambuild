@@ -10,7 +10,7 @@ from streambuild.compiler.shared._helpers.deployment_names import deployment_id_
 from streambuild.compiler.shared.constants import DESIRED_OBJECT_TYPE_TABLE
 from streambuild.compiler.shared.models import ObjectKey
 from streambuild.executor.doctor.models import ActiveViewStatus, DoctorRequest, DoctorResult
-from streambuild.integrations.clickhouse.client import ClickHouseClient
+from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def execute_doctor(*, request: DoctorRequest, client: ClickHouseClient) -> DoctorResult:

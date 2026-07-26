@@ -14,7 +14,7 @@ from streambuild.compiler.shared.constants import (
     RAW_TABLE_NAME_PREFIX,
     TRANSFORM_TABLE_NAME_PREFIX,
 )
-from streambuild.integrations.clickhouse.client import ClickHouseClient
+from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def build_inspected_managed_table_state(

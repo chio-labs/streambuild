@@ -4,7 +4,7 @@ from clickhouse_connect.driver.client import Client
 from streambuild.clickhouse.render._helpers.create_view import render_create_view_ddl
 from streambuild.executor.doctor.main import execute_doctor
 from streambuild.executor.doctor.models import ActiveViewStatus, DoctorRequest, DoctorResult
-from streambuild.integrations.clickhouse.client import ClickHouseClient
+from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 from streambuild.integrations.clickhouse.models import ClickHouseConnectionConfig
 from tests.integration.src.streambuild.conftest import ClickHouseConnectionSettings
 from tests.integration.src.streambuild.executor.doctor._test_types import (

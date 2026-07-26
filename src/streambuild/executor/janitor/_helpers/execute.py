@@ -13,7 +13,7 @@ from streambuild.executor.janitor.models import (
     JanitorPreviewResult,
     JanitorRequest,
 )
-from streambuild.integrations.clickhouse.client import ClickHouseClient
+from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def execute_janitor_for_managed_table_state(

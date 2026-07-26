@@ -9,7 +9,7 @@ from streambuild.compiler.shared.models import LoadedSqlAudit
 from streambuild.executor.auditing.constants import AUDIT_SAMPLE_LIMIT
 from streambuild.executor.auditing.exceptions import AuditExecutionError
 from streambuild.executor.auditing.models import SqlAuditResult, SqlAuditRunResult
-from streambuild.integrations.clickhouse.client import ClickHouseClient
+from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 from streambuild.integrations.clickhouse.models import ClickHouseQueryResult
 
 

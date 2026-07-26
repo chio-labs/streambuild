@@ -22,7 +22,7 @@ from streambuild.executor.backfill.models import (
     BackfillBootstrapResult,
     BackfillExecutionResult,
 )
-from streambuild.integrations.clickhouse.client import ClickHouseClient
+from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 from streambuild.spec.models.types import ReplayLineageMode
 
 

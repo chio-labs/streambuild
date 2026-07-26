@@ -23,7 +23,7 @@ from streambuild.executor.reconcile.models import (
     ReconcileRejectedTarget,
     ReconcileResult,
 )
-from streambuild.integrations.clickhouse.client import ClickHouseClient
+from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def execute_reconcile(

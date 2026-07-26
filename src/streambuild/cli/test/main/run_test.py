@@ -15,7 +15,7 @@ from streambuild.compiler.testing.main import build_sql_test_cases
 from streambuild.compiler.testing.models import SqlTestCase
 from streambuild.executor.testing.main import execute_sql_tests
 from streambuild.executor.testing.models import SqlTestExecutionResult
-from streambuild.integrations.clickhouse.client import ClickHouseClient
+from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def run_test(

@@ -16,7 +16,7 @@ from streambuild.executor.backfill.main import execute_backfill
 from streambuild.executor.publish.main import execute_publish
 from streambuild.executor.publish.models import PublishRequest
 from streambuild.executor.reconcile.constants import RECONCILE_DEPLOYMENT_ID_PREFIX
-from streambuild.integrations.clickhouse.client import ClickHouseClient
+from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 from streambuild.integrations.clickhouse.models import ClickHouseConnectionConfig
 from tests.integration.src.streambuild.compiler.actual_state._test_types import (
     LoadActualStateIntegrationTestCase,

@@ -5,7 +5,7 @@ from clickhouse_connect.driver.client import Client
 
 from streambuild.executor.repair.main import execute_repair_active_view
 from streambuild.executor.repair.models import RepairActiveViewRequest, RepairActiveViewResult
-from streambuild.integrations.clickhouse.client import ClickHouseClient
+from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 from streambuild.integrations.clickhouse.models import ClickHouseConnectionConfig
 from tests.integration.src.streambuild.conftest import ClickHouseConnectionSettings
 from tests.integration.src.streambuild.executor.repair._test_types import (

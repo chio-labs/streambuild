@@ -5,7 +5,7 @@ from typing import cast
 
 from streambuild.compiler.compile.models import DesiredState
 from streambuild.compiler.planner.models import DeploymentPlan, PlannerWarning, RebuildSubtree
-from streambuild.integrations.clickhouse.client import ClickHouseClient
+from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def add_empty_replay_source_warnings(

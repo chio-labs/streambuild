@@ -13,7 +13,7 @@ from streambuild.executor.audit_backfill.models import (
     RootAuditResult,
 )
 from streambuild.executor.audit_backfill.types import AuditAssessment
-from streambuild.integrations.clickhouse.client import ClickHouseClient
+from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def execute_audit_backfill(

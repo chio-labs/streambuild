@@ -1,5 +1,5 @@
 from streambuild.cli.entry.models import ResolvedClickHouseConnection
-from streambuild.integrations.clickhouse.client import ClickHouseClient
+from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 from streambuild.integrations.clickhouse.models import ClickHouseConnectionConfig
 
 

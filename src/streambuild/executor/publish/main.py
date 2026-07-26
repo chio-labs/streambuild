@@ -4,7 +4,7 @@ from streambuild.executor.publish._helpers.metadata import persist_publish_event
 from streambuild.executor.publish._helpers.resolution import resolve_publish_deployment_id
 from streambuild.executor.publish._helpers.views import publish_stable_views
 from streambuild.executor.publish.models import PublishedView, PublishRequest, PublishResult
-from streambuild.integrations.clickhouse.client import ClickHouseClient
+from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def execute_publish(*, request: PublishRequest, client: ClickHouseClient) -> PublishResult:

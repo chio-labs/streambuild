@@ -11,7 +11,7 @@ from streambuild.compiler.shared.constants import (
 from streambuild.compiler.shared.models import ObjectKey
 from streambuild.executor.publish.exceptions import PublishExecutionError
 from streambuild.executor.publish.models import PublishedView
-from streambuild.integrations.clickhouse.client import ClickHouseClient
+from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def publish_stable_views(

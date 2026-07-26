@@ -39,7 +39,7 @@ from streambuild.executor.backfill.models import (
 )
 from streambuild.executor.publish.main import execute_publish
 from streambuild.executor.publish.models import PublishRequest
-from streambuild.integrations.clickhouse.client import ClickHouseClient
+from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 from streambuild.integrations.clickhouse.models import ClickHouseConnectionConfig
 from tests.integration.src.streambuild.conftest import ClickHouseConnectionSettings
 from tests.integration.src.streambuild.executor.backfill._test_types import (

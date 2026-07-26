@@ -15,7 +15,7 @@ from streambuild.compiler.shared.constants import (
     REPLAY_PARTITION_COLUMN_NAME,
     REPLAY_TIMESTAMP_COLUMN_NAME,
 )
-from streambuild.integrations.clickhouse.client import ClickHouseClient
+from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def validate_declared_external_sources(

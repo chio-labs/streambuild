@@ -9,7 +9,7 @@ from streambuild.executor.testing.constants import (
 )
 from streambuild.executor.testing.exceptions import SqlTestExecutionError
 from streambuild.executor.testing.models import SqlTestExecutionResult, SqlTestTargetExecutionResult
-from streambuild.integrations.clickhouse.client import ClickHouseClient
+from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 from streambuild.integrations.clickhouse.models import ClickHouseQueryResult
 
 

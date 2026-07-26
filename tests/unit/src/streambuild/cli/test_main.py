@@ -13,7 +13,7 @@ from streambuild.cli.entry.models import (
     CliEntrypointHandlers,
     ResolvedClickHouseConnection,
 )
-from streambuild.integrations.clickhouse.client import ClickHouseClient
+from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 from tests.unit.src.streambuild.cli._test_types import (
     CliAuditBackfillProjectContextTestCase,
     CliCompileArtifactsTestCase,

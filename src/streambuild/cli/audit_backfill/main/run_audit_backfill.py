@@ -41,7 +41,7 @@ from streambuild.executor.audit_backfill.models import (
 from streambuild.executor.audit_backfill.types import AuditAssessment
 from streambuild.executor.auditing.main import execute_sql_audits
 from streambuild.executor.auditing.models import SqlAuditRunResult
-from streambuild.integrations.clickhouse.client import ClickHouseClient
+from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def run_audit_backfill(

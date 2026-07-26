@@ -10,7 +10,7 @@ from streambuild.executor.audit_backfill.models import (
     AuditDeploymentCandidate,
     LoadedAuditDeployment,
 )
-from streambuild.integrations.clickhouse.client import ClickHouseClient
+from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def candidate_root_names(inspected_state: InspectedManagedTableState) -> tuple[str, ...]:

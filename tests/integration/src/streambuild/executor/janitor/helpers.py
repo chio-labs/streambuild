@@ -18,7 +18,7 @@ from streambuild.compiler.compile.models import CompiledPipeline
 from streambuild.executor.backfill.main import execute_backfill
 from streambuild.executor.publish.main import execute_publish
 from streambuild.executor.publish.models import PublishRequest
-from streambuild.integrations.clickhouse.client import ClickHouseClient
+from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 from tests.integration.src.streambuild.executor.backfill.helpers import (
     build_raw_orders_row,
     build_scalar_replay_compiled_pipeline,

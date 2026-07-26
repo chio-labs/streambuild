@@ -7,7 +7,7 @@ from streambuild.compiler.compile.models import DesiredState
 from streambuild.compiler.planner.main import plan_deployment
 from streambuild.compiler.planner.models import DeploymentPlan
 from streambuild.executor.backfill._helpers.shadow_objects import create_shadow_objects
-from streambuild.integrations.clickhouse.client import ClickHouseClient
+from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 from tests.unit.src.streambuild.compiler.planner.helpers import (
     build_single_transform_desired_state,
 )

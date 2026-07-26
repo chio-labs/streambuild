@@ -36,7 +36,7 @@ from streambuild.cli.entry.models import (
 from streambuild.cli.shared.exceptions import CliUserError
 from streambuild.cli.shared.main._errors import render_expected_clickhouse_error
 from streambuild.compiler.compile.exceptions import TransformSqlContractError
-from streambuild.integrations.clickhouse.client import ClickHouseClient
+from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def main(argv: Sequence[str] | None = None) -> int:
