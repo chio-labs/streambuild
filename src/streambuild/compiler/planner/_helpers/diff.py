@@ -8,6 +8,7 @@ from streambuild.compiler.actual_state.models import ActualState, ActualTable
 from streambuild.compiler.compile.models import DesiredState
 from streambuild.compiler.planner._helpers.types import ActualObject, DesiredObject
 from streambuild.compiler.planner.constants import (
+    ADD_ONLY_COLUMN_DIFFERENCE,
     PLANNED_CHANGE_TYPE_CREATE,
     PLANNED_CHANGE_TYPE_NO_OP,
     PLANNED_CHANGE_TYPE_REBUILD,
@@ -15,6 +16,7 @@ from streambuild.compiler.planner.constants import (
     TABLE_SCHEMA_CHANGE_KIND_NON_BREAKING,
     TABLE_SCHEMA_SEED_COMPATIBILITY_NON_SEEDABLE,
     TABLE_SCHEMA_SEED_COMPATIBILITY_SEEDABLE,
+    TYPE_CHANGE_COLUMN_DIFFERENCE,
 )
 from streambuild.compiler.planner.exceptions import DeploymentPlanError
 from streambuild.compiler.planner.models import PlannedObjectChange
@@ -115,7 +117,7 @@ def classify_table_schema_change_kind(
     )
     if column_difference is None:
         return None
-    if column_difference == "add_only":
+    if column_difference == ADD_ONLY_COLUMN_DIFFERENCE:
         return TABLE_SCHEMA_CHANGE_KIND_NON_BREAKING
     return TABLE_SCHEMA_CHANGE_KIND_BREAKING
 
@@ -133,7 +135,7 @@ def classify_table_seed_compatibility(
     )
     if column_difference is None:
         return None
-    if column_difference == "type_change":
+    if column_difference == TYPE_CHANGE_COLUMN_DIFFERENCE:
         return TABLE_SCHEMA_SEED_COMPATIBILITY_NON_SEEDABLE
     return TABLE_SCHEMA_SEED_COMPATIBILITY_SEEDABLE
 

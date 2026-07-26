@@ -10,3 +10,12 @@ DOUBLE_QUOTE: str = '"'
 SINGLE_QUOTE: str = "'"
 BACKTICK: str = "`"
 PYTHON_LITERAL_NAMES: frozenset[str] = frozenset({"True", "False", "None"})
+
+NEWLINE: str = "\n"
+OPEN_PAREN: str = "("
+UNDERSCORE: str = "_"
+
+MACRO_SIGIL: str = "@"
+BLOCK_COMMENT_END: str = "*/"
+BLOCK_COMMENT_START: str = "/*"
+LINE_COMMENT_START: str = "--"
