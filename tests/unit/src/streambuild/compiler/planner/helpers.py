@@ -28,13 +28,11 @@ from streambuild.spec.models import (
     KafkaSettings,
     Pipeline,
     SchemaChangeBackfillPolicy,
-    SchemaChangeBackfillRule,
     TransformStep,
 )
 from streambuild.spec.types import (
     ReplayAnchorMode,
     ReplayLineageMode,
-    SchemaChangeBackfillMode,
 )
 
 EXAMPLE_PIPELINE_FILE_PATH: Path = Path(
@@ -120,29 +118,21 @@ def build_key(database: str | None, object_type: str, name: str) -> ObjectKey:
     return ObjectKey(database=database, object_type=DesiredObjectType(object_type), name=name)
 
 
-def with_schema_change_backfill_policy(
-    *,
-    object_: object,
-    mode: SchemaChangeBackfillMode | str,
-    lookback_seconds: int | None,
-    apply_to_non_breaking: bool,
-) -> object:
-    if not isinstance(object_, DesiredTable) or object_.name != "tbl__orders_enriched":
-        return object_
-    rule: SchemaChangeBackfillRule = SchemaChangeBackfillRule(
-        mode=SchemaChangeBackfillMode(mode),
-        lookback_seconds=lookback_seconds,
+def build_example_desired_state_with_backfill_policy(
+    *, schema_change_backfill: SchemaChangeBackfillPolicy | None
+) -> DesiredState:
+    """Build the example desired state with a schema-change policy on every transform."""
+
+    loaded_pipeline: LoadedPipeline = load_pipeline_file(EXAMPLE_PIPELINE_FILE_PATH)
+    pipeline_with_policy: Pipeline = replace(
+        loaded_pipeline.pipeline,
+        transforms=[
+            replace(transform_step, schema_change_backfill=schema_change_backfill)
+            for transform_step in loaded_pipeline.pipeline.transforms
+        ],
     )
-    rules_by_target: dict[bool, SchemaChangeBackfillRule | None] = {
-        apply_to_non_breaking: rule,
-        not apply_to_non_breaking: None,
-    }
-    return replace(
-        object_,
-        schema_change_backfill=SchemaChangeBackfillPolicy(
-            non_breaking=rules_by_target[True],
-            breaking=rules_by_target[False],
-        ),
+    return build_desired_state(
+        (compile_pipeline(replace(loaded_pipeline, pipeline=pipeline_with_policy)),)
     )
 
 
@@ -193,7 +183,7 @@ def build_example_actual_state() -> ActualState:
     )
 
 
-KeyParts = tuple[str | None, str, str]
+KeyParts: type = tuple[str | None, str, str]
 
 
 def key_parts(key: ObjectKey) -> KeyParts:

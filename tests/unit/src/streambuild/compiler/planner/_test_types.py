@@ -8,6 +8,7 @@ from streambuild.compiler.planner.types import (
     TableSchemaChangeKind,
     TableSchemaSeedCompatibility,
 )
+from streambuild.spec.models import SchemaChangeBackfillPolicy
 from streambuild.spec.types import ReplayAnchorMode, ReplayLineageMode
 
 
@@ -93,3 +94,4 @@ class PlannerExecutionModeTestCase:
     expected_execution_mode: RebuildExecutionMode
     configured_backfill_mode: SchemaChangeBackfillMode | str | None = None
     configured_lookback_seconds: int | None = None
+    schema_change_backfill: SchemaChangeBackfillPolicy | None = None
