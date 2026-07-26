@@ -14,9 +14,11 @@ from tests.integration.src.streambuild.cli._test_types import (
 from tests.integration.src.streambuild.cli.helpers import (
     BACKFILL_PIPELINES_ROOT,
     SELECTOR_PIPELINES_ROOT,
-    build_deployment_status_query,
     build_managed_clickhouse_client,
-    build_runtime_details_table_query,
+    ensure_backfill_metadata_tables,
+    load_deployment_status_rows,
+    load_runtime_execution_modes,
+    load_selected_root_names,
 )
 from tests.integration.src.streambuild.conftest import ClickHouseConnectionSettings
 
@@ -34,11 +36,12 @@ from tests.integration.src.streambuild.conftest import ClickHouseConnectionSetti
             json_output=True,
             verbose=False,
             auto_approve=False,
-            prompt_response=None,
+            prompt_response="",
             expected_exit_code=1,
             expected_output_fragments=(),
             expected_error_fragments=("--json requires --auto-approve for backfill",),
             expected_deployment_status_rows=(),
+            expected_absent_output_fragments=("Plan Ready",),
         ),
         CliBackfillIntegrationTestCase(
             description="cancels interactive backfill when prompt is declined",
@@ -64,7 +67,7 @@ from tests.integration.src.streambuild.conftest import ClickHouseConnectionSetti
             json_output=True,
             verbose=False,
             auto_approve=True,
-            prompt_response=None,
+            prompt_response="",
             expected_exit_code=0,
             expected_output_fragments=(
                 '"deployment_id":',
@@ -77,6 +80,7 @@ from tests.integration.src.streambuild.conftest import ClickHouseConnectionSetti
             expected_deployment_status_rows=(("backfilling",),),
             expected_selected_root_names=("tbl__orders_enriched",),
             expected_runtime_execution_modes=(("tbl__orders_enriched", "full_rebuild"),),
+            expected_absent_output_fragments=("Plan Ready",),
         ),
         CliBackfillIntegrationTestCase(
             description="rejects full refresh without selectors",
@@ -87,7 +91,7 @@ from tests.integration.src.streambuild.conftest import ClickHouseConnectionSetti
             json_output=False,
             verbose=False,
             auto_approve=True,
-            prompt_response=None,
+            prompt_response="",
             expected_exit_code=1,
             expected_output_fragments=(),
             expected_error_fragments=("--full-refresh requires at least one --select",),
@@ -102,7 +106,7 @@ from tests.integration.src.streambuild.conftest import ClickHouseConnectionSetti
             json_output=False,
             verbose=False,
             auto_approve=True,
-            prompt_response=None,
+            prompt_response="",
             expected_exit_code=1,
             expected_output_fragments=(),
             expected_error_fragments=("--start-time requires an active published root",),
@@ -117,7 +121,7 @@ from tests.integration.src.streambuild.conftest import ClickHouseConnectionSetti
             json_output=False,
             verbose=False,
             auto_approve=True,
-            prompt_response=None,
+            prompt_response="",
             expected_exit_code=1,
             expected_output_fragments=(),
             expected_error_fragments=("--full-refresh cannot be combined with --start-time",),
@@ -132,7 +136,7 @@ from tests.integration.src.streambuild.conftest import ClickHouseConnectionSetti
             json_output=True,
             verbose=False,
             auto_approve=True,
-            prompt_response=None,
+            prompt_response="",
             expected_exit_code=0,
             expected_output_fragments=(
                 '"deployment_id":',
@@ -145,6 +149,7 @@ from tests.integration.src.streambuild.conftest import ClickHouseConnectionSetti
                 ("tbl__orders_clean", "full_rebuild"),
                 ("tbl__orders_enriched", "full_rebuild"),
             ),
+            expected_absent_output_fragments=("Plan Ready",),
         ),
     ],
     ids=lambda case: case.description,
@@ -161,8 +166,8 @@ def test_given_backfill_command_when_running_then_it_behaves_as_expected(
         clickhouse_connection_settings,
         database=clickhouse_database,
     )
-    if test_case.prompt_response is not None:
-        monkeypatch.setattr(builtins, "input", lambda _prompt: test_case.prompt_response)
+    ensure_backfill_metadata_tables(managed_client=managed_client, database=clickhouse_database)
+    monkeypatch.setattr(builtins, "input", lambda _prompt: test_case.prompt_response)
 
     try:
         exit_code: int = run_backfill(
@@ -182,43 +187,15 @@ def test_given_backfill_command_when_running_then_it_behaves_as_expected(
         managed_client.close()
 
     captured: CaptureResult[str] = capsys.readouterr()
-    metadata_table_exists: bool = bool(
-        clickhouse_client.query(build_deployment_status_query(clickhouse_database)).result_rows
+    deployment_status_rows: tuple[tuple[str, ...], ...] = load_deployment_status_rows(
+        clickhouse_client=clickhouse_client, database=clickhouse_database
     )
-    runtime_details_table_exists: bool = bool(
-        clickhouse_client.query(build_runtime_details_table_query(clickhouse_database)).result_rows
+    selected_root_names: tuple[str, ...] = load_selected_root_names(
+        clickhouse_client=clickhouse_client, database=clickhouse_database
     )
-    deployment_status_rows: tuple[tuple[str, ...], ...] = ()
-    selected_root_names: tuple[str, ...] = ()
-    runtime_execution_modes: tuple[tuple[str, str | None], ...] = ()
-    if metadata_table_exists:
-        deployment_status_query: str = (
-            f"SELECT status FROM {clickhouse_database}.streambuild_deployments "
-            "ORDER BY deployment_id"
-        )
-        deployment_status_rows = tuple(
-            tuple(str(value) for value in row)
-            for row in clickhouse_client.query(deployment_status_query).result_rows
-        )
-        selected_root_names_query: str = (
-            "SELECT JSONExtractString(root_key, 'name') FROM "
-            f"{clickhouse_database}.streambuild_deployments "
-            "ARRAY JOIN JSONExtractArrayRaw(selected_root_keys_json) AS root_key "
-            "ORDER BY JSONExtractString(root_key, 'name')"
-        )
-        selected_root_names = tuple(
-            str(row[0]) for row in clickhouse_client.query(selected_root_names_query).result_rows
-        )
-    if runtime_details_table_exists:
-        runtime_details_query: str = (
-            f"SELECT root_object_name, execution_mode "
-            f"FROM {clickhouse_database}.streambuild_deployment_runtime_details "
-            "ORDER BY root_object_name"
-        )
-        runtime_execution_modes = tuple(
-            (str(row[0]), None if row[1] is None else str(row[1]))
-            for row in clickhouse_client.query(runtime_details_query).result_rows
-        )
+    runtime_execution_modes: tuple[tuple[str, str | None], ...] = load_runtime_execution_modes(
+        clickhouse_client=clickhouse_client, database=clickhouse_database
+    )
 
     assert exit_code == test_case.expected_exit_code
     expected_output_fragment: str
@@ -230,5 +207,6 @@ def test_given_backfill_command_when_running_then_it_behaves_as_expected(
     assert deployment_status_rows == test_case.expected_deployment_status_rows
     assert selected_root_names == test_case.expected_selected_root_names
     assert runtime_execution_modes == test_case.expected_runtime_execution_modes
-    if test_case.json_output:
-        assert "Plan Ready" not in captured.out
+    absent_output_fragment: str
+    for absent_output_fragment in test_case.expected_absent_output_fragments:
+        assert absent_output_fragment not in captured.out

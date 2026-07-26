@@ -12,13 +12,14 @@ class CliBackfillIntegrationTestCase:
     json_output: bool
     verbose: bool
     auto_approve: bool
-    prompt_response: str | None
+    prompt_response: str
     expected_exit_code: int
     expected_output_fragments: tuple[str, ...]
     expected_error_fragments: tuple[str, ...]
     expected_deployment_status_rows: tuple[tuple[str, ...], ...]
     expected_selected_root_names: tuple[str, ...] = ()
     expected_runtime_execution_modes: tuple[tuple[str, str | None], ...] = ()
+    expected_absent_output_fragments: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -33,6 +34,10 @@ class CliTestCommandIntegrationTestCase:
 class CliAuditCommandIntegrationTestCase:
     description: str
     selectors: tuple[str, ...]
+    project_writer_name: str
+    order_items_columns: str
+    order_items_order_by: str
+    order_items_rows: tuple[tuple[str | None, float], ...]
     expected_exit_code: int
     expected_output_fragments: tuple[str, ...]
 

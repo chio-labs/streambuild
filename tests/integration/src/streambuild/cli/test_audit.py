@@ -27,11 +27,14 @@ from tests.integration.src.streambuild.cli._test_types import (
     CliAuditCommandIntegrationTestCase,
 )
 from tests.integration.src.streambuild.cli.helpers import (
+    KEYED_ORDER_ITEMS_COLUMNS,
+    KEYED_ORDER_ITEMS_ORDER_BY,
+    NULLABLE_ORDER_ITEMS_COLUMNS,
+    UNORDERED_ORDER_ITEMS_ORDER_BY,
     build_managed_clickhouse_client,
-    write_audit_project_files,
+    build_order_items_ddl,
+    write_audit_project_for,
     write_backfill_audit_project_files,
-    write_generic_audit_project_files,
-    write_multi_audit_project_files,
 )
 from tests.integration.src.streambuild.conftest import ClickHouseConnectionSettings
 from tests.integration.src.streambuild.executor.backfill.helpers import (
@@ -49,6 +52,10 @@ from tests.integration.src.streambuild.executor.backfill.helpers import (
         CliAuditCommandIntegrationTestCase(
             description="reports warning audit results against published logical tables",
             selectors=("order_items",),
+            project_writer_name="singular",
+            order_items_columns=KEYED_ORDER_ITEMS_COLUMNS,
+            order_items_order_by=KEYED_ORDER_ITEMS_ORDER_BY,
+            order_items_rows=(("ord_001", -5.0), ("ord_missing", 10.0)),
             expected_exit_code=0,
             expected_output_fragments=(
                 "Audit Results",
@@ -61,6 +68,10 @@ from tests.integration.src.streambuild.executor.backfill.helpers import (
         CliAuditCommandIntegrationTestCase(
             description="reports generic warning audit results against published logical tables",
             selectors=("order_items",),
+            project_writer_name="generic",
+            order_items_columns=NULLABLE_ORDER_ITEMS_COLUMNS,
+            order_items_order_by=UNORDERED_ORDER_ITEMS_ORDER_BY,
+            order_items_rows=((None, 10.0), ("ord_002", 10.0)),
             expected_exit_code=0,
             expected_output_fragments=(
                 "Audit Results",
@@ -73,6 +84,10 @@ from tests.integration.src.streambuild.executor.backfill.helpers import (
         CliAuditCommandIntegrationTestCase(
             description="reports multiple singular audits from one file with names",
             selectors=("order_items",),
+            project_writer_name="multi",
+            order_items_columns=KEYED_ORDER_ITEMS_COLUMNS,
+            order_items_order_by=KEYED_ORDER_ITEMS_ORDER_BY,
+            order_items_rows=(("ord_001", -5.0), ("ord_missing", 10.0)),
             expected_exit_code=0,
             expected_output_fragments=(
                 "Audit Results",
@@ -93,37 +108,17 @@ def test_given_audit_project_when_running_live_audit_then_it_reports_expected_re
     capsys: pytest.CaptureFixture[str],
     tmp_path: Path,
 ) -> None:
-    if (
-        test_case.description
-        == "reports generic warning audit results against published logical tables"
-    ):
-        write_generic_audit_project_files(tmp_path)
-    elif test_case.description == "reports multiple singular audits from one file with names":
-        write_multi_audit_project_files(tmp_path)
-    else:
-        write_audit_project_files(tmp_path)
+    write_audit_project_for(project_writer_name=test_case.project_writer_name, project_dir=tmp_path)
     clickhouse_client.command(
-        (
-            f"CREATE TABLE {clickhouse_database}.tbl__order_items ("
-            "order_id Nullable(String), line_total Nullable(Float64)"
-            ") ENGINE = MergeTree() ORDER BY tuple()"
-        )
-        if test_case.description
-        == "reports generic warning audit results against published logical tables"
-        else (
-            f"CREATE TABLE {clickhouse_database}.tbl__order_items ("
-            "order_id String, line_total Nullable(Float64)"
-            ") ENGINE = MergeTree() ORDER BY (order_id)"
+        build_order_items_ddl(
+            database=clickhouse_database,
+            columns=test_case.order_items_columns,
+            order_by=test_case.order_items_order_by,
         )
     )
     clickhouse_client.insert(
         table=f"{clickhouse_database}.tbl__order_items",
-        data=(
-            [(None, 10.0), ("ord_002", 10.0)]
-            if test_case.description
-            == "reports generic warning audit results against published logical tables"
-            else [("ord_001", -5.0), ("ord_missing", 10.0)]
-        ),
+        data=[list(row) for row in test_case.order_items_rows],
         column_names=["order_id", "line_total"],
     )
     managed_client: ClickHouseClient = build_managed_clickhouse_client(
