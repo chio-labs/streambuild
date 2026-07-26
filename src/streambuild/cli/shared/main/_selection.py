@@ -61,12 +61,9 @@ def _resolve_selected_model_keys(
     compiled_pipelines: tuple[CompiledPipeline, ...],
     selectors: tuple[str, ...],
 ) -> frozenset[ObjectKey]:
-    pipeline_model_keys: dict[str, tuple[ObjectKey, ...]] = {
-        compiled_pipeline.pipeline.name: tuple(
-            transform.target_table.key for transform in compiled_pipeline.transforms
-        )
-        for compiled_pipeline in compiled_pipelines
-    }
+    pipeline_model_keys: dict[str, tuple[ObjectKey, ...]] = _model_keys_by_pipeline(
+        compiled_pipelines=compiled_pipelines
+    )
     model_key_by_name: dict[str, ObjectKey] = {
         transform.transform.name: transform.target_table.key
         for compiled_pipeline in compiled_pipelines
@@ -225,3 +222,15 @@ def _resolve_replay_lineage_mode(
         )
         raise CliUserError(f"Selected pipelines disagree on replay_lineage_mode: {mode_details}")
     return next(iter(replay_lineage_modes))
+
+
+def _model_keys_by_pipeline(
+    *, compiled_pipelines: tuple[CompiledPipeline, ...]
+) -> dict[str, tuple[ObjectKey, ...]]:
+    keys_by_pipeline: dict[str, tuple[ObjectKey, ...]] = {}
+    compiled_pipeline: CompiledPipeline
+    for compiled_pipeline in compiled_pipelines:
+        keys_by_pipeline[compiled_pipeline.pipeline.name] = tuple(
+            transform.target_table.key for transform in compiled_pipeline.transforms
+        )
+    return keys_by_pipeline

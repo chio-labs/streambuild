@@ -10,6 +10,7 @@ from streambuild.compiler.compile.main import compile_pipeline
 from streambuild.compiler.compile.models import CompiledPipeline
 from streambuild.compiler.discovery._helpers.auditing.main import discover_sql_audits
 from streambuild.compiler.discovery.main import discover_pipelines
+from streambuild.compiler.shared.main.compiled_transforms import compiled_transforms
 from streambuild.compiler.shared.models import LoadedPipeline, LoadedSqlAudit
 from streambuild.executor.auditing.main import execute_sql_audits
 from streambuild.executor.auditing.models import SqlAuditRunResult
@@ -46,8 +47,7 @@ def run_audit(
             compiled_transform.transform.name: (
                 f"{database}.{transform_table_name(compiled_transform.transform.name)}"
             )
-            for compiled_pipeline in compiled_pipelines
-            for compiled_transform in compiled_pipeline.transforms
+            for compiled_transform in compiled_transforms(compiled_pipelines=compiled_pipelines)
         },
         client=client,
     )
