@@ -2,6 +2,7 @@ import os
 import socket
 import time
 import uuid
+from textwrap import dedent
 from collections.abc import Iterator
 from dataclasses import dataclass
 
@@ -11,14 +12,39 @@ from clickhouse_connect.driver.client import Client
 from docker.errors import DockerException
 from testcontainers.core.container import DockerContainer
 from testcontainers.core.network import Network
-from testcontainers.kafka import KafkaContainer
+from testcontainers.kafka._redpanda import RedpandaContainer
 
 os.environ.setdefault("TESTCONTAINERS_RYUK_DISABLED", "true")
 
 CLICKHOUSE_USERNAME: str = "streambuild"
 CLICKHOUSE_PASSWORD: str = "streambuild"
 KAFKA_NETWORK_ALIAS: str = "kafka"
-KAFKA_INTERNAL_BOOTSTRAP_SERVER: str = f"{KAFKA_NETWORK_ALIAS}:9092"
+KAFKA_INTERNAL_PORT: int = 29092
+KAFKA_INTERNAL_BOOTSTRAP_SERVER: str = f"{KAFKA_NETWORK_ALIAS}:{KAFKA_INTERNAL_PORT}"
+REDPANDA_IMAGE: str = "redpandadata/redpanda:v24.2.7"
+
+
+class E2ERedpandaContainer(RedpandaContainer):
+    """Redpanda that advertises its internal listener on the shared network alias.
+
+    The stock container advertises PLAINTEXT on 127.0.0.1, which a sibling
+    container such as ClickHouse cannot reach. ClickHouse consumes over the
+    docker network, so the internal listener must advertise the alias.
+    """
+
+    def tc_start(self) -> None:
+        host: str = self.get_container_host_ip()
+        port: int = self.get_exposed_port(self.redpanda_port)
+        script: str = dedent(
+            f"""
+            #!/bin/bash
+            /usr/bin/rpk redpanda start --mode dev-container --smp 1 --memory 512M \
+            --kafka-addr PLAINTEXT://0.0.0.0:{KAFKA_INTERNAL_PORT},OUTSIDE://0.0.0.0:9092 \
+            --advertise-kafka-addr \
+            PLAINTEXT://{KAFKA_NETWORK_ALIAS}:{KAFKA_INTERNAL_PORT},OUTSIDE://{host}:{port}
+            """
+        ).strip()
+        self.create_file(script.encode("utf-8"), RedpandaContainer.TC_START_SCRIPT)
 
 
 @dataclass(frozen=True)
@@ -52,14 +78,13 @@ def e2e_kafka_connection_settings(e2e_network: Network) -> Iterator[E2EKafkaConn
     try:
         host_port: int = _reserve_host_port()
         with (
-            KafkaContainer()
-            .with_kraft()
+            E2ERedpandaContainer(REDPANDA_IMAGE)
             .with_network(e2e_network)
-            .with_bind_ports(9093, host_port)
-            .with_network_aliases(KAFKA_NETWORK_ALIAS) as kafka_container
+            .with_bind_ports(KAFKA_INTERNAL_PORT, host_port)
+            .with_network_aliases(KAFKA_NETWORK_ALIAS) as redpanda_container
         ):
             yield E2EKafkaConnectionSettings(
-                bootstrap_server=kafka_container.get_bootstrap_server(),
+                bootstrap_server=redpanda_container.get_bootstrap_server(),
                 internal_bootstrap_server=KAFKA_INTERNAL_BOOTSTRAP_SERVER,
             )
     except DockerException as error:
@@ -73,14 +98,13 @@ def isolated_e2e_kafka_connection_settings(
     try:
         host_port: int = _reserve_host_port()
         with (
-            KafkaContainer()
-            .with_kraft()
+            E2ERedpandaContainer(REDPANDA_IMAGE)
             .with_network(isolated_e2e_network)
-            .with_bind_ports(9093, host_port)
-            .with_network_aliases(KAFKA_NETWORK_ALIAS) as kafka_container
+            .with_bind_ports(KAFKA_INTERNAL_PORT, host_port)
+            .with_network_aliases(KAFKA_NETWORK_ALIAS) as redpanda_container
         ):
             yield E2EKafkaConnectionSettings(
-                bootstrap_server=kafka_container.get_bootstrap_server(),
+                bootstrap_server=redpanda_container.get_bootstrap_server(),
                 internal_bootstrap_server=KAFKA_INTERNAL_BOOTSTRAP_SERVER,
             )
     except DockerException as error:
