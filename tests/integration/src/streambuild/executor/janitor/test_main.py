@@ -13,6 +13,9 @@ from streambuild.executor.janitor.models import (
     JanitorRequest,
 )
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
+from streambuild.integrations.clickhouse.main.connect_clickhouse import (
+    connect_clickhouse,
+)
 from streambuild.integrations.clickhouse.models import ClickHouseConnectionConfig
 from tests.integration.src.streambuild.conftest import ClickHouseConnectionSettings
 from tests.integration.src.streambuild.executor.janitor._test_types import (
@@ -51,7 +54,7 @@ def test_given_mixed_real_deployments_when_previewing_janitor_then_it_classifies
     clickhouse_client: Client,
     clickhouse_database: str,
 ) -> None:
-    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+    managed_client: ClickHouseClient = connect_clickhouse(
         ClickHouseConnectionConfig(
             host=clickhouse_connection_settings.host,
             port=clickhouse_connection_settings.port,
@@ -126,7 +129,7 @@ def test_given_real_deletable_deployments_when_applying_janitor_then_it_drops_on
     clickhouse_client: Client,
     clickhouse_database: str,
 ) -> None:
-    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+    managed_client: ClickHouseClient = connect_clickhouse(
         ClickHouseConnectionConfig(
             host=clickhouse_connection_settings.host,
             port=clickhouse_connection_settings.port,

@@ -3,15 +3,12 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from typing import cast
 
-import clickhouse_connect
-
-from streambuild.integrations.clickhouse.models import (
-    ClickHouseConnectionConfig,
-    ClickHouseQueryResult,
+from streambuild.integrations.clickhouse.models import ClickHouseQueryResult
+from streambuild.integrations.clickhouse.types import (
+    RawClickHouseClient,
+    RawClickHouseQueryResult,
 )
-from streambuild.integrations.clickhouse.types import RawClickHouseClient, RawClickHouseQueryResult
 
 
 class ClickHouseClient:
@@ -19,33 +16,6 @@ class ClickHouseClient:
 
     def __init__(self, raw_client: RawClickHouseClient) -> None:
         self._raw_client: RawClickHouseClient = raw_client
-
-    @classmethod
-    def from_config(cls, config: ClickHouseConnectionConfig) -> ClickHouseClient:
-        """Create a ClickHouse client wrapper from connection config."""
-
-        if config.database is None:
-            raw_client: RawClickHouseClient = cast(
-                RawClickHouseClient,
-                clickhouse_connect.get_client(
-                    host=config.host,
-                    port=config.port,
-                    username=config.username,
-                    password=config.password,
-                ),
-            )
-        else:
-            raw_client = cast(
-                RawClickHouseClient,
-                clickhouse_connect.get_client(
-                    host=config.host,
-                    port=config.port,
-                    username=config.username,
-                    password=config.password,
-                    database=config.database,
-                ),
-            )
-        return cls(raw_client)
 
     def command(self, statement: str) -> None:
         """Execute a ClickHouse command statement."""

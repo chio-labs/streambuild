@@ -28,8 +28,8 @@ from streambuild.compiler.shared.models import (
     LoadedPipeline,
 )
 from streambuild.executor.backfill.models import BackfillBootstrapRequest
-from streambuild.spec.models.steps import SchemaChangeBackfillPolicy, SchemaChangeBackfillRule
-from streambuild.spec.models.types import ReplayLineageMode, SchemaChangeBackfillMode
+from streambuild.spec.models import SchemaChangeBackfillPolicy, SchemaChangeBackfillRule
+from streambuild.spec.types import ReplayLineageMode, SchemaChangeBackfillMode
 from tests.e2e.src.streambuild.executor.debug.live_shadow import (
     build_live_shadow_debug_message,
 )

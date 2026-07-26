@@ -1,5 +1,8 @@
 from streambuild.cli.entry.models import ResolvedClickHouseConnection
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
+from streambuild.integrations.clickhouse.main.connect_clickhouse import (
+    connect_clickhouse,
+)
 from streambuild.integrations.clickhouse.models import ClickHouseConnectionConfig
 
 
@@ -11,7 +14,7 @@ def build_clickhouse_client(
     password: str,
     database: str | None = None,
 ) -> ClickHouseClient:
-    return ClickHouseClient.from_config(
+    return connect_clickhouse(
         ClickHouseConnectionConfig(
             host=host,
             port=port,

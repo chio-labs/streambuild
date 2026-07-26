@@ -15,7 +15,7 @@ from streambuild.compiler.planner.types import (
     TableSchemaSeedCompatibility,
 )
 from streambuild.compiler.shared.models import ObjectKey
-from streambuild.spec.models.types import BoundedReplayFallback
+from streambuild.spec.types import BoundedReplayFallback
 
 
 @dataclass(frozen=True)

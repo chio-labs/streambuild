@@ -8,7 +8,7 @@ from streambuild.cli.shared.exceptions import CliUserError
 from streambuild.cli.shared.main._selection import resolve_selection
 from streambuild.cli.shared.models import SelectionResolution
 from streambuild.compiler.compile.models import CompiledPipeline
-from streambuild.spec.models.types import ReplayLineageMode
+from streambuild.spec.types import ReplayLineageMode
 from tests.unit.src.streambuild.cli.shared.main._test_types import (
     CliSelectionLineageMismatchTestCase,
     CliSelectionResolutionErrorTestCase,

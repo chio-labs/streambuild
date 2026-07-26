@@ -19,7 +19,7 @@ from streambuild.compiler.shared.constants import (
 from streambuild.compiler.shared.models import DesiredTable
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 from streambuild.integrations.clickhouse.models import ClickHouseQueryResult
-from streambuild.spec.models.types import BoundedReplayFallback, ReplayLineageMode
+from streambuild.spec.types import BoundedReplayFallback, ReplayLineageMode
 
 
 def _resolve_subtree_behavior(

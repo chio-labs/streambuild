@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from streambuild.cli.shared.exceptions import CliUserError
 from streambuild.compiler.shared.models import LoadedPipeline
-from streambuild.spec.models.project import Project
+from streambuild.spec.models import Project
 
 
 def resolve_default_database(

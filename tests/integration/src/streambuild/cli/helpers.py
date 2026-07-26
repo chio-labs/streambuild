@@ -1,6 +1,9 @@
 from pathlib import Path
 
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
+from streambuild.integrations.clickhouse.main.connect_clickhouse import (
+    connect_clickhouse,
+)
 from streambuild.integrations.clickhouse.models import ClickHouseConnectionConfig
 from tests.integration.src.streambuild.conftest import ClickHouseConnectionSettings
 
@@ -13,7 +16,7 @@ def build_managed_clickhouse_client(
     *,
     database: str,
 ) -> ClickHouseClient:
-    return ClickHouseClient.from_config(
+    return connect_clickhouse(
         ClickHouseConnectionConfig(
             host=clickhouse_connection_settings.host,
             port=clickhouse_connection_settings.port,

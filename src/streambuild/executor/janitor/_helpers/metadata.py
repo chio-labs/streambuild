@@ -14,7 +14,7 @@ from streambuild.compiler.shared.types import DesiredObjectType
 from streambuild.executor.janitor.models import DeploymentMetadataRow, PublishHistoryMetadataRow
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 from streambuild.integrations.clickhouse.constants import UNKNOWN_TABLE_ERROR_CODE
-from streambuild.spec.models.types import ReplayLineageMode
+from streambuild.spec.types import ReplayLineageMode
 
 
 def load_deployments(

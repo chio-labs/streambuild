@@ -23,8 +23,11 @@ from streambuild.executor.backfill.models import BackfillExecutionResult
 from streambuild.executor.publish.main.execute_publish import execute_publish
 from streambuild.executor.publish.models import PublishRequest
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
+from streambuild.integrations.clickhouse.main.connect_clickhouse import (
+    connect_clickhouse,
+)
 from streambuild.integrations.clickhouse.models import ClickHouseConnectionConfig
-from streambuild.spec.models.types import SchemaChangeBackfillMode
+from streambuild.spec.types import SchemaChangeBackfillMode
 from tests.e2e.src.streambuild.conftest import (
     E2EClickHouseConnectionSettings,
     E2EKafkaConnectionSettings,
@@ -619,7 +622,7 @@ def test_given_published_kafka_pipeline_when_schema_changes_then_bounded_policy_
     initial_boundary_time: str
     initial_created_at, initial_boundary_time = build_near_replay_times(seconds_from_now=2)
 
-    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+    managed_client: ClickHouseClient = connect_clickhouse(
         ClickHouseConnectionConfig(
             host=e2e_clickhouse_connection_settings.host,
             port=e2e_clickhouse_connection_settings.port,
@@ -671,7 +674,7 @@ def test_given_published_kafka_pipeline_when_schema_changes_then_bounded_policy_
     changed_boundary_time: str
     changed_created_at, changed_boundary_time = build_near_replay_times(seconds_from_now=2)
 
-    managed_client = ClickHouseClient.from_config(
+    managed_client = connect_clickhouse(
         ClickHouseConnectionConfig(
             host=e2e_clickhouse_connection_settings.host,
             port=e2e_clickhouse_connection_settings.port,
@@ -702,7 +705,7 @@ def test_given_published_kafka_pipeline_when_schema_changes_then_bounded_policy_
         expected_count=expected_shadow_row_count,
     )
 
-    managed_client = ClickHouseClient.from_config(
+    managed_client = connect_clickhouse(
         ClickHouseConnectionConfig(
             host=e2e_clickhouse_connection_settings.host,
             port=e2e_clickhouse_connection_settings.port,

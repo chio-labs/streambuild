@@ -1,12 +1,13 @@
-"""Step models for authored pipeline specifications."""
+"""Authored specification models for projects, pipelines and steps."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
-from streambuild.spec.models.exceptions import ProjectSpecError
-from streambuild.spec.models.types import (
+from streambuild.spec.exceptions import ProjectSpecError
+from streambuild.spec.types import (
     BoundedReplayFallback,
     ReplayAnchorMode,
     ReplayBoundaryMode,
+    ReplayLineageMode,
     SchemaChangeBackfillMode,
     SourceKind,
 )
@@ -114,3 +115,56 @@ class TransformStep:
             raise ProjectSpecError("Exactly one of 'query' or 'sql_file' must be provided")
         if not self.order_by:
             raise ProjectSpecError("TransformStep must declare at least one ORDER BY expression")
+
+
+@dataclass(frozen=True)
+class ProjectClickHouseConfig:
+    """Optional project-level ClickHouse connection defaults."""
+
+    host: str
+    port: int
+    username: str
+    password: str
+
+
+@dataclass(frozen=True)
+class Project:
+    """Project-level authored Streambuild config."""
+
+    replay_lineage_mode: ReplayLineageMode | str = ReplayLineageMode.OFFSETS
+    bounded_replay_fallback: BoundedReplayFallback | str = BoundedReplayFallback.FULL_REFRESH
+    default_database: str | None = None
+    clickhouse: ProjectClickHouseConfig | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "replay_lineage_mode", ReplayLineageMode(self.replay_lineage_mode))
+        object.__setattr__(
+            self,
+            "bounded_replay_fallback",
+            BoundedReplayFallback(self.bounded_replay_fallback),
+        )
+
+
+@dataclass(frozen=True)
+class Pipeline:
+    """A single authored streaming pipeline."""
+
+    name: str
+    source: KafkaLandingStep | ExternalTableSourceStep
+    transforms: list[TransformStep] = field(default_factory=list)
+    replay_lineage_mode: ReplayLineageMode | str | None = None
+    bounded_replay_fallback: BoundedReplayFallback | str | None = None
+
+    def __post_init__(self) -> None:
+        if self.replay_lineage_mode is not None:
+            object.__setattr__(
+                self,
+                "replay_lineage_mode",
+                ReplayLineageMode(self.replay_lineage_mode),
+            )
+        if self.bounded_replay_fallback is not None:
+            object.__setattr__(
+                self,
+                "bounded_replay_fallback",
+                BoundedReplayFallback(self.bounded_replay_fallback),
+            )

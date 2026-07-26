@@ -38,9 +38,8 @@ from streambuild.compiler.shared.models import (
     TableSpec,
     TableStorage,
 )
-from streambuild.spec.models.pipeline import Pipeline
-from streambuild.spec.models.steps import ExternalTableSourceStep, TransformStep
-from streambuild.spec.models.types import (
+from streambuild.spec.models import ExternalTableSourceStep, Pipeline, TransformStep
+from streambuild.spec.types import (
     BoundedReplayFallback,
     RefType,
     ReplayAnchorMode,

@@ -8,7 +8,7 @@ from streambuild.compiler.planner.types import (
     TableSchemaChangeKind,
     TableSchemaSeedCompatibility,
 )
-from streambuild.spec.models.types import ReplayAnchorMode, ReplayLineageMode
+from streambuild.spec.types import ReplayAnchorMode, ReplayLineageMode
 
 
 @dataclass(frozen=True)

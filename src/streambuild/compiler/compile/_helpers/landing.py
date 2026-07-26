@@ -29,8 +29,12 @@ from streambuild.compiler.shared.models import (
 from streambuild.compiler.shared.models import (
     KafkaSettings as ComparableKafkaSettings,
 )
-from streambuild.spec.models.pipeline import Pipeline
-from streambuild.spec.models.steps import ExternalTableSourceStep, KafkaLandingStep, KafkaSettings
+from streambuild.spec.models import (
+    ExternalTableSourceStep,
+    KafkaLandingStep,
+    KafkaSettings,
+    Pipeline,
+)
 
 
 def compile_kafka_landing(pipeline: Pipeline) -> CompiledManagedSource:

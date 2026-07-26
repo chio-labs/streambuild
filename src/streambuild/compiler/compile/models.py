@@ -11,10 +11,8 @@ from streambuild.compiler.shared.models import (
     DesiredTable,
     ObjectKey,
 )
-from streambuild.spec.models.pipeline import Pipeline
-from streambuild.spec.models.project import Project
-from streambuild.spec.models.steps import ExternalTableSourceStep, TransformStep
-from streambuild.spec.models.types import (
+from streambuild.spec.models import ExternalTableSourceStep, Pipeline, Project, TransformStep
+from streambuild.spec.types import (
     BoundedReplayFallback,
     RefType,
     ReplayBoundaryMode,

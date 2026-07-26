@@ -21,7 +21,7 @@ from streambuild.compiler.test_discovery.constants import (
     TEST_HEADER_PATTERN,
 )
 from streambuild.compiler.test_discovery.exceptions import SqlTestParseError
-from streambuild.spec.models.types import SqlRelationType
+from streambuild.spec.types import SqlRelationType
 
 
 def parse_sql_test_file(file_path: Path) -> tuple[LoadedSqlTest, ...]:

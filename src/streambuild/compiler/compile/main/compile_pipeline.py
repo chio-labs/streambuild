@@ -19,10 +19,8 @@ from streambuild.compiler.compile.models import (
     CompiledTransformStep,
 )
 from streambuild.compiler.shared.models import LoadedPipeline
-from streambuild.spec.models.pipeline import Pipeline
-from streambuild.spec.models.project import Project
-from streambuild.spec.models.steps import ExternalTableSourceStep, TransformStep
-from streambuild.spec.models.types import BoundedReplayFallback, ReplayLineageMode
+from streambuild.spec.models import ExternalTableSourceStep, Pipeline, Project, TransformStep
+from streambuild.spec.types import BoundedReplayFallback, ReplayLineageMode
 
 
 def compile_pipeline(loaded_pipeline: LoadedPipeline) -> CompiledPipeline:

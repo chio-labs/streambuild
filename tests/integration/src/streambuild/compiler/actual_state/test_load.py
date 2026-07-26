@@ -17,6 +17,9 @@ from streambuild.executor.publish.main.execute_publish import execute_publish
 from streambuild.executor.publish.models import PublishRequest
 from streambuild.executor.reconcile.constants import RECONCILE_DEPLOYMENT_ID_PREFIX
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
+from streambuild.integrations.clickhouse.main.connect_clickhouse import (
+    connect_clickhouse,
+)
 from streambuild.integrations.clickhouse.models import ClickHouseConnectionConfig
 from tests.integration.src.streambuild.compiler.actual_state._test_types import (
     LoadActualStateIntegrationTestCase,
@@ -120,7 +123,7 @@ def test_given_clickhouse_state_when_loading_actual_state_then_it_returns_expect
             compiled_pipeline=compiled_pipeline,
         )
 
-    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+    managed_client: ClickHouseClient = connect_clickhouse(
         ClickHouseConnectionConfig(
             host=clickhouse_connection_settings.host,
             port=clickhouse_connection_settings.port,
@@ -212,7 +215,7 @@ def test_given_conflicting_metadata_when_loading_actual_state_then_live_view_bin
             "_replay_landed_at",
         ],
     )
-    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+    managed_client: ClickHouseClient = connect_clickhouse(
         ClickHouseConnectionConfig(
             host=clickhouse_connection_settings.host,
             port=clickhouse_connection_settings.port,
@@ -359,7 +362,7 @@ def test_given_mixed_root_clickhouse_state_when_loading_then_it_preserves_per_ro
             clickhouse_client=clickhouse_client, clickhouse_database=clickhouse_database
         )
 
-    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+    managed_client: ClickHouseClient = connect_clickhouse(
         ClickHouseConnectionConfig(
             host=clickhouse_connection_settings.host,
             port=clickhouse_connection_settings.port,
@@ -464,7 +467,7 @@ def test_given_published_state_when_metadata_is_deleted_then_load_actual_state_u
             "_replay_landed_at",
         ],
     )
-    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+    managed_client: ClickHouseClient = connect_clickhouse(
         ClickHouseConnectionConfig(
             host=clickhouse_connection_settings.host,
             port=clickhouse_connection_settings.port,
@@ -593,7 +596,7 @@ def test_given_latest_object_state_record_when_loading_then_only_reconcile_overr
             "_replay_landed_at",
         ],
     )
-    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+    managed_client: ClickHouseClient = connect_clickhouse(
         ClickHouseConnectionConfig(
             host=clickhouse_connection_settings.host,
             port=clickhouse_connection_settings.port,

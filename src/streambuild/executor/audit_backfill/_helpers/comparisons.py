@@ -37,7 +37,7 @@ from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickH
 from streambuild.integrations.clickhouse.constants import (
     BLANK_VALUES,
 )
-from streambuild.spec.models.types import ReplayLineageMode
+from streambuild.spec.types import ReplayLineageMode
 
 
 def build_root_audit_results(

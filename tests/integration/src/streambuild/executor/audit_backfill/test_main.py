@@ -19,6 +19,9 @@ from streambuild.executor.audit_backfill.models import (
 from streambuild.executor.audit_backfill.types import AuditAssessment
 from streambuild.executor.backfill.main.execute_backfill import execute_backfill
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
+from streambuild.integrations.clickhouse.main.connect_clickhouse import (
+    connect_clickhouse,
+)
 from streambuild.integrations.clickhouse.models import ClickHouseConnectionConfig
 from tests.integration.src.streambuild.conftest import ClickHouseConnectionSettings
 from tests.integration.src.streambuild.executor.audit_backfill._test_types import (
@@ -267,7 +270,7 @@ def test_given_staged_backfill_when_auditing_then_it_returns_expected_comparison
             f"('legacy-order-{extra_row_index}', "
             f"toDateTime64('2026-04-09 15:00:0{extra_row_index}.000', 3))"
         )
-    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+    managed_client: ClickHouseClient = connect_clickhouse(
         ClickHouseConnectionConfig(
             host=clickhouse_connection_settings.host,
             port=clickhouse_connection_settings.port,
@@ -419,7 +422,7 @@ def test_given_audit_request_without_deployment_id_when_resolving_then_it_behave
             "_replay_landed_at",
         ],
     )
-    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+    managed_client: ClickHouseClient = connect_clickhouse(
         ClickHouseConnectionConfig(
             host=clickhouse_connection_settings.host,
             port=clickhouse_connection_settings.port,
@@ -551,7 +554,7 @@ def test_given_deleted_audit_metadata_when_auditing_then_it_uses_live_clickhouse
             "_replay_landed_at",
         ],
     )
-    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+    managed_client: ClickHouseClient = connect_clickhouse(
         ClickHouseConnectionConfig(
             host=clickhouse_connection_settings.host,
             port=clickhouse_connection_settings.port,
@@ -698,7 +701,7 @@ def test_given_dangling_active_view_when_auditing_then_it_returns_caution(
             source_table_name=require_managed_source(compiled_pipeline).raw_table.name,
         )
     )
-    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+    managed_client: ClickHouseClient = connect_clickhouse(
         ClickHouseConnectionConfig(
             host=clickhouse_connection_settings.host,
             port=clickhouse_connection_settings.port,
@@ -831,7 +834,7 @@ def test_given_deleted_active_view_when_auditing_then_it_uses_live_staged_state(
         )
     )
     clickhouse_client.command(f"DROP VIEW {clickhouse_database}.tbl__orders_enriched")
-    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+    managed_client: ClickHouseClient = connect_clickhouse(
         ClickHouseConnectionConfig(
             host=clickhouse_connection_settings.host,
             port=clickhouse_connection_settings.port,
@@ -1030,7 +1033,7 @@ def test_given_degraded_offset_state_when_auditing_then_it_returns_caution(
             "WHERE _replay_partition = 1 AND _replay_offset = 2"
         )
         clickhouse_client.command(f"OPTIMIZE TABLE {clickhouse_database}.{raw_table_name} FINAL")
-    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+    managed_client: ClickHouseClient = connect_clickhouse(
         ClickHouseConnectionConfig(
             host=clickhouse_connection_settings.host,
             port=clickhouse_connection_settings.port,

@@ -20,17 +20,17 @@ from streambuild.compiler.compile.models import (
 from streambuild.compiler.desired_state.main.build_desired_state import build_desired_state
 from streambuild.compiler.discovery._helpers.load import load_pipeline_file
 from streambuild.compiler.shared.models import DesiredMaterializedView, LoadedPipeline
-from streambuild.spec.models.pipeline import Pipeline
-from streambuild.spec.models.project import Project
-from streambuild.spec.models.steps import (
+from streambuild.spec.models import (
     ExternalTableSourceStep,
     KafkaLandingStep,
     KafkaSettings,
+    Pipeline,
+    Project,
     ReplayBoundary,
     ReplayBoundaryColumns,
     TransformStep,
 )
-from streambuild.spec.models.types import (
+from streambuild.spec.types import (
     BoundedReplayFallback,
     ReplayAnchorMode,
     ReplayBoundaryMode,

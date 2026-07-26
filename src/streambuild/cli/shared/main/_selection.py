@@ -17,7 +17,7 @@ from streambuild.compiler.shared.models import (
     DesiredTable,
     ObjectKey,
 )
-from streambuild.spec.models.types import ReplayLineageMode
+from streambuild.spec.types import ReplayLineageMode
 
 
 def resolve_selection(

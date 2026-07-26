@@ -9,7 +9,7 @@ from sqlglot import exp, parse_one
 
 from streambuild.compiler.compile.exceptions import PipelineCompileError
 from streambuild.compiler.compile.models import ParsedRef
-from streambuild.spec.models.types import RefType, SqlRelationType
+from streambuild.spec.types import RefType, SqlRelationType
 
 
 def _parse_resolved_relation_expression(resolved_sql: str) -> exp.Expression:

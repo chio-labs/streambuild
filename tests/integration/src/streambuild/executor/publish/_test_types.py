@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from streambuild.spec.models.types import ReplayLineageMode
+from streambuild.spec.types import ReplayLineageMode
 
 
 @dataclass(frozen=True)

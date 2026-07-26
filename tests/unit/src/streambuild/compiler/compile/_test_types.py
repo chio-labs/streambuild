@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 
-from streambuild.spec.models.pipeline import Pipeline
-from streambuild.spec.models.types import (
+from streambuild.spec.models import Pipeline
+from streambuild.spec.types import (
     BoundedReplayFallback,
     ReplayAnchorMode,
     ReplayLineageMode,

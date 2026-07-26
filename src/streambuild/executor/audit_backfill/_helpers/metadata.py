@@ -7,7 +7,7 @@ from collections.abc import Mapping
 from streambuild.compiler.shared.models import ObjectKey
 from streambuild.compiler.shared.types import DesiredObjectType
 from streambuild.executor.audit_backfill.models import DeploymentMetadataRow
-from streambuild.spec.models.types import ReplayLineageMode
+from streambuild.spec.types import ReplayLineageMode
 
 
 def _object_key_from_payload(payload: dict[str, object]) -> ObjectKey:

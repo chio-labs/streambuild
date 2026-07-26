@@ -29,7 +29,7 @@ from streambuild.compiler.shared.constants import (
     RAW_TABLE_NAME_PREFIX,
 )
 from streambuild.compiler.shared.models import DesiredMaterializedView, DesiredTable, ObjectKey
-from streambuild.spec.models.steps import SchemaChangeBackfillRule
+from streambuild.spec.models import SchemaChangeBackfillRule
 
 
 def build_rebuild_subtree(
