@@ -5,14 +5,14 @@ from streambuild.cli.commands.main.audit.main import run_audit
 from streambuild.cli.commands.main.audit_backfill.main import run_audit_backfill
 from streambuild.cli.commands.main.backfill.main import run_backfill
 from streambuild.cli.commands.main.compile.main import run_compile
-from streambuild.cli.commands.main.discover import run_discover
-from streambuild.cli.commands.main.doctor import run_doctor
+from streambuild.cli.commands.main.discover.main import run_discover
+from streambuild.cli.commands.main.doctor.main import run_doctor
 from streambuild.cli.commands.main.entry.models import CliEntrypointHandlers
 from streambuild.cli.commands.main.janitor.main import run_janitor
 from streambuild.cli.commands.main.plan.main import run_plan
 from streambuild.cli.commands.main.publish.main import run_publish
 from streambuild.cli.commands.main.reconcile.main import run_reconcile
-from streambuild.cli.commands.main.repair_active_view import run_repair_active_view
+from streambuild.cli.commands.main.repair_active_view.main import run_repair_active_view
 from streambuild.cli.commands.main.test.main import run_test
 
 
