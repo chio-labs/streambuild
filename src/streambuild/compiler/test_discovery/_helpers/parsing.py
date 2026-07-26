@@ -13,10 +13,12 @@ from sqlglot.errors import ParseError
 from streambuild.compiler.macros.main._expand_macro_calls import expand_project_sql_macros
 from streambuild.compiler.shared.models import LoadedSqlTest, SqlTestCte, SqlTestMock
 from streambuild.compiler.test_discovery.constants import (
+    CEREMONIAL_SELECT_LITERAL,
     EXPECTED_CTE_PREFIX,
     REF_CTE_PREFIX,
     RESERVED_SQL_TEST_CTE_NAMES,
     SOURCE_CTE_PREFIX,
+    TEST_HEADER_NAME_KEY,
     TEST_HEADER_ONLY_PATTERN,
     TEST_HEADER_PATTERN,
 )
@@ -184,7 +186,9 @@ def _parse_test_name(*, file_path: Path, header_contents: str) -> str | None:
         raise SqlTestParseError(
             f"TEST() header in '{file_path}' must be a mapping like `TEST (name: \"...\");`"
         )
-    unsupported_keys: tuple[str, ...] = tuple(str(key) for key in parsed_header if key != "name")
+    unsupported_keys: tuple[str, ...] = tuple(
+        str(key) for key in parsed_header if key != TEST_HEADER_NAME_KEY
+    )
     if unsupported_keys:
         raise SqlTestParseError(
             f"TEST() in '{file_path}' only supports `name` right now; unsupported keys: "
@@ -247,7 +251,7 @@ def _validate_ceremonial_select(*, file_path: Path, statement: exp.Select) -> No
             f"SQL test '{file_path}' must end with a ceremonial top-level `SELECT 1` after its CTEs"
         )
     expression: exp.Expression = statement.expressions[0]
-    if not isinstance(expression, exp.Literal) or expression.this != "1":
+    if not isinstance(expression, exp.Literal) or expression.this != CEREMONIAL_SELECT_LITERAL:
         raise SqlTestParseError(
             f"SQL test '{file_path}' must end with a ceremonial top-level `SELECT 1` after its CTEs"
         )

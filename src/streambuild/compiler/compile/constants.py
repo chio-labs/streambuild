@@ -51,3 +51,5 @@ LINEAGE_MODE_BY_REPLAY_BOUNDARY: Mapping[str, ReplayLineageMode] = {
     ReplayBoundaryMode.TIMESTAMP: ReplayLineageMode.TIMESTAMP,
     ReplayBoundaryMode.CURSOR: ReplayLineageMode.CURSOR,
 }
+
+REF_TYPE_KEYWORD: str = "ref_type"

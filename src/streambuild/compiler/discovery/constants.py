@@ -42,3 +42,6 @@ SECONDS_BY_DURATION_UNIT: dict[str, int] = {
     "m": 60,
     "s": 1,
 }
+
+PIPELINE_NAME_KEY: str = "name"
+QUALIFIED_NAME_SEPARATOR: str = "."

@@ -9,6 +9,7 @@ from sqlglot import exp, parse_one
 
 from streambuild.compiler.compile.constants import (
     REF_FUNCTION_NAMES,
+    REF_TYPE_KEYWORD,
     SOURCE_REF_FUNCTION_NAME,
 )
 from streambuild.compiler.compile.exceptions import PipelineCompileError
@@ -85,7 +86,7 @@ def _parse_ref_type(ref_type_expression: exp.Expression) -> RefType:
             "__ref(...) optional second argument must use the ref_type keyword"
         )
     identifier: exp.Expression = key_expression.this
-    if not isinstance(identifier, exp.Identifier) or identifier.this != "ref_type":
+    if not isinstance(identifier, exp.Identifier) or identifier.this != REF_TYPE_KEYWORD:
         raise PipelineCompileError(
             "__ref(...) optional second argument must use the ref_type keyword"
         )

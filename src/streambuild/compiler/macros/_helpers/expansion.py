@@ -10,9 +10,12 @@ from streambuild.compiler.macros._helpers.registry import (
     load_project_macros,
 )
 from streambuild.compiler.macros.constants import (
+    ARGUMENT_LIST_CLOSE,
+    ARGUMENT_LIST_OPEN,
     BACKTICK,
     BLOCK_COMMENT_END,
     DOUBLE_QUOTE,
+    MACRO_CALL_SIGIL,
     MACRO_SIGIL,
     NEWLINE,
     OPEN_PAREN,
@@ -270,7 +273,7 @@ def _find_next_macro_start(*, sql: str, start_index: int) -> int | None:
         if sql.startswith("/*", index):
             index = _skip_block_comment(sql=sql, start_index=index)
             continue
-        if character == "@" and _is_macro_call_start(sql=sql, at_index=index):
+        if character == MACRO_CALL_SIGIL and _is_macro_call_start(sql=sql, at_index=index):
             return index
         index += 1
     return None
@@ -315,9 +318,9 @@ def _find_matching_paren(*, sql: str, opening_paren_index: int) -> int:
         if sql.startswith("/*", index):
             index = _skip_block_comment(sql=sql, start_index=index)
             continue
-        if character == "(":
+        if character == ARGUMENT_LIST_OPEN:
             depth += 1
-        elif character == ")":
+        elif character == ARGUMENT_LIST_CLOSE:
             depth -= 1
             if depth == 0:
                 return index

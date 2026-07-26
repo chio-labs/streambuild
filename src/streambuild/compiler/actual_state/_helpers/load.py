@@ -2,6 +2,7 @@
 
 from collections.abc import Mapping
 
+from streambuild.compiler.actual_state.constants import ENGINE_ARGUMENT_OPEN
 from streambuild.compiler.actual_state.exceptions import ActualStateError
 from streambuild.compiler.actual_state.models import (
     TableColumnSystemRow,
@@ -94,7 +95,7 @@ def _parse_sorting_key(value: str) -> tuple[str, ...]:
 
 def _normalize_storage_engine(value: str) -> str:
     normalized: str = value.strip()
-    if "(" in normalized:
+    if ENGINE_ARGUMENT_OPEN in normalized:
         return normalized
     return f"{normalized}()"
 
