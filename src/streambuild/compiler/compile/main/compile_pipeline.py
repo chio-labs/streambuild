@@ -11,6 +11,7 @@ from streambuild.compiler.compile._helpers.transforms import (
     relation_names_for_pipeline,
     relation_sqls_for_pipeline,
 )
+from streambuild.compiler.compile.constants import LINEAGE_MODE_BY_REPLAY_BOUNDARY
 from streambuild.compiler.compile.exceptions import PipelineCompileError
 from streambuild.compiler.compile.models import (
     CompiledExternalSource,
@@ -69,12 +70,13 @@ def _resolve_replay_lineage_mode(*, loaded_pipeline: LoadedPipeline) -> ReplayLi
     if loaded_pipeline.pipeline.replay_lineage_mode is not None:
         return ReplayLineageMode(loaded_pipeline.pipeline.replay_lineage_mode)
     if isinstance(loaded_pipeline.pipeline.source, ExternalTableSourceStep):
-        if loaded_pipeline.pipeline.source.replay_boundary.mode == "offsets":
-            return ReplayLineageMode.OFFSETS
-        if loaded_pipeline.pipeline.source.replay_boundary.mode == "timestamp":
-            return ReplayLineageMode.TIMESTAMP
-        if loaded_pipeline.pipeline.source.replay_boundary.mode == "cursor":
-            return ReplayLineageMode.CURSOR
+        # ReplayBoundary coerces mode to ReplayBoundaryMode on construction, so an
+        # unknown mode already fails in the spec layer before reaching compile.
+        lineage_mode: ReplayLineageMode | None = LINEAGE_MODE_BY_REPLAY_BOUNDARY.get(
+            loaded_pipeline.pipeline.source.replay_boundary.mode
+        )
+        if lineage_mode is not None:
+            return lineage_mode
         raise PipelineCompileError(
             "External source replay boundary mode '"
             f"{loaded_pipeline.pipeline.source.replay_boundary.mode}"

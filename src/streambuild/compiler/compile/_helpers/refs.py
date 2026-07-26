@@ -7,6 +7,10 @@ from typing import cast
 
 from sqlglot import exp, parse_one
 
+from streambuild.compiler.compile.constants import (
+    REF_FUNCTION_NAMES,
+    SOURCE_REF_FUNCTION_NAME,
+)
 from streambuild.compiler.compile.exceptions import PipelineCompileError
 from streambuild.compiler.compile.models import ParsedRef
 from streambuild.spec.types import RefType, SqlRelationType
@@ -30,10 +34,10 @@ def _extract_refs_tuple(sql: str) -> tuple[ParsedRef, ...]:
 
 def _parse_table_ref(table: exp.Table) -> ParsedRef | None:
     table_expression: exp.Expression = table.this
-    if not isinstance(table_expression, exp.Anonymous) or table_expression.name not in {
-        "__source",
-        "__ref",
-    }:
+    if (
+        not isinstance(table_expression, exp.Anonymous)
+        or table_expression.name not in REF_FUNCTION_NAMES
+    ):
         return None
     expressions: list[exp.Expression] = list(table_expression.expressions)
     if len(expressions) not in {1, 2}:
@@ -44,7 +48,7 @@ def _parse_table_ref(table: exp.Table) -> ParsedRef | None:
     ref_name: str = _parse_ref_name(expressions[0])
     ref_type: RefType | None = None
     relation_type: SqlRelationType
-    if table_expression.name == "__source":
+    if table_expression.name == SOURCE_REF_FUNCTION_NAME:
         relation_type = SqlRelationType.SOURCE
     else:
         relation_type = SqlRelationType.REF

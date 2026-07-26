@@ -17,6 +17,7 @@ from streambuild.compiler.discovery.constants import (
     DEFAULT_SQL_MODEL_ORDER_BY,
     MODEL_HEADER_PATTERN,
     SCHEMA_CHANGE_RULE_KEYS,
+    SECONDS_BY_DURATION_UNIT,
 )
 from streambuild.compiler.discovery.exceptions import PipelineDiscoveryError
 from streambuild.compiler.macros.main._expand_macro_calls import expand_project_sql_macros
@@ -307,13 +308,7 @@ def _parse_schema_change_backfill_rule(
 
 
 def _duration_seconds(*, duration_value: int, duration_unit: str) -> int:
-    if duration_unit == "d":
-        return duration_value * 24 * 60 * 60
-    if duration_unit == "h":
-        return duration_value * 60 * 60
-    if duration_unit == "m":
-        return duration_value * 60
-    return duration_value
+    return duration_value * SECONDS_BY_DURATION_UNIT.get(duration_unit, 1)
 
 
 def _optional_bounded_replay_fallback(
