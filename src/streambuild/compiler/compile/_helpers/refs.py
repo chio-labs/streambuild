@@ -7,6 +7,7 @@ from typing import cast
 
 from sqlglot import exp, parse_one
 
+from streambuild.compiler.compile.exceptions import PipelineCompileError
 from streambuild.compiler.compile.models import ParsedRef
 from streambuild.spec.models.types import RefType, SqlRelationType
 
@@ -27,7 +28,7 @@ def replace_refs(*, sql: str, resolver: dict[str, str]) -> str:
             continue
         name: str = parsed_ref.name
         if name not in resolver:
-            raise KeyError(f"Unresolved ref: {name}")
+            raise PipelineCompileError(f"Unresolved ref: {name}")
         resolved_expression: exp.Expression = _parse_resolved_relation_expression(resolver[name])
         table_alias: exp.TableAlias | None = table.args.get("alias")
         if table_alias is not None and resolved_expression.args.get("alias") is None:
@@ -62,7 +63,7 @@ def _parse_table_ref(table: exp.Table) -> ParsedRef | None:
         return None
     expressions: list[exp.Expression] = list(table_expression.expressions)
     if len(expressions) not in {1, 2}:
-        raise ValueError(
+        raise PipelineCompileError(
             "__source(...) and __ref(...) must contain one name argument and optional ref_type"
         )
 
@@ -75,7 +76,7 @@ def _parse_table_ref(table: exp.Table) -> ParsedRef | None:
         relation_type = SqlRelationType.REF
     if len(expressions) == 2:
         if relation_type != SqlRelationType.REF:
-            raise ValueError("__source(...) must not declare ref_type")
+            raise PipelineCompileError("__source(...) must not declare ref_type")
         ref_type = _parse_ref_type(expressions[1])
 
     return ParsedRef(name=ref_name, relation_type=relation_type, ref_type=ref_type)
@@ -89,23 +90,27 @@ def _parse_ref_name(ref_expression: exp.Expression) -> str:
         if isinstance(identifier, exp.Identifier):
             return identifier.this
 
-    raise ValueError(
+    raise PipelineCompileError(
         "__source(...) and __ref(...) name arguments must be a quoted string or identifier"
     )
 
 
 def _parse_ref_type(ref_type_expression: exp.Expression) -> RefType:
     if not isinstance(ref_type_expression, exp.EQ):
-        raise ValueError(
+        raise PipelineCompileError(
             "__ref(...) optional second argument must be ref_type='reference' or ref_type='mutable'"
         )
 
     key_expression: exp.Expression = ref_type_expression.this
     if not isinstance(key_expression, exp.Column):
-        raise ValueError("__ref(...) optional second argument must use the ref_type keyword")
+        raise PipelineCompileError(
+            "__ref(...) optional second argument must use the ref_type keyword"
+        )
     identifier: exp.Expression = key_expression.this
     if not isinstance(identifier, exp.Identifier) or identifier.this != "ref_type":
-        raise ValueError("__ref(...) optional second argument must use the ref_type keyword")
+        raise PipelineCompileError(
+            "__ref(...) optional second argument must use the ref_type keyword"
+        )
 
     value_expression: exp.Expression = ref_type_expression.expression
     if isinstance(value_expression, exp.Literal) and value_expression.is_string:
@@ -113,12 +118,12 @@ def _parse_ref_type(ref_type_expression: exp.Expression) -> RefType:
     elif isinstance(value_expression, exp.Column):
         value_identifier: exp.Expression = value_expression.this
         if not isinstance(value_identifier, exp.Identifier):
-            raise ValueError("__ref(...) ref_type value must be 'reference' or 'mutable'")
+            raise PipelineCompileError("__ref(...) ref_type value must be 'reference' or 'mutable'")
         ref_type = value_identifier.this
     else:
-        raise ValueError("__ref(...) ref_type value must be 'reference' or 'mutable'")
+        raise PipelineCompileError("__ref(...) ref_type value must be 'reference' or 'mutable'")
 
     if ref_type not in {RefType.REFERENCE, RefType.MUTABLE}:
-        raise ValueError("__ref(...) ref_type value must be 'reference' or 'mutable'")
+        raise PipelineCompileError("__ref(...) ref_type value must be 'reference' or 'mutable'")
 
     return RefType(ref_type)

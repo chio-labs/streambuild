@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from streambuild.cli.commands.main.shared.exceptions import CliUserError
 from streambuild.compiler.shared.models import LoadedPipeline
 from streambuild.spec.models.project import Project
 
@@ -14,7 +15,7 @@ def resolve_default_database(
     if project_database is not None:
         return project_database
 
-    raise ValueError(
+    raise CliUserError(
         "No database was provided. Pass --database or define "
         "default_database in streambuild_project.yml"
     )
@@ -29,7 +30,7 @@ def project_default_database(loaded_pipelines: list[LoadedPipeline]) -> str | No
     if not project_databases:
         return None
     if len(project_databases) > 1:
-        raise ValueError("Discovered pipelines disagree on project default_database")
+        raise CliUserError("Discovered pipelines disagree on project default_database")
 
     project: Project = next(
         project

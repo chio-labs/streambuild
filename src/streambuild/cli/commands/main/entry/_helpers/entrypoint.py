@@ -8,6 +8,7 @@ from streambuild.cli.commands.main.entry.models import (
     ResolvedClickHouseConnection,
     ResolvedCliProjectConfig,
 )
+from streambuild.cli.commands.main.shared.exceptions import CliUserError
 from streambuild.compiler.discovery._helpers.load import load_project_for_path
 from streambuild.spec.models.project import Project
 
@@ -105,7 +106,7 @@ def resolve_pipelines_root(
         pipelines_root: Path = current_directory / "pipelines"
         if project_file.exists():
             if not pipelines_root.exists():
-                raise ValueError(
+                raise CliUserError(
                     f"Found StreamBuild project at '{current_directory}', but '{pipelines_root}' "
                     "does not exist"
                 )
@@ -115,7 +116,7 @@ def resolve_pipelines_root(
         if current_directory.parent == current_directory:
             break
         current_directory = current_directory.parent
-    raise ValueError(
+    raise CliUserError(
         "No StreamBuild project found from the current directory. "
         "Run this command inside a project or pass --project-dir."
     )
@@ -135,13 +136,13 @@ def resolve_project_dir(
 
 def require_str_arg(*, value: str | None, arg_name: str, env_var_name: str) -> str:
     if value is None:
-        raise ValueError(f"Missing {arg_name}. Pass --{arg_name} or set {env_var_name}.")
+        raise CliUserError(f"Missing {arg_name}. Pass --{arg_name} or set {env_var_name}.")
     return value
 
 
 def require_int_arg(*, value: int | None, arg_name: str, env_var_name: str) -> int:
     if value is None:
-        raise ValueError(f"Missing {arg_name}. Pass --{arg_name} or set {env_var_name}.")
+        raise CliUserError(f"Missing {arg_name}. Pass --{arg_name} or set {env_var_name}.")
     return value
 
 

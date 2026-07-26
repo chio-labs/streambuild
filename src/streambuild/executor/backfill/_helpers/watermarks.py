@@ -23,6 +23,7 @@ from streambuild.compiler.shared.models import (
     DesiredTable,
     ObjectKey,
 )
+from streambuild.executor.backfill.exceptions import BackfillExecutionError
 from streambuild.executor.backfill.models import OffsetWatermarkQueryRow
 from streambuild.integrations.clickhouse.client import ClickHouseClient
 from streambuild.spec.models.types import ReplayLineageMode
@@ -249,7 +250,7 @@ def _scalar_boundary_key(
     if external_source_replay_config is not None:
         if replay_lineage_mode == ReplayLineageMode.CURSOR:
             if external_source_replay_config.cursor_column_name is None:
-                raise ValueError(
+                raise BackfillExecutionError(
                     "Source table '"
                     f"{external_source_replay_config.table_name}"
                     "' does not declare a cursor replay boundary column"
@@ -257,7 +258,7 @@ def _scalar_boundary_key(
             return REPLAY_CURSOR_COLUMN_NAME
         if replay_lineage_mode == ReplayLineageMode.TIMESTAMP:
             if external_source_replay_config.timestamp_column_name is None:
-                raise ValueError(
+                raise BackfillExecutionError(
                     "Source table '"
                     f"{external_source_replay_config.table_name}"
                     "' does not declare a timestamp "
@@ -268,7 +269,7 @@ def _scalar_boundary_key(
             return REPLAY_LANDED_AT_COLUMN_NAME
         if external_source_replay_config.timestamp_column_name is not None:
             return REPLAY_TIMESTAMP_COLUMN_NAME
-        raise ValueError(
+        raise BackfillExecutionError(
             "Source table '"
             f"{external_source_replay_config.table_name}"
             "' does not declare a scalar replay "

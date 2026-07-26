@@ -19,6 +19,7 @@ from streambuild.compiler.shared.constants import (
 )
 from streambuild.compiler.shared.models import ObjectKey
 from streambuild.executor.audit_backfill.constants import ACCEPTABLE_LAG_SECONDS
+from streambuild.executor.audit_backfill.exceptions import AuditBackfillExecutionError
 from streambuild.executor.audit_backfill.models import (
     ColumnNameSystemRow,
     CountQueryRow,
@@ -192,7 +193,7 @@ def _row_count(*, client: ClickHouseClient, database: str, table_name: str) -> i
         decode=_decode_count_query_row,
     )
     if row is None:
-        raise ValueError(f"Expected row count for {database}.{table_name}")
+        raise AuditBackfillExecutionError(f"Expected row count for {database}.{table_name}")
     return row.value
 
 
@@ -317,7 +318,7 @@ def _offset_catchup_summary(
         decode=_decode_offset_summary_query_row,
     )
     if row is None:
-        raise ValueError("Expected offset catchup summary row")
+        raise AuditBackfillExecutionError("Expected offset catchup summary row")
     return OffsetCatchupSummary(
         active_partition_count=row.active_partition_count,
         staged_partition_count=row.staged_partition_count,
@@ -363,7 +364,7 @@ def _scalar_catchup_summary(
         decode=_decode_scalar_summary_query_row,
     )
     if row is None:
-        raise ValueError("Expected scalar catchup summary row")
+        raise AuditBackfillExecutionError("Expected scalar catchup summary row")
     return ScalarCatchupSummary(
         active_min_value=row.active_min_value,
         active_max_value=row.active_max_value,

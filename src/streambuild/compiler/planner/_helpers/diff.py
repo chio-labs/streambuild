@@ -16,6 +16,7 @@ from streambuild.compiler.planner.constants import (
     TABLE_SCHEMA_SEED_COMPATIBILITY_NON_SEEDABLE,
     TABLE_SCHEMA_SEED_COMPATIBILITY_SEEDABLE,
 )
+from streambuild.compiler.planner.exceptions import DeploymentPlanError
 from streambuild.compiler.planner.models import PlannedObjectChange
 from streambuild.compiler.planner.types import (
     PlannedChangeType,
@@ -204,9 +205,9 @@ def _normalize_clickhouse_type(type_sql: str) -> str:
         dialect="clickhouse",
     )
     if not isinstance(parsed_expression, exp.Create):
-        raise ValueError(f"Expected CREATE statement when normalizing type '{type_sql}'")
+        raise DeploymentPlanError(f"Expected CREATE statement when normalizing type '{type_sql}'")
     column_definition: exp.ColumnDef = next(parsed_expression.find_all(exp.ColumnDef))
     data_type: exp.DataType | None = column_definition.kind
     if data_type is None:
-        raise ValueError(f"Expected column type when normalizing type '{type_sql}'")
+        raise DeploymentPlanError(f"Expected column type when normalizing type '{type_sql}'")
     return data_type.sql(dialect="clickhouse")

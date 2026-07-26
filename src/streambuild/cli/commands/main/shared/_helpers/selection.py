@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from streambuild.cli.commands.main.shared.exceptions import CliUserError
 from streambuild.cli.commands.main.shared.models import SelectionResolution
 from streambuild.compiler.compile.models import (
     CompiledExternalSource,
@@ -75,7 +76,7 @@ def _resolve_selected_model_keys(
     selector: str
     for selector in selectors:
         if selector.startswith("+") or selector.endswith("+"):
-            raise ValueError(
+            raise CliUserError(
                 "Unsupported selector syntax '"
                 f"{selector}"
                 "'. StreamBuild selections already include required downstream closure, "
@@ -84,7 +85,7 @@ def _resolve_selected_model_keys(
         if ":" not in selector:
             model_key: ObjectKey | None = model_key_by_name.get(selector)
             if model_key is None:
-                raise ValueError(f"Unknown selected model '{selector}'")
+                raise CliUserError(f"Unknown selected model '{selector}'")
             selected_model_keys.add(model_key)
             continue
 
@@ -92,12 +93,12 @@ def _resolve_selected_model_keys(
         selector_value: str
         selector_kind, selector_value = selector.split(":", 1)
         if selector_kind != "pipeline":
-            raise ValueError(f"Unsupported selector namespace '{selector_kind}' in '{selector}'")
+            raise CliUserError(f"Unsupported selector namespace '{selector_kind}' in '{selector}'")
         pipeline_keys: tuple[ObjectKey, ...] | None = pipeline_model_keys.get(selector_value)
         if pipeline_keys is None:
-            raise ValueError(f"Unknown selected pipeline '{selector_value}'")
+            raise CliUserError(f"Unknown selected pipeline '{selector_value}'")
         if not pipeline_keys:
-            raise ValueError(f"Selected pipeline '{selector_value}' does not define any models")
+            raise CliUserError(f"Selected pipeline '{selector_value}' does not define any models")
         selected_model_keys.update(pipeline_keys)
 
     return frozenset(selected_model_keys)
@@ -222,5 +223,5 @@ def _resolve_replay_lineage_mode(
             f"{pipeline_name}={replay_lineage_mode}"
             for pipeline_name, replay_lineage_mode in sorted(selected_pipeline_modes)
         )
-        raise ValueError(f"Selected pipelines disagree on replay_lineage_mode: {mode_details}")
+        raise CliUserError(f"Selected pipelines disagree on replay_lineage_mode: {mode_details}")
     return next(iter(replay_lineage_modes))

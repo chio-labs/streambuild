@@ -14,6 +14,7 @@ from streambuild.cli.commands.main.shared._helpers.timestamps import (
     normalize_cli_start_time,
 )
 from streambuild.cli.commands.main.shared._helpers.warnings import add_empty_replay_source_warnings
+from streambuild.cli.commands.main.shared.exceptions import CliUserError
 from streambuild.cli.commands.main.shared.models import SelectionResolution
 from streambuild.compiler.actual_state._helpers.load import load_actual_state
 from streambuild.compiler.actual_state.models import ActualState
@@ -67,7 +68,7 @@ def run_plan(
                 client=client,
                 utc_timestamp=normalize_cli_start_time(start_time),
             )
-        except ValueError as error:
+        except (CliUserError, ValueError) as error:
             print(str(error), file=sys.stderr)
             return 1
 
@@ -83,7 +84,7 @@ def run_plan(
         selection: SelectionResolution = resolve_selection(
             compiled_pipelines=tuple(compiled), selectors=selectors
         )
-    except ValueError as error:
+    except (CliUserError, ValueError) as error:
         print(str(error), file=sys.stderr)
         return 1
     desired_state: DesiredState = selection.desired_state

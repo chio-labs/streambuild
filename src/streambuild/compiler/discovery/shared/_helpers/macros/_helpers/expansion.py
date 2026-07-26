@@ -10,6 +10,7 @@ from streambuild.compiler.discovery.shared._helpers.macros._helpers.registry imp
     load_project_macros,
 )
 from streambuild.compiler.discovery.shared._helpers.macros.constants import UNEXPANDED_MACRO_PATTERN
+from streambuild.compiler.discovery.shared._helpers.macros.exceptions import MacroError
 from streambuild.compiler.discovery.shared._helpers.macros.models import LoadedMacro
 
 
@@ -46,13 +47,13 @@ def expand_sql_body_macros(
             top_level=True,
         )
         if not isinstance(macro_result, str):
-            raise ValueError(
+            raise MacroError(
                 f"Macro '@{_parse_macro_name(sql=sql, call_start_index=macro_start_index)}' in "
                 f"'{file_path}' must return a SQL string when used directly in SQL"
             )
         matched_call: re.Match[str] | None = UNEXPANDED_MACRO_PATTERN.search(macro_result)
         if matched_call is not None:
-            raise ValueError(
+            raise MacroError(
                 f"Macro expansion in '{file_path}' produced output containing unexpanded macro "
                 f"call '{matched_call.group(0).rstrip()}'. Compose macros in Python instead."
             )
@@ -73,7 +74,7 @@ def _evaluate_macro_call(
     loaded_macro: LoadedMacro | None = loaded_macros.get(macro_name)
     if loaded_macro is None:
         available_macro_names: str = ", ".join(sorted(loaded_macros)) or "none"
-        raise ValueError(
+        raise MacroError(
             f"Unknown macro '@{macro_name}' in '{file_path}'. Available macros: "
             f"{available_macro_names}"
         )
@@ -92,13 +93,13 @@ def _evaluate_macro_call(
     try:
         macro_result: object = loaded_macro.function(*args, **kwargs)
     except TypeError as error:
-        raise ValueError(
+        raise MacroError(
             f"Macro '@{macro_name}' in '{file_path}' could not be called: {error}"
         ) from error
     except Exception as error:
-        raise ValueError(f"Macro '@{macro_name}' in '{file_path}' failed: {error}") from error
+        raise MacroError(f"Macro '@{macro_name}' in '{file_path}' failed: {error}") from error
     if top_level and not isinstance(macro_result, str):
-        raise ValueError(
+        raise MacroError(
             f"Macro '@{macro_name}' in '{file_path}' must return a SQL string when "
             "used directly in SQL"
         )
@@ -121,11 +122,11 @@ def _parse_macro_arguments(
     try:
         expression: ast.Expression = ast.parse(f"_macro_call({rewritten_args_source})", mode="eval")
     except SyntaxError as error:
-        raise ValueError(
+        raise MacroError(
             f"Macro arguments in '{file_path}' could not be parsed: {error}"
         ) from error
     if not isinstance(expression.body, ast.Call):
-        raise ValueError(f"Macro arguments in '{file_path}' could not be parsed")
+        raise MacroError(f"Macro arguments in '{file_path}' could not be parsed")
     call_expression: ast.Call = expression.body
     args: tuple[object, ...] = tuple(
         _evaluate_literal_ast_node(
@@ -139,7 +140,7 @@ def _parse_macro_arguments(
     keyword: ast.keyword
     for keyword in call_expression.keywords:
         if keyword.arg is None:
-            raise ValueError(
+            raise MacroError(
                 f"Macro arguments in '{file_path}' must not use **kwargs expansion syntax"
             )
         kwargs[keyword.arg] = _evaluate_literal_ast_node(
@@ -232,9 +233,9 @@ def _evaluate_literal_ast_node(
             file_path=file_path,
         )
         if not isinstance(operand, int | float):
-            raise ValueError(f"Macro arguments in '{file_path}' use unsupported unary value")
+            raise MacroError(f"Macro arguments in '{file_path}' use unsupported unary value")
         return -operand if isinstance(node.op, ast.USub) else operand
-    raise ValueError(
+    raise MacroError(
         f"Macro arguments in '{file_path}' must use only Python literals and nested macro calls"
     )
 
@@ -283,7 +284,7 @@ def _parse_macro_name(*, sql: str, call_start_index: int) -> str:
 
 def _find_matching_paren(*, sql: str, opening_paren_index: int) -> int:
     if opening_paren_index >= len(sql) or sql[opening_paren_index] != "(":
-        raise ValueError("expected opening parenthesis")
+        raise MacroError("expected opening parenthesis")
     depth: int = 1
     index: int = opening_paren_index + 1
     while index < len(sql):
@@ -310,7 +311,7 @@ def _find_matching_paren(*, sql: str, opening_paren_index: int) -> int:
             if depth == 0:
                 return index
         index += 1
-    raise ValueError("Macro call could not be parsed: missing closing ')' ")
+    raise MacroError("Macro call could not be parsed: missing closing ')' ")
 
 
 def _skip_whitespace(*, sql: str, start_index: int) -> int:

@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+from streambuild.cli.commands.main.shared.exceptions import CliUserError
 from streambuild.cli.commands.main.test._helpers.selection import select_loaded_sql_tests
 from streambuild.compiler.shared.models import LoadedSqlTest
 from tests.unit.src.streambuild.cli.commands.main.test._helpers._test_types import (
@@ -117,7 +118,7 @@ def test_given_invalid_test_selectors_when_selecting_then_it_raises_clear_errors
 ) -> None:
     loaded_tests: tuple[LoadedSqlTest, ...] = build_selector_project_loaded_tests(tmp_path)
 
-    with pytest.raises(ValueError, match=test_case.expected_error_fragment):
+    with pytest.raises(CliUserError, match=test_case.expected_error_fragment):
         select_loaded_sql_tests(
             loaded_tests=loaded_tests,
             compiled_pipelines=build_selector_project_compiled_pipelines(),

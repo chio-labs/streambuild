@@ -6,6 +6,7 @@ import pytest
 from streambuild.cli.commands.main.shared._helpers.source_validation import (
     validate_declared_external_sources,
 )
+from streambuild.cli.commands.main.shared.exceptions import CliUserError
 from streambuild.integrations.clickhouse.client import ClickHouseClient
 from tests.unit.src.streambuild.cli.commands.main.shared._test_types import (
     CliExternalSourceValidationErrorTestCase,
@@ -37,7 +38,7 @@ def test_given_external_source_alias_collision_when_validating_then_it_raises_cl
 ) -> None:
     client: _FakeClickHouseClient = _FakeClickHouseClient(test_case.existing_column_names)
 
-    with pytest.raises(ValueError, match=test_case.expected_error_fragment):
+    with pytest.raises(CliUserError, match=test_case.expected_error_fragment):
         validate_declared_external_sources(
             client=cast(ClickHouseClient, client),
             compiled_pipelines=(build_compiled_external_source_pipeline(),),

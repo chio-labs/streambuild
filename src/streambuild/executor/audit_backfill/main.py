@@ -5,6 +5,7 @@ from streambuild.clickhouse.inspect.models import InspectedManagedTableState
 from streambuild.executor.audit_backfill._helpers.comparisons import build_root_audit_results
 from streambuild.executor.audit_backfill._helpers.metadata import load_audit_deployment
 from streambuild.executor.audit_backfill._helpers.resolution import resolve_audit_deployment_id
+from streambuild.executor.audit_backfill.exceptions import AuditBackfillExecutionError
 from streambuild.executor.audit_backfill.models import (
     AuditBackfillRequest,
     AuditBackfillResult,
@@ -44,7 +45,7 @@ def execute_audit_backfill(
         inspected_state=inspected_state,
     )
     if not root_results:
-        raise ValueError(
+        raise AuditBackfillExecutionError(
             f"Deployment '{resolved_deployment_id}' has no staged physical tables to audit"
         )
     return AuditBackfillResult(

@@ -9,6 +9,7 @@ from streambuild.cli.commands.main.shared._helpers.source_validation import (
     validate_declared_external_sources,
 )
 from streambuild.cli.commands.main.shared._helpers.warnings import add_empty_replay_source_warnings
+from streambuild.cli.commands.main.shared.exceptions import CliUserError
 from streambuild.cli.commands.main.shared.models import SelectionResolution
 from streambuild.compiler.actual_state._helpers.load import load_actual_state
 from streambuild.compiler.actual_state.models import ActualState
@@ -92,7 +93,7 @@ def build_backfill_preview_context(
         )
         if invalid_root_names:
             root_name_list: str = ", ".join(sorted(invalid_root_names))
-            raise ValueError(
+            raise CliUserError(
                 "--start-time requires an active published root for every selected target; "
                 f"found unsupported state for {root_name_list}"
             )

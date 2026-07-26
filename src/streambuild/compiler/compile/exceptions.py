@@ -1,6 +1,10 @@
 """Custom exceptions for transform SQL contract validation."""
 
 
+class PipelineCompileError(ValueError):
+    """Raised when pipeline compilation input or state is invalid."""
+
+
 class TransformSqlContractError(Exception):
     """Base error for transform SQL contract validation failures."""
 

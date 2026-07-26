@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from streambuild.cli.commands.main.audit._helpers.selection import select_loaded_sql_audits
+from streambuild.cli.commands.main.shared.exceptions import CliUserError
 from streambuild.compiler.compile.models import CompiledPipeline
 from streambuild.compiler.shared.models import LoadedSqlAudit
 from tests.unit.src.streambuild.cli.commands.main.audit._helpers._test_types import (
@@ -81,7 +82,7 @@ def test_given_valid_audit_selectors_when_selecting_then_it_returns_matching_aud
 def test_given_invalid_audit_selectors_when_selecting_then_it_raises_clear_errors(
     test_case: CliAuditSelectionErrorTestCase,
 ) -> None:
-    with pytest.raises(ValueError, match=test_case.expected_error_fragment):
+    with pytest.raises(CliUserError, match=test_case.expected_error_fragment):
         select_loaded_sql_audits(
             loaded_audits=(),
             compiled_pipelines=compile_selector_project_pipelines(),

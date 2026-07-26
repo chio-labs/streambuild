@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 
+from streambuild.cli.commands.main.shared.exceptions import CliUserError
 from streambuild.compiler.compile.models import CompiledPipeline, CompiledTransformStep, ParsedRef
 from streambuild.compiler.shared.models import LoadedSqlAudit
 
@@ -29,7 +30,7 @@ def select_loaded_sql_audits(
     )
     if selected_audits:
         return selected_audits
-    raise ValueError("No SQL audits matched the requested selectors.")
+    raise CliUserError("No SQL audits matched the requested selectors.")
 
 
 def _resolve_selected_model_names(
@@ -53,7 +54,7 @@ def _resolve_selected_model_names(
         include_upstream: bool = raw_selector.startswith("+")
         selector: str = raw_selector.removeprefix("+")
         if not selector or "+" in selector:
-            raise ValueError(
+            raise CliUserError(
                 f"Unsupported audit selector syntax '{raw_selector}'. Use bare model names, "
                 "pipeline:<name>, or optional leading '+'."
             )
@@ -82,16 +83,18 @@ def _resolve_selector_target_names(
 ) -> tuple[str, ...]:
     if ":" not in selector:
         if selector not in known_model_names:
-            raise ValueError(f"Unknown SQL audit selector model '{selector}'")
+            raise CliUserError(f"Unknown SQL audit selector model '{selector}'")
         return (selector,)
     selector_kind, selector_value = selector.split(":", 1)
     if selector_kind != "pipeline":
-        raise ValueError(f"Unsupported audit selector namespace '{selector_kind}' in '{selector}'")
+        raise CliUserError(
+            f"Unsupported audit selector namespace '{selector_kind}' in '{selector}'"
+        )
     pipeline_targets: tuple[str, ...] | None = pipeline_model_names.get(selector_value)
     if pipeline_targets is None:
-        raise ValueError(f"Unknown SQL audit selector pipeline '{selector_value}'")
+        raise CliUserError(f"Unknown SQL audit selector pipeline '{selector_value}'")
     if not pipeline_targets:
-        raise ValueError(
+        raise CliUserError(
             f"SQL audit selector pipeline '{selector_value}' does not define any models"
         )
     return pipeline_targets
