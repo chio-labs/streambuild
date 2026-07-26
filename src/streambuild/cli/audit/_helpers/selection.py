@@ -6,6 +6,7 @@ from collections import defaultdict
 
 from streambuild.cli.shared.exceptions import CliUserError
 from streambuild.compiler.compile.models import CompiledPipeline, CompiledTransformStep, ParsedRef
+from streambuild.compiler.shared.main.compiled_transforms import compiled_transforms
 from streambuild.compiler.shared.models import LoadedSqlAudit
 
 
@@ -38,12 +39,9 @@ def _resolve_selected_model_names(
     compiled_pipelines: tuple[CompiledPipeline, ...],
     selectors: tuple[str, ...],
 ) -> frozenset[str]:
-    pipeline_model_names: dict[str, tuple[str, ...]] = {
-        compiled_pipeline.pipeline.name: tuple(
-            compiled_transform.transform.name for compiled_transform in compiled_pipeline.transforms
-        )
-        for compiled_pipeline in compiled_pipelines
-    }
+    pipeline_model_names: dict[str, tuple[str, ...]] = _model_names_by_pipeline(
+        compiled_pipelines=compiled_pipelines
+    )
     upstream_names_by_model: dict[str, tuple[str, ...]] = _build_upstream_model_graph(
         compiled_pipelines
     )
@@ -106,8 +104,7 @@ def _build_upstream_model_graph(
     upstream_names_by_model: dict[str, set[str]] = defaultdict(set)
     known_model_names: set[str] = {
         compiled_transform.transform.name
-        for compiled_pipeline in compiled_pipelines
-        for compiled_transform in compiled_pipeline.transforms
+        for compiled_transform in compiled_transforms(compiled_pipelines=compiled_pipelines)
     }
     compiled_pipeline: CompiledPipeline
     for compiled_pipeline in compiled_pipelines:
@@ -139,3 +136,15 @@ def _expand_graph_neighbors(
             visited_names.add(neighbor_name)
             stack.append(neighbor_name)
     return frozenset(visited_names)
+
+
+def _model_names_by_pipeline(
+    *, compiled_pipelines: tuple[CompiledPipeline, ...]
+) -> dict[str, tuple[str, ...]]:
+    names_by_pipeline: dict[str, tuple[str, ...]] = {}
+    compiled_pipeline: CompiledPipeline
+    for compiled_pipeline in compiled_pipelines:
+        names_by_pipeline[compiled_pipeline.pipeline.name] = tuple(
+            compiled_transform.transform.name for compiled_transform in compiled_pipeline.transforms
+        )
+    return names_by_pipeline

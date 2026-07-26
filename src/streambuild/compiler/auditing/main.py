@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from streambuild.compiler.auditing.exceptions import AuditCompileError
 from streambuild.compiler.compile.models import CompiledPipeline
+from streambuild.compiler.shared.main.compiled_transforms import compiled_transforms
 from streambuild.compiler.shared.models import LoadedSqlAudit
 
 
@@ -16,8 +17,7 @@ def validate_sql_audits(
 
     known_model_names: frozenset[str] = frozenset(
         compiled_transform.transform.name
-        for compiled_pipeline in compiled_pipelines
-        for compiled_transform in compiled_pipeline.transforms
+        for compiled_transform in compiled_transforms(compiled_pipelines=compiled_pipelines)
     )
     loaded_audit: LoadedSqlAudit
     for loaded_audit in loaded_audits:

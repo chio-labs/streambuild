@@ -7,6 +7,7 @@ from pathlib import Path
 
 from streambuild.cli.shared.exceptions import CliUserError
 from streambuild.compiler.compile.models import CompiledPipeline, CompiledTransformStep, ParsedRef
+from streambuild.compiler.shared.main.compiled_transforms import compiled_transforms
 from streambuild.compiler.shared.models import LoadedSqlTest
 
 
@@ -136,8 +137,7 @@ def _build_model_graph(
     upstream_names_by_model: dict[str, set[str]] = defaultdict(set)
     known_model_names: set[str] = {
         compiled_transform.transform.name
-        for compiled_pipeline in compiled_pipelines
-        for compiled_transform in compiled_pipeline.transforms
+        for compiled_transform in compiled_transforms(compiled_pipelines=compiled_pipelines)
     }
     compiled_pipeline: CompiledPipeline
     for compiled_pipeline in compiled_pipelines:
