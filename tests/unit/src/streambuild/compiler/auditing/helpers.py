@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from streambuild.compiler.audit_discovery.main.discover_sql_audits import discover_sql_audits
-from streambuild.compiler.auditing.main.validate_sql_audits import validate_sql_audits
+from streambuild.compiler.auditing.main.validated_sql_audits import validated_sql_audits
 from streambuild.compiler.compile.main.compile_pipeline import compile_pipeline
 from streambuild.compiler.compile.models import CompiledPipeline
 from streambuild.compiler.discovery.main.discover_pipelines import discover_pipelines
@@ -73,7 +73,7 @@ def validate_project_sql_audits(
         for loaded_pipeline in discover_pipelines(tmp_path / "pipelines")
     )
     loaded_audits: tuple[LoadedSqlAudit, ...] = tuple(discover_sql_audits(tmp_path / "audits"))
-    return validate_sql_audits(
+    return validated_sql_audits(
         loaded_audits=loaded_audits,
         compiled_pipelines=compiled_pipelines,
     )

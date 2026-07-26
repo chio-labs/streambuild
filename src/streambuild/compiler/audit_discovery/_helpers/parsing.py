@@ -17,7 +17,7 @@ from streambuild.compiler.audit_discovery.constants import (
     GENERIC_AUDIT_RAW_PARAMETER_PATTERN,
 )
 from streambuild.compiler.audit_discovery.exceptions import SqlAuditParseError
-from streambuild.compiler.compile.main.extract_refs import extract_refs
+from streambuild.compiler.compile.main._extract_refs import extract_refs
 from streambuild.compiler.compile.models import ParsedRef
 from streambuild.compiler.macros.main._expand_macro_calls import expand_project_sql_macros
 from streambuild.compiler.shared.models import LoadedGenericSqlAuditDefinition, LoadedSqlAudit

@@ -9,7 +9,7 @@ from typing import Any
 
 import yaml
 
-from streambuild.compiler.compile.main.extract_refs import extract_refs
+from streambuild.compiler.compile.main._extract_refs import extract_refs
 from streambuild.compiler.compile.models import ParsedRef
 from streambuild.compiler.discovery.constants import (
     ALLOWED_MODEL_KEYS,

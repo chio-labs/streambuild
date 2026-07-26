@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from streambuild.compiler.audit_discovery.main.discover_sql_audits import discover_sql_audits
-from streambuild.compiler.auditing.main.validate_sql_audits import validate_sql_audits
+from streambuild.compiler.auditing.main.validated_sql_audits import validated_sql_audits
 from streambuild.compiler.compile.main.transform_table_name import transform_table_name
 from streambuild.compiler.compile.models import CompiledPipeline, CompiledTransformStep
 from streambuild.compiler.shared.models import LoadedSqlAudit
@@ -18,7 +18,7 @@ def selected_backfill_sql_audits(
     compiled_pipelines: tuple[CompiledPipeline, ...],
     staged_logical_table_names: frozenset[str],
 ) -> tuple[LoadedSqlAudit, ...]:
-    loaded_audits: tuple[LoadedSqlAudit, ...] = validate_sql_audits(
+    loaded_audits: tuple[LoadedSqlAudit, ...] = validated_sql_audits(
         loaded_audits=tuple(discover_sql_audits(project_dir / "audits")),
         compiled_pipelines=compiled_pipelines,
     )

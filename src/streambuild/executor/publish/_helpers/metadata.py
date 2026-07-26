@@ -8,7 +8,7 @@ from streambuild.clickhouse.metadata_state.main.build_metadata_state_insert_stat
 from streambuild.clickhouse.metadata_state.models import RenderedClickHouseStatement
 from streambuild.compiler.metadata_state.main.build_metadata_state import build_metadata_state
 from streambuild.compiler.metadata_state.models import MetadataState, PublishEventRecord
-from streambuild.executor.backfill.main.ensure_metadata_tables import ensure_metadata_tables
+from streambuild.executor.backfill.main._ensure_metadata_tables import ensure_metadata_tables
 from streambuild.executor.publish.constants import PUBLISH_HISTORY_TABLE_NAME
 from streambuild.executor.publish.models import PublishedView
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient

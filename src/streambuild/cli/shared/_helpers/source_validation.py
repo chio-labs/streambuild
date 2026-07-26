@@ -69,7 +69,7 @@ def load_source_column_types(
     database: str,
     table_name: str,
 ) -> dict[str, str]:
-    rows: tuple[SourceColumnSystemRow, ...] = client.query_many(
+    rows: tuple[_SourceColumnSystemRow, ...] = client.query_many(
         statement="SELECT name, type FROM system.columns "
         f"WHERE database = '{database}' AND table = '{table_name}'",
         decode=decode_source_column_system_row,
@@ -100,11 +100,11 @@ def validate_declared_column(
         )
 
 
-class SourceColumnSystemRow:
+class _SourceColumnSystemRow:
     def __init__(self, *, name: str, type: str) -> None:
         self.name = name
         self.type = type
 
 
-def decode_source_column_system_row(row: Mapping[str, object]) -> SourceColumnSystemRow:
-    return SourceColumnSystemRow(name=str(row["name"]), type=str(row["type"]))
+def decode_source_column_system_row(row: Mapping[str, object]) -> _SourceColumnSystemRow:
+    return _SourceColumnSystemRow(name=str(row["name"]), type=str(row["type"]))

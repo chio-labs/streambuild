@@ -65,13 +65,15 @@ def compile_pipeline(loaded_pipeline: LoadedPipeline) -> CompiledPipeline:
 
 
 def _resolve_replay_lineage_mode(*, loaded_pipeline: LoadedPipeline) -> ReplayLineageMode:
-    """Resolve the effective replay-lineage mode for a loaded pipeline."""
+    """Resolve the effective replay-lineage mode for a loaded pipeline.
+
+    ReplayBoundary coerces its mode on construction, so an unknown boundary mode
+    already fails in the spec layer and cannot reach the guard below.
+    """
 
     if loaded_pipeline.pipeline.replay_lineage_mode is not None:
         return ReplayLineageMode(loaded_pipeline.pipeline.replay_lineage_mode)
     if isinstance(loaded_pipeline.pipeline.source, ExternalTableSourceStep):
-        # ReplayBoundary coerces mode to ReplayBoundaryMode on construction, so an
-        # unknown mode already fails in the spec layer before reaching compile.
         lineage_mode: ReplayLineageMode | None = LINEAGE_MODE_BY_REPLAY_BOUNDARY.get(
             loaded_pipeline.pipeline.source.replay_boundary.mode
         )
