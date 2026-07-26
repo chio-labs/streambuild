@@ -315,3 +315,85 @@ def load_runtime_execution_modes(
         "ORDER BY root_object_name"
     )
     return tuple((str(row[0]), row[1]) for row in clickhouse_client.query(query).result_rows)
+
+
+SINGLE_EXPECTED_SQL_TEST: str = """
+    TEST ();
+
+    WITH
+    helper_orders AS (
+      SELECT 'ord_001' AS order_id, 2 AS quantity, 10.0 AS unit_price
+    ),
+    __source__orders AS (
+      SELECT * FROM helper_orders
+    ),
+    expected_rows AS (
+      SELECT 'ord_001' AS order_id, {expected_line_total} AS line_total
+    ),
+    __expected__order_items AS (
+      SELECT * FROM expected_rows
+    )
+    SELECT 1
+    """
+
+MULTI_NAMED_SQL_TESTS: str = """
+    TEST (name: "line total computes correctly");
+
+    WITH
+    helper_orders AS (
+      SELECT 'ord_001' AS order_id, 2 AS quantity, 10.0 AS unit_price
+    ),
+    __source__orders AS (
+      SELECT * FROM helper_orders
+    ),
+    __expected__order_items AS (
+      SELECT 'ord_001' AS order_id, 20.0 AS line_total
+    )
+    SELECT 1;
+
+    TEST (name: "line total remains stable on repeat");
+
+    WITH
+    helper_orders AS (
+      SELECT 'ord_001' AS order_id, 2 AS quantity, 10.0 AS unit_price
+    ),
+    __source__orders AS (
+      SELECT * FROM helper_orders
+    ),
+    __expected__order_items AS (
+      SELECT 'ord_001' AS order_id, 20.0 AS line_total
+    )
+    SELECT 1
+    """
+
+MULTI_TARGET_FAILING_SQL_TEST: str = """
+    TEST ();
+
+    WITH
+    helper_orders AS (
+      SELECT 'ord_001' AS order_id, 2 AS quantity, 10.0 AS unit_price
+    ),
+    __source__orders AS (
+      SELECT * FROM helper_orders
+    ),
+    __expected__order_items AS (
+      SELECT 'ord_001' AS order_id, 25.0 AS line_total
+    ),
+    __expected__daily_revenue AS (
+      SELECT 'ord_001' AS order_id, 30.0 AS line_total
+    )
+    SELECT 1
+    """
+
+DOWNSTREAM_REF_SQL_TEST: str = """
+    TEST ();
+
+    WITH
+    __ref__order_items AS (
+      SELECT 'ord_001' AS order_id, 20.0 AS line_total
+    ),
+    __expected__daily_revenue AS (
+      SELECT 'ord_001' AS order_id, 20.0 AS line_total
+    )
+    SELECT 1
+    """
