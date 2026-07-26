@@ -3,7 +3,7 @@ from pathlib import Path
 from streambuild.compiler.compile.models import CompiledPipeline
 from streambuild.compiler.discovery._helpers.testing.main import discover_sql_tests
 from streambuild.compiler.shared.models import LoadedSqlTest
-from tests.unit.src.streambuild.cli.shared.helpers import (
+from tests.unit.src.streambuild.cli.shared.main.helpers import (
     compile_selector_project_pipelines,
 )
 from tests.unit.src.streambuild.compiler.discovery._helpers.testing.helpers import (

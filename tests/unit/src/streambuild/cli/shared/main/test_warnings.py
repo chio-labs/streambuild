@@ -4,7 +4,7 @@ from typing import cast
 
 import pytest
 
-from streambuild.cli.shared._helpers.warnings import add_empty_replay_source_warnings
+from streambuild.cli.shared.main.warnings import add_empty_replay_source_warnings
 from streambuild.compiler.compile.models import DesiredState
 from streambuild.compiler.planner.constants import REBUILD_STRATEGY_SHADOW
 from streambuild.compiler.planner.models import DeploymentPlan, RebuildSubtree
@@ -17,7 +17,7 @@ from streambuild.compiler.shared.models import (
 )
 from streambuild.integrations.clickhouse.client import ClickHouseClient
 from streambuild.integrations.clickhouse.models import ClickHouseQueryResult
-from tests.unit.src.streambuild.cli.shared._test_types import (
+from tests.unit.src.streambuild.cli.shared.main._test_types import (
     CliReplaySourceWarningTestCase,
 )
 

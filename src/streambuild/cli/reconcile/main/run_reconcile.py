@@ -6,9 +6,9 @@ import json
 from pathlib import Path
 from typing import cast
 
-from streambuild.cli.shared._helpers.project import resolve_default_database
-from streambuild.cli.shared._helpers.selection import resolve_selection
 from streambuild.cli.shared.constants import AFFIRMATIVE_RESPONSES
+from streambuild.cli.shared.main.project import resolve_default_database
+from streambuild.cli.shared.main.selection import resolve_selection
 from streambuild.cli.shared.models import SelectionResolution
 from streambuild.compiler.actual_state._helpers.load import load_actual_state
 from streambuild.compiler.actual_state.models import ActualState

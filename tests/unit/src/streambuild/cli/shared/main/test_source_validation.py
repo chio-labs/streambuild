@@ -3,15 +3,15 @@ from typing import cast
 
 import pytest
 
-from streambuild.cli.shared._helpers.source_validation import (
+from streambuild.cli.shared.exceptions import CliUserError
+from streambuild.cli.shared.main.source_validation import (
     validate_declared_external_sources,
 )
-from streambuild.cli.shared.exceptions import CliUserError
 from streambuild.integrations.clickhouse.client import ClickHouseClient
-from tests.unit.src.streambuild.cli.shared._test_types import (
+from tests.unit.src.streambuild.cli.shared.main._test_types import (
     CliExternalSourceValidationErrorTestCase,
 )
-from tests.unit.src.streambuild.cli.shared.helpers import (
+from tests.unit.src.streambuild.cli.shared.main.helpers import (
     build_compiled_external_source_pipeline,
 )
 

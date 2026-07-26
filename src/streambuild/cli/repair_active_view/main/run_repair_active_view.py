@@ -5,7 +5,7 @@ import sys
 
 from clickhouse_connect.driver.exceptions import DatabaseError, OperationalError
 
-from streambuild.cli.shared._helpers.errors import render_expected_clickhouse_error
+from streambuild.cli.shared.main.errors import render_expected_clickhouse_error
 from streambuild.executor.repair.main import execute_repair_active_view
 from streambuild.executor.repair.models import RepairActiveViewRequest, RepairActiveViewResult
 from streambuild.integrations.clickhouse.client import ClickHouseClient
