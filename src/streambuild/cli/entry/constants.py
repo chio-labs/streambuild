@@ -22,3 +22,7 @@ DISPLAY_NAME_BY_COMMAND: Mapping[CliCommand, str] = {
     CliCommand.AUDIT: "audit",
     CliCommand.REPAIR: "repair active-view",
 }
+
+UNKNOWN_DATABASE_ERROR_MARKER: str = "UNKNOWN_DATABASE"
+METADATA_TABLE_NAME_PREFIX: str = "streambuild_"
+AFFIRMATIVE_RESPONSES: frozenset[str] = frozenset({"y", "yes"})

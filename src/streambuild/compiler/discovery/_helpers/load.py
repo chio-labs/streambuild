@@ -17,7 +17,7 @@ from streambuild.compiler.discovery.constants import (
     QUALIFIED_NAME_SEPARATOR,
 )
 from streambuild.compiler.discovery.exceptions import PipelineDiscoveryError
-from streambuild.compiler.shared.models import LoadedPipeline
+from streambuild.compiler.discovery.models import LoadedPipeline
 from streambuild.spec.models import (
     ExternalTableSourceStep,
     KafkaLandingStep,

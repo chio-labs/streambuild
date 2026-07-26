@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from streambuild.cli.shared.main._cli_style import cli_style
+from streambuild.cli.presentation.main._cli_style import cli_style
 from streambuild.cli.test.constants import MAX_RENDERED_ROWS
 from streambuild.cli.test.models import PairedDiffSection
 from streambuild.executor.testing.models import SqlTestExecutionResult, SqlTestTargetExecutionResult

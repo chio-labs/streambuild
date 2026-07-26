@@ -9,11 +9,10 @@ from streambuild.clickhouse.inspect.main.inspect_root_deployment_state import (
 from streambuild.clickhouse.inspect.models import (
     InspectedManagedTableState,
 )
-from streambuild.compiler.compile.models import DesiredState
-from streambuild.compiler.shared.constants import (
+from streambuild.compiler.compile.constants import (
     TRANSFORM_TABLE_NAME_PREFIX,
 )
-from streambuild.compiler.shared.models import DesiredTable, ObjectKey
+from streambuild.compiler.compile.models import DesiredState, DesiredTable, ObjectKey
 from streambuild.executor.backfill._helpers.reporting import (
     _build_root_backfill_report,
 )

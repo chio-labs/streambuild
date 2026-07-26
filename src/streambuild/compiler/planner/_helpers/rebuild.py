@@ -2,7 +2,18 @@
 
 from __future__ import annotations
 
-from streambuild.compiler.compile.models import DesiredState
+from streambuild.compiler.compile.constants import (
+    DESIRED_OBJECT_TYPE_KAFKA_TABLE,
+    DESIRED_OBJECT_TYPE_MATERIALIZED_VIEW,
+    DESIRED_OBJECT_TYPE_TABLE,
+    RAW_TABLE_NAME_PREFIX,
+)
+from streambuild.compiler.compile.models import (
+    DesiredMaterializedView,
+    DesiredState,
+    DesiredTable,
+    ObjectKey,
+)
 from streambuild.compiler.planner._helpers.graph import (
     descendant_keys,
     nearest_upstream_replay_anchor_key,
@@ -22,13 +33,6 @@ from streambuild.compiler.planner.types import (
     RebuildExecutionMode,
     SchemaChangeBackfillMode,
 )
-from streambuild.compiler.shared.constants import (
-    DESIRED_OBJECT_TYPE_KAFKA_TABLE,
-    DESIRED_OBJECT_TYPE_MATERIALIZED_VIEW,
-    DESIRED_OBJECT_TYPE_TABLE,
-    RAW_TABLE_NAME_PREFIX,
-)
-from streambuild.compiler.shared.models import DesiredMaterializedView, DesiredTable, ObjectKey
 from streambuild.spec.models import SchemaChangeBackfillRule
 
 

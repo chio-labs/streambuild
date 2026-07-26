@@ -17,20 +17,20 @@ from streambuild.compiler.actual_state.models import (
     ActualState,
     ActualTable,
 )
-from streambuild.compiler.compile.models import DesiredState
+from streambuild.compiler.compile.constants import TRANSFORM_TABLE_NAME_PREFIX
+from streambuild.compiler.compile.models import (
+    DesiredKafkaTable,
+    DesiredMaterializedView,
+    DesiredState,
+    DesiredTable,
+    ObjectKey,
+)
 from streambuild.compiler.planner.constants import (
     PLANNED_CHANGE_TYPE_CREATE,
     PLANNED_CHANGE_TYPE_NO_OP,
 )
 from streambuild.compiler.planner.models import PlannedObjectChange, PlannedSqlDiff
 from streambuild.compiler.planner.types import PlannedChangeType
-from streambuild.compiler.shared.constants import TRANSFORM_TABLE_NAME_PREFIX
-from streambuild.compiler.shared.models import (
-    DesiredKafkaTable,
-    DesiredMaterializedView,
-    DesiredTable,
-    ObjectKey,
-)
 
 
 def build_planned_sql_diffs(

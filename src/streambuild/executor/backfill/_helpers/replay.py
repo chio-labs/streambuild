@@ -11,14 +11,7 @@ from streambuild.clickhouse.inspect.main.inspect_managed_table_state import (
     inspect_managed_table_state,
 )
 from streambuild.clickhouse.inspect.models import InspectedActiveTableBinding
-from streambuild.compiler.compile.models import DesiredState, ExternalSourceReplayConfig
-from streambuild.compiler.metadata_state.models import DeploymentWatermarkRecord
-from streambuild.compiler.planner.constants import (
-    REBUILD_EXECUTION_MODE_SEEDED_BOUNDED,
-    REBUILD_EXECUTION_MODE_UNSEEDED_BOUNDED,
-)
-from streambuild.compiler.planner.models import DeploymentPlan, RebuildSubtree
-from streambuild.compiler.shared.constants import (
+from streambuild.compiler.compile.constants import (
     DESIRED_OBJECT_TYPE_TABLE,
     REPLAY_CURSOR_COLUMN_NAME,
     REPLAY_LANDED_AT_COLUMN_NAME,
@@ -26,7 +19,19 @@ from streambuild.compiler.shared.constants import (
     REPLAY_PARTITION_COLUMN_NAME,
     REPLAY_TIMESTAMP_COLUMN_NAME,
 )
-from streambuild.compiler.shared.models import DesiredMaterializedView, DesiredTable, ObjectKey
+from streambuild.compiler.compile.models import (
+    DesiredMaterializedView,
+    DesiredState,
+    DesiredTable,
+    ExternalSourceReplayConfig,
+    ObjectKey,
+)
+from streambuild.compiler.metadata_state.models import DeploymentWatermarkRecord
+from streambuild.compiler.planner.constants import (
+    REBUILD_EXECUTION_MODE_SEEDED_BOUNDED,
+    REBUILD_EXECUTION_MODE_UNSEEDED_BOUNDED,
+)
+from streambuild.compiler.planner.models import DeploymentPlan, RebuildSubtree
 from streambuild.executor.backfill.exceptions import BackfillExecutionError
 from streambuild.executor.backfill.models import (
     ActiveOffsetFrontierQueryRow,

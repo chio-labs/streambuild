@@ -14,13 +14,8 @@ from streambuild.compiler.compile._helpers.sql_contract import (
     validate_partition_by_expression,
     validate_ttl_expression,
 )
-from streambuild.compiler.compile.constants import AGGREGATING_ENGINE_NAMES
-from streambuild.compiler.compile.exceptions import PipelineCompileError
-from streambuild.compiler.compile.main._extract_refs import extract_refs
-from streambuild.compiler.compile.main.replace_refs import replace_refs
-from streambuild.compiler.compile.main.transform_table_name import transform_table_name
-from streambuild.compiler.compile.models import CompiledTransformStep, ParsedRef
-from streambuild.compiler.shared.constants import (
+from streambuild.compiler.compile.constants import (
+    AGGREGATING_ENGINE_NAMES,
     DESIRED_OBJECT_TYPE_MATERIALIZED_VIEW,
     DESIRED_OBJECT_TYPE_TABLE,
     REPLAY_CURSOR_COLUMN_NAME,
@@ -29,12 +24,18 @@ from streambuild.compiler.shared.constants import (
     REPLAY_PARTITION_COLUMN_NAME,
     REPLAY_TIMESTAMP_COLUMN_NAME,
 )
-from streambuild.compiler.shared.models import (
+from streambuild.compiler.compile.exceptions import PipelineCompileError
+from streambuild.compiler.compile.main._extract_refs import extract_refs
+from streambuild.compiler.compile.main.replace_refs import replace_refs
+from streambuild.compiler.compile.main.transform_table_name import transform_table_name
+from streambuild.compiler.compile.models import (
     Column,
+    CompiledTransformStep,
     DesiredMaterializedView,
     DesiredTable,
     MaterializedViewSpec,
     ObjectKey,
+    ParsedRef,
     TableSpec,
     TableStorage,
 )

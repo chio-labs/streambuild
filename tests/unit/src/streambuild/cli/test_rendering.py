@@ -1,15 +1,24 @@
 import pytest
 
+from streambuild.cli.audit_backfill.main.render_ambiguous_deployment_message import (
+    render_ambiguous_deployment_message,
+)
 from streambuild.cli.audit_backfill.main.render_audit_backfill_result import (
     render_audit_backfill_result,
 )
 from streambuild.cli.backfill.main.render_backfill_result import render_backfill_result
+from streambuild.cli.plan.main.render_plan_result import render_plan_result
 from streambuild.cli.publish.main.render_publish_result import render_publish_result
-from streambuild.cli.shared.main.render_ambiguous_deployment_message import (
-    render_ambiguous_deployment_message,
+from streambuild.compiler.compile.models import (
+    Column,
+    DesiredMaterializedView,
+    DesiredState,
+    DesiredTable,
+    MaterializedViewSpec,
+    ObjectKey,
+    TableSpec,
+    TableStorage,
 )
-from streambuild.cli.shared.main.render_plan_result import render_plan_result
-from streambuild.compiler.compile.models import DesiredState
 from streambuild.compiler.desired_state.main.build_desired_state import build_desired_state
 from streambuild.compiler.planner.constants import (
     DEPLOYMENT_ACTION_PLAN_SHADOW_TABLE,
@@ -25,15 +34,6 @@ from streambuild.compiler.planner.models import (
     PlannedSqlDiff,
     PreparedShadowObject,
     RebuildSubtree,
-)
-from streambuild.compiler.shared.models import (
-    Column,
-    DesiredMaterializedView,
-    DesiredTable,
-    MaterializedViewSpec,
-    ObjectKey,
-    TableSpec,
-    TableStorage,
 )
 from streambuild.executor.audit_backfill.models import (
     AuditBackfillResult,

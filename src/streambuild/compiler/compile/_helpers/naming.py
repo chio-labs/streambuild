@@ -1,6 +1,6 @@
 """Compile-local physical naming rules."""
 
-from streambuild.compiler.shared.constants import (
+from streambuild.compiler.compile.constants import (
     KAFKA_TABLE_NAME_PREFIX,
     MATERIALIZED_VIEW_NAME_PREFIX,
     RAW_TABLE_NAME_PREFIX,

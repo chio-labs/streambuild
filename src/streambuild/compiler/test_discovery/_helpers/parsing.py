@@ -11,7 +11,6 @@ from sqlglot import exp, parse
 from sqlglot.errors import ParseError
 
 from streambuild.compiler.macros.main._expand_macro_calls import expand_project_sql_macros
-from streambuild.compiler.shared.models import LoadedSqlTest, SqlTestCte, SqlTestMock
 from streambuild.compiler.test_discovery.constants import (
     CEREMONIAL_SELECT_LITERAL,
     EXPECTED_CTE_PREFIX,
@@ -23,6 +22,7 @@ from streambuild.compiler.test_discovery.constants import (
     TEST_HEADER_PATTERN,
 )
 from streambuild.compiler.test_discovery.exceptions import SqlTestParseError
+from streambuild.compiler.test_discovery.models import LoadedSqlTest, SqlTestCte, SqlTestMock
 from streambuild.spec.types import SqlRelationType
 
 

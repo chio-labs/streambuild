@@ -6,11 +6,7 @@ from streambuild.clickhouse.metadata_state.main.build_metadata_state_insert_stat
     build_metadata_state_insert_statements,
 )
 from streambuild.clickhouse.metadata_state.models import RenderedClickHouseStatement
-from streambuild.compiler.compile.models import DesiredState, ExternalSourceReplayConfig
-from streambuild.compiler.metadata_state.main.build_metadata_state import build_metadata_state
-from streambuild.compiler.metadata_state.models import DeploymentWatermarkRecord, MetadataState
-from streambuild.compiler.planner.models import DeploymentPlan, RebuildSubtree
-from streambuild.compiler.shared.constants import (
+from streambuild.compiler.compile.constants import (
     DESIRED_OBJECT_TYPE_TABLE,
     RAW_TABLE_NAME_PREFIX,
     REPLAY_CURSOR_COLUMN_NAME,
@@ -19,10 +15,15 @@ from streambuild.compiler.shared.constants import (
     REPLAY_PARTITION_COLUMN_NAME,
     REPLAY_TIMESTAMP_COLUMN_NAME,
 )
-from streambuild.compiler.shared.models import (
+from streambuild.compiler.compile.models import (
+    DesiredState,
     DesiredTable,
+    ExternalSourceReplayConfig,
     ObjectKey,
 )
+from streambuild.compiler.metadata_state.main.build_metadata_state import build_metadata_state
+from streambuild.compiler.metadata_state.models import DeploymentWatermarkRecord, MetadataState
+from streambuild.compiler.planner.models import DeploymentPlan, RebuildSubtree
 from streambuild.executor.backfill.exceptions import BackfillExecutionError
 from streambuild.executor.backfill.models import OffsetWatermarkQueryRow
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient

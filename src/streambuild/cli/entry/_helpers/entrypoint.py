@@ -4,11 +4,11 @@ import os
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
+from streambuild.cli.entry.exceptions import CliUserError
 from streambuild.cli.entry.models import (
     ResolvedClickHouseConnection,
     ResolvedCliProjectConfig,
 )
-from streambuild.cli.shared.exceptions import CliUserError
 from streambuild.compiler.discovery.main.load_project_for_path import load_project_for_path
 from streambuild.spec.models import Project
 

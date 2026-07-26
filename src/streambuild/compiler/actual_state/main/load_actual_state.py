@@ -26,16 +26,15 @@ from streambuild.compiler.actual_state.models import (
     ActualState,
     ActualTable,
 )
-from streambuild.compiler.compile.models import DesiredState
-from streambuild.compiler.metadata_state.models import ObjectStateRecord
-from streambuild.compiler.shared.constants import (
+from streambuild.compiler.compile.constants import (
     MATERIALIZED_VIEW_NAME_PREFIX,
     RAW_TABLE_NAME_PREFIX,
     TRANSFORM_TABLE_NAME_PREFIX,
 )
-from streambuild.compiler.shared.models import (
+from streambuild.compiler.compile.models import (
     DesiredKafkaTable,
     DesiredMaterializedView,
+    DesiredState,
     DesiredTable,
     KafkaTableSpec,
     MaterializedViewSpec,
@@ -43,6 +42,7 @@ from streambuild.compiler.shared.models import (
     TableSpec,
     TableStorage,
 )
+from streambuild.compiler.metadata_state.models import ObjectStateRecord
 from streambuild.executor.reconcile.constants import RECONCILE_DEPLOYMENT_ID_PREFIX
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 

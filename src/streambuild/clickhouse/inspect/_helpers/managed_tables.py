@@ -9,11 +9,11 @@ from streambuild.clickhouse.inspect.models import (
     InspectedPhysicalTableCandidate,
     PhysicalCandidateSystemRow,
 )
-from streambuild.compiler.shared.constants import (
+from streambuild.compiler.compile.constants import (
     RAW_TABLE_NAME_PREFIX,
     TRANSFORM_TABLE_NAME_PREFIX,
 )
-from streambuild.compiler.shared.main.logical_name_from_physical_name import (
+from streambuild.compiler.planner.main.logical_name_from_physical_name import (
     logical_name_from_physical_name,
 )
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient

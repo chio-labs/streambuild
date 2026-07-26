@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
+from streambuild.compiler.audit_discovery.models import LoadedSqlAudit
 from streambuild.compiler.compile.main.replace_refs import replace_refs
-from streambuild.compiler.shared.models import LoadedSqlAudit
 from streambuild.executor.auditing.constants import AUDIT_SAMPLE_LIMIT
 from streambuild.executor.auditing.exceptions import AuditExecutionError
 from streambuild.executor.auditing.models import SqlAuditResult, SqlAuditRunResult

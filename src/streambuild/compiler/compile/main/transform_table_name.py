@@ -1,6 +1,6 @@
 """Derive the physical transform table name for a logical model."""
 
-from streambuild.compiler.shared.constants import (
+from streambuild.compiler.compile.constants import (
     TRANSFORM_TABLE_NAME_PREFIX,
 )
 

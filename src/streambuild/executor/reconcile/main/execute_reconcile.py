@@ -9,10 +9,14 @@ from streambuild.compiler.actual_state.models import (
     ActualState,
     ActualTable,
 )
-from streambuild.compiler.compile.models import DesiredState
+from streambuild.compiler.compile.constants import TRANSFORM_TABLE_NAME_PREFIX
+from streambuild.compiler.compile.models import (
+    DesiredMaterializedView,
+    DesiredState,
+    DesiredTable,
+    ObjectKey,
+)
 from streambuild.compiler.metadata_state.models import ObjectStateRecord
-from streambuild.compiler.shared.constants import TRANSFORM_TABLE_NAME_PREFIX
-from streambuild.compiler.shared.models import DesiredMaterializedView, DesiredTable, ObjectKey
 from streambuild.executor.reconcile._helpers.persist import (
     apply_reconcile,
     build_object_state_record,

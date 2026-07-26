@@ -1,6 +1,6 @@
 """Render the SETTINGS clause for Kafka engine tables."""
 
-from streambuild.compiler.shared.models import DesiredKafkaTable
+from streambuild.compiler.compile.models import DesiredKafkaTable
 
 
 def render_kafka_settings(*, table: DesiredKafkaTable, database: str) -> str:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from streambuild.compiler.shared.models import (
+from streambuild.compiler.compile.models import (
     Column,
     KafkaSettings,
     KafkaTableSpec,

@@ -4,9 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from streambuild.compiler.compile.models import DesiredState
+from streambuild.compiler.compile.models import DesiredState, ObjectKey
 from streambuild.compiler.planner.models import DeploymentPlan
-from streambuild.compiler.shared.models import ObjectKey
 from streambuild.spec.types import ReplayLineageMode
 
 

@@ -1,1 +1,0 @@
-"""Shared CLI entry surface."""

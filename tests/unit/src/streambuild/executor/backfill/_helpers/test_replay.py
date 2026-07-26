@@ -2,12 +2,12 @@ from textwrap import dedent
 
 import pytest
 
-from streambuild.compiler.metadata_state.models import DeploymentWatermarkRecord
-from streambuild.compiler.shared.models import (
+from streambuild.compiler.compile.models import (
     DesiredMaterializedView,
     MaterializedViewSpec,
     ObjectKey,
 )
+from streambuild.compiler.metadata_state.models import DeploymentWatermarkRecord
 from streambuild.executor.backfill._helpers.replay import _render_offset_replay_statement
 from streambuild.executor.backfill.models import ActiveOffsetFrontierQueryRow
 from tests.unit.src.streambuild.executor.backfill._helpers._test_types import (

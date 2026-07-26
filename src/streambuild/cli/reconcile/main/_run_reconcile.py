@@ -5,20 +5,20 @@ from __future__ import annotations
 from pathlib import Path
 from typing import cast
 
+from streambuild.cli.entry.main._resolve_default_database import resolve_default_database
 from streambuild.cli.reconcile._helpers.rendering import (
     confirm_reconcile,
     render_reconcile_preview,
     render_reconcile_result,
 )
-from streambuild.cli.shared.main._resolve_default_database import resolve_default_database
-from streambuild.cli.shared.main._selection import resolve_selection
-from streambuild.cli.shared.models import SelectionResolution
+from streambuild.cli.selection.main._selection import resolve_selection
+from streambuild.cli.selection.models import SelectionResolution
 from streambuild.compiler.actual_state.main.load_actual_state import load_actual_state
 from streambuild.compiler.actual_state.models import ActualState
 from streambuild.compiler.compile.main.compile_pipeline import compile_pipeline
 from streambuild.compiler.compile.models import CompiledPipeline, DesiredState
 from streambuild.compiler.discovery.main.discover_pipelines import discover_pipelines
-from streambuild.compiler.shared.models import LoadedPipeline
+from streambuild.compiler.discovery.models import LoadedPipeline
 from streambuild.executor.reconcile.main.execute_reconcile import execute_reconcile
 from streambuild.executor.reconcile.models import (
     ReconcilePreview,

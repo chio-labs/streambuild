@@ -9,11 +9,7 @@ from streambuild.compiler.actual_state.models import (
     TableNameSystemRow,
     TableStorageSystemRow,
 )
-from streambuild.compiler.shared.models import (
-    Column,
-    TableSpec,
-    TableStorage,
-)
+from streambuild.compiler.compile.models import Column, TableSpec, TableStorage
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 from streambuild.integrations.clickhouse.constants import (
     BLANK_VALUES,

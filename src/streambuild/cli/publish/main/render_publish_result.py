@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from streambuild.cli.shared.main._cli_style import cli_style
+from streambuild.cli.presentation.main._cli_style import cli_style
 from streambuild.executor.publish.models import PublishedView, PublishResult
 
 

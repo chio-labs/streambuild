@@ -6,12 +6,10 @@ from streambuild.compiler.compile.models import (
     CompiledExternalSource,
     CompiledManagedSource,
     CompiledPipeline,
-    ExternalSourceReplayConfig,
-)
-from streambuild.compiler.shared.models import (
     DesiredKafkaTable,
     DesiredMaterializedView,
     DesiredTable,
+    ExternalSourceReplayConfig,
     ObjectKey,
 )
 

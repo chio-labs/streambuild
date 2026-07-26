@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from streambuild.cli.shared.main._cli_style import cli_style
+from streambuild.cli.presentation.main._cli_style import cli_style
 from streambuild.executor.auditing.models import SqlAuditResult, SqlAuditRunResult
 from streambuild.executor.auditing.types import AuditSeverity
 

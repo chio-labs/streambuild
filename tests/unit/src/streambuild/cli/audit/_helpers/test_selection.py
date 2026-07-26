@@ -3,14 +3,14 @@ from pathlib import Path
 import pytest
 
 from streambuild.cli.audit._helpers.selection import select_loaded_sql_audits
-from streambuild.cli.shared.exceptions import CliUserError
+from streambuild.cli.entry.exceptions import CliUserError
+from streambuild.compiler.audit_discovery.models import LoadedSqlAudit
 from streambuild.compiler.compile.models import CompiledPipeline
-from streambuild.compiler.shared.models import LoadedSqlAudit
 from tests.unit.src.streambuild.cli.audit._helpers._test_types import (
     CliAuditSelectionErrorTestCase,
     CliAuditSelectionTestCase,
 )
-from tests.unit.src.streambuild.cli.shared.main.helpers import (
+from tests.unit.src.streambuild.cli.selection.main.helpers import (
     compile_selector_project_pipelines,
 )
 

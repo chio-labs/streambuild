@@ -1,8 +1,8 @@
 import pytest
 
+from streambuild.compiler.compile.models import ObjectKey
 from streambuild.compiler.planner.constants import REBUILD_STRATEGY_SHADOW
 from streambuild.compiler.planner.models import DeploymentPlan, RebuildSubtree
-from streambuild.compiler.shared.models import ObjectKey
 from streambuild.executor.backfill._helpers.reporting import (
     filter_root_backfill_reports_for_deployment,
 )

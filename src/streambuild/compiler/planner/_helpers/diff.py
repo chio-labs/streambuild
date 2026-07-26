@@ -5,7 +5,13 @@ from __future__ import annotations
 from sqlglot import exp, parse_one
 
 from streambuild.compiler.actual_state.models import ActualState, ActualTable
-from streambuild.compiler.compile.models import DesiredState
+from streambuild.compiler.compile.models import (
+    Column,
+    DesiredState,
+    DesiredTable,
+    ObjectKey,
+    TableSpec,
+)
 from streambuild.compiler.planner.constants import (
     ADD_ONLY_COLUMN_DIFFERENCE,
     PLANNED_CHANGE_TYPE_CREATE,
@@ -26,7 +32,6 @@ from streambuild.compiler.planner.types import (
     TableSchemaChangeKind,
     TableSchemaSeedCompatibility,
 )
-from streambuild.compiler.shared.models import Column, DesiredTable, ObjectKey, TableSpec
 
 
 def classify_object_changes(

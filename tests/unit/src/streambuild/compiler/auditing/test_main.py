@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from streambuild.compiler.shared.models import LoadedSqlAudit
+from streambuild.compiler.audit_discovery.models import LoadedSqlAudit
 from tests.unit.src.streambuild.compiler.auditing._test_types import (
     ValidateSqlAuditsErrorTestCase,
     ValidateSqlAuditsTestCase,

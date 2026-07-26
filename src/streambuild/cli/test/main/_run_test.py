@@ -9,8 +9,9 @@ from streambuild.cli.test._helpers.selection import select_loaded_sql_tests
 from streambuild.compiler.compile.main.compile_pipeline import compile_pipeline
 from streambuild.compiler.compile.models import CompiledPipeline
 from streambuild.compiler.discovery.main.discover_pipelines import discover_pipelines
-from streambuild.compiler.shared.models import LoadedPipeline, LoadedSqlTest
+from streambuild.compiler.discovery.models import LoadedPipeline
 from streambuild.compiler.test_discovery.main.discover_sql_tests import discover_sql_tests
+from streambuild.compiler.test_discovery.models import LoadedSqlTest
 from streambuild.compiler.testing.main.build_sql_test_cases import build_sql_test_cases
 from streambuild.compiler.testing.models import SqlTestCase
 from streambuild.executor.testing.main.execute_sql_tests import execute_sql_tests

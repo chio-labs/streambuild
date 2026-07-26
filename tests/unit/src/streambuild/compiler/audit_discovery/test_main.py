@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from streambuild.compiler.audit_discovery.main.discover_sql_audits import discover_sql_audits
-from streambuild.compiler.shared.models import LoadedSqlAudit
+from streambuild.compiler.audit_discovery.models import LoadedSqlAudit
 from tests.unit.src.streambuild.compiler.audit_discovery._test_types import (
     DiscoverGenericSqlAuditsTestCase,
     DiscoverSqlAuditsErrorTestCase,

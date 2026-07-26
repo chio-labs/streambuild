@@ -6,9 +6,9 @@ from clickhouse_connect.driver.exceptions import DatabaseError, OperationalError
 
 from streambuild.clickhouse.metadata_state.constants import METADATA_OBJECT_STATE_TABLE_NAME
 from streambuild.compiler.actual_state.models import ObjectStateMetadataRow
+from streambuild.compiler.compile.models import ObjectKey
+from streambuild.compiler.compile.types import DesiredObjectType
 from streambuild.compiler.metadata_state.models import ObjectStateRecord
-from streambuild.compiler.shared.models import ObjectKey
-from streambuild.compiler.shared.types import DesiredObjectType
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 from streambuild.integrations.clickhouse.constants import UNKNOWN_TABLE_ERROR_CODE
 

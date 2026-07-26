@@ -5,13 +5,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from streambuild.compiler.shared.models import (
-    DesiredKafkaTable,
-    DesiredMaterializedView,
-    DesiredTable,
-    ObjectKey,
+from streambuild.compiler.compile.types import DesiredObjectType
+from streambuild.spec.models import (
+    ExternalTableSourceStep,
+    Pipeline,
+    Project,
+    SchemaChangeBackfillPolicy,
+    TransformStep,
 )
-from streambuild.spec.models import ExternalTableSourceStep, Pipeline, Project, TransformStep
 from streambuild.spec.types import (
     BoundedReplayFallback,
     RefType,
@@ -20,6 +21,161 @@ from streambuild.spec.types import (
     SourceKind,
     SqlRelationType,
 )
+
+
+@dataclass(frozen=True)
+class ObjectKey:
+    """Stable identity for a comparable deployed object."""
+
+    database: str | None
+    object_type: DesiredObjectType | str
+    name: str
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "object_type", DesiredObjectType(self.object_type))
+
+
+@dataclass(frozen=True)
+class Column:
+    """A normalized comparable column definition."""
+
+    name: str
+    type: str
+    default: str | None = None
+
+
+@dataclass(frozen=True)
+class KafkaSettings:
+    """Normalized comparable Kafka engine settings."""
+
+    broker_list: str
+    topic: str
+    consumer_group: str
+    format: str
+    settings: dict[str, str] | None = None
+
+
+@dataclass(frozen=True)
+class KafkaTableSpec:
+    """Comparable Kafka table specification."""
+
+    columns: tuple[Column, ...]
+    kafka: KafkaSettings
+
+
+@dataclass(frozen=True)
+class TableStorage:
+    """Comparable managed-table storage definition."""
+
+    engine: str
+    order_by: tuple[str, ...]
+    partition_by: str | None = None
+    ttl: str | None = None
+    settings: dict[str, str] | None = None
+
+
+@dataclass(frozen=True)
+class TableSpec:
+    """Comparable managed-table specification."""
+
+    columns: tuple[Column, ...]
+    storage: TableStorage
+
+
+@dataclass(frozen=True)
+class MaterializedViewSpec:
+    """Comparable materialized-view specification."""
+
+    source_table_name: str
+    target_table_name: str
+    query: str
+
+
+@dataclass(frozen=True)
+class DesiredKafkaTable:
+    """A desired Kafka engine table for a landing step."""
+
+    key: ObjectKey
+    deps: tuple[ObjectKey, ...]
+    spec: KafkaTableSpec
+
+    @property
+    def name(self) -> str:
+        return self.key.name
+
+    @property
+    def columns(self) -> tuple[Column, ...]:
+        return self.spec.columns
+
+    @property
+    def kafka(self) -> KafkaSettings:
+        return self.spec.kafka
+
+
+@dataclass(frozen=True)
+class DesiredTable:
+    """A desired managed ClickHouse table."""
+
+    key: ObjectKey
+    deps: tuple[ObjectKey, ...]
+    spec: TableSpec
+    schema_change_backfill: SchemaChangeBackfillPolicy | None = None
+    bounded_replay_fallback: BoundedReplayFallback = BoundedReplayFallback(
+        BoundedReplayFallback.FULL_REFRESH
+    )
+
+    @property
+    def name(self) -> str:
+        return self.key.name
+
+    @property
+    def columns(self) -> tuple[Column, ...]:
+        return self.spec.columns
+
+    @property
+    def engine(self) -> str:
+        return self.spec.storage.engine
+
+    @property
+    def order_by(self) -> tuple[str, ...]:
+        return self.spec.storage.order_by
+
+    @property
+    def partition_by(self) -> str | None:
+        return self.spec.storage.partition_by
+
+    @property
+    def ttl(self) -> str | None:
+        return self.spec.storage.ttl
+
+    @property
+    def settings(self) -> dict[str, str] | None:
+        return self.spec.storage.settings
+
+
+@dataclass(frozen=True)
+class DesiredMaterializedView:
+    """A desired materialized view between a source and target relation."""
+
+    key: ObjectKey
+    deps: tuple[ObjectKey, ...]
+    spec: MaterializedViewSpec
+
+    @property
+    def name(self) -> str:
+        return self.key.name
+
+    @property
+    def source_table_name(self) -> str:
+        return self.spec.source_table_name
+
+    @property
+    def target_table_name(self) -> str:
+        return self.spec.target_table_name
+
+    @property
+    def query(self) -> str:
+        return self.spec.query
 
 
 @dataclass(frozen=True)

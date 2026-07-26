@@ -1,10 +1,9 @@
 """Primary planner entrypoints."""
 
 from streambuild.compiler.actual_state.models import ActualState
-from streambuild.compiler.compile.models import DesiredState
+from streambuild.compiler.compile.models import DesiredState, ObjectKey
 from streambuild.compiler.planner._helpers.deployment import build_deployment_plan
 from streambuild.compiler.planner.models import DeploymentPlan
-from streambuild.compiler.shared.models import ObjectKey
 
 
 def plan_deployment(

@@ -5,11 +5,13 @@ from streambuild.clickhouse.inspect.models import (
     RootDeploymentInspection,
 )
 from streambuild.clickhouse.inspect.types import RootDeploymentStateKind
-from streambuild.compiler.shared.main.deployment_id_from_physical_name import (
+from streambuild.compiler.compile.models import ObjectKey
+from streambuild.compiler.planner.main.deployment_id_from_physical_name import (
     deployment_id_from_physical_name,
 )
-from streambuild.compiler.shared.main.is_deployment_physical_name import is_deployment_physical_name
-from streambuild.compiler.shared.models import ObjectKey
+from streambuild.compiler.planner.main.is_deployment_physical_name import (
+    is_deployment_physical_name,
+)
 
 
 def inspect_root_deployment_state(

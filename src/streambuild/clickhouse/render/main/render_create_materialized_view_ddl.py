@@ -2,7 +2,7 @@
 
 from sqlglot import exp, parse_one
 
-from streambuild.compiler.shared.models import DesiredMaterializedView, MaterializedViewSpec
+from streambuild.compiler.compile.models import DesiredMaterializedView, MaterializedViewSpec
 
 
 def render_create_materialized_view_ddl(

@@ -1,7 +1,7 @@
 """Render CREATE TABLE DDL from desired-state models."""
 
 from streambuild.clickhouse.render._helpers.column_definitions import render_column_definition
-from streambuild.compiler.shared.models import DesiredTable, TableStorage
+from streambuild.compiler.compile.models import DesiredTable, TableStorage
 
 
 def render_create_table_ddl(*, table: DesiredTable, database: str) -> str:

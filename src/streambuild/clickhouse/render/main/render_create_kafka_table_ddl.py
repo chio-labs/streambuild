@@ -2,7 +2,7 @@
 
 from streambuild.clickhouse.render._helpers.column_definitions import render_column_definition
 from streambuild.clickhouse.render._helpers.kafka_settings import render_kafka_settings
-from streambuild.compiler.shared.models import DesiredKafkaTable, KafkaTableSpec
+from streambuild.compiler.compile.models import DesiredKafkaTable, KafkaTableSpec
 
 
 def render_create_kafka_table_ddl(

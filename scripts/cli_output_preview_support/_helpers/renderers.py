@@ -16,15 +16,15 @@ from scripts.cli_output_preview_support._helpers.result_fixtures import (
     build_publish_preview,
 )
 from scripts.cli_output_preview_support.models import PreviewRequest
+from streambuild.cli.audit_backfill.main.render_ambiguous_deployment_message import (
+    render_ambiguous_deployment_message,
+)
 from streambuild.cli.audit_backfill.main.render_audit_backfill_result import (
     render_audit_backfill_result,
 )
 from streambuild.cli.backfill.main.render_backfill_result import render_backfill_result
+from streambuild.cli.plan.main.render_plan_result import render_plan_result
 from streambuild.cli.publish.main.render_publish_result import render_publish_result
-from streambuild.cli.shared.main.render_ambiguous_deployment_message import (
-    render_ambiguous_deployment_message,
-)
-from streambuild.cli.shared.main.render_plan_result import render_plan_result
 
 
 def render_plan_preview(request: PreviewRequest) -> str:

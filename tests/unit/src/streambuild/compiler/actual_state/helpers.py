@@ -3,12 +3,12 @@ from streambuild.compiler.actual_state.models import (
     ActualMaterializedView,
     ActualTable,
 )
-from streambuild.compiler.shared.constants import (
+from streambuild.compiler.compile.constants import (
     DESIRED_OBJECT_TYPE_KAFKA_TABLE,
     DESIRED_OBJECT_TYPE_MATERIALIZED_VIEW,
     DESIRED_OBJECT_TYPE_TABLE,
 )
-from streambuild.compiler.shared.models import (
+from streambuild.compiler.compile.models import (
     Column,
     KafkaSettings,
     KafkaTableSpec,

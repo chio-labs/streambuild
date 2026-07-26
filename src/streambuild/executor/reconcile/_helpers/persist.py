@@ -14,8 +14,8 @@ from streambuild.clickhouse.metadata_state.models import RenderedClickHouseState
 from streambuild.compiler.actual_state.main.build_normalized_fingerprint import (
     build_normalized_fingerprint,
 )
+from streambuild.compiler.compile.models import DesiredMaterializedView, DesiredTable
 from streambuild.compiler.metadata_state.models import ObjectStateRecord
-from streambuild.compiler.shared.models import DesiredMaterializedView, DesiredTable
 from streambuild.executor.reconcile.models import ReconcilePreview, ReconcileResult
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 

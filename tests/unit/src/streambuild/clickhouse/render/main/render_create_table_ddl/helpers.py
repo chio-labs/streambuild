@@ -1,4 +1,4 @@
-from streambuild.compiler.shared.models import (
+from streambuild.compiler.compile.models import (
     Column,
     DesiredTable,
     ObjectKey,

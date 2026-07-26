@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-from streambuild.compiler.compile.models import DesiredState
+from streambuild.compiler.compile.models import DesiredState, ObjectKey
 from streambuild.compiler.planner.types import DesiredObject
-from streambuild.compiler.shared.models import (
-    ObjectKey,
-)
 
 
 def build_reverse_deps(desired_state: DesiredState) -> dict[ObjectKey, tuple[ObjectKey, ...]]:

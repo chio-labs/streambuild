@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from streambuild.compiler.discovery._helpers.load import load_pipeline_file
-from streambuild.compiler.shared.models import LoadedPipeline
+from streambuild.compiler.discovery.models import LoadedPipeline
 from streambuild.spec.models import (
     ExternalTableSourceStep,
     SchemaChangeBackfillPolicy,

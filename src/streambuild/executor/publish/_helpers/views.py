@@ -5,14 +5,14 @@ from streambuild.clickhouse.inspect.main.inspect_managed_table_state import (
 )
 from streambuild.clickhouse.inspect.models import InspectedManagedTableState
 from streambuild.clickhouse.render.main.render_create_view_ddl import render_create_view_ddl
-from streambuild.compiler.shared.constants import (
+from streambuild.compiler.compile.constants import (
     DESIRED_OBJECT_TYPE_TABLE,
     TRANSFORM_TABLE_NAME_PREFIX,
 )
-from streambuild.compiler.shared.main.build_deployment_physical_name import (
+from streambuild.compiler.compile.models import ObjectKey
+from streambuild.compiler.planner.main.build_deployment_physical_name import (
     build_deployment_physical_name,
 )
-from streambuild.compiler.shared.models import ObjectKey
 from streambuild.executor.publish.exceptions import PublishExecutionError
 from streambuild.executor.publish.models import PublishedView
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient

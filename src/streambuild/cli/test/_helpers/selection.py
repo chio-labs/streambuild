@@ -5,15 +5,15 @@ from __future__ import annotations
 from collections import defaultdict
 from pathlib import Path
 
-from streambuild.cli.shared.constants import (
+from streambuild.cli.entry.exceptions import CliUserError
+from streambuild.cli.selection.constants import (
     PIPELINE_SELECTOR_NAMESPACE,
     SELECTOR_NAMESPACE_SEPARATOR,
     UPSTREAM_SELECTOR_PREFIX,
 )
-from streambuild.cli.shared.exceptions import CliUserError
+from streambuild.compiler.compile.main.compiled_transforms import compiled_transforms
 from streambuild.compiler.compile.models import CompiledPipeline, CompiledTransformStep, ParsedRef
-from streambuild.compiler.shared.main.compiled_transforms import compiled_transforms
-from streambuild.compiler.shared.models import LoadedSqlTest
+from streambuild.compiler.test_discovery.models import LoadedSqlTest
 
 
 def select_loaded_sql_tests(

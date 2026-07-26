@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+from streambuild.compiler.audit_discovery.models import LoadedSqlAudit
 from streambuild.compiler.auditing.exceptions import AuditCompileError
+from streambuild.compiler.compile.main.compiled_transforms import compiled_transforms
 from streambuild.compiler.compile.models import CompiledPipeline
-from streambuild.compiler.shared.main.compiled_transforms import compiled_transforms
-from streambuild.compiler.shared.models import LoadedSqlAudit
 
 
 def validated_sql_audits(

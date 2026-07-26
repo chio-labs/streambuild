@@ -8,7 +8,7 @@ from streambuild.compiler.discovery._helpers.load import (
     load_pipeline_file,
     validate_unique_logical_names,
 )
-from streambuild.compiler.shared.models import LoadedPipeline
+from streambuild.compiler.discovery.models import LoadedPipeline
 
 
 def discover_pipelines(root: Path) -> list[LoadedPipeline]:
