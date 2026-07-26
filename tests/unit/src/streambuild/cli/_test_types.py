@@ -10,6 +10,16 @@ class CliMainTestCase:
 
 
 @dataclass(frozen=True)
+class CliMainJsonTestCase:
+    description: str
+    argv: tuple[str, ...]
+    expected_exit_code: int
+    expected_output_fragments: tuple[str, ...]
+    handler_name: str | None = None
+    handler_output: str = ""
+
+
+@dataclass(frozen=True)
 class CliMainErrorTestCase:
     description: str
     argv: tuple[str, ...]

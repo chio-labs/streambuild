@@ -1,6 +1,7 @@
 import json
 import subprocess
 import time
+from collections.abc import Callable
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -46,8 +47,9 @@ REPO_ROOT: Path = Path(__file__).resolve().parents[5]
 
 
 def require_managed_source(compiled_pipeline: CompiledPipeline) -> CompiledManagedSource:
-    if not isinstance(compiled_pipeline.source, CompiledManagedSource):
-        raise RuntimeError("Expected compiled pipeline to use a managed Kafka source")
+    assert isinstance(compiled_pipeline.source, CompiledManagedSource), (
+        "Expected compiled pipeline to use a managed Kafka source"
+    )
     return compiled_pipeline.source
 
 
@@ -66,8 +68,7 @@ def build_greenfield_workflow_compiled_pipeline(
 
 def build_authored_greenfield_workflow_compiled_pipeline(*, project_dir: Path) -> CompiledPipeline:
     loaded_pipelines: list[LoadedPipeline] = discover_pipelines(project_dir / "pipelines")
-    if len(loaded_pipelines) != 1:
-        raise ValueError("Expected exactly one authored e2e pipeline fixture")
+    assert not (len(loaded_pipelines) != 1), "Expected exactly one authored e2e pipeline fixture"
     return compile_pipeline(loaded_pipelines[0])
 
 
@@ -326,11 +327,10 @@ def _run_streambuild_cli(*, command: tuple[str, ...]) -> None:
         text=True,
         check=False,
     )
-    if result.returncode != 0:
-        raise AssertionError(
-            f"stb {' '.join(command)} failed with code {result.returncode}. "
-            f"stdout={result.stdout!r} stderr={result.stderr!r}"
-        )
+    assert not (result.returncode != 0), (
+        f"stb {' '.join(command)} failed with code {result.returncode}. "
+        f"stdout={result.stdout!r} stderr={result.stderr!r}"
+    )
 
 
 def _run_streambuild_cli_json(*, command: tuple[str, ...]) -> dict[str, object]:
@@ -341,11 +341,10 @@ def _run_streambuild_cli_json(*, command: tuple[str, ...]) -> dict[str, object]:
         text=True,
         check=False,
     )
-    if result.returncode != 0:
-        raise AssertionError(
-            f"stb {' '.join(command)} failed with code {result.returncode}. "
-            f"stdout={result.stdout!r} stderr={result.stderr!r}"
-        )
+    assert not (result.returncode != 0), (
+        f"stb {' '.join(command)} failed with code {result.returncode}. "
+        f"stdout={result.stdout!r} stderr={result.stderr!r}"
+    )
     return json.loads(result.stdout)
 
 
@@ -401,21 +400,19 @@ def build_offset_workflow_compiled_pipeline(
     )
 
 
+SCHEMA_CHANGE_PIPELINE_BUILDERS: dict[str, Callable[[], CompiledPipeline]] = {
+    "base": lambda: build_scalar_replay_compiled_pipeline(ReplayLineageMode.TIMESTAMP),
+    "add_column": lambda: build_changed_schema_variant_compiled_pipeline("add_column"),
+    "remove_column": lambda: build_changed_schema_variant_compiled_pipeline("remove_column"),
+    "type_change": lambda: _build_non_boundary_type_change_compiled_pipeline(),
+}
+
+
 def build_schema_change_workflow_compiled_pipeline(
     *, kafka_broker_list: str, pipeline_kind: str, topic_suffix: str | None = None
 ) -> CompiledPipeline:
-    if pipeline_kind == "base":
-        compiled_pipeline: CompiledPipeline = build_scalar_replay_compiled_pipeline(
-            ReplayLineageMode.TIMESTAMP
-        )
-    elif pipeline_kind == "add_column":
-        compiled_pipeline = build_changed_schema_variant_compiled_pipeline("add_column")
-    elif pipeline_kind == "remove_column":
-        compiled_pipeline = build_changed_schema_variant_compiled_pipeline("remove_column")
-    elif pipeline_kind == "type_change":
-        compiled_pipeline = _build_non_boundary_type_change_compiled_pipeline()
-    else:
-        raise ValueError(pipeline_kind)
+    builder: Callable[[], CompiledPipeline] = SCHEMA_CHANGE_PIPELINE_BUILDERS[pipeline_kind]
+    compiled_pipeline: CompiledPipeline = builder()
     return _with_kafka_broker_list_and_topic(
         compiled_pipeline=compiled_pipeline,
         kafka_broker_list=kafka_broker_list,
