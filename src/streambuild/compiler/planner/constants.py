@@ -64,3 +64,6 @@ DEPLOYMENT_ACTION_AUDIT_SUBTREE: Final[DeploymentAction] = DeploymentAction(
 DEPLOYMENT_ACTION_PUBLISH_SUBTREE: Final[DeploymentAction] = DeploymentAction(
     DeploymentAction.PUBLISH_SUBTREE
 )
+
+ADD_ONLY_COLUMN_DIFFERENCE: str = "add_only"
+TYPE_CHANGE_COLUMN_DIFFERENCE: str = "type_change"

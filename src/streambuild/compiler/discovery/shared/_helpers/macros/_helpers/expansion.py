@@ -11,9 +11,14 @@ from streambuild.compiler.discovery.shared._helpers.macros._helpers.registry imp
 )
 from streambuild.compiler.discovery.shared._helpers.macros.constants import (
     BACKTICK,
+    BLOCK_COMMENT_END,
     DOUBLE_QUOTE,
+    MACRO_SIGIL,
+    NEWLINE,
+    OPEN_PAREN,
     PYTHON_LITERAL_NAMES,
     SINGLE_QUOTE,
+    UNDERSCORE,
     UNEXPANDED_MACRO_PATTERN,
 )
 from streambuild.compiler.discovery.shared._helpers.macros.exceptions import MacroError
@@ -35,7 +40,7 @@ def expand_sql_body_macros(
 ) -> str:
     """Expand authored Python macros in a SQL body string."""
 
-    if not loaded_macros or "@" not in sql:
+    if not loaded_macros or MACRO_SIGIL not in sql:
         return sql
     rendered_sql_parts: list[str] = []
     cursor: int = 0
@@ -278,7 +283,7 @@ def _is_macro_call_start(*, sql: str, at_index: int) -> bool:
     while cursor < len(sql) and _is_identifier_continue(sql[cursor]):
         cursor += 1
     cursor = _skip_whitespace(sql=sql, start_index=cursor)
-    return cursor < len(sql) and sql[cursor] == "("
+    return cursor < len(sql) and sql[cursor] == OPEN_PAREN
 
 
 def _parse_macro_name(*, sql: str, call_start_index: int) -> str:
@@ -289,7 +294,7 @@ def _parse_macro_name(*, sql: str, call_start_index: int) -> str:
 
 
 def _find_matching_paren(*, sql: str, opening_paren_index: int) -> int:
-    if opening_paren_index >= len(sql) or sql[opening_paren_index] != "(":
+    if opening_paren_index >= len(sql) or sql[opening_paren_index] != OPEN_PAREN:
         raise MacroError("expected opening parenthesis")
     depth: int = 1
     index: int = opening_paren_index + 1
@@ -330,8 +335,8 @@ def _skip_whitespace(*, sql: str, start_index: int) -> int:
 def _skip_single_quoted_string(*, sql: str, start_index: int) -> int:
     index: int = start_index + 1
     while index < len(sql):
-        if sql[index] == "'":
-            if index + 1 < len(sql) and sql[index + 1] == "'":
+        if sql[index] == SINGLE_QUOTE:
+            if index + 1 < len(sql) and sql[index + 1] == SINGLE_QUOTE:
                 index += 2
                 continue
             return index + 1
@@ -342,8 +347,8 @@ def _skip_single_quoted_string(*, sql: str, start_index: int) -> int:
 def _skip_double_quoted_string(*, sql: str, start_index: int) -> int:
     index: int = start_index + 1
     while index < len(sql):
-        if sql[index] == '"':
-            if index + 1 < len(sql) and sql[index + 1] == '"':
+        if sql[index] == DOUBLE_QUOTE:
+            if index + 1 < len(sql) and sql[index + 1] == DOUBLE_QUOTE:
                 index += 2
                 continue
             return index + 1
@@ -354,7 +359,7 @@ def _skip_double_quoted_string(*, sql: str, start_index: int) -> int:
 def _skip_backtick_quoted_identifier(*, sql: str, start_index: int) -> int:
     index: int = start_index + 1
     while index < len(sql):
-        if sql[index] == "`":
+        if sql[index] == BACKTICK:
             return index + 1
         index += 1
     return index
@@ -362,7 +367,7 @@ def _skip_backtick_quoted_identifier(*, sql: str, start_index: int) -> int:
 
 def _skip_line_comment(*, sql: str, start_index: int) -> int:
     index: int = start_index + 2
-    while index < len(sql) and sql[index] != "\n":
+    while index < len(sql) and sql[index] != NEWLINE:
         index += 1
     return index
 
@@ -370,15 +375,15 @@ def _skip_line_comment(*, sql: str, start_index: int) -> int:
 def _skip_block_comment(*, sql: str, start_index: int) -> int:
     index: int = start_index + 2
     while index + 1 < len(sql):
-        if sql[index : index + 2] == "*/":
+        if sql[index : index + 2] == BLOCK_COMMENT_END:
             return index + 2
         index += 1
     return len(sql)
 
 
 def _is_identifier_start(character: str) -> bool:
-    return character == "_" or character.isalpha()
+    return character == UNDERSCORE or character.isalpha()
 
 
 def _is_identifier_continue(character: str) -> bool:
-    return character == "_" or character.isalnum()
+    return character == UNDERSCORE or character.isalnum()

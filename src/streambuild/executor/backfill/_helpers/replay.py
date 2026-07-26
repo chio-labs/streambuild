@@ -17,6 +17,7 @@ from streambuild.compiler.planner.constants import (
 )
 from streambuild.compiler.planner.models import DeploymentPlan, RebuildSubtree
 from streambuild.compiler.shared.constants import (
+    DESIRED_OBJECT_TYPE_TABLE,
     REPLAY_CURSOR_COLUMN_NAME,
     REPLAY_LANDED_AT_COLUMN_NAME,
     REPLAY_OFFSET_COLUMN_NAME,
@@ -595,7 +596,7 @@ def _build_replay_table_name_by_logical_name(
     prepared_table_name_by_key: dict[ObjectKey, str] = {
         prepared.logical_key: prepared.physical_name
         for prepared in deployment_plan.prepared_shadow_objects
-        if prepared.logical_key.object_type == "table"
+        if prepared.logical_key.object_type == DESIRED_OBJECT_TYPE_TABLE
     }
     return {
         object_.name: prepared_table_name_by_key.get(object_.key, object_.name)

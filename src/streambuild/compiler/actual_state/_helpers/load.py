@@ -12,6 +12,7 @@ from streambuild.compiler.actual_state._helpers.metadata import (
     load_latest_object_state_records_by_keys,
     load_object_state_records_by_deployments,
 )
+from streambuild.compiler.actual_state.constants import ACTIVE_VIEW_PRESENT_STATE_KIND
 from streambuild.compiler.actual_state.exceptions import ActualStateError
 from streambuild.compiler.actual_state.main import build_actual_state
 from streambuild.compiler.actual_state.models import (
@@ -166,7 +167,7 @@ def load_actual_state(
             root_inspection: RootDeploymentInspection = active_deployment_by_root[
                 desired_object.key
             ]
-            if root_inspection.state_kind != "active_view_present":
+            if root_inspection.state_kind != ACTIVE_VIEW_PRESENT_STATE_KIND:
                 continue
             active_physical_name: str = active_physical_names_by_logical_name[desired_object.name]
             actual_objects.append(
@@ -192,7 +193,7 @@ def load_actual_state(
                 and object_.name == desired_object.target_table_name
             )
             root_inspection = active_deployment_by_root[root_key]
-            if root_inspection.state_kind != "active_view_present":
+            if root_inspection.state_kind != ACTIVE_VIEW_PRESENT_STATE_KIND:
                 continue
             if root_inspection.active_deployment_id is not None:
                 object_state_record: ObjectStateRecord | None = (

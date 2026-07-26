@@ -9,6 +9,7 @@ from streambuild.clickhouse.metadata_state.models import RenderedClickHouseState
 from streambuild.compiler.metadata_state.main import build_metadata_state
 from streambuild.compiler.metadata_state.models import MetadataState, PublishEventRecord
 from streambuild.executor.backfill._helpers.metadata import ensure_metadata_tables
+from streambuild.executor.publish.constants import PUBLISH_HISTORY_TABLE_NAME
 from streambuild.executor.publish.models import PublishedView
 from streambuild.integrations.clickhouse.client import ClickHouseClient
 
@@ -51,7 +52,7 @@ def persist_publish_event(
     for statement in insert_statements:
         if not statement.rows:
             continue
-        if "streambuild_publish_history" not in statement.sql:
+        if PUBLISH_HISTORY_TABLE_NAME not in statement.sql:
             continue
         client.insert_rows(table=_insert_table_name(statement.sql), rows=statement.rows)
 

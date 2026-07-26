@@ -23,6 +23,11 @@ from streambuild.cli.commands.main.entry._helpers.entrypoint import (
     resolved_environment,
 )
 from streambuild.cli.commands.main.entry._helpers.parser import build_cli_parser
+from streambuild.cli.commands.main.entry.constants import (
+    AUDIT_COMMAND,
+    BACKFILL_SUBCOMMAND,
+    REPAIR_COMMAND,
+)
 from streambuild.cli.commands.main.entry.models import (
     CliEntrypointHandlers,
     ResolvedClickHouseConnection,
@@ -95,7 +100,7 @@ def _main_with_dependencies(
                 "backfill",
                 "reconcile",
             }
-            or args.command == "audit"
+            or args.command == AUDIT_COMMAND
         )
         pipelines_root: Path | None = (
             resolve_pipelines_root(
@@ -172,7 +177,7 @@ def _main_with_dependencies(
                 client=resolved_client(),
             )
 
-        if args.command == "backfill":
+        if args.command == BACKFILL_SUBCOMMAND:
             return handlers.run_backfill(
                 pipelines_root=pipelines_root,
                 database=resolved_database,
@@ -186,8 +191,8 @@ def _main_with_dependencies(
                 auto_approve=bool(getattr(args, "auto_approve", False)),
                 client=resolved_client(),
             )
-        if args.command == "audit":
-            if getattr(args, "audit_command", None) == "backfill":
+        if args.command == AUDIT_COMMAND:
+            if getattr(args, "audit_command", None) == BACKFILL_SUBCOMMAND:
                 return handlers.run_audit_backfill(
                     pipelines_root=pipelines_root,
                     project_dir=(
@@ -242,7 +247,7 @@ def _main_with_dependencies(
                 json_output=bool(getattr(args, "json", False)),
                 client=resolved_client(),
             )
-        if args.command == "repair":
+        if args.command == REPAIR_COMMAND:
             return handlers.run_repair_active_view(
                 database=resolved_database,
                 table=args.table,
@@ -278,10 +283,10 @@ def _main_with_dependencies(
 
 
 def _command_name(args: argparse.Namespace) -> str:
-    if args.command == "audit" and getattr(args, "audit_command", None) == "backfill":
+    if args.command == AUDIT_COMMAND and getattr(args, "audit_command", None) == BACKFILL_SUBCOMMAND:
         return "audit backfill"
-    if args.command == "audit":
+    if args.command == AUDIT_COMMAND:
         return "audit"
-    if args.command == "repair":
+    if args.command == REPAIR_COMMAND:
         return "repair active-view"
     return str(args.command)
