@@ -4,6 +4,8 @@ import argparse
 from collections.abc import Mapping
 from pathlib import Path
 
+from streambuild.adapter.classes.adapter import Adapter
+from streambuild.adapter.main.resolve_adapter import resolve_adapter
 from streambuild.cli.entry._helpers.entrypoint import (
     resolve_optional_int_arg,
     resolve_optional_str_arg,
@@ -14,7 +16,7 @@ from streambuild.cli.entry._helpers.entrypoint import (
 )
 from streambuild.cli.entry.constants import COMMANDS_REQUIRING_PIPELINES_ROOT
 from streambuild.cli.entry.models import (
-    CliClickHouseOptions,
+    CliConnectionOptions,
     ResolvedCliInvocation,
     ResolvedCliProjectConfig,
 )
@@ -46,12 +48,14 @@ def resolve_cli_invocation(
         project_dir=resolved_project_dir,
         working_directory=current_working_directory,
     )
+    adapter: Adapter = resolve_adapter(project_config.adapter_name)
     return ResolvedCliInvocation(
         args=args,
         project_dir=resolved_project_dir,
         pipelines_root=pipelines_root,
         database=getattr(args, "database", None) or project_config.default_database,
-        clickhouse=CliClickHouseOptions(
+        adapter=adapter,
+        connection=CliConnectionOptions(
             host=resolve_optional_str_arg(
                 value=getattr(args, "host", None),
                 env_var_name="STREAMBUILD_CLICKHOUSE_HOST",

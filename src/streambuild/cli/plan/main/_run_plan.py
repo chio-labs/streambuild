@@ -3,6 +3,7 @@
 import sys
 from pathlib import Path
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.cli.entry.exceptions import CliUserError
 from streambuild.cli.entry.main._resolve_default_database import resolve_default_database
 from streambuild.cli.plan.main._convert_utc_timestamp_for_clickhouse import (
@@ -28,7 +29,6 @@ from streambuild.compiler.planner.models import DeploymentPlan
 from streambuild.executor.backfill.main.resolve_unsupported_bounded_replay_behavior import (
     resolve_unsupported_bounded_replay_behavior,
 )
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def run_plan(
@@ -40,7 +40,7 @@ def run_plan(
     start_time: str | None,
     json_output: bool,
     verbose: bool,
-    client: ClickHouseClient,
+    client: AdapterConnection,
 ) -> int:
     """Plan a staged deployment against live ClickHouse state."""
 

@@ -18,6 +18,7 @@ class ExecuteBackfillBootstrapIntegrationTestCase:
     expected_shadow_table_name: str
     expected_shadow_materialized_view_name: str
     expected_deployment_status: str
+    expected_full_layout: tuple[tuple[str, str], ...]
     expected_runtime_detail_anchor_name: str = "raw__orders"
     expected_runtime_detail_strategy: str = "create_from_scratch"
     expected_runtime_detail_anchor_physical_name: str | None = None

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.models import AdapterQueryResult
 from streambuild.compiler.testing.models import SqlTestCase, SqlTestTargetCase
 from streambuild.executor.testing.constants import (
     MISSING_DIFF_TYPE,
@@ -9,14 +11,12 @@ from streambuild.executor.testing.constants import (
 )
 from streambuild.executor.testing.exceptions import SqlTestExecutionError
 from streambuild.executor.testing.models import SqlTestExecutionResult, SqlTestTargetExecutionResult
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
-from streambuild.integrations.clickhouse.models import ClickHouseQueryResult
 
 
 def execute_sql_tests(
     *,
     test_cases: tuple[SqlTestCase, ...],
-    client: ClickHouseClient,
+    client: AdapterConnection,
 ) -> tuple[SqlTestExecutionResult, ...]:
     """Execute assembled SQL-native tests against ClickHouse."""
 
@@ -26,7 +26,7 @@ def execute_sql_tests(
         target_results: list[SqlTestTargetExecutionResult] = []
         target_case: SqlTestTargetCase
         for target_case in test_case.target_cases:
-            result: ClickHouseQueryResult = client.query(target_case.query)
+            result: AdapterQueryResult = client.query(target_case.query)
             missing_rows: list[tuple[object, ...]] = []
             unexpected_rows: list[tuple[object, ...]] = []
             raw_row: tuple[object, ...]

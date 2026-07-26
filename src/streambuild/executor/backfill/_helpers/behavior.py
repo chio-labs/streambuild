@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.models import AdapterQueryResult
 from streambuild.clickhouse.inspect.main.inspect_managed_table_state import (
     inspect_managed_table_state,
 )
@@ -17,13 +19,11 @@ from streambuild.compiler.planner.constants import (
     REBUILD_EXECUTION_MODE_UNSEEDED_BOUNDED,
 )
 from streambuild.compiler.planner.models import RebuildSubtree
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
-from streambuild.integrations.clickhouse.models import ClickHouseQueryResult
 
 
 def _resolve_subtree_behavior(
     *,
-    client: ClickHouseClient,
+    client: AdapterConnection,
     subtree: RebuildSubtree,
     desired_state: DesiredState,
     default_database: str,
@@ -102,7 +102,7 @@ def resolve_subtree_behavior_from_support(
 
 def _history_preserving_bounded_supported(
     *,
-    client: ClickHouseClient,
+    client: AdapterConnection,
     root_table: DesiredTable,
     default_database: str,
     replay_lineage_mode: ReplayLineageMode,
@@ -133,7 +133,7 @@ def _required_history_preserving_column_names(
 
 
 def _active_table_name_for_logical_root(
-    *, client: ClickHouseClient, database: str, logical_table_name: str
+    *, client: AdapterConnection, database: str, logical_table_name: str
 ) -> str | None:
     active_bindings: tuple[InspectedActiveTableBinding, ...] = inspect_managed_table_state(
         client=client,
@@ -148,12 +148,12 @@ def _active_table_name_for_logical_root(
 
 def _live_column_names(
     *,
-    client: ClickHouseClient,
+    client: AdapterConnection,
     database: str,
     live_table_name: str,
 ) -> set[str]:
     try:
-        result: ClickHouseQueryResult = client.query(f"DESCRIBE TABLE {database}.{live_table_name}")
+        result: AdapterQueryResult = client.query(f"DESCRIBE TABLE {database}.{live_table_name}")
     except Exception:
         return set()
     rows: tuple[tuple[object, ...], ...] = result.rows

@@ -1,5 +1,6 @@
 """Doctor execution entrypoint."""
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.clickhouse.inspect.main.inspect_managed_table_state import (
     inspect_managed_table_state,
 )
@@ -16,10 +17,9 @@ from streambuild.compiler.planner.main.deployment_id_from_physical_name import (
     deployment_id_from_physical_name,
 )
 from streambuild.executor.doctor.models import ActiveViewStatus, DoctorRequest, DoctorResult
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
-def execute_doctor(*, request: DoctorRequest, client: ClickHouseClient) -> DoctorResult:
+def execute_doctor(*, request: DoctorRequest, client: AdapterConnection) -> DoctorResult:
     """Inspect active-view health for managed deployment tables."""
 
     inspected_state: InspectedManagedTableState = inspect_managed_table_state(

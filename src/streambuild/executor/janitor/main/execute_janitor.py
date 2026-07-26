@@ -1,5 +1,6 @@
 """Janitor preview entrypoint."""
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.clickhouse.inspect.main.inspect_managed_table_state import (
     inspect_managed_table_state,
 )
@@ -10,13 +11,12 @@ from streambuild.executor.janitor.models import (
     JanitorPreviewResult,
     JanitorRequest,
 )
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def execute_janitor(
     *,
     request: JanitorRequest,
-    client: ClickHouseClient,
+    client: AdapterConnection,
 ) -> JanitorPreviewResult | JanitorApplyResult:
     managed_table_state: InspectedManagedTableState = inspect_managed_table_state(
         client=client,

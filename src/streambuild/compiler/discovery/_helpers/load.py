@@ -11,10 +11,12 @@ from streambuild.compiler.discovery._helpers.model_sql import load_transform_fro
 from streambuild.compiler.discovery.constants import (
     ALLOWED_PROJECT_KEYS,
     CLICKHOUSE_CONNECTION_KEYS,
+    DEFAULT_ADAPTER_NAME,
     PIPELINE_FILE_NAME,
     PIPELINE_NAME_KEY,
     PROJECT_FILE_NAME,
     QUALIFIED_NAME_SEPARATOR,
+    SUPPORTED_PROJECT_VERSION,
 )
 from streambuild.compiler.discovery.exceptions import PipelineDiscoveryError
 from streambuild.compiler.discovery.models import (
@@ -472,7 +474,39 @@ def load_project_yaml(file_path: Path) -> Project:
         bounded_replay_fallback=bounded_replay_fallback,
         default_database=default_database_value,
         clickhouse=clickhouse,
+        version=_load_project_version(
+            version_value=typed_project_values.get("version"), file_path=file_path
+        ),
+        adapter=_load_project_adapter_name(
+            adapter_value=typed_project_values.get("adapter"), file_path=file_path
+        ),
     )
+
+
+def _load_project_version(*, version_value: object, file_path: Path) -> int | None:
+    if version_value is None:
+        return None
+    if not isinstance(version_value, int) or isinstance(version_value, bool):
+        raise PipelineDiscoveryError(
+            f"Project file '{file_path}' must define version as the integer "
+            f"{SUPPORTED_PROJECT_VERSION}"
+        )
+    if version_value != SUPPORTED_PROJECT_VERSION:
+        raise PipelineDiscoveryError(
+            f"Project file '{file_path}' declares unsupported version {version_value}; "
+            f"only version {SUPPORTED_PROJECT_VERSION} is supported"
+        )
+    return version_value
+
+
+def _load_project_adapter_name(*, adapter_value: object, file_path: Path) -> str:
+    if adapter_value is None:
+        return DEFAULT_ADAPTER_NAME
+    if not isinstance(adapter_value, str) or not adapter_value:
+        raise PipelineDiscoveryError(
+            f"Project file '{file_path}' must define adapter as a non-empty string"
+        )
+    return adapter_value
 
 
 def _load_project_clickhouse_config(

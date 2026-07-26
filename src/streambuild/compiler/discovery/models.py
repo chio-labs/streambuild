@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from streambuild.compiler.discovery.constants import DEFAULT_ADAPTER_NAME
 from streambuild.compiler.discovery.exceptions import ProjectSpecError
 from streambuild.compiler.discovery.types import (
     BoundedReplayFallback,
@@ -120,7 +121,7 @@ class TransformStep:
             raise ProjectSpecError("TransformStep must declare at least one ORDER BY expression")
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, repr=False)
 class ProjectClickHouseConfig:
     """Optional project-level ClickHouse connection defaults."""
 
@@ -138,6 +139,8 @@ class Project:
     bounded_replay_fallback: BoundedReplayFallback | str = BoundedReplayFallback.FULL_REFRESH
     default_database: str | None = None
     clickhouse: ProjectClickHouseConfig | None = None
+    version: int | None = None
+    adapter: str = DEFAULT_ADAPTER_NAME
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "replay_lineage_mode", ReplayLineageMode(self.replay_lineage_mode))

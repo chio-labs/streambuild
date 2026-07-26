@@ -13,6 +13,7 @@ class ExecutePublishIntegrationTestCase:
     expected_view_name: str
     expected_target_table_name: str
     expected_published_order_ids: tuple[str, ...]
+    expected_full_layout: tuple[tuple[str, str], ...]
 
 
 @dataclass(frozen=True)

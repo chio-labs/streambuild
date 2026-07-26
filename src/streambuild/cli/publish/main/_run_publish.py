@@ -2,15 +2,15 @@
 
 import sys
 
-from clickhouse_connect.driver.exceptions import DatabaseError, OperationalError
-
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.exceptions import AdapterWarehouseError
 from streambuild.cli.audit_backfill.main._render_no_deployment_candidates_message import (
     render_no_deployment_candidates_message,
 )
 from streambuild.cli.audit_backfill.main.render_ambiguous_deployment_message import (
     render_ambiguous_deployment_message,
 )
-from streambuild.cli.entry.main._errors import render_expected_clickhouse_error
+from streambuild.cli.entry.main._errors import render_expected_warehouse_error
 from streambuild.cli.publish._helpers.candidates import (
     candidate_root_names,
     enrich_candidates,
@@ -26,7 +26,6 @@ from streambuild.executor.publish.main.build_publish_deployment_candidates impor
 )
 from streambuild.executor.publish.main.execute_publish import execute_publish
 from streambuild.executor.publish.models import PublishRequest, PublishResult
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def run_publish(
@@ -35,7 +34,7 @@ def run_publish(
     metadata_database: str | None,
     deployment_id: str | None,
     json_output: bool,
-    client: ClickHouseClient,
+    client: AdapterConnection,
 ) -> int:
     """Publish a staged deployment and print the result payload."""
 
@@ -83,8 +82,8 @@ def run_publish(
             ),
             client=client,
         )
-    except (DatabaseError, OperationalError) as error:
-        rendered_error: str | None = render_expected_clickhouse_error(
+    except AdapterWarehouseError as error:
+        rendered_error: str | None = render_expected_warehouse_error(
             command_name="publish",
             database=database,
             error=error,

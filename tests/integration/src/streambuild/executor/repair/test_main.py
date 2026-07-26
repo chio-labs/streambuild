@@ -3,13 +3,11 @@ from collections.abc import Sequence
 import pytest
 from clickhouse_connect.driver.client import Client
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.models import AdapterConnectionConfig
+from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from streambuild.executor.repair.main.execute_repair_active_view import execute_repair_active_view
 from streambuild.executor.repair.models import RepairActiveViewRequest, RepairActiveViewResult
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
-from streambuild.integrations.clickhouse.main.connect_clickhouse import (
-    connect_clickhouse,
-)
-from streambuild.integrations.clickhouse.models import ClickHouseConnectionConfig
 from tests.integration.src.streambuild.conftest import ClickHouseConnectionSettings
 from tests.integration.src.streambuild.executor.repair._test_types import (
     ExecuteRepairActiveViewIntegrationTestCase,
@@ -42,8 +40,8 @@ def test_given_table_and_deployment_when_repairing_active_view_then_it_rebinds_t
         f"CREATE TABLE {clickhouse_database}.tbl__orders_enriched__dep_b "
         "(order_id String) ENGINE = MergeTree ORDER BY (order_id)"
     )
-    managed_client: ClickHouseClient = connect_clickhouse(
-        ClickHouseConnectionConfig(
+    managed_client: AdapterConnection = ClickHouseAdapter().connect(
+        AdapterConnectionConfig(
             host=clickhouse_connection_settings.host,
             port=clickhouse_connection_settings.port,
             username=clickhouse_connection_settings.username,

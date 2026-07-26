@@ -1,0 +1,1 @@
+"""StreamBuild Fensu rule declarations."""

@@ -4,11 +4,13 @@ import re
 from collections.abc import Mapping
 from typing import cast
 
-from clickhouse_connect.driver.exceptions import DatabaseError, OperationalError
 from sqlglot import exp, parse_one
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.exceptions import AdapterRelationNotFoundError
 from streambuild.clickhouse.inspect.models import InspectedManagedTableState
 from streambuild.clickhouse.inspect.types import RootDeploymentStateKind
+from streambuild.compiler.actual_state.constants import BLANK_VALUES
 from streambuild.compiler.compile.constants import (
     DESIRED_OBJECT_TYPE_TABLE,
     MATERIALIZED_VIEW_NAME_PREFIX,
@@ -39,16 +41,11 @@ from streambuild.executor.audit_backfill.models import (
     ScalarSummaryQueryRow,
 )
 from streambuild.executor.audit_backfill.types import AuditAssessment
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
-from streambuild.integrations.clickhouse.constants import (
-    BLANK_VALUES,
-    UNKNOWN_TABLE_ERROR_CODE,
-)
 
 
 def build_root_audit_results(
     *,
-    client: ClickHouseClient,
+    client: AdapterConnection,
     default_database: str,
     deployment_id: str,
     inspected_state: InspectedManagedTableState,
@@ -87,7 +84,7 @@ def build_root_audit_results(
 
 def _build_root_audit_result(
     *,
-    client: ClickHouseClient,
+    client: AdapterConnection,
     default_database: str,
     root_key: ObjectKey,
     staged_physical_name: str,
@@ -191,7 +188,7 @@ def _build_root_audit_result(
     )
 
 
-def _table_exists(*, client: ClickHouseClient, database: str, table_name: str) -> bool:
+def _table_exists(*, client: AdapterConnection, database: str, table_name: str) -> bool:
     row: CountQueryRow | None = client.query_one(
         statement="SELECT count() AS value FROM system.tables "
         f"WHERE database = '{database}' AND name = '{table_name}'",
@@ -200,7 +197,7 @@ def _table_exists(*, client: ClickHouseClient, database: str, table_name: str) -
     return bool(row.value) if row is not None else False
 
 
-def _row_count(*, client: ClickHouseClient, database: str, table_name: str) -> int:
+def _row_count(*, client: AdapterConnection, database: str, table_name: str) -> int:
     row: CountQueryRow | None = client.query_one(
         statement=f"SELECT count() AS value FROM {database}.{table_name}",
         decode=_decode_count_query_row,
@@ -210,15 +207,13 @@ def _row_count(*, client: ClickHouseClient, database: str, table_name: str) -> i
     return row.value
 
 
-def _safe_row_count(*, client: ClickHouseClient, database: str, table_name: str) -> int | None:
+def _safe_row_count(*, client: AdapterConnection, database: str, table_name: str) -> int | None:
     if not _table_exists(client=client, database=database, table_name=table_name):
         return None
     try:
         return _row_count(client=client, database=database, table_name=table_name)
-    except (DatabaseError, OperationalError) as error:
-        if UNKNOWN_TABLE_ERROR_CODE in str(error):
-            return None
-        raise
+    except AdapterRelationNotFoundError:
+        return None
 
 
 def _has_active_binding(
@@ -235,7 +230,7 @@ def _has_active_binding(
 
 def _infer_replay_lineage_mode(
     *,
-    client: ClickHouseClient,
+    client: AdapterConnection,
     database: str,
     table_name: str,
 ) -> ReplayLineageMode | None:
@@ -258,7 +253,7 @@ def _infer_replay_lineage_mode(
 
 def _offset_catchup_summary(
     *,
-    client: ClickHouseClient,
+    client: AdapterConnection,
     database: str,
     active_table_name: str,
     staged_table_name: str,
@@ -353,7 +348,7 @@ def _offset_catchup_summary(
 
 def _scalar_catchup_summary(
     *,
-    client: ClickHouseClient,
+    client: AdapterConnection,
     database: str,
     active_table_name: str,
     staged_table_name: str,
@@ -484,7 +479,7 @@ def _build_staged_materialized_view_name(staged_table_name: str) -> str:
 
 def _resolve_staged_source_table_name(
     *,
-    client: ClickHouseClient,
+    client: AdapterConnection,
     database: str,
     staged_materialized_view_name: str,
 ) -> str | None:
@@ -513,7 +508,7 @@ def _resolve_staged_source_table_name(
 
 def _resolve_offset_boundary_column(
     *,
-    client: ClickHouseClient,
+    client: AdapterConnection,
     database: str,
     source_table_name: str,
 ) -> str | None:

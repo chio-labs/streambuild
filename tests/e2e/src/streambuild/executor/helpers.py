@@ -56,6 +56,7 @@ from tests.integration.src.streambuild.executor.backfill.helpers import (
 
 E2E_KAFKA_TIMESTAMP_PROJECT_DIR: Path = Path("tests/fixtures/e2e_kafka_timestamp_project")
 E2E_KAFKA_OFFSET_PROJECT_DIR: Path = Path("tests/fixtures/e2e_kafka_offset_project")
+E2E_KAFKA_LANDED_AT_PROJECT_DIR: Path = Path("tests/fixtures/e2e_kafka_landed_at_project")
 REPO_ROOT: Path = Path(__file__).resolve().parents[5]
 
 
@@ -264,6 +265,46 @@ MODEL (
 SELECT
   CAST(order_id AS String) AS order_id,
   CAST(_replay_timestamp AS DateTime64(3)) AS _replay_timestamp
+FROM __ref("orders")
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    return project_dir
+
+
+def prepare_external_source_offset_e2e_project(*, tmp_path: Path) -> Path:
+    project_dir: Path = tmp_path / "external_source_offset_project"
+    pipeline_dir: Path = project_dir / "pipelines" / "orders"
+    pipeline_dir.mkdir(parents=True, exist_ok=True)
+    (project_dir / "streambuild_project.yml").write_text("{}\n", encoding="utf-8")
+    (pipeline_dir / "pipeline.yml").write_text(
+        """
+source:
+  kind: kafka
+  name: orders
+  table_name: orders_existing
+  replay_boundary:
+    mode: offsets
+    columns:
+      _replay_partition: event_partition
+      _replay_offset: event_offset
+      _replay_timestamp: event_timestamp
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    (pipeline_dir / "orders_enriched.sql").write_text(
+        """
+MODEL (
+  engine: "MergeTree()",
+  order_by: ["order_id"],
+);
+
+SELECT
+  CAST(order_id AS String) AS order_id,
+  CAST(_replay_partition AS Int32) AS _replay_partition,
+  CAST(_replay_offset AS Int64) AS _replay_offset
 FROM __ref("orders")
 """.strip()
         + "\n",
@@ -699,7 +740,11 @@ def build_offset_workflow_request(
 
 
 def build_kafka_producer(*, bootstrap_server: str) -> KafkaProducer:
-    return KafkaProducer(bootstrap_servers=bootstrap_server)
+    return KafkaProducer(
+        bootstrap_servers=bootstrap_server,
+        retries=10,
+        retry_backoff_ms=500,
+    )
 
 
 def build_future_replay_times(*, seconds_from_now: int) -> tuple[str, str]:
@@ -722,7 +767,7 @@ def produce_kafka_messages(
             topic,
             key=message_key.encode("utf-8"),
             value=message_value.encode("utf-8"),
-        )
+        ).get(timeout=30)
     producer.flush()
 
 

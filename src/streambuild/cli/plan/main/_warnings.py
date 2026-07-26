@@ -3,17 +3,15 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import cast
 
-from clickhouse_connect.driver.exceptions import DatabaseError, OperationalError
-
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.exceptions import AdapterRelationNotFoundError
 from streambuild.compiler.compile.models import DesiredState
 from streambuild.compiler.planner.models import DeploymentPlan, PlannerWarning, RebuildSubtree
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
-from streambuild.integrations.clickhouse.constants import UNKNOWN_TABLE_ERROR_CODE
 
 
 def add_empty_replay_source_warnings(
     *,
-    client: ClickHouseClient,
+    client: AdapterConnection,
     database: str,
     desired_state: DesiredState,
     plan: DeploymentPlan,
@@ -68,7 +66,7 @@ def add_empty_replay_source_warnings(
 
 def _safe_row_count(
     *,
-    client: ClickHouseClient,
+    client: AdapterConnection,
     database: str,
     table_name: str,
 ) -> int | None:
@@ -81,10 +79,8 @@ def _safe_row_count(
         rows: tuple[tuple[object, ...], ...] = client.query(
             f"SELECT count() FROM {database}.{table_name}"
         ).rows
-    except (DatabaseError, OperationalError) as error:
-        if UNKNOWN_TABLE_ERROR_CODE in str(error):
-            return None
-        raise
+    except AdapterRelationNotFoundError:
+        return None
     if not rows:
         return None
     return int(cast(int, rows[0][0]))

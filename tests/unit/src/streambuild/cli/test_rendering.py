@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from streambuild.cli.audit_backfill.main.render_ambiguous_deployment_message import (
@@ -36,6 +38,7 @@ from streambuild.compiler.planner.models import (
     DeploymentStep,
     PlannedObjectChange,
     PlannedSqlDiff,
+    PlannerWarning,
     PreparedShadowObject,
     RebuildSubtree,
 )
@@ -55,7 +58,203 @@ from streambuild.executor.publish.models import PublishedView, PublishResult
 from tests.integration.src.streambuild.executor.backfill.helpers import (
     build_scalar_replay_compiled_pipeline,
 )
-from tests.unit.src.streambuild.cli._test_types import CliRenderingTestCase
+from tests.unit.src.streambuild.cli._test_types import (
+    CliPlanRenderingBaselineTestCase,
+    CliRenderingTestCase,
+)
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliPlanRenderingBaselineTestCase(
+            description="renders the complete virtual-environment plan output contracts",
+            expected_payload={
+                "steps": [
+                    {
+                        "step_id": "step-1",
+                        "phase": "plan",
+                        "action": "plan_shadow_table",
+                        "root_key": {
+                            "database": None,
+                            "object_type": "table",
+                            "name": "raw__orders",
+                        },
+                        "target_key": {
+                            "database": None,
+                            "object_type": "table",
+                            "name": "tbl__orders_enriched",
+                        },
+                    }
+                ],
+                "rebuild_subtrees": [
+                    {
+                        "root_key": {
+                            "database": None,
+                            "object_type": "table",
+                            "name": "raw__orders",
+                        },
+                        "upstream_boundary_key": {
+                            "database": None,
+                            "object_type": "table",
+                            "name": "raw__orders",
+                        },
+                        "strategy": "shadow_rebuild",
+                        "execution_mode": "seeded_bounded_rebuild",
+                        "forced_full_refresh": False,
+                        "forced_start_time": None,
+                        "requested_start_time": None,
+                        "configured_backfill_mode": "bounded",
+                        "execution_lookback_seconds": 3600,
+                        "history_preserving_bounded_supported": True,
+                        "resolved_bounded_replay_fallback": "full_refresh",
+                    }
+                ],
+                "warnings": [
+                    {
+                        "warning_code": "mutable_reference",
+                        "root_key": {
+                            "database": None,
+                            "object_type": "table",
+                            "name": "raw__orders",
+                        },
+                        "message": "mutable side reference is read at execution time",
+                    }
+                ],
+                "sql_diffs": [
+                    {
+                        "object_type": "materialized_view",
+                        "name": "mv__orders_enriched",
+                        "diff_lines": ["- old query", "+ new query"],
+                    }
+                ],
+            },
+            expected_compact_text=(
+                "Plan Ready\n"
+                "Database: analytics\n"
+                "Subtrees to rebuild: 1\n"
+                "Planned steps: 1\n"
+                "\n"
+                "Subtrees:\n"
+                "Subtree 1\n"
+                "[replay start] raw__orders\n"
+                "└── [live target] tbl__orders_enriched\n"
+                "\n"
+                "Diffs:\n"
+                "- mv__orders_enriched\n"
+                "Run `stb plan --verbose` to show full diffs\n"
+                "\n"
+                "Warnings:\n"
+                "- raw__orders: mutable side reference is read at execution time"
+            ),
+            expected_verbose_text=(
+                "Plan Ready\n"
+                "Database: analytics\n"
+                "Subtrees to rebuild: 1\n"
+                "Planned steps: 1\n"
+                "\n"
+                "Subtrees:\n"
+                "Subtree 1\n"
+                "[replay start] raw__orders\n"
+                "└── [live target] tbl__orders_enriched\n"
+                "\n"
+                "SQL diffs:\n"
+                "\n"
+                "Materialized_View: mv__orders_enriched\n"
+                "- old query\n"
+                "+ new query\n"
+                "\n"
+                "Staged rollout objects:\n"
+                "- replay source: raw__orders\n"
+                "- live target: tbl__orders_enriched\n"
+                "\n"
+                "Workflow:\n"
+                "- prepare staged objects for subtree rooted at tbl__orders_enriched\n"
+                "- backfill from raw__orders\n"
+                "- audit staged tbl__orders_enriched\n"
+                "- publish tbl__orders_enriched\n"
+                "\n"
+                "Warnings:\n"
+                "- raw__orders: mutable side reference is read at execution time"
+            ),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_virtual_environment_plan_when_rendering_then_preserves_complete_outputs(
+    test_case: CliPlanRenderingBaselineTestCase,
+) -> None:
+    raw_key: ObjectKey = ObjectKey(None, "table", "raw__orders")
+    target_key: ObjectKey = ObjectKey(None, "table", "tbl__orders_enriched")
+    plan: DeploymentPlan = DeploymentPlan(
+        deployment_id=None,
+        object_changes=(),
+        rebuild_subtrees=(
+            RebuildSubtree(
+                root_key=raw_key,
+                affected_keys=(target_key,),
+                upstream_boundary_key=raw_key,
+                strategy="shadow_rebuild",
+                execution_mode="seeded_bounded_rebuild",
+                configured_backfill_mode="bounded",
+                execution_lookback_seconds=3600,
+                resolved_bounded_replay_fallback="full_refresh",
+            ),
+        ),
+        steps=(
+            DeploymentStep(
+                step_id="step-1",
+                phase="plan",
+                action="plan_shadow_table",
+                root_key=raw_key,
+                target_key=target_key,
+            ),
+        ),
+        prepared_shadow_objects=(),
+        warnings=(
+            PlannerWarning(
+                warning_code="mutable_reference",
+                message="mutable side reference is read at execution time",
+                root_key=raw_key,
+            ),
+        ),
+        sql_diffs=(
+            PlannedSqlDiff(
+                key=ObjectKey(None, "materialized_view", "mv__orders_enriched"),
+                object_type="materialized_view",
+                name="mv__orders_enriched",
+                diff_lines=("- old query", "+ new query"),
+            ),
+        ),
+    )
+    desired_state: DesiredState = DesiredState(
+        objects=(),
+        replay_anchor_keys=frozenset(),
+        mutable_ref_warning_keys=frozenset(),
+    )
+    rendered_json: str = render_plan_result(
+        plan=plan,
+        desired_state=desired_state,
+        database="analytics",
+        json_output=True,
+    )
+    rendered_compact: str = render_plan_result(
+        plan=plan,
+        desired_state=desired_state,
+        database="analytics",
+        json_output=False,
+    )
+    rendered_verbose: str = render_plan_result(
+        plan=plan,
+        desired_state=desired_state,
+        database="analytics",
+        json_output=False,
+        verbose=True,
+    )
+
+    assert json.loads(rendered_json) == test_case.expected_payload
+    assert rendered_compact == test_case.expected_compact_text
+    assert rendered_verbose == test_case.expected_verbose_text
 
 
 @pytest.mark.parametrize(

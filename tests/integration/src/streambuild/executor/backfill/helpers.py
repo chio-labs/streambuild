@@ -5,6 +5,9 @@ from datetime import datetime, timedelta
 
 from clickhouse_connect.driver.client import Client
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.models import AdapterConnectionConfig
+from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from streambuild.clickhouse.render.main.render_create_kafka_table_ddl import (
     render_create_kafka_table_ddl,
 )
@@ -42,9 +45,6 @@ from streambuild.executor.backfill.main.execute_backfill import execute_backfill
 from streambuild.executor.backfill.models import BackfillBootstrapRequest, BackfillExecutionResult
 from streambuild.executor.publish.main.execute_publish import execute_publish
 from streambuild.executor.publish.models import PublishRequest
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
-from streambuild.integrations.clickhouse.main.connect_clickhouse import connect_clickhouse
-from streambuild.integrations.clickhouse.models import ClickHouseConnectionConfig
 from tests.integration.src.streambuild.clickhouse.render.main.render_create_materialized_view_ddl.helpers import (  # noqa: E501
     build_compiled_example_pipeline,
 )
@@ -889,8 +889,8 @@ def run_start_time_replay_scenario(
             "_replay_landed_at",
         ],
     )
-    managed_client: ClickHouseClient = connect_clickhouse(
-        ClickHouseConnectionConfig(
+    managed_client: AdapterConnection = ClickHouseAdapter().connect(
+        AdapterConnectionConfig(
             host=connection_settings.host,
             port=connection_settings.port,
             username=connection_settings.username,

@@ -8,6 +8,9 @@ import pytest
 from clickhouse_connect.driver.client import Client
 from kafka import KafkaProducer
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.models import AdapterConnectionConfig
+from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from streambuild.clickhouse.render.main.render_create_kafka_table_ddl import (
     render_create_kafka_table_ddl,
 )
@@ -16,18 +19,13 @@ from streambuild.clickhouse.render.main.render_create_materialized_view_ddl impo
 )
 from streambuild.clickhouse.render.main.render_create_table_ddl import render_create_table_ddl
 from streambuild.compiler.compile.models import CompiledPipeline
-from streambuild.compiler.discovery.types import SchemaChangeBackfillMode
+from streambuild.compiler.discovery.types import ReplayLineageMode, SchemaChangeBackfillMode
 from streambuild.compiler.planner.types import RebuildExecutionMode
 from streambuild.executor.audit_backfill.types import AuditAssessment
 from streambuild.executor.backfill.main.execute_backfill import execute_backfill
 from streambuild.executor.backfill.models import BackfillExecutionResult
 from streambuild.executor.publish.main.execute_publish import execute_publish
 from streambuild.executor.publish.models import PublishRequest
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
-from streambuild.integrations.clickhouse.main.connect_clickhouse import (
-    connect_clickhouse,
-)
-from streambuild.integrations.clickhouse.models import ClickHouseConnectionConfig
 from tests.e2e.src.streambuild.conftest import (
     E2EClickHouseConnectionSettings,
     E2EKafkaConnectionSettings,
@@ -41,6 +39,7 @@ from tests.e2e.src.streambuild.executor._test_types import (
     KafkaSchemaChangeWorkflowE2ETestCase,
 )
 from tests.e2e.src.streambuild.executor.helpers import (
+    E2E_KAFKA_LANDED_AT_PROJECT_DIR,
     E2E_KAFKA_OFFSET_PROJECT_DIR,
     E2E_KAFKA_TIMESTAMP_PROJECT_DIR,
     build_authored_greenfield_workflow_compiled_pipeline,
@@ -83,12 +82,24 @@ OFFSET_AUDIT_CREATED_AT, OFFSET_AUDIT_BOUNDARY_TIME = build_future_replay_times(
     [
         GreenfieldKafkaWorkflowE2ETestCase(
             description="runs the greenfield Kafka workflow from landing ingest through publish",
+            fixture_project_dir=E2E_KAFKA_TIMESTAMP_PROJECT_DIR,
             deployment_id="20260410T000000Z_ab12cd",
             created_at=GREENFIELD_CREATED_AT,
             boundary_time=GREENFIELD_BOUNDARY_TIME,
             expected_order_ids=("order-1", "order-2"),
             expected_audit_assessment=AuditAssessment.READY,
-        )
+            expected_replay_lineage_mode=ReplayLineageMode.TIMESTAMP,
+        ),
+        GreenfieldKafkaWorkflowE2ETestCase(
+            description="runs managed Kafka landed-at replay from landing ingest through publish",
+            fixture_project_dir=E2E_KAFKA_LANDED_AT_PROJECT_DIR,
+            deployment_id="20260410T000500Z_bc23de",
+            created_at=GREENFIELD_CREATED_AT,
+            boundary_time=GREENFIELD_BOUNDARY_TIME,
+            expected_order_ids=("order-1", "order-2"),
+            expected_audit_assessment=AuditAssessment.READY,
+            expected_replay_lineage_mode=ReplayLineageMode.LANDED_AT,
+        ),
     ],
     ids=lambda case: case.description,
 )
@@ -101,7 +112,7 @@ def test_given_kafka_backed_greenfield_pipeline_when_running_then_it_publishes_e
     tmp_path: Path,
 ) -> None:
     project_dir: Path = prepare_authored_e2e_project(
-        fixture_project_dir=E2E_KAFKA_TIMESTAMP_PROJECT_DIR,
+        fixture_project_dir=test_case.fixture_project_dir,
         tmp_path=tmp_path,
         kafka_broker_list=e2e_kafka_connection_settings.internal_bootstrap_server,
         topic_suffix=e2e_clickhouse_database,
@@ -189,6 +200,7 @@ def test_given_kafka_backed_greenfield_pipeline_when_running_then_it_publishes_e
     ).result_rows
 
     assert audit_result["assessment"] == test_case.expected_audit_assessment
+    assert compiled_pipeline.effective_replay_lineage_mode == test_case.expected_replay_lineage_mode
     assert tuple(row[0] for row in published_rows) == test_case.expected_order_ids
 
 
@@ -621,8 +633,8 @@ def test_given_published_kafka_pipeline_when_schema_changes_then_bounded_policy_
     initial_boundary_time: str
     initial_created_at, initial_boundary_time = build_near_replay_times(seconds_from_now=2)
 
-    managed_client: ClickHouseClient = connect_clickhouse(
-        ClickHouseConnectionConfig(
+    managed_client: AdapterConnection = ClickHouseAdapter().connect(
+        AdapterConnectionConfig(
             host=e2e_clickhouse_connection_settings.host,
             port=e2e_clickhouse_connection_settings.port,
             username=e2e_clickhouse_connection_settings.username,
@@ -673,8 +685,8 @@ def test_given_published_kafka_pipeline_when_schema_changes_then_bounded_policy_
     changed_boundary_time: str
     changed_created_at, changed_boundary_time = build_near_replay_times(seconds_from_now=2)
 
-    managed_client = connect_clickhouse(
-        ClickHouseConnectionConfig(
+    managed_client = ClickHouseAdapter().connect(
+        AdapterConnectionConfig(
             host=e2e_clickhouse_connection_settings.host,
             port=e2e_clickhouse_connection_settings.port,
             username=e2e_clickhouse_connection_settings.username,
@@ -704,8 +716,8 @@ def test_given_published_kafka_pipeline_when_schema_changes_then_bounded_policy_
         expected_count=expected_shadow_row_count,
     )
 
-    managed_client = connect_clickhouse(
-        ClickHouseConnectionConfig(
+    managed_client = ClickHouseAdapter().connect(
+        AdapterConnectionConfig(
             host=e2e_clickhouse_connection_settings.host,
             port=e2e_clickhouse_connection_settings.port,
             username=e2e_clickhouse_connection_settings.username,

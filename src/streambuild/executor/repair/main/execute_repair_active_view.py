@@ -1,17 +1,17 @@
 """Repair execution entrypoint."""
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.clickhouse.render.main.render_create_view_ddl import render_create_view_ddl
 from streambuild.compiler.planner.main.build_deployment_physical_name import (
     build_deployment_physical_name,
 )
 from streambuild.executor.repair.models import RepairActiveViewRequest, RepairActiveViewResult
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def execute_repair_active_view(
     *,
     request: RepairActiveViewRequest,
-    client: ClickHouseClient,
+    client: AdapterConnection,
 ) -> RepairActiveViewResult:
     """Explicitly rebind a stable active view to a chosen deployment table."""
 

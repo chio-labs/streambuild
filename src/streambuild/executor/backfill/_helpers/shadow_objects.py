@@ -4,6 +4,7 @@ from dataclasses import replace
 
 from sqlglot import exp, parse_one
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.clickhouse.render.main.render_create_kafka_table_ddl import (
     render_create_kafka_table_ddl,
 )
@@ -26,12 +27,11 @@ from streambuild.compiler.compile.models import (
 from streambuild.compiler.planner.constants import DEPLOYMENT_PHASE_PLAN
 from streambuild.compiler.planner.models import DeploymentPlan
 from streambuild.executor.backfill.exceptions import BackfillExecutionError
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def create_shadow_objects(
     *,
-    client: ClickHouseClient,
+    client: AdapterConnection,
     deployment_plan: DeploymentPlan,
     desired_state: DesiredState,
     default_database: str,
@@ -69,7 +69,7 @@ def create_shadow_objects(
 
 def _ensure_live_landing_objects(
     *,
-    client: ClickHouseClient,
+    client: AdapterConnection,
     desired_state: DesiredState,
     default_database: str,
 ) -> None:
@@ -114,7 +114,7 @@ def _ensure_live_landing_objects(
             existing_names.add(desired_object.name)
 
 
-def _existing_table_names(*, client: ClickHouseClient, database: str) -> set[str]:
+def _existing_table_names(*, client: AdapterConnection, database: str) -> set[str]:
     rows: tuple[tuple[object, ...], ...] = client.query(
         f"SELECT name FROM system.tables WHERE database = '{database}'"
     ).rows

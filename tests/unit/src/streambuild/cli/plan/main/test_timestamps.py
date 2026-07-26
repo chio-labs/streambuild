@@ -4,13 +4,13 @@ from typing import cast
 
 import pytest
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.models import AdapterQueryResult
 from streambuild.cli.entry.exceptions import CliUserError
 from streambuild.cli.plan.main._convert_utc_timestamp_for_clickhouse import (
     convert_utc_timestamp_for_clickhouse,
 )
 from streambuild.cli.plan.main._normalize_cli_start_time import normalize_cli_start_time
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
-from streambuild.integrations.clickhouse.models import ClickHouseQueryResult
 from tests.unit.src.streambuild.cli.plan.main._test_types import (
     CliStartTimeConversionTestCase,
     CliStartTimeNormalizationErrorTestCase,
@@ -80,8 +80,8 @@ def test_given_invalid_cli_start_time_when_normalizing_then_it_raises_clear_erro
 def test_given_clickhouse_timezone_when_converting_then_it_returns_server_basis_timestamp(
     test_case: CliStartTimeConversionTestCase,
 ) -> None:
-    client: ClickHouseClient = cast(
-        ClickHouseClient,
+    client: AdapterConnection = cast(
+        AdapterConnection,
         FakeTimestampCliClickHouseClient(test_case.timezone_name),
     )
 
@@ -96,6 +96,6 @@ class FakeTimestampCliClickHouseClient:
     def __init__(self, timezone_name: str) -> None:
         self._timezone_name: str = timezone_name
 
-    def query(self, statement: str) -> ClickHouseQueryResult:
+    def query(self, statement: str) -> AdapterQueryResult:
         assert statement == "SELECT timezone()"
-        return ClickHouseQueryResult(rows=((self._timezone_name,),), column_names=("timezone()",))
+        return AdapterQueryResult(rows=((self._timezone_name,),), column_names=("timezone()",))

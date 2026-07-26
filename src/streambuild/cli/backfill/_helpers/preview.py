@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.cli.backfill.models import BackfillPreviewContext
 from streambuild.cli.entry.exceptions import CliUserError
 from streambuild.cli.entry.main._resolve_default_database import resolve_default_database
@@ -27,7 +28,6 @@ from streambuild.executor.backfill.main.resolve_unsupported_bounded_replay_behav
     resolve_unsupported_bounded_replay_behavior,
 )
 from streambuild.executor.backfill.models import RootBackfillReport
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def build_backfill_preview_context(
@@ -39,7 +39,7 @@ def build_backfill_preview_context(
     deployment_id: str | None,
     full_refresh: bool,
     start_time: str | None,
-    client: ClickHouseClient,
+    client: AdapterConnection,
 ) -> BackfillPreviewContext:
     loaded_pipelines: list[LoadedPipeline] = discover_pipelines(pipelines_root)
     compiled: list[CompiledPipeline] = [compile_pipeline(pipeline) for pipeline in loaded_pipelines]

@@ -5,14 +5,12 @@ from dataclasses import dataclass
 class RenderMetadataStateDdlTestCase:
     description: str
     statement_index: int
-    expected_table_name: str
-    expected_fragments: tuple[str, ...]
+    expected_sql: str
 
 
 @dataclass(frozen=True)
 class MetadataStateInsertStatementTestCase:
     description: str
     statement_index: int
-    expected_sql_fragment: str
-    expected_row_count: int
-    expected_first_row_fragments: tuple[tuple[str, object], ...]
+    expected_sql: str
+    expected_row: dict[str, object]

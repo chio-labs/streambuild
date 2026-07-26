@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.clickhouse.metadata_state.main.build_metadata_state_insert_statements import (
     build_metadata_state_insert_statements,
 )
@@ -17,10 +18,9 @@ from streambuild.compiler.actual_state.main.build_normalized_fingerprint import 
 from streambuild.compiler.compile.models import DesiredMaterializedView, DesiredTable
 from streambuild.compiler.metadata_state.models import ObjectStateRecord
 from streambuild.executor.reconcile.models import ReconcilePreview, ReconcileResult
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
-def apply_reconcile(*, client: ClickHouseClient, preview: ReconcilePreview) -> ReconcileResult:
+def apply_reconcile(*, client: AdapterConnection, preview: ReconcilePreview) -> ReconcileResult:
     """Persist reconciled object-state records."""
 
     ensure_metadata_tables(client=client, metadata_database=preview.database)
@@ -66,7 +66,7 @@ def insert_table_name(statement_sql: str) -> str:
     return statement_sql[len("INSERT INTO ") :].split(" ", 1)[0]
 
 
-def ensure_metadata_tables(*, client: ClickHouseClient, metadata_database: str) -> None:
+def ensure_metadata_tables(*, client: AdapterConnection, metadata_database: str) -> None:
     client.command(f"CREATE DATABASE IF NOT EXISTS {metadata_database}")
     statements: tuple[RenderedClickHouseStatement, ...] = render_metadata_state_statements(
         metadata_database

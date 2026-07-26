@@ -2,20 +2,18 @@
 
 from collections.abc import Mapping
 
-from clickhouse_connect.driver.exceptions import DatabaseError, OperationalError
-
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.exceptions import AdapterRelationNotFoundError
 from streambuild.clickhouse.metadata_state.constants import METADATA_OBJECT_STATE_TABLE_NAME
 from streambuild.compiler.actual_state.models import ObjectStateMetadataRow
 from streambuild.compiler.compile.models import ObjectKey
 from streambuild.compiler.compile.types import DesiredObjectType
 from streambuild.compiler.metadata_state.models import ObjectStateRecord
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
-from streambuild.integrations.clickhouse.constants import UNKNOWN_TABLE_ERROR_CODE
 
 
 def load_object_state_records(
     *,
-    client: ClickHouseClient,
+    client: AdapterConnection,
     metadata_database: str,
     deployment_id: str,
 ) -> tuple[ObjectStateRecord, ...]:
@@ -33,7 +31,7 @@ def load_object_state_records(
 
 def load_object_state_records_by_deployments(
     *,
-    client: ClickHouseClient,
+    client: AdapterConnection,
     metadata_database: str,
     deployment_ids: tuple[str, ...],
 ) -> dict[str, tuple[ObjectStateRecord, ...]]:
@@ -51,10 +49,8 @@ def load_object_state_records_by_deployments(
             f"WHERE deployment_id IN ({_quoted_sql_string_list(deployment_ids)})",
             decode=_decode_object_state_metadata_row,
         )
-    except (DatabaseError, OperationalError) as error:
-        if UNKNOWN_TABLE_ERROR_CODE in str(error):
-            return {}
-        raise
+    except AdapterRelationNotFoundError:
+        return {}
     records_by_deployment: dict[str, list[ObjectStateRecord]] = {
         known_deployment_id: [] for known_deployment_id in deployment_ids
     }
@@ -81,7 +77,7 @@ def load_object_state_records_by_deployments(
 
 def load_latest_object_state_records_by_keys(
     *,
-    client: ClickHouseClient,
+    client: AdapterConnection,
     metadata_database: str,
     keys: tuple[ObjectKey, ...],
 ) -> dict[ObjectKey, ObjectStateRecord]:
@@ -103,10 +99,8 @@ def load_latest_object_state_records_by_keys(
             f"WHERE {' OR '.join(key_clauses)}",
             decode=_decode_object_state_metadata_row,
         )
-    except (DatabaseError, OperationalError) as error:
-        if UNKNOWN_TABLE_ERROR_CODE in str(error):
-            return {}
-        raise
+    except AdapterRelationNotFoundError:
+        return {}
     latest_records: dict[ObjectKey, ObjectStateRecord] = {}
     for row in rows:
         key: ObjectKey = ObjectKey(

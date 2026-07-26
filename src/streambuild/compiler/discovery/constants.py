@@ -30,12 +30,16 @@ PROJECT_FILE_NAME: str = "streambuild_project.yml"
 PIPELINE_FILE_NAME: str = "pipeline.yml"
 ALLOWED_PROJECT_KEYS: frozenset[str] = frozenset(
     {
+        "version",
+        "adapter",
         "default_database",
         "replay_lineage_mode",
         "bounded_replay_fallback",
         "clickhouse",
     }
 )
+SUPPORTED_PROJECT_VERSION: int = 2
+DEFAULT_ADAPTER_NAME: str = "clickhouse"
 SECONDS_BY_DURATION_UNIT: dict[str, int] = {
     "d": 24 * 60 * 60,
     "h": 60 * 60,

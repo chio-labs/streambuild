@@ -2,6 +2,7 @@
 
 import sys
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.cli.backfill._helpers.preview import build_backfill_preview_context
 from streambuild.cli.backfill.main.render_backfill_result import render_backfill_result
 from streambuild.cli.backfill.models import BackfillCommandOptions, BackfillPreviewContext
@@ -15,13 +16,12 @@ from streambuild.cli.plan.main.render_plan_result import render_plan_result
 from streambuild.compiler.compile.exceptions import TransformSqlContractError
 from streambuild.executor.backfill.main.execute_backfill import execute_backfill
 from streambuild.executor.backfill.models import BackfillBootstrapRequest, BackfillExecutionResult
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def run_backfill(
     *,
     options: BackfillCommandOptions,
-    client: ClickHouseClient,
+    client: AdapterConnection,
 ) -> int:
     """Execute a staged backfill and print the runtime result payload."""
 

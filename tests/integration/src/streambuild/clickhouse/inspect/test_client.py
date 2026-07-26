@@ -1,16 +1,14 @@
 import pytest
 from clickhouse_connect.driver.client import Client
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.models import AdapterConnectionConfig
+from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from streambuild.clickhouse.inspect.main.inspect_managed_table_state import (
     inspect_managed_table_state,
 )
 from streambuild.clickhouse.inspect.models import InspectedManagedTableState
 from streambuild.clickhouse.render.main.render_create_view_ddl import render_create_view_ddl
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
-from streambuild.integrations.clickhouse.main.connect_clickhouse import (
-    connect_clickhouse,
-)
-from streambuild.integrations.clickhouse.models import ClickHouseConnectionConfig
 from tests.integration.src.streambuild.clickhouse.inspect._test_types import (
     InspectManagedTableStateIntegrationTestCase,
 )
@@ -54,8 +52,8 @@ def test_given_views_and_physical_tables_when_inspecting_then_it_returns_expecte
         )
     )
 
-    managed_client: ClickHouseClient = connect_clickhouse(
-        ClickHouseConnectionConfig(
+    managed_client: AdapterConnection = ClickHouseAdapter().connect(
+        AdapterConnectionConfig(
             host=clickhouse_connection_settings.host,
             port=clickhouse_connection_settings.port,
             username=clickhouse_connection_settings.username,

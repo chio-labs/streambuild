@@ -3,10 +3,10 @@ from typing import cast
 
 import pytest
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.compiler.audit_discovery.models import LoadedSqlAudit
 from streambuild.executor.auditing.main.execute_sql_audits import execute_sql_audits
 from streambuild.executor.auditing.models import SqlAuditRunResult
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 from tests.unit.src.streambuild.executor.auditing._test_types import ExecuteSqlAuditsTestCase
 from tests.unit.src.streambuild.executor.auditing.helpers import FakeAuditClickHouseClient
 
@@ -56,7 +56,7 @@ def test_given_sql_audits_when_executing_then_it_returns_expected_results(
     result: SqlAuditRunResult = execute_sql_audits(
         loaded_audits=(loaded_audit,),
         resolver=test_case.resolver,
-        client=cast(ClickHouseClient, client),
+        client=cast(AdapterConnection, client),
     )
 
     assert result.audit_results[0].passed == test_case.expected_passed

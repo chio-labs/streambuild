@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.cli.entry.exceptions import CliUserError
 from streambuild.cli.plan._helpers.source_validation import (
     build_external_source_replay_config,
@@ -12,12 +13,11 @@ from streambuild.compiler.compile.models import (
     CompiledPipeline,
     ExternalSourceReplayConfig,
 )
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def validate_declared_external_sources(
     *,
-    client: ClickHouseClient,
+    client: AdapterConnection,
     compiled_pipelines: tuple[CompiledPipeline, ...],
     database: str,
 ) -> None:

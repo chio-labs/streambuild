@@ -5,6 +5,7 @@ import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass
 from textwrap import dedent
+from typing import Self, cast
 
 import clickhouse_connect
 import pytest
@@ -22,6 +23,7 @@ KAFKA_NETWORK_ALIAS: str = "kafka"
 KAFKA_INTERNAL_PORT: int = 29092
 KAFKA_INTERNAL_BOOTSTRAP_SERVER: str = f"{KAFKA_NETWORK_ALIAS}:{KAFKA_INTERNAL_PORT}"
 REDPANDA_IMAGE: str = "redpandadata/redpanda:v24.2.7"
+CONTAINER_STARTUP_TIMEOUT_SECONDS: int = 90
 
 
 class E2ERedpandaContainer(RedpandaContainer):
@@ -31,6 +33,9 @@ class E2ERedpandaContainer(RedpandaContainer):
     container such as ClickHouse cannot reach. ClickHouse consumes over the
     docker network, so the internal listener must advertise the alias.
     """
+
+    def start(self, timeout: int = CONTAINER_STARTUP_TIMEOUT_SECONDS) -> Self:
+        return cast(Self, super().start(timeout=timeout))
 
     def tc_start(self) -> None:
         host: str = self.get_container_host_ip()
@@ -228,7 +233,7 @@ def _reserve_host_port() -> int:
 
 
 def _wait_for_clickhouse_client(host: str, port: int) -> Client:
-    deadline: float = time.time() + 30
+    deadline: float = time.time() + CONTAINER_STARTUP_TIMEOUT_SECONDS
     last_error: Exception | None = None
     while time.time() < deadline:
         try:

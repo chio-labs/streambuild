@@ -2,12 +2,12 @@ from typing import cast
 
 import pytest
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.compiler.actual_state.models import ActualState
 from streambuild.compiler.compile.models import DesiredState
 from streambuild.compiler.planner.main.plan_deployment import plan_deployment
 from streambuild.compiler.planner.models import DeploymentPlan
 from streambuild.executor.backfill._helpers.shadow_objects import create_shadow_objects
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 from tests.unit.src.streambuild.compiler.planner.helpers import (
     build_single_transform_desired_state,
 )
@@ -76,7 +76,7 @@ def test_given_reference_ref_when_creating_shadow_objects_then_it_creates_depend
     client: RecordingClient = RecordingClient()
 
     create_shadow_objects(
-        client=cast(ClickHouseClient, client),
+        client=cast(AdapterConnection, client),
         deployment_plan=deployment_plan,
         desired_state=desired_state,
         default_database="analytics",

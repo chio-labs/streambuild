@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 
 from sqlglot import exp, parse_one
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.clickhouse.inspect.main.inspect_managed_table_state import (
     inspect_managed_table_state,
 )
@@ -40,12 +41,11 @@ from streambuild.executor.backfill.models import (
     CursorLowerBoundQueryRow,
     TableColumnSystemRow,
 )
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def execute_scalar_replay(
     *,
-    client: ClickHouseClient,
+    client: AdapterConnection,
     deployment_plan: DeploymentPlan,
     desired_state: DesiredState,
     default_database: str,
@@ -210,7 +210,7 @@ def execute_scalar_replay(
 
 def execute_offset_replay(
     *,
-    client: ClickHouseClient,
+    client: AdapterConnection,
     deployment_plan: DeploymentPlan,
     desired_state: DesiredState,
     default_database: str,
@@ -638,7 +638,7 @@ def _offset_replay_query_has_aggregate_semantics(expression: exp.Select) -> bool
 
 def _seed_scalar_prefix_if_needed(
     *,
-    client: ClickHouseClient,
+    client: AdapterConnection,
     root_table: DesiredTable,
     shadow_target_name: str,
     database: str,
@@ -672,7 +672,7 @@ def _seed_scalar_prefix_if_needed(
 
 def _seed_offset_prefix_if_needed(
     *,
-    client: ClickHouseClient,
+    client: AdapterConnection,
     root_table: DesiredTable,
     shadow_target_name: str,
     database: str,
@@ -712,7 +712,7 @@ def _seed_offset_prefix_if_needed(
 
 def _copyable_column_names(
     *,
-    client: ClickHouseClient,
+    client: AdapterConnection,
     database: str,
     live_table_name: str,
     desired_column_names: tuple[str, ...],
@@ -729,7 +729,7 @@ def _copyable_column_names(
 
 def _live_column_names(
     *,
-    client: ClickHouseClient,
+    client: AdapterConnection,
     database: str,
     live_table_name: str,
 ) -> set[str]:
@@ -741,7 +741,7 @@ def _live_column_names(
 
 
 def _active_table_name_for_logical_root(
-    *, client: ClickHouseClient, database: str, logical_table_name: str
+    *, client: AdapterConnection, database: str, logical_table_name: str
 ) -> str:
     active_bindings: tuple[InspectedActiveTableBinding, ...] = inspect_managed_table_state(
         client=client,
@@ -756,7 +756,7 @@ def _active_table_name_for_logical_root(
 
 def _load_active_scalar_frontier(
     *,
-    client: ClickHouseClient,
+    client: AdapterConnection,
     database: str,
     live_table_name: str,
     boundary_key: str,
@@ -772,7 +772,7 @@ def _load_active_scalar_frontier(
 
 def _load_active_offset_frontiers(
     *,
-    client: ClickHouseClient,
+    client: AdapterConnection,
     database: str,
     live_table_name: str,
 ) -> tuple[ActiveOffsetFrontierQueryRow, ...]:
@@ -786,7 +786,7 @@ def _load_active_offset_frontiers(
 
 def _load_offset_frontiers_at_boundary_time(
     *,
-    client: ClickHouseClient,
+    client: AdapterConnection,
     database: str,
     anchor_table_name: str,
     lower_bound_time: str,
@@ -808,7 +808,7 @@ def _load_offset_frontiers_at_boundary_time(
 
 def _load_cursor_lower_bound_at_boundary_time(
     *,
-    client: ClickHouseClient,
+    client: AdapterConnection,
     database: str,
     anchor_table_name: str,
     lower_bound_time: str,
@@ -867,7 +867,7 @@ def _render_seeded_scalar_prefix_copy_statement(
 
 def _load_scalar_boundary_column_type(
     *,
-    client: ClickHouseClient,
+    client: AdapterConnection,
     database: str,
     table_name: str,
     boundary_key: str,

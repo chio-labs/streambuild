@@ -1,5 +1,6 @@
 """Backfill execution entrypoint."""
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.compiler.discovery.types import ReplayLineageMode
 from streambuild.compiler.metadata_state.models import DeploymentWatermarkRecord
 from streambuild.executor.backfill._helpers.bootstrap import execute_backfill_bootstrap
@@ -23,13 +24,12 @@ from streambuild.executor.backfill.models import (
     BackfillBootstrapResult,
     BackfillExecutionResult,
 )
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def execute_backfill(
     *,
     request: BackfillBootstrapRequest,
-    client: ClickHouseClient,
+    client: AdapterConnection,
 ) -> BackfillExecutionResult:
     """Execute staged backfill through boundary capture and supported replay steps."""
 

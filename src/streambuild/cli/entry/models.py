@@ -5,6 +5,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from streambuild.adapter.classes.adapter import Adapter
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.models import AdapterConnectionConfig
 from streambuild.compiler.discovery.models import Project
 
 
@@ -25,27 +28,20 @@ class CliEntrypointHandlers:
 
 
 @dataclass(frozen=True)
-class ResolvedClickHouseConnection:
-    host: str
-    port: int
-    username: str
-    password: str
-
-
-@dataclass(frozen=True)
 class ResolvedCliProjectConfig:
-    connection: ResolvedClickHouseConnection | None
+    connection: AdapterConnectionConfig | None
     default_database: str | None
+    adapter_name: str
     project: Project | None
 
 
-@dataclass(frozen=True)
-class CliClickHouseOptions:
+@dataclass(frozen=True, repr=False)
+class CliConnectionOptions:
     host: str | None
     port: int | None
     username: str | None
     password: str | None
-    project_connection: ResolvedClickHouseConnection | None
+    project_connection: AdapterConnectionConfig | None
 
 
 @dataclass(frozen=True)
@@ -54,4 +50,11 @@ class ResolvedCliInvocation:
     project_dir: Path | None
     pipelines_root: Path | None
     database: str | None
-    clickhouse: CliClickHouseOptions
+    adapter: Adapter
+    connection: CliConnectionOptions
+
+
+@dataclass(frozen=True)
+class ResolvedInvocationConnection:
+    connection: AdapterConnection | None
+    close_after_command: bool

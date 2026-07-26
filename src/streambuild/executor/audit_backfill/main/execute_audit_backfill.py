@@ -1,5 +1,6 @@
 """Audit backfill execution entrypoint."""
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.clickhouse.inspect.main.inspect_managed_table_state import (
     inspect_managed_table_state,
 )
@@ -15,13 +16,12 @@ from streambuild.executor.audit_backfill.models import (
     RootAuditResult,
 )
 from streambuild.executor.audit_backfill.types import AuditAssessment
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def execute_audit_backfill(
     *,
     request: AuditBackfillRequest,
-    client: ClickHouseClient,
+    client: AdapterConnection,
 ) -> AuditBackfillResult:
     """Audit a staged backfill deployment by explicit deployment id."""
 

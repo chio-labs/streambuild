@@ -1,5 +1,6 @@
 """Load actual warehouse state for the managed objects of a pipeline."""
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.compiler.actual_state._helpers.assembly import (
     build_inspected_actual_objects,
 )
@@ -15,12 +16,11 @@ from streambuild.compiler.actual_state.models import (
     ActualTable,
 )
 from streambuild.compiler.compile.models import DesiredState
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def load_actual_state(
     *,
-    client: ClickHouseClient,
+    client: AdapterConnection,
     desired_state: DesiredState,
     database: str,
 ) -> ActualState:

@@ -7,22 +7,25 @@ import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
-from clickhouse_connect.driver.exceptions import DatabaseError, OperationalError
-
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.exceptions import AdapterError, AdapterWarehouseError
+from streambuild.cli.entry._helpers.adapter_connection import (
+    resolve_invocation_connection,
+)
 from streambuild.cli.entry._helpers.dispatch import dispatch_cli_command
 from streambuild.cli.entry._helpers.entrypoint import argv_for_parse_args
 from streambuild.cli.entry._helpers.invocation import resolve_cli_invocation
 from streambuild.cli.entry._helpers.parser import build_cli_parser
 from streambuild.cli.entry.constants import DISPLAY_NAME_BY_COMMAND
 from streambuild.cli.entry.exceptions import CliUserError
-from streambuild.cli.entry.main._errors import render_expected_clickhouse_error
+from streambuild.cli.entry.main._errors import render_expected_warehouse_error
 from streambuild.cli.entry.models import (
     CliEntrypointHandlers,
     ResolvedCliInvocation,
+    ResolvedInvocationConnection,
 )
 from streambuild.cli.entry.types import CliCommand, CliSubcommand
 from streambuild.compiler.compile.exceptions import TransformSqlContractError
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -64,7 +67,7 @@ def _main_with_dependencies(
     handlers: CliEntrypointHandlers,
     environment: Mapping[str, str] | None = None,
     working_directory: Path | None = None,
-    clickhouse_client: ClickHouseClient | None = None,
+    adapter_connection: AdapterConnection | None = None,
 ) -> int:
     parser: argparse.ArgumentParser = build_cli_parser()
     args: argparse.Namespace = parser.parse_args(argv_for_parse_args(argv))
@@ -76,19 +79,30 @@ def _main_with_dependencies(
             working_directory=working_directory,
         )
         resolved_database = invocation.database
-        return dispatch_cli_command(
+        resolved_connection: ResolvedInvocationConnection = resolve_invocation_connection(
             invocation=invocation,
-            handlers=handlers,
-            clickhouse_client=clickhouse_client,
+            provided_connection=adapter_connection,
         )
+        try:
+            return dispatch_cli_command(
+                invocation=invocation,
+                handlers=handlers,
+                adapter_connection=resolved_connection.connection,
+            )
+        finally:
+            if (
+                resolved_connection.close_after_command
+                and resolved_connection.connection is not None
+            ):
+                resolved_connection.connection.close()
     except CliUserError as error:
         print(str(error), file=sys.stderr)
         return 1
     except (TransformSqlContractError, ValueError) as error:
         print(str(error), file=sys.stderr)
         return 1
-    except (DatabaseError, OperationalError) as error:
-        rendered_error: str | None = render_expected_clickhouse_error(
+    except AdapterWarehouseError as error:
+        rendered_error: str | None = render_expected_warehouse_error(
             command_name=_command_name(args),
             database=resolved_database or "<unknown>",
             error=error,
@@ -97,6 +111,9 @@ def _main_with_dependencies(
             print(rendered_error, file=sys.stderr)
             return 1
         raise
+    except AdapterError as error:
+        print(str(error), file=sys.stderr)
+        return 1
 
 
 def _command_name(args: argparse.Namespace) -> str:

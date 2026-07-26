@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import cast
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.cli.entry.main._resolve_default_database import resolve_default_database
 from streambuild.cli.reconcile._helpers.rendering import (
     confirm_reconcile,
@@ -24,7 +25,6 @@ from streambuild.executor.reconcile.models import (
     ReconcilePreview,
     ReconcileResult,
 )
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def run_reconcile(
@@ -35,7 +35,7 @@ def run_reconcile(
     selectors: tuple[str, ...],
     json_output: bool,
     apply: bool,
-    client: ClickHouseClient,
+    client: AdapterConnection,
 ) -> int:
     loaded_pipelines: list[LoadedPipeline] = discover_pipelines(pipelines_root)
     compiled: list[CompiledPipeline] = [compile_pipeline(pipeline) for pipeline in loaded_pipelines]

@@ -1,16 +1,16 @@
 """Deployment resolution helpers for publish."""
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.executor.audit_backfill.models import AuditDeploymentCandidate
 from streambuild.executor.publish.exceptions import PublishExecutionError
 from streambuild.executor.publish.main.build_publish_deployment_candidates import (
     build_publish_deployment_candidates,
 )
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def resolve_publish_deployment_id(
     *,
-    client: ClickHouseClient,
+    client: AdapterConnection,
     metadata_database: str,
     default_database: str,
     deployment_id: str | None,

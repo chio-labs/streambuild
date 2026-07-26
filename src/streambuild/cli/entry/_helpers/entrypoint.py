@@ -4,11 +4,10 @@ import os
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
+from streambuild.adapter.models import AdapterConnectionConfig
 from streambuild.cli.entry.exceptions import CliUserError
-from streambuild.cli.entry.models import (
-    ResolvedClickHouseConnection,
-    ResolvedCliProjectConfig,
-)
+from streambuild.cli.entry.models import ResolvedCliProjectConfig
+from streambuild.compiler.discovery.constants import DEFAULT_ADAPTER_NAME
 from streambuild.compiler.discovery.main.load_project_for_path import load_project_for_path
 from streambuild.compiler.discovery.models import Project
 
@@ -68,16 +67,18 @@ def resolve_project_config(
         return ResolvedCliProjectConfig(
             connection=None,
             default_database=None if project is None else project.default_database,
+            adapter_name=DEFAULT_ADAPTER_NAME if project is None else project.adapter,
             project=project,
         )
     return ResolvedCliProjectConfig(
-        connection=ResolvedClickHouseConnection(
+        connection=AdapterConnectionConfig(
             host=project.clickhouse.host,
             port=project.clickhouse.port,
             username=project.clickhouse.username,
             password=project.clickhouse.password,
         ),
         default_database=project.default_database,
+        adapter_name=project.adapter,
         project=project,
     )
 
@@ -146,15 +147,15 @@ def require_int_arg(*, value: int | None, arg_name: str, env_var_name: str) -> i
     return value
 
 
-def resolve_clickhouse_connection(
+def resolve_adapter_connection_config(
     *,
     host: str | None,
     port: int | None,
     username: str | None,
     password: str | None,
-    project_connection: ResolvedClickHouseConnection | None,
-) -> ResolvedClickHouseConnection:
-    return ResolvedClickHouseConnection(
+    project_connection: AdapterConnectionConfig | None,
+) -> AdapterConnectionConfig:
+    return AdapterConnectionConfig(
         host=require_str_arg(
             value=host
             if host is not None

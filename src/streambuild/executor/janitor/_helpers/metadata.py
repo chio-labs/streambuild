@@ -6,19 +6,17 @@ import json
 from collections.abc import Mapping
 from datetime import UTC, datetime
 
-from clickhouse_connect.driver.exceptions import DatabaseError, OperationalError
-
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.exceptions import AdapterRelationNotFoundError
 from streambuild.compiler.compile.models import ObjectKey
 from streambuild.compiler.compile.types import DesiredObjectType
 from streambuild.compiler.discovery.types import ReplayLineageMode
 from streambuild.compiler.metadata_state.models import DeploymentRecord, PreparedObjectMapping
 from streambuild.executor.janitor.models import DeploymentMetadataRow, PublishHistoryMetadataRow
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
-from streambuild.integrations.clickhouse.constants import UNKNOWN_TABLE_ERROR_CODE
 
 
 def load_deployments(
-    *, client: ClickHouseClient, metadata_database: str
+    *, client: AdapterConnection, metadata_database: str
 ) -> tuple[DeploymentRecord, ...]:
     rows: tuple[DeploymentMetadataRow, ...] = client.query_many(
         statement="SELECT deployment_id, created_at, status, replay_lineage_mode, "
@@ -62,7 +60,7 @@ def load_deployments(
 
 def load_latest_publish_times(
     *,
-    client: ClickHouseClient,
+    client: AdapterConnection,
     metadata_database: str,
 ) -> dict[str, datetime]:
     try:
@@ -71,10 +69,8 @@ def load_latest_publish_times(
             f"FROM {metadata_database}.streambuild_publish_history GROUP BY deployment_id",
             decode=_decode_publish_history_metadata_row,
         )
-    except (DatabaseError, OperationalError) as error:
-        if UNKNOWN_TABLE_ERROR_CODE in str(error):
-            return {}
-        raise
+    except AdapterRelationNotFoundError:
+        return {}
     latest_publish_times: dict[str, datetime] = {}
     row: PublishHistoryMetadataRow
     for row in rows:

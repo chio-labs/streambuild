@@ -1,8 +1,14 @@
 from dataclasses import dataclass
 
+from streambuild.compiler.compile.models import CompiledExternalSource, CompiledManagedSource
 from streambuild.compiler.discovery.models import SchemaChangeBackfillPolicy
-from streambuild.compiler.discovery.types import ReplayAnchorMode, ReplayLineageMode
+from streambuild.compiler.discovery.types import (
+    ReplayAnchorMode,
+    ReplayBoundaryMode,
+    ReplayLineageMode,
+)
 from streambuild.compiler.planner.types import (
+    DeploymentAction,
     PlannedChangeType,
     RebuildExecutionMode,
     RebuildStrategy,
@@ -78,6 +84,18 @@ class PlannerShadowIdentityTestCase:
 
 
 @dataclass(frozen=True)
+class PlannerPreservationMatrixTestCase:
+    description: str
+    source_ownership: str
+    replay_lineage_mode: ReplayLineageMode
+    expected_source_type: type[CompiledManagedSource] | type[CompiledExternalSource]
+    expected_desired_object_count: int
+    expected_external_replay_boundary_modes: tuple[ReplayBoundaryMode, ...]
+    expected_upstream_boundary_key: tuple[str | None, str, str]
+    expected_actions: tuple[DeploymentAction, ...]
+
+
+@dataclass(frozen=True)
 class PlannerTableSchemaClassificationTestCase:
     description: str
     actual_columns: tuple[tuple[str, str], ...]
@@ -96,3 +114,18 @@ class PlannerExecutionModeTestCase:
     configured_backfill_mode: SchemaChangeBackfillMode | str | None = None
     configured_lookback_seconds: int | None = None
     schema_change_backfill: SchemaChangeBackfillPolicy | None = None
+
+
+@dataclass(frozen=True)
+class DeploymentPhysicalNameRecognitionTestCase:
+    description: str
+    physical_name: str
+    expected_is_deployment_name: bool
+
+
+@dataclass(frozen=True)
+class DeploymentPhysicalNameParsingTestCase:
+    description: str
+    physical_name: str
+    expected_logical_name: str
+    expected_deployment_id: str

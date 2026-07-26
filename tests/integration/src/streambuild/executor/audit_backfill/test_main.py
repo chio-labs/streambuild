@@ -1,6 +1,9 @@
 import pytest
 from clickhouse_connect.driver.client import Client
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.models import AdapterConnectionConfig
+from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from streambuild.clickhouse.render.main.render_create_kafka_table_ddl import (
     render_create_kafka_table_ddl,
 )
@@ -18,11 +21,6 @@ from streambuild.executor.audit_backfill.models import (
 )
 from streambuild.executor.audit_backfill.types import AuditAssessment
 from streambuild.executor.backfill.main.execute_backfill import execute_backfill
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
-from streambuild.integrations.clickhouse.main.connect_clickhouse import (
-    connect_clickhouse,
-)
-from streambuild.integrations.clickhouse.models import ClickHouseConnectionConfig
 from tests.integration.src.streambuild.conftest import ClickHouseConnectionSettings
 from tests.integration.src.streambuild.executor.audit_backfill._test_types import (
     AuditAfterDeletedActiveViewIntegrationTestCase,
@@ -275,8 +273,8 @@ def test_given_staged_backfill_when_auditing_then_it_returns_expected_comparison
             f"('legacy-order-{extra_row_index}', "
             f"toDateTime64('2026-04-09 15:00:0{extra_row_index}.000', 3))"
         )
-    managed_client: ClickHouseClient = connect_clickhouse(
-        ClickHouseConnectionConfig(
+    managed_client: AdapterConnection = ClickHouseAdapter().connect(
+        AdapterConnectionConfig(
             host=clickhouse_connection_settings.host,
             port=clickhouse_connection_settings.port,
             username=clickhouse_connection_settings.username,
@@ -370,7 +368,7 @@ def test_given_audit_request_without_deployment_id_when_active_view_exists_then_
     clickhouse_client: Client,
     clickhouse_database: str,
 ) -> None:
-    managed_client: ClickHouseClient = prepare_audit_resolution_scenario(
+    managed_client: AdapterConnection = prepare_audit_resolution_scenario(
         connection_settings=clickhouse_connection_settings,
         clickhouse_client=clickhouse_client,
         clickhouse_database=clickhouse_database,
@@ -415,7 +413,7 @@ def test_given_audit_request_without_deployment_id_when_resolution_is_ambiguous_
     clickhouse_client: Client,
     clickhouse_database: str,
 ) -> None:
-    managed_client: ClickHouseClient = prepare_audit_resolution_scenario(
+    managed_client: AdapterConnection = prepare_audit_resolution_scenario(
         connection_settings=clickhouse_connection_settings,
         clickhouse_client=clickhouse_client,
         clickhouse_database=clickhouse_database,
@@ -503,8 +501,8 @@ def test_given_deleted_audit_metadata_when_auditing_then_it_uses_live_clickhouse
             "_replay_landed_at",
         ],
     )
-    managed_client: ClickHouseClient = connect_clickhouse(
-        ClickHouseConnectionConfig(
+    managed_client: AdapterConnection = ClickHouseAdapter().connect(
+        AdapterConnectionConfig(
             host=clickhouse_connection_settings.host,
             port=clickhouse_connection_settings.port,
             username=clickhouse_connection_settings.username,
@@ -650,8 +648,8 @@ def test_given_dangling_active_view_when_auditing_then_it_returns_caution(
             source_table_name=require_managed_source(compiled_pipeline).raw_table.name,
         )
     )
-    managed_client: ClickHouseClient = connect_clickhouse(
-        ClickHouseConnectionConfig(
+    managed_client: AdapterConnection = ClickHouseAdapter().connect(
+        AdapterConnectionConfig(
             host=clickhouse_connection_settings.host,
             port=clickhouse_connection_settings.port,
             username=clickhouse_connection_settings.username,
@@ -783,8 +781,8 @@ def test_given_deleted_active_view_when_auditing_then_it_uses_live_staged_state(
         )
     )
     clickhouse_client.command(f"DROP VIEW {clickhouse_database}.tbl__orders_enriched")
-    managed_client: ClickHouseClient = connect_clickhouse(
-        ClickHouseConnectionConfig(
+    managed_client: AdapterConnection = ClickHouseAdapter().connect(
+        AdapterConnectionConfig(
             host=clickhouse_connection_settings.host,
             port=clickhouse_connection_settings.port,
             username=clickhouse_connection_settings.username,
@@ -943,8 +941,8 @@ def test_given_degraded_offset_state_when_auditing_then_it_returns_caution(
         deployment_id=test_case.deployment_id,
         staged_physical_name=staged_physical_name,
     )
-    managed_client: ClickHouseClient = connect_clickhouse(
-        ClickHouseConnectionConfig(
+    managed_client: AdapterConnection = ClickHouseAdapter().connect(
+        AdapterConnectionConfig(
             host=clickhouse_connection_settings.host,
             port=clickhouse_connection_settings.port,
             username=clickhouse_connection_settings.username,

@@ -88,3 +88,25 @@ class LoadPipelineFileInvalidAdoptedSourceTestCase:
     description: str
     pipeline_file_contents: str
     expected_error_fragment: str
+
+
+@dataclass(frozen=True)
+class LoadProjectAdapterConfigTestCase:
+    description: str
+    project_file_contents: str
+    expected_version: int | None
+    expected_adapter: str
+
+
+@dataclass(frozen=True)
+class LoadProjectAdapterConfigErrorTestCase:
+    description: str
+    project_file_contents: str
+    expected_error_fragment: str
+
+
+@dataclass(frozen=True)
+class LoadProjectCredentialRedactionTestCase:
+    description: str
+    project_file_contents: str
+    expected_absent_repr_fragment: str

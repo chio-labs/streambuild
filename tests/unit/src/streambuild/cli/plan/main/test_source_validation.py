@@ -3,11 +3,11 @@ from typing import cast
 
 import pytest
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.cli.entry.exceptions import CliUserError
 from streambuild.cli.plan.main._source_validation import (
     validate_declared_external_sources,
 )
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 from tests.unit.src.streambuild.cli.plan.main._test_types import (
     CliExternalSourceValidationErrorTestCase,
 )
@@ -40,7 +40,7 @@ def test_given_external_source_alias_collision_when_validating_then_it_raises_cl
 
     with pytest.raises(CliUserError, match=test_case.expected_error_fragment):
         validate_declared_external_sources(
-            client=cast(ClickHouseClient, client),
+            client=cast(AdapterConnection, client),
             compiled_pipelines=(build_compiled_external_source_pipeline(),),
             database="default",
         )

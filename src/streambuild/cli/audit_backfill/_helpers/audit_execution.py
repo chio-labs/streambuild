@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.cli.audit_backfill._helpers.audit_selection import (
     backfill_audit_resolver,
     selected_backfill_sql_audits,
@@ -37,7 +38,6 @@ from streambuild.executor.audit_backfill.models import (
 from streambuild.executor.audit_backfill.types import AuditAssessment
 from streambuild.executor.auditing.main.execute_sql_audits import execute_sql_audits
 from streambuild.executor.auditing.models import SqlAuditRunResult
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def compile_audit_pipelines(pipelines_root: Path | None) -> tuple[CompiledPipeline, ...]:
@@ -50,7 +50,7 @@ def compile_audit_pipelines(pipelines_root: Path | None) -> tuple[CompiledPipeli
 def resolve_deployment_candidate_error(
     *,
     deployment_id: str | None,
-    client: ClickHouseClient,
+    client: AdapterConnection,
     metadata_database: str,
     database: str,
 ) -> str | None:
@@ -89,7 +89,7 @@ def execute_audit_quality_checks(
     result: AuditBackfillResult,
     project_dir: Path | None,
     compiled_pipelines: tuple[CompiledPipeline, ...],
-    client: ClickHouseClient,
+    client: AdapterConnection,
     metadata_database: str,
     database: str,
 ) -> AuditBackfillResult:
