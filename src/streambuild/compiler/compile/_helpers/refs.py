@@ -12,12 +12,6 @@ from streambuild.compiler.compile.models import ParsedRef
 from streambuild.spec.models.types import RefType, SqlRelationType
 
 
-def extract_refs(sql: str) -> list[ParsedRef]:
-    """Return parsed logical node refs referenced by `__source(...)` and `__ref(...)`."""
-
-    return list(_extract_refs_tuple(sql))
-
-
 def _parse_resolved_relation_expression(resolved_sql: str) -> exp.Expression:
     if any(character.isspace() for character in resolved_sql) or resolved_sql.startswith("("):
         return cast(exp.Expression, parse_one(resolved_sql, dialect="clickhouse"))

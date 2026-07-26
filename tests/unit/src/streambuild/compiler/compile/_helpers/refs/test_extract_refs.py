@@ -1,6 +1,6 @@
 import pytest
 
-from streambuild.compiler.compile._helpers.refs import extract_refs
+from streambuild.compiler.compile.main.extract_refs import extract_refs
 from streambuild.compiler.compile.models import ParsedRef
 from tests.unit.src.streambuild.compiler.compile._helpers.refs._test_types import (
     ExtractRefsErrorTestCase,

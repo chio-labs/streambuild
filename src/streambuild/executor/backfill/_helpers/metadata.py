@@ -5,9 +5,6 @@ from dataclasses import asdict
 from streambuild.clickhouse.metadata_state.main.build_metadata_state_insert_statements import (
     build_metadata_state_insert_statements,
 )
-from streambuild.clickhouse.metadata_state.main.render_metadata_state_statements import (
-    render_metadata_state_statements,
-)
 from streambuild.clickhouse.metadata_state.models import RenderedClickHouseStatement
 from streambuild.compiler.actual_state.main.build_normalized_fingerprint import (
     build_normalized_fingerprint,
@@ -20,8 +17,8 @@ from streambuild.compiler.metadata_state.models import (
     ObjectStateRecord,
     PreparedObjectMapping,
 )
-from streambuild.compiler.planner._helpers.types import DesiredObject
 from streambuild.compiler.planner.models import DeploymentPlan, RebuildSubtree
+from streambuild.compiler.planner.types import DesiredObject
 from streambuild.compiler.shared.constants import (
     DESIRED_OBJECT_TYPE_TABLE,
     RAW_TABLE_NAME_PREFIX,
@@ -42,18 +39,6 @@ def ensure_database_exists(*, client: ClickHouseClient, database: str) -> None:
     """Create a ClickHouse database if it does not already exist."""
 
     client.command(f"CREATE DATABASE IF NOT EXISTS {database}")
-
-
-def ensure_metadata_tables(*, client: ClickHouseClient, metadata_database: str) -> None:
-    """Create metadata state tables required for backfill bootstrap."""
-
-    ensure_database_exists(client=client, database=metadata_database)
-    statements: tuple[RenderedClickHouseStatement, ...] = render_metadata_state_statements(
-        metadata_database
-    )
-    statement: RenderedClickHouseStatement
-    for statement in statements:
-        client.command(statement.sql)
 
 
 def persist_deployment_metadata(

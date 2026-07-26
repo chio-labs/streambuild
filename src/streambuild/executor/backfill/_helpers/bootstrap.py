@@ -9,7 +9,6 @@ from streambuild.compiler.planner.main.plan_deployment import plan_deployment
 from streambuild.compiler.planner.models import DeploymentPlan
 from streambuild.executor.backfill._helpers.metadata import (
     ensure_database_exists,
-    ensure_metadata_tables,
     persist_deployment_metadata,
 )
 from streambuild.executor.backfill._helpers.shadow_objects import create_shadow_objects
@@ -17,6 +16,7 @@ from streambuild.executor.backfill._helpers.timing import build_current_timestam
 from streambuild.executor.backfill.main.build_root_backfill_reports import (
     build_root_backfill_reports,
 )
+from streambuild.executor.backfill.main.ensure_metadata_tables import ensure_metadata_tables
 from streambuild.executor.backfill.main.resolve_unsupported_bounded_replay_behavior import (
     resolve_unsupported_bounded_replay_behavior,
 )

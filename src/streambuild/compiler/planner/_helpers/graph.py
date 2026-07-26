@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from streambuild.compiler.compile.models import DesiredState
-from streambuild.compiler.planner._helpers.types import DesiredObject
 from streambuild.compiler.planner.main.build_reverse_deps import build_reverse_deps
 from streambuild.compiler.planner.main.topologically_order_keys import topologically_order_keys
+from streambuild.compiler.planner.types import DesiredObject
 from streambuild.compiler.shared.constants import DESIRED_OBJECT_TYPE_TABLE
 from streambuild.compiler.shared.models import (
     DesiredMaterializedView,

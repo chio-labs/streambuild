@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from streambuild.compiler.compile.models import DesiredState
-from streambuild.compiler.planner._helpers.types import DesiredObject
+from streambuild.compiler.planner.types import DesiredObject
 from streambuild.compiler.shared.models import (
     ObjectKey,
 )
