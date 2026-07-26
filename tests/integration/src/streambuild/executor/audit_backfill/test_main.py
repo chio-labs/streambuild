@@ -30,6 +30,7 @@ from tests.integration.src.streambuild.executor.audit_backfill._test_types impor
     ResolveAuditDeploymentIntegrationTestCase,
 )
 from tests.integration.src.streambuild.executor.backfill.helpers import (
+    STAGED_ROW_FILTERS,
     build_offset_replay_compiled_pipeline,
     build_offset_target_insert_select_sql,
     build_raw_orders_row,
@@ -37,6 +38,7 @@ from tests.integration.src.streambuild.executor.backfill.helpers import (
     build_scalar_replay_compiled_pipeline,
     build_scalar_replay_request,
     build_scalar_target_insert_select_sql,
+    build_target_insert_select_sql,
     require_managed_source,
 )
 
@@ -251,28 +253,20 @@ def test_given_staged_backfill_when_auditing_then_it_returns_expected_comparison
     )
     clickhouse_client.command(
         f"INSERT INTO {clickhouse_database}.{active_physical_name} "
-        + (
-            build_offset_target_insert_select_sql(
-                database=clickhouse_database,
-                source_table_name=require_managed_source(compiled_pipeline).raw_table.name,
-            )
-            if test_case.replay_lineage_mode == "offsets"
-            else build_scalar_target_insert_select_sql(
-                replay_lineage_mode=test_case.replay_lineage_mode,
-                database=clickhouse_database,
-                source_table_name=require_managed_source(compiled_pipeline).raw_table.name,
-            )
+        + build_target_insert_select_sql(
+            replay_lineage_mode=test_case.replay_lineage_mode,
+            database=clickhouse_database,
+            source_table_name=require_managed_source(compiled_pipeline).raw_table.name,
         )
     )
-    if test_case.extra_active_only_rows > 0:
-        extra_row_index: int
-        for extra_row_index in range(test_case.extra_active_only_rows):
-            clickhouse_client.command(
-                f"INSERT INTO {clickhouse_database}.{active_physical_name} "
-                "(order_id, _replay_timestamp) VALUES "
-                f"('legacy-order-{extra_row_index}', "
-                f"toDateTime64('2026-04-09 15:00:0{extra_row_index}.000', 3))"
-            )
+    extra_row_index: int
+    for extra_row_index in range(test_case.extra_active_only_rows):
+        clickhouse_client.command(
+            f"INSERT INTO {clickhouse_database}.{active_physical_name} "
+            "(order_id, _replay_timestamp) VALUES "
+            f"('legacy-order-{extra_row_index}', "
+            f"toDateTime64('2026-04-09 15:00:0{extra_row_index}.000', 3))"
+        )
     managed_client: ClickHouseClient = ClickHouseClient.from_config(
         ClickHouseConnectionConfig(
             host=clickhouse_connection_settings.host,
@@ -312,25 +306,12 @@ def test_given_staged_backfill_when_auditing_then_it_returns_expected_comparison
 
     clickhouse_client.command(
         f"INSERT INTO {clickhouse_database}.{staged_physical_name} "
-        + (
-            build_offset_target_insert_select_sql(
-                database=clickhouse_database,
-                source_table_name=require_managed_source(compiled_pipeline).raw_table.name,
-            )
-            if test_case.replay_lineage_mode == "offsets"
-            else build_scalar_target_insert_select_sql(
-                replay_lineage_mode=test_case.replay_lineage_mode,
-                database=clickhouse_database,
-                source_table_name=require_managed_source(compiled_pipeline).raw_table.name,
-            )
+        + build_target_insert_select_sql(
+            replay_lineage_mode=test_case.replay_lineage_mode,
+            database=clickhouse_database,
+            source_table_name=require_managed_source(compiled_pipeline).raw_table.name,
         )
-        + (
-            " WHERE 0"
-            if test_case.staged_is_empty
-            else ""
-            if test_case.staged_includes_live_row
-            else " WHERE kafka_key = 'historical-order'"
-        )
+        + STAGED_ROW_FILTERS[(test_case.staged_is_empty, test_case.staged_includes_live_row)]
     )
 
     try:

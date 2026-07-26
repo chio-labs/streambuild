@@ -659,3 +659,33 @@ def build_replay_compiled_pipeline(*, replay_lineage_mode: str) -> CompiledPipel
         False: lambda: build_scalar_replay_compiled_pipeline(replay_lineage_mode),
     }
     return builders[replay_lineage_mode == ReplayLineageMode.OFFSETS]()
+
+
+def build_target_insert_select_sql(
+    *, replay_lineage_mode: ReplayLineageMode | str, database: str, source_table_name: str
+) -> str:
+    """Build the target insert SELECT for a replay lineage mode.
+
+    Offset lineage projects partition and offset columns; every scalar mode
+    projects a single boundary column, so callers do not dispatch themselves.
+    """
+
+    builders: dict[bool, Callable[[], str]] = {
+        True: lambda: build_offset_target_insert_select_sql(
+            database=database, source_table_name=source_table_name
+        ),
+        False: lambda: build_scalar_target_insert_select_sql(
+            replay_lineage_mode=replay_lineage_mode,
+            database=database,
+            source_table_name=source_table_name,
+        ),
+    }
+    return builders[ReplayLineageMode(replay_lineage_mode) == ReplayLineageMode.OFFSETS]()
+
+
+STAGED_ROW_FILTERS: dict[tuple[bool, bool], str] = {
+    (True, True): " WHERE 0",
+    (True, False): " WHERE 0",
+    (False, True): "",
+    (False, False): " WHERE kafka_key = 'historical-order'",
+}
