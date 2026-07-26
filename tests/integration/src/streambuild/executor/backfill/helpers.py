@@ -1,3 +1,5 @@
+from collections.abc import Callable
+
 from streambuild.compiler.compile.main import compile_pipeline
 from streambuild.compiler.compile.models import (
     CompiledManagedSource,
@@ -28,6 +30,17 @@ from tests.integration.src.streambuild.clickhouse.render._helpers.create_materia
     build_compiled_example_pipeline,
 )
 from tests.unit.src.streambuild.compiler.planner.helpers import EXAMPLE_PIPELINE_FILE_PATH
+
+KAFKA_TOPIC_PROJECTION: dict[bool, str] = {
+    True: "CAST(kafka_topic AS String) AS kafka_topic, ",
+    False: "",
+}
+
+SCALAR_REPLAY_PROJECTION: dict[ReplayLineageMode, str] = {
+    ReplayLineageMode.TIMESTAMP: "CAST(_replay_timestamp AS DateTime64(3)) AS _replay_timestamp ",
+    ReplayLineageMode.LANDED_AT: "CAST(_replay_landed_at AS DateTime64(3)) AS _replay_landed_at ",
+}
+LANDED_AT_REPLAY_PROJECTION: str = SCALAR_REPLAY_PROJECTION[ReplayLineageMode.LANDED_AT]
 
 
 def build_backfill_bootstrap_request(
@@ -101,21 +114,12 @@ def build_named_scalar_replay_compiled_pipeline(
     include_kafka_topic: bool = False,
 ) -> CompiledPipeline:
     resolved_replay_lineage_mode: ReplayLineageMode = ReplayLineageMode(replay_lineage_mode)
-    query: str
-    if resolved_replay_lineage_mode == ReplayLineageMode.TIMESTAMP:
-        query = (
-            "SELECT CAST(kafka_key AS String) AS order_id, "
-            + ("CAST(kafka_topic AS String) AS kafka_topic, " if include_kafka_topic else "")
-            + "CAST(_replay_timestamp AS DateTime64(3)) AS _replay_timestamp "
-            f'FROM __ref("{source_name}")'
-        )
-    else:
-        query = (
-            "SELECT CAST(kafka_key AS String) AS order_id, "
-            + ("CAST(kafka_topic AS String) AS kafka_topic, " if include_kafka_topic else "")
-            + "CAST(_replay_landed_at AS DateTime64(3)) AS _replay_landed_at "
-            f'FROM __ref("{source_name}")'
-        )
+    query: str = (
+        "SELECT CAST(kafka_key AS String) AS order_id, "
+        + KAFKA_TOPIC_PROJECTION[include_kafka_topic]
+        + SCALAR_REPLAY_PROJECTION.get(resolved_replay_lineage_mode, LANDED_AT_REPLAY_PROJECTION)
+        + f'FROM __ref("{source_name}")'
+    )
 
     pipeline: Pipeline = Pipeline(
         name=pipeline_name,
@@ -531,11 +535,7 @@ def build_named_offset_replay_compiled_pipeline(
                 order_by=["order_id"],
                 query=(
                     "SELECT CAST(kafka_key AS String) AS order_id, "
-                    + (
-                        "CAST(kafka_topic AS String) AS kafka_topic, "
-                        if include_kafka_topic
-                        else ""
-                    )
+                    + KAFKA_TOPIC_PROJECTION[include_kafka_topic]
                     + "CAST(_replay_partition AS Int64) AS _replay_partition, "
                     "CAST(_replay_offset AS Int64) AS _replay_offset "
                     'FROM __ref("orders")'
@@ -631,16 +631,10 @@ def build_scalar_target_insert_select_sql(
     source_table_name: str,
 ) -> str:
     resolved_replay_lineage_mode: ReplayLineageMode = ReplayLineageMode(replay_lineage_mode)
-    if resolved_replay_lineage_mode == ReplayLineageMode.TIMESTAMP:
-        return (
-            "SELECT CAST(kafka_key AS String) AS order_id, "
-            "CAST(_replay_timestamp AS DateTime64(3)) AS _replay_timestamp "
-            f"FROM {database}.{source_table_name}"
-        )
     return (
         "SELECT CAST(kafka_key AS String) AS order_id, "
-        "CAST(_replay_landed_at AS DateTime64(3)) AS _replay_landed_at "
-        f"FROM {database}.{source_table_name}"
+        + SCALAR_REPLAY_PROJECTION.get(resolved_replay_lineage_mode, LANDED_AT_REPLAY_PROJECTION)
+        + f"FROM {database}.{source_table_name}"
     )
 
 
@@ -660,6 +654,8 @@ def build_replay_compiled_pipeline(*, replay_lineage_mode: str) -> CompiledPipel
     parameterised by the mode, so callers do not branch on the mode themselves.
     """
 
-    if replay_lineage_mode == ReplayLineageMode.OFFSETS:
-        return build_offset_replay_compiled_pipeline()
-    return build_scalar_replay_compiled_pipeline(replay_lineage_mode)
+    builders: dict[bool, Callable[[], CompiledPipeline]] = {
+        True: build_offset_replay_compiled_pipeline,
+        False: lambda: build_scalar_replay_compiled_pipeline(replay_lineage_mode),
+    }
+    return builders[replay_lineage_mode == ReplayLineageMode.OFFSETS]()
