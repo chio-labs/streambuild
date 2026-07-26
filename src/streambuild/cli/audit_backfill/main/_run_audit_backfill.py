@@ -14,15 +14,15 @@ from streambuild.cli.audit_backfill._helpers.candidates import (
     candidate_root_names,
     enrich_candidates,
 )
-from streambuild.cli.audit_backfill._helpers.rendering import (
+from streambuild.cli.audit_backfill.main.render_audit_backfill_result import (
     render_audit_backfill_result,
 )
 from streambuild.cli.shared.main._errors import render_expected_clickhouse_error
-from streambuild.cli.shared.main._render_ambiguous_deployment_message import (
-    render_ambiguous_deployment_message,
-)
 from streambuild.cli.shared.main._render_no_deployment_candidates_message import (
     render_no_deployment_candidates_message,
+)
+from streambuild.cli.shared.main.render_ambiguous_deployment_message import (
+    render_ambiguous_deployment_message,
 )
 from streambuild.clickhouse.inspect.main.inspect_managed_table_state import (
     inspect_managed_table_state,

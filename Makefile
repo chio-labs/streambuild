@@ -7,7 +7,7 @@ lint:
 
 
 type:
-	uv run ty check src tests
+	uv run ty check src tests scripts
 
 
 test:
@@ -23,13 +23,13 @@ test-all:
 check:
 	uv run ruff format .
 	uv run ruff check --fix .
-	uv run ty check src tests
+	uv run ty check src tests scripts
 
 
 verify:
 	uv run ruff format .
 	uv run ruff check --fix .
-	uv run ty check src tests
+	uv run ty check src tests scripts
 	uv run pytest tests/unit -q -n auto
 	uv run pytest tests/integration -q -n 4
 	uv run pytest tests/e2e -q -n 6
@@ -38,13 +38,13 @@ verify:
 check-ci:
 	uv run ruff format --check .
 	uv run ruff check .
-	uv run ty check src tests
+	uv run ty check src tests scripts
 
 
 verify-ci:
 	uv run ruff format --check .
 	uv run ruff check .
-	uv run ty check src tests
+	uv run ty check src tests scripts
 	uv run pytest tests/unit -q -n auto
 	uv run pytest tests/integration -q -n 4
 	uv run pytest tests/e2e -q -n 6
