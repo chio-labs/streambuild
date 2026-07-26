@@ -7,6 +7,7 @@ from pathlib import Path
 
 from streambuild.cli.shared.main._cli_style import cli_style
 from streambuild.executor.auditing.models import SqlAuditResult, SqlAuditRunResult
+from streambuild.executor.auditing.types import AuditSeverity
 
 
 def render_sql_audit_run_result(
@@ -55,7 +56,7 @@ def render_sql_audit_run_result(
             audit_results=tuple(
                 audit_result
                 for audit_result in result.audit_results
-                if audit_result.severity == "error" and not audit_result.passed
+                if audit_result.severity == AuditSeverity.ERROR and not audit_result.passed
             ),
             project_dir=project_dir,
         )
@@ -67,7 +68,7 @@ def render_sql_audit_run_result(
             audit_results=tuple(
                 audit_result
                 for audit_result in result.audit_results
-                if audit_result.severity == "warning" and not audit_result.passed
+                if audit_result.severity == AuditSeverity.WARNING and not audit_result.passed
             ),
             project_dir=project_dir,
         )

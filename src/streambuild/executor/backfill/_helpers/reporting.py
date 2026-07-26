@@ -3,6 +3,7 @@
 from streambuild.clickhouse.inspect.models import (
     RootDeploymentInspection,
 )
+from streambuild.clickhouse.inspect.types import RootDeploymentStateKind
 from streambuild.compiler.planner.models import DeploymentPlan, RebuildSubtree
 from streambuild.compiler.shared.constants import (
     DESIRED_OBJECT_TYPE_TABLE,
@@ -35,9 +36,9 @@ def filter_root_backfill_reports_for_deployment(
 
 def _build_root_backfill_report(inspection: RootDeploymentInspection) -> RootBackfillReport:
     replay_strategy_by_state_kind: dict[str, str] = {
-        "active_view_present": "bounded_replay",
-        "greenfield": "create_from_scratch",
-        "logical_view_missing": "full_rebuild_required",
+        RootDeploymentStateKind.ACTIVE_VIEW_PRESENT: "bounded_replay",
+        RootDeploymentStateKind.GREENFIELD: "create_from_scratch",
+        RootDeploymentStateKind.LOGICAL_VIEW_MISSING: "full_rebuild_required",
     }
     return RootBackfillReport(
         root_key=inspection.root_key,

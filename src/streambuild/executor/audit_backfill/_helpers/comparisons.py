@@ -7,6 +7,7 @@ from typing import cast
 from sqlglot import exp, parse_one
 
 from streambuild.clickhouse.inspect.models import InspectedManagedTableState
+from streambuild.clickhouse.inspect.types import RootDeploymentStateKind
 from streambuild.compiler.shared.constants import (
     DESIRED_OBJECT_TYPE_TABLE,
     MATERIALIZED_VIEW_NAME_PREFIX,
@@ -157,7 +158,9 @@ def _build_root_audit_result(
     return RootAuditResult(
         root_key=root_key,
         staged_physical_name=staged_physical_name,
-        state="active_view_present" if active_exists else "greenfield",
+        state=RootDeploymentStateKind.ACTIVE_VIEW_PRESENT
+        if active_exists
+        else RootDeploymentStateKind.GREENFIELD,
         replay_source_name=replay_source_name,
         replay_source_row_count=replay_source_row_count,
         staged_exists=staged_exists,

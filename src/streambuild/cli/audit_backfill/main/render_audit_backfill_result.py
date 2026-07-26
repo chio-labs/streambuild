@@ -16,6 +16,8 @@ from streambuild.cli.shared.main._format_range import format_range
 from streambuild.cli.shared.main._humanize_deployment_status import humanize_deployment_status
 from streambuild.executor.audit_backfill.models import AuditBackfillResult
 from streambuild.executor.audit_backfill.types import AuditAssessment
+from streambuild.executor.auditing.models import SqlAuditResult
+from streambuild.executor.auditing.types import AuditResultStatus, AuditSeverity
 
 
 def render_audit_backfill_result(
@@ -194,9 +196,7 @@ def render_audit_backfill_result(
         lines.append("")
         lines.append(cli_style().section("Quality Checks"))
         for audit_result in result.quality_check_results:
-            status: str = "PASS"
-            if not audit_result.passed:
-                status = "WARN" if audit_result.severity == "warning" else "FAIL"
+            status: AuditResultStatus = _audit_result_status(audit_result)
             display_name: str = _display_path(
                 file_path=audit_result.file_path, project_dir=project_dir
             )
@@ -225,3 +225,13 @@ def render_audit_backfill_result(
             + ", ".join(affected_root_names)
         )
     return "\n".join(lines)
+
+
+def _audit_result_status(audit_result: SqlAuditResult) -> AuditResultStatus:
+    """Return the operator-facing status label for one audit result."""
+
+    if audit_result.passed:
+        return AuditResultStatus.PASS
+    if audit_result.severity == AuditSeverity.WARNING:
+        return AuditResultStatus.WARN
+    return AuditResultStatus.FAIL

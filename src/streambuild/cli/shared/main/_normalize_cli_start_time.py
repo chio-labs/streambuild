@@ -4,26 +4,27 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from streambuild.cli.shared.constants import (
+    ACCEPTED_START_TIME_FORMATS,
+    CLICKHOUSE_TIMESTAMP_FORMAT,
+    DATE_ONLY_START_TIME_FORMAT,
+    START_OF_DAY_CLICKHOUSE_FORMAT,
+)
 from streambuild.cli.shared.exceptions import CliUserError
 
 
 def normalize_cli_start_time(raw_value: str) -> str:
-    date_formats: tuple[str, ...] = (
-        "%Y-%m-%d",
-        "%Y-%m-%dT%H:%M:%S",
-        "%Y-%m-%dT%H:%M:%S.%f",
-        "%Y-%m-%dT%H:%M:%SZ",
-        "%Y-%m-%dT%H:%M:%S.%fZ",
-    )
+    """Normalize a CLI start time into a ClickHouse millisecond timestamp."""
+
     date_format: str
-    for date_format in date_formats:
+    for date_format in ACCEPTED_START_TIME_FORMATS:
         try:
             parsed_value: datetime = datetime.strptime(raw_value, date_format)
         except ValueError:
             continue
-        if date_format == "%Y-%m-%d":
-            return parsed_value.strftime("%Y-%m-%d 00:00:00.000")
-        return parsed_value.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+        if date_format == DATE_ONLY_START_TIME_FORMAT:
+            return parsed_value.strftime(START_OF_DAY_CLICKHOUSE_FORMAT)
+        return parsed_value.strftime(CLICKHOUSE_TIMESTAMP_FORMAT)[:-3]
     raise CliUserError(
         "--start-time must be YYYY-MM-DD or a UTC timestamp like YYYY-MM-DDTHH:MM:SS[.sss][Z]"
     )

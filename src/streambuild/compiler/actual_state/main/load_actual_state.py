@@ -10,6 +10,7 @@ from streambuild.clickhouse.inspect.models import (
     InspectedManagedTableState,
     RootDeploymentInspection,
 )
+from streambuild.clickhouse.inspect.types import RootDeploymentStateKind
 from streambuild.compiler.actual_state._helpers.load import (
     _load_active_table_specs,
     _load_existing_table_names,
@@ -18,7 +19,6 @@ from streambuild.compiler.actual_state._helpers.metadata import (
     load_latest_object_state_records_by_keys,
     load_object_state_records_by_deployments,
 )
-from streambuild.compiler.actual_state.constants import ACTIVE_VIEW_PRESENT_STATE_KIND
 from streambuild.compiler.actual_state.main._build_actual_state import build_actual_state
 from streambuild.compiler.actual_state.models import (
     ActualKafkaTable,
@@ -113,7 +113,7 @@ def load_actual_state(
                 if isinstance(desired_object, DesiredTable)
                 and desired_object.name.startswith(TRANSFORM_TABLE_NAME_PREFIX)
                 and active_deployment_by_root[desired_object.key].state_kind
-                == "active_view_present"
+                == RootDeploymentStateKind.ACTIVE_VIEW_PRESENT
             }
         )
     )
@@ -164,7 +164,7 @@ def load_actual_state(
             root_inspection: RootDeploymentInspection = active_deployment_by_root[
                 desired_object.key
             ]
-            if root_inspection.state_kind != ACTIVE_VIEW_PRESENT_STATE_KIND:
+            if root_inspection.state_kind != RootDeploymentStateKind.ACTIVE_VIEW_PRESENT:
                 continue
             active_physical_name: str = active_physical_names_by_logical_name[desired_object.name]
             actual_objects.append(
@@ -190,7 +190,7 @@ def load_actual_state(
                 and object_.name == desired_object.target_table_name
             )
             root_inspection = active_deployment_by_root[root_key]
-            if root_inspection.state_kind != ACTIVE_VIEW_PRESENT_STATE_KIND:
+            if root_inspection.state_kind != RootDeploymentStateKind.ACTIVE_VIEW_PRESENT:
                 continue
             if root_inspection.active_deployment_id is not None:
                 object_state_record: ObjectStateRecord | None = (

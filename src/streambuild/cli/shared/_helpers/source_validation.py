@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
+from streambuild.cli.shared.constants import DATETIME_TYPE_MARKER
 from streambuild.cli.shared.exceptions import CliUserError
 from streambuild.compiler.compile.models import (
     CompiledExternalSource,
@@ -93,7 +94,7 @@ def validate_declared_column(
             f"Adopted source table '{table_name}' is missing declared {column_role} column "
             f"'{column_name}'"
         )
-    if require_datetime and "datetime" not in column_type.lower():
+    if require_datetime and DATETIME_TYPE_MARKER not in column_type.lower():
         raise CliUserError(
             f"Adopted source table '{table_name}' declares {column_role} column '{column_name}' "
             f"with incompatible type '{column_type}'"

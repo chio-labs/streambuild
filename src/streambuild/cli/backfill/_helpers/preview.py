@@ -11,6 +11,7 @@ from streambuild.cli.shared.main._source_validation import (
 )
 from streambuild.cli.shared.main._warnings import add_empty_replay_source_warnings
 from streambuild.cli.shared.models import SelectionResolution
+from streambuild.clickhouse.inspect.types import RootDeploymentStateKind
 from streambuild.compiler.actual_state.main.load_actual_state import load_actual_state
 from streambuild.compiler.actual_state.models import ActualState
 from streambuild.compiler.compile.main.compile_pipeline import compile_pipeline
@@ -91,7 +92,7 @@ def build_backfill_preview_context(
         invalid_root_names: tuple[str, ...] = tuple(
             report.root_key.name
             for report in preview_root_reports
-            if report.state_kind != "active_view_present"
+            if report.state_kind != RootDeploymentStateKind.ACTIVE_VIEW_PRESENT
         )
         if invalid_root_names:
             root_name_list: str = ", ".join(sorted(invalid_root_names))
