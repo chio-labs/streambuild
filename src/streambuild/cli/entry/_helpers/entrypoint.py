@@ -10,7 +10,7 @@ from streambuild.cli.entry.models import (
     ResolvedCliProjectConfig,
 )
 from streambuild.compiler.discovery.main.load_project_for_path import load_project_for_path
-from streambuild.spec.models import Project
+from streambuild.compiler.discovery.models import Project
 
 
 def argv_for_parse_args(argv: Sequence[str] | None) -> list[str] | None:

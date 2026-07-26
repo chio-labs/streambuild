@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 
-from streambuild.spec.types import ReplayLineageMode
+from streambuild.compiler.discovery.types import ReplayLineageMode
 
 
 @dataclass(frozen=True)

@@ -17,9 +17,9 @@ from streambuild.compiler.compile.models import (
     DesiredTable,
     ObjectKey,
 )
+from streambuild.compiler.discovery.types import ReplayLineageMode
 from streambuild.compiler.planner.main.build_reverse_deps import build_reverse_deps
 from streambuild.compiler.planner.main.topologically_order_keys import topologically_order_keys
-from streambuild.spec.types import ReplayLineageMode
 
 
 def resolve_selected_model_keys(

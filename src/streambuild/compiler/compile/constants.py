@@ -4,7 +4,7 @@ from collections.abc import Mapping
 
 from streambuild.compiler.compile.models import Column
 from streambuild.compiler.compile.types import DesiredObjectType
-from streambuild.spec.types import ReplayBoundaryMode, ReplayLineageMode
+from streambuild.compiler.discovery.types import ReplayBoundaryMode, ReplayLineageMode
 
 DESIRED_OBJECT_TYPE_KAFKA_TABLE: DesiredObjectType = DesiredObjectType(
     DesiredObjectType.KAFKA_TABLE

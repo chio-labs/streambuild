@@ -10,6 +10,7 @@ import yaml
 from sqlglot import exp, parse
 from sqlglot.errors import ParseError
 
+from streambuild.compiler.discovery.types import SqlRelationType
 from streambuild.compiler.macros.main._expand_macro_calls import expand_project_sql_macros
 from streambuild.compiler.test_discovery.constants import (
     CEREMONIAL_SELECT_LITERAL,
@@ -23,7 +24,6 @@ from streambuild.compiler.test_discovery.constants import (
 )
 from streambuild.compiler.test_discovery.exceptions import SqlTestParseError
 from streambuild.compiler.test_discovery.models import LoadedSqlTest, SqlTestCte, SqlTestMock
-from streambuild.spec.types import SqlRelationType
 
 
 def parse_sql_test_file(file_path: Path) -> tuple[LoadedSqlTest, ...]:

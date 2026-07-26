@@ -16,6 +16,7 @@ from streambuild.clickhouse.render.main.render_create_materialized_view_ddl impo
 )
 from streambuild.clickhouse.render.main.render_create_table_ddl import render_create_table_ddl
 from streambuild.compiler.compile.models import CompiledPipeline
+from streambuild.compiler.discovery.types import SchemaChangeBackfillMode
 from streambuild.compiler.planner.types import RebuildExecutionMode
 from streambuild.executor.audit_backfill.types import AuditAssessment
 from streambuild.executor.backfill.main.execute_backfill import execute_backfill
@@ -27,7 +28,6 @@ from streambuild.integrations.clickhouse.main.connect_clickhouse import (
     connect_clickhouse,
 )
 from streambuild.integrations.clickhouse.models import ClickHouseConnectionConfig
-from streambuild.spec.types import SchemaChangeBackfillMode
 from tests.e2e.src.streambuild.conftest import (
     E2EClickHouseConnectionSettings,
     E2EKafkaConnectionSettings,

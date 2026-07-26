@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from pathlib import Path
 
-from streambuild.spec.types import (
+from streambuild.compiler.discovery.types import (
     BoundedReplayFallback,
     ReplayLineageMode,
     SchemaChangeBackfillMode,

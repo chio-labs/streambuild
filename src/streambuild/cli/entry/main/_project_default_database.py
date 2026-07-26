@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 from streambuild.cli.entry.exceptions import CliUserError
-from streambuild.compiler.discovery.models import LoadedPipeline
-from streambuild.spec.models import Project
+from streambuild.compiler.discovery.models import LoadedPipeline, Project
 
 
 def _declared_default_databases(*, loaded_pipelines: list[LoadedPipeline]) -> tuple[str, ...]:

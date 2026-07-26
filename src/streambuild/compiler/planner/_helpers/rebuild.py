@@ -14,6 +14,7 @@ from streambuild.compiler.compile.models import (
     DesiredTable,
     ObjectKey,
 )
+from streambuild.compiler.discovery.models import SchemaChangeBackfillRule
 from streambuild.compiler.planner._helpers.graph import (
     descendant_keys,
     nearest_upstream_replay_anchor_key,
@@ -33,7 +34,6 @@ from streambuild.compiler.planner.types import (
     RebuildExecutionMode,
     SchemaChangeBackfillMode,
 )
-from streambuild.spec.models import SchemaChangeBackfillRule
 
 
 def build_rebuild_subtree(

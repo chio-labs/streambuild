@@ -18,6 +18,7 @@ from streambuild.compiler.compile.constants import (
     TRANSFORM_TABLE_NAME_PREFIX,
 )
 from streambuild.compiler.compile.models import ObjectKey
+from streambuild.compiler.discovery.types import ReplayLineageMode
 from streambuild.compiler.planner.main.build_deployment_physical_name import (
     build_deployment_physical_name,
 )
@@ -38,7 +39,6 @@ from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickH
 from streambuild.integrations.clickhouse.constants import (
     BLANK_VALUES,
 )
-from streambuild.spec.types import ReplayLineageMode
 
 
 def build_root_audit_results(

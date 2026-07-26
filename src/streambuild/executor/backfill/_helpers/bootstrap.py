@@ -5,6 +5,7 @@ from uuid import uuid4
 
 from streambuild.compiler.actual_state.main.load_actual_state import load_actual_state
 from streambuild.compiler.actual_state.models import ActualState
+from streambuild.compiler.discovery.types import ReplayLineageMode
 from streambuild.compiler.planner.main.plan_deployment import plan_deployment
 from streambuild.compiler.planner.models import DeploymentPlan
 from streambuild.executor.backfill._helpers.metadata import (
@@ -26,7 +27,6 @@ from streambuild.executor.backfill.models import (
     RootBackfillReport,
 )
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
-from streambuild.spec.types import ReplayLineageMode
 
 
 def execute_backfill_bootstrap(

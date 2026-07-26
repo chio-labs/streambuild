@@ -2,7 +2,7 @@ import pytest
 
 from streambuild.compiler.compile._helpers.landing import compile_kafka_landing
 from streambuild.compiler.compile.models import CompiledManagedSource
-from streambuild.spec.models import Pipeline
+from streambuild.compiler.discovery.models import Pipeline
 from tests.unit.src.streambuild.compiler.compile._helpers.landing._test_types import (
     CompileKafkaLandingErrorTestCase,
     CompileKafkaLandingTestCase,

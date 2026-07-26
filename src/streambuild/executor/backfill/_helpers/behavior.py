@@ -10,6 +10,7 @@ from streambuild.compiler.compile.constants import (
     REPLAY_REQUIRED_COLUMN_NAMES_BY_MODE,
 )
 from streambuild.compiler.compile.models import DesiredState, DesiredTable
+from streambuild.compiler.discovery.types import BoundedReplayFallback, ReplayLineageMode
 from streambuild.compiler.planner.constants import (
     REBUILD_EXECUTION_MODE_FULL,
     REBUILD_EXECUTION_MODE_SEEDED_BOUNDED,
@@ -18,7 +19,6 @@ from streambuild.compiler.planner.constants import (
 from streambuild.compiler.planner.models import RebuildSubtree
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 from streambuild.integrations.clickhouse.models import ClickHouseQueryResult
-from streambuild.spec.types import BoundedReplayFallback, ReplayLineageMode
 
 
 def _resolve_subtree_behavior(

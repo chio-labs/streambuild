@@ -3,13 +3,13 @@ from pathlib import Path
 import pytest
 
 from streambuild.compiler.discovery._helpers.load import load_pipeline_file
-from streambuild.compiler.discovery.models import LoadedPipeline
-from streambuild.spec.models import (
+from streambuild.compiler.discovery.models import (
     ExternalTableSourceStep,
+    LoadedPipeline,
     SchemaChangeBackfillPolicy,
     TransformStep,
 )
-from streambuild.spec.types import (
+from streambuild.compiler.discovery.types import (
     BoundedReplayFallback,
     ReplayBoundaryMode,
     ReplayLineageMode,

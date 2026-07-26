@@ -20,19 +20,19 @@ from streambuild.compiler.discovery.constants import (
     SECONDS_BY_DURATION_UNIT,
 )
 from streambuild.compiler.discovery.exceptions import PipelineDiscoveryError
-from streambuild.compiler.macros.main._expand_macro_calls import expand_project_sql_macros
-from streambuild.spec.models import (
+from streambuild.compiler.discovery.models import (
     SchemaChangeBackfillPolicy,
     SchemaChangeBackfillRule,
     TransformStep,
 )
-from streambuild.spec.types import (
+from streambuild.compiler.discovery.types import (
     BoundedReplayFallback,
     ReplayAnchorMode,
     SchemaChangeBackfillMode,
     SchemaChangeKind,
     SqlRelationType,
 )
+from streambuild.compiler.macros.main._expand_macro_calls import expand_project_sql_macros
 
 
 def load_transform_from_sql_file(file_path: Path) -> TransformStep:

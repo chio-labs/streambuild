@@ -6,14 +6,14 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from streambuild.compiler.compile.types import DesiredObjectType
-from streambuild.spec.models import (
+from streambuild.compiler.discovery.models import (
     ExternalTableSourceStep,
     Pipeline,
     Project,
     SchemaChangeBackfillPolicy,
     TransformStep,
 )
-from streambuild.spec.types import (
+from streambuild.compiler.discovery.types import (
     BoundedReplayFallback,
     RefType,
     ReplayBoundaryMode,

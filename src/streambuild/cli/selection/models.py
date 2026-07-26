@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from streambuild.compiler.compile.models import DesiredState, ObjectKey
-from streambuild.spec.types import ReplayLineageMode
+from streambuild.compiler.discovery.types import ReplayLineageMode
 
 
 @dataclass(frozen=True)

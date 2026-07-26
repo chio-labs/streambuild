@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from streambuild.spec.models import Project
+from streambuild.compiler.discovery.models import Project
 
 
 @dataclass(frozen=True)

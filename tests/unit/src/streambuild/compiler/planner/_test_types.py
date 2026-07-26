@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 
+from streambuild.compiler.discovery.models import SchemaChangeBackfillPolicy
+from streambuild.compiler.discovery.types import ReplayAnchorMode, ReplayLineageMode
 from streambuild.compiler.planner.types import (
     PlannedChangeType,
     RebuildExecutionMode,
@@ -8,8 +10,6 @@ from streambuild.compiler.planner.types import (
     TableSchemaChangeKind,
     TableSchemaSeedCompatibility,
 )
-from streambuild.spec.models import SchemaChangeBackfillPolicy
-from streambuild.spec.types import ReplayAnchorMode, ReplayLineageMode
 
 
 @dataclass(frozen=True)

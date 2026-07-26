@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from streambuild.compiler.compile.models import ObjectKey
+from streambuild.compiler.discovery.types import BoundedReplayFallback
 from streambuild.compiler.planner.types import (
     DeploymentAction,
     DeploymentPhase,
@@ -15,7 +16,6 @@ from streambuild.compiler.planner.types import (
     TableSchemaChangeKind,
     TableSchemaSeedCompatibility,
 )
-from streambuild.spec.types import BoundedReplayFallback
 
 
 @dataclass(frozen=True)

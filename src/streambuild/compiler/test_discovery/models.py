@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from streambuild.spec.types import SqlRelationType
+from streambuild.compiler.discovery.types import SqlRelationType
 
 
 @dataclass(frozen=True)

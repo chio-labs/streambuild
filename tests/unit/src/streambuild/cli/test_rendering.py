@@ -20,6 +20,10 @@ from streambuild.compiler.compile.models import (
     TableStorage,
 )
 from streambuild.compiler.desired_state.main.build_desired_state import build_desired_state
+from streambuild.compiler.discovery.models import (
+    SchemaChangeBackfillPolicy,
+    SchemaChangeBackfillRule,
+)
 from streambuild.compiler.planner.constants import (
     DEPLOYMENT_ACTION_PLAN_SHADOW_TABLE,
     DEPLOYMENT_PHASE_PLAN,
@@ -48,7 +52,6 @@ from streambuild.executor.backfill.models import (
     RootBackfillReport,
 )
 from streambuild.executor.publish.models import PublishedView, PublishResult
-from streambuild.spec.models import SchemaChangeBackfillPolicy, SchemaChangeBackfillRule
 from tests.integration.src.streambuild.executor.backfill.helpers import (
     build_scalar_replay_compiled_pipeline,
 )
