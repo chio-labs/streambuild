@@ -1,4 +1,5 @@
 import json
+from collections.abc import Callable
 from dataclasses import replace
 
 from streambuild.cli.audit.main.run_audit import run_audit
@@ -44,3 +45,28 @@ def handlers_with_overrides(**overrides: object) -> CliEntrypointHandlers:
         ),
         **overrides,
     )
+
+
+CLI_COMMAND_HANDLER_NAMES: dict[str, str] = {
+    "audit backfill": "run_audit_backfill",
+    "publish": "run_publish",
+    "doctor": "run_doctor",
+}
+
+CLI_COMMAND_ARGV: dict[str, tuple[str, ...]] = {
+    "audit backfill": ("stb", "audit", "backfill"),
+    "publish": ("stb", "publish"),
+    "doctor": ("stb", "doctor"),
+}
+
+
+def passthrough_output(output: str) -> str:
+    """Return CLI output unchanged, for commands that print text rather than JSON."""
+
+    return output
+
+
+OUTPUT_NORMALIZERS: dict[bool, Callable[[str], str]] = {
+    True: normalize_json_output,
+    False: passthrough_output,
+}
