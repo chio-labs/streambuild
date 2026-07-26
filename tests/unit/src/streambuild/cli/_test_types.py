@@ -33,6 +33,7 @@ class CliMainIntegrationTestCase:
     argv: tuple[str, ...]
     expected_exit_code: int
     expected_output_fragments: tuple[str, ...]
+    expects_json_output: bool = False
 
 
 @dataclass(frozen=True)
@@ -120,6 +121,7 @@ class CliCompileArtifactsTestCase:
     expected_exit_code: int
     expected_output_fragments: tuple[str, ...]
     expected_written_files: tuple[str, ...]
+    expected_target_dir_name: str = "target"
 
 
 @dataclass(frozen=True)

@@ -29,6 +29,9 @@ from tests.unit.src.streambuild.cli._test_types import (
     CliSelectorForwardingTestCase,
 )
 from tests.unit.src.streambuild.cli.helpers import (
+    CLI_COMMAND_ARGV,
+    CLI_COMMAND_HANDLER_NAMES,
+    OUTPUT_NORMALIZERS,
     FakeCliClickHouseClient,
     handlers_with_overrides,
     normalize_json_output,
@@ -426,9 +429,8 @@ SELECT CAST(order_id AS UInt64) AS order_id FROM replay_orders
         """.strip(),
         encoding="utf-8",
     )
-    argv: list[str] = [
-        str(pipeline_root) if part == "BROKEN_PIPELINES_ROOT" else part for part in test_case.argv
-    ]
+    argv_paths: dict[str, str] = {"BROKEN_PIPELINES_ROOT": str(pipeline_root)}
+    argv: list[str] = [argv_paths.get(part, part) for part in test_case.argv]
 
     exit_code: int = main(argv)
     captured_error: str = capsys.readouterr().err
@@ -492,6 +494,7 @@ SELECT CAST(order_id AS UInt64) AS order_id FROM replay_orders
                 '"name": "tbl__orders_enriched"',
                 '"upstream_boundary_key":',
             ),
+            expects_json_output=True,
         ),
     ],
     ids=lambda case: case.description,
@@ -509,9 +512,7 @@ def test_given_cli_args_when_running_plan_then_it_prints_expected_output(
         clickhouse_client=clickhouse_client,
     )
     captured_output: str = capsys.readouterr().out
-    normalized_output: str = (
-        normalize_json_output(captured_output) if "--json" in test_case.argv else captured_output
-    )
+    normalized_output: str = OUTPUT_NORMALIZERS[test_case.expects_json_output](captured_output)
 
     assert exit_code == test_case.expected_exit_code
     for expected_fragment in test_case.expected_output_fragments:
@@ -703,23 +704,13 @@ SELECT order_id::UInt64 AS order_id FROM __ref("orders")
     )
 
     runner: RecordingCommandRunner = RecordingCommandRunner()
-    handlers: CliEntrypointHandlers
-    if test_case.command_name == "audit backfill":
-        handlers = handlers_with_overrides(run_audit_backfill=runner)
-    elif test_case.command_name == "publish":
-        handlers = handlers_with_overrides(run_publish=runner)
-    else:
-        handlers = handlers_with_overrides(run_doctor=runner)
+    handlers: CliEntrypointHandlers = handlers_with_overrides(
+        **{CLI_COMMAND_HANDLER_NAMES[test_case.command_name]: runner}
+    )
     clickhouse_client: ClickHouseClient = cast(ClickHouseClient, FakeCliClickHouseClient())
     monkeypatch.chdir(project_root)
 
-    argv: tuple[str, ...]
-    if test_case.command_name == "audit backfill":
-        argv = ("stb", "audit", "backfill")
-    elif test_case.command_name == "publish":
-        argv = ("stb", "publish")
-    else:
-        argv = ("stb", "doctor")
+    argv: tuple[str, ...] = CLI_COMMAND_ARGV[test_case.command_name]
 
     exit_code: int = _main_with_dependencies(
         argv=argv,
@@ -797,23 +788,17 @@ SELECT order_id::UInt64 AS order_id FROM __ref("orders")
     )
 
     runner: RecordingCommandRunner = RecordingCommandRunner()
-    handlers: CliEntrypointHandlers
-    if test_case.command_name == "audit backfill":
-        handlers = handlers_with_overrides(run_audit_backfill=runner)
-    elif test_case.command_name == "publish":
-        handlers = handlers_with_overrides(run_publish=runner)
-    else:
-        handlers = handlers_with_overrides(run_doctor=runner)
+    handlers: CliEntrypointHandlers = handlers_with_overrides(
+        **{CLI_COMMAND_HANDLER_NAMES[test_case.command_name]: runner}
+    )
     clickhouse_client: ClickHouseClient = cast(ClickHouseClient, FakeCliClickHouseClient())
     monkeypatch.chdir(tmp_path)
 
-    argv: tuple[str, ...]
-    if test_case.command_name == "audit backfill":
-        argv = ("stb", "audit", "backfill", "--project-dir", str(project_root))
-    elif test_case.command_name == "publish":
-        argv = ("stb", "publish", "--project-dir", str(project_root))
-    else:
-        argv = ("stb", "doctor", "--project-dir", str(project_root))
+    argv: tuple[str, ...] = (
+        *CLI_COMMAND_ARGV[test_case.command_name],
+        "--project-dir",
+        str(project_root),
+    )
 
     exit_code: int = _main_with_dependencies(
         argv=argv,
@@ -1225,6 +1210,7 @@ def test_given_reconcile_flags_when_running_reconcile_then_it_passes_kwargs_to_c
                 "target_out/orders/run/workflow/workflow.sql",
                 "target_out/orders/run/workflow/workflow.json",
             ),
+            expected_target_dir_name="target_out",
         ),
         CliCompileArtifactsTestCase(
             description="writes default target under project root",
@@ -1252,16 +1238,11 @@ def test_given_compile_when_running_then_it_writes_target_artifacts(
     project_dir: Path = tmp_path / "project"
     copytree(Path("tests/fixtures/basic_project"), project_dir)
 
-    exit_code: int = main(
-        tuple(
-            str(
-                project_dir
-                if arg == "."
-                else (project_dir / "target_out" if arg == "target_out" else arg)
-            )
-            for arg in test_case.argv
-        )
-    )
+    argv_paths: dict[str, Path] = {
+        ".": project_dir,
+        "target_out": project_dir / "target_out",
+    }
+    exit_code: int = main(tuple(str(argv_paths.get(arg, arg)) for arg in test_case.argv))
     captured_out: str = capsys.readouterr().out
 
     assert exit_code == test_case.expected_exit_code
@@ -1269,7 +1250,7 @@ def test_given_compile_when_running_then_it_writes_target_artifacts(
         assert fragment in captured_out
     for relative_file in test_case.expected_written_files:
         assert (project_dir / relative_file).exists()
-    manifest_dir_name: str = "target_out" if "target_out" in test_case.argv else "target"
+    manifest_dir_name: str = test_case.expected_target_dir_name
     manifest_contents: str = (project_dir / manifest_dir_name / "manifest.json").read_text(
         encoding="utf-8"
     )
