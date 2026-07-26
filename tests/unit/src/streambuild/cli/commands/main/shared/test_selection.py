@@ -82,7 +82,7 @@ ERROR_TEST_CASES: list[CliSelectionResolutionErrorTestCase] = [
 @pytest.mark.parametrize(
     "test_case",
     RESOLUTION_TEST_CASES,
-    ids=[case.description for case in RESOLUTION_TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_valid_selectors_when_resolving_then_it_returns_expected_filtered_desired_state(
     test_case: CliSelectionResolutionTestCase,
@@ -102,7 +102,7 @@ def test_given_valid_selectors_when_resolving_then_it_returns_expected_filtered_
 @pytest.mark.parametrize(
     "test_case",
     ERROR_TEST_CASES,
-    ids=[case.description for case in ERROR_TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_invalid_selectors_when_resolving_then_it_raises_clear_error(
     test_case: CliSelectionResolutionErrorTestCase,
@@ -126,7 +126,7 @@ def test_given_invalid_selectors_when_resolving_then_it_raises_clear_error(
             ),
         )
     ],
-    ids=["replay lineage mismatch error names conflicting pipelines and modes"],
+    ids=lambda case: case.description,
 )
 def test_given_conflicting_selected_pipeline_modes_when_resolving_then_it_raises_contextual_error(
     test_case: CliSelectionLineageMismatchTestCase,

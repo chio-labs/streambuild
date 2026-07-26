@@ -25,7 +25,7 @@ from tests.integration.src.streambuild.conftest import ClickHouseConnectionSetti
             ),
         )
     ],
-    ids=["inspects stable view bindings and physical deployment candidates"],
+    ids=lambda case: case.description,
 )
 def test_given_views_and_physical_tables_when_inspecting_then_it_returns_expected_state(
     test_case: InspectManagedTableStateIntegrationTestCase,

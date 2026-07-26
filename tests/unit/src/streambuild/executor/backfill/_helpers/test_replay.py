@@ -231,7 +231,7 @@ TEST_CASES: list[RenderOffsetReplayStatementTestCase] = [
 @pytest.mark.parametrize(
     "test_case",
     TEST_CASES,
-    ids=[case.description for case in TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_offset_replay_query_when_rendering_then_it_rewrites_anchor_and_reference_tables(
     test_case: RenderOffsetReplayStatementTestCase,

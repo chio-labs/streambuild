@@ -266,7 +266,7 @@ TEST_CASES: list[CliMainTestCase] = [
 @pytest.mark.parametrize(
     "test_case",
     TEST_CASES,
-    ids=[case.description for case in TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_cli_args_when_running_main_then_it_prints_expected_json(
     test_case: CliMainTestCase,
@@ -376,7 +376,7 @@ def test_given_cli_args_when_running_main_then_it_prints_expected_json(
             expected_pipelines_root_name="pipelines",
         )
     ],
-    ids=["resolves project context for audit backfill"],
+    ids=lambda case: case.description,
 )
 def test_given_audit_backfill_cli_args_when_running_main_then_it_forwards_project_context(
     test_case: CliAuditBackfillProjectContextTestCase,
@@ -413,7 +413,7 @@ def test_given_audit_backfill_cli_args_when_running_main_then_it_forwards_projec
             ),
         )
     ],
-    ids=["prints a clear transform sql contract error to stderr"],
+    ids=lambda case: case.description,
 )
 def test_given_invalid_transform_sql_when_running_compile_then_it_prints_a_clear_error(
     test_case: CliMainErrorTestCase,
@@ -517,7 +517,7 @@ PLAN_OUTPUT_TEST_CASES: list[CliMainIntegrationTestCase] = [
 @pytest.mark.parametrize(
     "test_case",
     PLAN_OUTPUT_TEST_CASES,
-    ids=[case.description for case in PLAN_OUTPUT_TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_cli_args_when_running_plan_then_it_prints_expected_output(
     test_case: CliMainIntegrationTestCase,
@@ -564,7 +564,7 @@ def test_given_cli_args_when_running_plan_then_it_prints_expected_output(
             },
         )
     ],
-    ids=["uses clickhouse env vars for plan defaults"],
+    ids=lambda case: case.description,
 )
 def test_given_clickhouse_env_vars_when_running_plan_then_it_uses_env_defaults(
     test_case: CliMainEnvResolutionTestCase,
@@ -593,7 +593,7 @@ def test_given_clickhouse_env_vars_when_running_plan_then_it_uses_env_defaults(
             expected_database="analytics",
         )
     ],
-    ids=["uses project yaml database default for plan"],
+    ids=lambda case: case.description,
 )
 def test_given_project_yaml_when_running_plan_then_it_uses_project_database_defaults(
     test_case: CliProjectDefaultsTestCase,
@@ -701,7 +701,7 @@ RUNTIME_PROJECT_DIR_DEFAULTS_TEST_CASES: list[CliProjectDefaultsTestCase] = [
 @pytest.mark.parametrize(
     "test_case",
     RUNTIME_PROJECT_DEFAULTS_TEST_CASES,
-    ids=[case.description for case in RUNTIME_PROJECT_DEFAULTS_TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_project_yaml_when_running_runtime_command_then_it_uses_project_defaults(
     test_case: CliProjectDefaultsTestCase,
@@ -779,7 +779,7 @@ SELECT order_id::UInt64 AS order_id FROM __ref("orders")
 @pytest.mark.parametrize(
     "test_case",
     RUNTIME_PROJECT_DIR_DEFAULTS_TEST_CASES,
-    ids=[case.description for case in RUNTIME_PROJECT_DIR_DEFAULTS_TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_project_dir_when_running_runtime_command_then_it_uses_project_defaults(
     test_case: CliProjectDefaultsTestCase,
@@ -862,7 +862,7 @@ SELECT order_id::UInt64 AS order_id FROM __ref("orders")
             expected_project_connection=("localhost", 8123, "streambuild", "streambuild"),
         )
     ],
-    ids=["uses project clickhouse defaults when cli and env are absent"],
+    ids=lambda case: case.description,
 )
 def test_given_project_clickhouse_defaults_when_resolving_connection_then_it_uses_them(
     test_case: CliProjectConnectionResolutionTestCase,
@@ -916,7 +916,7 @@ def test_given_project_clickhouse_defaults_when_resolving_connection_then_it_use
             expected_json_output=True,
         )
     ],
-    ids=["passes json flag through to plan command"],
+    ids=lambda case: case.description,
 )
 def test_given_json_flag_when_running_plan_then_it_passes_json_output_to_command(
     test_case: CliMainJsonFlagTestCase,
@@ -956,7 +956,7 @@ def test_given_json_flag_when_running_plan_then_it_passes_json_output_to_command
             expected_full_refresh=True,
         )
     ],
-    ids=["passes selectors and full refresh through to plan command"],
+    ids=lambda case: case.description,
 )
 def test_given_selectors_when_running_plan_then_it_passes_selection_kwargs_to_command(
     test_case: CliSelectorForwardingTestCase,
@@ -1000,7 +1000,7 @@ def test_given_selectors_when_running_plan_then_it_passes_selection_kwargs_to_co
             expected_apply=True,
         )
     ],
-    ids=["passes apply flag through to janitor command"],
+    ids=lambda case: case.description,
 )
 def test_given_apply_flag_when_running_janitor_then_it_passes_apply_to_command(
     test_case: CliJanitorApplyFlagTestCase,
@@ -1070,7 +1070,7 @@ CLI_EXPECTED_ERROR_TEST_CASES: list[CliMainErrorTestCase] = [
 @pytest.mark.parametrize(
     "test_case",
     CLI_EXPECTED_ERROR_TEST_CASES,
-    ids=[case.description for case in CLI_EXPECTED_ERROR_TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_expected_command_errors_when_running_entrypoint_then_it_prints_clean_stderr(
     test_case: CliMainErrorTestCase,
@@ -1127,7 +1127,7 @@ def test_given_expected_command_errors_when_running_entrypoint_then_it_prints_cl
             expected_json_output=True,
         )
     ],
-    ids=["passes json flag through to backfill command"],
+    ids=lambda case: case.description,
 )
 def test_given_json_flag_when_running_backfill_then_it_passes_json_output_to_command(
     test_case: CliMainJsonFlagTestCase,
@@ -1166,7 +1166,7 @@ def test_given_json_flag_when_running_backfill_then_it_passes_json_output_to_com
             expected_full_refresh=True,
         )
     ],
-    ids=["passes selectors and full refresh through to backfill command"],
+    ids=lambda case: case.description,
 )
 def test_given_selectors_when_running_backfill_then_it_passes_selection_kwargs_to_command(
     test_case: CliSelectorForwardingTestCase,
@@ -1207,7 +1207,7 @@ def test_given_selectors_when_running_backfill_then_it_passes_selection_kwargs_t
             expected_json_output=True,
         )
     ],
-    ids=["passes selectors, apply, and json flags through to reconcile command"],
+    ids=lambda case: case.description,
 )
 def test_given_reconcile_flags_when_running_reconcile_then_it_passes_kwargs_to_command(
     test_case: CliReconcileForwardingTestCase,
@@ -1276,7 +1276,7 @@ COMPILE_ARTIFACT_TEST_CASES: list[CliCompileArtifactsTestCase] = [
 @pytest.mark.parametrize(
     "test_case",
     COMPILE_ARTIFACT_TEST_CASES,
-    ids=[case.description for case in COMPILE_ARTIFACT_TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_compile_when_running_then_it_writes_target_artifacts(
     test_case: CliCompileArtifactsTestCase,

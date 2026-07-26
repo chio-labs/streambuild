@@ -114,7 +114,7 @@ INSERT_STATEMENT_TEST_CASES: list[MetadataStateInsertStatementTestCase] = [
 @pytest.mark.parametrize(
     "test_case",
     DDL_TEST_CASES,
-    ids=[case.description for case in DDL_TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_metadata_database_when_rendering_then_it_returns_expected_metadata_ddl(
     test_case: RenderMetadataStateDdlTestCase,
@@ -136,7 +136,7 @@ def test_given_metadata_database_when_rendering_then_it_returns_expected_metadat
 @pytest.mark.parametrize(
     "test_case",
     INSERT_STATEMENT_TEST_CASES,
-    ids=[case.description for case in INSERT_STATEMENT_TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_metadata_records_when_building_insert_statement_then_it_returns_expected_rows(
     test_case: MetadataStateInsertStatementTestCase,

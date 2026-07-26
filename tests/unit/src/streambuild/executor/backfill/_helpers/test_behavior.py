@@ -36,7 +36,7 @@ RESOLVE_UNSUPPORTED_BOUNDED_REPLAY_BEHAVIOR_TEST_CASES: list[
 @pytest.mark.parametrize(
     "test_case",
     RESOLVE_UNSUPPORTED_BOUNDED_REPLAY_BEHAVIOR_TEST_CASES,
-    ids=[case.description for case in RESOLVE_UNSUPPORTED_BOUNDED_REPLAY_BEHAVIOR_TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_missing_active_lineage_when_resolving_then_it_applies_policy(
     test_case: ResolveUnsupportedBoundedReplayBehaviorTestCase,

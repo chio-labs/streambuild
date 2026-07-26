@@ -51,7 +51,7 @@ ERROR_TEST_CASES: list[CliAuditSelectionErrorTestCase] = [
 @pytest.mark.parametrize(
     "test_case",
     TEST_CASES,
-    ids=[case.description for case in TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_valid_audit_selectors_when_selecting_then_it_returns_matching_audits(
     test_case: CliAuditSelectionTestCase,
@@ -80,7 +80,7 @@ def test_given_valid_audit_selectors_when_selecting_then_it_returns_matching_aud
 @pytest.mark.parametrize(
     "test_case",
     ERROR_TEST_CASES,
-    ids=[case.description for case in ERROR_TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_invalid_audit_selectors_when_selecting_then_it_raises_clear_errors(
     test_case: CliAuditSelectionErrorTestCase,

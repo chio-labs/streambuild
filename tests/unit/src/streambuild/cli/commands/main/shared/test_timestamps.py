@@ -38,7 +38,7 @@ NORMALIZATION_TEST_CASES: list[CliStartTimeNormalizationTestCase] = [
 @pytest.mark.parametrize(
     "test_case",
     NORMALIZATION_TEST_CASES,
-    ids=[case.description for case in NORMALIZATION_TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_valid_cli_start_time_when_normalizing_then_it_returns_internal_timestamp(
     test_case: CliStartTimeNormalizationTestCase,
@@ -57,7 +57,7 @@ def test_given_valid_cli_start_time_when_normalizing_then_it_returns_internal_ti
             expected_error_fragment="--start-time must be YYYY-MM-DD",
         )
     ],
-    ids=["rejects non utc offset timestamps"],
+    ids=lambda case: case.description,
 )
 def test_given_invalid_cli_start_time_when_normalizing_then_it_raises_clear_error(
     test_case: CliStartTimeNormalizationErrorTestCase,
@@ -76,7 +76,7 @@ def test_given_invalid_cli_start_time_when_normalizing_then_it_raises_clear_erro
             expected_converted_value="2026-04-01 13:30:45.000",
         )
     ],
-    ids=["converts utc timestamp into clickhouse server timezone"],
+    ids=lambda case: case.description,
 )
 def test_given_clickhouse_timezone_when_converting_then_it_returns_server_basis_timestamp(
     test_case: CliStartTimeConversionTestCase,

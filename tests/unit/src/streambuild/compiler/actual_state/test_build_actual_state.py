@@ -28,7 +28,7 @@ from tests.unit.src.streambuild.compiler.actual_state.helpers import build_actua
             expected_first_kafka_consumer_group="streambuild_orders_orders",
         )
     ],
-    ids=["builds deterministically ordered actual state from shared specs"],
+    ids=lambda case: case.description,
 )
 def test_given_unsorted_actual_objects_when_building_actual_state_then_it_returns_expected_state(
     test_case: BuildActualStateTestCase,

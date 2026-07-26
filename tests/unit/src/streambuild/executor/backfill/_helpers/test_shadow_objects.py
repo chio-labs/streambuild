@@ -29,7 +29,7 @@ from tests.unit.src.streambuild.executor.backfill._helpers._test_types import (
             ),
         )
     ],
-    ids=["creates referenced shadow tables before dependent shadow materialized views"],
+    ids=lambda case: case.description,
 )
 def test_given_reference_ref_when_creating_shadow_objects_then_it_creates_dependency_tables_first(
     test_case: CreateShadowObjectsOrderingTestCase,

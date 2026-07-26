@@ -324,7 +324,7 @@ REPLAY_SURFACE_TEST_CASES: list[CompilePipelineReplaySurfaceTestCase] = [
             ),
         )
     ],
-    ids=["resolves inline refs for example pipeline"],
+    ids=lambda case: case.description,
 )
 def test_given_example_pipeline_when_compiling_then_resolves_inline_refs(
     test_case: CompilePipelineInlineRefsTestCase,
@@ -422,7 +422,7 @@ FROM __ref("orders")
             expected_source_relation_name="orders_existing",
         )
     ],
-    ids=["compiles adopted source against its existing table name"],
+    ids=lambda case: case.description,
 )
 def test_given_adopted_source_when_compiling_then_it_uses_existing_table_relation_name(
     test_case: CompilePipelineAdoptedSourceTestCase,
@@ -478,7 +478,7 @@ def test_given_adopted_source_when_compiling_then_it_uses_existing_table_relatio
             expected_output_columns=(("order_id", "UInt64"),),
         )
     ],
-    ids=["compiles clickhouse double-colon casts in transform sql"],
+    ids=lambda case: case.description,
 )
 def test_given_inline_transform_sql_when_compiling_then_it_derives_expected_columns(
     test_case: CompilePipelineInlineSqlSuccessTestCase,
@@ -508,7 +508,7 @@ def test_given_inline_transform_sql_when_compiling_then_it_derives_expected_colu
             ),
         )
     ],
-    ids=["loads sql file relative to pipeline file"],
+    ids=lambda case: case.description,
 )
 def test_given_transform_sql_file_when_compiling_then_loads_sql_relative_to_pipeline_file(
     test_case: CompilePipelineSqlFileTestCase,
@@ -528,7 +528,7 @@ def test_given_transform_sql_file_when_compiling_then_loads_sql_relative_to_pipe
 @pytest.mark.parametrize(
     "test_case",
     REPLAY_LINEAGE_MODE_TEST_CASES,
-    ids=[case.description for case in REPLAY_LINEAGE_MODE_TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_loaded_pipeline_when_compiling_then_it_resolves_effective_replay_lineage_mode(
     test_case: CompilePipelineReplayLineageModeTestCase,
@@ -560,7 +560,7 @@ def test_given_loaded_pipeline_when_compiling_then_it_resolves_effective_replay_
 @pytest.mark.parametrize(
     "test_case",
     UNSUPPORTED_REPLAY_BEHAVIOR_TEST_CASES,
-    ids=[case.description for case in UNSUPPORTED_REPLAY_BEHAVIOR_TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_loaded_pipeline_when_compiling_then_it_resolves_effective_unsupported_behavior(
     test_case: CompilePipelineUnsupportedReplayBehaviorTestCase,
@@ -604,7 +604,7 @@ def test_given_loaded_pipeline_when_compiling_then_it_resolves_effective_unsuppo
 @pytest.mark.parametrize(
     "test_case",
     REPLAY_ANCHOR_ELIGIBILITY_TEST_CASES,
-    ids=[case.description for case in REPLAY_ANCHOR_ELIGIBILITY_TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_transform_when_compiling_then_it_sets_replay_anchor_inference_flags(
     test_case: CompilePipelineReplayAnchorEligibilityTestCase,
@@ -662,7 +662,7 @@ def test_given_transform_when_compiling_then_it_sets_replay_anchor_inference_fla
 @pytest.mark.parametrize(
     "test_case",
     REPLAY_SURFACE_TEST_CASES,
-    ids=[case.description for case in REPLAY_SURFACE_TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_pipeline_when_compiling_then_it_exposes_the_replay_surface(
     test_case: CompilePipelineReplaySurfaceTestCase,
@@ -713,7 +713,7 @@ def test_given_pipeline_when_compiling_then_it_exposes_the_replay_surface(
             expected_replay_lineage_mode=ReplayLineageMode.CURSOR,
         )
     ],
-    ids=["cursor external source resolves cursor replay lineage mode"],
+    ids=lambda case: case.description,
 )
 def test_given_pipeline_when_compiling_then_it_resolves_expected_replay_lineage_mode(
     test_case: CompilePipelineReplayLineageModeResolutionTestCase,
@@ -738,7 +738,7 @@ def test_given_pipeline_when_compiling_then_it_resolves_expected_replay_lineage_
             expected_error_type=ValueError,
         )
     ],
-    ids=["raises value error when transform sql omits source ref"],
+    ids=lambda case: case.description,
 )
 def test_given_transform_without_source_ref_when_compiling_then_raises_value_error(
     test_case: CompilePipelineMissingSourceRefTestCase,
@@ -762,7 +762,7 @@ def test_given_transform_without_source_ref_when_compiling_then_raises_value_err
             expected_error_fragment="must declare ref_type for additional ref 'customers'",
         )
     ],
-    ids=["raises value error when additional ref omits ref_type"],
+    ids=lambda case: case.description,
 )
 def test_given_additional_ref_without_ref_type_when_compiling_then_it_raises_value_error(
     test_case: CompilePipelineMissingRefTypeTestCase,
@@ -786,7 +786,7 @@ def test_given_additional_ref_without_ref_type_when_compiling_then_it_raises_val
             expected_target_name="orders_enriched",
         )
     ],
-    ids=["compiles repeated driving source refs without ref_type annotations"],
+    ids=lambda case: case.description,
 )
 def test_given_repeated_driving_source_refs_when_compiling_then_it_treats_them_as_one_source(
     test_case: CompilePipelineRepeatedSourceRefTestCase,
@@ -816,7 +816,7 @@ def test_given_repeated_driving_source_refs_when_compiling_then_it_treats_them_a
             ),
         )
     ],
-    ids=["raises a clear custom error for top level union output"],
+    ids=lambda case: case.description,
 )
 def test_given_invalid_inline_transform_sql_when_compiling_then_it_raises_a_clear_contract_error(
     test_case: CompilePipelineInvalidTransformSqlTestCase,
@@ -849,7 +849,7 @@ def test_given_invalid_inline_transform_sql_when_compiling_then_it_raises_a_clea
             ),
         )
     ],
-    ids=["raises a clear custom error for order by expressions that reference missing columns"],
+    ids=lambda case: case.description,
 )
 def test_given_invalid_transform_order_by_when_compiling_then_it_raises_a_clear_contract_error(
     test_case: CompilePipelineInvalidOrderByTestCase,
@@ -886,7 +886,7 @@ def test_given_invalid_transform_order_by_when_compiling_then_it_raises_a_clear_
             ),
         )
     ],
-    ids=["tracks additional reference tables as materialized view dependencies"],
+    ids=lambda case: case.description,
 )
 def test_given_additional_ref_when_compiling_then_materialized_view_depends_on_the_reference_table(
     test_case: CompilePipelineAdditionalRefDependencyTestCase,
@@ -932,7 +932,7 @@ def test_given_additional_ref_when_compiling_then_materialized_view_depends_on_t
             ),
         )
     ],
-    ids=["raises a clear order by error when the default replay timestamp key is missing"],
+    ids=lambda case: case.description,
 )
 def test_given_sql_model_without_replay_timestamp_when_compiling_then_it_raises_order_by_error(
     test_case: CompilePipelineSqlModelDefaultOrderByTestCase,
@@ -979,7 +979,7 @@ def test_given_sql_model_without_replay_timestamp_when_compiling_then_it_raises_
             ),
         )
     ],
-    ids=["raises a clear custom error for partition by expressions that reference missing columns"],
+    ids=lambda case: case.description,
 )
 def test_given_invalid_transform_partition_by_when_compiling_then_it_raises_a_clear_contract_error(
     test_case: CompilePipelineInvalidPartitionByTestCase,
@@ -1015,7 +1015,7 @@ def test_given_invalid_transform_partition_by_when_compiling_then_it_raises_a_cl
             ),
         )
     ],
-    ids=["raises a clear custom error for ttl expressions that reference missing columns"],
+    ids=lambda case: case.description,
 )
 def test_given_invalid_transform_ttl_when_compiling_then_it_raises_a_clear_contract_error(
     test_case: CompilePipelineInvalidTtlTestCase,

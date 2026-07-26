@@ -72,7 +72,7 @@ from tests.unit.src.streambuild.cli.commands._test_types import CliRenderingTest
             ),
         )
     ],
-    ids=["renders human-readable plan summary"],
+    ids=lambda case: case.description,
 )
 def test_given_plan_result_when_rendering_text_then_it_returns_operator_summary(
     test_case: CliRenderingTestCase,
@@ -133,7 +133,7 @@ def test_given_plan_result_when_rendering_text_then_it_returns_operator_summary(
             ),
         )
     ],
-    ids=["deduplicates changed targets across overlapping subtrees"],
+    ids=lambda case: case.description,
 )
 def test_given_overlapping_subtrees_when_rendering_compact_plan_then_it_deduplicates_targets(
     test_case: CliRenderingTestCase,
@@ -262,7 +262,7 @@ def test_given_overlapping_subtrees_when_rendering_compact_plan_then_it_deduplic
             ),
         )
     ],
-    ids=["renders audit caution summary without publish recommendation"],
+    ids=lambda case: case.description,
 )
 def test_given_non_ready_audit_result_when_rendering_text_then_it_avoids_publish_recommendation(
     test_case: CliRenderingTestCase,
@@ -321,7 +321,7 @@ def test_given_non_ready_audit_result_when_rendering_text_then_it_avoids_publish
             ),
         )
     ],
-    ids=["renders audit row ratio and time ranges for active caution root"],
+    ids=lambda case: case.description,
 )
 def test_given_active_caution_audit_result_when_rendering_text_then_it_shows_relevant_context(
     test_case: CliRenderingTestCase,
@@ -395,7 +395,7 @@ def test_given_active_caution_audit_result_when_rendering_text_then_it_shows_rel
             ),
         )
     ],
-    ids=["renders multiple live targets under one replay start"],
+    ids=lambda case: case.description,
 )
 def test_given_plan_with_multiple_live_targets_when_rendering_text_then_it_renders_branches(
     test_case: CliRenderingTestCase,
@@ -446,7 +446,7 @@ def test_given_plan_with_multiple_live_targets_when_rendering_text_then_it_rende
             ),
         )
     ],
-    ids=["renders changed transform query against live target table"],
+    ids=lambda case: case.description,
 )
 def test_given_mv_root_change_when_rendering_plan_then_it_maps_to_live_target_table(
     test_case: CliRenderingTestCase,
@@ -511,7 +511,7 @@ def test_given_mv_root_change_when_rendering_plan_then_it_maps_to_live_target_ta
             ),
         )
     ],
-    ids=["renders schema change details grouped under changed target"],
+    ids=lambda case: case.description,
 )
 def test_given_schema_change_plan_when_rendering_text_then_it_explains_policy_per_diff(
     test_case: CliRenderingTestCase,
@@ -635,7 +635,7 @@ def test_given_schema_change_plan_when_rendering_text_then_it_explains_policy_pe
             ),
         )
     ],
-    ids=["renders full refresh request as an operator action"],
+    ids=lambda case: case.description,
 )
 def test_given_forced_full_refresh_when_rendering_plan_then_it_explains_operator_intent(
     test_case: CliRenderingTestCase,
@@ -720,7 +720,7 @@ def test_given_forced_full_refresh_when_rendering_plan_then_it_explains_operator
             ),
         )
     ],
-    ids=["renders new targets separately from schema-changed targets in compact mode"],
+    ids=lambda case: case.description,
 )
 def test_given_mixed_subtree_when_rendering_compact_plan_then_it_separates_new_targets(
     test_case: CliRenderingTestCase,
@@ -785,7 +785,7 @@ def test_given_mixed_subtree_when_rendering_compact_plan_then_it_separates_new_t
             ),
         )
     ],
-    ids=["renders verbose plan details when requested"],
+    ids=lambda case: case.description,
 )
 def test_given_verbose_plan_when_rendering_text_then_it_shows_expanded_details(
     test_case: CliRenderingTestCase,
@@ -857,7 +857,7 @@ def test_given_verbose_plan_when_rendering_text_then_it_shows_expanded_details(
             ),
         )
     ],
-    ids=["renders ansi color when forced"],
+    ids=lambda case: case.description,
 )
 def test_given_forced_color_when_rendering_plan_then_it_includes_ansi_styles(
     test_case: CliRenderingTestCase,
@@ -909,7 +909,7 @@ def test_given_forced_color_when_rendering_plan_then_it_includes_ansi_styles(
             ),
         )
     ],
-    ids=["renders human-readable backfill summary"],
+    ids=lambda case: case.description,
 )
 def test_given_backfill_result_when_rendering_text_then_it_returns_operator_summary(
     test_case: CliRenderingTestCase,
@@ -960,7 +960,7 @@ def test_given_backfill_result_when_rendering_text_then_it_returns_operator_summ
             ),
         )
     ],
-    ids=["renders audit root and abnormal metric colors when forced"],
+    ids=lambda case: case.description,
 )
 def test_given_forced_color_when_rendering_audit_then_it_colors_root_names(
     test_case: CliRenderingTestCase,
@@ -1043,7 +1043,7 @@ def test_given_forced_color_when_rendering_audit_then_it_colors_root_names(
             ),
         )
     ],
-    ids=["renders human-readable audit summary"],
+    ids=lambda case: case.description,
 )
 def test_given_audit_result_when_rendering_text_then_it_returns_operator_summary(
     test_case: CliRenderingTestCase,
@@ -1098,7 +1098,7 @@ def test_given_audit_result_when_rendering_text_then_it_returns_operator_summary
             ),
         )
     ],
-    ids=["renders human-readable publish summary"],
+    ids=lambda case: case.description,
 )
 def test_given_publish_result_when_rendering_text_then_it_returns_operator_summary(
     test_case: CliRenderingTestCase,
@@ -1140,7 +1140,7 @@ def test_given_publish_result_when_rendering_text_then_it_returns_operator_summa
             ),
         )
     ],
-    ids=["renders ambiguity guidance with roots and next command"],
+    ids=lambda case: case.description,
 )
 def test_given_ambiguous_candidates_when_rendering_message_then_it_returns_guidance(
     test_case: CliRenderingTestCase,

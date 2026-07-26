@@ -63,7 +63,7 @@ TEST_CASES: list[DeriveTransformOutputColumnsSuccessTestCase] = [
 @pytest.mark.parametrize(
     "test_case",
     TEST_CASES,
-    ids=[case.description for case in TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_valid_transform_sql_when_deriving_output_columns_then_it_returns_expected_columns(
     test_case: DeriveTransformOutputColumnsSuccessTestCase,

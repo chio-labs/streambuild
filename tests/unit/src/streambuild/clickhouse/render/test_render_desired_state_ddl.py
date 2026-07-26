@@ -42,7 +42,7 @@ from tests.unit.src.streambuild.clickhouse.render._test_types import RenderDesir
             ),
         )
     ],
-    ids=["renders example desired state into deterministic ordered ddl"],
+    ids=lambda case: case.description,
 )
 def test_given_example_desired_state_when_rendering_then_it_returns_expected_ordered_ddl(
     test_case: RenderDesiredStateDdlTestCase,

@@ -68,7 +68,7 @@ ERROR_RENDERING_TEST_CASES: list[CliExpectedErrorRenderingTestCase] = [
 @pytest.mark.parametrize(
     "test_case",
     ERROR_RENDERING_TEST_CASES,
-    ids=[case.description for case in ERROR_RENDERING_TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_expected_clickhouse_error_when_rendering_then_it_returns_operator_message(
     test_case: CliExpectedErrorRenderingTestCase,
@@ -101,7 +101,7 @@ def test_given_expected_clickhouse_error_when_rendering_then_it_returns_operator
             ),
         )
     ],
-    ids=["publish handles missing database cleanly"],
+    ids=lambda case: case.description,
 )
 def test_given_missing_database_when_running_publish_then_it_prints_friendly_error(
     test_case: CliCommandErrorTestCase,

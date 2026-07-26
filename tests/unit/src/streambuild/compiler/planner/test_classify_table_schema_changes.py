@@ -106,7 +106,7 @@ TEST_CASES: list[PlannerTableSchemaClassificationTestCase] = [
 @pytest.mark.parametrize(
     "test_case",
     TEST_CASES,
-    ids=[case.description for case in TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_table_column_changes_when_classifying_then_it_returns_expected_schema_metadata(
     test_case: PlannerTableSchemaClassificationTestCase,

@@ -39,7 +39,7 @@ TEST_CASES: list[PlannerCollapseSubtreesTestCase] = [
 @pytest.mark.parametrize(
     "test_case",
     TEST_CASES,
-    ids=[case.description for case in TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_overlapping_changed_keys_when_building_subtrees_then_it_collapses_descendants(
     test_case: PlannerCollapseSubtreesTestCase,

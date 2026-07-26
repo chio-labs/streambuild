@@ -109,7 +109,7 @@ ERROR_TEST_CASES: list[DiscoverSqlAuditsErrorTestCase] = [
 @pytest.mark.parametrize(
     "test_case",
     TEST_CASES,
-    ids=[case.description for case in TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_valid_sql_audit_files_when_discovering_then_it_returns_loaded_sql_audits(
     test_case: DiscoverSqlAuditsTestCase,
@@ -140,7 +140,7 @@ def test_given_valid_sql_audit_files_when_discovering_then_it_returns_loaded_sql
 @pytest.mark.parametrize(
     "test_case",
     ERROR_TEST_CASES,
-    ids=[case.description for case in ERROR_TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_invalid_sql_audit_files_when_discovering_then_it_raises_clear_errors(
     test_case: DiscoverSqlAuditsErrorTestCase,
@@ -172,7 +172,7 @@ def test_given_invalid_sql_audit_files_when_discovering_then_it_raises_clear_err
             expected_query_fragment="line_total < 0",
         )
     ],
-    ids=["expands project macros in audit bodies"],
+    ids=lambda case: case.description,
 )
 def test_given_sql_audit_macros_when_discovering_then_it_expands_audit_body(
     test_case: DiscoverSqlAuditsWithMacrosTestCase,
@@ -217,7 +217,7 @@ def test_given_sql_audit_macros_when_discovering_then_it_expands_audit_body(
             expected_referenced_model_names=("order_items",),
         )
     ],
-    ids=["renders generic sql audits from schema attached instances"],
+    ids=lambda case: case.description,
 )
 def test_given_generic_sql_audits_when_discovering_then_it_renders_concrete_audits(
     test_case: DiscoverGenericSqlAuditsTestCase,

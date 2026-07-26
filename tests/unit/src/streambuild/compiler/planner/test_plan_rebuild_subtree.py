@@ -70,7 +70,7 @@ REPLAY_ANCHOR_SELECTION_TEST_CASES: list[PlannerReplayAnchorSelectionTestCase] =
 @pytest.mark.parametrize(
     "test_case",
     TEST_CASES,
-    ids=[case.description for case in TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_changed_desired_object_when_planning_rebuild_then_it_returns_expected_subtree(
     test_case: PlannerRebuildSubtreeTestCase,
@@ -96,7 +96,7 @@ def test_given_changed_desired_object_when_planning_rebuild_then_it_returns_expe
 @pytest.mark.parametrize(
     "test_case",
     REPLAY_ANCHOR_SELECTION_TEST_CASES,
-    ids=[case.description for case in REPLAY_ANCHOR_SELECTION_TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_transform_when_planning_rebuild_then_it_uses_expected_replay_anchor(
     test_case: PlannerReplayAnchorSelectionTestCase,

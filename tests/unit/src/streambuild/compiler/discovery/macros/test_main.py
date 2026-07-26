@@ -161,7 +161,7 @@ ERROR_TEST_CASES: list[ExpandProjectSqlMacrosErrorTestCase] = [
 @pytest.mark.parametrize(
     "test_case",
     TEST_CASES,
-    ids=[case.description for case in TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_project_macros_when_expanding_then_it_returns_expected_sql(
     test_case: ExpandProjectSqlMacrosTestCase,
@@ -181,7 +181,7 @@ def test_given_project_macros_when_expanding_then_it_returns_expected_sql(
 @pytest.mark.parametrize(
     "test_case",
     ERROR_TEST_CASES,
-    ids=[case.description for case in ERROR_TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_invalid_project_macros_when_expanding_then_it_raises_clear_errors(
     test_case: ExpandProjectSqlMacrosErrorTestCase,
@@ -216,7 +216,7 @@ def test_given_invalid_project_macros_when_expanding_then_it_raises_clear_errors
             expected_error_fragment="Macro name collision for 'replay_columns'",
         )
     ],
-    ids=["raises a clear error for colliding macro names"],
+    ids=lambda case: case.description,
 )
 def test_given_colliding_macro_names_when_expanding_then_it_raises_clear_error(
     test_case: ExpandProjectSqlMacrosCollisionTestCase,

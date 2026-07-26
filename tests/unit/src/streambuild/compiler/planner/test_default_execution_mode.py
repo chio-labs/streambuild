@@ -77,7 +77,7 @@ TEST_CASES: list[PlannerExecutionModeTestCase] = [
 @pytest.mark.parametrize(
     "test_case",
     TEST_CASES,
-    ids=[case.description for case in TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_planned_change_metadata_when_building_subtrees_then_it_sets_expected_execution_mode(
     test_case: PlannerExecutionModeTestCase,

@@ -149,7 +149,7 @@ TEST_CASES: list[CliBackfillIntegrationTestCase] = [
 @pytest.mark.parametrize(
     "test_case",
     TEST_CASES,
-    ids=[case.description for case in TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_backfill_command_when_running_then_it_behaves_as_expected(
     test_case: CliBackfillIntegrationTestCase,

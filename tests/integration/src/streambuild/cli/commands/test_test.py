@@ -73,7 +73,7 @@ TEST_CASES: list[CliTestCommandIntegrationTestCase] = [
 @pytest.mark.parametrize(
     "test_case",
     TEST_CASES,
-    ids=[case.description for case in TEST_CASES],
+    ids=lambda case: case.description,
 )
 @pytest.mark.integration
 def test_given_sql_native_test_project_when_running_test_command_then_it_reports_expected_results(

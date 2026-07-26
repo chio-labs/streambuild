@@ -37,7 +37,7 @@ TEST_CASES: list[ExecuteSqlAuditsTestCase] = [
 @pytest.mark.parametrize(
     "test_case",
     TEST_CASES,
-    ids=[case.description for case in TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_sql_audits_when_executing_then_it_returns_expected_results(
     test_case: ExecuteSqlAuditsTestCase,

@@ -144,7 +144,7 @@ SCHEMA_CHANGE_TEST_CASES: list[KafkaSchemaChangeWorkflowE2ETestCase] = [
             expected_audit_assessment=AuditAssessment.READY,
         )
     ],
-    ids=["runs the greenfield Kafka workflow from landing ingest through publish"],
+    ids=lambda case: case.description,
 )
 def test_given_kafka_backed_greenfield_pipeline_when_running_then_it_publishes_expected_rows(
     test_case: GreenfieldKafkaWorkflowE2ETestCase,
@@ -257,7 +257,7 @@ def test_given_kafka_backed_greenfield_pipeline_when_running_then_it_publishes_e
             expected_doctor_state_kind="logical_view_missing",
         )
     ],
-    ids=["repairs a deleted stable view after publishing a Kafka-backed deployment"],
+    ids=lambda case: case.description,
 )
 def test_given_kafka_backed_published_deployment_when_view_is_deleted_then_repair_restores_it(
     test_case: KafkaRecoveryWorkflowE2ETestCase,
@@ -395,7 +395,7 @@ def test_given_kafka_backed_published_deployment_when_view_is_deleted_then_repai
             expected_final_order_ids=("order-1", "order-2", "order-3", "order-4", "order-5"),
         )
     ],
-    ids=["keeps the staged shadow path live while a staged deployment is open"],
+    ids=lambda case: case.description,
 )
 def test_given_open_staged_kafka_deployment_when_new_rows_arrive_then_shadow_path_stays_live(
     test_case: KafkaLiveShadowWorkflowE2ETestCase,
@@ -434,7 +434,7 @@ def test_given_open_staged_kafka_deployment_when_new_rows_arrive_then_shadow_pat
             expected_partitions_compared=1,
         )
     ],
-    ids=["audits offset-mode staged deployment under live Kafka ingestion"],
+    ids=lambda case: case.description,
 )
 def test_given_offset_mode_staged_kafka_deployment_when_new_rows_arrive_then_audit_reports_catchup(
     test_case: KafkaOffsetAuditWorkflowE2ETestCase,
@@ -548,7 +548,7 @@ def test_given_offset_mode_staged_kafka_deployment_when_new_rows_arrive_then_aud
 @pytest.mark.parametrize(
     "test_case",
     SCHEMA_CHANGE_TEST_CASES,
-    ids=[case.description for case in SCHEMA_CHANGE_TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_published_kafka_pipeline_when_schema_changes_then_bounded_policy_behaves_as_expected(
     test_case: KafkaSchemaChangeWorkflowE2ETestCase,

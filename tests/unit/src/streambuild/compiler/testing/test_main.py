@@ -166,7 +166,7 @@ TEST_CASES: list[BuildSqlTestCasesTestCase] = [
 @pytest.mark.parametrize(
     "test_case",
     TEST_CASES,
-    ids=[case.description for case in TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_discovered_sql_tests_when_building_cases_then_it_assembles_expected_queries(
     test_case: BuildSqlTestCasesTestCase,
@@ -216,7 +216,7 @@ def test_given_discovered_sql_tests_when_building_cases_then_it_assembles_expect
             expected_error_fragment="dependency 'orders' cannot be resolved",
         )
     ],
-    ids=["raises a clear error for unresolved source dependencies"],
+    ids=lambda case: case.description,
 )
 def test_given_invalid_sql_tests_when_building_cases_then_it_raises_clear_errors(
     test_case: BuildSqlTestCasesErrorTestCase,

@@ -79,7 +79,7 @@ TEST_CASES: list[ValidateSqlAuditsTestCase] = [
 @pytest.mark.parametrize(
     "test_case",
     ERROR_TEST_CASES,
-    ids=[case.description for case in ERROR_TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_invalid_sql_audits_when_validating_then_it_raises_clear_errors(
     test_case: ValidateSqlAuditsErrorTestCase,
@@ -97,7 +97,7 @@ def test_given_invalid_sql_audits_when_validating_then_it_raises_clear_errors(
 @pytest.mark.parametrize(
     "test_case",
     TEST_CASES,
-    ids=[case.description for case in TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_valid_sql_audits_when_validating_then_it_returns_loaded_audits(
     test_case: ValidateSqlAuditsTestCase,

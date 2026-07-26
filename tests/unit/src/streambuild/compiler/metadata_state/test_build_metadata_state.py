@@ -25,7 +25,7 @@ from tests.unit.src.streambuild.compiler.metadata_state.helpers import build_met
             expected_runtime_detail_target_names=("tbl__orders_enriched",),
         )
     ],
-    ids=["builds deterministically ordered metadata state records"],
+    ids=lambda case: case.description,
 )
 def test_given_unsorted_metadata_records_when_building_then_it_returns_normalized_state(
     test_case: BuildMetadataStateTestCase,

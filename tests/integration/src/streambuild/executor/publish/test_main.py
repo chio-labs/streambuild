@@ -50,7 +50,7 @@ from tests.integration.src.streambuild.executor.publish._test_types import (
             expected_published_order_ids=("historical-order", "live-order"),
         )
     ],
-    ids=["publishes greenfield stable view for scalar replay deployment"],
+    ids=lambda case: case.description,
 )
 def test_given_greenfield_staged_deployment_when_publishing_then_it_creates_stable_view(
     test_case: ExecutePublishIntegrationTestCase,
@@ -199,7 +199,7 @@ PUBLISH_WITHOUT_METADATA_TEST_CASES: list[PublishWithoutMetadataIntegrationTestC
 @pytest.mark.parametrize(
     "test_case",
     RESOLUTION_TEST_CASES,
-    ids=[case.description for case in RESOLUTION_TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_publish_request_without_deployment_id_when_resolving_then_it_behaves_as_expected(
     test_case: ResolvePublishDeploymentIntegrationTestCase,
@@ -316,7 +316,7 @@ def test_given_publish_request_without_deployment_id_when_resolving_then_it_beha
 @pytest.mark.parametrize(
     "test_case",
     PUBLISH_WITHOUT_METADATA_TEST_CASES,
-    ids=[case.description for case in PUBLISH_WITHOUT_METADATA_TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_deleted_publish_metadata_when_publishing_then_it_uses_live_clickhouse_state(
     test_case: PublishWithoutMetadataIntegrationTestCase,
@@ -430,7 +430,7 @@ def test_given_deleted_publish_metadata_when_publishing_then_it_uses_live_clickh
             expected_error_fragment="has no staged physical tables to publish",
         )
     ],
-    ids=["fails when the staged table was deleted before publish"],
+    ids=lambda case: case.description,
 )
 def test_given_deleted_staged_table_when_publishing_then_it_fails_conservatively(
     test_case: PublishMissingStagedTableIntegrationTestCase,
@@ -527,7 +527,7 @@ def test_given_deleted_staged_table_when_publishing_then_it_fails_conservatively
             expected_target_table_name="tbl__orders_enriched__20260409T224500Z_ab12cd",
         )
     ],
-    ids=["publishes explicit staged deployment after the active stable view was deleted"],
+    ids=lambda case: case.description,
 )
 def test_given_deleted_active_view_when_publishing_then_it_recreates_stable_view(
     test_case: PublishAfterDeletedActiveViewIntegrationTestCase,
