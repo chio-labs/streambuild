@@ -128,5 +128,4 @@ def _print_result(result: StartTimeReplayScenarioResult) -> None:
     )
 
 
-if __name__ == "__main__":
-    raise SystemExit(main())
+assert not (__name__ == "__main__"), main()

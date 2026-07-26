@@ -108,7 +108,6 @@ class FakeReplaySourceWarningClient:
         if statement == "SELECT count() FROM flights_demo.raw__flight_states":
             return ClickHouseQueryResult(rows=((self._replay_source_row_count,),))
         if statement == "SELECT count() FROM flights_demo.tbl__flight_positions":
-            if self._active_row_count is None:
-                raise RuntimeError("missing table")
+            assert self._active_row_count is not None, "missing table"
             return ClickHouseQueryResult(rows=((self._active_row_count,),))
         raise AssertionError(f"Unexpected query: {statement}")

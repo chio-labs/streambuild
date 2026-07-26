@@ -618,8 +618,9 @@ def build_external_source_cursor_orders_row(
 
 
 def require_managed_source(compiled_pipeline: CompiledPipeline) -> CompiledManagedSource:
-    if not isinstance(compiled_pipeline.source, CompiledManagedSource):
-        raise RuntimeError("Expected compiled pipeline to use a managed Kafka source")
+    assert isinstance(compiled_pipeline.source, CompiledManagedSource), (
+        "Expected compiled pipeline to use a managed Kafka source"
+    )
     return compiled_pipeline.source
 
 

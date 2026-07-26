@@ -22,7 +22,7 @@ from tests.unit.src.streambuild.cli._test_types import (
     CliMainErrorTestCase,
     CliMainIntegrationTestCase,
     CliMainJsonFlagTestCase,
-    CliMainTestCase,
+    CliMainJsonTestCase,
     CliProjectConnectionResolutionTestCase,
     CliProjectDefaultsTestCase,
     CliReconcileForwardingTestCase,
@@ -111,13 +111,13 @@ class PlanCommandRunner:
 @pytest.mark.parametrize(
     "test_case",
     [
-        CliMainTestCase(
+        CliMainJsonTestCase(
             description="prints discovered pipeline names as json",
             argv=("stb", "discover", "--project-dir", "tests/fixtures/basic_project"),
             expected_exit_code=0,
             expected_output_fragments=("orders",),
         ),
-        CliMainTestCase(
+        CliMainJsonTestCase(
             description="prints backfill payload as json",
             argv=(
                 "stb",
@@ -140,8 +140,15 @@ class PlanCommandRunner:
                 '"deployment_id": "20260410T000000Z_ab12cd"',
                 '"replay_strategy": "create_from_scratch"',
             ),
+            handler_name="run_backfill",
+            handler_output="{\n"
+            '  "deployment_id": "20260410T000000Z_ab12cd",\n'
+            '  "boundary_time": "2026-04-10 00:00:00.000",\n'
+            '  "root_reports": [{"name": "tbl__orders_enriched", '
+            '"replay_strategy": "create_from_scratch"}]\n'
+            "}",
         ),
-        CliMainTestCase(
+        CliMainJsonTestCase(
             description="prints audit backfill payload as json",
             argv=(
                 "stb",
@@ -166,8 +173,16 @@ class PlanCommandRunner:
                 '"assessment": "ready"',
                 '"name": "tbl__orders_enriched"',
             ),
+            handler_name="run_audit_backfill",
+            handler_output="{\n"
+            '  "deployment_id": "20260410T000000Z_ab12cd",\n'
+            '  "deployment_status": "backfilling",\n'
+            '  "assessment": "ready",\n'
+            '  "warning_codes": [],\n'
+            '  "root_results": [{"name": "tbl__orders_enriched"}]\n'
+            "}",
         ),
-        CliMainTestCase(
+        CliMainJsonTestCase(
             description="prints live audit payload as json",
             argv=(
                 "stb",
@@ -191,8 +206,14 @@ class PlanCommandRunner:
                 '"warning_failure_count": 1',
                 '"severity": "warning"',
             ),
+            handler_name="run_audit",
+            handler_output="{\n"
+            '  "error_failure_count": 0,\n'
+            '  "warning_failure_count": 1,\n'
+            '  "audit_results": [{"severity": "warning"}]\n'
+            "}",
         ),
-        CliMainTestCase(
+        CliMainJsonTestCase(
             description="prints publish payload as json",
             argv=(
                 "stb",
@@ -214,8 +235,14 @@ class PlanCommandRunner:
                 '"view_name": "tbl__orders_enriched"',
                 '"target_table_name": "tbl__orders_enriched__20260410T000000Z_ab12cd"',
             ),
+            handler_name="run_publish",
+            handler_output="{\n"
+            '  "deployment_id": "20260410T000000Z_ab12cd",\n'
+            '  "published_views": [{"view_name": "tbl__orders_enriched", '
+            '"target_table_name": "tbl__orders_enriched__20260410T000000Z_ab12cd"}]\n'
+            "}",
         ),
-        CliMainTestCase(
+        CliMainJsonTestCase(
             description="prints doctor payload as json",
             argv=(
                 "stb",
@@ -236,8 +263,13 @@ class PlanCommandRunner:
                 '"table_name": "tbl__orders_enriched"',
                 '"state_kind": "logical_view_missing"',
             ),
+            handler_name="run_doctor",
+            handler_output="{\n"
+            '  "active_views": [{"table_name": "tbl__orders_enriched", '
+            '"state_kind": "logical_view_missing"}]\n'
+            "}",
         ),
-        CliMainTestCase(
+        CliMainJsonTestCase(
             description="prints repair active-view payload as json",
             argv=(
                 "stb",
@@ -263,77 +295,26 @@ class PlanCommandRunner:
                 '"table_name": "tbl__orders_enriched"',
                 '"target_table_name": "tbl__orders_enriched__20260410T000000Z_ab12cd"',
             ),
+            handler_name="run_repair_active_view",
+            handler_output="{\n"
+            '  "table_name": "tbl__orders_enriched",\n'
+            '  "target_table_name": "tbl__orders_enriched__20260410T000000Z_ab12cd"\n'
+            "}",
         ),
     ],
     ids=lambda case: case.description,
 )
 def test_given_cli_args_when_running_main_then_it_prints_expected_json(
-    test_case: CliMainTestCase,
+    test_case: CliMainJsonTestCase,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    handlers: CliEntrypointHandlers = handlers_with_overrides()
     clickhouse_client: ClickHouseClient = cast(ClickHouseClient, FakeCliClickHouseClient())
-    if test_case.argv[1] == "backfill":
-        handlers = handlers_with_overrides(
-            run_backfill=PrintingCommandRunner(
-                "{\n"
-                '  "deployment_id": "20260410T000000Z_ab12cd",\n'
-                '  "boundary_time": "2026-04-10 00:00:00.000",\n'
-                '  "root_reports": [{"name": "tbl__orders_enriched", '
-                '"replay_strategy": "create_from_scratch"}]\n'
-                "}"
-            )
-        )
-    if test_case.argv[1:3] == ("audit", "backfill"):
-        handlers = handlers_with_overrides(
-            run_audit_backfill=PrintingCommandRunner(
-                "{\n"
-                '  "deployment_id": "20260410T000000Z_ab12cd",\n'
-                '  "deployment_status": "backfilling",\n'
-                '  "assessment": "ready",\n'
-                '  "warning_codes": [],\n'
-                '  "root_results": [{"name": "tbl__orders_enriched"}]\n'
-                "}"
-            )
-        )
-    if test_case.argv[1] == "audit" and test_case.argv[1:3] != ("audit", "backfill"):
-        handlers = handlers_with_overrides(
-            run_audit=PrintingCommandRunner(
-                "{\n"
-                '  "error_failure_count": 0,\n'
-                '  "warning_failure_count": 1,\n'
-                '  "audit_results": [{"severity": "warning"}]\n'
-                "}"
-            )
-        )
-    if test_case.argv[1] == "publish":
-        handlers = handlers_with_overrides(
-            run_publish=PrintingCommandRunner(
-                "{\n"
-                '  "deployment_id": "20260410T000000Z_ab12cd",\n'
-                '  "published_views": [{"view_name": "tbl__orders_enriched", '
-                '"target_table_name": "tbl__orders_enriched__20260410T000000Z_ab12cd"}]\n'
-                "}"
-            )
-        )
-    if test_case.argv[1] == "doctor":
-        handlers = handlers_with_overrides(
-            run_doctor=PrintingCommandRunner(
-                "{\n"
-                '  "active_views": [{"table_name": "tbl__orders_enriched", '
-                '"state_kind": "logical_view_missing"}]\n'
-                "}"
-            )
-        )
-    if test_case.argv[1:3] == ("repair", "active-view"):
-        handlers = handlers_with_overrides(
-            run_repair_active_view=PrintingCommandRunner(
-                "{\n"
-                '  "table_name": "tbl__orders_enriched",\n'
-                '  "target_table_name": "tbl__orders_enriched__20260410T000000Z_ab12cd"\n'
-                "}"
-            )
-        )
+    overrides: dict[str, PrintingCommandRunner] = (
+        {test_case.handler_name: PrintingCommandRunner(test_case.handler_output)}
+        if test_case.handler_name is not None
+        else {}
+    )
+    handlers: CliEntrypointHandlers = handlers_with_overrides(**overrides)
 
     exit_code: int = _main_with_dependencies(
         argv=test_case.argv,
