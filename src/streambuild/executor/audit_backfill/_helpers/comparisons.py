@@ -7,7 +7,6 @@ from typing import cast
 from sqlglot import exp, parse_one
 
 from streambuild.clickhouse.inspect.models import InspectedManagedTableState
-from streambuild.compiler.shared._helpers.deployment_names import build_deployment_physical_name
 from streambuild.compiler.shared.constants import (
     DESIRED_OBJECT_TYPE_TABLE,
     MATERIALIZED_VIEW_NAME_PREFIX,
@@ -16,6 +15,9 @@ from streambuild.compiler.shared.constants import (
     REPLAY_PARTITION_COLUMN_NAME,
     REPLAY_TIMESTAMP_COLUMN_NAME,
     TRANSFORM_TABLE_NAME_PREFIX,
+)
+from streambuild.compiler.shared.main.build_deployment_physical_name import (
+    build_deployment_physical_name,
 )
 from streambuild.compiler.shared.models import ObjectKey
 from streambuild.executor.audit_backfill.constants import ACCEPTABLE_LAG_SECONDS

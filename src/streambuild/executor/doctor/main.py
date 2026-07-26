@@ -6,8 +6,10 @@ from streambuild.clickhouse.inspect.models import (
     InspectedManagedTableState,
     RootDeploymentInspection,
 )
-from streambuild.compiler.shared._helpers.deployment_names import deployment_id_from_physical_name
 from streambuild.compiler.shared.constants import DESIRED_OBJECT_TYPE_TABLE
+from streambuild.compiler.shared.main.deployment_id_from_physical_name import (
+    deployment_id_from_physical_name,
+)
 from streambuild.compiler.shared.models import ObjectKey
 from streambuild.executor.doctor.models import ActiveViewStatus, DoctorRequest, DoctorResult
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient

@@ -4,10 +4,10 @@ from streambuild.clickhouse.inspect.models import (
     InspectedManagedTableState,
     RootDeploymentInspection,
 )
-from streambuild.compiler.shared._helpers.deployment_names import (
+from streambuild.compiler.shared.main.deployment_id_from_physical_name import (
     deployment_id_from_physical_name,
-    is_deployment_physical_name,
 )
+from streambuild.compiler.shared.main.is_deployment_physical_name import is_deployment_physical_name
 from streambuild.compiler.shared.models import ObjectKey
 
 

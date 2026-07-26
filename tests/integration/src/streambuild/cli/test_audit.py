@@ -16,7 +16,9 @@ from streambuild.clickhouse.render._helpers.create_materialized_view import (
 from streambuild.clickhouse.render._helpers.create_table import render_create_table_ddl
 from streambuild.compiler.compile._helpers.naming import transform_table_name
 from streambuild.compiler.compile.models import CompiledManagedSource, CompiledPipeline
-from streambuild.compiler.shared._helpers.deployment_names import build_deployment_physical_name
+from streambuild.compiler.shared.main.build_deployment_physical_name import (
+    build_deployment_physical_name,
+)
 from streambuild.executor.backfill.main import execute_backfill
 from streambuild.executor.backfill.models import BackfillExecutionResult
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient

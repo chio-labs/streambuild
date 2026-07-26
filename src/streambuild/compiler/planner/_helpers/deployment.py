@@ -28,8 +28,10 @@ from streambuild.compiler.planner.models import (
     RebuildSubtree,
 )
 from streambuild.compiler.planner.types import DeploymentAction
-from streambuild.compiler.shared._helpers.deployment_names import build_deployment_physical_name
 from streambuild.compiler.shared.constants import DESIRED_OBJECT_TYPE_MATERIALIZED_VIEW
+from streambuild.compiler.shared.main.build_deployment_physical_name import (
+    build_deployment_physical_name,
+)
 from streambuild.compiler.shared.models import ObjectKey
 
 
