@@ -651,3 +651,15 @@ def build_offset_target_insert_select_sql(*, database: str, source_table_name: s
         "CAST(_replay_offset AS Int64) AS _replay_offset "
         f"FROM {database}.{source_table_name}"
     )
+
+
+def build_replay_compiled_pipeline(*, replay_lineage_mode: str) -> CompiledPipeline:
+    """Build the compiled pipeline matching a replay lineage mode.
+
+    Offset lineage needs its own fixture; every scalar mode shares one builder
+    parameterised by the mode, so callers do not branch on the mode themselves.
+    """
+
+    if replay_lineage_mode == ReplayLineageMode.OFFSETS:
+        return build_offset_replay_compiled_pipeline()
+    return build_scalar_replay_compiled_pipeline(replay_lineage_mode)

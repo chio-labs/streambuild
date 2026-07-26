@@ -33,11 +33,19 @@ from tests.integration.src.streambuild.executor.backfill.helpers import (
     build_offset_replay_compiled_pipeline,
     build_offset_target_insert_select_sql,
     build_raw_orders_row,
+    build_replay_compiled_pipeline,
     build_scalar_replay_compiled_pipeline,
     build_scalar_replay_request,
     build_scalar_target_insert_select_sql,
     require_managed_source,
 )
+
+
+def _offset_partitions_compared(root_result: RootAuditResult) -> int | None:
+    """Return the partitions compared for offset lineage, or None for scalar lineage."""
+
+    summary = root_result.offset_catchup_summary
+    return None if summary is None else summary.partitions_compared
 
 
 @pytest.mark.integration
@@ -65,6 +73,8 @@ from tests.integration.src.streambuild.executor.backfill.helpers import (
         ExecuteAuditBackfillIntegrationTestCase(
             description="audits offset replay deployment against active table",
             replay_lineage_mode="offsets",
+            expected_catchup_kind="offset",
+            expected_partitions_compared=1,
             deployment_id="20260409T170000Z_ab12cd",
             active_deployment_id="20260409T165500Z_prev02",
             created_at="2026-04-09 17:00:00.123",
@@ -106,6 +116,8 @@ from tests.integration.src.streambuild.executor.backfill.helpers import (
                 "lags raw"
             ),
             replay_lineage_mode="offsets",
+            expected_catchup_kind="offset",
+            expected_partitions_compared=1,
             deployment_id="20260409T172000Z_ab12cd",
             active_deployment_id="20260409T171500Z_prev04",
             created_at="2026-04-09 17:20:00.123",
@@ -177,11 +189,9 @@ def test_given_staged_backfill_when_auditing_then_it_returns_expected_comparison
     clickhouse_client: Client,
     clickhouse_database: str,
 ) -> None:
-    compiled_pipeline: CompiledPipeline
-    if test_case.replay_lineage_mode == "offsets":
-        compiled_pipeline = build_offset_replay_compiled_pipeline()
-    else:
-        compiled_pipeline = build_scalar_replay_compiled_pipeline(test_case.replay_lineage_mode)
+    compiled_pipeline: CompiledPipeline = build_replay_compiled_pipeline(
+        replay_lineage_mode=test_case.replay_lineage_mode
+    )
 
     clickhouse_client.command(
         render_create_kafka_table_ddl(
@@ -355,11 +365,12 @@ def test_given_staged_backfill_when_auditing_then_it_returns_expected_comparison
     assert root_result.staged_row_count == test_case.expected_staged_row_count
     assert root_result.warnings == test_case.expected_root_warnings
     assert root_result.assessment == test_case.expected_assessment
-    if test_case.replay_lineage_mode == "offsets":
-        assert root_result.offset_catchup_summary is not None
-        assert root_result.offset_catchup_summary.partitions_compared == 1
-    else:
-        assert root_result.scalar_catchup_summary is not None
+    catchup_summaries: dict[str, object | None] = {
+        "offset": root_result.offset_catchup_summary,
+        "scalar": root_result.scalar_catchup_summary,
+    }
+    assert catchup_summaries[test_case.expected_catchup_kind] is not None
+    assert _offset_partitions_compared(root_result) == test_case.expected_partitions_compared
 
 
 @pytest.mark.integration
