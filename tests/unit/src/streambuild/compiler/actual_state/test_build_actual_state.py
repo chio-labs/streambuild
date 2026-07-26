@@ -1,6 +1,6 @@
 import pytest
 
-from streambuild.compiler.actual_state.main import build_actual_state
+from streambuild.compiler.actual_state.main.build_actual_state import build_actual_state
 from streambuild.compiler.actual_state.models import (
     ActualKafkaTable,
     ActualMaterializedView,

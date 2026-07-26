@@ -4,7 +4,7 @@ import pytest
 
 from streambuild.compiler.actual_state.models import ActualState
 from streambuild.compiler.compile.models import DesiredState
-from streambuild.compiler.planner.main import plan_deployment
+from streambuild.compiler.planner.main.plan_deployment import plan_deployment
 from streambuild.compiler.planner.models import DeploymentPlan
 from streambuild.executor.backfill._helpers.shadow_objects import create_shadow_objects
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient

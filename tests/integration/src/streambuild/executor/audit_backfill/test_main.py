@@ -10,14 +10,14 @@ from streambuild.clickhouse.render.main.render_create_materialized_view_ddl impo
 from streambuild.clickhouse.render.main.render_create_table_ddl import render_create_table_ddl
 from streambuild.clickhouse.render.main.render_create_view_ddl import render_create_view_ddl
 from streambuild.compiler.compile.models import CompiledPipeline
-from streambuild.executor.audit_backfill.main import execute_audit_backfill
+from streambuild.executor.audit_backfill.main.execute_audit_backfill import execute_audit_backfill
 from streambuild.executor.audit_backfill.models import (
     AuditBackfillRequest,
     AuditBackfillResult,
     RootAuditResult,
 )
 from streambuild.executor.audit_backfill.types import AuditAssessment
-from streambuild.executor.backfill.main import execute_backfill
+from streambuild.executor.backfill.main.execute_backfill import execute_backfill
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 from streambuild.integrations.clickhouse.models import ClickHouseConnectionConfig
 from tests.integration.src.streambuild.conftest import ClickHouseConnectionSettings

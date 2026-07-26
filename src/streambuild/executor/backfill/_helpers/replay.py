@@ -7,7 +7,9 @@ from datetime import datetime, timedelta
 
 from sqlglot import exp, parse_one
 
-from streambuild.clickhouse.inspect.main import inspect_managed_table_state
+from streambuild.clickhouse.inspect.main.inspect_managed_table_state import (
+    inspect_managed_table_state,
+)
 from streambuild.clickhouse.inspect.models import InspectedActiveTableBinding
 from streambuild.compiler.compile.models import DesiredState, ExternalSourceReplayConfig
 from streambuild.compiler.metadata_state.models import DeploymentWatermarkRecord

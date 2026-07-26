@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from streambuild.compiler.compile.main import compile_pipeline
+from streambuild.compiler.compile.main.compile_pipeline import compile_pipeline
 from streambuild.compiler.compile.models import CompiledPipeline
 from streambuild.compiler.discovery._helpers.load import load_pipeline_file
 

@@ -3,7 +3,7 @@
 import json
 from pathlib import Path
 
-from streambuild.compiler.discovery.main import discover_pipelines
+from streambuild.compiler.discovery.main.discover_pipelines import discover_pipelines
 from streambuild.compiler.shared.models import LoadedPipeline
 
 

@@ -7,12 +7,8 @@ from pathlib import Path
 
 from sqlglot import exp, parse_one
 
-from streambuild.compiler.compile._helpers.naming import (
-    raw_table_name,
-    transform_mv_name,
-    transform_table_name,
-)
-from streambuild.compiler.compile._helpers.refs import extract_refs, replace_refs
+from streambuild.compiler.compile._helpers.naming import raw_table_name, transform_mv_name
+from streambuild.compiler.compile._helpers.refs import extract_refs
 from streambuild.compiler.compile._helpers.sql_contract import (
     derive_transform_output_columns,
     validate_order_by_expressions,
@@ -21,6 +17,8 @@ from streambuild.compiler.compile._helpers.sql_contract import (
 )
 from streambuild.compiler.compile.constants import AGGREGATING_ENGINE_NAMES
 from streambuild.compiler.compile.exceptions import PipelineCompileError
+from streambuild.compiler.compile.main.replace_refs import replace_refs
+from streambuild.compiler.compile.main.transform_table_name import transform_table_name
 from streambuild.compiler.compile.models import CompiledTransformStep, ParsedRef
 from streambuild.compiler.shared.constants import (
     DESIRED_OBJECT_TYPE_MATERIALIZED_VIEW,

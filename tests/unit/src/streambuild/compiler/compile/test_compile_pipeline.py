@@ -9,7 +9,7 @@ from streambuild.compiler.compile.exceptions import (
     TransformSqlTopLevelSetOperationError,
     TransformTtlUnknownColumnError,
 )
-from streambuild.compiler.compile.main import compile_pipeline
+from streambuild.compiler.compile.main.compile_pipeline import compile_pipeline
 from streambuild.compiler.compile.models import (
     CompiledExternalSource,
     CompiledManagedSource,

@@ -11,7 +11,7 @@ from typing import Any
 from clickhouse_connect.driver.client import Client
 from kafka import KafkaProducer
 
-from streambuild.compiler.compile.main import compile_pipeline
+from streambuild.compiler.compile.main.compile_pipeline import compile_pipeline
 from streambuild.compiler.compile.models import (
     CompiledManagedSource,
     CompiledPipeline,
@@ -19,7 +19,7 @@ from streambuild.compiler.compile.models import (
     DesiredState,
 )
 from streambuild.compiler.desired_state.main import build_desired_state
-from streambuild.compiler.discovery.main import discover_pipelines
+from streambuild.compiler.discovery.main.discover_pipelines import discover_pipelines
 from streambuild.compiler.shared.models import (
     Column,
     DesiredKafkaTable,

@@ -10,11 +10,11 @@ from streambuild.cli.shared.constants import AFFIRMATIVE_RESPONSES
 from streambuild.cli.shared.main._project import resolve_default_database
 from streambuild.cli.shared.main._selection import resolve_selection
 from streambuild.cli.shared.models import SelectionResolution
-from streambuild.compiler.actual_state._helpers.load import load_actual_state
+from streambuild.compiler.actual_state.main.load_actual_state import load_actual_state
 from streambuild.compiler.actual_state.models import ActualState
-from streambuild.compiler.compile.main import compile_pipeline
+from streambuild.compiler.compile.main.compile_pipeline import compile_pipeline
 from streambuild.compiler.compile.models import CompiledPipeline, DesiredState
-from streambuild.compiler.discovery.main import discover_pipelines
+from streambuild.compiler.discovery.main.discover_pipelines import discover_pipelines
 from streambuild.compiler.shared.models import LoadedPipeline
 from streambuild.executor.reconcile.main import execute_reconcile
 from streambuild.executor.reconcile.models import (

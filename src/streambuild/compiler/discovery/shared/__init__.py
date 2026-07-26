@@ -1,1 +1,0 @@
-"""Shared discovery support code."""

@@ -1,49 +1,15 @@
 """User-facing reporting helpers for backfill execution."""
 
-from streambuild.clickhouse.inspect._helpers.deployments import inspect_root_deployment_state
-from streambuild.clickhouse.inspect.main import inspect_managed_table_state
 from streambuild.clickhouse.inspect.models import (
-    InspectedManagedTableState,
     RootDeploymentInspection,
 )
-from streambuild.compiler.compile.models import DesiredState
 from streambuild.compiler.planner.models import DeploymentPlan, RebuildSubtree
 from streambuild.compiler.shared.constants import (
     DESIRED_OBJECT_TYPE_TABLE,
     TRANSFORM_TABLE_NAME_PREFIX,
 )
-from streambuild.compiler.shared.models import DesiredTable, ObjectKey
+from streambuild.compiler.shared.models import ObjectKey
 from streambuild.executor.backfill.models import RootBackfillReport
-from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
-
-
-def build_root_backfill_reports(
-    *,
-    client: ClickHouseClient,
-    desired_state: DesiredState,
-    database: str,
-) -> tuple[RootBackfillReport, ...]:
-    """Build user-facing rebuild strategy reports for managed roots."""
-
-    inspected_state: InspectedManagedTableState = inspect_managed_table_state(
-        client=client,
-        database=database,
-    )
-    root_keys: tuple[ObjectKey, ...] = tuple(
-        object_.key
-        for object_ in desired_state.objects
-        if isinstance(object_, DesiredTable)
-        and object_.name.startswith(TRANSFORM_TABLE_NAME_PREFIX)
-    )
-    return tuple(
-        _build_root_backfill_report(
-            inspection=inspect_root_deployment_state(
-                inspected_state=inspected_state,
-                root_key=root_key,
-            )
-        )
-        for root_key in root_keys
-    )
 
 
 def filter_root_backfill_reports_for_deployment(

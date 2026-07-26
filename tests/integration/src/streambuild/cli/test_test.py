@@ -12,7 +12,7 @@ from tests.integration.src.streambuild.cli._test_types import (
 from tests.integration.src.streambuild.cli.helpers import build_managed_clickhouse_client
 from tests.integration.src.streambuild.conftest import ClickHouseConnectionSettings
 from tests.unit.src.streambuild.compiler.discovery._helpers.load.helpers import write_pipeline_file
-from tests.unit.src.streambuild.compiler.discovery._helpers.testing.helpers import (
+from tests.unit.src.streambuild.compiler.test_discovery.helpers import (
     write_sql_test_file,
 )
 
