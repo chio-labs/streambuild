@@ -11,3 +11,4 @@ PREVIEW_SCENARIO_NAMES: tuple[str, ...] = (
     "audit-ambiguous",
 )
 ALL_SCENARIOS_CHOICE: str = "all"
+PREVIEW_DATABASE: str = "analytics"
