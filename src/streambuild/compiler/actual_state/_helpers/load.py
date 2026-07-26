@@ -335,7 +335,9 @@ def _decode_table_storage_system_row(row: Mapping[str, object]) -> TableStorageS
         engine=str(row["engine"]),
         sorting_key=str(row["sorting_key"]),
         partition_key=(
-            None if row["partition_key"] in (*BLANK_VALUES, EMPTY_TUPLE_EXPRESSION) else str(row["partition_key"])
+            None
+            if row["partition_key"] in (*BLANK_VALUES, EMPTY_TUPLE_EXPRESSION)
+            else str(row["partition_key"])
         ),
     )
 

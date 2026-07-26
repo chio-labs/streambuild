@@ -15,7 +15,7 @@ dependencies = [
 ]
 
 [project.scripts]
-stb = "streambuild.cli.commands.main.entry.main:main"
+stb = "streambuild.cli.entry.main.main:main"
 
 [dependency-groups]
 dev = [

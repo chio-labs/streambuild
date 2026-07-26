@@ -502,9 +502,7 @@ def _load_project_clickhouse_config(
     typed_clickhouse_values: dict[str, Any] = cast(dict[str, Any], clickhouse_value)
 
     unknown_keys: list[str] = [
-        key
-        for key in typed_clickhouse_values
-        if key not in CLICKHOUSE_CONNECTION_KEYS
+        key for key in typed_clickhouse_values if key not in CLICKHOUSE_CONNECTION_KEYS
     ]
     if unknown_keys:
         unknown_key_list: str = ", ".join(sorted(unknown_keys))
