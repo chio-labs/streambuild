@@ -3,13 +3,13 @@ from __future__ import annotations
 from pathlib import Path
 
 from streambuild.cli.backfill.models import BackfillPreviewContext
-from streambuild.cli.shared._helpers.project import resolve_default_database
-from streambuild.cli.shared._helpers.selection import resolve_selection
-from streambuild.cli.shared._helpers.source_validation import (
+from streambuild.cli.shared.exceptions import CliUserError
+from streambuild.cli.shared.main.project import resolve_default_database
+from streambuild.cli.shared.main.selection import resolve_selection
+from streambuild.cli.shared.main.source_validation import (
     validate_declared_external_sources,
 )
-from streambuild.cli.shared._helpers.warnings import add_empty_replay_source_warnings
-from streambuild.cli.shared.exceptions import CliUserError
+from streambuild.cli.shared.main.warnings import add_empty_replay_source_warnings
 from streambuild.cli.shared.models import SelectionResolution
 from streambuild.compiler.actual_state._helpers.load import load_actual_state
 from streambuild.compiler.actual_state.models import ActualState

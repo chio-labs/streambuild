@@ -4,14 +4,14 @@ from typing import cast
 
 import pytest
 
-from streambuild.cli.shared._helpers.timestamps import (
+from streambuild.cli.shared.exceptions import CliUserError
+from streambuild.cli.shared.main.timestamps import (
     convert_utc_timestamp_for_clickhouse,
     normalize_cli_start_time,
 )
-from streambuild.cli.shared.exceptions import CliUserError
 from streambuild.integrations.clickhouse.client import ClickHouseClient
 from streambuild.integrations.clickhouse.models import ClickHouseQueryResult
-from tests.unit.src.streambuild.cli.shared._test_types import (
+from tests.unit.src.streambuild.cli.shared.main._test_types import (
     CliStartTimeConversionTestCase,
     CliStartTimeNormalizationErrorTestCase,
     CliStartTimeNormalizationTestCase,

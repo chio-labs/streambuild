@@ -10,7 +10,7 @@ from tests.unit.src.streambuild.cli.audit._helpers._test_types import (
     CliAuditSelectionErrorTestCase,
     CliAuditSelectionTestCase,
 )
-from tests.unit.src.streambuild.cli.shared.helpers import (
+from tests.unit.src.streambuild.cli.shared.main.helpers import (
     compile_selector_project_pipelines,
 )
 

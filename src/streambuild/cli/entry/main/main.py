@@ -33,8 +33,8 @@ from streambuild.cli.entry.models import (
     ResolvedClickHouseConnection,
     ResolvedCliProjectConfig,
 )
-from streambuild.cli.shared._helpers.errors import render_expected_clickhouse_error
 from streambuild.cli.shared.exceptions import CliUserError
+from streambuild.cli.shared.main.errors import render_expected_clickhouse_error
 from streambuild.compiler.compile.exceptions import TransformSqlContractError
 from streambuild.integrations.clickhouse.client import ClickHouseClient
 
