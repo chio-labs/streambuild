@@ -1,13 +1,14 @@
 """Render CREATE TABLE DDL from desired-state models."""
 
-from streambuild.compiler.shared.models import Column, DesiredTable, TableStorage
+from streambuild.clickhouse.render._helpers.column_definitions import render_column_definition
+from streambuild.compiler.shared.models import DesiredTable, TableStorage
 
 
 def render_create_table_ddl(*, table: DesiredTable, database: str) -> str:
     """Render CREATE TABLE DDL for a desired table."""
 
     column_definitions: str = ",\n    ".join(
-        _render_column_definition(column) for column in table.spec.columns
+        render_column_definition(column) for column in table.spec.columns
     )
     storage: TableStorage = table.spec.storage
     ddl: str = (
@@ -31,11 +32,3 @@ def render_create_table_ddl(*, table: DesiredTable, database: str) -> str:
         ddl += f"\nSETTINGS {rendered_settings}"
 
     return ddl
-
-
-def _render_column_definition(column: Column) -> str:
-    """Render a single column definition."""
-
-    if column.default is None:
-        return f"{column.name} {column.type}"
-    return f"{column.name} {column.type} DEFAULT {column.default}"

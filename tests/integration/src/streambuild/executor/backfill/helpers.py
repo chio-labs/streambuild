@@ -26,7 +26,7 @@ from streambuild.spec.models.types import (
     ReplayLineageMode,
     SourceKind,
 )
-from tests.integration.src.streambuild.clickhouse.render._helpers.create_materialized_view.helpers import (  # noqa: E501
+from tests.integration.src.streambuild.clickhouse.render.main.render_create_materialized_view_ddl.helpers import (  # noqa: E501
     build_compiled_example_pipeline,
 )
 from tests.unit.src.streambuild.compiler.planner.helpers import EXAMPLE_PIPELINE_FILE_PATH

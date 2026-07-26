@@ -3,13 +3,13 @@ from dataclasses import replace
 import pytest
 from clickhouse_connect.driver.client import Client
 
-from streambuild.clickhouse.render._helpers.create_kafka_table import (
+from streambuild.clickhouse.render.main.render_create_kafka_table_ddl import (
     render_create_kafka_table_ddl,
 )
-from streambuild.clickhouse.render._helpers.create_materialized_view import (
+from streambuild.clickhouse.render.main.render_create_materialized_view_ddl import (
     render_create_materialized_view_ddl,
 )
-from streambuild.clickhouse.render._helpers.create_table import render_create_table_ddl
+from streambuild.clickhouse.render.main.render_create_table_ddl import render_create_table_ddl
 from streambuild.compiler.actual_state._helpers.load import load_actual_state
 from streambuild.compiler.actual_state.models import ActualState
 from streambuild.compiler.compile.models import CompiledPipeline, DesiredState

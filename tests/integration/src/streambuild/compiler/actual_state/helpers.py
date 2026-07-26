@@ -5,11 +5,11 @@ from dataclasses import replace
 
 from clickhouse_connect.driver.client import Client
 
-from streambuild.clickhouse.render._helpers.create_materialized_view import (
+from streambuild.clickhouse.render.main.render_create_materialized_view_ddl import (
     render_create_materialized_view_ddl,
 )
-from streambuild.clickhouse.render._helpers.create_table import render_create_table_ddl
-from streambuild.clickhouse.render._helpers.create_view import render_create_view_ddl
+from streambuild.clickhouse.render.main.render_create_table_ddl import render_create_table_ddl
+from streambuild.clickhouse.render.main.render_create_view_ddl import render_create_view_ddl
 from streambuild.compiler.compile.models import CompiledPipeline
 from streambuild.compiler.shared.models import DesiredMaterializedView, MaterializedViewSpec
 from tests.integration.src.streambuild.executor.backfill.helpers import (

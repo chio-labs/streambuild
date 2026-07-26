@@ -1,18 +1,6 @@
 """Recognize deployment-suffixed physical object names."""
 
-from streambuild.compiler.shared.constants import (
-    KAFKA_TABLE_NAME_PREFIX,
-    MATERIALIZED_VIEW_NAME_PREFIX,
-    RAW_TABLE_NAME_PREFIX,
-    TRANSFORM_TABLE_NAME_PREFIX,
-)
-
-MANAGED_OBJECT_NAME_PREFIXES: tuple[str, ...] = (
-    KAFKA_TABLE_NAME_PREFIX,
-    RAW_TABLE_NAME_PREFIX,
-    TRANSFORM_TABLE_NAME_PREFIX,
-    MATERIALIZED_VIEW_NAME_PREFIX,
-)
+from streambuild.compiler.shared.constants import MANAGED_OBJECT_NAME_PREFIXES
 
 
 def is_deployment_physical_name(physical_name: str) -> bool:

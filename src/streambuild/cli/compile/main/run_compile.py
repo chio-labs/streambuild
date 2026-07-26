@@ -11,13 +11,13 @@ from streambuild.cli.compile._helpers.artifacts import (
 from streambuild.cli.compile._helpers.manifest import (
     pipeline_manifest_entry,
 )
-from streambuild.clickhouse.render._helpers.create_kafka_table import (
+from streambuild.clickhouse.render.main.render_create_kafka_table_ddl import (
     render_create_kafka_table_ddl,
 )
-from streambuild.clickhouse.render._helpers.create_materialized_view import (
+from streambuild.clickhouse.render.main.render_create_materialized_view_ddl import (
     render_create_materialized_view_ddl,
 )
-from streambuild.clickhouse.render._helpers.create_table import render_create_table_ddl
+from streambuild.clickhouse.render.main.render_create_table_ddl import render_create_table_ddl
 from streambuild.compiler.auditing.main import validate_sql_audits
 from streambuild.compiler.compile.exceptions import TransformSqlContractError
 from streambuild.compiler.compile.main import compile_pipeline

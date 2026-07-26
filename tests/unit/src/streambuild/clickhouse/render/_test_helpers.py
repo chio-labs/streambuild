@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from streambuild.clickhouse.render.main import render_desired_state_ddl
+from streambuild.clickhouse.render.main._render_desired_state_ddl import render_desired_state_ddl
 from streambuild.clickhouse.render.models import RenderedClickHouseDdl
 from streambuild.compiler.compile.main import compile_pipeline
 from streambuild.compiler.compile.models import DesiredState

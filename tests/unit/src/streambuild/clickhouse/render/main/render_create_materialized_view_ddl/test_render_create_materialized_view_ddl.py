@@ -1,12 +1,12 @@
 import pytest
 
-from streambuild.clickhouse.render._helpers.create_materialized_view import (
+from streambuild.clickhouse.render.main.render_create_materialized_view_ddl import (
     render_create_materialized_view_ddl,
 )
-from tests.unit.src.streambuild.clickhouse.render._helpers.create_materialized_view._test_types import (  # noqa: E501
+from tests.unit.src.streambuild.clickhouse.render.main.render_create_materialized_view_ddl._test_types import (  # noqa: E501
     RenderCreateMaterializedViewDdlTestCase,
 )
-from tests.unit.src.streambuild.clickhouse.render._helpers.create_materialized_view.helpers import (
+from tests.unit.src.streambuild.clickhouse.render.main.render_create_materialized_view_ddl.helpers import (  # noqa: E501
     build_materialized_view,
 )
 

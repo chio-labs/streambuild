@@ -3,15 +3,15 @@ from collections.abc import Sequence
 import pytest
 from clickhouse_connect.driver.client import Client
 
-from streambuild.clickhouse.render._helpers.create_materialized_view import (
+from streambuild.clickhouse.render.main.render_create_materialized_view_ddl import (
     render_create_materialized_view_ddl,
 )
-from streambuild.clickhouse.render._helpers.create_table import render_create_table_ddl
+from streambuild.clickhouse.render.main.render_create_table_ddl import render_create_table_ddl
 from streambuild.compiler.compile.models import CompiledPipeline
-from tests.integration.src.streambuild.clickhouse.render._helpers.create_materialized_view._test_types import (  # noqa: E501
+from tests.integration.src.streambuild.clickhouse.render.main.render_create_materialized_view_ddl._test_types import (  # noqa: E501
     RenderTransformMaterializedViewIntegrationTestCase,
 )
-from tests.integration.src.streambuild.clickhouse.render._helpers.create_materialized_view.helpers import (  # noqa: E501
+from tests.integration.src.streambuild.clickhouse.render.main.render_create_materialized_view_ddl.helpers import (  # noqa: E501
     build_compiled_example_pipeline,
     build_raw_orders_row,
 )
