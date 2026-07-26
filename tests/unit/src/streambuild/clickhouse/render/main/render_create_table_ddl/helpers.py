@@ -8,10 +8,13 @@ from streambuild.compiler.shared.models import (
 
 
 def build_table(
-    include_partition_by: bool,
-    include_ttl: bool,
-    include_settings: bool,
+    *,
+    partition_by: str | None,
+    ttl: str | None,
+    settings: dict[str, str] | None,
 ) -> DesiredTable:
+    """Build the desired table a render test case describes."""
+
     return DesiredTable(
         key=ObjectKey(
             database=None,
@@ -27,11 +30,9 @@ def build_table(
             storage=TableStorage(
                 engine="ReplacingMergeTree(_replay_landed_at)",
                 order_by=("order_id", "_replay_landed_at"),
-                partition_by=("toYYYYMM(_replay_landed_at)" if include_partition_by else None),
-                ttl=("toDateTime(_replay_landed_at) + INTERVAL 30 DAY" if include_ttl else None),
-                settings={"index_granularity": "8192", "allow_nullable_key": "1"}
-                if include_settings
-                else None,
+                partition_by=partition_by,
+                ttl=ttl,
+                settings=settings,
             ),
         ),
     )

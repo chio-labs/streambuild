@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from pathlib import Path
 
 from streambuild.compiler.audit_discovery.main.discover_sql_audits import discover_sql_audits
@@ -12,13 +13,20 @@ from tests.unit.src.streambuild.compiler.audit_discovery.helpers import (
 )
 from tests.unit.src.streambuild.compiler.discovery._helpers.load.helpers import write_pipeline_file
 
+AUDIT_FILE_PATH: str = "audits/order_events/audit.sql"
+GENERIC_DEFINITION_FILE_PATH: str = "audits/generic/not_null.sql"
+SCHEMA_FILE_PATH: str = "pipelines/order_events/schema.yml"
+
+_WRITER_BY_SUFFIX: dict[str, Callable[[Path, str], None]] = {
+    ".sql": write_sql_audit_file,
+    ".yml": write_schema_yaml_file,
+}
+
 
 def validate_project_sql_audits(
     *,
     tmp_path: Path,
-    audit_file_contents: str | None = None,
-    generic_definition_file_contents: str | None = None,
-    schema_file_contents: str | None = None,
+    project_files: tuple[tuple[str, str], ...],
 ) -> tuple[LoadedSqlAudit, ...]:
     write_pipeline_file(
         tmp_path / "pipelines" / "order_events" / "pipeline.yml",
@@ -54,20 +62,11 @@ def validate_project_sql_audits(
         FROM __ref("orders_clean")
         """,
     )
-    if audit_file_contents:
-        write_sql_audit_file(
-            tmp_path / "audits" / "order_events" / "audit.sql", audit_file_contents
-        )
-    if generic_definition_file_contents is not None:
-        write_sql_audit_file(
-            tmp_path / "audits" / "generic" / "not_null.sql",
-            generic_definition_file_contents,
-        )
-    if schema_file_contents is not None:
-        write_schema_yaml_file(
-            tmp_path / "pipelines" / "order_events" / "schema.yml",
-            schema_file_contents,
-        )
+    relative_path: str
+    file_contents: str
+    for relative_path, file_contents in project_files:
+        file_path: Path = tmp_path / relative_path
+        _WRITER_BY_SUFFIX[file_path.suffix](file_path, file_contents)
     compiled_pipelines: tuple[CompiledPipeline, ...] = tuple(
         compile_pipeline(loaded_pipeline)
         for loaded_pipeline in discover_pipelines(tmp_path / "pipelines")
