@@ -8,18 +8,16 @@ from datetime import UTC, datetime, timedelta
 from clickhouse_connect.driver.client import Client
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.clickhouse.render.main.render_create_kafka_table_ddl import (
-    render_create_kafka_table_ddl,
-)
-from streambuild.clickhouse.render.main.render_create_materialized_view_ddl import (
-    render_create_materialized_view_ddl,
-)
-from streambuild.clickhouse.render.main.render_create_table_ddl import render_create_table_ddl
 from streambuild.compiler.compile.models import CompiledPipeline
 from streambuild.executor.backfill.main.execute_backfill import execute_backfill
 from streambuild.executor.janitor.models import JanitorPreviewCandidate
 from streambuild.executor.publish.main.execute_publish import execute_publish
 from streambuild.executor.publish.models import PublishRequest
+from tests.integration.src.streambuild.adapters.clickhouse.helpers import (
+    render_create_kafka_table_ddl,
+    render_create_materialized_view_ddl,
+    render_create_table_ddl,
+)
 from tests.integration.src.streambuild.executor.backfill.helpers import (
     build_raw_orders_row,
     build_scalar_replay_compiled_pipeline,

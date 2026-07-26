@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from streambuild.adapter.types import AdapterResourceRenderer
 from streambuild.compiler.compile.constants import DESIRED_OBJECT_TYPE_MATERIALIZED_VIEW
 from streambuild.compiler.compile.models import DesiredState, ObjectKey
 from streambuild.compiler.planner._helpers.diff import classify_object_changes
@@ -39,6 +40,7 @@ def build_deployment_plan(
     desired_state: DesiredState,
     actual_state: ActualState,
     default_database: str,
+    render_resource: AdapterResourceRenderer,
     deployment_id: str | None = None,
     full_refresh_keys: frozenset[ObjectKey] = frozenset(),
     start_time_keys: frozenset[ObjectKey] = frozenset(),
@@ -73,6 +75,7 @@ def build_deployment_plan(
         actual_state=actual_state,
         object_changes=object_changes,
         default_database=default_database,
+        render_resource=render_resource,
     )
     return DeploymentPlan(
         deployment_id=deployment_id,

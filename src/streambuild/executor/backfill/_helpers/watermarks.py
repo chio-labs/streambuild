@@ -3,10 +3,6 @@
 from collections.abc import Mapping
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.clickhouse.metadata_state.main.build_metadata_state_insert_statements import (
-    build_metadata_state_insert_statements,
-)
-from streambuild.clickhouse.metadata_state.models import RenderedClickHouseStatement
 from streambuild.compiler.compile.constants import (
     DESIRED_OBJECT_TYPE_TABLE,
     RAW_TABLE_NAME_PREFIX,
@@ -23,6 +19,9 @@ from streambuild.compiler.compile.models import (
     ObjectKey,
 )
 from streambuild.compiler.discovery.types import ReplayLineageMode
+from streambuild.compiler.metadata_state.main.build_adapter_metadata_state import (
+    build_adapter_metadata_state,
+)
 from streambuild.compiler.metadata_state.main.build_metadata_state import build_metadata_state
 from streambuild.compiler.metadata_state.models import DeploymentWatermarkRecord, MetadataState
 from streambuild.compiler.planner.models import DeploymentPlan, RebuildSubtree
@@ -219,21 +218,10 @@ def persist_deployment_watermarks(
         deployment_runtime_details=(),
         publish_events=(),
     )
-    insert_statements: tuple[RenderedClickHouseStatement, ...] = (
-        build_metadata_state_insert_statements(
-            database=metadata_database,
-            object_states=metadata_state.object_states,
-            deployments=metadata_state.deployments,
-            deployment_watermarks=metadata_state.deployment_watermarks,
-            deployment_runtime_details=metadata_state.deployment_runtime_details,
-            publish_events=metadata_state.publish_events,
-        )
+    client.persist_metadata_state(
+        database=metadata_database,
+        state=build_adapter_metadata_state(metadata_state),
     )
-    statement: RenderedClickHouseStatement
-    for statement in insert_statements:
-        if not statement.rows:
-            continue
-        client.insert_rows(table=_insert_table_name(statement.sql), rows=statement.rows)
 
 
 def _scalar_boundary_key(
@@ -376,12 +364,6 @@ def _external_source_replay_config_for_key(
         if external_source_replay_config.key == key:
             return external_source_replay_config
     return None
-
-
-def _insert_table_name(statement_sql: str) -> str:
-    statement_prefix: str = "INSERT INTO "
-    remainder: str = statement_sql[len(statement_prefix) :]
-    return remainder.split(" ", 1)[0]
 
 
 def _decode_offset_watermark_query_row(row: Mapping[str, object]) -> OffsetWatermarkQueryRow:

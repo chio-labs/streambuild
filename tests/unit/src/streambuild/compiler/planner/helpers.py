@@ -7,12 +7,20 @@ from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import (
     AdapterCapabilities,
     AdapterIdentity,
+    AdapterManagedSource,
+    AdapterMaterializedView,
+    AdapterMetadataState,
     AdapterQueryResult,
+    AdapterReplayRequest,
+    AdapterStableView,
+    AdapterTable,
     CatalogColumn,
     CatalogIdentity,
     CatalogRelation,
     CatalogSnapshot,
 )
+from streambuild.adapter.types import AdapterReplayBoundaryMode
+from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from streambuild.compiler.compile.constants import (
     DESIRED_OBJECT_TYPE_KAFKA_TABLE,
     DESIRED_OBJECT_TYPE_MATERIALIZED_VIEW,
@@ -80,7 +88,10 @@ class SnapshotRecordingConnection(AdapterConnection):
         self._catalog: CatalogSnapshot = catalog
         self._metadata_result: AdapterQueryResult = metadata_result
         self._capabilities: AdapterCapabilities = AdapterCapabilities(
-            virtual_environments=virtual_environments
+            virtual_environments=virtual_environments,
+            managed_source_kinds=frozenset({"kafka"}),
+            replay_boundary_modes=frozenset(AdapterReplayBoundaryMode),
+            history_prefix_seed=True,
         )
         self.catalog_load_count: int = 0
         self.query_count: int = 0
@@ -98,6 +109,10 @@ class SnapshotRecordingConnection(AdapterConnection):
         self.catalog_load_count += 1
         return self._catalog
 
+    def metadata_columns(self, *, database: str, table: str) -> frozenset[str]:
+        del database, table
+        return frozenset()
+
     def command(self, statement: str) -> None:
         del statement
 
@@ -108,6 +123,40 @@ class SnapshotRecordingConnection(AdapterConnection):
 
     def insert_rows(self, *, table: str, rows: tuple[dict[str, object], ...]) -> None:
         del table, rows
+
+    def ensure_database(self, database: str) -> None:
+        del database
+
+    def render_resource(
+        self,
+        *,
+        resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterStableView,
+        database: str,
+        if_not_exists: bool = False,
+    ) -> str:
+        return ClickHouseAdapter().render_resource(
+            resource=resource,
+            database=database,
+            if_not_exists=if_not_exists,
+        )
+
+    def realize_resource(
+        self,
+        *,
+        resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterStableView,
+        database: str,
+        if_not_exists: bool = False,
+    ) -> None:
+        del resource, database, if_not_exists
+
+    def migrate_metadata_state(self, database: str) -> None:
+        del database
+
+    def persist_metadata_state(self, *, database: str, state: AdapterMetadataState) -> None:
+        del database, state
+
+    def execute_replay(self, request: AdapterReplayRequest) -> None:
+        del request
 
     def close(self) -> None:
         return None

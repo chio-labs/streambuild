@@ -8,13 +8,6 @@ from clickhouse_connect.driver.client import Client
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.cli.audit.main._run_audit import run_audit
 from streambuild.cli.audit_backfill.main._run_audit_backfill import run_audit_backfill
-from streambuild.clickhouse.render.main.render_create_kafka_table_ddl import (
-    render_create_kafka_table_ddl,
-)
-from streambuild.clickhouse.render.main.render_create_materialized_view_ddl import (
-    render_create_materialized_view_ddl,
-)
-from streambuild.clickhouse.render.main.render_create_table_ddl import render_create_table_ddl
 from streambuild.compiler.compile.main.transform_table_name import transform_table_name
 from streambuild.compiler.compile.models import CompiledManagedSource, CompiledPipeline
 from streambuild.compiler.planner.main.build_deployment_physical_name import (
@@ -22,6 +15,11 @@ from streambuild.compiler.planner.main.build_deployment_physical_name import (
 )
 from streambuild.executor.backfill.main.execute_backfill import execute_backfill
 from streambuild.executor.backfill.models import BackfillExecutionResult
+from tests.integration.src.streambuild.adapters.clickhouse.helpers import (
+    render_create_kafka_table_ddl,
+    render_create_materialized_view_ddl,
+    render_create_table_ddl,
+)
 from tests.integration.src.streambuild.cli._test_types import (
     CliAuditBackfillCommandIntegrationTestCase,
     CliAuditCommandIntegrationTestCase,

@@ -21,6 +21,10 @@ class AdapterCapabilityError(AdapterError):
     """Raised when an adapter cannot provide a required StreamBuild capability."""
 
 
+class AdapterReplayError(AdapterError):
+    """Raised when an adapter cannot realize a valid replay request."""
+
+
 class AdapterWarehouseError(AdapterError):
     """Raised when the warehouse itself rejects a connection or statement."""
 

@@ -88,6 +88,7 @@ def build_backfill_preview_context(
         desired_state=desired_state,
         actual_state=actual_state,
         default_database=resolved_database,
+        render_resource=client.render_resource,
         deployment_id=deployment_id,
         full_refresh_keys=selection.selected_model_keys if full_refresh else frozenset(),
         start_time_keys=selection.selected_model_keys if start_time is not None else frozenset(),

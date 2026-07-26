@@ -5,7 +5,12 @@ from __future__ import annotations
 import json
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.constants import (
+    METADATA_DEPLOYMENTS_TABLE_NAME,
+    METADATA_REPLAY_LINEAGE_MODE_COLUMN_NAME,
+)
 from streambuild.adapter.exceptions import AdapterRelationNotFoundError
+from streambuild.compiler.discovery.types import ReplayLineageMode
 from streambuild.executor.audit_backfill._helpers.metadata import (
     _decode_deployment_metadata_row,
     _object_key_from_payload,
@@ -21,11 +26,21 @@ def load_audit_deployment(
 ) -> LoadedAuditDeployment:
     """Load the persisted deployment metadata needed for audit."""
 
+    metadata_columns: frozenset[str] = client.metadata_columns(
+        database=metadata_database,
+        table=METADATA_DEPLOYMENTS_TABLE_NAME,
+    )
+    replay_lineage_projection: str = (
+        METADATA_REPLAY_LINEAGE_MODE_COLUMN_NAME
+        if METADATA_REPLAY_LINEAGE_MODE_COLUMN_NAME in metadata_columns
+        else (f"'{ReplayLineageMode.OFFSETS}' AS {METADATA_REPLAY_LINEAGE_MODE_COLUMN_NAME}")
+    )
     try:
         row: DeploymentMetadataRow | None = client.query_one(
-            statement="SELECT created_at, status, replay_lineage_mode, selected_root_keys_json, "
+            statement=f"SELECT created_at, status, {replay_lineage_projection}, "
+            "selected_root_keys_json, "
             "warning_codes_json, prepared_object_mappings_json "
-            f"FROM {metadata_database}.streambuild_deployments "
+            f"FROM {metadata_database}.{METADATA_DEPLOYMENTS_TABLE_NAME} "
             f"WHERE deployment_id = '{deployment_id}'",
             decode=_decode_deployment_metadata_row,
         )

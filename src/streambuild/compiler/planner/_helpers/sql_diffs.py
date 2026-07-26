@@ -4,13 +4,7 @@ from __future__ import annotations
 
 import difflib
 
-from streambuild.clickhouse.render.main.render_create_kafka_table_ddl import (
-    render_create_kafka_table_ddl,
-)
-from streambuild.clickhouse.render.main.render_create_materialized_view_ddl import (
-    render_create_materialized_view_ddl,
-)
-from streambuild.clickhouse.render.main.render_create_table_ddl import render_create_table_ddl
+from streambuild.adapter.types import AdapterResourceRenderer
 from streambuild.compiler.compile.constants import TRANSFORM_TABLE_NAME_PREFIX
 from streambuild.compiler.compile.models import (
     DesiredKafkaTable,
@@ -23,6 +17,7 @@ from streambuild.compiler.planner.constants import (
     PLANNED_CHANGE_TYPE_CREATE,
     PLANNED_CHANGE_TYPE_NO_OP,
 )
+from streambuild.compiler.planner.main.build_adapter_resource import build_adapter_resource
 from streambuild.compiler.planner.models import (
     ActualKafkaTable,
     ActualMaterializedView,
@@ -40,6 +35,7 @@ def build_planned_sql_diffs(
     actual_state: ActualState,
     object_changes: tuple[PlannedObjectChange, ...],
     default_database: str,
+    render_resource: AdapterResourceRenderer,
 ) -> tuple[PlannedSqlDiff, ...]:
     """Build unified SQL diffs for changed desired objects."""
 
@@ -63,6 +59,7 @@ def build_planned_sql_diffs(
         desired_sql: str = _render_desired_object_sql(
             object_=desired_object,
             default_database=default_database,
+            render_resource=render_resource,
         )
         actual_object: ActualKafkaTable | ActualTable | ActualMaterializedView | None = (
             actual_by_key.get(object_change.key)
@@ -74,6 +71,7 @@ def build_planned_sql_diffs(
             else _render_actual_object_sql(
                 object_=actual_object,
                 default_database=default_database,
+                render_resource=render_resource,
             )
         )
         sql_diffs.append(
@@ -93,33 +91,33 @@ def _render_desired_object_sql(
     *,
     object_: DesiredKafkaTable | DesiredTable | DesiredMaterializedView,
     default_database: str,
+    render_resource: AdapterResourceRenderer,
 ) -> str:
     database: str = object_.key.database or default_database
-    if isinstance(object_, DesiredKafkaTable):
-        return render_create_kafka_table_ddl(table=object_, database=database)
-    if isinstance(object_, DesiredTable):
-        return render_create_table_ddl(table=object_, database=database)
-    return render_create_materialized_view_ddl(materialized_view=object_, database=database)
+    return render_resource(resource=build_adapter_resource(object_), database=database)
 
 
 def _render_actual_object_sql(
     *,
     object_: ActualKafkaTable | ActualTable | ActualMaterializedView,
     default_database: str,
+    render_resource: AdapterResourceRenderer,
 ) -> str:
     database: str = object_.key.database or default_database
     if isinstance(object_, ActualKafkaTable):
-        return render_create_kafka_table_ddl(
-            table=DesiredKafkaTable(key=object_.key, deps=(), spec=object_.spec),
-            database=database,
+        desired_object: DesiredKafkaTable | DesiredTable | DesiredMaterializedView = (
+            DesiredKafkaTable(key=object_.key, deps=(), spec=object_.spec)
         )
-    if isinstance(object_, ActualTable):
-        return render_create_table_ddl(
-            table=DesiredTable(key=object_.key, deps=(), spec=object_.spec),
-            database=database,
+    elif isinstance(object_, ActualTable):
+        desired_object = DesiredTable(key=object_.key, deps=(), spec=object_.spec)
+    else:
+        desired_object = DesiredMaterializedView(
+            key=object_.key,
+            deps=(),
+            spec=object_.spec,
         )
-    return render_create_materialized_view_ddl(
-        materialized_view=DesiredMaterializedView(key=object_.key, deps=(), spec=object_.spec),
+    return render_resource(
+        resource=build_adapter_resource(desired_object),
         database=database,
     )
 

@@ -1,11 +1,10 @@
 """Stable logical view creation helpers for publish."""
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.adapter.models import InspectedManagedTableState
+from streambuild.adapter.models import AdapterStableView, InspectedManagedTableState
 from streambuild.adapters.clickhouse.main.inspect_managed_table_state import (
     inspect_managed_table_state,
 )
-from streambuild.clickhouse.render.main.render_create_view_ddl import render_create_view_ddl
 from streambuild.compiler.compile.constants import (
     DESIRED_OBJECT_TYPE_TABLE,
     TRANSFORM_TABLE_NAME_PREFIX,
@@ -63,12 +62,12 @@ def publish_stable_views(
     ):
         database: str = root_key.database or default_database
         target_table_name: str = physical_name_by_key[root_key]
-        client.command(
-            render_create_view_ddl(
-                database=database,
-                view_name=root_key.name,
-                target_table_name=target_table_name,
-            )
+        client.realize_resource(
+            database=database,
+            resource=AdapterStableView(
+                name=root_key.name,
+                target_relation_name=target_table_name,
+            ),
         )
         published_views.append(
             PublishedView(

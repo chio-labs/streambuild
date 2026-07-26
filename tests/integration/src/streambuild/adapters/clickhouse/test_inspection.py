@@ -7,10 +7,10 @@ from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHous
 from streambuild.adapters.clickhouse.main.inspect_managed_table_state import (
     inspect_managed_table_state,
 )
-from streambuild.clickhouse.render.main.render_create_view_ddl import render_create_view_ddl
 from tests.integration.src.streambuild.adapters.clickhouse._test_types import (
     InspectManagedTableStateIntegrationTestCase,
 )
+from tests.integration.src.streambuild.adapters.clickhouse.helpers import render_create_view_ddl
 from tests.integration.src.streambuild.conftest import ClickHouseConnectionSettings
 
 

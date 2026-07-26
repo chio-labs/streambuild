@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
+from dataclasses import replace
 from datetime import datetime, timedelta
 
 from clickhouse_connect.driver.client import Client
@@ -8,13 +9,6 @@ from clickhouse_connect.driver.client import Client
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import AdapterConnectionConfig
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
-from streambuild.clickhouse.render.main.render_create_kafka_table_ddl import (
-    render_create_kafka_table_ddl,
-)
-from streambuild.clickhouse.render.main.render_create_materialized_view_ddl import (
-    render_create_materialized_view_ddl,
-)
-from streambuild.clickhouse.render.main.render_create_table_ddl import render_create_table_ddl
 from streambuild.compiler.compile.main.compile_pipeline import compile_pipeline
 from streambuild.compiler.compile.models import (
     CompiledManagedSource,
@@ -41,15 +35,41 @@ from streambuild.compiler.discovery.types import (
     ReplayLineageMode,
     SourceKind,
 )
-from streambuild.executor.backfill.main.execute_backfill import execute_backfill
-from streambuild.executor.backfill.models import BackfillBootstrapRequest, BackfillExecutionResult
+from streambuild.compiler.metadata_state.models import DeploymentWatermarkRecord
+from streambuild.compiler.planner.constants import REBUILD_EXECUTION_MODE_UNSEEDED_BOUNDED
+from streambuild.compiler.planner.models import DeploymentPlan
+from streambuild.compiler.planner.types import RebuildExecutionMode
+from streambuild.executor.backfill._helpers.replay import (
+    execute_offset_replay,
+    execute_scalar_replay,
+)
+from streambuild.executor.backfill._helpers.watermarks import (
+    persist_deployment_watermarks,
+    resolve_cursor_watermarks,
+    resolve_offset_watermarks,
+    resolve_scalar_watermarks,
+)
+from streambuild.executor.backfill.main.execute_backfill import (
+    execute_backfill,
+    execute_backfill_bootstrap,
+)
+from streambuild.executor.backfill.models import (
+    BackfillBootstrapRequest,
+    BackfillBootstrapResult,
+    BackfillExecutionResult,
+)
 from streambuild.executor.publish.main.execute_publish import execute_publish
 from streambuild.executor.publish.models import PublishRequest
-from tests.integration.src.streambuild.clickhouse.render.main.render_create_materialized_view_ddl.helpers import (  # noqa: E501
+from tests.integration.src.streambuild.adapters.clickhouse.helpers import (
     build_compiled_example_pipeline,
+    render_create_kafka_table_ddl,
+    render_create_materialized_view_ddl,
+    render_create_table_ddl,
 )
 from tests.integration.src.streambuild.conftest import ClickHouseConnectionSettings
 from tests.integration.src.streambuild.executor.backfill._test_types import (
+    BoundedPreservationMatrixScenarioResult,
+    ExecuteBoundedPreservationMatrixIntegrationTestCase,
     ExecuteStartTimeReplayIntegrationTestCase,
     StartTimeReplayScenarioResult,
 )
@@ -306,6 +326,29 @@ def build_aggregate_offset_replay_request(
     )
 
 
+def build_external_source_aggregate_offset_replay_request(
+    *,
+    database: str,
+    deployment_id: str,
+    created_at: str,
+    boundary_time: str,
+) -> BackfillBootstrapRequest:
+    compiled_pipeline: CompiledPipeline = (
+        build_external_source_aggregate_offset_replay_compiled_pipeline()
+    )
+    desired_state: DesiredState = build_desired_state((compiled_pipeline,))
+    return BackfillBootstrapRequest(
+        desired_state=desired_state,
+        default_database=database,
+        metadata_database=database,
+        replay_lineage_mode=ReplayLineageMode.OFFSETS,
+        deployment_id=deployment_id,
+        created_at=created_at,
+        boundary_time=boundary_time,
+        stabilization_seconds=0.0,
+    )
+
+
 def build_offset_replay_compiled_pipeline() -> CompiledPipeline:
     return build_named_offset_replay_compiled_pipeline(include_kafka_topic=False)
 
@@ -491,6 +534,49 @@ def build_aggregate_offset_replay_compiled_pipeline() -> CompiledPipeline:
     )
 
 
+def build_external_source_aggregate_offset_replay_compiled_pipeline() -> CompiledPipeline:
+    pipeline: Pipeline = Pipeline(
+        name="orders_pipeline",
+        source=ExternalTableSourceStep(
+            name="orders",
+            kind=SourceKind.KAFKA,
+            table_name="orders_existing",
+            replay_boundary=ReplayBoundary(
+                mode=ReplayBoundaryMode.OFFSETS,
+                columns=ReplayBoundaryColumns(
+                    partition="event_partition",
+                    offset="event_offset",
+                    timestamp="event_timestamp",
+                    landed_at="event_landed_at",
+                ),
+            ),
+        ),
+        transforms=[
+            TransformStep(
+                name="hourly_order_volume",
+                source="orders",
+                engine="MergeTree()",
+                order_by=["event_hour"],
+                query=(
+                    "SELECT CAST(toStartOfHour(event_timestamp) AS DateTime64(3)) "
+                    "AS event_hour, "
+                    "CAST(count() AS UInt64) AS order_event_count "
+                    'FROM __ref("orders") AS item_rows '
+                    "GROUP BY event_hour"
+                ),
+                replay_anchor=ReplayAnchorMode.NEVER,
+            )
+        ],
+    )
+    return compile_pipeline(
+        LoadedPipeline(
+            pipeline=pipeline,
+            file_path=EXAMPLE_PIPELINE_FILE_PATH,
+            project=None,
+        )
+    )
+
+
 def build_changed_aggregate_offset_replay_compiled_pipeline(
     *,
     bounded_replay_fallback: BoundedReplayFallback | str = BoundedReplayFallback.FULL_REFRESH,
@@ -636,6 +722,614 @@ def build_external_source_cursor_orders_row(
     event_timestamp: str,
 ) -> tuple[object, ...]:
     return (order_id, event_cursor, event_timestamp)
+
+
+def run_bounded_preservation_matrix_scenario(
+    *,
+    test_case: ExecuteBoundedPreservationMatrixIntegrationTestCase,
+    connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> BoundedPreservationMatrixScenarioResult:
+    initial_pipeline: CompiledPipeline = _build_matrix_compiled_pipeline(
+        source_ownership=test_case.source_ownership,
+        replay_lineage_mode=test_case.replay_lineage_mode,
+        include_marker=False,
+    )
+    changed_pipeline: CompiledPipeline = _build_matrix_compiled_pipeline(
+        source_ownership=test_case.source_ownership,
+        replay_lineage_mode=test_case.replay_lineage_mode,
+        include_marker=True,
+    )
+    _prepare_matrix_source(
+        source_ownership=test_case.source_ownership,
+        clickhouse_client=clickhouse_client,
+        clickhouse_database=clickhouse_database,
+        compiled_pipeline=initial_pipeline,
+    )
+    connection: AdapterConnection = ClickHouseAdapter().connect(
+        AdapterConnectionConfig(
+            host=connection_settings.host,
+            port=connection_settings.port,
+            username=connection_settings.username,
+            password=connection_settings.password,
+            database=clickhouse_database,
+        )
+    )
+    initial_desired_state: DesiredState = build_desired_state((initial_pipeline,))
+    changed_desired_state: DesiredState = build_desired_state((changed_pipeline,))
+    initial_deployment_id: str = "20260409T180000Z_matrix"
+    changed_deployment_id: str = "20260409T180500Z_matrix"
+    created_at: str = "2026-04-09 18:00:00.123"
+    initial_boundary_time: str = "2026-04-09 18:00:00.000"
+    changed_boundary_time: str = "2026-04-09 18:05:00.000"
+
+    try:
+        initial_result: BackfillExecutionResult = execute_backfill(
+            request=_build_matrix_request(
+                desired_state=initial_desired_state,
+                database=clickhouse_database,
+                replay_lineage_mode=test_case.replay_lineage_mode,
+                deployment_id=initial_deployment_id,
+                created_at=created_at,
+                boundary_time=initial_boundary_time,
+            ),
+            client=connection,
+        )
+        execute_publish(
+            request=PublishRequest(
+                deployment_id=initial_result.bootstrap.deployment_id,
+                metadata_database=clickhouse_database,
+                default_database=clickhouse_database,
+            ),
+            client=connection,
+        )
+        _insert_matrix_tail(
+            source_ownership=test_case.source_ownership,
+            clickhouse_client=clickhouse_client,
+            clickhouse_database=clickhouse_database,
+            compiled_pipeline=initial_pipeline,
+        )
+        runner: Callable[..., RebuildExecutionMode] = {
+            RebuildExecutionMode.SEEDED_BOUNDED_REBUILD: _execute_seeded_matrix_replay,
+            RebuildExecutionMode.UNSEEDED_BOUNDED_REBUILD: _execute_unseeded_matrix_replay,
+        }[test_case.requested_execution_mode]
+        execution_mode: RebuildExecutionMode = runner(
+            client=connection,
+            desired_state=changed_desired_state,
+            database=clickhouse_database,
+            replay_lineage_mode=test_case.replay_lineage_mode,
+            deployment_id=changed_deployment_id,
+            created_at=created_at,
+            boundary_time=changed_boundary_time,
+        )
+    finally:
+        connection.close()
+
+    result_rows: Sequence[Sequence[object]] = clickhouse_client.query(
+        "SELECT order_id, replay_marker FROM "
+        f"{clickhouse_database}.tbl__orders_enriched__{changed_deployment_id} "
+        "ORDER BY order_id"
+    ).result_rows
+    return BoundedPreservationMatrixScenarioResult(
+        execution_mode=execution_mode,
+        shadow_rows=tuple((str(row[0]), str(row[1])) for row in result_rows),
+    )
+
+
+def _build_matrix_compiled_pipeline(
+    *,
+    source_ownership: str,
+    replay_lineage_mode: ReplayLineageMode,
+    include_marker: bool,
+) -> CompiledPipeline:
+    projection: str = {
+        ("managed", ReplayLineageMode.OFFSETS): (
+            "CAST(_replay_partition AS Int64) AS _replay_partition, "
+            "CAST(_replay_offset AS Int64) AS _replay_offset"
+        ),
+        ("managed", ReplayLineageMode.TIMESTAMP): (
+            "CAST(_replay_timestamp AS DateTime64(3)) AS _replay_timestamp"
+        ),
+        ("managed", ReplayLineageMode.LANDED_AT): (
+            "CAST(_replay_landed_at AS DateTime64(3)) AS _replay_landed_at"
+        ),
+        ("adopted", ReplayLineageMode.OFFSETS): (
+            "CAST(event_partition AS Int64) AS _replay_partition, "
+            "CAST(event_offset AS Int64) AS _replay_offset"
+        ),
+        ("adopted", ReplayLineageMode.TIMESTAMP): (
+            "CAST(event_timestamp AS DateTime64(3)) AS _replay_timestamp"
+        ),
+        ("adopted", ReplayLineageMode.CURSOR): ("CAST(event_cursor AS UInt64) AS _replay_cursor"),
+    }[(source_ownership, replay_lineage_mode)]
+    order_id_expression: str = {
+        "managed": "CAST(kafka_key AS String)",
+        "adopted": "CAST(order_id AS String)",
+    }[source_ownership]
+    marker_projection: str = {
+        False: "",
+        True: ", CAST('changed' AS String) AS replay_marker",
+    }[include_marker]
+    transform: TransformStep = TransformStep(
+        name="orders_enriched",
+        source="orders",
+        engine="MergeTree()",
+        order_by=["order_id"],
+        query=(
+            f"SELECT {order_id_expression} AS order_id, {projection}{marker_projection} "
+            'FROM __ref("orders")'
+        ),
+        replay_anchor=ReplayAnchorMode.NEVER,
+    )
+    pipeline_builder: Callable[..., Pipeline] = {
+        "managed": _build_managed_matrix_pipeline,
+        "adopted": _build_adopted_matrix_pipeline,
+    }[source_ownership]
+    pipeline: Pipeline = pipeline_builder(
+        replay_lineage_mode=replay_lineage_mode,
+        transform=transform,
+    )
+    return compile_pipeline(
+        LoadedPipeline(
+            pipeline=pipeline,
+            file_path=EXAMPLE_PIPELINE_FILE_PATH,
+            project=None,
+        )
+    )
+
+
+def _build_managed_matrix_pipeline(
+    *, replay_lineage_mode: ReplayLineageMode, transform: TransformStep
+) -> Pipeline:
+    return Pipeline(
+        name="preservation_pipeline",
+        source=KafkaLandingStep(
+            name="orders",
+            kafka=KafkaSettings(
+                broker_list="kafka:9092",
+                topic="source.orders.created",
+            ),
+        ),
+        transforms=[transform],
+        replay_lineage_mode=replay_lineage_mode,
+    )
+
+
+def _build_adopted_matrix_pipeline(
+    *, replay_lineage_mode: ReplayLineageMode, transform: TransformStep
+) -> Pipeline:
+    source_builder: Callable[[], ExternalTableSourceStep] = {
+        ReplayLineageMode.OFFSETS: _build_adopted_offset_matrix_source,
+        ReplayLineageMode.TIMESTAMP: _build_adopted_timestamp_matrix_source,
+        ReplayLineageMode.CURSOR: _build_adopted_cursor_matrix_source,
+    }[replay_lineage_mode]
+    return Pipeline(
+        name="preservation_pipeline",
+        source=source_builder(),
+        transforms=[transform],
+    )
+
+
+def _build_adopted_offset_matrix_source() -> ExternalTableSourceStep:
+    return ExternalTableSourceStep(
+        name="orders",
+        kind=SourceKind.KAFKA,
+        table_name="orders_existing",
+        replay_boundary=ReplayBoundary(
+            mode=ReplayBoundaryMode.OFFSETS,
+            columns=ReplayBoundaryColumns(
+                partition="event_partition",
+                offset="event_offset",
+                timestamp="event_timestamp",
+                landed_at="event_landed_at",
+            ),
+        ),
+    )
+
+
+def _build_adopted_timestamp_matrix_source() -> ExternalTableSourceStep:
+    return ExternalTableSourceStep(
+        name="orders",
+        kind=SourceKind.KAFKA,
+        table_name="orders_existing",
+        replay_boundary=ReplayBoundary(
+            mode=ReplayBoundaryMode.TIMESTAMP,
+            columns=ReplayBoundaryColumns(timestamp="event_timestamp"),
+        ),
+    )
+
+
+def _build_adopted_cursor_matrix_source() -> ExternalTableSourceStep:
+    return ExternalTableSourceStep(
+        name="orders",
+        kind=SourceKind.STREAM_TABLE,
+        table_name="orders_existing",
+        replay_boundary=ReplayBoundary(
+            mode=ReplayBoundaryMode.CURSOR,
+            columns=ReplayBoundaryColumns(
+                timestamp="event_timestamp",
+                cursor="event_cursor",
+            ),
+        ),
+    )
+
+
+def _build_matrix_request(
+    *,
+    desired_state: DesiredState,
+    database: str,
+    replay_lineage_mode: ReplayLineageMode,
+    deployment_id: str,
+    created_at: str,
+    boundary_time: str,
+) -> BackfillBootstrapRequest:
+    return BackfillBootstrapRequest(
+        desired_state=desired_state,
+        default_database=database,
+        metadata_database=database,
+        replay_lineage_mode=replay_lineage_mode,
+        deployment_id=deployment_id,
+        created_at=created_at,
+        boundary_time=boundary_time,
+        stabilization_seconds=0.0,
+    )
+
+
+def _prepare_matrix_source(
+    *,
+    source_ownership: str,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+    compiled_pipeline: CompiledPipeline,
+) -> None:
+    preparer: Callable[..., None] = {
+        "managed": _prepare_managed_matrix_source,
+        "adopted": _prepare_adopted_matrix_source,
+    }[source_ownership]
+    preparer(
+        clickhouse_client=clickhouse_client,
+        clickhouse_database=clickhouse_database,
+        compiled_pipeline=compiled_pipeline,
+    )
+
+
+def _prepare_managed_matrix_source(
+    *,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+    compiled_pipeline: CompiledPipeline,
+) -> None:
+    _create_live_landing_objects(
+        clickhouse_client=clickhouse_client,
+        clickhouse_database=clickhouse_database,
+        compiled_pipeline=compiled_pipeline,
+    )
+    clickhouse_client.insert(
+        table=f"{clickhouse_database}.{require_managed_source(compiled_pipeline).raw_table.name}",
+        data=[
+            _build_managed_matrix_row(order_id="historical-order", offset=1, second="58"),
+            _build_managed_matrix_row(order_id="frontier-order", offset=2, second="59"),
+        ],
+        column_names=[
+            "kafka_key",
+            "kafka_value",
+            "kafka_topic",
+            "_replay_partition",
+            "_replay_offset",
+            "_replay_timestamp",
+            "kafka_headers",
+            "_replay_landed_at",
+        ],
+    )
+
+
+def _prepare_adopted_matrix_source(
+    *,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+    compiled_pipeline: CompiledPipeline,
+) -> None:
+    del compiled_pipeline
+    clickhouse_client.command(
+        f"CREATE TABLE {clickhouse_database}.orders_existing ("
+        "order_id String, event_partition Int64, event_offset Int64, "
+        "event_timestamp DateTime64(3), event_landed_at DateTime64(3), "
+        "event_cursor UInt64) ENGINE = MergeTree() ORDER BY (order_id)"
+    )
+    clickhouse_client.insert(
+        table=f"{clickhouse_database}.orders_existing",
+        data=[
+            _build_adopted_matrix_row(order_id="historical-order", offset=1, second="58"),
+            _build_adopted_matrix_row(order_id="frontier-order", offset=2, second="59"),
+        ],
+        column_names=[
+            "order_id",
+            "event_partition",
+            "event_offset",
+            "event_timestamp",
+            "event_landed_at",
+            "event_cursor",
+        ],
+    )
+
+
+def _insert_matrix_tail(
+    *,
+    source_ownership: str,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+    compiled_pipeline: CompiledPipeline,
+) -> None:
+    inserter: Callable[..., None] = {
+        "managed": _insert_managed_matrix_tail,
+        "adopted": _insert_adopted_matrix_tail,
+    }[source_ownership]
+    inserter(
+        clickhouse_client=clickhouse_client,
+        clickhouse_database=clickhouse_database,
+        compiled_pipeline=compiled_pipeline,
+    )
+
+
+def _insert_managed_matrix_tail(
+    *,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+    compiled_pipeline: CompiledPipeline,
+) -> None:
+    clickhouse_client.insert(
+        table=f"{clickhouse_database}.{require_managed_source(compiled_pipeline).raw_table.name}",
+        data=[_build_managed_matrix_row(order_id="tail-order", offset=3, second="01")],
+        column_names=[
+            "kafka_key",
+            "kafka_value",
+            "kafka_topic",
+            "_replay_partition",
+            "_replay_offset",
+            "_replay_timestamp",
+            "kafka_headers",
+            "_replay_landed_at",
+        ],
+    )
+
+
+def _insert_adopted_matrix_tail(
+    *,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+    compiled_pipeline: CompiledPipeline,
+) -> None:
+    del compiled_pipeline
+    clickhouse_client.insert(
+        table=f"{clickhouse_database}.orders_existing",
+        data=[_build_adopted_matrix_row(order_id="tail-order", offset=3, second="01")],
+        column_names=[
+            "order_id",
+            "event_partition",
+            "event_offset",
+            "event_timestamp",
+            "event_landed_at",
+            "event_cursor",
+        ],
+    )
+
+
+def _build_managed_matrix_row(*, order_id: str, offset: int, second: str) -> tuple[object, ...]:
+    timestamp: str = {
+        "58": "2026-04-09 17:59:58.000",
+        "59": "2026-04-09 17:59:59.000",
+        "01": "2026-04-09 18:00:01.000",
+    }[second]
+    return build_raw_orders_row(
+        kafka_key=order_id,
+        _replay_partition=0,
+        _replay_offset=offset,
+        _replay_timestamp=timestamp,
+        _replay_landed_at=timestamp,
+    )
+
+
+def _build_adopted_matrix_row(*, order_id: str, offset: int, second: str) -> tuple[object, ...]:
+    timestamp: str = {
+        "58": "2026-04-09 17:59:58.000",
+        "59": "2026-04-09 17:59:59.000",
+        "01": "2026-04-09 18:00:01.000",
+    }[second]
+    return (order_id, 0, offset, timestamp, timestamp, offset)
+
+
+def _execute_seeded_matrix_replay(
+    *,
+    client: AdapterConnection,
+    desired_state: DesiredState,
+    database: str,
+    replay_lineage_mode: ReplayLineageMode,
+    deployment_id: str,
+    created_at: str,
+    boundary_time: str,
+) -> RebuildExecutionMode:
+    result: BackfillExecutionResult = execute_backfill(
+        request=_build_matrix_request(
+            desired_state=desired_state,
+            database=database,
+            replay_lineage_mode=replay_lineage_mode,
+            deployment_id=deployment_id,
+            created_at=created_at,
+            boundary_time=boundary_time,
+        ),
+        client=client,
+    )
+    return RebuildExecutionMode(result.bootstrap.deployment_plan.rebuild_subtrees[0].execution_mode)
+
+
+def _execute_unseeded_matrix_replay(
+    *,
+    client: AdapterConnection,
+    desired_state: DesiredState,
+    database: str,
+    replay_lineage_mode: ReplayLineageMode,
+    deployment_id: str,
+    created_at: str,
+    boundary_time: str,
+) -> RebuildExecutionMode:
+    bootstrap_result: BackfillBootstrapResult = execute_backfill_bootstrap(
+        request=_build_matrix_request(
+            desired_state=desired_state,
+            database=database,
+            replay_lineage_mode=replay_lineage_mode,
+            deployment_id=deployment_id,
+            created_at=created_at,
+            boundary_time=boundary_time,
+        ),
+        client=client,
+    )
+    deployment_plan: DeploymentPlan = replace(
+        bootstrap_result.deployment_plan,
+        rebuild_subtrees=tuple(
+            replace(subtree, execution_mode=REBUILD_EXECUTION_MODE_UNSEEDED_BOUNDED)
+            for subtree in bootstrap_result.deployment_plan.rebuild_subtrees
+        ),
+    )
+    watermark_resolver: Callable[..., tuple[DeploymentWatermarkRecord, ...]] = {
+        ReplayLineageMode.OFFSETS: _resolve_matrix_offset_watermarks,
+        ReplayLineageMode.TIMESTAMP: _resolve_matrix_scalar_watermarks,
+        ReplayLineageMode.LANDED_AT: _resolve_matrix_scalar_watermarks,
+        ReplayLineageMode.CURSOR: _resolve_matrix_cursor_watermarks,
+    }[replay_lineage_mode]
+    deployment_watermarks: tuple[DeploymentWatermarkRecord, ...] = watermark_resolver(
+        client=client,
+        deployment_id=deployment_id,
+        deployment_plan=deployment_plan,
+        desired_state=desired_state,
+        database=database,
+        replay_lineage_mode=replay_lineage_mode,
+        boundary_time=boundary_time,
+    )
+    persist_deployment_watermarks(
+        client=client,
+        metadata_database=database,
+        deployment_watermarks=deployment_watermarks,
+    )
+    replay_runner: Callable[..., None] = {
+        ReplayLineageMode.OFFSETS: _execute_matrix_offset_replay,
+        ReplayLineageMode.TIMESTAMP: _execute_matrix_scalar_replay,
+        ReplayLineageMode.LANDED_AT: _execute_matrix_scalar_replay,
+        ReplayLineageMode.CURSOR: _execute_matrix_scalar_replay,
+    }[replay_lineage_mode]
+    replay_runner(
+        client=client,
+        deployment_plan=deployment_plan,
+        desired_state=desired_state,
+        database=database,
+        replay_lineage_mode=replay_lineage_mode,
+        deployment_watermarks=deployment_watermarks,
+        boundary_time=boundary_time,
+    )
+    return RebuildExecutionMode.UNSEEDED_BOUNDED_REBUILD
+
+
+def _resolve_matrix_offset_watermarks(
+    *,
+    client: AdapterConnection,
+    deployment_id: str,
+    deployment_plan: DeploymentPlan,
+    desired_state: DesiredState,
+    database: str,
+    replay_lineage_mode: ReplayLineageMode,
+    boundary_time: str,
+) -> tuple[DeploymentWatermarkRecord, ...]:
+    del replay_lineage_mode
+    return resolve_offset_watermarks(
+        client=client,
+        deployment_id=deployment_id,
+        deployment_plan=deployment_plan,
+        desired_state=desired_state,
+        default_database=database,
+        boundary_time=boundary_time,
+    )
+
+
+def _resolve_matrix_scalar_watermarks(
+    *,
+    client: AdapterConnection,
+    deployment_id: str,
+    deployment_plan: DeploymentPlan,
+    desired_state: DesiredState,
+    database: str,
+    replay_lineage_mode: ReplayLineageMode,
+    boundary_time: str,
+) -> tuple[DeploymentWatermarkRecord, ...]:
+    del client, database
+    return resolve_scalar_watermarks(
+        deployment_id=deployment_id,
+        deployment_plan=deployment_plan,
+        desired_state=desired_state,
+        replay_lineage_mode=replay_lineage_mode,
+        boundary_time=boundary_time,
+    )
+
+
+def _resolve_matrix_cursor_watermarks(
+    *,
+    client: AdapterConnection,
+    deployment_id: str,
+    deployment_plan: DeploymentPlan,
+    desired_state: DesiredState,
+    database: str,
+    replay_lineage_mode: ReplayLineageMode,
+    boundary_time: str,
+) -> tuple[DeploymentWatermarkRecord, ...]:
+    del replay_lineage_mode, boundary_time
+    return resolve_cursor_watermarks(
+        client=client,
+        deployment_id=deployment_id,
+        deployment_plan=deployment_plan,
+        desired_state=desired_state,
+        default_database=database,
+    )
+
+
+def _execute_matrix_offset_replay(
+    *,
+    client: AdapterConnection,
+    deployment_plan: DeploymentPlan,
+    desired_state: DesiredState,
+    database: str,
+    replay_lineage_mode: ReplayLineageMode,
+    deployment_watermarks: tuple[DeploymentWatermarkRecord, ...],
+    boundary_time: str,
+) -> None:
+    del replay_lineage_mode
+    execute_offset_replay(
+        client=client,
+        deployment_plan=deployment_plan,
+        desired_state=desired_state,
+        default_database=database,
+        deployment_watermarks=deployment_watermarks,
+        boundary_time=boundary_time,
+    )
+
+
+def _execute_matrix_scalar_replay(
+    *,
+    client: AdapterConnection,
+    deployment_plan: DeploymentPlan,
+    desired_state: DesiredState,
+    database: str,
+    replay_lineage_mode: ReplayLineageMode,
+    deployment_watermarks: tuple[DeploymentWatermarkRecord, ...],
+    boundary_time: str,
+) -> None:
+    execute_scalar_replay(
+        client=client,
+        deployment_plan=deployment_plan,
+        desired_state=desired_state,
+        default_database=database,
+        replay_lineage_mode=replay_lineage_mode,
+        deployment_watermarks=deployment_watermarks,
+        boundary_time=boundary_time,
+    )
 
 
 def require_managed_source(compiled_pipeline: CompiledPipeline) -> CompiledManagedSource:

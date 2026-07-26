@@ -5,15 +5,11 @@ from __future__ import annotations
 from dataclasses import asdict
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.clickhouse.metadata_state.main.build_metadata_state_insert_statements import (
-    build_metadata_state_insert_statements,
-)
-from streambuild.clickhouse.metadata_state.main.render_metadata_state_statements import (
-    render_metadata_state_statements,
-)
-from streambuild.clickhouse.metadata_state.models import RenderedClickHouseStatement
 from streambuild.compiler.compile.models import DesiredMaterializedView, DesiredTable
-from streambuild.compiler.metadata_state.models import ObjectStateRecord
+from streambuild.compiler.metadata_state.main.build_adapter_metadata_state import (
+    build_adapter_metadata_state,
+)
+from streambuild.compiler.metadata_state.models import MetadataState, ObjectStateRecord
 from streambuild.compiler.planner.main.build_normalized_fingerprint import (
     build_normalized_fingerprint,
 )
@@ -24,18 +20,17 @@ def apply_reconcile(*, client: AdapterConnection, preview: ReconcilePreview) -> 
     """Persist reconciled object-state records."""
 
     ensure_metadata_tables(client=client, metadata_database=preview.database)
-    statements: tuple[RenderedClickHouseStatement, ...] = build_metadata_state_insert_statements(
-        database=preview.database,
+    state: MetadataState = MetadataState(
         object_states=preview.eligible_records,
         deployments=(),
         deployment_watermarks=(),
         deployment_runtime_details=(),
         publish_events=(),
     )
-    for statement in statements:
-        if not statement.rows:
-            continue
-        client.insert_rows(table=insert_table_name(statement.sql), rows=statement.rows)
+    client.persist_metadata_state(
+        database=preview.database,
+        state=build_adapter_metadata_state(state),
+    )
     return ReconcileResult(
         database=preview.database,
         reconcile_id=preview.reconcile_id,
@@ -62,14 +57,5 @@ def build_object_state_record(
     )
 
 
-def insert_table_name(statement_sql: str) -> str:
-    return statement_sql[len("INSERT INTO ") :].split(" ", 1)[0]
-
-
 def ensure_metadata_tables(*, client: AdapterConnection, metadata_database: str) -> None:
-    client.command(f"CREATE DATABASE IF NOT EXISTS {metadata_database}")
-    statements: tuple[RenderedClickHouseStatement, ...] = render_metadata_state_statements(
-        metadata_database
-    )
-    for statement in statements:
-        client.command(statement.sql)
+    client.migrate_metadata_state(metadata_database)

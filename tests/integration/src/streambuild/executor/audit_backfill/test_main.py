@@ -4,14 +4,6 @@ from clickhouse_connect.driver.client import Client
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import AdapterConnectionConfig
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
-from streambuild.clickhouse.render.main.render_create_kafka_table_ddl import (
-    render_create_kafka_table_ddl,
-)
-from streambuild.clickhouse.render.main.render_create_materialized_view_ddl import (
-    render_create_materialized_view_ddl,
-)
-from streambuild.clickhouse.render.main.render_create_table_ddl import render_create_table_ddl
-from streambuild.clickhouse.render.main.render_create_view_ddl import render_create_view_ddl
 from streambuild.compiler.compile.models import CompiledPipeline
 from streambuild.executor.audit_backfill.main.execute_audit_backfill import execute_audit_backfill
 from streambuild.executor.audit_backfill.models import (
@@ -21,6 +13,12 @@ from streambuild.executor.audit_backfill.models import (
 )
 from streambuild.executor.audit_backfill.types import AuditAssessment
 from streambuild.executor.backfill.main.execute_backfill import execute_backfill
+from tests.integration.src.streambuild.adapters.clickhouse.helpers import (
+    render_create_kafka_table_ddl,
+    render_create_materialized_view_ddl,
+    render_create_table_ddl,
+    render_create_view_ddl,
+)
 from tests.integration.src.streambuild.conftest import ClickHouseConnectionSettings
 from tests.integration.src.streambuild.executor.audit_backfill._test_types import (
     AuditAfterDeletedActiveViewIntegrationTestCase,

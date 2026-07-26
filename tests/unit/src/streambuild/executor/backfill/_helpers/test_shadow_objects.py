@@ -3,6 +3,13 @@ from typing import cast
 import pytest
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.models import (
+    AdapterManagedSource,
+    AdapterMaterializedView,
+    AdapterStableView,
+    AdapterTable,
+)
+from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from streambuild.compiler.compile.models import DesiredState
 from streambuild.compiler.planner.main.plan_deployment import plan_deployment
 from streambuild.compiler.planner.models import ActualState, DeploymentPlan
@@ -46,6 +53,25 @@ def test_given_reference_ref_when_creating_shadow_objects_then_it_creates_depend
         def command(self, statement: str) -> None:
             self.commands.append(statement)
 
+        def realize_resource(
+            self,
+            *,
+            resource: AdapterManagedSource
+            | AdapterTable
+            | AdapterMaterializedView
+            | AdapterStableView,
+            database: str,
+            if_not_exists: bool = False,
+        ) -> None:
+            adapter: ClickHouseAdapter = ClickHouseAdapter()
+            self.command(
+                adapter.render_resource(
+                    resource=resource,
+                    database=database,
+                    if_not_exists=if_not_exists,
+                )
+            )
+
     desired_state: DesiredState = build_single_transform_desired_state(
         query=(
             "SELECT CAST(o.order_id AS UInt64) AS order_id, "
@@ -70,6 +96,7 @@ def test_given_reference_ref_when_creating_shadow_objects_then_it_creates_depend
         desired_state=desired_state,
         actual_state=ActualState(objects=()),
         default_database="analytics",
+        render_resource=ClickHouseAdapter().render_resource,
         deployment_id="dep_ref",
     )
     client: RecordingClient = RecordingClient()
@@ -79,6 +106,7 @@ def test_given_reference_ref_when_creating_shadow_objects_then_it_creates_depend
         deployment_plan=deployment_plan,
         desired_state=desired_state,
         default_database="analytics",
+        existing_relation_names=frozenset(),
     )
 
     rendered_commands: str = "\n".join(client.commands)

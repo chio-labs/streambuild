@@ -1,1 +1,0 @@
-"""ClickHouse DDL rendering."""

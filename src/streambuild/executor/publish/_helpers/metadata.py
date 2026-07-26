@@ -3,14 +3,12 @@
 from datetime import UTC, datetime
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.clickhouse.metadata_state.main.build_metadata_state_insert_statements import (
-    build_metadata_state_insert_statements,
+from streambuild.compiler.metadata_state.main.build_adapter_metadata_state import (
+    build_adapter_metadata_state,
 )
-from streambuild.clickhouse.metadata_state.models import RenderedClickHouseStatement
 from streambuild.compiler.metadata_state.main.build_metadata_state import build_metadata_state
 from streambuild.compiler.metadata_state.models import MetadataState, PublishEventRecord
 from streambuild.executor.backfill.main._ensure_metadata_tables import ensure_metadata_tables
-from streambuild.executor.publish.constants import PUBLISH_HISTORY_TABLE_NAME
 from streambuild.executor.publish.models import PublishedView
 
 
@@ -38,26 +36,7 @@ def persist_publish_event(
             ),
         ),
     )
-    insert_statements: tuple[RenderedClickHouseStatement, ...] = (
-        build_metadata_state_insert_statements(
-            database=metadata_database,
-            object_states=metadata_state.object_states,
-            deployments=metadata_state.deployments,
-            deployment_watermarks=metadata_state.deployment_watermarks,
-            deployment_runtime_details=metadata_state.deployment_runtime_details,
-            publish_events=metadata_state.publish_events,
-        )
+    client.persist_metadata_state(
+        database=metadata_database,
+        state=build_adapter_metadata_state(metadata_state),
     )
-    statement: RenderedClickHouseStatement
-    for statement in insert_statements:
-        if not statement.rows:
-            continue
-        if PUBLISH_HISTORY_TABLE_NAME not in statement.sql:
-            continue
-        client.insert_rows(table=_insert_table_name(statement.sql), rows=statement.rows)
-
-
-def _insert_table_name(statement_sql: str) -> str:
-    statement_prefix: str = "INSERT INTO "
-    remainder: str = statement_sql[len(statement_prefix) :]
-    return remainder.split(" ", 1)[0]

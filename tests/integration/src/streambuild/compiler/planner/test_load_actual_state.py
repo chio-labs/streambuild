@@ -6,13 +6,6 @@ from clickhouse_connect.driver.client import Client
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import AdapterConnectionConfig
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
-from streambuild.clickhouse.render.main.render_create_kafka_table_ddl import (
-    render_create_kafka_table_ddl,
-)
-from streambuild.clickhouse.render.main.render_create_materialized_view_ddl import (
-    render_create_materialized_view_ddl,
-)
-from streambuild.clickhouse.render.main.render_create_table_ddl import render_create_table_ddl
 from streambuild.compiler.compile.models import CompiledPipeline, DesiredState
 from streambuild.compiler.desired_state.main.build_desired_state import build_desired_state
 from streambuild.compiler.planner.main.load_actual_state import load_actual_state
@@ -21,6 +14,11 @@ from streambuild.executor.backfill.main.execute_backfill import execute_backfill
 from streambuild.executor.publish.main.execute_publish import execute_publish
 from streambuild.executor.publish.models import PublishRequest
 from streambuild.executor.reconcile.constants import RECONCILE_DEPLOYMENT_ID_PREFIX
+from tests.integration.src.streambuild.adapters.clickhouse.helpers import (
+    render_create_kafka_table_ddl,
+    render_create_materialized_view_ddl,
+    render_create_table_ddl,
+)
 from tests.integration.src.streambuild.compiler.planner._test_types import (
     LoadActualStateIntegrationTestCase,
     LoadActualStateMixedRootsIntegrationTestCase,

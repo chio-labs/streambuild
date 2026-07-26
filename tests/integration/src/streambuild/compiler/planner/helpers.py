@@ -4,11 +4,6 @@ from typing import cast
 
 from clickhouse_connect.driver.client import Client
 
-from streambuild.clickhouse.render.main.render_create_materialized_view_ddl import (
-    render_create_materialized_view_ddl,
-)
-from streambuild.clickhouse.render.main.render_create_table_ddl import render_create_table_ddl
-from streambuild.clickhouse.render.main.render_create_view_ddl import render_create_view_ddl
 from streambuild.compiler.compile.main.compile_pipeline import compile_pipeline
 from streambuild.compiler.compile.models import (
     Column,
@@ -27,6 +22,11 @@ from streambuild.compiler.discovery.models import (
     TransformStep,
 )
 from streambuild.compiler.planner.models import DeploymentPlan, PlannedObjectChange
+from tests.integration.src.streambuild.adapters.clickhouse.helpers import (
+    render_create_materialized_view_ddl,
+    render_create_table_ddl,
+    render_create_view_ddl,
+)
 from tests.integration.src.streambuild.executor.backfill.helpers import require_managed_source
 from tests.unit.src.streambuild.compiler.planner.helpers import EXAMPLE_PIPELINE_FILE_PATH
 
