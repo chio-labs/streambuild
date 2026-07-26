@@ -14,7 +14,7 @@ from streambuild.compiler.shared.constants import (
 )
 from streambuild.compiler.shared.models import DesiredTable, ObjectKey
 from streambuild.executor.backfill.models import RootBackfillReport
-from streambuild.integrations.clickhouse.client import ClickHouseClient
+from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def build_root_backfill_reports(

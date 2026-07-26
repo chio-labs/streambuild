@@ -20,7 +20,7 @@ from streambuild.executor.audit_backfill.models import AuditDeploymentCandidate
 from streambuild.executor.publish._helpers.resolution import build_publish_deployment_candidates
 from streambuild.executor.publish.main import execute_publish
 from streambuild.executor.publish.models import PublishRequest, PublishResult
-from streambuild.integrations.clickhouse.client import ClickHouseClient
+from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def run_publish(

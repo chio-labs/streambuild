@@ -4,7 +4,7 @@ from streambuild.clickhouse.inspect._helpers.managed_tables import (
     build_inspected_managed_table_state,
 )
 from streambuild.clickhouse.inspect.models import InspectedManagedTableState
-from streambuild.integrations.clickhouse.client import ClickHouseClient
+from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def inspect_managed_table_state(

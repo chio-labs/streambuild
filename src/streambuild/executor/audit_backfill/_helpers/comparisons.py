@@ -31,7 +31,7 @@ from streambuild.executor.audit_backfill.models import (
     ScalarSummaryQueryRow,
 )
 from streambuild.executor.audit_backfill.types import AuditAssessment
-from streambuild.integrations.clickhouse.client import ClickHouseClient
+from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 from streambuild.integrations.clickhouse.constants import (
     BLANK_VALUES,
 )

@@ -10,7 +10,7 @@ from streambuild.compiler.shared.constants import DESIRED_OBJECT_TYPE_TABLE
 from streambuild.compiler.shared.models import ObjectKey
 from streambuild.executor.audit_backfill.exceptions import AuditBackfillExecutionError
 from streambuild.executor.audit_backfill.models import AuditDeploymentCandidate
-from streambuild.integrations.clickhouse.client import ClickHouseClient
+from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def resolve_audit_deployment_id(

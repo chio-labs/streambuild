@@ -11,7 +11,7 @@ from streambuild.compiler.metadata_state.models import MetadataState, PublishEve
 from streambuild.executor.backfill._helpers.metadata import ensure_metadata_tables
 from streambuild.executor.publish.constants import PUBLISH_HISTORY_TABLE_NAME
 from streambuild.executor.publish.models import PublishedView
-from streambuild.integrations.clickhouse.client import ClickHouseClient
+from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def persist_publish_event(

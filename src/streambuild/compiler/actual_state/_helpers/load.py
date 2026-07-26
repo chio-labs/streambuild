@@ -43,7 +43,7 @@ from streambuild.compiler.shared.models import (
     TableStorage,
 )
 from streambuild.executor.reconcile.constants import RECONCILE_DEPLOYMENT_ID_PREFIX
-from streambuild.integrations.clickhouse.client import ClickHouseClient
+from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 from streambuild.integrations.clickhouse.constants import (
     BLANK_VALUES,
     EMPTY_TUPLE_EXPRESSION,

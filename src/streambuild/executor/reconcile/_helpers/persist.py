@@ -13,7 +13,7 @@ from streambuild.compiler.actual_state._helpers.metadata import build_normalized
 from streambuild.compiler.metadata_state.models import ObjectStateRecord
 from streambuild.compiler.shared.models import DesiredMaterializedView, DesiredTable
 from streambuild.executor.reconcile.models import ReconcilePreview, ReconcileResult
-from streambuild.integrations.clickhouse.client import ClickHouseClient
+from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def apply_reconcile(*, client: ClickHouseClient, preview: ReconcilePreview) -> ReconcileResult:

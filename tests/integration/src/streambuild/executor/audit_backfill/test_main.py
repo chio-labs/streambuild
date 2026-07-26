@@ -18,7 +18,7 @@ from streambuild.executor.audit_backfill.models import (
 )
 from streambuild.executor.audit_backfill.types import AuditAssessment
 from streambuild.executor.backfill.main import execute_backfill
-from streambuild.integrations.clickhouse.client import ClickHouseClient
+from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 from streambuild.integrations.clickhouse.models import ClickHouseConnectionConfig
 from tests.integration.src.streambuild.conftest import ClickHouseConnectionSettings
 from tests.integration.src.streambuild.executor.audit_backfill._test_types import (

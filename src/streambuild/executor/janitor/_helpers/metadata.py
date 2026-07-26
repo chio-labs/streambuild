@@ -12,7 +12,7 @@ from streambuild.compiler.metadata_state.models import DeploymentRecord, Prepare
 from streambuild.compiler.shared.models import ObjectKey
 from streambuild.compiler.shared.types import DesiredObjectType
 from streambuild.executor.janitor.models import DeploymentMetadataRow, PublishHistoryMetadataRow
-from streambuild.integrations.clickhouse.client import ClickHouseClient
+from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 from streambuild.integrations.clickhouse.constants import UNKNOWN_TABLE_ERROR_CODE
 from streambuild.spec.models.types import ReplayLineageMode
 

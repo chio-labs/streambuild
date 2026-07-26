@@ -26,7 +26,7 @@ from streambuild.compiler.shared.models import (
     ObjectKey,
 )
 from streambuild.executor.backfill.exceptions import BackfillExecutionError
-from streambuild.integrations.clickhouse.client import ClickHouseClient
+from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def create_shadow_objects(

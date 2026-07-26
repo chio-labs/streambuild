@@ -24,7 +24,7 @@ from streambuild.executor.backfill._helpers.behavior import (
 )
 from streambuild.executor.backfill._helpers.reporting import build_root_backfill_reports
 from streambuild.executor.backfill.models import RootBackfillReport
-from streambuild.integrations.clickhouse.client import ClickHouseClient
+from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def build_backfill_preview_context(

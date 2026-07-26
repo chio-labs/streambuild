@@ -1,6 +1,6 @@
 import pytest
 
-from streambuild.integrations.clickhouse.client import ClickHouseClient
+from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 from tests.integration.src.streambuild.integrations.clickhouse._test_types import (
     ClickHouseClientIntegrationTestCase,
 )

@@ -19,7 +19,7 @@ from streambuild.compiler.compile.models import CompiledManagedSource, CompiledP
 from streambuild.compiler.shared._helpers.deployment_names import build_deployment_physical_name
 from streambuild.executor.backfill.main import execute_backfill
 from streambuild.executor.backfill.models import BackfillExecutionResult
-from streambuild.integrations.clickhouse.client import ClickHouseClient
+from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 from tests.integration.src.streambuild.cli._test_types import (
     CliAuditBackfillCommandIntegrationTestCase,
     CliAuditCommandIntegrationTestCase,

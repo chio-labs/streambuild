@@ -28,7 +28,7 @@ from streambuild.compiler.shared.models import LoadedPipeline
 from streambuild.executor.backfill._helpers.behavior import (
     resolve_unsupported_bounded_replay_behavior,
 )
-from streambuild.integrations.clickhouse.client import ClickHouseClient
+from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 
 
 def run_plan(

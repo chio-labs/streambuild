@@ -4,7 +4,7 @@ from clickhouse_connect.driver.client import Client
 from streambuild.clickhouse.inspect.main import inspect_managed_table_state
 from streambuild.clickhouse.inspect.models import InspectedManagedTableState
 from streambuild.clickhouse.render._helpers.create_view import render_create_view_ddl
-from streambuild.integrations.clickhouse.client import ClickHouseClient
+from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 from streambuild.integrations.clickhouse.models import ClickHouseConnectionConfig
 from tests.integration.src.streambuild.clickhouse.inspect._test_types import (
     InspectManagedTableStateIntegrationTestCase,

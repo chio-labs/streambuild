@@ -15,7 +15,7 @@ from streambuild.compiler.shared.models import (
     TableSpec,
     TableStorage,
 )
-from streambuild.integrations.clickhouse.client import ClickHouseClient
+from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 from streambuild.integrations.clickhouse.models import ClickHouseQueryResult
 from tests.unit.src.streambuild.cli.shared.main._test_types import (
     CliReplaySourceWarningTestCase,

@@ -7,7 +7,7 @@ from streambuild.cli.shared.exceptions import CliUserError
 from streambuild.cli.shared.main._source_validation import (
     validate_declared_external_sources,
 )
-from streambuild.integrations.clickhouse.client import ClickHouseClient
+from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 from tests.unit.src.streambuild.cli.shared.main._test_types import (
     CliExternalSourceValidationErrorTestCase,
 )
