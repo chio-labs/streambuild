@@ -5,10 +5,10 @@ from typing import cast
 import pytest
 
 from streambuild.cli.shared.exceptions import CliUserError
-from streambuild.cli.shared.main._timestamps import (
+from streambuild.cli.shared.main._convert_utc_timestamp_for_clickhouse import (
     convert_utc_timestamp_for_clickhouse,
-    normalize_cli_start_time,
 )
+from streambuild.cli.shared.main._normalize_cli_start_time import normalize_cli_start_time
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 from streambuild.integrations.clickhouse.models import ClickHouseQueryResult
 from tests.unit.src.streambuild.cli.shared.main._test_types import (

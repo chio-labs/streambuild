@@ -4,7 +4,7 @@ from pathlib import Path
 
 from streambuild.cli.backfill.models import BackfillPreviewContext
 from streambuild.cli.shared.exceptions import CliUserError
-from streambuild.cli.shared.main._project import resolve_default_database
+from streambuild.cli.shared.main._resolve_default_database import resolve_default_database
 from streambuild.cli.shared.main._selection import resolve_selection
 from streambuild.cli.shared.main._source_validation import (
     validate_declared_external_sources,

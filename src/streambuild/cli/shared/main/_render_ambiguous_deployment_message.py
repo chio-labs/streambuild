@@ -1,3 +1,5 @@
+"""Render the message shown when a deployment choice is ambiguous."""
+
 from __future__ import annotations
 
 from streambuild.cli.shared.main._cli_style import cli_style
@@ -42,12 +44,3 @@ def render_ambiguous_deployment_message(
     candidate = sorted_candidates[0]
     lines.append(f"- stb {command_name} --deployment-id {candidate.deployment_id}")
     return "\n".join(lines)
-
-
-def render_no_deployment_candidates_message(*, command_name: str, database: str) -> str:
-    return "\n".join(
-        [
-            cli_style().title(f"No staged deployment candidates are available for {command_name}"),
-            cli_style().label_value(label="Database", value=database),
-        ]
-    )

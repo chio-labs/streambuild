@@ -1,10 +1,10 @@
+"""CLI-facing ClickHouse error translation helpers for main commands."""
+
 from streambuild.integrations.clickhouse.constants import (
     AUTHENTICATION_FAILED_ERROR_CODE,
     AUTHENTICATION_FAILED_MESSAGE,
     UNKNOWN_TABLE_ERROR_CODE,
 )
-
-"""CLI-facing ClickHouse error translation helpers for main commands."""
 
 
 def render_expected_clickhouse_error(
