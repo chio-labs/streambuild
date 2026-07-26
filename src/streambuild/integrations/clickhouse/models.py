@@ -3,6 +3,8 @@
 from collections.abc import Mapping
 from dataclasses import dataclass
 
+from streambuild.integrations.clickhouse.exceptions import ClickHouseClientError
+
 
 @dataclass(frozen=True)
 class ClickHouseConnectionConfig:
@@ -28,5 +30,5 @@ class ClickHouseQueryResult:
         if not self.column_names:
             if not self.rows:
                 return ()
-            raise ValueError("Query result does not include column names")
+            raise ClickHouseClientError("Query result does not include column names")
         return tuple(dict(zip(self.column_names, row, strict=True)) for row in self.rows)

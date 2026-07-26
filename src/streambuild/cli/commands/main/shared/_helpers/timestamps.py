@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
+from streambuild.cli.commands.main.shared.exceptions import CliUserError
 from streambuild.integrations.clickhouse.client import ClickHouseClient
 
 
@@ -23,7 +24,7 @@ def normalize_cli_start_time(raw_value: str) -> str:
         if date_format == "%Y-%m-%d":
             return parsed_value.strftime("%Y-%m-%d 00:00:00.000")
         return parsed_value.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-    raise ValueError(
+    raise CliUserError(
         "--start-time must be YYYY-MM-DD or a UTC timestamp like YYYY-MM-DDTHH:MM:SS[.sss][Z]"
     )
 
@@ -35,7 +36,7 @@ def convert_utc_timestamp_for_clickhouse(
 ) -> str:
     timezone_rows: tuple[tuple[object, ...], ...] = client.query("SELECT timezone()").rows
     if not timezone_rows:
-        raise ValueError("Could not determine ClickHouse server timezone")
+        raise CliUserError("Could not determine ClickHouse server timezone")
     timezone_name: str = str(timezone_rows[0][0])
     parsed_timestamp: datetime = datetime.strptime(utc_timestamp, "%Y-%m-%d %H:%M:%S.%f").replace(
         tzinfo=UTC

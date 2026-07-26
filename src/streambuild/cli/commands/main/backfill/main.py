@@ -11,6 +11,7 @@ from streambuild.cli.commands.main.shared._helpers.timestamps import (
     convert_utc_timestamp_for_clickhouse,
     normalize_cli_start_time,
 )
+from streambuild.cli.commands.main.shared.exceptions import CliUserError
 from streambuild.compiler.compile.exceptions import TransformSqlContractError
 from streambuild.executor.backfill.main import execute_backfill
 from streambuild.executor.backfill.models import BackfillBootstrapRequest, BackfillExecutionResult
@@ -50,7 +51,7 @@ def run_backfill(
                 client=client,
                 utc_timestamp=normalize_cli_start_time(start_time),
             )
-        except ValueError as error:
+        except (CliUserError, ValueError) as error:
             print(str(error), file=sys.stderr)
             return 1
 
@@ -65,7 +66,7 @@ def run_backfill(
             start_time=normalized_start_time,
             client=client,
         )
-    except (TransformSqlContractError, ValueError) as error:
+    except (CliUserError, TransformSqlContractError, ValueError) as error:
         print(str(error), file=sys.stderr)
         return 1
 

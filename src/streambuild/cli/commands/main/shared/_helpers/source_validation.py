@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
+from streambuild.cli.commands.main.shared.exceptions import CliUserError
 from streambuild.compiler.compile.models import (
     CompiledExternalSource,
     CompiledPipeline,
@@ -38,7 +39,7 @@ def validate_declared_external_sources(
             table_name=external_source_replay_config.table_name,
         )
         if not column_types_by_name:
-            raise ValueError(
+            raise CliUserError(
                 "Adopted source table '"
                 f"{external_source_replay_config.table_name}"
                 "' does not exist in "
@@ -119,7 +120,7 @@ def _validate_injected_alias_collisions(
         if physical_name is None or alias_name == physical_name:
             continue
         if alias_name in column_types_by_name:
-            raise ValueError(
+            raise CliUserError(
                 "Adopted source table '"
                 f"{external_source_replay_config.table_name}"
                 "' already defines column '"
@@ -155,12 +156,12 @@ def _validate_declared_column(
         return
     column_type: str | None = column_types_by_name.get(column_name)
     if column_type is None:
-        raise ValueError(
+        raise CliUserError(
             f"Adopted source table '{table_name}' is missing declared {column_role} column "
             f"'{column_name}'"
         )
     if require_datetime and "datetime" not in column_type.lower():
-        raise ValueError(
+        raise CliUserError(
             f"Adopted source table '{table_name}' declares {column_role} column '{column_name}' "
             f"with incompatible type '{column_type}'"
         )

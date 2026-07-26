@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from streambuild.compiler.testing.models import SqlTestCase, SqlTestTargetCase
+from streambuild.executor.testing.exceptions import SqlTestExecutionError
 from streambuild.executor.testing.models import SqlTestExecutionResult, SqlTestTargetExecutionResult
 from streambuild.integrations.clickhouse.client import ClickHouseClient
 from streambuild.integrations.clickhouse.models import ClickHouseQueryResult
@@ -34,7 +35,7 @@ def execute_sql_tests(
                 if diff_type == "unexpected":
                     unexpected_rows.append(data_row)
                     continue
-                raise ValueError(
+                raise SqlTestExecutionError(
                     f"SQL test query for '{test_case.file_path}' returned unsupported diff type "
                     f"'{diff_type}'"
                 )

@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import defaultdict
 from pathlib import Path
 
+from streambuild.cli.commands.main.shared.exceptions import CliUserError
 from streambuild.compiler.compile.models import CompiledPipeline, CompiledTransformStep, ParsedRef
 from streambuild.compiler.shared.models import LoadedSqlTest
 
@@ -37,7 +38,7 @@ def select_loaded_sql_tests(
     )
     if selected_tests:
         return selected_tests
-    raise ValueError("No SQL tests matched the requested selectors or paths.")
+    raise CliUserError("No SQL tests matched the requested selectors or paths.")
 
 
 def _resolve_selected_paths(*, paths: tuple[Path, ...], project_dir: Path) -> set[Path]:
@@ -74,7 +75,7 @@ def _resolve_selected_target_names(
         include_downstream: bool = raw_selector.endswith("+")
         selector: str = raw_selector.removeprefix("+").removesuffix("+")
         if not selector or "+" in selector:
-            raise ValueError(
+            raise CliUserError(
                 f"Unsupported test selector syntax '{raw_selector}'. Use bare model names, "
                 "pipeline:<name>, or optional leading/trailing '+'."
             )
@@ -111,18 +112,18 @@ def _resolve_selector_target_names(
 ) -> tuple[str, ...]:
     if ":" not in selector:
         if selector not in known_model_names:
-            raise ValueError(f"Unknown SQL test selector model '{selector}'")
+            raise CliUserError(f"Unknown SQL test selector model '{selector}'")
         return (selector,)
     selector_kind: str
     selector_value: str
     selector_kind, selector_value = selector.split(":", 1)
     if selector_kind != "pipeline":
-        raise ValueError(f"Unsupported test selector namespace '{selector_kind}' in '{selector}'")
+        raise CliUserError(f"Unsupported test selector namespace '{selector_kind}' in '{selector}'")
     pipeline_targets: tuple[str, ...] | None = pipeline_model_names.get(selector_value)
     if pipeline_targets is None:
-        raise ValueError(f"Unknown SQL test selector pipeline '{selector_value}'")
+        raise CliUserError(f"Unknown SQL test selector pipeline '{selector_value}'")
     if not pipeline_targets:
-        raise ValueError(
+        raise CliUserError(
             f"SQL test selector pipeline '{selector_value}' does not define any models"
         )
     return pipeline_targets

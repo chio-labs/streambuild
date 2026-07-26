@@ -7,6 +7,7 @@ from streambuild.compiler.shared._helpers.deployment_names import deployment_id_
 from streambuild.compiler.shared.constants import DESIRED_OBJECT_TYPE_TABLE
 from streambuild.compiler.shared.models import ObjectKey
 from streambuild.executor.audit_backfill.models import AuditDeploymentCandidate
+from streambuild.executor.publish.exceptions import PublishExecutionError
 from streambuild.integrations.clickhouse.client import ClickHouseClient
 
 
@@ -30,9 +31,11 @@ def resolve_publish_deployment_id(
     if len(candidates) == 1:
         return candidates[0].deployment_id
     if not candidates:
-        raise ValueError("No staged deployment candidates are available for publish")
+        raise PublishExecutionError("No staged deployment candidates are available for publish")
     candidate_ids: str = ", ".join(candidate.deployment_id for candidate in candidates)
-    raise ValueError(f"Publish deployment resolution is ambiguous; choose one of: {candidate_ids}")
+    raise PublishExecutionError(
+        f"Publish deployment resolution is ambiguous; choose one of: {candidate_ids}"
+    )
 
 
 def build_publish_deployment_candidates(

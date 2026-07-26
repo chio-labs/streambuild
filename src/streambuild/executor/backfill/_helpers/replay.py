@@ -24,6 +24,7 @@ from streambuild.compiler.shared.constants import (
     REPLAY_TIMESTAMP_COLUMN_NAME,
 )
 from streambuild.compiler.shared.models import DesiredMaterializedView, DesiredTable, ObjectKey
+from streambuild.executor.backfill.exceptions import BackfillExecutionError
 from streambuild.executor.backfill.models import (
     ActiveOffsetFrontierQueryRow,
     ActiveScalarFrontierQueryRow,
@@ -52,7 +53,7 @@ def execute_scalar_replay(
         ReplayLineageMode.LANDED_AT,
         ReplayLineageMode.CURSOR,
     }:
-        raise ValueError(f"Scalar replay does not support mode '{replay_lineage_mode}'")
+        raise BackfillExecutionError(f"Scalar replay does not support mode '{replay_lineage_mode}'")
 
     shadow_name_by_key: dict[ObjectKey, str] = {
         prepared.logical_key: prepared.physical_name
@@ -378,7 +379,7 @@ def _render_scalar_replay_statement(
         dialect="clickhouse",
     )
     if not isinstance(parsed_expression, exp.Select):
-        raise ValueError("Scalar replay expects a SELECT query")
+        raise BackfillExecutionError("Scalar replay expects a SELECT query")
     expression: exp.Select = parsed_expression
     _rewrite_replay_reference_tables(
         expression=expression,
@@ -445,7 +446,7 @@ def _render_offset_replay_statement(
         dialect="clickhouse",
     )
     if not isinstance(parsed_expression, exp.Select):
-        raise ValueError("Offset replay expects a SELECT query")
+        raise BackfillExecutionError("Offset replay expects a SELECT query")
     expression: exp.Select = parsed_expression
     _rewrite_replay_reference_tables(
         expression=expression,
@@ -678,7 +679,7 @@ def _seed_offset_prefix_if_needed(
         live_table_name=live_table_name,
     )
     if not {REPLAY_PARTITION_COLUMN_NAME, REPLAY_OFFSET_COLUMN_NAME}.issubset(live_column_names):
-        raise ValueError(
+        raise BackfillExecutionError(
             "Seeded bounded offset replay requires the active table to preserve "
             f"{REPLAY_PARTITION_COLUMN_NAME} and {REPLAY_OFFSET_COLUMN_NAME}"
         )
@@ -883,7 +884,7 @@ def _load_scalar_boundary_column_type(
         decode=_decode_table_column_system_row,
     )
     if row is None:
-        raise ValueError(
+        raise BackfillExecutionError(
             "Could not resolve boundary column type for '"
             f"{physical_boundary_key}' on {database}.{table_name}"
         )

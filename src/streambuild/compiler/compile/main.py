@@ -11,6 +11,7 @@ from streambuild.compiler.compile._helpers.transforms import (
     relation_names_for_pipeline,
     relation_sqls_for_pipeline,
 )
+from streambuild.compiler.compile.exceptions import PipelineCompileError
 from streambuild.compiler.compile.models import (
     CompiledExternalSource,
     CompiledManagedSource,
@@ -76,7 +77,7 @@ def _resolve_replay_lineage_mode(*, loaded_pipeline: LoadedPipeline) -> ReplayLi
             return ReplayLineageMode.TIMESTAMP
         if loaded_pipeline.pipeline.source.replay_boundary.mode == "cursor":
             return ReplayLineageMode.CURSOR
-        raise ValueError(
+        raise PipelineCompileError(
             "External source replay boundary mode '"
             f"{loaded_pipeline.pipeline.source.replay_boundary.mode}"
             "' is not supported by compile/backfill"

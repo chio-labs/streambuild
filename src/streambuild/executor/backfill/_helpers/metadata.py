@@ -28,6 +28,7 @@ from streambuild.executor.backfill._helpers.reporting import (
     filter_root_backfill_reports_for_deployment,
 )
 from streambuild.executor.backfill.constants import DEPLOYMENT_STATUS_BACKFILLING
+from streambuild.executor.backfill.exceptions import BackfillExecutionError
 from streambuild.executor.backfill.models import RootBackfillReport
 from streambuild.integrations.clickhouse.client import ClickHouseClient
 from streambuild.spec.models.types import ReplayLineageMode
@@ -187,7 +188,7 @@ def _build_deployment_runtime_detail_records(
                 root_materialized_view_by_target_name.get(root_report.root_key.name)
             )
             if root_materialized_view is None:
-                raise ValueError(
+                raise BackfillExecutionError(
                     "Could not resolve deployment runtime detail root "
                     f"'{root_report.root_key.name}' to a selected materialized view target"
                 )

@@ -9,6 +9,7 @@ from streambuild.compiler.shared.constants import (
     TRANSFORM_TABLE_NAME_PREFIX,
 )
 from streambuild.compiler.shared.models import ObjectKey
+from streambuild.executor.publish.exceptions import PublishExecutionError
 from streambuild.executor.publish.models import PublishedView
 from streambuild.integrations.clickhouse.client import ClickHouseClient
 
@@ -41,7 +42,9 @@ def publish_stable_views(
         )
     }
     if not physical_name_by_key:
-        raise ValueError(f"Deployment '{deployment_id}' has no staged physical tables to publish")
+        raise PublishExecutionError(
+            f"Deployment '{deployment_id}' has no staged physical tables to publish"
+        )
     root_key: ObjectKey
     for root_key in tuple(
         sorted(

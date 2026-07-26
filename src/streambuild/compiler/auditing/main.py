@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from streambuild.compiler.auditing.exceptions import AuditCompileError
 from streambuild.compiler.compile.models import CompiledPipeline
 from streambuild.compiler.shared.models import LoadedSqlAudit
 
@@ -26,7 +27,7 @@ def validate_sql_audits(
             if model_name not in known_model_names
         )
         if unknown_model_names:
-            raise ValueError(
+            raise AuditCompileError(
                 f"SQL audit '{loaded_audit.file_path}' references unknown models: "
                 f"{', '.join(unknown_model_names)}"
             )

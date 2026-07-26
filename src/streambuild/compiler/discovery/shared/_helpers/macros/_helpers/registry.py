@@ -13,6 +13,7 @@ from streambuild.compiler.discovery.shared._helpers.macros.constants import (
     MACRO_DIRECTORY_NAME,
     PROJECT_FILE_NAME,
 )
+from streambuild.compiler.discovery.shared._helpers.macros.exceptions import MacroError
 from streambuild.compiler.discovery.shared._helpers.macros.models import LoadedMacro
 
 
@@ -35,7 +36,7 @@ def load_project_macros(file_path: Path) -> dict[str, LoadedMacro]:
         ):
             existing_macro: LoadedMacro | None = loaded_macros.get(loaded_macro.name)
             if existing_macro is not None:
-                raise ValueError(
+                raise MacroError(
                     f"Macro name collision for '{loaded_macro.name}' in '{macro_file_path}' and "
                     f"'{existing_macro.file_path}'"
                 )
@@ -60,12 +61,12 @@ def _load_macro_module(macro_file_path: Path) -> ModuleType:
         macro_file_path,
     )
     if module_spec is None or module_spec.loader is None:
-        raise ValueError(f"Failed to load {macro_file_path}: could not build import spec")
+        raise MacroError(f"Failed to load {macro_file_path}: could not build import spec")
     module: ModuleType = importlib.util.module_from_spec(module_spec)
     try:
         module_spec.loader.exec_module(module)
     except Exception as error:
-        raise ValueError(f"Failed to load {macro_file_path}: {error}") from error
+        raise MacroError(f"Failed to load {macro_file_path}: {error}") from error
     return module
 
 

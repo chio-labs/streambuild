@@ -8,6 +8,7 @@ from streambuild.cli.commands.main.shared._helpers.timestamps import (
     convert_utc_timestamp_for_clickhouse,
     normalize_cli_start_time,
 )
+from streambuild.cli.commands.main.shared.exceptions import CliUserError
 from streambuild.integrations.clickhouse.client import ClickHouseClient
 from streambuild.integrations.clickhouse.models import ClickHouseQueryResult
 from tests.unit.src.streambuild.cli.commands.main.shared._test_types import (
@@ -60,7 +61,7 @@ def test_given_valid_cli_start_time_when_normalizing_then_it_returns_internal_ti
 def test_given_invalid_cli_start_time_when_normalizing_then_it_raises_clear_error(
     test_case: CliStartTimeNormalizationErrorTestCase,
 ) -> None:
-    with pytest.raises(ValueError, match=test_case.expected_error_fragment):
+    with pytest.raises(CliUserError, match=test_case.expected_error_fragment):
         normalize_cli_start_time(test_case.raw_value)
 
 

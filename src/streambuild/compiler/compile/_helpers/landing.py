@@ -6,6 +6,7 @@ from streambuild.compiler.compile._helpers.naming import (
     raw_table_name,
 )
 from streambuild.compiler.compile.constants import RAW_LANDING_COLUMNS
+from streambuild.compiler.compile.exceptions import PipelineCompileError
 from streambuild.compiler.compile.models import CompiledExternalSource, CompiledManagedSource
 from streambuild.compiler.shared.constants import (
     DESIRED_OBJECT_TYPE_KAFKA_TABLE,
@@ -36,7 +37,7 @@ def compile_kafka_landing(pipeline: Pipeline) -> CompiledManagedSource:
     """Compile desired landing objects for a pipeline source."""
 
     if not isinstance(pipeline.source, KafkaLandingStep):
-        raise RuntimeError("Managed landing compilation requires a KafkaLandingStep source")
+        raise PipelineCompileError("Managed landing compilation requires a KafkaLandingStep source")
     source: KafkaLandingStep = pipeline.source
     resolved_kafka_settings: ComparableKafkaSettings = normalize_kafka_settings(
         pipeline_name=pipeline.name,
@@ -95,7 +96,9 @@ def compile_external_source(pipeline: Pipeline) -> CompiledExternalSource:
     """Compile adopted source metadata for an external replay-driving table."""
 
     if not isinstance(pipeline.source, ExternalTableSourceStep):
-        raise RuntimeError("External source compilation requires an ExternalTableSourceStep source")
+        raise PipelineCompileError(
+            "External source compilation requires an ExternalTableSourceStep source"
+        )
     source: ExternalTableSourceStep = pipeline.source
     return CompiledExternalSource(
         source=source,
@@ -119,7 +122,7 @@ def kafka_landing_columns(table_format: str) -> tuple[Column, ...]:
     if table_format == "JSONAsString":
         return (Column(name="message", type="String"),)
 
-    raise ValueError(
+    raise PipelineCompileError(
         f"Kafka landing currently supports only the 'JSONAsString' format; got '{table_format}'"
     )
 
@@ -166,7 +169,7 @@ def validate_kafka_setting_overrides(kafka_settings: KafkaSettings) -> None:
         )
     )
     if overlapping_keys:
-        raise ValueError(
+        raise PipelineCompileError(
             "Kafka settings override map cannot redefine typed Kafka settings: "
             + ", ".join(overlapping_keys)
         )

@@ -16,6 +16,7 @@ from streambuild.executor.backfill._helpers.watermarks import (
     resolve_offset_watermarks,
     resolve_scalar_watermarks,
 )
+from streambuild.executor.backfill.exceptions import BackfillExecutionError
 from streambuild.executor.backfill.models import (
     BackfillBootstrapRequest,
     BackfillBootstrapResult,
@@ -106,6 +107,6 @@ def execute_backfill(
             boundary_time=boundary_time,
         )
 
-    raise ValueError(
+    raise BackfillExecutionError(
         f"Backfill execution does not yet support replay mode '{request.replay_lineage_mode}'"
     )

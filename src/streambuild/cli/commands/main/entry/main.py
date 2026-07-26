@@ -159,7 +159,7 @@ def _main_with_dependencies(
             if clickhouse_client is not None:
                 return clickhouse_client
             if connection is None:
-                raise RuntimeError("CLI entrypoint failed to resolve a ClickHouse connection")
+                raise CliUserError("CLI entrypoint failed to resolve a ClickHouse connection")
             return build_clickhouse_client_for_connection(connection=connection)
 
         if args.command == "test":
@@ -202,7 +202,7 @@ def _main_with_dependencies(
                     client=resolved_client(),
                 )
             if pipelines_root is None:
-                raise RuntimeError("Audit command requires a resolved pipelines root")
+                raise CliUserError("Audit command requires a resolved pipelines root")
             return handlers.run_audit(
                 pipelines_root=pipelines_root,
                 project_dir=resolved_project_dir or pipelines_root.parent,

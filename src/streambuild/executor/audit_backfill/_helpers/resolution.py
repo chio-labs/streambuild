@@ -8,6 +8,7 @@ from streambuild.clickhouse.inspect.models import (
 from streambuild.compiler.shared._helpers.deployment_names import deployment_id_from_physical_name
 from streambuild.compiler.shared.constants import DESIRED_OBJECT_TYPE_TABLE
 from streambuild.compiler.shared.models import ObjectKey
+from streambuild.executor.audit_backfill.exceptions import AuditBackfillExecutionError
 from streambuild.executor.audit_backfill.models import AuditDeploymentCandidate
 from streambuild.integrations.clickhouse.client import ClickHouseClient
 
@@ -32,9 +33,11 @@ def resolve_audit_deployment_id(
     if len(candidates) == 1:
         return candidates[0].deployment_id
     if not candidates:
-        raise ValueError("No staged deployment candidates are available for audit")
+        raise AuditBackfillExecutionError("No staged deployment candidates are available for audit")
     candidate_ids: str = ", ".join(candidate.deployment_id for candidate in candidates)
-    raise ValueError(f"Audit deployment resolution is ambiguous; choose one of: {candidate_ids}")
+    raise AuditBackfillExecutionError(
+        f"Audit deployment resolution is ambiguous; choose one of: {candidate_ids}"
+    )
 
 
 def build_audit_deployment_candidates(

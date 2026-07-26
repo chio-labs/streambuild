@@ -5,6 +5,7 @@ from dataclasses import replace
 import pytest
 
 from streambuild.cli.commands.main.shared._helpers.selection import resolve_selection
+from streambuild.cli.commands.main.shared.exceptions import CliUserError
 from streambuild.cli.commands.main.shared.models import SelectionResolution
 from streambuild.compiler.compile.models import CompiledPipeline
 from streambuild.spec.models.types import ReplayLineageMode
@@ -107,7 +108,7 @@ def test_given_invalid_selectors_when_resolving_then_it_raises_clear_error(
 ) -> None:
     compiled_pipelines: tuple[CompiledPipeline, ...] = compile_selector_project_pipelines()
 
-    with pytest.raises(ValueError, match=test_case.expected_error_fragment):
+    with pytest.raises(CliUserError, match=test_case.expected_error_fragment):
         resolve_selection(compiled_pipelines=compiled_pipelines, selectors=test_case.selectors)
 
 
@@ -140,7 +141,7 @@ def test_given_conflicting_selected_pipeline_modes_when_resolving_then_it_raises
         for compiled_pipeline in compiled_pipelines
     )
 
-    with pytest.raises(ValueError, match=test_case.expected_error_fragment):
+    with pytest.raises(CliUserError, match=test_case.expected_error_fragment):
         resolve_selection(
             compiled_pipelines=mutated_compiled_pipelines, selectors=test_case.selectors
         )

@@ -25,6 +25,7 @@ from streambuild.compiler.shared.models import (
     MaterializedViewSpec,
     ObjectKey,
 )
+from streambuild.executor.backfill.exceptions import BackfillExecutionError
 from streambuild.integrations.clickhouse.client import ClickHouseClient
 
 
@@ -128,7 +129,7 @@ def _render_shadow_ddl(
     database: str,
 ) -> str:
     if isinstance(desired_object, DesiredKafkaTable):
-        raise ValueError("Backfill bootstrap does not support shadow Kafka tables")
+        raise BackfillExecutionError("Backfill bootstrap does not support shadow Kafka tables")
     if isinstance(desired_object, DesiredTable):
         return render_create_table_ddl(
             table=replace(

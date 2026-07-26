@@ -19,6 +19,7 @@ from streambuild.compiler.compile._helpers.sql_contract import (
     validate_partition_by_expression,
     validate_ttl_expression,
 )
+from streambuild.compiler.compile.exceptions import PipelineCompileError
 from streambuild.compiler.compile.models import CompiledTransformStep, ParsedRef
 from streambuild.compiler.shared.constants import (
     DESIRED_OBJECT_TYPE_MATERIALIZED_VIEW,
@@ -88,7 +89,7 @@ def compile_transform(
         transform=transform, query=query
     )
     if transform.source not in refs:
-        raise ValueError(
+        raise PipelineCompileError(
             f"Transform '{transform.name}' must reference its source '{transform.source}' in SQL"
         )
 
@@ -189,7 +190,7 @@ def load_transform_query(*, transform: TransformStep, pipeline_file_path: Path) 
         return transform.query.strip()
 
     if transform.sql_file is None:
-        raise ValueError(
+        raise PipelineCompileError(
             f"Transform '{transform.name}' must define exactly one of 'query' or 'sql_file'"
         )
     sql_file_path: Path = (pipeline_file_path.parent / transform.sql_file).resolve()
@@ -205,18 +206,18 @@ def validate_transform_refs(
     for parsed_ref in parsed_refs:
         if parsed_ref.name == transform.source:
             if parsed_ref.ref_type is not None:
-                raise ValueError(
+                raise PipelineCompileError(
                     f"Transform '{transform.name}' must not declare ref_type for its driving input "
                     f"'{transform.source}'"
                 )
             continue
         if parsed_ref.ref_type is None:
-            raise ValueError(
+            raise PipelineCompileError(
                 f"Transform '{transform.name}' must declare ref_type for additional ref "
                 f"'{parsed_ref.name}'"
             )
         if parsed_ref.relation_type != SqlRelationType.REF:
-            raise ValueError(
+            raise PipelineCompileError(
                 f"Transform '{transform.name}' must reference additional dependency "
                 f"'{parsed_ref.name}' with __ref(...)"
             )

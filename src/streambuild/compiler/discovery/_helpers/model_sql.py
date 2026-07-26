@@ -17,6 +17,7 @@ from streambuild.compiler.discovery._helpers.constants import (
     DEFAULT_SQL_MODEL_ORDER_BY,
     MODEL_HEADER_PATTERN,
 )
+from streambuild.compiler.discovery.exceptions import PipelineDiscoveryError
 from streambuild.compiler.discovery.shared._helpers.macros.main import expand_project_sql_macros
 from streambuild.spec.models.steps import (
     SchemaChangeBackfillPolicy,
@@ -65,7 +66,7 @@ def parse_model_sql(*, contents: str, file_path: Path) -> tuple[dict[str, Any], 
 
     header_match: re.Match[str] | None = MODEL_HEADER_PATTERN.match(contents)
     if header_match is None:
-        raise ValueError(
+        raise PipelineDiscoveryError(
             f"SQL model '{file_path}' must start with a MODEL(...) header as the first "
             "non-whitespace content"
         )
@@ -78,7 +79,9 @@ def parse_model_sql(*, contents: str, file_path: Path) -> tuple[dict[str, Any], 
         file_path=file_path,
     )
     if not query:
-        raise ValueError(f"SQL model '{file_path}' must contain a SELECT query after MODEL(...)")
+        raise PipelineDiscoveryError(
+            f"SQL model '{file_path}' must contain a SELECT query after MODEL(...)"
+        )
     return header_values, query
 
 
@@ -87,7 +90,7 @@ def infer_transform_source(*, query: str, file_path: Path) -> str:
 
     parsed_refs: tuple[ParsedRef, ...] = tuple(extract_refs(query))
     if not parsed_refs:
-        raise ValueError(
+        raise PipelineDiscoveryError(
             f"SQL model '{file_path}' must reference exactly one driving input using "
             "__source(...) or __ref(...)"
         )
@@ -102,7 +105,7 @@ def infer_transform_source(*, query: str, file_path: Path) -> str:
     }
     if source_ref_names:
         if len(source_ref_names) != 1:
-            raise ValueError(
+            raise PipelineDiscoveryError(
                 f"SQL model '{file_path}' must contain exactly one unique __source(...) "
                 "when source refs are present"
             )
@@ -112,19 +115,19 @@ def infer_transform_source(*, query: str, file_path: Path) -> str:
             if parsed_ref.relation_type == SqlRelationType.REF and parsed_ref.ref_type is None
         }
         if untyped_ref_names:
-            raise ValueError(
+            raise PipelineDiscoveryError(
                 f"SQL model '{file_path}' must not mix __source(...) with untyped __ref(...)"
             )
         return next(iter(source_ref_names))
     if len(unique_ref_names) == 1 and all(
         parsed_ref.ref_type is not None for parsed_ref in parsed_refs
     ):
-        raise ValueError(
+        raise PipelineDiscoveryError(
             f"SQL model '{file_path}' must not declare ref_type for its driving input "
             f"'{next(iter(unique_ref_names))}'"
         )
     if len(driving_ref_names) != 1:
-        raise ValueError(
+        raise PipelineDiscoveryError(
             f"SQL model '{file_path}' must contain exactly one unique untyped driving input "
             "when multiple relations are present"
         )
@@ -139,7 +142,9 @@ def _parse_model_header(*, header: str, file_path: Path) -> dict[str, Any]:
     if not isinstance(parsed_header, dict) or not all(
         isinstance(key, str) for key in parsed_header
     ):
-        raise ValueError(f"MODEL(...) in '{file_path}' must define a mapping of key: value pairs")
+        raise PipelineDiscoveryError(
+            f"MODEL(...) in '{file_path}' must define a mapping of key: value pairs"
+        )
     typed_parsed_header: dict[str, Any] = parsed_header
 
     unknown_keys: list[str] = [
@@ -147,7 +152,7 @@ def _parse_model_header(*, header: str, file_path: Path) -> dict[str, Any]:
     ]
     if unknown_keys:
         unknown_key_list: str = ", ".join(sorted(unknown_keys))
-        raise ValueError(
+        raise PipelineDiscoveryError(
             f"MODEL(...) in '{file_path}' contains unsupported keys: {unknown_key_list}"
         )
     return typed_parsed_header
@@ -163,7 +168,9 @@ def _normalize_model_header_yaml(header: str) -> str:
 def _require_string(*, header_values: dict[str, Any], key: str, file_path: Path) -> str:
     value: Any = header_values.get(key)
     if not isinstance(value, str) or not value:
-        raise ValueError(f"MODEL(...) in '{file_path}' must define '{key}' as a non-empty string")
+        raise PipelineDiscoveryError(
+            f"MODEL(...) in '{file_path}' must define '{key}' as a non-empty string"
+        )
     return value
 
 
@@ -177,7 +184,7 @@ def _sql_model_engine(*, header_values: dict[str, Any], file_path: Path) -> str:
 def _require_string_list(*, header_values: dict[str, Any], key: str, file_path: Path) -> list[str]:
     value: Any = header_values.get(key)
     if not isinstance(value, list) or not value or not all(isinstance(item, str) for item in value):
-        raise ValueError(
+        raise PipelineDiscoveryError(
             f"MODEL(...) in '{file_path}' must define '{key}' as a non-empty list of strings"
         )
     return value
@@ -195,7 +202,9 @@ def _optional_string(*, header_values: dict[str, Any], key: str, file_path: Path
     if value is None:
         return None
     if not isinstance(value, str) or not value:
-        raise ValueError(f"MODEL(...) in '{file_path}' must define '{key}' as a string when set")
+        raise PipelineDiscoveryError(
+            f"MODEL(...) in '{file_path}' must define '{key}' as a string when set"
+        )
     return value
 
 
@@ -206,7 +215,9 @@ def _optional_string_mapping(
     if value is None:
         return None
     if not isinstance(value, dict) or not all(isinstance(map_key, str) for map_key in value):
-        raise ValueError(f"MODEL(...) in '{file_path}' must define '{key}' as a mapping when set")
+        raise PipelineDiscoveryError(
+            f"MODEL(...) in '{file_path}' must define '{key}' as a mapping when set"
+        )
     return {map_key: str(map_value) for map_key, map_value in value.items()}
 
 
@@ -215,7 +226,7 @@ def _optional_replay_anchor(*, header_values: dict[str, Any], file_path: Path) -
     if value is None:
         return ReplayAnchorMode(ReplayAnchorMode.AUTO)
     if value not in {ReplayAnchorMode.AUTO, ReplayAnchorMode.NEVER}:
-        raise ValueError(
+        raise PipelineDiscoveryError(
             f"MODEL(...) in '{file_path}' must define 'replay_anchor' as 'auto' or 'never'"
         )
     return ReplayAnchorMode(value)
@@ -228,7 +239,7 @@ def _optional_schema_change_backfill(
     if value is None:
         return None
     if not isinstance(value, dict) or not all(isinstance(map_key, str) for map_key in value):
-        raise ValueError(
+        raise PipelineDiscoveryError(
             "MODEL(...) in "
             f"'{file_path}' must define 'schema_change_backfill' as a mapping when set"
         )
@@ -238,7 +249,7 @@ def _optional_schema_change_backfill(
     ]
     if unknown_keys:
         unknown_key_list: str = ", ".join(sorted(unknown_keys))
-        raise ValueError(
+        raise PipelineDiscoveryError(
             f"MODEL(...) in '{file_path}' contains unsupported schema_change_backfill keys: "
             f"{unknown_key_list}"
         )
@@ -266,7 +277,7 @@ def _optional_schema_change_backfill_rule(
     if value is None:
         return None
     if not isinstance(value, str) or not value:
-        raise ValueError(
+        raise PipelineDiscoveryError(
             f"MODEL(...) in '{file_path}' must define schema_change_backfill.{key} as a string"
         )
     return _parse_schema_change_backfill_rule(value=value, key=key, file_path=file_path)
@@ -282,7 +293,7 @@ def _parse_schema_change_backfill_rule(
         )
     bounded_match: re.Match[str] | None = re.fullmatch(r"bounded\((\d+)([dhms])\)", normalized)
     if bounded_match is None:
-        raise ValueError(
+        raise PipelineDiscoveryError(
             f"MODEL(...) in '{file_path}' must define schema_change_backfill.{key} as 'full' "
             "or 'bounded(<duration>)'"
         )
@@ -316,7 +327,7 @@ def _optional_bounded_replay_fallback(
         BoundedReplayFallback.FULL_REFRESH,
         BoundedReplayFallback.BOUNDED_WITHOUT_HISTORY,
     }:
-        raise ValueError(
+        raise PipelineDiscoveryError(
             f"MODEL(...) in '{file_path}' has unsupported bounded_replay_fallback '{value}'"
         )
     return BoundedReplayFallback(value)

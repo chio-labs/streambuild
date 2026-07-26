@@ -12,6 +12,7 @@ from streambuild.compiler.actual_state._helpers.metadata import (
     load_latest_object_state_records_by_keys,
     load_object_state_records_by_deployments,
 )
+from streambuild.compiler.actual_state.exceptions import ActualStateError
 from streambuild.compiler.actual_state.main import build_actual_state
 from streambuild.compiler.actual_state.models import (
     ActualKafkaTable,
@@ -275,7 +276,7 @@ def _load_active_table_specs(
     for table_name in table_names:
         storage_row: TableStorageSystemRow | None = storage_row_by_table_name.get(table_name)
         if storage_row is None:
-            raise ValueError(f"Expected live table metadata for {database}.{table_name}")
+            raise ActualStateError(f"Expected live table metadata for {database}.{table_name}")
         table_specs_by_name[table_name] = TableSpec(
             columns=tuple(
                 Column(

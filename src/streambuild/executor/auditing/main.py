@@ -7,6 +7,7 @@ from collections.abc import Mapping
 from streambuild.compiler.compile._helpers.refs import replace_refs
 from streambuild.compiler.shared.models import LoadedSqlAudit
 from streambuild.executor.auditing.constants import AUDIT_SAMPLE_LIMIT
+from streambuild.executor.auditing.exceptions import AuditExecutionError
 from streambuild.executor.auditing.models import SqlAuditResult, SqlAuditRunResult
 from streambuild.integrations.clickhouse.client import ClickHouseClient
 from streambuild.integrations.clickhouse.models import ClickHouseQueryResult
@@ -66,8 +67,8 @@ def _query_failing_row_count(*, query: str, client: ClickHouseClient) -> int:
         f"SELECT count() AS value FROM ({query}) AS __streambuild_audit"
     )
     if not result.rows:
-        raise ValueError("Expected a count row from SQL audit execution")
+        raise AuditExecutionError("Expected a count row from SQL audit execution")
     count_value: object = result.rows[0][0]
     if not isinstance(count_value, (int, float, str)):
-        raise ValueError("SQL audit count query returned a non-numeric row count")
+        raise AuditExecutionError("SQL audit count query returned a non-numeric row count")
     return int(count_value)

@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 
+from streambuild.spec.models.exceptions import ProjectSpecError
 from streambuild.spec.models.types import (
     BoundedReplayFallback,
     ReplayAnchorMode,
@@ -110,6 +111,6 @@ class TransformStep:
                 BoundedReplayFallback(self.bounded_replay_fallback),
             )
         if bool(self.query) == bool(self.sql_file):
-            raise ValueError("Exactly one of 'query' or 'sql_file' must be provided")
+            raise ProjectSpecError("Exactly one of 'query' or 'sql_file' must be provided")
         if not self.order_by:
-            raise ValueError("TransformStep must declare at least one ORDER BY expression")
+            raise ProjectSpecError("TransformStep must declare at least one ORDER BY expression")

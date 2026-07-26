@@ -1,6 +1,7 @@
 import pytest
 
 from streambuild.compiler.compile._helpers.refs import replace_refs
+from streambuild.compiler.compile.exceptions import PipelineCompileError
 from tests.unit.src.streambuild.compiler.compile._helpers.refs._test_types import (
     ReplaceRefsErrorTestCase,
     ReplaceRefsTestCase,
@@ -65,10 +66,10 @@ def test_given_sql_when_replacing_refs_then_it_rewrites_only_real_ref_calls(
     "test_case",
     [
         ReplaceRefsErrorTestCase(
-            description="raises key error when ref is unresolved",
+            description="raises a structured compile error when ref is unresolved",
             sql='SELECT * FROM __source("missing")',
             resolver=build_ref_resolver(),
-            expected_error_type=KeyError,
+            expected_error_type=PipelineCompileError,
             expected_error_fragment="Unresolved ref: missing",
         )
     ],
