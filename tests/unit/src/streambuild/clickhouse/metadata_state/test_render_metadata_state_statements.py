@@ -1,8 +1,10 @@
 import pytest
 
-from streambuild.clickhouse.metadata_state._helpers.ddl.main import render_metadata_state_statements
-from streambuild.clickhouse.metadata_state._helpers.statements.main import (
+from streambuild.clickhouse.metadata_state.main.build_metadata_state_insert_statements import (
     build_metadata_state_insert_statements,
+)
+from streambuild.clickhouse.metadata_state.main.render_metadata_state_statements import (
+    render_metadata_state_statements,
 )
 from streambuild.clickhouse.metadata_state.models import RenderedClickHouseStatement
 from tests.unit.src.streambuild.clickhouse.metadata_state._test_types import (

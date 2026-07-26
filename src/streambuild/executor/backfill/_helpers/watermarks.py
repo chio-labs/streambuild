@@ -2,7 +2,7 @@
 
 from collections.abc import Mapping
 
-from streambuild.clickhouse.metadata_state._helpers.statements.main import (
+from streambuild.clickhouse.metadata_state.main.build_metadata_state_insert_statements import (
     build_metadata_state_insert_statements,
 )
 from streambuild.clickhouse.metadata_state.models import RenderedClickHouseStatement
