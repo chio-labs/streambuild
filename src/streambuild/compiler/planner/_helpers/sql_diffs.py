@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import difflib
 
-from streambuild.clickhouse.render._helpers.create_kafka_table import (
+from streambuild.clickhouse.render.main.render_create_kafka_table_ddl import (
     render_create_kafka_table_ddl,
 )
-from streambuild.clickhouse.render._helpers.create_materialized_view import (
+from streambuild.clickhouse.render.main.render_create_materialized_view_ddl import (
     render_create_materialized_view_ddl,
 )
-from streambuild.clickhouse.render._helpers.create_table import render_create_table_ddl
+from streambuild.clickhouse.render.main.render_create_table_ddl import render_create_table_ddl
 from streambuild.compiler.actual_state.models import (
     ActualKafkaTable,
     ActualMaterializedView,

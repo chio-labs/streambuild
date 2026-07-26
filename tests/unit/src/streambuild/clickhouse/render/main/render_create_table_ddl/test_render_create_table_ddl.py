@@ -1,10 +1,12 @@
 import pytest
 
-from streambuild.clickhouse.render._helpers.create_table import render_create_table_ddl
-from tests.unit.src.streambuild.clickhouse.render._helpers.create_table._test_types import (
+from streambuild.clickhouse.render.main.render_create_table_ddl import render_create_table_ddl
+from tests.unit.src.streambuild.clickhouse.render.main.render_create_table_ddl._test_types import (
     RenderCreateTableDdlTestCase,
 )
-from tests.unit.src.streambuild.clickhouse.render._helpers.create_table.helpers import build_table
+from tests.unit.src.streambuild.clickhouse.render.main.render_create_table_ddl.helpers import (
+    build_table,
+)
 
 
 @pytest.mark.parametrize(

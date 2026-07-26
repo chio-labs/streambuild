@@ -1,12 +1,12 @@
 import pytest
 
-from streambuild.clickhouse.render._helpers.create_kafka_table import (
+from streambuild.clickhouse.render.main.render_create_kafka_table_ddl import (
     render_create_kafka_table_ddl,
 )
-from tests.unit.src.streambuild.clickhouse.render._helpers.create_kafka_table._test_types import (
+from tests.unit.src.streambuild.clickhouse.render.main.render_create_kafka_table_ddl._test_types import (  # noqa: E501
     RenderCreateKafkaTableDdlTestCase,
 )
-from tests.unit.src.streambuild.clickhouse.render._helpers.create_kafka_table.helpers import (
+from tests.unit.src.streambuild.clickhouse.render.main.render_create_kafka_table_ddl.helpers import (  # noqa: E501
     build_kafka_table,
 )
 

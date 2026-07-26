@@ -7,13 +7,13 @@ from clickhouse_connect.driver.client import Client
 
 from streambuild.cli.audit.main.run_audit import run_audit
 from streambuild.cli.audit_backfill.main.run_audit_backfill import run_audit_backfill
-from streambuild.clickhouse.render._helpers.create_kafka_table import (
+from streambuild.clickhouse.render.main.render_create_kafka_table_ddl import (
     render_create_kafka_table_ddl,
 )
-from streambuild.clickhouse.render._helpers.create_materialized_view import (
+from streambuild.clickhouse.render.main.render_create_materialized_view_ddl import (
     render_create_materialized_view_ddl,
 )
-from streambuild.clickhouse.render._helpers.create_table import render_create_table_ddl
+from streambuild.clickhouse.render.main.render_create_table_ddl import render_create_table_ddl
 from streambuild.compiler.compile._helpers.naming import transform_table_name
 from streambuild.compiler.compile.models import CompiledManagedSource, CompiledPipeline
 from streambuild.compiler.shared.main.build_deployment_physical_name import (
