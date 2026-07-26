@@ -247,9 +247,7 @@ def _optional_schema_change_backfill(
             f"'{file_path}' must define 'schema_change_backfill' as a mapping when set"
         )
     rule_values: dict[str, Any] = value
-    unknown_keys: list[str] = [
-        key for key in rule_values if key not in SCHEMA_CHANGE_RULE_KEYS
-    ]
+    unknown_keys: list[str] = [key for key in rule_values if key not in SCHEMA_CHANGE_RULE_KEYS]
     if unknown_keys:
         unknown_key_list: str = ", ".join(sorted(unknown_keys))
         raise PipelineDiscoveryError(
