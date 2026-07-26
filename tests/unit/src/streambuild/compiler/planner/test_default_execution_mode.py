@@ -18,65 +18,63 @@ from tests.unit.src.streambuild.compiler.planner.helpers import (
     with_schema_change_backfill_policy,
 )
 
-TEST_CASES: list[PlannerExecutionModeTestCase] = [
-    PlannerExecutionModeTestCase(
-        description="defaults non-breaking seedable table changes to seeded bounded rebuild",
-        schema_change_kind="non_breaking",
-        seed_compatibility="seedable",
-        expected_execution_mode=REBUILD_EXECUTION_MODE_SEEDED_BOUNDED,
-    ),
-    PlannerExecutionModeTestCase(
-        description="defaults breaking seedable table changes to full rebuild",
-        schema_change_kind="breaking",
-        seed_compatibility="seedable",
-        expected_execution_mode=REBUILD_EXECUTION_MODE_FULL,
-    ),
-    PlannerExecutionModeTestCase(
-        description="defaults non-seedable table changes to full rebuild",
-        schema_change_kind="breaking",
-        seed_compatibility="non_seedable",
-        expected_execution_mode=REBUILD_EXECUTION_MODE_FULL,
-    ),
-    PlannerExecutionModeTestCase(
-        description="defaults unclassified changes to full rebuild",
-        schema_change_kind=None,
-        seed_compatibility=None,
-        expected_execution_mode=REBUILD_EXECUTION_MODE_FULL,
-    ),
-    PlannerExecutionModeTestCase(
-        description="uses configured full policy for non-breaking changes",
-        schema_change_kind="non_breaking",
-        seed_compatibility="seedable",
-        expected_execution_mode=REBUILD_EXECUTION_MODE_FULL,
-        configured_backfill_mode="full",
-    ),
-    PlannerExecutionModeTestCase(
-        description=(
-            "uses configured bounded policy with seeded execution for seedable breaking changes"
-        ),
-        schema_change_kind="breaking",
-        seed_compatibility="seedable",
-        expected_execution_mode=REBUILD_EXECUTION_MODE_SEEDED_BOUNDED,
-        configured_backfill_mode="bounded",
-        configured_lookback_seconds=1800,
-    ),
-    PlannerExecutionModeTestCase(
-        description=(
-            "uses configured bounded policy with unseeded execution for non-seedable "
-            "breaking changes"
-        ),
-        schema_change_kind="breaking",
-        seed_compatibility="non_seedable",
-        expected_execution_mode=REBUILD_EXECUTION_MODE_UNSEEDED_BOUNDED,
-        configured_backfill_mode="bounded",
-        configured_lookback_seconds=1800,
-    ),
-]
-
 
 @pytest.mark.parametrize(
     "test_case",
-    TEST_CASES,
+    [
+        PlannerExecutionModeTestCase(
+            description="defaults non-breaking seedable table changes to seeded bounded rebuild",
+            schema_change_kind="non_breaking",
+            seed_compatibility="seedable",
+            expected_execution_mode=REBUILD_EXECUTION_MODE_SEEDED_BOUNDED,
+        ),
+        PlannerExecutionModeTestCase(
+            description="defaults breaking seedable table changes to full rebuild",
+            schema_change_kind="breaking",
+            seed_compatibility="seedable",
+            expected_execution_mode=REBUILD_EXECUTION_MODE_FULL,
+        ),
+        PlannerExecutionModeTestCase(
+            description="defaults non-seedable table changes to full rebuild",
+            schema_change_kind="breaking",
+            seed_compatibility="non_seedable",
+            expected_execution_mode=REBUILD_EXECUTION_MODE_FULL,
+        ),
+        PlannerExecutionModeTestCase(
+            description="defaults unclassified changes to full rebuild",
+            schema_change_kind=None,
+            seed_compatibility=None,
+            expected_execution_mode=REBUILD_EXECUTION_MODE_FULL,
+        ),
+        PlannerExecutionModeTestCase(
+            description="uses configured full policy for non-breaking changes",
+            schema_change_kind="non_breaking",
+            seed_compatibility="seedable",
+            expected_execution_mode=REBUILD_EXECUTION_MODE_FULL,
+            configured_backfill_mode="full",
+        ),
+        PlannerExecutionModeTestCase(
+            description=(
+                "uses configured bounded policy with seeded execution for seedable breaking changes"
+            ),
+            schema_change_kind="breaking",
+            seed_compatibility="seedable",
+            expected_execution_mode=REBUILD_EXECUTION_MODE_SEEDED_BOUNDED,
+            configured_backfill_mode="bounded",
+            configured_lookback_seconds=1800,
+        ),
+        PlannerExecutionModeTestCase(
+            description=(
+                "uses configured bounded policy with unseeded execution for non-seedable "
+                "breaking changes"
+            ),
+            schema_change_kind="breaking",
+            seed_compatibility="non_seedable",
+            expected_execution_mode=REBUILD_EXECUTION_MODE_UNSEEDED_BOUNDED,
+            configured_backfill_mode="bounded",
+            configured_lookback_seconds=1800,
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_planned_change_metadata_when_building_subtrees_then_it_sets_expected_execution_mode(

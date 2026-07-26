@@ -10,74 +10,73 @@ from tests.unit.src.streambuild.clickhouse.render._helpers.create_materialized_v
     build_materialized_view,
 )
 
-TEST_CASES: list[RenderCreateMaterializedViewDdlTestCase] = [
-    RenderCreateMaterializedViewDdlTestCase(
-        description="qualifies plain source table reference",
-        query="SELECT order_id FROM raw__orders",
-        expected_source_reference="analytics.raw__orders",
-        expected_target_reference="analytics.tbl__orders_enriched",
-        expected_query_fragments=("SELECT\n  order_id", "FROM analytics.raw__orders"),
-    ),
-    RenderCreateMaterializedViewDdlTestCase(
-        description="qualifies aliased source table reference",
-        query="SELECT orders.order_id FROM raw__orders AS orders",
-        expected_source_reference="analytics.raw__orders",
-        expected_target_reference="analytics.tbl__orders_enriched",
-        expected_query_fragments=(
-            "SELECT\n  orders.order_id",
-            "FROM analytics.raw__orders AS orders",
-        ),
-    ),
-    RenderCreateMaterializedViewDdlTestCase(
-        description="qualifies repeated source table references in nested query",
-        query=(
-            "SELECT count() FROM raw__orders WHERE order_id IN (SELECT order_id FROM raw__orders)"
-        ),
-        expected_source_reference="analytics.raw__orders",
-        expected_target_reference="analytics.tbl__orders_enriched",
-        expected_query_fragments=(
-            "FROM analytics.raw__orders\nWHERE\n  order_id IN",
-            "(\n    SELECT\n      order_id\n    FROM analytics.raw__orders\n  )",
-        ),
-    ),
-    RenderCreateMaterializedViewDdlTestCase(
-        description="does not double qualify an already qualified source table",
-        query="SELECT order_id FROM analytics.raw__orders",
-        expected_source_reference="analytics.raw__orders",
-        expected_target_reference="analytics.tbl__orders_enriched",
-        expected_query_fragments=("SELECT\n  order_id", "FROM analytics.raw__orders"),
-        expected_absent_fragments=("analytics.analytics.raw__orders",),
-    ),
-    RenderCreateMaterializedViewDdlTestCase(
-        description="does not rewrite string literals containing the source table name",
-        query=("SELECT 'raw__orders' AS source_label, order_id FROM raw__orders"),
-        expected_source_reference="analytics.raw__orders",
-        expected_target_reference="analytics.tbl__orders_enriched",
-        expected_query_fragments=(
-            "SELECT\n  'raw__orders' AS source_label,\n  order_id",
-            "FROM analytics.raw__orders",
-        ),
-        expected_absent_fragments=("'analytics.raw__orders' AS source_label",),
-    ),
-    RenderCreateMaterializedViewDdlTestCase(
-        description="qualifies joined managed references in the rendered query",
-        query=(
-            "SELECT orders.order_id FROM raw__orders AS orders "
-            "JOIN tbl__region_lookup AS regions USING region_id"
-        ),
-        expected_source_reference="analytics.raw__orders",
-        expected_target_reference="analytics.tbl__orders_enriched",
-        expected_query_fragments=(
-            "FROM analytics.raw__orders AS orders",
-            "JOIN analytics.tbl__region_lookup AS regions\n  USING (region_id)",
-        ),
-    ),
-]
-
 
 @pytest.mark.parametrize(
     "test_case",
-    TEST_CASES,
+    [
+        RenderCreateMaterializedViewDdlTestCase(
+            description="qualifies plain source table reference",
+            query="SELECT order_id FROM raw__orders",
+            expected_source_reference="analytics.raw__orders",
+            expected_target_reference="analytics.tbl__orders_enriched",
+            expected_query_fragments=("SELECT\n  order_id", "FROM analytics.raw__orders"),
+        ),
+        RenderCreateMaterializedViewDdlTestCase(
+            description="qualifies aliased source table reference",
+            query="SELECT orders.order_id FROM raw__orders AS orders",
+            expected_source_reference="analytics.raw__orders",
+            expected_target_reference="analytics.tbl__orders_enriched",
+            expected_query_fragments=(
+                "SELECT\n  orders.order_id",
+                "FROM analytics.raw__orders AS orders",
+            ),
+        ),
+        RenderCreateMaterializedViewDdlTestCase(
+            description="qualifies repeated source table references in nested query",
+            query=(
+                "SELECT count() FROM raw__orders WHERE order_id IN (SELECT order_id FROM "
+                "raw__orders)"
+            ),
+            expected_source_reference="analytics.raw__orders",
+            expected_target_reference="analytics.tbl__orders_enriched",
+            expected_query_fragments=(
+                "FROM analytics.raw__orders\nWHERE\n  order_id IN",
+                "(\n    SELECT\n      order_id\n    FROM analytics.raw__orders\n  )",
+            ),
+        ),
+        RenderCreateMaterializedViewDdlTestCase(
+            description="does not double qualify an already qualified source table",
+            query="SELECT order_id FROM analytics.raw__orders",
+            expected_source_reference="analytics.raw__orders",
+            expected_target_reference="analytics.tbl__orders_enriched",
+            expected_query_fragments=("SELECT\n  order_id", "FROM analytics.raw__orders"),
+            expected_absent_fragments=("analytics.analytics.raw__orders",),
+        ),
+        RenderCreateMaterializedViewDdlTestCase(
+            description="does not rewrite string literals containing the source table name",
+            query=("SELECT 'raw__orders' AS source_label, order_id FROM raw__orders"),
+            expected_source_reference="analytics.raw__orders",
+            expected_target_reference="analytics.tbl__orders_enriched",
+            expected_query_fragments=(
+                "SELECT\n  'raw__orders' AS source_label,\n  order_id",
+                "FROM analytics.raw__orders",
+            ),
+            expected_absent_fragments=("'analytics.raw__orders' AS source_label",),
+        ),
+        RenderCreateMaterializedViewDdlTestCase(
+            description="qualifies joined managed references in the rendered query",
+            query=(
+                "SELECT orders.order_id FROM raw__orders AS orders "
+                "JOIN tbl__region_lookup AS regions USING region_id"
+            ),
+            expected_source_reference="analytics.raw__orders",
+            expected_target_reference="analytics.tbl__orders_enriched",
+            expected_query_fragments=(
+                "FROM analytics.raw__orders AS orders",
+                "JOIN analytics.tbl__region_lookup AS regions\n  USING (region_id)",
+            ),
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_materialized_view_when_rendering_then_it_qualifies_source_and_target_tables(

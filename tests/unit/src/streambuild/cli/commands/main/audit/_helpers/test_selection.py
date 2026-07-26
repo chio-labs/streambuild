@@ -13,44 +13,29 @@ from tests.unit.src.streambuild.cli.commands.main.shared.helpers import (
     compile_selector_project_pipelines,
 )
 
-TEST_CASES: list[CliAuditSelectionTestCase] = [
-    CliAuditSelectionTestCase(
-        description="bare model selector matches audits that reference that model",
-        selectors=("orders_clean",),
-        audit_model_names=(("orders_clean",), ("orders_enriched",), ("payments_enriched",)),
-        expected_selected_indexes=(0,),
-    ),
-    CliAuditSelectionTestCase(
-        description="upstream selector includes audits for upstream models too",
-        selectors=("+orders_enriched",),
-        audit_model_names=(("orders",), ("orders_clean",), ("orders_enriched",)),
-        expected_selected_indexes=(1, 2),
-    ),
-    CliAuditSelectionTestCase(
-        description="pipeline selector includes audits for all pipeline models",
-        selectors=("pipeline:payments",),
-        audit_model_names=(("orders_clean",), ("payments_enriched",)),
-        expected_selected_indexes=(1,),
-    ),
-]
-
-ERROR_TEST_CASES: list[CliAuditSelectionErrorTestCase] = [
-    CliAuditSelectionErrorTestCase(
-        description="rejects unknown selector namespaces",
-        selectors=("tag:finance",),
-        expected_error_fragment="Unsupported audit selector namespace 'tag'",
-    ),
-    CliAuditSelectionErrorTestCase(
-        description="rejects malformed plus syntax",
-        selectors=("orders+",),
-        expected_error_fragment="Unsupported audit selector syntax",
-    ),
-]
-
 
 @pytest.mark.parametrize(
     "test_case",
-    TEST_CASES,
+    [
+        CliAuditSelectionTestCase(
+            description="bare model selector matches audits that reference that model",
+            selectors=("orders_clean",),
+            audit_model_names=(("orders_clean",), ("orders_enriched",), ("payments_enriched",)),
+            expected_selected_indexes=(0,),
+        ),
+        CliAuditSelectionTestCase(
+            description="upstream selector includes audits for upstream models too",
+            selectors=("+orders_enriched",),
+            audit_model_names=(("orders",), ("orders_clean",), ("orders_enriched",)),
+            expected_selected_indexes=(1, 2),
+        ),
+        CliAuditSelectionTestCase(
+            description="pipeline selector includes audits for all pipeline models",
+            selectors=("pipeline:payments",),
+            audit_model_names=(("orders_clean",), ("payments_enriched",)),
+            expected_selected_indexes=(1,),
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_valid_audit_selectors_when_selecting_then_it_returns_matching_audits(
@@ -79,7 +64,18 @@ def test_given_valid_audit_selectors_when_selecting_then_it_returns_matching_aud
 
 @pytest.mark.parametrize(
     "test_case",
-    ERROR_TEST_CASES,
+    [
+        CliAuditSelectionErrorTestCase(
+            description="rejects unknown selector namespaces",
+            selectors=("tag:finance",),
+            expected_error_fragment="Unsupported audit selector namespace 'tag'",
+        ),
+        CliAuditSelectionErrorTestCase(
+            description="rejects malformed plus syntax",
+            selectors=("orders+",),
+            expected_error_fragment="Unsupported audit selector syntax",
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_invalid_audit_selectors_when_selecting_then_it_raises_clear_errors(

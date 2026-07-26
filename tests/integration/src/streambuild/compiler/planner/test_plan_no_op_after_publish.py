@@ -408,64 +408,63 @@ def test_given_published_deployment_when_authored_sql_changes_then_plan_requires
     assert tuple(sql_diff.name for sql_diff in plan.sql_diffs) == ("mv__orders_enriched",)
 
 
-SCHEMA_CHANGE_TEST_CASES: list[PlannerSchemaChangeAfterPublishIntegrationTestCase] = [
-    PlannerSchemaChangeAfterPublishIntegrationTestCase(
-        description="published deployment emits both transform and table diffs after added columns",
-        deployment_id="20260410T133000Z_ef56gh",
-        created_at="2026-04-10 13:30:00.123",
-        boundary_time="2026-04-10 13:30:00.000",
-        changed_pipeline_kind="add_column",
-        expected_rebuild_root_names=("tbl__orders_enriched",),
-        expected_sql_diff_names=("mv__orders_enriched", "tbl__orders_enriched"),
-        expected_schema_change_kind=TABLE_SCHEMA_CHANGE_KIND_NON_BREAKING,
-        expected_seed_compatibility=TABLE_SCHEMA_SEED_COMPATIBILITY_SEEDABLE,
-        expected_execution_mode=REBUILD_EXECUTION_MODE_SEEDED_BOUNDED,
-    ),
-    PlannerSchemaChangeAfterPublishIntegrationTestCase(
-        description="published deployment classifies removed columns as breaking but seedable",
-        deployment_id="20260410T133500Z_gh78ij",
-        created_at="2026-04-10 13:35:00.123",
-        boundary_time="2026-04-10 13:35:00.000",
-        changed_pipeline_kind="remove_column",
-        expected_rebuild_root_names=("tbl__orders_enriched",),
-        expected_sql_diff_names=("mv__orders_enriched", "tbl__orders_enriched"),
-        expected_schema_change_kind=TABLE_SCHEMA_CHANGE_KIND_BREAKING,
-        expected_seed_compatibility=TABLE_SCHEMA_SEED_COMPATIBILITY_SEEDABLE,
-        expected_execution_mode=REBUILD_EXECUTION_MODE_FULL,
-    ),
-    PlannerSchemaChangeAfterPublishIntegrationTestCase(
-        description=(
-            "published deployment classifies add and remove changes as breaking but seedable"
-        ),
-        deployment_id="20260410T134000Z_jk90lm",
-        created_at="2026-04-10 13:40:00.123",
-        boundary_time="2026-04-10 13:40:00.000",
-        changed_pipeline_kind="add_and_remove_columns",
-        expected_rebuild_root_names=("tbl__orders_enriched",),
-        expected_sql_diff_names=("mv__orders_enriched", "tbl__orders_enriched"),
-        expected_schema_change_kind=TABLE_SCHEMA_CHANGE_KIND_BREAKING,
-        expected_seed_compatibility=TABLE_SCHEMA_SEED_COMPATIBILITY_SEEDABLE,
-        expected_execution_mode=REBUILD_EXECUTION_MODE_FULL,
-    ),
-    PlannerSchemaChangeAfterPublishIntegrationTestCase(
-        description="published deployment classifies type changes as breaking and non-seedable",
-        deployment_id="20260410T134500Z_mn12op",
-        created_at="2026-04-10 13:45:00.123",
-        boundary_time="2026-04-10 13:45:00.000",
-        changed_pipeline_kind="type_change",
-        expected_rebuild_root_names=("tbl__orders_enriched",),
-        expected_sql_diff_names=("mv__orders_enriched", "tbl__orders_enriched"),
-        expected_schema_change_kind=TABLE_SCHEMA_CHANGE_KIND_BREAKING,
-        expected_seed_compatibility=TABLE_SCHEMA_SEED_COMPATIBILITY_NON_SEEDABLE,
-        expected_execution_mode=REBUILD_EXECUTION_MODE_FULL,
-    ),
-]
-
-
 @pytest.mark.integration
 @pytest.mark.parametrize(
     "test_case",
-    SCHEMA_CHANGE_TEST_CASES,
+    [
+        PlannerSchemaChangeAfterPublishIntegrationTestCase(
+            description=(
+                "published deployment emits both transform and table diffs after added columns"
+            ),
+            deployment_id="20260410T133000Z_ef56gh",
+            created_at="2026-04-10 13:30:00.123",
+            boundary_time="2026-04-10 13:30:00.000",
+            changed_pipeline_kind="add_column",
+            expected_rebuild_root_names=("tbl__orders_enriched",),
+            expected_sql_diff_names=("mv__orders_enriched", "tbl__orders_enriched"),
+            expected_schema_change_kind=TABLE_SCHEMA_CHANGE_KIND_NON_BREAKING,
+            expected_seed_compatibility=TABLE_SCHEMA_SEED_COMPATIBILITY_SEEDABLE,
+            expected_execution_mode=REBUILD_EXECUTION_MODE_SEEDED_BOUNDED,
+        ),
+        PlannerSchemaChangeAfterPublishIntegrationTestCase(
+            description="published deployment classifies removed columns as breaking but seedable",
+            deployment_id="20260410T133500Z_gh78ij",
+            created_at="2026-04-10 13:35:00.123",
+            boundary_time="2026-04-10 13:35:00.000",
+            changed_pipeline_kind="remove_column",
+            expected_rebuild_root_names=("tbl__orders_enriched",),
+            expected_sql_diff_names=("mv__orders_enriched", "tbl__orders_enriched"),
+            expected_schema_change_kind=TABLE_SCHEMA_CHANGE_KIND_BREAKING,
+            expected_seed_compatibility=TABLE_SCHEMA_SEED_COMPATIBILITY_SEEDABLE,
+            expected_execution_mode=REBUILD_EXECUTION_MODE_FULL,
+        ),
+        PlannerSchemaChangeAfterPublishIntegrationTestCase(
+            description=(
+                "published deployment classifies add and remove changes as breaking but seedable"
+            ),
+            deployment_id="20260410T134000Z_jk90lm",
+            created_at="2026-04-10 13:40:00.123",
+            boundary_time="2026-04-10 13:40:00.000",
+            changed_pipeline_kind="add_and_remove_columns",
+            expected_rebuild_root_names=("tbl__orders_enriched",),
+            expected_sql_diff_names=("mv__orders_enriched", "tbl__orders_enriched"),
+            expected_schema_change_kind=TABLE_SCHEMA_CHANGE_KIND_BREAKING,
+            expected_seed_compatibility=TABLE_SCHEMA_SEED_COMPATIBILITY_SEEDABLE,
+            expected_execution_mode=REBUILD_EXECUTION_MODE_FULL,
+        ),
+        PlannerSchemaChangeAfterPublishIntegrationTestCase(
+            description="published deployment classifies type changes as breaking and non-seedable",
+            deployment_id="20260410T134500Z_mn12op",
+            created_at="2026-04-10 13:45:00.123",
+            boundary_time="2026-04-10 13:45:00.000",
+            changed_pipeline_kind="type_change",
+            expected_rebuild_root_names=("tbl__orders_enriched",),
+            expected_sql_diff_names=("mv__orders_enriched", "tbl__orders_enriched"),
+            expected_schema_change_kind=TABLE_SCHEMA_CHANGE_KIND_BREAKING,
+            expected_seed_compatibility=TABLE_SCHEMA_SEED_COMPATIBILITY_NON_SEEDABLE,
+            expected_execution_mode=REBUILD_EXECUTION_MODE_FULL,
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_published_deployment_when_transform_output_schema_changes_then_plan_emits_table_diff(

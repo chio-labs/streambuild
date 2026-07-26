@@ -10,10 +10,13 @@ from tests.unit.src.streambuild.compiler.testing._test_types import (
 )
 from tests.unit.src.streambuild.compiler.testing.helpers import build_compiled_pipeline_with_tests
 
-TEST_CASES: list[BuildSqlTestCasesTestCase] = [
-    BuildSqlTestCasesTestCase(
-        description="assembles the minimum chain from source mock through target model",
-        test_file_contents="""
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        BuildSqlTestCasesTestCase(
+            description="assembles the minimum chain from source mock through target model",
+            test_file_contents="""
         TEST ();
 
         WITH
@@ -25,17 +28,17 @@ TEST_CASES: list[BuildSqlTestCasesTestCase] = [
         )
         SELECT 1
         """,
-        expected_query_fragments=(
-            "__source__orders AS",
-            "__model__order_items AS",
-            "FROM __model__daily_revenue",
-            "CAST(line_total AS Nullable(Float64)) AS line_total",
+            expected_query_fragments=(
+                "__source__orders AS",
+                "__model__order_items AS",
+                "FROM __model__daily_revenue",
+                "CAST(line_total AS Nullable(Float64)) AS line_total",
+            ),
+            expected_target_model_names=("daily_revenue",),
         ),
-        expected_target_model_names=("daily_revenue",),
-    ),
-    BuildSqlTestCasesTestCase(
-        description="stops at direct ref mocks instead of compiling upstream models",
-        test_file_contents="""
+        BuildSqlTestCasesTestCase(
+            description="stops at direct ref mocks instead of compiling upstream models",
+            test_file_contents="""
         TEST ();
 
         WITH
@@ -47,16 +50,16 @@ TEST_CASES: list[BuildSqlTestCasesTestCase] = [
         )
         SELECT 1
         """,
-        expected_query_fragments=(
-            "__ref__order_items AS",
-            "FROM __ref__order_items",
+            expected_query_fragments=(
+                "__ref__order_items AS",
+                "FROM __ref__order_items",
+            ),
+            expected_absent_fragments=("__model__order_items AS",),
+            expected_target_model_names=("daily_revenue",),
         ),
-        expected_absent_fragments=("__model__order_items AS",),
-        expected_target_model_names=("daily_revenue",),
-    ),
-    BuildSqlTestCasesTestCase(
-        description="preserves helper ctes and infers expected columns through select star",
-        test_file_contents="""
+        BuildSqlTestCasesTestCase(
+            description="preserves helper ctes and infers expected columns through select star",
+            test_file_contents="""
         TEST ();
 
         WITH
@@ -74,18 +77,18 @@ TEST_CASES: list[BuildSqlTestCasesTestCase] = [
         )
         SELECT 1
         """,
-        expected_query_fragments=(
-            "mock_rows AS",
-            "__source__orders AS",
-            "expected_rows AS",
-            "CAST(order_id AS String) AS order_id",
-            "CAST(line_total AS Nullable(Float64)) AS line_total",
+            expected_query_fragments=(
+                "mock_rows AS",
+                "__source__orders AS",
+                "expected_rows AS",
+                "CAST(order_id AS String) AS order_id",
+                "CAST(line_total AS Nullable(Float64)) AS line_total",
+            ),
+            expected_target_model_names=("order_items",),
         ),
-        expected_target_model_names=("order_items",),
-    ),
-    BuildSqlTestCasesTestCase(
-        description="supports expected unions directly",
-        test_file_contents="""
+        BuildSqlTestCasesTestCase(
+            description="supports expected unions directly",
+            test_file_contents="""
         TEST ();
 
         WITH
@@ -101,16 +104,16 @@ TEST_CASES: list[BuildSqlTestCasesTestCase] = [
         )
         SELECT 1
         """,
-        expected_query_fragments=(
-            "CAST(order_id AS String) AS order_id",
-            "CAST(line_total AS Nullable(Float64)) AS line_total",
-            "UNION ALL",
+            expected_query_fragments=(
+                "CAST(order_id AS String) AS order_id",
+                "CAST(line_total AS Nullable(Float64)) AS line_total",
+                "UNION ALL",
+            ),
+            expected_target_model_names=("order_items",),
         ),
-        expected_target_model_names=("order_items",),
-    ),
-    BuildSqlTestCasesTestCase(
-        description="supports multi branch expected unions using first branch column names",
-        test_file_contents="""
+        BuildSqlTestCasesTestCase(
+            description="supports multi branch expected unions using first branch column names",
+            test_file_contents="""
         TEST ();
 
         WITH
@@ -130,16 +133,16 @@ TEST_CASES: list[BuildSqlTestCasesTestCase] = [
         )
         SELECT 1
         """,
-        expected_query_fragments=(
-            "CAST(order_id AS String) AS order_id",
-            "CAST(line_total AS Nullable(Float64)) AS line_total",
-            "SELECT 'ord_003', 7.5",
+            expected_query_fragments=(
+                "CAST(order_id AS String) AS order_id",
+                "CAST(line_total AS Nullable(Float64)) AS line_total",
+                "SELECT 'ord_003', 7.5",
+            ),
+            expected_target_model_names=("order_items",),
         ),
-        expected_target_model_names=("order_items",),
-    ),
-    BuildSqlTestCasesTestCase(
-        description="supports multiple expected targets in one scenario",
-        test_file_contents="""
+        BuildSqlTestCasesTestCase(
+            description="supports multiple expected targets in one scenario",
+            test_file_contents="""
         TEST ();
 
         WITH
@@ -154,18 +157,13 @@ TEST_CASES: list[BuildSqlTestCasesTestCase] = [
         )
         SELECT 1
         """,
-        expected_query_fragments=(
-            "FROM __model__order_items",
-            "FROM __model__daily_revenue",
+            expected_query_fragments=(
+                "FROM __model__order_items",
+                "FROM __model__daily_revenue",
+            ),
+            expected_target_model_names=("order_items", "daily_revenue"),
         ),
-        expected_target_model_names=("order_items", "daily_revenue"),
-    ),
-]
-
-
-@pytest.mark.parametrize(
-    "test_case",
-    TEST_CASES,
+    ],
     ids=lambda case: case.description,
 )
 def test_given_discovered_sql_tests_when_building_cases_then_it_assembles_expected_queries(

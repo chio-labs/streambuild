@@ -18,107 +18,14 @@ from tests.unit.src.streambuild.compiler.discovery.macros.helpers import (
     write_project_file,
 )
 
-ERROR_TEST_CASES: list[DiscoverSqlTestsErrorTestCase] = [
-    DiscoverSqlTestsErrorTestCase(
-        description="rejects missing ceremonial select one",
-        relative_file_path="order_events/test_invalid.sql",
-        file_contents="""
-        TEST ();
 
-        WITH
-        __source__orders AS (
-          SELECT 'ord_001' AS order_id
-        ),
-        __expected__order_items AS (
-          SELECT 'ord_001' AS order_id
-        )
-        SELECT order_id FROM __expected__order_items
-        """,
-        expected_error_fragment="must end with a ceremonial top-level `SELECT 1`",
-    ),
-    DiscoverSqlTestsErrorTestCase(
-        description="rejects reserved helper cte names",
-        relative_file_path="order_events/test_reserved_helper_name.sql",
-        file_contents="""
-        TEST ();
-
-        WITH
-        __actual AS (
-          SELECT 'ord_001' AS order_id
-        ),
-        __expected__order_items AS (
-          SELECT order_id FROM __actual
-        ),
-        __source__orders AS (
-          SELECT 'ord_001' AS order_id
-        )
-        SELECT 1
-        """,
-        expected_error_fragment="uses reserved helper CTE name '__actual'",
-    ),
-    DiscoverSqlTestsErrorTestCase(
-        description="rejects unnamed blocks in multi test files",
-        relative_file_path="order_events/test_unnamed_multi.sql",
-        file_contents="""
-        TEST (name: "first test");
-
-        WITH
-        __source__orders AS (
-          SELECT 'ord_001' AS order_id
-        ),
-        __expected__order_items AS (
-          SELECT 'ord_001' AS order_id
-        )
-        SELECT 1;
-
-        TEST ();
-
-        WITH
-        __source__orders AS (
-          SELECT 'ord_002' AS order_id
-        ),
-        __expected__order_items AS (
-          SELECT 'ord_002' AS order_id
-        )
-        SELECT 1
-        """,
-        expected_error_fragment="every block must define a unique `name`",
-    ),
-    DiscoverSqlTestsErrorTestCase(
-        description="rejects duplicate names in one file",
-        relative_file_path="order_events/test_duplicate_names.sql",
-        file_contents="""
-        TEST (name: "shared name");
-
-        WITH
-        __source__orders AS (
-          SELECT 'ord_001' AS order_id
-        ),
-        __expected__order_items AS (
-          SELECT 'ord_001' AS order_id
-        )
-        SELECT 1;
-
-        TEST (name: "shared name");
-
-        WITH
-        __ref__order_items AS (
-          SELECT 'ord_001' AS order_id
-        ),
-        __expected__daily_revenue AS (
-          SELECT 'ord_001' AS order_id
-        )
-        SELECT 1
-        """,
-        expected_error_fragment=r"defines duplicate TEST\(\) name 'shared name'",
-    ),
-]
-
-TEST_CASES: list[DiscoverSqlTestsTestCase] = [
-    DiscoverSqlTestsTestCase(
-        description="discovers one SQL test with inferred target model and mocks",
-        relative_file_path="order_events/test_line_total.sql",
-        file_contents="""
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DiscoverSqlTestsTestCase(
+            description="discovers one SQL test with inferred target model and mocks",
+            relative_file_path="order_events/test_line_total.sql",
+            file_contents="""
         TEST ();
 
         WITH
@@ -130,14 +37,14 @@ TEST_CASES: list[DiscoverSqlTestsTestCase] = [
         )
         SELECT 1
         """,
-        expected_target_model_names=("order_items",),
-        expected_authored_cte_names=("__source__orders",),
-        expected_mock_names=("orders",),
-    ),
-    DiscoverSqlTestsTestCase(
-        description="discovers helper ctes alongside mocks in authored order",
-        relative_file_path="order_events/test_helper_ctes.sql",
-        file_contents="""
+            expected_target_model_names=("order_items",),
+            expected_authored_cte_names=("__source__orders",),
+            expected_mock_names=("orders",),
+        ),
+        DiscoverSqlTestsTestCase(
+            description="discovers helper ctes alongside mocks in authored order",
+            relative_file_path="order_events/test_helper_ctes.sql",
+            file_contents="""
         TEST ();
 
         WITH
@@ -155,14 +62,14 @@ TEST_CASES: list[DiscoverSqlTestsTestCase] = [
         )
         SELECT 1
         """,
-        expected_target_model_names=("order_items",),
-        expected_authored_cte_names=("helper_orders", "__source__orders", "expected_rows"),
-        expected_mock_names=("orders",),
-    ),
-    DiscoverSqlTestsTestCase(
-        description="discovers multiple expected targets in one test block",
-        relative_file_path="order_events/test_multi_expected.sql",
-        file_contents="""
+            expected_target_model_names=("order_items",),
+            expected_authored_cte_names=("helper_orders", "__source__orders", "expected_rows"),
+            expected_mock_names=("orders",),
+        ),
+        DiscoverSqlTestsTestCase(
+            description="discovers multiple expected targets in one test block",
+            relative_file_path="order_events/test_multi_expected.sql",
+            file_contents="""
         TEST ();
 
         WITH
@@ -177,16 +84,11 @@ TEST_CASES: list[DiscoverSqlTestsTestCase] = [
         )
         SELECT 1
         """,
-        expected_target_model_names=("order_items", "daily_revenue"),
-        expected_authored_cte_names=("__source__orders",),
-        expected_mock_names=("orders",),
-    ),
-]
-
-
-@pytest.mark.parametrize(
-    "test_case",
-    TEST_CASES,
+            expected_target_model_names=("order_items", "daily_revenue"),
+            expected_authored_cte_names=("__source__orders",),
+            expected_mock_names=("orders",),
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_valid_sql_test_files_when_discovering_then_it_returns_loaded_sql_tests(
@@ -212,7 +114,101 @@ def test_given_valid_sql_test_files_when_discovering_then_it_returns_loaded_sql_
 
 @pytest.mark.parametrize(
     "test_case",
-    ERROR_TEST_CASES,
+    [
+        DiscoverSqlTestsErrorTestCase(
+            description="rejects missing ceremonial select one",
+            relative_file_path="order_events/test_invalid.sql",
+            file_contents="""
+        TEST ();
+
+        WITH
+        __source__orders AS (
+          SELECT 'ord_001' AS order_id
+        ),
+        __expected__order_items AS (
+          SELECT 'ord_001' AS order_id
+        )
+        SELECT order_id FROM __expected__order_items
+        """,
+            expected_error_fragment="must end with a ceremonial top-level `SELECT 1`",
+        ),
+        DiscoverSqlTestsErrorTestCase(
+            description="rejects reserved helper cte names",
+            relative_file_path="order_events/test_reserved_helper_name.sql",
+            file_contents="""
+        TEST ();
+
+        WITH
+        __actual AS (
+          SELECT 'ord_001' AS order_id
+        ),
+        __expected__order_items AS (
+          SELECT order_id FROM __actual
+        ),
+        __source__orders AS (
+          SELECT 'ord_001' AS order_id
+        )
+        SELECT 1
+        """,
+            expected_error_fragment="uses reserved helper CTE name '__actual'",
+        ),
+        DiscoverSqlTestsErrorTestCase(
+            description="rejects unnamed blocks in multi test files",
+            relative_file_path="order_events/test_unnamed_multi.sql",
+            file_contents="""
+        TEST (name: "first test");
+
+        WITH
+        __source__orders AS (
+          SELECT 'ord_001' AS order_id
+        ),
+        __expected__order_items AS (
+          SELECT 'ord_001' AS order_id
+        )
+        SELECT 1;
+
+        TEST ();
+
+        WITH
+        __source__orders AS (
+          SELECT 'ord_002' AS order_id
+        ),
+        __expected__order_items AS (
+          SELECT 'ord_002' AS order_id
+        )
+        SELECT 1
+        """,
+            expected_error_fragment="every block must define a unique `name`",
+        ),
+        DiscoverSqlTestsErrorTestCase(
+            description="rejects duplicate names in one file",
+            relative_file_path="order_events/test_duplicate_names.sql",
+            file_contents="""
+        TEST (name: "shared name");
+
+        WITH
+        __source__orders AS (
+          SELECT 'ord_001' AS order_id
+        ),
+        __expected__order_items AS (
+          SELECT 'ord_001' AS order_id
+        )
+        SELECT 1;
+
+        TEST (name: "shared name");
+
+        WITH
+        __ref__order_items AS (
+          SELECT 'ord_001' AS order_id
+        ),
+        __expected__daily_revenue AS (
+          SELECT 'ord_001' AS order_id
+        )
+        SELECT 1
+        """,
+            expected_error_fragment=r"defines duplicate TEST\(\) name 'shared name'",
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_invalid_sql_test_files_when_discovering_then_it_raises_clear_errors(

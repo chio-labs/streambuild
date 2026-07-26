@@ -14,60 +14,60 @@ from tests.unit.src.streambuild.cli.commands._test_types import (
     CliExpectedErrorRenderingTestCase,
 )
 
-ERROR_RENDERING_TEST_CASES: list[CliExpectedErrorRenderingTestCase] = [
-    CliExpectedErrorRenderingTestCase(
-        description="renders authentication failure message",
-        error_message=("Code: 516. DB::Exception: Authentication failed. (AUTHENTICATION_FAILED)"),
-        expected_fragments=(
-            "Publish could not start",
-            "Database: flights_demo",
-            "ClickHouse rejected the supplied credentials",
-            "username and password",
-        ),
-    ),
-    CliExpectedErrorRenderingTestCase(
-        description="renders missing database message",
-        error_message=(
-            "Code: 81. DB::Exception: Database flights_demo does not exist. (UNKNOWN_DATABASE)"
-        ),
-        expected_fragments=(
-            "Publish could not start",
-            "Database: flights_demo",
-            "target ClickHouse database does not exist",
-            "run stb backfill first",
-        ),
-    ),
-    CliExpectedErrorRenderingTestCase(
-        description="renders missing metadata table message",
-        error_message=(
-            "Code: 60. DB::Exception: Unknown table expression identifier "
-            "streambuild_deployments. (UNKNOWN_TABLE)"
-        ),
-        expected_fragments=(
-            "Publish could not start",
-            "Database: flights_demo",
-            "StreamBuild metadata tables do not exist",
-            "run stb backfill first",
-        ),
-    ),
-    CliExpectedErrorRenderingTestCase(
-        description="renders generic missing table message",
-        error_message=(
-            "Code: 60. DB::Exception: Table flights_demo.tbl__orders does not exist. "
-            "(UNKNOWN_TABLE)"
-        ),
-        expected_fragments=(
-            "Publish could not start",
-            "Database: flights_demo",
-            "Table flights_demo.tbl__orders does not exist",
-        ),
-    ),
-]
-
 
 @pytest.mark.parametrize(
     "test_case",
-    ERROR_RENDERING_TEST_CASES,
+    [
+        CliExpectedErrorRenderingTestCase(
+            description="renders authentication failure message",
+            error_message=(
+                "Code: 516. DB::Exception: Authentication failed. (AUTHENTICATION_FAILED)"
+            ),
+            expected_fragments=(
+                "Publish could not start",
+                "Database: flights_demo",
+                "ClickHouse rejected the supplied credentials",
+                "username and password",
+            ),
+        ),
+        CliExpectedErrorRenderingTestCase(
+            description="renders missing database message",
+            error_message=(
+                "Code: 81. DB::Exception: Database flights_demo does not exist. (UNKNOWN_DATABASE)"
+            ),
+            expected_fragments=(
+                "Publish could not start",
+                "Database: flights_demo",
+                "target ClickHouse database does not exist",
+                "run stb backfill first",
+            ),
+        ),
+        CliExpectedErrorRenderingTestCase(
+            description="renders missing metadata table message",
+            error_message=(
+                "Code: 60. DB::Exception: Unknown table expression identifier "
+                "streambuild_deployments. (UNKNOWN_TABLE)"
+            ),
+            expected_fragments=(
+                "Publish could not start",
+                "Database: flights_demo",
+                "StreamBuild metadata tables do not exist",
+                "run stb backfill first",
+            ),
+        ),
+        CliExpectedErrorRenderingTestCase(
+            description="renders generic missing table message",
+            error_message=(
+                "Code: 60. DB::Exception: Table flights_demo.tbl__orders does not exist. "
+                "(UNKNOWN_TABLE)"
+            ),
+            expected_fragments=(
+                "Publish could not start",
+                "Database: flights_demo",
+                "Table flights_demo.tbl__orders does not exist",
+            ),
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_expected_clickhouse_error_when_rendering_then_it_returns_operator_message(

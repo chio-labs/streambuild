@@ -31,29 +31,6 @@ from tests.unit.src.streambuild.compiler.discovery._helpers.load.helpers import 
     write_pipeline_file,
 )
 
-LOAD_PIPELINE_FILE_ERROR_TEST_CASES: list[LoadPipelineFileErrorTestCase] = [
-    LoadPipelineFileErrorTestCase(
-        description="raises value error when yaml does not define a top-level mapping",
-        file_contents='"missing"',
-        expected_error_type=ValueError,
-        expected_error_fragment="must define a top-level mapping",
-    ),
-    LoadPipelineFileErrorTestCase(
-        description="raises value error when pipeline yaml defines a redundant name",
-        file_contents="""
-        name: redundant_name
-
-        source:
-          kind: kafka
-          name: orders
-          broker_list: kafka:9092
-          topic: source.orders
-        """,
-        expected_error_type=ValueError,
-        expected_error_fragment="must not define 'name'",
-    ),
-]
-
 
 @pytest.mark.parametrize(
     "test_case",
@@ -146,47 +123,44 @@ def test_given_pipeline_file_with_project_config_when_loading_then_it_returns_pr
     assert loaded.project.clickhouse.port == 8123
 
 
-LOAD_PIPELINE_FILE_SQL_MODEL_DEFAULTS_TEST_CASES: list[LoadPipelineFileSqlModelDefaultsTestCase] = [
-    LoadPipelineFileSqlModelDefaultsTestCase(
-        description="defaults omitted engine and order by",
-        sql_model_contents="""
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        LoadPipelineFileSqlModelDefaultsTestCase(
+            description="defaults omitted engine and order by",
+            sql_model_contents="""
         MODEL ();
 
         SELECT CAST(order_id AS UInt64) AS order_id FROM __ref("orders")
         """,
-        expected_engine="MergeTree()",
-        expected_order_by=["_replay_timestamp"],
-    ),
-    LoadPipelineFileSqlModelDefaultsTestCase(
-        description="defaults omitted engine only",
-        sql_model_contents="""
+            expected_engine="MergeTree()",
+            expected_order_by=["_replay_timestamp"],
+        ),
+        LoadPipelineFileSqlModelDefaultsTestCase(
+            description="defaults omitted engine only",
+            sql_model_contents="""
         MODEL (
           order_by: ["order_id", "event_at"]
         );
 
         SELECT CAST(order_id AS UInt64) AS order_id FROM __ref("orders")
         """,
-        expected_engine="MergeTree()",
-        expected_order_by=["order_id", "event_at"],
-    ),
-    LoadPipelineFileSqlModelDefaultsTestCase(
-        description="defaults omitted order by only",
-        sql_model_contents="""
+            expected_engine="MergeTree()",
+            expected_order_by=["order_id", "event_at"],
+        ),
+        LoadPipelineFileSqlModelDefaultsTestCase(
+            description="defaults omitted order by only",
+            sql_model_contents="""
         MODEL (
           engine: "ReplacingMergeTree(updated_at)"
         );
 
         SELECT CAST(order_id AS UInt64) AS order_id FROM __ref("orders")
         """,
-        expected_engine="ReplacingMergeTree(updated_at)",
-        expected_order_by=["_replay_timestamp"],
-    ),
-]
-
-
-@pytest.mark.parametrize(
-    "test_case",
-    LOAD_PIPELINE_FILE_SQL_MODEL_DEFAULTS_TEST_CASES,
+            expected_engine="ReplacingMergeTree(updated_at)",
+            expected_order_by=["_replay_timestamp"],
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_sql_model_with_omitted_storage_fields_when_loading_then_it_applies_defaults(
@@ -214,10 +188,12 @@ def test_given_sql_model_with_omitted_storage_fields_when_loading_then_it_applie
     assert loaded_transform.order_by == test_case.expected_order_by
 
 
-LOAD_PIPELINE_FILE_ADOPTED_SOURCE_TEST_CASES: list[LoadPipelineFileAdoptedSourceTestCase] = [
-    LoadPipelineFileAdoptedSourceTestCase(
-        description="loads adopted kafka source with replay boundary mapping",
-        pipeline_file_contents="""
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        LoadPipelineFileAdoptedSourceTestCase(
+            description="loads adopted kafka source with replay boundary mapping",
+            pipeline_file_contents="""
         source:
           kind: kafka
           name: orders
@@ -229,15 +205,15 @@ LOAD_PIPELINE_FILE_ADOPTED_SOURCE_TEST_CASES: list[LoadPipelineFileAdoptedSource
               _replay_offset: event_offset
               _replay_timestamp: event_timestamp
         """,
-        expected_source_kind=SourceKind.KAFKA,
-        expected_table_name="order_events_existing",
-        expected_partition_column="event_partition",
-        expected_offset_column="event_offset",
-        expected_timestamp_column="event_timestamp",
-    ),
-    LoadPipelineFileAdoptedSourceTestCase(
-        description="loads adopted stream table source with offset replay boundary mapping",
-        pipeline_file_contents="""
+            expected_source_kind=SourceKind.KAFKA,
+            expected_table_name="order_events_existing",
+            expected_partition_column="event_partition",
+            expected_offset_column="event_offset",
+            expected_timestamp_column="event_timestamp",
+        ),
+        LoadPipelineFileAdoptedSourceTestCase(
+            description="loads adopted stream table source with offset replay boundary mapping",
+            pipeline_file_contents="""
         source:
           kind: stream_table
           name: orders
@@ -249,18 +225,13 @@ LOAD_PIPELINE_FILE_ADOPTED_SOURCE_TEST_CASES: list[LoadPipelineFileAdoptedSource
               _replay_offset: event_offset
               _replay_timestamp: event_timestamp
         """,
-        expected_source_kind=SourceKind.STREAM_TABLE,
-        expected_table_name="order_events_existing",
-        expected_partition_column="event_partition",
-        expected_offset_column="event_offset",
-        expected_timestamp_column="event_timestamp",
-    ),
-]
-
-
-@pytest.mark.parametrize(
-    "test_case",
-    LOAD_PIPELINE_FILE_ADOPTED_SOURCE_TEST_CASES,
+            expected_source_kind=SourceKind.STREAM_TABLE,
+            expected_table_name="order_events_existing",
+            expected_partition_column="event_partition",
+            expected_offset_column="event_offset",
+            expected_timestamp_column="event_timestamp",
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_pipeline_file_with_adopted_source_when_loading_then_it_parses_external_source(
@@ -299,12 +270,12 @@ def test_given_pipeline_file_with_adopted_source_when_loading_then_it_parses_ext
     )
 
 
-LOAD_PIPELINE_FILE_SCHEMA_CHANGE_BACKFILL_TEST_CASES: list[
-    LoadPipelineFileSchemaChangeBackfillTestCase
-] = [
-    LoadPipelineFileSchemaChangeBackfillTestCase(
-        description="loads schema change backfill policy from sql model header",
-        sql_model_contents="""
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        LoadPipelineFileSchemaChangeBackfillTestCase(
+            description="loads schema change backfill policy from sql model header",
+            sql_model_contents="""
         MODEL (
           engine: "MergeTree()",
           order_by: ["order_id"],
@@ -313,14 +284,14 @@ LOAD_PIPELINE_FILE_SCHEMA_CHANGE_BACKFILL_TEST_CASES: list[
 
         SELECT CAST(order_id AS UInt64) AS order_id FROM __ref("orders")
         """,
-        expected_breaking_mode=SchemaChangeBackfillMode.BOUNDED,
-        expected_breaking_lookback_seconds=1800,
-        expected_non_breaking_mode=SchemaChangeBackfillMode.FULL,
-        expected_non_breaking_lookback_seconds=None,
-    ),
-    LoadPipelineFileSchemaChangeBackfillTestCase(
-        description="loads multiline schema change backfill policy from sql model header",
-        sql_model_contents="""
+            expected_breaking_mode=SchemaChangeBackfillMode.BOUNDED,
+            expected_breaking_lookback_seconds=1800,
+            expected_non_breaking_mode=SchemaChangeBackfillMode.FULL,
+            expected_non_breaking_lookback_seconds=None,
+        ),
+        LoadPipelineFileSchemaChangeBackfillTestCase(
+            description="loads multiline schema change backfill policy from sql model header",
+            sql_model_contents="""
         MODEL (
           engine: "MergeTree()",
           order_by: ["order_id"],
@@ -331,17 +302,12 @@ LOAD_PIPELINE_FILE_SCHEMA_CHANGE_BACKFILL_TEST_CASES: list[
 
         SELECT CAST(order_id AS UInt64) AS order_id FROM __ref("orders")
         """,
-        expected_breaking_mode=SchemaChangeBackfillMode.BOUNDED,
-        expected_breaking_lookback_seconds=8,
-        expected_non_breaking_mode=SchemaChangeBackfillMode.BOUNDED,
-        expected_non_breaking_lookback_seconds=8,
-    ),
-]
-
-
-@pytest.mark.parametrize(
-    "test_case",
-    LOAD_PIPELINE_FILE_SCHEMA_CHANGE_BACKFILL_TEST_CASES,
+            expected_breaking_mode=SchemaChangeBackfillMode.BOUNDED,
+            expected_breaking_lookback_seconds=8,
+            expected_non_breaking_mode=SchemaChangeBackfillMode.BOUNDED,
+            expected_non_breaking_lookback_seconds=8,
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_sql_model_with_schema_change_backfill_when_loading_then_it_parses_policy(
@@ -476,7 +442,28 @@ def test_given_pipeline_and_model_with_unsupported_replay_behavior_when_loading_
 
 @pytest.mark.parametrize(
     "test_case",
-    LOAD_PIPELINE_FILE_ERROR_TEST_CASES,
+    [
+        LoadPipelineFileErrorTestCase(
+            description="raises value error when yaml does not define a top-level mapping",
+            file_contents='"missing"',
+            expected_error_type=ValueError,
+            expected_error_fragment="must define a top-level mapping",
+        ),
+        LoadPipelineFileErrorTestCase(
+            description="raises value error when pipeline yaml defines a redundant name",
+            file_contents="""
+        name: redundant_name
+
+        source:
+          kind: kafka
+          name: orders
+          broker_list: kafka:9092
+          topic: source.orders
+        """,
+            expected_error_type=ValueError,
+            expected_error_fragment="must not define 'name'",
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_file_without_pipeline_when_loading_then_it_raises_expected_error(
@@ -530,10 +517,12 @@ def test_given_file_with_wrong_pipeline_type_when_loading_then_it_raises_expecte
         load_pipeline_file(pipeline_file_path)
 
 
-INVALID_ADOPTED_SOURCE_TEST_CASES: list[LoadPipelineFileInvalidAdoptedSourceTestCase] = [
-    LoadPipelineFileInvalidAdoptedSourceTestCase(
-        description="rejects qualified adopted source table names",
-        pipeline_file_contents="""
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        LoadPipelineFileInvalidAdoptedSourceTestCase(
+            description="rejects qualified adopted source table names",
+            pipeline_file_contents="""
         source:
           kind: kafka
           name: orders
@@ -545,11 +534,11 @@ INVALID_ADOPTED_SOURCE_TEST_CASES: list[LoadPipelineFileInvalidAdoptedSourceTest
               _replay_offset: event_offset
               _replay_timestamp: event_timestamp
         """,
-        expected_error_fragment="must define source.table_name as a bare table name",
-    ),
-    LoadPipelineFileInvalidAdoptedSourceTestCase(
-        description="rejects adopted offset sources without required columns",
-        pipeline_file_contents="""
+            expected_error_fragment="must define source.table_name as a bare table name",
+        ),
+        LoadPipelineFileInvalidAdoptedSourceTestCase(
+            description="rejects adopted offset sources without required columns",
+            pipeline_file_contents="""
         source:
           kind: kafka
           name: orders
@@ -559,11 +548,11 @@ INVALID_ADOPTED_SOURCE_TEST_CASES: list[LoadPipelineFileInvalidAdoptedSourceTest
             columns:
               _replay_partition: event_partition
         """,
-        expected_error_fragment="must define replay boundary partition and offset columns",
-    ),
-    LoadPipelineFileInvalidAdoptedSourceTestCase(
-        description="rejects adopted offset sources without a timestamp column",
-        pipeline_file_contents="""
+            expected_error_fragment="must define replay boundary partition and offset columns",
+        ),
+        LoadPipelineFileInvalidAdoptedSourceTestCase(
+            description="rejects adopted offset sources without a timestamp column",
+            pipeline_file_contents="""
         source:
           kind: kafka
           name: orders
@@ -574,11 +563,11 @@ INVALID_ADOPTED_SOURCE_TEST_CASES: list[LoadPipelineFileInvalidAdoptedSourceTest
               _replay_partition: event_partition
               _replay_offset: event_offset
         """,
-        expected_error_fragment="must define a replay boundary timestamp column",
-    ),
-    LoadPipelineFileInvalidAdoptedSourceTestCase(
-        description="rejects adopted offset sources with landed_at column",
-        pipeline_file_contents="""
+            expected_error_fragment="must define a replay boundary timestamp column",
+        ),
+        LoadPipelineFileInvalidAdoptedSourceTestCase(
+            description="rejects adopted offset sources with landed_at column",
+            pipeline_file_contents="""
         source:
           kind: kafka
           name: orders
@@ -591,11 +580,11 @@ INVALID_ADOPTED_SOURCE_TEST_CASES: list[LoadPipelineFileInvalidAdoptedSourceTest
               _replay_timestamp: event_timestamp
               _replay_landed_at: event_landed_at
         """,
-        expected_error_fragment="must not define a replay boundary landed_at column",
-    ),
-    LoadPipelineFileInvalidAdoptedSourceTestCase(
-        description="rejects adopted timestamp sources with landed_at column",
-        pipeline_file_contents="""
+            expected_error_fragment="must not define a replay boundary landed_at column",
+        ),
+        LoadPipelineFileInvalidAdoptedSourceTestCase(
+            description="rejects adopted timestamp sources with landed_at column",
+            pipeline_file_contents="""
         source:
           kind: kafka
           name: orders
@@ -606,11 +595,11 @@ INVALID_ADOPTED_SOURCE_TEST_CASES: list[LoadPipelineFileInvalidAdoptedSourceTest
               _replay_timestamp: event_timestamp
               _replay_landed_at: event_landed_at
         """,
-        expected_error_fragment="must not define a replay boundary landed_at column",
-    ),
-    LoadPipelineFileInvalidAdoptedSourceTestCase(
-        description="rejects adopted cursor sources without a timestamp column",
-        pipeline_file_contents="""
+            expected_error_fragment="must not define a replay boundary landed_at column",
+        ),
+        LoadPipelineFileInvalidAdoptedSourceTestCase(
+            description="rejects adopted cursor sources without a timestamp column",
+            pipeline_file_contents="""
         source:
           kind: stream_table
           name: orders
@@ -620,14 +609,9 @@ INVALID_ADOPTED_SOURCE_TEST_CASES: list[LoadPipelineFileInvalidAdoptedSourceTest
             columns:
               _replay_cursor: event_cursor
         """,
-        expected_error_fragment="must define a replay boundary timestamp column",
-    ),
-]
-
-
-@pytest.mark.parametrize(
-    "test_case",
-    INVALID_ADOPTED_SOURCE_TEST_CASES,
+            expected_error_fragment="must define a replay boundary timestamp column",
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_invalid_adopted_source_when_loading_then_it_raises_expected_error(

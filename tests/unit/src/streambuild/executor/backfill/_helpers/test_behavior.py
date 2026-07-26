@@ -15,27 +15,25 @@ from tests.unit.src.streambuild.executor.backfill._helpers._test_types import (
     ResolveUnsupportedBoundedReplayBehaviorTestCase,
 )
 
-RESOLVE_UNSUPPORTED_BOUNDED_REPLAY_BEHAVIOR_TEST_CASES: list[
-    ResolveUnsupportedBoundedReplayBehaviorTestCase
-] = [
-    ResolveUnsupportedBoundedReplayBehaviorTestCase(
-        description="policy full resolves unsupported bounded replay to full rebuild",
-        bounded_replay_fallback="full_refresh",
-        expected_execution_mode=REBUILD_EXECUTION_MODE_FULL,
-        expected_requested_start_time="2026-04-09 15:00:00.000",
-    ),
-    ResolveUnsupportedBoundedReplayBehaviorTestCase(
-        description="policy window only resolves unsupported bounded replay to unseeded bounded",
-        bounded_replay_fallback="bounded_without_history",
-        expected_execution_mode=REBUILD_EXECUTION_MODE_UNSEEDED_BOUNDED,
-        expected_requested_start_time=None,
-    ),
-]
-
 
 @pytest.mark.parametrize(
     "test_case",
-    RESOLVE_UNSUPPORTED_BOUNDED_REPLAY_BEHAVIOR_TEST_CASES,
+    [
+        ResolveUnsupportedBoundedReplayBehaviorTestCase(
+            description="policy full resolves unsupported bounded replay to full rebuild",
+            bounded_replay_fallback="full_refresh",
+            expected_execution_mode=REBUILD_EXECUTION_MODE_FULL,
+            expected_requested_start_time="2026-04-09 15:00:00.000",
+        ),
+        ResolveUnsupportedBoundedReplayBehaviorTestCase(
+            description=(
+                "policy window only resolves unsupported bounded replay to unseeded bounded"
+            ),
+            bounded_replay_fallback="bounded_without_history",
+            expected_execution_mode=REBUILD_EXECUTION_MODE_UNSEEDED_BOUNDED,
+            expected_requested_start_time=None,
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_missing_active_lineage_when_resolving_then_it_applies_policy(

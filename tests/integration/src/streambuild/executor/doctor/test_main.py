@@ -11,50 +11,50 @@ from tests.integration.src.streambuild.executor.doctor._test_types import (
     ExecuteDoctorIntegrationTestCase,
 )
 
-DOCTOR_TEST_CASES: list[ExecuteDoctorIntegrationTestCase] = [
-    ExecuteDoctorIntegrationTestCase(
-        description="reports active view healthy when one binding exists",
-        active_view_target_deployment_id="dep_a",
-        candidate_deployment_ids=("dep_a", "dep_b"),
-        invalid_active_view_target_name=None,
-        expected_state_kind="active_view_present",
-        expected_active_deployment_id="dep_a",
-        expected_candidate_deployment_ids=("dep_a", "dep_b"),
-    ),
-    ExecuteDoctorIntegrationTestCase(
-        description="reports recoverable missing logical view when one candidate exists",
-        active_view_target_deployment_id=None,
-        candidate_deployment_ids=("dep_a",),
-        invalid_active_view_target_name=None,
-        expected_state_kind="logical_view_missing",
-        expected_active_deployment_id=None,
-        expected_candidate_deployment_ids=("dep_a",),
-    ),
-    ExecuteDoctorIntegrationTestCase(
-        description="reports ambiguous missing logical view when many candidates exist",
-        active_view_target_deployment_id=None,
-        candidate_deployment_ids=("dep_a", "dep_b"),
-        invalid_active_view_target_name=None,
-        expected_state_kind="logical_view_missing",
-        expected_active_deployment_id=None,
-        expected_candidate_deployment_ids=("dep_a", "dep_b"),
-    ),
-    ExecuteDoctorIntegrationTestCase(
-        description="reports invalid active view when stable view points to a non-deployment table",
-        active_view_target_deployment_id=None,
-        candidate_deployment_ids=(),
-        invalid_active_view_target_name="tbl__orders_enriched_manual",
-        expected_state_kind="invalid_active_view",
-        expected_active_deployment_id=None,
-        expected_candidate_deployment_ids=(),
-    ),
-]
-
 
 @pytest.mark.integration
 @pytest.mark.parametrize(
     "test_case",
-    DOCTOR_TEST_CASES,
+    [
+        ExecuteDoctorIntegrationTestCase(
+            description="reports active view healthy when one binding exists",
+            active_view_target_deployment_id="dep_a",
+            candidate_deployment_ids=("dep_a", "dep_b"),
+            invalid_active_view_target_name=None,
+            expected_state_kind="active_view_present",
+            expected_active_deployment_id="dep_a",
+            expected_candidate_deployment_ids=("dep_a", "dep_b"),
+        ),
+        ExecuteDoctorIntegrationTestCase(
+            description="reports recoverable missing logical view when one candidate exists",
+            active_view_target_deployment_id=None,
+            candidate_deployment_ids=("dep_a",),
+            invalid_active_view_target_name=None,
+            expected_state_kind="logical_view_missing",
+            expected_active_deployment_id=None,
+            expected_candidate_deployment_ids=("dep_a",),
+        ),
+        ExecuteDoctorIntegrationTestCase(
+            description="reports ambiguous missing logical view when many candidates exist",
+            active_view_target_deployment_id=None,
+            candidate_deployment_ids=("dep_a", "dep_b"),
+            invalid_active_view_target_name=None,
+            expected_state_kind="logical_view_missing",
+            expected_active_deployment_id=None,
+            expected_candidate_deployment_ids=("dep_a", "dep_b"),
+        ),
+        ExecuteDoctorIntegrationTestCase(
+            description=(
+                "reports invalid active view when stable view points to a non-deployment table"
+            ),
+            active_view_target_deployment_id=None,
+            candidate_deployment_ids=(),
+            invalid_active_view_target_name="tbl__orders_enriched_manual",
+            expected_state_kind="invalid_active_view",
+            expected_active_deployment_id=None,
+            expected_candidate_deployment_ids=(),
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_clickhouse_state_when_doctoring_then_it_reports_expected_active_view_status(

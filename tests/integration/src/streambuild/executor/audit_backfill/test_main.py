@@ -39,154 +39,136 @@ from tests.integration.src.streambuild.executor.backfill.helpers import (
     require_managed_source,
 )
 
-AUDIT_TEST_CASES: list[ExecuteAuditBackfillIntegrationTestCase] = [
-    ExecuteAuditBackfillIntegrationTestCase(
-        description="audits scalar timestamp replay deployment against active table",
-        replay_lineage_mode="timestamp",
-        deployment_id="20260409T160000Z_ab12cd",
-        active_deployment_id="20260409T155500Z_prev01",
-        created_at="2026-04-09 16:00:00.123",
-        boundary_time="2026-04-09 16:00:00.000",
-        staged_includes_live_row=True,
-        historical_row_time="2026-04-09 15:59:59.000",
-        live_row_time="2026-04-09 16:00:01.000",
-        expected_assessment=AuditAssessment.READY,
-        expected_root_name="tbl__orders_enriched",
-        expected_staged_physical_name="tbl__orders_enriched__20260409T160000Z_ab12cd",
-        expected_active_exists=True,
-        expected_active_row_count=2,
-        expected_staged_row_count=2,
-        expected_warning_codes=(),
-    ),
-    ExecuteAuditBackfillIntegrationTestCase(
-        description="audits offset replay deployment against active table",
-        replay_lineage_mode="offsets",
-        deployment_id="20260409T170000Z_ab12cd",
-        active_deployment_id="20260409T165500Z_prev02",
-        created_at="2026-04-09 17:00:00.123",
-        boundary_time="2026-04-09 17:00:00.000",
-        staged_includes_live_row=True,
-        historical_row_time="2026-04-09 15:59:59.000",
-        live_row_time="2026-04-09 16:00:01.000",
-        expected_assessment=AuditAssessment.READY,
-        expected_root_name="tbl__orders_enriched",
-        expected_staged_physical_name="tbl__orders_enriched__20260409T170000Z_ab12cd",
-        expected_active_exists=True,
-        expected_active_row_count=2,
-        expected_staged_row_count=2,
-        expected_warning_codes=(),
-    ),
-    ExecuteAuditBackfillIntegrationTestCase(
-        description="reports scalar replay deployment as not ready when staged data lags active",
-        replay_lineage_mode="timestamp",
-        deployment_id="20260409T171000Z_ab12cd",
-        active_deployment_id="20260409T170500Z_prev03",
-        created_at="2026-04-09 17:10:00.123",
-        boundary_time="2026-04-09 17:10:00.000",
-        staged_includes_live_row=False,
-        historical_row_time="2026-04-09 15:59:59.000",
-        live_row_time="2026-04-09 16:10:01.000",
-        expected_assessment=AuditAssessment.NOT_READY,
-        expected_root_name="tbl__orders_enriched",
-        expected_staged_physical_name="tbl__orders_enriched__20260409T171000Z_ab12cd",
-        expected_active_exists=True,
-        expected_active_row_count=2,
-        expected_staged_row_count=1,
-        expected_warning_codes=(),
-    ),
-    ExecuteAuditBackfillIntegrationTestCase(
-        description=(
-            "reports offset replay deployment as not ready when staged source freshness lags raw"
-        ),
-        replay_lineage_mode="offsets",
-        deployment_id="20260409T172000Z_ab12cd",
-        active_deployment_id="20260409T171500Z_prev04",
-        created_at="2026-04-09 17:20:00.123",
-        boundary_time="2026-04-09 17:20:00.000",
-        staged_includes_live_row=False,
-        historical_row_time="2026-04-09 15:59:59.000",
-        live_row_time="2026-04-09 16:10:01.000",
-        expected_assessment=AuditAssessment.NOT_READY,
-        expected_root_name="tbl__orders_enriched",
-        expected_staged_physical_name="tbl__orders_enriched__20260409T172000Z_ab12cd",
-        expected_active_exists=True,
-        expected_active_row_count=2,
-        expected_staged_row_count=1,
-        expected_warning_codes=(),
-    ),
-    ExecuteAuditBackfillIntegrationTestCase(
-        description=(
-            "reports deployment as not ready when active target has rows but staged table is empty"
-        ),
-        replay_lineage_mode="timestamp",
-        deployment_id="20260409T173000Z_ab12cd",
-        active_deployment_id="20260409T172500Z_prev05",
-        created_at="2026-04-09 17:30:00.123",
-        boundary_time="2026-04-09 17:30:00.000",
-        staged_includes_live_row=False,
-        staged_is_empty=True,
-        historical_row_time="2026-04-09 15:59:59.000",
-        live_row_time="2026-04-09 16:10:01.000",
-        expected_assessment=AuditAssessment.NOT_READY,
-        expected_root_name="tbl__orders_enriched",
-        expected_staged_physical_name="tbl__orders_enriched__20260409T173000Z_ab12cd",
-        expected_active_exists=True,
-        expected_active_row_count=2,
-        expected_staged_row_count=0,
-        expected_warning_codes=(),
-        expected_root_warnings=(
-            "staged row count is far below active row count for tbl__orders_enriched",
-        ),
-    ),
-    ExecuteAuditBackfillIntegrationTestCase(
-        description="reports deployment as caution when active target far exceeds staged rows",
-        replay_lineage_mode="timestamp",
-        deployment_id="20260409T174000Z_ab12cd",
-        active_deployment_id="20260409T173500Z_prev06",
-        created_at="2026-04-09 17:40:00.123",
-        boundary_time="2026-04-09 17:40:00.000",
-        staged_includes_live_row=True,
-        historical_row_time="2026-04-09 15:59:59.000",
-        live_row_time="2026-04-09 16:10:01.000",
-        expected_assessment=AuditAssessment.CAUTION,
-        expected_root_name="tbl__orders_enriched",
-        expected_staged_physical_name="tbl__orders_enriched__20260409T174000Z_ab12cd",
-        expected_active_exists=True,
-        expected_active_row_count=5,
-        expected_staged_row_count=2,
-        expected_warning_codes=(),
-        expected_root_warnings=(
-            "staged row count is far below active row count for tbl__orders_enriched",
-        ),
-        extra_active_only_rows=3,
-    ),
-]
-
-
-RESOLUTION_TEST_CASES: list[ResolveAuditDeploymentIntegrationTestCase] = [
-    ResolveAuditDeploymentIntegrationTestCase(
-        description="requires explicit choice with no active view and many staged deployments",
-        create_active_view=False,
-        first_deployment_id="20260409T200000Z_ab12cd",
-        second_deployment_id="20260409T200500Z_cd34ef",
-        expected_resolved_deployment_id=None,
-        expected_error_fragment="Audit deployment resolution is ambiguous",
-    ),
-    ResolveAuditDeploymentIntegrationTestCase(
-        description="auto resolves latest staged deployment newer than active view target",
-        create_active_view=True,
-        first_deployment_id="20260409T210000Z_ab12cd",
-        second_deployment_id="20260409T210500Z_cd34ef",
-        expected_resolved_deployment_id="20260409T210500Z_cd34ef",
-        expected_error_fragment=None,
-    ),
-]
-
 
 @pytest.mark.integration
 @pytest.mark.parametrize(
     "test_case",
-    AUDIT_TEST_CASES,
+    [
+        ExecuteAuditBackfillIntegrationTestCase(
+            description="audits scalar timestamp replay deployment against active table",
+            replay_lineage_mode="timestamp",
+            deployment_id="20260409T160000Z_ab12cd",
+            active_deployment_id="20260409T155500Z_prev01",
+            created_at="2026-04-09 16:00:00.123",
+            boundary_time="2026-04-09 16:00:00.000",
+            staged_includes_live_row=True,
+            historical_row_time="2026-04-09 15:59:59.000",
+            live_row_time="2026-04-09 16:00:01.000",
+            expected_assessment=AuditAssessment.READY,
+            expected_root_name="tbl__orders_enriched",
+            expected_staged_physical_name="tbl__orders_enriched__20260409T160000Z_ab12cd",
+            expected_active_exists=True,
+            expected_active_row_count=2,
+            expected_staged_row_count=2,
+            expected_warning_codes=(),
+        ),
+        ExecuteAuditBackfillIntegrationTestCase(
+            description="audits offset replay deployment against active table",
+            replay_lineage_mode="offsets",
+            deployment_id="20260409T170000Z_ab12cd",
+            active_deployment_id="20260409T165500Z_prev02",
+            created_at="2026-04-09 17:00:00.123",
+            boundary_time="2026-04-09 17:00:00.000",
+            staged_includes_live_row=True,
+            historical_row_time="2026-04-09 15:59:59.000",
+            live_row_time="2026-04-09 16:00:01.000",
+            expected_assessment=AuditAssessment.READY,
+            expected_root_name="tbl__orders_enriched",
+            expected_staged_physical_name="tbl__orders_enriched__20260409T170000Z_ab12cd",
+            expected_active_exists=True,
+            expected_active_row_count=2,
+            expected_staged_row_count=2,
+            expected_warning_codes=(),
+        ),
+        ExecuteAuditBackfillIntegrationTestCase(
+            description=(
+                "reports scalar replay deployment as not ready when staged data lags active"
+            ),
+            replay_lineage_mode="timestamp",
+            deployment_id="20260409T171000Z_ab12cd",
+            active_deployment_id="20260409T170500Z_prev03",
+            created_at="2026-04-09 17:10:00.123",
+            boundary_time="2026-04-09 17:10:00.000",
+            staged_includes_live_row=False,
+            historical_row_time="2026-04-09 15:59:59.000",
+            live_row_time="2026-04-09 16:10:01.000",
+            expected_assessment=AuditAssessment.NOT_READY,
+            expected_root_name="tbl__orders_enriched",
+            expected_staged_physical_name="tbl__orders_enriched__20260409T171000Z_ab12cd",
+            expected_active_exists=True,
+            expected_active_row_count=2,
+            expected_staged_row_count=1,
+            expected_warning_codes=(),
+        ),
+        ExecuteAuditBackfillIntegrationTestCase(
+            description=(
+                "reports offset replay deployment as not ready when staged source freshness "
+                "lags raw"
+            ),
+            replay_lineage_mode="offsets",
+            deployment_id="20260409T172000Z_ab12cd",
+            active_deployment_id="20260409T171500Z_prev04",
+            created_at="2026-04-09 17:20:00.123",
+            boundary_time="2026-04-09 17:20:00.000",
+            staged_includes_live_row=False,
+            historical_row_time="2026-04-09 15:59:59.000",
+            live_row_time="2026-04-09 16:10:01.000",
+            expected_assessment=AuditAssessment.NOT_READY,
+            expected_root_name="tbl__orders_enriched",
+            expected_staged_physical_name="tbl__orders_enriched__20260409T172000Z_ab12cd",
+            expected_active_exists=True,
+            expected_active_row_count=2,
+            expected_staged_row_count=1,
+            expected_warning_codes=(),
+        ),
+        ExecuteAuditBackfillIntegrationTestCase(
+            description=(
+                "reports deployment as not ready when active target has rows "
+                "but staged table is empty"
+            ),
+            replay_lineage_mode="timestamp",
+            deployment_id="20260409T173000Z_ab12cd",
+            active_deployment_id="20260409T172500Z_prev05",
+            created_at="2026-04-09 17:30:00.123",
+            boundary_time="2026-04-09 17:30:00.000",
+            staged_includes_live_row=False,
+            staged_is_empty=True,
+            historical_row_time="2026-04-09 15:59:59.000",
+            live_row_time="2026-04-09 16:10:01.000",
+            expected_assessment=AuditAssessment.NOT_READY,
+            expected_root_name="tbl__orders_enriched",
+            expected_staged_physical_name="tbl__orders_enriched__20260409T173000Z_ab12cd",
+            expected_active_exists=True,
+            expected_active_row_count=2,
+            expected_staged_row_count=0,
+            expected_warning_codes=(),
+            expected_root_warnings=(
+                "staged row count is far below active row count for tbl__orders_enriched",
+            ),
+        ),
+        ExecuteAuditBackfillIntegrationTestCase(
+            description="reports deployment as caution when active target far exceeds staged rows",
+            replay_lineage_mode="timestamp",
+            deployment_id="20260409T174000Z_ab12cd",
+            active_deployment_id="20260409T173500Z_prev06",
+            created_at="2026-04-09 17:40:00.123",
+            boundary_time="2026-04-09 17:40:00.000",
+            staged_includes_live_row=True,
+            historical_row_time="2026-04-09 15:59:59.000",
+            live_row_time="2026-04-09 16:10:01.000",
+            expected_assessment=AuditAssessment.CAUTION,
+            expected_root_name="tbl__orders_enriched",
+            expected_staged_physical_name="tbl__orders_enriched__20260409T174000Z_ab12cd",
+            expected_active_exists=True,
+            expected_active_row_count=5,
+            expected_staged_row_count=2,
+            expected_warning_codes=(),
+            expected_root_warnings=(
+                "staged row count is far below active row count for tbl__orders_enriched",
+            ),
+            extra_active_only_rows=3,
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_staged_backfill_when_auditing_then_it_returns_expected_comparison_signals(
@@ -383,7 +365,24 @@ def test_given_staged_backfill_when_auditing_then_it_returns_expected_comparison
 @pytest.mark.integration
 @pytest.mark.parametrize(
     "test_case",
-    RESOLUTION_TEST_CASES,
+    [
+        ResolveAuditDeploymentIntegrationTestCase(
+            description="requires explicit choice with no active view and many staged deployments",
+            create_active_view=False,
+            first_deployment_id="20260409T200000Z_ab12cd",
+            second_deployment_id="20260409T200500Z_cd34ef",
+            expected_resolved_deployment_id=None,
+            expected_error_fragment="Audit deployment resolution is ambiguous",
+        ),
+        ResolveAuditDeploymentIntegrationTestCase(
+            description="auto resolves latest staged deployment newer than active view target",
+            create_active_view=True,
+            first_deployment_id="20260409T210000Z_ab12cd",
+            second_deployment_id="20260409T210500Z_cd34ef",
+            expected_resolved_deployment_id="20260409T210500Z_cd34ef",
+            expected_error_fragment=None,
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_audit_request_without_deployment_id_when_resolving_then_it_behaves_as_expected(
@@ -876,40 +875,37 @@ def test_given_deleted_active_view_when_auditing_then_it_uses_live_staged_state(
     assert root_result.assessment == test_case.expected_assessment
 
 
-OFFSET_AUDIT_DEGRADED_STATE_TEST_CASES: list[OffsetAuditDegradedStateIntegrationTestCase] = [
-    OffsetAuditDegradedStateIntegrationTestCase(
-        description=(
-            "returns caution when the staged offset deployment is missing an active partition"
-        ),
-        deployment_id="20260409T193000Z_ab12cd",
-        active_deployment_id="20260409T192500Z_prev06",
-        scenario_kind="missing_staged_partition",
-        expected_assessment=AuditAssessment.CAUTION,
-    ),
-    OffsetAuditDegradedStateIntegrationTestCase(
-        description=(
-            "returns caution when the staged offset deployment has no source lookup "
-            "materialized view"
-        ),
-        deployment_id="20260409T194000Z_ab12cd",
-        active_deployment_id="20260409T193500Z_prev07",
-        scenario_kind="missing_source_lookup",
-        expected_assessment=AuditAssessment.CAUTION,
-    ),
-    OffsetAuditDegradedStateIntegrationTestCase(
-        description="returns caution when raw landing rows are missing for staged max offsets",
-        deployment_id="20260409T195000Z_ab12cd",
-        active_deployment_id="20260409T194500Z_prev08",
-        scenario_kind="missing_raw_rows_for_staged_offsets",
-        expected_assessment=AuditAssessment.CAUTION,
-    ),
-]
-
-
 @pytest.mark.integration
 @pytest.mark.parametrize(
     "test_case",
-    OFFSET_AUDIT_DEGRADED_STATE_TEST_CASES,
+    [
+        OffsetAuditDegradedStateIntegrationTestCase(
+            description=(
+                "returns caution when the staged offset deployment is missing an active partition"
+            ),
+            deployment_id="20260409T193000Z_ab12cd",
+            active_deployment_id="20260409T192500Z_prev06",
+            scenario_kind="missing_staged_partition",
+            expected_assessment=AuditAssessment.CAUTION,
+        ),
+        OffsetAuditDegradedStateIntegrationTestCase(
+            description=(
+                "returns caution when the staged offset deployment has no source lookup "
+                "materialized view"
+            ),
+            deployment_id="20260409T194000Z_ab12cd",
+            active_deployment_id="20260409T193500Z_prev07",
+            scenario_kind="missing_source_lookup",
+            expected_assessment=AuditAssessment.CAUTION,
+        ),
+        OffsetAuditDegradedStateIntegrationTestCase(
+            description="returns caution when raw landing rows are missing for staged max offsets",
+            deployment_id="20260409T195000Z_ab12cd",
+            active_deployment_id="20260409T194500Z_prev08",
+            scenario_kind="missing_raw_rows_for_staged_offsets",
+            expected_assessment=AuditAssessment.CAUTION,
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_degraded_offset_state_when_auditing_then_it_returns_caution(

@@ -13,74 +13,57 @@ from tests.unit.src.streambuild.cli.commands.main.test._helpers.helpers import (
     build_selector_project_loaded_tests,
 )
 
-TEST_CASES: list[SelectLoadedSqlTestsTestCase] = [
-    SelectLoadedSqlTestsTestCase(
-        description="bare model selector includes tests for that target only",
-        selectors=("orders_clean",),
-        paths=(),
-        expected_target_model_names=("orders_clean",),
-    ),
-    SelectLoadedSqlTestsTestCase(
-        description="pipeline selector includes tests for all models in that pipeline",
-        selectors=("pipeline:orders",),
-        paths=(),
-        expected_target_model_names=("orders_clean", "orders_enriched"),
-    ),
-    SelectLoadedSqlTestsTestCase(
-        description="downstream plus selector includes downstream target tests",
-        selectors=("orders_clean+",),
-        paths=(),
-        expected_target_model_names=("orders_clean", "orders_enriched"),
-    ),
-    SelectLoadedSqlTestsTestCase(
-        description="upstream plus selector includes upstream target tests",
-        selectors=("+orders_enriched",),
-        paths=(),
-        expected_target_model_names=("orders_clean", "orders_enriched"),
-    ),
-    SelectLoadedSqlTestsTestCase(
-        description="multiple selectors union correctly",
-        selectors=("orders_clean", "pipeline:payments"),
-        paths=(),
-        expected_target_model_names=("orders_clean", "payments_enriched"),
-    ),
-    SelectLoadedSqlTestsTestCase(
-        description="graph and plain selectors union correctly",
-        selectors=("orders_clean+", "payments_enriched"),
-        paths=(),
-        expected_target_model_names=(
-            "orders_clean",
-            "orders_enriched",
-            "payments_enriched",
-        ),
-    ),
-    SelectLoadedSqlTestsTestCase(
-        description="path selections union with selector matches",
-        selectors=("payments_enriched",),
-        paths=("tests/orders/test_orders_enriched.sql",),
-        expected_target_model_names=("orders_enriched", "payments_enriched"),
-    ),
-]
-
-ERROR_TEST_CASES: list[SelectLoadedSqlTestsErrorTestCase] = [
-    SelectLoadedSqlTestsErrorTestCase(
-        description="invalid selector syntax fails clearly",
-        selectors=("++orders_clean",),
-        paths=(),
-        expected_error_fragment="Unsupported test selector syntax",
-    ),
-    SelectLoadedSqlTestsErrorTestCase(
-        description="unknown selector namespace fails clearly",
-        selectors=("tag:finance",),
-        paths=(),
-        expected_error_fragment="Unsupported test selector namespace 'tag'",
-    ),
-]
-
 
 @pytest.mark.parametrize(
     "test_case",
-    TEST_CASES,
+    [
+        SelectLoadedSqlTestsTestCase(
+            description="bare model selector includes tests for that target only",
+            selectors=("orders_clean",),
+            paths=(),
+            expected_target_model_names=("orders_clean",),
+        ),
+        SelectLoadedSqlTestsTestCase(
+            description="pipeline selector includes tests for all models in that pipeline",
+            selectors=("pipeline:orders",),
+            paths=(),
+            expected_target_model_names=("orders_clean", "orders_enriched"),
+        ),
+        SelectLoadedSqlTestsTestCase(
+            description="downstream plus selector includes downstream target tests",
+            selectors=("orders_clean+",),
+            paths=(),
+            expected_target_model_names=("orders_clean", "orders_enriched"),
+        ),
+        SelectLoadedSqlTestsTestCase(
+            description="upstream plus selector includes upstream target tests",
+            selectors=("+orders_enriched",),
+            paths=(),
+            expected_target_model_names=("orders_clean", "orders_enriched"),
+        ),
+        SelectLoadedSqlTestsTestCase(
+            description="multiple selectors union correctly",
+            selectors=("orders_clean", "pipeline:payments"),
+            paths=(),
+            expected_target_model_names=("orders_clean", "payments_enriched"),
+        ),
+        SelectLoadedSqlTestsTestCase(
+            description="graph and plain selectors union correctly",
+            selectors=("orders_clean+", "payments_enriched"),
+            paths=(),
+            expected_target_model_names=(
+                "orders_clean",
+                "orders_enriched",
+                "payments_enriched",
+            ),
+        ),
+        SelectLoadedSqlTestsTestCase(
+            description="path selections union with selector matches",
+            selectors=("payments_enriched",),
+            paths=("tests/orders/test_orders_enriched.sql",),
+            expected_target_model_names=("orders_enriched", "payments_enriched"),
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_valid_test_selectors_when_selecting_then_it_returns_expected_targets(
@@ -112,7 +95,20 @@ def test_given_valid_test_selectors_when_selecting_then_it_returns_expected_targ
 
 @pytest.mark.parametrize(
     "test_case",
-    ERROR_TEST_CASES,
+    [
+        SelectLoadedSqlTestsErrorTestCase(
+            description="invalid selector syntax fails clearly",
+            selectors=("++orders_clean",),
+            paths=(),
+            expected_error_fragment="Unsupported test selector syntax",
+        ),
+        SelectLoadedSqlTestsErrorTestCase(
+            description="unknown selector namespace fails clearly",
+            selectors=("tag:finance",),
+            paths=(),
+            expected_error_fragment="Unsupported test selector namespace 'tag'",
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_invalid_test_selectors_when_selecting_then_it_raises_clear_errors(

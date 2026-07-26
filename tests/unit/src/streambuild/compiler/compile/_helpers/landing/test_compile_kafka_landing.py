@@ -9,25 +9,6 @@ from tests.unit.src.streambuild.compiler.compile._helpers.landing._test_types im
 )
 from tests.unit.src.streambuild.compiler.compile._helpers.landing.helpers import build_pipeline
 
-TEST_CASES: list[CompileKafkaLandingErrorTestCase] = [
-    CompileKafkaLandingErrorTestCase(
-        description="raises for unsupported kafka source formats during compile",
-        source_format="JSONEachRow",
-        consumer_group=None,
-        settings=None,
-        expected_error_type=ValueError,
-        expected_error_fragment="supports only the 'JSONAsString' format",
-    ),
-    CompileKafkaLandingErrorTestCase(
-        description="raises when escape hatch settings redefine typed kafka settings",
-        source_format=None,
-        consumer_group=None,
-        settings={"kafka_group_name": "duplicate_override"},
-        expected_error_type=ValueError,
-        expected_error_fragment="cannot redefine typed Kafka settings",
-    ),
-]
-
 
 @pytest.mark.parametrize(
     "test_case",
@@ -143,7 +124,24 @@ def test_given_pipeline_when_compiling_kafka_landing_then_it_returns_expected_de
 
 @pytest.mark.parametrize(
     "test_case",
-    TEST_CASES,
+    [
+        CompileKafkaLandingErrorTestCase(
+            description="raises for unsupported kafka source formats during compile",
+            source_format="JSONEachRow",
+            consumer_group=None,
+            settings=None,
+            expected_error_type=ValueError,
+            expected_error_fragment="supports only the 'JSONAsString' format",
+        ),
+        CompileKafkaLandingErrorTestCase(
+            description="raises when escape hatch settings redefine typed kafka settings",
+            source_format=None,
+            consumer_group=None,
+            settings={"kafka_group_name": "duplicate_override"},
+            expected_error_type=ValueError,
+            expected_error_fragment="cannot redefine typed Kafka settings",
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_unsupported_kafka_source_format_when_compiling_then_it_raises_value_error(

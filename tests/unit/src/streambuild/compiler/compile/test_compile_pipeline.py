@@ -71,218 +71,6 @@ from tests.unit.src.streambuild.compiler.planner.helpers import (
     build_single_transform_desired_state,
 )
 
-REPLAY_LINEAGE_MODE_TEST_CASES: list[CompilePipelineReplayLineageModeTestCase] = [
-    CompilePipelineReplayLineageModeTestCase(
-        description="uses project replay lineage mode when pipeline does not override it",
-        pipeline_replay_lineage_mode=None,
-        project_replay_lineage_mode=ReplayLineageMode.TIMESTAMP,
-        expected_effective_replay_lineage_mode=ReplayLineageMode.TIMESTAMP,
-    ),
-    CompilePipelineReplayLineageModeTestCase(
-        description="pipeline replay lineage mode overrides project default",
-        pipeline_replay_lineage_mode=ReplayLineageMode.LANDED_AT,
-        project_replay_lineage_mode=ReplayLineageMode.TIMESTAMP,
-        expected_effective_replay_lineage_mode=ReplayLineageMode.LANDED_AT,
-    ),
-    CompilePipelineReplayLineageModeTestCase(
-        description="falls back to kafka offsets when no project default exists",
-        pipeline_replay_lineage_mode=None,
-        project_replay_lineage_mode=None,
-        expected_effective_replay_lineage_mode=ReplayLineageMode.OFFSETS,
-    ),
-]
-
-UNSUPPORTED_REPLAY_BEHAVIOR_TEST_CASES: list[CompilePipelineUnsupportedReplayBehaviorTestCase] = [
-    CompilePipelineUnsupportedReplayBehaviorTestCase(
-        description="uses project unsupported replay behavior when pipeline does not override it",
-        transform_unsupported_replay_behavior=None,
-        pipeline_unsupported_replay_behavior=None,
-        project_unsupported_replay_behavior=BoundedReplayFallback.BOUNDED_WITHOUT_HISTORY,
-        expected_effective_unsupported_replay_behavior=BoundedReplayFallback.BOUNDED_WITHOUT_HISTORY,
-    ),
-    CompilePipelineUnsupportedReplayBehaviorTestCase(
-        description="pipeline unsupported replay behavior overrides project default",
-        transform_unsupported_replay_behavior=None,
-        pipeline_unsupported_replay_behavior=BoundedReplayFallback.BOUNDED_WITHOUT_HISTORY,
-        project_unsupported_replay_behavior=BoundedReplayFallback.FULL_REFRESH,
-        expected_effective_unsupported_replay_behavior=BoundedReplayFallback.BOUNDED_WITHOUT_HISTORY,
-    ),
-    CompilePipelineUnsupportedReplayBehaviorTestCase(
-        description="transform unsupported replay behavior overrides pipeline and project defaults",
-        transform_unsupported_replay_behavior=BoundedReplayFallback.BOUNDED_WITHOUT_HISTORY,
-        pipeline_unsupported_replay_behavior=BoundedReplayFallback.FULL_REFRESH,
-        project_unsupported_replay_behavior=BoundedReplayFallback.FULL_REFRESH,
-        expected_effective_unsupported_replay_behavior=BoundedReplayFallback.BOUNDED_WITHOUT_HISTORY,
-    ),
-]
-
-REPLAY_ANCHOR_ELIGIBILITY_TEST_CASES: list[CompilePipelineReplayAnchorEligibilityTestCase] = [
-    CompilePipelineReplayAnchorEligibilityTestCase(
-        description=(
-            "marks event-like transform with required offset lineage as replay-anchor-eligible"
-        ),
-        transform_query=(
-            "SELECT CAST(order_id AS UInt64) AS order_id, "
-            "CAST(_replay_partition AS UInt64) AS _replay_partition, "
-            "CAST(_replay_offset AS UInt64) AS _replay_offset "
-            'FROM __ref("orders")'
-        ),
-        replay_lineage_mode=ReplayLineageMode.OFFSETS,
-        expected_preserves_required_lineage=True,
-        expected_replay_anchor_eligible=True,
-    ),
-    CompilePipelineReplayAnchorEligibilityTestCase(
-        description="marks mutable-ref transform as non-anchor-eligible",
-        transform_query=(
-            "SELECT CAST(order_id AS UInt64) AS order_id, "
-            "CAST(_replay_partition AS UInt64) AS _replay_partition, "
-            "CAST(_replay_offset AS UInt64) AS _replay_offset "
-            'FROM __ref("orders") LEFT JOIN '
-            '__ref("customers", ref_type="mutable") USING customer_id'
-        ),
-        replay_lineage_mode=ReplayLineageMode.OFFSETS,
-        supporting_transforms=(
-            (
-                "customers",
-                'SELECT CAST(customer_id AS UInt64) AS customer_id FROM __ref("orders")',
-            ),
-        ),
-        expected_has_mutable_refs=True,
-        expected_preserves_required_lineage=True,
-        expected_replay_anchor_eligible=False,
-    ),
-    CompilePipelineReplayAnchorEligibilityTestCase(
-        description="marks grouped transform as non-anchor-eligible",
-        transform_query=(
-            "SELECT CAST(customer_id AS UInt64) AS customer_id, "
-            "CAST(count() AS UInt64) AS order_count, "
-            "CAST(_replay_partition AS UInt64) AS _replay_partition, "
-            "CAST(_replay_offset AS UInt64) AS _replay_offset "
-            'FROM __ref("orders") GROUP BY customer_id, _replay_partition, _replay_offset'
-        ),
-        replay_lineage_mode=ReplayLineageMode.OFFSETS,
-        order_by=("customer_id",),
-        expected_has_aggregate_semantics=True,
-        expected_preserves_required_lineage=True,
-        expected_replay_anchor_eligible=False,
-    ),
-    CompilePipelineReplayAnchorEligibilityTestCase(
-        description="marks transform missing required lineage as non-anchor-eligible",
-        transform_query='SELECT CAST(order_id AS UInt64) AS order_id FROM __ref("orders")',
-        replay_lineage_mode=ReplayLineageMode.OFFSETS,
-        expected_preserves_required_lineage=False,
-        expected_replay_anchor_eligible=False,
-    ),
-    CompilePipelineReplayAnchorEligibilityTestCase(
-        description="respects explicit replay-anchor veto",
-        transform_query=(
-            "SELECT CAST(order_id AS UInt64) AS order_id, "
-            "CAST(_replay_partition AS UInt64) AS _replay_partition, "
-            "CAST(_replay_offset AS UInt64) AS _replay_offset "
-            'FROM __ref("orders")'
-        ),
-        replay_lineage_mode=ReplayLineageMode.OFFSETS,
-        replay_anchor=ReplayAnchorMode.NEVER,
-        expected_preserves_required_lineage=True,
-        expected_replay_anchor_eligible=False,
-    ),
-]
-
-REPLAY_SURFACE_TEST_CASES: list[CompilePipelineReplaySurfaceTestCase] = [
-    CompilePipelineReplaySurfaceTestCase(
-        description="managed kafka landing exposes replay lineage columns to transforms",
-        pipeline=Pipeline(
-            name="tmp_pipeline",
-            source=KafkaLandingStep(
-                name="orders",
-                kafka=KafkaSettings(
-                    broker_list="kafka:9092",
-                    topic="source.orders",
-                    consumer_group="streambuild_tmp_pipeline_orders",
-                ),
-            ),
-            transforms=[
-                TransformStep(
-                    name="orders_enriched",
-                    source="orders",
-                    engine="MergeTree()",
-                    order_by=["order_id"],
-                    query=(
-                        "SELECT CAST(order_id AS UInt64) AS order_id, "
-                        "CAST(_replay_landed_at AS DateTime64(3)) AS _replay_landed_at "
-                        'FROM __ref("orders")'
-                    ),
-                )
-            ],
-            replay_lineage_mode=ReplayLineageMode.LANDED_AT,
-        ),
-        expected_query_fragments=("_replay_landed_at",),
-        expected_output_column_names=("order_id", "_replay_landed_at"),
-    ),
-    CompilePipelineReplaySurfaceTestCase(
-        description="adopted external sources expose replay lineage columns to transforms",
-        pipeline=Pipeline(
-            name="tmp_pipeline",
-            source=ExternalTableSourceStep(
-                name="orders",
-                kind=SourceKind.KAFKA,
-                table_name="orders_existing",
-                replay_boundary=ReplayBoundary(
-                    mode=ReplayBoundaryMode.TIMESTAMP,
-                    columns=ReplayBoundaryColumns(timestamp="event_timestamp"),
-                ),
-            ),
-            transforms=[
-                TransformStep(
-                    name="orders_enriched",
-                    source="orders",
-                    engine="MergeTree()",
-                    order_by=["order_id"],
-                    query=(
-                        "SELECT CAST(order_id AS UInt64) AS order_id, "
-                        "CAST(_replay_timestamp AS DateTime64(3)) AS _replay_timestamp "
-                        'FROM __ref("orders")'
-                    ),
-                )
-            ],
-            replay_lineage_mode=ReplayLineageMode.TIMESTAMP,
-        ),
-        expected_query_fragments=("_replay_timestamp", "event_timestamp"),
-        expected_output_column_names=("order_id", "_replay_timestamp"),
-    ),
-    CompilePipelineReplaySurfaceTestCase(
-        description="adopted cursor sources expose replay cursor columns to transforms",
-        pipeline=Pipeline(
-            name="tmp_pipeline",
-            source=ExternalTableSourceStep(
-                name="orders",
-                kind=SourceKind.STREAM_TABLE,
-                table_name="orders_existing",
-                replay_boundary=ReplayBoundary(
-                    mode=ReplayBoundaryMode.CURSOR,
-                    columns=ReplayBoundaryColumns(cursor="event_cursor"),
-                ),
-            ),
-            transforms=[
-                TransformStep(
-                    name="orders_enriched",
-                    source="orders",
-                    engine="MergeTree()",
-                    order_by=["order_id"],
-                    query=(
-                        "SELECT CAST(order_id AS UInt64) AS order_id, "
-                        "CAST(_replay_cursor AS UInt64) AS _replay_cursor "
-                        'FROM __ref("orders")'
-                    ),
-                )
-            ],
-            replay_lineage_mode=ReplayLineageMode.CURSOR,
-        ),
-        expected_query_fragments=("_replay_cursor", "event_cursor"),
-        expected_output_column_names=("order_id", "_replay_cursor"),
-    ),
-]
-
 
 @pytest.mark.parametrize(
     "test_case",
@@ -527,7 +315,26 @@ def test_given_transform_sql_file_when_compiling_then_loads_sql_relative_to_pipe
 
 @pytest.mark.parametrize(
     "test_case",
-    REPLAY_LINEAGE_MODE_TEST_CASES,
+    [
+        CompilePipelineReplayLineageModeTestCase(
+            description="uses project replay lineage mode when pipeline does not override it",
+            pipeline_replay_lineage_mode=None,
+            project_replay_lineage_mode=ReplayLineageMode.TIMESTAMP,
+            expected_effective_replay_lineage_mode=ReplayLineageMode.TIMESTAMP,
+        ),
+        CompilePipelineReplayLineageModeTestCase(
+            description="pipeline replay lineage mode overrides project default",
+            pipeline_replay_lineage_mode=ReplayLineageMode.LANDED_AT,
+            project_replay_lineage_mode=ReplayLineageMode.TIMESTAMP,
+            expected_effective_replay_lineage_mode=ReplayLineageMode.LANDED_AT,
+        ),
+        CompilePipelineReplayLineageModeTestCase(
+            description="falls back to kafka offsets when no project default exists",
+            pipeline_replay_lineage_mode=None,
+            project_replay_lineage_mode=None,
+            expected_effective_replay_lineage_mode=ReplayLineageMode.OFFSETS,
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_loaded_pipeline_when_compiling_then_it_resolves_effective_replay_lineage_mode(
@@ -559,7 +366,39 @@ def test_given_loaded_pipeline_when_compiling_then_it_resolves_effective_replay_
 
 @pytest.mark.parametrize(
     "test_case",
-    UNSUPPORTED_REPLAY_BEHAVIOR_TEST_CASES,
+    [
+        CompilePipelineUnsupportedReplayBehaviorTestCase(
+            description=(
+                "uses project unsupported replay behavior when pipeline does not override it"
+            ),
+            transform_unsupported_replay_behavior=None,
+            pipeline_unsupported_replay_behavior=None,
+            project_unsupported_replay_behavior=BoundedReplayFallback.BOUNDED_WITHOUT_HISTORY,
+            expected_effective_unsupported_replay_behavior=(
+                BoundedReplayFallback.BOUNDED_WITHOUT_HISTORY
+            ),
+        ),
+        CompilePipelineUnsupportedReplayBehaviorTestCase(
+            description="pipeline unsupported replay behavior overrides project default",
+            transform_unsupported_replay_behavior=None,
+            pipeline_unsupported_replay_behavior=BoundedReplayFallback.BOUNDED_WITHOUT_HISTORY,
+            project_unsupported_replay_behavior=BoundedReplayFallback.FULL_REFRESH,
+            expected_effective_unsupported_replay_behavior=(
+                BoundedReplayFallback.BOUNDED_WITHOUT_HISTORY
+            ),
+        ),
+        CompilePipelineUnsupportedReplayBehaviorTestCase(
+            description=(
+                "transform unsupported replay behavior overrides pipeline and project defaults"
+            ),
+            transform_unsupported_replay_behavior=BoundedReplayFallback.BOUNDED_WITHOUT_HISTORY,
+            pipeline_unsupported_replay_behavior=BoundedReplayFallback.FULL_REFRESH,
+            project_unsupported_replay_behavior=BoundedReplayFallback.FULL_REFRESH,
+            expected_effective_unsupported_replay_behavior=(
+                BoundedReplayFallback.BOUNDED_WITHOUT_HISTORY
+            ),
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_loaded_pipeline_when_compiling_then_it_resolves_effective_unsupported_behavior(
@@ -603,7 +442,77 @@ def test_given_loaded_pipeline_when_compiling_then_it_resolves_effective_unsuppo
 
 @pytest.mark.parametrize(
     "test_case",
-    REPLAY_ANCHOR_ELIGIBILITY_TEST_CASES,
+    [
+        CompilePipelineReplayAnchorEligibilityTestCase(
+            description=(
+                "marks event-like transform with required offset lineage as replay-anchor-eligible"
+            ),
+            transform_query=(
+                "SELECT CAST(order_id AS UInt64) AS order_id, "
+                "CAST(_replay_partition AS UInt64) AS _replay_partition, "
+                "CAST(_replay_offset AS UInt64) AS _replay_offset "
+                'FROM __ref("orders")'
+            ),
+            replay_lineage_mode=ReplayLineageMode.OFFSETS,
+            expected_preserves_required_lineage=True,
+            expected_replay_anchor_eligible=True,
+        ),
+        CompilePipelineReplayAnchorEligibilityTestCase(
+            description="marks mutable-ref transform as non-anchor-eligible",
+            transform_query=(
+                "SELECT CAST(order_id AS UInt64) AS order_id, "
+                "CAST(_replay_partition AS UInt64) AS _replay_partition, "
+                "CAST(_replay_offset AS UInt64) AS _replay_offset "
+                'FROM __ref("orders") LEFT JOIN '
+                '__ref("customers", ref_type="mutable") USING customer_id'
+            ),
+            replay_lineage_mode=ReplayLineageMode.OFFSETS,
+            supporting_transforms=(
+                (
+                    "customers",
+                    'SELECT CAST(customer_id AS UInt64) AS customer_id FROM __ref("orders")',
+                ),
+            ),
+            expected_has_mutable_refs=True,
+            expected_preserves_required_lineage=True,
+            expected_replay_anchor_eligible=False,
+        ),
+        CompilePipelineReplayAnchorEligibilityTestCase(
+            description="marks grouped transform as non-anchor-eligible",
+            transform_query=(
+                "SELECT CAST(customer_id AS UInt64) AS customer_id, "
+                "CAST(count() AS UInt64) AS order_count, "
+                "CAST(_replay_partition AS UInt64) AS _replay_partition, "
+                "CAST(_replay_offset AS UInt64) AS _replay_offset "
+                'FROM __ref("orders") GROUP BY customer_id, _replay_partition, _replay_offset'
+            ),
+            replay_lineage_mode=ReplayLineageMode.OFFSETS,
+            order_by=("customer_id",),
+            expected_has_aggregate_semantics=True,
+            expected_preserves_required_lineage=True,
+            expected_replay_anchor_eligible=False,
+        ),
+        CompilePipelineReplayAnchorEligibilityTestCase(
+            description="marks transform missing required lineage as non-anchor-eligible",
+            transform_query='SELECT CAST(order_id AS UInt64) AS order_id FROM __ref("orders")',
+            replay_lineage_mode=ReplayLineageMode.OFFSETS,
+            expected_preserves_required_lineage=False,
+            expected_replay_anchor_eligible=False,
+        ),
+        CompilePipelineReplayAnchorEligibilityTestCase(
+            description="respects explicit replay-anchor veto",
+            transform_query=(
+                "SELECT CAST(order_id AS UInt64) AS order_id, "
+                "CAST(_replay_partition AS UInt64) AS _replay_partition, "
+                "CAST(_replay_offset AS UInt64) AS _replay_offset "
+                'FROM __ref("orders")'
+            ),
+            replay_lineage_mode=ReplayLineageMode.OFFSETS,
+            replay_anchor=ReplayAnchorMode.NEVER,
+            expected_preserves_required_lineage=True,
+            expected_replay_anchor_eligible=False,
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_transform_when_compiling_then_it_sets_replay_anchor_inference_flags(
@@ -661,7 +570,100 @@ def test_given_transform_when_compiling_then_it_sets_replay_anchor_inference_fla
 
 @pytest.mark.parametrize(
     "test_case",
-    REPLAY_SURFACE_TEST_CASES,
+    [
+        CompilePipelineReplaySurfaceTestCase(
+            description="managed kafka landing exposes replay lineage columns to transforms",
+            pipeline=Pipeline(
+                name="tmp_pipeline",
+                source=KafkaLandingStep(
+                    name="orders",
+                    kafka=KafkaSettings(
+                        broker_list="kafka:9092",
+                        topic="source.orders",
+                        consumer_group="streambuild_tmp_pipeline_orders",
+                    ),
+                ),
+                transforms=[
+                    TransformStep(
+                        name="orders_enriched",
+                        source="orders",
+                        engine="MergeTree()",
+                        order_by=["order_id"],
+                        query=(
+                            "SELECT CAST(order_id AS UInt64) AS order_id, "
+                            "CAST(_replay_landed_at AS DateTime64(3)) AS _replay_landed_at "
+                            'FROM __ref("orders")'
+                        ),
+                    )
+                ],
+                replay_lineage_mode=ReplayLineageMode.LANDED_AT,
+            ),
+            expected_query_fragments=("_replay_landed_at",),
+            expected_output_column_names=("order_id", "_replay_landed_at"),
+        ),
+        CompilePipelineReplaySurfaceTestCase(
+            description="adopted external sources expose replay lineage columns to transforms",
+            pipeline=Pipeline(
+                name="tmp_pipeline",
+                source=ExternalTableSourceStep(
+                    name="orders",
+                    kind=SourceKind.KAFKA,
+                    table_name="orders_existing",
+                    replay_boundary=ReplayBoundary(
+                        mode=ReplayBoundaryMode.TIMESTAMP,
+                        columns=ReplayBoundaryColumns(timestamp="event_timestamp"),
+                    ),
+                ),
+                transforms=[
+                    TransformStep(
+                        name="orders_enriched",
+                        source="orders",
+                        engine="MergeTree()",
+                        order_by=["order_id"],
+                        query=(
+                            "SELECT CAST(order_id AS UInt64) AS order_id, "
+                            "CAST(_replay_timestamp AS DateTime64(3)) AS _replay_timestamp "
+                            'FROM __ref("orders")'
+                        ),
+                    )
+                ],
+                replay_lineage_mode=ReplayLineageMode.TIMESTAMP,
+            ),
+            expected_query_fragments=("_replay_timestamp", "event_timestamp"),
+            expected_output_column_names=("order_id", "_replay_timestamp"),
+        ),
+        CompilePipelineReplaySurfaceTestCase(
+            description="adopted cursor sources expose replay cursor columns to transforms",
+            pipeline=Pipeline(
+                name="tmp_pipeline",
+                source=ExternalTableSourceStep(
+                    name="orders",
+                    kind=SourceKind.STREAM_TABLE,
+                    table_name="orders_existing",
+                    replay_boundary=ReplayBoundary(
+                        mode=ReplayBoundaryMode.CURSOR,
+                        columns=ReplayBoundaryColumns(cursor="event_cursor"),
+                    ),
+                ),
+                transforms=[
+                    TransformStep(
+                        name="orders_enriched",
+                        source="orders",
+                        engine="MergeTree()",
+                        order_by=["order_id"],
+                        query=(
+                            "SELECT CAST(order_id AS UInt64) AS order_id, "
+                            "CAST(_replay_cursor AS UInt64) AS _replay_cursor "
+                            'FROM __ref("orders")'
+                        ),
+                    )
+                ],
+                replay_lineage_mode=ReplayLineageMode.CURSOR,
+            ),
+            expected_query_fragments=("_replay_cursor", "event_cursor"),
+            expected_output_column_names=("order_id", "_replay_cursor"),
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_pipeline_when_compiling_then_it_exposes_the_replay_surface(

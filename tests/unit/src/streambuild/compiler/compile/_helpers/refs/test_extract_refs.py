@@ -7,61 +7,32 @@ from tests.unit.src.streambuild.compiler.compile._helpers.refs._test_types impor
     ExtractRefsTestCase,
 )
 
-TEST_CASES: list[ExtractRefsTestCase] = [
-    ExtractRefsTestCase(
-        description="extracts source and ref calls from plain and nested query positions",
-        sql=(
-            'SELECT * FROM __source("orders") WHERE customer_id IN '
-            '(SELECT customer_id FROM __ref("customers", ref_type="reference"))'
-        ),
-        expected_refs=(("orders", None), ("customers", "reference")),
-    ),
-    ExtractRefsTestCase(
-        description="ignores source text inside string literals",
-        sql='SELECT \'__source("orders")\' AS label FROM __source("orders")',
-        expected_refs=(("orders", None),),
-    ),
-    ExtractRefsTestCase(
-        description="extracts ref_type from additional refs",
-        sql=(
-            'SELECT * FROM __source("orders") LEFT JOIN '
-            '__ref("customer_tier", ref_type="reference") USING customer_id'
-        ),
-        expected_refs=(("orders", None), ("customer_tier", "reference")),
-    ),
-]
-
-REF_VALIDATION_ERROR_TEST_CASES: list[ExtractRefsErrorTestCase] = [
-    ExtractRefsErrorTestCase(
-        description="raises value error when ref argument is not string like",
-        sql="SELECT * FROM __source(1)",
-        expected_error_type=ValueError,
-        expected_error_fragment="quoted string or identifier",
-    ),
-    ExtractRefsErrorTestCase(
-        description="raises value error when ref keyword is not ref_type",
-        sql='SELECT * FROM __ref("orders", kind="mutable")',
-        expected_error_type=ValueError,
-        expected_error_fragment="must use the ref_type keyword",
-    ),
-    ExtractRefsErrorTestCase(
-        description="raises value error when ref_type value is invalid",
-        sql='SELECT * FROM __ref("orders", ref_type="weird")',
-        expected_error_type=ValueError,
-        expected_error_fragment="ref_type value must be 'reference' or 'mutable'",
-    ),
-    ExtractRefsErrorTestCase(
-        description="raises value error when source declares ref_type",
-        sql='SELECT * FROM __source("orders", ref_type="reference")',
-        expected_error_type=ValueError,
-        expected_error_fragment="must not declare ref_type",
-    ),
-]
-
 
 @pytest.mark.parametrize(
     "test_case",
-    TEST_CASES,
+    [
+        ExtractRefsTestCase(
+            description="extracts source and ref calls from plain and nested query positions",
+            sql=(
+                'SELECT * FROM __source("orders") WHERE customer_id IN '
+                '(SELECT customer_id FROM __ref("customers", ref_type="reference"))'
+            ),
+            expected_refs=(("orders", None), ("customers", "reference")),
+        ),
+        ExtractRefsTestCase(
+            description="ignores source text inside string literals",
+            sql='SELECT \'__source("orders")\' AS label FROM __source("orders")',
+            expected_refs=(("orders", None),),
+        ),
+        ExtractRefsTestCase(
+            description="extracts ref_type from additional refs",
+            sql=(
+                'SELECT * FROM __source("orders") LEFT JOIN '
+                '__ref("customer_tier", ref_type="reference") USING customer_id'
+            ),
+            expected_refs=(("orders", None), ("customer_tier", "reference")),
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_sql_when_extracting_refs_then_it_returns_only_real_ref_calls(
@@ -96,7 +67,32 @@ def test_given_ref_with_too_many_args_when_extracting_then_it_raises_expected_er
 
 @pytest.mark.parametrize(
     "test_case",
-    REF_VALIDATION_ERROR_TEST_CASES,
+    [
+        ExtractRefsErrorTestCase(
+            description="raises value error when ref argument is not string like",
+            sql="SELECT * FROM __source(1)",
+            expected_error_type=ValueError,
+            expected_error_fragment="quoted string or identifier",
+        ),
+        ExtractRefsErrorTestCase(
+            description="raises value error when ref keyword is not ref_type",
+            sql='SELECT * FROM __ref("orders", kind="mutable")',
+            expected_error_type=ValueError,
+            expected_error_fragment="must use the ref_type keyword",
+        ),
+        ExtractRefsErrorTestCase(
+            description="raises value error when ref_type value is invalid",
+            sql='SELECT * FROM __ref("orders", ref_type="weird")',
+            expected_error_type=ValueError,
+            expected_error_fragment="ref_type value must be 'reference' or 'mutable'",
+        ),
+        ExtractRefsErrorTestCase(
+            description="raises value error when source declares ref_type",
+            sql='SELECT * FROM __source("orders", ref_type="reference")',
+            expected_error_type=ValueError,
+            expected_error_fragment="must not declare ref_type",
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_ref_with_non_string_arg_when_extracting_then_it_raises_expected_error(

@@ -97,112 +97,36 @@ from tests.integration.src.streambuild.executor.backfill.scenarios import (
     run_start_time_replay_scenario,
 )
 
-BOOTSTRAP_TEST_CASES: list[ExecuteBackfillBootstrapIntegrationTestCase] = [
-    ExecuteBackfillBootstrapIntegrationTestCase(
-        description="creates metadata tables persists deployment and creates shadow objects",
-        deployment_id="20260409T120000Z_ab12cd",
-        created_at="2026-04-09 12:00:00.123",
-        precreate_live_landing_objects=True,
-        expected_live_kafka_table_name="kafka__orders",
-        expected_shadow_table_name="tbl__orders_enriched__20260409T120000Z_ab12cd",
-        expected_shadow_materialized_view_name="mv__orders_enriched__20260409T120000Z_ab12cd",
-        expected_deployment_status="backfilling",
-        expected_runtime_detail_anchor_physical_name="raw__orders",
-    ),
-    ExecuteBackfillBootstrapIntegrationTestCase(
-        description=(
-            "creates live kafka source table before staged landing objects in greenfield mode"
-        ),
-        deployment_id="20260409T120500Z_ef34gh",
-        created_at="2026-04-09 12:05:00.123",
-        precreate_live_landing_objects=False,
-        expected_live_kafka_table_name="kafka__orders",
-        expected_shadow_table_name="tbl__orders_enriched__20260409T120500Z_ef34gh",
-        expected_shadow_materialized_view_name="mv__orders_enriched__20260409T120500Z_ef34gh",
-        expected_deployment_status="backfilling",
-        expected_runtime_detail_anchor_physical_name="raw__orders",
-    ),
-]
-
-START_TIME_SCALAR_REPLAY_TEST_CASES: list[ExecuteStartTimeReplayIntegrationTestCase] = [
-    ExecuteStartTimeReplayIntegrationTestCase(
-        description="start time scalar replay keeps prefix and replays the explicit tail",
-        replay_lineage_mode="timestamp",
-        initial_deployment_id="20260409T170000Z_ab12cd",
-        changed_deployment_id="20260409T170500Z_cd34ef",
-        created_at="2026-04-09 17:00:00.123",
-        initial_boundary_time="2026-04-09 17:00:00.000",
-        changed_boundary_time="2026-04-09 17:05:00.000",
-        lower_bound_source_order_id="frontier-order",
-        lower_bound_offset_millis=500,
-        expected_shadow_table_name="tbl__orders_enriched__20260409T170500Z_cd34ef",
-        expected_shadow_rows=(
-            ("frontier-order", "source.orders.created"),
-            ("historical-order", ""),
-            ("live-order", "source.orders.created"),
-        ),
-    ),
-    ExecuteStartTimeReplayIntegrationTestCase(
-        description="start time scalar replay before history replays the full available window",
-        replay_lineage_mode="timestamp",
-        initial_deployment_id="20260409T170000Z_ab12cd",
-        changed_deployment_id="20260409T170500Z_ef56gh",
-        created_at="2026-04-09 17:00:00.123",
-        initial_boundary_time="2026-04-09 17:00:00.000",
-        changed_boundary_time="2026-04-09 17:05:00.000",
-        lower_bound_source_order_id="historical-order",
-        lower_bound_offset_millis=500,
-        expected_shadow_table_name="tbl__orders_enriched__20260409T170500Z_ef56gh",
-        expected_shadow_rows=(
-            ("frontier-order", "source.orders.created"),
-            ("historical-order", "source.orders.created"),
-            ("live-order", "source.orders.created"),
-        ),
-    ),
-]
-
-START_TIME_OFFSET_REPLAY_TEST_CASES: list[ExecuteStartTimeReplayIntegrationTestCase] = [
-    ExecuteStartTimeReplayIntegrationTestCase(
-        description="start time offset replay keeps prefix and replays the explicit tail",
-        replay_lineage_mode="offsets",
-        initial_deployment_id="20260409T171000Z_ab12cd",
-        changed_deployment_id="20260409T171500Z_cd34ef",
-        created_at="2026-04-09 17:10:00.123",
-        initial_boundary_time="2026-04-09 17:10:00.000",
-        changed_boundary_time="2026-04-09 17:15:00.000",
-        lower_bound_source_order_id="frontier-order",
-        lower_bound_offset_millis=0,
-        expected_shadow_table_name="tbl__orders_enriched__20260409T171500Z_cd34ef",
-        expected_shadow_rows=(
-            ("frontier-order", "source.orders.created"),
-            ("historical-order", ""),
-            ("live-order", "source.orders.created"),
-        ),
-    ),
-    ExecuteStartTimeReplayIntegrationTestCase(
-        description="start time offset replay before history replays the full available window",
-        replay_lineage_mode="offsets",
-        initial_deployment_id="20260409T171000Z_ab12cd",
-        changed_deployment_id="20260409T171500Z_gh78ij",
-        created_at="2026-04-09 17:10:00.123",
-        initial_boundary_time="2026-04-09 17:10:00.000",
-        changed_boundary_time="2026-04-09 17:15:00.000",
-        lower_bound_source_order_id="historical-order",
-        lower_bound_offset_millis=500,
-        expected_shadow_table_name="tbl__orders_enriched__20260409T171500Z_gh78ij",
-        expected_shadow_rows=(
-            ("frontier-order", "source.orders.created"),
-            ("historical-order", "source.orders.created"),
-            ("live-order", "source.orders.created"),
-        ),
-    ),
-]
-
 
 @pytest.mark.integration
 @pytest.mark.parametrize(
     "test_case",
-    BOOTSTRAP_TEST_CASES,
+    [
+        ExecuteBackfillBootstrapIntegrationTestCase(
+            description="creates metadata tables persists deployment and creates shadow objects",
+            deployment_id="20260409T120000Z_ab12cd",
+            created_at="2026-04-09 12:00:00.123",
+            precreate_live_landing_objects=True,
+            expected_live_kafka_table_name="kafka__orders",
+            expected_shadow_table_name="tbl__orders_enriched__20260409T120000Z_ab12cd",
+            expected_shadow_materialized_view_name="mv__orders_enriched__20260409T120000Z_ab12cd",
+            expected_deployment_status="backfilling",
+            expected_runtime_detail_anchor_physical_name="raw__orders",
+        ),
+        ExecuteBackfillBootstrapIntegrationTestCase(
+            description=(
+                "creates live kafka source table before staged landing objects in greenfield mode"
+            ),
+            deployment_id="20260409T120500Z_ef34gh",
+            created_at="2026-04-09 12:05:00.123",
+            precreate_live_landing_objects=False,
+            expected_live_kafka_table_name="kafka__orders",
+            expected_shadow_table_name="tbl__orders_enriched__20260409T120500Z_ef34gh",
+            expected_shadow_materialized_view_name="mv__orders_enriched__20260409T120500Z_ef34gh",
+            expected_deployment_status="backfilling",
+            expected_runtime_detail_anchor_physical_name="raw__orders",
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_changed_pipeline_when_bootstrapping_then_it_creates_metadata_and_shadow_objects(
@@ -294,70 +218,67 @@ def test_given_changed_pipeline_when_bootstrapping_then_it_creates_metadata_and_
     )
 
 
-SCALAR_REPLAY_TEST_CASES: list[ExecuteBackfillScalarReplayIntegrationTestCase] = [
-    ExecuteBackfillScalarReplayIntegrationTestCase(
-        description="replays historical rows for kafka timestamp mode and persists watermarks",
-        replay_lineage_mode="timestamp",
-        deployment_id="20260409T130000Z_ab12cd",
-        created_at="2026-04-09 13:00:00.123",
-        boundary_time="2026-04-09 13:00:00.000",
-        expected_boundary_key="_replay_timestamp",
-        expected_shadow_table_name="tbl__orders_enriched__20260409T130000Z_ab12cd",
-        historical_raw_rows=(
-            build_raw_orders_row(
-                kafka_key="historical-order",
-                _replay_partition=0,
-                _replay_offset=1,
-                _replay_timestamp="2026-04-09 12:59:59.000",
-                _replay_landed_at="2026-04-09 12:59:59.100",
-            ),
-        ),
-        live_raw_rows=(
-            build_raw_orders_row(
-                kafka_key="live-order",
-                _replay_partition=0,
-                _replay_offset=2,
-                _replay_timestamp="2026-04-09 13:00:01.000",
-                _replay_landed_at="2026-04-09 13:00:01.100",
-            ),
-        ),
-        expected_shadow_order_ids=("historical-order", "live-order"),
-    ),
-    ExecuteBackfillScalarReplayIntegrationTestCase(
-        description="replays historical rows for kafka landed at mode and persists watermarks",
-        replay_lineage_mode="landed_at",
-        deployment_id="20260409T140000Z_ab12cd",
-        created_at="2026-04-09 14:00:00.123",
-        boundary_time="2026-04-09 14:00:00.000",
-        expected_boundary_key="_replay_landed_at",
-        expected_shadow_table_name="tbl__orders_enriched__20260409T140000Z_ab12cd",
-        historical_raw_rows=(
-            build_raw_orders_row(
-                kafka_key="historical-order",
-                _replay_partition=0,
-                _replay_offset=1,
-                _replay_timestamp="2026-04-09 13:59:58.000",
-                _replay_landed_at="2026-04-09 13:59:59.000",
-            ),
-        ),
-        live_raw_rows=(
-            build_raw_orders_row(
-                kafka_key="live-order",
-                _replay_partition=0,
-                _replay_offset=2,
-                _replay_timestamp="2026-04-09 14:00:01.000",
-                _replay_landed_at="2026-04-09 14:00:01.000",
-            ),
-        ),
-        expected_shadow_order_ids=("historical-order", "live-order"),
-    ),
-]
-
-
 @pytest.mark.integration
 @pytest.mark.parametrize(
     "test_case",
-    SCALAR_REPLAY_TEST_CASES,
+    [
+        ExecuteBackfillScalarReplayIntegrationTestCase(
+            description="replays historical rows for kafka timestamp mode and persists watermarks",
+            replay_lineage_mode="timestamp",
+            deployment_id="20260409T130000Z_ab12cd",
+            created_at="2026-04-09 13:00:00.123",
+            boundary_time="2026-04-09 13:00:00.000",
+            expected_boundary_key="_replay_timestamp",
+            expected_shadow_table_name="tbl__orders_enriched__20260409T130000Z_ab12cd",
+            historical_raw_rows=(
+                build_raw_orders_row(
+                    kafka_key="historical-order",
+                    _replay_partition=0,
+                    _replay_offset=1,
+                    _replay_timestamp="2026-04-09 12:59:59.000",
+                    _replay_landed_at="2026-04-09 12:59:59.100",
+                ),
+            ),
+            live_raw_rows=(
+                build_raw_orders_row(
+                    kafka_key="live-order",
+                    _replay_partition=0,
+                    _replay_offset=2,
+                    _replay_timestamp="2026-04-09 13:00:01.000",
+                    _replay_landed_at="2026-04-09 13:00:01.100",
+                ),
+            ),
+            expected_shadow_order_ids=("historical-order", "live-order"),
+        ),
+        ExecuteBackfillScalarReplayIntegrationTestCase(
+            description="replays historical rows for kafka landed at mode and persists watermarks",
+            replay_lineage_mode="landed_at",
+            deployment_id="20260409T140000Z_ab12cd",
+            created_at="2026-04-09 14:00:00.123",
+            boundary_time="2026-04-09 14:00:00.000",
+            expected_boundary_key="_replay_landed_at",
+            expected_shadow_table_name="tbl__orders_enriched__20260409T140000Z_ab12cd",
+            historical_raw_rows=(
+                build_raw_orders_row(
+                    kafka_key="historical-order",
+                    _replay_partition=0,
+                    _replay_offset=1,
+                    _replay_timestamp="2026-04-09 13:59:58.000",
+                    _replay_landed_at="2026-04-09 13:59:59.000",
+                ),
+            ),
+            live_raw_rows=(
+                build_raw_orders_row(
+                    kafka_key="live-order",
+                    _replay_partition=0,
+                    _replay_offset=2,
+                    _replay_timestamp="2026-04-09 14:00:01.000",
+                    _replay_landed_at="2026-04-09 14:00:01.000",
+                ),
+            ),
+            expected_shadow_order_ids=("historical-order", "live-order"),
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_scalar_replay_mode_when_executing_then_it_persists_watermarks_and_replays_rows(
@@ -455,73 +376,70 @@ def test_given_scalar_replay_mode_when_executing_then_it_persists_watermarks_and
     assert shadow_rows == [(order_id,) for order_id in test_case.expected_shadow_order_ids]
 
 
-OFFSET_REPLAY_TEST_CASES: list[ExecuteBackfillOffsetReplayIntegrationTestCase] = [
-    ExecuteBackfillOffsetReplayIntegrationTestCase(
-        description="replays kafka offsets history and persists partition watermarks",
-        deployment_id="20260409T150000Z_ab12cd",
-        created_at="2026-04-09 15:00:00.123",
-        boundary_time="2026-04-09 15:00:00.000",
-        expected_shadow_table_name="tbl__orders_enriched__20260409T150000Z_ab12cd",
-        raw_rows=(
-            build_raw_orders_row(
-                kafka_key="historical-partition-0",
-                _replay_partition=0,
-                _replay_offset=10,
-                _replay_timestamp="2026-04-09 14:59:58.000",
-                _replay_landed_at="2026-04-09 14:59:59.000",
-            ),
-            build_raw_orders_row(
-                kafka_key="historical-partition-1",
-                _replay_partition=1,
-                _replay_offset=20,
-                _replay_timestamp="2026-04-09 14:59:58.500",
-                _replay_landed_at="2026-04-09 14:59:59.500",
-            ),
-            build_raw_orders_row(
-                kafka_key="future-partition-0",
-                _replay_partition=0,
-                _replay_offset=11,
-                _replay_timestamp="2026-04-10 15:00:01.000",
-                _replay_landed_at="2026-04-10 15:00:01.000",
-            ),
-        ),
-        live_raw_rows=(
-            build_raw_orders_row(
-                kafka_key="live-partition-0",
-                _replay_partition=0,
-                _replay_offset=12,
-                _replay_timestamp="2026-04-09 15:00:02.000",
-                _replay_landed_at="2026-04-09 15:00:02.000",
-            ),
-        ),
-        expected_watermark_rows=(
-            ("_replay_partition=0", "10"),
-            ("_replay_partition=1", "20"),
-        ),
-        expected_shadow_order_ids=(
-            "historical-partition-0",
-            "historical-partition-1",
-            "live-partition-0",
-        ),
-    ),
-    ExecuteBackfillOffsetReplayIntegrationTestCase(
-        description="treats empty offset cutoffs as a no-op instead of failing",
-        deployment_id="20260409T151000Z_cd34ef",
-        created_at="2026-04-09 15:10:00.123",
-        boundary_time="2026-04-09 15:10:00.000",
-        expected_shadow_table_name="tbl__orders_enriched__20260409T151000Z_cd34ef",
-        raw_rows=(),
-        live_raw_rows=(),
-        expected_watermark_rows=(),
-        expected_shadow_order_ids=(),
-    ),
-]
-
-
 @pytest.mark.integration
 @pytest.mark.parametrize(
     "test_case",
-    OFFSET_REPLAY_TEST_CASES,
+    [
+        ExecuteBackfillOffsetReplayIntegrationTestCase(
+            description="replays kafka offsets history and persists partition watermarks",
+            deployment_id="20260409T150000Z_ab12cd",
+            created_at="2026-04-09 15:00:00.123",
+            boundary_time="2026-04-09 15:00:00.000",
+            expected_shadow_table_name="tbl__orders_enriched__20260409T150000Z_ab12cd",
+            raw_rows=(
+                build_raw_orders_row(
+                    kafka_key="historical-partition-0",
+                    _replay_partition=0,
+                    _replay_offset=10,
+                    _replay_timestamp="2026-04-09 14:59:58.000",
+                    _replay_landed_at="2026-04-09 14:59:59.000",
+                ),
+                build_raw_orders_row(
+                    kafka_key="historical-partition-1",
+                    _replay_partition=1,
+                    _replay_offset=20,
+                    _replay_timestamp="2026-04-09 14:59:58.500",
+                    _replay_landed_at="2026-04-09 14:59:59.500",
+                ),
+                build_raw_orders_row(
+                    kafka_key="future-partition-0",
+                    _replay_partition=0,
+                    _replay_offset=11,
+                    _replay_timestamp="2026-04-10 15:00:01.000",
+                    _replay_landed_at="2026-04-10 15:00:01.000",
+                ),
+            ),
+            live_raw_rows=(
+                build_raw_orders_row(
+                    kafka_key="live-partition-0",
+                    _replay_partition=0,
+                    _replay_offset=12,
+                    _replay_timestamp="2026-04-09 15:00:02.000",
+                    _replay_landed_at="2026-04-09 15:00:02.000",
+                ),
+            ),
+            expected_watermark_rows=(
+                ("_replay_partition=0", "10"),
+                ("_replay_partition=1", "20"),
+            ),
+            expected_shadow_order_ids=(
+                "historical-partition-0",
+                "historical-partition-1",
+                "live-partition-0",
+            ),
+        ),
+        ExecuteBackfillOffsetReplayIntegrationTestCase(
+            description="treats empty offset cutoffs as a no-op instead of failing",
+            deployment_id="20260409T151000Z_cd34ef",
+            created_at="2026-04-09 15:10:00.123",
+            boundary_time="2026-04-09 15:10:00.000",
+            expected_shadow_table_name="tbl__orders_enriched__20260409T151000Z_cd34ef",
+            raw_rows=(),
+            live_raw_rows=(),
+            expected_watermark_rows=(),
+            expected_shadow_order_ids=(),
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_offset_replay_mode_when_executing_then_it_persists_partition_watermarks(
@@ -966,32 +884,27 @@ def test_given_external_source_offset_replay_when_executing_then_it_uses_declare
     assert shadow_rows == [(order_id,) for order_id in test_case.expected_shadow_order_ids]
 
 
-EXECUTE_EXTERNAL_SOURCE_CURSOR_REPLAY_INTEGRATION_TEST_CASES: list[
-    ExecuteExternalSourceCursorReplayIntegrationTestCase
-] = [
-    ExecuteExternalSourceCursorReplayIntegrationTestCase(
-        description="executes cursor replay from an adopted external stream table",
-        deployment_id="20260409T160000Z_cd34ef",
-        created_at="2026-04-09 16:00:00.123",
-        start_time=None,
-        expected_shadow_order_ids=("cursor-order-1", "cursor-order-2", "cursor-order-3"),
-        expected_cutoff_value="3",
-    ),
-    ExecuteExternalSourceCursorReplayIntegrationTestCase(
-        description="executes cursor replay from a requested start time",
-        deployment_id="20260409T160500Z_de45fg",
-        created_at="2026-04-09 16:05:00.123",
-        start_time="2026-04-09 16:00:02.000",
-        expected_shadow_order_ids=("cursor-order-2", "cursor-order-3"),
-        expected_cutoff_value="3",
-    ),
-]
-
-
 @pytest.mark.integration
 @pytest.mark.parametrize(
     "test_case",
-    EXECUTE_EXTERNAL_SOURCE_CURSOR_REPLAY_INTEGRATION_TEST_CASES,
+    [
+        ExecuteExternalSourceCursorReplayIntegrationTestCase(
+            description="executes cursor replay from an adopted external stream table",
+            deployment_id="20260409T160000Z_cd34ef",
+            created_at="2026-04-09 16:00:00.123",
+            start_time=None,
+            expected_shadow_order_ids=("cursor-order-1", "cursor-order-2", "cursor-order-3"),
+            expected_cutoff_value="3",
+        ),
+        ExecuteExternalSourceCursorReplayIntegrationTestCase(
+            description="executes cursor replay from a requested start time",
+            deployment_id="20260409T160500Z_de45fg",
+            created_at="2026-04-09 16:05:00.123",
+            start_time="2026-04-09 16:00:02.000",
+            expected_shadow_order_ids=("cursor-order-2", "cursor-order-3"),
+            expected_cutoff_value="3",
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_external_source_cursor_replay_when_executing_then_it_replays_by_cursor(
@@ -1171,42 +1084,37 @@ def test_given_aggregate_offset_replay_when_executing_then_it_filters_anchor_row
     assert shadow_rows == list(test_case.expected_shadow_rows)
 
 
-RESOLVE_AGGREGATE_UNSUPPORTED_REPLAY_BEHAVIOR_TEST_CASES: list[
-    ResolveAggregateUnsupportedReplayBehaviorIntegrationTestCase
-] = [
-    ResolveAggregateUnsupportedReplayBehaviorIntegrationTestCase(
-        description="full policy resolves unsupported aggregate start time to full rebuild",
-        initial_deployment_id="20260409T160000Z_ab12cd",
-        changed_deployment_id="20260409T160500Z_cd34ef",
-        created_at="2026-04-09 16:00:00.123",
-        initial_boundary_time="2026-04-09 15:10:00.000",
-        changed_boundary_time="2026-04-09 15:15:00.000",
-        lower_bound_source_order_id="frontier-order",
-        lower_bound_offset_millis=1,
-        bounded_replay_fallback="full_refresh",
-        expected_execution_mode=REBUILD_EXECUTION_MODE_FULL,
-    ),
-    ResolveAggregateUnsupportedReplayBehaviorIntegrationTestCase(
-        description=(
-            "window only policy resolves unsupported aggregate start time to unseeded bounded"
-        ),
-        initial_deployment_id="20260409T161000Z_ab12cd",
-        changed_deployment_id="20260409T161500Z_cd34ef",
-        created_at="2026-04-09 16:10:00.123",
-        initial_boundary_time="2026-04-09 15:10:00.000",
-        changed_boundary_time="2026-04-09 15:15:00.000",
-        lower_bound_source_order_id="frontier-order",
-        lower_bound_offset_millis=1,
-        bounded_replay_fallback="bounded_without_history",
-        expected_execution_mode=REBUILD_EXECUTION_MODE_UNSEEDED_BOUNDED,
-    ),
-]
-
-
 @pytest.mark.integration
 @pytest.mark.parametrize(
     "test_case",
-    RESOLVE_AGGREGATE_UNSUPPORTED_REPLAY_BEHAVIOR_TEST_CASES,
+    [
+        ResolveAggregateUnsupportedReplayBehaviorIntegrationTestCase(
+            description="full policy resolves unsupported aggregate start time to full rebuild",
+            initial_deployment_id="20260409T160000Z_ab12cd",
+            changed_deployment_id="20260409T160500Z_cd34ef",
+            created_at="2026-04-09 16:00:00.123",
+            initial_boundary_time="2026-04-09 15:10:00.000",
+            changed_boundary_time="2026-04-09 15:15:00.000",
+            lower_bound_source_order_id="frontier-order",
+            lower_bound_offset_millis=1,
+            bounded_replay_fallback="full_refresh",
+            expected_execution_mode=REBUILD_EXECUTION_MODE_FULL,
+        ),
+        ResolveAggregateUnsupportedReplayBehaviorIntegrationTestCase(
+            description=(
+                "window only policy resolves unsupported aggregate start time to unseeded bounded"
+            ),
+            initial_deployment_id="20260409T161000Z_ab12cd",
+            changed_deployment_id="20260409T161500Z_cd34ef",
+            created_at="2026-04-09 16:10:00.123",
+            initial_boundary_time="2026-04-09 15:10:00.000",
+            changed_boundary_time="2026-04-09 15:15:00.000",
+            lower_bound_source_order_id="frontier-order",
+            lower_bound_offset_millis=1,
+            bounded_replay_fallback="bounded_without_history",
+            expected_execution_mode=REBUILD_EXECUTION_MODE_UNSEEDED_BOUNDED,
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_aggregate_start_time_when_bootstrapping_then_it_resolves_policy_per_root(
@@ -1820,7 +1728,42 @@ def test_given_seeded_bounded_scalar_replay_when_executing_then_it_copies_prefix
 @pytest.mark.integration
 @pytest.mark.parametrize(
     "test_case",
-    START_TIME_SCALAR_REPLAY_TEST_CASES,
+    [
+        ExecuteStartTimeReplayIntegrationTestCase(
+            description="start time scalar replay keeps prefix and replays the explicit tail",
+            replay_lineage_mode="timestamp",
+            initial_deployment_id="20260409T170000Z_ab12cd",
+            changed_deployment_id="20260409T170500Z_cd34ef",
+            created_at="2026-04-09 17:00:00.123",
+            initial_boundary_time="2026-04-09 17:00:00.000",
+            changed_boundary_time="2026-04-09 17:05:00.000",
+            lower_bound_source_order_id="frontier-order",
+            lower_bound_offset_millis=500,
+            expected_shadow_table_name="tbl__orders_enriched__20260409T170500Z_cd34ef",
+            expected_shadow_rows=(
+                ("frontier-order", "source.orders.created"),
+                ("historical-order", ""),
+                ("live-order", "source.orders.created"),
+            ),
+        ),
+        ExecuteStartTimeReplayIntegrationTestCase(
+            description="start time scalar replay before history replays the full available window",
+            replay_lineage_mode="timestamp",
+            initial_deployment_id="20260409T170000Z_ab12cd",
+            changed_deployment_id="20260409T170500Z_ef56gh",
+            created_at="2026-04-09 17:00:00.123",
+            initial_boundary_time="2026-04-09 17:00:00.000",
+            changed_boundary_time="2026-04-09 17:05:00.000",
+            lower_bound_source_order_id="historical-order",
+            lower_bound_offset_millis=500,
+            expected_shadow_table_name="tbl__orders_enriched__20260409T170500Z_ef56gh",
+            expected_shadow_rows=(
+                ("frontier-order", "source.orders.created"),
+                ("historical-order", "source.orders.created"),
+                ("live-order", "source.orders.created"),
+            ),
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_start_time_scalar_replay_when_executing_then_it_replays_expected_rows(
@@ -2363,7 +2306,42 @@ def test_given_seeded_bounded_offset_replay_when_executing_then_it_copies_prefix
 @pytest.mark.integration
 @pytest.mark.parametrize(
     "test_case",
-    START_TIME_OFFSET_REPLAY_TEST_CASES,
+    [
+        ExecuteStartTimeReplayIntegrationTestCase(
+            description="start time offset replay keeps prefix and replays the explicit tail",
+            replay_lineage_mode="offsets",
+            initial_deployment_id="20260409T171000Z_ab12cd",
+            changed_deployment_id="20260409T171500Z_cd34ef",
+            created_at="2026-04-09 17:10:00.123",
+            initial_boundary_time="2026-04-09 17:10:00.000",
+            changed_boundary_time="2026-04-09 17:15:00.000",
+            lower_bound_source_order_id="frontier-order",
+            lower_bound_offset_millis=0,
+            expected_shadow_table_name="tbl__orders_enriched__20260409T171500Z_cd34ef",
+            expected_shadow_rows=(
+                ("frontier-order", "source.orders.created"),
+                ("historical-order", ""),
+                ("live-order", "source.orders.created"),
+            ),
+        ),
+        ExecuteStartTimeReplayIntegrationTestCase(
+            description="start time offset replay before history replays the full available window",
+            replay_lineage_mode="offsets",
+            initial_deployment_id="20260409T171000Z_ab12cd",
+            changed_deployment_id="20260409T171500Z_gh78ij",
+            created_at="2026-04-09 17:10:00.123",
+            initial_boundary_time="2026-04-09 17:10:00.000",
+            changed_boundary_time="2026-04-09 17:15:00.000",
+            lower_bound_source_order_id="historical-order",
+            lower_bound_offset_millis=500,
+            expected_shadow_table_name="tbl__orders_enriched__20260409T171500Z_gh78ij",
+            expected_shadow_rows=(
+                ("frontier-order", "source.orders.created"),
+                ("historical-order", "source.orders.created"),
+                ("live-order", "source.orders.created"),
+            ),
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_start_time_offset_replay_when_executing_then_it_replays_expected_rows(

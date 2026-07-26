@@ -108,166 +108,163 @@ class PlanCommandRunner:
         return 0
 
 
-TEST_CASES: list[CliMainTestCase] = [
-    CliMainTestCase(
-        description="prints discovered pipeline names as json",
-        argv=("stb", "discover", "--project-dir", "tests/fixtures/basic_project"),
-        expected_exit_code=0,
-        expected_output_fragments=("orders",),
-    ),
-    CliMainTestCase(
-        description="prints backfill payload as json",
-        argv=(
-            "stb",
-            "backfill",
-            "--project-dir",
-            "tests/fixtures/basic_project",
-            "--host",
-            "localhost",
-            "--port",
-            "8123",
-            "--username",
-            "streambuild",
-            "--password",
-            "streambuild",
-            "--database",
-            "analytics",
-        ),
-        expected_exit_code=0,
-        expected_output_fragments=(
-            '"deployment_id": "20260410T000000Z_ab12cd"',
-            '"replay_strategy": "create_from_scratch"',
-        ),
-    ),
-    CliMainTestCase(
-        description="prints audit backfill payload as json",
-        argv=(
-            "stb",
-            "audit",
-            "backfill",
-            "--project-dir",
-            "tests/fixtures/basic_project",
-            "--host",
-            "localhost",
-            "--port",
-            "8123",
-            "--username",
-            "streambuild",
-            "--password",
-            "streambuild",
-            "--database",
-            "analytics",
-        ),
-        expected_exit_code=0,
-        expected_output_fragments=(
-            '"deployment_status": "backfilling"',
-            '"assessment": "ready"',
-            '"name": "tbl__orders_enriched"',
-        ),
-    ),
-    CliMainTestCase(
-        description="prints live audit payload as json",
-        argv=(
-            "stb",
-            "audit",
-            "--project-dir",
-            "tests/fixtures/basic_project",
-            "--host",
-            "localhost",
-            "--port",
-            "8123",
-            "--username",
-            "streambuild",
-            "--password",
-            "streambuild",
-            "--database",
-            "analytics",
-        ),
-        expected_exit_code=0,
-        expected_output_fragments=(
-            '"error_failure_count": 0',
-            '"warning_failure_count": 1',
-            '"severity": "warning"',
-        ),
-    ),
-    CliMainTestCase(
-        description="prints publish payload as json",
-        argv=(
-            "stb",
-            "publish",
-            "--host",
-            "localhost",
-            "--port",
-            "8123",
-            "--username",
-            "streambuild",
-            "--password",
-            "streambuild",
-            "--database",
-            "analytics",
-        ),
-        expected_exit_code=0,
-        expected_output_fragments=(
-            '"deployment_id": "20260410T000000Z_ab12cd"',
-            '"view_name": "tbl__orders_enriched"',
-            '"target_table_name": "tbl__orders_enriched__20260410T000000Z_ab12cd"',
-        ),
-    ),
-    CliMainTestCase(
-        description="prints doctor payload as json",
-        argv=(
-            "stb",
-            "doctor",
-            "--host",
-            "localhost",
-            "--port",
-            "8123",
-            "--username",
-            "streambuild",
-            "--password",
-            "streambuild",
-            "--database",
-            "analytics",
-        ),
-        expected_exit_code=0,
-        expected_output_fragments=(
-            '"table_name": "tbl__orders_enriched"',
-            '"state_kind": "logical_view_missing"',
-        ),
-    ),
-    CliMainTestCase(
-        description="prints repair active-view payload as json",
-        argv=(
-            "stb",
-            "repair",
-            "active-view",
-            "--host",
-            "localhost",
-            "--port",
-            "8123",
-            "--username",
-            "streambuild",
-            "--password",
-            "streambuild",
-            "--database",
-            "analytics",
-            "--table",
-            "tbl__orders_enriched",
-            "--deployment-id",
-            "20260410T000000Z_ab12cd",
-        ),
-        expected_exit_code=0,
-        expected_output_fragments=(
-            '"table_name": "tbl__orders_enriched"',
-            '"target_table_name": "tbl__orders_enriched__20260410T000000Z_ab12cd"',
-        ),
-    ),
-]
-
-
 @pytest.mark.parametrize(
     "test_case",
-    TEST_CASES,
+    [
+        CliMainTestCase(
+            description="prints discovered pipeline names as json",
+            argv=("stb", "discover", "--project-dir", "tests/fixtures/basic_project"),
+            expected_exit_code=0,
+            expected_output_fragments=("orders",),
+        ),
+        CliMainTestCase(
+            description="prints backfill payload as json",
+            argv=(
+                "stb",
+                "backfill",
+                "--project-dir",
+                "tests/fixtures/basic_project",
+                "--host",
+                "localhost",
+                "--port",
+                "8123",
+                "--username",
+                "streambuild",
+                "--password",
+                "streambuild",
+                "--database",
+                "analytics",
+            ),
+            expected_exit_code=0,
+            expected_output_fragments=(
+                '"deployment_id": "20260410T000000Z_ab12cd"',
+                '"replay_strategy": "create_from_scratch"',
+            ),
+        ),
+        CliMainTestCase(
+            description="prints audit backfill payload as json",
+            argv=(
+                "stb",
+                "audit",
+                "backfill",
+                "--project-dir",
+                "tests/fixtures/basic_project",
+                "--host",
+                "localhost",
+                "--port",
+                "8123",
+                "--username",
+                "streambuild",
+                "--password",
+                "streambuild",
+                "--database",
+                "analytics",
+            ),
+            expected_exit_code=0,
+            expected_output_fragments=(
+                '"deployment_status": "backfilling"',
+                '"assessment": "ready"',
+                '"name": "tbl__orders_enriched"',
+            ),
+        ),
+        CliMainTestCase(
+            description="prints live audit payload as json",
+            argv=(
+                "stb",
+                "audit",
+                "--project-dir",
+                "tests/fixtures/basic_project",
+                "--host",
+                "localhost",
+                "--port",
+                "8123",
+                "--username",
+                "streambuild",
+                "--password",
+                "streambuild",
+                "--database",
+                "analytics",
+            ),
+            expected_exit_code=0,
+            expected_output_fragments=(
+                '"error_failure_count": 0',
+                '"warning_failure_count": 1',
+                '"severity": "warning"',
+            ),
+        ),
+        CliMainTestCase(
+            description="prints publish payload as json",
+            argv=(
+                "stb",
+                "publish",
+                "--host",
+                "localhost",
+                "--port",
+                "8123",
+                "--username",
+                "streambuild",
+                "--password",
+                "streambuild",
+                "--database",
+                "analytics",
+            ),
+            expected_exit_code=0,
+            expected_output_fragments=(
+                '"deployment_id": "20260410T000000Z_ab12cd"',
+                '"view_name": "tbl__orders_enriched"',
+                '"target_table_name": "tbl__orders_enriched__20260410T000000Z_ab12cd"',
+            ),
+        ),
+        CliMainTestCase(
+            description="prints doctor payload as json",
+            argv=(
+                "stb",
+                "doctor",
+                "--host",
+                "localhost",
+                "--port",
+                "8123",
+                "--username",
+                "streambuild",
+                "--password",
+                "streambuild",
+                "--database",
+                "analytics",
+            ),
+            expected_exit_code=0,
+            expected_output_fragments=(
+                '"table_name": "tbl__orders_enriched"',
+                '"state_kind": "logical_view_missing"',
+            ),
+        ),
+        CliMainTestCase(
+            description="prints repair active-view payload as json",
+            argv=(
+                "stb",
+                "repair",
+                "active-view",
+                "--host",
+                "localhost",
+                "--port",
+                "8123",
+                "--username",
+                "streambuild",
+                "--password",
+                "streambuild",
+                "--database",
+                "analytics",
+                "--table",
+                "tbl__orders_enriched",
+                "--deployment-id",
+                "20260410T000000Z_ab12cd",
+            ),
+            expected_exit_code=0,
+            expected_output_fragments=(
+                '"table_name": "tbl__orders_enriched"',
+                '"target_table_name": "tbl__orders_enriched__20260410T000000Z_ab12cd"',
+            ),
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_cli_args_when_running_main_then_it_prints_expected_json(
@@ -460,65 +457,62 @@ SELECT CAST(order_id AS UInt64) AS order_id FROM replay_orders
         assert expected_fragment in captured_error
 
 
-PLAN_OUTPUT_TEST_CASES: list[CliMainIntegrationTestCase] = [
-    CliMainIntegrationTestCase(
-        description="prints deployment plan summary as text",
-        argv=(
-            "stb",
-            "plan",
-            "--project-dir",
-            "tests/fixtures/basic_project",
-            "--host",
-            "localhost",
-            "--port",
-            "8123",
-            "--username",
-            "streambuild",
-            "--password",
-            "streambuild",
-            "--database",
-            "analytics",
-        ),
-        expected_exit_code=0,
-        expected_output_fragments=(
-            "Plan Ready",
-            "Subtrees to rebuild: 1",
-            "[replay start] raw__orders",
-            "[live target] tbl__orders_enriched",
-        ),
-    ),
-    CliMainIntegrationTestCase(
-        description="prints deployment plan payload as json when requested",
-        argv=(
-            "stb",
-            "plan",
-            "--project-dir",
-            "tests/fixtures/basic_project",
-            "--host",
-            "localhost",
-            "--port",
-            "8123",
-            "--username",
-            "streambuild",
-            "--password",
-            "streambuild",
-            "--database",
-            "analytics",
-            "--json",
-        ),
-        expected_exit_code=0,
-        expected_output_fragments=(
-            '"phase": "create"',
-            '"name": "tbl__orders_enriched"',
-            '"upstream_boundary_key":',
-        ),
-    ),
-]
-
-
 @pytest.mark.parametrize(
     "test_case",
-    PLAN_OUTPUT_TEST_CASES,
+    [
+        CliMainIntegrationTestCase(
+            description="prints deployment plan summary as text",
+            argv=(
+                "stb",
+                "plan",
+                "--project-dir",
+                "tests/fixtures/basic_project",
+                "--host",
+                "localhost",
+                "--port",
+                "8123",
+                "--username",
+                "streambuild",
+                "--password",
+                "streambuild",
+                "--database",
+                "analytics",
+            ),
+            expected_exit_code=0,
+            expected_output_fragments=(
+                "Plan Ready",
+                "Subtrees to rebuild: 1",
+                "[replay start] raw__orders",
+                "[live target] tbl__orders_enriched",
+            ),
+        ),
+        CliMainIntegrationTestCase(
+            description="prints deployment plan payload as json when requested",
+            argv=(
+                "stb",
+                "plan",
+                "--project-dir",
+                "tests/fixtures/basic_project",
+                "--host",
+                "localhost",
+                "--port",
+                "8123",
+                "--username",
+                "streambuild",
+                "--password",
+                "streambuild",
+                "--database",
+                "analytics",
+                "--json",
+            ),
+            expected_exit_code=0,
+            expected_output_fragments=(
+                '"phase": "create"',
+                '"name": "tbl__orders_enriched"',
+                '"upstream_boundary_key":',
+            ),
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_cli_args_when_running_plan_then_it_prints_expected_output(
@@ -663,46 +657,25 @@ SELECT order_id::UInt64 AS order_id FROM __ref("orders")
     }
 
 
-RUNTIME_PROJECT_DEFAULTS_TEST_CASES: list[CliProjectDefaultsTestCase] = [
-    CliProjectDefaultsTestCase(
-        description="uses project yaml database default for audit backfill",
-        command_name="audit backfill",
-        expected_database="analytics",
-    ),
-    CliProjectDefaultsTestCase(
-        description="uses project yaml database default for publish",
-        command_name="publish",
-        expected_database="analytics",
-    ),
-    CliProjectDefaultsTestCase(
-        description="uses project yaml database default for doctor",
-        command_name="doctor",
-        expected_database="analytics",
-    ),
-]
-
-RUNTIME_PROJECT_DIR_DEFAULTS_TEST_CASES: list[CliProjectDefaultsTestCase] = [
-    CliProjectDefaultsTestCase(
-        description="uses --project-dir for audit backfill",
-        command_name="audit backfill",
-        expected_database="analytics",
-    ),
-    CliProjectDefaultsTestCase(
-        description="uses --project-dir for publish",
-        command_name="publish",
-        expected_database="analytics",
-    ),
-    CliProjectDefaultsTestCase(
-        description="uses --project-dir for doctor",
-        command_name="doctor",
-        expected_database="analytics",
-    ),
-]
-
-
 @pytest.mark.parametrize(
     "test_case",
-    RUNTIME_PROJECT_DEFAULTS_TEST_CASES,
+    [
+        CliProjectDefaultsTestCase(
+            description="uses project yaml database default for audit backfill",
+            command_name="audit backfill",
+            expected_database="analytics",
+        ),
+        CliProjectDefaultsTestCase(
+            description="uses project yaml database default for publish",
+            command_name="publish",
+            expected_database="analytics",
+        ),
+        CliProjectDefaultsTestCase(
+            description="uses project yaml database default for doctor",
+            command_name="doctor",
+            expected_database="analytics",
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_project_yaml_when_running_runtime_command_then_it_uses_project_defaults(
@@ -780,7 +753,23 @@ SELECT order_id::UInt64 AS order_id FROM __ref("orders")
 
 @pytest.mark.parametrize(
     "test_case",
-    RUNTIME_PROJECT_DIR_DEFAULTS_TEST_CASES,
+    [
+        CliProjectDefaultsTestCase(
+            description="uses --project-dir for audit backfill",
+            command_name="audit backfill",
+            expected_database="analytics",
+        ),
+        CliProjectDefaultsTestCase(
+            description="uses --project-dir for publish",
+            command_name="publish",
+            expected_database="analytics",
+        ),
+        CliProjectDefaultsTestCase(
+            description="uses --project-dir for doctor",
+            command_name="doctor",
+            expected_database="analytics",
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_project_dir_when_running_runtime_command_then_it_uses_project_defaults(
@@ -1022,56 +1011,53 @@ def test_given_apply_flag_when_running_janitor_then_it_passes_apply_to_command(
     assert "metadata_database" not in runner.kwargs
 
 
-CLI_EXPECTED_ERROR_TEST_CASES: list[CliMainErrorTestCase] = [
-    CliMainErrorTestCase(
-        description="prints command value errors without a traceback",
-        argv=(
-            "stb",
-            "publish",
-            "--host",
-            "localhost",
-            "--port",
-            "8123",
-            "--username",
-            "streambuild",
-            "--password",
-            "streambuild",
-            "--database",
-            "analytics",
-        ),
-        expected_exit_code=1,
-        expected_error_fragments=(
-            "Deployment 'dep_missing' has no staged physical tables to publish",
-        ),
-    ),
-    CliMainErrorTestCase(
-        description="renders clickhouse authentication errors without a traceback",
-        argv=(
-            "stb",
-            "doctor",
-            "--host",
-            "localhost",
-            "--port",
-            "8123",
-            "--username",
-            "streambuild",
-            "--password",
-            "streambuild",
-            "--database",
-            "analytics",
-        ),
-        expected_exit_code=1,
-        expected_error_fragments=(
-            "Doctor could not start",
-            "ClickHouse rejected the supplied credentials",
-        ),
-    ),
-]
-
-
 @pytest.mark.parametrize(
     "test_case",
-    CLI_EXPECTED_ERROR_TEST_CASES,
+    [
+        CliMainErrorTestCase(
+            description="prints command value errors without a traceback",
+            argv=(
+                "stb",
+                "publish",
+                "--host",
+                "localhost",
+                "--port",
+                "8123",
+                "--username",
+                "streambuild",
+                "--password",
+                "streambuild",
+                "--database",
+                "analytics",
+            ),
+            expected_exit_code=1,
+            expected_error_fragments=(
+                "Deployment 'dep_missing' has no staged physical tables to publish",
+            ),
+        ),
+        CliMainErrorTestCase(
+            description="renders clickhouse authentication errors without a traceback",
+            argv=(
+                "stb",
+                "doctor",
+                "--host",
+                "localhost",
+                "--port",
+                "8123",
+                "--username",
+                "streambuild",
+                "--password",
+                "streambuild",
+                "--database",
+                "analytics",
+            ),
+            expected_exit_code=1,
+            expected_error_fragments=(
+                "Doctor could not start",
+                "ClickHouse rejected the supplied credentials",
+            ),
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_expected_command_errors_when_running_entrypoint_then_it_prints_clean_stderr(
@@ -1230,54 +1216,51 @@ def test_given_reconcile_flags_when_running_reconcile_then_it_passes_kwargs_to_c
     assert runner.kwargs["json_output"] is test_case.expected_json_output
 
 
-COMPILE_ARTIFACT_TEST_CASES: list[CliCompileArtifactsTestCase] = [
-    CliCompileArtifactsTestCase(
-        description="writes compile artifacts to target layout",
-        argv=(
-            "stb",
-            "compile",
-            "--project-dir",
-            ".",
-            "--target-dir",
-            "target_out",
-        ),
-        expected_exit_code=0,
-        expected_output_fragments=("Wrote compile artifacts to", "Pipelines: 1", "Models: 1"),
-        expected_written_files=(
-            "target_out/manifest.json",
-            "target_out/orders/compile/models/orders_enriched.sql",
-            "target_out/orders/run/models/orders_enriched.table.sql",
-            "target_out/orders/run/models/orders_enriched.mv.sql",
-            "target_out/orders/run/workflow/01_kafka_table.sql",
-            "target_out/orders/run/workflow/02_raw_table.sql",
-            "target_out/orders/run/workflow/03_landing_mv.sql",
-            "target_out/orders/run/workflow/10_orders_enriched.table.sql",
-            "target_out/orders/run/workflow/11_orders_enriched.mv.sql",
-            "target_out/orders/run/workflow/workflow.sql",
-            "target_out/orders/run/workflow/workflow.json",
-        ),
-    ),
-    CliCompileArtifactsTestCase(
-        description="writes default target under project root",
-        argv=(
-            "stb",
-            "compile",
-            "--project-dir",
-            ".",
-        ),
-        expected_exit_code=0,
-        expected_output_fragments=("Wrote compile artifacts to",),
-        expected_written_files=(
-            "target/manifest.json",
-            "target/orders/compile/models/orders_enriched.sql",
-        ),
-    ),
-]
-
-
 @pytest.mark.parametrize(
     "test_case",
-    COMPILE_ARTIFACT_TEST_CASES,
+    [
+        CliCompileArtifactsTestCase(
+            description="writes compile artifacts to target layout",
+            argv=(
+                "stb",
+                "compile",
+                "--project-dir",
+                ".",
+                "--target-dir",
+                "target_out",
+            ),
+            expected_exit_code=0,
+            expected_output_fragments=("Wrote compile artifacts to", "Pipelines: 1", "Models: 1"),
+            expected_written_files=(
+                "target_out/manifest.json",
+                "target_out/orders/compile/models/orders_enriched.sql",
+                "target_out/orders/run/models/orders_enriched.table.sql",
+                "target_out/orders/run/models/orders_enriched.mv.sql",
+                "target_out/orders/run/workflow/01_kafka_table.sql",
+                "target_out/orders/run/workflow/02_raw_table.sql",
+                "target_out/orders/run/workflow/03_landing_mv.sql",
+                "target_out/orders/run/workflow/10_orders_enriched.table.sql",
+                "target_out/orders/run/workflow/11_orders_enriched.mv.sql",
+                "target_out/orders/run/workflow/workflow.sql",
+                "target_out/orders/run/workflow/workflow.json",
+            ),
+        ),
+        CliCompileArtifactsTestCase(
+            description="writes default target under project root",
+            argv=(
+                "stb",
+                "compile",
+                "--project-dir",
+                ".",
+            ),
+            expected_exit_code=0,
+            expected_output_fragments=("Wrote compile artifacts to",),
+            expected_written_files=(
+                "target/manifest.json",
+                "target/orders/compile/models/orders_enriched.sql",
+            ),
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_compile_when_running_then_it_writes_target_artifacts(

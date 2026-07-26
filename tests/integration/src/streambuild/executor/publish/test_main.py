@@ -161,45 +161,27 @@ def test_given_greenfield_staged_deployment_when_publishing_then_it_creates_stab
     assert published_rows == [(order_id,) for order_id in test_case.expected_published_order_ids]
 
 
-RESOLUTION_TEST_CASES: list[ResolvePublishDeploymentIntegrationTestCase] = [
-    ResolvePublishDeploymentIntegrationTestCase(
-        description="requires explicit choice with no active view and many staged deployments",
-        create_active_view=False,
-        first_deployment_id="20260409T220000Z_ab12cd",
-        second_deployment_id="20260409T220500Z_cd34ef",
-        expected_resolved_deployment_id=None,
-        expected_error_fragment="Publish deployment resolution is ambiguous",
-    ),
-    ResolvePublishDeploymentIntegrationTestCase(
-        description="auto resolves latest staged deployment newer than active view target",
-        create_active_view=True,
-        first_deployment_id="20260409T221000Z_ab12cd",
-        second_deployment_id="20260409T221500Z_cd34ef",
-        expected_resolved_deployment_id="20260409T221500Z_cd34ef",
-        expected_error_fragment=None,
-    ),
-]
-
-PUBLISH_WITHOUT_METADATA_TEST_CASES: list[PublishWithoutMetadataIntegrationTestCase] = [
-    PublishWithoutMetadataIntegrationTestCase(
-        description="publishes explicit deployment after metadata deletion using live state",
-        deployment_id="20260409T223000Z_ab12cd",
-        expected_deployment_id="20260409T223000Z_ab12cd",
-        expected_target_table_name="tbl__orders_enriched__20260409T223000Z_ab12cd",
-    ),
-    PublishWithoutMetadataIntegrationTestCase(
-        description="resolves publish deployment after metadata deletion using live state",
-        deployment_id=None,
-        expected_deployment_id="20260409T223000Z_ab12cd",
-        expected_target_table_name="tbl__orders_enriched__20260409T223000Z_ab12cd",
-    ),
-]
-
-
 @pytest.mark.integration
 @pytest.mark.parametrize(
     "test_case",
-    RESOLUTION_TEST_CASES,
+    [
+        ResolvePublishDeploymentIntegrationTestCase(
+            description="requires explicit choice with no active view and many staged deployments",
+            create_active_view=False,
+            first_deployment_id="20260409T220000Z_ab12cd",
+            second_deployment_id="20260409T220500Z_cd34ef",
+            expected_resolved_deployment_id=None,
+            expected_error_fragment="Publish deployment resolution is ambiguous",
+        ),
+        ResolvePublishDeploymentIntegrationTestCase(
+            description="auto resolves latest staged deployment newer than active view target",
+            create_active_view=True,
+            first_deployment_id="20260409T221000Z_ab12cd",
+            second_deployment_id="20260409T221500Z_cd34ef",
+            expected_resolved_deployment_id="20260409T221500Z_cd34ef",
+            expected_error_fragment=None,
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_publish_request_without_deployment_id_when_resolving_then_it_behaves_as_expected(
@@ -317,7 +299,20 @@ def test_given_publish_request_without_deployment_id_when_resolving_then_it_beha
 @pytest.mark.integration
 @pytest.mark.parametrize(
     "test_case",
-    PUBLISH_WITHOUT_METADATA_TEST_CASES,
+    [
+        PublishWithoutMetadataIntegrationTestCase(
+            description="publishes explicit deployment after metadata deletion using live state",
+            deployment_id="20260409T223000Z_ab12cd",
+            expected_deployment_id="20260409T223000Z_ab12cd",
+            expected_target_table_name="tbl__orders_enriched__20260409T223000Z_ab12cd",
+        ),
+        PublishWithoutMetadataIntegrationTestCase(
+            description="resolves publish deployment after metadata deletion using live state",
+            deployment_id=None,
+            expected_deployment_id="20260409T223000Z_ab12cd",
+            expected_target_table_name="tbl__orders_enriched__20260409T223000Z_ab12cd",
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_deleted_publish_metadata_when_publishing_then_it_uses_live_clickhouse_state(

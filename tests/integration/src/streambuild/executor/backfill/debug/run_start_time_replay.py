@@ -18,8 +18,8 @@ from tests.integration.src.streambuild.executor.backfill.scenarios import (
     run_start_time_replay_scenario,
 )
 from tests.integration.src.streambuild.executor.backfill.test_main import (
-    START_TIME_OFFSET_REPLAY_TEST_CASES,
-    START_TIME_SCALAR_REPLAY_TEST_CASES,
+    test_given_start_time_offset_replay_when_executing_then_it_replays_expected_rows,
+    test_given_start_time_scalar_replay_when_executing_then_it_replays_expected_rows,
 )
 
 
@@ -69,11 +69,29 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _parametrized_cases(
+    *, test_function: object
+) -> list[ExecuteStartTimeReplayIntegrationTestCase]:
+    """Read cases off the test's parametrize mark.
+
+    The cases are declared inline in the decorator so they stay visible beside the
+    test, so this debug tool reads them from the mark rather than duplicating them.
+    """
+
+    marks = getattr(test_function, "pytestmark", ())
+    for mark in marks:
+        if mark.name == "parametrize":
+            return list(mark.args[1])
+    raise ValueError("Test function has no parametrize mark.")
+
+
 def _resolve_test_case(*, mode: str, window: str) -> ExecuteStartTimeReplayIntegrationTestCase:
-    test_cases: list[ExecuteStartTimeReplayIntegrationTestCase] = (
-        START_TIME_SCALAR_REPLAY_TEST_CASES
-        if mode == "scalar"
-        else START_TIME_OFFSET_REPLAY_TEST_CASES
+    test_cases: list[ExecuteStartTimeReplayIntegrationTestCase] = _parametrized_cases(
+        test_function=(
+            test_given_start_time_scalar_replay_when_executing_then_it_replays_expected_rows
+            if mode == "scalar"
+            else test_given_start_time_offset_replay_when_executing_then_it_replays_expected_rows
+        )
     )
     expected_fragment: str = (
         "full available window" if window == "full-history" else "explicit tail"

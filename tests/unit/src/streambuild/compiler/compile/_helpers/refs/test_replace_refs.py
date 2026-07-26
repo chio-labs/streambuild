@@ -7,49 +7,47 @@ from tests.unit.src.streambuild.compiler.compile._helpers.refs._test_types impor
 )
 from tests.unit.src.streambuild.compiler.compile._helpers.refs.helpers import build_ref_resolver
 
-TEST_CASES: list[ReplaceRefsTestCase] = [
-    ReplaceRefsTestCase(
-        description="replaces refs in plain and nested query positions",
-        sql=(
-            'SELECT * FROM __source("orders") WHERE customer_id IN '
-            '(SELECT customer_id FROM __ref("customers", ref_type="reference"))'
-        ),
-        resolver=build_ref_resolver(),
-        expected_sql_fragments=("FROM raw__orders", "FROM tbl__customers"),
-        expected_absent_fragments=(
-            '__source("orders")',
-            '__ref("customers", ref_type = "reference")',
-        ),
-    ),
-    ReplaceRefsTestCase(
-        description="does not replace ref text inside string literals",
-        sql='SELECT \'__source("orders")\' AS label FROM __source("orders")',
-        resolver=build_ref_resolver(),
-        expected_sql_fragments=(
-            "SELECT '__source(\"orders\")' AS label",
-            "FROM raw__orders",
-        ),
-        expected_absent_fragments=("'raw__orders' AS label",),
-    ),
-    ReplaceRefsTestCase(
-        description="replaces refs that declare ref_type",
-        sql=(
-            'SELECT * FROM __source("orders") LEFT JOIN '
-            '__ref("customers", ref_type="reference") USING customer_id'
-        ),
-        resolver=build_ref_resolver(),
-        expected_sql_fragments=("FROM raw__orders", "JOIN tbl__customers"),
-        expected_absent_fragments=(
-            '__source("orders")',
-            '__ref("customers", ref_type = "reference")',
-        ),
-    ),
-]
-
 
 @pytest.mark.parametrize(
     "test_case",
-    TEST_CASES,
+    [
+        ReplaceRefsTestCase(
+            description="replaces refs in plain and nested query positions",
+            sql=(
+                'SELECT * FROM __source("orders") WHERE customer_id IN '
+                '(SELECT customer_id FROM __ref("customers", ref_type="reference"))'
+            ),
+            resolver=build_ref_resolver(),
+            expected_sql_fragments=("FROM raw__orders", "FROM tbl__customers"),
+            expected_absent_fragments=(
+                '__source("orders")',
+                '__ref("customers", ref_type = "reference")',
+            ),
+        ),
+        ReplaceRefsTestCase(
+            description="does not replace ref text inside string literals",
+            sql='SELECT \'__source("orders")\' AS label FROM __source("orders")',
+            resolver=build_ref_resolver(),
+            expected_sql_fragments=(
+                "SELECT '__source(\"orders\")' AS label",
+                "FROM raw__orders",
+            ),
+            expected_absent_fragments=("'raw__orders' AS label",),
+        ),
+        ReplaceRefsTestCase(
+            description="replaces refs that declare ref_type",
+            sql=(
+                'SELECT * FROM __source("orders") LEFT JOIN '
+                '__ref("customers", ref_type="reference") USING customer_id'
+            ),
+            resolver=build_ref_resolver(),
+            expected_sql_fragments=("FROM raw__orders", "JOIN tbl__customers"),
+            expected_absent_fragments=(
+                '__source("orders")',
+                '__ref("customers", ref_type = "reference")',
+            ),
+        ),
+    ],
     ids=lambda case: case.description,
 )
 def test_given_sql_when_replacing_refs_then_it_rewrites_only_real_ref_calls(
