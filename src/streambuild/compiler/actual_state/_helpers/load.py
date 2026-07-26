@@ -43,6 +43,10 @@ from streambuild.compiler.shared.models import (
 )
 from streambuild.executor.reconcile.constants import RECONCILE_DEPLOYMENT_ID_PREFIX
 from streambuild.integrations.clickhouse.client import ClickHouseClient
+from streambuild.integrations.clickhouse.constants import (
+    BLANK_VALUES,
+    EMPTY_TUPLE_EXPRESSION,
+)
 
 
 def load_actual_state(
@@ -299,7 +303,7 @@ def _load_active_table_specs(
 
 def _parse_sorting_key(value: str) -> tuple[str, ...]:
     normalized: str = value.strip()
-    if normalized == "":
+    if not normalized:
         return ()
     if normalized.startswith("(") and normalized.endswith(")"):
         normalized = normalized[1:-1]
@@ -319,7 +323,7 @@ def _decode_table_column_system_row(row: Mapping[str, object]) -> TableColumnSys
         name=str(row["name"]),
         type=str(row["type"]),
         default_expression=(
-            None if row["default_expression"] in (None, "") else str(row["default_expression"])
+            None if row["default_expression"] in BLANK_VALUES else str(row["default_expression"])
         ),
     )
 
@@ -330,7 +334,7 @@ def _decode_table_storage_system_row(row: Mapping[str, object]) -> TableStorageS
         engine=str(row["engine"]),
         sorting_key=str(row["sorting_key"]),
         partition_key=(
-            None if row["partition_key"] in (None, "", "tuple()") else str(row["partition_key"])
+            None if row["partition_key"] in (*BLANK_VALUES, EMPTY_TUPLE_EXPRESSION) else str(row["partition_key"])
         ),
     )
 

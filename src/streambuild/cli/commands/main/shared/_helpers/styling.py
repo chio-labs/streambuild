@@ -13,6 +13,7 @@ from streambuild.cli.commands.main.shared.constants import (
     ANSI_RED,
     ANSI_RESET,
     ANSI_YELLOW,
+    TRUTHY_ENV_VALUES,
 )
 from streambuild.executor.audit_backfill.types import AuditAssessment
 
@@ -153,6 +154,6 @@ def apply_style(*, text: str, codes: tuple[str, ...]) -> str:
 def color_enabled() -> bool:
     if os.getenv("NO_COLOR"):
         return False
-    if os.getenv("CLICOLOR_FORCE") == "1" or os.getenv("FORCE_COLOR") == "1":
+    if os.getenv("CLICOLOR_FORCE") in TRUTHY_ENV_VALUES or os.getenv("FORCE_COLOR") in TRUTHY_ENV_VALUES:
         return True
     return sys.stdout.isatty()

@@ -32,6 +32,9 @@ from streambuild.executor.audit_backfill.models import (
 )
 from streambuild.executor.audit_backfill.types import AuditAssessment
 from streambuild.integrations.clickhouse.client import ClickHouseClient
+from streambuild.integrations.clickhouse.constants import (
+    BLANK_VALUES,
+)
 from streambuild.spec.models.types import ReplayLineageMode
 
 
@@ -641,16 +644,16 @@ def _decode_offset_summary_query_row(row: Mapping[str, object]) -> OffsetSummary
 def _decode_scalar_summary_query_row(row: Mapping[str, object]) -> ScalarSummaryQueryRow:
     return ScalarSummaryQueryRow(
         active_min_value=(
-            None if row["active_min_value"] in (None, "") else str(row["active_min_value"])
+            None if row["active_min_value"] in BLANK_VALUES else str(row["active_min_value"])
         ),
         active_max_value=(
-            None if row["active_max_value"] in (None, "") else str(row["active_max_value"])
+            None if row["active_max_value"] in BLANK_VALUES else str(row["active_max_value"])
         ),
         staged_min_value=(
-            None if row["staged_min_value"] in (None, "") else str(row["staged_min_value"])
+            None if row["staged_min_value"] in BLANK_VALUES else str(row["staged_min_value"])
         ),
         staged_max_value=(
-            None if row["staged_max_value"] in (None, "") else str(row["staged_max_value"])
+            None if row["staged_max_value"] in BLANK_VALUES else str(row["staged_max_value"])
         ),
         lag_seconds=None if row["lag_seconds"] is None else float(cast(float, row["lag_seconds"])),
     )

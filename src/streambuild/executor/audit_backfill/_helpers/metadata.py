@@ -11,6 +11,7 @@ from streambuild.compiler.shared.models import ObjectKey
 from streambuild.compiler.shared.types import DesiredObjectType
 from streambuild.executor.audit_backfill.models import DeploymentMetadataRow, LoadedAuditDeployment
 from streambuild.integrations.clickhouse.client import ClickHouseClient
+from streambuild.integrations.clickhouse.constants import UNKNOWN_TABLE_ERROR_CODE
 from streambuild.spec.models.types import ReplayLineageMode
 
 
@@ -31,7 +32,7 @@ def load_audit_deployment(
             decode=_decode_deployment_metadata_row,
         )
     except (DatabaseError, OperationalError) as error:
-        if "UNKNOWN_TABLE" in str(error):
+        if UNKNOWN_TABLE_ERROR_CODE in str(error):
             return LoadedAuditDeployment(
                 deployment_id=deployment_id,
                 created_at="",

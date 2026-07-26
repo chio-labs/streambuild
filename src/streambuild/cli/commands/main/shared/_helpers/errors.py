@@ -1,3 +1,9 @@
+from streambuild.integrations.clickhouse.constants import (
+    AUTHENTICATION_FAILED_ERROR_CODE,
+    AUTHENTICATION_FAILED_MESSAGE,
+    UNKNOWN_TABLE_ERROR_CODE,
+)
+
 """CLI-facing ClickHouse error translation helpers for main commands."""
 
 
@@ -8,7 +14,7 @@ def render_expected_clickhouse_error(
     error: Exception,
 ) -> str | None:
     error_message: str = str(error)
-    if "AUTHENTICATION_FAILED" in error_message or "Authentication failed" in error_message:
+    if AUTHENTICATION_FAILED_ERROR_CODE in error_message or AUTHENTICATION_FAILED_MESSAGE in error_message:
         return "\n".join(
             [
                 f"{command_name.title()} could not start",
@@ -35,7 +41,7 @@ def render_expected_clickhouse_error(
             ]
         )
 
-    if "UNKNOWN_TABLE" in error_message and "streambuild_" in error_message:
+    if UNKNOWN_TABLE_ERROR_CODE in error_message and "streambuild_" in error_message:
         return "\n".join(
             [
                 f"{command_name.title()} could not start",
@@ -47,7 +53,7 @@ def render_expected_clickhouse_error(
             ]
         )
 
-    if "UNKNOWN_TABLE" in error_message:
+    if UNKNOWN_TABLE_ERROR_CODE in error_message:
         return "\n".join(
             [
                 f"{command_name.title()} could not start",

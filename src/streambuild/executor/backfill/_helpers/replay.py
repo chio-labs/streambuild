@@ -393,7 +393,7 @@ def _render_scalar_replay_statement(
         table.set("this", exp.to_identifier(anchor_table_name))
         table.set("db", exp.to_identifier(database))
 
-    if cutoff_value == "":
+    if not cutoff_value:
         return (
             f"INSERT INTO {database}.{shadow_target_name}\n"
             f"SELECT * FROM ({expression.sql(dialect='clickhouse')}) WHERE 0"

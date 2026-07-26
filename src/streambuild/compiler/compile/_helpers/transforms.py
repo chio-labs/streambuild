@@ -19,6 +19,7 @@ from streambuild.compiler.compile._helpers.sql_contract import (
     validate_partition_by_expression,
     validate_ttl_expression,
 )
+from streambuild.compiler.compile.constants import AGGREGATING_ENGINE_NAMES
 from streambuild.compiler.compile.exceptions import PipelineCompileError
 from streambuild.compiler.compile.models import CompiledTransformStep, ParsedRef
 from streambuild.compiler.shared.constants import (
@@ -227,7 +228,7 @@ def transform_has_aggregate_semantics(*, transform: TransformStep, query: str) -
     """Return whether a transform is conservatively aggregate/stateful."""
 
     engine_name: str = transform.engine.lower()
-    if "summingmergetree" in engine_name or "aggregatingmergetree" in engine_name:
+    if any(name in engine_name for name in AGGREGATING_ENGINE_NAMES):
         return True
 
     return _query_has_aggregate_semantics(query)

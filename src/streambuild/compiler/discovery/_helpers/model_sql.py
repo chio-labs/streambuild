@@ -17,6 +17,9 @@ from streambuild.compiler.discovery._helpers.constants import (
     DEFAULT_SQL_MODEL_ORDER_BY,
     MODEL_HEADER_PATTERN,
 )
+from streambuild.compiler.discovery.constants import (
+    SCHEMA_CHANGE_RULE_KEYS,
+)
 from streambuild.compiler.discovery.exceptions import PipelineDiscoveryError
 from streambuild.compiler.discovery.shared._helpers.macros.main import expand_project_sql_macros
 from streambuild.spec.models.steps import (
@@ -245,7 +248,7 @@ def _optional_schema_change_backfill(
         )
     rule_values: dict[str, Any] = value
     unknown_keys: list[str] = [
-        key for key in rule_values if key not in {"breaking", "non_breaking"}
+        key for key in rule_values if key not in SCHEMA_CHANGE_RULE_KEYS
     ]
     if unknown_keys:
         unknown_key_list: str = ", ".join(sorted(unknown_keys))
