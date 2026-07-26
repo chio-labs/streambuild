@@ -8,7 +8,7 @@ from streambuild.compiler.shared.main.compiled_transforms import compiled_transf
 from streambuild.compiler.shared.models import LoadedSqlAudit
 
 
-def validate_sql_audits(
+def validated_sql_audits(
     *,
     loaded_audits: tuple[LoadedSqlAudit, ...],
     compiled_pipelines: tuple[CompiledPipeline, ...],

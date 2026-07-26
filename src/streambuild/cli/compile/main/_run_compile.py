@@ -19,7 +19,7 @@ from streambuild.clickhouse.render.main.render_create_materialized_view_ddl impo
 )
 from streambuild.clickhouse.render.main.render_create_table_ddl import render_create_table_ddl
 from streambuild.compiler.audit_discovery.main.discover_sql_audits import discover_sql_audits
-from streambuild.compiler.auditing.main.validate_sql_audits import validate_sql_audits
+from streambuild.compiler.auditing.main.validated_sql_audits import validated_sql_audits
 from streambuild.compiler.compile.exceptions import TransformSqlContractError
 from streambuild.compiler.compile.main.compile_pipeline import compile_pipeline
 from streambuild.compiler.compile.models import (
@@ -52,7 +52,7 @@ def run_compile(*, pipelines_root: Path, target_dir: Path | None = None) -> int:
             loaded_tests=loaded_tests,
             compiled_pipelines=tuple(compiled),
         )
-        validate_sql_audits(
+        validated_sql_audits(
             loaded_audits=loaded_audits,
             compiled_pipelines=tuple(compiled),
         )

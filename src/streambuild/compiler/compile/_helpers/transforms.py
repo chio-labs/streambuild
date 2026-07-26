@@ -16,7 +16,7 @@ from streambuild.compiler.compile._helpers.sql_contract import (
 )
 from streambuild.compiler.compile.constants import AGGREGATING_ENGINE_NAMES
 from streambuild.compiler.compile.exceptions import PipelineCompileError
-from streambuild.compiler.compile.main.extract_refs import extract_refs
+from streambuild.compiler.compile.main._extract_refs import extract_refs
 from streambuild.compiler.compile.main.replace_refs import replace_refs
 from streambuild.compiler.compile.main.transform_table_name import transform_table_name
 from streambuild.compiler.compile.models import CompiledTransformStep, ParsedRef

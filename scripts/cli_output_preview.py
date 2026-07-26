@@ -8,8 +8,8 @@ from scripts.cli_output_preview_support.constants import (
     ALL_SCENARIOS_CHOICE,
     PREVIEW_SCENARIO_NAMES,
 )
-from scripts.cli_output_preview_support.main.render_cli_output_preview import (
-    render_cli_output_preview,
+from scripts.cli_output_preview_support.main.print_cli_output_preview import (
+    print_cli_output_preview,
 )
 
 
@@ -29,21 +29,11 @@ def _parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args: argparse.Namespace = _parse_args()
-    requested: tuple[str, ...] = (
-        PREVIEW_SCENARIO_NAMES if args.scenario == ALL_SCENARIOS_CHOICE else (args.scenario,)
+    return print_cli_output_preview(
+        scenario=args.scenario,
+        json_output=args.json,
+        verbose=args.verbose,
     )
-    scenario_name: str
-    for index, scenario_name in enumerate(requested):
-        if index > 0:
-            print("\n---\n")
-        print(
-            render_cli_output_preview(
-                scenario_name=scenario_name,
-                json_output=args.json,
-                verbose=args.verbose,
-            )
-        )
-    return 0
 
 
 if __name__ == "__main__":

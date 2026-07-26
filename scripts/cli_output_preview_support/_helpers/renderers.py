@@ -1,6 +1,4 @@
-"""One preview renderer per scenario, keyed by scenario name."""
-
-from collections.abc import Callable, Mapping
+"""One preview renderer per scenario."""
 
 from scripts.cli_output_preview_support._helpers.plan_fixtures import (
     build_multi_target_plan_preview,
@@ -17,7 +15,7 @@ from scripts.cli_output_preview_support._helpers.result_fixtures import (
     build_backfill_preview,
     build_publish_preview,
 )
-from scripts.cli_output_preview_support.constants import PREVIEW_DATABASE
+from scripts.cli_output_preview_support.models import PreviewRequest
 from streambuild.cli.audit_backfill.main.render_audit_backfill_result import (
     render_audit_backfill_result,
 )
@@ -28,87 +26,89 @@ from streambuild.cli.shared.main.render_ambiguous_deployment_message import (
 )
 from streambuild.cli.shared.main.render_plan_result import render_plan_result
 
-type PreviewRenderer = Callable[[bool, bool], str]
 
+def render_plan_preview(request: PreviewRequest) -> str:
+    """Render the plan preview scenario."""
 
-def _render_plan_preview(json_output: bool, verbose: bool) -> str:
     return render_plan_result(
         plan=build_plan_preview(),
         desired_state=build_plan_preview_desired_state(),
-        database=PREVIEW_DATABASE,
-        json_output=json_output,
-        verbose=verbose,
+        database=request.database,
+        json_output=request.json_output,
+        verbose=request.verbose,
     )
 
 
-def _render_multi_target_plan_preview(json_output: bool, verbose: bool) -> str:
+def render_multi_target_plan_preview(request: PreviewRequest) -> str:
+    """Render the multi target plan preview scenario."""
+
     return render_plan_result(
         plan=build_multi_target_plan_preview(),
         desired_state=build_multi_target_plan_preview_desired_state(),
-        database=PREVIEW_DATABASE,
-        json_output=json_output,
-        verbose=verbose,
+        database=request.database,
+        json_output=request.json_output,
+        verbose=request.verbose,
     )
 
 
-def _render_type_change_plan_preview(json_output: bool, verbose: bool) -> str:
+def render_type_change_plan_preview(request: PreviewRequest) -> str:
+    """Render the type change plan preview scenario."""
+
     return render_plan_result(
         plan=build_type_change_plan_preview(),
         desired_state=build_type_change_plan_preview_desired_state(),
-        database=PREVIEW_DATABASE,
-        json_output=json_output,
-        verbose=verbose,
+        database=request.database,
+        json_output=request.json_output,
+        verbose=request.verbose,
     )
 
 
-def _render_backfill_preview(json_output: bool, verbose: bool) -> str:
+def render_backfill_preview(request: PreviewRequest) -> str:
+    """Render the backfill preview scenario."""
+
     return render_backfill_result(
         result=build_backfill_preview(),
-        database=PREVIEW_DATABASE,
-        json_output=json_output,
+        database=request.database,
+        json_output=request.json_output,
     )
 
 
-def _render_audit_preview(json_output: bool, verbose: bool) -> str:
+def render_audit_preview(request: PreviewRequest) -> str:
+    """Render the audit preview scenario."""
+
     return render_audit_backfill_result(
         result=build_audit_preview(),
-        database=PREVIEW_DATABASE,
-        json_output=json_output,
+        database=request.database,
+        json_output=request.json_output,
     )
 
 
-def _render_audit_caution_preview(json_output: bool, verbose: bool) -> str:
+def render_audit_caution_preview(request: PreviewRequest) -> str:
+    """Render the audit caution preview scenario."""
+
     return render_audit_backfill_result(
         result=build_audit_caution_preview(),
-        database=PREVIEW_DATABASE,
-        json_output=json_output,
+        database=request.database,
+        json_output=request.json_output,
     )
 
 
-def _render_publish_preview(json_output: bool, verbose: bool) -> str:
+def render_publish_preview(request: PreviewRequest) -> str:
+    """Render the publish preview scenario."""
+
     return render_publish_result(
         result=build_publish_preview(),
-        database=PREVIEW_DATABASE,
-        json_output=json_output,
+        database=request.database,
+        json_output=request.json_output,
     )
 
 
-def _render_audit_ambiguous_preview(json_output: bool, verbose: bool) -> str:
+def render_audit_ambiguous_preview(request: PreviewRequest) -> str:
+    """Render the audit ambiguous preview scenario."""
+
     return render_ambiguous_deployment_message(
         command_name="audit backfill",
-        database=PREVIEW_DATABASE,
+        database=request.database,
         root_names=("tbl__orders_enriched",),
         candidates=build_ambiguity_candidates(),
     )
-
-
-PREVIEW_RENDERER_BY_SCENARIO: Mapping[str, PreviewRenderer] = {
-    "plan": _render_plan_preview,
-    "plan-multi": _render_multi_target_plan_preview,
-    "plan-type-change": _render_type_change_plan_preview,
-    "backfill": _render_backfill_preview,
-    "audit": _render_audit_preview,
-    "audit-caution": _render_audit_caution_preview,
-    "publish": _render_publish_preview,
-    "audit-ambiguous": _render_audit_ambiguous_preview,
-}

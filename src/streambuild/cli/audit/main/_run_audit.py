@@ -5,7 +5,7 @@ from pathlib import Path
 from streambuild.cli.audit._helpers.rendering import render_sql_audit_run_result
 from streambuild.cli.audit._helpers.selection import select_loaded_sql_audits
 from streambuild.compiler.audit_discovery.main.discover_sql_audits import discover_sql_audits
-from streambuild.compiler.auditing.main.validate_sql_audits import validate_sql_audits
+from streambuild.compiler.auditing.main.validated_sql_audits import validated_sql_audits
 from streambuild.compiler.compile.main.compile_pipeline import compile_pipeline
 from streambuild.compiler.compile.main.transform_table_name import transform_table_name
 from streambuild.compiler.compile.models import CompiledPipeline
@@ -32,7 +32,7 @@ def run_audit(
     compiled_pipelines: tuple[CompiledPipeline, ...] = tuple(
         compile_pipeline(loaded_pipeline) for loaded_pipeline in loaded_pipelines
     )
-    loaded_audits: tuple[LoadedSqlAudit, ...] = validate_sql_audits(
+    loaded_audits: tuple[LoadedSqlAudit, ...] = validated_sql_audits(
         loaded_audits=tuple(discover_sql_audits(project_dir / "audits")),
         compiled_pipelines=compiled_pipelines,
     )
