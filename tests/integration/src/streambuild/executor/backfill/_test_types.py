@@ -1,7 +1,11 @@
 from dataclasses import dataclass
+from typing import NamedTuple
 
+from streambuild.compiler.compile.models import CompiledPipeline
 from streambuild.compiler.discovery.types import BoundedReplayFallback, ReplayLineageMode
 from streambuild.compiler.planner.types import RebuildExecutionMode
+from streambuild.executor.backfill.models import BackfillExecutionResult
+from tests.integration.src.streambuild.conftest import ClickHouseConnectionSettings
 
 
 @dataclass(frozen=True)
@@ -251,3 +255,12 @@ class ExecuteStartTimeReplayIntegrationTestCase:
     lower_bound_offset_millis: int
     expected_shadow_table_name: str
     expected_shadow_rows: tuple[tuple[str, str], ...]
+
+
+class StartTimeReplayScenarioResult(NamedTuple):
+    connection_settings: ClickHouseConnectionSettings
+    database: str
+    compiled_pipeline: CompiledPipeline
+    start_time_result: BackfillExecutionResult
+    converted_start_time: str
+    shadow_rows: tuple[tuple[str, str], ...]

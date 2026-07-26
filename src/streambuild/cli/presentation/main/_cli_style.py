@@ -10,11 +10,7 @@ from streambuild.cli.presentation.constants import TRUTHY_ENV_VALUES
 
 
 def cli_style() -> CliStyle:
-    """Return a style facade reflecting whether colour is currently enabled.
-
-    Colour is resolved per call rather than cached so environment changes and
-    redirected output are honoured.
-    """
+    """Return a style facade reflecting whether colour is currently enabled."""
 
     return CliStyle(use_color=_color_enabled())
 

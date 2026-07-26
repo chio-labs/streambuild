@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import argparse
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 
 from streambuild.compiler.discovery.models import Project
 
@@ -35,3 +37,21 @@ class ResolvedCliProjectConfig:
     connection: ResolvedClickHouseConnection | None
     default_database: str | None
     project: Project | None
+
+
+@dataclass(frozen=True)
+class CliClickHouseOptions:
+    host: str | None
+    port: int | None
+    username: str | None
+    password: str | None
+    project_connection: ResolvedClickHouseConnection | None
+
+
+@dataclass(frozen=True)
+class ResolvedCliInvocation:
+    args: argparse.Namespace
+    project_dir: Path | None
+    pipelines_root: Path | None
+    database: str | None
+    clickhouse: CliClickHouseOptions

@@ -37,49 +37,8 @@ def build_sql_test_case(
     authored_ctes: list[tuple[str, str]] = [
         (cte.name, cte.query) for cte in loaded_test.authored_ctes
     ]
-    assembled_model_ctes: list[tuple[str, str]] = []
+    assembled_model_ctes: tuple[tuple[str, str], ...] = ()
     assembled_name_by_logical_name: dict[str, str] = {}
-    in_progress: set[str] = set()
-
-    def resolve_relation(logical_name: str) -> str:
-        if logical_name in mock_name_by_logical_name:
-            return mock_name_by_logical_name[logical_name]
-        if logical_name in assembled_name_by_logical_name:
-            return assembled_name_by_logical_name[logical_name]
-        if logical_name in in_progress:
-            raise SqlTestAssemblyError(
-                f"SQL test '{loaded_test.file_path}' encountered a cyclic dependency "
-                f"while assembling '{logical_name}'"
-            )
-        if logical_name not in registry:
-            suggestion_prefix: str = "__source__" if logical_name in source_names else "__ref__"
-            target_model_names: str = ", ".join(
-                expected_target.name.removeprefix(EXPECTED_CTE_PREFIX)
-                for expected_target in loaded_test.expected_targets
-            )
-            raise SqlTestAssemblyError(
-                f"SQL test '{loaded_test.file_path}' targets "
-                f"'{target_model_names}', but dependency '{logical_name}' "
-                "cannot be resolved. Add "
-                f"`{suggestion_prefix}{logical_name}` to mock it directly."
-            )
-        entry: CompiledSqlTestModelEntry = registry[logical_name]
-        query: str | None = entry.compiled_transform.transform.query
-        if query is None:
-            raise SqlTestAssemblyError(
-                f"SQL test '{loaded_test.file_path}' could not load query text "
-                f"for model '{logical_name}'"
-            )
-        in_progress.add(logical_name)
-        resolver: dict[str, str] = {
-            parsed_ref.name: resolve_relation(parsed_ref.name)
-            for parsed_ref in entry.compiled_transform.parsed_refs
-        }
-        cte_name: str = f"__model__{logical_name}"
-        assembled_name_by_logical_name[logical_name] = cte_name
-        assembled_model_ctes.append((cte_name, replace_refs(sql=query, resolver=resolver)))
-        in_progress.remove(logical_name)
-        return cte_name
 
     target_cases: list[SqlTestTargetCase] = []
     expected_target: SqlTestCte
@@ -90,7 +49,21 @@ def build_sql_test_case(
                 f"SQL test '{loaded_test.file_path}' targets unknown model '{target_model_name}'"
             )
         target_entry: CompiledSqlTestModelEntry = registry[target_model_name]
-        actual_cte_name: str = resolve_relation(target_model_name)
+        actual_cte_name: str
+        (
+            actual_cte_name,
+            assembled_name_by_logical_name,
+            assembled_model_ctes,
+        ) = _resolve_relation(
+            logical_name=target_model_name,
+            loaded_test=loaded_test,
+            registry=registry,
+            source_names=source_names,
+            mock_name_by_logical_name=mock_name_by_logical_name,
+            assembled_name_by_logical_name=assembled_name_by_logical_name,
+            assembled_model_ctes=assembled_model_ctes,
+            resolution_stack=frozenset(),
+        )
         expected_column_names: tuple[str, ...] = _derive_expected_column_names(
             query=expected_target.query,
             file_path=loaded_test.file_path,
@@ -156,6 +129,84 @@ def build_sql_test_case(
         test_index=loaded_test.test_index,
         name=loaded_test.name,
     )
+
+
+def _resolve_relation(
+    *,
+    logical_name: str,
+    loaded_test: LoadedSqlTest,
+    registry: Mapping[str, CompiledSqlTestModelEntry],
+    source_names: set[str],
+    mock_name_by_logical_name: Mapping[str, str],
+    assembled_name_by_logical_name: dict[str, str],
+    assembled_model_ctes: tuple[tuple[str, str], ...],
+    resolution_stack: frozenset[str],
+) -> tuple[str, dict[str, str], tuple[tuple[str, str], ...]]:
+    if logical_name in mock_name_by_logical_name:
+        return (
+            mock_name_by_logical_name[logical_name],
+            assembled_name_by_logical_name,
+            assembled_model_ctes,
+        )
+    if logical_name in assembled_name_by_logical_name:
+        return (
+            assembled_name_by_logical_name[logical_name],
+            assembled_name_by_logical_name,
+            assembled_model_ctes,
+        )
+    if logical_name in resolution_stack:
+        raise SqlTestAssemblyError(
+            f"SQL test '{loaded_test.file_path}' encountered a cyclic dependency "
+            f"while assembling '{logical_name}'"
+        )
+    if logical_name not in registry:
+        suggestion_prefix: str = "__source__" if logical_name in source_names else "__ref__"
+        target_model_names: str = ", ".join(
+            expected_target.name.removeprefix(EXPECTED_CTE_PREFIX)
+            for expected_target in loaded_test.expected_targets
+        )
+        raise SqlTestAssemblyError(
+            f"SQL test '{loaded_test.file_path}' targets "
+            f"'{target_model_names}', but dependency '{logical_name}' "
+            "cannot be resolved. Add "
+            f"`{suggestion_prefix}{logical_name}` to mock it directly."
+        )
+    entry: CompiledSqlTestModelEntry = registry[logical_name]
+    query: str | None = entry.compiled_transform.transform.query
+    if query is None:
+        raise SqlTestAssemblyError(
+            f"SQL test '{loaded_test.file_path}' could not load query text "
+            f"for model '{logical_name}'"
+        )
+    resolver: dict[str, str] = {}
+    next_resolution_stack: frozenset[str] = resolution_stack | {logical_name}
+    for parsed_ref in entry.compiled_transform.parsed_refs:
+        resolved_name: str
+        (
+            resolved_name,
+            assembled_name_by_logical_name,
+            assembled_model_ctes,
+        ) = _resolve_relation(
+            logical_name=parsed_ref.name,
+            loaded_test=loaded_test,
+            registry=registry,
+            source_names=source_names,
+            mock_name_by_logical_name=mock_name_by_logical_name,
+            assembled_name_by_logical_name=assembled_name_by_logical_name,
+            assembled_model_ctes=assembled_model_ctes,
+            resolution_stack=next_resolution_stack,
+        )
+        resolver[parsed_ref.name] = resolved_name
+    cte_name: str = f"__model__{logical_name}"
+    updated_names: dict[str, str] = {
+        **assembled_name_by_logical_name,
+        logical_name: cte_name,
+    }
+    updated_ctes: tuple[tuple[str, str], ...] = (
+        *assembled_model_ctes,
+        (cte_name, replace_refs(sql=query, resolver=resolver)),
+    )
+    return cte_name, updated_names, updated_ctes
 
 
 def _build_compiled_model_registry(
@@ -494,7 +545,7 @@ def _build_select_source_name_by_alias(statement: exp.Select) -> dict[str, str]:
     source_name_by_alias: dict[str, str] = {}
     from_expression: exp.From | None = cast(exp.From | None, statement.args.get("from_"))
     if from_expression is not None:
-        _register_table_source(
+        source_name_by_alias = _register_table_source(
             source_expression=from_expression.this, source_name_by_alias=source_name_by_alias
         )
     joins: tuple[exp.Expression, ...] = cast(
@@ -504,7 +555,7 @@ def _build_select_source_name_by_alias(statement: exp.Select) -> dict[str, str]:
     for join_expression in joins:
         if not isinstance(join_expression, exp.Join):
             continue
-        _register_table_source(
+        source_name_by_alias = _register_table_source(
             source_expression=join_expression.this, source_name_by_alias=source_name_by_alias
         )
     return source_name_by_alias
@@ -514,10 +565,11 @@ def _register_table_source(
     *,
     source_expression: exp.Expression | None,
     source_name_by_alias: dict[str, str],
-) -> None:
+) -> dict[str, str]:
     if not isinstance(source_expression, exp.Table):
-        return
+        return source_name_by_alias
     source_name_by_alias[source_expression.alias_or_name] = source_expression.name
+    return source_name_by_alias
 
 
 def _build_typed_expected_query(

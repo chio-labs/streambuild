@@ -1,7 +1,7 @@
 import json
 import subprocess
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -11,6 +11,13 @@ from typing import Any
 from clickhouse_connect.driver.client import Client
 from kafka import KafkaProducer
 
+from streambuild.clickhouse.render.main.render_create_kafka_table_ddl import (
+    render_create_kafka_table_ddl,
+)
+from streambuild.clickhouse.render.main.render_create_materialized_view_ddl import (
+    render_create_materialized_view_ddl,
+)
+from streambuild.clickhouse.render.main.render_create_table_ddl import render_create_table_ddl
 from streambuild.compiler.compile.main.compile_pipeline import compile_pipeline
 from streambuild.compiler.compile.models import (
     Column,
@@ -31,8 +38,13 @@ from streambuild.compiler.discovery.models import (
 )
 from streambuild.compiler.discovery.types import ReplayLineageMode, SchemaChangeBackfillMode
 from streambuild.executor.backfill.models import BackfillBootstrapRequest
-from tests.e2e.src.streambuild.executor.debug.live_shadow import (
-    build_live_shadow_debug_message,
+from tests.e2e.src.streambuild.conftest import (
+    E2EClickHouseConnectionSettings,
+    E2EKafkaConnectionSettings,
+)
+from tests.e2e.src.streambuild.executor._test_types import (
+    KafkaLiveShadowScenarioResult,
+    KafkaLiveShadowWorkflowE2ETestCase,
 )
 from tests.integration.src.streambuild.compiler.planner.helpers import (
     build_changed_schema_variant_compiled_pipeline,
@@ -93,6 +105,134 @@ def prepare_authored_e2e_project(
     )
     pipeline_file.write_text(pipeline_contents, encoding="utf-8")
     return project_dir
+
+
+def run_kafka_live_shadow_scenario(
+    *,
+    test_case: KafkaLiveShadowWorkflowE2ETestCase,
+    clickhouse_connection_settings: E2EClickHouseConnectionSettings,
+    kafka_connection_settings: E2EKafkaConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+    tmp_path: Path,
+) -> KafkaLiveShadowScenarioResult:
+    project_dir: Path = prepare_authored_e2e_project(
+        fixture_project_dir=E2E_KAFKA_TIMESTAMP_PROJECT_DIR,
+        tmp_path=tmp_path,
+        kafka_broker_list=kafka_connection_settings.internal_bootstrap_server,
+        topic_suffix=clickhouse_database,
+    )
+    compiled_pipeline: CompiledPipeline = build_authored_greenfield_workflow_compiled_pipeline(
+        project_dir=project_dir
+    )
+    target_table_name: str = compiled_pipeline.transforms[0].target_table_name
+    clickhouse_client.command(
+        render_create_kafka_table_ddl(
+            table=require_managed_source(compiled_pipeline).kafka_table,
+            database=clickhouse_database,
+        )
+    )
+    clickhouse_client.command(
+        render_create_table_ddl(
+            table=require_managed_source(compiled_pipeline).raw_table,
+            database=clickhouse_database,
+        )
+    )
+    clickhouse_client.command(
+        render_create_materialized_view_ddl(
+            materialized_view=require_managed_source(compiled_pipeline).materialized_view,
+            database=clickhouse_database,
+        )
+    )
+
+    producer: KafkaProducer = build_kafka_producer(
+        bootstrap_server=kafka_connection_settings.bootstrap_server
+    )
+    try:
+        produce_kafka_messages(
+            producer=producer,
+            topic=require_managed_source(compiled_pipeline).kafka_table.spec.kafka.topic,
+            messages=tuple(
+                (order_id, json.dumps({"order_id": order_id}))
+                for order_id in test_case.initial_order_ids
+            ),
+        )
+    finally:
+        producer.close()
+
+    wait_for_row_count(
+        clickhouse_client=clickhouse_client,
+        clickhouse_database=clickhouse_database,
+        table_name=require_managed_source(compiled_pipeline).raw_table.name,
+        expected_count=len(test_case.initial_order_ids),
+    )
+    run_streambuild_backfill_cli(
+        project_dir=project_dir,
+        host=clickhouse_connection_settings.host,
+        port=clickhouse_connection_settings.port,
+        username=clickhouse_connection_settings.username,
+        password=clickhouse_connection_settings.password,
+        database=clickhouse_database,
+        deployment_id=test_case.deployment_id,
+    )
+
+    staged_table_name: str = f"{target_table_name}__{test_case.deployment_id}"
+    wait_for_live_shadow_row_count(
+        clickhouse_client=clickhouse_client,
+        clickhouse_database=clickhouse_database,
+        raw_table_name=require_managed_source(compiled_pipeline).raw_table.name,
+        staged_table_name=staged_table_name,
+        expected_count=len(test_case.initial_order_ids),
+    )
+
+    producer = build_kafka_producer(bootstrap_server=kafka_connection_settings.bootstrap_server)
+    try:
+        produce_kafka_messages(
+            producer=producer,
+            topic=require_managed_source(compiled_pipeline).kafka_table.spec.kafka.topic,
+            messages=tuple(
+                (order_id, json.dumps({"order_id": order_id}))
+                for order_id in test_case.live_order_ids
+            ),
+        )
+    finally:
+        producer.close()
+
+    total_order_count: int = len(test_case.initial_order_ids) + len(test_case.live_order_ids)
+    wait_for_row_count(
+        clickhouse_client=clickhouse_client,
+        clickhouse_database=clickhouse_database,
+        table_name=require_managed_source(compiled_pipeline).raw_table.name,
+        expected_count=total_order_count,
+    )
+    wait_for_live_shadow_row_count(
+        clickhouse_client=clickhouse_client,
+        clickhouse_database=clickhouse_database,
+        raw_table_name=require_managed_source(compiled_pipeline).raw_table.name,
+        staged_table_name=staged_table_name,
+        expected_count=total_order_count,
+    )
+    staged_rows: Sequence[Sequence[object]] = clickhouse_client.query(
+        f"SELECT order_id FROM {clickhouse_database}.{staged_table_name} ORDER BY order_id"
+    ).result_rows
+
+    run_streambuild_publish_cli(
+        host=clickhouse_connection_settings.host,
+        port=clickhouse_connection_settings.port,
+        username=clickhouse_connection_settings.username,
+        password=clickhouse_connection_settings.password,
+        database=clickhouse_database,
+        deployment_id=test_case.deployment_id,
+    )
+    final_rows: Sequence[Sequence[object]] = clickhouse_client.query(
+        f"SELECT order_id FROM {clickhouse_database}.{target_table_name} ORDER BY order_id"
+    ).result_rows
+    return KafkaLiveShadowScenarioResult(
+        staged_table_name=staged_table_name,
+        staged_order_ids=tuple(str(row[0]) for row in staged_rows),
+        deployment_id=test_case.deployment_id,
+        final_rows=tuple(tuple(row) for row in final_rows),
+    )
 
 
 def prepare_external_source_e2e_project(*, tmp_path: Path) -> Path:
@@ -613,6 +753,64 @@ def wait_for_live_shadow_row_count(
                 error=error,
             )
         ) from error
+
+
+def build_live_shadow_debug_message(
+    *,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+    raw_table_name: str,
+    staged_table_name: str,
+    error: AssertionError,
+) -> str:
+    staged_mv_name: str = staged_table_name.replace("tbl__", "mv__", 1)
+    live_table_name: str = staged_table_name.rsplit("__", maxsplit=1)[0]
+    raw_count: int = _query_table_count(
+        clickhouse_client=clickhouse_client,
+        clickhouse_database=clickhouse_database,
+        table_name=raw_table_name,
+    )
+    staged_count: int = _query_table_count(
+        clickhouse_client=clickhouse_client,
+        clickhouse_database=clickhouse_database,
+        table_name=staged_table_name,
+    )
+    latest_raw_rows: Sequence[Sequence[object]] = clickhouse_client.query(
+        f"SELECT _replay_partition, _replay_offset, _replay_timestamp FROM "
+        f"{clickhouse_database}.{raw_table_name} "
+        "ORDER BY _replay_partition DESC, _replay_offset DESC LIMIT 5"
+    ).result_rows
+    latest_staged_rows: Sequence[Sequence[object]] = clickhouse_client.query(
+        f"SELECT order_id, _replay_timestamp FROM {clickhouse_database}.{staged_table_name} "
+        "ORDER BY _replay_timestamp DESC, order_id DESC LIMIT 5"
+    ).result_rows
+    live_count: int | None = clickhouse_client.query(
+        "SELECT anyOrNull(total_rows) FROM system.tables "
+        f"WHERE database = '{clickhouse_database}' AND name = '{live_table_name}'"
+    ).result_rows[0][0]
+    staged_mv_metadata: Sequence[object] = clickhouse_client.query(
+        "SELECT count() > 0, anyOrNull(create_table_query) FROM system.tables "
+        f"WHERE database = '{clickhouse_database}' AND name = '{staged_mv_name}'"
+    ).result_rows[0]
+    staged_mv_exists: bool = bool(staged_mv_metadata[0])
+    staged_mv_ddl: str | None = staged_mv_metadata[1]
+    return (
+        f"{error}. raw_count={raw_count}, staged_count={staged_count}, "
+        f"live_count={live_count}, staged_mv_exists={staged_mv_exists}, "
+        f"latest_raw_rows={tuple(latest_raw_rows)}, "
+        f"latest_staged_rows={tuple(latest_staged_rows)}, "
+        f"staged_mv_ddl={staged_mv_ddl!r}"
+    )
+
+
+def _query_table_count(
+    *, clickhouse_client: Client, clickhouse_database: str, table_name: str
+) -> int:
+    return int(
+        clickhouse_client.query(
+            f"SELECT count() FROM {clickhouse_database}.{table_name}"
+        ).result_rows[0][0]
+    )
 
 
 def wait_for_row_count(

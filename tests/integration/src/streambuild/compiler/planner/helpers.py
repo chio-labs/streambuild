@@ -1,7 +1,16 @@
 from collections.abc import Callable
+from dataclasses import replace
+from typing import cast
 
 from streambuild.compiler.compile.main.compile_pipeline import compile_pipeline
-from streambuild.compiler.compile.models import CompiledPipeline
+from streambuild.compiler.compile.models import (
+    Column,
+    CompiledPipeline,
+    DesiredKafkaTable,
+    DesiredMaterializedView,
+    DesiredState,
+    DesiredTable,
+)
 from streambuild.compiler.discovery.models import (
     KafkaLandingStep,
     KafkaSettings,
@@ -9,6 +18,7 @@ from streambuild.compiler.discovery.models import (
     Pipeline,
     TransformStep,
 )
+from streambuild.compiler.planner.models import DeploymentPlan, PlannedObjectChange
 from tests.unit.src.streambuild.compiler.planner.helpers import EXAMPLE_PIPELINE_FILE_PATH
 
 
@@ -198,3 +208,35 @@ def build_changed_schema_variant_compiled_pipeline(kind: str) -> CompiledPipelin
     """Build the compiled pipeline for a named schema-change variant."""
 
     return CHANGED_SCHEMA_VARIANT_BUILDERS[kind]()
+
+
+def normalize_orders_enriched_timestamp_type(desired_state: DesiredState) -> DesiredState:
+    object_by_name: dict[str, DesiredKafkaTable | DesiredTable | DesiredMaterializedView] = {
+        desired_object.name: desired_object for desired_object in desired_state.objects
+    }
+    target_table: DesiredTable = cast(DesiredTable, object_by_name["tbl__orders_enriched"])
+    column_by_name: dict[str, Column] = {
+        column.name: column for column in target_table.spec.columns
+    }
+    column_by_name["_replay_timestamp"] = replace(
+        target_table.spec.columns[1], type="DATETIME64(3)"
+    )
+    object_by_name[target_table.name] = replace(
+        target_table,
+        spec=replace(
+            target_table.spec,
+            columns=tuple(column_by_name[column.name] for column in target_table.spec.columns),
+        ),
+    )
+    return DesiredState(
+        objects=tuple(object_by_name[object_.name] for object_ in desired_state.objects),
+        replay_anchor_keys=desired_state.replay_anchor_keys,
+        mutable_ref_warning_keys=desired_state.mutable_ref_warning_keys,
+    )
+
+
+def get_orders_enriched_change(plan: DeploymentPlan) -> PlannedObjectChange:
+    change_by_name: dict[str, PlannedObjectChange] = {
+        change.key.name: change for change in plan.object_changes
+    }
+    return change_by_name["tbl__orders_enriched"]

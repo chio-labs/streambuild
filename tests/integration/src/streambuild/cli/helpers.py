@@ -1,4 +1,4 @@
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
 from clickhouse_connect.driver.client import Client
@@ -287,9 +287,11 @@ def load_deployment_status_rows(
     """Load recorded deployment statuses in deployment order."""
 
     query: str = f"SELECT status FROM {database}.streambuild_deployments ORDER BY deployment_id"
-    return tuple(
-        tuple(str(value) for value in row) for row in clickhouse_client.query(query).result_rows
-    )
+    return tuple(_stringify_row(row) for row in clickhouse_client.query(query).result_rows)
+
+
+def _stringify_row(row: Sequence[object]) -> tuple[str, ...]:
+    return tuple(str(value) for value in row)
 
 
 def load_selected_root_names(*, clickhouse_client: Client, database: str) -> tuple[str, ...]:

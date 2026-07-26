@@ -1,5 +1,3 @@
-from dataclasses import replace
-
 import pytest
 from clickhouse_connect.driver.client import Client
 
@@ -12,7 +10,7 @@ from streambuild.clickhouse.render.main.render_create_materialized_view_ddl impo
 from streambuild.clickhouse.render.main.render_create_table_ddl import render_create_table_ddl
 from streambuild.compiler.actual_state.main.load_actual_state import load_actual_state
 from streambuild.compiler.actual_state.models import ActualState
-from streambuild.compiler.compile.models import CompiledPipeline, DesiredState, DesiredTable
+from streambuild.compiler.compile.models import CompiledPipeline, DesiredState
 from streambuild.compiler.desired_state.main.build_desired_state import build_desired_state
 from streambuild.compiler.planner.constants import (
     PLANNED_CHANGE_TYPE_NO_OP,
@@ -43,6 +41,8 @@ from tests.integration.src.streambuild.compiler.planner._test_types import (
 from tests.integration.src.streambuild.compiler.planner.helpers import (
     build_changed_schema_variant_compiled_pipeline,
     build_changed_sql_compiled_pipeline,
+    get_orders_enriched_change,
+    normalize_orders_enriched_timestamp_type,
 )
 from tests.integration.src.streambuild.conftest import ClickHouseConnectionSettings
 from tests.integration.src.streambuild.executor.backfill.helpers import (
@@ -254,26 +254,8 @@ def test_given_equivalent_type_casing_after_publish_when_planning_again_then_it_
             ),
             client=managed_client,
         )
-        normalized_desired_state: DesiredState = DesiredState(
-            objects=tuple(
-                replace(
-                    object_,
-                    spec=replace(
-                        object_.spec,
-                        columns=tuple(
-                            replace(column, type="DATETIME64(3)")
-                            if column.name == "_replay_timestamp"
-                            else column
-                            for column in object_.spec.columns
-                        ),
-                    ),
-                )
-                if isinstance(object_, DesiredTable) and object_.name == "tbl__orders_enriched"
-                else object_
-                for object_ in desired_state.objects
-            ),
-            replay_anchor_keys=desired_state.replay_anchor_keys,
-            mutable_ref_warning_keys=desired_state.mutable_ref_warning_keys,
+        normalized_desired_state: DesiredState = normalize_orders_enriched_timestamp_type(
+            desired_state
         )
         actual_state: ActualState = load_actual_state(
             client=managed_client,
@@ -570,8 +552,6 @@ def test_given_published_deployment_when_transform_output_schema_changes_then_pl
         test_case.expected_execution_mode,
     )
     assert tuple(sql_diff.name for sql_diff in plan.sql_diffs) == test_case.expected_sql_diff_names
-    table_change: PlannedObjectChange = next(
-        change for change in plan.object_changes if change.key.name == "tbl__orders_enriched"
-    )
+    table_change: PlannedObjectChange = get_orders_enriched_change(plan)
     assert table_change.schema_change_kind == test_case.expected_schema_change_kind
     assert table_change.seed_compatibility == test_case.expected_seed_compatibility

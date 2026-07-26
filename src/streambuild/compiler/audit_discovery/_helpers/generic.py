@@ -239,7 +239,8 @@ def _build_generic_sql_audit_instances(
             implicit_arguments=implicit_arguments,
             explicit_arguments=explicit_arguments,
         )
-        severity: str = _pop_audit_string_argument(
+        severity: str
+        severity, merged_arguments = _pop_audit_string_argument(
             key="severity",
             arguments=merged_arguments,
             default_value="error",
@@ -247,13 +248,15 @@ def _build_generic_sql_audit_instances(
             definition_name=definition_name,
             allowed_values=ALLOWED_AUDIT_SEVERITIES,
         )
-        description: str | None = _pop_optional_audit_string_argument(
+        description: str | None
+        description, merged_arguments = _pop_optional_audit_string_argument(
             key="description",
             arguments=merged_arguments,
             file_path=file_path,
             definition_name=definition_name,
         )
-        name: str | None = _pop_optional_audit_string_argument(
+        name: str | None
+        name, merged_arguments = _pop_optional_audit_string_argument(
             key="name",
             arguments=merged_arguments,
             file_path=file_path,
@@ -302,14 +305,15 @@ def _pop_audit_string_argument(
     file_path: Path,
     definition_name: str,
     allowed_values: frozenset[str],
-) -> str:
-    value: object = arguments.pop(key, default_value)
+) -> tuple[str, dict[str, object]]:
+    remaining_arguments: dict[str, object] = dict(arguments)
+    value: object = remaining_arguments.pop(key, default_value)
     if not isinstance(value, str) or value not in allowed_values:
         raise SqlAuditParseError(
             f"Schema file '{file_path}' audit '{definition_name}' must define {key} as one of: "
             f"{', '.join(sorted(allowed_values))}"
         )
-    return value
+    return value, remaining_arguments
 
 
 def _pop_optional_audit_string_argument(
@@ -318,16 +322,17 @@ def _pop_optional_audit_string_argument(
     arguments: dict[str, object],
     file_path: Path,
     definition_name: str,
-) -> str | None:
-    value: object = arguments.pop(key, None)
+) -> tuple[str | None, dict[str, object]]:
+    remaining_arguments: dict[str, object] = dict(arguments)
+    value: object = remaining_arguments.pop(key, None)
     if value is None:
-        return None
+        return None, remaining_arguments
     if not isinstance(value, str) or not value.strip():
         raise SqlAuditParseError(
             f"Schema file '{file_path}' audit '{definition_name}' must define {key} "
             "as a non-empty string"
         )
-    return value.strip()
+    return value.strip(), remaining_arguments
 
 
 def _render_generic_sql_audit_query(

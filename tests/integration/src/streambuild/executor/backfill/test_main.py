@@ -70,8 +70,10 @@ from tests.integration.src.streambuild.executor.backfill._test_types import (
     ExecuteUnseededBoundedScalarReplayIntegrationTestCase,
     PersistWatermarksWithoutMetadataTableIntegrationTestCase,
     ResolveAggregateUnsupportedReplayBehaviorIntegrationTestCase,
+    StartTimeReplayScenarioResult,
 )
 from tests.integration.src.streambuild.executor.backfill.helpers import (
+    assert_external_cursor_start_time_boundary,
     build_aggregate_offset_replay_compiled_pipeline,
     build_aggregate_offset_replay_request,
     build_backfill_bootstrap_request,
@@ -94,12 +96,8 @@ from tests.integration.src.streambuild.executor.backfill.helpers import (
     build_reference_join_replay_request,
     build_scalar_replay_compiled_pipeline,
     build_scalar_replay_request,
+    prepare_live_landing_objects,
     require_managed_source,
-)
-from tests.integration.src.streambuild.executor.backfill.scenario_models import (
-    StartTimeReplayScenarioResult,
-)
-from tests.integration.src.streambuild.executor.backfill.scenarios import (
     run_start_time_replay_scenario,
 )
 
@@ -142,25 +140,12 @@ def test_given_changed_pipeline_when_bootstrapping_then_it_creates_metadata_and_
     clickhouse_database: str,
 ) -> None:
     compiled_pipeline: CompiledPipeline = build_compiled_pipeline()
-    if test_case.precreate_live_landing_objects:
-        clickhouse_client.command(
-            render_create_kafka_table_ddl(
-                table=require_managed_source(compiled_pipeline).kafka_table,
-                database=clickhouse_database,
-            )
-        )
-        clickhouse_client.command(
-            render_create_table_ddl(
-                table=require_managed_source(compiled_pipeline).raw_table,
-                database=clickhouse_database,
-            )
-        )
-        clickhouse_client.command(
-            render_create_materialized_view_ddl(
-                materialized_view=require_managed_source(compiled_pipeline).materialized_view,
-                database=clickhouse_database,
-            )
-        )
+    prepare_live_landing_objects(
+        precreate=test_case.precreate_live_landing_objects,
+        clickhouse_client=clickhouse_client,
+        clickhouse_database=clickhouse_database,
+        compiled_pipeline=compiled_pipeline,
+    )
     managed_client: ClickHouseClient = connect_clickhouse(
         ClickHouseConnectionConfig(
             host=clickhouse_connection_settings.host,
@@ -933,12 +918,11 @@ def test_given_external_source_cursor_replay_when_executing_then_it_replays_by_c
         "('cursor-order-2', 2, toDateTime64('2026-04-09 16:00:02.000', 3)), "
         "('cursor-order-3', 3, toDateTime64('2026-04-09 16:00:03.000', 3))"
     )
-    if test_case.start_time is not None:
-        assert clickhouse_client.query(
-            "SELECT min(event_cursor) FROM "
-            f"{clickhouse_database}.orders_existing "
-            f"WHERE event_timestamp >= toDateTime64('{test_case.start_time}', 3)"
-        ).result_rows == [(2,)]
+    assert_external_cursor_start_time_boundary(
+        clickhouse_client=clickhouse_client,
+        clickhouse_database=clickhouse_database,
+        start_time=test_case.start_time,
+    )
     managed_client: ClickHouseClient = connect_clickhouse(
         ClickHouseConnectionConfig(
             host=clickhouse_connection_settings.host,

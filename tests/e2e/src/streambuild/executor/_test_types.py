@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import NamedTuple
 
 from streambuild.compiler.planner.types import RebuildExecutionMode
 from streambuild.executor.audit_backfill.types import AuditAssessment
@@ -33,6 +34,13 @@ class KafkaLiveShadowWorkflowE2ETestCase:
     expected_final_order_ids: tuple[str, ...]
 
 
+class KafkaLiveShadowScenarioResult(NamedTuple):
+    staged_table_name: str
+    staged_order_ids: tuple[str, ...]
+    deployment_id: str
+    final_rows: tuple[tuple[object, ...], ...]
+
+
 @dataclass(frozen=True)
 class KafkaOffsetAuditWorkflowE2ETestCase:
     description: str
@@ -57,6 +65,7 @@ class KafkaSchemaChangeWorkflowE2ETestCase:
     expected_view_column_names: tuple[str, ...]
     expected_selected_columns: tuple[str, ...]
     expected_selected_rows: tuple[tuple[object, ...], ...]
+    topic_row_indexes: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True)

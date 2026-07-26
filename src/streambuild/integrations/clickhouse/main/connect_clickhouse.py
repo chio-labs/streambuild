@@ -10,11 +10,7 @@ from streambuild.integrations.clickhouse.types import RawClickHouseClient
 
 
 def connect_clickhouse(config: ClickHouseConnectionConfig) -> ClickHouseClient:
-    """Open a ClickHouse connection and wrap it in the client boundary.
-
-    The driver types its `database` parameter as a required string, so an unset
-    database must be omitted from the call rather than passed as None.
-    """
+    """Open a ClickHouse connection and wrap it in the client boundary."""
 
     if config.database is None:
         raw_client: RawClickHouseClient = cast(

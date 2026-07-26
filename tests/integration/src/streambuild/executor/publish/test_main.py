@@ -36,6 +36,9 @@ from tests.integration.src.streambuild.executor.publish._test_types import (
     PublishWithoutMetadataIntegrationTestCase,
     ResolvePublishDeploymentIntegrationTestCase,
 )
+from tests.integration.src.streambuild.executor.publish.helpers import (
+    prepare_publish_resolution_scenario,
+)
 
 
 @pytest.mark.integration
@@ -169,14 +172,6 @@ def test_given_greenfield_staged_deployment_when_publishing_then_it_creates_stab
     "test_case",
     [
         ResolvePublishDeploymentIntegrationTestCase(
-            description="requires explicit choice with no active view and many staged deployments",
-            create_active_view=False,
-            first_deployment_id="20260409T220000Z_ab12cd",
-            second_deployment_id="20260409T220500Z_cd34ef",
-            expected_resolved_deployment_id=None,
-            expected_error_fragment="Publish deployment resolution is ambiguous",
-        ),
-        ResolvePublishDeploymentIntegrationTestCase(
             description="auto resolves latest staged deployment newer than active view target",
             create_active_view=True,
             first_deployment_id="20260409T221000Z_ab12cd",
@@ -187,104 +182,22 @@ def test_given_greenfield_staged_deployment_when_publishing_then_it_creates_stab
     ],
     ids=lambda case: case.description,
 )
-def test_given_publish_request_without_deployment_id_when_resolving_then_it_behaves_as_expected(
+def test_given_active_view_when_resolving_publish_without_deployment_id_then_it_selects_latest(
     test_case: ResolvePublishDeploymentIntegrationTestCase,
     clickhouse_connection_settings: ClickHouseConnectionSettings,
     clickhouse_client: Client,
     clickhouse_database: str,
 ) -> None:
-    compiled_pipeline: CompiledPipeline = build_scalar_replay_compiled_pipeline("timestamp")
-    clickhouse_client.command(
-        render_create_kafka_table_ddl(
-            table=require_managed_source(compiled_pipeline).kafka_table,
-            database=clickhouse_database,
-        )
-    )
-    clickhouse_client.command(
-        render_create_table_ddl(
-            table=require_managed_source(compiled_pipeline).raw_table, database=clickhouse_database
-        )
-    )
-    clickhouse_client.command(
-        render_create_materialized_view_ddl(
-            materialized_view=require_managed_source(compiled_pipeline).materialized_view,
-            database=clickhouse_database,
-        )
-    )
-    clickhouse_client.insert(
-        table=f"{clickhouse_database}.{require_managed_source(compiled_pipeline).raw_table.name}",
-        data=[
-            build_raw_orders_row(
-                kafka_key="historical-order",
-                _replay_partition=0,
-                _replay_offset=1,
-                _replay_timestamp="2026-04-09 21:59:59.000",
-                _replay_landed_at="2026-04-09 21:59:59.000",
-            )
-        ],
-        column_names=[
-            "kafka_key",
-            "kafka_value",
-            "kafka_topic",
-            "_replay_partition",
-            "_replay_offset",
-            "_replay_timestamp",
-            "kafka_headers",
-            "_replay_landed_at",
-        ],
-    )
-    managed_client: ClickHouseClient = connect_clickhouse(
-        ClickHouseConnectionConfig(
-            host=clickhouse_connection_settings.host,
-            port=clickhouse_connection_settings.port,
-            username=clickhouse_connection_settings.username,
-            password=clickhouse_connection_settings.password,
-            database=clickhouse_database,
-        )
+    managed_client: ClickHouseClient = prepare_publish_resolution_scenario(
+        connection_settings=clickhouse_connection_settings,
+        clickhouse_client=clickhouse_client,
+        clickhouse_database=clickhouse_database,
+        first_deployment_id=test_case.first_deployment_id,
+        second_deployment_id=test_case.second_deployment_id,
+        create_active_view=test_case.create_active_view,
     )
 
     try:
-        execute_backfill(
-            request=build_scalar_replay_request(
-                database=clickhouse_database,
-                deployment_id=test_case.first_deployment_id,
-                created_at="2026-04-09 22:00:00.123",
-                boundary_time="2026-04-09 22:00:00.000",
-                replay_lineage_mode="timestamp",
-            ),
-            client=managed_client,
-        )
-        execute_backfill(
-            request=build_scalar_replay_request(
-                database=clickhouse_database,
-                deployment_id=test_case.second_deployment_id,
-                created_at="2026-04-09 22:05:00.123",
-                boundary_time="2026-04-09 22:05:00.000",
-                replay_lineage_mode="timestamp",
-            ),
-            client=managed_client,
-        )
-        if test_case.create_active_view:
-            clickhouse_client.command(
-                render_create_view_ddl(
-                    database=clickhouse_database,
-                    view_name="tbl__orders_enriched",
-                    target_table_name="tbl__orders_enriched__20260409T221000Z_ab12cd",
-                )
-            )
-
-        if test_case.expected_error_fragment is not None:
-            with pytest.raises(ValueError, match=test_case.expected_error_fragment):
-                execute_publish(
-                    request=PublishRequest(
-                        deployment_id=None,
-                        metadata_database=clickhouse_database,
-                        default_database=clickhouse_database,
-                    ),
-                    client=managed_client,
-                )
-            return
-
         result: PublishResult = execute_publish(
             request=PublishRequest(
                 deployment_id=None,
@@ -297,6 +210,49 @@ def test_given_publish_request_without_deployment_id_when_resolving_then_it_beha
         managed_client.close()
 
     assert result.deployment_id == test_case.expected_resolved_deployment_id
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ResolvePublishDeploymentIntegrationTestCase(
+            description="requires explicit choice with no active view and many staged deployments",
+            create_active_view=False,
+            first_deployment_id="20260409T220000Z_ab12cd",
+            second_deployment_id="20260409T220500Z_cd34ef",
+            expected_resolved_deployment_id=None,
+            expected_error_fragment="Publish deployment resolution is ambiguous",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_publish_request_without_deployment_id_when_resolution_is_ambiguous_then_it_raises(
+    test_case: ResolvePublishDeploymentIntegrationTestCase,
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    managed_client: ClickHouseClient = prepare_publish_resolution_scenario(
+        connection_settings=clickhouse_connection_settings,
+        clickhouse_client=clickhouse_client,
+        clickhouse_database=clickhouse_database,
+        first_deployment_id=test_case.first_deployment_id,
+        second_deployment_id=test_case.second_deployment_id,
+        create_active_view=test_case.create_active_view,
+    )
+    try:
+        with pytest.raises(ValueError, match=test_case.expected_error_fragment):
+            execute_publish(
+                request=PublishRequest(
+                    deployment_id=None,
+                    metadata_database=clickhouse_database,
+                    default_database=clickhouse_database,
+                ),
+                client=managed_client,
+            )
+    finally:
+        managed_client.close()
 
 
 @pytest.mark.integration

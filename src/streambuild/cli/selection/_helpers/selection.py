@@ -11,6 +11,7 @@ from streambuild.compiler.compile.models import (
     CompiledExternalSource,
     CompiledManagedSource,
     CompiledPipeline,
+    CompiledTransformStep,
     DesiredKafkaTable,
     DesiredMaterializedView,
     DesiredState,
@@ -30,11 +31,12 @@ def resolve_selected_model_keys(
     pipeline_model_keys: dict[str, tuple[ObjectKey, ...]] = model_keys_by_pipeline(
         compiled_pipelines=compiled_pipelines
     )
-    model_key_by_name: dict[str, ObjectKey] = {
-        transform.transform.name: transform.target_table.key
-        for compiled_pipeline in compiled_pipelines
-        for transform in compiled_pipeline.transforms
-    }
+    model_key_by_name: dict[str, ObjectKey] = {}
+    compiled_pipeline: CompiledPipeline
+    for compiled_pipeline in compiled_pipelines:
+        transform: CompiledTransformStep
+        for transform in compiled_pipeline.transforms:
+            model_key_by_name[transform.transform.name] = transform.target_table.key
     selected_model_keys: set[ObjectKey] = set()
     selector: str
     for selector in selectors:

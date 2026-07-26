@@ -49,11 +49,11 @@ def run_compile(*, pipelines_root: Path, target_dir: Path | None = None) -> int:
         loaded_audits: tuple[LoadedSqlAudit, ...] = tuple(
             discover_sql_audits(pipelines_root.parent / "audits")
         )
-        build_sql_test_cases(
+        _ = build_sql_test_cases(
             loaded_tests=loaded_tests,
             compiled_pipelines=tuple(compiled),
         )
-        validated_sql_audits(
+        _ = validated_sql_audits(
             loaded_audits=loaded_audits,
             compiled_pipelines=tuple(compiled),
         )

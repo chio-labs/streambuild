@@ -82,17 +82,8 @@ def test_given_reference_ref_when_creating_shadow_objects_then_it_creates_depend
         default_database="analytics",
     )
 
-    assert any(test_case.expected_preceding_fragment in command for command in client.commands)
-    assert any(test_case.expected_following_fragment in command for command in client.commands)
-    preceding_index: int = next(
-        index
-        for index, command in enumerate(client.commands)
-        if test_case.expected_preceding_fragment in command
-    )
-    following_index: int = next(
-        index
-        for index, command in enumerate(client.commands)
-        if test_case.expected_following_fragment in command
-    )
+    rendered_commands: str = "\n".join(client.commands)
+    preceding_index: int = rendered_commands.index(test_case.expected_preceding_fragment)
+    following_index: int = rendered_commands.index(test_case.expected_following_fragment)
 
     assert preceding_index < following_index

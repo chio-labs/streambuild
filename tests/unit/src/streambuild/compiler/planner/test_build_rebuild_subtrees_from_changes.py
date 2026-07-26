@@ -26,6 +26,7 @@ from tests.unit.src.streambuild.compiler.planner.helpers import (
                 (None, "table", "raw__orders"),
                 (None, "table", "tbl__orders_enriched"),
             ),
+            change_types=(PLANNED_CHANGE_TYPE_REBUILD, PLANNED_CHANGE_TYPE_REBUILD),
             expected_root_keys=((None, "table", "tbl__orders_enriched"),),
         ),
         PlannerCollapseSubtreesTestCase(
@@ -34,6 +35,7 @@ from tests.unit.src.streambuild.compiler.planner.helpers import (
                 (None, "kafka_table", "kafka__orders"),
                 (None, "table", "raw__orders"),
             ),
+            change_types=(PLANNED_CHANGE_TYPE_CREATE, PLANNED_CHANGE_TYPE_REBUILD),
             expected_root_keys=(),
         ),
     ],
@@ -46,13 +48,13 @@ def test_given_overlapping_changed_keys_when_building_subtrees_then_it_collapses
     object_changes: tuple[PlannedObjectChange, ...] = tuple(
         PlannedObjectChange(
             key=build_key(*changed_key),
-            change_type=(
-                PLANNED_CHANGE_TYPE_CREATE
-                if changed_key[1] == "kafka_table"
-                else PLANNED_CHANGE_TYPE_REBUILD
-            ),
+            change_type=change_type,
         )
-        for changed_key in test_case.changed_keys
+        for changed_key, change_type in zip(
+            test_case.changed_keys,
+            test_case.change_types,
+            strict=True,
+        )
     )
 
     rebuild_subtrees: tuple[RebuildSubtree, ...] = emit_rebuild_subtrees_from_changes(

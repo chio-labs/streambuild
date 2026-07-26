@@ -312,10 +312,12 @@ def test_given_cli_args_when_running_main_then_it_prints_expected_json(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     clickhouse_client: ClickHouseClient = cast(ClickHouseClient, FakeCliClickHouseClient())
-    overrides: dict[str, PrintingCommandRunner] = (
-        {test_case.handler_name: PrintingCommandRunner(test_case.handler_output)}
-        if test_case.handler_name is not None
-        else {}
+    override_candidates: dict[str | None, PrintingCommandRunner] = {
+        test_case.handler_name: PrintingCommandRunner(test_case.handler_output)
+    }
+    _ = override_candidates.pop(None, None)
+    overrides: dict[str, PrintingCommandRunner] = cast(
+        dict[str, PrintingCommandRunner], override_candidates
     )
     handlers: CliEntrypointHandlers = handlers_with_overrides(**overrides)
 

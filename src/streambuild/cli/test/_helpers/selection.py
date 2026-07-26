@@ -13,7 +13,7 @@ from streambuild.cli.selection.constants import (
 )
 from streambuild.compiler.compile.main.compiled_transforms import compiled_transforms
 from streambuild.compiler.compile.models import CompiledPipeline, CompiledTransformStep, ParsedRef
-from streambuild.compiler.test_discovery.models import LoadedSqlTest
+from streambuild.compiler.test_discovery.models import LoadedSqlTest, SqlTestCte
 
 
 def select_loaded_sql_tests(
@@ -33,15 +33,15 @@ def select_loaded_sql_tests(
         compiled_pipelines=compiled_pipelines,
         selectors=selectors,
     )
-    selected_tests: tuple[LoadedSqlTest, ...] = tuple(
-        loaded_test
-        for loaded_test in loaded_tests
-        if loaded_test.file_path.resolve() in selected_paths
-        or any(
-            expected_target.name.removeprefix("__expected__") in selected_target_names
-            for expected_target in loaded_test.expected_targets
-        )
-    )
+    selected_test_items: list[LoadedSqlTest] = []
+    loaded_test: LoadedSqlTest
+    for loaded_test in loaded_tests:
+        if loaded_test.file_path.resolve() in selected_paths or _targets_selected(
+            loaded_test=loaded_test,
+            selected_target_names=selected_target_names,
+        ):
+            selected_test_items.append(loaded_test)
+    selected_tests: tuple[LoadedSqlTest, ...] = tuple(selected_test_items)
     if selected_tests:
         return selected_tests
     raise CliUserError("No SQL tests matched the requested selectors or paths.")
@@ -66,12 +66,12 @@ def _resolve_selected_target_names(
 ) -> frozenset[str]:
     if not selectors:
         return frozenset()
-    pipeline_model_names: dict[str, tuple[str, ...]] = {
-        compiled_pipeline.pipeline.name: tuple(
+    pipeline_model_names: dict[str, tuple[str, ...]] = {}
+    compiled_pipeline: CompiledPipeline
+    for compiled_pipeline in compiled_pipelines:
+        pipeline_model_names[compiled_pipeline.pipeline.name] = tuple(
             compiled_transform.transform.name for compiled_transform in compiled_pipeline.transforms
         )
-        for compiled_pipeline in compiled_pipelines
-    }
     upstream_names_by_model, downstream_names_by_model = _build_model_graph(compiled_pipelines)
     known_model_names: frozenset[str] = frozenset(downstream_names_by_model)
     selected_target_names: set[str] = set()
@@ -133,6 +133,14 @@ def _resolve_selector_target_names(
             f"SQL test selector pipeline '{selector_value}' does not define any models"
         )
     return pipeline_targets
+
+
+def _targets_selected(*, loaded_test: LoadedSqlTest, selected_target_names: frozenset[str]) -> bool:
+    expected_target: SqlTestCte
+    for expected_target in loaded_test.expected_targets:
+        if expected_target.name.removeprefix("__expected__") in selected_target_names:
+            return True
+    return False
 
 
 def _build_model_graph(

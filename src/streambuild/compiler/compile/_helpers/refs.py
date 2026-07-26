@@ -10,7 +10,9 @@ from sqlglot import exp, parse_one
 from streambuild.compiler.compile.constants import (
     REF_FUNCTION_NAMES,
     REF_TYPE_KEYWORD,
+    REF_WITH_TYPE_ARGUMENT_COUNT,
     SOURCE_REF_FUNCTION_NAME,
+    VALID_REF_ARGUMENT_COUNTS,
 )
 from streambuild.compiler.compile.exceptions import PipelineCompileError
 from streambuild.compiler.compile.models import ParsedRef
@@ -41,7 +43,7 @@ def _parse_table_ref(table: exp.Table) -> ParsedRef | None:
     ):
         return None
     expressions: list[exp.Expression] = list(table_expression.expressions)
-    if len(expressions) not in {1, 2}:
+    if len(expressions) not in VALID_REF_ARGUMENT_COUNTS:
         raise PipelineCompileError(
             "__source(...) and __ref(...) must contain one name argument and optional ref_type"
         )
@@ -53,7 +55,7 @@ def _parse_table_ref(table: exp.Table) -> ParsedRef | None:
         relation_type = SqlRelationType.SOURCE
     else:
         relation_type = SqlRelationType.REF
-    if len(expressions) == 2:
+    if len(expressions) == REF_WITH_TYPE_ARGUMENT_COUNT:
         if relation_type != SqlRelationType.REF:
             raise PipelineCompileError("__source(...) must not declare ref_type")
         ref_type = _parse_ref_type(expressions[1])

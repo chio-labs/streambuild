@@ -1,10 +1,11 @@
+from itertools import chain
 from pathlib import Path
 
 import pytest
 
 from streambuild.cli.entry.exceptions import CliUserError
 from streambuild.cli.test._helpers.selection import select_loaded_sql_tests
-from streambuild.compiler.test_discovery.models import LoadedSqlTest
+from streambuild.compiler.test_discovery.models import LoadedSqlTest, SqlTestCte
 from tests.unit.src.streambuild.cli.test._helpers._test_types import (
     SelectLoadedSqlTestsErrorTestCase,
     SelectLoadedSqlTestsTestCase,
@@ -81,12 +82,14 @@ def test_given_valid_test_selectors_when_selecting_then_it_returns_expected_targ
         project_dir=tmp_path,
     )
 
+    selected_expected_targets: tuple[SqlTestCte, ...] = tuple(
+        chain.from_iterable(test.expected_targets for test in selected_tests)
+    )
     selected_target_model_names: tuple[str, ...] = tuple(
         sorted(
             {
                 expected_target.name.removeprefix("__expected__")
-                for test in selected_tests
-                for expected_target in test.expected_targets
+                for expected_target in selected_expected_targets
             }
         )
     )

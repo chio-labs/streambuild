@@ -53,10 +53,10 @@ def test_given_example_pipeline_file_when_loading_pipeline_then_returns_top_leve
     assert loaded.pipeline.source.name == test_case.expected_source_name
     assert [transform.name for transform in loaded.pipeline.transforms] == ["orders_enriched"]
     assert loaded.pipeline.transforms[0].source == "orders"
-    if loaded.project is None:
-        assert test_case.expected_project_replay_lineage_mode is None
-    else:
-        assert loaded.project.replay_lineage_mode == test_case.expected_project_replay_lineage_mode
+    loaded_project_replay_lineage_mode: ReplayLineageMode | None = getattr(
+        loaded.project, "replay_lineage_mode", None
+    )
+    assert loaded_project_replay_lineage_mode == test_case.expected_project_replay_lineage_mode
 
 
 @pytest.mark.parametrize(
@@ -634,7 +634,3 @@ def test_given_invalid_adopted_source_when_loading_then_it_raises_expected_error
 
     with pytest.raises(ValueError, match=test_case.expected_error_fragment):
         load_pipeline_file(pipeline_file_path)
-
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-vv"])

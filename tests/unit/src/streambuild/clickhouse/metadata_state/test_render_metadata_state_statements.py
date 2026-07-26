@@ -19,6 +19,7 @@ from tests.unit.src.streambuild.clickhouse.metadata_state.helpers import build_m
     [
         RenderMetadataStateDdlTestCase(
             description="renders object-state metadata table ddl",
+            statement_index=0,
             expected_table_name="streambuild_object_state_snapshots",
             expected_fragments=(
                 "CREATE TABLE IF NOT EXISTS metadata.streambuild_object_state_snapshots",
@@ -29,6 +30,7 @@ from tests.unit.src.streambuild.clickhouse.metadata_state.helpers import build_m
         ),
         RenderMetadataStateDdlTestCase(
             description="renders deployments metadata table ddl",
+            statement_index=1,
             expected_table_name="streambuild_deployments",
             expected_fragments=(
                 "CREATE TABLE IF NOT EXISTS metadata.streambuild_deployments",
@@ -38,6 +40,7 @@ from tests.unit.src.streambuild.clickhouse.metadata_state.helpers import build_m
         ),
         RenderMetadataStateDdlTestCase(
             description="renders deployment-watermarks metadata table ddl",
+            statement_index=2,
             expected_table_name="streambuild_deployment_watermarks",
             expected_fragments=(
                 "CREATE TABLE IF NOT EXISTS metadata.streambuild_deployment_watermarks",
@@ -47,6 +50,7 @@ from tests.unit.src.streambuild.clickhouse.metadata_state.helpers import build_m
         ),
         RenderMetadataStateDdlTestCase(
             description="renders deployment-runtime-details metadata table ddl",
+            statement_index=3,
             expected_table_name="streambuild_deployment_runtime_details",
             expected_fragments=(
                 "CREATE TABLE IF NOT EXISTS metadata.streambuild_deployment_runtime_details",
@@ -56,6 +60,7 @@ from tests.unit.src.streambuild.clickhouse.metadata_state.helpers import build_m
         ),
         RenderMetadataStateDdlTestCase(
             description="renders publish-history metadata table ddl",
+            statement_index=4,
             expected_table_name="streambuild_publish_history",
             expected_fragments=(
                 "CREATE TABLE IF NOT EXISTS metadata.streambuild_publish_history",
@@ -73,11 +78,7 @@ def test_given_metadata_database_when_rendering_then_it_returns_expected_metadat
         "metadata"
     )
 
-    matching_statement: RenderedClickHouseStatement = next(
-        statement
-        for statement in rendered_statements
-        if test_case.expected_table_name in statement.sql
-    )
+    matching_statement: RenderedClickHouseStatement = rendered_statements[test_case.statement_index]
 
     for expected_fragment in test_case.expected_fragments:
         assert expected_fragment in matching_statement.sql
@@ -88,6 +89,7 @@ def test_given_metadata_database_when_rendering_then_it_returns_expected_metadat
     [
         MetadataStateInsertStatementTestCase(
             description="builds object-state insert statement rows",
+            statement_index=0,
             expected_sql_fragment="INSERT INTO metadata.streambuild_object_state_snapshots",
             expected_row_count=1,
             expected_first_row_fragments=(
@@ -98,6 +100,7 @@ def test_given_metadata_database_when_rendering_then_it_returns_expected_metadat
         ),
         MetadataStateInsertStatementTestCase(
             description="builds deployments insert statement rows",
+            statement_index=1,
             expected_sql_fragment="INSERT INTO metadata.streambuild_deployments",
             expected_row_count=1,
             expected_first_row_fragments=(
@@ -107,6 +110,7 @@ def test_given_metadata_database_when_rendering_then_it_returns_expected_metadat
         ),
         MetadataStateInsertStatementTestCase(
             description="builds deployment-watermarks insert statement rows",
+            statement_index=2,
             expected_sql_fragment="INSERT INTO metadata.streambuild_deployment_watermarks",
             expected_row_count=1,
             expected_first_row_fragments=(
@@ -116,6 +120,7 @@ def test_given_metadata_database_when_rendering_then_it_returns_expected_metadat
         ),
         MetadataStateInsertStatementTestCase(
             description="builds deployment-runtime-details insert statement rows",
+            statement_index=3,
             expected_sql_fragment="INSERT INTO metadata.streambuild_deployment_runtime_details",
             expected_row_count=1,
             expected_first_row_fragments=(
@@ -126,6 +131,7 @@ def test_given_metadata_database_when_rendering_then_it_returns_expected_metadat
         ),
         MetadataStateInsertStatementTestCase(
             description="builds publish-history insert statement rows",
+            statement_index=4,
             expected_sql_fragment="INSERT INTO metadata.streambuild_publish_history",
             expected_row_count=1,
             expected_first_row_fragments=(
@@ -154,9 +160,7 @@ def test_given_metadata_records_when_building_insert_statement_then_it_returns_e
         deployment_runtime_details=deployment_runtime_details,
         publish_events=publish_events,
     )
-    statement: RenderedClickHouseStatement = next(
-        statement for statement in statements if test_case.expected_sql_fragment in statement.sql
-    )
+    statement: RenderedClickHouseStatement = statements[test_case.statement_index]
 
     assert test_case.expected_sql_fragment in statement.sql
     assert len(statement.rows) == test_case.expected_row_count

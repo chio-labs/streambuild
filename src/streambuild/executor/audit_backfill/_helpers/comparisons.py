@@ -4,6 +4,7 @@ import re
 from collections.abc import Mapping
 from typing import cast
 
+from clickhouse_connect.driver.exceptions import DatabaseError, OperationalError
 from sqlglot import exp, parse_one
 
 from streambuild.clickhouse.inspect.models import InspectedManagedTableState
@@ -22,7 +23,10 @@ from streambuild.compiler.discovery.types import ReplayLineageMode
 from streambuild.compiler.planner.main.build_deployment_physical_name import (
     build_deployment_physical_name,
 )
-from streambuild.executor.audit_backfill.constants import ACCEPTABLE_LAG_SECONDS
+from streambuild.executor.audit_backfill.constants import (
+    ACCEPTABLE_LAG_SECONDS,
+    MINIMUM_STAGED_ROW_RATIO,
+)
 from streambuild.executor.audit_backfill.exceptions import AuditBackfillExecutionError
 from streambuild.executor.audit_backfill.models import (
     ColumnNameSystemRow,
@@ -38,6 +42,7 @@ from streambuild.executor.audit_backfill.types import AuditAssessment
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 from streambuild.integrations.clickhouse.constants import (
     BLANK_VALUES,
+    UNKNOWN_TABLE_ERROR_CODE,
 )
 
 
@@ -206,10 +211,14 @@ def _row_count(*, client: ClickHouseClient, database: str, table_name: str) -> i
 
 
 def _safe_row_count(*, client: ClickHouseClient, database: str, table_name: str) -> int | None:
+    if not _table_exists(client=client, database=database, table_name=table_name):
+        return None
     try:
         return _row_count(client=client, database=database, table_name=table_name)
-    except Exception:
-        return None
+    except (DatabaseError, OperationalError) as error:
+        if UNKNOWN_TABLE_ERROR_CODE in str(error):
+            return None
+        raise
 
 
 def _has_active_binding(
@@ -420,7 +429,7 @@ def _build_root_assessment(
                 active_row_count is not None
                 and staged_row_count is not None
                 and active_row_count > 0
-                and staged_row_count < active_row_count * 0.5
+                and staged_row_count < active_row_count * MINIMUM_STAGED_ROW_RATIO
             ):
                 return AuditAssessment(AuditAssessment.CAUTION)
             return AuditAssessment(AuditAssessment.READY)
@@ -434,7 +443,7 @@ def _build_root_assessment(
             active_row_count is not None
             and staged_row_count is not None
             and active_row_count > 0
-            and staged_row_count < active_row_count * 0.5
+            and staged_row_count < active_row_count * MINIMUM_STAGED_ROW_RATIO
         ):
             return AuditAssessment(AuditAssessment.CAUTION)
         return AuditAssessment(AuditAssessment.READY)
@@ -459,7 +468,7 @@ def _build_root_warnings(
         and active_row_count is not None
         and staged_row_count is not None
         and row_ratio is not None
-        and row_ratio < 0.5
+        and row_ratio < MINIMUM_STAGED_ROW_RATIO
     ):
         warnings.append(f"staged row count is far below active row count for {root_key.name}")
     return tuple(warnings)

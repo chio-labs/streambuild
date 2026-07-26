@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from streambuild.clickhouse.inspect.models import RootDeploymentInspection
 from streambuild.compiler.compile.models import (
     Column,
     KafkaSettings,
@@ -12,6 +13,7 @@ from streambuild.compiler.compile.models import (
     ObjectKey,
     TableSpec,
 )
+from streambuild.compiler.metadata_state.models import ObjectStateRecord
 
 
 @dataclass(frozen=True)
@@ -99,6 +101,18 @@ class ActualState:
     """Project-level flat actual object graph."""
 
     objects: tuple[ActualKafkaTable | ActualTable | ActualMaterializedView, ...]
+
+
+@dataclass(frozen=True)
+class ActualStateInspection:
+    """Live and persisted inputs needed to assemble actual state."""
+
+    existing_names: frozenset[str]
+    active_deployment_by_root: dict[ObjectKey, RootDeploymentInspection]
+    object_state_by_deployment_and_key: dict[tuple[str, ObjectKey], ObjectStateRecord]
+    latest_object_state_by_key: dict[ObjectKey, ObjectStateRecord]
+    active_physical_names_by_logical_name: dict[str, str]
+    active_table_specs_by_name: dict[str, TableSpec]
 
 
 @dataclass(frozen=True)

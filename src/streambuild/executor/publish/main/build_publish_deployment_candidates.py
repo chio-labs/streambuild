@@ -47,14 +47,14 @@ def build_publish_deployment_candidates(
     if not relevant_root_keys:
         return tuple(AuditDeploymentCandidate(deployment_id=value) for value in all_deployment_ids)
 
-    active_deployment_ids: set[str] = {
-        inspection.active_deployment_id
-        for inspection in (
-            inspect_root_deployment_state(inspected_state=inspected_state, root_key=root_key)
-            for root_key in relevant_root_keys
-        )
-        if inspection.active_deployment_id is not None
-    }
+    active_deployment_ids: set[str] = set()
+    root_key: ObjectKey
+    for root_key in relevant_root_keys:
+        active_deployment_id: str | None = inspect_root_deployment_state(
+            inspected_state=inspected_state, root_key=root_key
+        ).active_deployment_id
+        if active_deployment_id is not None:
+            active_deployment_ids.add(active_deployment_id)
     if len(active_deployment_ids) != 1:
         return tuple(AuditDeploymentCandidate(deployment_id=value) for value in all_deployment_ids)
 

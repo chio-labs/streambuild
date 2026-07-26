@@ -22,14 +22,15 @@ def selected_backfill_sql_audits(
         loaded_audits=tuple(discover_sql_audits(project_dir / "audits")),
         compiled_pipelines=compiled_pipelines,
     )
-    return tuple(
-        loaded_audit
-        for loaded_audit in loaded_audits
-        if any(
-            transform_table_name(model_name) in staged_logical_table_names
-            for model_name in loaded_audit.referenced_model_names
-        )
-    )
+    selected_audits: list[LoadedSqlAudit] = []
+    loaded_audit: LoadedSqlAudit
+    for loaded_audit in loaded_audits:
+        model_name: str
+        for model_name in loaded_audit.referenced_model_names:
+            if transform_table_name(model_name) in staged_logical_table_names:
+                selected_audits.append(loaded_audit)
+                break
+    return tuple(selected_audits)
 
 
 def backfill_audit_resolver(

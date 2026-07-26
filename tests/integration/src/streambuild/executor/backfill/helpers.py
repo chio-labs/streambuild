@@ -1,10 +1,23 @@
-from collections.abc import Callable
+from __future__ import annotations
 
+from collections.abc import Callable, Sequence
+from datetime import datetime, timedelta
+
+from clickhouse_connect.driver.client import Client
+
+from streambuild.clickhouse.render.main.render_create_kafka_table_ddl import (
+    render_create_kafka_table_ddl,
+)
+from streambuild.clickhouse.render.main.render_create_materialized_view_ddl import (
+    render_create_materialized_view_ddl,
+)
+from streambuild.clickhouse.render.main.render_create_table_ddl import render_create_table_ddl
 from streambuild.compiler.compile.main.compile_pipeline import compile_pipeline
 from streambuild.compiler.compile.models import (
     CompiledManagedSource,
     CompiledPipeline,
     DesiredState,
+    ObjectKey,
 )
 from streambuild.compiler.desired_state.main.build_desired_state import build_desired_state
 from streambuild.compiler.discovery._helpers.load import load_pipeline_file
@@ -25,9 +38,20 @@ from streambuild.compiler.discovery.types import (
     ReplayLineageMode,
     SourceKind,
 )
-from streambuild.executor.backfill.models import BackfillBootstrapRequest
+from streambuild.executor.backfill.main.execute_backfill import execute_backfill
+from streambuild.executor.backfill.models import BackfillBootstrapRequest, BackfillExecutionResult
+from streambuild.executor.publish.main.execute_publish import execute_publish
+from streambuild.executor.publish.models import PublishRequest
+from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
+from streambuild.integrations.clickhouse.main.connect_clickhouse import connect_clickhouse
+from streambuild.integrations.clickhouse.models import ClickHouseConnectionConfig
 from tests.integration.src.streambuild.clickhouse.render.main.render_create_materialized_view_ddl.helpers import (  # noqa: E501
     build_compiled_example_pipeline,
+)
+from tests.integration.src.streambuild.conftest import ClickHouseConnectionSettings
+from tests.integration.src.streambuild.executor.backfill._test_types import (
+    ExecuteStartTimeReplayIntegrationTestCase,
+    StartTimeReplayScenarioResult,
 )
 from tests.unit.src.streambuild.compiler.planner.helpers import EXAMPLE_PIPELINE_FILE_PATH
 
@@ -244,6 +268,10 @@ def build_external_source_cursor_replay_request(
 ) -> BackfillBootstrapRequest:
     compiled_pipeline: CompiledPipeline = build_external_source_cursor_replay_compiled_pipeline()
     desired_state: DesiredState = build_desired_state((compiled_pipeline,))
+    start_time_keys_by_presence: dict[bool, frozenset[ObjectKey]] = {
+        True: frozenset({compiled_pipeline.transforms[0].target_table.key}),
+        False: frozenset(),
+    }
     return BackfillBootstrapRequest(
         desired_state=desired_state,
         default_database=database,
@@ -251,11 +279,7 @@ def build_external_source_cursor_replay_request(
         replay_lineage_mode=ReplayLineageMode.CURSOR,
         deployment_id=deployment_id,
         start_time=start_time,
-        start_time_keys=(
-            frozenset({compiled_pipeline.transforms[0].target_table.key})
-            if start_time is not None
-            else frozenset()
-        ),
+        start_time_keys=start_time_keys_by_presence[start_time is not None],
         created_at=created_at,
         stabilization_seconds=0.0,
     )
@@ -295,6 +319,40 @@ def build_reference_join_region_lookup_only_compiled_pipeline() -> CompiledPipel
 
 
 def _build_reference_join_compiled_pipeline(*, include_enriched_orders: bool) -> CompiledPipeline:
+    region_lookup: TransformStep = TransformStep(
+        name="region_lookup",
+        source="orders",
+        engine="MergeTree()",
+        order_by=["region"],
+        query=(
+            "SELECT CAST(kafka_key AS String) AS region, "
+            "CAST(upper(kafka_key) AS String) AS region_display, "
+            "CAST(_replay_partition AS Int64) AS _replay_partition, "
+            "CAST(_replay_offset AS Int64) AS _replay_offset "
+            'FROM __ref("orders")'
+        ),
+        replay_anchor=ReplayAnchorMode.NEVER,
+    )
+    enriched_orders: TransformStep = TransformStep(
+        name="enriched_orders",
+        source="orders",
+        engine="MergeTree()",
+        order_by=["order_id", "_replay_partition", "_replay_offset"],
+        query=(
+            "SELECT CAST(o.kafka_key AS String) AS order_id, "
+            "CAST(r.region_display AS String) AS region_display, "
+            "CAST(o._replay_partition AS Int64) AS _replay_partition, "
+            "CAST(o._replay_offset AS Int64) AS _replay_offset "
+            'FROM __ref("orders") AS o '
+            'LEFT JOIN __ref("region_lookup", ref_type="reference") AS r '
+            "ON CAST(o.kafka_key AS String) = r.region"
+        ),
+        replay_anchor=ReplayAnchorMode.NEVER,
+    )
+    optional_transforms: dict[bool, tuple[TransformStep, ...]] = {
+        True: (enriched_orders,),
+        False: (),
+    }
     pipeline: Pipeline = Pipeline(
         name="orders_pipeline",
         source=KafkaLandingStep(
@@ -304,44 +362,7 @@ def _build_reference_join_compiled_pipeline(*, include_enriched_orders: bool) ->
                 topic="source.orders.created",
             ),
         ),
-        transforms=[
-            TransformStep(
-                name="region_lookup",
-                source="orders",
-                engine="MergeTree()",
-                order_by=["region"],
-                query=(
-                    "SELECT CAST(kafka_key AS String) AS region, "
-                    "CAST(upper(kafka_key) AS String) AS region_display, "
-                    "CAST(_replay_partition AS Int64) AS _replay_partition, "
-                    "CAST(_replay_offset AS Int64) AS _replay_offset "
-                    'FROM __ref("orders")'
-                ),
-                replay_anchor=ReplayAnchorMode.NEVER,
-            ),
-            *(
-                (
-                    TransformStep(
-                        name="enriched_orders",
-                        source="orders",
-                        engine="MergeTree()",
-                        order_by=["order_id", "_replay_partition", "_replay_offset"],
-                        query=(
-                            "SELECT CAST(o.kafka_key AS String) AS order_id, "
-                            "CAST(r.region_display AS String) AS region_display, "
-                            "CAST(o._replay_partition AS Int64) AS _replay_partition, "
-                            "CAST(o._replay_offset AS Int64) AS _replay_offset "
-                            'FROM __ref("orders") AS o '
-                            'LEFT JOIN __ref("region_lookup", ref_type="reference") AS r '
-                            "ON CAST(o.kafka_key AS String) = r.region"
-                        ),
-                        replay_anchor=ReplayAnchorMode.NEVER,
-                    ),
-                )
-                if include_enriched_orders
-                else ()
-            ),
-        ],
+        transforms=[region_lookup, *optional_transforms[include_enriched_orders]],
         replay_lineage_mode=ReplayLineageMode.OFFSETS,
     )
     return compile_pipeline(
@@ -689,3 +710,277 @@ STAGED_ROW_FILTERS: dict[tuple[bool, bool], str] = {
     (False, True): "",
     (False, False): " WHERE kafka_key = 'historical-order'",
 }
+
+
+def _create_live_landing_objects(
+    *, clickhouse_client: Client, clickhouse_database: str, compiled_pipeline: CompiledPipeline
+) -> None:
+    clickhouse_client.command(
+        render_create_kafka_table_ddl(
+            table=require_managed_source(compiled_pipeline).kafka_table,
+            database=clickhouse_database,
+        )
+    )
+    clickhouse_client.command(
+        render_create_table_ddl(
+            table=require_managed_source(compiled_pipeline).raw_table,
+            database=clickhouse_database,
+        )
+    )
+    clickhouse_client.command(
+        render_create_materialized_view_ddl(
+            materialized_view=require_managed_source(compiled_pipeline).materialized_view,
+            database=clickhouse_database,
+        )
+    )
+
+
+def _leave_live_landing_objects_absent(
+    *, clickhouse_client: Client, clickhouse_database: str, compiled_pipeline: CompiledPipeline
+) -> None:
+    del clickhouse_client, clickhouse_database, compiled_pipeline
+
+
+LIVE_LANDING_SETUP_BY_PRECREATED: dict[bool, Callable[..., None]] = {
+    True: _create_live_landing_objects,
+    False: _leave_live_landing_objects_absent,
+}
+
+
+def prepare_live_landing_objects(
+    *,
+    precreate: bool,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+    compiled_pipeline: CompiledPipeline,
+) -> None:
+    LIVE_LANDING_SETUP_BY_PRECREATED[precreate](
+        clickhouse_client=clickhouse_client,
+        clickhouse_database=clickhouse_database,
+        compiled_pipeline=compiled_pipeline,
+    )
+
+
+def _assert_cursor_start_time_boundary(
+    *, clickhouse_client: Client, clickhouse_database: str, start_time: str | None
+) -> None:
+    assert clickhouse_client.query(
+        "SELECT min(event_cursor) FROM "
+        f"{clickhouse_database}.orders_existing "
+        f"WHERE event_timestamp >= toDateTime64('{start_time}', 3)"
+    ).result_rows == [(2,)]
+
+
+def _skip_cursor_start_time_boundary_assertion(
+    *, clickhouse_client: Client, clickhouse_database: str, start_time: str | None
+) -> None:
+    del clickhouse_client, clickhouse_database, start_time
+
+
+CURSOR_BOUNDARY_ASSERTION_BY_START_TIME: dict[bool, Callable[..., None]] = {
+    True: _assert_cursor_start_time_boundary,
+    False: _skip_cursor_start_time_boundary_assertion,
+}
+
+
+def assert_external_cursor_start_time_boundary(
+    *, clickhouse_client: Client, clickhouse_database: str, start_time: str | None
+) -> None:
+    CURSOR_BOUNDARY_ASSERTION_BY_START_TIME[start_time is not None](
+        clickhouse_client=clickhouse_client,
+        clickhouse_database=clickhouse_database,
+        start_time=start_time,
+    )
+
+
+START_TIME_PIPELINE_BUILDERS: dict[
+    ReplayLineageMode, Callable[[ReplayLineageMode], CompiledPipeline]
+] = {
+    ReplayLineageMode.OFFSETS: lambda _: build_offset_replay_compiled_pipeline(),
+    ReplayLineageMode.TIMESTAMP: build_scalar_replay_compiled_pipeline,
+    ReplayLineageMode.LANDED_AT: build_scalar_replay_compiled_pipeline,
+}
+CHANGED_START_TIME_PIPELINE_BUILDERS: dict[
+    ReplayLineageMode, Callable[[ReplayLineageMode], CompiledPipeline]
+] = {
+    ReplayLineageMode.OFFSETS: lambda _: build_changed_offset_replay_compiled_pipeline(),
+    ReplayLineageMode.TIMESTAMP: build_changed_scalar_replay_compiled_pipeline,
+    ReplayLineageMode.LANDED_AT: build_changed_scalar_replay_compiled_pipeline,
+}
+START_TIME_QUERY_COLUMN_BY_MODE: dict[ReplayLineageMode, str] = {
+    ReplayLineageMode.OFFSETS: "_replay_landed_at",
+    ReplayLineageMode.TIMESTAMP: "_replay_timestamp",
+    ReplayLineageMode.LANDED_AT: "_replay_timestamp",
+}
+START_TIME_ROW_VALUES_BY_MODE: dict[ReplayLineageMode, tuple[tuple[int, str], ...]] = {
+    ReplayLineageMode.OFFSETS: (
+        (10, "2026-04-09 17:09:58.000"),
+        (11, "2026-04-09 17:09:59.000"),
+        (12, "2026-04-09 17:15:01.000"),
+    ),
+    ReplayLineageMode.TIMESTAMP: (
+        (1, "2026-04-09 15:59:58.000"),
+        (2, "2026-04-09 15:59:59.000"),
+        (3, "2026-04-09 17:05:01.000"),
+    ),
+    ReplayLineageMode.LANDED_AT: (
+        (1, "2026-04-09 15:59:58.000"),
+        (2, "2026-04-09 15:59:59.000"),
+        (3, "2026-04-09 17:05:01.000"),
+    ),
+}
+
+
+def run_start_time_replay_scenario(
+    *,
+    test_case: ExecuteStartTimeReplayIntegrationTestCase,
+    connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> StartTimeReplayScenarioResult:
+    replay_lineage_mode: ReplayLineageMode = ReplayLineageMode(test_case.replay_lineage_mode)
+    compiled_pipeline: CompiledPipeline = START_TIME_PIPELINE_BUILDERS[replay_lineage_mode](
+        replay_lineage_mode
+    )
+    changed_pipeline: CompiledPipeline = CHANGED_START_TIME_PIPELINE_BUILDERS[replay_lineage_mode](
+        replay_lineage_mode
+    )
+    changed_desired_state: DesiredState = build_desired_state((changed_pipeline,))
+    timestamp_query_sql: str = (
+        f"SELECT max({START_TIME_QUERY_COLUMN_BY_MODE[replay_lineage_mode]}) FROM "
+        f"{clickhouse_database}.{{raw_table_name}} "
+        f"WHERE kafka_key = '{test_case.lower_bound_source_order_id}'"
+    )
+    historical_values, frontier_values, live_values = START_TIME_ROW_VALUES_BY_MODE[
+        replay_lineage_mode
+    ]
+
+    _create_live_landing_objects(
+        clickhouse_client=clickhouse_client,
+        clickhouse_database=clickhouse_database,
+        compiled_pipeline=compiled_pipeline,
+    )
+    clickhouse_client.insert(
+        table=f"{clickhouse_database}.{require_managed_source(compiled_pipeline).raw_table.name}",
+        data=[
+            build_raw_orders_row(
+                kafka_key="historical-order",
+                _replay_partition=0,
+                _replay_offset=historical_values[0],
+                _replay_timestamp=historical_values[1],
+                _replay_landed_at=historical_values[1],
+            ),
+            build_raw_orders_row(
+                kafka_key="frontier-order",
+                _replay_partition=0,
+                _replay_offset=frontier_values[0],
+                _replay_timestamp=frontier_values[1],
+                _replay_landed_at=frontier_values[1],
+            ),
+        ],
+        column_names=[
+            "kafka_key",
+            "kafka_value",
+            "kafka_topic",
+            "_replay_partition",
+            "_replay_offset",
+            "_replay_timestamp",
+            "kafka_headers",
+            "_replay_landed_at",
+        ],
+    )
+    managed_client: ClickHouseClient = connect_clickhouse(
+        ClickHouseConnectionConfig(
+            host=connection_settings.host,
+            port=connection_settings.port,
+            username=connection_settings.username,
+            password=connection_settings.password,
+            database=clickhouse_database,
+        )
+    )
+
+    try:
+        initial_result: BackfillExecutionResult = execute_backfill(
+            request=BackfillBootstrapRequest(
+                desired_state=build_desired_state((compiled_pipeline,)),
+                default_database=clickhouse_database,
+                metadata_database=clickhouse_database,
+                replay_lineage_mode=replay_lineage_mode,
+                deployment_id=test_case.initial_deployment_id,
+                created_at=test_case.created_at,
+                boundary_time=test_case.initial_boundary_time,
+                stabilization_seconds=0.0,
+            ),
+            client=managed_client,
+        )
+        execute_publish(
+            request=PublishRequest(
+                deployment_id=initial_result.bootstrap.deployment_id,
+                metadata_database=clickhouse_database,
+                default_database=clickhouse_database,
+            ),
+            client=managed_client,
+        )
+        frontier_timestamp: datetime = clickhouse_client.query(
+            timestamp_query_sql.format(
+                raw_table_name=require_managed_source(compiled_pipeline).raw_table.name
+            )
+        ).result_rows[0][0]
+        converted_start_time: str = (
+            frontier_timestamp - timedelta(milliseconds=test_case.lower_bound_offset_millis)
+        ).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+        start_time_result: BackfillExecutionResult = execute_backfill(
+            request=BackfillBootstrapRequest(
+                desired_state=changed_desired_state,
+                default_database=clickhouse_database,
+                metadata_database=clickhouse_database,
+                replay_lineage_mode=replay_lineage_mode,
+                deployment_id=test_case.changed_deployment_id,
+                created_at=test_case.created_at,
+                start_time_keys=frozenset({compiled_pipeline.transforms[0].target_table.key}),
+                start_time=converted_start_time,
+                boundary_time=test_case.changed_boundary_time,
+                stabilization_seconds=0.0,
+            ),
+            client=managed_client,
+        )
+        clickhouse_client.insert(
+            table=(
+                f"{clickhouse_database}.{require_managed_source(compiled_pipeline).raw_table.name}"
+            ),
+            data=[
+                build_raw_orders_row(
+                    kafka_key="live-order",
+                    _replay_partition=0,
+                    _replay_offset=live_values[0],
+                    _replay_timestamp=live_values[1],
+                    _replay_landed_at=live_values[1],
+                )
+            ],
+            column_names=[
+                "kafka_key",
+                "kafka_value",
+                "kafka_topic",
+                "_replay_partition",
+                "_replay_offset",
+                "_replay_timestamp",
+                "kafka_headers",
+                "_replay_landed_at",
+            ],
+        )
+    finally:
+        managed_client.close()
+
+    shadow_rows_result: Sequence[Sequence[object]] = clickhouse_client.query(
+        "SELECT order_id, max(kafka_topic) FROM "
+        f"{clickhouse_database}.{test_case.expected_shadow_table_name} "
+        "GROUP BY order_id ORDER BY order_id"
+    ).result_rows
+    return StartTimeReplayScenarioResult(
+        connection_settings=connection_settings,
+        database=clickhouse_database,
+        compiled_pipeline=compiled_pipeline,
+        start_time_result=start_time_result,
+        converted_start_time=converted_start_time,
+        shadow_rows=tuple((str(row[0]), str(row[1])) for row in shadow_rows_result),
+    )

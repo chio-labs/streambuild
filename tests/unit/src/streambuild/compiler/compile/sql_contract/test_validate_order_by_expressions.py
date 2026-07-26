@@ -27,7 +27,25 @@ from tests.unit.src.streambuild.compiler.compile.sql_contract.helpers import bui
             expected_error_type=None,
             expected_message_fragments=(),
             expected_error_attributes={},
-        ),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_valid_order_by_expressions_when_validating_then_it_returns_normally(
+    test_case: ValidateOrderByExpressionsTestCase,
+) -> None:
+    validate_order_by_expressions(
+        transform_name="orders_enriched",
+        order_by=test_case.order_by,
+        available_columns=test_case.available_columns,
+    )
+
+    assert test_case.expected_error_attributes == {}
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
         ValidateOrderByExpressionsTestCase(
             description="rejects order by expressions that reference unknown derived columns",
             order_by=("toYYYYMM(missing_created_at)",),
@@ -49,19 +67,13 @@ from tests.unit.src.streambuild.compiler.compile.sql_contract.helpers import bui
     ],
     ids=lambda case: case.description,
 )
-def test_given_order_by_expressions_when_validating_then_it_returns_or_raises_as_expected(
+def test_given_unknown_order_by_columns_when_validating_then_it_raises_contextual_error(
     test_case: ValidateOrderByExpressionsTestCase,
 ) -> None:
-    if test_case.expected_error_type is None:
-        validate_order_by_expressions(
-            transform_name="orders_enriched",
-            order_by=test_case.order_by,
-            available_columns=test_case.available_columns,
-        )
-        assert test_case.expected_error_attributes == {}
-        return
+    expected_error_type: type[Exception] | None = test_case.expected_error_type
+    assert expected_error_type is not None
 
-    with pytest.raises(test_case.expected_error_type) as error_info:
+    with pytest.raises(expected_error_type) as error_info:
         validate_order_by_expressions(
             transform_name="orders_enriched",
             order_by=test_case.order_by,

@@ -1,7 +1,6 @@
 import pytest
 from clickhouse_connect.driver.client import Client
 
-from streambuild.clickhouse.render.main.render_create_view_ddl import render_create_view_ddl
 from streambuild.executor.doctor.main.execute_doctor import execute_doctor
 from streambuild.executor.doctor.models import ActiveViewStatus, DoctorRequest, DoctorResult
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
@@ -13,6 +12,7 @@ from tests.integration.src.streambuild.conftest import ClickHouseConnectionSetti
 from tests.integration.src.streambuild.executor.doctor._test_types import (
     ExecuteDoctorIntegrationTestCase,
 )
+from tests.integration.src.streambuild.executor.doctor.helpers import prepare_doctor_state
 
 
 @pytest.mark.integration
@@ -21,6 +21,7 @@ from tests.integration.src.streambuild.executor.doctor._test_types import (
     [
         ExecuteDoctorIntegrationTestCase(
             description="reports active view healthy when one binding exists",
+            setup_kind="active",
             active_view_target_deployment_id="dep_a",
             candidate_deployment_ids=("dep_a", "dep_b"),
             invalid_active_view_target_name=None,
@@ -30,6 +31,7 @@ from tests.integration.src.streambuild.executor.doctor._test_types import (
         ),
         ExecuteDoctorIntegrationTestCase(
             description="reports recoverable missing logical view when one candidate exists",
+            setup_kind="missing",
             active_view_target_deployment_id=None,
             candidate_deployment_ids=("dep_a",),
             invalid_active_view_target_name=None,
@@ -39,6 +41,7 @@ from tests.integration.src.streambuild.executor.doctor._test_types import (
         ),
         ExecuteDoctorIntegrationTestCase(
             description="reports ambiguous missing logical view when many candidates exist",
+            setup_kind="missing",
             active_view_target_deployment_id=None,
             candidate_deployment_ids=("dep_a", "dep_b"),
             invalid_active_view_target_name=None,
@@ -50,6 +53,7 @@ from tests.integration.src.streambuild.executor.doctor._test_types import (
             description=(
                 "reports invalid active view when stable view points to a non-deployment table"
             ),
+            setup_kind="invalid",
             active_view_target_deployment_id=None,
             candidate_deployment_ids=(),
             invalid_active_view_target_name="tbl__orders_enriched_manual",
@@ -66,36 +70,14 @@ def test_given_clickhouse_state_when_doctoring_then_it_reports_expected_active_v
     clickhouse_client: Client,
     clickhouse_database: str,
 ) -> None:
-    candidate_deployment_id: str
-    for candidate_deployment_id in test_case.candidate_deployment_ids:
-        clickhouse_client.command(
-            "CREATE TABLE "
-            f"{clickhouse_database}.tbl__orders_enriched__{candidate_deployment_id} "
-            "(order_id String) ENGINE = MergeTree ORDER BY (order_id)"
-        )
-    if test_case.active_view_target_deployment_id is not None:
-        clickhouse_client.command(
-            render_create_view_ddl(
-                database=clickhouse_database,
-                view_name="tbl__orders_enriched",
-                target_table_name=(
-                    f"tbl__orders_enriched__{test_case.active_view_target_deployment_id}"
-                ),
-            )
-        )
-    if test_case.invalid_active_view_target_name is not None:
-        clickhouse_client.command(
-            "CREATE TABLE "
-            f"{clickhouse_database}.{test_case.invalid_active_view_target_name} "
-            "(order_id String) ENGINE = MergeTree ORDER BY (order_id)"
-        )
-        clickhouse_client.command(
-            render_create_view_ddl(
-                database=clickhouse_database,
-                view_name="tbl__orders_enriched",
-                target_table_name=test_case.invalid_active_view_target_name,
-            )
-        )
+    prepare_doctor_state(
+        setup_kind=test_case.setup_kind,
+        clickhouse_client=clickhouse_client,
+        clickhouse_database=clickhouse_database,
+        candidate_deployment_ids=test_case.candidate_deployment_ids,
+        active_view_target_deployment_id=test_case.active_view_target_deployment_id,
+        invalid_active_view_target_name=test_case.invalid_active_view_target_name,
+    )
 
     managed_client: ClickHouseClient = connect_clickhouse(
         ClickHouseConnectionConfig(

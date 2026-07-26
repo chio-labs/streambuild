@@ -131,14 +131,18 @@ def test_given_conflicting_selected_pipeline_modes_when_resolving_then_it_raises
     test_case: CliSelectionLineageMismatchTestCase,
 ) -> None:
     compiled_pipelines: tuple[CompiledPipeline, ...] = compile_selector_project_pipelines()
-    mutated_compiled_pipelines: tuple[CompiledPipeline, ...] = tuple(
-        replace(
-            compiled_pipeline,
-            effective_replay_lineage_mode=ReplayLineageMode.TIMESTAMP,
-        )
-        if compiled_pipeline.pipeline.name == test_case.mutated_pipeline_name
-        else compiled_pipeline
-        for compiled_pipeline in compiled_pipelines
+    pipeline_names: tuple[str, ...] = tuple(
+        compiled_pipeline.pipeline.name for compiled_pipeline in compiled_pipelines
+    )
+    mutated_pipeline_index: int = pipeline_names.index(test_case.mutated_pipeline_name)
+    mutated_pipeline: CompiledPipeline = replace(
+        compiled_pipelines[mutated_pipeline_index],
+        effective_replay_lineage_mode=ReplayLineageMode.TIMESTAMP,
+    )
+    mutated_compiled_pipelines: tuple[CompiledPipeline, ...] = (
+        *compiled_pipelines[:mutated_pipeline_index],
+        mutated_pipeline,
+        *compiled_pipelines[mutated_pipeline_index + 1 :],
     )
 
     with pytest.raises(CliUserError, match=test_case.expected_error_fragment):

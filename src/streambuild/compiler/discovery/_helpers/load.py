@@ -526,12 +526,12 @@ def _load_project_clickhouse_config(
     )
 
 
-def validate_unique_logical_names(
+def updated_unique_logical_names(
     *,
     loaded_pipeline: LoadedPipeline,
     logical_node_names: dict[str, Path],
-) -> None:
-    """Validate that a loaded pipeline does not duplicate logical names."""
+) -> dict[str, Path]:
+    """Return the logical-name registry after validating one loaded pipeline."""
 
     for logical_name in [
         loaded_pipeline.pipeline.source.name,
@@ -545,3 +545,4 @@ def validate_unique_logical_names(
                 f"'{existing_path}' and '{loaded_pipeline.file_path}'"
             )
         logical_node_names[logical_name] = loaded_pipeline.file_path
+    return logical_node_names

@@ -9,30 +9,16 @@ from pathlib import Path
 
 from clickhouse_connect.driver.exceptions import DatabaseError, OperationalError
 
-from streambuild.cli.entry._helpers.clickhouse import (
-    build_clickhouse_client_for_connection,
-)
-from streambuild.cli.entry._helpers.entrypoint import (
-    argv_for_parse_args,
-    resolve_clickhouse_connection,
-    resolve_optional_int_arg,
-    resolve_optional_str_arg,
-    resolve_pipelines_root,
-    resolve_project_config,
-    resolve_project_dir,
-    resolved_environment,
-)
+from streambuild.cli.entry._helpers.dispatch import dispatch_cli_command
+from streambuild.cli.entry._helpers.entrypoint import argv_for_parse_args
+from streambuild.cli.entry._helpers.invocation import resolve_cli_invocation
 from streambuild.cli.entry._helpers.parser import build_cli_parser
-from streambuild.cli.entry.constants import (
-    COMMANDS_REQUIRING_PIPELINES_ROOT,
-    DISPLAY_NAME_BY_COMMAND,
-)
+from streambuild.cli.entry.constants import DISPLAY_NAME_BY_COMMAND
 from streambuild.cli.entry.exceptions import CliUserError
 from streambuild.cli.entry.main._errors import render_expected_clickhouse_error
 from streambuild.cli.entry.models import (
     CliEntrypointHandlers,
-    ResolvedClickHouseConnection,
-    ResolvedCliProjectConfig,
+    ResolvedCliInvocation,
 )
 from streambuild.cli.entry.types import CliCommand, CliSubcommand
 from streambuild.compiler.compile.exceptions import TransformSqlContractError
@@ -84,176 +70,16 @@ def _main_with_dependencies(
     args: argparse.Namespace = parser.parse_args(argv_for_parse_args(argv))
     resolved_database: str | None = None
     try:
-        resolved_env: Mapping[str, str] = resolved_environment(environment)
-        current_working_directory: Path = (
-            Path.cwd() if working_directory is None else working_directory
+        invocation: ResolvedCliInvocation = resolve_cli_invocation(
+            args=args,
+            environment=environment,
+            working_directory=working_directory,
         )
-        resolved_project_dir: Path | None = resolve_project_dir(
-            project_dir=getattr(args, "project_dir", None),
-            working_directory=current_working_directory,
-        )
-        needs_pipelines_root: bool = args.command in COMMANDS_REQUIRING_PIPELINES_ROOT
-        pipelines_root: Path | None = (
-            resolve_pipelines_root(
-                project_dir=getattr(args, "project_dir", None),
-                working_directory=current_working_directory,
-            )
-            if needs_pipelines_root
-            else None
-        )
-        project_config: ResolvedCliProjectConfig = resolve_project_config(
-            pipelines_root=pipelines_root,
-            project_dir=resolved_project_dir,
-            working_directory=current_working_directory,
-        )
-        resolved_host: str | None = resolve_optional_str_arg(
-            value=getattr(args, "host", None),
-            env_var_name="STREAMBUILD_CLICKHOUSE_HOST",
-            environment=resolved_env,
-        )
-        resolved_port: int | None = resolve_optional_int_arg(
-            value=getattr(args, "port", None),
-            env_var_name="STREAMBUILD_CLICKHOUSE_PORT",
-            environment=resolved_env,
-        )
-        resolved_username: str | None = resolve_optional_str_arg(
-            value=getattr(args, "username", None),
-            env_var_name="STREAMBUILD_CLICKHOUSE_USERNAME",
-            environment=resolved_env,
-        )
-        resolved_password: str | None = resolve_optional_str_arg(
-            value=getattr(args, "password", None),
-            env_var_name="STREAMBUILD_CLICKHOUSE_PASSWORD",
-            environment=resolved_env,
-        )
-        if args.command == CliCommand.DISCOVER:
-            return handlers.run_discover(pipelines_root=pipelines_root)
-        if args.command == CliCommand.COMPILE:
-            return handlers.run_compile(
-                pipelines_root=pipelines_root,
-                target_dir=(
-                    getattr(args, "target_dir", None)
-                    or (
-                        resolved_project_dir / "target"
-                        if resolved_project_dir is not None
-                        else None
-                    )
-                ),
-            )
-        resolved_database = getattr(args, "database", None) or project_config.default_database
-        connection: ResolvedClickHouseConnection | None = None
-        if clickhouse_client is None:
-            connection = resolve_clickhouse_connection(
-                host=resolved_host,
-                port=resolved_port,
-                username=resolved_username,
-                password=resolved_password,
-                project_connection=project_config.connection,
-            )
-
-        def resolved_client() -> ClickHouseClient:
-            if clickhouse_client is not None:
-                return clickhouse_client
-            if connection is None:
-                raise CliUserError("CLI entrypoint failed to resolve a ClickHouse connection")
-            return build_clickhouse_client_for_connection(connection=connection)
-
-        if args.command == CliCommand.TEST:
-            return handlers.run_test(
-                pipelines_root=pipelines_root,
-                project_dir=resolved_project_dir,
-                selectors=tuple(getattr(args, "select", [])),
-                paths=tuple(getattr(args, "paths", ())),
-                verbose=bool(getattr(args, "verbose", False)),
-                client=resolved_client(),
-            )
-
-        if args.command == CliSubcommand.BACKFILL:
-            return handlers.run_backfill(
-                pipelines_root=pipelines_root,
-                database=resolved_database,
-                metadata_database=getattr(args, "metadata_database", None),
-                selectors=tuple(getattr(args, "select", [])),
-                deployment_id=getattr(args, "deployment_id", None),
-                full_refresh=bool(getattr(args, "full_refresh", False)),
-                start_time=getattr(args, "start_time", None),
-                json_output=bool(getattr(args, "json", False)),
-                verbose=bool(getattr(args, "verbose", False)),
-                auto_approve=bool(getattr(args, "auto_approve", False)),
-                client=resolved_client(),
-            )
-        if args.command == CliCommand.AUDIT:
-            if getattr(args, "audit_command", None) == CliSubcommand.BACKFILL:
-                return handlers.run_audit_backfill(
-                    pipelines_root=pipelines_root,
-                    project_dir=(
-                        resolved_project_dir
-                        if resolved_project_dir is not None
-                        else (pipelines_root.parent if pipelines_root is not None else None)
-                    ),
-                    database=resolved_database,
-                    metadata_database=getattr(args, "metadata_database", None),
-                    deployment_id=getattr(args, "deployment_id", None),
-                    json_output=bool(getattr(args, "json", False)),
-                    client=resolved_client(),
-                )
-            if pipelines_root is None:
-                raise CliUserError("Audit command requires a resolved pipelines root")
-            return handlers.run_audit(
-                pipelines_root=pipelines_root,
-                project_dir=resolved_project_dir or pipelines_root.parent,
-                database=resolved_database,
-                selectors=tuple(getattr(args, "select", [])),
-                json_output=bool(getattr(args, "json", False)),
-                client=resolved_client(),
-            )
-        if args.command == CliCommand.PUBLISH:
-            return handlers.run_publish(
-                database=resolved_database,
-                metadata_database=getattr(args, "metadata_database", None),
-                deployment_id=getattr(args, "deployment_id", None),
-                json_output=bool(getattr(args, "json", False)),
-                client=resolved_client(),
-            )
-        if args.command == CliCommand.RECONCILE:
-            return handlers.run_reconcile(
-                pipelines_root=pipelines_root,
-                database=resolved_database,
-                metadata_database=getattr(args, "metadata_database", None),
-                selectors=tuple(getattr(args, "select", [])),
-                json_output=bool(getattr(args, "json", False)),
-                apply=bool(getattr(args, "apply", False)),
-                client=resolved_client(),
-            )
-        if args.command == CliCommand.DOCTOR:
-            return handlers.run_doctor(
-                database=resolved_database,
-                client=resolved_client(),
-            )
-        if args.command == CliCommand.JANITOR:
-            return handlers.run_janitor(
-                database=resolved_database,
-                retention_days=args.retention_days,
-                apply=bool(getattr(args, "apply", False)),
-                json_output=bool(getattr(args, "json", False)),
-                client=resolved_client(),
-            )
-        if args.command == CliCommand.REPAIR:
-            return handlers.run_repair_active_view(
-                database=resolved_database,
-                table=args.table,
-                deployment_id=args.deployment_id,
-                client=resolved_client(),
-            )
-        return handlers.run_plan(
-            pipelines_root=pipelines_root,
-            database=resolved_database,
-            selectors=tuple(getattr(args, "select", [])),
-            full_refresh=bool(getattr(args, "full_refresh", False)),
-            start_time=getattr(args, "start_time", None),
-            json_output=bool(getattr(args, "json", False)),
-            verbose=bool(getattr(args, "verbose", False)),
-            client=resolved_client(),
+        resolved_database = invocation.database
+        return dispatch_cli_command(
+            invocation=invocation,
+            handlers=handlers,
+            clickhouse_client=clickhouse_client,
         )
     except CliUserError as error:
         print(str(error), file=sys.stderr)

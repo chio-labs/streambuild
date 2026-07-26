@@ -34,15 +34,20 @@ def test_given_physical_candidates_when_building_inspected_state_then_it_ignores
     test_case: BuildInspectedManagedTableStateTestCase,
 ) -> None:
     class QueryingClient:
+        def __init__(self) -> None:
+            physical_candidate_rows: tuple[Mapping[str, object], ...] = tuple(
+                {"name": name} for name, _engine in test_case.system_rows
+            )
+            self.response_rows = iter(((), physical_candidate_rows))
+
         def query_many(
             self,
             *,
             statement: str,
             decode: Callable[[Mapping[str, object]], object],
         ) -> tuple[object, ...]:
-            if "engine = 'View'" in statement:
-                return ()
-            return tuple(decode({"name": name}) for name, _engine in test_case.system_rows)
+            _ = statement
+            return tuple(decode(row) for row in next(self.response_rows))
 
     inspected_state: InspectedManagedTableState = build_inspected_managed_table_state(
         client=cast(ClickHouseClient, QueryingClient()),
