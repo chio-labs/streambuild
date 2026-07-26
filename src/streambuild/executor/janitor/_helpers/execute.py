@@ -1,12 +1,12 @@
 from streambuild.clickhouse.inspect.models import InspectedManagedTableState
-from streambuild.compiler.shared._helpers.deployment_names import (
-    deployment_id_from_physical_name,
-    is_deployment_physical_name,
-)
 from streambuild.compiler.shared.constants import (
     DESIRED_OBJECT_TYPE_TABLE,
     TRANSFORM_TABLE_NAME_PREFIX,
 )
+from streambuild.compiler.shared.main.deployment_id_from_physical_name import (
+    deployment_id_from_physical_name,
+)
+from streambuild.compiler.shared.main.is_deployment_physical_name import is_deployment_physical_name
 from streambuild.executor.janitor.models import (
     JanitorApplyResult,
     JanitorPreviewCandidate,
