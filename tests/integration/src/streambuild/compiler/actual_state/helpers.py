@@ -10,8 +10,11 @@ from streambuild.clickhouse.render.main.render_create_materialized_view_ddl impo
 )
 from streambuild.clickhouse.render.main.render_create_table_ddl import render_create_table_ddl
 from streambuild.clickhouse.render.main.render_create_view_ddl import render_create_view_ddl
-from streambuild.compiler.compile.models import CompiledPipeline
-from streambuild.compiler.shared.models import DesiredMaterializedView, MaterializedViewSpec
+from streambuild.compiler.compile.models import (
+    CompiledPipeline,
+    DesiredMaterializedView,
+    MaterializedViewSpec,
+)
 from tests.integration.src.streambuild.executor.backfill.helpers import (
     require_managed_source,
 )

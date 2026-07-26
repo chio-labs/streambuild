@@ -2,12 +2,9 @@
 
 from __future__ import annotations
 
-from streambuild.compiler.compile.models import DesiredState
+from streambuild.compiler.compile.models import DesiredState, ObjectKey
 from streambuild.compiler.planner.main.build_reverse_deps import build_reverse_deps
 from streambuild.compiler.planner.types import DesiredObject
-from streambuild.compiler.shared.models import (
-    ObjectKey,
-)
 
 
 def topologically_order_keys(

@@ -3,23 +3,23 @@ from __future__ import annotations
 from pathlib import Path
 
 from streambuild.cli.backfill.models import BackfillPreviewContext
-from streambuild.cli.shared.exceptions import CliUserError
-from streambuild.cli.shared.main._resolve_default_database import resolve_default_database
-from streambuild.cli.shared.main._selection import resolve_selection
-from streambuild.cli.shared.main._source_validation import (
+from streambuild.cli.entry.exceptions import CliUserError
+from streambuild.cli.entry.main._resolve_default_database import resolve_default_database
+from streambuild.cli.plan.main._source_validation import (
     validate_declared_external_sources,
 )
-from streambuild.cli.shared.main._warnings import add_empty_replay_source_warnings
-from streambuild.cli.shared.models import SelectionResolution
+from streambuild.cli.plan.main._warnings import add_empty_replay_source_warnings
+from streambuild.cli.selection.main._selection import resolve_selection
+from streambuild.cli.selection.models import SelectionResolution
 from streambuild.clickhouse.inspect.types import RootDeploymentStateKind
 from streambuild.compiler.actual_state.main.load_actual_state import load_actual_state
 from streambuild.compiler.actual_state.models import ActualState
 from streambuild.compiler.compile.main.compile_pipeline import compile_pipeline
 from streambuild.compiler.compile.models import CompiledPipeline, DesiredState
 from streambuild.compiler.discovery.main.discover_pipelines import discover_pipelines
+from streambuild.compiler.discovery.models import LoadedPipeline
 from streambuild.compiler.planner.main.plan_deployment import plan_deployment
 from streambuild.compiler.planner.models import DeploymentPlan
-from streambuild.compiler.shared.models import LoadedPipeline
 from streambuild.executor.backfill.main.build_root_backfill_reports import (
     build_root_backfill_reports,
 )

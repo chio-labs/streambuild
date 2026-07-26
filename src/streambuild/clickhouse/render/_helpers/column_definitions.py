@@ -1,6 +1,6 @@
 """Render ClickHouse column definitions shared by table renderers."""
 
-from streambuild.compiler.shared.models import Column
+from streambuild.compiler.compile.models import Column
 
 
 def render_column_definition(column: Column) -> str:

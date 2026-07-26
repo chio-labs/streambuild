@@ -9,6 +9,12 @@ from streambuild.clickhouse.metadata_state.models import RenderedClickHouseState
 from streambuild.compiler.actual_state.main.build_normalized_fingerprint import (
     build_normalized_fingerprint,
 )
+from streambuild.compiler.compile.constants import (
+    DESIRED_OBJECT_TYPE_TABLE,
+    RAW_TABLE_NAME_PREFIX,
+    TRANSFORM_TABLE_NAME_PREFIX,
+)
+from streambuild.compiler.compile.models import DesiredMaterializedView, ObjectKey
 from streambuild.compiler.metadata_state.main.build_metadata_state import build_metadata_state
 from streambuild.compiler.metadata_state.models import (
     DeploymentRecord,
@@ -19,12 +25,6 @@ from streambuild.compiler.metadata_state.models import (
 )
 from streambuild.compiler.planner.models import DeploymentPlan, RebuildSubtree
 from streambuild.compiler.planner.types import DesiredObject
-from streambuild.compiler.shared.constants import (
-    DESIRED_OBJECT_TYPE_TABLE,
-    RAW_TABLE_NAME_PREFIX,
-    TRANSFORM_TABLE_NAME_PREFIX,
-)
-from streambuild.compiler.shared.models import DesiredMaterializedView, ObjectKey
 from streambuild.executor.backfill._helpers.reporting import (
     filter_root_backfill_reports_for_deployment,
 )

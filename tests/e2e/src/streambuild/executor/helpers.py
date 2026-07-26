@@ -13,20 +13,18 @@ from kafka import KafkaProducer
 
 from streambuild.compiler.compile.main.compile_pipeline import compile_pipeline
 from streambuild.compiler.compile.models import (
+    Column,
     CompiledManagedSource,
     CompiledPipeline,
     CompiledTransformStep,
+    DesiredKafkaTable,
     DesiredState,
+    KafkaSettings,
+    KafkaTableSpec,
 )
 from streambuild.compiler.desired_state.main.build_desired_state import build_desired_state
 from streambuild.compiler.discovery.main.discover_pipelines import discover_pipelines
-from streambuild.compiler.shared.models import (
-    Column,
-    DesiredKafkaTable,
-    KafkaSettings,
-    KafkaTableSpec,
-    LoadedPipeline,
-)
+from streambuild.compiler.discovery.models import LoadedPipeline
 from streambuild.executor.backfill.models import BackfillBootstrapRequest
 from streambuild.spec.models import SchemaChangeBackfillPolicy, SchemaChangeBackfillRule
 from streambuild.spec.types import ReplayLineageMode, SchemaChangeBackfillMode

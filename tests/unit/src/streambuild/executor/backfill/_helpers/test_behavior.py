@@ -1,5 +1,6 @@
 import pytest
 
+from streambuild.compiler.compile.models import ObjectKey
 from streambuild.compiler.planner.constants import (
     REBUILD_EXECUTION_MODE_FULL,
     REBUILD_EXECUTION_MODE_SEEDED_BOUNDED,
@@ -7,7 +8,6 @@ from streambuild.compiler.planner.constants import (
     REBUILD_STRATEGY_SHADOW,
 )
 from streambuild.compiler.planner.models import RebuildSubtree
-from streambuild.compiler.shared.models import ObjectKey
 from streambuild.executor.backfill._helpers.behavior import (
     resolve_subtree_behavior_from_support,
 )

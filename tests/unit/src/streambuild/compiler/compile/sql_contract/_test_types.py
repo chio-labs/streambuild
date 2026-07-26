@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from streambuild.compiler.shared.models import Column
+from streambuild.compiler.compile.models import Column
 
 
 @dataclass(frozen=True)

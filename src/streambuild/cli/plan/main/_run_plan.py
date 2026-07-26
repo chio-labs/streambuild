@@ -3,28 +3,28 @@
 import sys
 from pathlib import Path
 
-from streambuild.cli.shared.exceptions import CliUserError
-from streambuild.cli.shared.main._convert_utc_timestamp_for_clickhouse import (
+from streambuild.cli.entry.exceptions import CliUserError
+from streambuild.cli.entry.main._resolve_default_database import resolve_default_database
+from streambuild.cli.plan.main._convert_utc_timestamp_for_clickhouse import (
     convert_utc_timestamp_for_clickhouse,
 )
-from streambuild.cli.shared.main._normalize_cli_start_time import normalize_cli_start_time
-from streambuild.cli.shared.main._resolve_default_database import resolve_default_database
-from streambuild.cli.shared.main._selection import resolve_selection
-from streambuild.cli.shared.main._source_validation import (
+from streambuild.cli.plan.main._normalize_cli_start_time import normalize_cli_start_time
+from streambuild.cli.plan.main._source_validation import (
     validate_declared_external_sources,
 )
-from streambuild.cli.shared.main._warnings import add_empty_replay_source_warnings
-from streambuild.cli.shared.main.render_plan_result import render_plan_result
-from streambuild.cli.shared.models import SelectionResolution
+from streambuild.cli.plan.main._warnings import add_empty_replay_source_warnings
+from streambuild.cli.plan.main.render_plan_result import render_plan_result
+from streambuild.cli.selection.main._selection import resolve_selection
+from streambuild.cli.selection.models import SelectionResolution
 from streambuild.compiler.actual_state.main.load_actual_state import load_actual_state
 from streambuild.compiler.actual_state.models import ActualState
 from streambuild.compiler.compile.exceptions import TransformSqlContractError
 from streambuild.compiler.compile.main.compile_pipeline import compile_pipeline
 from streambuild.compiler.compile.models import CompiledPipeline, DesiredState
 from streambuild.compiler.discovery.main.discover_pipelines import discover_pipelines
+from streambuild.compiler.discovery.models import LoadedPipeline
 from streambuild.compiler.planner.main.plan_deployment import plan_deployment
 from streambuild.compiler.planner.models import DeploymentPlan
-from streambuild.compiler.shared.models import LoadedPipeline
 from streambuild.executor.backfill.main.resolve_unsupported_bounded_replay_behavior import (
     resolve_unsupported_bounded_replay_behavior,
 )

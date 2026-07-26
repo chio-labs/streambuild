@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from streambuild.compiler.shared.models import LoadedPipeline
+from streambuild.compiler.discovery.models import LoadedPipeline
 from streambuild.spec.models import KafkaLandingStep, KafkaSettings, Pipeline, TransformStep
 
 

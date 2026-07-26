@@ -16,7 +16,7 @@ from streambuild.clickhouse.render.main.render_create_materialized_view_ddl impo
 from streambuild.clickhouse.render.main.render_create_table_ddl import render_create_table_ddl
 from streambuild.compiler.compile.main.transform_table_name import transform_table_name
 from streambuild.compiler.compile.models import CompiledManagedSource, CompiledPipeline
-from streambuild.compiler.shared.main.build_deployment_physical_name import (
+from streambuild.compiler.planner.main.build_deployment_physical_name import (
     build_deployment_physical_name,
 )
 from streambuild.executor.backfill.main.execute_backfill import execute_backfill

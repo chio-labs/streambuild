@@ -19,7 +19,7 @@ from streambuild.compiler.compile.exceptions import (
     TransformSqlUntypedProjectionError,
     TransformTtlUnknownColumnError,
 )
-from streambuild.compiler.shared.models import Column
+from streambuild.compiler.compile.models import Column
 
 
 def derive_transform_output_columns(*, transform_name: str, query: str) -> tuple[Column, ...]:

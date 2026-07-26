@@ -6,21 +6,20 @@ from streambuild.compiler.compile._helpers.naming import (
     raw_table_name,
 )
 from streambuild.compiler.compile.constants import (
-    FRAMEWORK_OWNED_KAFKA_SETTING_KEYS,
-    RAW_LANDING_COLUMNS,
-    SUPPORTED_KAFKA_TABLE_FORMAT,
-)
-from streambuild.compiler.compile.exceptions import PipelineCompileError
-from streambuild.compiler.compile.models import CompiledExternalSource, CompiledManagedSource
-from streambuild.compiler.shared.constants import (
     DESIRED_OBJECT_TYPE_KAFKA_TABLE,
     DESIRED_OBJECT_TYPE_MATERIALIZED_VIEW,
     DESIRED_OBJECT_TYPE_TABLE,
+    FRAMEWORK_OWNED_KAFKA_SETTING_KEYS,
+    RAW_LANDING_COLUMNS,
     REPLAY_OFFSET_COLUMN_NAME,
     REPLAY_PARTITION_COLUMN_NAME,
+    SUPPORTED_KAFKA_TABLE_FORMAT,
 )
-from streambuild.compiler.shared.models import (
+from streambuild.compiler.compile.exceptions import PipelineCompileError
+from streambuild.compiler.compile.models import (
     Column,
+    CompiledExternalSource,
+    CompiledManagedSource,
     DesiredKafkaTable,
     DesiredMaterializedView,
     DesiredTable,
@@ -30,9 +29,7 @@ from streambuild.compiler.shared.models import (
     TableSpec,
     TableStorage,
 )
-from streambuild.compiler.shared.models import (
-    KafkaSettings as ComparableKafkaSettings,
-)
+from streambuild.compiler.compile.models import KafkaSettings as ComparableKafkaSettings
 from streambuild.spec.models import (
     ExternalTableSourceStep,
     KafkaLandingStep,

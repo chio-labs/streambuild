@@ -6,16 +6,16 @@ from streambuild.compiler.actual_state.models import (
     ActualState,
     ActualTable,
 )
-from streambuild.compiler.compile.models import DesiredState
-from streambuild.compiler.planner.constants import REBUILD_EXECUTION_MODE_FULL
-from streambuild.compiler.planner.main.plan_deployment import plan_deployment
-from streambuild.compiler.planner.models import DeploymentPlan
-from streambuild.compiler.shared.models import (
+from streambuild.compiler.compile.models import (
     DesiredKafkaTable,
     DesiredMaterializedView,
+    DesiredState,
     DesiredTable,
     ObjectKey,
 )
+from streambuild.compiler.planner.constants import REBUILD_EXECUTION_MODE_FULL
+from streambuild.compiler.planner.main.plan_deployment import plan_deployment
+from streambuild.compiler.planner.models import DeploymentPlan
 from tests.unit.src.streambuild.compiler.planner._test_types import (
     PlannerDeploymentPlanTestCase,
     PlannerFullRefreshPlanTestCase,

@@ -9,7 +9,7 @@ from streambuild.clickhouse.inspect.models import (
     InspectedPhysicalTableCandidate,
     RootDeploymentInspection,
 )
-from streambuild.compiler.shared.models import ObjectKey
+from streambuild.compiler.compile.models import ObjectKey
 from tests.unit.src.streambuild.clickhouse.inspect._test_types import (
     InspectRootDeploymentStateTestCase,
 )

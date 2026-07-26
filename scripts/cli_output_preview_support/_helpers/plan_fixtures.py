@@ -2,7 +2,16 @@
 
 from __future__ import annotations
 
-from streambuild.compiler.compile.models import DesiredState
+from streambuild.compiler.compile.models import (
+    Column,
+    DesiredMaterializedView,
+    DesiredState,
+    DesiredTable,
+    MaterializedViewSpec,
+    ObjectKey,
+    TableSpec,
+    TableStorage,
+)
 from streambuild.compiler.planner.models import (
     DeploymentPlan,
     DeploymentStep,
@@ -11,15 +20,6 @@ from streambuild.compiler.planner.models import (
     PlannerWarning,
     PreparedShadowObject,
     RebuildSubtree,
-)
-from streambuild.compiler.shared.models import (
-    Column,
-    DesiredMaterializedView,
-    DesiredTable,
-    MaterializedViewSpec,
-    ObjectKey,
-    TableSpec,
-    TableStorage,
 )
 from streambuild.spec.models import SchemaChangeBackfillPolicy, SchemaChangeBackfillRule
 

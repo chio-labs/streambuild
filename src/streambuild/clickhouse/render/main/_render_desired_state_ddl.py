@@ -8,10 +8,10 @@ from streambuild.clickhouse.render.main.render_create_materialized_view_ddl impo
 )
 from streambuild.clickhouse.render.main.render_create_table_ddl import render_create_table_ddl
 from streambuild.clickhouse.render.models import RenderedClickHouseDdl
-from streambuild.compiler.compile.models import DesiredState
-from streambuild.compiler.shared.models import (
+from streambuild.compiler.compile.models import (
     DesiredKafkaTable,
     DesiredMaterializedView,
+    DesiredState,
     DesiredTable,
 )
 

@@ -3,10 +3,10 @@
 from pathlib import Path
 
 from streambuild.compiler.audit_discovery.main.discover_sql_audits import discover_sql_audits
+from streambuild.compiler.audit_discovery.models import LoadedSqlAudit
 from streambuild.compiler.auditing.main.validated_sql_audits import validated_sql_audits
 from streambuild.compiler.compile.main.transform_table_name import transform_table_name
 from streambuild.compiler.compile.models import CompiledPipeline, CompiledTransformStep
-from streambuild.compiler.shared.models import LoadedSqlAudit
 from streambuild.executor.audit_backfill.models import (
     LoadedAuditDeployment,
 )

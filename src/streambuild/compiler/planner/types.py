@@ -7,7 +7,7 @@ from streambuild.compiler.actual_state.models import (
     ActualMaterializedView,
     ActualTable,
 )
-from streambuild.compiler.shared.models import (
+from streambuild.compiler.compile.models import (
     DesiredKafkaTable,
     DesiredMaterializedView,
     DesiredTable,

@@ -5,9 +5,7 @@ from __future__ import annotations
 from scripts.cli_output_preview_support._helpers.plan_fixtures import (
     build_plan_preview,
 )
-from streambuild.compiler.shared.models import (
-    ObjectKey,
-)
+from streambuild.compiler.compile.models import ObjectKey
 from streambuild.executor.audit_backfill.models import (
     AuditBackfillResult,
     AuditDeploymentCandidate,

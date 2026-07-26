@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from streambuild.compiler.shared.models import LoadedSqlTest
 from streambuild.compiler.test_discovery.main.discover_sql_tests import discover_sql_tests
+from streambuild.compiler.test_discovery.models import LoadedSqlTest
 from tests.unit.src.streambuild.compiler.macros.helpers import (
     write_macro_file,
     write_project_file,

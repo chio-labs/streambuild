@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 
-from streambuild.compiler.shared.models import ObjectKey
+from streambuild.compiler.compile.models import ObjectKey
 
 
 @dataclass(frozen=True)

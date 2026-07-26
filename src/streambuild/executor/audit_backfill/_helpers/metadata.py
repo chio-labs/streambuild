@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from streambuild.compiler.shared.models import ObjectKey
-from streambuild.compiler.shared.types import DesiredObjectType
+from streambuild.compiler.compile.models import ObjectKey
+from streambuild.compiler.compile.types import DesiredObjectType
 from streambuild.executor.audit_backfill.models import DeploymentMetadataRow
 from streambuild.spec.types import ReplayLineageMode
 

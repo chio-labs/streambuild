@@ -1,5 +1,6 @@
 """Build deterministically ordered metadata-state records."""
 
+from streambuild.compiler.compile.models import ObjectKey
 from streambuild.compiler.metadata_state.models import (
     DeploymentRecord,
     DeploymentRuntimeDetailRecord,
@@ -9,7 +10,6 @@ from streambuild.compiler.metadata_state.models import (
     PreparedObjectMapping,
     PublishEventRecord,
 )
-from streambuild.compiler.shared.models import ObjectKey
 
 
 def build_metadata_state(

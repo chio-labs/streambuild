@@ -1,6 +1,13 @@
 import pytest
 
 from streambuild.compiler.actual_state.models import ActualTable
+from streambuild.compiler.compile.models import (
+    Column,
+    DesiredTable,
+    ObjectKey,
+    TableSpec,
+    TableStorage,
+)
 from streambuild.compiler.planner._helpers.diff import (
     classify_object_change_type,
     classify_table_schema_change_kind,
@@ -12,13 +19,6 @@ from streambuild.compiler.planner.constants import (
     TABLE_SCHEMA_CHANGE_KIND_NON_BREAKING,
     TABLE_SCHEMA_SEED_COMPATIBILITY_NON_SEEDABLE,
     TABLE_SCHEMA_SEED_COMPATIBILITY_SEEDABLE,
-)
-from streambuild.compiler.shared.models import (
-    Column,
-    DesiredTable,
-    ObjectKey,
-    TableSpec,
-    TableStorage,
 )
 from tests.unit.src.streambuild.compiler.planner._test_types import (
     PlannerTableSchemaClassificationTestCase,

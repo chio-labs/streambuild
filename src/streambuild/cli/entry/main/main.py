@@ -27,14 +27,14 @@ from streambuild.cli.entry.constants import (
     COMMANDS_REQUIRING_PIPELINES_ROOT,
     DISPLAY_NAME_BY_COMMAND,
 )
+from streambuild.cli.entry.exceptions import CliUserError
+from streambuild.cli.entry.main._errors import render_expected_clickhouse_error
 from streambuild.cli.entry.models import (
     CliEntrypointHandlers,
     ResolvedClickHouseConnection,
     ResolvedCliProjectConfig,
 )
 from streambuild.cli.entry.types import CliCommand, CliSubcommand
-from streambuild.cli.shared.exceptions import CliUserError
-from streambuild.cli.shared.main._errors import render_expected_clickhouse_error
 from streambuild.compiler.compile.exceptions import TransformSqlContractError
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 

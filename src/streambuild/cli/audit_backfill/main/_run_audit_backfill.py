@@ -14,16 +14,16 @@ from streambuild.cli.audit_backfill._helpers.candidates import (
     candidate_root_names,
     enrich_candidates,
 )
+from streambuild.cli.audit_backfill.main._render_no_deployment_candidates_message import (
+    render_no_deployment_candidates_message,
+)
+from streambuild.cli.audit_backfill.main.render_ambiguous_deployment_message import (
+    render_ambiguous_deployment_message,
+)
 from streambuild.cli.audit_backfill.main.render_audit_backfill_result import (
     render_audit_backfill_result,
 )
-from streambuild.cli.shared.main._errors import render_expected_clickhouse_error
-from streambuild.cli.shared.main._render_no_deployment_candidates_message import (
-    render_no_deployment_candidates_message,
-)
-from streambuild.cli.shared.main.render_ambiguous_deployment_message import (
-    render_ambiguous_deployment_message,
-)
+from streambuild.cli.entry.main._errors import render_expected_clickhouse_error
 from streambuild.clickhouse.inspect.main.inspect_managed_table_state import (
     inspect_managed_table_state,
 )
@@ -31,7 +31,7 @@ from streambuild.clickhouse.inspect.models import InspectedManagedTableState
 from streambuild.compiler.compile.main.compile_pipeline import compile_pipeline
 from streambuild.compiler.compile.models import CompiledPipeline
 from streambuild.compiler.discovery.main.discover_pipelines import discover_pipelines
-from streambuild.compiler.shared.models import LoadedPipeline
+from streambuild.compiler.discovery.models import LoadedPipeline
 from streambuild.executor.audit_backfill.main.build_audit_deployment_candidates import (
     build_audit_deployment_candidates,
 )

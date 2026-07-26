@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from streambuild.compiler.discovery.main.discover_pipelines import discover_pipelines
-from streambuild.compiler.shared.models import LoadedPipeline
+from streambuild.compiler.discovery.models import LoadedPipeline
 
 
 def run_discover(pipelines_root: Path) -> int:

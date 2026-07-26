@@ -10,7 +10,7 @@ from streambuild.compiler.audit_discovery._helpers.generic import (
     render_generic_sql_audits,
 )
 from streambuild.compiler.audit_discovery._helpers.parsing import parse_sql_audit_file
-from streambuild.compiler.shared.models import LoadedSqlAudit
+from streambuild.compiler.audit_discovery.models import LoadedSqlAudit
 
 
 def discover_sql_audits(root: Path) -> list[LoadedSqlAudit]:

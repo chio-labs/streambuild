@@ -19,6 +19,7 @@ from streambuild.clickhouse.render.main.render_create_materialized_view_ddl impo
 )
 from streambuild.clickhouse.render.main.render_create_table_ddl import render_create_table_ddl
 from streambuild.compiler.audit_discovery.main.discover_sql_audits import discover_sql_audits
+from streambuild.compiler.audit_discovery.models import LoadedSqlAudit
 from streambuild.compiler.auditing.main.validated_sql_audits import validated_sql_audits
 from streambuild.compiler.compile.exceptions import TransformSqlContractError
 from streambuild.compiler.compile.main.compile_pipeline import compile_pipeline
@@ -28,7 +29,7 @@ from streambuild.compiler.compile.models import (
     CompiledTransformStep,
 )
 from streambuild.compiler.discovery.main.discover_pipelines import discover_pipelines
-from streambuild.compiler.shared.models import LoadedPipeline, LoadedSqlAudit
+from streambuild.compiler.discovery.models import LoadedPipeline
 from streambuild.compiler.test_discovery.main.discover_sql_tests import discover_sql_tests
 from streambuild.compiler.testing.main.build_sql_test_cases import build_sql_test_cases
 

@@ -8,21 +8,21 @@ from streambuild.compiler.actual_state.models import (
     ActualTable,
 )
 from streambuild.compiler.compile.main.compile_pipeline import compile_pipeline
-from streambuild.compiler.compile.models import DesiredState
-from streambuild.compiler.desired_state.main.build_desired_state import build_desired_state
-from streambuild.compiler.discovery._helpers.load import load_pipeline_file
-from streambuild.compiler.shared.models import (
+from streambuild.compiler.compile.models import (
     DesiredKafkaTable,
     DesiredMaterializedView,
+    DesiredState,
     DesiredTable,
     KafkaTableSpec,
-    LoadedPipeline,
     MaterializedViewSpec,
     ObjectKey,
     TableSpec,
     TableStorage,
 )
-from streambuild.compiler.shared.types import DesiredObjectType
+from streambuild.compiler.compile.types import DesiredObjectType
+from streambuild.compiler.desired_state.main.build_desired_state import build_desired_state
+from streambuild.compiler.discovery._helpers.load import load_pipeline_file
+from streambuild.compiler.discovery.models import LoadedPipeline
 from streambuild.spec.models import (
     KafkaLandingStep,
     KafkaSettings,

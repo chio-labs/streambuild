@@ -2,9 +2,9 @@ from pathlib import Path
 
 import pytest
 
-from streambuild.cli.shared.exceptions import CliUserError
+from streambuild.cli.entry.exceptions import CliUserError
 from streambuild.cli.test._helpers.selection import select_loaded_sql_tests
-from streambuild.compiler.shared.models import LoadedSqlTest
+from streambuild.compiler.test_discovery.models import LoadedSqlTest
 from tests.unit.src.streambuild.cli.test._helpers._test_types import (
     SelectLoadedSqlTestsErrorTestCase,
     SelectLoadedSqlTestsTestCase,

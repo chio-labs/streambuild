@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from streambuild.cli.shared.constants import AFFIRMATIVE_RESPONSES
+from streambuild.cli.entry.constants import AFFIRMATIVE_RESPONSES
 from streambuild.executor.reconcile.models import (
     ReconcilePreview,
     ReconcileResult,

@@ -11,20 +11,20 @@ from streambuild.clickhouse.render.main.render_create_materialized_view_ddl impo
     render_create_materialized_view_ddl,
 )
 from streambuild.clickhouse.render.main.render_create_table_ddl import render_create_table_ddl
-from streambuild.compiler.compile.models import DesiredState
-from streambuild.compiler.planner.constants import DEPLOYMENT_PHASE_PLAN
-from streambuild.compiler.planner.models import DeploymentPlan
-from streambuild.compiler.shared.constants import (
+from streambuild.compiler.compile.constants import (
     DESIRED_OBJECT_TYPE_TABLE,
     RAW_TABLE_NAME_PREFIX,
 )
-from streambuild.compiler.shared.models import (
+from streambuild.compiler.compile.models import (
     DesiredKafkaTable,
     DesiredMaterializedView,
+    DesiredState,
     DesiredTable,
     MaterializedViewSpec,
     ObjectKey,
 )
+from streambuild.compiler.planner.constants import DEPLOYMENT_PHASE_PLAN
+from streambuild.compiler.planner.models import DeploymentPlan
 from streambuild.executor.backfill.exceptions import BackfillExecutionError
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 

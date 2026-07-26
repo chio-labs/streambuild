@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from streambuild.compiler.shared.models import LoadedSqlTest
 from streambuild.compiler.test_discovery._helpers.parsing import parse_sql_test_file
+from streambuild.compiler.test_discovery.models import LoadedSqlTest
 
 
 def discover_sql_tests(root: Path) -> list[LoadedSqlTest]:

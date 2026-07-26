@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from streambuild.compiler.actual_state.models import ActualState
-from streambuild.compiler.compile.models import DesiredState
+from streambuild.compiler.compile.constants import DESIRED_OBJECT_TYPE_MATERIALIZED_VIEW
+from streambuild.compiler.compile.models import DesiredState, ObjectKey
 from streambuild.compiler.planner._helpers.diff import classify_object_changes
 from streambuild.compiler.planner._helpers.rebuild import emit_rebuild_subtrees_from_changes
 from streambuild.compiler.planner._helpers.sql_diffs import build_planned_sql_diffs
@@ -18,6 +19,9 @@ from streambuild.compiler.planner.constants import (
     DEPLOYMENT_PHASE_PLAN,
     DEPLOYMENT_PHASE_PUBLISH,
 )
+from streambuild.compiler.planner.main.build_deployment_physical_name import (
+    build_deployment_physical_name,
+)
 from streambuild.compiler.planner.models import (
     DeploymentPlan,
     DeploymentStep,
@@ -28,11 +32,6 @@ from streambuild.compiler.planner.models import (
     RebuildSubtree,
 )
 from streambuild.compiler.planner.types import DeploymentAction
-from streambuild.compiler.shared.constants import DESIRED_OBJECT_TYPE_MATERIALIZED_VIEW
-from streambuild.compiler.shared.main.build_deployment_physical_name import (
-    build_deployment_physical_name,
-)
-from streambuild.compiler.shared.models import ObjectKey
 
 
 def build_deployment_plan(

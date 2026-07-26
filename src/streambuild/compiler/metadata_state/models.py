@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from streambuild.compiler.shared.models import ObjectKey
+from streambuild.compiler.compile.models import ObjectKey
 from streambuild.spec.types import ReplayLineageMode
 
 

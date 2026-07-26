@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from streambuild.compiler.compile.models import ObjectKey
 from streambuild.compiler.metadata_state.models import ObjectStateRecord
-from streambuild.compiler.shared.models import ObjectKey
 
 
 @dataclass(frozen=True)

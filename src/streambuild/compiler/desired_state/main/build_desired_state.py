@@ -4,19 +4,17 @@ from __future__ import annotations
 
 from streambuild.compiler.compile.models import (
     CompiledPipeline,
+    DesiredKafkaTable,
+    DesiredMaterializedView,
     DesiredState,
+    DesiredTable,
     ExternalSourceReplayConfig,
+    ObjectKey,
 )
 from streambuild.compiler.desired_state._helpers.objects import (
     external_source_replay_config,
     managed_landing_objects,
     source_anchor_key,
-)
-from streambuild.compiler.shared.models import (
-    DesiredKafkaTable,
-    DesiredMaterializedView,
-    DesiredTable,
-    ObjectKey,
 )
 
 

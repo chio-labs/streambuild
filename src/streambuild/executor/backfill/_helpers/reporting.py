@@ -4,12 +4,12 @@ from streambuild.clickhouse.inspect.models import (
     RootDeploymentInspection,
 )
 from streambuild.clickhouse.inspect.types import RootDeploymentStateKind
-from streambuild.compiler.planner.models import DeploymentPlan, RebuildSubtree
-from streambuild.compiler.shared.constants import (
+from streambuild.compiler.compile.constants import (
     DESIRED_OBJECT_TYPE_TABLE,
     TRANSFORM_TABLE_NAME_PREFIX,
 )
-from streambuild.compiler.shared.models import ObjectKey
+from streambuild.compiler.compile.models import ObjectKey
+from streambuild.compiler.planner.models import DeploymentPlan, RebuildSubtree
 from streambuild.executor.backfill.models import RootBackfillReport
 
 
