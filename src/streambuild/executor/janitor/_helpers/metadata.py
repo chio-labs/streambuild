@@ -7,6 +7,10 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.constants import (
+    METADATA_DEPLOYMENTS_TABLE_NAME,
+    METADATA_REPLAY_LINEAGE_MODE_COLUMN_NAME,
+)
 from streambuild.adapter.exceptions import AdapterRelationNotFoundError
 from streambuild.compiler.compile.models import ObjectKey
 from streambuild.compiler.compile.types import DesiredObjectType
@@ -18,10 +22,19 @@ from streambuild.executor.janitor.models import DeploymentMetadataRow, PublishHi
 def load_deployments(
     *, client: AdapterConnection, metadata_database: str
 ) -> tuple[DeploymentRecord, ...]:
+    metadata_columns: frozenset[str] = client.metadata_columns(
+        database=metadata_database,
+        table=METADATA_DEPLOYMENTS_TABLE_NAME,
+    )
+    replay_lineage_projection: str = (
+        METADATA_REPLAY_LINEAGE_MODE_COLUMN_NAME
+        if METADATA_REPLAY_LINEAGE_MODE_COLUMN_NAME in metadata_columns
+        else (f"'{ReplayLineageMode.OFFSETS}' AS {METADATA_REPLAY_LINEAGE_MODE_COLUMN_NAME}")
+    )
     rows: tuple[DeploymentMetadataRow, ...] = client.query_many(
-        statement="SELECT deployment_id, created_at, status, replay_lineage_mode, "
+        statement=f"SELECT deployment_id, created_at, status, {replay_lineage_projection}, "
         "selected_root_keys_json, warning_codes_json, prepared_object_mappings_json "
-        f"FROM {metadata_database}.streambuild_deployments",
+        f"FROM {metadata_database}.{METADATA_DEPLOYMENTS_TABLE_NAME}",
         decode=_decode_deployment_metadata_row,
     )
     records: list[DeploymentRecord] = []

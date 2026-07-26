@@ -3,8 +3,8 @@
 from collections.abc import Mapping
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.constants import METADATA_OBJECT_STATE_TABLE_NAME
 from streambuild.adapter.exceptions import AdapterRelationNotFoundError
-from streambuild.clickhouse.metadata_state.constants import METADATA_OBJECT_STATE_TABLE_NAME
 from streambuild.compiler.compile.models import ObjectKey
 from streambuild.compiler.compile.types import DesiredObjectType
 from streambuild.compiler.metadata_state.models import ObjectStateRecord

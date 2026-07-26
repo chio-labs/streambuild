@@ -4,13 +4,6 @@ from clickhouse_connect.driver.client import Client
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import AdapterConnectionConfig
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
-from streambuild.clickhouse.render.main.render_create_kafka_table_ddl import (
-    render_create_kafka_table_ddl,
-)
-from streambuild.clickhouse.render.main.render_create_materialized_view_ddl import (
-    render_create_materialized_view_ddl,
-)
-from streambuild.clickhouse.render.main.render_create_table_ddl import render_create_table_ddl
 from streambuild.compiler.compile.models import CompiledPipeline, DesiredState
 from streambuild.compiler.desired_state.main.build_desired_state import build_desired_state
 from streambuild.compiler.planner.constants import (
@@ -29,6 +22,11 @@ from streambuild.executor.backfill.main.execute_backfill import execute_backfill
 from streambuild.executor.backfill.models import BackfillExecutionResult
 from streambuild.executor.publish.main.execute_publish import execute_publish
 from streambuild.executor.publish.models import PublishRequest, PublishResult
+from tests.integration.src.streambuild.adapters.clickhouse.helpers import (
+    render_create_kafka_table_ddl,
+    render_create_materialized_view_ddl,
+    render_create_table_ddl,
+)
 from tests.integration.src.streambuild.compiler.planner._test_types import (
     PlannerNoOpAfterPublishIntegrationTestCase,
     PlannerNormalizedTypeNoOpIntegrationTestCase,
@@ -153,6 +151,7 @@ def test_given_greenfield_backfill_and_publish_when_planning_again_then_it_is_a_
         desired_state=desired_state,
         actual_state=actual_state,
         default_database=clickhouse_database,
+        render_resource=managed_client.render_resource,
     )
 
     assert backfill_result.bootstrap.deployment_id == test_case.deployment_id
@@ -266,6 +265,7 @@ def test_given_equivalent_type_casing_after_publish_when_planning_again_then_it_
         desired_state=normalized_desired_state,
         actual_state=actual_state,
         default_database=clickhouse_database,
+        render_resource=managed_client.render_resource,
     )
 
     assert plan.rebuild_subtrees == ()
@@ -378,6 +378,7 @@ def test_given_published_deployment_when_authored_sql_changes_then_plan_requires
         desired_state=changed_desired_state,
         actual_state=actual_state,
         default_database=clickhouse_database,
+        render_resource=managed_client.render_resource,
     )
 
     assert (
@@ -539,6 +540,7 @@ def test_given_published_deployment_when_transform_output_schema_changes_then_pl
         desired_state=changed_desired_state,
         actual_state=actual_state,
         default_database=clickhouse_database,
+        render_resource=managed_client.render_resource,
     )
 
     assert (

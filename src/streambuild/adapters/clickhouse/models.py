@@ -34,3 +34,28 @@ class PhysicalCandidateSystemRow:
     """One deployment-suffixed physical table candidate."""
 
     name: str
+
+
+@dataclass(frozen=True)
+class ClickHouseMetadataStatement:
+    """A ClickHouse metadata insert statement and its row mappings."""
+
+    table: str
+    sql: str
+    rows: tuple[dict[str, object], ...] = ()
+
+
+@dataclass(frozen=True)
+class ClickHouseReplayOffsetFrontier:
+    """One partition frontier used for bounded offset replay."""
+
+    partition: object
+    cutoff_offset: str
+
+
+@dataclass(frozen=True)
+class ClickHouseReplayColumn:
+    """One ClickHouse relation column needed during replay realization."""
+
+    name: str
+    type: str

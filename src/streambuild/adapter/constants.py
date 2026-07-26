@@ -1,3 +1,12 @@
 """Neutral adapter constants."""
 
 REDACTED_SECRET_PLACEHOLDER: str = "***"
+METADATA_OBJECT_STATE_TABLE_NAME: str = "streambuild_object_state_snapshots"
+METADATA_DEPLOYMENTS_TABLE_NAME: str = "streambuild_deployments"
+METADATA_DEPLOYMENT_WATERMARKS_TABLE_NAME: str = "streambuild_deployment_watermarks"
+METADATA_DEPLOYMENT_RUNTIME_DETAILS_TABLE_NAME: str = "streambuild_deployment_runtime_details"
+METADATA_PUBLISH_HISTORY_TABLE_NAME: str = "streambuild_publish_history"
+METADATA_SCHEMA_VERSIONS_TABLE_NAME: str = "streambuild_state_schema_versions"
+METADATA_TARGET_OWNERSHIP_TABLE_NAME: str = "streambuild_target_ownership"
+METADATA_REPLAY_LINEAGE_MODE_COLUMN_NAME: str = "replay_lineage_mode"
+MANAGED_SOURCE_KIND_KAFKA: str = "kafka"

@@ -11,13 +11,6 @@ from kafka import KafkaProducer
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import AdapterConnectionConfig
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
-from streambuild.clickhouse.render.main.render_create_kafka_table_ddl import (
-    render_create_kafka_table_ddl,
-)
-from streambuild.clickhouse.render.main.render_create_materialized_view_ddl import (
-    render_create_materialized_view_ddl,
-)
-from streambuild.clickhouse.render.main.render_create_table_ddl import render_create_table_ddl
 from streambuild.compiler.compile.models import CompiledPipeline
 from streambuild.compiler.discovery.types import ReplayLineageMode, SchemaChangeBackfillMode
 from streambuild.compiler.planner.types import RebuildExecutionMode
@@ -61,6 +54,11 @@ from tests.e2e.src.streambuild.executor.helpers import (
     wait_for_table_exists,
     wait_for_table_missing,
     with_schema_change_backfill_policy,
+)
+from tests.integration.src.streambuild.adapters.clickhouse.helpers import (
+    render_create_kafka_table_ddl,
+    render_create_materialized_view_ddl,
+    render_create_table_ddl,
 )
 
 GREENFIELD_CREATED_AT: str

@@ -117,6 +117,7 @@ def run_plan(
         desired_state=desired_state,
         actual_state=actual_state,
         default_database=resolved_database,
+        render_resource=client.render_resource,
         full_refresh_keys=selection.selected_model_keys if full_refresh else frozenset(),
         start_time_keys=selection.selected_model_keys
         if normalized_start_time is not None

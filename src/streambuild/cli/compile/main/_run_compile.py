@@ -4,6 +4,8 @@ import json
 import sys
 from pathlib import Path
 
+from streambuild.adapter.classes.adapter import Adapter
+from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from streambuild.cli.compile._helpers.artifacts import (
     format_clickhouse_sql,
     write_text,
@@ -11,13 +13,6 @@ from streambuild.cli.compile._helpers.artifacts import (
 from streambuild.cli.compile._helpers.manifest import (
     pipeline_manifest_entry,
 )
-from streambuild.clickhouse.render.main.render_create_kafka_table_ddl import (
-    render_create_kafka_table_ddl,
-)
-from streambuild.clickhouse.render.main.render_create_materialized_view_ddl import (
-    render_create_materialized_view_ddl,
-)
-from streambuild.clickhouse.render.main.render_create_table_ddl import render_create_table_ddl
 from streambuild.compiler.audit_discovery.main.discover_sql_audits import discover_sql_audits
 from streambuild.compiler.audit_discovery.models import LoadedSqlAudit
 from streambuild.compiler.auditing.main.validated_sql_audits import validated_sql_audits
@@ -30,6 +25,7 @@ from streambuild.compiler.compile.models import (
 )
 from streambuild.compiler.discovery.main.discover_pipelines import discover_pipelines
 from streambuild.compiler.discovery.models import LoadedPipeline
+from streambuild.compiler.planner.main.build_adapter_resource import build_adapter_resource
 from streambuild.compiler.test_discovery.main.discover_sql_tests import discover_sql_tests
 from streambuild.compiler.testing.main.build_sql_test_cases import build_sql_test_cases
 
@@ -38,6 +34,7 @@ def run_compile(*, pipelines_root: Path, target_dir: Path | None = None) -> int:
     """Compile discovered pipeline folders and write artifact outputs."""
 
     loaded_pipelines: list[LoadedPipeline] = discover_pipelines(pipelines_root)
+    adapter: Adapter = ClickHouseAdapter()
 
     try:
         compiled: list[CompiledPipeline] = [
@@ -65,7 +62,9 @@ def run_compile(*, pipelines_root: Path, target_dir: Path | None = None) -> int:
     compiled_pipeline: CompiledPipeline
     for compiled_pipeline in compiled:
         _write_pipeline_artifacts(
-            compiled_pipeline=compiled_pipeline, target_dir=resolved_target_dir
+            adapter=adapter,
+            compiled_pipeline=compiled_pipeline,
+            target_dir=resolved_target_dir,
         )
     _write_manifest(compiled=compiled, target_dir=resolved_target_dir)
 
@@ -77,7 +76,9 @@ def run_compile(*, pipelines_root: Path, target_dir: Path | None = None) -> int:
     return 0
 
 
-def _write_pipeline_artifacts(*, compiled_pipeline: CompiledPipeline, target_dir: Path) -> None:
+def _write_pipeline_artifacts(
+    *, adapter: Adapter, compiled_pipeline: CompiledPipeline, target_dir: Path
+) -> None:
     pipeline_dir: Path = target_dir / compiled_pipeline.pipeline.name
     compile_models_dir: Path = pipeline_dir / "compile" / "models"
     run_models_dir: Path = pipeline_dir / "run" / "models"
@@ -101,15 +102,19 @@ def _write_pipeline_artifacts(*, compiled_pipeline: CompiledPipeline, target_dir
         write_text(
             path=run_models_dir / f"{transform.transform.name}.table.sql",
             contents=format_clickhouse_sql(
-                render_create_table_ddl(table=transform.target_table, database=resolved_database)
+                adapter.render_resource(
+                    resource=build_adapter_resource(transform.target_table),
+                    database=resolved_database,
+                )
             )
             + "\n",
         )
         write_text(
             path=run_models_dir / f"{transform.transform.name}.mv.sql",
             contents=format_clickhouse_sql(
-                render_create_materialized_view_ddl(
-                    materialized_view=transform.materialized_view, database=resolved_database
+                adapter.render_resource(
+                    resource=build_adapter_resource(transform.materialized_view),
+                    database=resolved_database,
                 )
             )
             + "\n",
@@ -122,8 +127,8 @@ def _write_pipeline_artifacts(*, compiled_pipeline: CompiledPipeline, target_dir
                 (
                     "01_kafka_table.sql",
                     format_clickhouse_sql(
-                        render_create_kafka_table_ddl(
-                            table=compiled_pipeline.source.kafka_table,
+                        adapter.render_resource(
+                            resource=build_adapter_resource(compiled_pipeline.source.kafka_table),
                             database=resolved_database,
                         )
                     )
@@ -132,8 +137,8 @@ def _write_pipeline_artifacts(*, compiled_pipeline: CompiledPipeline, target_dir
                 (
                     "02_raw_table.sql",
                     format_clickhouse_sql(
-                        render_create_table_ddl(
-                            table=compiled_pipeline.source.raw_table,
+                        adapter.render_resource(
+                            resource=build_adapter_resource(compiled_pipeline.source.raw_table),
                             database=resolved_database,
                         )
                     )
@@ -142,8 +147,10 @@ def _write_pipeline_artifacts(*, compiled_pipeline: CompiledPipeline, target_dir
                 (
                     "03_landing_mv.sql",
                     format_clickhouse_sql(
-                        render_create_materialized_view_ddl(
-                            materialized_view=compiled_pipeline.source.materialized_view,
+                        adapter.render_resource(
+                            resource=build_adapter_resource(
+                                compiled_pipeline.source.materialized_view
+                            ),
                             database=resolved_database,
                         )
                     )
@@ -157,8 +164,8 @@ def _write_pipeline_artifacts(*, compiled_pipeline: CompiledPipeline, target_dir
                 (
                     f"{index * 10:02d}_{transform.transform.name}.table.sql",
                     format_clickhouse_sql(
-                        render_create_table_ddl(
-                            table=transform.target_table,
+                        adapter.render_resource(
+                            resource=build_adapter_resource(transform.target_table),
                             database=resolved_database,
                         )
                     )
@@ -167,8 +174,8 @@ def _write_pipeline_artifacts(*, compiled_pipeline: CompiledPipeline, target_dir
                 (
                     f"{index * 10 + 1:02d}_{transform.transform.name}.mv.sql",
                     format_clickhouse_sql(
-                        render_create_materialized_view_ddl(
-                            materialized_view=transform.materialized_view,
+                        adapter.render_resource(
+                            resource=build_adapter_resource(transform.materialized_view),
                             database=resolved_database,
                         )
                     )

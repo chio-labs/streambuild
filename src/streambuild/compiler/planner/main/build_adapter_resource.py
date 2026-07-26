@@ -1,0 +1,63 @@
+"""Build neutral adapter resource requests from desired objects."""
+
+from streambuild.adapter.constants import MANAGED_SOURCE_KIND_KAFKA
+from streambuild.adapter.models import (
+    AdapterColumn,
+    AdapterManagedSource,
+    AdapterMaterializedView,
+    AdapterStableView,
+    AdapterTable,
+)
+from streambuild.compiler.compile.models import (
+    Column,
+    DesiredKafkaTable,
+    DesiredMaterializedView,
+    DesiredTable,
+)
+
+
+def build_adapter_resource(
+    desired_object: DesiredKafkaTable | DesiredTable | DesiredMaterializedView,
+) -> AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterStableView:
+    """Convert one desired object into a neutral adapter resource request."""
+
+    columns: tuple[AdapterColumn, ...] = (
+        tuple(_adapter_column(column) for column in desired_object.spec.columns)
+        if not isinstance(desired_object, DesiredMaterializedView)
+        else ()
+    )
+    if isinstance(desired_object, DesiredKafkaTable):
+        return AdapterManagedSource(
+            source_kind=MANAGED_SOURCE_KIND_KAFKA,
+            name=desired_object.name,
+            columns=columns,
+            broker_list=desired_object.kafka.broker_list,
+            topic=desired_object.kafka.topic,
+            consumer_group=desired_object.kafka.consumer_group,
+            format=desired_object.kafka.format,
+            settings=tuple(sorted((desired_object.kafka.settings or {}).items())),
+        )
+    if isinstance(desired_object, DesiredTable):
+        return AdapterTable(
+            name=desired_object.name,
+            columns=columns,
+            engine=desired_object.engine,
+            order_by=desired_object.order_by,
+            partition_by=desired_object.partition_by,
+            ttl=desired_object.ttl,
+            settings=tuple(sorted((desired_object.settings or {}).items())),
+        )
+    return AdapterMaterializedView(
+        name=desired_object.name,
+        source_relation_name=desired_object.source_table_name,
+        target_relation_name=desired_object.target_table_name,
+        query=desired_object.query,
+    )
+
+
+def _adapter_column(column: Column) -> AdapterColumn:
+    return AdapterColumn(
+        name=column.name,
+        type=column.type,
+        default_expression=column.default,
+    )

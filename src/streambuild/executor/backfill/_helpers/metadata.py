@@ -3,10 +3,6 @@
 from dataclasses import asdict
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.clickhouse.metadata_state.main.build_metadata_state_insert_statements import (
-    build_metadata_state_insert_statements,
-)
-from streambuild.clickhouse.metadata_state.models import RenderedClickHouseStatement
 from streambuild.compiler.compile.constants import (
     DESIRED_OBJECT_TYPE_TABLE,
     RAW_TABLE_NAME_PREFIX,
@@ -14,6 +10,9 @@ from streambuild.compiler.compile.constants import (
 )
 from streambuild.compiler.compile.models import DesiredMaterializedView, ObjectKey
 from streambuild.compiler.discovery.types import ReplayLineageMode
+from streambuild.compiler.metadata_state.main.build_adapter_metadata_state import (
+    build_adapter_metadata_state,
+)
 from streambuild.compiler.metadata_state.main.build_metadata_state import build_metadata_state
 from streambuild.compiler.metadata_state.models import (
     DeploymentRecord,
@@ -33,12 +32,6 @@ from streambuild.executor.backfill._helpers.reporting import (
 from streambuild.executor.backfill.constants import DEPLOYMENT_STATUS_BACKFILLING
 from streambuild.executor.backfill.exceptions import BackfillExecutionError
 from streambuild.executor.backfill.models import RootBackfillReport
-
-
-def ensure_database_exists(*, client: AdapterConnection, database: str) -> None:
-    """Create a ClickHouse database if it does not already exist."""
-
-    client.command(f"CREATE DATABASE IF NOT EXISTS {database}")
 
 
 def persist_deployment_metadata(
@@ -88,27 +81,10 @@ def persist_deployment_metadata(
         ),
         publish_events=(),
     )
-    insert_statements: tuple[RenderedClickHouseStatement, ...] = (
-        build_metadata_state_insert_statements(
-            database=metadata_database,
-            object_states=metadata_state.object_states,
-            deployments=metadata_state.deployments,
-            deployment_watermarks=metadata_state.deployment_watermarks,
-            deployment_runtime_details=metadata_state.deployment_runtime_details,
-            publish_events=metadata_state.publish_events,
-        )
+    client.persist_metadata_state(
+        database=metadata_database,
+        state=build_adapter_metadata_state(metadata_state),
     )
-    statement: RenderedClickHouseStatement
-    for statement in insert_statements:
-        if not statement.rows:
-            continue
-        client.insert_rows(table=_insert_table_name(statement.sql), rows=statement.rows)
-
-
-def _insert_table_name(statement_sql: str) -> str:
-    statement_prefix: str = "INSERT INTO "
-    remainder: str = statement_sql[len(statement_prefix) :]
-    return remainder.split(" ", 1)[0]
 
 
 def _build_object_state_records(

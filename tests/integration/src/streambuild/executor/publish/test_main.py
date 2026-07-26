@@ -6,19 +6,17 @@ from clickhouse_connect.driver.client import Client
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import AdapterConnectionConfig
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
-from streambuild.clickhouse.render.main.render_create_kafka_table_ddl import (
-    render_create_kafka_table_ddl,
-)
-from streambuild.clickhouse.render.main.render_create_materialized_view_ddl import (
-    render_create_materialized_view_ddl,
-)
-from streambuild.clickhouse.render.main.render_create_table_ddl import render_create_table_ddl
-from streambuild.clickhouse.render.main.render_create_view_ddl import render_create_view_ddl
 from streambuild.compiler.compile.models import CompiledPipeline
 from streambuild.executor.backfill.main.execute_backfill import execute_backfill
 from streambuild.executor.backfill.models import BackfillExecutionResult
 from streambuild.executor.publish.main.execute_publish import execute_publish
 from streambuild.executor.publish.models import PublishRequest, PublishResult
+from tests.integration.src.streambuild.adapters.clickhouse.helpers import (
+    render_create_kafka_table_ddl,
+    render_create_materialized_view_ddl,
+    render_create_table_ddl,
+    render_create_view_ddl,
+)
 from tests.integration.src.streambuild.conftest import ClickHouseConnectionSettings
 from tests.integration.src.streambuild.executor.backfill.helpers import (
     build_raw_orders_row,
@@ -62,6 +60,8 @@ from tests.integration.src.streambuild.executor.publish.helpers import (
                 ("streambuild_deployments", "ReplacingMergeTree"),
                 ("streambuild_object_state_snapshots", "ReplacingMergeTree"),
                 ("streambuild_publish_history", "ReplacingMergeTree"),
+                ("streambuild_state_schema_versions", "ReplacingMergeTree"),
+                ("streambuild_target_ownership", "ReplacingMergeTree"),
                 ("tbl__orders_enriched", "View"),
                 ("tbl__orders_enriched__20260409T180000Z_ab12cd", "MergeTree"),
             ),

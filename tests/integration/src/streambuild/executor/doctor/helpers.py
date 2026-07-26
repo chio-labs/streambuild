@@ -3,7 +3,7 @@ from typing import cast
 
 from clickhouse_connect.driver.client import Client
 
-from streambuild.clickhouse.render.main.render_create_view_ddl import render_create_view_ddl
+from tests.integration.src.streambuild.adapters.clickhouse.helpers import render_create_view_ddl
 
 
 def _create_active_view(

@@ -162,6 +162,16 @@ class ExecuteUnseededBoundedOffsetReplayIntegrationTestCase:
 
 
 @dataclass(frozen=True)
+class ExecuteBoundedPreservationMatrixIntegrationTestCase:
+    description: str
+    source_ownership: str
+    replay_lineage_mode: ReplayLineageMode
+    requested_execution_mode: RebuildExecutionMode
+    expected_execution_mode: RebuildExecutionMode
+    expected_shadow_rows: tuple[tuple[str, str], ...]
+
+
+@dataclass(frozen=True)
 class ExecuteMultipleBackfillsIntegrationTestCase:
     description: str
     first_deployment_id: str
@@ -264,4 +274,9 @@ class StartTimeReplayScenarioResult(NamedTuple):
     compiled_pipeline: CompiledPipeline
     start_time_result: BackfillExecutionResult
     converted_start_time: str
+    shadow_rows: tuple[tuple[str, str], ...]
+
+
+class BoundedPreservationMatrixScenarioResult(NamedTuple):
+    execution_mode: RebuildExecutionMode
     shadow_rows: tuple[tuple[str, str], ...]

@@ -22,3 +22,28 @@ class InspectManagedTableStateIntegrationTestCase:
     description: str
     expected_active_bindings: tuple[tuple[str, str], ...]
     expected_physical_candidates: tuple[tuple[str, str], ...]
+
+
+@dataclass(frozen=True)
+class RenderTransformMaterializedViewIntegrationTestCase:
+    description: str
+    expected_order_id: str
+    expected_customer_id: str
+    expected_order_total: float
+
+
+@dataclass(frozen=True)
+class MetadataMigrationIntegrationTestCase:
+    description: str
+    expected_table_names: tuple[str, ...]
+    expected_version_rows: tuple[tuple[int], ...]
+
+
+@dataclass(frozen=True)
+class LegacyMetadataMigrationIntegrationTestCase:
+    description: str
+    runtime_details_setup_sql: str
+    expected_deployment_row: tuple[str, str, str, str]
+    expected_object_state_count: int
+    expected_version_rows: tuple[tuple[int], ...]
+    expected_legacy_deployment_count: int

@@ -10,13 +10,28 @@ from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import (
     AdapterCapabilities,
     AdapterIdentity,
+    AdapterManagedSource,
+    AdapterMaterializedView,
+    AdapterMetadataState,
     AdapterQueryResult,
+    AdapterReplayRequest,
+    AdapterStableView,
+    AdapterTable,
     CatalogSnapshot,
 )
 from streambuild.adapters.clickhouse._helpers.errors import translate_driver_error
 from streambuild.adapters.clickhouse._helpers.inspection import load_clickhouse_catalog
+from streambuild.adapters.clickhouse._helpers.metadata import (
+    migrate_clickhouse_metadata_state,
+    persist_clickhouse_metadata_state,
+)
+from streambuild.adapters.clickhouse._helpers.rendering import render_clickhouse_resource
+from streambuild.adapters.clickhouse._helpers.replay import execute_clickhouse_replay
 from streambuild.adapters.clickhouse.constants import (
     CLICKHOUSE_ADAPTER_NAME,
+    CLICKHOUSE_HISTORY_PREFIX_SEED_SUPPORTED,
+    CLICKHOUSE_MANAGED_SOURCE_KINDS,
+    CLICKHOUSE_REPLAY_BOUNDARY_MODES,
     CLICKHOUSE_VIRTUAL_ENVIRONMENTS_SUPPORTED,
 )
 from streambuild.adapters.clickhouse.types import (
@@ -41,7 +56,12 @@ class ClickHouseConnection(AdapterConnection):
     def capabilities(self) -> AdapterCapabilities:
         """Return capabilities implemented by the ClickHouse adapter."""
 
-        return AdapterCapabilities(virtual_environments=CLICKHOUSE_VIRTUAL_ENVIRONMENTS_SUPPORTED)
+        return AdapterCapabilities(
+            virtual_environments=CLICKHOUSE_VIRTUAL_ENVIRONMENTS_SUPPORTED,
+            managed_source_kinds=CLICKHOUSE_MANAGED_SOURCE_KINDS,
+            replay_boundary_modes=CLICKHOUSE_REPLAY_BOUNDARY_MODES,
+            history_prefix_seed=CLICKHOUSE_HISTORY_PREFIX_SEED_SUPPORTED,
+        )
 
     def load_catalog(self, database: str) -> CatalogSnapshot:
         """Load a neutral catalog snapshot from ClickHouse system tables."""
@@ -51,6 +71,14 @@ class ClickHouseConnection(AdapterConnection):
             adapter_identity=self.adapter_identity,
             database=database,
         )
+
+    def metadata_columns(self, *, database: str, table: str) -> frozenset[str]:
+        """Return available ClickHouse columns for one framework metadata table."""
+
+        result: AdapterQueryResult = self.query(
+            f"SELECT name FROM system.columns WHERE database = '{database}' AND table = '{table}'"
+        )
+        return frozenset(str(row[0]) for row in result.rows)
 
     def command(self, statement: str) -> None:
         """Execute a ClickHouse command statement."""
@@ -88,6 +116,58 @@ class ClickHouseConnection(AdapterConnection):
             self._raw_client.insert(table=table, data=row_values, column_names=list(column_names))
         except (ClickHouseError, StreamFailureError) as error:
             raise translate_driver_error(error) from error
+
+    def ensure_database(self, database: str) -> None:
+        """Create a ClickHouse database when it does not already exist."""
+
+        self.command(f"CREATE DATABASE IF NOT EXISTS {database}")
+
+    def render_resource(
+        self,
+        *,
+        resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterStableView,
+        database: str,
+        if_not_exists: bool = False,
+    ) -> str:
+        """Render one neutral resource request as ClickHouse SQL."""
+
+        return render_clickhouse_resource(
+            resource=resource,
+            database=database,
+            if_not_exists=if_not_exists,
+        )
+
+    def realize_resource(
+        self,
+        *,
+        resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterStableView,
+        database: str,
+        if_not_exists: bool = False,
+    ) -> None:
+        """Realize one neutral resource request in ClickHouse."""
+
+        self.command(
+            self.render_resource(
+                resource=resource,
+                database=database,
+                if_not_exists=if_not_exists,
+            )
+        )
+
+    def migrate_metadata_state(self, database: str) -> None:
+        """Apply pending additive StreamBuild metadata migrations."""
+
+        migrate_clickhouse_metadata_state(connection=self, database=database)
+
+    def persist_metadata_state(self, *, database: str, state: AdapterMetadataState) -> None:
+        """Persist adapter-neutral StreamBuild metadata in ClickHouse."""
+
+        persist_clickhouse_metadata_state(connection=self, database=database, state=state)
+
+    def execute_replay(self, request: AdapterReplayRequest) -> None:
+        """Seed and execute one replay request in ClickHouse."""
+
+        execute_clickhouse_replay(connection=self, request=request)
 
     def close(self) -> None:
         """Close the underlying ClickHouse connection."""

@@ -11,13 +11,6 @@ from typing import Any
 from clickhouse_connect.driver.client import Client
 from kafka import KafkaProducer
 
-from streambuild.clickhouse.render.main.render_create_kafka_table_ddl import (
-    render_create_kafka_table_ddl,
-)
-from streambuild.clickhouse.render.main.render_create_materialized_view_ddl import (
-    render_create_materialized_view_ddl,
-)
-from streambuild.clickhouse.render.main.render_create_table_ddl import render_create_table_ddl
 from streambuild.compiler.compile.main.compile_pipeline import compile_pipeline
 from streambuild.compiler.compile.models import (
     Column,
@@ -45,6 +38,11 @@ from tests.e2e.src.streambuild.conftest import (
 from tests.e2e.src.streambuild.executor._test_types import (
     KafkaLiveShadowScenarioResult,
     KafkaLiveShadowWorkflowE2ETestCase,
+)
+from tests.integration.src.streambuild.adapters.clickhouse.helpers import (
+    render_create_kafka_table_ddl,
+    render_create_materialized_view_ddl,
+    render_create_table_ddl,
 )
 from tests.integration.src.streambuild.compiler.planner.helpers import (
     build_changed_schema_variant_compiled_pipeline,

@@ -8,7 +8,13 @@ from streambuild.adapter.models import (
     AdapterCapabilities,
     AdapterConnectionConfig,
     AdapterIdentity,
+    AdapterManagedSource,
+    AdapterMaterializedView,
+    AdapterMetadataState,
     AdapterQueryResult,
+    AdapterReplayRequest,
+    AdapterStableView,
+    AdapterTable,
     CatalogSnapshot,
 )
 from streambuild.adapters.clickhouse._helpers.inspection import load_clickhouse_catalog
@@ -42,6 +48,9 @@ class RecordingDelegatingConnection(AdapterConnection):
             database=database,
         )
 
+    def metadata_columns(self, *, database: str, table: str) -> frozenset[str]:
+        return self._delegate.metadata_columns(database=database, table=table)
+
     def command(self, statement: str) -> None:
         self._delegate.command(statement)
 
@@ -51,6 +60,44 @@ class RecordingDelegatingConnection(AdapterConnection):
 
     def insert_rows(self, *, table: str, rows: tuple[dict[str, object], ...]) -> None:
         self._delegate.insert_rows(table=table, rows=rows)
+
+    def ensure_database(self, database: str) -> None:
+        self._delegate.ensure_database(database)
+
+    def render_resource(
+        self,
+        *,
+        resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterStableView,
+        database: str,
+        if_not_exists: bool = False,
+    ) -> str:
+        return self._delegate.render_resource(
+            resource=resource,
+            database=database,
+            if_not_exists=if_not_exists,
+        )
+
+    def realize_resource(
+        self,
+        *,
+        resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterStableView,
+        database: str,
+        if_not_exists: bool = False,
+    ) -> None:
+        self._delegate.realize_resource(
+            resource=resource,
+            database=database,
+            if_not_exists=if_not_exists,
+        )
+
+    def migrate_metadata_state(self, database: str) -> None:
+        self._delegate.migrate_metadata_state(database)
+
+    def persist_metadata_state(self, *, database: str, state: AdapterMetadataState) -> None:
+        self._delegate.persist_metadata_state(database=database, state=state)
+
+    def execute_replay(self, request: AdapterReplayRequest) -> None:
+        self._delegate.execute_replay(request)
 
     def close(self) -> None:
         self._delegate.close()

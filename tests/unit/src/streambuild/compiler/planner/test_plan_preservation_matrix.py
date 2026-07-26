@@ -1,5 +1,6 @@
 import pytest
 
+from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from streambuild.compiler.compile.models import (
     CompiledExternalSource,
     CompiledManagedSource,
@@ -134,6 +135,7 @@ def test_given_supported_source_mode_pair_when_planning_then_preserves_rebuild_p
         desired_state=desired_state,
         actual_state=ActualState(objects=()),
         default_database="analytics",
+        render_resource=ClickHouseAdapter().render_resource,
     )
 
     assert isinstance(compiled_pipeline.source, test_case.expected_source_type)

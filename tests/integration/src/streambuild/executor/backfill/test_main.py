@@ -8,22 +8,16 @@ from clickhouse_connect.driver.client import Client
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import AdapterConnectionConfig
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
-from streambuild.clickhouse.render.main.render_create_kafka_table_ddl import (
-    render_create_kafka_table_ddl,
-)
-from streambuild.clickhouse.render.main.render_create_materialized_view_ddl import (
-    render_create_materialized_view_ddl,
-)
-from streambuild.clickhouse.render.main.render_create_table_ddl import render_create_table_ddl
-from streambuild.clickhouse.render.main.render_create_view_ddl import render_create_view_ddl
 from streambuild.compiler.compile.models import CompiledPipeline, DesiredState
 from streambuild.compiler.desired_state.main.build_desired_state import build_desired_state
+from streambuild.compiler.discovery.types import ReplayLineageMode
 from streambuild.compiler.metadata_state.models import DeploymentWatermarkRecord
 from streambuild.compiler.planner.constants import (
     REBUILD_EXECUTION_MODE_FULL,
     REBUILD_EXECUTION_MODE_UNSEEDED_BOUNDED,
 )
 from streambuild.compiler.planner.models import DeploymentPlan, RebuildSubtree
+from streambuild.compiler.planner.types import RebuildExecutionMode
 from streambuild.executor.backfill._helpers.replay import (
     execute_offset_replay,
     execute_scalar_replay,
@@ -45,14 +39,22 @@ from streambuild.executor.backfill.models import (
 )
 from streambuild.executor.publish.main.execute_publish import execute_publish
 from streambuild.executor.publish.models import PublishRequest
+from tests.integration.src.streambuild.adapters.clickhouse.helpers import (
+    render_create_kafka_table_ddl,
+    render_create_materialized_view_ddl,
+    render_create_table_ddl,
+    render_create_view_ddl,
+)
 from tests.integration.src.streambuild.conftest import ClickHouseConnectionSettings
 from tests.integration.src.streambuild.executor.backfill._test_types import (
     BackfillAfterDeletedStagedTableIntegrationTestCase,
+    BoundedPreservationMatrixScenarioResult,
     ExecuteAggregateBoundedOffsetReplayIntegrationTestCase,
     ExecuteAggregateOffsetReplayIntegrationTestCase,
     ExecuteBackfillBootstrapIntegrationTestCase,
     ExecuteBackfillOffsetReplayIntegrationTestCase,
     ExecuteBackfillScalarReplayIntegrationTestCase,
+    ExecuteBoundedPreservationMatrixIntegrationTestCase,
     ExecuteBoundedReplayReportingIntegrationTestCase,
     ExecuteExternalSourceCursorReplayIntegrationTestCase,
     ExecuteExternalSourceOffsetReplayIntegrationTestCase,
@@ -79,6 +81,8 @@ from tests.integration.src.streambuild.executor.backfill.helpers import (
     build_changed_offset_replay_compiled_pipeline,
     build_changed_scalar_replay_compiled_pipeline,
     build_compiled_pipeline,
+    build_external_source_aggregate_offset_replay_compiled_pipeline,
+    build_external_source_aggregate_offset_replay_request,
     build_external_source_cursor_replay_compiled_pipeline,
     build_external_source_cursor_replay_request,
     build_external_source_offset_replay_compiled_pipeline,
@@ -96,6 +100,7 @@ from tests.integration.src.streambuild.executor.backfill.helpers import (
     build_scalar_replay_request,
     prepare_live_landing_objects,
     require_managed_source,
+    run_bounded_preservation_matrix_scenario,
     run_start_time_replay_scenario,
 )
 
@@ -123,6 +128,8 @@ from tests.integration.src.streambuild.executor.backfill.helpers import (
                 ("streambuild_deployments", "ReplacingMergeTree"),
                 ("streambuild_object_state_snapshots", "ReplacingMergeTree"),
                 ("streambuild_publish_history", "ReplacingMergeTree"),
+                ("streambuild_state_schema_versions", "ReplacingMergeTree"),
+                ("streambuild_target_ownership", "ReplacingMergeTree"),
                 ("tbl__orders_enriched__20260409T120000Z_ab12cd", "ReplacingMergeTree"),
             ),
             expected_runtime_detail_anchor_physical_name="raw__orders",
@@ -148,6 +155,8 @@ from tests.integration.src.streambuild.executor.backfill.helpers import (
                 ("streambuild_deployments", "ReplacingMergeTree"),
                 ("streambuild_object_state_snapshots", "ReplacingMergeTree"),
                 ("streambuild_publish_history", "ReplacingMergeTree"),
+                ("streambuild_state_schema_versions", "ReplacingMergeTree"),
+                ("streambuild_target_ownership", "ReplacingMergeTree"),
                 ("tbl__orders_enriched__20260409T120500Z_ef34gh", "ReplacingMergeTree"),
             ),
             expected_runtime_detail_anchor_physical_name="raw__orders",
@@ -234,6 +243,150 @@ def test_given_changed_pipeline_when_bootstrapping_then_it_creates_metadata_and_
         key=lambda row: str(row[0]),
     )
     assert full_layout_rows == list(test_case.expected_full_layout)
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ExecuteBoundedPreservationMatrixIntegrationTestCase(
+            description="managed offset seeded bounded replay",
+            source_ownership="managed",
+            replay_lineage_mode=ReplayLineageMode.OFFSETS,
+            requested_execution_mode=RebuildExecutionMode.SEEDED_BOUNDED_REBUILD,
+            expected_execution_mode=RebuildExecutionMode.SEEDED_BOUNDED_REBUILD,
+            expected_shadow_rows=(
+                ("frontier-order", ""),
+                ("historical-order", ""),
+                ("tail-order", "changed"),
+            ),
+        ),
+        ExecuteBoundedPreservationMatrixIntegrationTestCase(
+            description="managed offset unseeded bounded replay",
+            source_ownership="managed",
+            replay_lineage_mode=ReplayLineageMode.OFFSETS,
+            requested_execution_mode=RebuildExecutionMode.UNSEEDED_BOUNDED_REBUILD,
+            expected_execution_mode=RebuildExecutionMode.UNSEEDED_BOUNDED_REBUILD,
+            expected_shadow_rows=(("tail-order", "changed"),),
+        ),
+        ExecuteBoundedPreservationMatrixIntegrationTestCase(
+            description="managed timestamp seeded bounded replay",
+            source_ownership="managed",
+            replay_lineage_mode=ReplayLineageMode.TIMESTAMP,
+            requested_execution_mode=RebuildExecutionMode.SEEDED_BOUNDED_REBUILD,
+            expected_execution_mode=RebuildExecutionMode.SEEDED_BOUNDED_REBUILD,
+            expected_shadow_rows=(
+                ("frontier-order", ""),
+                ("historical-order", ""),
+                ("tail-order", "changed"),
+            ),
+        ),
+        ExecuteBoundedPreservationMatrixIntegrationTestCase(
+            description="managed timestamp unseeded bounded replay",
+            source_ownership="managed",
+            replay_lineage_mode=ReplayLineageMode.TIMESTAMP,
+            requested_execution_mode=RebuildExecutionMode.UNSEEDED_BOUNDED_REBUILD,
+            expected_execution_mode=RebuildExecutionMode.UNSEEDED_BOUNDED_REBUILD,
+            expected_shadow_rows=(("tail-order", "changed"),),
+        ),
+        ExecuteBoundedPreservationMatrixIntegrationTestCase(
+            description="managed landed-at seeded bounded replay",
+            source_ownership="managed",
+            replay_lineage_mode=ReplayLineageMode.LANDED_AT,
+            requested_execution_mode=RebuildExecutionMode.SEEDED_BOUNDED_REBUILD,
+            expected_execution_mode=RebuildExecutionMode.SEEDED_BOUNDED_REBUILD,
+            expected_shadow_rows=(
+                ("frontier-order", ""),
+                ("historical-order", ""),
+                ("tail-order", "changed"),
+            ),
+        ),
+        ExecuteBoundedPreservationMatrixIntegrationTestCase(
+            description="managed landed-at unseeded bounded replay",
+            source_ownership="managed",
+            replay_lineage_mode=ReplayLineageMode.LANDED_AT,
+            requested_execution_mode=RebuildExecutionMode.UNSEEDED_BOUNDED_REBUILD,
+            expected_execution_mode=RebuildExecutionMode.UNSEEDED_BOUNDED_REBUILD,
+            expected_shadow_rows=(("tail-order", "changed"),),
+        ),
+        ExecuteBoundedPreservationMatrixIntegrationTestCase(
+            description="adopted offset seeded bounded replay",
+            source_ownership="adopted",
+            replay_lineage_mode=ReplayLineageMode.OFFSETS,
+            requested_execution_mode=RebuildExecutionMode.SEEDED_BOUNDED_REBUILD,
+            expected_execution_mode=RebuildExecutionMode.SEEDED_BOUNDED_REBUILD,
+            expected_shadow_rows=(
+                ("frontier-order", ""),
+                ("historical-order", ""),
+                ("tail-order", "changed"),
+            ),
+        ),
+        ExecuteBoundedPreservationMatrixIntegrationTestCase(
+            description="adopted offset unseeded bounded replay",
+            source_ownership="adopted",
+            replay_lineage_mode=ReplayLineageMode.OFFSETS,
+            requested_execution_mode=RebuildExecutionMode.UNSEEDED_BOUNDED_REBUILD,
+            expected_execution_mode=RebuildExecutionMode.UNSEEDED_BOUNDED_REBUILD,
+            expected_shadow_rows=(("tail-order", "changed"),),
+        ),
+        ExecuteBoundedPreservationMatrixIntegrationTestCase(
+            description="adopted timestamp seeded bounded replay",
+            source_ownership="adopted",
+            replay_lineage_mode=ReplayLineageMode.TIMESTAMP,
+            requested_execution_mode=RebuildExecutionMode.SEEDED_BOUNDED_REBUILD,
+            expected_execution_mode=RebuildExecutionMode.SEEDED_BOUNDED_REBUILD,
+            expected_shadow_rows=(
+                ("frontier-order", ""),
+                ("historical-order", ""),
+                ("tail-order", "changed"),
+            ),
+        ),
+        ExecuteBoundedPreservationMatrixIntegrationTestCase(
+            description="adopted timestamp unseeded bounded replay",
+            source_ownership="adopted",
+            replay_lineage_mode=ReplayLineageMode.TIMESTAMP,
+            requested_execution_mode=RebuildExecutionMode.UNSEEDED_BOUNDED_REBUILD,
+            expected_execution_mode=RebuildExecutionMode.UNSEEDED_BOUNDED_REBUILD,
+            expected_shadow_rows=(("tail-order", "changed"),),
+        ),
+        ExecuteBoundedPreservationMatrixIntegrationTestCase(
+            description="adopted cursor seeded bounded replay",
+            source_ownership="adopted",
+            replay_lineage_mode=ReplayLineageMode.CURSOR,
+            requested_execution_mode=RebuildExecutionMode.SEEDED_BOUNDED_REBUILD,
+            expected_execution_mode=RebuildExecutionMode.SEEDED_BOUNDED_REBUILD,
+            expected_shadow_rows=(
+                ("frontier-order", ""),
+                ("historical-order", ""),
+                ("tail-order", "changed"),
+            ),
+        ),
+        ExecuteBoundedPreservationMatrixIntegrationTestCase(
+            description="adopted cursor unseeded bounded replay",
+            source_ownership="adopted",
+            replay_lineage_mode=ReplayLineageMode.CURSOR,
+            requested_execution_mode=RebuildExecutionMode.UNSEEDED_BOUNDED_REBUILD,
+            expected_execution_mode=RebuildExecutionMode.UNSEEDED_BOUNDED_REBUILD,
+            expected_shadow_rows=(("tail-order", "changed"),),
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_bounded_preservation_pair_when_replaying_then_it_preserves_seed_policy(
+    test_case: ExecuteBoundedPreservationMatrixIntegrationTestCase,
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    result: BoundedPreservationMatrixScenarioResult = run_bounded_preservation_matrix_scenario(
+        test_case=test_case,
+        connection_settings=clickhouse_connection_settings,
+        clickhouse_client=clickhouse_client,
+        clickhouse_database=clickhouse_database,
+    )
+
+    assert result.execution_mode == test_case.expected_execution_mode
+    assert result.shadow_rows == test_case.expected_shadow_rows
 
 
 @pytest.mark.integration
@@ -1098,6 +1251,107 @@ def test_given_aggregate_offset_replay_when_executing_then_it_filters_anchor_row
     ).result_rows
 
     assert result.bootstrap.deployment_id == test_case.deployment_id
+    assert shadow_rows == list(test_case.expected_shadow_rows)
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ExecuteAggregateOffsetReplayIntegrationTestCase(
+            description=("executes adopted aggregate offset replay with physical boundary columns"),
+            deployment_id="20260409T152500Z_fg67hi",
+            created_at="2026-04-09 15:25:00.123",
+            boundary_time="2026-04-09 15:25:00.000",
+            expected_shadow_table_name="tbl__hourly_order_volume__20260409T152500Z_fg67hi",
+            raw_rows=(
+                build_external_source_orders_row(
+                    order_id="historical-partition-0",
+                    event_partition=0,
+                    event_offset=10,
+                    event_timestamp="2026-04-09 14:59:58.000",
+                    event_landed_at="2026-04-09 14:59:59.000",
+                ),
+                build_external_source_orders_row(
+                    order_id="historical-partition-1",
+                    event_partition=1,
+                    event_offset=20,
+                    event_timestamp="2026-04-09 14:59:58.500",
+                    event_landed_at="2026-04-09 14:59:59.500",
+                ),
+                build_external_source_orders_row(
+                    order_id="future-partition-0",
+                    event_partition=0,
+                    event_offset=11,
+                    event_timestamp="2026-04-10 15:00:01.000",
+                    event_landed_at="2026-04-10 15:00:01.000",
+                ),
+            ),
+            expected_shadow_rows=(("2026-04-09 13:00:00.000", 2),),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_adopted_aggregate_offset_replay_when_executing_then_it_uses_physical_columns(
+    test_case: ExecuteAggregateOffsetReplayIntegrationTestCase,
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    compiled_pipeline: CompiledPipeline = (
+        build_external_source_aggregate_offset_replay_compiled_pipeline()
+    )
+    clickhouse_client.command(
+        f"CREATE TABLE {clickhouse_database}.orders_existing ("
+        "order_id String, "
+        "event_partition Int64, "
+        "event_offset Int64, "
+        "event_timestamp DateTime64(3), "
+        "event_landed_at DateTime64(3)"
+        ") ENGINE = MergeTree() ORDER BY (order_id)"
+    )
+    clickhouse_client.insert(
+        table=f"{clickhouse_database}.orders_existing",
+        data=list(test_case.raw_rows),
+        column_names=[
+            "order_id",
+            "event_partition",
+            "event_offset",
+            "event_timestamp",
+            "event_landed_at",
+        ],
+    )
+    managed_client: AdapterConnection = ClickHouseAdapter().connect(
+        AdapterConnectionConfig(
+            host=clickhouse_connection_settings.host,
+            port=clickhouse_connection_settings.port,
+            username=clickhouse_connection_settings.username,
+            password=clickhouse_connection_settings.password,
+            database=clickhouse_database,
+        )
+    )
+
+    try:
+        result: BackfillExecutionResult = execute_backfill(
+            request=build_external_source_aggregate_offset_replay_request(
+                database=clickhouse_database,
+                deployment_id=test_case.deployment_id,
+                created_at=test_case.created_at,
+                boundary_time=test_case.boundary_time,
+            ),
+            client=managed_client,
+        )
+    finally:
+        managed_client.close()
+
+    shadow_rows: Sequence[Sequence[object]] = clickhouse_client.query(
+        "SELECT toString(event_hour), order_event_count FROM "
+        f"{clickhouse_database}.{test_case.expected_shadow_table_name} "
+        "ORDER BY event_hour"
+    ).result_rows
+
+    assert result.bootstrap.deployment_id == test_case.deployment_id
+    assert compiled_pipeline.transforms[0].target_table_name == "tbl__hourly_order_volume"
     assert shadow_rows == list(test_case.expected_shadow_rows)
 
 

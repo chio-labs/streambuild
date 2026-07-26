@@ -8,11 +8,19 @@ from streambuild.adapter.models import (
     AdapterCapabilities,
     AdapterConnectionConfig,
     AdapterIdentity,
+    AdapterManagedSource,
+    AdapterMaterializedView,
+    AdapterMetadataState,
     AdapterQueryResult,
+    AdapterReplayRequest,
+    AdapterStableView,
+    AdapterTable,
     CatalogIdentity,
     CatalogRelation,
     CatalogSnapshot,
 )
+from streambuild.adapter.types import AdapterReplayBoundaryMode
+from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from streambuild.cli.audit.main._run_audit import run_audit
 from streambuild.cli.audit_backfill.main._run_audit_backfill import run_audit_backfill
 from streambuild.cli.backfill.main._run_backfill import run_backfill
@@ -44,13 +52,21 @@ class RecordingAdapterConnection(AdapterConnection):
         self,
         *,
         virtual_environments: bool = True,
+        managed_source_kinds: frozenset[str] = frozenset({"kafka"}),
+        replay_boundary_modes: frozenset[AdapterReplayBoundaryMode] = frozenset(
+            AdapterReplayBoundaryMode
+        ),
+        history_prefix_seed: bool = True,
         relations: tuple[CatalogRelation, ...] = (),
     ) -> None:
         self.statements: list[str] = []
         self.catalog_databases: list[str] = []
         self.closed: bool = False
         self._capabilities: AdapterCapabilities = AdapterCapabilities(
-            virtual_environments=virtual_environments
+            virtual_environments=virtual_environments,
+            managed_source_kinds=managed_source_kinds,
+            replay_boundary_modes=replay_boundary_modes,
+            history_prefix_seed=history_prefix_seed,
         )
         self._relations: tuple[CatalogRelation, ...] = relations
 
@@ -70,6 +86,10 @@ class RecordingAdapterConnection(AdapterConnection):
             relations=self._relations,
         )
 
+    def metadata_columns(self, *, database: str, table: str) -> frozenset[str]:
+        del database, table
+        return frozenset()
+
     def command(self, statement: str) -> None:
         self.statements.append(statement)
 
@@ -79,6 +99,46 @@ class RecordingAdapterConnection(AdapterConnection):
 
     def insert_rows(self, *, table: str, rows: tuple[dict[str, object], ...]) -> None:
         del table, rows
+
+    def ensure_database(self, database: str) -> None:
+        self.command(f"CREATE DATABASE IF NOT EXISTS {database}")
+
+    def render_resource(
+        self,
+        *,
+        resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterStableView,
+        database: str,
+        if_not_exists: bool = False,
+    ) -> str:
+        return ClickHouseAdapter().render_resource(
+            resource=resource,
+            database=database,
+            if_not_exists=if_not_exists,
+        )
+
+    def realize_resource(
+        self,
+        *,
+        resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterStableView,
+        database: str,
+        if_not_exists: bool = False,
+    ) -> None:
+        self.command(
+            self.render_resource(
+                resource=resource,
+                database=database,
+                if_not_exists=if_not_exists,
+            )
+        )
+
+    def migrate_metadata_state(self, database: str) -> None:
+        self.ensure_database(database)
+
+    def persist_metadata_state(self, *, database: str, state: AdapterMetadataState) -> None:
+        del database, state
+
+    def execute_replay(self, request: AdapterReplayRequest) -> None:
+        del request
 
     def close(self) -> None:
         self.closed = True
