@@ -1,1 +1,0 @@
-"""Kafka table DDL rendering."""

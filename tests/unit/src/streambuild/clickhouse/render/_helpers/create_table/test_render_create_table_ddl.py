@@ -1,6 +1,6 @@
 import pytest
 
-from streambuild.clickhouse.render._helpers.create_table.main import render_create_table_ddl
+from streambuild.clickhouse.render._helpers.create_table import render_create_table_ddl
 from tests.unit.src.streambuild.clickhouse.render._helpers.create_table._test_types import (
     RenderCreateTableDdlTestCase,
 )

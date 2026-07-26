@@ -1,6 +1,6 @@
 import pytest
 
-from streambuild.clickhouse.render._helpers.create_view.main import render_create_view_ddl
+from streambuild.clickhouse.render._helpers.create_view import render_create_view_ddl
 from tests.unit.src.streambuild.clickhouse.render._helpers.create_view._test_types import (
     RenderCreateViewDdlTestCase,
 )

@@ -1,6 +1,6 @@
 """Repair execution entrypoint."""
 
-from streambuild.clickhouse.render._helpers.create_view.main import render_create_view_ddl
+from streambuild.clickhouse.render._helpers.create_view import render_create_view_ddl
 from streambuild.compiler.shared._helpers.deployment_names import build_deployment_physical_name
 from streambuild.executor.repair.models import RepairActiveViewRequest, RepairActiveViewResult
 from streambuild.integrations.clickhouse.client import ClickHouseClient

@@ -1,12 +1,12 @@
 """Render ClickHouse DDL for deployment-oriented desired state."""
 
-from streambuild.clickhouse.render._helpers.create_kafka_table.main import (
+from streambuild.clickhouse.render._helpers.create_kafka_table import (
     render_create_kafka_table_ddl,
 )
-from streambuild.clickhouse.render._helpers.create_materialized_view.main import (
+from streambuild.clickhouse.render._helpers.create_materialized_view import (
     render_create_materialized_view_ddl,
 )
-from streambuild.clickhouse.render._helpers.create_table.main import render_create_table_ddl
+from streambuild.clickhouse.render._helpers.create_table import render_create_table_ddl
 from streambuild.clickhouse.render.models import RenderedClickHouseDdl
 from streambuild.compiler.compile.models import DesiredState
 from streambuild.compiler.shared.models import (

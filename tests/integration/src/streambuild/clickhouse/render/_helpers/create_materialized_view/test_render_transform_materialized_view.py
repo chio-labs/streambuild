@@ -3,10 +3,10 @@ from collections.abc import Sequence
 import pytest
 from clickhouse_connect.driver.client import Client
 
-from streambuild.clickhouse.render._helpers.create_materialized_view.main import (
+from streambuild.clickhouse.render._helpers.create_materialized_view import (
     render_create_materialized_view_ddl,
 )
-from streambuild.clickhouse.render._helpers.create_table.main import render_create_table_ddl
+from streambuild.clickhouse.render._helpers.create_table import render_create_table_ddl
 from streambuild.compiler.compile.models import CompiledPipeline
 from tests.integration.src.streambuild.clickhouse.render._helpers.create_materialized_view._test_types import (  # noqa: E501
     RenderTransformMaterializedViewIntegrationTestCase,

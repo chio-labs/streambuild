@@ -1,6 +1,6 @@
 import pytest
 
-from streambuild.clickhouse.render._helpers.create_kafka_table.main import (
+from streambuild.clickhouse.render._helpers.create_kafka_table import (
     render_create_kafka_table_ddl,
 )
 from tests.unit.src.streambuild.clickhouse.render._helpers.create_kafka_table._test_types import (
