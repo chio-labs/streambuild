@@ -120,10 +120,6 @@ def build_key(database: str | None, object_type: str, name: str) -> ObjectKey:
     return ObjectKey(database=database, object_type=DesiredObjectType(object_type), name=name)
 
 
-def key_parts(key: ObjectKey) -> tuple[str | None, str, str]:
-    return (key.database, key.object_type, key.name)
-
-
 def with_schema_change_backfill_policy(
     *,
     object_: object,
@@ -137,11 +133,15 @@ def with_schema_change_backfill_policy(
         mode=SchemaChangeBackfillMode(mode),
         lookback_seconds=lookback_seconds,
     )
+    rules_by_target: dict[bool, SchemaChangeBackfillRule | None] = {
+        apply_to_non_breaking: rule,
+        not apply_to_non_breaking: None,
+    }
     return replace(
         object_,
         schema_change_backfill=SchemaChangeBackfillPolicy(
-            non_breaking=rule if apply_to_non_breaking else None,
-            breaking=None if apply_to_non_breaking else rule,
+            non_breaking=rules_by_target[True],
+            breaking=rules_by_target[False],
         ),
     )
 
@@ -191,3 +191,20 @@ def build_example_actual_state() -> ActualState:
             ),
         )
     )
+
+
+KeyParts = tuple[str | None, str, str]
+
+
+def key_parts(key: ObjectKey) -> KeyParts:
+    """Return a key as a comparable tuple."""
+
+    return (key.database, key.object_type, key.name)
+
+
+def optional_key_parts(key: ObjectKey | None) -> KeyParts | None:
+    """Return a key as a comparable tuple, preserving an absent key as None."""
+
+    if key is None:
+        return None
+    return key_parts(key)

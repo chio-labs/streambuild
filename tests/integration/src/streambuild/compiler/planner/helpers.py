@@ -1,3 +1,5 @@
+from collections.abc import Callable
+
 from streambuild.compiler.compile.main import compile_pipeline
 from streambuild.compiler.compile.models import CompiledPipeline
 from streambuild.compiler.shared.models import LoadedPipeline
@@ -180,13 +182,15 @@ def build_type_changed_compiled_pipeline() -> CompiledPipeline:
     )
 
 
+CHANGED_SCHEMA_VARIANT_BUILDERS: dict[str, Callable[[], CompiledPipeline]] = {
+    "add_column": lambda: build_changed_schema_compiled_pipeline(),
+    "remove_column": lambda: build_removed_column_compiled_pipeline(),
+    "add_and_remove_columns": lambda: build_add_and_remove_columns_compiled_pipeline(),
+    "type_change": lambda: build_type_changed_compiled_pipeline(),
+}
+
+
 def build_changed_schema_variant_compiled_pipeline(kind: str) -> CompiledPipeline:
-    if kind == "add_column":
-        return build_changed_schema_compiled_pipeline()
-    if kind == "remove_column":
-        return build_removed_column_compiled_pipeline()
-    if kind == "add_and_remove_columns":
-        return build_add_and_remove_columns_compiled_pipeline()
-    if kind == "type_change":
-        return build_type_changed_compiled_pipeline()
-    raise ValueError(kind)
+    """Build the compiled pipeline for a named schema-change variant."""
+
+    return CHANGED_SCHEMA_VARIANT_BUILDERS[kind]()

@@ -9,3 +9,9 @@ require_cacheable = true
 
 [evaluation]
 exclude = ["tests/e2e/fixtures/**"]
+
+[[rule_exceptions]]
+rule = "FFT104"
+path = "tests/e2e/src/streambuild/executor/helpers.py"
+symbols = ["wait_for_row_count", "wait_for_table_exists", "wait_for_table_missing"]
+reason = "The three wait_for_* helpers poll for state ClickHouse reaches asynchronously. A bounded retry loop and its early return are the wait condition, so they cannot be expressed branch-free. Every other conditional in this module has been removed."

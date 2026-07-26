@@ -27,6 +27,7 @@ from tests.unit.src.streambuild.compiler.planner.helpers import (
     build_example_desired_state,
     build_mutable_ref_desired_state,
     key_parts,
+    optional_key_parts,
 )
 
 
@@ -74,7 +75,7 @@ def test_given_desired_and_actual_state_when_planning_deployment_then_it_returns
             (
                 step.phase,
                 step.action,
-                None if step.target_key is None else key_parts(step.target_key),
+                optional_key_parts(step.target_key),
             )
             for step in deployment_plan.steps
         )
@@ -109,8 +110,7 @@ def test_given_desired_state_with_mutable_refs_when_planning_deployment_then_it_
         test_case.expected_warning_code,
     )
     assert tuple(
-        None if warning.target_key is None else key_parts(warning.target_key)
-        for warning in deployment_plan.warnings
+        optional_key_parts(warning.target_key) for warning in deployment_plan.warnings
     ) == (test_case.expected_target_key,)
 
 
