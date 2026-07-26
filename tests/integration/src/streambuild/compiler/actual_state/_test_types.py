@@ -12,18 +12,14 @@ class LoadActualStateIntegrationTestCase:
 @dataclass(frozen=True)
 class LoadActualStateWithoutMetadataIntegrationTestCase:
     description: str
-    drop_all_metadata_tables: bool
+    dropped_metadata_tables: tuple[str, ...]
     expected_actual_object_names: tuple[str, ...]
 
 
 @dataclass(frozen=True)
 class LoadActualStateMixedRootsIntegrationTestCase:
     description: str
-    create_orders_active_view: bool
-    create_orders_candidates: bool
-    create_customers_active_view: bool
-    create_customers_candidates: bool
-    create_customers_invalid_view: bool
+    setup_steps: tuple[str, ...]
     expected_actual_object_names: tuple[str, ...]
 
 
