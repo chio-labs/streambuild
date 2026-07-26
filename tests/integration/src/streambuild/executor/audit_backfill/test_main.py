@@ -41,13 +41,6 @@ from tests.integration.src.streambuild.executor.backfill.helpers import (
 )
 
 
-def _offset_partitions_compared(root_result: RootAuditResult) -> int | None:
-    """Return the partitions compared for offset lineage, or None for scalar lineage."""
-
-    summary = root_result.offset_catchup_summary
-    return None if summary is None else summary.partitions_compared
-
-
 @pytest.mark.integration
 @pytest.mark.parametrize(
     "test_case",
@@ -370,7 +363,10 @@ def test_given_staged_backfill_when_auditing_then_it_returns_expected_comparison
         "scalar": root_result.scalar_catchup_summary,
     }
     assert catchup_summaries[test_case.expected_catchup_kind] is not None
-    assert _offset_partitions_compared(root_result) == test_case.expected_partitions_compared
+    assert (
+        getattr(root_result.offset_catchup_summary, "partitions_compared", None)
+        == test_case.expected_partitions_compared
+    )
 
 
 @pytest.mark.integration
