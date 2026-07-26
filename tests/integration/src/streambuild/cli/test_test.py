@@ -9,7 +9,13 @@ from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickH
 from tests.integration.src.streambuild.cli._test_types import (
     CliTestCommandIntegrationTestCase,
 )
-from tests.integration.src.streambuild.cli.helpers import build_managed_clickhouse_client
+from tests.integration.src.streambuild.cli.helpers import (
+    DOWNSTREAM_REF_SQL_TEST,
+    MULTI_NAMED_SQL_TESTS,
+    MULTI_TARGET_FAILING_SQL_TEST,
+    SINGLE_EXPECTED_SQL_TEST,
+    build_managed_clickhouse_client,
+)
 from tests.integration.src.streambuild.conftest import ClickHouseConnectionSettings
 from tests.unit.src.streambuild.compiler.discovery._helpers.load.helpers import write_pipeline_file
 from tests.unit.src.streambuild.compiler.test_discovery.helpers import (
@@ -23,6 +29,9 @@ from tests.unit.src.streambuild.compiler.test_discovery.helpers import (
         CliTestCommandIntegrationTestCase(
             description="reports a passing SQL-native test result",
             selectors=("order_items",),
+            sql_test_content=SINGLE_EXPECTED_SQL_TEST,
+            expected_line_total="20.0",
+            extra_sql_test_files=(("test_daily_revenue.sql", DOWNSTREAM_REF_SQL_TEST),),
             expected_exit_code=0,
             expected_output_fragments=(
                 "PASS",
@@ -34,6 +43,9 @@ from tests.unit.src.streambuild.compiler.test_discovery.helpers import (
         CliTestCommandIntegrationTestCase(
             description="runs multiple sql tests from one file",
             selectors=(),
+            sql_test_content=MULTI_NAMED_SQL_TESTS,
+            expected_line_total="20.0",
+            extra_sql_test_files=(),
             expected_exit_code=0,
             expected_output_fragments=(
                 "PASS",
@@ -45,6 +57,9 @@ from tests.unit.src.streambuild.compiler.test_discovery.helpers import (
         CliTestCommandIntegrationTestCase(
             description="renders grouped missing and unexpected rows for failures",
             selectors=("order_items",),
+            sql_test_content=SINGLE_EXPECTED_SQL_TEST,
+            expected_line_total="25.0",
+            extra_sql_test_files=(("test_daily_revenue.sql", DOWNSTREAM_REF_SQL_TEST),),
             expected_exit_code=1,
             expected_output_fragments=(
                 "FAIL",
@@ -61,6 +76,9 @@ from tests.unit.src.streambuild.compiler.test_discovery.helpers import (
         CliTestCommandIntegrationTestCase(
             description="renders grouped failures for multiple expected targets in one test",
             selectors=("order_items",),
+            sql_test_content=MULTI_TARGET_FAILING_SQL_TEST,
+            expected_line_total="25.0",
+            extra_sql_test_files=(),
             expected_exit_code=1,
             expected_output_fragments=(
                 "FAIL",
@@ -86,7 +104,6 @@ def test_given_sql_native_test_project_when_running_test_command_then_it_reports
     transform_file_path: Path = tmp_path / "pipelines" / "order_events" / "order_items.sql"
     downstream_file_path: Path = tmp_path / "pipelines" / "order_events" / "daily_revenue.sql"
     test_file_path: Path = tmp_path / "tests" / "order_events" / "test_line_total.sql"
-    downstream_test_file_path: Path = tmp_path / "tests" / "order_events" / "test_daily_revenue.sql"
     write_pipeline_file(
         pipeline_file_path,
         """
@@ -125,101 +142,15 @@ def test_given_sql_native_test_project_when_running_test_command_then_it_reports
     )
     write_sql_test_file(
         test_file_path,
-        (
-            (
-                """
-                TEST ();
-
-                WITH
-                helper_orders AS (
-                  SELECT 'ord_001' AS order_id, 2 AS quantity, 10.0 AS unit_price
-                ),
-                __source__orders AS (
-                  SELECT * FROM helper_orders
-                ),
-                expected_rows AS (
-                  SELECT 'ord_001' AS order_id, {expected_line_total} AS line_total
-                ),
-                __expected__order_items AS (
-                  SELECT * FROM expected_rows
-                )
-                SELECT 1
-                """
-            )
-            if test_case.description
-            not in {
-                "runs multiple sql tests from one file",
-                "renders grouped failures for multiple expected targets in one test",
-            }
-            else """
-            TEST (name: "line total computes correctly");
-
-            WITH
-            helper_orders AS (
-              SELECT 'ord_001' AS order_id, 2 AS quantity, 10.0 AS unit_price
-            ),
-            __source__orders AS (
-              SELECT * FROM helper_orders
-            ),
-            __expected__order_items AS (
-              SELECT 'ord_001' AS order_id, 20.0 AS line_total
-            )
-            SELECT 1;
-
-            TEST (name: "line total remains stable on repeat");
-
-            WITH
-            helper_orders AS (
-              SELECT 'ord_001' AS order_id, 2 AS quantity, 10.0 AS unit_price
-            ),
-            __source__orders AS (
-              SELECT * FROM helper_orders
-            ),
-            __expected__order_items AS (
-              SELECT 'ord_001' AS order_id, 20.0 AS line_total
-            )
-            SELECT 1
-            """
-            if test_case.description == "runs multiple sql tests from one file"
-            else """
-            TEST ();
-
-            WITH
-            helper_orders AS (
-              SELECT 'ord_001' AS order_id, 2 AS quantity, 10.0 AS unit_price
-            ),
-            __source__orders AS (
-              SELECT * FROM helper_orders
-            ),
-            __expected__order_items AS (
-              SELECT 'ord_001' AS order_id, 25.0 AS line_total
-            ),
-            __expected__daily_revenue AS (
-              SELECT 'ord_001' AS order_id, 30.0 AS line_total
-            )
-            SELECT 1
-            """
-        ).format(expected_line_total="20.0" if test_case.expected_exit_code == 0 else "25.0"),
+        test_case.sql_test_content.format(expected_line_total=test_case.expected_line_total),
     )
-    if test_case.description not in {
-        "runs multiple sql tests from one file",
-        "renders grouped failures for multiple expected targets in one test",
-    }:
+    extra_test_file_name: str
+    extra_test_content: str
+    for extra_test_file_name, extra_test_content in test_case.extra_sql_test_files:
         write_sql_test_file(
-            downstream_test_file_path,
-            """
-            TEST ();
-
-            WITH
-            __ref__order_items AS (
-              SELECT 'ord_001' AS order_id, 20.0 AS line_total
-            ),
-            __expected__daily_revenue AS (
-              SELECT 'ord_001' AS order_id, 20.0 AS line_total
-            )
-            SELECT 1
-            """,
+            tmp_path / "tests" / "order_events" / extra_test_file_name, extra_test_content
         )
+
     managed_client: ClickHouseClient = build_managed_clickhouse_client(
         clickhouse_connection_settings,
         database=clickhouse_database,

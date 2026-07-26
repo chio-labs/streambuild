@@ -26,6 +26,9 @@ class CliBackfillIntegrationTestCase:
 class CliTestCommandIntegrationTestCase:
     description: str
     selectors: tuple[str, ...]
+    sql_test_content: str
+    expected_line_total: str
+    extra_sql_test_files: tuple[tuple[str, str], ...]
     expected_exit_code: int
     expected_output_fragments: tuple[str, ...]
 
