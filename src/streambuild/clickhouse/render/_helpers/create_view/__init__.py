@@ -1,1 +1,0 @@
-"""Render CREATE VIEW DDL."""

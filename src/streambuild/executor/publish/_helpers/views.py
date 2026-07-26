@@ -2,7 +2,7 @@
 
 from streambuild.clickhouse.inspect.main import inspect_managed_table_state
 from streambuild.clickhouse.inspect.models import InspectedManagedTableState
-from streambuild.clickhouse.render._helpers.create_view.main import render_create_view_ddl
+from streambuild.clickhouse.render._helpers.create_view import render_create_view_ddl
 from streambuild.compiler.shared._helpers.deployment_names import build_deployment_physical_name
 from streambuild.compiler.shared.constants import (
     DESIRED_OBJECT_TYPE_TABLE,

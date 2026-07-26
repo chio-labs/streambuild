@@ -6,13 +6,13 @@ from pathlib import Path
 from clickhouse_connect.driver.client import Client
 from kafka import KafkaProducer
 
-from streambuild.clickhouse.render._helpers.create_kafka_table.main import (
+from streambuild.clickhouse.render._helpers.create_kafka_table import (
     render_create_kafka_table_ddl,
 )
-from streambuild.clickhouse.render._helpers.create_materialized_view.main import (
+from streambuild.clickhouse.render._helpers.create_materialized_view import (
     render_create_materialized_view_ddl,
 )
-from streambuild.clickhouse.render._helpers.create_table.main import render_create_table_ddl
+from streambuild.clickhouse.render._helpers.create_table import render_create_table_ddl
 from streambuild.compiler.compile.models import CompiledPipeline
 from tests.e2e.src.streambuild.conftest import (
     E2EClickHouseConnectionSettings,

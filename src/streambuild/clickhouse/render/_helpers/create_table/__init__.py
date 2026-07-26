@@ -1,1 +1,0 @@
-"""Render CREATE TABLE DDL."""

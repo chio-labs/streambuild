@@ -4,13 +4,13 @@ from dataclasses import replace
 
 from sqlglot import exp, parse_one
 
-from streambuild.clickhouse.render._helpers.create_kafka_table.main import (
+from streambuild.clickhouse.render._helpers.create_kafka_table import (
     render_create_kafka_table_ddl,
 )
-from streambuild.clickhouse.render._helpers.create_materialized_view.main import (
+from streambuild.clickhouse.render._helpers.create_materialized_view import (
     render_create_materialized_view_ddl,
 )
-from streambuild.clickhouse.render._helpers.create_table.main import render_create_table_ddl
+from streambuild.clickhouse.render._helpers.create_table import render_create_table_ddl
 from streambuild.compiler.compile.models import DesiredState
 from streambuild.compiler.planner.constants import DEPLOYMENT_PHASE_PLAN
 from streambuild.compiler.planner.models import DeploymentPlan
