@@ -1,5 +1,9 @@
+from collections.abc import Callable, Mapping
 from pathlib import Path
 
+from clickhouse_connect.driver.client import Client
+
+from streambuild.executor.backfill.main._ensure_metadata_tables import ensure_metadata_tables
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 from streambuild.integrations.clickhouse.main.connect_clickhouse import (
     connect_clickhouse,
@@ -242,3 +246,72 @@ def write_multi_audit_project_files(project_dir: Path) -> None:
         WHERE order_id = 'ord_missing'
         """,
     )
+
+
+AUDIT_PROJECT_WRITER_BY_NAME: Mapping[str, Callable[[Path], None]] = {
+    "singular": write_audit_project_files,
+    "generic": write_generic_audit_project_files,
+    "multi": write_multi_audit_project_files,
+}
+
+NULLABLE_ORDER_ITEMS_COLUMNS: str = "order_id Nullable(String), line_total Nullable(Float64)"
+KEYED_ORDER_ITEMS_COLUMNS: str = "order_id String, line_total Nullable(Float64)"
+UNORDERED_ORDER_ITEMS_ORDER_BY: str = "tuple()"
+KEYED_ORDER_ITEMS_ORDER_BY: str = "(order_id)"
+
+
+def write_audit_project_for(*, project_writer_name: str, project_dir: Path) -> None:
+    """Write the audit project fixture selected by a test case."""
+
+    AUDIT_PROJECT_WRITER_BY_NAME[project_writer_name](project_dir)
+
+
+def build_order_items_ddl(*, database: str, columns: str, order_by: str) -> str:
+    """Build the order-items table DDL a live audit test case expects."""
+
+    return (
+        f"CREATE TABLE {database}.tbl__order_items ({columns}) "
+        f"ENGINE = MergeTree() ORDER BY {order_by}"
+    )
+
+
+def ensure_backfill_metadata_tables(*, managed_client: ClickHouseClient, database: str) -> None:
+    """Create the metadata tables so absent rows mean no deployment was recorded."""
+
+    ensure_metadata_tables(client=managed_client, metadata_database=database)
+
+
+def load_deployment_status_rows(
+    *, clickhouse_client: Client, database: str
+) -> tuple[tuple[str, ...], ...]:
+    """Load recorded deployment statuses in deployment order."""
+
+    query: str = f"SELECT status FROM {database}.streambuild_deployments ORDER BY deployment_id"
+    return tuple(
+        tuple(str(value) for value in row) for row in clickhouse_client.query(query).result_rows
+    )
+
+
+def load_selected_root_names(*, clickhouse_client: Client, database: str) -> tuple[str, ...]:
+    """Load the selected root names recorded against every deployment."""
+
+    query: str = (
+        "SELECT JSONExtractString(root_key, 'name') FROM "
+        f"{database}.streambuild_deployments "
+        "ARRAY JOIN JSONExtractArrayRaw(selected_root_keys_json) AS root_key "
+        "ORDER BY JSONExtractString(root_key, 'name')"
+    )
+    return tuple(str(row[0]) for row in clickhouse_client.query(query).result_rows)
+
+
+def load_runtime_execution_modes(
+    *, clickhouse_client: Client, database: str
+) -> tuple[tuple[str, str | None], ...]:
+    """Load the recorded execution mode per root object."""
+
+    query: str = (
+        "SELECT root_object_name, execution_mode "
+        f"FROM {database}.streambuild_deployment_runtime_details "
+        "ORDER BY root_object_name"
+    )
+    return tuple((str(row[0]), row[1]) for row in clickhouse_client.query(query).result_rows)
