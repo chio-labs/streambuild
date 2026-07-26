@@ -5,11 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from streambuild.cli.shared._helpers.styling import (
-    style_label_value,
-    style_section,
-    style_title,
-)
+from streambuild.cli.shared.main._cli_style import cli_style
 from streambuild.executor.auditing.models import SqlAuditResult, SqlAuditRunResult
 
 
@@ -49,8 +45,8 @@ def render_sql_audit_run_result(
         )
 
     lines: list[str] = [
-        style_title("Audit Results"),
-        style_label_value(label="Database", value=database),
+        cli_style().title("Audit Results"),
+        cli_style().label_value(label="Database", value=database),
         "",
     ]
     lines.extend(
@@ -87,7 +83,7 @@ def render_sql_audit_run_result(
 def _render_group(
     *, title: str, audit_results: tuple[SqlAuditResult, ...], project_dir: Path
 ) -> list[str]:
-    lines: list[str] = [style_section(title)]
+    lines: list[str] = [cli_style().section(title)]
     if not audit_results:
         lines.append("(none)")
         return lines

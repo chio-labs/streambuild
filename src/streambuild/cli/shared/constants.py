@@ -10,3 +10,6 @@ ANSI_RED: str = "\033[31m"
 
 AFFIRMATIVE_RESPONSES: frozenset[str] = frozenset({"y", "yes"})
 TRUTHY_ENV_VALUES: frozenset[str] = frozenset({"1", "true", "yes"})
+
+NOT_AVAILABLE: str = "n/a"
+UTC_SUFFIX: str = "Z"

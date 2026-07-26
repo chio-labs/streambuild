@@ -5,7 +5,7 @@ from typing import cast
 import pytest
 
 from streambuild.cli.shared.exceptions import CliUserError
-from streambuild.cli.shared.main.timestamps import (
+from streambuild.cli.shared.main._timestamps import (
     convert_utc_timestamp_for_clickhouse,
     normalize_cli_start_time,
 )

@@ -1,12 +1,8 @@
 from __future__ import annotations
 
-from streambuild.cli.shared._helpers.styling import (
-    humanize_deployment_status,
-    humanize_timestamp,
-    style_label_value,
-    style_section,
-    style_title,
-)
+from streambuild.cli.shared.main._cli_style import cli_style
+from streambuild.cli.shared.main._humanize_deployment_status import humanize_deployment_status
+from streambuild.cli.shared.main._humanize_timestamp import humanize_timestamp
 from streambuild.executor.audit_backfill.models import AuditDeploymentCandidate
 
 
@@ -21,17 +17,17 @@ def render_ambiguous_deployment_message(
         sorted(candidates, key=lambda candidate: candidate.deployment_id, reverse=True)
     )
     lines: list[str] = [
-        style_title(f"{command_name.title()} deployment selection is ambiguous"),
-        style_label_value(label="Database", value=database),
+        cli_style().title(f"{command_name.title()} deployment selection is ambiguous"),
+        cli_style().label_value(label="Database", value=database),
         "",
     ]
     if root_names:
-        lines.append(style_section("Affected roots"))
+        lines.append(cli_style().section("Affected roots"))
         root_name: str
         for root_name in root_names:
             lines.append(f"- {root_name}")
         lines.append("")
-    lines.append(style_section("Candidate deployments"))
+    lines.append(cli_style().section("Candidate deployments"))
     candidate: AuditDeploymentCandidate
     for candidate in sorted_candidates:
         lines.append(f"- {candidate.deployment_id}")
@@ -42,7 +38,7 @@ def render_ambiguous_deployment_message(
         if candidate.root_names:
             lines.append(f"  roots: {', '.join(candidate.root_names)}")
     lines.append("")
-    lines.append(style_section("Recommended"))
+    lines.append(cli_style().section("Recommended"))
     candidate = sorted_candidates[0]
     lines.append(f"- stb {command_name} --deployment-id {candidate.deployment_id}")
     return "\n".join(lines)
@@ -51,7 +47,7 @@ def render_ambiguous_deployment_message(
 def render_no_deployment_candidates_message(*, command_name: str, database: str) -> str:
     return "\n".join(
         [
-            style_title(f"No staged deployment candidates are available for {command_name}"),
-            style_label_value(label="Database", value=database),
+            cli_style().title(f"No staged deployment candidates are available for {command_name}"),
+            cli_style().label_value(label="Database", value=database),
         ]
     )
