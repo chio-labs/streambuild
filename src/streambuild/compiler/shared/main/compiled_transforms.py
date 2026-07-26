@@ -18,6 +18,4 @@ def compiled_transforms(
 
     compiled_pipeline: CompiledPipeline
     for compiled_pipeline in compiled_pipelines:
-        compiled_transform: CompiledTransformStep
-        for compiled_transform in compiled_pipeline.transforms:
-            yield compiled_transform
+        yield from compiled_pipeline.transforms
