@@ -8,8 +8,8 @@ from streambuild.cli.backfill._helpers.rendering import render_backfill_result
 from streambuild.cli.backfill.models import BackfillPreviewContext
 from streambuild.cli.shared.constants import AFFIRMATIVE_RESPONSES
 from streambuild.cli.shared.exceptions import CliUserError
-from streambuild.cli.shared.main.plan_rendering import render_plan_result
-from streambuild.cli.shared.main.timestamps import (
+from streambuild.cli.shared.main._plan_rendering import render_plan_result
+from streambuild.cli.shared.main._timestamps import (
     convert_utc_timestamp_for_clickhouse,
     normalize_cli_start_time,
 )

@@ -2,11 +2,7 @@ from __future__ import annotations
 
 import json
 
-from streambuild.cli.shared._helpers.styling import (
-    style_label_value,
-    style_section,
-    style_title,
-)
+from streambuild.cli.shared.main._cli_style import cli_style
 from streambuild.executor.publish.models import PublishedView, PublishResult
 
 
@@ -30,16 +26,16 @@ def render_publish_result(
         return json.dumps(payload, indent=2)
 
     lines: list[str] = [
-        style_title("Publish Complete"),
-        style_label_value(label="Database", value=database),
-        style_label_value(label="Deployment", value=result.deployment_id),
+        cli_style().title("Publish Complete"),
+        cli_style().label_value(label="Database", value=database),
+        cli_style().label_value(label="Deployment", value=result.deployment_id),
         "",
-        style_section("Published views"),
+        cli_style().section("Published views"),
     ]
     view: PublishedView
     for view in result.published_views:
         lines.append(f"- {view.view_name} -> {view.target_table_name}")
     lines.append("")
-    lines.append(style_section("Next"))
+    lines.append(cli_style().section("Next"))
     lines.append("- audit the live logical views in ClickHouse if you want a post-publish check")
     return "\n".join(lines)

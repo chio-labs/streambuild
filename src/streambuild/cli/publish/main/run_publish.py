@@ -9,11 +9,11 @@ from streambuild.cli.publish._helpers.candidates import (
     enrich_candidates,
 )
 from streambuild.cli.publish._helpers.rendering import render_publish_result
-from streambuild.cli.shared.main.deployment_candidates import (
+from streambuild.cli.shared.main._deployment_candidates import (
     render_ambiguous_deployment_message,
     render_no_deployment_candidates_message,
 )
-from streambuild.cli.shared.main.errors import render_expected_clickhouse_error
+from streambuild.cli.shared.main._errors import render_expected_clickhouse_error
 from streambuild.clickhouse.inspect.main import inspect_managed_table_state
 from streambuild.clickhouse.inspect.models import InspectedManagedTableState
 from streambuild.executor.audit_backfill.models import AuditDeploymentCandidate

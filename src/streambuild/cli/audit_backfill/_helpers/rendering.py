@@ -3,21 +3,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from streambuild.cli.shared._helpers.styling import (
-    format_bool,
-    format_count,
-    format_percentage,
-    format_range,
-    humanize_deployment_status,
-    style_assessment,
-    style_assessment_value,
-    style_label,
-    style_label_value,
-    style_object_name,
-    style_section,
-    style_title,
-    style_warning,
-)
+from streambuild.cli.shared.main._cli_style import cli_style
+from streambuild.cli.shared.main._format_bool import format_bool
+from streambuild.cli.shared.main._format_count import format_count
+from streambuild.cli.shared.main._format_percentage import format_percentage
+from streambuild.cli.shared.main._format_range import format_range
+from streambuild.cli.shared.main._humanize_deployment_status import humanize_deployment_status
 from streambuild.executor.audit_backfill.models import AuditBackfillResult
 from streambuild.executor.audit_backfill.types import AuditAssessment
 
@@ -114,53 +105,65 @@ def render_audit_backfill_result(
         return json.dumps(payload, indent=2)
 
     lines: list[str] = [
-        style_title("Audit") + f": {style_assessment(result.assessment)}",
-        style_label_value(label="Database", value=database),
-        style_label_value(label="Deployment", value=result.deployment_id),
-        style_label_value(
+        cli_style().title("Audit") + f": {cli_style().assessment(result.assessment)}",
+        cli_style().label_value(label="Database", value=database),
+        cli_style().label_value(label="Deployment", value=result.deployment_id),
+        cli_style().label_value(
             label="Deployment status", value=humanize_deployment_status(result.deployment_status)
         ),
     ]
     if result.replay_lineage_mode is not None:
-        lines.append(style_label_value(label="Replay lineage", value=result.replay_lineage_mode))
+        lines.append(
+            cli_style().label_value(label="Replay lineage", value=result.replay_lineage_mode)
+        )
     if result.warning_codes:
-        lines.append(style_warning(f"Warnings: {', '.join(result.warning_codes)}"))
+        lines.append(cli_style().warning(f"Warnings: {', '.join(result.warning_codes)}"))
     lines.append("")
-    lines.append(style_section("Roots"))
+    lines.append(cli_style().section("Roots"))
     for root_result in result.root_results:
         assessment: AuditAssessment = AuditAssessment(root_result.assessment)
         lines.append(
-            f"- {style_object_name(text=root_result.root_key.name, assessment=assessment)}"
+            f"- {cli_style().object_name(text=root_result.root_key.name, assessment=assessment)}"
         )
-        lines.append(f"  {style_label('state')}: {root_result.state}")
-        lines.append(f"  {style_label('assessment')}: {style_assessment(root_result.assessment)}")
+        lines.append(f"  {cli_style().label('state')}: {root_result.state}")
+        lines.append(
+            f"  {cli_style().label('assessment')}: {cli_style().assessment(root_result.assessment)}"
+        )
         if root_result.replay_source_name is not None:
             lines.append(
                 "  "
-                f"{style_label('replay source')}: "
-                f"{style_object_name(text=root_result.replay_source_name)}"
+                f"{cli_style().label('replay source')}: "
+                f"{cli_style().object_name(text=root_result.replay_source_name)}"
             )
             lines.append(
                 "  "
-                f"{style_label('replay source rows')}: "
+                f"{cli_style().label('replay source rows')}: "
                 f"{format_count(root_result.replay_source_row_count)}"
             )
-        lines.append(f"  {style_label('staged exists')}: {format_bool(root_result.staged_exists)}")
-        lines.append(f"  {style_label('active exists')}: {format_bool(root_result.active_exists)}")
         lines.append(
-            f"  {style_label('staged rows')}: {format_count(root_result.staged_row_count)}"
+            f"  {cli_style().label('staged exists')}: {format_bool(root_result.staged_exists)}"
         )
         lines.append(
-            f"  {style_label('active rows')}: {format_count(root_result.active_row_count)}"
+            f"  {cli_style().label('active exists')}: {format_bool(root_result.active_exists)}"
+        )
+        lines.append(
+            f"  {cli_style().label('staged rows')}: {format_count(root_result.staged_row_count)}"
+        )
+        lines.append(
+            f"  {cli_style().label('active rows')}: {format_count(root_result.active_row_count)}"
         )
         if root_result.row_delta is not None and root_result.row_ratio is not None:
             row_delta_text: str = f"{root_result.row_delta:+d}"
             row_ratio_text: str = format_percentage(root_result.row_ratio)
             if assessment != AuditAssessment.READY:
-                row_delta_text = style_assessment_value(text=row_delta_text, assessment=assessment)
-                row_ratio_text = style_assessment_value(text=row_ratio_text, assessment=assessment)
-            lines.append(f"  {style_label('row delta')}: {row_delta_text}")
-            lines.append(f"  {style_label('row ratio')}: {row_ratio_text}")
+                row_delta_text = cli_style().assessment_value(
+                    text=row_delta_text, assessment=assessment
+                )
+                row_ratio_text = cli_style().assessment_value(
+                    text=row_ratio_text, assessment=assessment
+                )
+            lines.append(f"  {cli_style().label('row delta')}: {row_delta_text}")
+            lines.append(f"  {cli_style().label('row ratio')}: {row_ratio_text}")
         if root_result.scalar_catchup_summary is not None:
             staged_range: str = format_range(
                 min_value=root_result.scalar_catchup_summary.staged_min_value,
@@ -170,19 +173,21 @@ def render_audit_backfill_result(
                 min_value=root_result.scalar_catchup_summary.active_min_value,
                 max_value=root_result.scalar_catchup_summary.active_max_value,
             )
-            lines.append(f"  {style_label('staged range')}: {staged_range}")
-            lines.append(f"  {style_label('active range')}: {active_range}")
+            lines.append(f"  {cli_style().label('staged range')}: {staged_range}")
+            lines.append(f"  {cli_style().label('active range')}: {active_range}")
             if root_result.scalar_catchup_summary.lag_seconds is not None:
                 lag_seconds: int = int(root_result.scalar_catchup_summary.lag_seconds)
-                lines.append(f"  {style_label('lag seconds')}: {lag_seconds}")
+                lines.append(f"  {cli_style().label('lag seconds')}: {lag_seconds}")
         if root_result.staged_row_count == 0:
-            lines.append(f"  {style_label('warning')}: {style_warning('staged table is empty')}")
+            lines.append(
+                f"  {cli_style().label('warning')}: {cli_style().warning('staged table is empty')}"
+            )
         warning: str
         for warning in root_result.warnings:
-            lines.append(f"  {style_label('warning')}: {style_warning(warning)}")
+            lines.append(f"  {cli_style().label('warning')}: {cli_style().warning(warning)}")
     if result.quality_check_results:
         lines.append("")
-        lines.append(style_section("Quality Checks"))
+        lines.append(cli_style().section("Quality Checks"))
         for audit_result in result.quality_check_results:
             status: str = "PASS"
             if not audit_result.passed:
@@ -194,12 +199,12 @@ def render_audit_backfill_result(
                 display_name = f"{display_name}  [{audit_result.name}]"
             lines.append(f"- {status}  {display_name}")
             if audit_result.description is not None:
-                lines.append(f"  {style_label('description')}: {audit_result.description}")
+                lines.append(f"  {cli_style().label('description')}: {audit_result.description}")
             if not audit_result.passed:
                 failing_rows_text: str = format_count(audit_result.failing_row_count)
-                lines.append(f"  {style_label('failing rows')}: {failing_rows_text}")
+                lines.append(f"  {cli_style().label('failing rows')}: {failing_rows_text}")
     lines.append("")
-    lines.append(style_section("Next"))
+    lines.append(cli_style().section("Next"))
     if result.assessment == AuditAssessment.READY:
         lines.append(f"- stb publish --deployment-id {result.deployment_id}")
     else:

@@ -13,11 +13,11 @@ from streambuild.cli.audit_backfill._helpers.candidates import (
 from streambuild.cli.audit_backfill._helpers.rendering import (
     render_audit_backfill_result,
 )
-from streambuild.cli.shared.main.deployment_candidates import (
+from streambuild.cli.shared.main._deployment_candidates import (
     render_ambiguous_deployment_message,
     render_no_deployment_candidates_message,
 )
-from streambuild.cli.shared.main.errors import render_expected_clickhouse_error
+from streambuild.cli.shared.main._errors import render_expected_clickhouse_error
 from streambuild.clickhouse.inspect.main import inspect_managed_table_state
 from streambuild.clickhouse.inspect.models import InspectedManagedTableState
 from streambuild.compiler.auditing.main import validate_sql_audits

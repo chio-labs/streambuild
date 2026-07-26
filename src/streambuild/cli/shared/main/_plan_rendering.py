@@ -4,15 +4,7 @@ from __future__ import annotations
 
 import json
 
-from streambuild.cli.shared._helpers.styling import (
-    style_diff_lines,
-    style_label_value,
-    style_object_name,
-    style_section,
-    style_subsection,
-    style_title,
-    style_warning,
-)
+from streambuild.cli.shared.main._cli_style import cli_style
 from streambuild.cli.shared.models import CompactChangedTargetSummary
 from streambuild.compiler.compile.models import DesiredState
 from streambuild.compiler.planner.constants import (
@@ -100,10 +92,10 @@ def render_plan_result(
         return json.dumps(payload, indent=2)
 
     lines: list[str] = [
-        style_title("Plan Ready"),
-        style_label_value(label="Database", value=database),
-        style_label_value(label="Subtrees to rebuild", value=str(len(plan.rebuild_subtrees))),
-        style_label_value(label="Planned steps", value=str(len(plan.steps))),
+        cli_style().title("Plan Ready"),
+        cli_style().label_value(label="Database", value=database),
+        cli_style().label_value(label="Subtrees to rebuild", value=str(len(plan.rebuild_subtrees))),
+        cli_style().label_value(label="Planned steps", value=str(len(plan.steps))),
         "",
     ]
     desired_object_by_key: dict[ObjectKey, DesiredTable | DesiredMaterializedView] = {
@@ -112,12 +104,12 @@ def render_plan_result(
         if isinstance(object_, (DesiredTable, DesiredMaterializedView))
     }
     if plan.rebuild_subtrees:
-        lines.append(style_section("Subtrees"))
+        lines.append(cli_style().section("Subtrees"))
         subtree: RebuildSubtree
         for index, subtree in enumerate(plan.rebuild_subtrees, start=1):
             if index > 1:
                 lines.append("")
-            lines.append(style_subsection(f"Subtree {index}"))
+            lines.append(cli_style().subsection(f"Subtree {index}"))
             lines.extend(
                 _render_subtree_diagram(
                     subtree=subtree, desired_object_by_key=desired_object_by_key
@@ -130,7 +122,7 @@ def render_plan_result(
             desired_object_by_key=desired_object_by_key,
         )
         if new_target_names:
-            lines.append(style_section("New targets"))
+            lines.append(cli_style().section("New targets"))
             new_target_name: str
             for new_target_name in new_target_names:
                 lines.append(f"- {new_target_name}")
@@ -142,7 +134,7 @@ def render_plan_result(
             )
         )
         if changed_target_summaries:
-            lines.append(style_section("Changes detected"))
+            lines.append(cli_style().section("Changes detected"))
             changed_target_summary: CompactChangedTargetSummary
             for index, changed_target_summary in enumerate(changed_target_summaries):
                 if index > 0:
@@ -158,19 +150,19 @@ def render_plan_result(
             desired_object_by_key=desired_object_by_key,
         )
         if changed_objects:
-            lines.append(style_section("Changed objects"))
+            lines.append(cli_style().section("Changed objects"))
             changed_object: tuple[str, str]
             for changed_object in changed_objects:
                 lines.append(f"- {changed_object[0]}: {changed_object[1]}")
             lines.append("")
     if verbose and plan.sql_diffs:
-        lines.append(style_section("SQL diffs"))
+        lines.append(cli_style().section("SQL diffs"))
         sql_diff: PlannedSqlDiff
         for sql_diff in plan.sql_diffs:
             lines.append("")
             lines.append(
-                style_subsection(
-                    f"{sql_diff.object_type.title()}: {style_object_name(text=sql_diff.name)}"
+                cli_style().subsection(
+                    f"{sql_diff.object_type.title()}: {cli_style().object_name(text=sql_diff.name)}"
                 )
             )
             lines.extend(
@@ -180,10 +172,10 @@ def render_plan_result(
                     desired_object_by_key=desired_object_by_key,
                 )
             )
-            lines.extend(style_diff_lines(sql_diff.diff_lines))
+            lines.extend(cli_style().diff_lines(sql_diff.diff_lines))
         lines.append("")
     if not verbose and plan.sql_diffs:
-        lines.append(style_section("Diffs"))
+        lines.append(cli_style().section("Diffs"))
         diff_target_name: str
         for diff_target_name in _diff_target_names(
             plan=plan,
@@ -193,7 +185,7 @@ def render_plan_result(
         lines.append("Run `stb plan --verbose` to show full diffs")
         lines.append("")
     if verbose and plan.rebuild_subtrees:
-        lines.append(style_section("Staged rollout objects"))
+        lines.append(cli_style().section("Staged rollout objects"))
         rollout_objects: tuple[tuple[str, str], ...] = _rollout_object_entries(
             plan=plan,
             desired_object_by_key=desired_object_by_key,
@@ -206,19 +198,20 @@ def render_plan_result(
                 lines.append(f"- {rollout_object[0]}: {rollout_object[1]}")
         lines.append("")
     if verbose and plan.steps:
-        lines.append(style_section("Workflow"))
+        lines.append(cli_style().section("Workflow"))
         lines.extend(
             _render_workflow_summary(plan=plan, desired_object_by_key=desired_object_by_key)
         )
         lines.append("")
-    lines.append(style_section("Warnings"))
+    lines.append(cli_style().section("Warnings"))
     if not plan.warnings:
         lines.append("- none")
     else:
         warning: PlannerWarning
         for warning in plan.warnings:
+            style = cli_style()
             lines.append(
-                f"- {style_warning(warning.root_key.name)}: {style_warning(warning.message)}"
+                f"- {style.warning(warning.root_key.name)}: {style.warning(warning.message)}"
             )
     return "\n".join(lines)
 
@@ -300,9 +293,11 @@ def _render_sql_diff_plan_context(
     if live_targets:
         live_target_label: str = ", ".join(live_targets)
         if sql_diff.object_type == DESIRED_OBJECT_TYPE_TABLE and sql_diff.name in live_targets:
-            lines.append(style_label_value(label="Live target", value=live_target_label))
+            lines.append(cli_style().label_value(label="Live target", value=live_target_label))
         else:
-            lines.append(style_label_value(label="Affects live target", value=live_target_label))
+            lines.append(
+                cli_style().label_value(label="Affects live target", value=live_target_label)
+            )
 
     schema_change: PlannedObjectChange | None = _schema_change_for_subtree(
         subtree=subtree,
@@ -311,12 +306,12 @@ def _render_sql_diff_plan_context(
     if sql_diff.object_type == DESIRED_OBJECT_TYPE_TABLE and schema_change is not None:
         if subtree.configured_backfill_mode is not None:
             lines.append(
-                style_label_value(
+                cli_style().label_value(
                     label="Schema-change backfill", value=_format_backfill_policy(subtree)
                 )
             )
         lines.append(
-            style_label_value(label="Plan", value=_describe_subtree_rebuild_behavior(subtree))
+            cli_style().label_value(label="Plan", value=_describe_subtree_rebuild_behavior(subtree))
         )
     return lines
 

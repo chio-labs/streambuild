@@ -4,7 +4,7 @@ from typing import cast
 import pytest
 
 from streambuild.cli.shared.exceptions import CliUserError
-from streambuild.cli.shared.main.source_validation import (
+from streambuild.cli.shared.main._source_validation import (
     validate_declared_external_sources,
 )
 from streambuild.integrations.clickhouse.client import ClickHouseClient

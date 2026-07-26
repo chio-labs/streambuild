@@ -4,13 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from streambuild.cli.shared._helpers.styling import apply_style
-from streambuild.cli.shared.constants import (
-    ANSI_BOLD,
-    ANSI_DIM,
-    ANSI_GREEN,
-    ANSI_RED,
-)
+from streambuild.cli.shared.main._cli_style import cli_style
 from streambuild.cli.test.constants import MAX_RENDERED_ROWS
 from streambuild.cli.test.models import PairedDiffSection
 from streambuild.executor.testing.models import SqlTestExecutionResult, SqlTestTargetExecutionResult
@@ -268,9 +262,8 @@ def _render_table_section(
     for row in rendered_rows:
         lines.append(f"{indent}  {_render_table_row(row=row, widths=widths, header=False)}")
     if hidden_count:
-        hidden_rows_message: str = apply_style(
-            text=f"({hidden_count} more rows not shown, run with --verbose to see all)",
-            codes=(ANSI_DIM,),
+        hidden_rows_message: str = cli_style().muted(
+            f"({hidden_count} more rows not shown, run with --verbose to see all)"
         )
         lines.append(f"{indent}  {hidden_rows_message}")
     return tuple(lines)
@@ -357,45 +350,27 @@ def _render_target_label(result: SqlTestExecutionResult) -> str:
 
 
 def _style_status(*, text: str, passed: bool) -> str:
-    return apply_style(
-        text=text,
-        codes=(
-            ANSI_GREEN if passed else ANSI_RED,
-            ANSI_BOLD,
-        ),
-    )
+    return cli_style().outcome(text=text, passed=passed)
 
 
 def _style_summary(*, text: str, has_failures: bool) -> str:
-    return apply_style(
-        text=text,
-        codes=(
-            ANSI_RED if has_failures else ANSI_GREEN,
-            ANSI_BOLD,
-        ),
-    )
+    return cli_style().outcome(text=text, passed=not has_failures)
 
 
 def _style_headers(text: str) -> str:
-    return apply_style(
-        text=text,
-        codes=(
-            ANSI_DIM,
-            ANSI_BOLD,
-        ),
-    )
+    return cli_style().muted_strong(text)
 
 
 def _style_expected(text: str) -> str:
-    return apply_style(text=text, codes=(ANSI_GREEN,))
+    return cli_style().passed(text)
 
 
 def _style_actual(text: str) -> str:
-    return apply_style(text=text, codes=(ANSI_RED,))
+    return cli_style().failed(text)
 
 
 def _style_key_value(text: str) -> str:
-    return apply_style(text=text, codes=(ANSI_DIM,))
+    return cli_style().muted(text)
 
 
 def _strip_ansi(text: str) -> str:

@@ -2,13 +2,7 @@ from __future__ import annotations
 
 import json
 
-from streambuild.cli.shared._helpers.styling import (
-    style_label,
-    style_label_value,
-    style_object_name,
-    style_section,
-    style_title,
-)
+from streambuild.cli.shared.main._cli_style import cli_style
 from streambuild.executor.backfill.models import BackfillExecutionResult, RootBackfillReport
 
 
@@ -35,24 +29,26 @@ def render_backfill_result(
         return json.dumps(payload, indent=2)
 
     lines: list[str] = [
-        style_title("Backfill Started"),
-        style_label_value(label="Database", value=database),
-        style_label_value(label="Deployment", value=result.bootstrap.deployment_id),
-        style_label_value(label="Boundary time", value=result.boundary_time),
+        cli_style().title("Backfill Started"),
+        cli_style().label_value(label="Database", value=database),
+        cli_style().label_value(label="Deployment", value=result.bootstrap.deployment_id),
+        cli_style().label_value(label="Boundary time", value=result.boundary_time),
         "",
-        style_section("Roots"),
+        cli_style().section("Roots"),
     ]
     report: RootBackfillReport
     for report in result.bootstrap.root_reports:
-        lines.append(f"- {style_object_name(text=report.root_key.name)}")
-        lines.append(f"  {style_label('state')}: {report.state_kind}")
-        lines.append(f"  {style_label('strategy')}: {report.replay_strategy}")
+        lines.append(f"- {cli_style().object_name(text=report.root_key.name)}")
+        lines.append(f"  {cli_style().label('state')}: {report.state_kind}")
+        lines.append(f"  {cli_style().label('strategy')}: {report.replay_strategy}")
         if report.active_deployment_id is not None:
-            lines.append(f"  {style_label('active deployment')}: {report.active_deployment_id}")
+            lines.append(
+                f"  {cli_style().label('active deployment')}: {report.active_deployment_id}"
+            )
     lines.extend(
         [
             "",
-            style_section("Next"),
+            cli_style().section("Next"),
             f"- stb audit backfill --deployment-id {result.bootstrap.deployment_id}",
             f"- stb publish --deployment-id {result.bootstrap.deployment_id}",
         ]
