@@ -187,7 +187,7 @@ RESOLUTION_TEST_CASES: list[ResolveAuditDeploymentIntegrationTestCase] = [
 @pytest.mark.parametrize(
     "test_case",
     AUDIT_TEST_CASES,
-    ids=[case.description for case in AUDIT_TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_staged_backfill_when_auditing_then_it_returns_expected_comparison_signals(
     test_case: ExecuteAuditBackfillIntegrationTestCase,
@@ -383,7 +383,7 @@ def test_given_staged_backfill_when_auditing_then_it_returns_expected_comparison
 @pytest.mark.parametrize(
     "test_case",
     RESOLUTION_TEST_CASES,
-    ids=[case.description for case in RESOLUTION_TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_audit_request_without_deployment_id_when_resolving_then_it_behaves_as_expected(
     test_case: ResolveAuditDeploymentIntegrationTestCase,
@@ -507,7 +507,7 @@ def test_given_audit_request_without_deployment_id_when_resolving_then_it_behave
             expected_active_exists=False,
         )
     ],
-    ids=["audits staged deployment after metadata deletion using live state only"],
+    ids=lambda case: case.description,
 )
 def test_given_deleted_audit_metadata_when_auditing_then_it_uses_live_clickhouse_state(
     test_case: AuditWithoutMetadataIntegrationTestCase,
@@ -624,7 +624,7 @@ def test_given_deleted_audit_metadata_when_auditing_then_it_uses_live_clickhouse
             expected_assessment=AuditAssessment.CAUTION,
         )
     ],
-    ids=["returns caution when the active stable view points to a missing table"],
+    ids=lambda case: case.description,
 )
 def test_given_dangling_active_view_when_auditing_then_it_returns_caution(
     test_case: DanglingActiveViewAuditIntegrationTestCase,
@@ -749,7 +749,7 @@ def test_given_dangling_active_view_when_auditing_then_it_returns_caution(
             expected_assessment=AuditAssessment.READY,
         )
     ],
-    ids=["audits a staged deployment after the active stable view was deleted"],
+    ids=lambda case: case.description,
 )
 def test_given_deleted_active_view_when_auditing_then_it_uses_live_staged_state(
     test_case: AuditAfterDeletedActiveViewIntegrationTestCase,
@@ -905,7 +905,7 @@ OFFSET_AUDIT_DEGRADED_STATE_TEST_CASES: list[OffsetAuditDegradedStateIntegration
 @pytest.mark.parametrize(
     "test_case",
     OFFSET_AUDIT_DEGRADED_STATE_TEST_CASES,
-    ids=[case.description for case in OFFSET_AUDIT_DEGRADED_STATE_TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_degraded_offset_state_when_auditing_then_it_returns_caution(
     test_case: OffsetAuditDegradedStateIntegrationTestCase,

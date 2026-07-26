@@ -23,7 +23,7 @@ from tests.e2e.src.streambuild.executor.helpers import (
             expected_order_ids=("order-1", "order-2", "order-3"),
         )
     ],
-    ids=["runs the external cursor-source workflow through publish"],
+    ids=lambda case: case.description,
 )
 def test_given_external_cursor_source_pipeline_when_running_then_it_publishes_expected_rows(
     test_case: ExternalSourceCursorWorkflowE2ETestCase,

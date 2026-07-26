@@ -35,7 +35,7 @@ from tests.unit.src.streambuild.cli.commands.main.shared._test_types import (
             ),
         )
     ],
-    ids=["adds empty replay source warning with active row context"],
+    ids=lambda case: case.description,
 )
 def test_given_empty_replay_source_when_augmenting_plan_then_it_adds_warning(
     test_case: CliReplaySourceWarningTestCase,

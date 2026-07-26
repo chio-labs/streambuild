@@ -50,7 +50,7 @@ from tests.unit.src.streambuild.compiler.planner.helpers import (
             ),
         )
     ],
-    ids=["builds staged deployment plan from conservative object changes"],
+    ids=lambda case: case.description,
 )
 def test_given_desired_and_actual_state_when_planning_deployment_then_it_returns_expected_steps(
     test_case: PlannerDeploymentPlanTestCase,
@@ -91,7 +91,7 @@ def test_given_desired_and_actual_state_when_planning_deployment_then_it_returns
             expected_target_key=(None, "table", "tbl__orders_enriched"),
         )
     ],
-    ids=["emits mutable-ref warning for affected transform target"],
+    ids=lambda case: case.description,
 )
 def test_given_desired_state_with_mutable_refs_when_planning_deployment_then_it_returns_warning(
     test_case: PlannerMutableWarningTestCase,
@@ -136,7 +136,7 @@ def test_given_desired_state_with_mutable_refs_when_planning_deployment_then_it_
             ),
         )
     ],
-    ids=["adds deterministic shadow physical names when deployment id is supplied"],
+    ids=lambda case: case.description,
 )
 def test_given_deployment_id_when_planning_deployment_then_it_returns_prepared_shadow_objects(
     test_case: PlannerShadowIdentityTestCase,
@@ -179,7 +179,7 @@ def test_given_deployment_id_when_planning_deployment_then_it_returns_prepared_s
             expected_execution_mode=REBUILD_EXECUTION_MODE_FULL,
         )
     ],
-    ids=["forces full rebuild planning for a selected no-op root"],
+    ids=lambda case: case.description,
 )
 def test_given_full_refresh_key_when_planning_deployment_then_it_forces_full_rebuild(
     test_case: PlannerFullRefreshPlanTestCase,

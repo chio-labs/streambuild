@@ -43,7 +43,7 @@ from tests.integration.src.streambuild.executor.janitor.helpers import (
             ),
         )
     ],
-    ids=["classifies active recent old and stale deployments conservatively"],
+    ids=lambda case: case.description,
 )
 def test_given_mixed_real_deployments_when_previewing_janitor_then_it_classifies_candidates(
     test_case: ExecuteJanitorPreviewIntegrationTestCase,
@@ -118,7 +118,7 @@ def test_given_mixed_real_deployments_when_previewing_janitor_then_it_classifies
             expected_publish_history_row_count=3,
         )
     ],
-    ids=["drops only old and stale physical objects while keeping metadata"],
+    ids=lambda case: case.description,
 )
 def test_given_real_deletable_deployments_when_applying_janitor_then_it_drops_only_physical_objects(
     test_case: ExecuteJanitorApplyIntegrationTestCase,

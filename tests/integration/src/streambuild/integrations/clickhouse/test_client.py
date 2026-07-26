@@ -19,7 +19,7 @@ from tests.integration.src.streambuild.integrations.clickhouse._test_types impor
             expected_rows=(("dep_1", "open"), ("dep_2", "failed")),
         )
     ],
-    ids=["creates a real client and executes command insert query and close"],
+    ids=lambda case: case.description,
 )
 def test_given_real_clickhouse_when_using_client_then_it_executes_expected_operations(
     test_case: ClickHouseClientIntegrationTestCase,

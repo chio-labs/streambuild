@@ -65,7 +65,7 @@ LOAD_PIPELINE_FILE_ERROR_TEST_CASES: list[LoadPipelineFileErrorTestCase] = [
             expected_source_name="orders",
         )
     ],
-    ids=["loads top level pipeline from example file"],
+    ids=lambda case: case.description,
 )
 def test_given_example_pipeline_file_when_loading_pipeline_then_returns_top_level_pipeline(
     test_case: LoadPipelineFileTestCase,
@@ -108,7 +108,7 @@ def test_given_example_pipeline_file_when_loading_pipeline_then_returns_top_leve
             expected_project_replay_lineage_mode=ReplayLineageMode.TIMESTAMP,
         )
     ],
-    ids=["loads project config from project root above pipelines"],
+    ids=lambda case: case.description,
 )
 def test_given_pipeline_file_with_project_config_when_loading_then_it_returns_project_config(
     test_case: LoadPipelineFileProjectConfigTestCase,
@@ -187,7 +187,7 @@ LOAD_PIPELINE_FILE_SQL_MODEL_DEFAULTS_TEST_CASES: list[LoadPipelineFileSqlModelD
 @pytest.mark.parametrize(
     "test_case",
     LOAD_PIPELINE_FILE_SQL_MODEL_DEFAULTS_TEST_CASES,
-    ids=[case.description for case in LOAD_PIPELINE_FILE_SQL_MODEL_DEFAULTS_TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_sql_model_with_omitted_storage_fields_when_loading_then_it_applies_defaults(
     test_case: LoadPipelineFileSqlModelDefaultsTestCase,
@@ -261,7 +261,7 @@ LOAD_PIPELINE_FILE_ADOPTED_SOURCE_TEST_CASES: list[LoadPipelineFileAdoptedSource
 @pytest.mark.parametrize(
     "test_case",
     LOAD_PIPELINE_FILE_ADOPTED_SOURCE_TEST_CASES,
-    ids=[case.description for case in LOAD_PIPELINE_FILE_ADOPTED_SOURCE_TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_pipeline_file_with_adopted_source_when_loading_then_it_parses_external_source(
     test_case: LoadPipelineFileAdoptedSourceTestCase,
@@ -342,7 +342,7 @@ LOAD_PIPELINE_FILE_SCHEMA_CHANGE_BACKFILL_TEST_CASES: list[
 @pytest.mark.parametrize(
     "test_case",
     LOAD_PIPELINE_FILE_SCHEMA_CHANGE_BACKFILL_TEST_CASES,
-    ids=[case.description for case in LOAD_PIPELINE_FILE_SCHEMA_CHANGE_BACKFILL_TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_sql_model_with_schema_change_backfill_when_loading_then_it_parses_policy(
     test_case: LoadPipelineFileSchemaChangeBackfillTestCase,
@@ -400,7 +400,7 @@ def test_given_sql_model_with_schema_change_backfill_when_loading_then_it_parses
             expected_transform_source="orders",
         )
     ],
-    ids=["loads repeated driving source refs as one inferred source"],
+    ids=lambda case: case.description,
 )
 def test_given_sql_model_with_repeated_source_refs_when_loading_then_it_keeps_one_driving_source(
     test_case: LoadPipelineFileRepeatedSourceRefTestCase,
@@ -451,7 +451,7 @@ def test_given_sql_model_with_repeated_source_refs_when_loading_then_it_keeps_on
             expected_transform_unsupported_replay_behavior=BoundedReplayFallback.FULL_REFRESH,
         )
     ],
-    ids=["loads unsupported replay behavior from pipeline and model config"],
+    ids=lambda case: case.description,
 )
 def test_given_pipeline_and_model_with_unsupported_replay_behavior_when_loading_then_it_parses(
     test_case: LoadPipelineFileUnsupportedReplayBehaviorTestCase,
@@ -477,7 +477,7 @@ def test_given_pipeline_and_model_with_unsupported_replay_behavior_when_loading_
 @pytest.mark.parametrize(
     "test_case",
     LOAD_PIPELINE_FILE_ERROR_TEST_CASES,
-    ids=[case.description for case in LOAD_PIPELINE_FILE_ERROR_TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_file_without_pipeline_when_loading_then_it_raises_expected_error(
     test_case: LoadPipelineFileErrorTestCase,
@@ -506,7 +506,7 @@ def test_given_file_without_pipeline_when_loading_then_it_raises_expected_error(
             expected_error_fragment="currently supports only source.kind='kafka'",
         )
     ],
-    ids=["raises value error when pipeline file has unsupported source kind"],
+    ids=lambda case: case.description,
 )
 def test_given_file_with_wrong_pipeline_type_when_loading_then_it_raises_expected_error(
     test_case: LoadPipelineFileErrorTestCase,
@@ -628,7 +628,7 @@ INVALID_ADOPTED_SOURCE_TEST_CASES: list[LoadPipelineFileInvalidAdoptedSourceTest
 @pytest.mark.parametrize(
     "test_case",
     INVALID_ADOPTED_SOURCE_TEST_CASES,
-    ids=[case.description for case in INVALID_ADOPTED_SOURCE_TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_invalid_adopted_source_when_loading_then_it_raises_expected_error(
     test_case: LoadPipelineFileInvalidAdoptedSourceTestCase,

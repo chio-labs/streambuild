@@ -26,7 +26,7 @@ from tests.e2e.src.streambuild.executor.helpers import (
             expected_audit_assessment=AuditAssessment.READY,
         )
     ],
-    ids=["runs the external-source workflow from adopted table through publish"],
+    ids=lambda case: case.description,
 )
 def test_given_external_source_pipeline_when_running_then_it_publishes_expected_rows(
     test_case: ExternalSourceWorkflowE2ETestCase,

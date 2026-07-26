@@ -62,7 +62,7 @@ REF_VALIDATION_ERROR_TEST_CASES: list[ExtractRefsErrorTestCase] = [
 @pytest.mark.parametrize(
     "test_case",
     TEST_CASES,
-    ids=[case.description for case in TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_sql_when_extracting_refs_then_it_returns_only_real_ref_calls(
     test_case: ExtractRefsTestCase,
@@ -85,7 +85,7 @@ def test_given_sql_when_extracting_refs_then_it_returns_only_real_ref_calls(
             expected_error_fragment="optional second argument must be ref_type",
         )
     ],
-    ids=["raises value error when ref has too many arguments"],
+    ids=lambda case: case.description,
 )
 def test_given_ref_with_too_many_args_when_extracting_then_it_raises_expected_error(
     test_case: ExtractRefsErrorTestCase,
@@ -97,7 +97,7 @@ def test_given_ref_with_too_many_args_when_extracting_then_it_raises_expected_er
 @pytest.mark.parametrize(
     "test_case",
     REF_VALIDATION_ERROR_TEST_CASES,
-    ids=[case.description for case in REF_VALIDATION_ERROR_TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_ref_with_non_string_arg_when_extracting_then_it_raises_expected_error(
     test_case: ExtractRefsErrorTestCase,

@@ -109,7 +109,7 @@ TEST_CASES: list[ParseModelSqlHeaderTestCase] = [
 @pytest.mark.parametrize(
     "test_case",
     TEST_CASES,
-    ids=[case.description for case in TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_sql_model_header_variants_when_parsing_then_it_returns_expected_header_values(
     test_case: ParseModelSqlHeaderTestCase,
@@ -129,7 +129,7 @@ def test_given_sql_model_header_variants_when_parsing_then_it_returns_expected_h
             expected_error_fragment="must not declare ref_type for its driving input 'orders'",
         )
     ],
-    ids=["raises a specific error when the driving ref declares ref_type"],
+    ids=lambda case: case.description,
 )
 def test_given_typed_driving_ref_when_inferring_transform_source_then_it_raises_specific_error(
     test_case: InferTransformSourceErrorTestCase,
@@ -159,7 +159,7 @@ def test_given_typed_driving_ref_when_inferring_transform_source_then_it_raises_
             ),
         )
     ],
-    ids=["expands project macros in the sql model body only"],
+    ids=lambda case: case.description,
 )
 def test_given_sql_model_macros_when_loading_then_it_expands_query_body(
     test_case: LoadTransformFromSqlFileTestCase,

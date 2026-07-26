@@ -39,7 +39,7 @@ TEST_CASES: list[RenderCreateTableDdlTestCase] = [
 @pytest.mark.parametrize(
     "test_case",
     TEST_CASES,
-    ids=[case.description for case in TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_desired_table_when_rendering_then_it_returns_expected_create_table_ddl(
     test_case: RenderCreateTableDdlTestCase,

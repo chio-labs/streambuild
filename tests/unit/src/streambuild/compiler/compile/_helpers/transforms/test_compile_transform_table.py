@@ -27,7 +27,7 @@ from tests.unit.src.streambuild.compiler.compile._helpers.transforms.helpers imp
             expected_settings={"index_granularity": "8192"},
         )
     ],
-    ids=["copies transform table shape into desired table"],
+    ids=lambda case: case.description,
 )
 def test_given_transform_when_compiling_transform_table_then_it_returns_expected_desired_table(
     test_case: CompileTransformTableTestCase,

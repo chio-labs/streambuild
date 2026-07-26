@@ -55,7 +55,7 @@ DOCTOR_TEST_CASES: list[ExecuteDoctorIntegrationTestCase] = [
 @pytest.mark.parametrize(
     "test_case",
     DOCTOR_TEST_CASES,
-    ids=[case.description for case in DOCTOR_TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_clickhouse_state_when_doctoring_then_it_reports_expected_active_view_status(
     test_case: ExecuteDoctorIntegrationTestCase,

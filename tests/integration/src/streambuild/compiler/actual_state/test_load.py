@@ -86,7 +86,7 @@ TEST_CASES: list[LoadActualStateIntegrationTestCase] = [
 @pytest.mark.parametrize(
     "test_case",
     TEST_CASES,
-    ids=[case.description for case in TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_clickhouse_state_when_loading_actual_state_then_it_returns_expected_result(
     test_case: LoadActualStateIntegrationTestCase,
@@ -225,7 +225,7 @@ def test_given_clickhouse_state_when_loading_actual_state_then_it_returns_expect
             ),
         )
     ],
-    ids=["loads active state from the stable view even when deployment metadata points elsewhere"],
+    ids=lambda case: case.description,
 )
 def test_given_conflicting_metadata_when_loading_actual_state_then_live_view_binding_wins(
     test_case: LoadActualStateWithConflictingMetadataIntegrationTestCase,
@@ -374,7 +374,7 @@ MIXED_ROOT_TEST_CASES: list[LoadActualStateMixedRootsIntegrationTestCase] = [
 @pytest.mark.parametrize(
     "test_case",
     MIXED_ROOT_TEST_CASES,
-    ids=[case.description for case in MIXED_ROOT_TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_mixed_root_clickhouse_state_when_loading_then_it_preserves_per_root_state(
     test_case: LoadActualStateMixedRootsIntegrationTestCase,
@@ -532,7 +532,7 @@ ACTUAL_STATE_WITHOUT_METADATA_TEST_CASES: list[
 @pytest.mark.parametrize(
     "test_case",
     ACTUAL_STATE_WITHOUT_METADATA_TEST_CASES,
-    ids=[case.description for case in ACTUAL_STATE_WITHOUT_METADATA_TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_published_state_when_metadata_is_deleted_then_load_actual_state_uses_live_clickhouse(
     test_case: LoadActualStateWithoutMetadataIntegrationTestCase,
@@ -665,7 +665,7 @@ LATEST_OBJECT_STATE_TEST_CASES: list[LoadActualStateWithLatestObjectStateIntegra
 @pytest.mark.parametrize(
     "test_case",
     LATEST_OBJECT_STATE_TEST_CASES,
-    ids=[case.description for case in LATEST_OBJECT_STATE_TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_latest_object_state_record_when_loading_then_only_reconcile_overrides_active_query(
     test_case: LoadActualStateWithLatestObjectStateIntegrationTestCase,

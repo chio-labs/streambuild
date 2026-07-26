@@ -50,7 +50,7 @@ TEST_CASES: list[ReplaceRefsTestCase] = [
 @pytest.mark.parametrize(
     "test_case",
     TEST_CASES,
-    ids=[case.description for case in TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_sql_when_replacing_refs_then_it_rewrites_only_real_ref_calls(
     test_case: ReplaceRefsTestCase,
@@ -74,7 +74,7 @@ def test_given_sql_when_replacing_refs_then_it_rewrites_only_real_ref_calls(
             expected_error_fragment="Unresolved ref: missing",
         )
     ],
-    ids=["raises key error when ref is unresolved"],
+    ids=lambda case: case.description,
 )
 def test_given_unresolved_ref_when_replacing_then_it_raises_expected_error(
     test_case: ReplaceRefsErrorTestCase,

@@ -47,7 +47,7 @@ TEST_CASES: list[ValidateSingleStorageExpressionTestCase] = [
 @pytest.mark.parametrize(
     "test_case",
     TEST_CASES,
-    ids=[case.description for case in TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_ttl_expression_when_validating_then_it_returns_or_raises_as_expected(
     test_case: ValidateSingleStorageExpressionTestCase,

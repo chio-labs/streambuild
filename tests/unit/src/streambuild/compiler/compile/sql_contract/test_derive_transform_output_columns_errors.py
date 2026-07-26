@@ -77,7 +77,7 @@ TEST_CASES: list[DeriveTransformOutputColumnsErrorTestCase] = [
 @pytest.mark.parametrize(
     "test_case",
     TEST_CASES,
-    ids=[case.description for case in TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_invalid_transform_sql_when_deriving_columns_then_it_raises_a_clear_custom_error(
     test_case: DeriveTransformOutputColumnsErrorTestCase,

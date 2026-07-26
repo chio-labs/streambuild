@@ -83,7 +83,7 @@ TEST_CASES: list[CliAuditCommandIntegrationTestCase] = [
 @pytest.mark.parametrize(
     "test_case",
     TEST_CASES,
-    ids=[case.description for case in TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_audit_project_when_running_live_audit_then_it_reports_expected_results(
     test_case: CliAuditCommandIntegrationTestCase,
@@ -162,7 +162,7 @@ def test_given_audit_project_when_running_live_audit_then_it_reports_expected_re
             expected_failing_row_count=1,
         )
     ],
-    ids=["runs project sql quality checks during audit backfill"],
+    ids=lambda case: case.description,
 )
 def test_given_audit_project_when_running_audit_backfill_then_it_includes_quality_checks(
     test_case: CliAuditBackfillCommandIntegrationTestCase,

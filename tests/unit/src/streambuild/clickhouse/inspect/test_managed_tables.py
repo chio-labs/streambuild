@@ -28,7 +28,7 @@ from tests.unit.src.streambuild.clickhouse.inspect._test_types import (
             expected_logical_names=("tbl__orders_enriched", "raw__orders"),
         )
     ],
-    ids=["ignores materialized view deployment candidates in managed table inspection"],
+    ids=lambda case: case.description,
 )
 def test_given_physical_candidates_when_building_inspected_state_then_it_ignores_mv_candidates(
     test_case: BuildInspectedManagedTableStateTestCase,

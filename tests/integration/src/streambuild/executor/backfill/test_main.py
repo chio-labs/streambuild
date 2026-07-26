@@ -203,7 +203,7 @@ START_TIME_OFFSET_REPLAY_TEST_CASES: list[ExecuteStartTimeReplayIntegrationTestC
 @pytest.mark.parametrize(
     "test_case",
     BOOTSTRAP_TEST_CASES,
-    ids=[case.description for case in BOOTSTRAP_TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_changed_pipeline_when_bootstrapping_then_it_creates_metadata_and_shadow_objects(
     test_case: ExecuteBackfillBootstrapIntegrationTestCase,
@@ -356,7 +356,7 @@ SCALAR_REPLAY_TEST_CASES: list[ExecuteBackfillScalarReplayIntegrationTestCase] =
 @pytest.mark.parametrize(
     "test_case",
     SCALAR_REPLAY_TEST_CASES,
-    ids=[case.description for case in SCALAR_REPLAY_TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_scalar_replay_mode_when_executing_then_it_persists_watermarks_and_replays_rows(
     test_case: ExecuteBackfillScalarReplayIntegrationTestCase,
@@ -519,7 +519,7 @@ OFFSET_REPLAY_TEST_CASES: list[ExecuteBackfillOffsetReplayIntegrationTestCase] =
 @pytest.mark.parametrize(
     "test_case",
     OFFSET_REPLAY_TEST_CASES,
-    ids=[case.description for case in OFFSET_REPLAY_TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_offset_replay_mode_when_executing_then_it_persists_partition_watermarks(
     test_case: ExecuteBackfillOffsetReplayIntegrationTestCase,
@@ -629,7 +629,7 @@ def test_given_offset_replay_mode_when_executing_then_it_persists_partition_wate
             ),
         )
     ],
-    ids=["executes backfill for staged reference joins across managed targets"],
+    ids=lambda case: case.description,
 )
 def test_given_reference_join_when_executing_then_it_replays_from_staged_reference_tables(
     test_case: ExecuteReferenceJoinBackfillIntegrationTestCase,
@@ -737,7 +737,7 @@ def test_given_reference_join_when_executing_then_it_replays_from_staged_referen
             ),
         )
     ],
-    ids=["replays reference joins against an already-published active managed ref"],
+    ids=lambda case: case.description,
 )
 def test_given_published_reference_join_dependency_when_backfilling_then_it_uses_active_logical_ref(
     test_case: ExecutePublishedReferenceJoinBackfillIntegrationTestCase,
@@ -889,7 +889,7 @@ def test_given_published_reference_join_dependency_when_backfilling_then_it_uses
             expected_shadow_order_ids=("historical-partition-0", "historical-partition-1"),
         )
     ],
-    ids=["executes offset replay from an adopted external source table with aliased columns"],
+    ids=lambda case: case.description,
 )
 def test_given_external_source_offset_replay_when_executing_then_it_uses_declared_boundary_columns(
     test_case: ExecuteExternalSourceOffsetReplayIntegrationTestCase,
@@ -985,7 +985,7 @@ EXECUTE_EXTERNAL_SOURCE_CURSOR_REPLAY_INTEGRATION_TEST_CASES: list[
 @pytest.mark.parametrize(
     "test_case",
     EXECUTE_EXTERNAL_SOURCE_CURSOR_REPLAY_INTEGRATION_TEST_CASES,
-    ids=[case.description for case in EXECUTE_EXTERNAL_SOURCE_CURSOR_REPLAY_INTEGRATION_TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_external_source_cursor_replay_when_executing_then_it_replays_by_cursor(
     test_case: ExecuteExternalSourceCursorReplayIntegrationTestCase,
@@ -1091,7 +1091,7 @@ def test_given_external_source_cursor_replay_when_executing_then_it_replays_by_c
             expected_shadow_rows=(("2026-04-09 13:00:00.000", 2),),
         )
     ],
-    ids=["executes aggregate offset replay by filtering anchor rows before group by"],
+    ids=lambda case: case.description,
 )
 def test_given_aggregate_offset_replay_when_executing_then_it_filters_anchor_rows_before_group_by(
     test_case: ExecuteAggregateOffsetReplayIntegrationTestCase,
@@ -1199,7 +1199,7 @@ RESOLVE_AGGREGATE_UNSUPPORTED_REPLAY_BEHAVIOR_TEST_CASES: list[
 @pytest.mark.parametrize(
     "test_case",
     RESOLVE_AGGREGATE_UNSUPPORTED_REPLAY_BEHAVIOR_TEST_CASES,
-    ids=[case.description for case in RESOLVE_AGGREGATE_UNSUPPORTED_REPLAY_BEHAVIOR_TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_aggregate_start_time_when_bootstrapping_then_it_resolves_policy_per_root(
     test_case: ResolveAggregateUnsupportedReplayBehaviorIntegrationTestCase,
@@ -1341,12 +1341,7 @@ def test_given_aggregate_start_time_when_bootstrapping_then_it_resolves_policy_p
             expected_shadow_rows=(("2026-04-09 14:00:00.000", 2),),
         )
     ],
-    ids=[
-        (
-            "aggregate start time falls back to full rebuild by default when "
-            "history-preserving replay is unsupported"
-        )
-    ],
+    ids=lambda case: case.description,
 )
 def test_given_aggregate_start_time_when_executing_then_it_falls_back_to_full_rebuild(
     test_case: ExecuteAggregateBoundedOffsetReplayIntegrationTestCase,
@@ -1492,7 +1487,7 @@ def test_given_aggregate_start_time_when_executing_then_it_falls_back_to_full_re
             ),
         )
     ],
-    ids=["unseeded bounded aggregate offset replay skips prefix copy and replays only the tail"],
+    ids=lambda case: case.description,
 )
 def test_given_unseeded_bounded_aggregate_offset_replay_when_executing_then_it_replays_tail(
     test_case: ExecuteAggregateBoundedOffsetReplayIntegrationTestCase,
@@ -1675,7 +1670,7 @@ def test_given_unseeded_bounded_aggregate_offset_replay_when_executing_then_it_r
             ),
         )
     ],
-    ids=["seeded bounded scalar replay preserves prefix and recomputes the tail"],
+    ids=lambda case: case.description,
 )
 def test_given_seeded_bounded_scalar_replay_when_executing_then_it_copies_prefix_and_replays_tail(
     test_case: ExecuteSeededBoundedScalarReplayIntegrationTestCase,
@@ -1814,7 +1809,7 @@ def test_given_seeded_bounded_scalar_replay_when_executing_then_it_copies_prefix
 @pytest.mark.parametrize(
     "test_case",
     START_TIME_SCALAR_REPLAY_TEST_CASES,
-    ids=[case.description for case in START_TIME_SCALAR_REPLAY_TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_start_time_scalar_replay_when_executing_then_it_replays_expected_rows(
     test_case: ExecuteStartTimeReplayIntegrationTestCase,
@@ -1858,7 +1853,7 @@ def test_given_start_time_scalar_replay_when_executing_then_it_replays_expected_
             ),
         )
     ],
-    ids=["unseeded bounded scalar replay skips prefix copy and replays only the tail"],
+    ids=lambda case: case.description,
 )
 def test_given_unseeded_bounded_scalar_replay_when_executing_then_it_replays_only_the_tail(
     test_case: ExecuteUnseededBoundedScalarReplayIntegrationTestCase,
@@ -2038,7 +2033,7 @@ def test_given_unseeded_bounded_scalar_replay_when_executing_then_it_replays_onl
             ),
         )
     ],
-    ids=["unseeded bounded offset replay skips prefix copy and replays only the tail"],
+    ids=lambda case: case.description,
 )
 def test_given_unseeded_bounded_offset_replay_when_executing_then_it_replays_only_the_tail(
     test_case: ExecuteUnseededBoundedOffsetReplayIntegrationTestCase,
@@ -2216,7 +2211,7 @@ def test_given_unseeded_bounded_offset_replay_when_executing_then_it_replays_onl
             ),
         )
     ],
-    ids=["seeded bounded offset replay preserves prefix and recomputes the tail"],
+    ids=lambda case: case.description,
 )
 def test_given_seeded_bounded_offset_replay_when_executing_then_it_copies_prefix_and_replays_tail(
     test_case: ExecuteSeededBoundedOffsetReplayIntegrationTestCase,
@@ -2354,7 +2349,7 @@ def test_given_seeded_bounded_offset_replay_when_executing_then_it_copies_prefix
 @pytest.mark.parametrize(
     "test_case",
     START_TIME_OFFSET_REPLAY_TEST_CASES,
-    ids=[case.description for case in START_TIME_OFFSET_REPLAY_TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_start_time_offset_replay_when_executing_then_it_replays_expected_rows(
     test_case: ExecuteStartTimeReplayIntegrationTestCase,
@@ -2397,7 +2392,7 @@ def test_given_start_time_offset_replay_when_executing_then_it_replays_expected_
             ),
         )
     ],
-    ids=["allows two staged backfills before first publish in greenfield mode"],
+    ids=lambda case: case.description,
 )
 def test_given_two_staged_backfills_before_publish_when_executing_then_both_staged_tables_exist(
     test_case: ExecuteMultipleBackfillsIntegrationTestCase,
@@ -2507,7 +2502,7 @@ def test_given_two_staged_backfills_before_publish_when_executing_then_both_stag
             expected_active_deployment_id="20260409T230000Z_ab12cd",
         )
     ],
-    ids=["reports bounded replay when an active view exists"],
+    ids=lambda case: case.description,
 )
 def test_given_active_view_when_backfilling_then_it_reports_bounded_replay_strategy(
     test_case: ExecuteBoundedReplayReportingIntegrationTestCase,
@@ -2617,7 +2612,7 @@ def test_given_active_view_when_backfilling_then_it_reports_bounded_replay_strat
             expected_raw_view_rows=(("raw__orders", "MergeTree"),),
         )
     ],
-    ids=["uses bounded replay after publish when raw root has stable view"],
+    ids=lambda case: case.description,
 )
 def test_given_published_raw_root_when_backfilling_again_then_it_uses_bounded_replay(
     test_case: ExecuteRepeatedPublishedBackfillIntegrationTestCase,
@@ -2703,7 +2698,7 @@ def test_given_published_raw_root_when_backfilling_again_then_it_uses_bounded_re
             ),
         )
     ],
-    ids=["reports mixed per-root strategies for active-plus-missing-view state"],
+    ids=lambda case: case.description,
 )
 def test_given_mixed_root_state_when_backfilling_then_it_reports_per_root_strategies(
     test_case: ExecuteMixedRootBackfillReportingIntegrationTestCase,
@@ -2832,7 +2827,7 @@ def test_given_mixed_root_state_when_backfilling_then_it_reports_per_root_strate
             expected_error_fragment="already exists",
         )
     ],
-    ids=["fails predictably when rerunning after only the staged table was deleted"],
+    ids=lambda case: case.description,
 )
 def test_given_deleted_staged_table_after_bootstrap_when_rerunning_then_backfill_fails(
     test_case: BackfillAfterDeletedStagedTableIntegrationTestCase,
@@ -2930,7 +2925,7 @@ def test_given_deleted_staged_table_after_bootstrap_when_rerunning_then_backfill
             expected_error_fragment="streambuild_deployment_watermarks",
         )
     ],
-    ids=["fails when the watermark metadata table is deleted before persistence"],
+    ids=lambda case: case.description,
 )
 def test_given_deleted_watermark_table_when_persisting_backfill_watermarks_then_it_fails_explicitly(
     test_case: PersistWatermarksWithoutMetadataTableIntegrationTestCase,

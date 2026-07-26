@@ -22,7 +22,7 @@ from tests.unit.src.streambuild.compiler.discovery._test_types import (
             expected_pipeline_names=["orders"],
         )
     ],
-    ids=["finds example pipeline under pipelines root"],
+    ids=lambda case: case.description,
 )
 def test_given_pipeline_root_when_discovering_pipelines_then_returns_loaded_pipelines(
     test_case: DiscoverPipelinesTestCase,
@@ -77,7 +77,7 @@ def test_given_pipeline_root_when_discovering_pipelines_then_returns_loaded_pipe
             expected_error_fragment="Logical node name 'orders' is defined in both",
         )
     ],
-    ids=["raises value error when two pipeline roots define the same source logical name"],
+    ids=lambda case: case.description,
 )
 def test_given_duplicate_logical_names_when_discovering_then_it_raises_expected_error(
     test_case: DiscoverPipelinesErrorTestCase,

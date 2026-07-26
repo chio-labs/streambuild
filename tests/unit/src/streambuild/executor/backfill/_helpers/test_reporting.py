@@ -20,7 +20,7 @@ from tests.unit.src.streambuild.executor.backfill._helpers._test_types import (
             expected_root_names=("tbl__daily_revenue",),
         )
     ],
-    ids=["keeps only deployment target reports for subset selections"],
+    ids=lambda case: case.description,
 )
 def test_given_root_reports_outside_selected_deployment_when_filtering_then_it_keeps_targets(
     test_case: FilterRootBackfillReportsForDeploymentTestCase,

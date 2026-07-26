@@ -82,7 +82,7 @@ TEST_CASES: list[CompileKafkaLandingErrorTestCase] = [
             ),
         )
     ],
-    ids=["compiles kafka landing with default consumer group"],
+    ids=lambda case: case.description,
 )
 def test_given_pipeline_when_compiling_kafka_landing_then_it_returns_expected_desired_objects(
     test_case: CompileKafkaLandingTestCase,
@@ -144,7 +144,7 @@ def test_given_pipeline_when_compiling_kafka_landing_then_it_returns_expected_de
 @pytest.mark.parametrize(
     "test_case",
     TEST_CASES,
-    ids=[case.description for case in TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_unsupported_kafka_source_format_when_compiling_then_it_raises_value_error(
     test_case: CompileKafkaLandingErrorTestCase,

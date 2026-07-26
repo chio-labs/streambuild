@@ -20,7 +20,7 @@ from tests.unit.src.streambuild.clickhouse.render._helpers.create_view._test_typ
             ),
         )
     ],
-    ids=["renders stable logical view over deployment table"],
+    ids=lambda case: case.description,
 )
 def test_given_view_target_when_rendering_then_it_returns_expected_create_view_ddl(
     test_case: RenderCreateViewDdlTestCase,

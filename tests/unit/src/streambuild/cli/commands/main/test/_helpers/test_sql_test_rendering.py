@@ -69,7 +69,7 @@ TEST_CASES: list[RenderSqlTestResultsTestCase] = [
 @pytest.mark.parametrize(
     "test_case",
     TEST_CASES,
-    ids=[case.description for case in TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_sql_test_results_when_rendering_then_it_returns_expected_sections(
     test_case: RenderSqlTestResultsTestCase,

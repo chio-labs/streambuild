@@ -78,7 +78,7 @@ TEST_CASES: list[RenderCreateMaterializedViewDdlTestCase] = [
 @pytest.mark.parametrize(
     "test_case",
     TEST_CASES,
-    ids=[case.description for case in TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_materialized_view_when_rendering_then_it_qualifies_source_and_target_tables(
     test_case: RenderCreateMaterializedViewDdlTestCase,

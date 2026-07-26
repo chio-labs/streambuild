@@ -187,7 +187,7 @@ TEST_CASES: list[DiscoverSqlTestsTestCase] = [
 @pytest.mark.parametrize(
     "test_case",
     TEST_CASES,
-    ids=[case.description for case in TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_valid_sql_test_files_when_discovering_then_it_returns_loaded_sql_tests(
     test_case: DiscoverSqlTestsTestCase,
@@ -213,7 +213,7 @@ def test_given_valid_sql_test_files_when_discovering_then_it_returns_loaded_sql_
 @pytest.mark.parametrize(
     "test_case",
     ERROR_TEST_CASES,
-    ids=[case.description for case in ERROR_TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_invalid_sql_test_files_when_discovering_then_it_raises_clear_errors(
     test_case: DiscoverSqlTestsErrorTestCase,
@@ -250,7 +250,7 @@ def test_given_invalid_sql_test_files_when_discovering_then_it_raises_clear_erro
             expected_mock_query_fragment="SELECT 'ord_001' AS order_id, 20.0 AS line_total",
         )
     ],
-    ids=["expands project macros in sql test bodies"],
+    ids=lambda case: case.description,
 )
 def test_given_sql_test_macros_when_discovering_then_it_expands_test_body(
     test_case: DiscoverSqlTestsWithMacrosTestCase,
@@ -302,7 +302,7 @@ def test_given_sql_test_macros_when_discovering_then_it_expands_test_body(
             ),
         )
     ],
-    ids=["discovers multiple sql tests from one file"],
+    ids=lambda case: case.description,
 )
 def test_given_multiple_sql_tests_in_one_file_when_discovering_then_it_returns_each_test(
     test_case: DiscoverMultipleSqlTestsInFileTestCase,

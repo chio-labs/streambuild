@@ -64,7 +64,7 @@ from tests.integration.src.streambuild.executor.backfill.helpers import (
             expected_steps=(),
         )
     ],
-    ids=["published greenfield deployment plans as a no-op afterward"],
+    ids=lambda case: case.description,
 )
 def test_given_greenfield_backfill_and_publish_when_planning_again_then_it_is_a_no_op(
     test_case: PlannerNoOpAfterPublishIntegrationTestCase,
@@ -173,7 +173,7 @@ def test_given_greenfield_backfill_and_publish_when_planning_again_then_it_is_a_
             expected_change_type=PLANNED_CHANGE_TYPE_NO_OP,
         )
     ],
-    ids=["treats equivalent datetime type casing as a no-op after publish"],
+    ids=lambda case: case.description,
 )
 def test_given_equivalent_type_casing_after_publish_when_planning_again_then_it_is_a_no_op(
     test_case: PlannerNormalizedTypeNoOpIntegrationTestCase,
@@ -304,7 +304,7 @@ def test_given_equivalent_type_casing_after_publish_when_planning_again_then_it_
             expected_rebuild_root_names=("mv__orders_enriched",),
         )
     ],
-    ids=["published deployment plans a rebuild after authored sql changes"],
+    ids=lambda case: case.description,
 )
 def test_given_published_deployment_when_authored_sql_changes_then_plan_requires_rebuild(
     test_case: PlannerSqlChangeAfterPublishIntegrationTestCase,
@@ -463,7 +463,7 @@ SCHEMA_CHANGE_TEST_CASES: list[PlannerSchemaChangeAfterPublishIntegrationTestCas
 @pytest.mark.parametrize(
     "test_case",
     SCHEMA_CHANGE_TEST_CASES,
-    ids=[case.description for case in SCHEMA_CHANGE_TEST_CASES],
+    ids=lambda case: case.description,
 )
 def test_given_published_deployment_when_transform_output_schema_changes_then_plan_emits_table_diff(
     test_case: PlannerSchemaChangeAfterPublishIntegrationTestCase,

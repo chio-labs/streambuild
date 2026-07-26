@@ -23,7 +23,7 @@ from tests.integration.src.streambuild.executor.repair._test_types import (
             expected_target_table_name="tbl__orders_enriched__dep_b",
         )
     ],
-    ids=["rebinds stable active view to chosen deployment table"],
+    ids=lambda case: case.description,
 )
 def test_given_table_and_deployment_when_repairing_active_view_then_it_rebinds_the_view(
     test_case: ExecuteRepairActiveViewIntegrationTestCase,

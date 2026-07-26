@@ -30,7 +30,7 @@ from tests.unit.src.streambuild.cli.commands.main.shared.helpers import (
             expected_error_fragment="conflicts with the injected replay alias",
         )
     ],
-    ids=["rejects replay alias collision with an existing physical column"],
+    ids=lambda case: case.description,
 )
 def test_given_external_source_alias_collision_when_validating_then_it_raises_clear_error(
     test_case: CliExternalSourceValidationErrorTestCase,

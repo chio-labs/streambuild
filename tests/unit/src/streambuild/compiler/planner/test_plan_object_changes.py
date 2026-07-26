@@ -28,7 +28,7 @@ from tests.unit.src.streambuild.compiler.planner.helpers import (
             ),
         )
     ],
-    ids=["classifies conservative desired versus actual object changes"],
+    ids=lambda case: case.description,
 )
 def test_given_desired_and_actual_state_when_planning_changes_then_it_returns_expected_changes(
     test_case: PlannerObjectChangeTestCase,
