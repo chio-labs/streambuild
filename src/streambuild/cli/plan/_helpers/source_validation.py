@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-
-from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.models import CatalogRelation, CatalogSnapshot
 from streambuild.cli.entry.exceptions import CliUserError
 from streambuild.cli.plan.constants import DATETIME_TYPE_MARKER
 from streambuild.compiler.compile.constants import (
@@ -66,16 +64,13 @@ def validate_injected_alias_collisions(
 
 def load_source_column_types(
     *,
-    client: AdapterConnection,
-    database: str,
+    catalog: CatalogSnapshot,
     table_name: str,
 ) -> dict[str, str]:
-    rows: tuple[_SourceColumnSystemRow, ...] = client.query_many(
-        statement="SELECT name, type FROM system.columns "
-        f"WHERE database = '{database}' AND table = '{table_name}'",
-        decode=decode_source_column_system_row,
-    )
-    return {row.name: row.type for row in rows}
+    relation: CatalogRelation | None = catalog.relation(table_name)
+    if relation is None:
+        return {}
+    return {column.name: column.type for column in relation.columns}
 
 
 def validate_declared_column(
@@ -99,13 +94,3 @@ def validate_declared_column(
             f"Adopted source table '{table_name}' declares {column_role} column '{column_name}' "
             f"with incompatible type '{column_type}'"
         )
-
-
-class _SourceColumnSystemRow:
-    def __init__(self, *, name: str, type: str) -> None:
-        self.name = name
-        self.type = type
-
-
-def decode_source_column_system_row(row: Mapping[str, object]) -> _SourceColumnSystemRow:
-    return _SourceColumnSystemRow(name=str(row["name"]), type=str(row["type"]))

@@ -3,10 +3,9 @@ from typing import cast
 import pytest
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.compiler.actual_state.models import ActualState
 from streambuild.compiler.compile.models import DesiredState
 from streambuild.compiler.planner.main.plan_deployment import plan_deployment
-from streambuild.compiler.planner.models import DeploymentPlan
+from streambuild.compiler.planner.models import ActualState, DeploymentPlan
 from streambuild.executor.backfill._helpers.shadow_objects import create_shadow_objects
 from tests.unit.src.streambuild.compiler.planner.helpers import (
     build_single_transform_desired_state,

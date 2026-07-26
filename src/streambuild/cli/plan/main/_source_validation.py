@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.models import CatalogSnapshot
 from streambuild.cli.entry.exceptions import CliUserError
 from streambuild.cli.plan._helpers.source_validation import (
     build_external_source_replay_config,
@@ -17,7 +17,7 @@ from streambuild.compiler.compile.models import (
 
 def validate_declared_external_sources(
     *,
-    client: AdapterConnection,
+    catalog: CatalogSnapshot,
     compiled_pipelines: tuple[CompiledPipeline, ...],
     database: str,
 ) -> None:
@@ -31,8 +31,7 @@ def validate_declared_external_sources(
             build_external_source_replay_config(source_step)
         )
         column_types_by_name: dict[str, str] = load_source_column_types(
-            client=client,
-            database=database,
+            catalog=catalog,
             table_name=external_source_replay_config.table_name,
         )
         if not column_types_by_name:

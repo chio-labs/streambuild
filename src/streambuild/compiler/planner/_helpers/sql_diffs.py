@@ -11,12 +11,6 @@ from streambuild.clickhouse.render.main.render_create_materialized_view_ddl impo
     render_create_materialized_view_ddl,
 )
 from streambuild.clickhouse.render.main.render_create_table_ddl import render_create_table_ddl
-from streambuild.compiler.actual_state.models import (
-    ActualKafkaTable,
-    ActualMaterializedView,
-    ActualState,
-    ActualTable,
-)
 from streambuild.compiler.compile.constants import TRANSFORM_TABLE_NAME_PREFIX
 from streambuild.compiler.compile.models import (
     DesiredKafkaTable,
@@ -29,7 +23,14 @@ from streambuild.compiler.planner.constants import (
     PLANNED_CHANGE_TYPE_CREATE,
     PLANNED_CHANGE_TYPE_NO_OP,
 )
-from streambuild.compiler.planner.models import PlannedObjectChange, PlannedSqlDiff
+from streambuild.compiler.planner.models import (
+    ActualKafkaTable,
+    ActualMaterializedView,
+    ActualState,
+    ActualTable,
+    PlannedObjectChange,
+    PlannedSqlDiff,
+)
 from streambuild.compiler.planner.types import PlannedChangeType
 
 

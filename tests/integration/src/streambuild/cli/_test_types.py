@@ -52,3 +52,21 @@ class CliAuditBackfillCommandIntegrationTestCase:
     expected_quality_check_count: int
     expected_assessment: str
     expected_failing_row_count: int
+
+
+@dataclass(frozen=True)
+class CliPlanSnapshotIntegrationTestCase:
+    description: str
+    expected_exit_code: int
+    expected_output_fragment: str
+
+
+@dataclass(frozen=True)
+class CliBoundedPlanSnapshotIntegrationTestCase:
+    description: str
+    start_time: str
+    expected_execution_mode: str
+    expected_warning_count: int
+    expected_catalog_load_count: int
+    expected_query_count: int
+    expected_point_in_time_query_count: int

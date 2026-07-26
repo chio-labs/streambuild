@@ -1,1 +1,0 @@
-"""Actual-state modeling surfaces."""

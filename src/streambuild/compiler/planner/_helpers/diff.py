@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from sqlglot import exp, parse_one
 
-from streambuild.compiler.actual_state.models import ActualState, ActualTable
 from streambuild.compiler.compile.models import (
     Column,
     DesiredState,
@@ -24,7 +23,7 @@ from streambuild.compiler.planner.constants import (
     TYPE_CHANGE_COLUMN_DIFFERENCE,
 )
 from streambuild.compiler.planner.exceptions import DeploymentPlanError
-from streambuild.compiler.planner.models import PlannedObjectChange
+from streambuild.compiler.planner.models import ActualState, ActualTable, PlannedObjectChange
 from streambuild.compiler.planner.types import (
     ActualObject,
     DesiredObject,

@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.compiler.actual_state.models import ActualState
 from streambuild.compiler.compile.models import DesiredState, ObjectKey
+from streambuild.compiler.planner.models import ActualState
 from streambuild.executor.reconcile._helpers.persist import apply_reconcile
 from streambuild.executor.reconcile._helpers.preview import build_reconcile_preview
 from streambuild.executor.reconcile.models import ReconcilePreview, ReconcileResult

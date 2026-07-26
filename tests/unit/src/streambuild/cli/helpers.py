@@ -4,7 +4,15 @@ from dataclasses import replace
 from typing import cast
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.adapter.models import AdapterConnectionConfig, AdapterQueryResult
+from streambuild.adapter.models import (
+    AdapterCapabilities,
+    AdapterConnectionConfig,
+    AdapterIdentity,
+    AdapterQueryResult,
+    CatalogIdentity,
+    CatalogRelation,
+    CatalogSnapshot,
+)
 from streambuild.cli.audit.main._run_audit import run_audit
 from streambuild.cli.audit_backfill.main._run_audit_backfill import run_audit_backfill
 from streambuild.cli.backfill.main._run_backfill import run_backfill
@@ -32,9 +40,35 @@ class FakeCliClickHouseClient:
 
 
 class RecordingAdapterConnection(AdapterConnection):
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        virtual_environments: bool = True,
+        relations: tuple[CatalogRelation, ...] = (),
+    ) -> None:
         self.statements: list[str] = []
+        self.catalog_databases: list[str] = []
         self.closed: bool = False
+        self._capabilities: AdapterCapabilities = AdapterCapabilities(
+            virtual_environments=virtual_environments
+        )
+        self._relations: tuple[CatalogRelation, ...] = relations
+
+    @property
+    def adapter_identity(self) -> AdapterIdentity:
+        return AdapterIdentity(name="clickhouse")
+
+    @property
+    def capabilities(self) -> AdapterCapabilities:
+        return self._capabilities
+
+    def load_catalog(self, database: str) -> CatalogSnapshot:
+        self.catalog_databases.append(database)
+        return CatalogSnapshot(
+            identity=CatalogIdentity(adapter=self.adapter_identity, database=database),
+            warehouse_timezone="UTC",
+            relations=self._relations,
+        )
 
     def command(self, statement: str) -> None:
         self.statements.append(statement)

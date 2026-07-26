@@ -1,19 +1,16 @@
 """Build the per-root reports describing planned backfill work."""
 
-from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.clickhouse.inspect.main.inspect_managed_table_state import (
-    inspect_managed_table_state,
-)
-from streambuild.clickhouse.inspect.main.inspect_root_deployment_state import (
-    inspect_root_deployment_state,
-)
-from streambuild.clickhouse.inspect.models import (
-    InspectedManagedTableState,
-)
+from streambuild.adapter.models import CatalogSnapshot, InspectedManagedTableState
 from streambuild.compiler.compile.constants import (
     TRANSFORM_TABLE_NAME_PREFIX,
 )
 from streambuild.compiler.compile.models import DesiredState, DesiredTable, ObjectKey
+from streambuild.compiler.planner.main.build_inspected_managed_table_state_from_catalog import (
+    build_inspected_managed_table_state_from_catalog,
+)
+from streambuild.compiler.planner.main.inspect_root_deployment_state import (
+    inspect_root_deployment_state,
+)
 from streambuild.executor.backfill._helpers.reporting import (
     _build_root_backfill_report,
 )
@@ -22,15 +19,13 @@ from streambuild.executor.backfill.models import RootBackfillReport
 
 def build_root_backfill_reports(
     *,
-    client: AdapterConnection,
+    catalog: CatalogSnapshot,
     desired_state: DesiredState,
-    database: str,
 ) -> tuple[RootBackfillReport, ...]:
     """Build user-facing rebuild strategy reports for managed roots."""
 
-    inspected_state: InspectedManagedTableState = inspect_managed_table_state(
-        client=client,
-        database=database,
+    inspected_state: InspectedManagedTableState = build_inspected_managed_table_state_from_catalog(
+        catalog=catalog
     )
     root_keys: tuple[ObjectKey, ...] = tuple(
         object_.key

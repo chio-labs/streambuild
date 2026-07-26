@@ -8,18 +8,109 @@ from streambuild.adapter.exceptions import (
     AdapterRelationNotFoundError,
     AdapterWarehouseError,
 )
-from streambuild.adapter.models import AdapterQueryResult
+from streambuild.adapter.models import AdapterQueryResult, CatalogRelation, CatalogSnapshot
 from streambuild.adapters.clickhouse.classes.clickhouse_connection import ClickHouseConnection
 from streambuild.adapters.clickhouse.types import RawClickHouseClient
 from tests.unit.src.streambuild.adapters.clickhouse._test_types import (
+    CatalogInspectionTestCase,
     ConnectionQueryNormalizationTestCase,
     ConnectionTranslationTestCase,
 )
 from tests.unit.src.streambuild.adapters.clickhouse.helpers import (
     FailingRawClickHouseClient,
     FakeRawClickHouseQueryResult,
+    SequencedRawClickHouseClient,
     StubRawClickHouseClient,
 )
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CatalogInspectionTestCase(
+            description="decodes a complete immutable catalog with three fixed queries",
+            expected_timezone="America/New_York",
+            expected_relation_names=frozenset({"tbl__orders", "tbl__orders__dep_a"}),
+            expected_query_count=3,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_clickhouse_system_rows_when_loading_catalog_then_snapshot_is_complete(
+    test_case: CatalogInspectionTestCase,
+) -> None:
+    raw_client: SequencedRawClickHouseClient = SequencedRawClickHouseClient(
+        (
+            FakeRawClickHouseQueryResult(
+                column_names=["timezone()"],
+                result_rows=[["America/New_York"]],
+            ),
+            FakeRawClickHouseQueryResult(
+                column_names=[
+                    "name",
+                    "engine",
+                    "sorting_key",
+                    "partition_key",
+                    "create_table_query",
+                    "as_select",
+                ],
+                result_rows=[
+                    [
+                        "tbl__orders",
+                        "View",
+                        "",
+                        "",
+                        "CREATE VIEW analytics.tbl__orders AS "
+                        "SELECT * FROM analytics.tbl__orders__dep_a",
+                        "SELECT * FROM analytics.tbl__orders__dep_a",
+                    ],
+                    [
+                        "tbl__orders__dep_a",
+                        "ReplacingMergeTree",
+                        "order_id, updated_at",
+                        "toYYYYMM(updated_at)",
+                        "CREATE TABLE analytics.tbl__orders__dep_a "
+                        "(order_id String, updated_at DateTime64(3)) "
+                        "ENGINE = ReplacingMergeTree(updated_at) "
+                        "PARTITION BY toYYYYMM(updated_at) "
+                        "ORDER BY (order_id, updated_at) "
+                        "TTL updated_at + INTERVAL 30 DAY "
+                        "SETTINGS index_granularity = 8192",
+                        "",
+                    ],
+                ],
+            ),
+            FakeRawClickHouseQueryResult(
+                column_names=["table", "name", "type", "default_expression"],
+                result_rows=[
+                    ["tbl__orders__dep_a", "order_id", "String", ""],
+                    ["tbl__orders__dep_a", "updated_at", "DateTime64(3)", "now64(3)"],
+                ],
+            ),
+        )
+    )
+    connection: ClickHouseConnection = ClickHouseConnection(cast(RawClickHouseClient, raw_client))
+
+    catalog: CatalogSnapshot = connection.load_catalog("analytics")
+    relation: CatalogRelation | None = catalog.relation("tbl__orders__dep_a")
+    binding: CatalogRelation | None = catalog.relation("tbl__orders")
+
+    assert catalog.identity.adapter.name == "clickhouse"
+    assert catalog.identity.database == "analytics"
+    assert catalog.warehouse_timezone == test_case.expected_timezone
+    assert catalog.relation_names() == test_case.expected_relation_names
+    assert relation is not None
+    assert binding is not None
+    assert relation.engine == "ReplacingMergeTree"
+    assert relation.order_by == ("order_id", "updated_at")
+    assert relation.partition_by == "toYYYYMM(updated_at)"
+    assert relation.ttl == "updated_at + INTERVAL '30' DAY"
+    assert relation.settings == (("index_granularity", "8192"),)
+    assert relation.columns[1].default_expression == "now64(3)"
+    assert binding.stable_binding_name == "tbl__orders__dep_a"
+    assert binding.source_relation_name == "tbl__orders__dep_a"
+    assert binding.query_sql == "SELECT * FROM analytics.tbl__orders__dep_a"
+    assert len(raw_client.statements) == test_case.expected_query_count
 
 
 @pytest.mark.parametrize(

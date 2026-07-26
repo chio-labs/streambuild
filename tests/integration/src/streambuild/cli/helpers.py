@@ -4,13 +4,56 @@ from pathlib import Path
 from clickhouse_connect.driver.client import Client
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.adapter.models import AdapterConnectionConfig
+from streambuild.adapter.models import (
+    AdapterCapabilities,
+    AdapterConnectionConfig,
+    AdapterIdentity,
+    AdapterQueryResult,
+    CatalogSnapshot,
+)
+from streambuild.adapters.clickhouse._helpers.inspection import load_clickhouse_catalog
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from streambuild.executor.backfill.main._ensure_metadata_tables import ensure_metadata_tables
 from tests.integration.src.streambuild.conftest import ClickHouseConnectionSettings
 
 BACKFILL_PIPELINES_ROOT: Path = Path("tests/fixtures/basic_project/pipelines")
 SELECTOR_PIPELINES_ROOT: Path = Path("tests/fixtures/selector_project/pipelines")
+
+
+class RecordingDelegatingConnection(AdapterConnection):
+    def __init__(self, delegate: AdapterConnection) -> None:
+        self._delegate: AdapterConnection = delegate
+        self.catalog_load_count: int = 0
+        self.query_statements: list[str] = []
+
+    @property
+    def adapter_identity(self) -> AdapterIdentity:
+        return self._delegate.adapter_identity
+
+    @property
+    def capabilities(self) -> AdapterCapabilities:
+        return self._delegate.capabilities
+
+    def load_catalog(self, database: str) -> CatalogSnapshot:
+        self.catalog_load_count += 1
+        return load_clickhouse_catalog(
+            connection=self,
+            adapter_identity=self.adapter_identity,
+            database=database,
+        )
+
+    def command(self, statement: str) -> None:
+        self._delegate.command(statement)
+
+    def query(self, statement: str) -> AdapterQueryResult:
+        self.query_statements.append(statement)
+        return self._delegate.query(statement)
+
+    def insert_rows(self, *, table: str, rows: tuple[dict[str, object], ...]) -> None:
+        self._delegate.insert_rows(table=table, rows=rows)
+
+    def close(self) -> None:
+        self._delegate.close()
 
 
 def build_managed_clickhouse_client(
@@ -41,6 +84,40 @@ def build_runtime_details_table_query(database: str) -> str:
         "SELECT name FROM system.tables "
         f"WHERE database = '{database}' AND name = 'streambuild_deployment_runtime_details'"
     )
+
+
+def write_adopted_source_plan_project(project_dir: Path) -> Path:
+    pipelines_root: Path = project_dir / "pipelines"
+    pipeline_dir: Path = pipelines_root / "orders"
+    pipeline_dir.mkdir(parents=True)
+    (pipeline_dir / "pipeline.yml").write_text(
+        """
+source:
+  kind: kafka
+  name: orders
+  table_name: orders_existing
+  replay_boundary:
+    mode: timestamp
+    columns:
+      _replay_timestamp: event_timestamp
+""".lstrip(),
+        encoding="utf-8",
+    )
+    (pipeline_dir / "orders_enriched.sql").write_text(
+        """
+MODEL (
+  engine: "MergeTree()",
+  order_by: ["order_id"]
+);
+
+SELECT
+  CAST(order_id AS String) AS order_id,
+  CAST(_replay_timestamp AS DateTime64(3)) AS _replay_timestamp
+FROM __ref("orders")
+""".lstrip(),
+        encoding="utf-8",
+    )
+    return pipelines_root
 
 
 def write_audit_project_files(project_dir: Path) -> None:

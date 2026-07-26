@@ -52,6 +52,7 @@ class CliReplaySourceWarningTestCase:
     replay_source_row_count: int
     active_row_count: int | None
     expected_warning_message_fragment: str
+    expected_point_in_time_query_count: int
 
 
 @dataclass(frozen=True)

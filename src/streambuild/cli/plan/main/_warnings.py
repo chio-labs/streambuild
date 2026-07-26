@@ -5,6 +5,7 @@ from typing import cast
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.exceptions import AdapterRelationNotFoundError
+from streambuild.adapter.models import CatalogSnapshot
 from streambuild.compiler.compile.models import DesiredState
 from streambuild.compiler.planner.models import DeploymentPlan, PlannerWarning, RebuildSubtree
 
@@ -12,6 +13,7 @@ from streambuild.compiler.planner.models import DeploymentPlan, PlannerWarning, 
 def add_empty_replay_source_warnings(
     *,
     client: AdapterConnection,
+    catalog: CatalogSnapshot,
     database: str,
     desired_state: DesiredState,
     plan: DeploymentPlan,
@@ -22,15 +24,17 @@ def add_empty_replay_source_warnings(
     }
     subtree: RebuildSubtree
     for subtree in plan.rebuild_subtrees:
-        replay_source_row_count: int | None = _safe_row_count(
+        replay_source_row_count: int | None = _safe_point_in_time_row_count(
             client=client,
+            catalog=catalog,
             database=database,
             table_name=subtree.upstream_boundary_key.name,
         )
         if replay_source_row_count != 0:
             continue
-        active_row_count: int | None = _safe_row_count(
+        active_row_count: int | None = _safe_point_in_time_row_count(
             client=client,
+            catalog=catalog,
             database=database,
             table_name=subtree.root_key.name,
         )
@@ -64,16 +68,16 @@ def add_empty_replay_source_warnings(
     )
 
 
-def _safe_row_count(
+def _safe_point_in_time_row_count(
     *,
     client: AdapterConnection,
+    catalog: CatalogSnapshot,
     database: str,
     table_name: str,
 ) -> int | None:
-    table_rows: tuple[tuple[object, ...], ...] = client.query(
-        f"SELECT count() FROM system.tables WHERE database = '{database}' AND name = '{table_name}'"
-    ).rows
-    if not table_rows or int(cast(int, table_rows[0][0])) == 0:
+    """Return a dynamic point-in-time count outside the immutable catalog snapshot."""
+
+    if catalog.relation(table_name) is None:
         return None
     try:
         rows: tuple[tuple[object, ...], ...] = client.query(

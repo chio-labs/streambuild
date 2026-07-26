@@ -14,12 +14,12 @@ from streambuild.cli.reconcile._helpers.rendering import (
 )
 from streambuild.cli.selection.main._selection import resolve_selection
 from streambuild.cli.selection.models import SelectionResolution
-from streambuild.compiler.actual_state.main.load_actual_state import load_actual_state
-from streambuild.compiler.actual_state.models import ActualState
 from streambuild.compiler.compile.main.compile_pipeline import compile_pipeline
 from streambuild.compiler.compile.models import CompiledPipeline, DesiredState
 from streambuild.compiler.discovery.main.discover_pipelines import discover_pipelines
 from streambuild.compiler.discovery.models import LoadedPipeline
+from streambuild.compiler.planner.main.load_actual_state import load_actual_state
+from streambuild.compiler.planner.models import ActualState
 from streambuild.executor.reconcile.main.execute_reconcile import execute_reconcile
 from streambuild.executor.reconcile.models import (
     ReconcilePreview,

@@ -7,8 +7,18 @@ from collections.abc import Sequence
 from clickhouse_connect.driver.exceptions import ClickHouseError, StreamFailureError
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.adapter.models import AdapterQueryResult
+from streambuild.adapter.models import (
+    AdapterCapabilities,
+    AdapterIdentity,
+    AdapterQueryResult,
+    CatalogSnapshot,
+)
 from streambuild.adapters.clickhouse._helpers.errors import translate_driver_error
+from streambuild.adapters.clickhouse._helpers.inspection import load_clickhouse_catalog
+from streambuild.adapters.clickhouse.constants import (
+    CLICKHOUSE_ADAPTER_NAME,
+    CLICKHOUSE_VIRTUAL_ENVIRONMENTS_SUPPORTED,
+)
 from streambuild.adapters.clickhouse.types import (
     RawClickHouseClient,
     RawClickHouseQueryResult,
@@ -20,6 +30,27 @@ class ClickHouseConnection(AdapterConnection):
 
     def __init__(self, raw_client: RawClickHouseClient) -> None:
         self._raw_client: RawClickHouseClient = raw_client
+
+    @property
+    def adapter_identity(self) -> AdapterIdentity:
+        """Return the built-in ClickHouse adapter identity."""
+
+        return AdapterIdentity(name=CLICKHOUSE_ADAPTER_NAME)
+
+    @property
+    def capabilities(self) -> AdapterCapabilities:
+        """Return capabilities implemented by the ClickHouse adapter."""
+
+        return AdapterCapabilities(virtual_environments=CLICKHOUSE_VIRTUAL_ENVIRONMENTS_SUPPORTED)
+
+    def load_catalog(self, database: str) -> CatalogSnapshot:
+        """Load a neutral catalog snapshot from ClickHouse system tables."""
+
+        return load_clickhouse_catalog(
+            connection=self,
+            adapter_identity=self.adapter_identity,
+            database=database,
+        )
 
     def command(self, statement: str) -> None:
         """Execute a ClickHouse command statement."""

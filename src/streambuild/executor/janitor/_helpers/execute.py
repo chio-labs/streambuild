@@ -1,5 +1,5 @@
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.clickhouse.inspect.models import InspectedManagedTableState
+from streambuild.adapter.models import InspectedManagedTableState
 from streambuild.compiler.compile.constants import (
     DESIRED_OBJECT_TYPE_TABLE,
     TRANSFORM_TABLE_NAME_PREFIX,

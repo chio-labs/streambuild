@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from streambuild.compiler.actual_state.models import ActualState
 from streambuild.compiler.compile.constants import DESIRED_OBJECT_TYPE_MATERIALIZED_VIEW
 from streambuild.compiler.compile.models import DesiredState, ObjectKey
 from streambuild.compiler.planner._helpers.diff import classify_object_changes
@@ -23,6 +22,7 @@ from streambuild.compiler.planner.main.build_deployment_physical_name import (
     build_deployment_physical_name,
 )
 from streambuild.compiler.planner.models import (
+    ActualState,
     DeploymentPlan,
     DeploymentStep,
     PlannedObjectChange,
