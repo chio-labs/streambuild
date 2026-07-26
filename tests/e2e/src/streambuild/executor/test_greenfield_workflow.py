@@ -53,10 +53,12 @@ from tests.e2e.src.streambuild.executor.helpers import (
     run_streambuild_doctor_cli,
     run_streambuild_publish_cli,
     run_streambuild_repair_active_view_cli,
+    with_schema_change_backfill_policy,
+)
+from tests.e2e.src.streambuild.executor.polling import (
     wait_for_row_count,
     wait_for_table_exists,
     wait_for_table_missing,
-    with_schema_change_backfill_policy,
 )
 from tests.e2e.src.streambuild.executor.scenario import (
     KafkaLiveShadowScenarioResult,

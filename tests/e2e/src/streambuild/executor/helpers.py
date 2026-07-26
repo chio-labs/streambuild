@@ -1,12 +1,10 @@
 import json
 import subprocess
-import time
 from collections.abc import Callable
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from shutil import copytree
-from typing import Any
 
 from clickhouse_connect.driver.client import Client
 from kafka import KafkaProducer
@@ -32,6 +30,9 @@ from streambuild.spec.models.steps import SchemaChangeBackfillPolicy, SchemaChan
 from streambuild.spec.models.types import ReplayLineageMode, SchemaChangeBackfillMode
 from tests.e2e.src.streambuild.executor.debug.live_shadow import (
     build_live_shadow_debug_message,
+)
+from tests.e2e.src.streambuild.executor.polling import (
+    wait_for_row_count,
 )
 from tests.integration.src.streambuild.compiler.planner.helpers import (
     build_changed_schema_variant_compiled_pipeline,
@@ -466,9 +467,8 @@ def _with_kafka_broker_list_and_topic(
     topic_suffix: str | None,
 ) -> CompiledPipeline:
     original_kafka_table: DesiredKafkaTable = require_managed_source(compiled_pipeline).kafka_table
-    topic_name: str = original_kafka_table.spec.kafka.topic
-    if topic_suffix is not None:
-        topic_name = f"{topic_name}_{topic_suffix}"
+    base_topic_name: str = original_kafka_table.spec.kafka.topic
+    topic_name: str = "_".join(part for part in (base_topic_name, topic_suffix) if part)
     kafka_table: DesiredKafkaTable = DesiredKafkaTable(
         key=original_kafka_table.key,
         deps=original_kafka_table.deps,
@@ -506,8 +506,9 @@ def _build_non_boundary_type_change_compiled_pipeline() -> CompiledPipeline:
         "CAST(kafka_topic AS String) AS kafka_topic",
         "CAST(kafka_topic AS FixedString(128)) AS kafka_topic",
     )
+    changed_column_types: dict[str, str] = {"kafka_topic": "FixedString(128)"}
     changed_columns: tuple[Column, ...] = tuple(
-        replace(column, type="FixedString(128)") if column.name == "kafka_topic" else column
+        replace(column, type=changed_column_types.get(column.name, column.type))
         for column in original_transform.target_table.columns
     )
     return replace(
@@ -582,69 +583,6 @@ def produce_kafka_messages(
             value=message_value.encode("utf-8"),
         )
     producer.flush()
-
-
-def wait_for_row_count(
-    *,
-    clickhouse_client: Client,
-    table_name: str,
-    clickhouse_database: str,
-    expected_count: int,
-    timeout_seconds: float = 25.0,
-    poll_interval_seconds: float = 0.5,
-) -> None:
-    deadline: float = time.time() + timeout_seconds
-    while time.time() < deadline:
-        result: Any = clickhouse_client.query(
-            f"SELECT count() FROM {clickhouse_database}.{table_name}"
-        )
-        actual_count: int = int(result.result_rows[0][0])
-        if actual_count >= expected_count:
-            return
-        time.sleep(poll_interval_seconds)
-    raise AssertionError(
-        f"Timed out waiting for {clickhouse_database}.{table_name} to reach {expected_count} rows"
-    )
-
-
-def wait_for_table_exists(
-    *,
-    clickhouse_client: Client,
-    table_name: str,
-    clickhouse_database: str,
-    timeout_seconds: float = 15.0,
-    poll_interval_seconds: float = 0.5,
-) -> None:
-    deadline: float = time.time() + timeout_seconds
-    while time.time() < deadline:
-        result: Any = clickhouse_client.query(
-            "SELECT count() FROM system.tables "
-            f"WHERE database = '{clickhouse_database}' AND name = '{table_name}'"
-        )
-        if int(result.result_rows[0][0]) > 0:
-            return
-        time.sleep(poll_interval_seconds)
-    raise AssertionError(f"Timed out waiting for {clickhouse_database}.{table_name} to exist")
-
-
-def wait_for_table_missing(
-    *,
-    clickhouse_client: Client,
-    table_name: str,
-    clickhouse_database: str,
-    timeout_seconds: float = 15.0,
-    poll_interval_seconds: float = 0.5,
-) -> None:
-    deadline: float = time.time() + timeout_seconds
-    while time.time() < deadline:
-        result: Any = clickhouse_client.query(
-            "SELECT count() FROM system.tables "
-            f"WHERE database = '{clickhouse_database}' AND name = '{table_name}'"
-        )
-        if int(result.result_rows[0][0]) == 0:
-            return
-        time.sleep(poll_interval_seconds)
-    raise AssertionError(f"Timed out waiting for {clickhouse_database}.{table_name} to disappear")
 
 
 def wait_for_live_shadow_row_count(

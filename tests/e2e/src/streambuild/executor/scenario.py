@@ -29,6 +29,8 @@ from tests.e2e.src.streambuild.executor.helpers import (
     run_streambuild_backfill_cli,
     run_streambuild_publish_cli,
     wait_for_live_shadow_row_count,
+)
+from tests.e2e.src.streambuild.executor.polling import (
     wait_for_row_count,
 )
 
