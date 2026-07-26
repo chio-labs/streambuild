@@ -26,9 +26,9 @@ from streambuild.compiler.shared.models import Column, DesiredTable, ObjectKey, 
 
 
 def classify_object_changes(
+    *,
     desired_state: DesiredState,
     actual_state: ActualState,
-    *,
     full_refresh_keys: frozenset[ObjectKey] = frozenset(),
     start_time_keys: frozenset[ObjectKey] = frozenset(),
     start_time: str | None = None,
@@ -58,16 +58,16 @@ def classify_object_changes(
             continue
 
         change_type: PlannedChangeType = classify_object_change_type(
-            desired_object,
-            actual_object,
+            desired_object=desired_object,
+            actual_object=actual_object,
             force_full_refresh=force_full_refresh,
             forced_start_time=forced_start_time,
         )
         schema_change_kind: TableSchemaChangeKind | None = classify_table_schema_change_kind(
-            desired_object, actual_object
+            desired_object=desired_object, actual_object=actual_object
         )
         seed_compatibility: TableSchemaSeedCompatibility | None = classify_table_seed_compatibility(
-            desired_object, actual_object
+            desired_object=desired_object, actual_object=actual_object
         )
         planned_changes.append(
             PlannedObjectChange(
@@ -84,9 +84,9 @@ def classify_object_changes(
 
 
 def classify_object_change_type(
+    *,
     desired_object: DesiredObject,
     actual_object: ActualObject,
-    *,
     force_full_refresh: bool = False,
     forced_start_time: str | None = None,
 ) -> PlannedChangeType:
@@ -96,13 +96,13 @@ def classify_object_change_type(
         return PLANNED_CHANGE_TYPE_REBUILD
     if forced_start_time is not None:
         return PLANNED_CHANGE_TYPE_REBUILD
-    if _specs_equal(desired_object, actual_object):
+    if _specs_equal(desired_object=desired_object, actual_object=actual_object):
         return PLANNED_CHANGE_TYPE_NO_OP
     return PLANNED_CHANGE_TYPE_REBUILD
 
 
 def classify_table_schema_change_kind(
-    desired_object: DesiredObject, actual_object: ActualObject
+    *, desired_object: DesiredObject, actual_object: ActualObject
 ) -> TableSchemaChangeKind | None:
     """Classify table-column compatibility for planner policy decisions."""
 
@@ -120,7 +120,7 @@ def classify_table_schema_change_kind(
 
 
 def classify_table_seed_compatibility(
-    desired_object: DesiredObject, actual_object: ActualObject
+    *, desired_object: DesiredObject, actual_object: ActualObject
 ) -> TableSchemaSeedCompatibility | None:
     """Classify whether table schema changes can safely seed from active data."""
 
@@ -148,8 +148,8 @@ def _classify_table_column_difference(
         column_name
         for column_name in set(desired_columns_by_name) & set(actual_columns_by_name)
         if not _columns_equal(
-            desired_columns_by_name[column_name],
-            actual_columns_by_name[column_name],
+            desired_column=desired_columns_by_name[column_name],
+            actual_column=actual_columns_by_name[column_name],
         )
     }
     if not added_column_names and not removed_column_names and not changed_columns:
@@ -163,31 +163,33 @@ def _classify_table_column_difference(
     return "add_and_remove"
 
 
-def _specs_equal(desired_object: DesiredObject, actual_object: ActualObject) -> bool:
+def _specs_equal(*, desired_object: DesiredObject, actual_object: ActualObject) -> bool:
     if isinstance(desired_object, DesiredTable) and isinstance(actual_object, ActualTable):
-        return _table_specs_equal(desired_object.spec, actual_object.spec)
+        return _table_specs_equal(desired_spec=desired_object.spec, actual_spec=actual_object.spec)
     return desired_object.spec == actual_object.spec
 
 
-def _table_specs_equal(desired_spec: TableSpec, actual_spec: TableSpec) -> bool:
+def _table_specs_equal(*, desired_spec: TableSpec, actual_spec: TableSpec) -> bool:
     return (
-        _columns_equal_tuple(desired_spec.columns, actual_spec.columns)
+        _columns_equal_tuple(
+            desired_columns=desired_spec.columns, actual_columns=actual_spec.columns
+        )
         and desired_spec.storage == actual_spec.storage
     )
 
 
 def _columns_equal_tuple(
-    desired_columns: tuple[Column, ...], actual_columns: tuple[Column, ...]
+    *, desired_columns: tuple[Column, ...], actual_columns: tuple[Column, ...]
 ) -> bool:
     if len(desired_columns) != len(actual_columns):
         return False
     return all(
-        _columns_equal(desired_column, actual_column)
+        _columns_equal(desired_column=desired_column, actual_column=actual_column)
         for desired_column, actual_column in zip(desired_columns, actual_columns, strict=True)
     )
 
 
-def _columns_equal(desired_column: Column, actual_column: Column) -> bool:
+def _columns_equal(*, desired_column: Column, actual_column: Column) -> bool:
     return (
         desired_column.name == actual_column.name
         and _normalize_clickhouse_type(desired_column.type)

@@ -22,14 +22,15 @@ from streambuild.compiler.compile.exceptions import (
 from streambuild.compiler.shared.models import Column
 
 
-def derive_transform_output_columns(transform_name: str, query: str) -> tuple[Column, ...]:
+def derive_transform_output_columns(*, transform_name: str, query: str) -> tuple[Column, ...]:
     """Validate transform SQL and derive output columns from the outermost SELECT."""
 
-    statement: exp.Select = _parse_outermost_select(transform_name, query)
-    return _derive_select_columns(transform_name, statement)
+    statement: exp.Select = _parse_outermost_select(transform_name=transform_name, query=query)
+    return _derive_select_columns(transform_name=transform_name, statement=statement)
 
 
 def validate_order_by_expressions(
+    *,
     transform_name: str,
     order_by: Sequence[str],
     available_columns: Sequence[Column],
@@ -39,7 +40,9 @@ def validate_order_by_expressions(
     available_column_names: tuple[str, ...] = _available_column_names(available_columns)
     for expression in order_by:
         unknown_column_names: tuple[str, ...] = _unknown_output_columns(
-            transform_name, expression, available_column_names
+            transform_name=transform_name,
+            expression=expression,
+            available_column_names=available_column_names,
         )
         if unknown_column_names:
             raise TransformOrderByUnknownColumnError(
@@ -51,6 +54,7 @@ def validate_order_by_expressions(
 
 
 def validate_partition_by_expression(
+    *,
     transform_name: str,
     partition_by: str | None,
     available_columns: Sequence[Column],
@@ -62,7 +66,9 @@ def validate_partition_by_expression(
 
     available_column_names: tuple[str, ...] = _available_column_names(available_columns)
     unknown_column_names: tuple[str, ...] = _unknown_output_columns(
-        transform_name, partition_by, available_column_names
+        transform_name=transform_name,
+        expression=partition_by,
+        available_column_names=available_column_names,
     )
     if unknown_column_names:
         raise TransformPartitionByUnknownColumnError(
@@ -74,6 +80,7 @@ def validate_partition_by_expression(
 
 
 def validate_ttl_expression(
+    *,
     transform_name: str,
     ttl: str | None,
     available_columns: Sequence[Column],
@@ -85,7 +92,7 @@ def validate_ttl_expression(
 
     available_column_names: tuple[str, ...] = _available_column_names(available_columns)
     unknown_column_names: tuple[str, ...] = _unknown_output_columns(
-        transform_name, ttl, available_column_names
+        transform_name=transform_name, expression=ttl, available_column_names=available_column_names
     )
     if unknown_column_names:
         raise TransformTtlUnknownColumnError(
@@ -103,6 +110,7 @@ def _available_column_names(available_columns: Sequence[Column]) -> tuple[str, .
 
 
 def _unknown_output_columns(
+    *,
     transform_name: str,
     expression: str,
     available_column_names: tuple[str, ...],
@@ -125,7 +133,7 @@ def _unknown_output_columns(
     )
 
 
-def _parse_outermost_select(transform_name: str, query: str) -> exp.Select:
+def _parse_outermost_select(*, transform_name: str, query: str) -> exp.Select:
     try:
         raw_statements: list[exp.Expr | None] = parse(query, read="clickhouse")
     except ParseError as error:
@@ -158,7 +166,7 @@ def _parse_outermost_select(transform_name: str, query: str) -> exp.Select:
     return statement
 
 
-def _derive_select_columns(transform_name: str, statement: exp.Select) -> tuple[Column, ...]:
+def _derive_select_columns(*, transform_name: str, statement: exp.Select) -> tuple[Column, ...]:
     projections: tuple[exp.Expression, ...] = tuple(statement.expressions)
     derived_columns: list[Column] = []
     seen_aliases: set[str] = set()

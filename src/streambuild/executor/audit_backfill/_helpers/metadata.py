@@ -15,6 +15,7 @@ from streambuild.spec.models.types import ReplayLineageMode
 
 
 def load_audit_deployment(
+    *,
     client: ClickHouseClient,
     metadata_database: str,
     deployment_id: str,
@@ -23,7 +24,7 @@ def load_audit_deployment(
 
     try:
         row: DeploymentMetadataRow | None = client.query_one(
-            "SELECT created_at, status, replay_lineage_mode, selected_root_keys_json, "
+            statement="SELECT created_at, status, replay_lineage_mode, selected_root_keys_json, "
             "warning_codes_json, prepared_object_mappings_json "
             f"FROM {metadata_database}.streambuild_deployments "
             f"WHERE deployment_id = '{deployment_id}'",

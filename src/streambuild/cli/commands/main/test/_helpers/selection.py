@@ -88,13 +88,17 @@ def _resolve_selected_target_names(
             base_target_name: str
             for base_target_name in base_target_names:
                 selected_target_names.update(
-                    _expand_graph_neighbors(base_target_name, upstream_names_by_model)
+                    _expand_graph_neighbors(
+                        start_name=base_target_name, neighbors_by_name=upstream_names_by_model
+                    )
                 )
         if include_downstream:
             base_target_name: str
             for base_target_name in base_target_names:
                 selected_target_names.update(
-                    _expand_graph_neighbors(base_target_name, downstream_names_by_model)
+                    _expand_graph_neighbors(
+                        start_name=base_target_name, neighbors_by_name=downstream_names_by_model
+                    )
                 )
     return frozenset(selected_target_names)
 
@@ -154,6 +158,7 @@ def _build_model_graph(
 
 
 def _expand_graph_neighbors(
+    *,
     start_name: str,
     neighbors_by_name: dict[str, tuple[str, ...]],
 ) -> frozenset[str]:

@@ -19,8 +19,8 @@ from streambuild.integrations.clickhouse.client import ClickHouseClient
 
 
 def run_test(
-    pipelines_root: Path,
     *,
+    pipelines_root: Path,
     project_dir: Path | None,
     selectors: tuple[str, ...],
     paths: tuple[Path, ...],

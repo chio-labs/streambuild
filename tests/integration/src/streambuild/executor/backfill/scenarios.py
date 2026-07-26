@@ -72,18 +72,19 @@ def run_start_time_replay_scenario(
 
     clickhouse_client.command(
         render_create_kafka_table_ddl(
-            require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).kafka_table,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.command(
         render_create_table_ddl(
-            require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).raw_table, database=clickhouse_database
         )
     )
     clickhouse_client.command(
         render_create_materialized_view_ddl(
-            require_managed_source(compiled_pipeline).materialized_view,
-            clickhouse_database,
+            materialized_view=require_managed_source(compiled_pipeline).materialized_view,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.insert(
@@ -145,32 +146,32 @@ def run_start_time_replay_scenario(
         initial_result: BackfillExecutionResult
         if test_case.replay_lineage_mode == "offsets":
             initial_result = execute_backfill(
-                build_offset_replay_request(
+                request=build_offset_replay_request(
                     database=clickhouse_database,
                     deployment_id=test_case.initial_deployment_id,
                     created_at=test_case.created_at,
                     boundary_time=test_case.initial_boundary_time,
                 ),
-                managed_client,
+                client=managed_client,
             )
         else:
             initial_result = execute_backfill(
-                build_scalar_replay_request(
+                request=build_scalar_replay_request(
                     database=clickhouse_database,
                     deployment_id=test_case.initial_deployment_id,
                     created_at=test_case.created_at,
                     boundary_time=test_case.initial_boundary_time,
                     replay_lineage_mode=test_case.replay_lineage_mode,
                 ),
-                managed_client,
+                client=managed_client,
             )
         execute_publish(
-            PublishRequest(
+            request=PublishRequest(
                 deployment_id=initial_result.bootstrap.deployment_id,
                 metadata_database=clickhouse_database,
                 default_database=clickhouse_database,
             ),
-            managed_client,
+            client=managed_client,
         )
         frontier_timestamp: datetime = clickhouse_client.query(
             timestamp_query_sql.format(
@@ -181,7 +182,7 @@ def run_start_time_replay_scenario(
             frontier_timestamp - timedelta(milliseconds=test_case.lower_bound_offset_millis)
         ).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
         start_time_result: BackfillExecutionResult = execute_backfill(
-            BackfillBootstrapRequest(
+            request=BackfillBootstrapRequest(
                 desired_state=changed_desired_state,
                 default_database=clickhouse_database,
                 metadata_database=clickhouse_database,
@@ -193,7 +194,7 @@ def run_start_time_replay_scenario(
                 boundary_time=test_case.changed_boundary_time,
                 stabilization_seconds=0.0,
             ),
-            managed_client,
+            client=managed_client,
         )
         clickhouse_client.insert(
             table=f"{clickhouse_database}.{require_managed_source(compiled_pipeline).raw_table.name}",

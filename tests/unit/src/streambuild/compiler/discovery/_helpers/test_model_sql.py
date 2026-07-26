@@ -114,7 +114,9 @@ TEST_CASES: list[ParseModelSqlHeaderTestCase] = [
 def test_given_sql_model_header_variants_when_parsing_then_it_returns_expected_header_values(
     test_case: ParseModelSqlHeaderTestCase,
 ) -> None:
-    header_values, query = parse_model_sql(test_case.contents, Path("orders.sql"))
+    header_values, query = parse_model_sql(
+        contents=test_case.contents, file_path=Path("orders.sql")
+    )
 
     assert header_values == test_case.expected_header_values
     assert query == test_case.expected_query
@@ -135,7 +137,7 @@ def test_given_typed_driving_ref_when_inferring_transform_source_then_it_raises_
     test_case: InferTransformSourceErrorTestCase,
 ) -> None:
     with pytest.raises(ValueError, match=test_case.expected_error_fragment):
-        infer_transform_source(test_case.query, Path("orders.sql"))
+        infer_transform_source(query=test_case.query, file_path=Path("orders.sql"))
 
 
 @pytest.mark.parametrize(

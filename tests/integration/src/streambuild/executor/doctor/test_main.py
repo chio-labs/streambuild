@@ -106,8 +106,8 @@ def test_given_clickhouse_state_when_doctoring_then_it_reports_expected_active_v
 
     try:
         result: DoctorResult = execute_doctor(
-            DoctorRequest(default_database=clickhouse_database),
-            managed_client,
+            request=DoctorRequest(default_database=clickhouse_database),
+            client=managed_client,
         )
     finally:
         managed_client.close()

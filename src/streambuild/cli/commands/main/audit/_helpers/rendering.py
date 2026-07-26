@@ -14,8 +14,8 @@ from streambuild.executor.auditing.models import SqlAuditResult, SqlAuditRunResu
 
 
 def render_sql_audit_run_result(
-    result: SqlAuditRunResult,
     *,
+    result: SqlAuditRunResult,
     database: str,
     project_dir: Path,
     json_output: bool,
@@ -30,7 +30,9 @@ def render_sql_audit_run_result(
                 "warning_failure_count": result.warning_failure_count,
                 "audit_results": [
                     {
-                        "file_path": _display_path(audit_result.file_path, project_dir),
+                        "file_path": _display_path(
+                            file_path=audit_result.file_path, project_dir=project_dir
+                        ),
                         "name": audit_result.name,
                         "severity": audit_result.severity,
                         "passed": audit_result.passed,
@@ -48,7 +50,7 @@ def render_sql_audit_run_result(
 
     lines: list[str] = [
         style_title("Audit Results"),
-        style_label_value("Database", database),
+        style_label_value(label="Database", value=database),
         "",
     ]
     lines.extend(
@@ -91,7 +93,7 @@ def _render_group(
         return lines
     audit_result: SqlAuditResult
     for audit_result in audit_results:
-        lines.append(_render_audit_heading(audit_result, project_dir))
+        lines.append(_render_audit_heading(audit_result=audit_result, project_dir=project_dir))
         lines.append(f"    models: {', '.join(audit_result.referenced_model_names)}")
         if audit_result.description is not None:
             lines.append(f"    description: {audit_result.description}")
@@ -111,15 +113,15 @@ def _render_sample_rows(audit_result: SqlAuditResult) -> list[str]:
     return lines
 
 
-def _display_path(file_path: Path, project_dir: Path) -> str:
+def _display_path(*, file_path: Path, project_dir: Path) -> str:
     try:
         return str(file_path.relative_to(project_dir))
     except ValueError:
         return str(file_path)
 
 
-def _render_audit_heading(audit_result: SqlAuditResult, project_dir: Path) -> str:
-    display_path: str = _display_path(audit_result.file_path, project_dir)
+def _render_audit_heading(*, audit_result: SqlAuditResult, project_dir: Path) -> str:
+    display_path: str = _display_path(file_path=audit_result.file_path, project_dir=project_dir)
     if audit_result.name is None:
         return f"- {display_path}"
     return f"- {display_path}  [{audit_result.name}]"

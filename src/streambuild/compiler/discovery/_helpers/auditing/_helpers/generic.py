@@ -125,11 +125,16 @@ def _load_schema_file_generic_sql_audit_instances(
     instances: list[LoadedGenericSqlAuditInstance] = []
     raw_model_entry: object
     for raw_model_entry in model_entries:
-        instances.extend(_load_model_generic_sql_audit_instances(file_path, raw_model_entry))
+        instances.extend(
+            _load_model_generic_sql_audit_instances(
+                file_path=file_path, raw_model_entry=raw_model_entry
+            )
+        )
     return instances
 
 
 def _load_model_generic_sql_audit_instances(
+    *,
     file_path: Path,
     raw_model_entry: object,
 ) -> list[LoadedGenericSqlAuditInstance]:
@@ -364,20 +369,25 @@ def _render_generic_sql_audit_query(
         rendered_query = rendered_query.replace(
             f"@'{parameter_name}'",
             _render_quoted_generic_sql_audit_argument(
-                arguments[parameter_name], file_path, parameter_name
+                argument_value=arguments[parameter_name],
+                file_path=file_path,
+                parameter_name=parameter_name,
             ),
         )
     for parameter_name in definition.raw_parameter_names:
         rendered_query = rendered_query.replace(
             f"@{parameter_name}",
             _render_raw_generic_sql_audit_argument(
-                arguments[parameter_name], file_path, parameter_name
+                argument_value=arguments[parameter_name],
+                file_path=file_path,
+                parameter_name=parameter_name,
             ),
         )
     return rendered_query
 
 
 def _render_raw_generic_sql_audit_argument(
+    *,
     argument_value: object,
     file_path: Path,
     parameter_name: str,
@@ -398,6 +408,7 @@ def _render_raw_generic_sql_audit_argument(
 
 
 def _render_quoted_generic_sql_audit_argument(
+    *,
     argument_value: object,
     file_path: Path,
     parameter_name: str,

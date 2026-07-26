@@ -19,13 +19,13 @@ def run_janitor(
     client: ClickHouseClient,
 ) -> int:
     result: JanitorPreviewResult | JanitorApplyResult = execute_janitor(
-        JanitorRequest(
+        request=JanitorRequest(
             database=database,
             metadata_database=database,
             retention_days=retention_days,
             apply=apply,
         ),
-        client,
+        client=client,
     )
-    print(render_janitor_result(result, apply=apply, json_output=json_output))
+    print(render_janitor_result(result=result, apply=apply, json_output=json_output))
     return 0

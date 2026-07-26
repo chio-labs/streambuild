@@ -31,7 +31,9 @@ def compile_pipeline(loaded_pipeline: LoadedPipeline) -> CompiledPipeline:
     project: Project | None = loaded_pipeline.project
     relation_names: dict[str, str] = relation_names_for_pipeline(pipeline)
     relation_sqls: dict[str, str] = relation_sqls_for_pipeline(pipeline)
-    replay_lineage_mode: ReplayLineageMode = _resolve_replay_lineage_mode(loaded_pipeline)
+    replay_lineage_mode: ReplayLineageMode = _resolve_replay_lineage_mode(
+        loaded_pipeline=loaded_pipeline
+    )
     compiled_source: CompiledManagedSource | CompiledExternalSource
     if isinstance(pipeline.source, ExternalTableSourceStep):
         compiled_source = compile_external_source(pipeline)
@@ -39,12 +41,14 @@ def compile_pipeline(loaded_pipeline: LoadedPipeline) -> CompiledPipeline:
         compiled_source = compile_kafka_landing(pipeline)
     compiled_transforms: tuple[CompiledTransformStep, ...] = tuple(
         compile_transform(
-            transform,
-            loaded_pipeline.file_path,
-            relation_names,
-            relation_sqls,
-            replay_lineage_mode,
-            _resolve_bounded_replay_fallback(loaded_pipeline, transform),
+            transform=transform,
+            pipeline_file_path=loaded_pipeline.file_path,
+            relation_names=relation_names,
+            relation_sqls=relation_sqls,
+            replay_lineage_mode=replay_lineage_mode,
+            bounded_replay_fallback=_resolve_bounded_replay_fallback(
+                loaded_pipeline=loaded_pipeline, transform=transform
+            ),
         )
         for transform in pipeline.transforms
     )
@@ -60,7 +64,7 @@ def compile_pipeline(loaded_pipeline: LoadedPipeline) -> CompiledPipeline:
     )
 
 
-def _resolve_replay_lineage_mode(loaded_pipeline: LoadedPipeline) -> ReplayLineageMode:
+def _resolve_replay_lineage_mode(*, loaded_pipeline: LoadedPipeline) -> ReplayLineageMode:
     """Resolve the effective replay-lineage mode for a loaded pipeline."""
 
     if loaded_pipeline.pipeline.replay_lineage_mode is not None:
@@ -83,6 +87,7 @@ def _resolve_replay_lineage_mode(loaded_pipeline: LoadedPipeline) -> ReplayLinea
 
 
 def _resolve_bounded_replay_fallback(
+    *,
     loaded_pipeline: LoadedPipeline,
     transform: TransformStep,
 ) -> BoundedReplayFallback:

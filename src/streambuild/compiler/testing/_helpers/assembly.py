@@ -77,7 +77,7 @@ def build_sql_test_case(
         }
         cte_name: str = f"__model__{logical_name}"
         assembled_name_by_logical_name[logical_name] = cte_name
-        assembled_model_ctes.append((cte_name, replace_refs(query, resolver)))
+        assembled_model_ctes.append((cte_name, replace_refs(sql=query, resolver=resolver)))
         in_progress.remove(logical_name)
         return cte_name
 
@@ -494,7 +494,9 @@ def _build_select_source_name_by_alias(statement: exp.Select) -> dict[str, str]:
     source_name_by_alias: dict[str, str] = {}
     from_expression: exp.From | None = cast(exp.From | None, statement.args.get("from_"))
     if from_expression is not None:
-        _register_table_source(from_expression.this, source_name_by_alias)
+        _register_table_source(
+            source_expression=from_expression.this, source_name_by_alias=source_name_by_alias
+        )
     joins: tuple[exp.Expression, ...] = cast(
         tuple[exp.Expression, ...], tuple(statement.args.get("joins") or ())
     )
@@ -502,11 +504,14 @@ def _build_select_source_name_by_alias(statement: exp.Select) -> dict[str, str]:
     for join_expression in joins:
         if not isinstance(join_expression, exp.Join):
             continue
-        _register_table_source(join_expression.this, source_name_by_alias)
+        _register_table_source(
+            source_expression=join_expression.this, source_name_by_alias=source_name_by_alias
+        )
     return source_name_by_alias
 
 
 def _register_table_source(
+    *,
     source_expression: exp.Expression | None,
     source_name_by_alias: dict[str, str],
 ) -> None:

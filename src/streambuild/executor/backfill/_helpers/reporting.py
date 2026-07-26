@@ -47,6 +47,7 @@ def build_root_backfill_reports(
 
 
 def filter_root_backfill_reports_for_deployment(
+    *,
     root_reports: tuple[RootBackfillReport, ...],
     deployment_plan: DeploymentPlan,
 ) -> tuple[RootBackfillReport, ...]:

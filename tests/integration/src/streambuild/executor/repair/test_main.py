@@ -51,12 +51,12 @@ def test_given_table_and_deployment_when_repairing_active_view_then_it_rebinds_t
 
     try:
         result: RepairActiveViewResult = execute_repair_active_view(
-            RepairActiveViewRequest(
+            request=RepairActiveViewRequest(
                 default_database=clickhouse_database,
                 table_name="tbl__orders_enriched",
                 deployment_id=test_case.deployment_id,
             ),
-            managed_client,
+            client=managed_client,
         )
     finally:
         managed_client.close()

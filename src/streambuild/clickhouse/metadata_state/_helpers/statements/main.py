@@ -25,6 +25,7 @@ from streambuild.compiler.metadata_state.models import (
 
 
 def build_metadata_state_insert_statements(
+    *,
     database: str,
     object_states: tuple[ObjectStateRecord, ...],
     deployments: tuple[DeploymentRecord, ...],

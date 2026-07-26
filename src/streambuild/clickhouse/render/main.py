@@ -17,6 +17,7 @@ from streambuild.compiler.shared.models import (
 
 
 def render_desired_state_ddl(
+    *,
     desired_state: DesiredState,
     database: str,
 ) -> tuple[RenderedClickHouseDdl, ...]:
@@ -40,6 +41,7 @@ def render_desired_state_ddl(
 
 
 def _render_desired_object_ddl(
+    *,
     object_: DesiredKafkaTable | DesiredTable | DesiredMaterializedView,
     database: str,
 ) -> str:

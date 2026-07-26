@@ -34,6 +34,7 @@ from streambuild.compiler.shared.models import ObjectKey
 
 
 def build_deployment_plan(
+    *,
     desired_state: DesiredState,
     actual_state: ActualState,
     default_database: str,
@@ -56,14 +57,16 @@ def build_deployment_plan(
         object_changes=object_changes,
     )
     prepared_shadow_objects: tuple[PreparedShadowObject, ...] = build_prepared_shadow_objects(
-        rebuild_subtrees,
-        deployment_id,
+        rebuild_subtrees=rebuild_subtrees,
+        deployment_id=deployment_id,
     )
     steps: tuple[DeploymentStep, ...] = emit_deployment_steps(
-        rebuild_subtrees,
-        build_physical_name_by_key(prepared_shadow_objects),
+        rebuild_subtrees=rebuild_subtrees,
+        physical_name_by_key=build_physical_name_by_key(prepared_shadow_objects),
     )
-    warnings: tuple[PlannerWarning, ...] = emit_planner_warnings(desired_state, rebuild_subtrees)
+    warnings: tuple[PlannerWarning, ...] = emit_planner_warnings(
+        desired_state=desired_state, rebuild_subtrees=rebuild_subtrees
+    )
     sql_diffs: tuple[PlannedSqlDiff, ...] = build_planned_sql_diffs(
         desired_state=desired_state,
         actual_state=actual_state,
@@ -82,6 +85,7 @@ def build_deployment_plan(
 
 
 def emit_deployment_steps(
+    *,
     rebuild_subtrees: tuple[RebuildSubtree, ...],
     physical_name_by_key: dict[ObjectKey, str],
 ) -> tuple[DeploymentStep, ...]:
@@ -135,6 +139,7 @@ def emit_deployment_steps(
 
 
 def build_prepared_shadow_objects(
+    *,
     rebuild_subtrees: tuple[RebuildSubtree, ...],
     deployment_id: str | None,
 ) -> tuple[PreparedShadowObject, ...]:
@@ -155,7 +160,9 @@ def build_prepared_shadow_objects(
             prepared_shadow_objects.append(
                 PreparedShadowObject(
                     logical_key=target_key,
-                    physical_name=build_shadow_physical_name(target_key.name, deployment_id),
+                    physical_name=build_shadow_physical_name(
+                        logical_name=target_key.name, deployment_id=deployment_id
+                    ),
                 )
             )
 
@@ -173,10 +180,10 @@ def build_physical_name_by_key(
     }
 
 
-def build_shadow_physical_name(logical_name: str, deployment_id: str) -> str:
+def build_shadow_physical_name(*, logical_name: str, deployment_id: str) -> str:
     """Build a deterministic physical shadow object name."""
 
-    return build_deployment_physical_name(logical_name, deployment_id)
+    return build_deployment_physical_name(logical_name=logical_name, deployment_id=deployment_id)
 
 
 def plan_action_for_key(key: ObjectKey) -> DeploymentAction:
@@ -188,6 +195,7 @@ def plan_action_for_key(key: ObjectKey) -> DeploymentAction:
 
 
 def emit_planner_warnings(
+    *,
     desired_state: DesiredState,
     rebuild_subtrees: tuple[RebuildSubtree, ...],
 ) -> tuple[PlannerWarning, ...]:

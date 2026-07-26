@@ -29,6 +29,7 @@ from streambuild.integrations.clickhouse.client import ClickHouseClient
 
 
 def create_shadow_objects(
+    *,
     client: ClickHouseClient,
     deployment_plan: DeploymentPlan,
     desired_state: DesiredState,
@@ -48,7 +49,9 @@ def create_shadow_objects(
         prepared.logical_key: prepared.physical_name
         for prepared in deployment_plan.prepared_shadow_objects
     }
-    for target_key in _ordered_shadow_creation_keys(desired_state, deployment_plan):
+    for target_key in _ordered_shadow_creation_keys(
+        desired_state=desired_state, deployment_plan=deployment_plan
+    ):
         desired_object: DesiredKafkaTable | DesiredTable | DesiredMaterializedView = object_by_key[
             target_key
         ]
@@ -76,8 +79,8 @@ def _ensure_live_landing_objects(
         if isinstance(desired_object, DesiredKafkaTable):
             client.command(
                 render_create_kafka_table_ddl(
-                    desired_object,
-                    database,
+                    table=desired_object,
+                    database=database,
                     if_not_exists=True,
                 )
             )
@@ -118,6 +121,7 @@ def _existing_table_names(*, client: ClickHouseClient, database: str) -> set[str
 
 
 def _render_shadow_ddl(
+    *,
     desired_object: DesiredKafkaTable | DesiredTable | DesiredMaterializedView,
     physical_name: str,
     physical_name_by_key: dict[ObjectKey, str],
@@ -160,6 +164,7 @@ def _render_shadow_ddl(
 
 
 def _shadow_table_name(
+    *,
     logical_name: str,
     physical_name_by_key: dict[ObjectKey, str],
 ) -> str:
@@ -195,6 +200,7 @@ def _rewrite_shadow_query_tables(
 
 
 def _ordered_shadow_creation_keys(
+    *,
     desired_state: DesiredState,
     deployment_plan: DeploymentPlan,
 ) -> tuple[ObjectKey, ...]:

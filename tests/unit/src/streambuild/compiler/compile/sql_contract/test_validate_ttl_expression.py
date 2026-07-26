@@ -54,18 +54,18 @@ def test_given_ttl_expression_when_validating_then_it_returns_or_raises_as_expec
 ) -> None:
     if test_case.expected_error_type is None:
         validate_ttl_expression(
-            "orders_enriched",
-            test_case.expression,
-            test_case.available_columns,
+            transform_name="orders_enriched",
+            ttl=test_case.expression,
+            available_columns=test_case.available_columns,
         )
         assert test_case.expected_error_attributes == {}
         return
 
     with pytest.raises(test_case.expected_error_type) as error_info:
         validate_ttl_expression(
-            "orders_enriched",
-            test_case.expression,
-            test_case.available_columns,
+            transform_name="orders_enriched",
+            ttl=test_case.expression,
+            available_columns=test_case.available_columns,
         )
 
     error: Exception = error_info.value

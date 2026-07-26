@@ -64,8 +64,8 @@ class ClickHouseClient:
 
     def query_many[DecodedRow](
         self,
-        statement: str,
         *,
+        statement: str,
         decode: Callable[[Mapping[str, object]], DecodedRow],
     ) -> tuple[DecodedRow, ...]:
         """Execute a query and decode all rows into typed objects."""
@@ -75,16 +75,16 @@ class ClickHouseClient:
 
     def query_one[DecodedRow](
         self,
-        statement: str,
         *,
+        statement: str,
         decode: Callable[[Mapping[str, object]], DecodedRow],
     ) -> DecodedRow | None:
         """Execute a query and decode the first row if present."""
 
-        rows: tuple[DecodedRow, ...] = self.query_many(statement, decode=decode)
+        rows: tuple[DecodedRow, ...] = self.query_many(statement=statement, decode=decode)
         return rows[0] if rows else None
 
-    def insert_rows(self, table: str, rows: tuple[dict[str, object], ...]) -> None:
+    def insert_rows(self, *, table: str, rows: tuple[dict[str, object], ...]) -> None:
         """Insert row dictionaries into a ClickHouse table."""
 
         if not rows:
@@ -94,7 +94,7 @@ class ClickHouseClient:
         row_values: list[list[object]] = [
             [row[column_name] for column_name in column_names] for row in rows
         ]
-        self._raw_client.insert(table, row_values, column_names=list(column_names))
+        self._raw_client.insert(table=table, data=row_values, column_names=list(column_names))
 
     def close(self) -> None:
         """Close the underlying client connection."""

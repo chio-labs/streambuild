@@ -97,8 +97,8 @@ def test_given_planned_change_metadata_when_building_subtrees_then_it_sets_expec
             ),
         )
     rebuild_subtrees: tuple[RebuildSubtree, ...] = emit_rebuild_subtrees_from_changes(
-        desired_state,
-        (
+        desired_state=desired_state,
+        object_changes=(
             PlannedObjectChange(
                 key=build_key(None, "table", "tbl__orders_enriched"),
                 change_type=PLANNED_CHANGE_TYPE_REBUILD,

@@ -19,7 +19,7 @@ from streambuild.integrations.clickhouse.client import ClickHouseClient
 def apply_reconcile(*, client: ClickHouseClient, preview: ReconcilePreview) -> ReconcileResult:
     """Persist reconciled object-state records."""
 
-    ensure_metadata_tables(client, preview.database)
+    ensure_metadata_tables(client=client, metadata_database=preview.database)
     statements: tuple[RenderedClickHouseStatement, ...] = build_metadata_state_insert_statements(
         database=preview.database,
         object_states=preview.eligible_records,
@@ -31,7 +31,7 @@ def apply_reconcile(*, client: ClickHouseClient, preview: ReconcilePreview) -> R
     for statement in statements:
         if not statement.rows:
             continue
-        client.insert_rows(insert_table_name(statement.sql), statement.rows)
+        client.insert_rows(table=insert_table_name(statement.sql), rows=statement.rows)
     return ReconcileResult(
         database=preview.database,
         reconcile_id=preview.reconcile_id,
@@ -62,7 +62,7 @@ def insert_table_name(statement_sql: str) -> str:
     return statement_sql[len("INSERT INTO ") :].split(" ", 1)[0]
 
 
-def ensure_metadata_tables(client: ClickHouseClient, metadata_database: str) -> None:
+def ensure_metadata_tables(*, client: ClickHouseClient, metadata_database: str) -> None:
     client.command(f"CREATE DATABASE IF NOT EXISTS {metadata_database}")
     statements: tuple[RenderedClickHouseStatement, ...] = render_metadata_state_statements(
         metadata_database

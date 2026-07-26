@@ -70,12 +70,12 @@ def run_publish(
                 )
                 return 1
         result: PublishResult = execute_publish(
-            PublishRequest(
+            request=PublishRequest(
                 deployment_id=deployment_id,
                 metadata_database=resolved_metadata_database,
                 default_database=database,
             ),
-            client,
+            client=client,
         )
     except (DatabaseError, OperationalError) as error:
         rendered_error: str | None = render_expected_clickhouse_error(
@@ -89,7 +89,7 @@ def run_publish(
         raise
     print(
         render_publish_result(
-            result,
+            result=result,
             database=database,
             json_output=json_output,
         )

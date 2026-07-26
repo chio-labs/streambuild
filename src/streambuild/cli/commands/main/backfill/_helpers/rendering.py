@@ -13,8 +13,8 @@ from streambuild.executor.backfill.models import BackfillExecutionResult, RootBa
 
 
 def render_backfill_result(
-    result: BackfillExecutionResult,
     *,
+    result: BackfillExecutionResult,
     database: str,
     json_output: bool,
 ) -> str:
@@ -36,15 +36,15 @@ def render_backfill_result(
 
     lines: list[str] = [
         style_title("Backfill Started"),
-        style_label_value("Database", database),
-        style_label_value("Deployment", result.bootstrap.deployment_id),
-        style_label_value("Boundary time", result.boundary_time),
+        style_label_value(label="Database", value=database),
+        style_label_value(label="Deployment", value=result.bootstrap.deployment_id),
+        style_label_value(label="Boundary time", value=result.boundary_time),
         "",
         style_section("Roots"),
     ]
     report: RootBackfillReport
     for report in result.bootstrap.root_reports:
-        lines.append(f"- {style_object_name(report.root_key.name)}")
+        lines.append(f"- {style_object_name(text=report.root_key.name)}")
         lines.append(f"  {style_label('state')}: {report.state_kind}")
         lines.append(f"  {style_label('strategy')}: {report.replay_strategy}")
         if report.active_deployment_id is not None:

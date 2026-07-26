@@ -17,7 +17,7 @@ def extract_refs(sql: str) -> list[ParsedRef]:
     return list(_extract_refs_tuple(sql))
 
 
-def replace_refs(sql: str, resolver: dict[str, str]) -> str:
+def replace_refs(*, sql: str, resolver: dict[str, str]) -> str:
     """Replace logical refs with resolved SQL relation surfaces."""
 
     expression: exp.Expr = parse_one(sql, dialect="clickhouse")

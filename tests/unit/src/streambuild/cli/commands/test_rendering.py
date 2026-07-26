@@ -78,7 +78,7 @@ def test_given_plan_result_when_rendering_text_then_it_returns_operator_summary(
     test_case: CliRenderingTestCase,
 ) -> None:
     rendered: str = render_plan_result(
-        DeploymentPlan(
+        plan=DeploymentPlan(
             deployment_id=None,
             object_changes=(),
             rebuild_subtrees=(
@@ -145,7 +145,7 @@ def test_given_overlapping_subtrees_when_rendering_compact_plan_then_it_deduplic
     mv_from_b_key: ObjectKey = ObjectKey(None, "materialized_view", "mv__from_b")
 
     rendered: str = render_plan_result(
-        DeploymentPlan(
+        plan=DeploymentPlan(
             deployment_id=None,
             object_changes=(
                 PlannedObjectChange(key=mv_from_a_key, change_type="replace"),
@@ -268,7 +268,7 @@ def test_given_non_ready_audit_result_when_rendering_text_then_it_avoids_publish
     test_case: CliRenderingTestCase,
 ) -> None:
     rendered: str = render_audit_backfill_result(
-        AuditBackfillResult(
+        result=AuditBackfillResult(
             deployment_id="20260410T000000Z_cd34ef",
             deployment_status="backfilling",
             assessment="caution",
@@ -327,7 +327,7 @@ def test_given_active_caution_audit_result_when_rendering_text_then_it_shows_rel
     test_case: CliRenderingTestCase,
 ) -> None:
     rendered: str = render_audit_backfill_result(
-        AuditBackfillResult(
+        result=AuditBackfillResult(
             deployment_id="20260414T190649Z_36b35f",
             deployment_status="backfilling",
             assessment="caution",
@@ -401,7 +401,7 @@ def test_given_plan_with_multiple_live_targets_when_rendering_text_then_it_rende
     test_case: CliRenderingTestCase,
 ) -> None:
     rendered: str = render_plan_result(
-        DeploymentPlan(
+        plan=DeploymentPlan(
             deployment_id=None,
             object_changes=(),
             rebuild_subtrees=(
@@ -452,7 +452,7 @@ def test_given_mv_root_change_when_rendering_plan_then_it_maps_to_live_target_ta
     test_case: CliRenderingTestCase,
 ) -> None:
     rendered: str = render_plan_result(
-        DeploymentPlan(
+        plan=DeploymentPlan(
             deployment_id=None,
             object_changes=(
                 PlannedObjectChange(
@@ -569,7 +569,7 @@ def test_given_schema_change_plan_when_rendering_text_then_it_explains_policy_pe
     )
 
     rendered: str = render_plan_result(
-        DeploymentPlan(
+        plan=DeploymentPlan(
             deployment_id=None,
             object_changes=(
                 PlannedObjectChange(
@@ -665,7 +665,7 @@ def test_given_forced_full_refresh_when_rendering_plan_then_it_explains_operator
         mutable_ref_warning_keys=frozenset(),
     )
     rendered: str = render_plan_result(
-        DeploymentPlan(
+        plan=DeploymentPlan(
             deployment_id=None,
             object_changes=(
                 PlannedObjectChange(
@@ -730,7 +730,7 @@ def test_given_mixed_subtree_when_rendering_compact_plan_then_it_separates_new_t
     tbl_orders_rollup_key: ObjectKey = ObjectKey(None, "table", "tbl__orders_rollup")
 
     rendered: str = render_plan_result(
-        DeploymentPlan(
+        plan=DeploymentPlan(
             deployment_id=None,
             object_changes=(
                 PlannedObjectChange(
@@ -791,7 +791,7 @@ def test_given_verbose_plan_when_rendering_text_then_it_shows_expanded_details(
     test_case: CliRenderingTestCase,
 ) -> None:
     rendered: str = render_plan_result(
-        DeploymentPlan(
+        plan=DeploymentPlan(
             deployment_id=None,
             object_changes=(
                 PlannedObjectChange(
@@ -866,7 +866,7 @@ def test_given_forced_color_when_rendering_plan_then_it_includes_ansi_styles(
     monkeypatch.setenv("FORCE_COLOR", "1")
 
     rendered: str = render_plan_result(
-        DeploymentPlan(
+        plan=DeploymentPlan(
             deployment_id=None,
             object_changes=(),
             rebuild_subtrees=(),
@@ -915,7 +915,7 @@ def test_given_backfill_result_when_rendering_text_then_it_returns_operator_summ
     test_case: CliRenderingTestCase,
 ) -> None:
     rendered: str = render_backfill_result(
-        BackfillExecutionResult(
+        result=BackfillExecutionResult(
             bootstrap=BackfillBootstrapResult(
                 deployment_id="20260410T000000Z_ab12cd",
                 created_at="2026-04-10 00:00:00.000",
@@ -969,7 +969,7 @@ def test_given_forced_color_when_rendering_audit_then_it_colors_root_names(
     monkeypatch.setenv("FORCE_COLOR", "1")
 
     rendered: str = render_audit_backfill_result(
-        AuditBackfillResult(
+        result=AuditBackfillResult(
             deployment_id="20260414T190649Z_36b35f",
             deployment_status="backfilling",
             assessment="caution",
@@ -1049,7 +1049,7 @@ def test_given_audit_result_when_rendering_text_then_it_returns_operator_summary
     test_case: CliRenderingTestCase,
 ) -> None:
     rendered: str = render_audit_backfill_result(
-        AuditBackfillResult(
+        result=AuditBackfillResult(
             deployment_id="20260410T000000Z_ab12cd",
             deployment_status="backfilling",
             assessment="ready",
@@ -1104,7 +1104,7 @@ def test_given_publish_result_when_rendering_text_then_it_returns_operator_summa
     test_case: CliRenderingTestCase,
 ) -> None:
     rendered: str = render_publish_result(
-        PublishResult(
+        result=PublishResult(
             deployment_id="20260410T000000Z_ab12cd",
             published_views=(
                 PublishedView(

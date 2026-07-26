@@ -149,12 +149,12 @@ def test_given_metadata_records_when_building_insert_statement_then_it_returns_e
         publish_events,
     ) = build_metadata_records()
     statements: tuple[RenderedClickHouseStatement, ...] = build_metadata_state_insert_statements(
-        "metadata",
-        object_states,
-        deployments,
-        deployment_watermarks,
-        deployment_runtime_details,
-        publish_events,
+        database="metadata",
+        object_states=object_states,
+        deployments=deployments,
+        deployment_watermarks=deployment_watermarks,
+        deployment_runtime_details=deployment_runtime_details,
+        publish_events=publish_events,
     )
     statement: RenderedClickHouseStatement = next(
         statement for statement in statements if test_case.expected_sql_fragment in statement.sql

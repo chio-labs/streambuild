@@ -35,6 +35,7 @@ from streambuild.spec.models.types import ReplayLineageMode
 
 
 def build_root_audit_results(
+    *,
     client: ClickHouseClient,
     default_database: str,
     deployment_id: str,
@@ -51,7 +52,9 @@ def build_root_audit_results(
         for candidate in inspected_state.physical_candidates
         if candidate.logical_name.startswith(TRANSFORM_TABLE_NAME_PREFIX)
         if candidate.physical_name
-        == build_deployment_physical_name(candidate.logical_name, deployment_id)
+        == build_deployment_physical_name(
+            logical_name=candidate.logical_name, deployment_id=deployment_id
+        )
     }
     return tuple(
         _build_root_audit_result(
@@ -71,6 +74,7 @@ def build_root_audit_results(
 
 
 def _build_root_audit_result(
+    *,
     client: ClickHouseClient,
     default_database: str,
     root_key: ObjectKey,
@@ -78,15 +82,21 @@ def _build_root_audit_result(
     active_exists: bool,
 ) -> RootAuditResult:
     database: str = root_key.database or default_database
-    staged_exists: bool = _table_exists(client, database, staged_physical_name)
+    staged_exists: bool = _table_exists(
+        client=client, database=database, table_name=staged_physical_name
+    )
     staged_materialized_view_name: str = _build_staged_materialized_view_name(staged_physical_name)
     replay_source_name: str | None = None
     replay_source_row_count: int | None = None
     active_row_count: int | None = (
-        _safe_row_count(client, database, root_key.name) if active_exists else None
+        _safe_row_count(client=client, database=database, table_name=root_key.name)
+        if active_exists
+        else None
     )
     staged_row_count: int | None = (
-        _safe_row_count(client, database, staged_physical_name) if staged_exists else None
+        _safe_row_count(client=client, database=database, table_name=staged_physical_name)
+        if staged_exists
+        else None
     )
     row_delta: int | None = None
     row_ratio: float | None = None
@@ -110,7 +120,7 @@ def _build_root_audit_result(
         replay_source_row_count = (
             None
             if replay_source_name is None
-            else _safe_row_count(client, database, replay_source_name)
+            else _safe_row_count(client=client, database=database, table_name=replay_source_name)
         )
     if staged_exists and replay_lineage_mode == ReplayLineageMode.OFFSETS:
         offset_summary = _offset_catchup_summary(
@@ -167,18 +177,18 @@ def _build_root_audit_result(
     )
 
 
-def _table_exists(client: ClickHouseClient, database: str, table_name: str) -> bool:
+def _table_exists(*, client: ClickHouseClient, database: str, table_name: str) -> bool:
     row: CountQueryRow | None = client.query_one(
-        "SELECT count() AS value FROM system.tables "
+        statement="SELECT count() AS value FROM system.tables "
         f"WHERE database = '{database}' AND name = '{table_name}'",
         decode=_decode_count_query_row,
     )
     return bool(row.value) if row is not None else False
 
 
-def _row_count(client: ClickHouseClient, database: str, table_name: str) -> int:
+def _row_count(*, client: ClickHouseClient, database: str, table_name: str) -> int:
     row: CountQueryRow | None = client.query_one(
-        f"SELECT count() AS value FROM {database}.{table_name}",
+        statement=f"SELECT count() AS value FROM {database}.{table_name}",
         decode=_decode_count_query_row,
     )
     if row is None:
@@ -186,9 +196,9 @@ def _row_count(client: ClickHouseClient, database: str, table_name: str) -> int:
     return row.value
 
 
-def _safe_row_count(client: ClickHouseClient, database: str, table_name: str) -> int | None:
+def _safe_row_count(*, client: ClickHouseClient, database: str, table_name: str) -> int | None:
     try:
-        return _row_count(client, database, table_name)
+        return _row_count(client=client, database=database, table_name=table_name)
     except Exception:
         return None
 
@@ -212,7 +222,10 @@ def _infer_replay_lineage_mode(
     table_name: str,
 ) -> ReplayLineageMode | None:
     rows: tuple[ColumnNameSystemRow, ...] = client.query_many(
-        f"SELECT name FROM system.columns WHERE database = '{database}' AND table = '{table_name}'",
+        statement=(
+            f"SELECT name FROM system.columns "
+            f"WHERE database = '{database}' AND table = '{table_name}'"
+        ),
         decode=_decode_column_name_system_row,
     )
     column_names: set[str] = {row.name for row in rows}
@@ -226,6 +239,7 @@ def _infer_replay_lineage_mode(
 
 
 def _offset_catchup_summary(
+    *,
     client: ClickHouseClient,
     database: str,
     active_table_name: str,
@@ -291,7 +305,7 @@ def _offset_catchup_summary(
             f"GROUP BY source.{REPLAY_PARTITION_COLUMN_NAME}"
         )
     row: OffsetSummaryQueryRow | None = client.query_one(
-        _build_offset_summary_query(
+        statement=_build_offset_summary_query(
             active_offsets_sql=active_offsets_sql,
             staged_offsets_sql=staged_offsets_sql,
             raw_offsets_sql=raw_offsets_sql,
@@ -320,6 +334,7 @@ def _offset_catchup_summary(
 
 
 def _scalar_catchup_summary(
+    *,
     client: ClickHouseClient,
     database: str,
     active_table_name: str,
@@ -344,7 +359,7 @@ def _scalar_catchup_summary(
         f"CROSS JOIN {database}.{staged_table_name} AS staged"
     )
     row: ScalarSummaryQueryRow | None = client.query_one(
-        scalar_query,
+        statement=scalar_query,
         decode=_decode_scalar_summary_query_row,
     )
     if row is None:
@@ -456,7 +471,7 @@ def _resolve_staged_source_table_name(
     staged_materialized_view_name: str,
 ) -> str | None:
     row: CreateTableQueryRow | None = client.query_one(
-        "SELECT create_table_query FROM system.tables "
+        statement="SELECT create_table_query FROM system.tables "
         f"WHERE database = '{database}' AND name = '{staged_materialized_view_name}'",
         decode=_decode_create_table_query_row,
     )
@@ -485,7 +500,7 @@ def _resolve_offset_boundary_column(
     source_table_name: str,
 ) -> str | None:
     rows: tuple[ColumnNameSystemRow, ...] = client.query_many(
-        "SELECT name FROM system.columns "
+        statement="SELECT name FROM system.columns "
         f"WHERE database = '{database}' AND table = '{source_table_name}'",
         decode=_decode_column_name_system_row,
     )

@@ -68,8 +68,8 @@ def test_given_reference_ref_when_creating_shadow_objects_then_it_creates_depend
         ),
     )
     deployment_plan: DeploymentPlan = plan_deployment(
-        desired_state,
-        ActualState(objects=()),
+        desired_state=desired_state,
+        actual_state=ActualState(objects=()),
         default_database="analytics",
         deployment_id="dep_ref",
     )

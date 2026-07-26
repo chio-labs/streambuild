@@ -41,8 +41,8 @@ from streambuild.spec.models.types import BoundedReplayFallback, SchemaChangeBac
 
 
 def render_plan_result(
-    plan: DeploymentPlan,
     *,
+    plan: DeploymentPlan,
     desired_state: DesiredState,
     database: str,
     json_output: bool,
@@ -101,9 +101,9 @@ def render_plan_result(
 
     lines: list[str] = [
         style_title("Plan Ready"),
-        style_label_value("Database", database),
-        style_label_value("Subtrees to rebuild", str(len(plan.rebuild_subtrees))),
-        style_label_value("Planned steps", str(len(plan.steps))),
+        style_label_value(label="Database", value=database),
+        style_label_value(label="Subtrees to rebuild", value=str(len(plan.rebuild_subtrees))),
+        style_label_value(label="Planned steps", value=str(len(plan.steps))),
         "",
     ]
     desired_object_by_key: dict[ObjectKey, DesiredTable | DesiredMaterializedView] = {
@@ -119,7 +119,9 @@ def render_plan_result(
                 lines.append("")
             lines.append(style_subsection(f"Subtree {index}"))
             lines.extend(
-                _render_subtree_diagram(subtree, desired_object_by_key=desired_object_by_key)
+                _render_subtree_diagram(
+                    subtree=subtree, desired_object_by_key=desired_object_by_key
+                )
             )
         lines.append("")
     if not verbose:
@@ -152,7 +154,7 @@ def render_plan_result(
             lines.append("")
     if verbose:
         changed_objects: tuple[tuple[str, str], ...] = _changed_object_entries(
-            plan,
+            plan=plan,
             desired_object_by_key=desired_object_by_key,
         )
         if changed_objects:
@@ -168,12 +170,12 @@ def render_plan_result(
             lines.append("")
             lines.append(
                 style_subsection(
-                    f"{sql_diff.object_type.title()}: {style_object_name(sql_diff.name)}"
+                    f"{sql_diff.object_type.title()}: {style_object_name(text=sql_diff.name)}"
                 )
             )
             lines.extend(
                 _render_sql_diff_plan_context(
-                    sql_diff,
+                    sql_diff=sql_diff,
                     plan=plan,
                     desired_object_by_key=desired_object_by_key,
                 )
@@ -193,7 +195,7 @@ def render_plan_result(
     if verbose and plan.rebuild_subtrees:
         lines.append(style_section("Staged rollout objects"))
         rollout_objects: tuple[tuple[str, str], ...] = _rollout_object_entries(
-            plan,
+            plan=plan,
             desired_object_by_key=desired_object_by_key,
         )
         if not rollout_objects:
@@ -205,7 +207,9 @@ def render_plan_result(
         lines.append("")
     if verbose and plan.steps:
         lines.append(style_section("Workflow"))
-        lines.extend(_render_workflow_summary(plan, desired_object_by_key=desired_object_by_key))
+        lines.extend(
+            _render_workflow_summary(plan=plan, desired_object_by_key=desired_object_by_key)
+        )
         lines.append("")
     lines.append(style_section("Warnings"))
     if not plan.warnings:
@@ -228,12 +232,12 @@ def _object_key_payload(key: ObjectKey) -> dict[str, str | None]:
 
 
 def _render_subtree_diagram(
-    subtree: RebuildSubtree,
     *,
+    subtree: RebuildSubtree,
     desired_object_by_key: dict[ObjectKey, DesiredTable | DesiredMaterializedView],
 ) -> list[str]:
     live_targets: tuple[str, ...] = _live_target_names(
-        subtree,
+        subtree=subtree,
         desired_object_by_key=desired_object_by_key,
     )
     lines: list[str] = [f"[replay start] {subtree.upstream_boundary_key.name}"]
@@ -248,8 +252,8 @@ def _render_subtree_diagram(
 
 
 def _live_target_names(
-    subtree: RebuildSubtree,
     *,
+    subtree: RebuildSubtree,
     desired_object_by_key: dict[ObjectKey, DesiredTable | DesiredMaterializedView],
 ) -> tuple[str, ...]:
     live_targets: tuple[str, ...] = tuple(
@@ -278,41 +282,47 @@ def _live_target_names(
 
 
 def _render_sql_diff_plan_context(
-    sql_diff: PlannedSqlDiff,
     *,
+    sql_diff: PlannedSqlDiff,
     plan: DeploymentPlan,
     desired_object_by_key: dict[ObjectKey, DesiredTable | DesiredMaterializedView],
 ) -> list[str]:
-    subtree: RebuildSubtree | None = _subtree_for_key(plan.rebuild_subtrees, sql_diff.key)
+    subtree: RebuildSubtree | None = _subtree_for_key(
+        rebuild_subtrees=plan.rebuild_subtrees, key=sql_diff.key
+    )
     if subtree is None:
         return []
     lines: list[str] = []
     live_targets: tuple[str, ...] = _live_target_names(
-        subtree,
+        subtree=subtree,
         desired_object_by_key=desired_object_by_key,
     )
     if live_targets:
         live_target_label: str = ", ".join(live_targets)
         if sql_diff.object_type == DESIRED_OBJECT_TYPE_TABLE and sql_diff.name in live_targets:
-            lines.append(style_label_value("Live target", live_target_label))
+            lines.append(style_label_value(label="Live target", value=live_target_label))
         else:
-            lines.append(style_label_value("Affects live target", live_target_label))
+            lines.append(style_label_value(label="Affects live target", value=live_target_label))
 
     schema_change: PlannedObjectChange | None = _schema_change_for_subtree(
-        subtree,
+        subtree=subtree,
         object_changes=plan.object_changes,
     )
     if sql_diff.object_type == DESIRED_OBJECT_TYPE_TABLE and schema_change is not None:
         if subtree.configured_backfill_mode is not None:
             lines.append(
-                style_label_value("Schema-change backfill", _format_backfill_policy(subtree))
+                style_label_value(
+                    label="Schema-change backfill", value=_format_backfill_policy(subtree)
+                )
             )
-        lines.append(style_label_value("Plan", _describe_subtree_rebuild_behavior(subtree)))
+        lines.append(
+            style_label_value(label="Plan", value=_describe_subtree_rebuild_behavior(subtree))
+        )
     return lines
 
 
 def _subtree_for_key(
-    rebuild_subtrees: tuple[RebuildSubtree, ...], key: ObjectKey
+    *, rebuild_subtrees: tuple[RebuildSubtree, ...], key: ObjectKey
 ) -> RebuildSubtree | None:
     subtree: RebuildSubtree
     for subtree in rebuild_subtrees:
@@ -322,8 +332,8 @@ def _subtree_for_key(
 
 
 def _schema_change_for_subtree(
-    subtree: RebuildSubtree,
     *,
+    subtree: RebuildSubtree,
     object_changes: tuple[PlannedObjectChange, ...],
 ) -> PlannedObjectChange | None:
     schema_changes: list[PlannedObjectChange] = [
@@ -356,12 +366,14 @@ def _diff_target_names(
     target_names: list[str] = []
     sql_diff: PlannedSqlDiff
     for sql_diff in plan.sql_diffs:
-        subtree: RebuildSubtree | None = _subtree_for_key(plan.rebuild_subtrees, sql_diff.key)
+        subtree: RebuildSubtree | None = _subtree_for_key(
+            rebuild_subtrees=plan.rebuild_subtrees, key=sql_diff.key
+        )
         if subtree is None:
             target_names.append(sql_diff.name)
             continue
         live_targets: tuple[str, ...] = _live_target_names(
-            subtree,
+            subtree=subtree,
             desired_object_by_key=desired_object_by_key,
         )
         target_names.extend(live_targets or (sql_diff.name,))
@@ -369,8 +381,8 @@ def _diff_target_names(
 
 
 def _new_target_names_for_subtree(
-    subtree: RebuildSubtree,
     *,
+    subtree: RebuildSubtree,
     object_changes: tuple[PlannedObjectChange, ...],
 ) -> tuple[str, ...]:
     return tuple(
@@ -395,7 +407,7 @@ def _new_target_names(
     subtree: RebuildSubtree
     for subtree in plan.rebuild_subtrees:
         subtree_new_target_names: tuple[str, ...] = _new_target_names_for_subtree(
-            subtree,
+            subtree=subtree,
             object_changes=plan.object_changes,
         )
         if subtree_new_target_names:
@@ -403,7 +415,7 @@ def _new_target_names(
             continue
         live_target_name: str
         for live_target_name in _live_target_names(
-            subtree,
+            subtree=subtree,
             desired_object_by_key=desired_object_by_key,
         ):
             if _target_is_new(
@@ -445,7 +457,7 @@ def _compact_changed_target_summaries(
     for subtree in plan.rebuild_subtrees:
         live_target_name: str
         for live_target_name in _live_target_names(
-            subtree,
+            subtree=subtree,
             desired_object_by_key=desired_object_by_key,
         ):
             if _target_is_new(
@@ -530,8 +542,8 @@ def _compact_changed_target_detail_lines(
 
 
 def _rollout_object_entries(
-    plan: DeploymentPlan,
     *,
+    plan: DeploymentPlan,
     desired_object_by_key: dict[ObjectKey, DesiredTable | DesiredMaterializedView],
 ) -> tuple[tuple[str, str], ...]:
     rollout_objects: list[tuple[str, str]] = []
@@ -545,7 +557,7 @@ def _rollout_object_entries(
             rollout_objects.append(("transform", desired_object.name))
         live_target_name: str
         for live_target_name in _live_target_names(
-            subtree,
+            subtree=subtree,
             desired_object_by_key=desired_object_by_key,
         ):
             rollout_objects.append(("live target", live_target_name))
@@ -554,8 +566,8 @@ def _rollout_object_entries(
 
 
 def _changed_object_entries(
-    plan: DeploymentPlan,
     *,
+    plan: DeploymentPlan,
     desired_object_by_key: dict[ObjectKey, DesiredTable | DesiredMaterializedView],
 ) -> tuple[tuple[str, str], ...]:
     changed_entries: list[tuple[str, str]] = []
@@ -579,15 +591,15 @@ def _changed_object_entries(
 
 
 def _render_workflow_summary(
-    plan: DeploymentPlan,
     *,
+    plan: DeploymentPlan,
     desired_object_by_key: dict[ObjectKey, DesiredTable | DesiredMaterializedView],
 ) -> list[str]:
     lines: list[str] = []
     subtree: RebuildSubtree
     for subtree in plan.rebuild_subtrees:
         live_targets: tuple[str, ...] = _live_target_names(
-            subtree,
+            subtree=subtree,
             desired_object_by_key=desired_object_by_key,
         )
         workflow_target_name: str = live_targets[0] if live_targets else subtree.root_key.name

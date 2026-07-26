@@ -76,18 +76,19 @@ def test_given_greenfield_backfill_and_publish_when_planning_again_then_it_is_a_
     desired_state: DesiredState = build_desired_state((compiled_pipeline,))
     clickhouse_client.command(
         render_create_kafka_table_ddl(
-            require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).kafka_table,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.command(
         render_create_table_ddl(
-            require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).raw_table, database=clickhouse_database
         )
     )
     clickhouse_client.command(
         render_create_materialized_view_ddl(
-            require_managed_source(compiled_pipeline).materialized_view,
-            clickhouse_database,
+            materialized_view=require_managed_source(compiled_pipeline).materialized_view,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.insert(
@@ -124,22 +125,22 @@ def test_given_greenfield_backfill_and_publish_when_planning_again_then_it_is_a_
 
     try:
         backfill_result: BackfillExecutionResult = execute_backfill(
-            build_scalar_replay_request(
+            request=build_scalar_replay_request(
                 database=clickhouse_database,
                 deployment_id=test_case.deployment_id,
                 created_at=test_case.created_at,
                 boundary_time=test_case.boundary_time,
                 replay_lineage_mode="timestamp",
             ),
-            managed_client,
+            client=managed_client,
         )
         publish_result: PublishResult = execute_publish(
-            PublishRequest(
+            request=PublishRequest(
                 deployment_id=test_case.deployment_id,
                 metadata_database=clickhouse_database,
                 default_database=clickhouse_database,
             ),
-            managed_client,
+            client=managed_client,
         )
         actual_state: ActualState = load_actual_state(
             client=managed_client,
@@ -150,8 +151,8 @@ def test_given_greenfield_backfill_and_publish_when_planning_again_then_it_is_a_
         managed_client.close()
 
     plan: DeploymentPlan = plan_deployment(
-        desired_state,
-        actual_state,
+        desired_state=desired_state,
+        actual_state=actual_state,
         default_database=clickhouse_database,
     )
 
@@ -185,18 +186,19 @@ def test_given_equivalent_type_casing_after_publish_when_planning_again_then_it_
     desired_state: DesiredState = build_desired_state((compiled_pipeline,))
     clickhouse_client.command(
         render_create_kafka_table_ddl(
-            require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).kafka_table,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.command(
         render_create_table_ddl(
-            require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).raw_table, database=clickhouse_database
         )
     )
     clickhouse_client.command(
         render_create_materialized_view_ddl(
-            require_managed_source(compiled_pipeline).materialized_view,
-            clickhouse_database,
+            materialized_view=require_managed_source(compiled_pipeline).materialized_view,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.insert(
@@ -233,22 +235,22 @@ def test_given_equivalent_type_casing_after_publish_when_planning_again_then_it_
 
     try:
         execute_backfill(
-            build_scalar_replay_request(
+            request=build_scalar_replay_request(
                 database=clickhouse_database,
                 deployment_id=test_case.deployment_id,
                 created_at=test_case.created_at,
                 boundary_time=test_case.boundary_time,
                 replay_lineage_mode="timestamp",
             ),
-            managed_client,
+            client=managed_client,
         )
         execute_publish(
-            PublishRequest(
+            request=PublishRequest(
                 deployment_id=test_case.deployment_id,
                 metadata_database=clickhouse_database,
                 default_database=clickhouse_database,
             ),
-            managed_client,
+            client=managed_client,
         )
         normalized_desired_state: DesiredState = DesiredState(
             objects=tuple(
@@ -280,8 +282,8 @@ def test_given_equivalent_type_casing_after_publish_when_planning_again_then_it_
         managed_client.close()
 
     plan: DeploymentPlan = plan_deployment(
-        normalized_desired_state,
-        actual_state,
+        desired_state=normalized_desired_state,
+        actual_state=actual_state,
         default_database=clickhouse_database,
     )
 
@@ -315,18 +317,19 @@ def test_given_published_deployment_when_authored_sql_changes_then_plan_requires
     compiled_pipeline: CompiledPipeline = build_scalar_replay_compiled_pipeline("timestamp")
     clickhouse_client.command(
         render_create_kafka_table_ddl(
-            require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).kafka_table,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.command(
         render_create_table_ddl(
-            require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).raw_table, database=clickhouse_database
         )
     )
     clickhouse_client.command(
         render_create_materialized_view_ddl(
-            require_managed_source(compiled_pipeline).materialized_view,
-            clickhouse_database,
+            materialized_view=require_managed_source(compiled_pipeline).materialized_view,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.insert(
@@ -363,22 +366,22 @@ def test_given_published_deployment_when_authored_sql_changes_then_plan_requires
 
     try:
         execute_backfill(
-            build_scalar_replay_request(
+            request=build_scalar_replay_request(
                 database=clickhouse_database,
                 deployment_id=test_case.deployment_id,
                 created_at=test_case.created_at,
                 boundary_time=test_case.boundary_time,
                 replay_lineage_mode="timestamp",
             ),
-            managed_client,
+            client=managed_client,
         )
         execute_publish(
-            PublishRequest(
+            request=PublishRequest(
                 deployment_id=test_case.deployment_id,
                 metadata_database=clickhouse_database,
                 default_database=clickhouse_database,
             ),
-            managed_client,
+            client=managed_client,
         )
         changed_compiled_pipeline: CompiledPipeline = build_changed_sql_compiled_pipeline()
         changed_desired_state: DesiredState = build_desired_state((changed_compiled_pipeline,))
@@ -391,8 +394,8 @@ def test_given_published_deployment_when_authored_sql_changes_then_plan_requires
         managed_client.close()
 
     plan: DeploymentPlan = plan_deployment(
-        changed_desired_state,
-        actual_state,
+        desired_state=changed_desired_state,
+        actual_state=actual_state,
         default_database=clickhouse_database,
     )
 
@@ -474,18 +477,19 @@ def test_given_published_deployment_when_transform_output_schema_changes_then_pl
     compiled_pipeline: CompiledPipeline = build_scalar_replay_compiled_pipeline("timestamp")
     clickhouse_client.command(
         render_create_kafka_table_ddl(
-            require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).kafka_table,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.command(
         render_create_table_ddl(
-            require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).raw_table, database=clickhouse_database
         )
     )
     clickhouse_client.command(
         render_create_materialized_view_ddl(
-            require_managed_source(compiled_pipeline).materialized_view,
-            clickhouse_database,
+            materialized_view=require_managed_source(compiled_pipeline).materialized_view,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.insert(
@@ -522,22 +526,22 @@ def test_given_published_deployment_when_transform_output_schema_changes_then_pl
 
     try:
         execute_backfill(
-            build_scalar_replay_request(
+            request=build_scalar_replay_request(
                 database=clickhouse_database,
                 deployment_id=test_case.deployment_id,
                 created_at=test_case.created_at,
                 boundary_time=test_case.boundary_time,
                 replay_lineage_mode="timestamp",
             ),
-            managed_client,
+            client=managed_client,
         )
         execute_publish(
-            PublishRequest(
+            request=PublishRequest(
                 deployment_id=test_case.deployment_id,
                 metadata_database=clickhouse_database,
                 default_database=clickhouse_database,
             ),
-            managed_client,
+            client=managed_client,
         )
         changed_compiled_pipeline: CompiledPipeline = (
             build_changed_schema_variant_compiled_pipeline(test_case.changed_pipeline_kind)
@@ -552,8 +556,8 @@ def test_given_published_deployment_when_transform_output_schema_changes_then_pl
         managed_client.close()
 
     plan: DeploymentPlan = plan_deployment(
-        changed_desired_state,
-        actual_state,
+        desired_state=changed_desired_state,
+        actual_state=actual_state,
         default_database=clickhouse_database,
     )
 

@@ -22,7 +22,7 @@ def persist_publish_event(
 ) -> None:
     """Persist one publish history event for a deployment."""
 
-    ensure_metadata_tables(client, metadata_database)
+    ensure_metadata_tables(client=client, metadata_database=metadata_database)
     published_at: str = datetime.now(tz=UTC).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
     metadata_state: MetadataState = build_metadata_state(
         object_states=(),
@@ -53,7 +53,7 @@ def persist_publish_event(
             continue
         if "streambuild_publish_history" not in statement.sql:
             continue
-        client.insert_rows(_insert_table_name(statement.sql), statement.rows)
+        client.insert_rows(table=_insert_table_name(statement.sql), rows=statement.rows)
 
 
 def _insert_table_name(statement_sql: str) -> str:

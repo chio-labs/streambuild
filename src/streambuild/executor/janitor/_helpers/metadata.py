@@ -20,7 +20,7 @@ def load_deployments(
     *, client: ClickHouseClient, metadata_database: str
 ) -> tuple[DeploymentRecord, ...]:
     rows: tuple[DeploymentMetadataRow, ...] = client.query_many(
-        "SELECT deployment_id, created_at, status, replay_lineage_mode, "
+        statement="SELECT deployment_id, created_at, status, replay_lineage_mode, "
         "selected_root_keys_json, warning_codes_json, prepared_object_mappings_json "
         f"FROM {metadata_database}.streambuild_deployments",
         decode=_decode_deployment_metadata_row,
@@ -66,7 +66,7 @@ def load_latest_publish_times(
 ) -> dict[str, datetime]:
     try:
         rows: tuple[PublishHistoryMetadataRow, ...] = client.query_many(
-            "SELECT deployment_id, max(published_at) AS latest_published_at "
+            statement="SELECT deployment_id, max(published_at) AS latest_published_at "
             f"FROM {metadata_database}.streambuild_publish_history GROUP BY deployment_id",
             decode=_decode_publish_history_metadata_row,
         )

@@ -40,22 +40,24 @@ def test_given_compiled_transform_mv_when_applied_to_real_clickhouse_then_it_pop
 
     clickhouse_client.command(
         render_create_table_ddl(
-            require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).raw_table, database=clickhouse_database
         )
     )
     clickhouse_client.command(
-        render_create_table_ddl(compiled_pipeline.transforms[0].target_table, clickhouse_database)
+        render_create_table_ddl(
+            table=compiled_pipeline.transforms[0].target_table, database=clickhouse_database
+        )
     )
     clickhouse_client.command(
         render_create_materialized_view_ddl(
-            compiled_pipeline.transforms[0].materialized_view,
-            clickhouse_database,
+            materialized_view=compiled_pipeline.transforms[0].materialized_view,
+            database=clickhouse_database,
         )
     )
 
     clickhouse_client.insert(
-        f"{clickhouse_database}.{require_managed_source(compiled_pipeline).raw_table.name}",
-        [build_raw_orders_row()],
+        table=f"{clickhouse_database}.{require_managed_source(compiled_pipeline).raw_table.name}",
+        data=[build_raw_orders_row()],
         column_names=[
             column.name for column in require_managed_source(compiled_pipeline).raw_table.columns
         ],

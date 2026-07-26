@@ -4,9 +4,9 @@ from streambuild.compiler.shared.models import Column, DesiredKafkaTable, KafkaT
 
 
 def render_create_kafka_table_ddl(
+    *,
     table: DesiredKafkaTable,
     database: str,
-    *,
     if_not_exists: bool = False,
 ) -> str:
     """Render CREATE TABLE DDL for a desired Kafka engine table."""
@@ -20,7 +20,7 @@ def render_create_kafka_table_ddl(
         f"{create_prefix} {database}.{table.name} (\n"
         f"    {rendered_column_definitions}\n"
         ") ENGINE = Kafka\n"
-        f"SETTINGS {_render_kafka_settings(table, database=database)}"
+        f"SETTINGS {_render_kafka_settings(table=table, database=database)}"
     )
 
 
@@ -32,12 +32,12 @@ def _render_column_definition(column: Column) -> str:
     return f"{column.name} {column.type} DEFAULT {column.default}"
 
 
-def _render_kafka_settings(table: DesiredKafkaTable, *, database: str) -> str:
+def _render_kafka_settings(*, table: DesiredKafkaTable, database: str) -> str:
     """Render the Kafka engine settings clause."""
 
     consumer_group_name: str = _database_scoped_consumer_group(
-        table.spec.kafka.consumer_group,
-        database,
+        consumer_group=table.spec.kafka.consumer_group,
+        database=database,
     )
     rendered_settings: list[str] = [
         f"kafka_broker_list = '{table.spec.kafka.broker_list}'",
@@ -51,7 +51,7 @@ def _render_kafka_settings(table: DesiredKafkaTable, *, database: str) -> str:
     return ", ".join(rendered_settings)
 
 
-def _database_scoped_consumer_group(consumer_group: str, database: str | None) -> str:
+def _database_scoped_consumer_group(*, consumer_group: str, database: str | None) -> str:
     if database is None:
         return consumer_group
     normalized_database: str = database.replace("-", "_")

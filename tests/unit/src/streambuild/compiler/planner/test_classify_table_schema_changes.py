@@ -128,13 +128,14 @@ def test_given_table_column_changes_when_classifying_then_it_returns_expected_sc
     )
 
     assert (
-        classify_object_change_type(desired_table, actual_table) == test_case.expected_change_type
+        classify_object_change_type(desired_object=desired_table, actual_object=actual_table)
+        == test_case.expected_change_type
     )
     assert (
-        classify_table_schema_change_kind(desired_table, actual_table)
+        classify_table_schema_change_kind(desired_object=desired_table, actual_object=actual_table)
         == test_case.expected_schema_change_kind
     )
     assert (
-        classify_table_seed_compatibility(desired_table, actual_table)
+        classify_table_seed_compatibility(desired_object=desired_table, actual_object=actual_table)
         == test_case.expected_seed_compatibility
     )

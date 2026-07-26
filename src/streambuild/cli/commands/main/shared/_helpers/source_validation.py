@@ -136,7 +136,7 @@ def _load_source_column_types(
     table_name: str,
 ) -> dict[str, str]:
     rows: tuple[SourceColumnSystemRow, ...] = client.query_many(
-        "SELECT name, type FROM system.columns "
+        statement="SELECT name, type FROM system.columns "
         f"WHERE database = '{database}' AND table = '{table_name}'",
         decode=_decode_source_column_system_row,
     )

@@ -168,7 +168,7 @@ def test_given_backfill_command_when_running_then_it_behaves_as_expected(
 
     try:
         exit_code: int = run_backfill(
-            test_case.pipelines_root,
+            pipelines_root=test_case.pipelines_root,
             database=clickhouse_database,
             metadata_database=clickhouse_database,
             selectors=test_case.selectors,

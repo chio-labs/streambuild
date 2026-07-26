@@ -47,7 +47,7 @@ def render_sql_test_results(
             test_index=result.test_index,
             project_dir=project_dir,
         )
-        status: str = _style_status("PASS" if result.passed else "FAIL", passed=result.passed)
+        status: str = _style_status(text="PASS" if result.passed else "FAIL", passed=result.passed)
         lines.append(f"{status}  {_render_target_label(result)}  {relative_path}")
         if result.passed:
             continue
@@ -57,12 +57,14 @@ def render_sql_test_results(
         if next_result is not None:
             lines.append("")
     summary_text: str = f"Results: {passed_count} passed, {failed_count} failed"
-    lines.append(_style_summary(summary_text, has_failures=failed_count > 0))
+    lines.append(_style_summary(text=summary_text, has_failures=failed_count > 0))
     if failed_paths:
         lines.append("Failed:")
         failed_path: Path
         for failed_path in failed_paths:
-            lines.append(f"  stb test {_render_result_path(failed_path, project_dir)}")
+            lines.append(
+                f"  stb test {_render_result_path(file_path=failed_path, project_dir=project_dir)}"
+            )
     return "\n".join(lines)
 
 
@@ -250,7 +252,7 @@ def _render_table_section(
 ) -> tuple[str, ...]:
     rendered_rows: tuple[tuple[str, ...], ...]
     hidden_count: int
-    rendered_rows, hidden_count = _truncate_rows(section.rows, verbose=verbose)
+    rendered_rows, hidden_count = _truncate_rows(rows=section.rows, verbose=verbose)
     lines: list[str] = []
     if section.title:
         title_suffix: str = f" ({len(section.rows)})"
@@ -261,22 +263,22 @@ def _render_table_section(
         headers=section.headers,
         rows=rendered_rows,
     )
-    lines.append(f"{indent}  {_render_table_row(section.headers, widths=widths, header=True)}")
+    lines.append(f"{indent}  {_render_table_row(row=section.headers, widths=widths, header=True)}")
     row: tuple[str, ...]
     for row in rendered_rows:
-        lines.append(f"{indent}  {_render_table_row(row, widths=widths, header=False)}")
+        lines.append(f"{indent}  {_render_table_row(row=row, widths=widths, header=False)}")
     if hidden_count:
         hidden_rows_message: str = apply_style(
-            f"({hidden_count} more rows not shown, run with --verbose to see all)",
-            ANSI_DIM,
+            text=f"({hidden_count} more rows not shown, run with --verbose to see all)",
+            codes=(ANSI_DIM,),
         )
         lines.append(f"{indent}  {hidden_rows_message}")
     return tuple(lines)
 
 
 def _truncate_rows(
-    rows: tuple[tuple[str, ...], ...],
     *,
+    rows: tuple[tuple[str, ...], ...],
     verbose: bool,
 ) -> tuple[tuple[tuple[str, ...], ...], int]:
     if verbose or len(rows) <= MAX_RENDERED_ROWS:
@@ -299,8 +301,8 @@ def _compute_column_widths(
 
 
 def _render_table_row(
-    row: tuple[str, ...],
     *,
+    row: tuple[str, ...],
     widths: tuple[int, ...],
     header: bool,
 ) -> str:
@@ -323,7 +325,7 @@ def _stringify_value(value: object) -> str:
     return str(value)
 
 
-def _render_result_path(file_path: Path, project_dir: Path) -> str:
+def _render_result_path(*, file_path: Path, project_dir: Path) -> str:
     try:
         return file_path.relative_to(project_dir).as_posix()
     except ValueError:
@@ -337,7 +339,7 @@ def _render_result_label(
     test_index: int,
     project_dir: Path,
 ) -> str:
-    relative_path: str = _render_result_path(file_path, project_dir)
+    relative_path: str = _render_result_path(file_path=file_path, project_dir=project_dir)
     if name is not None:
         return f"{relative_path}  [{name}]"
     if test_index == 1:
@@ -354,28 +356,46 @@ def _render_target_label(result: SqlTestExecutionResult) -> str:
     return ", ".join(target_model_names)
 
 
-def _style_status(text: str, *, passed: bool) -> str:
-    return apply_style(text, ANSI_GREEN if passed else ANSI_RED, ANSI_BOLD)
+def _style_status(*, text: str, passed: bool) -> str:
+    return apply_style(
+        text=text,
+        codes=(
+            ANSI_GREEN if passed else ANSI_RED,
+            ANSI_BOLD,
+        ),
+    )
 
 
-def _style_summary(text: str, *, has_failures: bool) -> str:
-    return apply_style(text, ANSI_RED if has_failures else ANSI_GREEN, ANSI_BOLD)
+def _style_summary(*, text: str, has_failures: bool) -> str:
+    return apply_style(
+        text=text,
+        codes=(
+            ANSI_RED if has_failures else ANSI_GREEN,
+            ANSI_BOLD,
+        ),
+    )
 
 
 def _style_headers(text: str) -> str:
-    return apply_style(text, ANSI_DIM, ANSI_BOLD)
+    return apply_style(
+        text=text,
+        codes=(
+            ANSI_DIM,
+            ANSI_BOLD,
+        ),
+    )
 
 
 def _style_expected(text: str) -> str:
-    return apply_style(text, ANSI_GREEN)
+    return apply_style(text=text, codes=(ANSI_GREEN,))
 
 
 def _style_actual(text: str) -> str:
-    return apply_style(text, ANSI_RED)
+    return apply_style(text=text, codes=(ANSI_RED,))
 
 
 def _style_key_value(text: str) -> str:
-    return apply_style(text, ANSI_DIM)
+    return apply_style(text=text, codes=(ANSI_DIM,))
 
 
 def _strip_ansi(text: str) -> str:

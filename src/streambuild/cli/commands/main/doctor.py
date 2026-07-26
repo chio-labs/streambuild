@@ -20,8 +20,8 @@ def run_doctor(
 
     try:
         result: DoctorResult = execute_doctor(
-            DoctorRequest(default_database=database),
-            client,
+            request=DoctorRequest(default_database=database),
+            client=client,
         )
     except (DatabaseError, OperationalError) as error:
         rendered_error: str | None = render_expected_clickhouse_error(

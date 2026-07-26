@@ -11,8 +11,8 @@ from streambuild.executor.publish.models import PublishedView, PublishResult
 
 
 def render_publish_result(
-    result: PublishResult,
     *,
+    result: PublishResult,
     database: str,
     json_output: bool,
 ) -> str:
@@ -31,8 +31,8 @@ def render_publish_result(
 
     lines: list[str] = [
         style_title("Publish Complete"),
-        style_label_value("Database", database),
-        style_label_value("Deployment", result.deployment_id),
+        style_label_value(label="Database", value=database),
+        style_label_value(label="Deployment", value=result.deployment_id),
         "",
         style_section("Published views"),
     ]

@@ -37,7 +37,7 @@ def test_given_desired_and_actual_state_when_planning_changes_then_it_returns_ex
     actual_state: ActualState = build_example_actual_state()
 
     object_changes: tuple[PlannedObjectChange, ...] = classify_object_changes(
-        desired_state, actual_state
+        desired_state=desired_state, actual_state=actual_state
     )
 
     assert tuple((key_parts(change.key), change.change_type) for change in object_changes) == (

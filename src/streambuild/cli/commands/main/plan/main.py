@@ -31,8 +31,8 @@ from streambuild.integrations.clickhouse.client import ClickHouseClient
 
 
 def run_plan(
-    pipelines_root: Path,
     *,
+    pipelines_root: Path,
     database: str | None,
     selectors: tuple[str, ...],
     full_refresh: bool,
@@ -64,21 +64,25 @@ def run_plan(
     if start_time is not None:
         try:
             normalized_start_time = convert_utc_timestamp_for_clickhouse(
-                client,
-                normalize_cli_start_time(start_time),
+                client=client,
+                utc_timestamp=normalize_cli_start_time(start_time),
             )
         except ValueError as error:
             print(str(error), file=sys.stderr)
             return 1
 
-    resolved_database: str = resolve_default_database(loaded_pipelines, database)
+    resolved_database: str = resolve_default_database(
+        loaded_pipelines=loaded_pipelines, override=database
+    )
     validate_declared_external_sources(
         client=client,
         compiled_pipelines=tuple(compiled),
         database=resolved_database,
     )
     try:
-        selection: SelectionResolution = resolve_selection(tuple(compiled), selectors)
+        selection: SelectionResolution = resolve_selection(
+            compiled_pipelines=tuple(compiled), selectors=selectors
+        )
     except ValueError as error:
         print(str(error), file=sys.stderr)
         return 1
@@ -90,8 +94,8 @@ def run_plan(
     )
 
     plan: DeploymentPlan = plan_deployment(
-        desired_state,
-        actual_state,
+        desired_state=desired_state,
+        actual_state=actual_state,
         default_database=resolved_database,
         full_refresh_keys=selection.selected_model_keys if full_refresh else frozenset(),
         start_time_keys=selection.selected_model_keys
@@ -114,7 +118,7 @@ def run_plan(
     )
     print(
         render_plan_result(
-            plan,
+            plan=plan,
             desired_state=desired_state,
             database=resolved_database,
             json_output=json_output,

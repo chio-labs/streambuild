@@ -26,13 +26,16 @@ from streambuild.spec.models.types import ReplayLineageMode
 
 
 def execute_backfill(
+    *,
     request: BackfillBootstrapRequest,
     client: ClickHouseClient,
 ) -> BackfillExecutionResult:
     """Execute staged backfill through boundary capture and supported replay steps."""
 
     replay_lineage_mode: ReplayLineageMode = ReplayLineageMode(request.replay_lineage_mode)
-    bootstrap_result: BackfillBootstrapResult = execute_backfill_bootstrap(request, client)
+    bootstrap_result: BackfillBootstrapResult = execute_backfill_bootstrap(
+        request=request, client=client
+    )
     wait_for_shadow_stabilization(request.stabilization_seconds)
     boundary_time: str = request.boundary_time or build_current_timestamp()
     if replay_lineage_mode in {

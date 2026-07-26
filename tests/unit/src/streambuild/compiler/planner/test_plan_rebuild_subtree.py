@@ -78,8 +78,12 @@ def test_given_changed_desired_object_when_planning_rebuild_then_it_returns_expe
     desired_state: DesiredState = build_example_desired_state()
     root_key: ObjectKey = build_key(*test_case.root_key)
 
-    descendant_key_set: tuple[ObjectKey, ...] = descendant_keys(desired_state, root_key)
-    rebuild_subtree: RebuildSubtree = build_rebuild_subtree(desired_state, root_key)
+    descendant_key_set: tuple[ObjectKey, ...] = descendant_keys(
+        desired_state=desired_state, root_key=root_key
+    )
+    rebuild_subtree: RebuildSubtree = build_rebuild_subtree(
+        desired_state=desired_state, root_key=root_key
+    )
 
     assert tuple(key_parts(key) for key in descendant_key_set) == test_case.expected_descendant_keys
     assert (
@@ -109,7 +113,9 @@ def test_given_transform_when_planning_rebuild_then_it_uses_expected_replay_anch
     )
     root_key: ObjectKey = build_key(None, "table", "tbl__orders_enriched")
 
-    rebuild_subtree: RebuildSubtree = build_rebuild_subtree(desired_state, root_key)
+    rebuild_subtree: RebuildSubtree = build_rebuild_subtree(
+        desired_state=desired_state, root_key=root_key
+    )
 
     assert (
         key_parts(rebuild_subtree.upstream_boundary_key) == test_case.expected_upstream_boundary_key

@@ -36,7 +36,9 @@ def publish_stable_views(
         for candidate in inspected_state.physical_candidates
         if candidate.logical_name.startswith(TRANSFORM_TABLE_NAME_PREFIX)
         if candidate.physical_name
-        == build_deployment_physical_name(candidate.logical_name, deployment_id)
+        == build_deployment_physical_name(
+            logical_name=candidate.logical_name, deployment_id=deployment_id
+        )
     }
     if not physical_name_by_key:
         raise ValueError(f"Deployment '{deployment_id}' has no staged physical tables to publish")

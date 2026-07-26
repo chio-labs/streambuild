@@ -84,7 +84,7 @@ def test_given_materialized_view_when_rendering_then_it_qualifies_source_and_tar
     test_case: RenderCreateMaterializedViewDdlTestCase,
 ) -> None:
     rendered_ddl: str = render_create_materialized_view_ddl(
-        build_materialized_view(test_case.query),
+        materialized_view=build_materialized_view(test_case.query),
         database="analytics",
     )
 

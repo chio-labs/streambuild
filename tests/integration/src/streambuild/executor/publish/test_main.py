@@ -65,18 +65,19 @@ def test_given_greenfield_staged_deployment_when_publishing_then_it_creates_stab
     deployment_id: str = test_case.deployment_id
     clickhouse_client.command(
         render_create_kafka_table_ddl(
-            require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).kafka_table,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.command(
         render_create_table_ddl(
-            require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).raw_table, database=clickhouse_database
         )
     )
     clickhouse_client.command(
         render_create_materialized_view_ddl(
-            require_managed_source(compiled_pipeline).materialized_view,
-            clickhouse_database,
+            materialized_view=require_managed_source(compiled_pipeline).materialized_view,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.insert(
@@ -120,22 +121,22 @@ def test_given_greenfield_staged_deployment_when_publishing_then_it_creates_stab
 
     try:
         backfill_result: BackfillExecutionResult = execute_backfill(
-            build_scalar_replay_request(
+            request=build_scalar_replay_request(
                 database=clickhouse_database,
                 deployment_id=deployment_id,
                 created_at=test_case.created_at,
                 boundary_time=test_case.boundary_time,
                 replay_lineage_mode=test_case.replay_lineage_mode,
             ),
-            managed_client,
+            client=managed_client,
         )
         publish_result: PublishResult = execute_publish(
-            PublishRequest(
+            request=PublishRequest(
                 deployment_id=deployment_id,
                 metadata_database=clickhouse_database,
                 default_database=clickhouse_database,
             ),
-            managed_client,
+            client=managed_client,
         )
     finally:
         managed_client.close()
@@ -210,18 +211,19 @@ def test_given_publish_request_without_deployment_id_when_resolving_then_it_beha
     compiled_pipeline: CompiledPipeline = build_scalar_replay_compiled_pipeline("timestamp")
     clickhouse_client.command(
         render_create_kafka_table_ddl(
-            require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).kafka_table,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.command(
         render_create_table_ddl(
-            require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).raw_table, database=clickhouse_database
         )
     )
     clickhouse_client.command(
         render_create_materialized_view_ddl(
-            require_managed_source(compiled_pipeline).materialized_view,
-            clickhouse_database,
+            materialized_view=require_managed_source(compiled_pipeline).materialized_view,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.insert(
@@ -258,24 +260,24 @@ def test_given_publish_request_without_deployment_id_when_resolving_then_it_beha
 
     try:
         execute_backfill(
-            build_scalar_replay_request(
+            request=build_scalar_replay_request(
                 database=clickhouse_database,
                 deployment_id=test_case.first_deployment_id,
                 created_at="2026-04-09 22:00:00.123",
                 boundary_time="2026-04-09 22:00:00.000",
                 replay_lineage_mode="timestamp",
             ),
-            managed_client,
+            client=managed_client,
         )
         execute_backfill(
-            build_scalar_replay_request(
+            request=build_scalar_replay_request(
                 database=clickhouse_database,
                 deployment_id=test_case.second_deployment_id,
                 created_at="2026-04-09 22:05:00.123",
                 boundary_time="2026-04-09 22:05:00.000",
                 replay_lineage_mode="timestamp",
             ),
-            managed_client,
+            client=managed_client,
         )
         if test_case.create_active_view:
             clickhouse_client.command(
@@ -289,22 +291,22 @@ def test_given_publish_request_without_deployment_id_when_resolving_then_it_beha
         if test_case.expected_error_fragment is not None:
             with pytest.raises(ValueError, match=test_case.expected_error_fragment):
                 execute_publish(
-                    PublishRequest(
+                    request=PublishRequest(
                         deployment_id=None,
                         metadata_database=clickhouse_database,
                         default_database=clickhouse_database,
                     ),
-                    managed_client,
+                    client=managed_client,
                 )
             return
 
         result: PublishResult = execute_publish(
-            PublishRequest(
+            request=PublishRequest(
                 deployment_id=None,
                 metadata_database=clickhouse_database,
                 default_database=clickhouse_database,
             ),
-            managed_client,
+            client=managed_client,
         )
     finally:
         managed_client.close()
@@ -327,18 +329,19 @@ def test_given_deleted_publish_metadata_when_publishing_then_it_uses_live_clickh
     compiled_pipeline: CompiledPipeline = build_scalar_replay_compiled_pipeline("timestamp")
     clickhouse_client.command(
         render_create_kafka_table_ddl(
-            require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).kafka_table,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.command(
         render_create_table_ddl(
-            require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).raw_table, database=clickhouse_database
         )
     )
     clickhouse_client.command(
         render_create_materialized_view_ddl(
-            require_managed_source(compiled_pipeline).materialized_view,
-            clickhouse_database,
+            materialized_view=require_managed_source(compiled_pipeline).materialized_view,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.insert(
@@ -382,14 +385,14 @@ def test_given_deleted_publish_metadata_when_publishing_then_it_uses_live_clickh
 
     try:
         execute_backfill(
-            build_scalar_replay_request(
+            request=build_scalar_replay_request(
                 database=clickhouse_database,
                 deployment_id="20260409T223000Z_ab12cd",
                 created_at="2026-04-09 22:30:00.123",
                 boundary_time="2026-04-09 22:30:00.000",
                 replay_lineage_mode="timestamp",
             ),
-            managed_client,
+            client=managed_client,
         )
         clickhouse_client.command(
             f"DROP TABLE IF EXISTS {clickhouse_database}.streambuild_deployment_watermarks"
@@ -401,12 +404,12 @@ def test_given_deleted_publish_metadata_when_publishing_then_it_uses_live_clickh
             f"DROP TABLE IF EXISTS {clickhouse_database}.streambuild_object_state_snapshots"
         )
         result: PublishResult = execute_publish(
-            PublishRequest(
+            request=PublishRequest(
                 deployment_id=test_case.deployment_id,
                 metadata_database=clickhouse_database,
                 default_database=clickhouse_database,
             ),
-            managed_client,
+            client=managed_client,
         )
     finally:
         managed_client.close()
@@ -441,18 +444,19 @@ def test_given_deleted_staged_table_when_publishing_then_it_fails_conservatively
     compiled_pipeline: CompiledPipeline = build_scalar_replay_compiled_pipeline("timestamp")
     clickhouse_client.command(
         render_create_kafka_table_ddl(
-            require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).kafka_table,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.command(
         render_create_table_ddl(
-            require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).raw_table, database=clickhouse_database
         )
     )
     clickhouse_client.command(
         render_create_materialized_view_ddl(
-            require_managed_source(compiled_pipeline).materialized_view,
-            clickhouse_database,
+            materialized_view=require_managed_source(compiled_pipeline).materialized_view,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.insert(
@@ -489,26 +493,26 @@ def test_given_deleted_staged_table_when_publishing_then_it_fails_conservatively
 
     try:
         execute_backfill(
-            build_scalar_replay_request(
+            request=build_scalar_replay_request(
                 database=clickhouse_database,
                 deployment_id=test_case.deployment_id,
                 created_at="2026-04-09 22:40:00.123",
                 boundary_time="2026-04-09 22:40:00.000",
                 replay_lineage_mode="timestamp",
             ),
-            managed_client,
+            client=managed_client,
         )
         clickhouse_client.command(
             f"DROP TABLE {clickhouse_database}.tbl__orders_enriched__{test_case.deployment_id}"
         )
         with pytest.raises(ValueError, match=test_case.expected_error_fragment):
             execute_publish(
-                PublishRequest(
+                request=PublishRequest(
                     deployment_id=test_case.deployment_id,
                     metadata_database=clickhouse_database,
                     default_database=clickhouse_database,
                 ),
-                managed_client,
+                client=managed_client,
             )
     finally:
         managed_client.close()
@@ -538,23 +542,24 @@ def test_given_deleted_active_view_when_publishing_then_it_recreates_stable_view
     compiled_pipeline: CompiledPipeline = build_scalar_replay_compiled_pipeline("timestamp")
     clickhouse_client.command(
         render_create_kafka_table_ddl(
-            require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).kafka_table,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.command(
         render_create_table_ddl(
-            require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).raw_table, database=clickhouse_database
         )
     )
     clickhouse_client.command(
         render_create_materialized_view_ddl(
-            require_managed_source(compiled_pipeline).materialized_view,
-            clickhouse_database,
+            materialized_view=require_managed_source(compiled_pipeline).materialized_view,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.command(
         render_create_table_ddl(
-            compiled_pipeline.transforms[0].target_table, clickhouse_database
+            table=compiled_pipeline.transforms[0].target_table, database=clickhouse_database
         ).replace(
             f"{clickhouse_database}.{compiled_pipeline.transforms[0].target_table.name}",
             (f"{clickhouse_database}.tbl__orders_enriched__{test_case.active_deployment_id}"),
@@ -601,7 +606,7 @@ def test_given_deleted_active_view_when_publishing_then_it_recreates_stable_view
     )
     clickhouse_client.command(
         render_create_table_ddl(
-            compiled_pipeline.transforms[0].target_table, clickhouse_database
+            table=compiled_pipeline.transforms[0].target_table, database=clickhouse_database
         ).replace(
             f"{clickhouse_database}.{compiled_pipeline.transforms[0].target_table.name}",
             f"{clickhouse_database}.tbl__orders_enriched__{test_case.staged_deployment_id}",
@@ -630,12 +635,12 @@ def test_given_deleted_active_view_when_publishing_then_it_recreates_stable_view
     clickhouse_client.command(f"DROP VIEW {clickhouse_database}.tbl__orders_enriched")
     try:
         publish_result: PublishResult = execute_publish(
-            PublishRequest(
+            request=PublishRequest(
                 deployment_id=test_case.staged_deployment_id,
                 metadata_database=clickhouse_database,
                 default_database=clickhouse_database,
             ),
-            managed_client,
+            client=managed_client,
         )
     finally:
         managed_client.close()

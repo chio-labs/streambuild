@@ -83,7 +83,7 @@ def test_given_invalid_transform_sql_when_deriving_columns_then_it_raises_a_clea
     test_case: DeriveTransformOutputColumnsErrorTestCase,
 ) -> None:
     with pytest.raises(test_case.expected_error_type) as error_info:
-        derive_transform_output_columns("orders_enriched", test_case.query)
+        derive_transform_output_columns(transform_name="orders_enriched", query=test_case.query)
 
     error: Exception = error_info.value
     for attribute_name, expected_value in test_case.expected_error_attributes.items():

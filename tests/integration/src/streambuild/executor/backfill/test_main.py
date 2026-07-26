@@ -215,18 +215,20 @@ def test_given_changed_pipeline_when_bootstrapping_then_it_creates_metadata_and_
     if test_case.precreate_live_landing_objects:
         clickhouse_client.command(
             render_create_kafka_table_ddl(
-                require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+                table=require_managed_source(compiled_pipeline).kafka_table,
+                database=clickhouse_database,
             )
         )
         clickhouse_client.command(
             render_create_table_ddl(
-                require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+                table=require_managed_source(compiled_pipeline).raw_table,
+                database=clickhouse_database,
             )
         )
         clickhouse_client.command(
             render_create_materialized_view_ddl(
-                require_managed_source(compiled_pipeline).materialized_view,
-                clickhouse_database,
+                materialized_view=require_managed_source(compiled_pipeline).materialized_view,
+                database=clickhouse_database,
             )
         )
     managed_client: ClickHouseClient = ClickHouseClient.from_config(
@@ -241,12 +243,12 @@ def test_given_changed_pipeline_when_bootstrapping_then_it_creates_metadata_and_
 
     try:
         result: BackfillBootstrapResult = execute_backfill_bootstrap(
-            build_backfill_bootstrap_request(
+            request=build_backfill_bootstrap_request(
                 database=clickhouse_database,
                 deployment_id=test_case.deployment_id,
                 created_at=test_case.created_at,
             ),
-            managed_client,
+            client=managed_client,
         )
     finally:
         managed_client.close()
@@ -369,18 +371,19 @@ def test_given_scalar_replay_mode_when_executing_then_it_persists_watermarks_and
     )
     clickhouse_client.command(
         render_create_kafka_table_ddl(
-            require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).kafka_table,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.command(
         render_create_table_ddl(
-            require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).raw_table, database=clickhouse_database
         )
     )
     clickhouse_client.command(
         render_create_materialized_view_ddl(
-            require_managed_source(compiled_pipeline).materialized_view,
-            clickhouse_database,
+            materialized_view=require_managed_source(compiled_pipeline).materialized_view,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.insert(
@@ -409,14 +412,14 @@ def test_given_scalar_replay_mode_when_executing_then_it_persists_watermarks_and
 
     try:
         result: BackfillExecutionResult = execute_backfill(
-            build_scalar_replay_request(
+            request=build_scalar_replay_request(
                 database=clickhouse_database,
                 deployment_id=test_case.deployment_id,
                 created_at=test_case.created_at,
                 boundary_time=test_case.boundary_time,
                 replay_lineage_mode=test_case.replay_lineage_mode,
             ),
-            managed_client,
+            client=managed_client,
         )
         clickhouse_client.insert(
             table=f"{clickhouse_database}.{require_managed_source(compiled_pipeline).raw_table.name}",
@@ -530,18 +533,19 @@ def test_given_offset_replay_mode_when_executing_then_it_persists_partition_wate
     compiled_pipeline: CompiledPipeline = build_offset_replay_compiled_pipeline()
     clickhouse_client.command(
         render_create_kafka_table_ddl(
-            require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).kafka_table,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.command(
         render_create_table_ddl(
-            require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).raw_table, database=clickhouse_database
         )
     )
     clickhouse_client.command(
         render_create_materialized_view_ddl(
-            require_managed_source(compiled_pipeline).materialized_view,
-            clickhouse_database,
+            materialized_view=require_managed_source(compiled_pipeline).materialized_view,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.insert(
@@ -570,13 +574,13 @@ def test_given_offset_replay_mode_when_executing_then_it_persists_partition_wate
 
     try:
         result: BackfillExecutionResult = execute_backfill(
-            build_offset_replay_request(
+            request=build_offset_replay_request(
                 database=clickhouse_database,
                 deployment_id=test_case.deployment_id,
                 created_at=test_case.created_at,
                 boundary_time=test_case.boundary_time,
             ),
-            managed_client,
+            client=managed_client,
         )
         clickhouse_client.insert(
             table=f"{clickhouse_database}.{require_managed_source(compiled_pipeline).raw_table.name}",
@@ -640,18 +644,19 @@ def test_given_reference_join_when_executing_then_it_replays_from_staged_referen
     compiled_pipeline: CompiledPipeline = build_reference_join_compiled_pipeline()
     clickhouse_client.command(
         render_create_kafka_table_ddl(
-            require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).kafka_table,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.command(
         render_create_table_ddl(
-            require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).raw_table, database=clickhouse_database
         )
     )
     clickhouse_client.command(
         render_create_materialized_view_ddl(
-            require_managed_source(compiled_pipeline).materialized_view,
-            clickhouse_database,
+            materialized_view=require_managed_source(compiled_pipeline).materialized_view,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.insert(
@@ -695,13 +700,13 @@ def test_given_reference_join_when_executing_then_it_replays_from_staged_referen
 
     try:
         result: BackfillExecutionResult = execute_backfill(
-            build_reference_join_replay_request(
+            request=build_reference_join_replay_request(
                 database=clickhouse_database,
                 deployment_id=test_case.deployment_id,
                 created_at=test_case.created_at,
                 boundary_time=test_case.boundary_time,
             ),
-            managed_client,
+            client=managed_client,
         )
     finally:
         managed_client.close()
@@ -750,18 +755,20 @@ def test_given_published_reference_join_dependency_when_backfilling_then_it_uses
     )
     clickhouse_client.command(
         render_create_kafka_table_ddl(
-            require_managed_source(initial_compiled_pipeline).kafka_table, clickhouse_database
+            table=require_managed_source(initial_compiled_pipeline).kafka_table,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.command(
         render_create_table_ddl(
-            require_managed_source(initial_compiled_pipeline).raw_table, clickhouse_database
+            table=require_managed_source(initial_compiled_pipeline).raw_table,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.command(
         render_create_materialized_view_ddl(
-            require_managed_source(initial_compiled_pipeline).materialized_view,
-            clickhouse_database,
+            materialized_view=require_managed_source(initial_compiled_pipeline).materialized_view,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.insert(
@@ -805,30 +812,30 @@ def test_given_published_reference_join_dependency_when_backfilling_then_it_uses
 
     try:
         execute_backfill(
-            build_reference_join_region_lookup_only_replay_request(
+            request=build_reference_join_region_lookup_only_replay_request(
                 database=clickhouse_database,
                 deployment_id=test_case.initial_deployment_id,
                 created_at=test_case.created_at,
                 boundary_time=test_case.boundary_time,
             ),
-            managed_client,
+            client=managed_client,
         )
         execute_publish(
-            PublishRequest(
+            request=PublishRequest(
                 deployment_id=test_case.initial_deployment_id,
                 metadata_database=clickhouse_database,
                 default_database=clickhouse_database,
             ),
-            managed_client,
+            client=managed_client,
         )
         result: BackfillExecutionResult = execute_backfill(
-            build_reference_join_replay_request(
+            request=build_reference_join_replay_request(
                 database=clickhouse_database,
                 deployment_id=test_case.changed_deployment_id,
                 created_at=test_case.created_at,
                 boundary_time=test_case.boundary_time,
             ),
-            managed_client,
+            client=managed_client,
         )
     finally:
         managed_client.close()
@@ -930,13 +937,13 @@ def test_given_external_source_offset_replay_when_executing_then_it_uses_declare
 
     try:
         result: BackfillExecutionResult = execute_backfill(
-            build_external_source_offset_replay_request(
+            request=build_external_source_offset_replay_request(
                 database=clickhouse_database,
                 deployment_id=test_case.deployment_id,
                 created_at=test_case.created_at,
                 boundary_time=test_case.boundary_time,
             ),
-            managed_client,
+            client=managed_client,
         )
     finally:
         managed_client.close()
@@ -1025,13 +1032,13 @@ def test_given_external_source_cursor_replay_when_executing_then_it_replays_by_c
 
     try:
         result: BackfillExecutionResult = execute_backfill(
-            build_external_source_cursor_replay_request(
+            request=build_external_source_cursor_replay_request(
                 database=clickhouse_database,
                 deployment_id=test_case.deployment_id,
                 created_at=test_case.created_at,
                 start_time=test_case.start_time,
             ),
-            managed_client,
+            client=managed_client,
         )
     finally:
         managed_client.close()
@@ -1102,18 +1109,19 @@ def test_given_aggregate_offset_replay_when_executing_then_it_filters_anchor_row
     compiled_pipeline: CompiledPipeline = build_aggregate_offset_replay_compiled_pipeline()
     clickhouse_client.command(
         render_create_kafka_table_ddl(
-            require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).kafka_table,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.command(
         render_create_table_ddl(
-            require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).raw_table, database=clickhouse_database
         )
     )
     clickhouse_client.command(
         render_create_materialized_view_ddl(
-            require_managed_source(compiled_pipeline).materialized_view,
-            clickhouse_database,
+            materialized_view=require_managed_source(compiled_pipeline).materialized_view,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.insert(
@@ -1142,13 +1150,13 @@ def test_given_aggregate_offset_replay_when_executing_then_it_filters_anchor_row
 
     try:
         result: BackfillExecutionResult = execute_backfill(
-            build_aggregate_offset_replay_request(
+            request=build_aggregate_offset_replay_request(
                 database=clickhouse_database,
                 deployment_id=test_case.deployment_id,
                 created_at=test_case.created_at,
                 boundary_time=test_case.boundary_time,
             ),
-            managed_client,
+            client=managed_client,
         )
     finally:
         managed_client.close()
@@ -1210,18 +1218,19 @@ def test_given_aggregate_start_time_when_bootstrapping_then_it_resolves_policy_p
     compiled_pipeline: CompiledPipeline = build_aggregate_offset_replay_compiled_pipeline()
     clickhouse_client.command(
         render_create_kafka_table_ddl(
-            require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).kafka_table,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.command(
         render_create_table_ddl(
-            require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).raw_table, database=clickhouse_database
         )
     )
     clickhouse_client.command(
         render_create_materialized_view_ddl(
-            require_managed_source(compiled_pipeline).materialized_view,
-            clickhouse_database,
+            materialized_view=require_managed_source(compiled_pipeline).materialized_view,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.insert(
@@ -1265,21 +1274,21 @@ def test_given_aggregate_start_time_when_bootstrapping_then_it_resolves_policy_p
 
     try:
         initial_result: BackfillExecutionResult = execute_backfill(
-            build_aggregate_offset_replay_request(
+            request=build_aggregate_offset_replay_request(
                 database=clickhouse_database,
                 deployment_id=test_case.initial_deployment_id,
                 created_at=test_case.created_at,
                 boundary_time=test_case.initial_boundary_time,
             ),
-            managed_client,
+            client=managed_client,
         )
         execute_publish(
-            PublishRequest(
+            request=PublishRequest(
                 deployment_id=initial_result.bootstrap.deployment_id,
                 metadata_database=clickhouse_database,
                 default_database=clickhouse_database,
             ),
-            managed_client,
+            client=managed_client,
         )
         changed_desired_state: DesiredState = build_desired_state(
             (
@@ -1297,7 +1306,7 @@ def test_given_aggregate_start_time_when_bootstrapping_then_it_resolves_policy_p
             frontier_timestamp - timedelta(milliseconds=test_case.lower_bound_offset_millis)
         ).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
         bootstrap_result: BackfillBootstrapResult = execute_backfill_bootstrap(
-            BackfillBootstrapRequest(
+            request=BackfillBootstrapRequest(
                 desired_state=changed_desired_state,
                 default_database=clickhouse_database,
                 metadata_database=clickhouse_database,
@@ -1309,7 +1318,7 @@ def test_given_aggregate_start_time_when_bootstrapping_then_it_resolves_policy_p
                 boundary_time=test_case.changed_boundary_time,
                 stabilization_seconds=0.0,
             ),
-            managed_client,
+            client=managed_client,
         )
     finally:
         managed_client.close()
@@ -1352,18 +1361,19 @@ def test_given_aggregate_start_time_when_executing_then_it_falls_back_to_full_re
     compiled_pipeline: CompiledPipeline = build_aggregate_offset_replay_compiled_pipeline()
     clickhouse_client.command(
         render_create_kafka_table_ddl(
-            require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).kafka_table,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.command(
         render_create_table_ddl(
-            require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).raw_table, database=clickhouse_database
         )
     )
     clickhouse_client.command(
         render_create_materialized_view_ddl(
-            require_managed_source(compiled_pipeline).materialized_view,
-            clickhouse_database,
+            materialized_view=require_managed_source(compiled_pipeline).materialized_view,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.insert(
@@ -1407,21 +1417,21 @@ def test_given_aggregate_start_time_when_executing_then_it_falls_back_to_full_re
 
     try:
         initial_result: BackfillExecutionResult = execute_backfill(
-            build_aggregate_offset_replay_request(
+            request=build_aggregate_offset_replay_request(
                 database=clickhouse_database,
                 deployment_id=test_case.initial_deployment_id,
                 created_at=test_case.created_at,
                 boundary_time=test_case.initial_boundary_time,
             ),
-            managed_client,
+            client=managed_client,
         )
         execute_publish(
-            PublishRequest(
+            request=PublishRequest(
                 deployment_id=initial_result.bootstrap.deployment_id,
                 metadata_database=clickhouse_database,
                 default_database=clickhouse_database,
             ),
-            managed_client,
+            client=managed_client,
         )
         changed_desired_state: DesiredState = build_desired_state(
             (build_changed_aggregate_offset_replay_compiled_pipeline(),)
@@ -1435,7 +1445,7 @@ def test_given_aggregate_start_time_when_executing_then_it_falls_back_to_full_re
             frontier_timestamp - timedelta(milliseconds=test_case.lower_bound_offset_millis)
         ).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
         result: BackfillExecutionResult = execute_backfill(
-            BackfillBootstrapRequest(
+            request=BackfillBootstrapRequest(
                 desired_state=changed_desired_state,
                 default_database=clickhouse_database,
                 metadata_database=clickhouse_database,
@@ -1447,7 +1457,7 @@ def test_given_aggregate_start_time_when_executing_then_it_falls_back_to_full_re
                 boundary_time=test_case.changed_boundary_time,
                 stabilization_seconds=0.0,
             ),
-            managed_client,
+            client=managed_client,
         )
     finally:
         managed_client.close()
@@ -1498,18 +1508,19 @@ def test_given_unseeded_bounded_aggregate_offset_replay_when_executing_then_it_r
     compiled_pipeline: CompiledPipeline = build_aggregate_offset_replay_compiled_pipeline()
     clickhouse_client.command(
         render_create_kafka_table_ddl(
-            require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).kafka_table,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.command(
         render_create_table_ddl(
-            require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).raw_table, database=clickhouse_database
         )
     )
     clickhouse_client.command(
         render_create_materialized_view_ddl(
-            require_managed_source(compiled_pipeline).materialized_view,
-            clickhouse_database,
+            materialized_view=require_managed_source(compiled_pipeline).materialized_view,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.insert(
@@ -1553,27 +1564,27 @@ def test_given_unseeded_bounded_aggregate_offset_replay_when_executing_then_it_r
 
     try:
         initial_result: BackfillExecutionResult = execute_backfill(
-            build_aggregate_offset_replay_request(
+            request=build_aggregate_offset_replay_request(
                 database=clickhouse_database,
                 deployment_id=test_case.initial_deployment_id,
                 created_at=test_case.created_at,
                 boundary_time=test_case.initial_boundary_time,
             ),
-            managed_client,
+            client=managed_client,
         )
         execute_publish(
-            PublishRequest(
+            request=PublishRequest(
                 deployment_id=initial_result.bootstrap.deployment_id,
                 metadata_database=clickhouse_database,
                 default_database=clickhouse_database,
             ),
-            managed_client,
+            client=managed_client,
         )
         changed_desired_state: DesiredState = build_desired_state(
             (build_changed_aggregate_offset_replay_compiled_pipeline(),)
         )
         bootstrap_result: BackfillBootstrapResult = execute_backfill_bootstrap(
-            BackfillBootstrapRequest(
+            request=BackfillBootstrapRequest(
                 desired_state=changed_desired_state,
                 default_database=clickhouse_database,
                 metadata_database=clickhouse_database,
@@ -1583,7 +1594,7 @@ def test_given_unseeded_bounded_aggregate_offset_replay_when_executing_then_it_r
                 boundary_time=test_case.changed_boundary_time,
                 stabilization_seconds=0.0,
             ),
-            managed_client,
+            client=managed_client,
         )
         unseeded_plan: DeploymentPlan = replace(
             bootstrap_result.deployment_plan,
@@ -1681,18 +1692,19 @@ def test_given_seeded_bounded_scalar_replay_when_executing_then_it_copies_prefix
     compiled_pipeline: CompiledPipeline = build_scalar_replay_compiled_pipeline("timestamp")
     clickhouse_client.command(
         render_create_kafka_table_ddl(
-            require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).kafka_table,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.command(
         render_create_table_ddl(
-            require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).raw_table, database=clickhouse_database
         )
     )
     clickhouse_client.command(
         render_create_materialized_view_ddl(
-            require_managed_source(compiled_pipeline).materialized_view,
-            clickhouse_database,
+            materialized_view=require_managed_source(compiled_pipeline).materialized_view,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.insert(
@@ -1736,28 +1748,28 @@ def test_given_seeded_bounded_scalar_replay_when_executing_then_it_copies_prefix
 
     try:
         initial_result: BackfillExecutionResult = execute_backfill(
-            build_scalar_replay_request(
+            request=build_scalar_replay_request(
                 database=clickhouse_database,
                 deployment_id=test_case.initial_deployment_id,
                 created_at=test_case.created_at,
                 boundary_time=test_case.initial_boundary_time,
                 replay_lineage_mode="timestamp",
             ),
-            managed_client,
+            client=managed_client,
         )
         execute_publish(
-            PublishRequest(
+            request=PublishRequest(
                 deployment_id=initial_result.bootstrap.deployment_id,
                 metadata_database=clickhouse_database,
                 default_database=clickhouse_database,
             ),
-            managed_client,
+            client=managed_client,
         )
         changed_desired_state: DesiredState = build_desired_state(
             (build_changed_scalar_replay_compiled_pipeline("timestamp"),)
         )
         seeded_result: BackfillExecutionResult = execute_backfill(
-            BackfillBootstrapRequest(
+            request=BackfillBootstrapRequest(
                 desired_state=changed_desired_state,
                 default_database=clickhouse_database,
                 metadata_database=clickhouse_database,
@@ -1767,7 +1779,7 @@ def test_given_seeded_bounded_scalar_replay_when_executing_then_it_copies_prefix
                 boundary_time=test_case.changed_boundary_time,
                 stabilization_seconds=0.0,
             ),
-            managed_client,
+            client=managed_client,
         )
         clickhouse_client.insert(
             table=f"{clickhouse_database}.{require_managed_source(compiled_pipeline).raw_table.name}",
@@ -1864,18 +1876,19 @@ def test_given_unseeded_bounded_scalar_replay_when_executing_then_it_replays_onl
     compiled_pipeline: CompiledPipeline = build_scalar_replay_compiled_pipeline("timestamp")
     clickhouse_client.command(
         render_create_kafka_table_ddl(
-            require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).kafka_table,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.command(
         render_create_table_ddl(
-            require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).raw_table, database=clickhouse_database
         )
     )
     clickhouse_client.command(
         render_create_materialized_view_ddl(
-            require_managed_source(compiled_pipeline).materialized_view,
-            clickhouse_database,
+            materialized_view=require_managed_source(compiled_pipeline).materialized_view,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.insert(
@@ -1919,28 +1932,28 @@ def test_given_unseeded_bounded_scalar_replay_when_executing_then_it_replays_onl
 
     try:
         initial_result: BackfillExecutionResult = execute_backfill(
-            build_scalar_replay_request(
+            request=build_scalar_replay_request(
                 database=clickhouse_database,
                 deployment_id=test_case.initial_deployment_id,
                 created_at=test_case.created_at,
                 boundary_time=test_case.initial_boundary_time,
                 replay_lineage_mode="timestamp",
             ),
-            managed_client,
+            client=managed_client,
         )
         execute_publish(
-            PublishRequest(
+            request=PublishRequest(
                 deployment_id=initial_result.bootstrap.deployment_id,
                 metadata_database=clickhouse_database,
                 default_database=clickhouse_database,
             ),
-            managed_client,
+            client=managed_client,
         )
         changed_desired_state: DesiredState = build_desired_state(
             (build_changed_scalar_replay_compiled_pipeline("timestamp"),)
         )
         bootstrap_result: BackfillBootstrapResult = execute_backfill_bootstrap(
-            BackfillBootstrapRequest(
+            request=BackfillBootstrapRequest(
                 desired_state=changed_desired_state,
                 default_database=clickhouse_database,
                 metadata_database=clickhouse_database,
@@ -1950,7 +1963,7 @@ def test_given_unseeded_bounded_scalar_replay_when_executing_then_it_replays_onl
                 boundary_time=test_case.changed_boundary_time,
                 stabilization_seconds=0.0,
             ),
-            managed_client,
+            client=managed_client,
         )
         unseeded_plan: DeploymentPlan = replace(
             bootstrap_result.deployment_plan,
@@ -2044,18 +2057,19 @@ def test_given_unseeded_bounded_offset_replay_when_executing_then_it_replays_onl
     compiled_pipeline: CompiledPipeline = build_offset_replay_compiled_pipeline()
     clickhouse_client.command(
         render_create_kafka_table_ddl(
-            require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).kafka_table,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.command(
         render_create_table_ddl(
-            require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).raw_table, database=clickhouse_database
         )
     )
     clickhouse_client.command(
         render_create_materialized_view_ddl(
-            require_managed_source(compiled_pipeline).materialized_view,
-            clickhouse_database,
+            materialized_view=require_managed_source(compiled_pipeline).materialized_view,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.insert(
@@ -2099,27 +2113,27 @@ def test_given_unseeded_bounded_offset_replay_when_executing_then_it_replays_onl
 
     try:
         initial_result: BackfillExecutionResult = execute_backfill(
-            build_offset_replay_request(
+            request=build_offset_replay_request(
                 database=clickhouse_database,
                 deployment_id=test_case.initial_deployment_id,
                 created_at=test_case.created_at,
                 boundary_time=test_case.initial_boundary_time,
             ),
-            managed_client,
+            client=managed_client,
         )
         execute_publish(
-            PublishRequest(
+            request=PublishRequest(
                 deployment_id=initial_result.bootstrap.deployment_id,
                 metadata_database=clickhouse_database,
                 default_database=clickhouse_database,
             ),
-            managed_client,
+            client=managed_client,
         )
         changed_desired_state: DesiredState = build_desired_state(
             (build_changed_offset_replay_compiled_pipeline(),)
         )
         bootstrap_result: BackfillBootstrapResult = execute_backfill_bootstrap(
-            BackfillBootstrapRequest(
+            request=BackfillBootstrapRequest(
                 desired_state=changed_desired_state,
                 default_database=clickhouse_database,
                 metadata_database=clickhouse_database,
@@ -2129,7 +2143,7 @@ def test_given_unseeded_bounded_offset_replay_when_executing_then_it_replays_onl
                 boundary_time=test_case.changed_boundary_time,
                 stabilization_seconds=0.0,
             ),
-            managed_client,
+            client=managed_client,
         )
         unseeded_plan: DeploymentPlan = replace(
             bootstrap_result.deployment_plan,
@@ -2222,18 +2236,19 @@ def test_given_seeded_bounded_offset_replay_when_executing_then_it_copies_prefix
     compiled_pipeline: CompiledPipeline = build_offset_replay_compiled_pipeline()
     clickhouse_client.command(
         render_create_kafka_table_ddl(
-            require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).kafka_table,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.command(
         render_create_table_ddl(
-            require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).raw_table, database=clickhouse_database
         )
     )
     clickhouse_client.command(
         render_create_materialized_view_ddl(
-            require_managed_source(compiled_pipeline).materialized_view,
-            clickhouse_database,
+            materialized_view=require_managed_source(compiled_pipeline).materialized_view,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.insert(
@@ -2277,27 +2292,27 @@ def test_given_seeded_bounded_offset_replay_when_executing_then_it_copies_prefix
 
     try:
         initial_result: BackfillExecutionResult = execute_backfill(
-            build_offset_replay_request(
+            request=build_offset_replay_request(
                 database=clickhouse_database,
                 deployment_id=test_case.initial_deployment_id,
                 created_at=test_case.created_at,
                 boundary_time=test_case.initial_boundary_time,
             ),
-            managed_client,
+            client=managed_client,
         )
         execute_publish(
-            PublishRequest(
+            request=PublishRequest(
                 deployment_id=initial_result.bootstrap.deployment_id,
                 metadata_database=clickhouse_database,
                 default_database=clickhouse_database,
             ),
-            managed_client,
+            client=managed_client,
         )
         changed_desired_state: DesiredState = build_desired_state(
             (build_changed_offset_replay_compiled_pipeline(),)
         )
         seeded_result: BackfillExecutionResult = execute_backfill(
-            BackfillBootstrapRequest(
+            request=BackfillBootstrapRequest(
                 desired_state=changed_desired_state,
                 default_database=clickhouse_database,
                 metadata_database=clickhouse_database,
@@ -2307,7 +2322,7 @@ def test_given_seeded_bounded_offset_replay_when_executing_then_it_copies_prefix
                 boundary_time=test_case.changed_boundary_time,
                 stabilization_seconds=0.0,
             ),
-            managed_client,
+            client=managed_client,
         )
         clickhouse_client.insert(
             table=f"{clickhouse_database}.{require_managed_source(compiled_pipeline).raw_table.name}",
@@ -2403,18 +2418,19 @@ def test_given_two_staged_backfills_before_publish_when_executing_then_both_stag
     compiled_pipeline: CompiledPipeline = build_scalar_replay_compiled_pipeline("timestamp")
     clickhouse_client.command(
         render_create_kafka_table_ddl(
-            require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).kafka_table,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.command(
         render_create_table_ddl(
-            require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).raw_table, database=clickhouse_database
         )
     )
     clickhouse_client.command(
         render_create_materialized_view_ddl(
-            require_managed_source(compiled_pipeline).materialized_view,
-            clickhouse_database,
+            materialized_view=require_managed_source(compiled_pipeline).materialized_view,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.insert(
@@ -2451,24 +2467,24 @@ def test_given_two_staged_backfills_before_publish_when_executing_then_both_stag
 
     try:
         first_result: BackfillExecutionResult = execute_backfill(
-            build_scalar_replay_request(
+            request=build_scalar_replay_request(
                 database=clickhouse_database,
                 deployment_id=test_case.first_deployment_id,
                 created_at=test_case.created_at,
                 boundary_time=test_case.boundary_time,
                 replay_lineage_mode="timestamp",
             ),
-            managed_client,
+            client=managed_client,
         )
         second_result: BackfillExecutionResult = execute_backfill(
-            build_scalar_replay_request(
+            request=build_scalar_replay_request(
                 database=clickhouse_database,
                 deployment_id=test_case.second_deployment_id,
                 created_at=test_case.created_at,
                 boundary_time=test_case.boundary_time,
                 replay_lineage_mode="timestamp",
             ),
-            managed_client,
+            client=managed_client,
         )
     finally:
         managed_client.close()
@@ -2513,18 +2529,19 @@ def test_given_active_view_when_backfilling_then_it_reports_bounded_replay_strat
     compiled_pipeline: CompiledPipeline = build_scalar_replay_compiled_pipeline("timestamp")
     clickhouse_client.command(
         render_create_kafka_table_ddl(
-            require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).kafka_table,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.command(
         render_create_table_ddl(
-            require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).raw_table, database=clickhouse_database
         )
     )
     clickhouse_client.command(
         render_create_materialized_view_ddl(
-            require_managed_source(compiled_pipeline).materialized_view,
-            clickhouse_database,
+            materialized_view=require_managed_source(compiled_pipeline).materialized_view,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.insert(
@@ -2561,14 +2578,14 @@ def test_given_active_view_when_backfilling_then_it_reports_bounded_replay_strat
 
     try:
         first_result: BackfillExecutionResult = execute_backfill(
-            build_scalar_replay_request(
+            request=build_scalar_replay_request(
                 database=clickhouse_database,
                 deployment_id=test_case.first_deployment_id,
                 created_at=test_case.created_at,
                 boundary_time=test_case.boundary_time,
                 replay_lineage_mode="timestamp",
             ),
-            managed_client,
+            client=managed_client,
         )
         clickhouse_client.command(
             render_create_view_ddl(
@@ -2578,14 +2595,14 @@ def test_given_active_view_when_backfilling_then_it_reports_bounded_replay_strat
             )
         )
         second_result: BackfillExecutionResult = execute_backfill(
-            build_scalar_replay_request(
+            request=build_scalar_replay_request(
                 database=clickhouse_database,
                 deployment_id=test_case.second_deployment_id,
                 created_at=test_case.created_at,
                 boundary_time=test_case.boundary_time,
                 replay_lineage_mode="timestamp",
             ),
-            managed_client,
+            client=managed_client,
         )
     finally:
         managed_client.close()
@@ -2623,7 +2640,8 @@ def test_given_published_raw_root_when_backfilling_again_then_it_uses_bounded_re
     compiled_pipeline: CompiledPipeline = build_scalar_replay_compiled_pipeline("offsets")
     clickhouse_client.command(
         render_create_kafka_table_ddl(
-            require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).kafka_table,
+            database=clickhouse_database,
         )
     )
     managed_client: ClickHouseClient = ClickHouseClient.from_config(
@@ -2638,30 +2656,30 @@ def test_given_published_raw_root_when_backfilling_again_then_it_uses_bounded_re
 
     try:
         first_result: BackfillExecutionResult = execute_backfill(
-            build_offset_replay_request(
+            request=build_offset_replay_request(
                 database=clickhouse_database,
                 deployment_id=test_case.first_deployment_id,
                 created_at=test_case.created_at,
                 boundary_time=test_case.first_boundary_time,
             ),
-            managed_client,
+            client=managed_client,
         )
         execute_publish(
-            PublishRequest(
+            request=PublishRequest(
                 deployment_id=test_case.first_deployment_id,
                 metadata_database=clickhouse_database,
                 default_database=clickhouse_database,
             ),
-            managed_client,
+            client=managed_client,
         )
         second_result: BackfillExecutionResult = execute_backfill(
-            build_offset_replay_request(
+            request=build_offset_replay_request(
                 database=clickhouse_database,
                 deployment_id=test_case.second_deployment_id,
                 created_at=test_case.created_at,
                 boundary_time=test_case.second_boundary_time,
             ),
-            managed_client,
+            client=managed_client,
         )
     finally:
         managed_client.close()
@@ -2724,18 +2742,20 @@ def test_given_mixed_root_state_when_backfilling_then_it_reports_per_root_strate
     for compiled_pipeline in (orders_pipeline, customers_pipeline):
         clickhouse_client.command(
             render_create_kafka_table_ddl(
-                require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+                table=require_managed_source(compiled_pipeline).kafka_table,
+                database=clickhouse_database,
             )
         )
         clickhouse_client.command(
             render_create_table_ddl(
-                require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+                table=require_managed_source(compiled_pipeline).raw_table,
+                database=clickhouse_database,
             )
         )
         clickhouse_client.command(
             render_create_materialized_view_ddl(
-                require_managed_source(compiled_pipeline).materialized_view,
-                clickhouse_database,
+                materialized_view=require_managed_source(compiled_pipeline).materialized_view,
+                database=clickhouse_database,
             )
         )
     clickhouse_client.command(
@@ -2786,7 +2806,7 @@ def test_given_mixed_root_state_when_backfilling_then_it_reports_per_root_strate
 
     try:
         result: BackfillBootstrapResult = execute_backfill_bootstrap(
-            BackfillBootstrapRequest(
+            request=BackfillBootstrapRequest(
                 desired_state=build_desired_state((orders_pipeline, customers_pipeline)),
                 default_database=clickhouse_database,
                 metadata_database=clickhouse_database,
@@ -2796,7 +2816,7 @@ def test_given_mixed_root_state_when_backfilling_then_it_reports_per_root_strate
                 boundary_time=test_case.boundary_time,
                 stabilization_seconds=0.0,
             ),
-            managed_client,
+            client=managed_client,
         )
     finally:
         managed_client.close()
@@ -2838,18 +2858,19 @@ def test_given_deleted_staged_table_after_bootstrap_when_rerunning_then_backfill
     compiled_pipeline: CompiledPipeline = build_scalar_replay_compiled_pipeline("timestamp")
     clickhouse_client.command(
         render_create_kafka_table_ddl(
-            require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).kafka_table,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.command(
         render_create_table_ddl(
-            require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).raw_table, database=clickhouse_database
         )
     )
     clickhouse_client.command(
         render_create_materialized_view_ddl(
-            require_managed_source(compiled_pipeline).materialized_view,
-            clickhouse_database,
+            materialized_view=require_managed_source(compiled_pipeline).materialized_view,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.insert(
@@ -2886,28 +2907,28 @@ def test_given_deleted_staged_table_after_bootstrap_when_rerunning_then_backfill
 
     try:
         execute_backfill_bootstrap(
-            build_scalar_replay_request(
+            request=build_scalar_replay_request(
                 database=clickhouse_database,
                 deployment_id=test_case.deployment_id,
                 created_at=test_case.created_at,
                 boundary_time=test_case.boundary_time,
                 replay_lineage_mode="timestamp",
             ),
-            managed_client,
+            client=managed_client,
         )
         clickhouse_client.command(
             f"DROP TABLE {clickhouse_database}.tbl__orders_enriched__{test_case.deployment_id}"
         )
         with pytest.raises(Exception, match=test_case.expected_error_fragment):
             execute_backfill(
-                build_scalar_replay_request(
+                request=build_scalar_replay_request(
                     database=clickhouse_database,
                     deployment_id=test_case.deployment_id,
                     created_at=test_case.created_at,
                     boundary_time=test_case.boundary_time,
                     replay_lineage_mode="timestamp",
                 ),
-                managed_client,
+                client=managed_client,
             )
     finally:
         managed_client.close()
@@ -2936,18 +2957,19 @@ def test_given_deleted_watermark_table_when_persisting_backfill_watermarks_then_
     compiled_pipeline: CompiledPipeline = build_scalar_replay_compiled_pipeline("timestamp")
     clickhouse_client.command(
         render_create_kafka_table_ddl(
-            require_managed_source(compiled_pipeline).kafka_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).kafka_table,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.command(
         render_create_table_ddl(
-            require_managed_source(compiled_pipeline).raw_table, clickhouse_database
+            table=require_managed_source(compiled_pipeline).raw_table, database=clickhouse_database
         )
     )
     clickhouse_client.command(
         render_create_materialized_view_ddl(
-            require_managed_source(compiled_pipeline).materialized_view,
-            clickhouse_database,
+            materialized_view=require_managed_source(compiled_pipeline).materialized_view,
+            database=clickhouse_database,
         )
     )
     managed_client: ClickHouseClient = ClickHouseClient.from_config(
@@ -2962,14 +2984,14 @@ def test_given_deleted_watermark_table_when_persisting_backfill_watermarks_then_
 
     try:
         bootstrap_result: BackfillBootstrapResult = execute_backfill_bootstrap(
-            build_scalar_replay_request(
+            request=build_scalar_replay_request(
                 database=clickhouse_database,
                 deployment_id=test_case.deployment_id,
                 created_at=test_case.created_at,
                 boundary_time=test_case.boundary_time,
                 replay_lineage_mode="timestamp",
             ),
-            managed_client,
+            client=managed_client,
         )
         clickhouse_client.command(
             f"DROP TABLE {clickhouse_database}.streambuild_deployment_watermarks"

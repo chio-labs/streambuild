@@ -13,7 +13,7 @@ from streambuild.executor.doctor.models import ActiveViewStatus, DoctorRequest, 
 from streambuild.integrations.clickhouse.client import ClickHouseClient
 
 
-def execute_doctor(request: DoctorRequest, client: ClickHouseClient) -> DoctorResult:
+def execute_doctor(*, request: DoctorRequest, client: ClickHouseClient) -> DoctorResult:
     """Inspect active-view health for managed deployment tables."""
 
     inspected_state: InspectedManagedTableState = inspect_managed_table_state(

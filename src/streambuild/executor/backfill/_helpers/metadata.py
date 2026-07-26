@@ -33,16 +33,16 @@ from streambuild.integrations.clickhouse.client import ClickHouseClient
 from streambuild.spec.models.types import ReplayLineageMode
 
 
-def ensure_database_exists(client: ClickHouseClient, database: str) -> None:
+def ensure_database_exists(*, client: ClickHouseClient, database: str) -> None:
     """Create a ClickHouse database if it does not already exist."""
 
     client.command(f"CREATE DATABASE IF NOT EXISTS {database}")
 
 
-def ensure_metadata_tables(client: ClickHouseClient, metadata_database: str) -> None:
+def ensure_metadata_tables(*, client: ClickHouseClient, metadata_database: str) -> None:
     """Create metadata state tables required for backfill bootstrap."""
 
-    ensure_database_exists(client, metadata_database)
+    ensure_database_exists(client=client, database=metadata_database)
     statements: tuple[RenderedClickHouseStatement, ...] = render_metadata_state_statements(
         metadata_database
     )
@@ -52,6 +52,7 @@ def ensure_metadata_tables(client: ClickHouseClient, metadata_database: str) -> 
 
 
 def persist_deployment_metadata(
+    *,
     client: ClickHouseClient,
     metadata_database: str,
     deployment_plan: DeploymentPlan,
@@ -111,7 +112,7 @@ def persist_deployment_metadata(
     for statement in insert_statements:
         if not statement.rows:
             continue
-        client.insert_rows(_insert_table_name(statement.sql), statement.rows)
+        client.insert_rows(table=_insert_table_name(statement.sql), rows=statement.rows)
 
 
 def _insert_table_name(statement_sql: str) -> str:
@@ -157,7 +158,9 @@ def _build_deployment_runtime_detail_records(
     desired_objects: tuple[DesiredObject, ...],
 ) -> tuple[DeploymentRuntimeDetailRecord, ...]:
     deployment_root_reports: tuple[RootBackfillReport, ...] = (
-        filter_root_backfill_reports_for_deployment(root_reports, deployment_plan)
+        filter_root_backfill_reports_for_deployment(
+            root_reports=root_reports, deployment_plan=deployment_plan
+        )
     )
     root_materialized_view_by_target_name: dict[str, DesiredMaterializedView] = {
         object_.target_table_name: object_
@@ -176,8 +179,8 @@ def _build_deployment_runtime_detail_records(
     root_report: RootBackfillReport
     for root_report in deployment_root_reports:
         subtree: RebuildSubtree | None = _runtime_detail_subtree_for_live_target(
-            deployment_plan.rebuild_subtrees,
-            root_report.root_key,
+            rebuild_subtrees=deployment_plan.rebuild_subtrees,
+            live_target_key=root_report.root_key,
         )
         if subtree is None:
             root_materialized_view: DesiredMaterializedView | None = (
@@ -221,8 +224,8 @@ def _build_deployment_runtime_detail_records(
                 active_deployment_id=active_deployment_id_by_root_key[root_report.root_key],
                 anchor_key=anchor_key,
                 anchor_physical_name=_runtime_detail_anchor_physical_name(
-                    anchor_key,
-                    prepared_physical_name_by_key,
+                    anchor_key=anchor_key,
+                    prepared_physical_name_by_key=prepared_physical_name_by_key,
                 ),
                 execution_mode=execution_mode,
                 configured_backfill_mode=configured_backfill_mode,
@@ -234,6 +237,7 @@ def _build_deployment_runtime_detail_records(
 
 
 def _runtime_detail_subtree_for_live_target(
+    *,
     rebuild_subtrees: tuple[RebuildSubtree, ...],
     live_target_key: ObjectKey,
 ) -> RebuildSubtree | None:
@@ -245,6 +249,7 @@ def _runtime_detail_subtree_for_live_target(
 
 
 def _runtime_detail_anchor_physical_name(
+    *,
     anchor_key: ObjectKey,
     prepared_physical_name_by_key: dict[ObjectKey, str],
 ) -> str | None:

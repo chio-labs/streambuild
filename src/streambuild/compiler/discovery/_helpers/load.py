@@ -68,7 +68,7 @@ def load_pipeline_yaml(file_path: Path) -> Pipeline:
         )
 
     source: KafkaLandingStep | ExternalTableSourceStep = _load_pipeline_source(
-        typed_pipeline_values, file_path
+        pipeline_values=typed_pipeline_values, file_path=file_path
     )
     transforms: list[TransformStep] = _load_pipeline_transforms(pipeline_root)
     replay_lineage_mode_value: object = typed_pipeline_values.get("replay_lineage_mode")
@@ -105,7 +105,7 @@ def load_pipeline_yaml(file_path: Path) -> Pipeline:
 
 
 def _load_pipeline_source(
-    pipeline_values: dict[str, Any], file_path: Path
+    *, pipeline_values: dict[str, Any], file_path: Path
 ) -> KafkaLandingStep | ExternalTableSourceStep:
     source_values: object = pipeline_values.get("source")
     if not isinstance(source_values, dict) or not all(
@@ -248,29 +248,29 @@ def _load_existing_table_source(
     typed_columns_value: dict[str, Any] = columns_value
     replay_boundary_columns: ReplayBoundaryColumns = ReplayBoundaryColumns(
         partition=_optional_string_field(
-            typed_columns_value,
-            file_path,
-            "source.replay_boundary.columns._replay_partition",
+            typed_values=typed_columns_value,
+            file_path=file_path,
+            field_name="source.replay_boundary.columns._replay_partition",
         ),
         offset=_optional_string_field(
-            typed_columns_value,
-            file_path,
-            "source.replay_boundary.columns._replay_offset",
+            typed_values=typed_columns_value,
+            file_path=file_path,
+            field_name="source.replay_boundary.columns._replay_offset",
         ),
         timestamp=_optional_string_field(
-            typed_columns_value,
-            file_path,
-            "source.replay_boundary.columns._replay_timestamp",
+            typed_values=typed_columns_value,
+            file_path=file_path,
+            field_name="source.replay_boundary.columns._replay_timestamp",
         ),
         landed_at=_optional_string_field(
-            typed_columns_value,
-            file_path,
-            "source.replay_boundary.columns._replay_landed_at",
+            typed_values=typed_columns_value,
+            file_path=file_path,
+            field_name="source.replay_boundary.columns._replay_landed_at",
         ),
         cursor=_optional_string_field(
-            typed_columns_value,
-            file_path,
-            "source.replay_boundary.columns._replay_cursor",
+            typed_values=typed_columns_value,
+            file_path=file_path,
+            field_name="source.replay_boundary.columns._replay_cursor",
         ),
     )
     _validate_replay_boundary_columns(
@@ -290,6 +290,7 @@ def _load_existing_table_source(
 
 
 def _optional_string_field(
+    *,
     typed_values: dict[str, Any],
     file_path: Path,
     field_name: str,
@@ -465,7 +466,9 @@ def load_project_yaml(file_path: Path) -> Project:
     clickhouse_value: object = typed_project_values.get("clickhouse")
     clickhouse: ProjectClickHouseConfig | None = None
     if clickhouse_value is not None:
-        clickhouse = _load_project_clickhouse_config(clickhouse_value, file_path)
+        clickhouse = _load_project_clickhouse_config(
+            clickhouse_value=clickhouse_value, file_path=file_path
+        )
 
     return Project(
         replay_lineage_mode=replay_lineage_mode,
@@ -476,6 +479,7 @@ def load_project_yaml(file_path: Path) -> Project:
 
 
 def _load_project_clickhouse_config(
+    *,
     clickhouse_value: object,
     file_path: Path,
 ) -> ProjectClickHouseConfig:
@@ -522,6 +526,7 @@ def _load_project_clickhouse_config(
 
 
 def validate_unique_logical_names(
+    *,
     loaded_pipeline: LoadedPipeline,
     logical_node_names: dict[str, Path],
 ) -> None:

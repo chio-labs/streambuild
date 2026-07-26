@@ -58,8 +58,8 @@ def test_given_overlapping_changed_keys_when_building_subtrees_then_it_collapses
     )
 
     rebuild_subtrees: tuple[RebuildSubtree, ...] = emit_rebuild_subtrees_from_changes(
-        desired_state,
-        object_changes,
+        desired_state=desired_state,
+        object_changes=object_changes,
     )
 
     assert (

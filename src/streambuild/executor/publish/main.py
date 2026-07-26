@@ -7,7 +7,7 @@ from streambuild.executor.publish.models import PublishedView, PublishRequest, P
 from streambuild.integrations.clickhouse.client import ClickHouseClient
 
 
-def execute_publish(request: PublishRequest, client: ClickHouseClient) -> PublishResult:
+def execute_publish(*, request: PublishRequest, client: ClickHouseClient) -> PublishResult:
     """Publish a staged deployment by creating or replacing stable logical views."""
 
     resolved_deployment_id: str = resolve_publish_deployment_id(

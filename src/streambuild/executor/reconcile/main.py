@@ -82,7 +82,11 @@ def execute_reconcile(
         if actual_table is None:
             reasons.append("live target table not found")
         else:
-            reasons.extend(_table_reconcile_rejection_reasons(desired_table, actual_table))
+            reasons.extend(
+                _table_reconcile_rejection_reasons(
+                    desired_table=desired_table, actual_table=actual_table
+                )
+            )
         if desired_mv is not None and desired_mv.key not in actual_mv_by_key:
             reasons.append("live transform materialized view not found")
         if reasons:
@@ -121,7 +125,7 @@ def execute_reconcile(
 
 
 def _table_reconcile_rejection_reasons(
-    desired_table: DesiredTable, actual_table: ActualTable
+    *, desired_table: DesiredTable, actual_table: ActualTable
 ) -> list[str]:
     reasons: list[str] = []
     if desired_table.engine != actual_table.engine:

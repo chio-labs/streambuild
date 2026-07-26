@@ -22,7 +22,7 @@ def render_ambiguous_deployment_message(
     )
     lines: list[str] = [
         style_title(f"{command_name.title()} deployment selection is ambiguous"),
-        style_label_value("Database", database),
+        style_label_value(label="Database", value=database),
         "",
     ]
     if root_names:
@@ -52,6 +52,6 @@ def render_no_deployment_candidates_message(*, command_name: str, database: str)
     return "\n".join(
         [
             style_title(f"No staged deployment candidates are available for {command_name}"),
-            style_label_value("Database", database),
+            style_label_value(label="Database", value=database),
         ]
     )

@@ -12,7 +12,7 @@ def format_clickhouse_sql(sql: str) -> str:
     return expression.sql(dialect="clickhouse", pretty=True)
 
 
-def write_text(path: Path, contents: str) -> None:
+def write_text(*, path: Path, contents: str) -> None:
     """Write compile artifact text to disk."""
 
     path.write_text(contents, encoding="utf-8")

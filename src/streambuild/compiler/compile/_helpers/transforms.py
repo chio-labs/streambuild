@@ -50,6 +50,7 @@ from streambuild.spec.models.types import (
 
 
 def compile_transform(
+    *,
     transform: TransformStep,
     pipeline_file_path: Path,
     relation_names: dict[str, str],
@@ -59,13 +60,23 @@ def compile_transform(
 ) -> CompiledTransformStep:
     """Compile a transform step into desired objects."""
 
-    query: str = load_transform_query(transform, pipeline_file_path)
-    output_columns: tuple[Column, ...] = derive_transform_output_columns(transform.name, query)
-    validate_order_by_expressions(transform.name, transform.order_by, output_columns)
-    validate_partition_by_expression(transform.name, transform.partition_by, output_columns)
-    validate_ttl_expression(transform.name, transform.ttl, output_columns)
+    query: str = load_transform_query(transform=transform, pipeline_file_path=pipeline_file_path)
+    output_columns: tuple[Column, ...] = derive_transform_output_columns(
+        transform_name=transform.name, query=query
+    )
+    validate_order_by_expressions(
+        transform_name=transform.name, order_by=transform.order_by, available_columns=output_columns
+    )
+    validate_partition_by_expression(
+        transform_name=transform.name,
+        partition_by=transform.partition_by,
+        available_columns=output_columns,
+    )
+    validate_ttl_expression(
+        transform_name=transform.name, ttl=transform.ttl, available_columns=output_columns
+    )
     parsed_refs: tuple[ParsedRef, ...] = tuple(extract_refs(query))
-    validate_transform_refs(transform, parsed_refs)
+    validate_transform_refs(transform=transform, parsed_refs=parsed_refs)
     refs: tuple[str, ...] = tuple(parsed_ref.name for parsed_ref in parsed_refs)
     has_mutable_refs: bool = any(
         parsed_ref.relation_type == SqlRelationType.REF
@@ -73,18 +84,20 @@ def compile_transform(
         and parsed_ref.ref_type == RefType.MUTABLE
         for parsed_ref in parsed_refs
     )
-    has_aggregate_semantics: bool = transform_has_aggregate_semantics(transform, query)
+    has_aggregate_semantics: bool = transform_has_aggregate_semantics(
+        transform=transform, query=query
+    )
     if transform.source not in refs:
         raise ValueError(
             f"Transform '{transform.name}' must reference its source '{transform.source}' in SQL"
         )
 
-    resolved_query: str = replace_refs(query, relation_sqls)
+    resolved_query: str = replace_refs(sql=query, resolver=relation_sqls)
     output_columns: tuple[Column, ...] = derive_transform_output_columns(
-        transform.name, resolved_query
+        transform_name=transform.name, query=resolved_query
     )
     preserves_required_lineage: bool = transform_preserves_required_lineage(
-        output_columns, replay_lineage_mode
+        output_columns=output_columns, replay_lineage_mode=replay_lineage_mode
     )
     replay_anchor_eligible: bool = build_replay_anchor_eligible(
         transform=transform,
@@ -128,8 +141,8 @@ def compile_transform(
         replay_anchor_eligible=replay_anchor_eligible,
         effective_bounded_replay_fallback=bounded_replay_fallback,
         target_table=compile_transform_table(
-            transform,
-            output_columns,
+            transform=transform,
+            output_columns=output_columns,
             key=target_table_key,
             source_table_key=source_table_key,
             bounded_replay_fallback=bounded_replay_fallback,
@@ -169,7 +182,7 @@ def relation_sqls_for_pipeline(pipeline: Pipeline) -> dict[str, str]:
     return relation_sqls
 
 
-def load_transform_query(transform: TransformStep, pipeline_file_path: Path) -> str:
+def load_transform_query(*, transform: TransformStep, pipeline_file_path: Path) -> str:
     """Load a transform query from inline SQL or a relative file."""
 
     if transform.query is not None:
@@ -183,7 +196,9 @@ def load_transform_query(transform: TransformStep, pipeline_file_path: Path) -> 
     return sql_file_path.read_text(encoding="utf-8").strip()
 
 
-def validate_transform_refs(transform: TransformStep, parsed_refs: tuple[ParsedRef, ...]) -> None:
+def validate_transform_refs(
+    *, transform: TransformStep, parsed_refs: tuple[ParsedRef, ...]
+) -> None:
     """Validate additional ref annotations for a transform query."""
 
     parsed_ref: ParsedRef
@@ -207,7 +222,7 @@ def validate_transform_refs(transform: TransformStep, parsed_refs: tuple[ParsedR
             )
 
 
-def transform_has_aggregate_semantics(transform: TransformStep, query: str) -> bool:
+def transform_has_aggregate_semantics(*, transform: TransformStep, query: str) -> bool:
     """Return whether a transform is conservatively aggregate/stateful."""
 
     engine_name: str = transform.engine.lower()
@@ -228,6 +243,7 @@ def _query_has_aggregate_semantics(query: str) -> bool:
 
 
 def transform_preserves_required_lineage(
+    *,
     output_columns: tuple[Column, ...],
     replay_lineage_mode: ReplayLineageMode,
 ) -> bool:
@@ -282,6 +298,7 @@ def _external_source_relation_sql(source: ExternalTableSourceStep) -> str:
 
 
 def build_replay_anchor_eligible(
+    *,
     transform: TransformStep,
     has_mutable_refs: bool,
     has_aggregate_semantics: bool,
@@ -301,6 +318,7 @@ def build_replay_anchor_eligible(
 
 
 def compile_transform_table(
+    *,
     transform: TransformStep,
     output_columns: tuple[Column, ...],
     key: ObjectKey,

@@ -19,6 +19,8 @@ def discover_pipelines(root: Path) -> list[LoadedPipeline]:
     file_path: Path
     for file_path in sorted(root.rglob("pipeline.yml")):
         loaded_pipeline: LoadedPipeline = load_pipeline_file(file_path)
-        validate_unique_logical_names(loaded_pipeline, logical_node_names)
+        validate_unique_logical_names(
+            loaded_pipeline=loaded_pipeline, logical_node_names=logical_node_names
+        )
         loaded_pipelines.append(loaded_pipeline)
     return loaded_pipelines
