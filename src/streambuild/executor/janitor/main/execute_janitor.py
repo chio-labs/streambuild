@@ -1,10 +1,10 @@
 """Janitor preview entrypoint."""
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.clickhouse.inspect.main.inspect_managed_table_state import (
+from streambuild.adapter.models import InspectedManagedTableState
+from streambuild.adapters.clickhouse.main.inspect_managed_table_state import (
     inspect_managed_table_state,
 )
-from streambuild.clickhouse.inspect.models import InspectedManagedTableState
 from streambuild.executor.janitor._helpers.execute import execute_janitor_for_managed_table_state
 from streambuild.executor.janitor.models import (
     JanitorApplyResult,

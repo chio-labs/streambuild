@@ -1,6 +1,5 @@
 import pytest
 
-from streambuild.compiler.actual_state.models import ActualTable
 from streambuild.compiler.compile.models import (
     Column,
     DesiredTable,
@@ -20,6 +19,7 @@ from streambuild.compiler.planner.constants import (
     TABLE_SCHEMA_SEED_COMPATIBILITY_NON_SEEDABLE,
     TABLE_SCHEMA_SEED_COMPATIBILITY_SEEDABLE,
 )
+from streambuild.compiler.planner.models import ActualTable
 from tests.unit.src.streambuild.compiler.planner._test_types import (
     PlannerTableSchemaClassificationTestCase,
 )

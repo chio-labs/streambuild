@@ -8,9 +8,6 @@ from streambuild.cli.backfill.main.render_backfill_result import render_backfill
 from streambuild.cli.backfill.models import BackfillCommandOptions, BackfillPreviewContext
 from streambuild.cli.entry.constants import AFFIRMATIVE_RESPONSES
 from streambuild.cli.entry.exceptions import CliUserError
-from streambuild.cli.plan.main._convert_utc_timestamp_for_clickhouse import (
-    convert_utc_timestamp_for_clickhouse,
-)
 from streambuild.cli.plan.main._normalize_cli_start_time import normalize_cli_start_time
 from streambuild.cli.plan.main.render_plan_result import render_plan_result
 from streambuild.compiler.compile.exceptions import TransformSqlContractError
@@ -35,13 +32,10 @@ def run_backfill(
         required_flag: str = "--full-refresh" if options.full_refresh else "--start-time"
         print(f"{required_flag} requires at least one --select", file=sys.stderr)
         return 1
-    normalized_start_time: str | None = None
+    normalized_utc_start_time: str | None = None
     if options.start_time is not None:
         try:
-            normalized_start_time = convert_utc_timestamp_for_clickhouse(
-                client=client,
-                utc_timestamp=normalize_cli_start_time(options.start_time),
-            )
+            normalized_utc_start_time = normalize_cli_start_time(options.start_time)
         except (CliUserError, ValueError) as error:
             print(str(error), file=sys.stderr)
             return 1
@@ -54,7 +48,7 @@ def run_backfill(
             selectors=options.selectors,
             deployment_id=options.deployment_id,
             full_refresh=options.full_refresh,
-            start_time=normalized_start_time,
+            start_time_utc=normalized_utc_start_time,
             client=client,
         )
     except (CliUserError, TransformSqlContractError, ValueError) as error:

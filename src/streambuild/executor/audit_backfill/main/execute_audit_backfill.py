@@ -1,10 +1,10 @@
 """Audit backfill execution entrypoint."""
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.clickhouse.inspect.main.inspect_managed_table_state import (
+from streambuild.adapter.models import InspectedManagedTableState
+from streambuild.adapters.clickhouse.main.inspect_managed_table_state import (
     inspect_managed_table_state,
 )
-from streambuild.clickhouse.inspect.models import InspectedManagedTableState
 from streambuild.executor.audit_backfill._helpers.comparisons import build_root_audit_results
 from streambuild.executor.audit_backfill._helpers.resolution import resolve_audit_deployment_id
 from streambuild.executor.audit_backfill.exceptions import AuditBackfillExecutionError

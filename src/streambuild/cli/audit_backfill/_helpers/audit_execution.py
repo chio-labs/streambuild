@@ -4,6 +4,10 @@ from dataclasses import replace
 from pathlib import Path
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.models import InspectedManagedTableState
+from streambuild.adapters.clickhouse.main.inspect_managed_table_state import (
+    inspect_managed_table_state,
+)
 from streambuild.cli.audit_backfill._helpers.audit_selection import (
     backfill_audit_resolver,
     selected_backfill_sql_audits,
@@ -18,10 +22,6 @@ from streambuild.cli.audit_backfill.main._render_no_deployment_candidates_messag
 from streambuild.cli.audit_backfill.main.render_ambiguous_deployment_message import (
     render_ambiguous_deployment_message,
 )
-from streambuild.clickhouse.inspect.main.inspect_managed_table_state import (
-    inspect_managed_table_state,
-)
-from streambuild.clickhouse.inspect.models import InspectedManagedTableState
 from streambuild.compiler.compile.main.compile_pipeline import compile_pipeline
 from streambuild.compiler.compile.models import CompiledPipeline
 from streambuild.compiler.discovery.main.discover_pipelines import discover_pipelines

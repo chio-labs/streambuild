@@ -4,11 +4,19 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.compiler.actual_state.main.load_actual_state import load_actual_state
-from streambuild.compiler.actual_state.models import ActualState
 from streambuild.compiler.discovery.types import ReplayLineageMode
+from streambuild.compiler.planner.main.load_actual_state_from_snapshot import (
+    load_actual_state_from_snapshot,
+)
+from streambuild.compiler.planner.main.load_planning_warehouse_snapshot import (
+    load_planning_warehouse_snapshot,
+)
 from streambuild.compiler.planner.main.plan_deployment import plan_deployment
-from streambuild.compiler.planner.models import DeploymentPlan
+from streambuild.compiler.planner.models import (
+    ActualState,
+    DeploymentPlan,
+    PlanningWarehouseSnapshot,
+)
 from streambuild.executor.backfill._helpers.metadata import (
     ensure_database_exists,
     persist_deployment_metadata,
@@ -39,15 +47,18 @@ def execute_backfill_bootstrap(
     replay_lineage_mode: ReplayLineageMode = ReplayLineageMode(request.replay_lineage_mode)
     created_at: str = request.created_at or build_current_timestamp()
     deployment_id: str = request.deployment_id or _build_deployment_id(created_at)
-    actual_state: ActualState = load_actual_state(
+    snapshot: PlanningWarehouseSnapshot = load_planning_warehouse_snapshot(
         client=client,
+        database=request.default_database,
+    )
+    actual_state: ActualState = load_actual_state_from_snapshot(
+        snapshot=snapshot,
         desired_state=request.desired_state,
         database=request.default_database,
     )
     root_reports: tuple[RootBackfillReport, ...] = build_root_backfill_reports(
-        client=client,
+        catalog=snapshot.catalog,
         desired_state=request.desired_state,
-        database=request.default_database,
     )
     deployment_plan: DeploymentPlan = plan_deployment(
         desired_state=request.desired_state,
@@ -59,7 +70,7 @@ def execute_backfill_bootstrap(
         start_time=request.start_time,
     )
     deployment_plan = resolve_unsupported_bounded_replay_behavior(
-        client=client,
+        catalog=snapshot.catalog,
         deployment_plan=deployment_plan,
         desired_state=request.desired_state,
         default_database=request.default_database,

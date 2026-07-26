@@ -17,15 +17,23 @@ from streambuild.cli.plan.main._warnings import add_empty_replay_source_warnings
 from streambuild.cli.plan.main.render_plan_result import render_plan_result
 from streambuild.cli.selection.main._selection import resolve_selection
 from streambuild.cli.selection.models import SelectionResolution
-from streambuild.compiler.actual_state.main.load_actual_state import load_actual_state
-from streambuild.compiler.actual_state.models import ActualState
 from streambuild.compiler.compile.exceptions import TransformSqlContractError
 from streambuild.compiler.compile.main.compile_pipeline import compile_pipeline
 from streambuild.compiler.compile.models import CompiledPipeline, DesiredState
 from streambuild.compiler.discovery.main.discover_pipelines import discover_pipelines
 from streambuild.compiler.discovery.models import LoadedPipeline
+from streambuild.compiler.planner.main.load_actual_state_from_snapshot import (
+    load_actual_state_from_snapshot,
+)
+from streambuild.compiler.planner.main.load_planning_warehouse_snapshot import (
+    load_planning_warehouse_snapshot,
+)
 from streambuild.compiler.planner.main.plan_deployment import plan_deployment
-from streambuild.compiler.planner.models import DeploymentPlan
+from streambuild.compiler.planner.models import (
+    ActualState,
+    DeploymentPlan,
+    PlanningWarehouseSnapshot,
+)
 from streambuild.executor.backfill.main.resolve_unsupported_bounded_replay_behavior import (
     resolve_unsupported_bounded_replay_behavior,
 )
@@ -61,13 +69,10 @@ def run_plan(
         required_flag: str = "--full-refresh" if full_refresh else "--start-time"
         print(f"{required_flag} requires at least one --select", file=sys.stderr)
         return 1
-    normalized_start_time: str | None = None
+    normalized_utc_start_time: str | None = None
     if start_time is not None:
         try:
-            normalized_start_time = convert_utc_timestamp_for_clickhouse(
-                client=client,
-                utc_timestamp=normalize_cli_start_time(start_time),
-            )
+            normalized_utc_start_time = normalize_cli_start_time(start_time)
         except (CliUserError, ValueError) as error:
             print(str(error), file=sys.stderr)
             return 1
@@ -75,8 +80,22 @@ def run_plan(
     resolved_database: str = resolve_default_database(
         loaded_pipelines=loaded_pipelines, override=database
     )
-    validate_declared_external_sources(
+    snapshot: PlanningWarehouseSnapshot = load_planning_warehouse_snapshot(
         client=client,
+        database=resolved_database,
+    )
+    normalized_start_time: str | None = None
+    if normalized_utc_start_time is not None:
+        try:
+            normalized_start_time = convert_utc_timestamp_for_clickhouse(
+                timezone_name=snapshot.catalog.warehouse_timezone,
+                utc_timestamp=normalized_utc_start_time,
+            )
+        except (CliUserError, ValueError) as error:
+            print(str(error), file=sys.stderr)
+            return 1
+    validate_declared_external_sources(
+        catalog=snapshot.catalog,
         compiled_pipelines=tuple(compiled),
         database=resolved_database,
     )
@@ -88,8 +107,8 @@ def run_plan(
         print(str(error), file=sys.stderr)
         return 1
     desired_state: DesiredState = selection.desired_state
-    actual_state: ActualState = load_actual_state(
-        client=client,
+    actual_state: ActualState = load_actual_state_from_snapshot(
+        snapshot=snapshot,
         desired_state=desired_state,
         database=resolved_database,
     )
@@ -106,12 +125,13 @@ def run_plan(
     )
     plan = add_empty_replay_source_warnings(
         client=client,
+        catalog=snapshot.catalog,
         database=resolved_database,
         desired_state=desired_state,
         plan=plan,
     )
     plan = resolve_unsupported_bounded_replay_behavior(
-        client=client,
+        catalog=snapshot.catalog,
         deployment_plan=plan,
         desired_state=desired_state,
         default_database=resolved_database,

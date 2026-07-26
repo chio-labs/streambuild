@@ -2,12 +2,6 @@
 
 from datetime import UTC, datetime
 
-from streambuild.compiler.actual_state.models import (
-    ActualKafkaTable,
-    ActualMaterializedView,
-    ActualState,
-    ActualTable,
-)
 from streambuild.compiler.compile.constants import TRANSFORM_TABLE_NAME_PREFIX
 from streambuild.compiler.compile.models import (
     DesiredKafkaTable,
@@ -17,6 +11,12 @@ from streambuild.compiler.compile.models import (
     ObjectKey,
 )
 from streambuild.compiler.metadata_state.models import ObjectStateRecord
+from streambuild.compiler.planner.models import (
+    ActualKafkaTable,
+    ActualMaterializedView,
+    ActualState,
+    ActualTable,
+)
 from streambuild.executor.reconcile._helpers.persist import build_object_state_record
 from streambuild.executor.reconcile.constants import RECONCILE_DEPLOYMENT_ID_PREFIX
 from streambuild.executor.reconcile.models import (

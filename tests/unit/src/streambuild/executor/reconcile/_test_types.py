@@ -1,8 +1,8 @@
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from streambuild.compiler.actual_state.models import ActualState
 from streambuild.compiler.compile.models import DesiredState
+from streambuild.compiler.planner.models import ActualState
 
 
 @dataclass(frozen=True)

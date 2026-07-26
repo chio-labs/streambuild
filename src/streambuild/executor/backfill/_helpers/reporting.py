@@ -1,15 +1,16 @@
 """User-facing reporting helpers for backfill execution."""
 
-from streambuild.clickhouse.inspect.models import (
-    RootDeploymentInspection,
-)
-from streambuild.clickhouse.inspect.types import RootDeploymentStateKind
 from streambuild.compiler.compile.constants import (
     DESIRED_OBJECT_TYPE_TABLE,
     TRANSFORM_TABLE_NAME_PREFIX,
 )
 from streambuild.compiler.compile.models import ObjectKey
-from streambuild.compiler.planner.models import DeploymentPlan, RebuildSubtree
+from streambuild.compiler.planner.models import (
+    DeploymentPlan,
+    RebuildSubtree,
+    RootDeploymentInspection,
+)
+from streambuild.compiler.planner.types import RootDeploymentStateKind
 from streambuild.executor.backfill.models import RootBackfillReport
 
 

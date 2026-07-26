@@ -1,20 +1,20 @@
 """Doctor execution entrypoint."""
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.clickhouse.inspect.main.inspect_managed_table_state import (
+from streambuild.adapter.models import InspectedManagedTableState
+from streambuild.adapters.clickhouse.main.inspect_managed_table_state import (
     inspect_managed_table_state,
-)
-from streambuild.clickhouse.inspect.main.inspect_root_deployment_state import (
-    inspect_root_deployment_state,
-)
-from streambuild.clickhouse.inspect.models import (
-    InspectedManagedTableState,
-    RootDeploymentInspection,
 )
 from streambuild.compiler.compile.constants import DESIRED_OBJECT_TYPE_TABLE
 from streambuild.compiler.compile.models import ObjectKey
 from streambuild.compiler.planner.main.deployment_id_from_physical_name import (
     deployment_id_from_physical_name,
+)
+from streambuild.compiler.planner.main.inspect_root_deployment_state import (
+    inspect_root_deployment_state,
+)
+from streambuild.compiler.planner.models import (
+    RootDeploymentInspection,
 )
 from streambuild.executor.doctor.models import ActiveViewStatus, DoctorRequest, DoctorResult
 

@@ -4,6 +4,10 @@ import sys
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.exceptions import AdapterWarehouseError
+from streambuild.adapter.models import InspectedManagedTableState
+from streambuild.adapters.clickhouse.main.inspect_managed_table_state import (
+    inspect_managed_table_state,
+)
 from streambuild.cli.audit_backfill.main._render_no_deployment_candidates_message import (
     render_no_deployment_candidates_message,
 )
@@ -16,10 +20,6 @@ from streambuild.cli.publish._helpers.candidates import (
     enrich_candidates,
 )
 from streambuild.cli.publish.main.render_publish_result import render_publish_result
-from streambuild.clickhouse.inspect.main.inspect_managed_table_state import (
-    inspect_managed_table_state,
-)
-from streambuild.clickhouse.inspect.models import InspectedManagedTableState
 from streambuild.executor.audit_backfill.models import AuditDeploymentCandidate
 from streambuild.executor.publish.main.build_publish_deployment_candidates import (
     build_publish_deployment_candidates,

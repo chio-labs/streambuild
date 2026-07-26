@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
 from streambuild.adapter.exceptions import AdapterWarehouseError
+from streambuild.adapter.models import CatalogRelation
 
 
 @dataclass(frozen=True)
@@ -103,10 +104,24 @@ class CliAdapterPlanExecutionTestCase:
     environment: dict[str, str]
     expected_exit_code: int
     expected_connection: tuple[str, int, str, str]
+    expected_catalog_load_count: int
     expected_query_count: int
     expected_connection_closed: bool
     expected_stdout: str
     expected_redacted_secret: str
+
+
+@dataclass(frozen=True)
+class CliPlanPreservationMatrixTestCase:
+    description: str
+    replay_lineage_mode: str
+    pipeline_file_contents: str
+    model_file_contents: str
+    catalog_relations: tuple[CatalogRelation, ...]
+    expected_exit_code: int
+    expected_subtree_summary: str
+    expected_catalog_load_count: int
+    expected_query_count: int
 
 
 @dataclass(frozen=True)

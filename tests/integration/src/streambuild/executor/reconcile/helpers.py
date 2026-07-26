@@ -1,8 +1,3 @@
-from streambuild.compiler.actual_state.models import (
-    ActualMaterializedView,
-    ActualState,
-    ActualTable,
-)
 from streambuild.compiler.compile.models import (
     Column,
     DesiredMaterializedView,
@@ -12,6 +7,11 @@ from streambuild.compiler.compile.models import (
     ObjectKey,
     TableSpec,
     TableStorage,
+)
+from streambuild.compiler.planner.models import (
+    ActualMaterializedView,
+    ActualState,
+    ActualTable,
 )
 
 

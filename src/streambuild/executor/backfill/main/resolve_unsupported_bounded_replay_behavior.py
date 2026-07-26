@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.models import CatalogSnapshot
 from streambuild.compiler.compile.models import DesiredState
 from streambuild.compiler.discovery.types import ReplayLineageMode
 from streambuild.compiler.planner.models import DeploymentPlan, RebuildSubtree
@@ -15,7 +15,7 @@ from streambuild.executor.backfill._helpers.behavior import (
 
 def resolve_unsupported_bounded_replay_behavior(
     *,
-    client: AdapterConnection,
+    catalog: CatalogSnapshot,
     deployment_plan: DeploymentPlan,
     desired_state: DesiredState,
     default_database: str,
@@ -23,7 +23,7 @@ def resolve_unsupported_bounded_replay_behavior(
 ) -> DeploymentPlan:
     resolved_subtrees: tuple[RebuildSubtree, ...] = tuple(
         _resolve_subtree_behavior(
-            client=client,
+            catalog=catalog,
             subtree=subtree,
             desired_state=desired_state,
             default_database=default_database,

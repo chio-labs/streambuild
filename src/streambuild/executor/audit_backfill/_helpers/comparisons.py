@@ -8,9 +8,7 @@ from sqlglot import exp, parse_one
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.exceptions import AdapterRelationNotFoundError
-from streambuild.clickhouse.inspect.models import InspectedManagedTableState
-from streambuild.clickhouse.inspect.types import RootDeploymentStateKind
-from streambuild.compiler.actual_state.constants import BLANK_VALUES
+from streambuild.adapter.models import InspectedManagedTableState
 from streambuild.compiler.compile.constants import (
     DESIRED_OBJECT_TYPE_TABLE,
     MATERIALIZED_VIEW_NAME_PREFIX,
@@ -22,9 +20,11 @@ from streambuild.compiler.compile.constants import (
 )
 from streambuild.compiler.compile.models import ObjectKey
 from streambuild.compiler.discovery.types import ReplayLineageMode
+from streambuild.compiler.planner.constants import BLANK_VALUES
 from streambuild.compiler.planner.main.build_deployment_physical_name import (
     build_deployment_physical_name,
 )
+from streambuild.compiler.planner.types import RootDeploymentStateKind
 from streambuild.executor.audit_backfill.constants import (
     ACCEPTABLE_LAG_SECONDS,
     MINIMUM_STAGED_ROW_RATIO,

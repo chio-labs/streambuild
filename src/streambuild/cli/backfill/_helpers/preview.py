@@ -6,21 +6,32 @@ from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.cli.backfill.models import BackfillPreviewContext
 from streambuild.cli.entry.exceptions import CliUserError
 from streambuild.cli.entry.main._resolve_default_database import resolve_default_database
+from streambuild.cli.plan.main._convert_utc_timestamp_for_clickhouse import (
+    convert_utc_timestamp_for_clickhouse,
+)
 from streambuild.cli.plan.main._source_validation import (
     validate_declared_external_sources,
 )
 from streambuild.cli.plan.main._warnings import add_empty_replay_source_warnings
 from streambuild.cli.selection.main._selection import resolve_selection
 from streambuild.cli.selection.models import SelectionResolution
-from streambuild.clickhouse.inspect.types import RootDeploymentStateKind
-from streambuild.compiler.actual_state.main.load_actual_state import load_actual_state
-from streambuild.compiler.actual_state.models import ActualState
 from streambuild.compiler.compile.main.compile_pipeline import compile_pipeline
 from streambuild.compiler.compile.models import CompiledPipeline, DesiredState
 from streambuild.compiler.discovery.main.discover_pipelines import discover_pipelines
 from streambuild.compiler.discovery.models import LoadedPipeline
+from streambuild.compiler.planner.main.load_actual_state_from_snapshot import (
+    load_actual_state_from_snapshot,
+)
+from streambuild.compiler.planner.main.load_planning_warehouse_snapshot import (
+    load_planning_warehouse_snapshot,
+)
 from streambuild.compiler.planner.main.plan_deployment import plan_deployment
-from streambuild.compiler.planner.models import DeploymentPlan
+from streambuild.compiler.planner.models import (
+    ActualState,
+    DeploymentPlan,
+    PlanningWarehouseSnapshot,
+)
+from streambuild.compiler.planner.types import RootDeploymentStateKind
 from streambuild.executor.backfill.main.build_root_backfill_reports import (
     build_root_backfill_reports,
 )
@@ -38,7 +49,7 @@ def build_backfill_preview_context(
     selectors: tuple[str, ...],
     deployment_id: str | None,
     full_refresh: bool,
-    start_time: str | None,
+    start_time_utc: str | None,
     client: AdapterConnection,
 ) -> BackfillPreviewContext:
     loaded_pipelines: list[LoadedPipeline] = discover_pipelines(pipelines_root)
@@ -46,8 +57,20 @@ def build_backfill_preview_context(
     resolved_database: str = resolve_default_database(
         loaded_pipelines=loaded_pipelines, override=database
     )
-    validate_declared_external_sources(
+    snapshot: PlanningWarehouseSnapshot = load_planning_warehouse_snapshot(
         client=client,
+        database=resolved_database,
+    )
+    start_time: str | None = (
+        convert_utc_timestamp_for_clickhouse(
+            timezone_name=snapshot.catalog.warehouse_timezone,
+            utc_timestamp=start_time_utc,
+        )
+        if start_time_utc is not None
+        else None
+    )
+    validate_declared_external_sources(
+        catalog=snapshot.catalog,
         compiled_pipelines=tuple(compiled),
         database=resolved_database,
     )
@@ -56,8 +79,8 @@ def build_backfill_preview_context(
         compiled_pipelines=tuple(compiled), selectors=selectors
     )
     desired_state: DesiredState = selection.desired_state
-    actual_state: ActualState = load_actual_state(
-        client=client,
+    actual_state: ActualState = load_actual_state_from_snapshot(
+        snapshot=snapshot,
         desired_state=desired_state,
         database=resolved_database,
     )
@@ -72,12 +95,13 @@ def build_backfill_preview_context(
     )
     plan = add_empty_replay_source_warnings(
         client=client,
+        catalog=snapshot.catalog,
         database=resolved_database,
         desired_state=desired_state,
         plan=plan,
     )
     plan = resolve_unsupported_bounded_replay_behavior(
-        client=client,
+        catalog=snapshot.catalog,
         deployment_plan=plan,
         desired_state=desired_state,
         default_database=resolved_database,
@@ -85,9 +109,8 @@ def build_backfill_preview_context(
     )
     if start_time is not None:
         preview_root_reports: tuple[RootBackfillReport, ...] = build_root_backfill_reports(
-            client=client,
+            catalog=snapshot.catalog,
             desired_state=desired_state,
-            database=resolved_database,
         )
         invalid_root_names: tuple[str, ...] = tuple(
             report.root_key.name

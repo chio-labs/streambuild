@@ -6,7 +6,13 @@ from typing import cast
 import pytest
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.adapter.models import AdapterQueryResult
+from streambuild.adapter.models import (
+    AdapterIdentity,
+    AdapterQueryResult,
+    CatalogIdentity,
+    CatalogRelation,
+    CatalogSnapshot,
+)
 from streambuild.cli.plan.main._warnings import add_empty_replay_source_warnings
 from streambuild.compiler.compile.models import (
     Column,
@@ -34,6 +40,7 @@ from tests.unit.src.streambuild.cli.plan.main._test_types import (
                 "replay source raw__flight_states is empty; staged outputs for this subtree may "
                 "also be empty (active target tbl__flight_positions currently has 699534 rows)"
             ),
+            expected_point_in_time_query_count=2,
         )
     ],
     ids=lambda case: case.description,
@@ -80,16 +87,26 @@ def test_given_empty_replay_source_when_augmenting_plan_then_it_adds_warning(
         prepared_shadow_objects=(),
         warnings=(),
     )
-    client: AdapterConnection = cast(
-        AdapterConnection,
-        FakeReplaySourceWarningClient(
-            replay_source_row_count=test_case.replay_source_row_count,
-            active_row_count=test_case.active_row_count,
+    warning_client: FakeReplaySourceWarningClient = FakeReplaySourceWarningClient(
+        replay_source_row_count=test_case.replay_source_row_count,
+        active_row_count=test_case.active_row_count,
+    )
+    client: AdapterConnection = cast(AdapterConnection, warning_client)
+    catalog: CatalogSnapshot = CatalogSnapshot(
+        identity=CatalogIdentity(
+            adapter=AdapterIdentity(name="clickhouse"),
+            database="flights_demo",
+        ),
+        warehouse_timezone="UTC",
+        relations=(
+            CatalogRelation(name=raw_key.name, engine="MergeTree", columns=()),
+            CatalogRelation(name=target_key.name, engine="View", columns=()),
         ),
     )
 
     updated_plan: DeploymentPlan = add_empty_replay_source_warnings(
         client=client,
+        catalog=catalog,
         database="flights_demo",
         desired_state=desired_state,
         plan=plan,
@@ -98,19 +115,20 @@ def test_given_empty_replay_source_when_augmenting_plan_then_it_adds_warning(
     assert len(updated_plan.warnings) == 1
     assert updated_plan.warnings[0].warning_code == "empty_replay_source"
     assert test_case.expected_warning_message_fragment in updated_plan.warnings[0].message
+    assert warning_client.query_count == test_case.expected_point_in_time_query_count
 
 
 class FakeReplaySourceWarningClient:
     def __init__(self, *, replay_source_row_count: int, active_row_count: int | None) -> None:
+        self.query_count: int = 0
         self._query_results: Iterator[AdapterQueryResult] = iter(
             (
-                AdapterQueryResult(rows=((1,),)),
                 AdapterQueryResult(rows=((replay_source_row_count,),)),
-                AdapterQueryResult(rows=((int(active_row_count is not None),),)),
                 AdapterQueryResult(rows=((active_row_count,),)),
             )
         )
 
     def query(self, statement: str) -> AdapterQueryResult:
         _ = statement
+        self.query_count += 1
         return next(self._query_results)

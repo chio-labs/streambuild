@@ -1,13 +1,12 @@
 import pytest
 
-from streambuild.compiler.actual_state.models import ActualState
 from streambuild.compiler.compile.models import (
     DesiredState,
     ObjectKey,
 )
 from streambuild.compiler.planner.constants import REBUILD_EXECUTION_MODE_FULL
 from streambuild.compiler.planner.main.plan_deployment import plan_deployment
-from streambuild.compiler.planner.models import DeploymentPlan
+from streambuild.compiler.planner.models import ActualState, DeploymentPlan
 from tests.unit.src.streambuild.compiler.planner._test_types import (
     PlannerDeploymentPlanTestCase,
     PlannerFullRefreshPlanTestCase,

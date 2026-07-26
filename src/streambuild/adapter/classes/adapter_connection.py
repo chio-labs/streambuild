@@ -3,11 +3,30 @@
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Mapping
 
-from streambuild.adapter.models import AdapterQueryResult
+from streambuild.adapter.models import (
+    AdapterCapabilities,
+    AdapterIdentity,
+    AdapterQueryResult,
+    CatalogSnapshot,
+)
 
 
 class AdapterConnection(ABC):
     """An open warehouse connection exposing neutral statements and results."""
+
+    @property
+    @abstractmethod
+    def adapter_identity(self) -> AdapterIdentity:
+        """Return the identity of the adapter that owns this connection."""
+
+    @property
+    @abstractmethod
+    def capabilities(self) -> AdapterCapabilities:
+        """Return the capabilities implemented by this connection's adapter."""
+
+    @abstractmethod
+    def load_catalog(self, database: str) -> CatalogSnapshot:
+        """Load one immutable catalog snapshot for a database."""
 
     @abstractmethod
     def command(self, statement: str) -> None:

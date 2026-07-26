@@ -1,7 +1,9 @@
 import pytest
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.models import CatalogRelation, CatalogSnapshot
 from tests.integration.src.streambuild.adapters.clickhouse._test_types import (
+    ClickHouseCatalogIntegrationTestCase,
     ClickHouseClientIntegrationTestCase,
 )
 
@@ -42,3 +44,76 @@ def test_given_real_clickhouse_when_using_client_then_it_executes_expected_opera
     ).rows
 
     assert result_rows == test_case.expected_rows
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ClickHouseCatalogIntegrationTestCase(
+            description="loads real tables views materialized views and Kafka settings",
+            expected_relation_names=frozenset(
+                {
+                    "kafka__orders",
+                    "mv__orders",
+                    "tbl__orders",
+                    "tbl__orders__dep_a",
+                }
+            ),
+            expected_stable_binding_name="tbl__orders__dep_a",
+            expected_materialized_view_source="kafka__orders",
+            expected_materialized_view_target="tbl__orders__dep_a",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_real_relations_when_loading_catalog_then_it_returns_complete_snapshot(
+    test_case: ClickHouseCatalogIntegrationTestCase,
+    managed_clickhouse_client: AdapterConnection,
+    clickhouse_database: str,
+) -> None:
+    managed_clickhouse_client.command(
+        f"CREATE TABLE {clickhouse_database}.tbl__orders__dep_a "
+        "(order_id String, updated_at DateTime64(3) DEFAULT now64(3)) "
+        "ENGINE = ReplacingMergeTree(updated_at) "
+        "PARTITION BY toYYYYMM(updated_at) ORDER BY (order_id, updated_at) "
+        "TTL toDateTime(updated_at) + INTERVAL 30 DAY SETTINGS index_granularity = 8192"
+    )
+    managed_clickhouse_client.command(
+        f"CREATE VIEW {clickhouse_database}.tbl__orders AS "
+        f"SELECT * FROM {clickhouse_database}.tbl__orders__dep_a"
+    )
+    managed_clickhouse_client.command(
+        f"CREATE TABLE {clickhouse_database}.kafka__orders (payload String) "
+        "ENGINE = Kafka SETTINGS kafka_broker_list = 'redpanda:9092', "
+        "kafka_topic_list = 'orders', kafka_group_name = 'streambuild', "
+        "kafka_format = 'JSONEachRow'"
+    )
+    managed_clickhouse_client.command(
+        f"CREATE MATERIALIZED VIEW {clickhouse_database}.mv__orders "
+        f"TO {clickhouse_database}.tbl__orders__dep_a AS "
+        f"SELECT payload AS order_id, now64(3) AS updated_at "
+        f"FROM {clickhouse_database}.kafka__orders"
+    )
+
+    catalog: CatalogSnapshot = managed_clickhouse_client.load_catalog(clickhouse_database)
+    stable_view: CatalogRelation | None = catalog.relation("tbl__orders")
+    physical_table: CatalogRelation | None = catalog.relation("tbl__orders__dep_a")
+    kafka_table: CatalogRelation | None = catalog.relation("kafka__orders")
+    materialized_view: CatalogRelation | None = catalog.relation("mv__orders")
+
+    assert catalog.identity.database == clickhouse_database
+    assert catalog.relation_names() == test_case.expected_relation_names
+    assert stable_view is not None
+    assert physical_table is not None
+    assert kafka_table is not None
+    assert materialized_view is not None
+    assert stable_view.stable_binding_name == test_case.expected_stable_binding_name
+    assert physical_table.order_by == ("order_id", "updated_at")
+    assert physical_table.partition_by == "toYYYYMM(updated_at)"
+    assert physical_table.ttl is not None
+    assert physical_table.columns[1].default_expression == "now64(3)"
+    assert ("kafka_format", "'JSONEachRow'") in kafka_table.settings
+    assert materialized_view.source_relation_name == test_case.expected_materialized_view_source
+    assert materialized_view.target_relation_name == test_case.expected_materialized_view_target
+    assert materialized_view.query_sql is not None

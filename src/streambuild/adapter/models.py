@@ -14,6 +14,93 @@ class AdapterIdentity:
     name: str
 
 
+@dataclass(frozen=True)
+class AdapterCapabilities:
+    """Capabilities implemented by one adapter."""
+
+    virtual_environments: bool
+
+
+@dataclass(frozen=True)
+class CatalogIdentity:
+    """Stable identity of one adapter/database catalog observation."""
+
+    adapter: AdapterIdentity
+    database: str
+
+
+@dataclass(frozen=True)
+class CatalogColumn:
+    """One warehouse relation column observed by an adapter."""
+
+    name: str
+    type: str
+    default_expression: str | None = None
+
+
+@dataclass(frozen=True)
+class CatalogRelation:
+    """One immutable warehouse relation observation."""
+
+    name: str
+    engine: str
+    columns: tuple[CatalogColumn, ...]
+    order_by: tuple[str, ...] = ()
+    partition_by: str | None = None
+    ttl: str | None = None
+    settings: tuple[tuple[str, str], ...] = ()
+    definition_sql: str | None = None
+    query_sql: str | None = None
+    source_relation_name: str | None = None
+    target_relation_name: str | None = None
+    stable_binding_name: str | None = None
+
+
+@dataclass(frozen=True)
+class CatalogSnapshot:
+    """One immutable point-in-time catalog for an adapter and database."""
+
+    identity: CatalogIdentity
+    warehouse_timezone: str
+    relations: tuple[CatalogRelation, ...]
+
+    def relation(self, name: str) -> CatalogRelation | None:
+        """Return one relation by unqualified name when it exists."""
+
+        return next((relation for relation in self.relations if relation.name == name), None)
+
+    def relation_names(self) -> frozenset[str]:
+        """Return every observed unqualified relation name."""
+
+        return frozenset(relation.name for relation in self.relations)
+
+
+@dataclass(frozen=True)
+class InspectedActiveTableBinding:
+    """A stable logical view pointing at an active physical table."""
+
+    database: str
+    logical_name: str
+    physical_name: str
+
+
+@dataclass(frozen=True)
+class InspectedPhysicalTableCandidate:
+    """A deployment-suffixed physical table candidate for a logical root."""
+
+    database: str
+    logical_name: str
+    physical_name: str
+
+
+@dataclass(frozen=True)
+class InspectedManagedTableState:
+    """Managed table state used for active-deployment resolution."""
+
+    active_bindings: tuple[InspectedActiveTableBinding, ...]
+    physical_candidates: tuple[InspectedPhysicalTableCandidate, ...]
+
+
 @dataclass(frozen=True, repr=False)
 class AdapterConnectionConfig:
     """Resolved, format-neutral connection settings for one adapter."""

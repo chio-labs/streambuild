@@ -8,10 +8,10 @@ from datetime import datetime, timedelta
 from sqlglot import exp, parse_one
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.clickhouse.inspect.main.inspect_managed_table_state import (
+from streambuild.adapter.models import InspectedActiveTableBinding
+from streambuild.adapters.clickhouse.main.inspect_managed_table_state import (
     inspect_managed_table_state,
 )
-from streambuild.clickhouse.inspect.models import InspectedActiveTableBinding
 from streambuild.compiler.compile.constants import (
     DESIRED_OBJECT_TYPE_TABLE,
     REPLAY_CURSOR_COLUMN_NAME,

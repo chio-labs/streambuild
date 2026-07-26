@@ -17,6 +17,10 @@ class AdapterResultError(AdapterError):
     """Raised when an adapter query result cannot be interpreted."""
 
 
+class AdapterCapabilityError(AdapterError):
+    """Raised when an adapter cannot provide a required StreamBuild capability."""
+
+
 class AdapterWarehouseError(AdapterError):
     """Raised when the warehouse itself rejects a connection or statement."""
 

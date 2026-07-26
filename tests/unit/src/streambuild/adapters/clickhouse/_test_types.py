@@ -25,3 +25,18 @@ class ConnectionQueryNormalizationTestCase:
     raw_result_rows: list[list[object]]
     expected_column_names: tuple[str, ...]
     expected_rows: tuple[tuple[object, ...], ...]
+
+
+@dataclass(frozen=True)
+class CatalogInspectionTestCase:
+    description: str
+    expected_timezone: str
+    expected_relation_names: frozenset[str]
+    expected_query_count: int
+
+
+@dataclass(frozen=True)
+class BuildInspectedManagedTableStateTestCase:
+    description: str
+    system_rows: tuple[tuple[str, str], ...]
+    expected_logical_names: tuple[str, ...]

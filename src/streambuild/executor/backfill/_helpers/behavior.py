@@ -2,12 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.adapter.models import AdapterQueryResult
-from streambuild.clickhouse.inspect.main.inspect_managed_table_state import (
-    inspect_managed_table_state,
-)
-from streambuild.clickhouse.inspect.models import InspectedActiveTableBinding
+from streambuild.adapter.models import CatalogRelation, CatalogSnapshot
 from streambuild.compiler.compile.constants import (
     REPLAY_REQUIRED_COLUMN_NAMES_BY_MODE,
 )
@@ -23,7 +18,7 @@ from streambuild.compiler.planner.models import RebuildSubtree
 
 def _resolve_subtree_behavior(
     *,
-    client: AdapterConnection,
+    catalog: CatalogSnapshot,
     subtree: RebuildSubtree,
     desired_state: DesiredState,
     default_database: str,
@@ -42,10 +37,8 @@ def _resolve_subtree_behavior(
     )
     if root_table is None:
         return subtree
-    database: str = root_table.key.database or default_database
     active_table_name: str | None = _active_table_name_for_logical_root(
-        client=client,
-        database=database,
+        catalog=catalog,
         logical_table_name=root_table.name,
     )
     if active_table_name is None and subtree.forced_start_time is not None:
@@ -56,7 +49,7 @@ def _resolve_subtree_behavior(
             resolved_bounded_replay_fallback=root_table.bounded_replay_fallback,
         )
     if _history_preserving_bounded_supported(
-        client=client,
+        catalog=catalog,
         root_table=root_table,
         default_database=default_database,
         replay_lineage_mode=replay_lineage_mode,
@@ -102,7 +95,7 @@ def resolve_subtree_behavior_from_support(
 
 def _history_preserving_bounded_supported(
     *,
-    client: AdapterConnection,
+    catalog: CatalogSnapshot,
     root_table: DesiredTable,
     default_database: str,
     replay_lineage_mode: ReplayLineageMode,
@@ -110,17 +103,14 @@ def _history_preserving_bounded_supported(
     required_column_names: set[str] = _required_history_preserving_column_names(replay_lineage_mode)
     if not required_column_names:
         return True
-    database: str = root_table.key.database or default_database
     active_table_name: str | None = _active_table_name_for_logical_root(
-        client=client,
-        database=database,
+        catalog=catalog,
         logical_table_name=root_table.name,
     )
     if active_table_name is None:
         return False
     live_column_names: set[str] = _live_column_names(
-        client=client,
-        database=database,
+        catalog=catalog,
         live_table_name=active_table_name,
     )
     return required_column_names.issubset(live_column_names)
@@ -133,28 +123,18 @@ def _required_history_preserving_column_names(
 
 
 def _active_table_name_for_logical_root(
-    *, client: AdapterConnection, database: str, logical_table_name: str
+    *, catalog: CatalogSnapshot, logical_table_name: str
 ) -> str | None:
-    active_bindings: tuple[InspectedActiveTableBinding, ...] = inspect_managed_table_state(
-        client=client,
-        database=database,
-    ).active_bindings
-    binding: InspectedActiveTableBinding
-    for binding in active_bindings:
-        if binding.logical_name == logical_table_name:
-            return binding.physical_name
-    return None
+    logical_relation: CatalogRelation | None = catalog.relation(logical_table_name)
+    return None if logical_relation is None else logical_relation.stable_binding_name
 
 
 def _live_column_names(
     *,
-    client: AdapterConnection,
-    database: str,
+    catalog: CatalogSnapshot,
     live_table_name: str,
 ) -> set[str]:
-    try:
-        result: AdapterQueryResult = client.query(f"DESCRIBE TABLE {database}.{live_table_name}")
-    except Exception:
+    relation: CatalogRelation | None = catalog.relation(live_table_name)
+    if relation is None:
         return set()
-    rows: tuple[tuple[object, ...], ...] = result.rows
-    return {str(row[0]) for row in rows}
+    return {column.name for column in relation.columns}

@@ -7,8 +7,8 @@ from clickhouse_connect.driver.client import Client
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import AdapterConnectionConfig
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
-from streambuild.compiler.actual_state.models import ActualState
 from streambuild.compiler.compile.models import DesiredState
+from streambuild.compiler.planner.models import ActualState
 from streambuild.executor.reconcile.constants import RECONCILE_DEPLOYMENT_ID_PREFIX
 from streambuild.executor.reconcile.main.execute_reconcile import execute_reconcile
 from streambuild.executor.reconcile.models import ReconcileResult

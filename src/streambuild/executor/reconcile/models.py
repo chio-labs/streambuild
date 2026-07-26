@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from streambuild.compiler.actual_state.models import ActualMaterializedView, ActualTable
 from streambuild.compiler.compile.models import (
     DesiredMaterializedView,
     DesiredTable,
     ObjectKey,
 )
 from streambuild.compiler.metadata_state.models import ObjectStateRecord
+from streambuild.compiler.planner.models import ActualMaterializedView, ActualTable
 
 
 @dataclass(frozen=True)

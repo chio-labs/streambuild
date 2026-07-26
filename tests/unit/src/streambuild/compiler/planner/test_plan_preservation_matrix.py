@@ -1,6 +1,5 @@
 import pytest
 
-from streambuild.compiler.actual_state.models import ActualState
 from streambuild.compiler.compile.models import (
     CompiledExternalSource,
     CompiledManagedSource,
@@ -10,7 +9,7 @@ from streambuild.compiler.compile.models import (
 from streambuild.compiler.desired_state.main.build_desired_state import build_desired_state
 from streambuild.compiler.discovery.types import ReplayBoundaryMode, ReplayLineageMode
 from streambuild.compiler.planner.main.plan_deployment import plan_deployment
-from streambuild.compiler.planner.models import DeploymentPlan
+from streambuild.compiler.planner.models import ActualState, DeploymentPlan
 from streambuild.compiler.planner.types import DeploymentAction
 from tests.unit.src.streambuild.compiler.planner._test_types import (
     PlannerPreservationMatrixTestCase,

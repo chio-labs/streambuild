@@ -1,10 +1,10 @@
 """Stable logical view creation helpers for publish."""
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.clickhouse.inspect.main.inspect_managed_table_state import (
+from streambuild.adapter.models import InspectedManagedTableState
+from streambuild.adapters.clickhouse.main.inspect_managed_table_state import (
     inspect_managed_table_state,
 )
-from streambuild.clickhouse.inspect.models import InspectedManagedTableState
 from streambuild.clickhouse.render.main.render_create_view_ddl import render_create_view_ddl
 from streambuild.compiler.compile.constants import (
     DESIRED_OBJECT_TYPE_TABLE,

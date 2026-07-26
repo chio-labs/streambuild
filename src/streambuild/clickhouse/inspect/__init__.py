@@ -1,1 +1,0 @@
-"""ClickHouse deployed-state inspection."""

@@ -89,7 +89,8 @@ clickhouse:
             },
             expected_exit_code=0,
             expected_connection=("cli-host", 9000, "env-user", "project-secret"),
-            expected_query_count=6,
+            expected_catalog_load_count=1,
+            expected_query_count=1,
             expected_connection_closed=True,
             expected_stdout="""Plan Ready
 Database: analytics
@@ -163,6 +164,7 @@ def test_given_versioned_project_when_running_plan_then_adapter_preserves_exact_
         provider.config.username,
         provider.config.password,
     ) == test_case.expected_connection
+    assert len(connection.catalog_databases) == test_case.expected_catalog_load_count
     assert len(connection.statements) == test_case.expected_query_count
     assert connection.closed is test_case.expected_connection_closed
     assert captured_stdout == test_case.expected_stdout
