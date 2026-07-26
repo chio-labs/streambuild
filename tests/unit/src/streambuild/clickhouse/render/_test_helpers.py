@@ -4,7 +4,7 @@ from streambuild.clickhouse.render.main._render_desired_state_ddl import render_
 from streambuild.clickhouse.render.models import RenderedClickHouseDdl
 from streambuild.compiler.compile.main.compile_pipeline import compile_pipeline
 from streambuild.compiler.compile.models import DesiredState
-from streambuild.compiler.desired_state.main import build_desired_state
+from streambuild.compiler.desired_state.main.build_desired_state import build_desired_state
 from streambuild.compiler.discovery._helpers.load import load_pipeline_file
 from streambuild.compiler.shared.models import LoadedPipeline, ObjectKey
 

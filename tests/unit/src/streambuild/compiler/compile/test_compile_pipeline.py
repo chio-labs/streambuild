@@ -17,7 +17,7 @@ from streambuild.compiler.compile.models import (
     CompiledTransformStep,
     DesiredState,
 )
-from streambuild.compiler.desired_state.main import build_desired_state
+from streambuild.compiler.desired_state.main.build_desired_state import build_desired_state
 from streambuild.compiler.discovery._helpers.load import load_pipeline_file
 from streambuild.compiler.shared.models import DesiredMaterializedView, LoadedPipeline
 from streambuild.spec.models.pipeline import Pipeline

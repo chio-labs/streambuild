@@ -7,10 +7,10 @@ from typing import Any, cast
 
 import yaml
 
-from streambuild.compiler.discovery._helpers.constants import PROJECT_FILE_NAME
 from streambuild.compiler.discovery._helpers.model_sql import load_transform_from_sql_file
 from streambuild.compiler.discovery.constants import (
     CLICKHOUSE_CONNECTION_KEYS,
+    PROJECT_FILE_NAME,
 )
 from streambuild.compiler.discovery.exceptions import PipelineDiscoveryError
 from streambuild.compiler.shared.models import LoadedPipeline

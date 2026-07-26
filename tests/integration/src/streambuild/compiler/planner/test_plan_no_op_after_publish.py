@@ -13,7 +13,7 @@ from streambuild.clickhouse.render.main.render_create_table_ddl import render_cr
 from streambuild.compiler.actual_state.main.load_actual_state import load_actual_state
 from streambuild.compiler.actual_state.models import ActualState
 from streambuild.compiler.compile.models import CompiledPipeline, DesiredState
-from streambuild.compiler.desired_state.main import build_desired_state
+from streambuild.compiler.desired_state.main.build_desired_state import build_desired_state
 from streambuild.compiler.planner.constants import (
     PLANNED_CHANGE_TYPE_NO_OP,
     REBUILD_EXECUTION_MODE_FULL,

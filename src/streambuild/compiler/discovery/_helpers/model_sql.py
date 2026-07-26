@@ -11,13 +11,11 @@ import yaml
 
 from streambuild.compiler.compile.main.extract_refs import extract_refs
 from streambuild.compiler.compile.models import ParsedRef
-from streambuild.compiler.discovery._helpers.constants import (
+from streambuild.compiler.discovery.constants import (
     ALLOWED_MODEL_KEYS,
     DEFAULT_SQL_MODEL_ENGINE,
     DEFAULT_SQL_MODEL_ORDER_BY,
     MODEL_HEADER_PATTERN,
-)
-from streambuild.compiler.discovery.constants import (
     SCHEMA_CHANGE_RULE_KEYS,
 )
 from streambuild.compiler.discovery.exceptions import PipelineDiscoveryError

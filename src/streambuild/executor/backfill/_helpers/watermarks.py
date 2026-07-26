@@ -7,7 +7,7 @@ from streambuild.clickhouse.metadata_state.main.build_metadata_state_insert_stat
 )
 from streambuild.clickhouse.metadata_state.models import RenderedClickHouseStatement
 from streambuild.compiler.compile.models import DesiredState, ExternalSourceReplayConfig
-from streambuild.compiler.metadata_state.main import build_metadata_state
+from streambuild.compiler.metadata_state.main.build_metadata_state import build_metadata_state
 from streambuild.compiler.metadata_state.models import DeploymentWatermarkRecord, MetadataState
 from streambuild.compiler.planner.models import DeploymentPlan, RebuildSubtree
 from streambuild.compiler.shared.constants import (

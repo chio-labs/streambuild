@@ -1,6 +1,6 @@
 import pytest
 
-from streambuild.compiler.metadata_state.main import build_metadata_state
+from streambuild.compiler.metadata_state.main.build_metadata_state import build_metadata_state
 from streambuild.compiler.metadata_state.models import DeploymentRecord, MetadataState
 from tests.unit.src.streambuild.compiler.metadata_state._test_types import (
     BuildMetadataStateTestCase,

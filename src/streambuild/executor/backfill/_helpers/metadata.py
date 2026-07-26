@@ -9,7 +9,7 @@ from streambuild.clickhouse.metadata_state.models import RenderedClickHouseState
 from streambuild.compiler.actual_state.main.build_normalized_fingerprint import (
     build_normalized_fingerprint,
 )
-from streambuild.compiler.metadata_state.main import build_metadata_state
+from streambuild.compiler.metadata_state.main.build_metadata_state import build_metadata_state
 from streambuild.compiler.metadata_state.models import (
     DeploymentRecord,
     DeploymentRuntimeDetailRecord,

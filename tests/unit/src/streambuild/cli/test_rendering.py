@@ -10,7 +10,7 @@ from streambuild.cli.shared.main._deployment_candidates import (
 )
 from streambuild.cli.shared.main._plan_rendering import render_plan_result
 from streambuild.compiler.compile.models import DesiredState
-from streambuild.compiler.desired_state.main import build_desired_state
+from streambuild.compiler.desired_state.main.build_desired_state import build_desired_state
 from streambuild.compiler.planner.constants import (
     DEPLOYMENT_ACTION_PLAN_SHADOW_TABLE,
     DEPLOYMENT_PHASE_PLAN,

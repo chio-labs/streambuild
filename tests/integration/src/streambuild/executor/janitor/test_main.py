@@ -6,7 +6,7 @@ from typing import cast
 import pytest
 from clickhouse_connect.driver.client import Client
 
-from streambuild.executor.janitor.main import execute_janitor
+from streambuild.executor.janitor.main.execute_janitor import execute_janitor
 from streambuild.executor.janitor.models import (
     JanitorApplyResult,
     JanitorPreviewResult,
