@@ -8,7 +8,6 @@ from streambuild.clickhouse.render._helpers.create_materialized_view import (
     render_create_materialized_view_ddl,
 )
 from streambuild.clickhouse.render._helpers.create_table import render_create_table_ddl
-from streambuild.clickhouse.render._helpers.create_view import render_create_view_ddl
 from streambuild.compiler.actual_state._helpers.load import load_actual_state
 from streambuild.compiler.actual_state.models import ActualMaterializedView, ActualState
 from streambuild.compiler.compile.models import CompiledPipeline, DesiredState
@@ -28,6 +27,7 @@ from tests.integration.src.streambuild.compiler.actual_state._test_types import 
 )
 from tests.integration.src.streambuild.compiler.actual_state.helpers import (
     ACTUAL_STATE_SETUP_STEPS,
+    MIXED_ROOT_SETUP_STEPS,
 )
 from tests.integration.src.streambuild.conftest import ClickHouseConnectionSettings
 from tests.integration.src.streambuild.executor.backfill.helpers import (
@@ -272,11 +272,11 @@ def test_given_conflicting_metadata_when_loading_actual_state_then_live_view_bin
                 "loads active objects only for the healthy root when another root is missing "
                 "its stable view"
             ),
-            create_orders_active_view=True,
-            create_orders_candidates=True,
-            create_customers_active_view=False,
-            create_customers_candidates=True,
-            create_customers_invalid_view=False,
+            setup_steps=(
+                "orders_candidates",
+                "customers_candidates",
+                "orders_active_view",
+            ),
             expected_actual_object_names=(
                 "kafka__customers",
                 "kafka__orders",
@@ -293,11 +293,11 @@ def test_given_conflicting_metadata_when_loading_actual_state_then_live_view_bin
                 "loads active objects only for the healthy root when another root has an "
                 "invalid active view"
             ),
-            create_orders_active_view=True,
-            create_orders_candidates=True,
-            create_customers_active_view=False,
-            create_customers_candidates=False,
-            create_customers_invalid_view=True,
+            setup_steps=(
+                "orders_candidates",
+                "orders_active_view",
+                "customers_invalid_view",
+            ),
             expected_actual_object_names=(
                 "kafka__customers",
                 "kafka__orders",
@@ -353,64 +353,10 @@ def test_given_mixed_root_clickhouse_state_when_loading_then_it_preserves_per_ro
                 database=clickhouse_database,
             )
         )
-    if test_case.create_orders_candidates:
-        clickhouse_client.command(
-            "CREATE TABLE "
-            f"{clickhouse_database}.tbl__orders_enriched__dep_a "
-            "(order_id String, _replay_timestamp DateTime64(3)) "
-            "ENGINE = MergeTree ORDER BY (order_id)"
-        )
-        clickhouse_client.command(
-            "CREATE MATERIALIZED VIEW "
-            f"{clickhouse_database}.mv__orders_enriched__dep_a "
-            f"TO {clickhouse_database}.tbl__orders_enriched__dep_a AS "
-            "SELECT CAST(kafka_key AS String) AS order_id, "
-            "CAST(_replay_timestamp AS DateTime64(3)) AS _replay_timestamp "
-            f"FROM {clickhouse_database}.raw__orders"
-        )
-    if test_case.create_customers_candidates:
-        clickhouse_client.command(
-            "CREATE TABLE "
-            f"{clickhouse_database}.tbl__customers_enriched__dep_b "
-            "(order_id String, _replay_timestamp DateTime64(3)) "
-            "ENGINE = MergeTree ORDER BY (order_id)"
-        )
-        clickhouse_client.command(
-            "CREATE MATERIALIZED VIEW "
-            f"{clickhouse_database}.mv__customers_enriched__dep_b "
-            f"TO {clickhouse_database}.tbl__customers_enriched__dep_b AS "
-            "SELECT CAST(kafka_key AS String) AS order_id, "
-            "CAST(_replay_timestamp AS DateTime64(3)) AS _replay_timestamp "
-            f"FROM {clickhouse_database}.raw__customers"
-        )
-    if test_case.create_orders_active_view:
-        clickhouse_client.command(
-            render_create_view_ddl(
-                database=clickhouse_database,
-                view_name="tbl__orders_enriched",
-                target_table_name="tbl__orders_enriched__dep_a",
-            )
-        )
-    if test_case.create_customers_active_view:
-        clickhouse_client.command(
-            render_create_view_ddl(
-                database=clickhouse_database,
-                view_name="tbl__customers_enriched",
-                target_table_name="tbl__customers_enriched__dep_b",
-            )
-        )
-    if test_case.create_customers_invalid_view:
-        clickhouse_client.command(
-            "CREATE TABLE "
-            f"{clickhouse_database}.tbl__customers_enriched_manual "
-            "(order_id String) ENGINE = MergeTree ORDER BY (order_id)"
-        )
-        clickhouse_client.command(
-            render_create_view_ddl(
-                database=clickhouse_database,
-                view_name="tbl__customers_enriched",
-                target_table_name="tbl__customers_enriched_manual",
-            )
+    step_name: str
+    for step_name in test_case.setup_steps:
+        MIXED_ROOT_SETUP_STEPS[step_name](
+            clickhouse_client=clickhouse_client, clickhouse_database=clickhouse_database
         )
 
     managed_client: ClickHouseClient = ClickHouseClient.from_config(
@@ -444,7 +390,11 @@ def test_given_mixed_root_clickhouse_state_when_loading_then_it_preserves_per_ro
     [
         LoadActualStateWithoutMetadataIntegrationTestCase(
             description="loads active state after deleting all metadata tables",
-            drop_all_metadata_tables=True,
+            dropped_metadata_tables=(
+                "streambuild_object_state_snapshots",
+                "streambuild_deployments",
+                "streambuild_deployment_watermarks",
+            ),
             expected_actual_object_names=(
                 "kafka__orders",
                 "mv__orders",
@@ -455,7 +405,7 @@ def test_given_mixed_root_clickhouse_state_when_loading_then_it_preserves_per_ro
         ),
         LoadActualStateWithoutMetadataIntegrationTestCase(
             description="loads active state after deleting object state metadata only",
-            drop_all_metadata_tables=False,
+            dropped_metadata_tables=("streambuild_object_state_snapshots",),
             expected_actual_object_names=(
                 "kafka__orders",
                 "mv__orders",
@@ -543,14 +493,9 @@ def test_given_published_state_when_metadata_is_deleted_then_load_actual_state_u
             ),
             client=managed_client,
         )
-        clickhouse_client.command(
-            f"DROP TABLE {clickhouse_database}.streambuild_object_state_snapshots"
-        )
-        if test_case.drop_all_metadata_tables:
-            clickhouse_client.command(f"DROP TABLE {clickhouse_database}.streambuild_deployments")
-            clickhouse_client.command(
-                f"DROP TABLE {clickhouse_database}.streambuild_deployment_watermarks"
-            )
+        metadata_table_name: str
+        for metadata_table_name in test_case.dropped_metadata_tables:
+            clickhouse_client.command(f"DROP TABLE {clickhouse_database}.{metadata_table_name}")
         actual_state: ActualState = load_actual_state(
             client=managed_client,
             desired_state=desired_state,

@@ -120,3 +120,81 @@ ACTUAL_STATE_SETUP_STEPS: dict[str, Callable[..., None]] = {
     "candidate_materialized_view": _create_candidate_materialized_view,
     "stable_view": _create_stable_view,
 }
+
+
+def _create_orders_candidates(*, clickhouse_client: Client, clickhouse_database: str) -> None:
+    clickhouse_client.command(
+        "CREATE TABLE "
+        f"{clickhouse_database}.tbl__orders_enriched__dep_a "
+        "(order_id String, _replay_timestamp DateTime64(3)) "
+        "ENGINE = MergeTree ORDER BY (order_id)"
+    )
+    clickhouse_client.command(
+        "CREATE MATERIALIZED VIEW "
+        f"{clickhouse_database}.mv__orders_enriched__dep_a "
+        f"TO {clickhouse_database}.tbl__orders_enriched__dep_a AS "
+        "SELECT CAST(kafka_key AS String) AS order_id, "
+        "CAST(_replay_timestamp AS DateTime64(3)) AS _replay_timestamp "
+        f"FROM {clickhouse_database}.raw__orders"
+    )
+
+
+def _create_customers_candidates(*, clickhouse_client: Client, clickhouse_database: str) -> None:
+    clickhouse_client.command(
+        "CREATE TABLE "
+        f"{clickhouse_database}.tbl__customers_enriched__dep_b "
+        "(order_id String, _replay_timestamp DateTime64(3)) "
+        "ENGINE = MergeTree ORDER BY (order_id)"
+    )
+    clickhouse_client.command(
+        "CREATE MATERIALIZED VIEW "
+        f"{clickhouse_database}.mv__customers_enriched__dep_b "
+        f"TO {clickhouse_database}.tbl__customers_enriched__dep_b AS "
+        "SELECT CAST(kafka_key AS String) AS order_id, "
+        "CAST(_replay_timestamp AS DateTime64(3)) AS _replay_timestamp "
+        f"FROM {clickhouse_database}.raw__customers"
+    )
+
+
+def _create_orders_active_view(*, clickhouse_client: Client, clickhouse_database: str) -> None:
+    clickhouse_client.command(
+        render_create_view_ddl(
+            database=clickhouse_database,
+            view_name="tbl__orders_enriched",
+            target_table_name="tbl__orders_enriched__dep_a",
+        )
+    )
+
+
+def _create_customers_active_view(*, clickhouse_client: Client, clickhouse_database: str) -> None:
+    clickhouse_client.command(
+        render_create_view_ddl(
+            database=clickhouse_database,
+            view_name="tbl__customers_enriched",
+            target_table_name="tbl__customers_enriched__dep_b",
+        )
+    )
+
+
+def _create_customers_invalid_view(*, clickhouse_client: Client, clickhouse_database: str) -> None:
+    clickhouse_client.command(
+        "CREATE TABLE "
+        f"{clickhouse_database}.tbl__customers_enriched_manual "
+        "(order_id String) ENGINE = MergeTree ORDER BY (order_id)"
+    )
+    clickhouse_client.command(
+        render_create_view_ddl(
+            database=clickhouse_database,
+            view_name="tbl__customers_enriched",
+            target_table_name="tbl__customers_enriched_manual",
+        )
+    )
+
+
+MIXED_ROOT_SETUP_STEPS: dict[str, Callable[..., None]] = {
+    "orders_candidates": _create_orders_candidates,
+    "customers_candidates": _create_customers_candidates,
+    "orders_active_view": _create_orders_active_view,
+    "customers_active_view": _create_customers_active_view,
+    "customers_invalid_view": _create_customers_invalid_view,
+}
