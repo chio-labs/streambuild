@@ -1,32 +1,16 @@
-"""Build ClickHouse metadata-state DDL statements."""
+"""Render CREATE TABLE DDL for each StreamBuild metadata-state table."""
 
-from streambuild.clickhouse.metadata_state._helpers.ddl._helpers.runtime_details import (
-    render_create_deployment_runtime_details_table_ddl,
-)
 from streambuild.clickhouse.metadata_state.constants import (
     METADATA_DEPLOYMENT_WATERMARKS_TABLE_NAME,
     METADATA_DEPLOYMENTS_TABLE_NAME,
     METADATA_OBJECT_STATE_TABLE_NAME,
     METADATA_PUBLISH_HISTORY_TABLE_NAME,
 )
-from streambuild.clickhouse.metadata_state.models import RenderedClickHouseStatement
 
 
-def render_metadata_state_statements(database: str) -> tuple[RenderedClickHouseStatement, ...]:
-    """Render metadata-state DDL statements for ClickHouse persistence."""
+def render_create_object_state_table_ddl(database: str) -> str:
+    """Render DDL for the object-state snapshot table."""
 
-    return (
-        RenderedClickHouseStatement(sql=_render_create_object_state_table_ddl(database)),
-        RenderedClickHouseStatement(sql=_render_create_deployments_table_ddl(database)),
-        RenderedClickHouseStatement(sql=_render_create_deployment_watermarks_table_ddl(database)),
-        RenderedClickHouseStatement(
-            sql=render_create_deployment_runtime_details_table_ddl(database)
-        ),
-        RenderedClickHouseStatement(sql=_render_create_publish_history_table_ddl(database)),
-    )
-
-
-def _render_create_object_state_table_ddl(database: str) -> str:
     return (
         f"CREATE TABLE IF NOT EXISTS {database}.{METADATA_OBJECT_STATE_TABLE_NAME} (\n"
         "    deployment_id String,\n"
@@ -41,7 +25,9 @@ def _render_create_object_state_table_ddl(database: str) -> str:
     )
 
 
-def _render_create_deployments_table_ddl(database: str) -> str:
+def render_create_deployments_table_ddl(database: str) -> str:
+    """Render DDL for the deployments table."""
+
     return (
         f"CREATE TABLE IF NOT EXISTS {database}.{METADATA_DEPLOYMENTS_TABLE_NAME} (\n"
         "    deployment_id String,\n"
@@ -56,7 +42,9 @@ def _render_create_deployments_table_ddl(database: str) -> str:
     )
 
 
-def _render_create_deployment_watermarks_table_ddl(database: str) -> str:
+def render_create_deployment_watermarks_table_ddl(database: str) -> str:
+    """Render DDL for the deployment watermarks table."""
+
     return (
         f"CREATE TABLE IF NOT EXISTS {database}.{METADATA_DEPLOYMENT_WATERMARKS_TABLE_NAME} (\n"
         "    deployment_id String,\n"
@@ -73,7 +61,9 @@ def _render_create_deployment_watermarks_table_ddl(database: str) -> str:
     )
 
 
-def _render_create_publish_history_table_ddl(database: str) -> str:
+def render_create_publish_history_table_ddl(database: str) -> str:
+    """Render DDL for the publish history table."""
+
     return (
         f"CREATE TABLE IF NOT EXISTS {database}.{METADATA_PUBLISH_HISTORY_TABLE_NAME} (\n"
         "    deployment_id String,\n"

@@ -1,6 +1,6 @@
 """Build ClickHouse metadata-state insert statements."""
 
-from streambuild.clickhouse.metadata_state._helpers.statements._helpers.rows import (
+from streambuild.clickhouse.metadata_state._helpers.rows import (
     build_deployment_row,
     build_deployment_runtime_detail_row,
     build_deployment_watermark_row,
