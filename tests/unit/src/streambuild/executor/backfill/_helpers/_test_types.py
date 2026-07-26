@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 
 from streambuild.compiler.planner.types import RebuildExecutionMode
-from streambuild.spec.models.types import BoundedReplayFallback
+from streambuild.spec.types import BoundedReplayFallback
 
 
 @dataclass(frozen=True)

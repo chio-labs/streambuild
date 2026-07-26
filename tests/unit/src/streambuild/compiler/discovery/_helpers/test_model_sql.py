@@ -7,7 +7,7 @@ from streambuild.compiler.discovery._helpers.model_sql import (
     load_transform_from_sql_file,
     parse_model_sql,
 )
-from streambuild.spec.models.steps import TransformStep
+from streambuild.spec.models import TransformStep
 from tests.unit.src.streambuild.compiler.discovery._helpers._test_types import (
     InferTransformSourceErrorTestCase,
     LoadTransformFromSqlFileTestCase,

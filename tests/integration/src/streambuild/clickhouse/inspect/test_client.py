@@ -7,6 +7,9 @@ from streambuild.clickhouse.inspect.main.inspect_managed_table_state import (
 from streambuild.clickhouse.inspect.models import InspectedManagedTableState
 from streambuild.clickhouse.render.main.render_create_view_ddl import render_create_view_ddl
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
+from streambuild.integrations.clickhouse.main.connect_clickhouse import (
+    connect_clickhouse,
+)
 from streambuild.integrations.clickhouse.models import ClickHouseConnectionConfig
 from tests.integration.src.streambuild.clickhouse.inspect._test_types import (
     InspectManagedTableStateIntegrationTestCase,
@@ -51,7 +54,7 @@ def test_given_views_and_physical_tables_when_inspecting_then_it_returns_expecte
         )
     )
 
-    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+    managed_client: ClickHouseClient = connect_clickhouse(
         ClickHouseConnectionConfig(
             host=clickhouse_connection_settings.host,
             port=clickhouse_connection_settings.port,

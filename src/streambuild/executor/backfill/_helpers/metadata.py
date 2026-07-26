@@ -32,7 +32,7 @@ from streambuild.executor.backfill.constants import DEPLOYMENT_STATUS_BACKFILLIN
 from streambuild.executor.backfill.exceptions import BackfillExecutionError
 from streambuild.executor.backfill.models import RootBackfillReport
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
-from streambuild.spec.models.types import ReplayLineageMode
+from streambuild.spec.types import ReplayLineageMode
 
 
 def ensure_database_exists(*, client: ClickHouseClient, database: str) -> None:

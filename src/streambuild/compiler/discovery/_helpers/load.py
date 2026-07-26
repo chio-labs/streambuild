@@ -14,17 +14,18 @@ from streambuild.compiler.discovery.constants import (
 )
 from streambuild.compiler.discovery.exceptions import PipelineDiscoveryError
 from streambuild.compiler.shared.models import LoadedPipeline
-from streambuild.spec.models.pipeline import Pipeline
-from streambuild.spec.models.project import Project, ProjectClickHouseConfig
-from streambuild.spec.models.steps import (
+from streambuild.spec.models import (
     ExternalTableSourceStep,
     KafkaLandingStep,
     KafkaSettings,
+    Pipeline,
+    Project,
+    ProjectClickHouseConfig,
     ReplayBoundary,
     ReplayBoundaryColumns,
     TransformStep,
 )
-from streambuild.spec.models.types import (
+from streambuild.spec.types import (
     BoundedReplayFallback,
     ReplayBoundaryMode,
     ReplayLineageMode,

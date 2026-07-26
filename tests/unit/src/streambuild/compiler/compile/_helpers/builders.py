@@ -1,8 +1,7 @@
 from pathlib import Path
 
 from streambuild.compiler.shared.models import LoadedPipeline
-from streambuild.spec.models.pipeline import Pipeline
-from streambuild.spec.models.steps import KafkaLandingStep, KafkaSettings, TransformStep
+from streambuild.spec.models import KafkaLandingStep, KafkaSettings, Pipeline, TransformStep
 
 
 def build_sql_file_pipeline(

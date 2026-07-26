@@ -43,6 +43,9 @@ from streambuild.executor.backfill.models import (
 from streambuild.executor.publish.main.execute_publish import execute_publish
 from streambuild.executor.publish.models import PublishRequest
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
+from streambuild.integrations.clickhouse.main.connect_clickhouse import (
+    connect_clickhouse,
+)
 from streambuild.integrations.clickhouse.models import ClickHouseConnectionConfig
 from tests.integration.src.streambuild.conftest import ClickHouseConnectionSettings
 from tests.integration.src.streambuild.executor.backfill._test_types import (
@@ -158,7 +161,7 @@ def test_given_changed_pipeline_when_bootstrapping_then_it_creates_metadata_and_
                 database=clickhouse_database,
             )
         )
-    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+    managed_client: ClickHouseClient = connect_clickhouse(
         ClickHouseConnectionConfig(
             host=clickhouse_connection_settings.host,
             port=clickhouse_connection_settings.port,
@@ -324,7 +327,7 @@ def test_given_scalar_replay_mode_when_executing_then_it_persists_watermarks_and
             "_replay_landed_at",
         ],
     )
-    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+    managed_client: ClickHouseClient = connect_clickhouse(
         ClickHouseConnectionConfig(
             host=clickhouse_connection_settings.host,
             port=clickhouse_connection_settings.port,
@@ -483,7 +486,7 @@ def test_given_offset_replay_mode_when_executing_then_it_persists_partition_wate
             "_replay_landed_at",
         ],
     )
-    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+    managed_client: ClickHouseClient = connect_clickhouse(
         ClickHouseConnectionConfig(
             host=clickhouse_connection_settings.host,
             port=clickhouse_connection_settings.port,
@@ -609,7 +612,7 @@ def test_given_reference_join_when_executing_then_it_replays_from_staged_referen
             "_replay_landed_at",
         ],
     )
-    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+    managed_client: ClickHouseClient = connect_clickhouse(
         ClickHouseConnectionConfig(
             host=clickhouse_connection_settings.host,
             port=clickhouse_connection_settings.port,
@@ -721,7 +724,7 @@ def test_given_published_reference_join_dependency_when_backfilling_then_it_uses
             "_replay_landed_at",
         ],
     )
-    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+    managed_client: ClickHouseClient = connect_clickhouse(
         ClickHouseConnectionConfig(
             host=clickhouse_connection_settings.host,
             port=clickhouse_connection_settings.port,
@@ -846,7 +849,7 @@ def test_given_external_source_offset_replay_when_executing_then_it_uses_declare
             "event_landed_at",
         ],
     )
-    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+    managed_client: ClickHouseClient = connect_clickhouse(
         ClickHouseConnectionConfig(
             host=clickhouse_connection_settings.host,
             port=clickhouse_connection_settings.port,
@@ -936,7 +939,7 @@ def test_given_external_source_cursor_replay_when_executing_then_it_replays_by_c
             f"{clickhouse_database}.orders_existing "
             f"WHERE event_timestamp >= toDateTime64('{test_case.start_time}', 3)"
         ).result_rows == [(2,)]
-    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+    managed_client: ClickHouseClient = connect_clickhouse(
         ClickHouseConnectionConfig(
             host=clickhouse_connection_settings.host,
             port=clickhouse_connection_settings.port,
@@ -1054,7 +1057,7 @@ def test_given_aggregate_offset_replay_when_executing_then_it_filters_anchor_row
             "_replay_landed_at",
         ],
     )
-    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+    managed_client: ClickHouseClient = connect_clickhouse(
         ClickHouseConnectionConfig(
             host=clickhouse_connection_settings.host,
             port=clickhouse_connection_settings.port,
@@ -1173,7 +1176,7 @@ def test_given_aggregate_start_time_when_bootstrapping_then_it_resolves_policy_p
             "_replay_landed_at",
         ],
     )
-    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+    managed_client: ClickHouseClient = connect_clickhouse(
         ClickHouseConnectionConfig(
             host=clickhouse_connection_settings.host,
             port=clickhouse_connection_settings.port,
@@ -1316,7 +1319,7 @@ def test_given_aggregate_start_time_when_executing_then_it_falls_back_to_full_re
             "_replay_landed_at",
         ],
     )
-    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+    managed_client: ClickHouseClient = connect_clickhouse(
         ClickHouseConnectionConfig(
             host=clickhouse_connection_settings.host,
             port=clickhouse_connection_settings.port,
@@ -1463,7 +1466,7 @@ def test_given_unseeded_bounded_aggregate_offset_replay_when_executing_then_it_r
             "_replay_landed_at",
         ],
     )
-    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+    managed_client: ClickHouseClient = connect_clickhouse(
         ClickHouseConnectionConfig(
             host=clickhouse_connection_settings.host,
             port=clickhouse_connection_settings.port,
@@ -1647,7 +1650,7 @@ def test_given_seeded_bounded_scalar_replay_when_executing_then_it_copies_prefix
             "_replay_landed_at",
         ],
     )
-    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+    managed_client: ClickHouseClient = connect_clickhouse(
         ClickHouseConnectionConfig(
             host=clickhouse_connection_settings.host,
             port=clickhouse_connection_settings.port,
@@ -1866,7 +1869,7 @@ def test_given_unseeded_bounded_scalar_replay_when_executing_then_it_replays_onl
             "_replay_landed_at",
         ],
     )
-    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+    managed_client: ClickHouseClient = connect_clickhouse(
         ClickHouseConnectionConfig(
             host=clickhouse_connection_settings.host,
             port=clickhouse_connection_settings.port,
@@ -2047,7 +2050,7 @@ def test_given_unseeded_bounded_offset_replay_when_executing_then_it_replays_onl
             "_replay_landed_at",
         ],
     )
-    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+    managed_client: ClickHouseClient = connect_clickhouse(
         ClickHouseConnectionConfig(
             host=clickhouse_connection_settings.host,
             port=clickhouse_connection_settings.port,
@@ -2226,7 +2229,7 @@ def test_given_seeded_bounded_offset_replay_when_executing_then_it_copies_prefix
             "_replay_landed_at",
         ],
     )
-    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+    managed_client: ClickHouseClient = connect_clickhouse(
         ClickHouseConnectionConfig(
             host=clickhouse_connection_settings.host,
             port=clickhouse_connection_settings.port,
@@ -2436,7 +2439,7 @@ def test_given_two_staged_backfills_before_publish_when_executing_then_both_stag
             "_replay_landed_at",
         ],
     )
-    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+    managed_client: ClickHouseClient = connect_clickhouse(
         ClickHouseConnectionConfig(
             host=clickhouse_connection_settings.host,
             port=clickhouse_connection_settings.port,
@@ -2547,7 +2550,7 @@ def test_given_active_view_when_backfilling_then_it_reports_bounded_replay_strat
             "_replay_landed_at",
         ],
     )
-    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+    managed_client: ClickHouseClient = connect_clickhouse(
         ClickHouseConnectionConfig(
             host=clickhouse_connection_settings.host,
             port=clickhouse_connection_settings.port,
@@ -2625,7 +2628,7 @@ def test_given_published_raw_root_when_backfilling_again_then_it_uses_bounded_re
             database=clickhouse_database,
         )
     )
-    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+    managed_client: ClickHouseClient = connect_clickhouse(
         ClickHouseConnectionConfig(
             host=clickhouse_connection_settings.host,
             port=clickhouse_connection_settings.port,
@@ -2775,7 +2778,7 @@ def test_given_mixed_root_state_when_backfilling_then_it_reports_per_root_strate
         f"FROM {clickhouse_database}.raw__customers"
     )
 
-    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+    managed_client: ClickHouseClient = connect_clickhouse(
         ClickHouseConnectionConfig(
             host=clickhouse_connection_settings.host,
             port=clickhouse_connection_settings.port,
@@ -2876,7 +2879,7 @@ def test_given_deleted_staged_table_after_bootstrap_when_rerunning_then_backfill
             "_replay_landed_at",
         ],
     )
-    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+    managed_client: ClickHouseClient = connect_clickhouse(
         ClickHouseConnectionConfig(
             host=clickhouse_connection_settings.host,
             port=clickhouse_connection_settings.port,
@@ -2953,7 +2956,7 @@ def test_given_deleted_watermark_table_when_persisting_backfill_watermarks_then_
             database=clickhouse_database,
         )
     )
-    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+    managed_client: ClickHouseClient = connect_clickhouse(
         ClickHouseConnectionConfig(
             host=clickhouse_connection_settings.host,
             port=clickhouse_connection_settings.port,

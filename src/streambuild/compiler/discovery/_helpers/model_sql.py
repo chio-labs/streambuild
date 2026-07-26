@@ -20,12 +20,12 @@ from streambuild.compiler.discovery.constants import (
 )
 from streambuild.compiler.discovery.exceptions import PipelineDiscoveryError
 from streambuild.compiler.macros.main._expand_macro_calls import expand_project_sql_macros
-from streambuild.spec.models.steps import (
+from streambuild.spec.models import (
     SchemaChangeBackfillPolicy,
     SchemaChangeBackfillRule,
     TransformStep,
 )
-from streambuild.spec.models.types import (
+from streambuild.spec.types import (
     BoundedReplayFallback,
     ReplayAnchorMode,
     SchemaChangeBackfillMode,

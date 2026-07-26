@@ -6,10 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from streambuild.compiler.shared.types import DesiredObjectType
-from streambuild.spec.models.pipeline import Pipeline
-from streambuild.spec.models.project import Project
-from streambuild.spec.models.steps import SchemaChangeBackfillPolicy
-from streambuild.spec.models.types import BoundedReplayFallback, SqlRelationType
+from streambuild.spec.models import Pipeline, Project, SchemaChangeBackfillPolicy
+from streambuild.spec.types import BoundedReplayFallback, SqlRelationType
 
 
 @dataclass(frozen=True)

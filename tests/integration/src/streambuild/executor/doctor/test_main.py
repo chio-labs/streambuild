@@ -5,6 +5,9 @@ from streambuild.clickhouse.render.main.render_create_view_ddl import render_cre
 from streambuild.executor.doctor.main.execute_doctor import execute_doctor
 from streambuild.executor.doctor.models import ActiveViewStatus, DoctorRequest, DoctorResult
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
+from streambuild.integrations.clickhouse.main.connect_clickhouse import (
+    connect_clickhouse,
+)
 from streambuild.integrations.clickhouse.models import ClickHouseConnectionConfig
 from tests.integration.src.streambuild.conftest import ClickHouseConnectionSettings
 from tests.integration.src.streambuild.executor.doctor._test_types import (
@@ -94,7 +97,7 @@ def test_given_clickhouse_state_when_doctoring_then_it_reports_expected_active_v
             )
         )
 
-    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+    managed_client: ClickHouseClient = connect_clickhouse(
         ClickHouseConnectionConfig(
             host=clickhouse_connection_settings.host,
             port=clickhouse_connection_settings.port,

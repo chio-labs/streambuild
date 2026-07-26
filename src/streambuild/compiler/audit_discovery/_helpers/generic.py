@@ -20,7 +20,7 @@ from streambuild.compiler.shared.models import (
     LoadedGenericSqlAuditInstance,
     LoadedSqlAudit,
 )
-from streambuild.spec.models.types import SqlRelationType
+from streambuild.spec.types import SqlRelationType
 
 
 def discover_generic_sql_audit_definitions(

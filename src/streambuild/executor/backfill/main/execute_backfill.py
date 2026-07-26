@@ -23,7 +23,7 @@ from streambuild.executor.backfill.models import (
     BackfillExecutionResult,
 )
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
-from streambuild.spec.models.types import ReplayLineageMode
+from streambuild.spec.types import ReplayLineageMode
 
 
 def execute_backfill(

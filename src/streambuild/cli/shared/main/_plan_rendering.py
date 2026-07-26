@@ -29,7 +29,7 @@ from streambuild.compiler.shared.constants import (
     TRANSFORM_TABLE_NAME_PREFIX,
 )
 from streambuild.compiler.shared.models import DesiredMaterializedView, DesiredTable, ObjectKey
-from streambuild.spec.models.types import BoundedReplayFallback, SchemaChangeBackfillMode
+from streambuild.spec.types import BoundedReplayFallback, SchemaChangeBackfillMode
 
 
 def render_plan_result(

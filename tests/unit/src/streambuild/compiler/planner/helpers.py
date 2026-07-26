@@ -23,15 +23,15 @@ from streambuild.compiler.shared.models import (
     TableStorage,
 )
 from streambuild.compiler.shared.types import DesiredObjectType
-from streambuild.spec.models.pipeline import Pipeline
-from streambuild.spec.models.steps import (
+from streambuild.spec.models import (
     KafkaLandingStep,
     KafkaSettings,
+    Pipeline,
     SchemaChangeBackfillPolicy,
     SchemaChangeBackfillRule,
     TransformStep,
 )
-from streambuild.spec.models.types import (
+from streambuild.spec.types import (
     ReplayAnchorMode,
     ReplayLineageMode,
     SchemaChangeBackfillMode,

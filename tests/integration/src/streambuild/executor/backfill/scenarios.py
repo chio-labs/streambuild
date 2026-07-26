@@ -19,6 +19,9 @@ from streambuild.executor.backfill.models import BackfillBootstrapRequest, Backf
 from streambuild.executor.publish.main.execute_publish import execute_publish
 from streambuild.executor.publish.models import PublishRequest
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
+from streambuild.integrations.clickhouse.main.connect_clickhouse import (
+    connect_clickhouse,
+)
 from streambuild.integrations.clickhouse.models import ClickHouseConnectionConfig
 from tests.integration.src.streambuild.conftest import ClickHouseConnectionSettings
 from tests.integration.src.streambuild.executor.backfill._test_types import (
@@ -132,7 +135,7 @@ def run_start_time_replay_scenario(
             "_replay_landed_at",
         ],
     )
-    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+    managed_client: ClickHouseClient = connect_clickhouse(
         ClickHouseConnectionConfig(
             host=connection_settings.host,
             port=connection_settings.port,

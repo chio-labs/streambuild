@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from streambuild.compiler.shared.models import ObjectKey
 from streambuild.executor.audit_backfill.types import AuditAssessment
 from streambuild.executor.auditing.models import SqlAuditResult
-from streambuild.spec.models.types import ReplayLineageMode
+from streambuild.spec.types import ReplayLineageMode
 
 
 @dataclass(frozen=True)

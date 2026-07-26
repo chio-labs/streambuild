@@ -10,7 +10,7 @@ from streambuild.executor.backfill._helpers.behavior import (
     _resolve_subtree_behavior,
 )
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
-from streambuild.spec.models.types import ReplayLineageMode
+from streambuild.spec.types import ReplayLineageMode
 
 
 def resolve_unsupported_bounded_replay_behavior(

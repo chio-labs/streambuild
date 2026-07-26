@@ -1,4 +1,4 @@
-from streambuild.spec.models.steps import TransformStep
+from streambuild.spec.models import TransformStep
 
 
 def build_transform() -> TransformStep:

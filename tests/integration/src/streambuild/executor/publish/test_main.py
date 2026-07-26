@@ -17,6 +17,9 @@ from streambuild.executor.backfill.models import BackfillExecutionResult
 from streambuild.executor.publish.main.execute_publish import execute_publish
 from streambuild.executor.publish.models import PublishRequest, PublishResult
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
+from streambuild.integrations.clickhouse.main.connect_clickhouse import (
+    connect_clickhouse,
+)
 from streambuild.integrations.clickhouse.models import ClickHouseConnectionConfig
 from tests.integration.src.streambuild.conftest import ClickHouseConnectionSettings
 from tests.integration.src.streambuild.executor.backfill.helpers import (
@@ -109,7 +112,7 @@ def test_given_greenfield_staged_deployment_when_publishing_then_it_creates_stab
             "_replay_landed_at",
         ],
     )
-    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+    managed_client: ClickHouseClient = connect_clickhouse(
         ClickHouseConnectionConfig(
             host=clickhouse_connection_settings.host,
             port=clickhouse_connection_settings.port,
@@ -230,7 +233,7 @@ def test_given_publish_request_without_deployment_id_when_resolving_then_it_beha
             "_replay_landed_at",
         ],
     )
-    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+    managed_client: ClickHouseClient = connect_clickhouse(
         ClickHouseConnectionConfig(
             host=clickhouse_connection_settings.host,
             port=clickhouse_connection_settings.port,
@@ -368,7 +371,7 @@ def test_given_deleted_publish_metadata_when_publishing_then_it_uses_live_clickh
             "_replay_landed_at",
         ],
     )
-    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+    managed_client: ClickHouseClient = connect_clickhouse(
         ClickHouseConnectionConfig(
             host=clickhouse_connection_settings.host,
             port=clickhouse_connection_settings.port,
@@ -476,7 +479,7 @@ def test_given_deleted_staged_table_when_publishing_then_it_fails_conservatively
             "_replay_landed_at",
         ],
     )
-    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+    managed_client: ClickHouseClient = connect_clickhouse(
         ClickHouseConnectionConfig(
             host=clickhouse_connection_settings.host,
             port=clickhouse_connection_settings.port,
@@ -617,7 +620,7 @@ def test_given_deleted_active_view_when_publishing_then_it_recreates_stable_view
             source_table_name=require_managed_source(compiled_pipeline).raw_table.name,
         )
     )
-    managed_client: ClickHouseClient = ClickHouseClient.from_config(
+    managed_client: ClickHouseClient = connect_clickhouse(
         ClickHouseConnectionConfig(
             host=clickhouse_connection_settings.host,
             port=clickhouse_connection_settings.port,

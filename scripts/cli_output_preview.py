@@ -44,7 +44,7 @@ from streambuild.executor.backfill.models import (
     RootBackfillReport,
 )
 from streambuild.executor.publish.models import PublishedView, PublishResult
-from streambuild.spec.models.steps import SchemaChangeBackfillPolicy, SchemaChangeBackfillRule
+from streambuild.spec.models import SchemaChangeBackfillPolicy, SchemaChangeBackfillRule
 
 
 def main() -> int:
