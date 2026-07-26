@@ -25,6 +25,8 @@ class ExecuteAuditBackfillIntegrationTestCase:
     expected_root_warnings: tuple[str, ...] = ()
     staged_is_empty: bool = False
     extra_active_only_rows: int = 0
+    expected_catchup_kind: str = "scalar"
+    expected_partitions_compared: int | None = None
 
 
 @dataclass(frozen=True)
