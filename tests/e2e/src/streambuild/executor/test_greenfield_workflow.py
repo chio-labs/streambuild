@@ -18,9 +18,9 @@ from streambuild.clickhouse.render.main.render_create_table_ddl import render_cr
 from streambuild.compiler.compile.models import CompiledPipeline
 from streambuild.compiler.planner.types import RebuildExecutionMode
 from streambuild.executor.audit_backfill.types import AuditAssessment
-from streambuild.executor.backfill.main import execute_backfill
+from streambuild.executor.backfill.main.execute_backfill import execute_backfill
 from streambuild.executor.backfill.models import BackfillExecutionResult
-from streambuild.executor.publish.main import execute_publish
+from streambuild.executor.publish.main.execute_publish import execute_publish
 from streambuild.executor.publish.models import PublishRequest
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 from streambuild.integrations.clickhouse.models import ClickHouseConnectionConfig

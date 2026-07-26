@@ -14,7 +14,7 @@ from streambuild.cli.shared.main._timestamps import (
     normalize_cli_start_time,
 )
 from streambuild.compiler.compile.exceptions import TransformSqlContractError
-from streambuild.executor.backfill.main import execute_backfill
+from streambuild.executor.backfill.main.execute_backfill import execute_backfill
 from streambuild.executor.backfill.models import BackfillBootstrapRequest, BackfillExecutionResult
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 

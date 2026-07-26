@@ -8,12 +8,12 @@ from streambuild.clickhouse.render.main.render_create_materialized_view_ddl impo
     render_create_materialized_view_ddl,
 )
 from streambuild.clickhouse.render.main.render_create_table_ddl import render_create_table_ddl
-from streambuild.compiler.actual_state._helpers.load import load_actual_state
+from streambuild.compiler.actual_state.main.load_actual_state import load_actual_state
 from streambuild.compiler.actual_state.models import ActualMaterializedView, ActualState
 from streambuild.compiler.compile.models import CompiledPipeline, DesiredState
 from streambuild.compiler.desired_state.main import build_desired_state
-from streambuild.executor.backfill.main import execute_backfill
-from streambuild.executor.publish.main import execute_publish
+from streambuild.executor.backfill.main.execute_backfill import execute_backfill
+from streambuild.executor.publish.main.execute_publish import execute_publish
 from streambuild.executor.publish.models import PublishRequest
 from streambuild.executor.reconcile.constants import RECONCILE_DEPLOYMENT_ID_PREFIX
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient

@@ -13,7 +13,7 @@ from tests.unit.src.streambuild.compiler.discovery._helpers._test_types import (
     LoadTransformFromSqlFileTestCase,
     ParseModelSqlHeaderTestCase,
 )
-from tests.unit.src.streambuild.compiler.discovery.macros.helpers import (
+from tests.unit.src.streambuild.compiler.macros.helpers import (
     write_macro_file,
     write_project_file,
     write_sql_file,

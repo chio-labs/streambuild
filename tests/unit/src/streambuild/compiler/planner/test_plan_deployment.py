@@ -8,7 +8,7 @@ from streambuild.compiler.actual_state.models import (
 )
 from streambuild.compiler.compile.models import DesiredState
 from streambuild.compiler.planner.constants import REBUILD_EXECUTION_MODE_FULL
-from streambuild.compiler.planner.main import plan_deployment
+from streambuild.compiler.planner.main.plan_deployment import plan_deployment
 from streambuild.compiler.planner.models import DeploymentPlan
 from streambuild.compiler.shared.models import (
     DesiredKafkaTable,

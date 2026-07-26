@@ -1,7 +1,11 @@
 """Doctor execution entrypoint."""
 
-from streambuild.clickhouse.inspect._helpers.deployments import inspect_root_deployment_state
-from streambuild.clickhouse.inspect.main import inspect_managed_table_state
+from streambuild.clickhouse.inspect.main.inspect_managed_table_state import (
+    inspect_managed_table_state,
+)
+from streambuild.clickhouse.inspect.main.inspect_root_deployment_state import (
+    inspect_root_deployment_state,
+)
 from streambuild.clickhouse.inspect.models import (
     InspectedManagedTableState,
     RootDeploymentInspection,

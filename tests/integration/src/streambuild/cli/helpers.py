@@ -39,7 +39,7 @@ def build_runtime_details_table_query(database: str) -> str:
 
 
 def write_audit_project_files(project_dir: Path) -> None:
-    from tests.unit.src.streambuild.compiler.discovery._helpers.auditing.helpers import (
+    from tests.unit.src.streambuild.compiler.audit_discovery.helpers import (
         write_sql_audit_file,
     )
     from tests.unit.src.streambuild.compiler.discovery._helpers.load.helpers import (
@@ -85,7 +85,7 @@ def write_audit_project_files(project_dir: Path) -> None:
 
 
 def write_backfill_audit_project_files(project_dir: Path) -> None:
-    from tests.unit.src.streambuild.compiler.discovery._helpers.auditing.helpers import (
+    from tests.unit.src.streambuild.compiler.audit_discovery.helpers import (
         write_sql_audit_file,
     )
     from tests.unit.src.streambuild.compiler.discovery._helpers.load.helpers import (
@@ -130,7 +130,7 @@ def write_backfill_audit_project_files(project_dir: Path) -> None:
 
 
 def write_generic_audit_project_files(project_dir: Path) -> None:
-    from tests.unit.src.streambuild.compiler.discovery._helpers.auditing.helpers import (
+    from tests.unit.src.streambuild.compiler.audit_discovery.helpers import (
         write_schema_yaml_file,
         write_sql_audit_file,
     )
@@ -187,7 +187,7 @@ def write_generic_audit_project_files(project_dir: Path) -> None:
 
 
 def write_multi_audit_project_files(project_dir: Path) -> None:
-    from tests.unit.src.streambuild.compiler.discovery._helpers.auditing.helpers import (
+    from tests.unit.src.streambuild.compiler.audit_discovery.helpers import (
         write_sql_audit_file,
     )
     from tests.unit.src.streambuild.compiler.discovery._helpers.load.helpers import (

@@ -15,8 +15,8 @@ from streambuild.clickhouse.render.main.render_create_materialized_view_ddl impo
 )
 from streambuild.clickhouse.render.main.render_create_table_ddl import render_create_table_ddl
 from streambuild.compiler.compile.models import CompiledPipeline
-from streambuild.executor.backfill.main import execute_backfill
-from streambuild.executor.publish.main import execute_publish
+from streambuild.executor.backfill.main.execute_backfill import execute_backfill
+from streambuild.executor.publish.main.execute_publish import execute_publish
 from streambuild.executor.publish.models import PublishRequest
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 from tests.integration.src.streambuild.executor.backfill.helpers import (

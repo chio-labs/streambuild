@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from streambuild.clickhouse.inspect.main import inspect_managed_table_state
+from streambuild.clickhouse.inspect.main.inspect_managed_table_state import (
+    inspect_managed_table_state,
+)
 from streambuild.clickhouse.inspect.models import InspectedActiveTableBinding
 from streambuild.compiler.compile.models import DesiredState
 from streambuild.compiler.planner.constants import (
@@ -10,7 +12,7 @@ from streambuild.compiler.planner.constants import (
     REBUILD_EXECUTION_MODE_SEEDED_BOUNDED,
     REBUILD_EXECUTION_MODE_UNSEEDED_BOUNDED,
 )
-from streambuild.compiler.planner.models import DeploymentPlan, RebuildSubtree
+from streambuild.compiler.planner.models import RebuildSubtree
 from streambuild.compiler.shared.constants import (
     REPLAY_REQUIRED_COLUMN_NAMES_BY_MODE,
 )
@@ -18,27 +20,6 @@ from streambuild.compiler.shared.models import DesiredTable
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 from streambuild.integrations.clickhouse.models import ClickHouseQueryResult
 from streambuild.spec.models.types import BoundedReplayFallback, ReplayLineageMode
-
-
-def resolve_unsupported_bounded_replay_behavior(
-    *,
-    client: ClickHouseClient,
-    deployment_plan: DeploymentPlan,
-    desired_state: DesiredState,
-    default_database: str,
-    replay_lineage_mode: ReplayLineageMode,
-) -> DeploymentPlan:
-    resolved_subtrees: tuple[RebuildSubtree, ...] = tuple(
-        _resolve_subtree_behavior(
-            client=client,
-            subtree=subtree,
-            desired_state=desired_state,
-            default_database=default_database,
-            replay_lineage_mode=replay_lineage_mode,
-        )
-        for subtree in deployment_plan.rebuild_subtrees
-    )
-    return replace(deployment_plan, rebuild_subtrees=resolved_subtrees)
 
 
 def _resolve_subtree_behavior(

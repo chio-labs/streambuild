@@ -14,12 +14,12 @@ from streambuild.clickhouse.render.main.render_create_materialized_view_ddl impo
     render_create_materialized_view_ddl,
 )
 from streambuild.clickhouse.render.main.render_create_table_ddl import render_create_table_ddl
-from streambuild.compiler.compile._helpers.naming import transform_table_name
+from streambuild.compiler.compile.main.transform_table_name import transform_table_name
 from streambuild.compiler.compile.models import CompiledManagedSource, CompiledPipeline
 from streambuild.compiler.shared.main.build_deployment_physical_name import (
     build_deployment_physical_name,
 )
-from streambuild.executor.backfill.main import execute_backfill
+from streambuild.executor.backfill.main.execute_backfill import execute_backfill
 from streambuild.executor.backfill.models import BackfillExecutionResult
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 from tests.integration.src.streambuild.cli._test_types import (

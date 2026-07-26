@@ -7,7 +7,7 @@ from streambuild.compiler.actual_state.models import (
     ActualState,
     ActualTable,
 )
-from streambuild.compiler.compile.main import compile_pipeline
+from streambuild.compiler.compile.main.compile_pipeline import compile_pipeline
 from streambuild.compiler.compile.models import DesiredState
 from streambuild.compiler.desired_state.main import build_desired_state
 from streambuild.compiler.discovery._helpers.load import load_pipeline_file

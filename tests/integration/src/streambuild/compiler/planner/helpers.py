@@ -1,6 +1,6 @@
 from collections.abc import Callable
 
-from streambuild.compiler.compile.main import compile_pipeline
+from streambuild.compiler.compile.main.compile_pipeline import compile_pipeline
 from streambuild.compiler.compile.models import CompiledPipeline
 from streambuild.compiler.shared.models import LoadedPipeline
 from streambuild.spec.models.pipeline import Pipeline

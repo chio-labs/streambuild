@@ -8,10 +8,10 @@ from typing import cast
 
 from sqlglot import exp, parse_one
 
-from streambuild.compiler.compile._helpers.refs import replace_refs
+from streambuild.compiler.compile.main.replace_refs import replace_refs
 from streambuild.compiler.compile.models import CompiledPipeline, CompiledTransformStep
-from streambuild.compiler.discovery._helpers.testing.constants import EXPECTED_CTE_PREFIX
 from streambuild.compiler.shared.models import LoadedSqlTest, SqlTestCte
+from streambuild.compiler.test_discovery.constants import EXPECTED_CTE_PREFIX
 from streambuild.compiler.testing.exceptions import SqlTestAssemblyError
 from streambuild.compiler.testing.models import (
     CompiledSqlTestModelEntry,

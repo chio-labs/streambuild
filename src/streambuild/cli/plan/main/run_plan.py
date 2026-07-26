@@ -16,16 +16,16 @@ from streambuild.cli.shared.main._timestamps import (
 )
 from streambuild.cli.shared.main._warnings import add_empty_replay_source_warnings
 from streambuild.cli.shared.models import SelectionResolution
-from streambuild.compiler.actual_state._helpers.load import load_actual_state
+from streambuild.compiler.actual_state.main.load_actual_state import load_actual_state
 from streambuild.compiler.actual_state.models import ActualState
 from streambuild.compiler.compile.exceptions import TransformSqlContractError
-from streambuild.compiler.compile.main import compile_pipeline
+from streambuild.compiler.compile.main.compile_pipeline import compile_pipeline
 from streambuild.compiler.compile.models import CompiledPipeline, DesiredState
-from streambuild.compiler.discovery.main import discover_pipelines
-from streambuild.compiler.planner.main import plan_deployment
+from streambuild.compiler.discovery.main.discover_pipelines import discover_pipelines
+from streambuild.compiler.planner.main.plan_deployment import plan_deployment
 from streambuild.compiler.planner.models import DeploymentPlan
 from streambuild.compiler.shared.models import LoadedPipeline
-from streambuild.executor.backfill._helpers.behavior import (
+from streambuild.executor.backfill.main.resolve_unsupported_bounded_replay_behavior import (
     resolve_unsupported_bounded_replay_behavior,
 )
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient

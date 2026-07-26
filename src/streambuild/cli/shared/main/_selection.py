@@ -9,7 +9,8 @@ from streambuild.compiler.compile.models import (
     DesiredState,
 )
 from streambuild.compiler.desired_state.main import build_desired_state
-from streambuild.compiler.planner._helpers.graph import build_reverse_deps, topologically_order_keys
+from streambuild.compiler.planner.main.build_reverse_deps import build_reverse_deps
+from streambuild.compiler.planner.main.topologically_order_keys import topologically_order_keys
 from streambuild.compiler.shared.models import (
     DesiredKafkaTable,
     DesiredMaterializedView,

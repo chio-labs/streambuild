@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from streambuild.compiler.compile.main import compile_pipeline
+from streambuild.compiler.compile.main.compile_pipeline import compile_pipeline
 from streambuild.compiler.compile.models import CompiledPipeline
-from streambuild.compiler.discovery.main import discover_pipelines
+from streambuild.compiler.discovery.main.discover_pipelines import discover_pipelines
 from streambuild.compiler.shared.models import LoadedPipeline
 from streambuild.spec.models.pipeline import Pipeline
 from streambuild.spec.models.steps import (

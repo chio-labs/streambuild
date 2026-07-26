@@ -18,20 +18,22 @@ from streambuild.cli.shared.main._deployment_candidates import (
     render_no_deployment_candidates_message,
 )
 from streambuild.cli.shared.main._errors import render_expected_clickhouse_error
-from streambuild.clickhouse.inspect.main import inspect_managed_table_state
+from streambuild.clickhouse.inspect.main.inspect_managed_table_state import (
+    inspect_managed_table_state,
+)
 from streambuild.clickhouse.inspect.models import InspectedManagedTableState
+from streambuild.compiler.audit_discovery.main.discover_sql_audits import discover_sql_audits
 from streambuild.compiler.auditing.main import validate_sql_audits
-from streambuild.compiler.compile._helpers.naming import transform_table_name
-from streambuild.compiler.compile.main import compile_pipeline
+from streambuild.compiler.compile.main.compile_pipeline import compile_pipeline
+from streambuild.compiler.compile.main.transform_table_name import transform_table_name
 from streambuild.compiler.compile.models import CompiledPipeline, CompiledTransformStep
-from streambuild.compiler.discovery._helpers.auditing.main import discover_sql_audits
-from streambuild.compiler.discovery.main import discover_pipelines
+from streambuild.compiler.discovery.main.discover_pipelines import discover_pipelines
 from streambuild.compiler.shared.models import LoadedPipeline, LoadedSqlAudit
-from streambuild.executor.audit_backfill._helpers.metadata import load_audit_deployment
-from streambuild.executor.audit_backfill._helpers.resolution import (
+from streambuild.executor.audit_backfill.main.build_audit_deployment_candidates import (
     build_audit_deployment_candidates,
 )
-from streambuild.executor.audit_backfill.main import execute_audit_backfill
+from streambuild.executor.audit_backfill.main.execute_audit_backfill import execute_audit_backfill
+from streambuild.executor.audit_backfill.main.load_audit_deployment import load_audit_deployment
 from streambuild.executor.audit_backfill.models import (
     AuditBackfillRequest,
     AuditBackfillResult,

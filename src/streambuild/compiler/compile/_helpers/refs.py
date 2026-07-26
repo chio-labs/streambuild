@@ -18,26 +18,6 @@ def extract_refs(sql: str) -> list[ParsedRef]:
     return list(_extract_refs_tuple(sql))
 
 
-def replace_refs(*, sql: str, resolver: dict[str, str]) -> str:
-    """Replace logical refs with resolved SQL relation surfaces."""
-
-    expression: exp.Expr = parse_one(sql, dialect="clickhouse")
-    for table in expression.find_all(exp.Table):
-        parsed_ref: ParsedRef | None = _parse_table_ref(table)
-        if parsed_ref is None:
-            continue
-        name: str = parsed_ref.name
-        if name not in resolver:
-            raise PipelineCompileError(f"Unresolved ref: {name}")
-        resolved_expression: exp.Expression = _parse_resolved_relation_expression(resolver[name])
-        table_alias: exp.TableAlias | None = table.args.get("alias")
-        if table_alias is not None and resolved_expression.args.get("alias") is None:
-            resolved_expression.set("alias", table_alias.copy())
-        table.replace(resolved_expression)
-
-    return expression.sql(dialect="clickhouse")
-
-
 def _parse_resolved_relation_expression(resolved_sql: str) -> exp.Expression:
     if any(character.isspace() for character in resolved_sql) or resolved_sql.startswith("("):
         return cast(exp.Expression, parse_one(resolved_sql, dialect="clickhouse"))

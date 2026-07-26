@@ -14,11 +14,15 @@ from streambuild.cli.shared.main._deployment_candidates import (
     render_no_deployment_candidates_message,
 )
 from streambuild.cli.shared.main._errors import render_expected_clickhouse_error
-from streambuild.clickhouse.inspect.main import inspect_managed_table_state
+from streambuild.clickhouse.inspect.main.inspect_managed_table_state import (
+    inspect_managed_table_state,
+)
 from streambuild.clickhouse.inspect.models import InspectedManagedTableState
 from streambuild.executor.audit_backfill.models import AuditDeploymentCandidate
-from streambuild.executor.publish._helpers.resolution import build_publish_deployment_candidates
-from streambuild.executor.publish.main import execute_publish
+from streambuild.executor.publish.main.build_publish_deployment_candidates import (
+    build_publish_deployment_candidates,
+)
+from streambuild.executor.publish.main.execute_publish import execute_publish
 from streambuild.executor.publish.models import PublishRequest, PublishResult
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 

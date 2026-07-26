@@ -30,14 +30,17 @@ from streambuild.executor.backfill._helpers.watermarks import (
     resolve_offset_watermarks,
     resolve_scalar_watermarks,
 )
-from streambuild.executor.backfill.main import execute_backfill, execute_backfill_bootstrap
+from streambuild.executor.backfill.main.execute_backfill import (
+    execute_backfill,
+    execute_backfill_bootstrap,
+)
 from streambuild.executor.backfill.models import (
     BackfillBootstrapRequest,
     BackfillBootstrapResult,
     BackfillExecutionResult,
     RootBackfillReport,
 )
-from streambuild.executor.publish.main import execute_publish
+from streambuild.executor.publish.main.execute_publish import execute_publish
 from streambuild.executor.publish.models import PublishRequest
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 from streambuild.integrations.clickhouse.models import ClickHouseConnectionConfig

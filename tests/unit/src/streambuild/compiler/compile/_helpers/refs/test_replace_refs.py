@@ -1,7 +1,7 @@
 import pytest
 
-from streambuild.compiler.compile._helpers.refs import replace_refs
 from streambuild.compiler.compile.exceptions import PipelineCompileError
+from streambuild.compiler.compile.main.replace_refs import replace_refs
 from tests.unit.src.streambuild.compiler.compile._helpers.refs._test_types import (
     ReplaceRefsErrorTestCase,
     ReplaceRefsTestCase,

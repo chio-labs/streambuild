@@ -1,6 +1,5 @@
 """Metadata-backed actual-state helpers."""
 
-import json
 from collections.abc import Mapping
 
 from clickhouse_connect.driver.exceptions import DatabaseError, OperationalError
@@ -126,12 +125,6 @@ def load_latest_object_state_records_by_keys(
         if current_record is None or record.recorded_at > current_record.recorded_at:
             latest_records[key] = record
     return latest_records
-
-
-def build_normalized_fingerprint(value: object) -> str:
-    """Build a deterministic comparable fingerprint payload string."""
-
-    return json.dumps(value, sort_keys=True)
 
 
 def _decode_object_state_metadata_row(row: Mapping[str, object]) -> ObjectStateMetadataRow:

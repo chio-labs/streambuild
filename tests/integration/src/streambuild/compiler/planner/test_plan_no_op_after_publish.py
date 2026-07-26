@@ -10,7 +10,7 @@ from streambuild.clickhouse.render.main.render_create_materialized_view_ddl impo
     render_create_materialized_view_ddl,
 )
 from streambuild.clickhouse.render.main.render_create_table_ddl import render_create_table_ddl
-from streambuild.compiler.actual_state._helpers.load import load_actual_state
+from streambuild.compiler.actual_state.main.load_actual_state import load_actual_state
 from streambuild.compiler.actual_state.models import ActualState
 from streambuild.compiler.compile.models import CompiledPipeline, DesiredState
 from streambuild.compiler.desired_state.main import build_desired_state
@@ -23,12 +23,12 @@ from streambuild.compiler.planner.constants import (
     TABLE_SCHEMA_SEED_COMPATIBILITY_NON_SEEDABLE,
     TABLE_SCHEMA_SEED_COMPATIBILITY_SEEDABLE,
 )
-from streambuild.compiler.planner.main import plan_deployment
+from streambuild.compiler.planner.main.plan_deployment import plan_deployment
 from streambuild.compiler.planner.models import DeploymentPlan, PlannedObjectChange
 from streambuild.compiler.shared.models import DesiredTable
-from streambuild.executor.backfill.main import execute_backfill
+from streambuild.executor.backfill.main.execute_backfill import execute_backfill
 from streambuild.executor.backfill.models import BackfillExecutionResult
-from streambuild.executor.publish.main import execute_publish
+from streambuild.executor.publish.main.execute_publish import execute_publish
 from streambuild.executor.publish.models import PublishRequest, PublishResult
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 from streambuild.integrations.clickhouse.models import ClickHouseConnectionConfig

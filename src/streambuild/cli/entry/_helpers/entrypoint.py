@@ -9,7 +9,7 @@ from streambuild.cli.entry.models import (
     ResolvedCliProjectConfig,
 )
 from streambuild.cli.shared.exceptions import CliUserError
-from streambuild.compiler.discovery._helpers.load import load_project_for_path
+from streambuild.compiler.discovery.main.load_project_for_path import load_project_for_path
 from streambuild.spec.models.project import Project
 
 

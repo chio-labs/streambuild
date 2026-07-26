@@ -5,7 +5,7 @@ from streambuild.compiler.shared.constants import (
     DESIRED_OBJECT_TYPE_TABLE,
     TRANSFORM_TABLE_NAME_PREFIX,
 )
-from streambuild.executor.audit_backfill._helpers.metadata import load_audit_deployment
+from streambuild.executor.audit_backfill.main.load_audit_deployment import load_audit_deployment
 from streambuild.executor.audit_backfill.models import (
     AuditDeploymentCandidate,
     LoadedAuditDeployment,

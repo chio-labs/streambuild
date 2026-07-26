@@ -392,16 +392,6 @@ def load_project_for_pipeline_file(file_path: Path) -> Project | None:
     return load_project_yaml(project_file_path)
 
 
-def load_project_for_path(path: Path) -> Project | None:
-    """Load the nearest project config for a path, if present."""
-
-    project_file_path: Path | None = find_project_file(path)
-    if project_file_path is None:
-        return None
-
-    return load_project_yaml(project_file_path)
-
-
 def find_project_file(path: Path) -> Path | None:
     """Find the nearest `streambuild_project.yml` for a file or directory path."""
 
