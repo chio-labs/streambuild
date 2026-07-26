@@ -24,15 +24,15 @@ from streambuild.cli.entry._helpers.entrypoint import (
 )
 from streambuild.cli.entry._helpers.parser import build_cli_parser
 from streambuild.cli.entry.constants import (
-    AUDIT_COMMAND,
-    BACKFILL_SUBCOMMAND,
-    REPAIR_COMMAND,
+    COMMANDS_REQUIRING_PIPELINES_ROOT,
+    DISPLAY_NAME_BY_COMMAND,
 )
 from streambuild.cli.entry.models import (
     CliEntrypointHandlers,
     ResolvedClickHouseConnection,
     ResolvedCliProjectConfig,
 )
+from streambuild.cli.entry.types import CliCommand, CliSubcommand
 from streambuild.cli.shared.exceptions import CliUserError
 from streambuild.cli.shared.main._errors import render_expected_clickhouse_error
 from streambuild.compiler.compile.exceptions import TransformSqlContractError
@@ -92,18 +92,7 @@ def _main_with_dependencies(
             project_dir=getattr(args, "project_dir", None),
             working_directory=current_working_directory,
         )
-        needs_pipelines_root: bool = (
-            args.command
-            in {
-                "discover",
-                "compile",
-                "test",
-                "plan",
-                "backfill",
-                "reconcile",
-            }
-            or args.command == AUDIT_COMMAND
-        )
+        needs_pipelines_root: bool = args.command in COMMANDS_REQUIRING_PIPELINES_ROOT
         pipelines_root: Path | None = (
             resolve_pipelines_root(
                 project_dir=getattr(args, "project_dir", None),
@@ -137,9 +126,9 @@ def _main_with_dependencies(
             env_var_name="STREAMBUILD_CLICKHOUSE_PASSWORD",
             environment=resolved_env,
         )
-        if args.command == "discover":
+        if args.command == CliCommand.DISCOVER:
             return handlers.run_discover(pipelines_root=pipelines_root)
-        if args.command == "compile":
+        if args.command == CliCommand.COMPILE:
             return handlers.run_compile(
                 pipelines_root=pipelines_root,
                 target_dir=(
@@ -169,7 +158,7 @@ def _main_with_dependencies(
                 raise CliUserError("CLI entrypoint failed to resolve a ClickHouse connection")
             return build_clickhouse_client_for_connection(connection=connection)
 
-        if args.command == "test":
+        if args.command == CliCommand.TEST:
             return handlers.run_test(
                 pipelines_root=pipelines_root,
                 project_dir=resolved_project_dir,
@@ -179,7 +168,7 @@ def _main_with_dependencies(
                 client=resolved_client(),
             )
 
-        if args.command == BACKFILL_SUBCOMMAND:
+        if args.command == CliSubcommand.BACKFILL:
             return handlers.run_backfill(
                 pipelines_root=pipelines_root,
                 database=resolved_database,
@@ -193,8 +182,8 @@ def _main_with_dependencies(
                 auto_approve=bool(getattr(args, "auto_approve", False)),
                 client=resolved_client(),
             )
-        if args.command == AUDIT_COMMAND:
-            if getattr(args, "audit_command", None) == BACKFILL_SUBCOMMAND:
+        if args.command == CliCommand.AUDIT:
+            if getattr(args, "audit_command", None) == CliSubcommand.BACKFILL:
                 return handlers.run_audit_backfill(
                     pipelines_root=pipelines_root,
                     project_dir=(
@@ -218,7 +207,7 @@ def _main_with_dependencies(
                 json_output=bool(getattr(args, "json", False)),
                 client=resolved_client(),
             )
-        if args.command == "publish":
+        if args.command == CliCommand.PUBLISH:
             return handlers.run_publish(
                 database=resolved_database,
                 metadata_database=getattr(args, "metadata_database", None),
@@ -226,7 +215,7 @@ def _main_with_dependencies(
                 json_output=bool(getattr(args, "json", False)),
                 client=resolved_client(),
             )
-        if args.command == "reconcile":
+        if args.command == CliCommand.RECONCILE:
             return handlers.run_reconcile(
                 pipelines_root=pipelines_root,
                 database=resolved_database,
@@ -236,12 +225,12 @@ def _main_with_dependencies(
                 apply=bool(getattr(args, "apply", False)),
                 client=resolved_client(),
             )
-        if args.command == "doctor":
+        if args.command == CliCommand.DOCTOR:
             return handlers.run_doctor(
                 database=resolved_database,
                 client=resolved_client(),
             )
-        if args.command == "janitor":
+        if args.command == CliCommand.JANITOR:
             return handlers.run_janitor(
                 database=resolved_database,
                 retention_days=args.retention_days,
@@ -249,7 +238,7 @@ def _main_with_dependencies(
                 json_output=bool(getattr(args, "json", False)),
                 client=resolved_client(),
             )
-        if args.command == REPAIR_COMMAND:
+        if args.command == CliCommand.REPAIR:
             return handlers.run_repair_active_view(
                 database=resolved_database,
                 table=args.table,
@@ -285,13 +274,11 @@ def _main_with_dependencies(
 
 
 def _command_name(args: argparse.Namespace) -> str:
+    """Return the operator-facing command name for error messages."""
+
     if (
-        args.command == AUDIT_COMMAND
-        and getattr(args, "audit_command", None) == BACKFILL_SUBCOMMAND
+        args.command == CliCommand.AUDIT
+        and getattr(args, "audit_command", None) == CliSubcommand.BACKFILL
     ):
         return "audit backfill"
-    if args.command == AUDIT_COMMAND:
-        return "audit"
-    if args.command == REPAIR_COMMAND:
-        return "repair active-view"
-    return str(args.command)
+    return DISPLAY_NAME_BY_COMMAND.get(args.command, str(args.command))
