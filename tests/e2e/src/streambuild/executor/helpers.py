@@ -18,7 +18,7 @@ from streambuild.compiler.compile.models import (
     CompiledTransformStep,
     DesiredState,
 )
-from streambuild.compiler.desired_state.main import build_desired_state
+from streambuild.compiler.desired_state.main.build_desired_state import build_desired_state
 from streambuild.compiler.discovery.main.discover_pipelines import discover_pipelines
 from streambuild.compiler.shared.models import (
     Column,

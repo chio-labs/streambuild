@@ -23,7 +23,7 @@ from streambuild.clickhouse.inspect.main.inspect_managed_table_state import (
 )
 from streambuild.clickhouse.inspect.models import InspectedManagedTableState
 from streambuild.compiler.audit_discovery.main.discover_sql_audits import discover_sql_audits
-from streambuild.compiler.auditing.main import validate_sql_audits
+from streambuild.compiler.auditing.main.validate_sql_audits import validate_sql_audits
 from streambuild.compiler.compile.main.compile_pipeline import compile_pipeline
 from streambuild.compiler.compile.main.transform_table_name import transform_table_name
 from streambuild.compiler.compile.models import CompiledPipeline, CompiledTransformStep
@@ -41,7 +41,7 @@ from streambuild.executor.audit_backfill.models import (
     LoadedAuditDeployment,
 )
 from streambuild.executor.audit_backfill.types import AuditAssessment
-from streambuild.executor.auditing.main import execute_sql_audits
+from streambuild.executor.auditing.main.execute_sql_audits import execute_sql_audits
 from streambuild.executor.auditing.models import SqlAuditRunResult
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 

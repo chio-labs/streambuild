@@ -8,7 +8,7 @@ from streambuild.compiler.compile.models import (
     CompiledPipeline,
     DesiredState,
 )
-from streambuild.compiler.desired_state.main import build_desired_state
+from streambuild.compiler.desired_state.main.build_desired_state import build_desired_state
 from streambuild.compiler.planner.main.build_reverse_deps import build_reverse_deps
 from streambuild.compiler.planner.main.topologically_order_keys import topologically_order_keys
 from streambuild.compiler.shared.models import (

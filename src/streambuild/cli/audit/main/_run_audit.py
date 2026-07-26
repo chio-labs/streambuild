@@ -5,14 +5,14 @@ from pathlib import Path
 from streambuild.cli.audit._helpers.rendering import render_sql_audit_run_result
 from streambuild.cli.audit._helpers.selection import select_loaded_sql_audits
 from streambuild.compiler.audit_discovery.main.discover_sql_audits import discover_sql_audits
-from streambuild.compiler.auditing.main import validate_sql_audits
+from streambuild.compiler.auditing.main.validate_sql_audits import validate_sql_audits
 from streambuild.compiler.compile.main.compile_pipeline import compile_pipeline
 from streambuild.compiler.compile.main.transform_table_name import transform_table_name
 from streambuild.compiler.compile.models import CompiledPipeline
 from streambuild.compiler.discovery.main.discover_pipelines import discover_pipelines
 from streambuild.compiler.shared.main.compiled_transforms import compiled_transforms
 from streambuild.compiler.shared.models import LoadedPipeline, LoadedSqlAudit
-from streambuild.executor.auditing.main import execute_sql_audits
+from streambuild.executor.auditing.main.execute_sql_audits import execute_sql_audits
 from streambuild.executor.auditing.models import SqlAuditRunResult
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 

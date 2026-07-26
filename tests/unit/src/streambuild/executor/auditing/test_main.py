@@ -4,7 +4,7 @@ from typing import cast
 import pytest
 
 from streambuild.compiler.shared.models import LoadedSqlAudit
-from streambuild.executor.auditing.main import execute_sql_audits
+from streambuild.executor.auditing.main.execute_sql_audits import execute_sql_audits
 from streambuild.executor.auditing.models import SqlAuditRunResult
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 from tests.unit.src.streambuild.executor.auditing._test_types import ExecuteSqlAuditsTestCase

@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from streambuild.compiler.audit_discovery.main.discover_sql_audits import discover_sql_audits
-from streambuild.compiler.auditing.main import validate_sql_audits
+from streambuild.compiler.auditing.main.validate_sql_audits import validate_sql_audits
 from streambuild.compiler.compile.main.compile_pipeline import compile_pipeline
 from streambuild.compiler.compile.models import CompiledPipeline
 from streambuild.compiler.discovery.main.discover_pipelines import discover_pipelines

@@ -3,7 +3,7 @@ from collections.abc import Sequence
 import pytest
 from clickhouse_connect.driver.client import Client
 
-from streambuild.executor.repair.main import execute_repair_active_view
+from streambuild.executor.repair.main.execute_repair_active_view import execute_repair_active_view
 from streambuild.executor.repair.models import RepairActiveViewRequest, RepairActiveViewResult
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 from streambuild.integrations.clickhouse.models import ClickHouseConnectionConfig

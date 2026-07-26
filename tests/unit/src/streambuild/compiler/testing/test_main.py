@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from streambuild.compiler.testing.main import build_sql_test_cases
+from streambuild.compiler.testing.main.build_sql_test_cases import build_sql_test_cases
 from streambuild.compiler.testing.models import SqlTestCase
 from tests.unit.src.streambuild.compiler.testing._test_types import (
     BuildSqlTestCasesErrorTestCase,

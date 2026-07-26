@@ -16,7 +16,7 @@ from streambuild.compiler.compile.main.compile_pipeline import compile_pipeline
 from streambuild.compiler.compile.models import CompiledPipeline, DesiredState
 from streambuild.compiler.discovery.main.discover_pipelines import discover_pipelines
 from streambuild.compiler.shared.models import LoadedPipeline
-from streambuild.executor.reconcile.main import execute_reconcile
+from streambuild.executor.reconcile.main.execute_reconcile import execute_reconcile
 from streambuild.executor.reconcile.models import (
     ReconcilePreview,
     ReconcileResult,

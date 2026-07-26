@@ -14,7 +14,7 @@ from streambuild.clickhouse.render.main.render_create_materialized_view_ddl impo
 from streambuild.clickhouse.render.main.render_create_table_ddl import render_create_table_ddl
 from streambuild.clickhouse.render.main.render_create_view_ddl import render_create_view_ddl
 from streambuild.compiler.compile.models import CompiledPipeline, DesiredState
-from streambuild.compiler.desired_state.main import build_desired_state
+from streambuild.compiler.desired_state.main.build_desired_state import build_desired_state
 from streambuild.compiler.metadata_state.models import DeploymentWatermarkRecord
 from streambuild.compiler.planner.constants import (
     REBUILD_EXECUTION_MODE_FULL,
