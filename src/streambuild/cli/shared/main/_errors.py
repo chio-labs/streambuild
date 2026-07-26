@@ -1,5 +1,9 @@
 """CLI-facing ClickHouse error translation helpers for main commands."""
 
+from streambuild.cli.shared.constants import (
+    METADATA_TABLE_NAME_PREFIX,
+    UNKNOWN_DATABASE_ERROR_MARKER,
+)
 from streambuild.integrations.clickhouse.constants import (
     AUTHENTICATION_FAILED_ERROR_CODE,
     AUTHENTICATION_FAILED_MESSAGE,
@@ -29,7 +33,7 @@ def render_expected_clickhouse_error(
                 "- any project or environment defaults used for this command",
             ]
         )
-    if "UNKNOWN_DATABASE" in error_message:
+    if UNKNOWN_DATABASE_ERROR_MARKER in error_message:
         return "\n".join(
             [
                 f"{command_name.title()} could not start",
@@ -44,7 +48,7 @@ def render_expected_clickhouse_error(
             ]
         )
 
-    if UNKNOWN_TABLE_ERROR_CODE in error_message and "streambuild_" in error_message:
+    if UNKNOWN_TABLE_ERROR_CODE in error_message and METADATA_TABLE_NAME_PREFIX in error_message:
         return "\n".join(
             [
                 f"{command_name.title()} could not start",

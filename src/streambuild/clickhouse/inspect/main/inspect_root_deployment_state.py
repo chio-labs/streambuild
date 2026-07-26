@@ -4,6 +4,7 @@ from streambuild.clickhouse.inspect.models import (
     InspectedManagedTableState,
     RootDeploymentInspection,
 )
+from streambuild.clickhouse.inspect.types import RootDeploymentStateKind
 from streambuild.compiler.shared.main.deployment_id_from_physical_name import (
     deployment_id_from_physical_name,
 )
@@ -34,22 +35,22 @@ def inspect_root_deployment_state(
         if not is_deployment_physical_name(active_binding_physical_names[0]):
             return RootDeploymentInspection(
                 root_key=root_key,
-                state_kind="invalid_active_view",
+                state_kind=RootDeploymentStateKind.INVALID_ACTIVE_VIEW,
                 active_deployment_id=None,
             )
         return RootDeploymentInspection(
             root_key=root_key,
-            state_kind="active_view_present",
+            state_kind=RootDeploymentStateKind.ACTIVE_VIEW_PRESENT,
             active_deployment_id=deployment_id_from_physical_name(active_binding_physical_names[0]),
         )
     if not physical_candidate_names:
         return RootDeploymentInspection(
             root_key=root_key,
-            state_kind="greenfield",
+            state_kind=RootDeploymentStateKind.GREENFIELD,
             active_deployment_id=None,
         )
     return RootDeploymentInspection(
         root_key=root_key,
-        state_kind="logical_view_missing",
+        state_kind=RootDeploymentStateKind.LOGICAL_VIEW_MISSING,
         active_deployment_id=None,
     )
