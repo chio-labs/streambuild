@@ -4,8 +4,7 @@ from dataclasses import dataclass
 @dataclass(frozen=True)
 class LoadActualStateIntegrationTestCase:
     description: str
-    create_stable_view: bool
-    create_physical_candidates: bool
+    setup_steps: tuple[str, ...]
     expected_actual_object_names: tuple[str, ...]
     expected_error_fragment: str | None
 

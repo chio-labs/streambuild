@@ -1,5 +1,3 @@
-from dataclasses import replace
-
 import pytest
 from clickhouse_connect.driver.client import Client
 
@@ -15,7 +13,6 @@ from streambuild.compiler.actual_state._helpers.load import load_actual_state
 from streambuild.compiler.actual_state.models import ActualMaterializedView, ActualState
 from streambuild.compiler.compile.models import CompiledPipeline, DesiredState
 from streambuild.compiler.desired_state.main import build_desired_state
-from streambuild.compiler.shared.models import MaterializedViewSpec
 from streambuild.executor.backfill.main import execute_backfill
 from streambuild.executor.publish.main import execute_publish
 from streambuild.executor.publish.models import PublishRequest
@@ -28,6 +25,9 @@ from tests.integration.src.streambuild.compiler.actual_state._test_types import 
     LoadActualStateWithConflictingMetadataIntegrationTestCase,
     LoadActualStateWithLatestObjectStateIntegrationTestCase,
     LoadActualStateWithoutMetadataIntegrationTestCase,
+)
+from tests.integration.src.streambuild.compiler.actual_state.helpers import (
+    ACTUAL_STATE_SETUP_STEPS,
 )
 from tests.integration.src.streambuild.conftest import ClickHouseConnectionSettings
 from tests.integration.src.streambuild.executor.backfill.helpers import (
@@ -45,15 +45,19 @@ from tests.integration.src.streambuild.executor.backfill.helpers import (
     [
         LoadActualStateIntegrationTestCase(
             description="loads greenfield state when no stable view exists",
-            create_stable_view=False,
-            create_physical_candidates=False,
+            setup_steps=("standard_raw_landing", "target_table"),
             expected_actual_object_names=("kafka__orders", "mv__orders", "raw__orders"),
             expected_error_fragment=None,
         ),
         LoadActualStateIntegrationTestCase(
             description="loads active managed objects when stable view points at deployment table",
-            create_stable_view=True,
-            create_physical_candidates=True,
+            setup_steps=(
+                "standard_raw_landing",
+                "target_table",
+                "physical_candidates",
+                "candidate_materialized_view",
+                "stable_view",
+            ),
             expected_actual_object_names=(
                 "kafka__orders",
                 "mv__orders",
@@ -67,8 +71,12 @@ from tests.integration.src.streambuild.executor.backfill.helpers import (
             description=(
                 "ignores deployment-suffixed raw landing physicals without a stable raw interface"
             ),
-            create_stable_view=True,
-            create_physical_candidates=True,
+            setup_steps=(
+                "suffixed_raw_landing",
+                "target_table",
+                "physical_candidates",
+                "stable_view",
+            ),
             expected_actual_object_names=(
                 "kafka__orders",
                 "mv__orders_enriched",
@@ -78,8 +86,12 @@ from tests.integration.src.streambuild.executor.backfill.helpers import (
         ),
         LoadActualStateIntegrationTestCase(
             description="loads no active managed objects when view is missing but candidates exist",
-            create_stable_view=False,
-            create_physical_candidates=True,
+            setup_steps=(
+                "standard_raw_landing",
+                "target_table",
+                "physical_candidates",
+                "candidate_materialized_view",
+            ),
             expected_actual_object_names=("kafka__orders", "mv__orders", "raw__orders"),
             expected_error_fragment=None,
         ),
@@ -100,86 +112,12 @@ def test_given_clickhouse_state_when_loading_actual_state_then_it_returns_expect
             database=clickhouse_database,
         )
     )
-    if (
-        test_case.description
-        == "ignores deployment-suffixed raw landing physicals without a stable raw interface"
-    ):
-        clickhouse_client.command(
-            f"CREATE TABLE {clickhouse_database}.raw__orders__dep_a "
-            "(kafka_key String, kafka_value String, kafka_topic String, "
-            "_replay_partition Int64, _replay_offset Int64, "
-            "_replay_timestamp DateTime64(3), kafka_headers String, "
-            "_replay_landed_at DateTime64(3)) "
-            "ENGINE = MergeTree ORDER BY (_replay_partition, _replay_offset)"
-        )
-        clickhouse_client.command(
-            render_create_materialized_view_ddl(
-                materialized_view=replace(
-                    require_managed_source(compiled_pipeline).materialized_view,
-                    key=replace(
-                        require_managed_source(compiled_pipeline).materialized_view.key,
-                        name="mv__orders__dep_a",
-                    ),
-                    spec=MaterializedViewSpec(
-                        source_table_name=require_managed_source(
-                            compiled_pipeline
-                        ).materialized_view.source_table_name,
-                        target_table_name="raw__orders__dep_a",
-                        query=require_managed_source(compiled_pipeline).materialized_view.query,
-                    ),
-                ),
-                database=clickhouse_database,
-            )
-        )
-    else:
-        clickhouse_client.command(
-            render_create_table_ddl(
-                table=require_managed_source(compiled_pipeline).raw_table,
-                database=clickhouse_database,
-            )
-        )
-        clickhouse_client.command(
-            render_create_materialized_view_ddl(
-                materialized_view=require_managed_source(compiled_pipeline).materialized_view,
-                database=clickhouse_database,
-            )
-        )
-    clickhouse_client.command(
-        render_create_view_ddl(
-            database=clickhouse_database,
-            view_name=compiled_pipeline.transforms[0].target_table.name,
-            target_table_name="tbl__orders_enriched__dep_a",
-        )
-        if False
-        else render_create_table_ddl(
-            table=compiled_pipeline.transforms[0].target_table, database=clickhouse_database
-        )
-    )
-    if test_case.create_physical_candidates:
-        clickhouse_client.command(
-            f"CREATE TABLE {clickhouse_database}.tbl__orders_enriched__dep_a "
-            "(order_id String, _replay_timestamp DateTime64(3)) "
-            "ENGINE = MergeTree ORDER BY (order_id)"
-        )
-        if (
-            test_case.description
-            != "ignores deployment-suffixed raw landing physicals without a stable raw interface"
-        ):
-            clickhouse_client.command(
-                f"CREATE MATERIALIZED VIEW {clickhouse_database}.mv__orders_enriched__dep_a "
-                f"TO {clickhouse_database}.tbl__orders_enriched__dep_a AS "
-                "SELECT CAST(kafka_key AS String) AS order_id, "
-                "CAST(_replay_timestamp AS DateTime64(3)) AS _replay_timestamp "
-                f"FROM {clickhouse_database}.raw__orders"
-            )
-    if test_case.create_stable_view:
-        clickhouse_client.command(f"DROP TABLE {clickhouse_database}.tbl__orders_enriched")
-        clickhouse_client.command(
-            render_create_view_ddl(
-                database=clickhouse_database,
-                view_name="tbl__orders_enriched",
-                target_table_name="tbl__orders_enriched__dep_a",
-            )
+    step_name: str
+    for step_name in test_case.setup_steps:
+        ACTUAL_STATE_SETUP_STEPS[step_name](
+            clickhouse_client=clickhouse_client,
+            clickhouse_database=clickhouse_database,
+            compiled_pipeline=compiled_pipeline,
         )
 
     managed_client: ClickHouseClient = ClickHouseClient.from_config(
