@@ -13,7 +13,7 @@ from streambuild.compiler.audit_discovery._helpers.parsing import (
 )
 from streambuild.compiler.audit_discovery.constants import ALLOWED_AUDIT_SEVERITIES
 from streambuild.compiler.audit_discovery.exceptions import SqlAuditParseError
-from streambuild.compiler.compile._helpers.refs import extract_refs
+from streambuild.compiler.compile.main.extract_refs import extract_refs
 from streambuild.compiler.compile.models import ParsedRef
 from streambuild.compiler.shared.models import (
     LoadedGenericSqlAuditDefinition,

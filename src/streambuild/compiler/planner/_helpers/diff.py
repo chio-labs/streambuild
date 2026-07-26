@@ -6,7 +6,6 @@ from sqlglot import exp, parse_one
 
 from streambuild.compiler.actual_state.models import ActualState, ActualTable
 from streambuild.compiler.compile.models import DesiredState
-from streambuild.compiler.planner._helpers.types import ActualObject, DesiredObject
 from streambuild.compiler.planner.constants import (
     ADD_ONLY_COLUMN_DIFFERENCE,
     PLANNED_CHANGE_TYPE_CREATE,
@@ -21,6 +20,8 @@ from streambuild.compiler.planner.constants import (
 from streambuild.compiler.planner.exceptions import DeploymentPlanError
 from streambuild.compiler.planner.models import PlannedObjectChange
 from streambuild.compiler.planner.types import (
+    ActualObject,
+    DesiredObject,
     PlannedChangeType,
     TableSchemaChangeKind,
     TableSchemaSeedCompatibility,
