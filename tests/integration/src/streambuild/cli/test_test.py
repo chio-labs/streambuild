@@ -4,7 +4,7 @@ import pytest
 from _pytest.capture import CaptureResult
 from clickhouse_connect.driver.client import Client
 
-from streambuild.cli.test.main.run_test import run_test
+from streambuild.cli.test.main._run_test import run_test
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 from tests.integration.src.streambuild.cli._test_types import (
     CliTestCommandIntegrationTestCase,

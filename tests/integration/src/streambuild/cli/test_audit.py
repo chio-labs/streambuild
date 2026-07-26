@@ -5,8 +5,8 @@ import pytest
 from _pytest.capture import CaptureResult
 from clickhouse_connect.driver.client import Client
 
-from streambuild.cli.audit.main.run_audit import run_audit
-from streambuild.cli.audit_backfill.main.run_audit_backfill import run_audit_backfill
+from streambuild.cli.audit.main._run_audit import run_audit
+from streambuild.cli.audit_backfill.main._run_audit_backfill import run_audit_backfill
 from streambuild.clickhouse.render.main.render_create_kafka_table_ddl import (
     render_create_kafka_table_ddl,
 )

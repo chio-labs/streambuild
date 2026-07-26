@@ -6,7 +6,7 @@ from typing import cast
 import pytest
 from clickhouse_connect.driver.exceptions import DatabaseError
 
-from streambuild.cli.publish.main.run_publish import run_publish
+from streambuild.cli.publish.main._run_publish import run_publish
 from streambuild.cli.shared.main._errors import render_expected_clickhouse_error
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 from tests.unit.src.streambuild.cli._test_types import (

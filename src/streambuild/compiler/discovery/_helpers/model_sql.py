@@ -21,7 +21,7 @@ from streambuild.compiler.discovery.constants import (
     SCHEMA_CHANGE_RULE_KEYS,
 )
 from streambuild.compiler.discovery.exceptions import PipelineDiscoveryError
-from streambuild.compiler.macros.main.expand_macro_calls import expand_project_sql_macros
+from streambuild.compiler.macros.main._expand_macro_calls import expand_project_sql_macros
 from streambuild.spec.models.steps import (
     SchemaChangeBackfillPolicy,
     SchemaChangeBackfillRule,

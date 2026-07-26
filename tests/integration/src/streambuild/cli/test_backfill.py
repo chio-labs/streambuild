@@ -6,7 +6,7 @@ import pytest
 from _pytest.capture import CaptureResult
 from clickhouse_connect.driver.client import Client
 
-from streambuild.cli.backfill.main.run_backfill import run_backfill
+from streambuild.cli.backfill.main._run_backfill import run_backfill
 from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickHouseClient
 from tests.integration.src.streambuild.cli._test_types import (
     CliBackfillIntegrationTestCase,

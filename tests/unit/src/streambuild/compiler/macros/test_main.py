@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from streambuild.compiler.macros.main.expand_macro_calls import expand_project_sql_macros
+from streambuild.compiler.macros.main._expand_macro_calls import expand_project_sql_macros
 from tests.unit.src.streambuild.compiler.macros._test_types import (
     ExpandProjectSqlMacrosCollisionTestCase,
     ExpandProjectSqlMacrosErrorTestCase,
