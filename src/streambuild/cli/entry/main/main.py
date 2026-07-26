@@ -40,20 +40,20 @@ from streambuild.integrations.clickhouse.classes.clickhouse_client import ClickH
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    from streambuild.cli.audit.main.run_audit import run_audit
-    from streambuild.cli.audit_backfill.main.run_audit_backfill import run_audit_backfill
-    from streambuild.cli.backfill.main.run_backfill import run_backfill
-    from streambuild.cli.compile.main.run_compile import run_compile
-    from streambuild.cli.discover.main.run_discover import run_discover
-    from streambuild.cli.doctor.main.run_doctor import run_doctor
-    from streambuild.cli.janitor.main.run_janitor import run_janitor
-    from streambuild.cli.plan.main.run_plan import run_plan
-    from streambuild.cli.publish.main.run_publish import run_publish
-    from streambuild.cli.reconcile.main.run_reconcile import run_reconcile
-    from streambuild.cli.repair_active_view.main.run_repair_active_view import (
+    from streambuild.cli.audit.main._run_audit import run_audit
+    from streambuild.cli.audit_backfill.main._run_audit_backfill import run_audit_backfill
+    from streambuild.cli.backfill.main._run_backfill import run_backfill
+    from streambuild.cli.compile.main._run_compile import run_compile
+    from streambuild.cli.discover.main._run_discover import run_discover
+    from streambuild.cli.doctor.main._run_doctor import run_doctor
+    from streambuild.cli.janitor.main._run_janitor import run_janitor
+    from streambuild.cli.plan.main._run_plan import run_plan
+    from streambuild.cli.publish.main._run_publish import run_publish
+    from streambuild.cli.reconcile.main._run_reconcile import run_reconcile
+    from streambuild.cli.repair_active_view.main._run_repair_active_view import (
         run_repair_active_view,
     )
-    from streambuild.cli.test.main.run_test import run_test
+    from streambuild.cli.test.main._run_test import run_test
 
     handlers: CliEntrypointHandlers = CliEntrypointHandlers(
         run_discover=run_discover,

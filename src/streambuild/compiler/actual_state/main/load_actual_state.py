@@ -19,7 +19,7 @@ from streambuild.compiler.actual_state._helpers.metadata import (
     load_object_state_records_by_deployments,
 )
 from streambuild.compiler.actual_state.constants import ACTIVE_VIEW_PRESENT_STATE_KIND
-from streambuild.compiler.actual_state.main.build_actual_state import build_actual_state
+from streambuild.compiler.actual_state.main._build_actual_state import build_actual_state
 from streambuild.compiler.actual_state.models import (
     ActualKafkaTable,
     ActualMaterializedView,
