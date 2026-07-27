@@ -1,0 +1,189 @@
+from collections.abc import Mapping
+from dataclasses import replace
+from pathlib import Path
+from shutil import copytree
+
+from streambuild.adapter.models import AdapterManagedSource, AdapterMaterializedView, AdapterTable
+from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
+from streambuild.cli.compile.main._run_compile import run_compile
+from streambuild.cli.entry._helpers.compiler_profile import build_compiler_adapter_profile
+from streambuild.compiler.compile.models import CompilerAdapterProfile
+from streambuild.compiler.discovery.main.load_project_input_for_path import (
+    load_project_input_for_path,
+)
+from streambuild.compiler.discovery.models import LoadedProject
+
+
+def copy_basic_project(*, project_dir: Path) -> None:
+    _ = copytree(Path("tests/fixtures/basic_project"), project_dir)
+
+
+def copy_orders_demo(*, project_dir: Path) -> None:
+    _ = copytree(Path("examples/orders_demo"), project_dir)
+
+
+def write_adopted_source(*, project_dir: Path) -> None:
+    (project_dir / "sources" / "orders.yml").write_text(
+        """sources:
+  - name: orders
+    kind: stream_table
+    table_name: existing_orders
+    replay_boundary:
+      mode: offsets
+      columns:
+        _replay_partition: event_partition
+        _replay_offset: event_offset
+        _replay_timestamp: event_timestamp
+""",
+        encoding="utf-8",
+    )
+
+
+def write_invalid_model(*, project_dir: Path) -> None:
+    (project_dir / "pipelines" / "orders" / "orders_enriched.sql").write_text(
+        """MODEL (
+  engine: "MergeTree()",
+  order_by: ["order_id"],
+);
+
+SELECT *
+FROM __ref("orders")
+""",
+        encoding="utf-8",
+    )
+
+
+def write_invalid_model_header(*, project_dir: Path) -> None:
+    (project_dir / "pipelines" / "orders" / "orders_enriched.sql").write_text(
+        "SELECT 1 AS order_id\n",
+        encoding="utf-8",
+    )
+
+
+def write_invalid_reference_model(*, project_dir: Path) -> None:
+    (project_dir / "pipelines" / "orders" / "orders_enriched.sql").write_text(
+        """MODEL (
+  engine: "MergeTree()",
+  order_by: ["order_id"],
+);
+
+SELECT CAST(1 AS UInt64) AS order_id FROM __ref("orders)
+""",
+        encoding="utf-8",
+    )
+
+
+def write_empty_project(*, project_dir: Path) -> None:
+    project_dir.mkdir(parents=True, exist_ok=True)
+    (project_dir / "pipelines").mkdir()
+    (project_dir / "streambuild_project.toml").write_text(
+        """name = "empty_project"
+default_target = "test"
+
+[targets.test]
+database = "analytics"
+""",
+        encoding="utf-8",
+    )
+
+
+def write_secret_source(*, project_dir: Path) -> None:
+    (project_dir / "sources" / "orders.yml").write_text(
+        """sources:
+  - name: orders
+    kind: kafka
+    broker_list: "${ENV:BROKER_LIST}"
+    topic: source.orders
+    settings:
+      kafka_sasl_password: "${ENV:KAFKA_SASL_PASSWORD}"
+    replay_boundary:
+      mode: offsets
+""",
+        encoding="utf-8",
+    )
+
+
+def write_artifact_leaf_model(*, project_dir: Path) -> None:
+    (project_dir / "pipelines" / "order_events" / "artifact_leaf.sql").write_text(
+        """MODEL (
+  engine: "MergeTree()",
+  order_by: ["region"],
+);
+
+SELECT region::String AS region
+FROM __ref("region_lookup")
+""",
+        encoding="utf-8",
+    )
+
+
+def compile_project(
+    *,
+    project_dir: Path,
+    target_dir: Path,
+    environment: Mapping[str, str] | None = None,
+) -> int:
+    loaded_project: LoadedProject | None = load_project_input_for_path(
+        path=project_dir,
+        environment=environment,
+    )
+    return run_compile(
+        pipelines_root=project_dir / "pipelines",
+        loaded_project=loaded_project,
+        adapter_profile=build_compiler_adapter_profile(ClickHouseAdapter()),
+        target_dir=target_dir,
+    )
+
+
+def compile_project_with_render_failure(*, project_dir: Path, target_dir: Path) -> int:
+    profile: CompilerAdapterProfile = build_compiler_adapter_profile(ClickHouseAdapter())
+    failing_profile: CompilerAdapterProfile = replace(
+        profile,
+        render_resource=_raise_render_failure,
+    )
+    loaded_project: LoadedProject | None = load_project_input_for_path(path=project_dir)
+    return run_compile(
+        pipelines_root=project_dir / "pipelines",
+        loaded_project=loaded_project,
+        adapter_profile=failing_profile,
+        target_dir=target_dir,
+    )
+
+
+def target_file_paths(*, target_dir: Path) -> tuple[str, ...]:
+    return tuple(
+        sorted(path.relative_to(target_dir).as_posix() for path in target_dir.glob("**/*.*"))
+    )
+
+
+def target_snapshot(*, target_dir: Path) -> tuple[tuple[str, bytes], ...]:
+    return tuple(
+        sorted(
+            (path.relative_to(target_dir).as_posix(), path.read_bytes())
+            for path in target_dir.glob("**/*.*")
+        )
+    )
+
+
+def static_target_snapshot(*, target_dir: Path) -> tuple[tuple[str, bytes], ...]:
+    static_paths: tuple[Path, ...] = (
+        target_dir / "manifest.json",
+        target_dir / "streambuild_dag.json",
+        *tuple((target_dir / "compiled").glob("**/*.*")),
+    )
+    return tuple(
+        sorted(
+            (path.relative_to(target_dir).as_posix(), path.read_bytes()) for path in static_paths
+        )
+    )
+
+
+def _raise_render_failure(
+    *,
+    resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView,
+    database: str,
+    if_not_exists: bool = False,
+) -> str:
+    raise RuntimeError(
+        f"artifact render failure for {resource.name} in {database} ({if_not_exists})"
+    )

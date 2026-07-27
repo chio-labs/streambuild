@@ -8,6 +8,7 @@ from streambuild.adapter.models import AdapterConnectionConfig
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from streambuild.executor.repair.main.execute_repair_active_view import execute_repair_active_view
 from streambuild.executor.repair.models import RepairActiveViewRequest, RepairActiveViewResult
+from tests.integration.src.streambuild.adapters.clickhouse.helpers import render_create_view_ddl
 from tests.integration.src.streambuild.conftest import ClickHouseConnectionSettings
 from tests.integration.src.streambuild.executor.repair._test_types import (
     ExecuteRepairActiveViewIntegrationTestCase,
@@ -20,6 +21,7 @@ from tests.integration.src.streambuild.executor.repair._test_types import (
     [
         ExecuteRepairActiveViewIntegrationTestCase(
             description="rebinds stable active view to chosen deployment table",
+            active_deployment_id="dep_a",
             deployment_id="dep_b",
             expected_target_table_name="tbl__orders_enriched__dep_b",
         )
@@ -39,6 +41,13 @@ def test_given_table_and_deployment_when_repairing_active_view_then_it_rebinds_t
     clickhouse_client.command(
         f"CREATE TABLE {clickhouse_database}.tbl__orders_enriched__dep_b "
         "(order_id String) ENGINE = MergeTree ORDER BY (order_id)"
+    )
+    clickhouse_client.command(
+        render_create_view_ddl(
+            database=clickhouse_database,
+            view_name="tbl__orders_enriched",
+            target_table_name=(f"tbl__orders_enriched__{test_case.active_deployment_id}"),
+        )
     )
     managed_client: AdapterConnection = ClickHouseAdapter().connect(
         AdapterConnectionConfig(

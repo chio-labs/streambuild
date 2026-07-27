@@ -57,6 +57,7 @@ def test_given_sql_audits_when_executing_then_it_returns_expected_results(
         loaded_audits=(loaded_audit,),
         resolver=test_case.resolver,
         client=cast(AdapterConnection, client),
+        dialect="clickhouse",
     )
 
     assert result.audit_results[0].passed == test_case.expected_passed

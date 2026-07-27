@@ -10,21 +10,22 @@ from streambuild.compiler.compile.constants import (
 )
 from streambuild.compiler.compile.models import DesiredMaterializedView, ObjectKey
 from streambuild.compiler.discovery.types import ReplayLineageMode
-from streambuild.compiler.metadata_state.main.build_adapter_metadata_state import (
+from streambuild.compiler.planner.main.build_adapter_metadata_state import (
     build_adapter_metadata_state,
 )
-from streambuild.compiler.metadata_state.main.build_metadata_state import build_metadata_state
-from streambuild.compiler.metadata_state.models import (
+from streambuild.compiler.planner.main.build_metadata_state import build_metadata_state
+from streambuild.compiler.planner.main.build_normalized_fingerprint import (
+    build_normalized_fingerprint,
+)
+from streambuild.compiler.planner.models import (
+    DeploymentPlan,
     DeploymentRecord,
     DeploymentRuntimeDetailRecord,
     MetadataState,
     ObjectStateRecord,
     PreparedObjectMapping,
+    RebuildSubtree,
 )
-from streambuild.compiler.planner.main.build_normalized_fingerprint import (
-    build_normalized_fingerprint,
-)
-from streambuild.compiler.planner.models import DeploymentPlan, RebuildSubtree
 from streambuild.compiler.planner.types import DesiredObject
 from streambuild.executor.backfill._helpers.reporting import (
     filter_root_backfill_reports_for_deployment,

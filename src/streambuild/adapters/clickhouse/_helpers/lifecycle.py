@@ -1,0 +1,180 @@
+"""Load ClickHouse deployment inventory for lifecycle cleanup."""
+
+import json
+from collections.abc import Mapping
+from typing import cast
+
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.constants import (
+    DEFAULT_REPLAY_LINEAGE_MODE,
+    METADATA_DEPLOYMENTS_TABLE_NAME,
+    METADATA_PUBLISH_HISTORY_TABLE_NAME,
+    METADATA_REPLAY_LINEAGE_MODE_COLUMN_NAME,
+)
+from streambuild.adapter.exceptions import AdapterRelationNotFoundError, AdapterResultError
+from streambuild.adapter.models import (
+    AdapterBindingReplacementRequest,
+    AdapterBindingReplacementResult,
+    AdapterDeploymentInventory,
+    AdapterDeploymentRecord,
+    AdapterMetadataObjectKey,
+    AdapterPreparedObjectMapping,
+    AdapterPublishEventRecord,
+    AdapterRelationCleanupRequest,
+    AdapterRelationCleanupResult,
+    AdapterStableBinding,
+    AdapterStableView,
+    InspectedManagedTableState,
+)
+from streambuild.adapters.clickhouse.models import (
+    ClickHouseDeploymentInventoryRow,
+    ClickHousePublishEventInventoryRow,
+)
+
+
+def load_clickhouse_deployment_inventory(
+    *, connection: AdapterConnection, database: str
+) -> AdapterDeploymentInventory:
+    """Load neutral deployment and publish-event records from ClickHouse metadata."""
+
+    metadata_columns: frozenset[str] = connection.metadata_columns(
+        database=database,
+        table=METADATA_DEPLOYMENTS_TABLE_NAME,
+    )
+    replay_lineage_projection: str = (
+        METADATA_REPLAY_LINEAGE_MODE_COLUMN_NAME
+        if METADATA_REPLAY_LINEAGE_MODE_COLUMN_NAME in metadata_columns
+        else (f"'{DEFAULT_REPLAY_LINEAGE_MODE}' AS {METADATA_REPLAY_LINEAGE_MODE_COLUMN_NAME}")
+    )
+    deployment_rows: tuple[ClickHouseDeploymentInventoryRow, ...] = connection.query_many(
+        statement=f"SELECT deployment_id, created_at, status, {replay_lineage_projection}, "
+        "selected_root_keys_json, warning_codes_json, prepared_object_mappings_json "
+        f"FROM {database}.{METADATA_DEPLOYMENTS_TABLE_NAME}",
+        decode=_decode_deployment_row,
+    )
+    publish_rows: tuple[ClickHousePublishEventInventoryRow, ...] = _load_publish_rows(
+        connection=connection,
+        database=database,
+    )
+    return AdapterDeploymentInventory(
+        deployments=tuple(_deployment_record(row) for row in deployment_rows),
+        publish_events=tuple(_publish_event_record(row) for row in publish_rows),
+    )
+
+
+def cleanup_clickhouse_relations(
+    *, connection: AdapterConnection, request: AdapterRelationCleanupRequest
+) -> AdapterRelationCleanupResult:
+    """Drop every requested ClickHouse relation synchronously."""
+
+    relation_name: str
+    for relation_name in request.relation_names:
+        current_state: InspectedManagedTableState = connection.inspect_managed_table_state(
+            request.database
+        )
+        active_relation_names: frozenset[str] = frozenset(
+            binding.physical_name for binding in current_state.active_bindings
+        )
+        if relation_name in active_relation_names:
+            raise AdapterResultError(
+                f"Refusing to clean active physical relation '{relation_name}'"
+            )
+        connection.command(f"DROP TABLE IF EXISTS {request.database}.{relation_name} SYNC")
+    return AdapterRelationCleanupResult(relation_names=request.relation_names)
+
+
+def replace_clickhouse_stable_bindings(
+    *, connection: AdapterConnection, request: AdapterBindingReplacementRequest
+) -> AdapterBindingReplacementResult:
+    """Replace each requested ClickHouse view and report actual atomicity."""
+
+    binding: AdapterStableBinding
+    for binding in request.bindings:
+        connection.realize_resource(
+            database=binding.database,
+            resource=AdapterStableView(
+                name=binding.logical_name,
+                target_relation_name=binding.physical_name,
+            ),
+        )
+    return AdapterBindingReplacementResult(
+        bindings=request.bindings,
+        per_relation_atomic_replace=connection.capabilities.per_relation_atomic_replace,
+        graph_atomic_publish=connection.capabilities.graph_atomic_publish,
+    )
+
+
+def _load_publish_rows(
+    *, connection: AdapterConnection, database: str
+) -> tuple[ClickHousePublishEventInventoryRow, ...]:
+    try:
+        return connection.query_many(
+            statement="SELECT deployment_id, published_at, logical_view_names_json "
+            f"FROM {database}.{METADATA_PUBLISH_HISTORY_TABLE_NAME}",
+            decode=_decode_publish_event_row,
+        )
+    except AdapterRelationNotFoundError:
+        return ()
+
+
+def _deployment_record(row: ClickHouseDeploymentInventoryRow) -> AdapterDeploymentRecord:
+    selected_root_payloads: list[dict[str, object]] = json.loads(row.selected_root_keys_json)
+    warning_codes: list[object] = json.loads(row.warning_codes_json)
+    mapping_payloads: list[dict[str, object]] = json.loads(row.prepared_object_mappings_json)
+    return AdapterDeploymentRecord(
+        deployment_id=row.deployment_id,
+        created_at=row.created_at,
+        status=row.status,
+        replay_lineage_mode=row.replay_lineage_mode,
+        selected_root_keys=tuple(_object_key(payload) for payload in selected_root_payloads),
+        warning_codes=tuple(str(code) for code in warning_codes),
+        prepared_object_mappings=tuple(
+            AdapterPreparedObjectMapping(
+                logical_key=_object_key(cast(dict[str, object], payload["logical_key"])),
+                physical_name=str(payload["physical_name"]),
+            )
+            for payload in mapping_payloads
+        ),
+    )
+
+
+def _publish_event_record(
+    row: ClickHousePublishEventInventoryRow,
+) -> AdapterPublishEventRecord:
+    logical_view_names: list[object] = json.loads(row.logical_view_names_json)
+    return AdapterPublishEventRecord(
+        deployment_id=row.deployment_id,
+        published_at=row.published_at,
+        logical_view_names=tuple(str(name) for name in logical_view_names),
+    )
+
+
+def _object_key(payload: dict[str, object]) -> AdapterMetadataObjectKey:
+    database_value: object = payload["database"]
+    return AdapterMetadataObjectKey(
+        database=None if database_value is None else str(database_value),
+        object_type=str(payload["object_type"]),
+        name=str(payload["name"]),
+    )
+
+
+def _decode_deployment_row(row: Mapping[str, object]) -> ClickHouseDeploymentInventoryRow:
+    return ClickHouseDeploymentInventoryRow(
+        deployment_id=str(row["deployment_id"]),
+        created_at=str(row["created_at"]),
+        status=str(row["status"]),
+        replay_lineage_mode=str(row["replay_lineage_mode"]),
+        selected_root_keys_json=str(row["selected_root_keys_json"]),
+        warning_codes_json=str(row["warning_codes_json"]),
+        prepared_object_mappings_json=str(row["prepared_object_mappings_json"]),
+    )
+
+
+def _decode_publish_event_row(
+    row: Mapping[str, object],
+) -> ClickHousePublishEventInventoryRow:
+    return ClickHousePublishEventInventoryRow(
+        deployment_id=str(row["deployment_id"]),
+        published_at=str(row["published_at"]),
+        logical_view_names_json=str(row["logical_view_names_json"]),
+    )

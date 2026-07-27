@@ -9,7 +9,10 @@ from streambuild.compiler.compile.exceptions import (
 from tests.unit.src.streambuild.compiler.compile.sql_contract._test_types import (
     ValidateSingleStorageExpressionTestCase,
 )
-from tests.unit.src.streambuild.compiler.compile.sql_contract.helpers import build_expected_columns
+from tests.unit.src.streambuild.compiler.compile.sql_contract.helpers import (
+    build_expected_columns,
+    build_sql_analyzer,
+)
 
 
 @pytest.mark.parametrize(
@@ -33,6 +36,7 @@ def test_given_valid_partition_by_expression_when_validating_then_it_returns_nor
     test_case: ValidateSingleStorageExpressionTestCase,
 ) -> None:
     validate_partition_by_expression(
+        analyzer=build_sql_analyzer(),
         transform_name="orders_enriched",
         partition_by=test_case.expression,
         available_columns=test_case.available_columns,
@@ -73,6 +77,7 @@ def test_given_unknown_partition_column_when_validating_then_it_raises_contextua
 
     with pytest.raises(expected_error_type) as error_info:
         validate_partition_by_expression(
+            analyzer=build_sql_analyzer(),
             transform_name="orders_enriched",
             partition_by=test_case.expression,
             available_columns=test_case.available_columns,

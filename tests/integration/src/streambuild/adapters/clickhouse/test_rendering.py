@@ -13,7 +13,10 @@ from tests.integration.src.streambuild.adapters.clickhouse.helpers import (
     render_create_materialized_view_ddl,
     render_create_table_ddl,
 )
-from tests.integration.src.streambuild.executor.backfill.helpers import require_managed_source
+from tests.integration.src.streambuild.executor.backfill.helpers import (
+    require_managed_source,
+    require_model_resources,
+)
 
 
 @pytest.mark.integration
@@ -43,12 +46,13 @@ def test_given_compiled_transform_mv_when_applied_to_real_clickhouse_then_it_pop
     )
     clickhouse_client.command(
         render_create_table_ddl(
-            table=compiled_pipeline.transforms[0].target_table, database=clickhouse_database
+            table=require_model_resources(compiled_pipeline).target_table,
+            database=clickhouse_database,
         )
     )
     clickhouse_client.command(
         render_create_materialized_view_ddl(
-            materialized_view=compiled_pipeline.transforms[0].materialized_view,
+            materialized_view=require_model_resources(compiled_pipeline).materialized_view,
             database=clickhouse_database,
         )
     )
@@ -63,7 +67,7 @@ def test_given_compiled_transform_mv_when_applied_to_real_clickhouse_then_it_pop
 
     result_rows: Sequence[Sequence[object]] = clickhouse_client.query(
         f"SELECT order_id, customer_id, order_total FROM "
-        f"{clickhouse_database}.{compiled_pipeline.transforms[0].target_table.name}"
+        f"{clickhouse_database}.{require_model_resources(compiled_pipeline).target_table.name}"
     ).result_rows
 
     assert result_rows == [

@@ -1,64 +1,148 @@
-"""Pipeline and project loading helpers."""
+"""Pipeline loading helpers."""
 
 from __future__ import annotations
 
+import re
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, cast
 
 import yaml
 
+from streambuild.compiler.compile.main._extract_refs import extract_refs
+from streambuild.compiler.discovery._helpers.configuration import (
+    find_project_configuration_dir,
+    load_project_configuration,
+)
+from streambuild.compiler.discovery._helpers.effective_configuration import (
+    resolve_effective_project_configuration,
+)
 from streambuild.compiler.discovery._helpers.model_sql import load_transform_from_sql_file
+from streambuild.compiler.discovery._helpers.replay_policy_validation import (
+    validate_replay_policies_for_mode,
+)
+from streambuild.compiler.discovery._helpers.source_registry import (
+    discover_source_registry,
+    source_registry_by_name,
+)
 from streambuild.compiler.discovery.constants import (
-    ALLOWED_PROJECT_KEYS,
-    CLICKHOUSE_CONNECTION_KEYS,
-    DEFAULT_ADAPTER_NAME,
+    FULL_REPLAY_POLICY_VALUE,
     PIPELINE_FILE_NAME,
+    PIPELINE_KEYS,
     PIPELINE_NAME_KEY,
-    PROJECT_FILE_NAME,
-    QUALIFIED_NAME_SEPARATOR,
-    SUPPORTED_PROJECT_VERSION,
+    PYTHON_PACKAGE_INITIALIZER_FILE_NAME,
+    SCHEMA_CHANGE_RULE_KEYS,
+    SECONDS_BY_DURATION_UNIT,
 )
 from streambuild.compiler.discovery.exceptions import PipelineDiscoveryError
 from streambuild.compiler.discovery.models import (
+    DiscoveredProjectFile,
+    EffectiveProjectConfiguration,
     ExternalTableSourceStep,
     KafkaLandingStep,
-    KafkaSettings,
     LoadedPipeline,
     Pipeline,
     Project,
-    ProjectClickHouseConfig,
-    ReplayBoundary,
-    ReplayBoundaryColumns,
+    ReplayOnChangePolicy,
+    ReplayOnChangeRule,
     TransformStep,
 )
 from streambuild.compiler.discovery.types import (
     BoundedReplayFallback,
-    ReplayBoundaryMode,
-    ReplayLineageMode,
-    SourceKind,
+    ReplayOnChangeMode,
+    SqlRelationType,
 )
+from streambuild.compiler.macros.main._build_macro_context import build_macro_context
+from streambuild.compiler.macros.main._load_macro_registry import load_macro_registry
+from streambuild.compiler.macros.models import MacroContext, MacroRegistry
 
 
 def load_pipeline_file(file_path: Path) -> LoadedPipeline:
-    """Load a single pipeline definition file and return its top-level pipeline object."""
+    """Load one pipeline through the TOML project and standalone source registry."""
+
+    project_dir: Path | None = find_project_configuration_dir(file_path)
+    if project_dir is None:
+        raise PipelineDiscoveryError(
+            f"Pipeline file '{file_path}' is not inside a streambuild_project.toml project"
+        )
+    effective: EffectiveProjectConfiguration = resolve_effective_project_configuration(
+        loaded=load_project_configuration(project_dir=project_dir),
+        selected_target=None,
+        cli_variables={},
+        environment={},
+    )
+    sources_by_name: dict[str, KafkaLandingStep | ExternalTableSourceStep] = (
+        source_registry_by_name(
+            discover_source_registry(
+                project_dir=project_dir,
+                variables=dict(effective.variables),
+                environment={},
+            )
+        )
+    )
+    macro_registry: MacroRegistry = load_macro_registry(
+        macro_files=_discovered_macro_files(project_dir)
+    )
+    macro_context: MacroContext = build_macro_context(
+        adapter_name=effective.adapter,
+        dialect="clickhouse",
+        target_name=effective.target_name,
+        database=effective.database,
+        schema=None,
+        virtual_environments=effective.settings.virtual_environments,
+        variables=dict(effective.variables),
+    )
+    pipeline: Pipeline = load_pipeline_yaml(
+        file_path=file_path,
+        sources_by_name=sources_by_name,
+        macro_registry=macro_registry,
+        macro_context=macro_context,
+    )
+    loaded_pipeline: LoadedPipeline = LoadedPipeline(
+        pipeline=pipeline,
+        file_path=file_path,
+        project=Project(
+            replay_on_change=effective.defaults.replay_on_change,
+            bounded_replay_fallback=effective.defaults.bounded_replay_fallback,
+            default_database=effective.database,
+            adapter=effective.adapter,
+        ),
+    )
+    validate_replay_policies_for_mode(
+        virtual_environments=effective.settings.virtual_environments,
+        project=loaded_pipeline.project,
+        project_file_path=project_dir / "streambuild_project.toml",
+        loaded_pipelines=(loaded_pipeline,),
+    )
+    return loaded_pipeline
+
+
+def load_pipeline_yaml(
+    *,
+    file_path: Path,
+    contents: str | None = None,
+    model_contents_by_path: Mapping[Path, str] | None = None,
+    macro_registry: MacroRegistry | None = None,
+    macro_context: MacroContext | None = None,
+    sources_by_name: Mapping[str, KafkaLandingStep | ExternalTableSourceStep] | None = None,
+) -> Pipeline:
+    """Load one authored pipeline folder rooted at `pipeline.yml`."""
 
     if file_path.name != PIPELINE_FILE_NAME:
         raise PipelineDiscoveryError(f"Pipeline file '{file_path}' must be named 'pipeline.yml'")
-
-    pipeline: Pipeline = load_pipeline_yaml(file_path)
-    project: Project | None = load_project_for_pipeline_file(file_path)
-    return LoadedPipeline(pipeline=pipeline, file_path=file_path, project=project)
-
-
-def load_pipeline_yaml(file_path: Path) -> Pipeline:
-    """Load one authored pipeline folder rooted at `pipeline.yml`."""
-
-    pipeline_values: object = yaml.safe_load(file_path.read_text(encoding="utf-8"))
+    source_contents: str = file_path.read_text(encoding="utf-8") if contents is None else contents
+    pipeline_values: object = yaml.safe_load(source_contents)
     if not isinstance(pipeline_values, dict) or not all(
         isinstance(key, str) for key in pipeline_values
     ):
         raise PipelineDiscoveryError(f"Pipeline file '{file_path}' must define a top-level mapping")
     typed_pipeline_values: dict[str, Any] = pipeline_values
+    unknown_keys: list[str] = [key for key in typed_pipeline_values if key not in PIPELINE_KEYS]
+    if unknown_keys:
+        raise PipelineDiscoveryError(
+            f"Pipeline file '{file_path}' contains unsupported keys: "
+            f"{', '.join(sorted(unknown_keys))}"
+        )
 
     pipeline_root: Path = file_path.parent
     if PIPELINE_NAME_KEY in typed_pipeline_values:
@@ -68,7 +152,7 @@ def load_pipeline_yaml(file_path: Path) -> Pipeline:
         )
     nested_pipeline_files: list[Path] = sorted(
         nested_file
-        for nested_file in pipeline_root.rglob("pipeline.yml")
+        for nested_file in pipeline_root.rglob(PIPELINE_FILE_NAME)
         if nested_file != file_path
     )
     if nested_pipeline_files:
@@ -78,302 +162,135 @@ def load_pipeline_yaml(file_path: Path) -> Pipeline:
             f"{nested_file_list}"
         )
 
-    source: KafkaLandingStep | ExternalTableSourceStep = _load_pipeline_source(
-        pipeline_values=typed_pipeline_values, file_path=file_path
+    source: KafkaLandingStep | ExternalTableSourceStep = _resolve_pipeline_source(
+        pipeline_values=typed_pipeline_values,
+        file_path=file_path,
+        sources_by_name=sources_by_name,
     )
-    transforms: list[TransformStep] = _load_pipeline_transforms(pipeline_root)
-    replay_lineage_mode_value: object = typed_pipeline_values.get("replay_lineage_mode")
-    replay_lineage_mode: ReplayLineageMode | None = None
-    if replay_lineage_mode_value is not None:
-        try:
-            replay_lineage_mode = ReplayLineageMode(replay_lineage_mode_value)
-        except ValueError as error:
-            raise PipelineDiscoveryError(
-                f"Pipeline file '{file_path}' has unsupported replay_lineage_mode "
-                f"'{replay_lineage_mode_value}'"
-            ) from error
-
-    pipeline_name: str = pipeline_root.name
-
-    bounded_replay_fallback_value: object = typed_pipeline_values.get("bounded_replay_fallback")
-    bounded_replay_fallback: BoundedReplayFallback | None = None
-    if bounded_replay_fallback_value is not None:
-        try:
-            bounded_replay_fallback = BoundedReplayFallback(bounded_replay_fallback_value)
-        except ValueError as error:
-            raise PipelineDiscoveryError(
-                f"Pipeline file '{file_path}' has unsupported bounded_replay_fallback "
-                f"'{bounded_replay_fallback_value}'"
-            ) from error
-
+    transforms: list[TransformStep] = _load_pipeline_transforms(
+        pipeline_root=pipeline_root,
+        model_contents_by_path=model_contents_by_path,
+        macro_registry=macro_registry,
+        macro_context=macro_context,
+    )
+    _validate_source_references(
+        source_name=source.name,
+        transforms=transforms,
+        file_path=file_path,
+    )
     return Pipeline(
-        name=pipeline_name,
+        name=pipeline_root.name,
         source=source,
         transforms=transforms,
-        replay_lineage_mode=replay_lineage_mode,
-        bounded_replay_fallback=bounded_replay_fallback,
+        replay_on_change=_load_replay_on_change(
+            value=typed_pipeline_values.get("replay_on_change"),
+            file_path=file_path,
+        ),
+        bounded_replay_fallback=_load_bounded_replay_fallback(
+            value=typed_pipeline_values.get("bounded_replay_fallback"),
+            file_path=file_path,
+        ),
     )
 
 
-def _load_pipeline_source(
-    *, pipeline_values: dict[str, Any], file_path: Path
+def _resolve_pipeline_source(
+    *,
+    pipeline_values: dict[str, Any],
+    file_path: Path,
+    sources_by_name: Mapping[str, KafkaLandingStep | ExternalTableSourceStep] | None,
 ) -> KafkaLandingStep | ExternalTableSourceStep:
-    source_values: object = pipeline_values.get("source")
-    if not isinstance(source_values, dict) or not all(
-        isinstance(key, str) for key in source_values
-    ):
-        raise PipelineDiscoveryError(
-            f"Pipeline file '{file_path}' must define 'source' as a mapping"
-        )
-    typed_source_values: dict[str, Any] = source_values
-
-    source_kind_value: object = typed_source_values.get("kind")
-    try:
-        source_kind: SourceKind = SourceKind(source_kind_value)
-    except ValueError as error:
-        raise PipelineDiscoveryError(
-            f"Pipeline file '{file_path}' currently supports only "
-            "source.kind='kafka' or source.kind='stream_table'"
-        ) from error
-
-    source_name: object = typed_source_values.get("name")
-    broker_list: object = typed_source_values.get("broker_list")
-    topic: object = typed_source_values.get("topic")
-    table_name: object = typed_source_values.get("table_name")
-    replay_boundary_value: object = typed_source_values.get("replay_boundary")
-    consumer_group: object = typed_source_values.get("consumer_group")
-    format_value: object = typed_source_values.get("format", "JSONAsString")
-    settings_value: object = typed_source_values.get("settings")
-
+    source_name: object = pipeline_values.get("source")
     if not isinstance(source_name, str) or not source_name:
         raise PipelineDiscoveryError(
-            f"Pipeline file '{file_path}' must define source.name as a non-empty string"
+            f"Pipeline file '{file_path}' must define source as one non-empty registry name"
         )
+    if sources_by_name is None:
+        raise PipelineDiscoveryError(
+            f"Pipeline file '{file_path}' requires a project sources/*.yml registry"
+        )
+    source: KafkaLandingStep | ExternalTableSourceStep | None = sources_by_name.get(source_name)
+    if source is None:
+        raise PipelineDiscoveryError(
+            f"Pipeline file '{file_path}' references unknown source '{source_name}'"
+        )
+    return source
 
-    uses_managed_kafka_shape: bool = broker_list is not None or topic is not None
-    uses_existing_table_shape: bool = table_name is not None or replay_boundary_value is not None
-    if uses_managed_kafka_shape and uses_existing_table_shape:
-        raise PipelineDiscoveryError(
-            f"Pipeline file '{file_path}' must not mix managed Kafka landing fields with "
-            "adopted source fields"
-        )
 
-    if uses_existing_table_shape:
-        return _load_existing_table_source(
-            typed_source_values=typed_source_values,
-            file_path=file_path,
-            source_name=source_name,
-            source_kind=source_kind,
-        )
-
-    if source_kind != SourceKind.KAFKA:
+def _load_replay_on_change(*, value: object, file_path: Path) -> ReplayOnChangePolicy | None:
+    if value is None:
+        return None
+    if not isinstance(value, dict) or not all(isinstance(key, str) for key in value):
         raise PipelineDiscoveryError(
-            f"Pipeline file '{file_path}' must define source.table_name and "
-            "source.replay_boundary for source.kind='stream_table'"
+            f"Pipeline file '{file_path}' must define replay_on_change as a mapping"
         )
-    if not isinstance(broker_list, str) or not broker_list:
+    typed_value: dict[str, object] = cast(dict[str, object], value)
+    unknown_keys: list[str] = [key for key in typed_value if key not in SCHEMA_CHANGE_RULE_KEYS]
+    if unknown_keys:
         raise PipelineDiscoveryError(
-            f"Pipeline file '{file_path}' must define source.broker_list as a non-empty string"
+            f"Pipeline file '{file_path}' contains unsupported replay_on_change keys: "
+            f"{', '.join(sorted(unknown_keys))}"
         )
-    if not isinstance(topic, str) or not topic:
-        raise PipelineDiscoveryError(
-            f"Pipeline file '{file_path}' must define source.topic as a non-empty string"
-        )
-    if consumer_group is not None and not isinstance(consumer_group, str):
-        raise PipelineDiscoveryError(
-            f"Pipeline file '{file_path}' must define source.consumer_group as a string"
-        )
-    if not isinstance(format_value, str) or not format_value:
-        raise PipelineDiscoveryError(
-            f"Pipeline file '{file_path}' must define source.format as a non-empty string"
-        )
-    if settings_value is not None and not isinstance(settings_value, dict):
-        raise PipelineDiscoveryError(
-            f"Pipeline file '{file_path}' must define source.settings as a mapping"
-        )
-
-    settings: dict[str, str] | None = None
-    if settings_value is not None:
-        if not all(isinstance(key, str) for key in settings_value):
-            raise PipelineDiscoveryError(
-                f"Pipeline file '{file_path}' must define source.settings with string keys"
-            )
-        settings = {key: str(value) for key, value in settings_value.items()}
-
-    return KafkaLandingStep(
-        name=source_name,
-        kafka=KafkaSettings(
-            broker_list=broker_list,
-            topic=topic,
-            consumer_group=consumer_group,
-            format=format_value,
-            settings=settings,
+    return ReplayOnChangePolicy(
+        breaking=_load_replay_on_change_rule(
+            value=typed_value.get("breaking"), key="breaking", file_path=file_path
+        ),
+        non_breaking=_load_replay_on_change_rule(
+            value=typed_value.get("non_breaking"), key="non_breaking", file_path=file_path
         ),
     )
 
 
-def _load_existing_table_source(
-    *,
-    typed_source_values: dict[str, Any],
-    file_path: Path,
-    source_name: str,
-    source_kind: SourceKind,
-) -> ExternalTableSourceStep:
-    table_name: object = typed_source_values.get("table_name")
-    replay_boundary_value: object = typed_source_values.get("replay_boundary")
-    if not isinstance(table_name, str) or not table_name:
+def _load_replay_on_change_rule(
+    *, value: object, key: str, file_path: Path
+) -> ReplayOnChangeRule | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
         raise PipelineDiscoveryError(
-            f"Pipeline file '{file_path}' must define source.table_name as a non-empty string"
+            f"Pipeline file '{file_path}' must define replay_on_change.{key} as a string"
         )
-    if QUALIFIED_NAME_SEPARATOR in table_name:
+    if value == FULL_REPLAY_POLICY_VALUE:
+        return ReplayOnChangeRule(mode=ReplayOnChangeMode.FULL)
+    bounded_match: re.Match[str] | None = re.fullmatch(r"bounded-(\d+)([dhms])", value)
+    if bounded_match is None:
         raise PipelineDiscoveryError(
-            f"Pipeline file '{file_path}' must define source.table_name as a bare table name; "
-            "cross-database source adoption is not supported yet"
+            f"Pipeline file '{file_path}' must define replay_on_change.{key} as 'full' "
+            "or 'bounded-<duration>'"
         )
-    if not isinstance(replay_boundary_value, dict) or not all(
-        isinstance(key, str) for key in replay_boundary_value
-    ):
-        raise PipelineDiscoveryError(
-            f"Pipeline file '{file_path}' must define source.replay_boundary as a mapping"
-        )
-    typed_replay_boundary_value: dict[str, Any] = replay_boundary_value
-    replay_boundary_mode_value: object = typed_replay_boundary_value.get("mode")
+    return ReplayOnChangeRule(
+        mode=ReplayOnChangeMode.BOUNDED,
+        lookback_seconds=(
+            int(bounded_match.group(1)) * SECONDS_BY_DURATION_UNIT[bounded_match.group(2)]
+        ),
+    )
+
+
+def _load_bounded_replay_fallback(
+    *, value: object, file_path: Path
+) -> BoundedReplayFallback | None:
+    if value is None:
+        return None
     try:
-        replay_boundary_mode: ReplayBoundaryMode = ReplayBoundaryMode(replay_boundary_mode_value)
+        return BoundedReplayFallback(value)
     except ValueError as error:
         raise PipelineDiscoveryError(
-            f"Pipeline file '{file_path}' has unsupported source.replay_boundary.mode "
-            f"'{replay_boundary_mode_value}'"
+            f"Pipeline file '{file_path}' has unsupported bounded_replay_fallback '{value}'; "
+            "expected 'full' or 'bounded_without_history'"
         ) from error
-    if source_kind == SourceKind.KAFKA and replay_boundary_mode not in {
-        ReplayBoundaryMode.OFFSETS,
-        ReplayBoundaryMode.TIMESTAMP,
-    }:
-        raise PipelineDiscoveryError(
-            f"Pipeline file '{file_path}' supports source.kind='kafka' adoption only with "
-            "replay_boundary.mode='offsets' or replay_boundary.mode='timestamp'"
-        )
-    columns_value: object = typed_replay_boundary_value.get("columns")
-    if not isinstance(columns_value, dict) or not all(
-        isinstance(key, str) for key in columns_value
-    ):
-        raise PipelineDiscoveryError(
-            f"Pipeline file '{file_path}' must define source.replay_boundary.columns as a mapping"
-        )
-    typed_columns_value: dict[str, Any] = columns_value
-    replay_boundary_columns: ReplayBoundaryColumns = ReplayBoundaryColumns(
-        partition=_optional_string_field(
-            typed_values=typed_columns_value,
-            file_path=file_path,
-            field_name="source.replay_boundary.columns._replay_partition",
-        ),
-        offset=_optional_string_field(
-            typed_values=typed_columns_value,
-            file_path=file_path,
-            field_name="source.replay_boundary.columns._replay_offset",
-        ),
-        timestamp=_optional_string_field(
-            typed_values=typed_columns_value,
-            file_path=file_path,
-            field_name="source.replay_boundary.columns._replay_timestamp",
-        ),
-        landed_at=_optional_string_field(
-            typed_values=typed_columns_value,
-            file_path=file_path,
-            field_name="source.replay_boundary.columns._replay_landed_at",
-        ),
-        cursor=_optional_string_field(
-            typed_values=typed_columns_value,
-            file_path=file_path,
-            field_name="source.replay_boundary.columns._replay_cursor",
-        ),
-    )
-    _validate_replay_boundary_columns(
-        file_path=file_path,
-        replay_boundary_mode=replay_boundary_mode,
-        replay_boundary_columns=replay_boundary_columns,
-    )
-    return ExternalTableSourceStep(
-        name=source_name,
-        kind=source_kind,
-        table_name=table_name,
-        replay_boundary=ReplayBoundary(
-            mode=replay_boundary_mode,
-            columns=replay_boundary_columns,
-        ),
-    )
 
 
-def _optional_string_field(
+def _load_pipeline_transforms(
     *,
-    typed_values: dict[str, Any],
-    file_path: Path,
-    field_name: str,
-) -> str | None:
-    raw_value: object = typed_values.get(field_name.rsplit(".", 1)[1])
-    if raw_value is None:
-        return None
-    if not isinstance(raw_value, str) or not raw_value:
-        raise PipelineDiscoveryError(
-            f"Pipeline file '{file_path}' must define {field_name} as a string"
-        )
-    return raw_value
-
-
-def _validate_replay_boundary_columns(
-    *,
-    file_path: Path,
-    replay_boundary_mode: ReplayBoundaryMode,
-    replay_boundary_columns: ReplayBoundaryColumns,
-) -> None:
-    if replay_boundary_mode == ReplayBoundaryMode.OFFSETS:
-        if replay_boundary_columns.partition is None or replay_boundary_columns.offset is None:
-            raise PipelineDiscoveryError(
-                f"Pipeline file '{file_path}' must define replay boundary partition and offset "
-                "columns for source.replay_boundary.mode='offsets'"
-            )
-        if replay_boundary_columns.timestamp is None:
-            raise PipelineDiscoveryError(
-                f"Pipeline file '{file_path}' must define a replay boundary timestamp column "
-                "for source.replay_boundary.mode='offsets'"
-            )
-        if replay_boundary_columns.landed_at is not None:
-            raise PipelineDiscoveryError(
-                f"Pipeline file '{file_path}' must not define a replay boundary landed_at column "
-                "for source.replay_boundary.mode='offsets'"
-            )
-        return
-    if replay_boundary_mode == ReplayBoundaryMode.TIMESTAMP:
-        if replay_boundary_columns.timestamp is None:
-            raise PipelineDiscoveryError(
-                f"Pipeline file '{file_path}' must define a replay boundary timestamp column "
-                "for source.replay_boundary.mode='timestamp'"
-            )
-        if replay_boundary_columns.landed_at is not None:
-            raise PipelineDiscoveryError(
-                f"Pipeline file '{file_path}' must not define a replay boundary landed_at column "
-                "for source.replay_boundary.mode='timestamp'"
-            )
-        return
-    if replay_boundary_columns.cursor is None:
-        raise PipelineDiscoveryError(
-            f"Pipeline file '{file_path}' must define a replay boundary cursor column for "
-            "source.replay_boundary.mode='cursor'"
-        )
-    if replay_boundary_columns.timestamp is None:
-        raise PipelineDiscoveryError(
-            f"Pipeline file '{file_path}' must define a replay boundary timestamp column "
-            "for source.replay_boundary.mode='cursor'"
-        )
-
-
-def _load_pipeline_transforms(pipeline_root: Path) -> list[TransformStep]:
+    pipeline_root: Path,
+    model_contents_by_path: Mapping[Path, str] | None = None,
+    macro_registry: MacroRegistry | None = None,
+    macro_context: MacroContext | None = None,
+) -> list[TransformStep]:
     model_file_paths: list[Path] = sorted(pipeline_root.rglob("*.sql"))
     if not model_file_paths:
         raise PipelineDiscoveryError(
             f"Pipeline root '{pipeline_root}' must contain at least one SQL model file"
         )
-
     transforms: list[TransformStep] = []
     model_paths_by_name: dict[str, Path] = {}
     model_file_path: Path
@@ -385,179 +302,61 @@ def _load_pipeline_transforms(pipeline_root: Path) -> list[TransformStep]:
                 f"'{model_file_path.stem}' in both '{existing_path}' and '{model_file_path}'"
             )
         model_paths_by_name[model_file_path.stem] = model_file_path
-        transforms.append(load_transform_from_sql_file(model_file_path))
+        transforms.append(
+            load_transform_from_sql_file(
+                file_path=model_file_path,
+                contents=(
+                    None
+                    if model_contents_by_path is None
+                    else model_contents_by_path[model_file_path]
+                ),
+                macro_registry=macro_registry,
+                macro_context=macro_context,
+            )
+        )
     return transforms
 
 
-def load_project_for_pipeline_file(file_path: Path) -> Project | None:
-    """Load the nearest project config for a pipeline file, if present."""
-
-    project_file_path: Path | None = find_project_file(file_path)
-    if project_file_path is None:
-        return None
-
-    return load_project_yaml(project_file_path)
-
-
-def find_project_file(path: Path) -> Path | None:
-    """Find the nearest `streambuild_project.yml` for a file or directory path."""
-
-    current_path: Path = path if path.is_dir() else path.parent
-    candidate_root: Path
-    for candidate_root in [current_path, *current_path.parents]:
-        project_file_path: Path = candidate_root / PROJECT_FILE_NAME
-        if project_file_path.exists():
-            return project_file_path
-    return None
-
-
-def load_project_yaml(file_path: Path) -> Project:
-    """Load `streambuild_project.yml` into the authored project model."""
-
-    project_values: object = yaml.safe_load(file_path.read_text(encoding="utf-8"))
-    if not isinstance(project_values, dict) or not all(
-        isinstance(key, str) for key in project_values
-    ):
-        raise PipelineDiscoveryError(f"Project file '{file_path}' must define a top-level mapping")
-    typed_project_values: dict[str, Any] = project_values
-
-    unknown_keys: list[str] = [
-        key for key in typed_project_values if key not in ALLOWED_PROJECT_KEYS
-    ]
-    if unknown_keys:
-        unknown_key_list: str = ", ".join(sorted(unknown_keys))
-        raise PipelineDiscoveryError(
-            f"Project file '{file_path}' contains unsupported keys: {unknown_key_list}"
+def _discovered_macro_files(project_dir: Path) -> tuple[DiscoveredProjectFile, ...]:
+    macro_files: list[DiscoveredProjectFile] = []
+    macro_path: Path
+    for macro_path in sorted((project_dir / "macros").rglob("*.py")):
+        relative_path: Path = macro_path.relative_to(project_dir)
+        if macro_path.name == PYTHON_PACKAGE_INITIALIZER_FILE_NAME or any(
+            part.startswith("_") for part in relative_path.parts
+        ):
+            continue
+        macro_files.append(
+            DiscoveredProjectFile(
+                file_path=macro_path,
+                relative_path=relative_path,
+                contents=macro_path.read_text(encoding="utf-8"),
+            )
         )
-
-    default_database_value: object = typed_project_values.get("default_database")
-    if default_database_value is not None and (
-        not isinstance(default_database_value, str) or not default_database_value
-    ):
-        raise PipelineDiscoveryError(
-            f"Project file '{file_path}' must define default_database as a non-empty string"
-        )
-
-    replay_lineage_mode_value: object = typed_project_values.get(
-        "replay_lineage_mode", ReplayLineageMode.OFFSETS
-    )
-    try:
-        replay_lineage_mode: ReplayLineageMode = ReplayLineageMode(replay_lineage_mode_value)
-    except ValueError as error:
-        raise PipelineDiscoveryError(
-            f"Project file '{file_path}' has unsupported replay_lineage_mode "
-            f"'{replay_lineage_mode_value}'"
-        ) from error
-
-    bounded_replay_fallback_value: object = typed_project_values.get(
-        "bounded_replay_fallback", BoundedReplayFallback.FULL_REFRESH
-    )
-    try:
-        bounded_replay_fallback: BoundedReplayFallback = BoundedReplayFallback(
-            bounded_replay_fallback_value
-        )
-    except ValueError as error:
-        raise PipelineDiscoveryError(
-            f"Project file '{file_path}' has unsupported bounded_replay_fallback "
-            f"'{bounded_replay_fallback_value}'"
-        ) from error
-
-    clickhouse_value: object = typed_project_values.get("clickhouse")
-    clickhouse: ProjectClickHouseConfig | None = None
-    if clickhouse_value is not None:
-        clickhouse = _load_project_clickhouse_config(
-            clickhouse_value=clickhouse_value, file_path=file_path
-        )
-
-    return Project(
-        replay_lineage_mode=replay_lineage_mode,
-        bounded_replay_fallback=bounded_replay_fallback,
-        default_database=default_database_value,
-        clickhouse=clickhouse,
-        version=_load_project_version(
-            version_value=typed_project_values.get("version"), file_path=file_path
-        ),
-        adapter=_load_project_adapter_name(
-            adapter_value=typed_project_values.get("adapter"), file_path=file_path
-        ),
-    )
+    return tuple(macro_files)
 
 
-def _load_project_version(*, version_value: object, file_path: Path) -> int | None:
-    if version_value is None:
-        return None
-    if not isinstance(version_value, int) or isinstance(version_value, bool):
-        raise PipelineDiscoveryError(
-            f"Project file '{file_path}' must define version as the integer "
-            f"{SUPPORTED_PROJECT_VERSION}"
-        )
-    if version_value != SUPPORTED_PROJECT_VERSION:
-        raise PipelineDiscoveryError(
-            f"Project file '{file_path}' declares unsupported version {version_value}; "
-            f"only version {SUPPORTED_PROJECT_VERSION} is supported"
-        )
-    return version_value
-
-
-def _load_project_adapter_name(*, adapter_value: object, file_path: Path) -> str:
-    if adapter_value is None:
-        return DEFAULT_ADAPTER_NAME
-    if not isinstance(adapter_value, str) or not adapter_value:
-        raise PipelineDiscoveryError(
-            f"Project file '{file_path}' must define adapter as a non-empty string"
-        )
-    return adapter_value
-
-
-def _load_project_clickhouse_config(
-    *,
-    clickhouse_value: object,
-    file_path: Path,
-) -> ProjectClickHouseConfig:
-    if not isinstance(clickhouse_value, dict) or not all(
-        isinstance(key, str) for key in clickhouse_value
-    ):
-        raise PipelineDiscoveryError(
-            f"Project file '{file_path}' must define clickhouse as a mapping"
-        )
-    typed_clickhouse_values: dict[str, Any] = cast(dict[str, Any], clickhouse_value)
-
-    unknown_keys: list[str] = [
-        key for key in typed_clickhouse_values if key not in CLICKHOUSE_CONNECTION_KEYS
-    ]
-    if unknown_keys:
-        unknown_key_list: str = ", ".join(sorted(unknown_keys))
-        raise PipelineDiscoveryError(
-            f"Project file '{file_path}' contains unsupported clickhouse keys: {unknown_key_list}"
-        )
-
-    host: object = typed_clickhouse_values.get("host")
-    port: object = typed_clickhouse_values.get("port")
-    username: object = typed_clickhouse_values.get("username")
-    password: object = typed_clickhouse_values.get("password")
-    if not isinstance(host, str) or not host:
-        raise PipelineDiscoveryError(
-            f"Project file '{file_path}' must define clickhouse.host as a non-empty string"
-        )
-    if not isinstance(port, int):
-        raise PipelineDiscoveryError(
-            f"Project file '{file_path}' must define clickhouse.port as an integer"
-        )
-    if not isinstance(username, str) or not username:
-        raise PipelineDiscoveryError(
-            f"Project file '{file_path}' must define clickhouse.username as a non-empty string"
-        )
-    if not isinstance(password, str):
-        raise PipelineDiscoveryError(
-            f"Project file '{file_path}' must define clickhouse.password as a string"
-        )
-
-    return ProjectClickHouseConfig(
-        host=host,
-        port=port,
-        username=username,
-        password=password,
-    )
+def _validate_source_references(
+    *, source_name: str, transforms: list[TransformStep], file_path: Path
+) -> None:
+    transform: TransformStep
+    for transform in transforms:
+        referenced_source_names: set[str] = {
+            parsed_ref.name
+            for parsed_ref in extract_refs(
+                sql=transform.query or "",
+                source_path=transform.source_file_path or file_path,
+                source_line=transform.source_line,
+                source_column=transform.source_column,
+            )
+            if parsed_ref.relation_type == SqlRelationType.SOURCE
+        }
+        if referenced_source_names and referenced_source_names != {source_name}:
+            raise PipelineDiscoveryError(
+                f"Pipeline file '{file_path}' selects source '{source_name}', but model "
+                f"'{transform.name}' references driving source "
+                f"'{', '.join(sorted(referenced_source_names))}'"
+            )
 
 
 def updated_unique_logical_names(
@@ -567,10 +366,7 @@ def updated_unique_logical_names(
 ) -> dict[str, Path]:
     """Return the logical-name registry after validating one loaded pipeline."""
 
-    for logical_name in [
-        loaded_pipeline.pipeline.source.name,
-        *[transform.name for transform in loaded_pipeline.pipeline.transforms],
-    ]:
+    for logical_name in [transform.name for transform in loaded_pipeline.pipeline.transforms]:
         existing_path: Path | None = logical_node_names.get(logical_name)
         if existing_path is not None:
             raise PipelineDiscoveryError(

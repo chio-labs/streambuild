@@ -38,7 +38,7 @@ from tests.unit.src.streambuild.compiler.compile._helpers.refs._test_types impor
 def test_given_sql_when_extracting_refs_then_it_returns_only_real_ref_calls(
     test_case: ExtractRefsTestCase,
 ) -> None:
-    extracted_refs: list[ParsedRef] = extract_refs(test_case.sql)
+    extracted_refs: list[ParsedRef] = extract_refs(sql=test_case.sql)
 
     assert (
         tuple((parsed_ref.name, parsed_ref.ref_type) for parsed_ref in extracted_refs)
@@ -62,7 +62,7 @@ def test_given_ref_with_too_many_args_when_extracting_then_it_raises_expected_er
     test_case: ExtractRefsErrorTestCase,
 ) -> None:
     with pytest.raises(test_case.expected_error_type, match=test_case.expected_error_fragment):
-        extract_refs(test_case.sql)
+        extract_refs(sql=test_case.sql)
 
 
 @pytest.mark.parametrize(
@@ -99,4 +99,4 @@ def test_given_ref_with_non_string_arg_when_extracting_then_it_raises_expected_e
     test_case: ExtractRefsErrorTestCase,
 ) -> None:
     with pytest.raises(test_case.expected_error_type, match=test_case.expected_error_fragment):
-        extract_refs(test_case.sql)
+        extract_refs(sql=test_case.sql)

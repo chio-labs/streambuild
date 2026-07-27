@@ -14,10 +14,13 @@ from streambuild.cli.reconcile._helpers.rendering import (
 )
 from streambuild.cli.selection.main._selection import resolve_selection
 from streambuild.cli.selection.models import SelectionResolution
-from streambuild.compiler.compile.main.compile_pipeline import compile_pipeline
-from streambuild.compiler.compile.models import CompiledPipeline, DesiredState
-from streambuild.compiler.discovery.main.discover_pipelines import discover_pipelines
-from streambuild.compiler.discovery.models import LoadedPipeline
+from streambuild.compiler.compile.models import (
+    CompilerAdapterProfile,
+    DesiredState,
+)
+from streambuild.compiler.discovery.models import LoadedPipeline, LoadedProject
+from streambuild.compiler.pipeline.main.analyze_project import analyze_project
+from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.compiler.planner.main.load_actual_state import load_actual_state
 from streambuild.compiler.planner.models import ActualState
 from streambuild.executor.reconcile.main.execute_reconcile import execute_reconcile
@@ -36,15 +39,23 @@ def run_reconcile(
     json_output: bool,
     apply: bool,
     client: AdapterConnection,
+    loaded_project: LoadedProject | None,
+    adapter_profile: CompilerAdapterProfile,
 ) -> int:
-    loaded_pipelines: list[LoadedPipeline] = discover_pipelines(pipelines_root)
-    compiled: list[CompiledPipeline] = [compile_pipeline(pipeline) for pipeline in loaded_pipelines]
+    analysis: CompileAnalysis = analyze_project(
+        pipelines_root=pipelines_root,
+        loaded_project=loaded_project,
+        adapter_profile=adapter_profile,
+    )
+    loaded_pipelines: tuple[LoadedPipeline, ...] = analysis.compile_inputs.pipelines
     resolved_database: str = resolve_default_database(
-        loaded_pipelines=loaded_pipelines, override=database
+        loaded_pipelines=list(loaded_pipelines), override=database
     )
     resolved_metadata_database: str = metadata_database or resolved_database
     selection: SelectionResolution = resolve_selection(
-        compiled_pipelines=tuple(compiled), selectors=selectors
+        realized_project=analysis.realized_project,
+        graph=analysis.graph,
+        selectors=selectors,
     )
     desired_state: DesiredState = selection.desired_state
     actual_state: ActualState = load_actual_state(

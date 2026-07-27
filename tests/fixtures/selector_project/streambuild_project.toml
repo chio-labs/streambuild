@@ -1,0 +1,8 @@
+name = "selector_project"
+default_target = "test"
+
+[settings]
+virtual_environments = true
+
+[targets.test]
+database = "analytics"

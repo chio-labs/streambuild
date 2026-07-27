@@ -3,20 +3,34 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from dataclasses import replace
 from datetime import datetime, timedelta
+from itertools import chain
+from typing import cast
 
 from clickhouse_connect.driver.client import Client
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.adapter.models import AdapterConnectionConfig
+from streambuild.adapter.models import (
+    AdapterConnectionConfig,
+    AdapterManagedSource,
+    AdapterMaterializedView,
+    AdapterTable,
+)
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
-from streambuild.compiler.compile.main.compile_pipeline import compile_pipeline
+from streambuild.cli.entry._helpers.compiler_profile import build_compiler_adapter_profile
+from streambuild.compiler.compile.main._compile_pipeline import (
+    compile_pipeline as compile_pipeline_impl,
+)
 from streambuild.compiler.compile.models import (
-    CompiledManagedSource,
     CompiledPipeline,
+    CompiledProject,
+    CompiledSource,
+    CompilerAdapterProfile,
+    DesiredKafkaTable,
+    DesiredMaterializedView,
     DesiredState,
+    DesiredTable,
     ObjectKey,
 )
-from streambuild.compiler.desired_state.main.build_desired_state import build_desired_state
 from streambuild.compiler.discovery._helpers.load import load_pipeline_file
 from streambuild.compiler.discovery.models import (
     ExternalTableSourceStep,
@@ -35,10 +49,13 @@ from streambuild.compiler.discovery.types import (
     ReplayLineageMode,
     SourceKind,
 )
-from streambuild.compiler.metadata_state.models import DeploymentWatermarkRecord
+from streambuild.compiler.pipeline.main._realize_project import realize_project
+from streambuild.compiler.pipeline.models import RealizedProject
+from streambuild.compiler.pipeline.types import AdapterResource
 from streambuild.compiler.planner.constants import REBUILD_EXECUTION_MODE_UNSEEDED_BOUNDED
-from streambuild.compiler.planner.models import DeploymentPlan
+from streambuild.compiler.planner.models import DeploymentPlan, DeploymentWatermarkRecord
 from streambuild.compiler.planner.types import RebuildExecutionMode
+from streambuild.compiler.sql_analysis.classes.sql_model_analyzer import SqlModelAnalyzer
 from streambuild.executor.backfill._helpers.replay import (
     execute_offset_replay,
     execute_scalar_replay,
@@ -71,20 +88,38 @@ from tests.integration.src.streambuild.executor.backfill._test_types import (
     BoundedPreservationMatrixScenarioResult,
     ExecuteBoundedPreservationMatrixIntegrationTestCase,
     ExecuteStartTimeReplayIntegrationTestCase,
+    ManagedSourceResources,
+    ModelResources,
     StartTimeReplayScenarioResult,
 )
+from tests.unit.src.streambuild.compiler.compile.helpers import build_realization_analyzer
 from tests.unit.src.streambuild.compiler.planner.helpers import EXAMPLE_PIPELINE_FILE_PATH
 
 KAFKA_TOPIC_PROJECTION: dict[bool, str] = {
     True: "CAST(kafka_topic AS String) AS kafka_topic, ",
     False: "",
 }
-
 SCALAR_REPLAY_PROJECTION: dict[ReplayLineageMode, str] = {
     ReplayLineageMode.TIMESTAMP: "CAST(_replay_timestamp AS DateTime64(3)) AS _replay_timestamp ",
     ReplayLineageMode.LANDED_AT: "CAST(_replay_landed_at AS DateTime64(3)) AS _replay_landed_at ",
 }
 LANDED_AT_REPLAY_PROJECTION: str = SCALAR_REPLAY_PROJECTION[ReplayLineageMode.LANDED_AT]
+
+
+def compile_pipeline(loaded_pipeline: LoadedPipeline) -> CompiledPipeline:
+    return compile_pipeline_impl(
+        loaded_pipeline=loaded_pipeline,
+        sql_analyzer=SqlModelAnalyzer(dialect="clickhouse"),
+    )
+
+
+def build_managed_replay_boundary(
+    replay_lineage_mode: ReplayLineageMode | str,
+) -> ReplayBoundary:
+    return ReplayBoundary(
+        mode=ReplayBoundaryMode(replay_lineage_mode),
+        columns=ReplayBoundaryColumns(),
+    )
 
 
 def build_backfill_bootstrap_request(
@@ -173,6 +208,7 @@ def build_named_scalar_replay_compiled_pipeline(
                 broker_list="kafka:9092",
                 topic=topic,
             ),
+            replay_boundary=build_managed_replay_boundary(resolved_replay_lineage_mode),
         ),
         transforms=[
             TransformStep(
@@ -184,7 +220,6 @@ def build_named_scalar_replay_compiled_pipeline(
                 replay_anchor=ReplayAnchorMode.NEVER,
             )
         ],
-        replay_lineage_mode=resolved_replay_lineage_mode,
     )
     return compile_pipeline(
         LoadedPipeline(
@@ -289,7 +324,7 @@ def build_external_source_cursor_replay_request(
     compiled_pipeline: CompiledPipeline = build_external_source_cursor_replay_compiled_pipeline()
     desired_state: DesiredState = build_desired_state((compiled_pipeline,))
     start_time_keys_by_presence: dict[bool, frozenset[ObjectKey]] = {
-        True: frozenset({compiled_pipeline.transforms[0].target_table.key}),
+        True: frozenset({require_model_resources(compiled_pipeline).target_table.key}),
         False: frozenset(),
     }
     return BackfillBootstrapRequest(
@@ -404,9 +439,9 @@ def _build_reference_join_compiled_pipeline(*, include_enriched_orders: bool) ->
                 broker_list="kafka:9092",
                 topic="source.orders.created",
             ),
+            replay_boundary=build_managed_replay_boundary(ReplayLineageMode.OFFSETS),
         ),
         transforms=[region_lookup, *optional_transforms[include_enriched_orders]],
-        replay_lineage_mode=ReplayLineageMode.OFFSETS,
     )
     return compile_pipeline(
         LoadedPipeline(
@@ -506,6 +541,7 @@ def build_aggregate_offset_replay_compiled_pipeline() -> CompiledPipeline:
                 broker_list="kafka:9092",
                 topic="source.orders.created",
             ),
+            replay_boundary=build_managed_replay_boundary(ReplayLineageMode.OFFSETS),
         ),
         transforms=[
             TransformStep(
@@ -523,7 +559,6 @@ def build_aggregate_offset_replay_compiled_pipeline() -> CompiledPipeline:
                 replay_anchor=ReplayAnchorMode.NEVER,
             )
         ],
-        replay_lineage_mode=ReplayLineageMode.OFFSETS,
     )
     return compile_pipeline(
         LoadedPipeline(
@@ -579,7 +614,7 @@ def build_external_source_aggregate_offset_replay_compiled_pipeline() -> Compile
 
 def build_changed_aggregate_offset_replay_compiled_pipeline(
     *,
-    bounded_replay_fallback: BoundedReplayFallback | str = BoundedReplayFallback.FULL_REFRESH,
+    bounded_replay_fallback: BoundedReplayFallback | str = BoundedReplayFallback.FULL,
 ) -> CompiledPipeline:
     resolved_bounded_replay_fallback: BoundedReplayFallback = BoundedReplayFallback(
         bounded_replay_fallback
@@ -592,6 +627,7 @@ def build_changed_aggregate_offset_replay_compiled_pipeline(
                 broker_list="kafka:9092",
                 topic="source.orders.created",
             ),
+            replay_boundary=build_managed_replay_boundary(ReplayLineageMode.OFFSETS),
         ),
         transforms=[
             TransformStep(
@@ -611,7 +647,6 @@ def build_changed_aggregate_offset_replay_compiled_pipeline(
                 bounded_replay_fallback=resolved_bounded_replay_fallback,
             )
         ],
-        replay_lineage_mode=ReplayLineageMode.OFFSETS,
     )
     return compile_pipeline(
         LoadedPipeline(
@@ -633,6 +668,7 @@ def build_named_offset_replay_compiled_pipeline(
                 broker_list="kafka:9092",
                 topic="source.orders.created",
             ),
+            replay_boundary=build_managed_replay_boundary(ReplayLineageMode.OFFSETS),
         ),
         transforms=[
             TransformStep(
@@ -650,7 +686,6 @@ def build_named_offset_replay_compiled_pipeline(
                 replay_anchor=ReplayAnchorMode.NEVER,
             )
         ],
-        replay_lineage_mode=ReplayLineageMode.OFFSETS,
     )
     return compile_pipeline(
         LoadedPipeline(
@@ -890,9 +925,9 @@ def _build_managed_matrix_pipeline(
                 broker_list="kafka:9092",
                 topic="source.orders.created",
             ),
+            replay_boundary=build_managed_replay_boundary(replay_lineage_mode),
         ),
         transforms=[transform],
-        replay_lineage_mode=replay_lineage_mode,
     )
 
 
@@ -1332,11 +1367,70 @@ def _execute_matrix_scalar_replay(
     )
 
 
-def require_managed_source(compiled_pipeline: CompiledPipeline) -> CompiledManagedSource:
-    assert isinstance(compiled_pipeline.source, CompiledManagedSource), (
-        "Expected compiled pipeline to use a managed Kafka source"
+def realize_compiled_pipelines(
+    compiled_pipelines: tuple[CompiledPipeline, ...],
+) -> RealizedProject:
+    sources_by_name: dict[str, CompiledSource] = {
+        pipeline.source.key.name: pipeline.source for pipeline in compiled_pipelines
+    }
+    compiled_project: CompiledProject = CompiledProject(
+        sources=tuple(sources_by_name.values()),
+        models=tuple(chain.from_iterable(pipeline.models for pipeline in compiled_pipelines)),
+        pipelines=compiled_pipelines,
+        tests=(),
+        test_cases=(),
+        audits=(),
     )
-    return compiled_pipeline.source
+    adapter_profile: CompilerAdapterProfile = build_compiler_adapter_profile(ClickHouseAdapter())
+    return realize_project(
+        project=compiled_project,
+        adapter_profile=adapter_profile,
+        sql_analyzer=build_realization_analyzer(compiled_project),
+    )
+
+
+def build_desired_state(compiled_pipelines: tuple[CompiledPipeline, ...]) -> DesiredState:
+    return realize_compiled_pipelines(compiled_pipelines).desired_state
+
+
+def require_managed_source(compiled_pipeline: CompiledPipeline) -> ManagedSourceResources:
+    realized_project: RealizedProject = realize_compiled_pipelines((compiled_pipeline,))
+    source_resources: tuple[AdapterResource, ...] = realized_project.resources_by_logical_key[
+        compiled_pipeline.source.key
+    ]
+    managed_source: AdapterManagedSource = cast(AdapterManagedSource, source_resources[0])
+    landing_table: AdapterTable = cast(AdapterTable, source_resources[1])
+    landing_view: AdapterMaterializedView = cast(AdapterMaterializedView, source_resources[2])
+    objects_by_name: dict[str, object] = {
+        item.name: item for item in realized_project.desired_state.objects
+    }
+    return ManagedSourceResources(
+        kafka_table=cast(DesiredKafkaTable, objects_by_name[managed_source.name]),
+        raw_table=cast(DesiredTable, objects_by_name[landing_table.name]),
+        materialized_view=cast(
+            DesiredMaterializedView,
+            objects_by_name[landing_view.name],
+        ),
+    )
+
+
+def require_model_resources(compiled_pipeline: CompiledPipeline) -> ModelResources:
+    realized_project: RealizedProject = realize_compiled_pipelines((compiled_pipeline,))
+    model_resources: tuple[AdapterResource, ...] = realized_project.resources_by_logical_key[
+        compiled_pipeline.models[0].key
+    ]
+    adapter_table: AdapterTable = cast(AdapterTable, model_resources[0])
+    adapter_view: AdapterMaterializedView = cast(AdapterMaterializedView, model_resources[1])
+    objects_by_name: dict[str, object] = {
+        item.name: item for item in realized_project.desired_state.objects
+    }
+    return ModelResources(
+        target_table=cast(DesiredTable, objects_by_name[adapter_table.name]),
+        materialized_view=cast(
+            DesiredMaterializedView,
+            objects_by_name[adapter_view.name],
+        ),
+    )
 
 
 def build_scalar_target_insert_select_sql(
@@ -1631,7 +1725,9 @@ def run_start_time_replay_scenario(
                 replay_lineage_mode=replay_lineage_mode,
                 deployment_id=test_case.changed_deployment_id,
                 created_at=test_case.created_at,
-                start_time_keys=frozenset({compiled_pipeline.transforms[0].target_table.key}),
+                start_time_keys=frozenset(
+                    {require_model_resources(compiled_pipeline).target_table.key}
+                ),
                 start_time=converted_start_time,
                 boundary_time=test_case.changed_boundary_time,
                 stabilization_seconds=0.0,

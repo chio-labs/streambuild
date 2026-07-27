@@ -7,14 +7,11 @@ from pathlib import Path
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.cli.test._helpers.rendering import render_sql_test_results
 from streambuild.cli.test._helpers.selection import select_loaded_sql_tests
-from streambuild.compiler.compile.main.compile_pipeline import compile_pipeline
-from streambuild.compiler.compile.models import CompiledPipeline
-from streambuild.compiler.discovery.main.discover_pipelines import discover_pipelines
-from streambuild.compiler.discovery.models import LoadedPipeline
-from streambuild.compiler.test_discovery.main.discover_sql_tests import discover_sql_tests
-from streambuild.compiler.test_discovery.models import LoadedSqlTest
-from streambuild.compiler.testing.main.build_sql_test_cases import build_sql_test_cases
-from streambuild.compiler.testing.models import SqlTestCase
+from streambuild.compiler.compile.models import CompiledPipeline, CompilerAdapterProfile
+from streambuild.compiler.discovery.models import LoadedProject
+from streambuild.compiler.pipeline.main.analyze_project import analyze_project
+from streambuild.compiler.pipeline.models import CompileAnalysis
+from streambuild.compiler.test_discovery.models import LoadedSqlTest, SqlTestCase
 from streambuild.executor.testing.main.execute_sql_tests import execute_sql_tests
 from streambuild.executor.testing.models import SqlTestExecutionResult
 
@@ -27,17 +24,19 @@ def run_test(
     paths: tuple[Path, ...],
     verbose: bool,
     client: AdapterConnection,
+    loaded_project: LoadedProject | None,
+    adapter_profile: CompilerAdapterProfile,
 ) -> int:
     """Discover, assemble, and execute SQL-native tests for a project."""
 
     resolved_project_dir: Path = project_dir or pipelines_root.parent
-    loaded_pipelines: list[LoadedPipeline] = discover_pipelines(pipelines_root)
-    compiled_pipelines: tuple[CompiledPipeline, ...] = tuple(
-        compile_pipeline(loaded_pipeline) for loaded_pipeline in loaded_pipelines
+    analysis: CompileAnalysis = analyze_project(
+        pipelines_root=pipelines_root,
+        loaded_project=loaded_project,
+        adapter_profile=adapter_profile,
     )
-    loaded_tests: tuple[LoadedSqlTest, ...] = tuple(
-        discover_sql_tests(resolved_project_dir / "tests")
-    )
+    compiled_pipelines: tuple[CompiledPipeline, ...] = analysis.compiled_project.pipelines
+    loaded_tests: tuple[LoadedSqlTest, ...] = analysis.compiled_project.tests
     selected_tests: tuple[LoadedSqlTest, ...] = select_loaded_sql_tests(
         loaded_tests=loaded_tests,
         compiled_pipelines=compiled_pipelines,
@@ -48,9 +47,13 @@ def run_test(
     if not selected_tests:
         print("No SQL tests found.")
         return 0
-    test_cases: tuple[SqlTestCase, ...] = build_sql_test_cases(
-        loaded_tests=selected_tests,
-        compiled_pipelines=compiled_pipelines,
+    selected_test_keys: frozenset[tuple[Path, int]] = frozenset(
+        (loaded_test.file_path, loaded_test.test_index) for loaded_test in selected_tests
+    )
+    test_cases: tuple[SqlTestCase, ...] = tuple(
+        test_case
+        for test_case in analysis.compiled_project.test_cases
+        if (test_case.file_path, test_case.test_index) in selected_test_keys
     )
     results: tuple[SqlTestExecutionResult, ...] = execute_sql_tests(
         test_cases=test_cases,

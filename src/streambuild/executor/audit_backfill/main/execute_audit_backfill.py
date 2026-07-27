@@ -2,9 +2,6 @@
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import InspectedManagedTableState
-from streambuild.adapters.clickhouse.main.inspect_managed_table_state import (
-    inspect_managed_table_state,
-)
 from streambuild.executor.audit_backfill._helpers.comparisons import build_root_audit_results
 from streambuild.executor.audit_backfill._helpers.resolution import resolve_audit_deployment_id
 from streambuild.executor.audit_backfill.exceptions import AuditBackfillExecutionError
@@ -36,9 +33,8 @@ def execute_audit_backfill(
         metadata_database=request.metadata_database,
         deployment_id=resolved_deployment_id,
     )
-    inspected_state: InspectedManagedTableState = inspect_managed_table_state(
-        client=client,
-        database=request.default_database,
+    inspected_state: InspectedManagedTableState = client.inspect_managed_table_state(
+        request.default_database
     )
     root_results: tuple[RootAuditResult, ...] = build_root_audit_results(
         client=client,

@@ -72,6 +72,14 @@ class CliRenderingTestCase:
 
 
 @dataclass(frozen=True)
+class CliPublishAtomicityRenderingTestCase:
+    description: str
+    per_relation_atomic_replace: bool
+    graph_atomic_publish: bool
+    expected_atomicity: dict[str, bool]
+
+
+@dataclass(frozen=True)
 class CliPlanRenderingBaselineTestCase:
     description: str
     expected_payload: dict[str, object]
@@ -129,6 +137,50 @@ class CliCredentialRedactionTestCase:
     description: str
     password: str
     expected_absent_fragment: str
+
+
+@dataclass(frozen=True)
+class CliLazyConnectionTestCase:
+    description: str
+    project_vars_contents: str
+    secret_template: str
+    expected_compile_exit_code: int
+    expected_plan_exit_code: int
+    expected_connect_count: int
+    expected_error_fragment: str
+    expected_absent_fragment: str
+
+
+@dataclass(frozen=True)
+class CliProjectSecretRedactionTestCase:
+    description: str
+    secret: str
+    expected_compile_exit_code: int
+    expected_plan_exit_code: int
+    expected_error_fragment: str
+
+
+@dataclass(frozen=True)
+class CliNestedAuditOptionsTestCase:
+    description: str
+    argv: tuple[str, ...]
+    expected_project_dir: str
+    expected_host: str
+    expected_port: int
+    expected_username: str
+    expected_password: str
+    expected_database: str
+    expected_json: bool
+    expected_target: str
+    expected_vars: dict[str, object]
+
+
+@dataclass(frozen=True)
+class CliTargetSelectionTestCase:
+    description: str
+    argv_suffix: tuple[str, ...]
+    local_contents: str
+    expected_database_fragment: str
 
 
 @dataclass(frozen=True)

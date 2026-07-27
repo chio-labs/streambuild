@@ -1,0 +1,63 @@
+import pytest
+
+from streambuild.adapter.models import CatalogRelation
+from streambuild.executor.doctor.main.execute_doctor import execute_doctor
+from streambuild.executor.doctor.models import ActiveViewStatus, DoctorRequest, DoctorResult
+from tests.unit.src.streambuild.cli.helpers import RecordingAdapterConnection
+from tests.unit.src.streambuild.executor.doctor.main._test_types import (
+    DoctorCatalogInspectionTestCase,
+)
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DoctorCatalogInspectionTestCase(
+            description="classifies managed bindings from one neutral catalog snapshot",
+            relations=(
+                CatalogRelation(
+                    name="tbl__orders_enriched",
+                    engine="View",
+                    columns=(),
+                    stable_binding_name="tbl__orders_enriched__dep_a",
+                ),
+                CatalogRelation(
+                    name="tbl__orders_enriched__dep_a",
+                    engine="MergeTree",
+                    columns=(),
+                ),
+                CatalogRelation(
+                    name="tbl__orders_enriched__dep_b",
+                    engine="MergeTree",
+                    columns=(),
+                ),
+            ),
+            expected_catalog_databases=("analytics",),
+            expected_result=DoctorResult(
+                active_views=(
+                    ActiveViewStatus(
+                        table_name="tbl__orders_enriched",
+                        state_kind="active_view_present",
+                        active_deployment_id="dep_a",
+                        candidate_deployment_ids=("dep_a", "dep_b"),
+                    ),
+                )
+            ),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_catalog_state_when_doctoring_then_it_classifies_without_extra_inspection(
+    test_case: DoctorCatalogInspectionTestCase,
+) -> None:
+    connection: RecordingAdapterConnection = RecordingAdapterConnection(
+        relations=test_case.relations
+    )
+
+    result: DoctorResult = execute_doctor(
+        request=DoctorRequest(default_database="analytics"),
+        client=connection,
+    )
+
+    assert tuple(connection.catalog_databases) == test_case.expected_catalog_databases
+    assert result == test_case.expected_result

@@ -57,7 +57,11 @@ uv run stb --help
 StreamBuild projects are authored as a project root plus pipeline folders.
 
 ```text
-streambuild_project.yml
+streambuild_project.toml
+sources/
+  orders.yml
+macros/
+  common.py
 pipelines/
   orders/
     pipeline.yml
@@ -72,39 +76,80 @@ Rules:
 - pipeline name is inferred from the folder name
 - model name is inferred from the SQL filename stem
 
+## Macros
+
+Public Python modules under `macros/` are loaded once per project analysis. Functions
+defined by those modules are available in authored model, test, and audit SQL as
+`@function_name(...)`. Imported functions, async functions, `__init__.py`, and modules
+or directories whose names start with `_` are not registered.
+
+```python
+from streambuild.compiler.macros.models import MacroContext
+
+
+def qualified_source(ctx: MacroContext, table_name: str) -> str:
+    return f"{ctx.database}.{table_name}"
+```
+
+```sql
+SELECT * FROM @qualified_source("orders")
+```
+
+Macro modules are trusted project code, not a sandbox: module-level code runs during
+analysis, and a macro may perform anything allowed to that Python process. Calls accept
+only nested Python literals (`str`, `bool`, `int`, `float`, `None`, lists, tuples, and
+dictionaries with scalar keys) plus nested macro results. A first parameter named `ctx`
+must be annotated as `MacroContext`; StreamBuild supplies its immutable project target,
+adapter, database, virtual-environment, and variable values. Direct SQL macro calls must
+return strings. Errors report both the authored SQL call and the defining macro source.
+
 ## Project Config
 
-Project-wide defaults live in `streambuild_project.yml`.
+Committed project configuration lives in `streambuild_project.toml`. Developer-specific
+overrides may live in the gitignored `streambuild_local.toml`.
 
-```yaml
-default_database: analytics
-replay_lineage_mode: offsets
+```toml
+name = "orders_project"
+default_target = "dev"
 
-clickhouse:
-  host: localhost
-  port: 8123
-  username: clickhouse
-  password: clickhouse
+[settings]
+virtual_environments = true
+
+[connection]
+host = "localhost"
+port = 8123
+username = "clickhouse"
+password = "${ENV:CLICKHOUSE_PASSWORD}"
+
+[targets.dev]
+database = "analytics"
 ```
 
 Notes:
 
-- `default_database` is the user-facing database setting
+- `name` and `default_target` are required; `adapter` defaults to `clickhouse`
+- target selection is CLI `--target`, local `target`, then project `default_target`
+- CLI `--vars` accepts one JSON object for `${name}` interpolation
+- connection templates are expanded only for commands that connect
 - metadata lives in the same database by default
-- CLI flags override environment variables, and environment variables override `streambuild_project.yml`
+- connection precedence is CLI flags, fixed `STREAMBUILD_CLICKHOUSE_*` environment
+  variables, local config, selected target, then project config
 
 ## Pipeline Sources
 
-`pipeline.yml` defines the replay-driving source for a pipeline.
+Reusable replay-driving sources live under `sources/*.yml`. Each `pipeline.yml` contains
+one source registry identity, for example `source: orders`.
 
 ### Managed Kafka Landing
 
 ```yaml
-source:
-  kind: kafka
-  name: orders
-  broker_list: kafka:9092
-  topic: source.orders.created
+sources:
+  - kind: kafka
+    name: orders
+    broker_list: kafka:9092
+    topic: source.orders.created
+    replay_boundary:
+      mode: offsets
 ```
 
 This is the managed source shape:
@@ -116,16 +161,16 @@ This is the managed source shape:
 ### Adopted External Source
 
 ```yaml
-source:
-  kind: kafka
-  name: orders
-  table_name: orders_existing
-  replay_boundary:
-    mode: offsets
-    columns:
-      _replay_partition: event_partition
-      _replay_offset: event_offset
-      _replay_timestamp: event_timestamp
+sources:
+  - kind: stream_table
+    name: orders
+    table_name: orders_existing
+    replay_boundary:
+      mode: offsets
+      columns:
+        _replay_partition: event_partition
+        _replay_offset: event_offset
+        _replay_timestamp: event_timestamp
 ```
 
 This is the adopted-source shape:
@@ -149,6 +194,20 @@ Currently supported external-source replay boundary modes:
 - `timestamp`
 
 - `cursor`
+
+Virtual-environment projects can choose change-driven replay independently from the
+fallback used when bounded replay cannot preserve aggregate history:
+
+```yaml
+source: orders
+replay_on_change:
+  breaking: full
+  non_breaking: bounded-7d
+bounded_replay_fallback: bounded_without_history
+```
+
+The same policies can be defaults in `streambuild_project.toml` and overrides in a model
+`MODEL(...)` header. They are rejected when `settings.virtual_environments` is false.
 
 ## Models
 
@@ -176,7 +235,7 @@ StreamBuild exposes a normalized replay lineage surface.
 
 Current intent:
 
-- `replay_*` is the normalized source-agnostic replay vocabulary
+- `_replay_*` is the normalized source-agnostic replay vocabulary
 
 Current generic replay columns:
 
@@ -188,9 +247,9 @@ Current generic replay columns:
 
 Current behavior:
 
-- managed Kafka landing populates the normalized `replay_*` lineage columns directly
+- managed Kafka landing populates the normalized `_replay_*` lineage columns directly
 - adopted sources map declared physical source columns into the normalized replay surface
-- downstream managed outputs should preserve `replay_*` when they need replay lineage
+- downstream managed outputs should preserve `_replay_*` when they need replay lineage
 
 ## Core Commands
 
@@ -218,18 +277,29 @@ uv run stb plan --project-dir examples/orders_demo
 
 `stb compile` writes artifacts under project-level `target/`.
 
-Current layout:
+Static compile products and runtime evidence have separate owners:
 
 ```text
 target/
   manifest.json
-  <pipeline>/
-    compile/
-      models/
-    run/
-      models/
-      workflow/
+  streambuild_dag.json
+  compiled/
+    models/<pipeline>/
+    resources/
+      sources/<source>/
+      models/<pipeline>/
+    workflows/<pipeline>/
+      steps/
+      workflow.sql
+      workflow.json
+    audits/
+    tests/
+  run/
+    tests/
 ```
+
+`stb compile` atomically replaces only the static owners and never writes under
+`target/run/`. Runtime commands own their command-specific subtrees.
 
 The compile manifest includes:
 
@@ -237,8 +307,10 @@ The compile manifest includes:
 - relations
 - source metadata
 - model specs
-- artifact paths
-- workflow paths
+- logical tests and audits
+- realized adapter resources
+- every emitted static artifact path
+- workflow paths and logical DAG identity
 
 ## Example
 
@@ -293,6 +365,7 @@ Current intentional limitations:
 
 - ClickHouse-only runtime
 - external adopted sources must resolve in the project database
-- `cursor` replay mode is not implemented yet
+- managed Kafka sources support `offsets`, `timestamp`, and `landed_at`; adopted relations
+  support `offsets`, `timestamp`, and `cursor`
 
 This repo is actively evolving around staged rollout correctness, replay semantics, and migration/adoption support for existing ClickHouse streaming tables.

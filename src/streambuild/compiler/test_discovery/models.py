@@ -39,3 +39,22 @@ class LoadedSqlTest:
     expected_targets: tuple[SqlTestCte, ...]
     name: str | None = None
     test_index: int = 1
+
+
+@dataclass(frozen=True)
+class SqlTestTargetCase:
+    """One assembled target comparison inside a SQL-native test case."""
+
+    target_model_name: str
+    expected_column_names: tuple[str, ...]
+    query: str
+
+
+@dataclass(frozen=True)
+class SqlTestCase:
+    """One fully assembled SQL-native test scenario ready for execution."""
+
+    file_path: Path
+    target_cases: tuple[SqlTestTargetCase, ...]
+    name: str | None = None
+    test_index: int = 1

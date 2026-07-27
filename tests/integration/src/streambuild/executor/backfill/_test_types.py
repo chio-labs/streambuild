@@ -1,11 +1,31 @@
 from dataclasses import dataclass
 from typing import NamedTuple
 
-from streambuild.compiler.compile.models import CompiledPipeline
+from streambuild.compiler.compile.models import (
+    CompiledPipeline,
+    DesiredKafkaTable,
+    DesiredMaterializedView,
+    DesiredTable,
+)
 from streambuild.compiler.discovery.types import BoundedReplayFallback, ReplayLineageMode
 from streambuild.compiler.planner.types import RebuildExecutionMode
 from streambuild.executor.backfill.models import BackfillExecutionResult
 from tests.integration.src.streambuild.conftest import ClickHouseConnectionSettings
+
+
+class ManagedSourceResources(NamedTuple):
+    kafka_table: DesiredKafkaTable
+    raw_table: DesiredTable
+    materialized_view: DesiredMaterializedView
+
+
+class ModelResources(NamedTuple):
+    target_table: DesiredTable
+    materialized_view: DesiredMaterializedView
+
+    @property
+    def target_table_name(self) -> str:
+        return self.target_table.name
 
 
 @dataclass(frozen=True)

@@ -10,12 +10,12 @@ from streambuild.compiler.compile.models import (
     DesiredTable,
     ObjectKey,
 )
-from streambuild.compiler.metadata_state.models import ObjectStateRecord
 from streambuild.compiler.planner.models import (
     ActualKafkaTable,
     ActualMaterializedView,
     ActualState,
     ActualTable,
+    ObjectStateRecord,
 )
 from streambuild.executor.reconcile._helpers.persist import build_object_state_record
 from streambuild.executor.reconcile.constants import RECONCILE_DEPLOYMENT_ID_PREFIX

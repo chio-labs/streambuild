@@ -4,22 +4,20 @@ from typing import cast
 
 import pytest
 
+from streambuild.adapter.models import AdapterManagedSource, AdapterMaterializedView, AdapterTable
 from streambuild.compiler.compile.exceptions import (
     TransformOrderByUnknownColumnError,
     TransformPartitionByUnknownColumnError,
     TransformSqlTopLevelSetOperationError,
     TransformTtlUnknownColumnError,
 )
-from streambuild.compiler.compile.main.compile_pipeline import compile_pipeline
 from streambuild.compiler.compile.models import (
-    CompiledExternalSource,
-    CompiledManagedSource,
+    CompiledModel,
     CompiledPipeline,
-    CompiledTransformStep,
     DesiredMaterializedView,
     DesiredState,
+    DesiredTable,
 )
-from streambuild.compiler.desired_state.main.build_desired_state import build_desired_state
 from streambuild.compiler.discovery._helpers.load import load_pipeline_file
 from streambuild.compiler.discovery.models import (
     ExternalTableSourceStep,
@@ -30,6 +28,8 @@ from streambuild.compiler.discovery.models import (
     Project,
     ReplayBoundary,
     ReplayBoundaryColumns,
+    ReplayOnChangePolicy,
+    ReplayOnChangeRule,
     TransformStep,
 )
 from streambuild.compiler.discovery.types import (
@@ -37,8 +37,10 @@ from streambuild.compiler.discovery.types import (
     ReplayAnchorMode,
     ReplayBoundaryMode,
     ReplayLineageMode,
+    ReplayOnChangeMode,
     SourceKind,
 )
+from streambuild.compiler.pipeline.models import RealizedProject
 from tests.unit.src.streambuild.compiler.compile._test_types import (
     CompilePipelineAdditionalRefDependencyTestCase,
     CompilePipelineAdoptedSourceTestCase,
@@ -54,6 +56,7 @@ from tests.unit.src.streambuild.compiler.compile._test_types import (
     CompilePipelineReplayAnchorEligibilityTestCase,
     CompilePipelineReplayLineageModeResolutionTestCase,
     CompilePipelineReplayLineageModeTestCase,
+    CompilePipelineReplayPolicyPrecedenceTestCase,
     CompilePipelineReplaySurfaceTestCase,
     CompilePipelineSqlFileTestCase,
     CompilePipelineSqlModelDefaultOrderByTestCase,
@@ -65,9 +68,14 @@ from tests.unit.src.streambuild.compiler.compile.helpers import (
     build_invalid_storage_expression_pipeline,
     build_missing_source_ref_pipeline,
     build_sql_file_pipeline,
-)
-from tests.unit.src.streambuild.compiler.discovery._helpers.load.helpers import (
-    write_pipeline_file,
+    compile_and_realize_pipeline,
+    compile_test_pipeline,
+    realized_managed_source,
+    realized_model_table,
+    realized_model_view,
+    realized_source_table,
+    realized_source_view,
+    write_registry_pipeline_project,
 )
 from tests.unit.src.streambuild.compiler.planner.helpers import (
     build_single_transform_desired_state,
@@ -120,48 +128,53 @@ def test_given_example_pipeline_when_compiling_then_resolves_inline_refs(
     test_case: CompilePipelineInlineRefsTestCase,
 ) -> None:
     loaded_pipeline: LoadedPipeline = load_pipeline_file(Path(test_case.pipeline_file_path))
-    compiled_pipeline: CompiledPipeline = compile_pipeline(loaded_pipeline)
-    assert isinstance(compiled_pipeline.source, CompiledManagedSource)
-    managed_source: CompiledManagedSource = compiled_pipeline.source
+    compiled_pipeline: CompiledPipeline
+    realized_project: RealizedProject
+    compiled_pipeline, realized_project = compile_and_realize_pipeline(loaded_pipeline)
+    managed_source: AdapterManagedSource = realized_managed_source(realized_project)
+    landing_table: AdapterTable = realized_source_table(realized_project)
+    landing_view: AdapterMaterializedView = realized_source_view(realized_project)
+    model: CompiledModel = compiled_pipeline.models[0]
+    model_table: AdapterTable = realized_model_table(realized_project, model.key.name)
+    model_view: AdapterMaterializedView = realized_model_view(realized_project, model.key.name)
 
-    assert compiled_pipeline.relation_names == test_case.expected_relation_names
-    assert managed_source.kafka_table.name == test_case.expected_kafka_table_name
-    assert managed_source.raw_table.name == test_case.expected_raw_table_name
-    assert managed_source.materialized_view.name == test_case.expected_landing_mv_name
-    assert managed_source.materialized_view.source_table_name == test_case.expected_kafka_table_name
-    assert managed_source.materialized_view.target_table_name == test_case.expected_raw_table_name
+    assert {
+        key.name: name for key, name in realized_project.relation_name_by_logical_key.items()
+    } == test_case.expected_relation_names
+    assert managed_source.name == test_case.expected_kafka_table_name
+    assert landing_table.name == test_case.expected_raw_table_name
+    assert landing_view.name == test_case.expected_landing_mv_name
+    assert landing_view.source_relation_name == test_case.expected_kafka_table_name
+    assert landing_view.target_relation_name == test_case.expected_raw_table_name
     for expected_fragment in test_case.expected_landing_query_fragments:
-        assert expected_fragment in managed_source.materialized_view.query
-    assert compiled_pipeline.transforms[0].refs == test_case.expected_refs
-    assert test_case.expected_query_fragment in compiled_pipeline.transforms[0].resolved_query
-    assert compiled_pipeline.transforms[0].target_table_name == test_case.expected_target_table_name
-    assert compiled_pipeline.transforms[0].target_table.name == test_case.expected_target_table_name
+        assert expected_fragment in landing_view.query
+    assert model.refs == test_case.expected_refs
     assert (
-        compiled_pipeline.transforms[0].materialized_view.name
-        == test_case.expected_transform_mv_name
+        test_case.expected_query_fragment in realized_project.resolved_query_by_model_key[model.key]
     )
-    assert (
-        compiled_pipeline.transforms[0].materialized_view.source_table_name
-        == test_case.expected_raw_table_name
-    )
-    assert (
-        compiled_pipeline.transforms[0].materialized_view.target_table_name
-        == test_case.expected_target_table_name
+    assert model_table.name == test_case.expected_target_table_name
+    assert model_view.name == test_case.expected_transform_mv_name
+    assert model_view.source_relation_name == test_case.expected_raw_table_name
+    assert model_view.target_relation_name == test_case.expected_target_table_name
+    desired_state: DesiredState = realized_project.desired_state
+    desired_by_name: dict[str, object] = {item.name: item for item in desired_state.objects}
+    desired_table: DesiredTable = cast(DesiredTable, desired_by_name[model_table.name])
+    desired_view: DesiredMaterializedView = cast(
+        DesiredMaterializedView,
+        desired_by_name[model_view.name],
     )
     assert tuple(
         (dependency.database, dependency.object_type, dependency.name)
-        for dependency in compiled_pipeline.transforms[0].target_table.deps
+        for dependency in desired_table.deps
     ) == ((None, "table", "raw__orders"),)
     assert tuple(
         (dependency.database, dependency.object_type, dependency.name)
-        for dependency in compiled_pipeline.transforms[0].materialized_view.deps
+        for dependency in desired_view.deps
     ) == (
         (None, "table", "raw__orders"),
         (None, "table", "tbl__orders_enriched"),
     )
-    assert tuple(
-        column.name for column in compiled_pipeline.transforms[0].target_table.columns
-    ) == (
+    assert tuple(column.name for column in model.output_columns) == (
         "order_id",
         "customer_id",
         "order_total",
@@ -170,7 +183,6 @@ def test_given_example_pipeline_when_compiling_then_resolves_inline_refs(
         "_replay_landed_at",
     )
 
-    desired_state: DesiredState = build_desired_state((compiled_pipeline,))
     assert (
         tuple(
             (object_.key.database, object_.key.object_type, object_.key.name)
@@ -187,7 +199,7 @@ def test_given_example_pipeline_when_compiling_then_resolves_inline_refs(
             description="compiles adopted source against its existing table name",
             pipeline_file_contents="""
 source:
-  kind: kafka
+  kind: stream_table
   name: orders
   table_name: orders_existing
   replay_boundary:
@@ -218,33 +230,32 @@ def test_given_adopted_source_when_compiling_then_it_uses_existing_table_relatio
     test_case: CompilePipelineAdoptedSourceTestCase,
     tmp_path: Path,
 ) -> None:
-    pipeline_file_path: Path = tmp_path / "pipelines" / "orders" / "pipeline.yml"
-    sql_file_path: Path = tmp_path / "pipelines" / "orders" / "orders_enriched.sql"
-    pipeline_file_path.parent.mkdir(parents=True, exist_ok=True)
-    pipeline_file_path.write_text(
-        test_case.pipeline_file_contents.strip() + "\n",
-        encoding="utf-8",
-    )
-    sql_file_path.write_text(
-        test_case.sql_contents.strip() + "\n",
-        encoding="utf-8",
+    pipeline_file_path: Path = write_registry_pipeline_project(
+        project_dir=tmp_path,
+        source_contents=test_case.pipeline_file_contents,
+        model_contents=test_case.sql_contents,
     )
 
     loaded_pipeline: LoadedPipeline = load_pipeline_file(pipeline_file_path)
 
-    compiled_pipeline: CompiledPipeline = compile_pipeline(loaded_pipeline)
+    compiled_pipeline: CompiledPipeline
+    realized_project: RealizedProject
+    compiled_pipeline, realized_project = compile_and_realize_pipeline(loaded_pipeline)
+    model: CompiledModel = compiled_pipeline.models[0]
 
-    assert isinstance(compiled_pipeline.source, CompiledExternalSource)
-    assert compiled_pipeline.relation_names == {
+    assert isinstance(compiled_pipeline.source.source, ExternalTableSourceStep)
+    assert {
+        key.name: name for key, name in realized_project.relation_name_by_logical_key.items()
+    } == {
         "orders": test_case.expected_source_relation_name,
         "orders_enriched": "tbl__orders_enriched",
     }
     assert (
         f"FROM {test_case.expected_source_relation_name}"
-        in compiled_pipeline.transforms[0].resolved_query
+        in realized_project.resolved_query_by_model_key[model.key]
     )
 
-    desired_state: DesiredState = build_desired_state((compiled_pipeline,))
+    desired_state: DesiredState = realized_project.desired_state
 
     assert tuple(object_.key.name for object_ in desired_state.objects) == (
         "mv__orders_enriched",
@@ -275,13 +286,10 @@ def test_given_inline_transform_sql_when_compiling_then_it_derives_expected_colu
 ) -> None:
     loaded_pipeline: LoadedPipeline = build_inline_sql_pipeline(test_case.transform_query)
 
-    compiled_pipeline: CompiledPipeline = compile_pipeline(loaded_pipeline)
+    compiled_pipeline: CompiledPipeline = compile_test_pipeline(loaded_pipeline)
 
     assert (
-        tuple(
-            (column.name, column.type)
-            for column in compiled_pipeline.transforms[0].target_table.columns
-        )
+        tuple((column.name, column.type) for column in compiled_pipeline.models[0].output_columns)
         == test_case.expected_output_columns
     )
 
@@ -294,7 +302,7 @@ def test_given_inline_transform_sql_when_compiling_then_it_derives_expected_colu
             sql_relative_path="sql/prices.sql",
             sql_contents='SELECT CAST(kafka_value AS UInt64) AS order_id FROM __ref("orders")',
             expected_resolved_query=(
-                "SELECT CAST(kafka_value AS UInt64) AS order_id FROM raw__orders"
+                "SELECT\n  CAST(kafka_value AS UInt64) AS order_id\nFROM raw__orders"
             ),
         )
     ],
@@ -310,30 +318,32 @@ def test_given_transform_sql_file_when_compiling_then_loads_sql_relative_to_pipe
         test_case.sql_contents,
     )
 
-    compiled_pipeline: CompiledPipeline = compile_pipeline(loaded_pipeline)
+    compiled_pipeline: CompiledPipeline
+    realized_project: RealizedProject
+    compiled_pipeline, realized_project = compile_and_realize_pipeline(loaded_pipeline)
 
-    assert compiled_pipeline.transforms[0].resolved_query == test_case.expected_resolved_query
+    assert (
+        realized_project.resolved_query_by_model_key[compiled_pipeline.models[0].key]
+        == test_case.expected_resolved_query
+    )
 
 
 @pytest.mark.parametrize(
     "test_case",
     [
         CompilePipelineReplayLineageModeTestCase(
-            description="uses project replay lineage mode when pipeline does not override it",
-            pipeline_replay_lineage_mode=None,
-            project_replay_lineage_mode=ReplayLineageMode.TIMESTAMP,
+            description="derives timestamp lineage from the managed source boundary",
+            replay_boundary_mode=ReplayBoundaryMode.TIMESTAMP,
             expected_effective_replay_lineage_mode=ReplayLineageMode.TIMESTAMP,
         ),
         CompilePipelineReplayLineageModeTestCase(
-            description="pipeline replay lineage mode overrides project default",
-            pipeline_replay_lineage_mode=ReplayLineageMode.LANDED_AT,
-            project_replay_lineage_mode=ReplayLineageMode.TIMESTAMP,
+            description="derives landed-at lineage from the managed source boundary",
+            replay_boundary_mode=ReplayBoundaryMode.LANDED_AT,
             expected_effective_replay_lineage_mode=ReplayLineageMode.LANDED_AT,
         ),
         CompilePipelineReplayLineageModeTestCase(
-            description="falls back to kafka offsets when no project default exists",
-            pipeline_replay_lineage_mode=None,
-            project_replay_lineage_mode=None,
+            description="defaults a programmatic managed source without a boundary to offsets",
+            replay_boundary_mode=None,
             expected_effective_replay_lineage_mode=ReplayLineageMode.OFFSETS,
         ),
     ],
@@ -345,27 +355,126 @@ def test_given_loaded_pipeline_when_compiling_then_it_resolves_effective_replay_
     base_loaded_pipeline: LoadedPipeline = build_inline_sql_pipeline(
         transform_query='SELECT CAST(order_id AS UInt64) AS order_id FROM __ref("orders")'
     )
+    source: KafkaLandingStep = cast(KafkaLandingStep, base_loaded_pipeline.pipeline.source)
+    boundary_by_mode: dict[ReplayBoundaryMode | str | None, ReplayBoundary | None] = {
+        None: None,
+        ReplayBoundaryMode.TIMESTAMP: ReplayBoundary(
+            mode=ReplayBoundaryMode.TIMESTAMP,
+            columns=ReplayBoundaryColumns(),
+        ),
+        ReplayBoundaryMode.LANDED_AT: ReplayBoundary(
+            mode=ReplayBoundaryMode.LANDED_AT,
+            columns=ReplayBoundaryColumns(),
+        ),
+    }
     pipeline: Pipeline = replace(
         base_loaded_pipeline.pipeline,
-        replay_lineage_mode=test_case.pipeline_replay_lineage_mode,
+        source=replace(source, replay_boundary=boundary_by_mode[test_case.replay_boundary_mode]),
     )
-    project_by_replay_lineage_mode: dict[ReplayLineageMode | str | None, Project | None] = {
-        None: None,
-        ReplayLineageMode.TIMESTAMP: Project(replay_lineage_mode=ReplayLineageMode.TIMESTAMP),
-    }
-    project: Project | None = project_by_replay_lineage_mode[test_case.project_replay_lineage_mode]
     loaded_pipeline: LoadedPipeline = LoadedPipeline(
         pipeline=pipeline,
         file_path=base_loaded_pipeline.file_path,
-        project=project,
+        project=None,
     )
 
-    compiled_pipeline: CompiledPipeline = compile_pipeline(loaded_pipeline)
+    compiled_pipeline: CompiledPipeline = compile_test_pipeline(loaded_pipeline)
 
     assert (
         compiled_pipeline.effective_replay_lineage_mode
         == test_case.expected_effective_replay_lineage_mode
     )
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CompilePipelineReplayPolicyPrecedenceTestCase(
+            description="uses project replay policy when narrower scopes omit it",
+            model_policy=None,
+            pipeline_policy=None,
+            project_policy=ReplayOnChangePolicy(
+                breaking=ReplayOnChangeRule(mode=ReplayOnChangeMode.FULL)
+            ),
+            expected_policy=ReplayOnChangePolicy(
+                breaking=ReplayOnChangeRule(mode=ReplayOnChangeMode.FULL)
+            ),
+        ),
+        CompilePipelineReplayPolicyPrecedenceTestCase(
+            description="pipeline replay policy overrides project default",
+            model_policy=None,
+            pipeline_policy=ReplayOnChangePolicy(
+                breaking=ReplayOnChangeRule(
+                    mode=ReplayOnChangeMode.BOUNDED,
+                    lookback_seconds=3600,
+                )
+            ),
+            project_policy=ReplayOnChangePolicy(
+                breaking=ReplayOnChangeRule(mode=ReplayOnChangeMode.FULL)
+            ),
+            expected_policy=ReplayOnChangePolicy(
+                breaking=ReplayOnChangeRule(
+                    mode=ReplayOnChangeMode.BOUNDED,
+                    lookback_seconds=3600,
+                )
+            ),
+        ),
+        CompilePipelineReplayPolicyPrecedenceTestCase(
+            description="model replay policy overrides pipeline and project defaults",
+            model_policy=ReplayOnChangePolicy(
+                non_breaking=ReplayOnChangeRule(
+                    mode=ReplayOnChangeMode.BOUNDED,
+                    lookback_seconds=300,
+                )
+            ),
+            pipeline_policy=ReplayOnChangePolicy(
+                breaking=ReplayOnChangeRule(
+                    mode=ReplayOnChangeMode.BOUNDED,
+                    lookback_seconds=3600,
+                )
+            ),
+            project_policy=ReplayOnChangePolicy(
+                breaking=ReplayOnChangeRule(mode=ReplayOnChangeMode.FULL)
+            ),
+            expected_policy=ReplayOnChangePolicy(
+                non_breaking=ReplayOnChangeRule(
+                    mode=ReplayOnChangeMode.BOUNDED,
+                    lookback_seconds=300,
+                )
+            ),
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_replay_policy_scopes_when_compiling_then_model_pipeline_project_precedence_applies(
+    test_case: CompilePipelineReplayPolicyPrecedenceTestCase,
+) -> None:
+    base_loaded_pipeline: LoadedPipeline = build_inline_sql_pipeline(
+        transform_query=(
+            "SELECT order_id::UInt64 AS order_id, "
+            "_replay_partition::Int32 AS _replay_partition, "
+            "_replay_offset::Int64 AS _replay_offset "
+            'FROM __ref("orders")'
+        )
+    )
+    pipeline: Pipeline = replace(
+        base_loaded_pipeline.pipeline,
+        transforms=(
+            replace(
+                base_loaded_pipeline.pipeline.transforms[0],
+                replay_on_change=test_case.model_policy,
+            ),
+        ),
+        replay_on_change=test_case.pipeline_policy,
+    )
+    compiled_pipeline: CompiledPipeline = compile_test_pipeline(
+        replace(
+            base_loaded_pipeline,
+            pipeline=pipeline,
+            project=Project(replay_on_change=test_case.project_policy),
+        )
+    )
+
+    assert compiled_pipeline.models[0].replay_on_change == test_case.expected_policy
 
 
 @pytest.mark.parametrize(
@@ -386,7 +495,7 @@ def test_given_loaded_pipeline_when_compiling_then_it_resolves_effective_replay_
             description="pipeline unsupported replay behavior overrides project default",
             transform_unsupported_replay_behavior=None,
             pipeline_unsupported_replay_behavior=BoundedReplayFallback.BOUNDED_WITHOUT_HISTORY,
-            project_unsupported_replay_behavior=BoundedReplayFallback.FULL_REFRESH,
+            project_unsupported_replay_behavior=BoundedReplayFallback.FULL,
             expected_effective_unsupported_replay_behavior=(
                 BoundedReplayFallback.BOUNDED_WITHOUT_HISTORY
             ),
@@ -396,8 +505,8 @@ def test_given_loaded_pipeline_when_compiling_then_it_resolves_effective_replay_
                 "transform unsupported replay behavior overrides pipeline and project defaults"
             ),
             transform_unsupported_replay_behavior=BoundedReplayFallback.BOUNDED_WITHOUT_HISTORY,
-            pipeline_unsupported_replay_behavior=BoundedReplayFallback.FULL_REFRESH,
-            project_unsupported_replay_behavior=BoundedReplayFallback.FULL_REFRESH,
+            pipeline_unsupported_replay_behavior=BoundedReplayFallback.FULL,
+            project_unsupported_replay_behavior=BoundedReplayFallback.FULL,
             expected_effective_unsupported_replay_behavior=(
                 BoundedReplayFallback.BOUNDED_WITHOUT_HISTORY
             ),
@@ -433,24 +542,18 @@ def test_given_loaded_pipeline_when_compiling_then_it_resolves_effective_unsuppo
         BoundedReplayFallback.BOUNDED_WITHOUT_HISTORY: Project(
             bounded_replay_fallback=BoundedReplayFallback.BOUNDED_WITHOUT_HISTORY
         ),
-        BoundedReplayFallback.FULL_REFRESH: Project(
-            bounded_replay_fallback=BoundedReplayFallback.FULL_REFRESH
-        ),
+        BoundedReplayFallback.FULL: Project(bounded_replay_fallback=BoundedReplayFallback.FULL),
     }
     project: Project | None = project_by_unsupported_replay_behavior[
         test_case.project_unsupported_replay_behavior
     ]
 
-    compiled_pipeline: CompiledPipeline = compile_pipeline(
+    compiled_pipeline: CompiledPipeline = compile_test_pipeline(
         LoadedPipeline(pipeline=pipeline, file_path=Path("pipeline.yml"), project=project)
     )
 
     assert (
-        compiled_pipeline.transforms[0].effective_bounded_replay_fallback
-        == test_case.expected_effective_unsupported_replay_behavior
-    )
-    assert (
-        compiled_pipeline.transforms[0].target_table.bounded_replay_fallback
+        compiled_pipeline.models[0].effective_bounded_replay_fallback
         == test_case.expected_effective_unsupported_replay_behavior
     )
 
@@ -508,6 +611,20 @@ def test_given_loaded_pipeline_when_compiling_then_it_resolves_effective_unsuppo
             expected_replay_anchor_eligible=False,
         ),
         CompilePipelineReplayAnchorEligibilityTestCase(
+            description="marks ClickHouse aggregate-state combinator as non-anchor-eligible",
+            transform_query=(
+                "SELECT CAST(order_id AS UInt64) AS order_id, "
+                "CAST(sumIfState(order_id, 1) AS AggregateFunction(sum, UInt64)) AS total_state, "
+                "CAST(_replay_partition AS UInt64) AS _replay_partition, "
+                "CAST(_replay_offset AS UInt64) AS _replay_offset "
+                'FROM __ref("orders")'
+            ),
+            replay_lineage_mode=ReplayLineageMode.OFFSETS,
+            expected_has_aggregate_semantics=True,
+            expected_preserves_required_lineage=True,
+            expected_replay_anchor_eligible=False,
+        ),
+        CompilePipelineReplayAnchorEligibilityTestCase(
             description="marks transform missing required lineage as non-anchor-eligible",
             transform_query='SELECT CAST(order_id AS UInt64) AS order_id FROM __ref("orders")',
             replay_lineage_mode=ReplayLineageMode.OFFSETS,
@@ -540,6 +657,10 @@ def test_given_transform_when_compiling_then_it_sets_replay_anchor_inference_fla
             topic="source.orders",
             consumer_group="streambuild_tmp_pipeline_orders",
         ),
+        replay_boundary=ReplayBoundary(
+            mode=ReplayBoundaryMode(test_case.replay_lineage_mode),
+            columns=ReplayBoundaryColumns(),
+        ),
     )
     supporting_transforms: list[TransformStep] = [
         TransformStep(
@@ -563,7 +684,6 @@ def test_given_transform_when_compiling_then_it_sets_replay_anchor_inference_fla
         name="tmp_pipeline",
         source=source,
         transforms=[*supporting_transforms, transform],
-        replay_lineage_mode=test_case.replay_lineage_mode,
     )
     loaded_pipeline: LoadedPipeline = LoadedPipeline(
         pipeline=pipeline,
@@ -571,16 +691,15 @@ def test_given_transform_when_compiling_then_it_sets_replay_anchor_inference_fla
         project=None,
     )
 
-    compiled_pipeline: CompiledPipeline = compile_pipeline(loaded_pipeline)
-    compiled_transform: CompiledTransformStep = compiled_pipeline.transforms[-1]
+    compiled_pipeline: CompiledPipeline = compile_test_pipeline(loaded_pipeline)
+    compiled_model: CompiledModel = compiled_pipeline.models[-1]
 
-    assert compiled_transform.has_mutable_refs is test_case.expected_has_mutable_refs
-    assert compiled_transform.has_aggregate_semantics is test_case.expected_has_aggregate_semantics
+    assert compiled_model.has_mutable_refs is test_case.expected_has_mutable_refs
+    assert compiled_model.has_aggregate_semantics is test_case.expected_has_aggregate_semantics
     assert (
-        compiled_transform.preserves_required_lineage
-        is test_case.expected_preserves_required_lineage
+        compiled_model.preserves_required_lineage is test_case.expected_preserves_required_lineage
     )
-    assert compiled_transform.replay_anchor_eligible is test_case.expected_replay_anchor_eligible
+    assert compiled_model.replay_anchor_eligible is test_case.expected_replay_anchor_eligible
 
 
 @pytest.mark.parametrize(
@@ -597,6 +716,10 @@ def test_given_transform_when_compiling_then_it_sets_replay_anchor_inference_fla
                         topic="source.orders",
                         consumer_group="streambuild_tmp_pipeline_orders",
                     ),
+                    replay_boundary=ReplayBoundary(
+                        mode=ReplayBoundaryMode.LANDED_AT,
+                        columns=ReplayBoundaryColumns(),
+                    ),
                 ),
                 transforms=[
                     TransformStep(
@@ -611,7 +734,6 @@ def test_given_transform_when_compiling_then_it_sets_replay_anchor_inference_fla
                         ),
                     )
                 ],
-                replay_lineage_mode=ReplayLineageMode.LANDED_AT,
             ),
             expected_query_fragments=("_replay_landed_at",),
             expected_output_column_names=("order_id", "_replay_landed_at"),
@@ -642,7 +764,6 @@ def test_given_transform_when_compiling_then_it_sets_replay_anchor_inference_fla
                         ),
                     )
                 ],
-                replay_lineage_mode=ReplayLineageMode.TIMESTAMP,
             ),
             expected_query_fragments=("_replay_timestamp", "event_timestamp"),
             expected_output_column_names=("order_id", "_replay_timestamp"),
@@ -673,7 +794,6 @@ def test_given_transform_when_compiling_then_it_sets_replay_anchor_inference_fla
                         ),
                     )
                 ],
-                replay_lineage_mode=ReplayLineageMode.CURSOR,
             ),
             expected_query_fragments=("_replay_cursor", "event_cursor"),
             expected_output_column_names=("order_id", "_replay_cursor"),
@@ -684,19 +804,21 @@ def test_given_transform_when_compiling_then_it_sets_replay_anchor_inference_fla
 def test_given_pipeline_when_compiling_then_it_exposes_the_replay_surface(
     test_case: CompilePipelineReplaySurfaceTestCase,
 ) -> None:
-    compiled_pipeline: CompiledPipeline = compile_pipeline(
-        LoadedPipeline(
-            pipeline=test_case.pipeline,
-            file_path=Path("tests/fixtures/basic_project/pipelines/orders/pipeline.yml"),
-            project=None,
-        )
+    loaded_pipeline: LoadedPipeline = LoadedPipeline(
+        pipeline=test_case.pipeline,
+        file_path=Path("tests/fixtures/basic_project/pipelines/orders/pipeline.yml"),
+        project=None,
     )
+    compiled_pipeline: CompiledPipeline
+    realized_project: RealizedProject
+    compiled_pipeline, realized_project = compile_and_realize_pipeline(loaded_pipeline)
+    model: CompiledModel = compiled_pipeline.models[0]
 
     expected_query_fragment: str
     for expected_query_fragment in test_case.expected_query_fragments:
-        assert expected_query_fragment in compiled_pipeline.transforms[0].resolved_query
+        assert expected_query_fragment in realized_project.resolved_query_by_model_key[model.key]
     assert (
-        tuple(column.name for column in compiled_pipeline.transforms[0].target_table.columns)
+        tuple(column.name for column in model.output_columns)
         == test_case.expected_output_column_names
     )
 
@@ -735,7 +857,7 @@ def test_given_pipeline_when_compiling_then_it_exposes_the_replay_surface(
 def test_given_pipeline_when_compiling_then_it_resolves_expected_replay_lineage_mode(
     test_case: CompilePipelineReplayLineageModeResolutionTestCase,
 ) -> None:
-    compiled_pipeline: CompiledPipeline = compile_pipeline(
+    compiled_pipeline: CompiledPipeline = compile_test_pipeline(
         LoadedPipeline(
             pipeline=test_case.pipeline,
             file_path=Path("tests/fixtures/basic_project/pipelines/orders/pipeline.yml"),
@@ -763,7 +885,7 @@ def test_given_transform_without_source_ref_when_compiling_then_raises_value_err
     loaded_pipeline: LoadedPipeline = build_missing_source_ref_pipeline(test_case.transform_query)
 
     with pytest.raises(test_case.expected_error_type):
-        compile_pipeline(loaded_pipeline)
+        compile_test_pipeline(loaded_pipeline)
 
 
 @pytest.mark.parametrize(
@@ -787,7 +909,7 @@ def test_given_additional_ref_without_ref_type_when_compiling_then_it_raises_val
     loaded_pipeline: LoadedPipeline = build_inline_sql_pipeline(test_case.transform_query)
 
     with pytest.raises(test_case.expected_error_type, match=test_case.expected_error_fragment):
-        compile_pipeline(loaded_pipeline)
+        compile_test_pipeline(loaded_pipeline)
 
 
 @pytest.mark.parametrize(
@@ -810,9 +932,9 @@ def test_given_repeated_driving_source_refs_when_compiling_then_it_treats_them_a
 ) -> None:
     loaded_pipeline: LoadedPipeline = build_inline_sql_pipeline(test_case.transform_query)
 
-    compiled_pipeline: CompiledPipeline = compile_pipeline(loaded_pipeline)
+    compiled_pipeline: CompiledPipeline = compile_test_pipeline(loaded_pipeline)
 
-    assert compiled_pipeline.transforms[0].transform.name == test_case.expected_target_name
+    assert compiled_pipeline.models[0].transform.name == test_case.expected_target_name
 
 
 @pytest.mark.parametrize(
@@ -841,7 +963,7 @@ def test_given_invalid_inline_transform_sql_when_compiling_then_it_raises_a_clea
     loaded_pipeline: LoadedPipeline = build_inline_sql_pipeline(test_case.transform_query)
 
     with pytest.raises(test_case.expected_error_type) as error_info:
-        compile_pipeline(loaded_pipeline)
+        compile_test_pipeline(loaded_pipeline)
 
     error_message: str = str(error_info.value)
     for expected_fragment in test_case.expected_message_fragments:
@@ -877,7 +999,7 @@ def test_given_invalid_transform_order_by_when_compiling_then_it_raises_a_clear_
     )
 
     with pytest.raises(test_case.expected_error_type) as error_info:
-        compile_pipeline(loaded_pipeline)
+        compile_test_pipeline(loaded_pipeline)
 
     error_message: str = str(error_info.value)
     for expected_fragment in test_case.expected_message_fragments:
@@ -957,23 +1079,23 @@ def test_given_sql_model_without_replay_timestamp_when_compiling_then_it_raises_
     test_case: CompilePipelineSqlModelDefaultOrderByTestCase,
     tmp_path: Path,
 ) -> None:
-    pipeline_file_path: Path = tmp_path / "pipelines" / "orders" / "pipeline.yml"
-    sql_file_path: Path = tmp_path / "pipelines" / "orders" / "orders_enriched.sql"
-    write_pipeline_file(
-        pipeline_file_path,
-        """
+    pipeline_file_path: Path = write_registry_pipeline_project(
+        project_dir=tmp_path,
+        source_contents="""
         source:
-          kind: kafka
           name: orders
+          kind: kafka
           broker_list: kafka:9092
           topic: source.orders
+          replay_boundary:
+            mode: offsets
         """,
+        model_contents=test_case.sql_contents,
     )
-    write_pipeline_file(sql_file_path, test_case.sql_contents)
     loaded_pipeline: LoadedPipeline = load_pipeline_file(pipeline_file_path)
 
     with pytest.raises(test_case.expected_error_type) as error_info:
-        compile_pipeline(loaded_pipeline)
+        compile_test_pipeline(loaded_pipeline)
 
     error_message: str = str(error_info.value)
     for expected_fragment in test_case.expected_message_fragments:
@@ -1010,7 +1132,7 @@ def test_given_invalid_transform_partition_by_when_compiling_then_it_raises_a_cl
     )
 
     with pytest.raises(test_case.expected_error_type) as error_info:
-        compile_pipeline(loaded_pipeline)
+        compile_test_pipeline(loaded_pipeline)
 
     error_message: str = str(error_info.value)
     for expected_fragment in test_case.expected_message_fragments:
@@ -1046,7 +1168,7 @@ def test_given_invalid_transform_ttl_when_compiling_then_it_raises_a_clear_contr
     )
 
     with pytest.raises(test_case.expected_error_type) as error_info:
-        compile_pipeline(loaded_pipeline)
+        compile_test_pipeline(loaded_pipeline)
 
     error_message: str = str(error_info.value)
     for expected_fragment in test_case.expected_message_fragments:

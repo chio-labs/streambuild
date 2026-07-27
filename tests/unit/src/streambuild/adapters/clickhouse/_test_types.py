@@ -37,6 +37,21 @@ class CatalogInspectionTestCase:
 
 
 @dataclass(frozen=True)
+class ClickHousePublishCapabilitiesTestCase:
+    description: str
+    expected_stable_logical_bindings: bool
+    expected_per_relation_atomic_replace: bool
+    expected_graph_atomic_publish: bool
+
+
+@dataclass(frozen=True)
+class ClickHouseCleanupProtectionTestCase:
+    description: str
+    active_relation_name: str
+    expected_error_fragment: str
+
+
+@dataclass(frozen=True)
 class BuildInspectedManagedTableStateTestCase:
     description: str
     system_rows: tuple[tuple[str, str], ...]
@@ -144,3 +159,35 @@ class RenderScalarReplayBoundaryTestCase:
     lower_bound_value: str
     expected_lower_fragment: str
     expected_upper_fragment: str
+
+
+@dataclass(frozen=True)
+class ClickHouseConnectionConfigErrorTestCase:
+    description: str
+    values: tuple[tuple[str, object], ...]
+    expected_error_fragment: str
+
+
+@dataclass(frozen=True)
+class ClickHouseManagedSourceRealizationTestCase:
+    description: str
+    expected_relation_name: str
+    expected_resource_names: tuple[str, ...]
+    expected_consumer_group: str
+
+
+@dataclass(frozen=True)
+class ClickHouseSourceRealizationErrorTestCase:
+    description: str
+    source_format: str
+    settings: tuple[tuple[str, str], ...]
+    expected_error_type: type[Exception]
+    expected_error_fragment: str
+
+
+@dataclass(frozen=True)
+class ClickHouseModelRealizationTestCase:
+    description: str
+    expected_relation_name: str
+    expected_resource_names: tuple[str, ...]
+    expected_source_relation_name: str

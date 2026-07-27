@@ -23,11 +23,12 @@ class SourceKind(StrEnum):
 class ReplayBoundaryMode(StrEnum):
     OFFSETS = "offsets"
     TIMESTAMP = "timestamp"
+    LANDED_AT = "landed_at"
     CURSOR = "cursor"
 
 
 class BoundedReplayFallback(StrEnum):
-    FULL_REFRESH = "full_refresh"
+    FULL = "full"
     BOUNDED_WITHOUT_HISTORY = "bounded_without_history"
 
 
@@ -41,7 +42,7 @@ class SqlRelationType(StrEnum):
     REF = "ref"
 
 
-class SchemaChangeBackfillMode(StrEnum):
+class ReplayOnChangeMode(StrEnum):
     FULL = "full"
     BOUNDED = "bounded"
 

@@ -1,9 +1,10 @@
 from dataclasses import dataclass
 
-from streambuild.compiler.discovery.models import Pipeline
+from streambuild.compiler.discovery.models import Pipeline, ReplayOnChangePolicy
 from streambuild.compiler.discovery.types import (
     BoundedReplayFallback,
     ReplayAnchorMode,
+    ReplayBoundaryMode,
     ReplayLineageMode,
 )
 
@@ -123,8 +124,7 @@ class CompilePipelineRepeatedSourceRefTestCase:
 @dataclass(frozen=True)
 class CompilePipelineReplayLineageModeTestCase:
     description: str
-    pipeline_replay_lineage_mode: ReplayLineageMode | str | None
-    project_replay_lineage_mode: ReplayLineageMode | str | None
+    replay_boundary_mode: ReplayBoundaryMode | str | None
     expected_effective_replay_lineage_mode: ReplayLineageMode
 
 
@@ -135,6 +135,15 @@ class CompilePipelineUnsupportedReplayBehaviorTestCase:
     pipeline_unsupported_replay_behavior: BoundedReplayFallback | str | None
     project_unsupported_replay_behavior: BoundedReplayFallback | str | None
     expected_effective_unsupported_replay_behavior: BoundedReplayFallback
+
+
+@dataclass(frozen=True)
+class CompilePipelineReplayPolicyPrecedenceTestCase:
+    description: str
+    model_policy: ReplayOnChangePolicy | None
+    pipeline_policy: ReplayOnChangePolicy | None
+    project_policy: ReplayOnChangePolicy | None
+    expected_policy: ReplayOnChangePolicy
 
 
 @dataclass(frozen=True)

@@ -2,7 +2,7 @@
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.compiler.discovery.types import ReplayLineageMode
-from streambuild.compiler.metadata_state.models import DeploymentWatermarkRecord
+from streambuild.compiler.planner.models import DeploymentWatermarkRecord
 from streambuild.executor.backfill._helpers.bootstrap import execute_backfill_bootstrap
 from streambuild.executor.backfill._helpers.replay import (
     execute_offset_replay,

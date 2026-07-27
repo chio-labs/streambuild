@@ -24,23 +24,30 @@ from streambuild.compiler.audit_discovery.models import (
 from streambuild.compiler.compile.main._extract_refs import extract_refs
 from streambuild.compiler.compile.models import ParsedRef
 from streambuild.compiler.discovery.types import SqlRelationType
-from streambuild.compiler.macros.main._expand_macro_calls import expand_project_sql_macros
+from streambuild.compiler.macros.main._expand_macro_calls import expand_macro_calls
+from streambuild.compiler.macros.models import MacroContext, MacroRegistry
 
 
-def parse_sql_audit_file(file_path: Path) -> tuple[LoadedSqlAudit, ...]:
+def parse_sql_audit_file(
+    *,
+    file_path: Path,
+    contents: str | None = None,
+    macro_registry: MacroRegistry | None = None,
+    macro_context: MacroContext | None = None,
+) -> tuple[LoadedSqlAudit, ...]:
     """Parse one authored SQL audit file into one or more discovered audit specs."""
 
-    contents: str = file_path.read_text(encoding="utf-8")
-    matched_blocks: tuple[tuple[int, str, str], ...] = tuple(
-        (match.start(), match.group("header"), match.group("sql"))
-        for match in AUDIT_BLOCK_PATTERN.finditer(contents)
+    source_contents: str = file_path.read_text(encoding="utf-8") if contents is None else contents
+    matched_blocks: tuple[tuple[int, int, str, str], ...] = tuple(
+        (match.start(), match.start("sql"), match.group("header"), match.group("sql"))
+        for match in AUDIT_BLOCK_PATTERN.finditer(source_contents)
     )
     if not matched_blocks:
         raise SqlAuditParseError(
             f"SQL audit '{file_path}' must start with an AUDIT(...) header as the first "
             "non-whitespace content"
         )
-    if contents[: matched_blocks[0][0]].strip():
+    if source_contents[: matched_blocks[0][0]].strip():
         raise SqlAuditParseError(
             f"SQL audit '{file_path}' must not contain content before the first AUDIT(...) block"
         )
@@ -49,13 +56,27 @@ def parse_sql_audit_file(file_path: Path) -> tuple[LoadedSqlAudit, ...]:
     header: str
     sql: str
     _start_index: int
-    for block_index, (_start_index, header, sql) in enumerate(matched_blocks, start=1):
+    sql_start_index: int
+    for block_index, (_start_index, sql_start_index, header, sql) in enumerate(
+        matched_blocks, start=1
+    ):
+        leading_length: int = len(sql) - len(sql.lstrip())
+        source_line: int
+        source_column: int
+        source_line, source_column = _source_position(
+            contents=source_contents,
+            index=sql_start_index + leading_length,
+        )
         loaded_audits.append(
             _parse_concrete_audit_block(
                 file_path=file_path,
                 header=header,
                 sql=sql,
                 audit_index=block_index,
+                macro_registry=macro_registry,
+                macro_context=macro_context,
+                source_line=source_line,
+                source_column=source_column,
             )
         )
     if len(loaded_audits) > 1:
@@ -63,13 +84,19 @@ def parse_sql_audit_file(file_path: Path) -> tuple[LoadedSqlAudit, ...]:
     return tuple(loaded_audits)
 
 
-def parse_generic_sql_audit_definition(file_path: Path) -> LoadedGenericSqlAuditDefinition:
+def parse_generic_sql_audit_definition(
+    *,
+    file_path: Path,
+    contents: str | None = None,
+    macro_registry: MacroRegistry | None = None,
+    macro_context: MacroContext | None = None,
+) -> LoadedGenericSqlAuditDefinition:
     """Parse one generic SQL audit definition from `audits/generic/`."""
 
-    contents: str = file_path.read_text(encoding="utf-8")
-    matched_blocks: tuple[tuple[str, str], ...] = tuple(
-        (match.group("header"), match.group("sql"))
-        for match in AUDIT_BLOCK_PATTERN.finditer(contents)
+    source_contents: str = file_path.read_text(encoding="utf-8") if contents is None else contents
+    matched_blocks: tuple[tuple[int, str, str], ...] = tuple(
+        (match.start("sql"), match.group("header"), match.group("sql"))
+        for match in AUDIT_BLOCK_PATTERN.finditer(source_contents)
     )
     if len(matched_blocks) != 1:
         raise SqlAuditParseError(
@@ -77,7 +104,8 @@ def parse_generic_sql_audit_definition(file_path: Path) -> LoadedGenericSqlAudit
         )
     first_header: str
     first_sql: str
-    first_header, first_sql = matched_blocks[0]
+    first_sql_start: int
+    first_sql_start, first_header, first_sql = matched_blocks[0]
     header_values: dict[str, Any] = _parse_audit_header(
         header=first_header,
         file_path=file_path,
@@ -86,7 +114,21 @@ def parse_generic_sql_audit_definition(file_path: Path) -> LoadedGenericSqlAudit
         raise SqlAuditParseError(
             f"Generic SQL audit definition '{file_path}' must not define AUDIT() header fields"
         )
-    query: str = expand_project_sql_macros(sql=first_sql.strip(), file_path=file_path)
+    leading_length: int = len(first_sql) - len(first_sql.lstrip())
+    source_line: int
+    source_column: int
+    source_line, source_column = _source_position(
+        contents=source_contents,
+        index=first_sql_start + leading_length,
+    )
+    query: str = _expand_audit_query(
+        sql=first_sql.strip(),
+        file_path=file_path,
+        macro_registry=macro_registry,
+        macro_context=macro_context,
+        source_line=source_line,
+        source_column=source_column,
+    )
     if not query:
         raise SqlAuditParseError(
             f"Generic SQL audit definition '{file_path}' must define a query after AUDIT(...)"
@@ -107,13 +149,24 @@ def _parse_concrete_audit_block(
     header: str,
     sql: str,
     audit_index: int,
+    macro_registry: MacroRegistry | None,
+    macro_context: MacroContext | None,
+    source_line: int,
+    source_column: int,
 ) -> LoadedSqlAudit:
     header_values: dict[str, Any] = _parse_audit_header(header=header, file_path=file_path)
-    query: str = expand_project_sql_macros(sql=sql.strip(), file_path=file_path)
+    query: str = _expand_audit_query(
+        sql=sql.strip(),
+        file_path=file_path,
+        macro_registry=macro_registry,
+        macro_context=macro_context,
+        source_line=source_line,
+        source_column=source_column,
+    )
     if not query:
         raise SqlAuditParseError(f"SQL audit '{file_path}' must define a query after AUDIT(...)")
     _validate_single_query(file_path=file_path, sql=query)
-    parsed_refs: tuple[ParsedRef, ...] = tuple(extract_refs(query))
+    parsed_refs: tuple[ParsedRef, ...] = tuple(extract_refs(sql=query, source_path=file_path))
     if not parsed_refs:
         raise SqlAuditParseError(
             f"SQL audit '{file_path}' must reference at least one model with __ref(...)"
@@ -134,6 +187,33 @@ def _parse_concrete_audit_block(
         name=_parse_audit_name(header_values=header_values, file_path=file_path),
         audit_index=audit_index,
     )
+
+
+def _expand_audit_query(
+    *,
+    sql: str,
+    file_path: Path,
+    macro_registry: MacroRegistry | None,
+    macro_context: MacroContext | None,
+    source_line: int,
+    source_column: int,
+) -> str:
+    if macro_registry is None or macro_context is None:
+        return sql
+    return expand_macro_calls(
+        sql=sql,
+        file_path=file_path,
+        registry=macro_registry,
+        context=macro_context,
+        source_line=source_line,
+        source_column=source_column,
+    )
+
+
+def _source_position(*, contents: str, index: int) -> tuple[int, int]:
+    line: int = contents.count("\n", 0, index) + 1
+    previous_newline_index: int = contents.rfind("\n", 0, index)
+    return line, index - previous_newline_index
 
 
 def _parse_audit_header(*, header: str, file_path: Path) -> dict[str, Any]:

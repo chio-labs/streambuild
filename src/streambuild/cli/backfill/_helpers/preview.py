@@ -15,10 +15,13 @@ from streambuild.cli.plan.main._source_validation import (
 from streambuild.cli.plan.main._warnings import add_empty_replay_source_warnings
 from streambuild.cli.selection.main._selection import resolve_selection
 from streambuild.cli.selection.models import SelectionResolution
-from streambuild.compiler.compile.main.compile_pipeline import compile_pipeline
-from streambuild.compiler.compile.models import CompiledPipeline, DesiredState
-from streambuild.compiler.discovery.main.discover_pipelines import discover_pipelines
-from streambuild.compiler.discovery.models import LoadedPipeline
+from streambuild.compiler.compile.models import (
+    CompilerAdapterProfile,
+    DesiredState,
+)
+from streambuild.compiler.discovery.models import LoadedPipeline, LoadedProject
+from streambuild.compiler.pipeline.main.analyze_project import analyze_project
+from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.compiler.planner.main.load_actual_state_from_snapshot import (
     load_actual_state_from_snapshot,
 )
@@ -51,11 +54,17 @@ def build_backfill_preview_context(
     full_refresh: bool,
     start_time_utc: str | None,
     client: AdapterConnection,
+    loaded_project: LoadedProject | None,
+    adapter_profile: CompilerAdapterProfile,
 ) -> BackfillPreviewContext:
-    loaded_pipelines: list[LoadedPipeline] = discover_pipelines(pipelines_root)
-    compiled: list[CompiledPipeline] = [compile_pipeline(pipeline) for pipeline in loaded_pipelines]
+    analysis: CompileAnalysis = analyze_project(
+        pipelines_root=pipelines_root,
+        loaded_project=loaded_project,
+        adapter_profile=adapter_profile,
+    )
+    loaded_pipelines: tuple[LoadedPipeline, ...] = analysis.compile_inputs.pipelines
     resolved_database: str = resolve_default_database(
-        loaded_pipelines=loaded_pipelines, override=database
+        loaded_pipelines=list(loaded_pipelines), override=database
     )
     snapshot: PlanningWarehouseSnapshot = load_planning_warehouse_snapshot(
         client=client,
@@ -71,12 +80,16 @@ def build_backfill_preview_context(
     )
     validate_declared_external_sources(
         catalog=snapshot.catalog,
-        compiled_pipelines=tuple(compiled),
+        external_source_replay_configs=(
+            analysis.realized_project.desired_state.external_source_replay_configs
+        ),
         database=resolved_database,
     )
     resolved_metadata_database: str = metadata_database or resolved_database
     selection: SelectionResolution = resolve_selection(
-        compiled_pipelines=tuple(compiled), selectors=selectors
+        realized_project=analysis.realized_project,
+        graph=analysis.graph,
+        selectors=selectors,
     )
     desired_state: DesiredState = selection.desired_state
     actual_state: ActualState = load_actual_state_from_snapshot(

@@ -2,9 +2,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from streambuild.compiler.compile.main.compile_pipeline import compile_pipeline
-from streambuild.compiler.compile.models import CompiledPipeline
-from streambuild.compiler.discovery.main.discover_pipelines import discover_pipelines
+from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
+from streambuild.cli.entry._helpers.compiler_profile import build_compiler_adapter_profile
+from streambuild.compiler.compile.main._compile_pipeline import compile_pipeline
+from streambuild.compiler.compile.models import (
+    CompiledPipeline,
+    CompiledProject,
+    CompilerAdapterProfile,
+)
+from streambuild.compiler.discovery.main._discover_pipelines import discover_pipelines
 from streambuild.compiler.discovery.models import (
     ExternalTableSourceStep,
     LoadedPipeline,
@@ -13,14 +19,22 @@ from streambuild.compiler.discovery.models import (
     ReplayBoundaryColumns,
     TransformStep,
 )
-from streambuild.compiler.discovery.types import ReplayBoundaryMode, ReplayLineageMode, SourceKind
+from streambuild.compiler.discovery.types import ReplayBoundaryMode, SourceKind
+from streambuild.compiler.pipeline.main._realize_project import realize_project
+from streambuild.compiler.pipeline.models import RealizedProject
+from streambuild.compiler.sql_analysis.classes.sql_model_analyzer import SqlModelAnalyzer
+from tests.unit.src.streambuild.compiler.compile.helpers import build_realization_analyzer
 
 SELECTOR_PIPELINES_ROOT: Path = Path("tests/fixtures/selector_project/pipelines")
 
 
 def compile_selector_project_pipelines() -> tuple[CompiledPipeline, ...]:
     loaded_pipelines: list[LoadedPipeline] = discover_pipelines(SELECTOR_PIPELINES_ROOT)
-    return tuple(compile_pipeline(loaded_pipeline) for loaded_pipeline in loaded_pipelines)
+    sql_analyzer: SqlModelAnalyzer = SqlModelAnalyzer(dialect="clickhouse")
+    return tuple(
+        compile_pipeline(loaded_pipeline=loaded_pipeline, sql_analyzer=sql_analyzer)
+        for loaded_pipeline in loaded_pipelines
+    )
 
 
 def build_compiled_external_source_pipeline() -> CompiledPipeline:
@@ -52,12 +66,30 @@ def build_compiled_external_source_pipeline() -> CompiledPipeline:
                 ),
             )
         ],
-        replay_lineage_mode=ReplayLineageMode.OFFSETS,
     )
     return compile_pipeline(
-        LoadedPipeline(
+        loaded_pipeline=LoadedPipeline(
             pipeline=pipeline,
             file_path=Path("tests/fixtures/selector_project/pipelines/orders/pipeline.yml"),
             project=None,
-        )
+        ),
+        sql_analyzer=SqlModelAnalyzer(dialect="clickhouse"),
+    )
+
+
+def build_realized_external_source_project() -> RealizedProject:
+    compiled_pipeline: CompiledPipeline = build_compiled_external_source_pipeline()
+    compiled_project: CompiledProject = CompiledProject(
+        sources=(compiled_pipeline.source,),
+        models=compiled_pipeline.models,
+        pipelines=(compiled_pipeline,),
+        tests=(),
+        test_cases=(),
+        audits=(),
+    )
+    adapter_profile: CompilerAdapterProfile = build_compiler_adapter_profile(ClickHouseAdapter())
+    return realize_project(
+        project=compiled_project,
+        adapter_profile=adapter_profile,
+        sql_analyzer=build_realization_analyzer(compiled_project),
     )

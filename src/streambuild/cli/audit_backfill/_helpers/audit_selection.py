@@ -1,12 +1,8 @@
 """Audit selection helpers for the audit backfill command."""
 
-from pathlib import Path
-
-from streambuild.compiler.audit_discovery.main.discover_sql_audits import discover_sql_audits
 from streambuild.compiler.audit_discovery.models import LoadedSqlAudit
-from streambuild.compiler.auditing.main.validated_sql_audits import validated_sql_audits
 from streambuild.compiler.compile.main.transform_table_name import transform_table_name
-from streambuild.compiler.compile.models import CompiledPipeline, CompiledTransformStep
+from streambuild.compiler.compile.models import CompiledModel, CompiledPipeline
 from streambuild.executor.audit_backfill.models import (
     LoadedAuditDeployment,
 )
@@ -14,14 +10,10 @@ from streambuild.executor.audit_backfill.models import (
 
 def selected_backfill_sql_audits(
     *,
-    project_dir: Path,
     compiled_pipelines: tuple[CompiledPipeline, ...],
+    loaded_audits: tuple[LoadedSqlAudit, ...],
     staged_logical_table_names: frozenset[str],
 ) -> tuple[LoadedSqlAudit, ...]:
-    loaded_audits: tuple[LoadedSqlAudit, ...] = validated_sql_audits(
-        loaded_audits=tuple(discover_sql_audits(project_dir / "audits")),
-        compiled_pipelines=compiled_pipelines,
-    )
     selected_audits: list[LoadedSqlAudit] = []
     loaded_audit: LoadedSqlAudit
     for loaded_audit in loaded_audits:
@@ -46,13 +38,13 @@ def backfill_audit_resolver(
     resolver: dict[str, str] = {}
     compiled_pipeline: CompiledPipeline
     for compiled_pipeline in compiled_pipelines:
-        compiled_transform: CompiledTransformStep
-        for compiled_transform in compiled_pipeline.transforms:
+        compiled_model: CompiledModel
+        for compiled_model in compiled_pipeline.models:
             resolved_table_name: str = resolved_audit_table_name(
-                model_name=compiled_transform.transform.name,
+                model_name=compiled_model.transform.name,
                 staged_name_by_logical_name=staged_name_by_logical_name,
             )
-            resolver[compiled_transform.transform.name] = f"{database}.{resolved_table_name}"
+            resolver[compiled_model.transform.name] = f"{database}.{resolved_table_name}"
     return resolver
 
 

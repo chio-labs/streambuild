@@ -11,7 +11,8 @@ from sqlglot import exp, parse
 from sqlglot.errors import ParseError
 
 from streambuild.compiler.discovery.types import SqlRelationType
-from streambuild.compiler.macros.main._expand_macro_calls import expand_project_sql_macros
+from streambuild.compiler.macros.main._expand_macro_calls import expand_macro_calls
+from streambuild.compiler.macros.models import MacroContext, MacroRegistry
 from streambuild.compiler.test_discovery.constants import (
     CEREMONIAL_SELECT_LITERAL,
     EXPECTED_CTE_PREFIX,
@@ -26,12 +27,18 @@ from streambuild.compiler.test_discovery.exceptions import SqlTestParseError
 from streambuild.compiler.test_discovery.models import LoadedSqlTest, SqlTestCte, SqlTestMock
 
 
-def parse_sql_test_file(file_path: Path) -> tuple[LoadedSqlTest, ...]:
+def parse_sql_test_file(
+    *,
+    file_path: Path,
+    contents: str | None = None,
+    macro_registry: MacroRegistry | None = None,
+    macro_context: MacroContext | None = None,
+) -> tuple[LoadedSqlTest, ...]:
     """Parse one authored SQL test file into one or more discovered test cases."""
 
-    contents: str = file_path.read_text(encoding="utf-8")
-    raw_test_blocks: tuple[str, ...] = _split_sql_test_blocks(
-        file_path=file_path, contents=contents
+    source_contents: str = file_path.read_text(encoding="utf-8") if contents is None else contents
+    raw_test_blocks: tuple[tuple[str, int], ...] = _split_sql_test_blocks(
+        file_path=file_path, contents=source_contents
     )
     if not raw_test_blocks:
         raise SqlTestParseError(
@@ -40,12 +47,17 @@ def parse_sql_test_file(file_path: Path) -> tuple[LoadedSqlTest, ...]:
         )
     loaded_tests: list[LoadedSqlTest] = []
     raw_test_block: str
-    for test_index, raw_test_block in enumerate(raw_test_blocks, start=1):
+    block_start_index: int
+    for test_index, (raw_test_block, block_start_index) in enumerate(raw_test_blocks, start=1):
         loaded_tests.append(
             _parse_single_sql_test_block(
                 file_path=file_path,
+                source_contents=source_contents,
                 raw_test_block=raw_test_block,
+                block_start_index=block_start_index,
                 test_index=test_index,
+                macro_registry=macro_registry,
+                macro_context=macro_context,
             )
         )
     _validate_test_names(file_path=file_path, loaded_tests=tuple(loaded_tests))
@@ -55,8 +67,12 @@ def parse_sql_test_file(file_path: Path) -> tuple[LoadedSqlTest, ...]:
 def _parse_single_sql_test_block(
     *,
     file_path: Path,
+    source_contents: str,
     raw_test_block: str,
+    block_start_index: int,
     test_index: int,
+    macro_registry: MacroRegistry | None,
+    macro_context: MacroContext | None,
 ) -> LoadedSqlTest:
     header_match: re.Match[str] | None = TEST_HEADER_PATTERN.match(raw_test_block)
     if header_match is None:
@@ -68,9 +84,21 @@ def _parse_single_sql_test_block(
         file_path=file_path,
         header_contents=header_match.group("header"),
     )
-    body: str = expand_project_sql_macros(
-        sql=header_match.group("sql").strip(),
+    raw_body: str = header_match.group("sql")
+    leading_length: int = len(raw_body) - len(raw_body.lstrip())
+    source_line: int
+    source_column: int
+    source_line, source_column = _source_position(
+        contents=source_contents,
+        index=block_start_index + header_match.start("sql") + leading_length,
+    )
+    body: str = _expand_test_body(
+        sql=raw_body.strip(),
         file_path=file_path,
+        macro_registry=macro_registry,
+        macro_context=macro_context,
+        source_line=source_line,
+        source_column=source_column,
     )
     if not body:
         raise SqlTestParseError(
@@ -152,7 +180,28 @@ def _parse_single_sql_test_block(
     )
 
 
-def _split_sql_test_blocks(*, file_path: Path, contents: str) -> tuple[str, ...]:
+def _expand_test_body(
+    *,
+    sql: str,
+    file_path: Path,
+    macro_registry: MacroRegistry | None,
+    macro_context: MacroContext | None,
+    source_line: int,
+    source_column: int,
+) -> str:
+    if macro_registry is None or macro_context is None:
+        return sql
+    return expand_macro_calls(
+        sql=sql,
+        file_path=file_path,
+        registry=macro_registry,
+        context=macro_context,
+        source_line=source_line,
+        source_column=source_column,
+    )
+
+
+def _split_sql_test_blocks(*, file_path: Path, contents: str) -> tuple[tuple[str, int], ...]:
     matches: tuple[re.Match[str], ...] = tuple(TEST_HEADER_ONLY_PATTERN.finditer(contents))
     if not matches:
         return ()
@@ -161,15 +210,21 @@ def _split_sql_test_blocks(*, file_path: Path, contents: str) -> tuple[str, ...]
             f"SQL test '{file_path}' must start with a TEST() header as the first "
             "non-whitespace content"
         )
-    raw_blocks: list[str] = []
+    raw_blocks: list[tuple[str, int]] = []
     match_index: int
     match: re.Match[str]
     for match_index, match in enumerate(matches):
         next_start: int = (
             matches[match_index + 1].start() if match_index + 1 < len(matches) else len(contents)
         )
-        raw_blocks.append(contents[match.start() : next_start].strip())
+        raw_blocks.append((contents[match.start() : next_start].strip(), match.start()))
     return tuple(raw_blocks)
+
+
+def _source_position(*, contents: str, index: int) -> tuple[int, int]:
+    line: int = contents.count("\n", 0, index) + 1
+    previous_newline_index: int = contents.rfind("\n", 0, index)
+    return line, index - previous_newline_index
 
 
 def _parse_test_name(*, file_path: Path, header_contents: str) -> str | None:

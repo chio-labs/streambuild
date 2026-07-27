@@ -6,14 +6,18 @@ from streambuild.adapter.models import AdapterReplayRequest
 from streambuild.adapter.types import AdapterReplayLowerBoundMode, AdapterReplaySeedMode
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from streambuild.compiler.compile.models import CompiledPipeline, DesiredState
-from streambuild.compiler.desired_state.main.build_desired_state import build_desired_state
 from streambuild.compiler.discovery.types import ReplayLineageMode
-from streambuild.compiler.metadata_state.models import DeploymentWatermarkRecord
 from streambuild.compiler.planner.main.plan_deployment import plan_deployment
-from streambuild.compiler.planner.models import ActualState, DeploymentPlan, RebuildSubtree
+from streambuild.compiler.planner.models import (
+    ActualState,
+    DeploymentPlan,
+    DeploymentWatermarkRecord,
+    RebuildSubtree,
+)
 from streambuild.compiler.planner.types import RebuildExecutionMode
 from tests.unit.src.streambuild.compiler.planner.helpers import (
     build_preservation_matrix_compiled_pipeline,
+    realize_compiled_pipelines,
 )
 from tests.unit.src.streambuild.executor.backfill._helpers._test_types import (
     ReplayRequestConstructionTestCase,
@@ -181,7 +185,7 @@ def test_given_replay_mode_when_building_request_then_boundaries_and_relations_a
         source_ownership=test_case.source_ownership,
         replay_lineage_mode=test_case.replay_mode,
     )
-    desired_state: DesiredState = build_desired_state((compiled_pipeline,))
+    desired_state: DesiredState = realize_compiled_pipelines((compiled_pipeline,)).desired_state
     deployment_plan: DeploymentPlan = plan_deployment(
         desired_state=desired_state,
         actual_state=ActualState(objects=()),

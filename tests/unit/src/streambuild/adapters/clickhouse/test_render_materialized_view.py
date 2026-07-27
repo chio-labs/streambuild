@@ -2,6 +2,8 @@ import pytest
 
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from streambuild.compiler.planner.main.build_adapter_resource import build_adapter_resource
+from streambuild.compiler.sql_analysis.classes.sql_model_analyzer import SqlModelAnalyzer
+from streambuild.compiler.sql_analysis.models import SqlResolvedQuery
 from tests.unit.src.streambuild.adapters.clickhouse._test_types import (
     RenderMaterializedViewTestCase,
 )
@@ -78,11 +80,19 @@ from tests.unit.src.streambuild.adapters.clickhouse.helpers import (
     ],
     ids=lambda case: case.description,
 )
-def test_given_materialized_view_when_rendering_then_it_qualifies_source_and_target_tables(
+def test_given_analyzed_materialized_view_when_rendering_then_it_uses_qualified_query(
     test_case: RenderMaterializedViewTestCase,
 ) -> None:
+    analyzed_query: SqlResolvedQuery = SqlModelAnalyzer(dialect="clickhouse").canonicalize_query(
+        sql=test_case.query
+    )
     rendered_ddl: str = ClickHouseAdapter().render_resource(
-        resource=build_adapter_resource(build_materialized_view(test_case.query)),
+        resource=build_adapter_resource(
+            build_materialized_view(
+                query=analyzed_query.canonical_sql,
+                database_template=analyzed_query.database_template,
+            )
+        ),
         database="analytics",
     )
 

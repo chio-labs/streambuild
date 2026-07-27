@@ -17,7 +17,9 @@ test:
 test-all:
 	uv run pytest tests/unit -q -n auto
 	uv run pytest tests/integration -q -n 4
-	uv run pytest tests/e2e -q -n 4
+	uv run pytest tests/e2e -q -m "not performance" -n 4
+	uv run pytest tests/e2e -q -m performance -k 3000 -n 4
+	uv run pytest tests/e2e -q -m performance -k 10000 -n 4
 
 
 check:
@@ -36,7 +38,9 @@ verify:
 	uv run fensu skills --check
 	uv run pytest tests/unit -q -n auto
 	uv run pytest tests/integration -q -n 4
-	uv run pytest tests/e2e -q -n 4
+	uv run pytest tests/e2e -q -m "not performance" -n 4
+	uv run pytest tests/e2e -q -m performance -k 3000 -n 4
+	uv run pytest tests/e2e -q -m performance -k 10000 -n 4
 
 
 check-ci:
@@ -55,4 +59,6 @@ verify-ci:
 	uv run fensu skills --check
 	uv run pytest tests/unit -q -n auto
 	uv run pytest tests/integration -q -n 4
-	uv run pytest tests/e2e -q -n 4
+	uv run pytest tests/e2e -q -m "not performance" -n 4
+	uv run pytest tests/e2e -q -m performance -k 3000 -n 4
+	uv run pytest tests/e2e -q -m performance -k 10000 -n 4

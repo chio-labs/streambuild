@@ -5,12 +5,14 @@ from pathlib import Path
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.cli.backfill.models import BackfillCommandOptions
+from streambuild.cli.entry._helpers.compiler_profile import build_compiler_adapter_profile
 from streambuild.cli.entry.exceptions import CliUserError
 from streambuild.cli.entry.models import (
     CliEntrypointHandlers,
     ResolvedCliInvocation,
 )
 from streambuild.cli.entry.types import CliCommand, CliSubcommand
+from streambuild.compiler.compile.models import CompilerAdapterProfile
 
 
 def dispatch_cli_command(
@@ -20,11 +22,18 @@ def dispatch_cli_command(
     adapter_connection: AdapterConnection | None,
 ) -> int:
     args: argparse.Namespace = invocation.args
+    adapter_profile: CompilerAdapterProfile = build_compiler_adapter_profile(invocation.adapter)
     if args.command == CliCommand.DISCOVER:
-        return handlers.run_discover(pipelines_root=invocation.pipelines_root)
+        return handlers.run_discover(
+            pipelines_root=invocation.pipelines_root,
+            loaded_project=invocation.loaded_project,
+            adapter_profile=adapter_profile,
+        )
     if args.command == CliCommand.COMPILE:
         return handlers.run_compile(
             pipelines_root=invocation.pipelines_root,
+            loaded_project=invocation.loaded_project,
+            adapter_profile=adapter_profile,
             target_dir=(
                 getattr(args, "target_dir", None)
                 or (
@@ -45,6 +54,8 @@ def dispatch_cli_command(
             paths=tuple(getattr(args, "paths", ())),
             verbose=bool(getattr(args, "verbose", False)),
             client=client,
+            loaded_project=invocation.loaded_project,
+            adapter_profile=adapter_profile,
         )
     if args.command == CliSubcommand.BACKFILL:
         return handlers.run_backfill(
@@ -61,6 +72,8 @@ def dispatch_cli_command(
                 auto_approve=bool(getattr(args, "auto_approve", False)),
             ),
             client=client,
+            loaded_project=invocation.loaded_project,
+            adapter_profile=adapter_profile,
         )
     if args.command == CliCommand.AUDIT:
         if getattr(args, "audit_command", None) == CliSubcommand.BACKFILL:
@@ -80,6 +93,8 @@ def dispatch_cli_command(
                 deployment_id=getattr(args, "deployment_id", None),
                 json_output=bool(getattr(args, "json", False)),
                 client=client,
+                loaded_project=invocation.loaded_project,
+                adapter_profile=adapter_profile,
             )
         if invocation.pipelines_root is None:
             raise CliUserError("Audit command requires a resolved pipelines root")
@@ -90,6 +105,8 @@ def dispatch_cli_command(
             selectors=tuple(getattr(args, "select", [])),
             json_output=bool(getattr(args, "json", False)),
             client=client,
+            loaded_project=invocation.loaded_project,
+            adapter_profile=adapter_profile,
         )
     if args.command == CliCommand.PUBLISH:
         return handlers.run_publish(
@@ -108,6 +125,8 @@ def dispatch_cli_command(
             json_output=bool(getattr(args, "json", False)),
             apply=bool(getattr(args, "apply", False)),
             client=client,
+            loaded_project=invocation.loaded_project,
+            adapter_profile=adapter_profile,
         )
     if args.command == CliCommand.DOCTOR:
         return handlers.run_doctor(database=invocation.database, client=client)
@@ -135,6 +154,8 @@ def dispatch_cli_command(
         json_output=bool(getattr(args, "json", False)),
         verbose=bool(getattr(args, "verbose", False)),
         client=client,
+        loaded_project=invocation.loaded_project,
+        adapter_profile=adapter_profile,
     )
 
 

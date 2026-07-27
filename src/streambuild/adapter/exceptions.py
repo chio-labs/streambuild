@@ -21,6 +21,10 @@ class AdapterCapabilityError(AdapterError):
     """Raised when an adapter cannot provide a required StreamBuild capability."""
 
 
+class AdapterConfigurationError(AdapterError):
+    """Raised when adapter-owned connection configuration is invalid."""
+
+
 class AdapterReplayError(AdapterError):
     """Raised when an adapter cannot realize a valid replay request."""
 

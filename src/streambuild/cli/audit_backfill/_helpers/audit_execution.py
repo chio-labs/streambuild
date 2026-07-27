@@ -5,9 +5,6 @@ from pathlib import Path
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import InspectedManagedTableState
-from streambuild.adapters.clickhouse.main.inspect_managed_table_state import (
-    inspect_managed_table_state,
-)
 from streambuild.cli.audit_backfill._helpers.audit_selection import (
     backfill_audit_resolver,
     selected_backfill_sql_audits,
@@ -22,10 +19,8 @@ from streambuild.cli.audit_backfill.main._render_no_deployment_candidates_messag
 from streambuild.cli.audit_backfill.main.render_ambiguous_deployment_message import (
     render_ambiguous_deployment_message,
 )
-from streambuild.compiler.compile.main.compile_pipeline import compile_pipeline
+from streambuild.compiler.audit_discovery.models import LoadedSqlAudit
 from streambuild.compiler.compile.models import CompiledPipeline
-from streambuild.compiler.discovery.main.discover_pipelines import discover_pipelines
-from streambuild.compiler.discovery.models import LoadedPipeline
 from streambuild.executor.audit_backfill.main.build_audit_deployment_candidates import (
     build_audit_deployment_candidates,
 )
@@ -38,13 +33,6 @@ from streambuild.executor.audit_backfill.models import (
 from streambuild.executor.audit_backfill.types import AuditAssessment
 from streambuild.executor.auditing.main.execute_sql_audits import execute_sql_audits
 from streambuild.executor.auditing.models import SqlAuditRunResult
-
-
-def compile_audit_pipelines(pipelines_root: Path | None) -> tuple[CompiledPipeline, ...]:
-    if pipelines_root is None:
-        return ()
-    loaded_pipelines: list[LoadedPipeline] = discover_pipelines(pipelines_root)
-    return tuple(compile_pipeline(pipeline) for pipeline in loaded_pipelines)
 
 
 def resolve_deployment_candidate_error(
@@ -68,10 +56,7 @@ def resolve_deployment_candidate_error(
         )
     if len(candidates) == 1:
         return None
-    inspected_state: InspectedManagedTableState = inspect_managed_table_state(
-        client=client,
-        database=database,
-    )
+    inspected_state: InspectedManagedTableState = client.inspect_managed_table_state(database)
     return render_ambiguous_deployment_message(
         command_name="audit backfill",
         database=database,
@@ -89,9 +74,11 @@ def execute_audit_quality_checks(
     result: AuditBackfillResult,
     project_dir: Path | None,
     compiled_pipelines: tuple[CompiledPipeline, ...],
+    loaded_audits: tuple[LoadedSqlAudit, ...],
     client: AdapterConnection,
     metadata_database: str,
     database: str,
+    dialect: str,
 ) -> AuditBackfillResult:
     if project_dir is None or not compiled_pipelines:
         return result
@@ -102,8 +89,8 @@ def execute_audit_quality_checks(
     )
     quality_check_result: SqlAuditRunResult = execute_sql_audits(
         loaded_audits=selected_backfill_sql_audits(
-            project_dir=project_dir,
             compiled_pipelines=compiled_pipelines,
+            loaded_audits=loaded_audits,
             staged_logical_table_names=frozenset(
                 logical_key.name
                 for logical_key, _physical_name in loaded_deployment.prepared_object_mappings
@@ -115,6 +102,7 @@ def execute_audit_quality_checks(
             loaded_deployment=loaded_deployment,
         ),
         client=client,
+        dialect=dialect,
     )
     assessment: AuditAssessment | str = (
         AuditAssessment.NOT_READY if quality_check_result.error_failure_count else result.assessment

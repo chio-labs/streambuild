@@ -29,6 +29,9 @@ class AdapterCapabilities:
     managed_source_kinds: frozenset[str]
     replay_boundary_modes: frozenset[AdapterReplayBoundaryMode]
     history_prefix_seed: bool
+    stable_logical_bindings: bool
+    per_relation_atomic_replace: bool
+    graph_atomic_publish: bool
 
 
 @dataclass(frozen=True)
@@ -75,6 +78,61 @@ class AdapterMaterializedView:
     source_relation_name: str
     target_relation_name: str
     query: str
+    database_template: str
+
+
+@dataclass(frozen=True)
+class AdapterManagedSourceRealizationRequest:
+    """Logical managed-source fields needed for adapter realization."""
+
+    logical_name: str
+    source_kind: str
+    broker_list: str
+    topic: str
+    consumer_group: str | None
+    format: str
+    settings: tuple[tuple[str, str], ...] = ()
+
+
+@dataclass(frozen=True)
+class AdapterAdoptedSourceRealizationRequest:
+    """Logical adopted-source fields needed for adapter realization."""
+
+    logical_name: str
+    relation_name: str
+
+
+@dataclass(frozen=True)
+class AdapterSourceRealization:
+    """One logical source mapped to its adapter relation and resources."""
+
+    relation_name: str
+    resources: tuple[AdapterManagedSource | AdapterTable | AdapterMaterializedView, ...]
+
+
+@dataclass(frozen=True)
+class AdapterModelRealizationRequest:
+    """One semantically compiled logical model ready for adapter realization."""
+
+    logical_name: str
+    target_relation_name: str
+    source_relation_name: str
+    resolved_query: str
+    resolved_database_template: str
+    columns: tuple[AdapterColumn, ...]
+    engine: str
+    order_by: tuple[str, ...]
+    partition_by: str | None = None
+    ttl: str | None = None
+    settings: tuple[tuple[str, str], ...] = ()
+
+
+@dataclass(frozen=True)
+class AdapterModelRealization:
+    """One logical model mapped to its adapter relation and resources."""
+
+    relation_name: str
+    resources: tuple[AdapterTable | AdapterMaterializedView, ...]
 
 
 @dataclass(frozen=True)
@@ -83,6 +141,106 @@ class AdapterStableView:
 
     name: str
     target_relation_name: str
+
+
+@dataclass(frozen=True)
+class AdapterStableBinding:
+    """One logical relation bound to one physical relation."""
+
+    database: str
+    logical_name: str
+    physical_name: str
+
+
+@dataclass(frozen=True)
+class AdapterBindingReplacementRequest:
+    """A set of stable bindings to replace during one publish operation."""
+
+    bindings: tuple[AdapterStableBinding, ...]
+
+
+@dataclass(frozen=True)
+class AdapterBindingReplacementResult:
+    """Applied stable bindings and the adapter's atomicity guarantees."""
+
+    bindings: tuple[AdapterStableBinding, ...]
+    per_relation_atomic_replace: bool
+    graph_atomic_publish: bool
+
+
+@dataclass(frozen=True)
+class AdapterRelationCleanupRequest:
+    """Physical relations to remove from one database."""
+
+    database: str
+    relation_names: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class AdapterRelationCleanupResult:
+    """Physical relations removed by one cleanup operation."""
+
+    relation_names: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class AdapterReadinessRootRequest:
+    """One staged root whose live and candidate relations must be compared."""
+
+    database: str
+    logical_name: str
+    staged_relation_name: str
+    active_exists: bool
+
+
+@dataclass(frozen=True)
+class AdapterReadinessRequest:
+    """A mode-neutral readiness comparison request."""
+
+    roots: tuple[AdapterReadinessRootRequest, ...]
+
+
+@dataclass(frozen=True)
+class AdapterReadinessOffsetSummary:
+    """Adapter-observed partition and lag metrics for offset replay."""
+
+    active_partition_count: int
+    staged_partition_count: int
+    partitions_compared: int
+    missing_staged_partition_count: int
+    missing_freshness_partition_count: int
+    lagging_partition_count: int
+    max_offset_gap: int
+    average_offset_gap: float
+    lag_boundary_column: str | None
+    max_lag_seconds: float | None
+    average_lag_seconds: float | None
+
+
+@dataclass(frozen=True)
+class AdapterReadinessScalarSummary:
+    """Adapter-observed range and lag metrics for scalar replay."""
+
+    active_min_value: str | None
+    active_max_value: str | None
+    staged_min_value: str | None
+    staged_max_value: str | None
+    lag_seconds: float | None
+
+
+@dataclass(frozen=True)
+class AdapterReadinessRootObservation:
+    """Warehouse observations for one requested staged root."""
+
+    root: AdapterReadinessRootRequest
+    staged_exists: bool
+    active_row_count: int | None
+    staged_row_count: int | None
+    replay_source_name: str | None
+    replay_source_row_count: int | None
+    replay_boundary_mode: AdapterReplayBoundaryMode | None
+    offset_summary: AdapterReadinessOffsetSummary | None
+    scalar_summary: AdapterReadinessScalarSummary | None
 
 
 @dataclass(frozen=True)
@@ -235,6 +393,14 @@ class AdapterPublishEventRecord:
     deployment_id: str
     published_at: str
     logical_view_names: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class AdapterDeploymentInventory:
+    """Persisted deployments and publish events used for lifecycle cleanup."""
+
+    deployments: tuple[AdapterDeploymentRecord, ...]
+    publish_events: tuple[AdapterPublishEventRecord, ...]
 
 
 @dataclass(frozen=True)

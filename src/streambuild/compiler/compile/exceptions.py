@@ -1,8 +1,27 @@
 """Custom exceptions for transform SQL contract validation."""
 
+from streambuild.compiler.sql_analysis.models import SqlSourceSpan
+from streambuild.diagnostics.models import CompilerDiagnostic, SourceLocation
+
 
 class PipelineCompileError(ValueError):
     """Raised when pipeline compilation input or state is invalid."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        span: SqlSourceSpan | None = None,
+        location: SourceLocation | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.span: SqlSourceSpan | None = span
+        self.location: SourceLocation | None = location
+        self.diagnostic: CompilerDiagnostic | None = None
+
+
+class AuditCompileError(ValueError):
+    """Raised when audit compilation input or state is invalid."""
 
 
 class TransformSqlContractError(Exception):
@@ -11,6 +30,8 @@ class TransformSqlContractError(Exception):
     def __init__(self, transform_name: str) -> None:
         super().__init__(transform_name)
         self.transform_name: str = transform_name
+        self.span: SqlSourceSpan | None = None
+        self.diagnostic: CompilerDiagnostic | None = None
 
 
 class TransformSqlParseError(TransformSqlContractError):

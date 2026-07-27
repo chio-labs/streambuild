@@ -12,6 +12,7 @@ from streambuild.adapter.exceptions import (
     AdapterRelationNotFoundError,
     AdapterTimeoutError,
 )
+from streambuild.adapter.models import InspectedManagedTableState
 from streambuild.cli.entry.main._errors import render_expected_warehouse_error
 from streambuild.cli.publish.main._run_publish import run_publish
 from tests.unit.src.streambuild.cli._test_types import (
@@ -123,6 +124,10 @@ def test_given_missing_database_when_running_publish_then_it_prints_friendly_err
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     class FailingClient:
+        def inspect_managed_table_state(self, database: str) -> InspectedManagedTableState:
+            del database
+            raise AdapterDatabaseNotFoundError(test_case.error_message)
+
         def query(self, _statement: str) -> object:
             raise AdapterDatabaseNotFoundError(test_case.error_message)
 

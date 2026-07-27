@@ -1,8 +1,6 @@
 """Render neutral adapter resources as ClickHouse SQL."""
 
-from sqlglot import exp, parse_one
-
-from streambuild.adapter.constants import MANAGED_SOURCE_KIND_KAFKA
+from streambuild.adapter.constants import ADAPTER_DATABASE_PLACEHOLDER, MANAGED_SOURCE_KIND_KAFKA
 from streambuild.adapter.exceptions import AdapterCapabilityError
 from streambuild.adapter.models import (
     AdapterColumn,
@@ -93,17 +91,14 @@ def _render_table(*, resource: AdapterTable, database: str) -> str:
 
 
 def _render_materialized_view(*, resource: AdapterMaterializedView, database: str) -> str:
-    expression: exp.Expr = parse_one(resource.query, dialect="clickhouse")
-    table: exp.Table
-    for table in expression.find_all(exp.Table):
-        if table.db:
-            continue
-        table.set("db", exp.to_identifier(database))
-    qualified_query: str = expression.sql(dialect="clickhouse", pretty=True)
+    rendered_query: str = resource.database_template.replace(
+        f"{ADAPTER_DATABASE_PLACEHOLDER}.",
+        f"{database}.",
+    )
     return (
         f"CREATE MATERIALIZED VIEW {database}.{resource.name}\n"
         f"TO {database}.{resource.target_relation_name} AS\n"
-        f"{qualified_query}"
+        f"{rendered_query}"
     )
 
 

@@ -1,8 +1,0 @@
-default_database: orders_demo
-replay_lineage_mode: offsets
-
-clickhouse:
-  host: localhost
-  port: 18123
-  username: clickhouse
-  password: clickhouse

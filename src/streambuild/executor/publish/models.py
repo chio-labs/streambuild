@@ -26,3 +26,5 @@ class PublishResult:
 
     deployment_id: str
     published_views: tuple[PublishedView, ...]
+    per_relation_atomic_replace: bool
+    graph_atomic_publish: bool

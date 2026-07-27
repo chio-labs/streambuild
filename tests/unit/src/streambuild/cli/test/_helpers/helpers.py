@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from streambuild.compiler.compile.models import CompiledPipeline
-from streambuild.compiler.test_discovery.main.discover_sql_tests import discover_sql_tests
+from streambuild.compiler.test_discovery.main._discover_sql_tests import discover_sql_tests
 from streambuild.compiler.test_discovery.models import LoadedSqlTest
 from streambuild.executor.testing.models import SqlTestExecutionResult, SqlTestTargetExecutionResult
 from tests.unit.src.streambuild.cli.plan.main.helpers import (
@@ -61,7 +61,7 @@ def build_selector_project_loaded_tests(tmp_path: Path) -> tuple[LoadedSqlTest, 
         SELECT 1
         """,
     )
-    return tuple(discover_sql_tests(tests_root))
+    return tuple(discover_sql_tests(root=tests_root))
 
 
 def build_selector_project_compiled_pipelines() -> tuple[CompiledPipeline, ...]:

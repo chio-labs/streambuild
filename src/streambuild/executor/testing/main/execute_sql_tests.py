@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import AdapterQueryResult
-from streambuild.compiler.testing.models import SqlTestCase, SqlTestTargetCase
+from streambuild.compiler.test_discovery.models import SqlTestCase, SqlTestTargetCase
 from streambuild.executor.testing.constants import (
     MISSING_DIFF_TYPE,
     UNEXPECTED_DIFF_TYPE,

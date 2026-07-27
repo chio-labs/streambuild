@@ -4,7 +4,10 @@ from streambuild.compiler.compile._helpers.sql_contract import derive_transform_
 from tests.unit.src.streambuild.compiler.compile.sql_contract._test_types import (
     DeriveTransformOutputColumnsSuccessTestCase,
 )
-from tests.unit.src.streambuild.compiler.compile.sql_contract.helpers import build_expected_columns
+from tests.unit.src.streambuild.compiler.compile.sql_contract.helpers import (
+    build_expected_columns,
+    build_sql_analyzer,
+)
 
 
 @pytest.mark.parametrize(
@@ -67,7 +70,9 @@ def test_given_valid_transform_sql_when_deriving_output_columns_then_it_returns_
     test_case: DeriveTransformOutputColumnsSuccessTestCase,
 ) -> None:
     derived_columns: tuple = derive_transform_output_columns(
-        transform_name="orders_enriched", query=test_case.query
+        analyzer=build_sql_analyzer(),
+        transform_name="orders_enriched",
+        query=test_case.query,
     )
 
     assert derived_columns == test_case.expected_columns

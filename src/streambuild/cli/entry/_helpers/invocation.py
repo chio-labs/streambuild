@@ -47,6 +47,9 @@ def resolve_cli_invocation(
         pipelines_root=pipelines_root,
         project_dir=resolved_project_dir,
         working_directory=current_working_directory,
+        selected_target=getattr(args, "target", None),
+        cli_variables=getattr(args, "vars", {}),
+        environment=resolved_env,
     )
     adapter: Adapter = resolve_adapter(project_config.adapter_name)
     return ResolvedCliInvocation(
@@ -55,6 +58,7 @@ def resolve_cli_invocation(
         pipelines_root=pipelines_root,
         database=getattr(args, "database", None) or project_config.default_database,
         adapter=adapter,
+        loaded_project=project_config.loaded_project,
         connection=CliConnectionOptions(
             host=resolve_optional_str_arg(
                 value=getattr(args, "host", None),
@@ -77,5 +81,8 @@ def resolve_cli_invocation(
                 environment=resolved_env,
             ),
             project_connection=project_config.connection,
+            raw_project_connection=project_config.raw_connection,
+            variables=project_config.variables,
+            environment=resolved_env,
         ),
     )

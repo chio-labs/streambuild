@@ -8,30 +8,50 @@ from clickhouse_connect.driver.exceptions import ClickHouseError, StreamFailureE
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import (
+    AdapterBindingReplacementRequest,
+    AdapterBindingReplacementResult,
     AdapterCapabilities,
+    AdapterDeploymentInventory,
     AdapterIdentity,
     AdapterManagedSource,
     AdapterMaterializedView,
     AdapterMetadataState,
     AdapterQueryResult,
+    AdapterReadinessRequest,
+    AdapterReadinessRootObservation,
+    AdapterRelationCleanupRequest,
+    AdapterRelationCleanupResult,
     AdapterReplayRequest,
     AdapterStableView,
     AdapterTable,
     CatalogSnapshot,
+    InspectedManagedTableState,
 )
 from streambuild.adapters.clickhouse._helpers.errors import translate_driver_error
 from streambuild.adapters.clickhouse._helpers.inspection import load_clickhouse_catalog
+from streambuild.adapters.clickhouse._helpers.lifecycle import (
+    cleanup_clickhouse_relations,
+    load_clickhouse_deployment_inventory,
+    replace_clickhouse_stable_bindings,
+)
+from streambuild.adapters.clickhouse._helpers.managed_tables import (
+    build_inspected_managed_table_state,
+)
 from streambuild.adapters.clickhouse._helpers.metadata import (
     migrate_clickhouse_metadata_state,
     persist_clickhouse_metadata_state,
 )
+from streambuild.adapters.clickhouse._helpers.readiness import compare_clickhouse_readiness
 from streambuild.adapters.clickhouse._helpers.rendering import render_clickhouse_resource
 from streambuild.adapters.clickhouse._helpers.replay import execute_clickhouse_replay
 from streambuild.adapters.clickhouse.constants import (
     CLICKHOUSE_ADAPTER_NAME,
+    CLICKHOUSE_GRAPH_ATOMIC_PUBLISH,
     CLICKHOUSE_HISTORY_PREFIX_SEED_SUPPORTED,
     CLICKHOUSE_MANAGED_SOURCE_KINDS,
+    CLICKHOUSE_PER_RELATION_ATOMIC_REPLACE,
     CLICKHOUSE_REPLAY_BOUNDARY_MODES,
+    CLICKHOUSE_STABLE_LOGICAL_BINDINGS_SUPPORTED,
     CLICKHOUSE_VIRTUAL_ENVIRONMENTS_SUPPORTED,
 )
 from streambuild.adapters.clickhouse.types import (
@@ -61,6 +81,9 @@ class ClickHouseConnection(AdapterConnection):
             managed_source_kinds=CLICKHOUSE_MANAGED_SOURCE_KINDS,
             replay_boundary_modes=CLICKHOUSE_REPLAY_BOUNDARY_MODES,
             history_prefix_seed=CLICKHOUSE_HISTORY_PREFIX_SEED_SUPPORTED,
+            stable_logical_bindings=CLICKHOUSE_STABLE_LOGICAL_BINDINGS_SUPPORTED,
+            per_relation_atomic_replace=CLICKHOUSE_PER_RELATION_ATOMIC_REPLACE,
+            graph_atomic_publish=CLICKHOUSE_GRAPH_ATOMIC_PUBLISH,
         )
 
     def load_catalog(self, database: str) -> CatalogSnapshot:
@@ -79,6 +102,11 @@ class ClickHouseConnection(AdapterConnection):
             f"SELECT name FROM system.columns WHERE database = '{database}' AND table = '{table}'"
         )
         return frozenset(str(row[0]) for row in result.rows)
+
+    def inspect_managed_table_state(self, database: str) -> InspectedManagedTableState:
+        """Inspect ClickHouse stable bindings and deployment-specific tables."""
+
+        return build_inspected_managed_table_state(client=self, database=database)
 
     def command(self, statement: str) -> None:
         """Execute a ClickHouse command statement."""
@@ -164,10 +192,36 @@ class ClickHouseConnection(AdapterConnection):
 
         persist_clickhouse_metadata_state(connection=self, database=database, state=state)
 
+    def load_deployment_inventory(self, database: str) -> AdapterDeploymentInventory:
+        """Load persisted ClickHouse deployments and publish events."""
+
+        return load_clickhouse_deployment_inventory(connection=self, database=database)
+
     def execute_replay(self, request: AdapterReplayRequest) -> None:
         """Seed and execute one replay request in ClickHouse."""
 
         execute_clickhouse_replay(connection=self, request=request)
+
+    def compare_readiness(
+        self, request: AdapterReadinessRequest
+    ) -> tuple[AdapterReadinessRootObservation, ...]:
+        """Compare active and staged ClickHouse relations."""
+
+        return compare_clickhouse_readiness(connection=self, request=request)
+
+    def replace_stable_bindings(
+        self, request: AdapterBindingReplacementRequest
+    ) -> AdapterBindingReplacementResult:
+        """Replace ClickHouse stable views and report actual atomicity."""
+
+        return replace_clickhouse_stable_bindings(connection=self, request=request)
+
+    def cleanup_relations(
+        self, request: AdapterRelationCleanupRequest
+    ) -> AdapterRelationCleanupResult:
+        """Drop requested ClickHouse relations synchronously."""
+
+        return cleanup_clickhouse_relations(connection=self, request=request)
 
     def close(self) -> None:
         """Close the underlying ClickHouse connection."""

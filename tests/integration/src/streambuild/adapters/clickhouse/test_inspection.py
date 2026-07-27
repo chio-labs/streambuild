@@ -4,9 +4,6 @@ from clickhouse_connect.driver.client import Client
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import AdapterConnectionConfig, InspectedManagedTableState
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
-from streambuild.adapters.clickhouse.main.inspect_managed_table_state import (
-    inspect_managed_table_state,
-)
 from tests.integration.src.streambuild.adapters.clickhouse._test_types import (
     InspectManagedTableStateIntegrationTestCase,
 )
@@ -62,9 +59,8 @@ def test_given_views_and_physical_tables_when_inspecting_then_it_returns_expecte
     )
 
     try:
-        inspected_state: InspectedManagedTableState = inspect_managed_table_state(
-            client=managed_client,
-            database=clickhouse_database,
+        inspected_state: InspectedManagedTableState = managed_client.inspect_managed_table_state(
+            clickhouse_database
         )
     finally:
         managed_client.close()

@@ -13,6 +13,7 @@ from streambuild.compiler.compile.exceptions import (
 from tests.unit.src.streambuild.compiler.compile.sql_contract._test_types import (
     DeriveTransformOutputColumnsErrorTestCase,
 )
+from tests.unit.src.streambuild.compiler.compile.sql_contract.helpers import build_sql_analyzer
 
 
 @pytest.mark.parametrize(
@@ -81,7 +82,11 @@ def test_given_invalid_transform_sql_when_deriving_columns_then_it_raises_a_clea
     test_case: DeriveTransformOutputColumnsErrorTestCase,
 ) -> None:
     with pytest.raises(test_case.expected_error_type) as error_info:
-        derive_transform_output_columns(transform_name="orders_enriched", query=test_case.query)
+        derive_transform_output_columns(
+            analyzer=build_sql_analyzer(),
+            transform_name="orders_enriched",
+            query=test_case.query,
+        )
 
     error: Exception = error_info.value
     for attribute_name, expected_value in test_case.expected_error_attributes.items():

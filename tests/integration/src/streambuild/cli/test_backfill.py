@@ -7,8 +7,13 @@ from _pytest.capture import CaptureResult
 from clickhouse_connect.driver.client import Client
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from streambuild.cli.backfill.main._run_backfill import run_backfill
 from streambuild.cli.backfill.models import BackfillCommandOptions
+from streambuild.cli.entry._helpers.compiler_profile import build_compiler_adapter_profile
+from streambuild.compiler.discovery.main.load_project_input_for_path import (
+    load_project_input_for_path,
+)
 from tests.integration.src.streambuild.cli._test_types import (
     CliBackfillIntegrationTestCase,
 )
@@ -185,6 +190,8 @@ def test_given_backfill_command_when_running_then_it_behaves_as_expected(
                 auto_approve=test_case.auto_approve,
             ),
             client=managed_client,
+            loaded_project=load_project_input_for_path(path=test_case.pipelines_root),
+            adapter_profile=build_compiler_adapter_profile(ClickHouseAdapter()),
         )
     finally:
         managed_client.close()

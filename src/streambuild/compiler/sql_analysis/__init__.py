@@ -1,0 +1,1 @@
+"""Mandatory SQL analysis boundary."""

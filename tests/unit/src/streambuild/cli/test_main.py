@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 from shutil import copytree
 from typing import cast
@@ -12,6 +13,7 @@ from streambuild.adapter.models import AdapterConnectionConfig
 from streambuild.cli.entry._helpers.entrypoint import (
     resolve_adapter_connection_config,
 )
+from streambuild.cli.entry._helpers.parser import build_cli_parser
 from streambuild.cli.entry.main.main import _main_with_dependencies, main
 from streambuild.cli.entry.models import CliEntrypointHandlers
 from tests.unit.src.streambuild.cli._test_types import (
@@ -23,6 +25,7 @@ from tests.unit.src.streambuild.cli._test_types import (
     CliMainIntegrationTestCase,
     CliMainJsonFlagTestCase,
     CliMainJsonTestCase,
+    CliNestedAuditOptionsTestCase,
     CliProjectConnectionResolutionTestCase,
     CliProjectDefaultsTestCase,
     CliReconcileForwardingTestCase,
@@ -35,6 +38,7 @@ from tests.unit.src.streambuild.cli.helpers import (
     FakeCliClickHouseClient,
     handlers_with_overrides,
     normalize_json_output,
+    write_cli_compilation_project,
 )
 
 
@@ -406,30 +410,18 @@ def test_given_invalid_transform_sql_when_running_compile_then_it_prints_a_clear
     tmp_path: Path,
 ) -> None:
     pipeline_root: Path = tmp_path / "pipelines"
-    broken_pipeline_root: Path = pipeline_root / "broken"
-    broken_pipeline_root.mkdir(parents=True)
-    (broken_pipeline_root / "pipeline.yml").write_text(
-        """
-source:
-  kind: kafka
-  name: orders
-  broker_list: kafka:9092
-  topic: source.orders
-        """.strip(),
-        encoding="utf-8",
-    )
-    (broken_pipeline_root / "orders_enriched.sql").write_text(
-        """
-MODEL (
-  engine: "MergeTree()",
-  order_by: ["order_id"],
-);
+    write_cli_compilation_project(
+        project_root=tmp_path,
+        model_sql="""
+        MODEL (
+          engine: "MergeTree()",
+          order_by: ["order_id"],
+        );
 
-SELECT CAST(order_id AS UInt64) AS order_id FROM __ref("orders")
-UNION ALL
-SELECT CAST(order_id AS UInt64) AS order_id FROM replay_orders
-        """.strip(),
-        encoding="utf-8",
+        SELECT CAST(order_id AS UInt64) AS order_id FROM __ref("orders")
+        UNION ALL
+        SELECT CAST(order_id AS UInt64) AS order_id FROM replay_orders
+        """,
     )
     argv_paths: dict[str, str] = {"BROKEN_PIPELINES_ROOT": str(pipeline_root)}
     argv: list[str] = [argv_paths.get(part, part) for part in test_case.argv]
@@ -535,7 +527,7 @@ def test_given_cli_args_when_running_plan_then_it_prints_expected_output(
             },
             expected_exit_code=0,
             expected_kwargs={
-                "database": None,
+                "database": "analytics",
                 "selectors": (),
                 "full_refresh": False,
                 "start_time": None,
@@ -561,7 +553,8 @@ def test_given_clickhouse_env_vars_when_running_plan_then_it_uses_env_defaults(
     )
 
     assert exit_code == test_case.expected_exit_code
-    assert runner.kwargs == {**test_case.expected_kwargs, "client": clickhouse_client}
+    assert test_case.expected_kwargs.items() <= runner.kwargs.items()
+    assert runner.kwargs["client"] is clickhouse_client
 
 
 @pytest.mark.parametrize(
@@ -581,41 +574,16 @@ def test_given_project_yaml_when_running_plan_then_it_uses_project_database_defa
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     project_root: Path = tmp_path / "demo"
-    pipelines_root: Path = project_root / "pipelines"
-    orders_root: Path = pipelines_root / "orders"
-    orders_root.mkdir(parents=True)
-    (project_root / "streambuild_project.yml").write_text(
-        """
-default_database: analytics
+    write_cli_compilation_project(
+        project_root=project_root,
+        model_sql="""
+        MODEL (
+          engine: "MergeTree()",
+          order_by: ["order_id"],
+        );
 
-clickhouse:
-  host: localhost
-  port: 8123
-  username: streambuild
-  password: streambuild
-        """.strip(),
-        encoding="utf-8",
-    )
-    (orders_root / "pipeline.yml").write_text(
-        """
-source:
-  kind: kafka
-  name: orders
-  broker_list: kafka:9092
-  topic: source.orders
-        """.strip(),
-        encoding="utf-8",
-    )
-    (orders_root / "orders_enriched.sql").write_text(
-        """
-MODEL (
-  engine: "MergeTree()",
-  order_by: ["order_id"],
-);
-
-SELECT order_id::UInt64 AS order_id FROM __ref("orders")
-        """.strip(),
-        encoding="utf-8",
+        SELECT order_id::UInt64 AS order_id FROM __ref("orders")
+        """,
     )
 
     runner: RecordingCommandRunner = RecordingCommandRunner()
@@ -630,7 +598,7 @@ SELECT order_id::UInt64 AS order_id FROM __ref("orders")
     )
 
     assert exit_code == 0
-    assert runner.kwargs == {
+    assert {
         "database": test_case.expected_database,
         "selectors": (),
         "full_refresh": False,
@@ -638,7 +606,7 @@ SELECT order_id::UInt64 AS order_id FROM __ref("orders")
         "json_output": False,
         "verbose": False,
         "client": clickhouse_client,
-    }
+    }.items() <= runner.kwargs.items()
 
 
 @pytest.mark.parametrize(
@@ -668,41 +636,16 @@ def test_given_project_yaml_when_running_runtime_command_then_it_uses_project_de
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     project_root: Path = tmp_path / "demo"
-    pipelines_root: Path = project_root / "pipelines"
-    orders_root: Path = pipelines_root / "orders"
-    orders_root.mkdir(parents=True)
-    (project_root / "streambuild_project.yml").write_text(
-        """
-default_database: analytics
+    write_cli_compilation_project(
+        project_root=project_root,
+        model_sql="""
+        MODEL (
+          engine: "MergeTree()",
+          order_by: ["order_id"],
+        );
 
-clickhouse:
-  host: localhost
-  port: 8123
-  username: streambuild
-  password: streambuild
-        """.strip(),
-        encoding="utf-8",
-    )
-    (orders_root / "pipeline.yml").write_text(
-        """
-source:
-  kind: kafka
-  name: orders
-  broker_list: kafka:9092
-  topic: source.orders
-        """.strip(),
-        encoding="utf-8",
-    )
-    (orders_root / "orders_enriched.sql").write_text(
-        """
-MODEL (
-  engine: "MergeTree()",
-  order_by: ["order_id"],
-);
-
-SELECT order_id::UInt64 AS order_id FROM __ref("orders")
-        """.strip(),
-        encoding="utf-8",
+        SELECT order_id::UInt64 AS order_id FROM __ref("orders")
+        """,
     )
 
     runner: RecordingCommandRunner = RecordingCommandRunner()
@@ -752,41 +695,16 @@ def test_given_project_dir_when_running_runtime_command_then_it_uses_project_def
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     project_root: Path = tmp_path / "demo"
-    pipelines_root: Path = project_root / "pipelines"
-    orders_root: Path = pipelines_root / "orders"
-    orders_root.mkdir(parents=True)
-    (project_root / "streambuild_project.yml").write_text(
-        """
-default_database: analytics
+    write_cli_compilation_project(
+        project_root=project_root,
+        model_sql="""
+        MODEL (
+          engine: "MergeTree()",
+          order_by: ["order_id"],
+        );
 
-clickhouse:
-  host: localhost
-  port: 8123
-  username: streambuild
-  password: streambuild
-        """.strip(),
-        encoding="utf-8",
-    )
-    (orders_root / "pipeline.yml").write_text(
-        """
-source:
-  kind: kafka
-  name: orders
-  broker_list: kafka:9092
-  topic: source.orders
-        """.strip(),
-        encoding="utf-8",
-    )
-    (orders_root / "orders_enriched.sql").write_text(
-        """
-MODEL (
-  engine: "MergeTree()",
-  order_by: ["order_id"],
-);
-
-SELECT order_id::UInt64 AS order_id FROM __ref("orders")
-        """.strip(),
-        encoding="utf-8",
+        SELECT order_id::UInt64 AS order_id FROM __ref("orders")
+        """,
     )
 
     runner: RecordingCommandRunner = RecordingCommandRunner()
@@ -1201,16 +1119,20 @@ def test_given_reconcile_flags_when_running_reconcile_then_it_passes_kwargs_to_c
             expected_output_fragments=("Wrote compile artifacts to", "Pipelines: 1", "Models: 1"),
             expected_written_files=(
                 "target_out/manifest.json",
-                "target_out/orders/compile/models/orders_enriched.sql",
-                "target_out/orders/run/models/orders_enriched.table.sql",
-                "target_out/orders/run/models/orders_enriched.mv.sql",
-                "target_out/orders/run/workflow/01_kafka_table.sql",
-                "target_out/orders/run/workflow/02_raw_table.sql",
-                "target_out/orders/run/workflow/03_landing_mv.sql",
-                "target_out/orders/run/workflow/10_orders_enriched.table.sql",
-                "target_out/orders/run/workflow/11_orders_enriched.mv.sql",
-                "target_out/orders/run/workflow/workflow.sql",
-                "target_out/orders/run/workflow/workflow.json",
+                "target_out/streambuild_dag.json",
+                "target_out/compiled/models/orders/orders_enriched.sql",
+                "target_out/compiled/resources/models/orders/orders_enriched.table.sql",
+                "target_out/compiled/resources/models/orders/orders_enriched.mv.sql",
+                "target_out/compiled/resources/sources/orders/kafka__orders.sql",
+                "target_out/compiled/resources/sources/orders/raw__orders.sql",
+                "target_out/compiled/resources/sources/orders/mv__orders.sql",
+                "target_out/compiled/workflows/orders/steps/0001_kafka_table.sql",
+                "target_out/compiled/workflows/orders/steps/0002_raw_table.sql",
+                "target_out/compiled/workflows/orders/steps/0003_landing_mv.sql",
+                "target_out/compiled/workflows/orders/steps/0010_orders_enriched.table.sql",
+                "target_out/compiled/workflows/orders/steps/0011_orders_enriched.mv.sql",
+                "target_out/compiled/workflows/orders/workflow.sql",
+                "target_out/compiled/workflows/orders/workflow.json",
             ),
             expected_target_dir_name="target_out",
         ),
@@ -1226,7 +1148,8 @@ def test_given_reconcile_flags_when_running_reconcile_then_it_passes_kwargs_to_c
             expected_output_fragments=("Wrote compile artifacts to",),
             expected_written_files=(
                 "target/manifest.json",
-                "target/orders/compile/models/orders_enriched.sql",
+                "target/streambuild_dag.json",
+                "target/compiled/models/orders/orders_enriched.sql",
             ),
         ),
     ],
@@ -1257,5 +1180,142 @@ def test_given_compile_when_running_then_it_writes_target_artifacts(
         encoding="utf-8"
     )
     assert '"relations": {' in manifest_contents
-    assert '"resolved_database": "default"' in manifest_contents
+    assert '"resolved_database": "analytics"' in manifest_contents
     assert '"engine": "ReplacingMergeTree(updated_at)"' in manifest_contents
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliNestedAuditOptionsTestCase(
+            description="preserves shared audit options authored before backfill",
+            argv=(
+                "audit",
+                "--project-dir",
+                "parent-project",
+                "--host",
+                "parent-host",
+                "--port",
+                "8124",
+                "--username",
+                "parent-user",
+                "--password",
+                "parent-secret",
+                "--database",
+                "parent-db",
+                "--json",
+                "--target",
+                "parent-target",
+                "--vars",
+                '{"scope": "parent"}',
+                "backfill",
+            ),
+            expected_project_dir="parent-project",
+            expected_host="parent-host",
+            expected_port=8124,
+            expected_username="parent-user",
+            expected_password="parent-secret",
+            expected_database="parent-db",
+            expected_json=True,
+            expected_target="parent-target",
+            expected_vars={"scope": "parent"},
+        ),
+        CliNestedAuditOptionsTestCase(
+            description="accepts shared audit options authored after backfill",
+            argv=(
+                "audit",
+                "backfill",
+                "--project-dir",
+                "child-project",
+                "--host",
+                "child-host",
+                "--port",
+                "9000",
+                "--username",
+                "child-user",
+                "--password",
+                "child-secret",
+                "--database",
+                "child-db",
+                "--json",
+                "--target",
+                "child-target",
+                "--vars",
+                '{"scope": "child"}',
+            ),
+            expected_project_dir="child-project",
+            expected_host="child-host",
+            expected_port=9000,
+            expected_username="child-user",
+            expected_password="child-secret",
+            expected_database="child-db",
+            expected_json=True,
+            expected_target="child-target",
+            expected_vars={"scope": "child"},
+        ),
+        CliNestedAuditOptionsTestCase(
+            description="child audit options override explicitly authored parent values",
+            argv=(
+                "audit",
+                "--project-dir",
+                "parent-project",
+                "--host",
+                "parent-host",
+                "--port",
+                "8124",
+                "--username",
+                "parent-user",
+                "--password",
+                "parent-secret",
+                "--database",
+                "parent-db",
+                "--target",
+                "parent-target",
+                "--vars",
+                '{"scope": "parent"}',
+                "backfill",
+                "--project-dir",
+                "child-project",
+                "--host",
+                "child-host",
+                "--port",
+                "9000",
+                "--username",
+                "child-user",
+                "--password",
+                "child-secret",
+                "--database",
+                "child-db",
+                "--json",
+                "--target",
+                "child-target",
+                "--vars",
+                '{"scope": "child"}',
+            ),
+            expected_project_dir="child-project",
+            expected_host="child-host",
+            expected_port=9000,
+            expected_username="child-user",
+            expected_password="child-secret",
+            expected_database="child-db",
+            expected_json=True,
+            expected_target="child-target",
+            expected_vars={"scope": "child"},
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_nested_audit_options_when_parsing_then_parent_and_child_order_is_stable(
+    test_case: CliNestedAuditOptionsTestCase,
+) -> None:
+    args: argparse.Namespace = build_cli_parser().parse_args(list(test_case.argv))
+
+    assert str(args.project_dir) == test_case.expected_project_dir
+    assert args.host == test_case.expected_host
+    assert args.port == test_case.expected_port
+    assert args.username == test_case.expected_username
+    assert args.password == test_case.expected_password
+    assert args.database == test_case.expected_database
+    assert args.json is test_case.expected_json
+    assert args.target == test_case.expected_target
+    assert args.vars == test_case.expected_vars

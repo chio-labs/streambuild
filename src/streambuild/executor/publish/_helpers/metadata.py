@@ -3,11 +3,11 @@
 from datetime import UTC, datetime
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.compiler.metadata_state.main.build_adapter_metadata_state import (
+from streambuild.compiler.planner.main.build_adapter_metadata_state import (
     build_adapter_metadata_state,
 )
-from streambuild.compiler.metadata_state.main.build_metadata_state import build_metadata_state
-from streambuild.compiler.metadata_state.models import MetadataState, PublishEventRecord
+from streambuild.compiler.planner.main.build_metadata_state import build_metadata_state
+from streambuild.compiler.planner.models import MetadataState, PublishEventRecord
 from streambuild.executor.backfill.main._ensure_metadata_tables import ensure_metadata_tables
 from streambuild.executor.publish.models import PublishedView
 

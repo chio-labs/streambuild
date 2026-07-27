@@ -44,6 +44,7 @@ from tests.integration.src.streambuild.executor.backfill.helpers import (
     build_scalar_target_insert_select_sql,
     build_target_insert_select_sql,
     require_managed_source,
+    require_model_resources,
 )
 
 
@@ -212,9 +213,10 @@ def test_given_staged_backfill_when_auditing_then_it_returns_expected_comparison
     active_physical_name: str = f"tbl__orders_enriched__{test_case.active_deployment_id}"
     clickhouse_client.command(
         render_create_table_ddl(
-            table=compiled_pipeline.transforms[0].target_table, database=clickhouse_database
+            table=require_model_resources(compiled_pipeline).target_table,
+            database=clickhouse_database,
         ).replace(
-            f"{clickhouse_database}.{compiled_pipeline.transforms[0].target_table.name}",
+            f"{clickhouse_database}.{require_model_resources(compiled_pipeline).target_table.name}",
             f"{clickhouse_database}.{active_physical_name}",
             1,
         )
@@ -222,7 +224,7 @@ def test_given_staged_backfill_when_auditing_then_it_returns_expected_comparison
     clickhouse_client.command(
         render_create_view_ddl(
             database=clickhouse_database,
-            view_name=compiled_pipeline.transforms[0].target_table.name,
+            view_name=require_model_resources(compiled_pipeline).target_table.name,
             target_table_name=active_physical_name,
         )
     )
@@ -283,9 +285,10 @@ def test_given_staged_backfill_when_auditing_then_it_returns_expected_comparison
     staged_physical_name: str = f"tbl__orders_enriched__{test_case.deployment_id}"
     clickhouse_client.command(
         render_create_table_ddl(
-            table=compiled_pipeline.transforms[0].target_table, database=clickhouse_database
+            table=require_model_resources(compiled_pipeline).target_table,
+            database=clickhouse_database,
         ).replace(
-            f"{clickhouse_database}.{compiled_pipeline.transforms[0].target_table.name}",
+            f"{clickhouse_database}.{require_model_resources(compiled_pipeline).target_table.name}",
             f"{clickhouse_database}.{staged_physical_name}",
             1,
         )
@@ -612,9 +615,10 @@ def test_given_dangling_active_view_when_auditing_then_it_returns_caution(
     )
     clickhouse_client.command(
         render_create_table_ddl(
-            table=compiled_pipeline.transforms[0].target_table, database=clickhouse_database
+            table=require_model_resources(compiled_pipeline).target_table,
+            database=clickhouse_database,
         ).replace(
-            f"{clickhouse_database}.{compiled_pipeline.transforms[0].target_table.name}",
+            f"{clickhouse_database}.{require_model_resources(compiled_pipeline).target_table.name}",
             f"{clickhouse_database}.tbl__orders_enriched__{test_case.active_deployment_id}",
             1,
         )
@@ -631,9 +635,10 @@ def test_given_dangling_active_view_when_auditing_then_it_returns_caution(
     )
     clickhouse_client.command(
         render_create_table_ddl(
-            table=compiled_pipeline.transforms[0].target_table, database=clickhouse_database
+            table=require_model_resources(compiled_pipeline).target_table,
+            database=clickhouse_database,
         ).replace(
-            f"{clickhouse_database}.{compiled_pipeline.transforms[0].target_table.name}",
+            f"{clickhouse_database}.{require_model_resources(compiled_pipeline).target_table.name}",
             f"{clickhouse_database}.tbl__orders_enriched__{test_case.deployment_id}",
             1,
         )
@@ -716,9 +721,10 @@ def test_given_deleted_active_view_when_auditing_then_it_uses_live_staged_state(
     )
     clickhouse_client.command(
         render_create_table_ddl(
-            table=compiled_pipeline.transforms[0].target_table, database=clickhouse_database
+            table=require_model_resources(compiled_pipeline).target_table,
+            database=clickhouse_database,
         ).replace(
-            f"{clickhouse_database}.{compiled_pipeline.transforms[0].target_table.name}",
+            f"{clickhouse_database}.{require_model_resources(compiled_pipeline).target_table.name}",
             (f"{clickhouse_database}.tbl__orders_enriched__{test_case.active_deployment_id}"),
             1,
         )
@@ -763,9 +769,10 @@ def test_given_deleted_active_view_when_auditing_then_it_uses_live_staged_state(
     )
     clickhouse_client.command(
         render_create_table_ddl(
-            table=compiled_pipeline.transforms[0].target_table, database=clickhouse_database
+            table=require_model_resources(compiled_pipeline).target_table,
+            database=clickhouse_database,
         ).replace(
-            f"{clickhouse_database}.{compiled_pipeline.transforms[0].target_table.name}",
+            f"{clickhouse_database}.{require_model_resources(compiled_pipeline).target_table.name}",
             f"{clickhouse_database}.tbl__orders_enriched__{test_case.deployment_id}",
             1,
         )
@@ -872,18 +879,20 @@ def test_given_degraded_offset_state_when_auditing_then_it_returns_caution(
     )
     clickhouse_client.command(
         render_create_table_ddl(
-            table=compiled_pipeline.transforms[0].target_table, database=clickhouse_database
+            table=require_model_resources(compiled_pipeline).target_table,
+            database=clickhouse_database,
         ).replace(
-            f"{clickhouse_database}.{compiled_pipeline.transforms[0].target_table.name}",
+            f"{clickhouse_database}.{require_model_resources(compiled_pipeline).target_table.name}",
             f"{clickhouse_database}.{active_physical_name}",
             1,
         )
     )
     clickhouse_client.command(
         render_create_table_ddl(
-            table=compiled_pipeline.transforms[0].target_table, database=clickhouse_database
+            table=require_model_resources(compiled_pipeline).target_table,
+            database=clickhouse_database,
         ).replace(
-            f"{clickhouse_database}.{compiled_pipeline.transforms[0].target_table.name}",
+            f"{clickhouse_database}.{require_model_resources(compiled_pipeline).target_table.name}",
             f"{clickhouse_database}.{staged_physical_name}",
             1,
         )

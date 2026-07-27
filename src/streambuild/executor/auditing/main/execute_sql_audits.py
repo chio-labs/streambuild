@@ -8,6 +8,9 @@ from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import AdapterQueryResult
 from streambuild.compiler.audit_discovery.models import LoadedSqlAudit
 from streambuild.compiler.compile.main.replace_refs import replace_refs
+from streambuild.compiler.sql_analysis.classes.sql_reference_rewriter import (
+    SqlReferenceRewriter,
+)
 from streambuild.executor.auditing.constants import AUDIT_SAMPLE_LIMIT
 from streambuild.executor.auditing.exceptions import AuditExecutionError
 from streambuild.executor.auditing.models import SqlAuditResult, SqlAuditRunResult
@@ -18,15 +21,18 @@ def execute_sql_audits(
     loaded_audits: tuple[LoadedSqlAudit, ...],
     resolver: Mapping[str, str],
     client: AdapterConnection,
+    dialect: str,
 ) -> SqlAuditRunResult:
     """Execute discovered SQL audits with resolved model refs."""
 
+    reference_rewriter: SqlReferenceRewriter = SqlReferenceRewriter(dialect=dialect)
     return SqlAuditRunResult(
         audit_results=tuple(
             _execute_single_sql_audit(
                 loaded_audit=loaded_audit,
                 resolver=resolver,
                 client=client,
+                reference_rewriter=reference_rewriter,
             )
             for loaded_audit in loaded_audits
         )
@@ -38,8 +44,13 @@ def _execute_single_sql_audit(
     loaded_audit: LoadedSqlAudit,
     resolver: Mapping[str, str],
     client: AdapterConnection,
+    reference_rewriter: SqlReferenceRewriter,
 ) -> SqlAuditResult:
-    resolved_query: str = replace_refs(sql=loaded_audit.query, resolver=dict(resolver))
+    resolved_query: str = replace_refs(
+        sql=loaded_audit.query,
+        resolver=dict(resolver),
+        rewriter=reference_rewriter,
+    )
     failing_row_count: int = _query_failing_row_count(query=resolved_query, client=client)
     sample_column_names: tuple[str, ...] = ()
     sample_rows: tuple[tuple[object, ...], ...] = ()

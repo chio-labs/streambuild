@@ -1,14 +1,22 @@
 from pathlib import Path
+from typing import cast
 
 import pytest
 
-from streambuild.compiler.macros.main._expand_macro_calls import expand_project_sql_macros
+from streambuild.compiler.macros.exceptions import MacroError
+from streambuild.compiler.macros.main._build_macro_context import build_macro_context
+from streambuild.compiler.macros.models import MacroContext, MacroRegistry
 from tests.unit.src.streambuild.compiler.macros._test_types import (
     ExpandProjectSqlMacrosCollisionTestCase,
     ExpandProjectSqlMacrosErrorTestCase,
     ExpandProjectSqlMacrosTestCase,
+    MacroExecutionDiagnosticTestCase,
+    MacroImportDiagnosticTestCase,
+    MacroRuntimeImmutabilityTestCase,
 )
 from tests.unit.src.streambuild.compiler.macros.helpers import (
+    build_test_macro_runtime,
+    expand_project_sql_macros,
     write_macro_file,
     write_project_file,
     write_sql_file,
@@ -121,6 +129,63 @@ from tests.unit.src.streambuild.compiler.macros.helpers import (
             sql_body='SELECT @join_rows(@left_rows(), @right_rows(), ", ")',
             expected_expanded_fragment="SELECT SELECT ord_001, ord_002, ord_003",
         ),
+        ExpandProjectSqlMacrosTestCase(
+            description="supports the complete nested Python literal matrix",
+            macro_file_name="literal_helpers.py",
+            macro_file_contents="""
+        def render_literal(value: object) -> str:
+            return repr(value)
+        """,
+            sql_body=(
+                "SELECT @render_literal([True, False, None, -1, +2.5, ('value',), {'count': 3}])"
+            ),
+            expected_expanded_fragment=(
+                "SELECT [True, False, None, -1, 2.5, ('value',), {'count': 3}]"
+            ),
+        ),
+        ExpandProjectSqlMacrosTestCase(
+            description="ignores calls in strings comments emails and quoted identifiers",
+            macro_file_name="scanner_helpers.py",
+            macro_file_contents="""
+        def selected_value() -> str:
+            return "expanded_value"
+        """,
+            sql_body=(
+                "SELECT '@selected_value()' AS literal, `@selected_value()` AS quoted, "
+                "owner@selected_value() AS email -- @selected_value()\n"
+                "# @selected_value()\n"
+                "/* @selected_value() */\n"
+                ", @selected_value()"
+            ),
+            expected_expanded_fragment=", expanded_value",
+        ),
+        ExpandProjectSqlMacrosTestCase(
+            description="allows macro-like text in returned SQL strings and comments",
+            macro_file_name="returned_sql_helpers.py",
+            macro_file_contents="""
+        def returned_sql() -> str:
+            return "'@not_a_call()' /* @also_not_a_call() */"
+        """,
+            sql_body="SELECT @returned_sql()",
+            expected_expanded_fragment=("SELECT '@not_a_call()' /* @also_not_a_call() */"),
+        ),
+        ExpandProjectSqlMacrosTestCase(
+            description="injects typed immutable compiler context into the first ctx parameter",
+            macro_file_name="context_helpers.py",
+            macro_file_contents="""
+        from streambuild.compiler.macros.models import MacroContext
+
+        def context_value(ctx: MacroContext) -> str:
+            return (
+                f"{ctx.adapter_name}|{ctx.dialect}|{ctx.target_name}|{ctx.database}|"
+                f"{ctx.virtual_environments}|{len(ctx.variables)}"
+            )
+        """,
+            sql_body="SELECT '@context_value()' AS literal, @context_value()",
+            expected_expanded_fragment=(
+                "SELECT '@context_value()' AS literal, clickhouse|clickhouse|dev|analytics|False|0"
+            ),
+        ),
     ],
     ids=lambda case: case.description,
 )
@@ -134,7 +199,11 @@ def test_given_project_macros_when_expanding_then_it_returns_expected_sql(
         tmp_path, "pipelines/orders/order_items.sql", test_case.sql_body
     )
 
-    expanded_sql: str = expand_project_sql_macros(sql=test_case.sql_body, file_path=sql_file_path)
+    expanded_sql: str = expand_project_sql_macros(
+        project_dir=tmp_path,
+        sql=test_case.sql_body,
+        file_path=sql_file_path,
+    )
 
     assert test_case.expected_expanded_fragment in expanded_sql
 
@@ -177,6 +246,100 @@ def test_given_project_macros_when_expanding_then_it_returns_expected_sql(
             sql_body="SELECT @bad_macro()",
             expected_error_fragment="must return a SQL string when used directly in SQL",
         ),
+        ExpandProjectSqlMacrosErrorTestCase(
+            description="rejects bytes outside the locked literal matrix",
+            macro_file_name="literal_errors.py",
+            macro_file_contents="""
+        def render(value: object) -> str:
+            return str(value)
+        """,
+            sql_body="SELECT @render(b'bytes')",
+            expected_error_fragment="unsupported literal value",
+        ),
+        ExpandProjectSqlMacrosErrorTestCase(
+            description="rejects comprehensions outside the locked literal matrix",
+            macro_file_name="literal_errors.py",
+            macro_file_contents="""
+        def render(value: object) -> str:
+            return str(value)
+        """,
+            sql_body="SELECT @render([value for value in [1]])",
+            expected_error_fragment="must use only Python literals",
+        ),
+        ExpandProjectSqlMacrosErrorTestCase(
+            description="rejects dictionary unpacking outside the locked literal matrix",
+            macro_file_name="literal_errors.py",
+            macro_file_contents="""
+        def render(value: object) -> str:
+            return str(value)
+        """,
+            sql_body="SELECT @render({**{'count': 1}})",
+            expected_error_fragment="must not use dictionary unpacking",
+        ),
+        ExpandProjectSqlMacrosErrorTestCase(
+            description="rejects non scalar dictionary keys outside the locked literal matrix",
+            macro_file_name="literal_errors.py",
+            macro_file_contents="""
+        def render(value: object) -> str:
+            return str(value)
+        """,
+            sql_body="SELECT @render({('composite',): 1})",
+            expected_error_fragment="unsupported dictionary key",
+        ),
+        ExpandProjectSqlMacrosErrorTestCase(
+            description="rejects unary booleans outside the locked literal matrix",
+            macro_file_name="literal_errors.py",
+            macro_file_contents="""
+        def render(value: object) -> str:
+            return str(value)
+            """,
+            sql_body="SELECT @render(-True)",
+            expected_error_fragment="unsupported unary value",
+        ),
+        ExpandProjectSqlMacrosErrorTestCase(
+            description="rejects repeated keyword arguments",
+            macro_file_name="literal_errors.py",
+            macro_file_contents="""
+        def render(*, value: object) -> str:
+            return str(value)
+        """,
+            sql_body="SELECT @render(value=1, value=2)",
+            expected_error_fragment="repeat keyword 'value'",
+        ),
+        ExpandProjectSqlMacrosErrorTestCase(
+            description="rejects imported public functions from macro registration",
+            macro_file_name="imported_helpers.py",
+            macro_file_contents="""
+        from textwrap import dedent
+
+        def owned_macro() -> str:
+            return "owned"
+        """,
+            sql_body="SELECT @dedent()",
+            expected_error_fragment="Unknown macro '@dedent'",
+        ),
+        ExpandProjectSqlMacrosErrorTestCase(
+            description="rejects an untyped ctx parameter",
+            macro_file_name="context_errors.py",
+            macro_file_contents="""
+        def context_value(ctx) -> str:
+            return str(ctx.adapter_name)
+        """,
+            sql_body="SELECT @context_value()",
+            expected_error_fragment="must annotate ctx as MacroContext",
+        ),
+        ExpandProjectSqlMacrosErrorTestCase(
+            description="rejects explicit context overrides",
+            macro_file_name="context_errors.py",
+            macro_file_contents="""
+        from streambuild.compiler.macros.models import MacroContext
+
+        def context_value(ctx: MacroContext) -> str:
+            return str(ctx.adapter_name)
+        """,
+            sql_body="SELECT @context_value(ctx=None)",
+            expected_error_fragment="reserves keyword 'ctx'",
+        ),
     ],
     ids=lambda case: case.description,
 )
@@ -190,8 +353,15 @@ def test_given_invalid_project_macros_when_expanding_then_it_raises_clear_errors
         tmp_path, "pipelines/orders/order_items.sql", test_case.sql_body
     )
 
-    with pytest.raises(ValueError, match=test_case.expected_error_fragment):
-        expand_project_sql_macros(sql=test_case.sql_body, file_path=sql_file_path)
+    with pytest.raises(MacroError, match=test_case.expected_error_fragment) as error_info:
+        expand_project_sql_macros(
+            project_dir=tmp_path,
+            sql=test_case.sql_body,
+            file_path=sql_file_path,
+        )
+
+    assert error_info.value.diagnostic.location is not None
+    assert error_info.value.diagnostic.location.path == sql_file_path
 
 
 @pytest.mark.parametrize(
@@ -237,4 +407,136 @@ def test_given_colliding_macro_names_when_expanding_then_it_raises_clear_error(
     )
 
     with pytest.raises(ValueError, match=test_case.expected_error_fragment):
-        expand_project_sql_macros(sql=test_case.sql_body, file_path=sql_file_path)
+        expand_project_sql_macros(
+            project_dir=tmp_path,
+            sql=test_case.sql_body,
+            file_path=sql_file_path,
+        )
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        MacroRuntimeImmutabilityTestCase(
+            description="deeply freezes the registry and nested context variables",
+            variables={"nested": {"values": [1, "two"]}},
+            expected_macro_names=("owned_macro",),
+            expected_nested_values=(1, "two"),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_loaded_macro_runtime_when_mutating_then_registry_and_context_are_immutable(
+    test_case: MacroRuntimeImmutabilityTestCase,
+    tmp_path: Path,
+) -> None:
+    write_macro_file(
+        tmp_path,
+        "owned.py",
+        """
+        def owned_macro() -> str:
+            return "owned"
+        """,
+    )
+    registry: MacroRegistry
+    _default_context: MacroContext
+    registry, _default_context = build_test_macro_runtime(tmp_path)
+    context: MacroContext = build_macro_context(
+        adapter_name="clickhouse",
+        dialect="clickhouse",
+        target_name="dev",
+        database="analytics",
+        schema=None,
+        virtual_environments=True,
+        variables=test_case.variables,
+    )
+    nested_variables: dict[str, object] = cast(dict[str, object], context.variables["nested"])
+
+    with pytest.raises(TypeError):
+        cast(dict[str, object], registry.macros)["other"] = object()
+    with pytest.raises(TypeError):
+        cast(dict[str, object], context.variables)["other"] = object()
+    with pytest.raises(TypeError):
+        nested_variables["other"] = object()
+
+    assert tuple(registry.macros) == test_case.expected_macro_names
+    assert nested_variables["values"] == test_case.expected_nested_values
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        MacroExecutionDiagnosticTestCase(
+            description="locates a failed SQL call and its macro definition",
+            macro_file_contents="""
+            def failed_macro() -> str:
+                raise RuntimeError("deliberate macro failure")
+            """,
+            sql_body="SELECT\n  @failed_macro()",
+            expected_error_fragment="deliberate macro failure",
+            expected_sql_line=2,
+            expected_definition_line=1,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_failing_macro_call_when_expanding_then_diagnostic_locates_call_and_definition(
+    test_case: MacroExecutionDiagnosticTestCase,
+    tmp_path: Path,
+) -> None:
+    macro_file_path: Path = write_macro_file(
+        tmp_path,
+        "failed.py",
+        test_case.macro_file_contents,
+    )
+    sql_file_path: Path = write_sql_file(
+        tmp_path,
+        "pipelines/orders/model.sql",
+        test_case.sql_body,
+    )
+
+    with pytest.raises(MacroError, match=test_case.expected_error_fragment) as error_info:
+        expand_project_sql_macros(
+            project_dir=tmp_path,
+            sql=test_case.sql_body,
+            file_path=sql_file_path,
+        )
+
+    assert error_info.value.diagnostic.location is not None
+    assert error_info.value.diagnostic.location.path == sql_file_path
+    assert error_info.value.diagnostic.location.line == test_case.expected_sql_line
+    assert error_info.value.diagnostic.related_locations[0].location.path == macro_file_path
+    assert (
+        error_info.value.diagnostic.related_locations[0].location.line
+        == test_case.expected_definition_line
+    )
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        MacroImportDiagnosticTestCase(
+            description="locates a failed macro module import",
+            macro_file_contents='raise RuntimeError("deliberate import failure")',
+            expected_error_fragment="deliberate import failure",
+            expected_definition_line=1,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_failing_macro_module_when_loading_then_diagnostic_locates_definition(
+    test_case: MacroImportDiagnosticTestCase,
+    tmp_path: Path,
+) -> None:
+    macro_file_path: Path = write_macro_file(
+        tmp_path,
+        "failed_import.py",
+        test_case.macro_file_contents,
+    )
+
+    with pytest.raises(MacroError, match=test_case.expected_error_fragment) as error_info:
+        _registry, _context = build_test_macro_runtime(tmp_path)
+
+    assert error_info.value.diagnostic.location is not None
+    assert error_info.value.diagnostic.location.path == macro_file_path
+    assert error_info.value.diagnostic.location.line == test_case.expected_definition_line

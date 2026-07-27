@@ -21,7 +21,7 @@ from tests.unit.src.streambuild.executor.backfill._helpers._test_types import (
     [
         ResolveUnsupportedBoundedReplayBehaviorTestCase(
             description="policy full resolves unsupported bounded replay to full rebuild",
-            bounded_replay_fallback="full_refresh",
+            bounded_replay_fallback="full",
             expected_execution_mode=REBUILD_EXECUTION_MODE_FULL,
             expected_requested_start_time="2026-04-09 15:00:00.000",
         ),

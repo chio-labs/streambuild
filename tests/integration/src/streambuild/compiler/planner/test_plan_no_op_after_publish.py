@@ -5,7 +5,6 @@ from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import AdapterConnectionConfig
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from streambuild.compiler.compile.models import CompiledPipeline, DesiredState
-from streambuild.compiler.desired_state.main.build_desired_state import build_desired_state
 from streambuild.compiler.planner.constants import (
     PLANNED_CHANGE_TYPE_NO_OP,
     REBUILD_EXECUTION_MODE_FULL,
@@ -38,6 +37,7 @@ from tests.integration.src.streambuild.compiler.planner.helpers import (
     build_changed_sql_compiled_pipeline,
     get_orders_enriched_change,
     normalize_orders_enriched_timestamp_type,
+    realize_compiled_pipelines,
 )
 from tests.integration.src.streambuild.conftest import ClickHouseConnectionSettings
 from tests.integration.src.streambuild.executor.backfill.helpers import (
@@ -70,7 +70,7 @@ def test_given_greenfield_backfill_and_publish_when_planning_again_then_it_is_a_
     clickhouse_database: str,
 ) -> None:
     compiled_pipeline: CompiledPipeline = build_scalar_replay_compiled_pipeline("timestamp")
-    desired_state: DesiredState = build_desired_state((compiled_pipeline,))
+    desired_state: DesiredState = realize_compiled_pipelines((compiled_pipeline,)).desired_state
     clickhouse_client.command(
         render_create_kafka_table_ddl(
             table=require_managed_source(compiled_pipeline).kafka_table,
@@ -181,7 +181,7 @@ def test_given_equivalent_type_casing_after_publish_when_planning_again_then_it_
     clickhouse_database: str,
 ) -> None:
     compiled_pipeline: CompiledPipeline = build_scalar_replay_compiled_pipeline("timestamp")
-    desired_state: DesiredState = build_desired_state((compiled_pipeline,))
+    desired_state: DesiredState = realize_compiled_pipelines((compiled_pipeline,)).desired_state
     clickhouse_client.command(
         render_create_kafka_table_ddl(
             table=require_managed_source(compiled_pipeline).kafka_table,
@@ -365,7 +365,9 @@ def test_given_published_deployment_when_authored_sql_changes_then_plan_requires
             client=managed_client,
         )
         changed_compiled_pipeline: CompiledPipeline = build_changed_sql_compiled_pipeline()
-        changed_desired_state: DesiredState = build_desired_state((changed_compiled_pipeline,))
+        changed_desired_state: DesiredState = realize_compiled_pipelines(
+            (changed_compiled_pipeline,)
+        ).desired_state
         actual_state: ActualState = load_actual_state(
             client=managed_client,
             desired_state=changed_desired_state,
@@ -527,7 +529,9 @@ def test_given_published_deployment_when_transform_output_schema_changes_then_pl
         changed_compiled_pipeline: CompiledPipeline = (
             build_changed_schema_variant_compiled_pipeline(test_case.changed_pipeline_kind)
         )
-        changed_desired_state: DesiredState = build_desired_state((changed_compiled_pipeline,))
+        changed_desired_state: DesiredState = realize_compiled_pipelines(
+            (changed_compiled_pipeline,)
+        ).desired_state
         actual_state: ActualState = load_actual_state(
             client=managed_client,
             desired_state=changed_desired_state,

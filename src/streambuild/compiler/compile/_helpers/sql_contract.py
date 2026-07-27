@@ -1,15 +1,11 @@
-"""Validate and derive the strict transform SQL output contract."""
-
-from __future__ import annotations
+"""Adapt strict SQL-analysis failures and facts to compile contracts."""
 
 from collections.abc import Sequence
-
-from sqlglot import exp, parse, parse_one
-from sqlglot.errors import ParseError
 
 from streambuild.compiler.compile.exceptions import (
     TransformOrderByUnknownColumnError,
     TransformPartitionByUnknownColumnError,
+    TransformSqlContractError,
     TransformSqlDuplicateAliasError,
     TransformSqlFinalQueryShapeError,
     TransformSqlMultipleStatementsError,
@@ -20,184 +16,216 @@ from streambuild.compiler.compile.exceptions import (
     TransformTtlUnknownColumnError,
 )
 from streambuild.compiler.compile.models import Column
+from streambuild.compiler.sql_analysis.classes.sql_model_analyzer import SqlModelAnalyzer
+from streambuild.compiler.sql_analysis.exceptions import (
+    SqlAnalysisError,
+    SqlDuplicateAliasError,
+    SqlQueryShapeError,
+    SqlStarProjectionError,
+    SqlStatementCountError,
+    SqlStorageReferenceError,
+    SqlUntypedProjectionError,
+)
+from streambuild.compiler.sql_analysis.models import (
+    SqlModelAnalysis,
+    SqlOutputColumn,
+    SqlStorageExpression,
+)
+from streambuild.compiler.sql_analysis.types import SqlStorageExpressionKind
 
 
-def derive_transform_output_columns(*, transform_name: str, query: str) -> tuple[Column, ...]:
-    """Validate transform SQL and derive output columns from the outermost SELECT."""
+def analyze_transform_model_sql(
+    *,
+    analyzer: SqlModelAnalyzer,
+    transform_name: str,
+    query: str,
+    engine: str,
+    order_by: tuple[str, ...],
+    partition_by: str | None,
+    ttl: str | None,
+) -> SqlModelAnalysis:
+    """Analyze one model and translate boundary errors to compile-domain errors."""
 
-    statement: exp.Select = _parse_outermost_select(transform_name=transform_name, query=query)
-    return _derive_select_columns(transform_name=transform_name, statement=statement)
+    try:
+        return analyzer.analyze(
+            sql=query,
+            engine=engine,
+            order_by=order_by,
+            partition_by=partition_by,
+            ttl=ttl,
+        )
+    except SqlAnalysisError as error:
+        raise _compile_error(transform_name=transform_name, query=query, error=error) from error
+
+
+def derive_transform_output_columns(
+    *, analyzer: SqlModelAnalyzer, transform_name: str, query: str
+) -> tuple[Column, ...]:
+    """Validate transform SQL and derive exact outer output columns."""
+
+    analysis: SqlModelAnalysis = analyze_transform_model_sql(
+        analyzer=analyzer,
+        transform_name=transform_name,
+        query=query,
+        engine="MergeTree()",
+        order_by=(),
+        partition_by=None,
+        ttl=None,
+    )
+    return tuple(_column(column) for column in analysis.output_columns)
+
+
+def analyze_transform_sql(
+    *, analyzer: SqlModelAnalyzer, transform_name: str, query: str
+) -> tuple[tuple[Column, ...], bool]:
+    """Return the retained legacy tuple from one mandatory model analysis."""
+
+    analysis: SqlModelAnalysis = analyze_transform_model_sql(
+        analyzer=analyzer,
+        transform_name=transform_name,
+        query=query,
+        engine="MergeTree()",
+        order_by=(),
+        partition_by=None,
+        ttl=None,
+    )
+    return (
+        tuple(_column(column) for column in analysis.output_columns),
+        analysis.aggregate_facts.has_semantics,
+    )
 
 
 def validate_order_by_expressions(
     *,
+    analyzer: SqlModelAnalyzer,
     transform_name: str,
     order_by: Sequence[str],
     available_columns: Sequence[Column],
 ) -> None:
-    """Validate that ORDER BY expressions reference only derived output columns."""
+    """Validate ORDER BY expressions through mandatory SQL analysis."""
 
-    available_column_names: tuple[str, ...] = _available_column_names(available_columns)
-    for expression in order_by:
-        unknown_column_names: tuple[str, ...] = _unknown_output_columns(
-            transform_name=transform_name,
-            expression=expression,
-            available_column_names=available_column_names,
-        )
-        if unknown_column_names:
-            raise TransformOrderByUnknownColumnError(
-                transform_name,
-                expression,
-                unknown_column_names,
-                available_column_names,
-            )
+    _validate_storage(
+        analyzer=analyzer,
+        transform_name=transform_name,
+        order_by=tuple(order_by),
+        partition_by=None,
+        ttl=None,
+        available_columns=available_columns,
+    )
 
 
 def validate_partition_by_expression(
     *,
+    analyzer: SqlModelAnalyzer,
     transform_name: str,
     partition_by: str | None,
     available_columns: Sequence[Column],
 ) -> None:
-    """Validate that PARTITION BY references only derived output columns."""
+    """Validate PARTITION BY through mandatory SQL analysis."""
 
-    if partition_by is None:
-        return
-
-    available_column_names: tuple[str, ...] = _available_column_names(available_columns)
-    unknown_column_names: tuple[str, ...] = _unknown_output_columns(
+    _validate_storage(
+        analyzer=analyzer,
         transform_name=transform_name,
-        expression=partition_by,
-        available_column_names=available_column_names,
+        order_by=(),
+        partition_by=partition_by,
+        ttl=None,
+        available_columns=available_columns,
     )
-    if unknown_column_names:
-        raise TransformPartitionByUnknownColumnError(
-            transform_name,
-            partition_by,
-            unknown_column_names,
-            available_column_names,
-        )
 
 
 def validate_ttl_expression(
     *,
+    analyzer: SqlModelAnalyzer,
     transform_name: str,
     ttl: str | None,
     available_columns: Sequence[Column],
 ) -> None:
-    """Validate that TTL references only derived output columns."""
+    """Validate TTL through mandatory SQL analysis."""
 
-    if ttl is None:
-        return
-
-    available_column_names: tuple[str, ...] = _available_column_names(available_columns)
-    unknown_column_names: tuple[str, ...] = _unknown_output_columns(
-        transform_name=transform_name, expression=ttl, available_column_names=available_column_names
+    _validate_storage(
+        analyzer=analyzer,
+        transform_name=transform_name,
+        order_by=(),
+        partition_by=None,
+        ttl=ttl,
+        available_columns=available_columns,
     )
-    if unknown_column_names:
-        raise TransformTtlUnknownColumnError(
-            transform_name,
-            ttl,
-            unknown_column_names,
-            available_column_names,
-        )
 
 
-def _available_column_names(available_columns: Sequence[Column]) -> tuple[str, ...]:
-    """Return the derived output column names in declaration order."""
-
-    return tuple(column.name for column in available_columns)
-
-
-def _unknown_output_columns(
+def _validate_storage(
     *,
+    analyzer: SqlModelAnalyzer,
     transform_name: str,
-    expression: str,
-    available_column_names: tuple[str, ...],
-) -> tuple[str, ...]:
-    """Return any output-column references not present in the derived schema."""
-
-    available_column_name_set: set[str] = set(available_column_names)
+    order_by: tuple[str, ...],
+    partition_by: str | None,
+    ttl: str | None,
+    available_columns: Sequence[Column],
+) -> None:
     try:
-        parsed_expression: exp.Expr = parse_one(expression, read="clickhouse")
-    except ParseError as error:
-        raise TransformSqlParseError(transform_name, expression, str(error)) from error
+        _: tuple[SqlStorageExpression, ...] = analyzer.analyze_storage(
+            order_by=order_by,
+            partition_by=partition_by,
+            ttl=ttl,
+            output_columns=tuple(
+                SqlOutputColumn(name=column.name, type=column.type) for column in available_columns
+            ),
+        )
+    except SqlAnalysisError as error:
+        raise _compile_error(transform_name=transform_name, query="", error=error) from error
 
-    referenced_column_names: tuple[str, ...] = tuple(
-        column.name for column in parsed_expression.find_all(exp.Column)
+
+def _compile_error(
+    *, transform_name: str, query: str, error: SqlAnalysisError
+) -> TransformSqlContractError:
+    compile_error: TransformSqlContractError
+    if isinstance(error, SqlStatementCountError):
+        compile_error = TransformSqlMultipleStatementsError(transform_name, error.statement_count)
+    elif isinstance(error, SqlQueryShapeError) and error.is_set_operation:
+        compile_error = TransformSqlTopLevelSetOperationError(transform_name, error.statement_sql)
+    elif isinstance(error, SqlQueryShapeError):
+        compile_error = TransformSqlFinalQueryShapeError(transform_name, error.statement_type)
+    elif isinstance(error, SqlStarProjectionError):
+        compile_error = TransformSqlStarProjectionError(transform_name, error.column_index)
+    elif isinstance(error, SqlUntypedProjectionError):
+        compile_error = TransformSqlUntypedProjectionError(
+            transform_name,
+            error.column_index,
+            error.projection_sql,
+        )
+    elif isinstance(error, SqlDuplicateAliasError):
+        compile_error = TransformSqlDuplicateAliasError(transform_name, error.alias)
+    elif isinstance(error, SqlStorageReferenceError):
+        compile_error = _storage_error(transform_name=transform_name, error=error)
+    else:
+        compile_error = TransformSqlParseError(transform_name, query, str(error))
+    compile_error.span = error.span
+    return compile_error
+
+
+def _storage_error(
+    *, transform_name: str, error: SqlStorageReferenceError
+) -> TransformSqlContractError:
+    if error.kind == SqlStorageExpressionKind.ORDER_BY:
+        return TransformOrderByUnknownColumnError(
+            transform_name,
+            error.expression,
+            error.unknown_column_names,
+            error.available_column_names,
+        )
+    if error.kind == SqlStorageExpressionKind.PARTITION_BY:
+        return TransformPartitionByUnknownColumnError(
+            transform_name,
+            error.expression,
+            error.unknown_column_names,
+            error.available_column_names,
+        )
+    return TransformTtlUnknownColumnError(
+        transform_name,
+        error.expression,
+        error.unknown_column_names,
+        error.available_column_names,
     )
-    return tuple(
-        column_name
-        for column_name in referenced_column_names
-        if column_name not in available_column_name_set
-    )
 
 
-def _parse_outermost_select(*, transform_name: str, query: str) -> exp.Select:
-    try:
-        raw_statements: list[exp.Expr | None] = parse(query, read="clickhouse")
-    except ParseError as error:
-        raise TransformSqlParseError(
-            transform_name=transform_name,
-            query=query,
-            details=str(error),
-        ) from error
-
-    statements: tuple[exp.Expr, ...] = tuple(
-        statement for statement in raw_statements if statement is not None
-    )
-    if len(statements) != 1:
-        raise TransformSqlMultipleStatementsError(
-            transform_name=transform_name,
-            statement_count=len(statements),
-        )
-
-    statement: exp.Expr = statements[0]
-    if isinstance(statement, exp.SetOperation):
-        raise TransformSqlTopLevelSetOperationError(
-            transform_name=transform_name,
-            statement_sql=statement.sql(dialect="clickhouse"),
-        )
-    if not isinstance(statement, exp.Select):
-        raise TransformSqlFinalQueryShapeError(
-            transform_name=transform_name,
-            statement_type=statement.__class__.__name__,
-        )
-    return statement
-
-
-def _derive_select_columns(*, transform_name: str, statement: exp.Select) -> tuple[Column, ...]:
-    projections: tuple[exp.Expression, ...] = tuple(statement.expressions)
-    derived_columns: list[Column] = []
-    seen_aliases: set[str] = set()
-    for column_index, projection in enumerate(projections, start=1):
-        if isinstance(projection, exp.Star):
-            raise TransformSqlStarProjectionError(
-                transform_name=transform_name,
-                column_index=column_index,
-            )
-
-        if not isinstance(projection, exp.Alias) or not isinstance(projection.this, exp.Cast):
-            raise TransformSqlUntypedProjectionError(
-                transform_name=transform_name,
-                column_index=column_index,
-                projection_sql=projection.sql(dialect="clickhouse"),
-            )
-
-        actual_alias: str = projection.alias
-        if actual_alias in seen_aliases:
-            raise TransformSqlDuplicateAliasError(
-                transform_name=transform_name,
-                alias=actual_alias,
-            )
-        seen_aliases.add(actual_alias)
-
-        cast_expression: exp.Cast = projection.this
-        derived_columns.append(
-            Column(
-                name=actual_alias,
-                type=cast_expression.to.sql(dialect="clickhouse"),
-            )
-        )
-
-    return tuple(derived_columns)
+def _column(column: SqlOutputColumn) -> Column:
+    return Column(name=column.name, type=column.type)

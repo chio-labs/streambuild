@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 from streambuild.adapter.models import CatalogSnapshot
@@ -13,15 +14,17 @@ from streambuild.compiler.compile.models import (
     ObjectKey,
     TableSpec,
 )
-from streambuild.compiler.discovery.types import BoundedReplayFallback
-from streambuild.compiler.metadata_state.models import ObjectStateRecord
+from streambuild.compiler.discovery.types import (
+    BoundedReplayFallback,
+    ReplayLineageMode,
+    ReplayOnChangeMode,
+)
 from streambuild.compiler.planner.types import (
     DeploymentAction,
     DeploymentPhase,
     PlannedChangeType,
     RebuildExecutionMode,
     RebuildStrategy,
-    SchemaChangeBackfillMode,
     TableSchemaChangeKind,
     TableSchemaSeedCompatibility,
 )
@@ -87,7 +90,7 @@ class ActualTable:
         return self.spec.storage.ttl
 
     @property
-    def settings(self) -> dict[str, str] | None:
+    def settings(self) -> Mapping[str, str] | None:
         return self.spec.storage.settings
 
 
@@ -232,7 +235,7 @@ class RebuildSubtree:
     forced_full_refresh: bool = False
     forced_start_time: str | None = None
     requested_start_time: str | None = None
-    configured_backfill_mode: SchemaChangeBackfillMode | str | None = None
+    configured_backfill_mode: ReplayOnChangeMode | str | None = None
     execution_lookback_seconds: int | None = None
     history_preserving_bounded_supported: bool = True
     resolved_bounded_replay_fallback: BoundedReplayFallback | str | None = None
@@ -244,7 +247,7 @@ class RebuildSubtree:
             object.__setattr__(
                 self,
                 "configured_backfill_mode",
-                SchemaChangeBackfillMode(self.configured_backfill_mode),
+                ReplayOnChangeMode(self.configured_backfill_mode),
             )
         if self.resolved_bounded_replay_fallback is not None:
             object.__setattr__(
@@ -299,3 +302,86 @@ class DeploymentPlan:
     prepared_shadow_objects: tuple[PreparedShadowObject, ...]
     warnings: tuple[PlannerWarning, ...]
     sql_diffs: tuple[PlannedSqlDiff, ...] = ()
+
+
+@dataclass(frozen=True)
+class PreparedObjectMapping:
+    """A logical-to-physical prepared object mapping for a deployment."""
+
+    logical_key: ObjectKey
+    physical_name: str
+
+
+@dataclass(frozen=True)
+class ObjectStateRecord:
+    """Framework-owned applied state for a logical object."""
+
+    deployment_id: str
+    key: ObjectKey
+    normalized_fingerprint: str
+    normalized_query: str | None
+    recorded_at: str
+
+
+@dataclass(frozen=True)
+class DeploymentRecord:
+    """Stored staged deployment metadata."""
+
+    deployment_id: str
+    created_at: str
+    status: str
+    replay_lineage_mode: ReplayLineageMode | str
+    selected_root_keys: tuple[ObjectKey, ...]
+    warning_codes: tuple[str, ...]
+    prepared_object_mappings: tuple[PreparedObjectMapping, ...]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "replay_lineage_mode", ReplayLineageMode(self.replay_lineage_mode))
+
+
+@dataclass(frozen=True)
+class DeploymentWatermarkRecord:
+    """Stored replay-boundary or progress metadata for a deployment."""
+
+    deployment_id: str
+    root_key: ObjectKey
+    anchor_key: ObjectKey
+    boundary_key: str
+    cutoff_value: str
+
+
+@dataclass(frozen=True)
+class DeploymentRuntimeDetailRecord:
+    """Stored per-root runtime decision metadata for a deployment."""
+
+    deployment_id: str
+    root_key: ObjectKey
+    state_kind: str
+    replay_strategy: str
+    active_deployment_id: str | None
+    anchor_key: ObjectKey
+    anchor_physical_name: str | None
+    execution_mode: str | None
+    configured_backfill_mode: str | None
+    execution_lookback_seconds: int | None
+    live_target_names: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class PublishEventRecord:
+    """Stored publish/activation history for one deployment."""
+
+    deployment_id: str
+    published_at: str
+    logical_view_names: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class MetadataState:
+    """Project-level stored metadata-state records."""
+
+    object_states: tuple[ObjectStateRecord, ...]
+    deployments: tuple[DeploymentRecord, ...]
+    deployment_watermarks: tuple[DeploymentWatermarkRecord, ...]
+    deployment_runtime_details: tuple[DeploymentRuntimeDetailRecord, ...]
+    publish_events: tuple[PublishEventRecord, ...]

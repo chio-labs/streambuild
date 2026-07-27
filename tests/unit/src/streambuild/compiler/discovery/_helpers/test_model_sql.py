@@ -8,12 +8,14 @@ from streambuild.compiler.discovery._helpers.model_sql import (
     parse_model_sql,
 )
 from streambuild.compiler.discovery.models import TransformStep
+from streambuild.compiler.macros.models import MacroContext, MacroRegistry
 from tests.unit.src.streambuild.compiler.discovery._helpers._test_types import (
     InferTransformSourceErrorTestCase,
     LoadTransformFromSqlFileTestCase,
     ParseModelSqlHeaderTestCase,
 )
 from tests.unit.src.streambuild.compiler.macros.helpers import (
+    build_test_macro_runtime,
     write_macro_file,
     write_project_file,
     write_sql_file,
@@ -34,7 +36,7 @@ from tests.unit.src.streambuild.compiler.macros.helpers import (
             expected_query='SELECT kafka_key::String AS order_id FROM __source("orders")',
         ),
         ParseModelSqlHeaderTestCase(
-            description="accepts blank lines inside multiline schema change backfill header",
+            description="accepts blank lines inside multiline replay on change header",
             contents="""
         MODEL (
           engine: "MergeTree()",
@@ -42,10 +44,10 @@ from tests.unit.src.streambuild.compiler.macros.helpers import (
           order_by: ["order_id"],
           replay_anchor: never,
 
-          schema_change_backfill:
-            breaking: bounded(8s)
+          replay_on_change:
+            breaking: bounded-8s
 
-            non_breaking: bounded(8s),
+            non_breaking: bounded-8s,
         );
 
         SELECT kafka_key::String AS order_id FROM __source("orders")
@@ -54,9 +56,9 @@ from tests.unit.src.streambuild.compiler.macros.helpers import (
                 "engine": "MergeTree()",
                 "order_by": ["order_id"],
                 "replay_anchor": "never",
-                "schema_change_backfill": {
-                    "breaking": "bounded(8s)",
-                    "non_breaking": "bounded(8s)",
+                "replay_on_change": {
+                    "breaking": "bounded-8s",
+                    "non_breaking": "bounded-8s",
                 },
             },
             expected_query='SELECT kafka_key::String AS order_id FROM __source("orders")',
@@ -70,7 +72,7 @@ from tests.unit.src.streambuild.compiler.macros.helpers import (
           settings:
             index_granularity: 8192
             allow_nullable_key: 1,
-          schema_change_backfill: {breaking: full, non_breaking: bounded(30m)},
+          replay_on_change: {breaking: full, non_breaking: bounded-30m},
         );
 
         SELECT kafka_key::String AS order_id FROM __source("orders")
@@ -82,9 +84,9 @@ from tests.unit.src.streambuild.compiler.macros.helpers import (
                     "index_granularity": 8192,
                     "allow_nullable_key": 1,
                 },
-                "schema_change_backfill": {
+                "replay_on_change": {
                     "breaking": "full",
-                    "non_breaking": "bounded(30m)",
+                    "non_breaking": "bounded-30m",
                 },
             },
             expected_query='SELECT kafka_key::String AS order_id FROM __source("orders")',
@@ -135,7 +137,12 @@ def test_given_typed_driving_ref_when_inferring_transform_source_then_it_raises_
     test_case: InferTransformSourceErrorTestCase,
 ) -> None:
     with pytest.raises(ValueError, match=test_case.expected_error_fragment):
-        infer_transform_source(query=test_case.query, file_path=Path("orders.sql"))
+        infer_transform_source(
+            query=test_case.query,
+            file_path=Path("orders.sql"),
+            source_line=1,
+            source_column=1,
+        )
 
 
 @pytest.mark.parametrize(
@@ -172,8 +179,15 @@ def test_given_sql_model_macros_when_loading_then_it_expands_query_body(
         "pipelines/orders/order_items.sql",
         test_case.model_file_contents,
     )
+    macro_registry: MacroRegistry
+    macro_context: MacroContext
+    macro_registry, macro_context = build_test_macro_runtime(tmp_path)
 
-    transform: TransformStep = load_transform_from_sql_file(model_file_path)
+    transform: TransformStep = load_transform_from_sql_file(
+        file_path=model_file_path,
+        macro_registry=macro_registry,
+        macro_context=macro_context,
+    )
 
     assert transform.query is not None
     assert test_case.expected_query_fragment in transform.query

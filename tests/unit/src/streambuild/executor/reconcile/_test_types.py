@@ -12,3 +12,11 @@ class ExecuteReconcileTestCase:
     expected_eligible_names: tuple[str, ...]
     expected_rejected_reason_groups: tuple[tuple[str, ...], ...]
     expected_reconcile_id_prefix: str
+
+
+@dataclass(frozen=True)
+class ApplyReconcileAdapterStateTestCase:
+    description: str
+    expected_persisted_state_count: int
+    expected_object_names: tuple[str, ...]
+    expected_reconcile_id_prefix: str

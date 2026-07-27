@@ -1,16 +1,24 @@
 from collections.abc import Callable
 from dataclasses import replace
+from itertools import chain
 from pathlib import Path
 from typing import cast
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import (
+    AdapterBindingReplacementRequest,
+    AdapterBindingReplacementResult,
     AdapterCapabilities,
+    AdapterDeploymentInventory,
     AdapterIdentity,
     AdapterManagedSource,
     AdapterMaterializedView,
     AdapterMetadataState,
     AdapterQueryResult,
+    AdapterReadinessRequest,
+    AdapterReadinessRootObservation,
+    AdapterRelationCleanupRequest,
+    AdapterRelationCleanupResult,
     AdapterReplayRequest,
     AdapterStableView,
     AdapterTable,
@@ -18,18 +26,25 @@ from streambuild.adapter.models import (
     CatalogIdentity,
     CatalogRelation,
     CatalogSnapshot,
+    InspectedManagedTableState,
 )
 from streambuild.adapter.types import AdapterReplayBoundaryMode
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
+from streambuild.cli.entry._helpers.compiler_profile import build_compiler_adapter_profile
 from streambuild.compiler.compile.constants import (
     DESIRED_OBJECT_TYPE_KAFKA_TABLE,
     DESIRED_OBJECT_TYPE_MATERIALIZED_VIEW,
     DESIRED_OBJECT_TYPE_TABLE,
 )
-from streambuild.compiler.compile.main.compile_pipeline import compile_pipeline
+from streambuild.compiler.compile.main._compile_pipeline import (
+    compile_pipeline as compile_pipeline_impl,
+)
 from streambuild.compiler.compile.models import (
     Column,
     CompiledPipeline,
+    CompiledProject,
+    CompiledSource,
+    CompilerAdapterProfile,
     DesiredKafkaTable,
     DesiredMaterializedView,
     DesiredState,
@@ -44,7 +59,6 @@ from streambuild.compiler.compile.models import (
     KafkaSettings as CompiledKafkaSettings,
 )
 from streambuild.compiler.compile.types import DesiredObjectType
-from streambuild.compiler.desired_state.main.build_desired_state import build_desired_state
 from streambuild.compiler.discovery._helpers.load import load_pipeline_file
 from streambuild.compiler.discovery.models import (
     ExternalTableSourceStep,
@@ -54,7 +68,7 @@ from streambuild.compiler.discovery.models import (
     Pipeline,
     ReplayBoundary,
     ReplayBoundaryColumns,
-    SchemaChangeBackfillPolicy,
+    ReplayOnChangePolicy,
     TransformStep,
 )
 from streambuild.compiler.discovery.types import (
@@ -63,18 +77,35 @@ from streambuild.compiler.discovery.types import (
     ReplayLineageMode,
     SourceKind,
 )
+from streambuild.compiler.pipeline.main._realize_project import realize_project
+from streambuild.compiler.pipeline.models import RealizedProject
 from streambuild.compiler.planner.models import (
     ActualKafkaTable,
     ActualMaterializedView,
     ActualState,
     ActualStateInspection,
     ActualTable,
+    DeploymentRecord,
+    DeploymentRuntimeDetailRecord,
+    DeploymentWatermarkRecord,
+    ObjectStateRecord,
+    PreparedObjectMapping,
+    PublishEventRecord,
     RootDeploymentInspection,
 )
+from streambuild.compiler.sql_analysis.classes.sql_model_analyzer import SqlModelAnalyzer
+from tests.unit.src.streambuild.compiler.compile.helpers import build_realization_analyzer
 
 EXAMPLE_PIPELINE_FILE_PATH: Path = Path(
     "tests/fixtures/basic_project/pipelines/orders/pipeline.yml"
 )
+
+
+def compile_pipeline(loaded_pipeline: LoadedPipeline) -> CompiledPipeline:
+    return compile_pipeline_impl(
+        loaded_pipeline=loaded_pipeline,
+        sql_analyzer=SqlModelAnalyzer(dialect="clickhouse"),
+    )
 
 
 class SnapshotRecordingConnection(AdapterConnection):
@@ -92,6 +123,9 @@ class SnapshotRecordingConnection(AdapterConnection):
             managed_source_kinds=frozenset({"kafka"}),
             replay_boundary_modes=frozenset(AdapterReplayBoundaryMode),
             history_prefix_seed=True,
+            stable_logical_bindings=True,
+            per_relation_atomic_replace=True,
+            graph_atomic_publish=False,
         )
         self.catalog_load_count: int = 0
         self.query_count: int = 0
@@ -112,6 +146,10 @@ class SnapshotRecordingConnection(AdapterConnection):
     def metadata_columns(self, *, database: str, table: str) -> frozenset[str]:
         del database, table
         return frozenset()
+
+    def inspect_managed_table_state(self, database: str) -> InspectedManagedTableState:
+        del database
+        return InspectedManagedTableState(active_bindings=(), physical_candidates=())
 
     def command(self, statement: str) -> None:
         del statement
@@ -155,8 +193,32 @@ class SnapshotRecordingConnection(AdapterConnection):
     def persist_metadata_state(self, *, database: str, state: AdapterMetadataState) -> None:
         del database, state
 
+    def load_deployment_inventory(self, database: str) -> AdapterDeploymentInventory:
+        del database
+        return AdapterDeploymentInventory(deployments=(), publish_events=())
+
     def execute_replay(self, request: AdapterReplayRequest) -> None:
         del request
+
+    def compare_readiness(
+        self, request: AdapterReadinessRequest
+    ) -> tuple[AdapterReadinessRootObservation, ...]:
+        del request
+        return ()
+
+    def replace_stable_bindings(
+        self, request: AdapterBindingReplacementRequest
+    ) -> AdapterBindingReplacementResult:
+        return AdapterBindingReplacementResult(
+            bindings=request.bindings,
+            per_relation_atomic_replace=True,
+            graph_atomic_publish=False,
+        )
+
+    def cleanup_relations(
+        self, request: AdapterRelationCleanupRequest
+    ) -> AdapterRelationCleanupResult:
+        return AdapterRelationCleanupResult(relation_names=request.relation_names)
 
     def close(self) -> None:
         return None
@@ -179,9 +241,138 @@ def build_snapshot_catalog() -> CatalogSnapshot:
     )
 
 
+def realize_compiled_pipelines(
+    compiled_pipelines: tuple[CompiledPipeline, ...],
+) -> RealizedProject:
+    sources_by_name: dict[str, CompiledSource] = {
+        pipeline.source.key.name: pipeline.source for pipeline in compiled_pipelines
+    }
+    compiled_project: CompiledProject = CompiledProject(
+        sources=tuple(sources_by_name.values()),
+        models=tuple(chain.from_iterable(pipeline.models for pipeline in compiled_pipelines)),
+        pipelines=compiled_pipelines,
+        tests=(),
+        test_cases=(),
+        audits=(),
+    )
+    sql_analyzer: SqlModelAnalyzer = build_realization_analyzer(compiled_project)
+    adapter_profile: CompilerAdapterProfile = build_compiler_adapter_profile(ClickHouseAdapter())
+    return realize_project(
+        project=compiled_project,
+        adapter_profile=adapter_profile,
+        sql_analyzer=sql_analyzer,
+    )
+
+
+def build_metadata_records() -> tuple[
+    tuple[ObjectStateRecord, ...],
+    tuple[DeploymentRecord, ...],
+    tuple[DeploymentWatermarkRecord, ...],
+    tuple[DeploymentRuntimeDetailRecord, ...],
+    tuple[PublishEventRecord, ...],
+]:
+    root_key: ObjectKey = ObjectKey(
+        database=None, object_type=DESIRED_OBJECT_TYPE_TABLE, name="raw__orders"
+    )
+    transform_key: ObjectKey = ObjectKey(
+        database=None,
+        object_type=DESIRED_OBJECT_TYPE_TABLE,
+        name="tbl__orders_enriched",
+    )
+    mv_key: ObjectKey = ObjectKey(
+        database=None,
+        object_type=DESIRED_OBJECT_TYPE_MATERIALIZED_VIEW,
+        name="mv__orders_enriched",
+    )
+    object_states: tuple[ObjectStateRecord, ...] = (
+        ObjectStateRecord(
+            deployment_id="20260408T120000Z_ab12cd",
+            key=transform_key,
+            normalized_fingerprint="fingerprint_transform",
+            normalized_query="SELECT * FROM raw__orders",
+            recorded_at="2026-04-08T12:00:00Z",
+        ),
+        ObjectStateRecord(
+            deployment_id="20260408T120000Z_ab12cd",
+            key=mv_key,
+            normalized_fingerprint="fingerprint_mv",
+            normalized_query="SELECT * FROM raw__orders",
+            recorded_at="2026-04-08T12:00:01Z",
+        ),
+    )
+    deployments: tuple[DeploymentRecord, ...] = (
+        DeploymentRecord(
+            deployment_id="20260408T130000Z_cd34ef",
+            created_at="2026-04-08T13:00:00Z",
+            status="backfilling",
+            replay_lineage_mode="offsets",
+            selected_root_keys=(transform_key, root_key),
+            warning_codes=("z_warning", "a_warning"),
+            prepared_object_mappings=(
+                PreparedObjectMapping(
+                    logical_key=mv_key,
+                    physical_name="mv__orders_enriched__20260408T130000Z_cd34ef",
+                ),
+                PreparedObjectMapping(
+                    logical_key=transform_key,
+                    physical_name="tbl__orders_enriched__20260408T130000Z_cd34ef",
+                ),
+            ),
+        ),
+        DeploymentRecord(
+            deployment_id="20260408T120000Z_ab12cd",
+            created_at="2026-04-08T12:00:00Z",
+            status="published",
+            replay_lineage_mode="timestamp",
+            selected_root_keys=(root_key,),
+            warning_codes=(),
+            prepared_object_mappings=(),
+        ),
+    )
+    watermarks: tuple[DeploymentWatermarkRecord, ...] = (
+        DeploymentWatermarkRecord(
+            deployment_id="20260408T130000Z_cd34ef",
+            root_key=transform_key,
+            anchor_key=root_key,
+            boundary_key="partition:1",
+            cutoff_value="54321",
+        ),
+        DeploymentWatermarkRecord(
+            deployment_id="20260408T130000Z_cd34ef",
+            root_key=transform_key,
+            anchor_key=root_key,
+            boundary_key="partition:0",
+            cutoff_value="12345",
+        ),
+    )
+    runtime_details: tuple[DeploymentRuntimeDetailRecord, ...] = (
+        DeploymentRuntimeDetailRecord(
+            deployment_id="20260408T130000Z_cd34ef",
+            root_key=transform_key,
+            state_kind="active_view_present",
+            replay_strategy="bounded_replay",
+            active_deployment_id="20260408T120000Z_ab12cd",
+            anchor_key=root_key,
+            anchor_physical_name="raw__orders__20260408T130000Z_ab12cd",
+            execution_mode="seeded_bounded_rebuild",
+            configured_backfill_mode="bounded",
+            execution_lookback_seconds=604800,
+            live_target_names=("tbl__orders_enriched",),
+        ),
+    )
+    publish_events: tuple[PublishEventRecord, ...] = (
+        PublishEventRecord(
+            deployment_id="20260408T120000Z_ab12cd",
+            published_at="2026-04-08T12:30:00Z",
+            logical_view_names=("tbl__orders_enriched",),
+        ),
+    )
+    return object_states, deployments, watermarks, runtime_details, publish_events
+
+
 def build_example_desired_state() -> DesiredState:
     loaded_pipeline: LoadedPipeline = load_pipeline_file(EXAMPLE_PIPELINE_FILE_PATH)
-    return build_desired_state((compile_pipeline(loaded_pipeline),))
+    return realize_compiled_pipelines((compile_pipeline(loaded_pipeline),)).desired_state
 
 
 def build_single_transform_desired_state(
@@ -213,6 +404,10 @@ def build_single_transform_desired_state(
                 topic="source.orders",
                 consumer_group="streambuild_tmp_pipeline_orders",
             ),
+            replay_boundary=ReplayBoundary(
+                mode=ReplayBoundaryMode(resolved_replay_lineage_mode),
+                columns=ReplayBoundaryColumns(),
+            ),
         ),
         transforms=[
             *supporting_transform_steps,
@@ -225,13 +420,12 @@ def build_single_transform_desired_state(
                 replay_anchor=resolved_replay_anchor,
             ),
         ],
-        replay_lineage_mode=resolved_replay_lineage_mode,
     )
     loaded_pipeline: LoadedPipeline = LoadedPipeline(
         pipeline=pipeline,
         file_path=EXAMPLE_PIPELINE_FILE_PATH,
     )
-    return build_desired_state((compile_pipeline(loaded_pipeline),))
+    return realize_compiled_pipelines((compile_pipeline(loaded_pipeline),)).desired_state
 
 
 def build_preservation_matrix_compiled_pipeline(
@@ -255,9 +449,12 @@ def _build_managed_preservation_compiled_pipeline(
                 broker_list="kafka:9092",
                 topic="source.orders",
             ),
+            replay_boundary=ReplayBoundary(
+                mode=ReplayBoundaryMode(replay_lineage_mode),
+                columns=ReplayBoundaryColumns(),
+            ),
         ),
         transforms=[_build_preservation_transform(replay_lineage_mode)],
-        replay_lineage_mode=replay_lineage_mode,
     )
     return compile_pipeline(LoadedPipeline(pipeline=pipeline, file_path=EXAMPLE_PIPELINE_FILE_PATH))
 
@@ -352,22 +549,22 @@ def build_key(database: str | None, object_type: str, name: str) -> ObjectKey:
     return ObjectKey(database=database, object_type=DesiredObjectType(object_type), name=name)
 
 
-def build_example_desired_state_with_backfill_policy(
-    *, schema_change_backfill: SchemaChangeBackfillPolicy | None
+def build_example_desired_state_with_replay_on_change(
+    *, replay_on_change: ReplayOnChangePolicy | None
 ) -> DesiredState:
-    """Build the example desired state with a schema-change policy on every transform."""
+    """Build the example desired state with replay-on-change on every transform."""
 
     loaded_pipeline: LoadedPipeline = load_pipeline_file(EXAMPLE_PIPELINE_FILE_PATH)
     pipeline_with_policy: Pipeline = replace(
         loaded_pipeline.pipeline,
         transforms=[
-            replace(transform_step, schema_change_backfill=schema_change_backfill)
+            replace(transform_step, replay_on_change=replay_on_change)
             for transform_step in loaded_pipeline.pipeline.transforms
         ],
     )
-    return build_desired_state(
+    return realize_compiled_pipelines(
         (compile_pipeline(replace(loaded_pipeline, pipeline=pipeline_with_policy)),)
-    )
+    ).desired_state
 
 
 def build_example_actual_state() -> ActualState:
