@@ -13,6 +13,7 @@ from streambuild.adapters.clickhouse.classes.clickhouse_connection import ClickH
 from streambuild.adapters.clickhouse.types import RawClickHouseClient
 from tests.unit.src.streambuild.adapters.clickhouse._test_types import (
     CatalogInspectionTestCase,
+    ClickHousePublishCapabilitiesTestCase,
     ConnectionQueryNormalizationTestCase,
     ConnectionTranslationTestCase,
 )
@@ -22,6 +23,37 @@ from tests.unit.src.streambuild.adapters.clickhouse.helpers import (
     SequencedRawClickHouseClient,
     StubRawClickHouseClient,
 )
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ClickHousePublishCapabilitiesTestCase(
+            description="reports per-relation but not graph-atomic ClickHouse publish",
+            expected_stable_logical_bindings=True,
+            expected_per_relation_atomic_replace=True,
+            expected_graph_atomic_publish=False,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_clickhouse_connection_when_reading_publish_capabilities_then_guarantees_are_exact(
+    test_case: ClickHousePublishCapabilitiesTestCase,
+) -> None:
+    raw_client: StubRawClickHouseClient = StubRawClickHouseClient(
+        FakeRawClickHouseQueryResult(column_names=[], result_rows=[])
+    )
+    connection: ClickHouseConnection = ClickHouseConnection(cast(RawClickHouseClient, raw_client))
+
+    assert (
+        connection.capabilities.stable_logical_bindings
+        is test_case.expected_stable_logical_bindings
+    )
+    assert (
+        connection.capabilities.per_relation_atomic_replace
+        is test_case.expected_per_relation_atomic_replace
+    )
+    assert connection.capabilities.graph_atomic_publish is test_case.expected_graph_atomic_publish
 
 
 @pytest.mark.parametrize(

@@ -14,6 +14,9 @@ class ExecutePublishIntegrationTestCase:
     expected_target_table_name: str
     expected_published_order_ids: tuple[str, ...]
     expected_full_layout: tuple[tuple[str, str], ...]
+    expected_publish_history_rows: tuple[tuple[str, str], ...]
+    expected_per_relation_atomic_replace: bool
+    expected_graph_atomic_publish: bool
 
 
 @dataclass(frozen=True)
@@ -24,6 +27,7 @@ class ResolvePublishDeploymentIntegrationTestCase:
     second_deployment_id: str
     expected_resolved_deployment_id: str | None
     expected_error_fragment: str | None
+    expected_target_table_name: str | None = None
 
 
 @dataclass(frozen=True)

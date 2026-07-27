@@ -2,15 +2,28 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from pathlib import Path
+from types import MappingProxyType
 
-from streambuild.compiler.compile.types import DesiredObjectType
+from streambuild.adapter.models import AdapterIdentity
+from streambuild.adapter.types import (
+    AdapterModelRealizer,
+    AdapterModelRelationNamer,
+    AdapterResourceRenderer,
+    AdapterSourceRealizer,
+)
+from streambuild.compiler.audit_discovery.models import LoadedSqlAudit
+from streambuild.compiler.compile.types import DesiredObjectType, LogicalResourceType
 from streambuild.compiler.discovery.models import (
+    DiscoveredProjectInputs,
     ExternalTableSourceStep,
+    KafkaLandingStep,
+    LoadedPipeline,
     Pipeline,
     Project,
-    SchemaChangeBackfillPolicy,
+    ReplayOnChangePolicy,
     TransformStep,
 )
 from streambuild.compiler.discovery.types import (
@@ -21,6 +34,9 @@ from streambuild.compiler.discovery.types import (
     SourceKind,
     SqlRelationType,
 )
+from streambuild.compiler.macros.models import MacroContext, MacroRegistry
+from streambuild.compiler.sql_analysis.models import SqlModelAnalysis, SqlSourceSpan
+from streambuild.compiler.test_discovery.models import LoadedSqlTest, SqlTestCase
 
 
 @dataclass(frozen=True)
@@ -52,7 +68,11 @@ class KafkaSettings:
     topic: str
     consumer_group: str
     format: str
-    settings: dict[str, str] | None = None
+    settings: Mapping[str, str] | None = None
+
+    def __post_init__(self) -> None:
+        if self.settings is not None:
+            object.__setattr__(self, "settings", MappingProxyType(dict(self.settings)))
 
 
 @dataclass(frozen=True)
@@ -71,7 +91,11 @@ class TableStorage:
     order_by: tuple[str, ...]
     partition_by: str | None = None
     ttl: str | None = None
-    settings: dict[str, str] | None = None
+    settings: Mapping[str, str] | None = None
+
+    def __post_init__(self) -> None:
+        if self.settings is not None:
+            object.__setattr__(self, "settings", MappingProxyType(dict(self.settings)))
 
 
 @dataclass(frozen=True)
@@ -89,6 +113,7 @@ class MaterializedViewSpec:
     source_table_name: str
     target_table_name: str
     query: str
+    database_template: str | None = field(default=None, compare=False)
 
 
 @dataclass(frozen=True)
@@ -119,9 +144,9 @@ class DesiredTable:
     key: ObjectKey
     deps: tuple[ObjectKey, ...]
     spec: TableSpec
-    schema_change_backfill: SchemaChangeBackfillPolicy | None = None
+    replay_on_change: ReplayOnChangePolicy | None = None
     bounded_replay_fallback: BoundedReplayFallback = BoundedReplayFallback(
-        BoundedReplayFallback.FULL_REFRESH
+        BoundedReplayFallback.FULL
     )
 
     @property
@@ -149,7 +174,7 @@ class DesiredTable:
         return self.spec.storage.ttl
 
     @property
-    def settings(self) -> dict[str, str] | None:
+    def settings(self) -> Mapping[str, str] | None:
         return self.spec.storage.settings
 
 
@@ -185,44 +210,84 @@ class ParsedRef:
     name: str
     relation_type: SqlRelationType | str
     ref_type: RefType | None = None
+    span: SqlSourceSpan | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "relation_type", SqlRelationType(self.relation_type))
 
 
 @dataclass(frozen=True)
-class CompiledTransformStep:
-    """Compiled transform information for the first compiler pass."""
+class LogicalResourceKey:
+    """Stable identity for one selectable logical source or model."""
 
+    resource_type: LogicalResourceType | str
+    name: str
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "resource_type", LogicalResourceType(self.resource_type))
+
+
+@dataclass(frozen=True)
+class CompiledSource:
+    """One semantically compiled logical streaming source."""
+
+    key: LogicalResourceKey
+    source: KafkaLandingStep | ExternalTableSourceStep
+    effective_replay_lineage_mode: ReplayLineageMode
+
+
+@dataclass(frozen=True)
+class CompiledModel:
+    """One semantically compiled logical model."""
+
+    key: LogicalResourceKey
+    pipeline_name: str
     transform: TransformStep
-    parsed_refs: tuple[ParsedRef, ...]
-    resolved_query: str
-    refs: tuple[str, ...]
-    has_mutable_refs: bool
-    has_aggregate_semantics: bool
+    sql_analysis: SqlModelAnalysis
     preserves_required_lineage: bool
     replay_anchor_eligible: bool
     effective_bounded_replay_fallback: BoundedReplayFallback
-    target_table: DesiredTable
-    materialized_view: DesiredMaterializedView
-    target_table_name: str
+    replay_on_change: ReplayOnChangePolicy | None = None
 
+    @property
+    def query(self) -> str:
+        return self.sql_analysis.authored_sql
 
-@dataclass(frozen=True)
-class CompiledManagedSource:
-    """Compiled managed Kafka source objects for a pipeline."""
+    @property
+    def output_columns(self) -> tuple[Column, ...]:
+        return tuple(
+            Column(name=column.name, type=column.type)
+            for column in self.sql_analysis.output_columns
+        )
 
-    kafka_table: DesiredKafkaTable
-    raw_table: DesiredTable
-    materialized_view: DesiredMaterializedView
+    @property
+    def parsed_refs(self) -> tuple[ParsedRef, ...]:
+        return tuple(
+            ParsedRef(
+                name=reference.name,
+                relation_type=SqlRelationType(reference.relation_type),
+                ref_type=None if reference.ref_type is None else RefType(reference.ref_type),
+                span=reference.span,
+            )
+            for reference in self.sql_analysis.references
+        )
 
+    @property
+    def refs(self) -> tuple[str, ...]:
+        return tuple(reference.name for reference in self.sql_analysis.references)
 
-@dataclass(frozen=True)
-class CompiledExternalSource:
-    """Compiled adopted replay-driving source metadata."""
+    @property
+    def has_mutable_refs(self) -> bool:
+        return any(
+            reference.relation_type == SqlRelationType.REF
+            and reference.name != self.transform.source
+            and reference.ref_type == RefType.MUTABLE
+            for reference in self.sql_analysis.references
+        )
 
-    source: ExternalTableSourceStep
-    source_key: ObjectKey
+    @property
+    def has_aggregate_semantics(self) -> bool:
+        return self.sql_analysis.aggregate_facts.has_semantics
 
 
 @dataclass(frozen=True)
@@ -248,16 +313,14 @@ class ExternalSourceReplayConfig:
 
 @dataclass(frozen=True)
 class CompiledPipeline:
-    """Compiled representation of a pipeline's desired state."""
+    """Logical sources and models compiled from one authored pipeline."""
 
     pipeline: Pipeline
     project: Project | None
     file_path: Path
-    relation_names: dict[str, str]
-    relation_sqls: dict[str, str]
     effective_replay_lineage_mode: ReplayLineageMode
-    source: CompiledManagedSource | CompiledExternalSource
-    transforms: tuple[CompiledTransformStep, ...]
+    source: CompiledSource
+    models: tuple[CompiledModel, ...]
 
 
 @dataclass(frozen=True)
@@ -268,3 +331,61 @@ class DesiredState:
     replay_anchor_keys: frozenset[ObjectKey]
     mutable_ref_warning_keys: frozenset[ObjectKey]
     external_source_replay_configs: tuple[ExternalSourceReplayConfig, ...] = ()
+
+
+@dataclass(frozen=True)
+class CompilerExpressionInferenceProfile:
+    """Static SQL expression inference behavior exposed by an adapter."""
+
+    sql_analysis_dialect: str
+
+
+@dataclass(frozen=True)
+class CompilerTargetMetadata:
+    """Connection-free adapter defaults used during semantic compilation."""
+
+    default_database: str | None
+    default_schema: str | None
+
+
+@dataclass(frozen=True)
+class CompilerAdapterProfile:
+    """Immutable compiler-facing adapter identity, analysis, target, and realization contract."""
+
+    identity: AdapterIdentity
+    sql_analysis_dialect: str
+    type_inference_profile: CompilerExpressionInferenceProfile
+    target_metadata: CompilerTargetMetadata
+    realize_source: AdapterSourceRealizer
+    model_relation_name: AdapterModelRelationNamer
+    realize_model: AdapterModelRealizer
+    render_resource: AdapterResourceRenderer
+
+
+@dataclass(frozen=True)
+class CompileProjectInputs:
+    """Attached whole-project inputs used by semantic assembly."""
+
+    discovered_inputs: DiscoveredProjectInputs
+    adapter_profile: CompilerAdapterProfile
+    effective_target: CompilerTargetMetadata
+    variables: tuple[tuple[str, object], ...]
+    macro_registry: MacroRegistry
+    macro_context: MacroContext
+    pipelines: tuple[LoadedPipeline, ...]
+    tests: tuple[LoadedSqlTest, ...]
+    audits: tuple[LoadedSqlAudit, ...]
+
+
+@dataclass(frozen=True)
+class CompiledProject:
+    """Current whole-project compile output consumed by every command."""
+
+    sources: tuple[CompiledSource, ...]
+    models: tuple[CompiledModel, ...]
+    pipelines: tuple[CompiledPipeline, ...]
+    tests: tuple[LoadedSqlTest, ...]
+    test_cases: tuple[SqlTestCase, ...]
+    audits: tuple[LoadedSqlAudit, ...]
+    macro_registry: MacroRegistry = field(default_factory=MacroRegistry)
+    macro_context: MacroContext | None = None

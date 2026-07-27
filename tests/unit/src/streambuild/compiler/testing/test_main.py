@@ -2,8 +2,11 @@ from pathlib import Path
 
 import pytest
 
-from streambuild.compiler.testing.main.build_sql_test_cases import build_sql_test_cases
-from streambuild.compiler.testing.models import SqlTestCase
+from streambuild.compiler.sql_analysis.classes.sql_reference_rewriter import (
+    SqlReferenceRewriter,
+)
+from streambuild.compiler.test_discovery.models import SqlTestCase
+from streambuild.compiler.testing.main._build_sql_test_cases import build_sql_test_cases
 from tests.unit.src.streambuild.compiler.testing._test_types import (
     BuildSqlTestCasesErrorTestCase,
     BuildSqlTestCasesTestCase,
@@ -178,6 +181,7 @@ def test_given_discovered_sql_tests_when_building_cases_then_it_assembles_expect
     test_case_result: SqlTestCase = build_sql_test_cases(
         loaded_tests=(loaded_test,),
         compiled_pipelines=(compiled_pipeline,),
+        reference_rewriter=SqlReferenceRewriter(dialect="clickhouse"),
     )[0]
 
     assert tuple(
@@ -229,4 +233,5 @@ def test_given_invalid_sql_tests_when_building_cases_then_it_raises_clear_errors
         build_sql_test_cases(
             loaded_tests=(loaded_test,),
             compiled_pipelines=(compiled_pipeline,),
+            reference_rewriter=SqlReferenceRewriter(dialect="clickhouse"),
         )

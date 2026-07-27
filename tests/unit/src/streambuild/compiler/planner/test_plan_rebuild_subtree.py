@@ -1,7 +1,7 @@
 import pytest
 
 from streambuild.compiler.compile.models import DesiredState, ObjectKey
-from streambuild.compiler.planner._helpers.graph import descendant_keys
+from streambuild.compiler.graph.main._descendant_keys import descendant_keys
 from streambuild.compiler.planner._helpers.rebuild import build_rebuild_subtree
 from streambuild.compiler.planner.constants import REBUILD_STRATEGY_SHADOW
 from streambuild.compiler.planner.models import RebuildSubtree

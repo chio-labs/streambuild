@@ -26,6 +26,9 @@ from streambuild.cli.entry.models import (
 )
 from streambuild.cli.entry.types import CliCommand, CliSubcommand
 from streambuild.compiler.compile.exceptions import TransformSqlContractError
+from streambuild.diagnostics.main.attach_error_diagnostic import attach_error_diagnostic
+from streambuild.diagnostics.main.render_error import render_error
+from streambuild.diagnostics.types import DiagnosticPhase
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -99,7 +102,7 @@ def _main_with_dependencies(
         print(str(error), file=sys.stderr)
         return 1
     except (TransformSqlContractError, ValueError) as error:
-        print(str(error), file=sys.stderr)
+        print(render_error(error), file=sys.stderr)
         return 1
     except AdapterWarehouseError as error:
         rendered_error: str | None = render_expected_warehouse_error(
@@ -112,7 +115,12 @@ def _main_with_dependencies(
             return 1
         raise
     except AdapterError as error:
-        print(str(error), file=sys.stderr)
+        _ = attach_error_diagnostic(
+            error=error,
+            phase=DiagnosticPhase.RUNTIME,
+            code="STB-RUNTIME-001",
+        )
+        print(render_error(error), file=sys.stderr)
         return 1
 
 

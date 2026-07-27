@@ -5,7 +5,12 @@ from _pytest.capture import CaptureResult
 from clickhouse_connect.driver.client import Client
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
+from streambuild.cli.entry._helpers.compiler_profile import build_compiler_adapter_profile
 from streambuild.cli.test.main._run_test import run_test
+from streambuild.compiler.discovery.main.load_project_input_for_path import (
+    load_project_input_for_path,
+)
 from tests.integration.src.streambuild.cli._test_types import (
     CliTestCommandIntegrationTestCase,
 )
@@ -15,6 +20,7 @@ from tests.integration.src.streambuild.cli.helpers import (
     MULTI_TARGET_FAILING_SQL_TEST,
     SINGLE_EXPECTED_SQL_TEST,
     build_managed_clickhouse_client,
+    write_managed_source_project,
 )
 from tests.integration.src.streambuild.conftest import ClickHouseConnectionSettings
 from tests.unit.src.streambuild.compiler.discovery._helpers.load.helpers import write_pipeline_file
@@ -104,15 +110,10 @@ def test_given_sql_native_test_project_when_running_test_command_then_it_reports
     transform_file_path: Path = tmp_path / "pipelines" / "order_events" / "order_items.sql"
     downstream_file_path: Path = tmp_path / "pipelines" / "order_events" / "daily_revenue.sql"
     test_file_path: Path = tmp_path / "tests" / "order_events" / "test_line_total.sql"
+    write_managed_source_project(project_dir=tmp_path)
     write_pipeline_file(
         pipeline_file_path,
-        """
-        source:
-          kind: kafka
-          name: orders
-          broker_list: kafka:9092
-          topic: source.orders
-        """,
+        "source: orders",
     )
     write_pipeline_file(
         transform_file_path,
@@ -164,6 +165,8 @@ def test_given_sql_native_test_project_when_running_test_command_then_it_reports
             paths=(),
             verbose=False,
             client=managed_client,
+            loaded_project=load_project_input_for_path(path=tmp_path),
+            adapter_profile=build_compiler_adapter_profile(ClickHouseAdapter()),
         )
     finally:
         managed_client.close()

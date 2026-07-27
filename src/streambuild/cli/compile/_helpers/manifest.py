@@ -1,127 +1,216 @@
-"""Manifest payload helpers for the compile command."""
+"""StreamBuild-native deterministic manifest construction."""
 
+import json
 from pathlib import Path
 
-from streambuild.compiler.compile.models import (
-    CompiledExternalSource,
-    CompiledManagedSource,
-    CompiledPipeline,
-    CompiledTransformStep,
+from streambuild.adapter.models import AdapterManagedSource, AdapterTable
+from streambuild.cli.compile._helpers.paths import (
+    audit_path,
+    model_query_path,
+    model_table_path,
+    model_view_path,
+    source_resource_path,
+    static_test_path,
+    workflow_json_path,
+    workflow_sql_path,
 )
+from streambuild.cli.compile.models import StaticArtifactFile
+from streambuild.compiler.audit_discovery.models import LoadedSqlAudit
+from streambuild.compiler.compile.models import (
+    CompiledModel,
+    CompiledPipeline,
+    CompiledSource,
+    LogicalResourceKey,
+)
+from streambuild.compiler.pipeline.models import CompileAnalysis
+from streambuild.compiler.pipeline.types import AdapterResource
+from streambuild.compiler.test_discovery.models import SqlTestCase
 
 
-def pipeline_manifest_entry(
-    *,
-    compiled_pipeline: CompiledPipeline,
-    target_dir: Path,
-) -> dict[str, object]:
-    """Build one manifest payload entry for a compiled pipeline."""
+def build_manifest_json(
+    *, analysis: CompileAnalysis, compiled_files: tuple[StaticArtifactFile, ...]
+) -> str:
+    """Build the complete deterministic StreamBuild-native manifest."""
 
-    resolved_database: str = (
-        compiled_pipeline.project.default_database
-        if compiled_pipeline.project is not None
-        and compiled_pipeline.project.default_database is not None
-        else "default"
-    )
-    pipeline_target_dir: Path = target_dir / compiled_pipeline.pipeline.name
-    return {
-        "name": compiled_pipeline.pipeline.name,
-        "file": str(compiled_pipeline.file_path),
-        "source_name": compiled_pipeline.pipeline.source.name,
-        "resolved_database": resolved_database,
-        "replay_lineage_mode": str(compiled_pipeline.effective_replay_lineage_mode),
-        "relations": compiled_pipeline.relation_names,
-        "landing": _pipeline_landing_manifest_entry(compiled_pipeline),
-        "models": {
-            transform.transform.name: _model_manifest_entry(
-                transform=transform,
-                pipeline_target_dir=pipeline_target_dir,
-            )
-            for transform in compiled_pipeline.transforms
-        },
-        "workflow": {
-            "workflow_sql_path": str(pipeline_target_dir / "run" / "workflow" / "workflow.sql"),
-            "workflow_json_path": str(pipeline_target_dir / "run" / "workflow" / "workflow.json"),
-            "step_paths": [
-                str(pipeline_target_dir / "run" / "workflow" / step_file)
-                for step_file in workflow_step_files(compiled_pipeline)
-            ],
-        },
-    }
-
-
-def workflow_step_files(compiled_pipeline: CompiledPipeline) -> list[str]:
-    """Return workflow step file names for one pipeline."""
-
-    landing_files: list[str] = []
-    if isinstance(compiled_pipeline.source, CompiledManagedSource):
-        landing_files = ["01_kafka_table.sql", "02_raw_table.sql", "03_landing_mv.sql"]
-    return [
-        *landing_files,
-        *[
-            f"{index * 10:02d}_{transform.transform.name}.table.sql"
-            for index, transform in enumerate(compiled_pipeline.transforms, start=1)
-        ],
-        *[
-            f"{index * 10 + 1:02d}_{transform.transform.name}.mv.sql"
-            for index, transform in enumerate(compiled_pipeline.transforms, start=1)
-        ],
-    ]
-
-
-def _model_manifest_entry(
-    *, transform: CompiledTransformStep, pipeline_target_dir: Path
-) -> dict[str, object]:
-    model_name: str = transform.transform.name
-    return {
-        "name": model_name,
-        "source": transform.transform.source,
-        "refs": list(transform.refs),
-        "target_table_name": transform.target_table_name,
-        "materialized_view_name": transform.materialized_view.name,
-        "resolved_query_path": str(
-            pipeline_target_dir / "compile" / "models" / f"{model_name}.sql"
+    payload: dict[str, object] = {
+        "artifacts": (
+            "manifest.json",
+            "streambuild_dag.json",
+            *(file.relative_path.as_posix() for file in compiled_files),
         ),
-        "table_ddl_path": str(pipeline_target_dir / "run" / "models" / f"{model_name}.table.sql"),
-        "mv_ddl_path": str(pipeline_target_dir / "run" / "models" / f"{model_name}.mv.sql"),
-        "spec": {
-            "engine": transform.target_table.engine,
-            "order_by": list(transform.target_table.order_by),
-            "partition_by": transform.target_table.partition_by,
-            "ttl": transform.target_table.ttl,
-            "settings": transform.target_table.settings,
-            "columns": [
-                {"name": column.name, "type": column.type, "default": column.default}
-                for column in transform.target_table.columns
-            ],
+        "audits": {
+            _audit_identity(audit): _audit_entry(audit=audit, analysis=analysis)
+            for audit in analysis.compiled_project.audits
+        },
+        "metadata": {"manifest_version": 1, "tool": "streambuild"},
+        "macros": {
+            name: {
+                "file": macro.relative_path.as_posix(),
+                "source": macro.source,
+            }
+            for name, macro in analysis.compile_inputs.macro_registry.macros.items()
+        },
+        "models": {
+            model.key.name: _model_entry(model=model, analysis=analysis)
+            for model in analysis.compiled_project.models
+        },
+        "pipelines": {
+            pipeline.pipeline.name: _pipeline_entry(pipeline=pipeline, analysis=analysis)
+            for pipeline in analysis.compiled_project.pipelines
+        },
+        "sources": {
+            source.key.name: _source_entry(source=source, analysis=analysis)
+            for source in analysis.compiled_project.sources
+        },
+        "tests": {
+            _test_identity(test_case): _test_entry(test_case=test_case, analysis=analysis)
+            for test_case in analysis.compiled_project.test_cases
         },
     }
+    return json.dumps(payload, indent=2, sort_keys=True) + "\n"
 
 
-def _pipeline_landing_manifest_entry(compiled_pipeline: CompiledPipeline) -> dict[str, object]:
-    if isinstance(compiled_pipeline.source, CompiledManagedSource):
-        return {
-            "kind": "kafka",
-            "managed": True,
-            "source_name": compiled_pipeline.pipeline.source.name,
-            "kafka_table_name": compiled_pipeline.source.kafka_table.name,
-            "raw_table_name": compiled_pipeline.source.raw_table.name,
-            "landing_mv_name": compiled_pipeline.source.materialized_view.name,
-        }
-    external_source: CompiledExternalSource = compiled_pipeline.source
+def _pipeline_entry(*, pipeline: CompiledPipeline, analysis: CompileAnalysis) -> dict[str, object]:
+    logical_keys: tuple[LogicalResourceKey, ...] = (
+        pipeline.source.key,
+        *(model.key for model in pipeline.models),
+    )
     return {
-        "kind": str(external_source.source.kind),
-        "managed": False,
-        "source_name": external_source.source.name,
-        "table_name": external_source.source.table_name,
-        "replay_boundary": {
-            "mode": str(external_source.source.replay_boundary.mode),
-            "columns": {
-                "_replay_partition": external_source.source.replay_boundary.columns.partition,
-                "_replay_offset": external_source.source.replay_boundary.columns.offset,
-                "_replay_timestamp": external_source.source.replay_boundary.columns.timestamp,
-                "_replay_landed_at": external_source.source.replay_boundary.columns.landed_at,
-                "_replay_cursor": external_source.source.replay_boundary.columns.cursor,
-            },
+        "file": _project_relative_path(path=pipeline.file_path, analysis=analysis),
+        "models": tuple(model.key.name for model in pipeline.models),
+        "name": pipeline.pipeline.name,
+        "replay_lineage_mode": pipeline.effective_replay_lineage_mode,
+        "relations": {
+            key.name: analysis.realized_project.relation_name_by_logical_key[key]
+            for key in logical_keys
+        },
+        "resolved_database": _pipeline_database(pipeline=pipeline, analysis=analysis),
+        "source_name": pipeline.source.key.name,
+        "workflow_json_path": workflow_json_path(pipeline_name=pipeline.pipeline.name).as_posix(),
+        "workflow_sql_path": workflow_sql_path(pipeline_name=pipeline.pipeline.name).as_posix(),
+    }
+
+
+def _source_entry(*, source: CompiledSource, analysis: CompileAnalysis) -> dict[str, object]:
+    resources: tuple[AdapterResource, ...] = analysis.realized_project.resources_by_logical_key[
+        source.key
+    ]
+    return {
+        "logical_key": f"source:{source.key.name}",
+        "name": source.key.name,
+        "relation_name": analysis.realized_project.relation_name_by_logical_key[source.key],
+        "replay_lineage_mode": source.effective_replay_lineage_mode,
+        "resources": tuple(
+            {
+                "kind": _resource_kind(resource),
+                "name": resource.name,
+                "path": source_resource_path(
+                    source_name=source.key.name,
+                    resource_name=resource.name,
+                ).as_posix(),
+            }
+            for resource in resources
+        ),
+    }
+
+
+def _model_entry(*, model: CompiledModel, analysis: CompileAnalysis) -> dict[str, object]:
+    resources: tuple[AdapterResource, ...] = analysis.realized_project.resources_by_logical_key[
+        model.key
+    ]
+    table: AdapterTable = next(
+        resource for resource in resources if isinstance(resource, AdapterTable)
+    )
+    return {
+        "logical_key": f"model:{model.key.name}",
+        "name": model.key.name,
+        "pipeline": model.pipeline_name,
+        "query_path": model_query_path(
+            pipeline_name=model.pipeline_name, model_name=model.key.name
+        ).as_posix(),
+        "refs": tuple(model.refs),
+        "relation_name": analysis.realized_project.relation_name_by_logical_key[model.key],
+        "resources": tuple(
+            {
+                "kind": _resource_kind(resource),
+                "name": resource.name,
+                "path": _model_resource_path(model=model, resource=resource).as_posix(),
+            }
+            for resource in resources
+        ),
+        "source": model.transform.source,
+        "spec": {
+            "columns": tuple(
+                {
+                    "default": column.default_expression,
+                    "name": column.name,
+                    "type": column.type,
+                }
+                for column in table.columns
+            ),
+            "engine": table.engine,
+            "order_by": tuple(table.order_by),
+            "partition_by": table.partition_by,
+            "settings": None if not table.settings else dict(table.settings),
+            "ttl": table.ttl,
         },
     }
+
+
+def _audit_entry(*, audit: LoadedSqlAudit, analysis: CompileAnalysis) -> dict[str, object]:
+    return {
+        "file": _project_relative_path(path=audit.file_path, analysis=analysis),
+        "name": _audit_identity(audit),
+        "path": audit_path(
+            audit=audit,
+            project_dir=analysis.discovered_inputs.project_dir,
+        ).as_posix(),
+        "referenced_models": tuple(audit.referenced_model_names),
+        "severity": audit.severity,
+    }
+
+
+def _test_entry(*, test_case: SqlTestCase, analysis: CompileAnalysis) -> dict[str, object]:
+    return {
+        "file": _project_relative_path(path=test_case.file_path, analysis=analysis),
+        "name": _test_identity(test_case),
+        "path": static_test_path(test_case=test_case).as_posix(),
+        "targets": tuple(target.target_model_name for target in test_case.target_cases),
+    }
+
+
+def _model_resource_path(*, model: CompiledModel, resource: AdapterResource) -> Path:
+    if isinstance(resource, AdapterTable):
+        return model_table_path(pipeline_name=model.pipeline_name, model_name=model.key.name)
+    return model_view_path(pipeline_name=model.pipeline_name, model_name=model.key.name)
+
+
+def _resource_kind(resource: AdapterResource) -> str:
+    if isinstance(resource, AdapterManagedSource):
+        return "managed_source"
+    if isinstance(resource, AdapterTable):
+        return "table"
+    return "materialized_view"
+
+
+def _project_relative_path(*, path: Path, analysis: CompileAnalysis) -> str:
+    try:
+        return (
+            path.resolve().relative_to(analysis.discovered_inputs.project_dir.resolve()).as_posix()
+        )
+    except ValueError:
+        return path.as_posix()
+
+
+def _pipeline_database(*, pipeline: CompiledPipeline, analysis: CompileAnalysis) -> str:
+    if pipeline.project is not None and pipeline.project.default_database is not None:
+        return pipeline.project.default_database
+    return analysis.compile_inputs.effective_target.default_database or "default"
+
+
+def _audit_identity(audit: LoadedSqlAudit) -> str:
+    return audit.name or audit.file_path.stem
+
+
+def _test_identity(test_case: SqlTestCase) -> str:
+    return test_case.name or test_case.file_path.stem

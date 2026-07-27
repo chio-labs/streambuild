@@ -11,3 +11,4 @@ class ExecuteDoctorIntegrationTestCase:
     expected_state_kind: str
     expected_active_deployment_id: str | None
     expected_candidate_deployment_ids: tuple[str, ...]
+    expected_status_count: int

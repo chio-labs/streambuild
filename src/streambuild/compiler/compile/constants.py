@@ -94,6 +94,7 @@ FRAMEWORK_OWNED_KAFKA_SETTING_KEYS: frozenset[str] = frozenset(
 LINEAGE_MODE_BY_REPLAY_BOUNDARY: Mapping[str, ReplayLineageMode] = {
     ReplayBoundaryMode.OFFSETS: ReplayLineageMode.OFFSETS,
     ReplayBoundaryMode.TIMESTAMP: ReplayLineageMode.TIMESTAMP,
+    ReplayBoundaryMode.LANDED_AT: ReplayLineageMode.LANDED_AT,
     ReplayBoundaryMode.CURSOR: ReplayLineageMode.CURSOR,
 }
 

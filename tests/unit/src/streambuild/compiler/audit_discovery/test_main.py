@@ -2,8 +2,9 @@ from pathlib import Path
 
 import pytest
 
-from streambuild.compiler.audit_discovery.main.discover_sql_audits import discover_sql_audits
+from streambuild.compiler.audit_discovery.main._discover_sql_audits import discover_sql_audits
 from streambuild.compiler.audit_discovery.models import LoadedSqlAudit
+from streambuild.compiler.macros.models import MacroContext, MacroRegistry
 from tests.unit.src.streambuild.compiler.audit_discovery._test_types import (
     DiscoverGenericSqlAuditsTestCase,
     DiscoverSqlAuditsErrorTestCase,
@@ -16,6 +17,7 @@ from tests.unit.src.streambuild.compiler.audit_discovery.helpers import (
 )
 from tests.unit.src.streambuild.compiler.discovery._helpers.load.helpers import write_pipeline_file
 from tests.unit.src.streambuild.compiler.macros.helpers import (
+    build_test_macro_runtime,
     write_macro_file,
     write_project_file,
 )
@@ -71,7 +73,7 @@ def test_given_valid_sql_audit_files_when_discovering_then_it_returns_loaded_sql
     audits_root: Path = tmp_path / "audits"
     write_sql_audit_file(audits_root / test_case.relative_file_path, test_case.file_contents)
 
-    loaded_audits: list[LoadedSqlAudit] = discover_sql_audits(audits_root)
+    loaded_audits: list[LoadedSqlAudit] = discover_sql_audits(root=audits_root)
 
     assert (
         tuple(loaded_audit.name for loaded_audit in loaded_audits) == test_case.expected_audit_names
@@ -149,7 +151,7 @@ def test_given_invalid_sql_audit_files_when_discovering_then_it_raises_clear_err
     write_sql_audit_file(audits_root / test_case.relative_file_path, test_case.file_contents)
 
     with pytest.raises(ValueError, match=test_case.expected_error_fragment):
-        discover_sql_audits(audits_root)
+        discover_sql_audits(root=audits_root)
 
 
 @pytest.mark.parametrize(
@@ -183,8 +185,15 @@ def test_given_sql_audit_macros_when_discovering_then_it_expands_audit_body(
     write_sql_audit_file(
         audits_root / "order_events/macro_audit.sql", test_case.audit_file_contents
     )
+    macro_registry: MacroRegistry
+    macro_context: MacroContext
+    macro_registry, macro_context = build_test_macro_runtime(tmp_path)
 
-    loaded_audits: list[LoadedSqlAudit] = discover_sql_audits(audits_root)
+    loaded_audits: list[LoadedSqlAudit] = discover_sql_audits(
+        root=audits_root,
+        macro_registry=macro_registry,
+        macro_context=macro_context,
+    )
 
     assert test_case.expected_query_fragment in loaded_audits[0].query
 
@@ -241,7 +250,7 @@ def test_given_generic_sql_audits_when_discovering_then_it_renders_concrete_audi
         test_case.schema_file_contents,
     )
 
-    loaded_audits: list[LoadedSqlAudit] = discover_sql_audits(audits_root)
+    loaded_audits: list[LoadedSqlAudit] = discover_sql_audits(root=audits_root)
 
     assert loaded_audits[0].name == test_case.expected_name
     assert test_case.expected_query_fragment in loaded_audits[0].query

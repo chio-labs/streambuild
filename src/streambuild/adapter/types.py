@@ -7,8 +7,13 @@ from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
     from streambuild.adapter.models import (
+        AdapterAdoptedSourceRealizationRequest,
         AdapterManagedSource,
+        AdapterManagedSourceRealizationRequest,
         AdapterMaterializedView,
+        AdapterModelRealization,
+        AdapterModelRealizationRequest,
+        AdapterSourceRealization,
         AdapterStableView,
         AdapterTable,
     )
@@ -49,3 +54,25 @@ class AdapterResourceRenderer(Protocol):
         database: str,
         if_not_exists: bool = False,
     ) -> str: ...
+
+
+class AdapterSourceRealizer(Protocol):
+    """Realize one logical managed or adopted source."""
+
+    def __call__(
+        self,
+        *,
+        request: AdapterManagedSourceRealizationRequest | AdapterAdoptedSourceRealizationRequest,
+    ) -> AdapterSourceRealization: ...
+
+
+class AdapterModelRelationNamer(Protocol):
+    """Resolve the adapter relation name for one logical model."""
+
+    def __call__(self, *, logical_name: str) -> str: ...
+
+
+class AdapterModelRealizer(Protocol):
+    """Realize one semantically compiled logical model."""
+
+    def __call__(self, *, request: AdapterModelRealizationRequest) -> AdapterModelRealization: ...

@@ -1,5 +1,7 @@
 import argparse
+import json
 from pathlib import Path
+from typing import Any
 
 
 def build_cli_parser() -> argparse.ArgumentParser:
@@ -38,7 +40,7 @@ def build_cli_parser() -> argparse.ArgumentParser:
     compile_parser.add_argument(
         "--target-dir",
         type=Path,
-        help="Output directory for compiled artifacts (default: pipelines/target/)",
+        help="Replace the project-level target/ artifact root",
     )
 
     test_parser: argparse.ArgumentParser = subparsers.add_parser(
@@ -49,8 +51,8 @@ def build_cli_parser() -> argparse.ArgumentParser:
             "and execute them against ClickHouse."
         ),
     )
-    _add_project_dir_arg(test_parser)
-    _add_clickhouse_args(test_parser)
+    _add_project_dir_arg(parser=test_parser)
+    _add_clickhouse_args(parser=test_parser)
     _add_select_args(test_parser)
     test_parser.add_argument(
         "paths",
@@ -72,8 +74,8 @@ def build_cli_parser() -> argparse.ArgumentParser:
             "what would change. No modifications are made."
         ),
     )
-    _add_project_dir_arg(plan_parser)
-    _add_clickhouse_args(plan_parser)
+    _add_project_dir_arg(parser=plan_parser)
+    _add_clickhouse_args(parser=plan_parser)
     _add_select_args(plan_parser)
     plan_parser.add_argument(
         "--full-refresh",
@@ -104,8 +106,8 @@ def build_cli_parser() -> argparse.ArgumentParser:
             "Shows the plan and asks for confirmation before making changes."
         ),
     )
-    _add_project_dir_arg(backfill_parser)
-    _add_clickhouse_args(backfill_parser)
+    _add_project_dir_arg(parser=backfill_parser)
+    _add_clickhouse_args(parser=backfill_parser)
     _add_select_args(backfill_parser)
     backfill_parser.add_argument(
         "--deployment-id",
@@ -145,8 +147,8 @@ def build_cli_parser() -> argparse.ArgumentParser:
             "`stb audit backfill` to audit a staged deployment before publishing."
         ),
     )
-    _add_project_dir_arg(audit_parser)
-    _add_clickhouse_args(audit_parser)
+    _add_project_dir_arg(parser=audit_parser)
+    _add_clickhouse_args(parser=audit_parser)
     _add_select_args(audit_parser)
     audit_parser.add_argument(
         "--json",
@@ -164,8 +166,8 @@ def build_cli_parser() -> argparse.ArgumentParser:
             "produced correct results. If --deployment-id is omitted, lists available deployments."
         ),
     )
-    _add_project_dir_arg(audit_backfill_parser)
-    _add_clickhouse_args(audit_backfill_parser)
+    _add_project_dir_arg(parser=audit_backfill_parser, suppress_default=True)
+    _add_clickhouse_args(parser=audit_backfill_parser, suppress_default=True)
     audit_backfill_parser.add_argument(
         "--deployment-id",
         help="Deployment to audit (omit to list available deployments)",
@@ -173,19 +175,21 @@ def build_cli_parser() -> argparse.ArgumentParser:
     audit_backfill_parser.add_argument(
         "--json",
         action="store_true",
+        default=argparse.SUPPRESS,
         help="Output as JSON",
     )
 
     publish_parser: argparse.ArgumentParser = subparsers.add_parser(
         "publish",
-        help="Atomically swap views to point at new shadow tables",
+        help="Replace stable views with staged table bindings",
         description=(
-            "Publish a deployment by atomically swapping logical views to point at "
-            "the new shadow tables. If --deployment-id is omitted, lists available deployments."
+            "Publish a deployment by replacing logical view bindings one relation at a time "
+            "and reporting adapter atomicity. If --deployment-id is omitted, lists available "
+            "deployments."
         ),
     )
-    _add_project_dir_arg(publish_parser)
-    _add_clickhouse_args(publish_parser)
+    _add_project_dir_arg(parser=publish_parser)
+    _add_clickhouse_args(parser=publish_parser)
     publish_parser.add_argument(
         "--deployment-id",
         help="Deployment to publish (omit to list available deployments)",
@@ -204,8 +208,8 @@ def build_cli_parser() -> argparse.ArgumentParser:
             "Use --apply to persist changes."
         ),
     )
-    _add_project_dir_arg(reconcile_parser)
-    _add_clickhouse_args(reconcile_parser)
+    _add_project_dir_arg(parser=reconcile_parser)
+    _add_clickhouse_args(parser=reconcile_parser)
     _add_select_args(reconcile_parser)
     reconcile_parser.add_argument(
         "--json",
@@ -226,7 +230,7 @@ def build_cli_parser() -> argparse.ArgumentParser:
             "Dry-run by default; use --apply to drop tables."
         ),
     )
-    _add_clickhouse_args(janitor_parser)
+    _add_clickhouse_args(parser=janitor_parser)
     janitor_parser.add_argument(
         "--retention-days",
         type=int,
@@ -252,8 +256,8 @@ def build_cli_parser() -> argparse.ArgumentParser:
             "any issues with logical views, shadow tables, or deployment references."
         ),
     )
-    _add_project_dir_arg(doctor_parser)
-    _add_clickhouse_args(doctor_parser)
+    _add_project_dir_arg(parser=doctor_parser)
+    _add_clickhouse_args(parser=doctor_parser)
 
     repair_parser: argparse.ArgumentParser = subparsers.add_parser(
         "repair",
@@ -271,7 +275,7 @@ def build_cli_parser() -> argparse.ArgumentParser:
             "deployment's shadow table."
         ),
     )
-    _add_clickhouse_args(repair_active_view_parser)
+    _add_clickhouse_args(parser=repair_active_view_parser)
     repair_active_view_parser.add_argument(
         "--table",
         required=True,
@@ -282,23 +286,88 @@ def build_cli_parser() -> argparse.ArgumentParser:
         required=True,
         help="The deployment to point the view at",
     )
+    _add_compilation_config_args_to_commands(
+        discover_parser=discover_parser,
+        compile_parser=compile_parser,
+        test_parser=test_parser,
+        plan_parser=plan_parser,
+        backfill_parser=backfill_parser,
+        audit_parser=audit_parser,
+        audit_backfill_parser=audit_backfill_parser,
+        reconcile_parser=reconcile_parser,
+    )
     return parser
 
 
-def _add_project_dir_arg(parser: argparse.ArgumentParser) -> None:
+def _add_project_dir_arg(
+    *, parser: argparse.ArgumentParser, suppress_default: bool = False
+) -> None:
     parser.add_argument(
         "--project-dir",
         type=Path,
+        default=argparse.SUPPRESS if suppress_default else None,
         help="Path to the project root containing pipelines/",
     )
 
 
-def _add_clickhouse_args(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--host", help="ClickHouse host")
-    parser.add_argument("--port", type=int, help="ClickHouse HTTP port")
-    parser.add_argument("--username", help="ClickHouse username")
-    parser.add_argument("--password", help="ClickHouse password")
-    parser.add_argument("--database", help="Target ClickHouse database")
+def _parse_cli_vars(value: str) -> dict[str, object]:
+    try:
+        parsed: Any = json.loads(value)
+    except json.JSONDecodeError as error:
+        raise argparse.ArgumentTypeError(f"--vars must be valid JSON: {error.msg}") from error
+    if not isinstance(parsed, dict):
+        raise argparse.ArgumentTypeError("--vars must be a JSON object")
+    return {str(key): item for key, item in parsed.items()}
+
+
+def _add_compilation_config_args(
+    *, parser: argparse.ArgumentParser, suppress_defaults: bool = False
+) -> None:
+    default_target: object = argparse.SUPPRESS if suppress_defaults else None
+    default_variables: object = argparse.SUPPRESS if suppress_defaults else {}
+    parser.add_argument("--target", default=default_target, help="Named project target to use")
+    parser.add_argument(
+        "--vars",
+        type=_parse_cli_vars,
+        default=default_variables,
+        help="Project variable overrides as one JSON object",
+    )
+
+
+def _add_compilation_config_args_to_commands(
+    *,
+    discover_parser: argparse.ArgumentParser,
+    compile_parser: argparse.ArgumentParser,
+    test_parser: argparse.ArgumentParser,
+    plan_parser: argparse.ArgumentParser,
+    backfill_parser: argparse.ArgumentParser,
+    audit_parser: argparse.ArgumentParser,
+    audit_backfill_parser: argparse.ArgumentParser,
+    reconcile_parser: argparse.ArgumentParser,
+) -> None:
+    command_parser: argparse.ArgumentParser
+    for command_parser in (
+        discover_parser,
+        compile_parser,
+        test_parser,
+        plan_parser,
+        backfill_parser,
+        audit_parser,
+        reconcile_parser,
+    ):
+        _add_compilation_config_args(parser=command_parser)
+    _add_compilation_config_args(parser=audit_backfill_parser, suppress_defaults=True)
+
+
+def _add_clickhouse_args(
+    *, parser: argparse.ArgumentParser, suppress_default: bool = False
+) -> None:
+    default: object = argparse.SUPPRESS if suppress_default else None
+    parser.add_argument("--host", default=default, help="ClickHouse host")
+    parser.add_argument("--port", type=int, default=default, help="ClickHouse HTTP port")
+    parser.add_argument("--username", default=default, help="ClickHouse username")
+    parser.add_argument("--password", default=default, help="ClickHouse password")
+    parser.add_argument("--database", default=default, help="Target ClickHouse database")
 
 
 def _add_select_args(parser: argparse.ArgumentParser) -> None:

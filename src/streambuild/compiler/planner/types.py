@@ -37,11 +37,6 @@ class TableSchemaSeedCompatibility(StrEnum):
     NON_SEEDABLE = "non_seedable"
 
 
-class SchemaChangeBackfillMode(StrEnum):
-    FULL = "full"
-    BOUNDED = "bounded"
-
-
 class RebuildStrategy(StrEnum):
     SHADOW_REBUILD = "shadow_rebuild"
     OFFLINE_REBUILD = "offline_rebuild"

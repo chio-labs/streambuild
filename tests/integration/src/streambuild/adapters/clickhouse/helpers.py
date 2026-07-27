@@ -4,9 +4,14 @@ from pathlib import Path
 from threading import Barrier
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.adapter.models import AdapterConnectionConfig, AdapterStableView
+from streambuild.adapter.models import (
+    AdapterConnectionConfig,
+    AdapterMaterializedView,
+    AdapterStableView,
+    AdapterTable,
+)
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
-from streambuild.compiler.compile.main.compile_pipeline import compile_pipeline
+from streambuild.compiler.compile.main._compile_pipeline import compile_pipeline
 from streambuild.compiler.compile.models import (
     CompiledPipeline,
     DesiredKafkaTable,
@@ -15,6 +20,7 @@ from streambuild.compiler.compile.models import (
 )
 from streambuild.compiler.discovery._helpers.load import load_pipeline_file
 from streambuild.compiler.planner.main.build_adapter_resource import build_adapter_resource
+from streambuild.compiler.sql_analysis.classes.sql_model_analyzer import SqlModelAnalyzer
 from tests.integration.src.streambuild.conftest import ClickHouseConnectionSettings
 
 
@@ -35,6 +41,10 @@ def render_create_table_ddl(*, table: DesiredTable, database: str) -> str:
     )
 
 
+def render_adapter_table_ddl(*, table: AdapterTable, database: str) -> str:
+    return ClickHouseAdapter().render_resource(resource=table, database=database)
+
+
 def render_create_materialized_view_ddl(
     *, materialized_view: DesiredMaterializedView, database: str
 ) -> str:
@@ -42,6 +52,12 @@ def render_create_materialized_view_ddl(
         resource=build_adapter_resource(materialized_view),
         database=database,
     )
+
+
+def render_adapter_materialized_view_ddl(
+    *, materialized_view: AdapterMaterializedView, database: str
+) -> str:
+    return ClickHouseAdapter().render_resource(resource=materialized_view, database=database)
 
 
 def render_create_view_ddl(*, database: str, view_name: str, target_table_name: str) -> str:
@@ -53,7 +69,10 @@ def render_create_view_ddl(*, database: str, view_name: str, target_table_name: 
 
 def build_compiled_example_pipeline() -> CompiledPipeline:
     return compile_pipeline(
-        load_pipeline_file(Path("tests/fixtures/basic_project/pipelines/orders/pipeline.yml"))
+        loaded_pipeline=load_pipeline_file(
+            Path("tests/fixtures/basic_project/pipelines/orders/pipeline.yml")
+        ),
+        sql_analyzer=SqlModelAnalyzer(dialect="clickhouse"),
     )
 
 
@@ -65,20 +84,20 @@ def build_raw_orders_row() -> tuple[object, ...]:
                 "order_id": "order-1",
                 "customer_id": "customer-7",
                 "order_total": 42.5,
-                "created_at": "2026-04-05 12:00:00.123",
-                "updated_at": "2026-04-05 12:01:00.456",
+                "created_at": "2099-04-05 12:00:00.123",
+                "updated_at": "2099-04-05 12:01:00.456",
             }
         ),
         "source.orders.created",
         0,
         1,
-        "2026-04-05 12:00:00.123",
+        "2099-04-05 12:00:00.123",
         0,
         1,
-        "2026-04-05 12:00:00.123",
+        "2099-04-05 12:00:00.123",
         "",
-        "2026-04-05 12:00:00.789",
-        "2026-04-05 12:00:00.789",
+        "2099-04-05 12:00:00.789",
+        "2099-04-05 12:00:00.789",
     )
 
 

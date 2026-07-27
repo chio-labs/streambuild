@@ -21,6 +21,7 @@ from tests.integration.src.streambuild.executor.backfill.helpers import (
     build_scalar_replay_compiled_pipeline,
     build_scalar_replay_request,
     require_managed_source,
+    require_model_resources,
 )
 
 
@@ -34,16 +35,18 @@ def _create_staged_offset_materialized_view(
 ) -> None:
     clickhouse_client.command(
         render_create_materialized_view_ddl(
-            materialized_view=compiled_pipeline.transforms[0].materialized_view,
+            materialized_view=require_model_resources(compiled_pipeline).materialized_view,
             database=clickhouse_database,
         )
         .replace(
-            f"{clickhouse_database}.{compiled_pipeline.transforms[0].materialized_view.name}",
+            f"{clickhouse_database}.{require_model_resources(compiled_pipeline).materialized_view.name}",
             f"{clickhouse_database}.mv__orders_enriched__{deployment_id}",
             1,
         )
         .replace(
-            f"TO {clickhouse_database}.{compiled_pipeline.transforms[0].target_table.name}",
+            "TO "
+            f"{clickhouse_database}."
+            f"{require_model_resources(compiled_pipeline).target_table.name}",
             f"TO {clickhouse_database}.{staged_physical_name}",
             1,
         )

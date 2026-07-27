@@ -19,12 +19,16 @@ from streambuild.compiler.compile.models import (
     ObjectKey,
 )
 from streambuild.compiler.discovery.types import ReplayLineageMode
-from streambuild.compiler.metadata_state.main.build_adapter_metadata_state import (
+from streambuild.compiler.planner.main.build_adapter_metadata_state import (
     build_adapter_metadata_state,
 )
-from streambuild.compiler.metadata_state.main.build_metadata_state import build_metadata_state
-from streambuild.compiler.metadata_state.models import DeploymentWatermarkRecord, MetadataState
-from streambuild.compiler.planner.models import DeploymentPlan, RebuildSubtree
+from streambuild.compiler.planner.main.build_metadata_state import build_metadata_state
+from streambuild.compiler.planner.models import (
+    DeploymentPlan,
+    DeploymentWatermarkRecord,
+    MetadataState,
+    RebuildSubtree,
+)
 from streambuild.executor.backfill.exceptions import BackfillExecutionError
 from streambuild.executor.backfill.models import OffsetWatermarkQueryRow
 

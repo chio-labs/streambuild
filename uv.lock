@@ -611,6 +611,33 @@ wheels = [
 ]
 
 [[package]]
+name = "polyglot-sql"
+version = "0.6.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/b6/84/7d76ad5a253fec953a6c50ef874225a32cdc569b58d7c6c23e5a0755ed58/polyglot_sql-0.6.2.tar.gz", hash = "sha256:359c49e5fe69892783bfc6af918721e34f60bf6a1d501fab7af848a767d2f733", size = 1742123, upload-time = "2026-07-17T20:19:34.248Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/9e/e7/470a5bd471dfbc20a3da8898954eabf2b86c1ca83da3e2453eedc1e1b87d/polyglot_sql-0.6.2-cp312-cp312-macosx_10_12_x86_64.whl", hash = "sha256:ed9b64422cf0ed44d58a6f0895ad3c870d41b7afa37509f4d66aa378ac9180bf", size = 10980662, upload-time = "2026-07-17T20:18:42.035Z" },
+    { url = "https://files.pythonhosted.org/packages/bf/bd/be1263413fca0909ed3815309932b98a354c7d6edae6195fa0d2ce804ef3/polyglot_sql-0.6.2-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:6170805c8abddd1c05bd54e474217891c9d55a1493524707577bf73d13e461cd", size = 10349753, upload-time = "2026-07-17T20:18:44.113Z" },
+    { url = "https://files.pythonhosted.org/packages/ac/01/c60517db6cb85da7c5d7fb660d86c7569819cc89f59634ad932b7a5daba3/polyglot_sql-0.6.2-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:b641c6fb690afea0833e4220b50bd3382ff8a05253960fb9506d7961b389d54b", size = 11043323, upload-time = "2026-07-17T20:18:46.328Z" },
+    { url = "https://files.pythonhosted.org/packages/e9/24/15f02e328e4eae2b0d87764238949b1814fb77df36ba547cf067a2b0f6ed/polyglot_sql-0.6.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:9b689a81fc402dcfe93e32b456faea6487e2d4652465c5c3fa4b2420ec8f0953", size = 10136616, upload-time = "2026-07-17T20:18:48.326Z" },
+    { url = "https://files.pythonhosted.org/packages/4d/4f/bb013440e440938929d5eaeed7ef6f18b85f8fa1b49575ad9f80393e2d28/polyglot_sql-0.6.2-cp312-cp312-win_amd64.whl", hash = "sha256:332051df19fe26aee209a6a667720f1c2614810a172ff6d84adbfded8ff0d9dd", size = 9926167, upload-time = "2026-07-17T20:18:50.751Z" },
+    { url = "https://files.pythonhosted.org/packages/9b/ce/ea6db13d8a86f5573dfb0fe90f06410a175377d3f367c26545a18bbe6546/polyglot_sql-0.6.2-cp313-cp313-macosx_10_12_x86_64.whl", hash = "sha256:cd4d9257c2bee0fc44a0e45a15cb2f52b22172a68b770a0193982019af8e61be", size = 10979872, upload-time = "2026-07-17T20:18:52.876Z" },
+    { url = "https://files.pythonhosted.org/packages/15/7e/8a4e25a9f7d8f30c2dd9c0e3e46baff88c2770a2cd11220b8ed4bab13608/polyglot_sql-0.6.2-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:a336caf49648757443c00e8052684233bee2d3b8d17fbcdd315d31f8174e8e84", size = 10350568, upload-time = "2026-07-17T20:18:55.19Z" },
+    { url = "https://files.pythonhosted.org/packages/0c/2b/2be82fa6b8546721f6faae0eb901a2c0d32d7446c1d2dfcf974bc0e44377/polyglot_sql-0.6.2-cp313-cp313-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:94f2add48f01c6c085d292e655becd7fdcc563f93d53a930ba070311bd638a25", size = 11042610, upload-time = "2026-07-17T20:18:57.637Z" },
+    { url = "https://files.pythonhosted.org/packages/55/d0/de0687091c96bddf614645b40c1d2591461cfaa2cd2f419a16f3ce308072/polyglot_sql-0.6.2-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:630efe8e6e228c3d1af7ffbceab139c33c6863c22fddfcb123d0541e71f43eb4", size = 10136103, upload-time = "2026-07-17T20:19:00.105Z" },
+    { url = "https://files.pythonhosted.org/packages/d6/5f/1bf8928028e4a4efe91515520b3bdaee0b9f19ee71ce3f01386cce5cddea/polyglot_sql-0.6.2-cp313-cp313-win_amd64.whl", hash = "sha256:d643129ab4ef2c10d56bfb2f2964e9ca3004b1cc926f58a98f5418da52ebccc7", size = 9926091, upload-time = "2026-07-17T20:19:02.384Z" },
+    { url = "https://files.pythonhosted.org/packages/20/a9/3149f6f33cd97e908ab8909516050f948f842bc03cfdc1c71c4d14e48ff2/polyglot_sql-0.6.2-cp314-cp314-macosx_10_12_x86_64.whl", hash = "sha256:2bab8c3d0703acb9659821ac5e9c1b01c095f481d1f8a4a93d9c3c62d7352e30", size = 10984264, upload-time = "2026-07-17T20:19:04.53Z" },
+    { url = "https://files.pythonhosted.org/packages/b5/f4/a6c7e66edf5aa0be3068bf51e6ff62b0ef2d2eaafe024815f4c3ce61aa51/polyglot_sql-0.6.2-cp314-cp314-macosx_11_0_arm64.whl", hash = "sha256:ff8923ac0dd49a9c404623ab15b3937c89ece01862d888c3997cba8be4459c24", size = 10350476, upload-time = "2026-07-17T20:19:06.667Z" },
+    { url = "https://files.pythonhosted.org/packages/f8/36/72be0f93d124d499aab6ed8589d7cc2fd108a5af983062dbdd0488228de6/polyglot_sql-0.6.2-cp314-cp314-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:c45aa17b432df0179c919bc4a1c4b088c6934e63ad955ca1e2af159ac08ea9bf", size = 11043573, upload-time = "2026-07-17T20:19:08.844Z" },
+    { url = "https://files.pythonhosted.org/packages/e1/ff/512bd3c8fdc338f330d95150ade86a1f5f51554d6496bb9a883f2785da99/polyglot_sql-0.6.2-cp314-cp314-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:56859062926b5144cd3d3455f32ed550979f85fa2e783c64e47e1d2977c230cd", size = 10136807, upload-time = "2026-07-17T20:19:11.112Z" },
+    { url = "https://files.pythonhosted.org/packages/21/8a/8e9c561ab27653432b60a9da024606b6002f028d22590d8cb4350dcfbefe/polyglot_sql-0.6.2-cp314-cp314-win_amd64.whl", hash = "sha256:89c99c5440cff11253e83d9ef959cf3aae921e58c325fe68abfed9b806d3c804", size = 9926606, upload-time = "2026-07-17T20:19:13.282Z" },
+    { url = "https://files.pythonhosted.org/packages/55/15/ddc77abb86abc5f281687d1ea183520fae64b35cee6039d7df14e26b9567/polyglot_sql-0.6.2-cp314-cp314t-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:1c63bc6203a589d2fbc2bf27d2e765d1c9ea120cb1c624be17b66d91e15bd811", size = 11139629, upload-time = "2026-07-17T20:19:15.677Z" },
+    { url = "https://files.pythonhosted.org/packages/cc/93/2b00c5058464061848b5c5a7d42564c7371598fb2d04f58379a47c57107d/polyglot_sql-0.6.2-cp314-cp314t-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:5bcee312c2c305f14fd92a3a97447d1666e4580abb3837dfdf67bebac8f1a545", size = 10210401, upload-time = "2026-07-17T20:19:18.573Z" },
+    { url = "https://files.pythonhosted.org/packages/82/bb/0ba745c1a493e065a5a66eea6914da7481d6e1c1df0bfb60e4c1234e99a0/polyglot_sql-0.6.2-cp315-cp315-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:e23ede765008203d5f785a49307baa52ded64d49aa084bc38d0297cfd7e88af3", size = 10136807, upload-time = "2026-07-17T20:19:20.582Z" },
+    { url = "https://files.pythonhosted.org/packages/49/5d/3580a576a7d0a52c05adcf75ed16fea706b3ad0ed0164df7c8e6a3b915e0/polyglot_sql-0.6.2-cp315-cp315t-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:f7da6d0af5e82055f053460783027e3788d48dc6109f9d1f00f0d8760f9331b4", size = 10210410, upload-time = "2026-07-17T20:19:22.766Z" },
+]
+
+[[package]]
 name = "pre-commit"
 version = "4.5.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1019,6 +1046,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "clickhouse-connect" },
+    { name = "polyglot-sql" },
     { name = "pyyaml" },
     { name = "sqlglot" },
 ]
@@ -1042,6 +1070,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "clickhouse-connect", specifier = ">=0.8.18" },
+    { name = "polyglot-sql", specifier = ">=0.5.10" },
     { name = "pyyaml", specifier = ">=6.0.2" },
     { name = "sqlglot", specifier = ">=27.13.2" },
 ]

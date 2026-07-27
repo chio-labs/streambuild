@@ -2,42 +2,45 @@
 
 from __future__ import annotations
 
+from streambuild.adapter.models import AdapterManagedSource, AdapterMaterializedView, AdapterTable
 from streambuild.cli.entry.exceptions import CliUserError
 from streambuild.cli.selection.constants import (
     PIPELINE_SELECTOR_NAMESPACE,
     SELECTOR_NAMESPACE_SEPARATOR,
 )
 from streambuild.compiler.compile.models import (
-    CompiledExternalSource,
-    CompiledManagedSource,
+    CompiledModel,
     CompiledPipeline,
-    CompiledTransformStep,
     DesiredKafkaTable,
     DesiredMaterializedView,
     DesiredState,
     DesiredTable,
+    LogicalResourceKey,
     ObjectKey,
 )
+from streambuild.compiler.compile.types import LogicalResourceType
 from streambuild.compiler.discovery.types import ReplayLineageMode
-from streambuild.compiler.planner.main.build_reverse_deps import build_reverse_deps
-from streambuild.compiler.planner.main.topologically_order_keys import topologically_order_keys
+from streambuild.compiler.graph.main.build_reverse_deps import build_reverse_deps
+from streambuild.compiler.graph.main.topologically_order_keys import topologically_order_keys
+from streambuild.compiler.pipeline.models import RealizedProject
+from streambuild.compiler.pipeline.types import AdapterResource
 
 
-def resolve_selected_model_keys(
+def resolve_selected_logical_model_keys(
     *,
     compiled_pipelines: tuple[CompiledPipeline, ...],
     selectors: tuple[str, ...],
-) -> frozenset[ObjectKey]:
-    pipeline_model_keys: dict[str, tuple[ObjectKey, ...]] = model_keys_by_pipeline(
+) -> frozenset[LogicalResourceKey]:
+    pipeline_model_keys: dict[str, tuple[LogicalResourceKey, ...]] = model_keys_by_pipeline(
         compiled_pipelines=compiled_pipelines
     )
-    model_key_by_name: dict[str, ObjectKey] = {}
+    model_key_by_name: dict[str, LogicalResourceKey] = {}
     compiled_pipeline: CompiledPipeline
     for compiled_pipeline in compiled_pipelines:
-        transform: CompiledTransformStep
-        for transform in compiled_pipeline.transforms:
-            model_key_by_name[transform.transform.name] = transform.target_table.key
-    selected_model_keys: set[ObjectKey] = set()
+        model: CompiledModel
+        for model in compiled_pipeline.models:
+            model_key_by_name[model.key.name] = model.key
+    selected_model_keys: set[LogicalResourceKey] = set()
     selector: str
     for selector in selectors:
         if selector.startswith("+") or selector.endswith("+"):
@@ -48,7 +51,7 @@ def resolve_selected_model_keys(
                 "so '+' is not supported."
             )
         if SELECTOR_NAMESPACE_SEPARATOR not in selector:
-            model_key: ObjectKey | None = model_key_by_name.get(selector)
+            model_key: LogicalResourceKey | None = model_key_by_name.get(selector)
             if model_key is None:
                 raise CliUserError(f"Unknown selected model '{selector}'")
             selected_model_keys.add(model_key)
@@ -59,7 +62,9 @@ def resolve_selected_model_keys(
         selector_kind, selector_value = selector.split(SELECTOR_NAMESPACE_SEPARATOR, 1)
         if selector_kind != PIPELINE_SELECTOR_NAMESPACE:
             raise CliUserError(f"Unsupported selector namespace '{selector_kind}' in '{selector}'")
-        pipeline_keys: tuple[ObjectKey, ...] | None = pipeline_model_keys.get(selector_value)
+        pipeline_keys: tuple[LogicalResourceKey, ...] | None = pipeline_model_keys.get(
+            selector_value
+        )
         if pipeline_keys is None:
             raise CliUserError(f"Unknown selected pipeline '{selector_value}'")
         if not pipeline_keys:
@@ -72,6 +77,7 @@ def resolve_selected_model_keys(
 def expand_included_keys(
     *,
     compiled_pipelines: tuple[CompiledPipeline, ...],
+    realized_project: RealizedProject,
     desired_state: DesiredState,
     selected_model_keys: frozenset[ObjectKey],
 ) -> frozenset[ObjectKey]:
@@ -84,12 +90,18 @@ def expand_included_keys(
     included_keys: set[ObjectKey] = set(selected_model_keys)
     compiled_pipeline: CompiledPipeline
     for compiled_pipeline in compiled_pipelines:
-        pipeline_model_keys: frozenset[ObjectKey] = frozenset(
-            transform.target_table.key for transform in compiled_pipeline.transforms
+        pipeline_model_keys: frozenset[ObjectKey] = physical_model_keys(
+            realized_project=realized_project,
+            logical_model_keys=frozenset(model.key for model in compiled_pipeline.models),
         )
         if not (pipeline_model_keys & selected_model_keys):
             continue
-        included_keys.update(pipeline_source_keys(compiled_pipeline))
+        included_keys.update(
+            pipeline_source_keys(
+                compiled_pipeline=compiled_pipeline,
+                realized_project=realized_project,
+            )
+        )
     stack: list[ObjectKey] = list(selected_model_keys)
 
     while stack:
@@ -149,30 +161,34 @@ def filter_desired_state(
     )
 
 
-def pipeline_source_keys(compiled_pipeline: CompiledPipeline) -> frozenset[ObjectKey]:
-    if isinstance(compiled_pipeline.source, CompiledExternalSource):
-        return frozenset({compiled_pipeline.source.source_key})
-    managed_source: CompiledManagedSource = compiled_pipeline.source
-    return frozenset(
-        {
-            managed_source.kafka_table.key,
-            managed_source.raw_table.key,
-            managed_source.materialized_view.key,
-        }
+def pipeline_source_keys(
+    *, compiled_pipeline: CompiledPipeline, realized_project: RealizedProject
+) -> frozenset[ObjectKey]:
+    resources: tuple[AdapterResource, ...] = realized_project.resources_by_logical_key[
+        compiled_pipeline.source.key
+    ]
+    keys: set[ObjectKey] = {_resource_key(resource) for resource in resources}
+    keys.add(
+        ObjectKey(
+            database=None,
+            object_type="table",
+            name=realized_project.relation_name_by_logical_key[compiled_pipeline.source.key],
+        )
     )
+    return frozenset(keys)
 
 
 def resolve_replay_lineage_mode(
     *,
     compiled_pipelines: tuple[CompiledPipeline, ...],
-    selected_model_keys: frozenset[ObjectKey],
+    selected_model_keys: frozenset[LogicalResourceKey],
 ) -> ReplayLineageMode:
     replay_lineage_modes: set[ReplayLineageMode] = set()
     selected_pipeline_modes: list[tuple[str, ReplayLineageMode]] = []
     compiled_pipeline: CompiledPipeline
     for compiled_pipeline in compiled_pipelines:
-        pipeline_model_keys: frozenset[ObjectKey] = frozenset(
-            transform.target_table.key for transform in compiled_pipeline.transforms
+        pipeline_model_keys: frozenset[LogicalResourceKey] = frozenset(
+            model.key for model in compiled_pipeline.models
         )
         if selected_model_keys and not (pipeline_model_keys & selected_model_keys):
             continue
@@ -194,11 +210,43 @@ def resolve_replay_lineage_mode(
 
 def model_keys_by_pipeline(
     *, compiled_pipelines: tuple[CompiledPipeline, ...]
-) -> dict[str, tuple[ObjectKey, ...]]:
-    keys_by_pipeline: dict[str, tuple[ObjectKey, ...]] = {}
+) -> dict[str, tuple[LogicalResourceKey, ...]]:
+    keys_by_pipeline: dict[str, tuple[LogicalResourceKey, ...]] = {}
     compiled_pipeline: CompiledPipeline
     for compiled_pipeline in compiled_pipelines:
         keys_by_pipeline[compiled_pipeline.pipeline.name] = tuple(
-            transform.target_table.key for transform in compiled_pipeline.transforms
+            model.key for model in compiled_pipeline.models
         )
     return keys_by_pipeline
+
+
+def physical_model_keys(
+    *,
+    realized_project: RealizedProject,
+    logical_model_keys: frozenset[LogicalResourceKey],
+) -> frozenset[ObjectKey]:
+    keys: set[ObjectKey] = set()
+    logical_key: LogicalResourceKey
+    for logical_key in logical_model_keys:
+        if logical_key.resource_type != LogicalResourceType.MODEL:
+            raise CliUserError(f"Cannot select non-model logical resource '{logical_key.name}'")
+        resource: AdapterTable = next(
+            resource
+            for resource in realized_project.resources_by_logical_key[logical_key]
+            if isinstance(resource, AdapterTable)
+        )
+        keys.add(_resource_key(resource))
+    return frozenset(keys)
+
+
+def _resource_key(
+    resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView,
+) -> ObjectKey:
+    object_type: str
+    if isinstance(resource, AdapterManagedSource):
+        object_type = "kafka_table"
+    elif isinstance(resource, AdapterMaterializedView):
+        object_type = "materialized_view"
+    else:
+        object_type = "table"
+    return ObjectKey(database=None, object_type=object_type, name=resource.name)

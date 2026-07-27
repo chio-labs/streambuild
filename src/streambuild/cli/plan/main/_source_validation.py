@@ -3,33 +3,21 @@ from __future__ import annotations
 from streambuild.adapter.models import CatalogSnapshot
 from streambuild.cli.entry.exceptions import CliUserError
 from streambuild.cli.plan._helpers.source_validation import (
-    build_external_source_replay_config,
     load_source_column_types,
     validate_declared_column,
     validate_injected_alias_collisions,
 )
-from streambuild.compiler.compile.models import (
-    CompiledExternalSource,
-    CompiledPipeline,
-    ExternalSourceReplayConfig,
-)
+from streambuild.compiler.compile.models import ExternalSourceReplayConfig
 
 
 def validate_declared_external_sources(
     *,
     catalog: CatalogSnapshot,
-    compiled_pipelines: tuple[CompiledPipeline, ...],
+    external_source_replay_configs: tuple[ExternalSourceReplayConfig, ...],
     database: str,
 ) -> None:
-    source_step: CompiledExternalSource
-    for source_step in (
-        compiled_pipeline.source
-        for compiled_pipeline in compiled_pipelines
-        if isinstance(compiled_pipeline.source, CompiledExternalSource)
-    ):
-        external_source_replay_config: ExternalSourceReplayConfig = (
-            build_external_source_replay_config(source_step)
-        )
+    external_source_replay_config: ExternalSourceReplayConfig
+    for external_source_replay_config in external_source_replay_configs:
         column_types_by_name: dict[str, str] = load_source_column_types(
             catalog=catalog,
             table_name=external_source_replay_config.table_name,

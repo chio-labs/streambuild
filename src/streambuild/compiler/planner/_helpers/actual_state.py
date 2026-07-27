@@ -16,12 +16,12 @@ from streambuild.compiler.compile.models import (
     TableSpec,
     TableStorage,
 )
-from streambuild.compiler.metadata_state.models import ObjectStateRecord
 from streambuild.compiler.planner.models import (
     ActualKafkaTable,
     ActualMaterializedView,
     ActualStateInspection,
     ActualTable,
+    ObjectStateRecord,
     RootDeploymentInspection,
 )
 from streambuild.compiler.planner.types import RootDeploymentStateKind
@@ -153,6 +153,7 @@ def _build_actual_materialized_view(
             source_table_name=desired_object.source_table_name,
             target_table_name=desired_object.target_table_name,
             query=actual_query,
+            database_template=actual_query,
         ),
     )
 

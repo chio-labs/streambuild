@@ -15,7 +15,7 @@ from tests.unit.src.streambuild.cli.plan.main._test_types import (
     CliExternalSourceValidationErrorTestCase,
 )
 from tests.unit.src.streambuild.cli.plan.main.helpers import (
-    build_compiled_external_source_pipeline,
+    build_realized_external_source_project,
 )
 
 
@@ -57,6 +57,8 @@ def test_given_external_source_alias_collision_when_validating_then_it_raises_cl
     with pytest.raises(CliUserError, match=test_case.expected_error_fragment):
         validate_declared_external_sources(
             catalog=catalog,
-            compiled_pipelines=(build_compiled_external_source_pipeline(),),
+            external_source_replay_configs=(
+                build_realized_external_source_project().desired_state.external_source_replay_configs
+            ),
             database="default",
         )

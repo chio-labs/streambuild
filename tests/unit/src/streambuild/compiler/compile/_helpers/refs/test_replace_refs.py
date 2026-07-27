@@ -2,6 +2,9 @@ import pytest
 
 from streambuild.compiler.compile.exceptions import PipelineCompileError
 from streambuild.compiler.compile.main.replace_refs import replace_refs
+from streambuild.compiler.sql_analysis.classes.sql_reference_rewriter import (
+    SqlReferenceRewriter,
+)
 from tests.unit.src.streambuild.compiler.compile._helpers.refs._test_types import (
     ReplaceRefsErrorTestCase,
     ReplaceRefsTestCase,
@@ -54,7 +57,11 @@ from tests.unit.src.streambuild.compiler.compile._helpers.refs.helpers import bu
 def test_given_sql_when_replacing_refs_then_it_rewrites_only_real_ref_calls(
     test_case: ReplaceRefsTestCase,
 ) -> None:
-    replaced_sql: str = replace_refs(sql=test_case.sql, resolver=test_case.resolver)
+    replaced_sql: str = replace_refs(
+        sql=test_case.sql,
+        resolver=test_case.resolver,
+        rewriter=SqlReferenceRewriter(dialect="clickhouse"),
+    )
 
     for expected_sql_fragment in test_case.expected_sql_fragments:
         assert expected_sql_fragment in replaced_sql
@@ -79,4 +86,8 @@ def test_given_unresolved_ref_when_replacing_then_it_raises_expected_error(
     test_case: ReplaceRefsErrorTestCase,
 ) -> None:
     with pytest.raises(test_case.expected_error_type, match=test_case.expected_error_fragment):
-        replace_refs(sql=test_case.sql, resolver=test_case.resolver)
+        replace_refs(
+            sql=test_case.sql,
+            resolver=test_case.resolver,
+            rewriter=SqlReferenceRewriter(dialect="clickhouse"),
+        )

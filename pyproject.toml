@@ -12,6 +12,7 @@ dependencies = [
   "clickhouse-connect>=0.8.18",
   "sqlglot>=27.13.2",
   "PyYAML>=6.0.2",
+  "polyglot-sql>=0.5.10",
 ]
 
 [project.scripts]
@@ -47,6 +48,7 @@ testpaths = ["tests"]
 markers = [
   "integration: marks tests that require real external services",
   "e2e: marks tests that exercise full end-to-end workflows",
+  "performance: marks opt-in comparative performance guards",
 ]
 
 [tool.ruff]

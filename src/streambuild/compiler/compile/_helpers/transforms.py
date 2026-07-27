@@ -2,22 +2,10 @@
 
 from __future__ import annotations
 
-from functools import lru_cache
 from pathlib import Path
 
-from sqlglot import exp, parse_one
-
-from streambuild.compiler.compile._helpers.naming import raw_table_name, transform_mv_name
-from streambuild.compiler.compile._helpers.sql_contract import (
-    derive_transform_output_columns,
-    validate_order_by_expressions,
-    validate_partition_by_expression,
-    validate_ttl_expression,
-)
+from streambuild.compiler.compile._helpers.sql_contract import analyze_transform_model_sql
 from streambuild.compiler.compile.constants import (
-    AGGREGATING_ENGINE_NAMES,
-    DESIRED_OBJECT_TYPE_MATERIALIZED_VIEW,
-    DESIRED_OBJECT_TYPE_TABLE,
     REPLAY_CURSOR_COLUMN_NAME,
     REPLAY_LANDED_AT_COLUMN_NAME,
     REPLAY_OFFSET_COLUMN_NAME,
@@ -25,21 +13,14 @@ from streambuild.compiler.compile.constants import (
     REPLAY_TIMESTAMP_COLUMN_NAME,
 )
 from streambuild.compiler.compile.exceptions import PipelineCompileError
-from streambuild.compiler.compile.main._extract_refs import extract_refs
-from streambuild.compiler.compile.main.replace_refs import replace_refs
-from streambuild.compiler.compile.main.transform_table_name import transform_table_name
 from streambuild.compiler.compile.models import (
     Column,
-    CompiledTransformStep,
-    DesiredMaterializedView,
-    DesiredTable,
-    MaterializedViewSpec,
-    ObjectKey,
+    CompiledModel,
+    LogicalResourceKey,
     ParsedRef,
-    TableSpec,
-    TableStorage,
 )
-from streambuild.compiler.discovery.models import ExternalTableSourceStep, Pipeline, TransformStep
+from streambuild.compiler.compile.types import LogicalResourceType
+from streambuild.compiler.discovery.models import ReplayOnChangePolicy, TransformStep
 from streambuild.compiler.discovery.types import (
     BoundedReplayFallback,
     RefType,
@@ -47,35 +28,44 @@ from streambuild.compiler.discovery.types import (
     ReplayLineageMode,
     SqlRelationType,
 )
+from streambuild.compiler.sql_analysis.classes.sql_model_analyzer import SqlModelAnalyzer
+from streambuild.compiler.sql_analysis.models import SqlModelAnalysis
 
 
-def compile_transform(
+def compile_model(
     *,
     transform: TransformStep,
     pipeline_file_path: Path,
-    relation_names: dict[str, str],
-    relation_sqls: dict[str, str],
+    pipeline_name: str,
     replay_lineage_mode: ReplayLineageMode,
     bounded_replay_fallback: BoundedReplayFallback,
-) -> CompiledTransformStep:
-    """Compile a transform step into desired objects."""
+    sql_analyzer: SqlModelAnalyzer,
+    replay_on_change: ReplayOnChangePolicy | None = None,
+) -> CompiledModel:
+    """Compile one authored transform into a logical model."""
 
     query: str = load_transform_query(transform=transform, pipeline_file_path=pipeline_file_path)
-    output_columns: tuple[Column, ...] = derive_transform_output_columns(
-        transform_name=transform.name, query=query
-    )
-    validate_order_by_expressions(
-        transform_name=transform.name, order_by=transform.order_by, available_columns=output_columns
-    )
-    validate_partition_by_expression(
+    sql_analysis: SqlModelAnalysis = analyze_transform_model_sql(
+        analyzer=sql_analyzer,
         transform_name=transform.name,
+        query=query,
+        engine=transform.engine,
+        order_by=tuple(transform.order_by),
         partition_by=transform.partition_by,
-        available_columns=output_columns,
+        ttl=transform.ttl,
     )
-    validate_ttl_expression(
-        transform_name=transform.name, ttl=transform.ttl, available_columns=output_columns
+    output_columns: tuple[Column, ...] = tuple(
+        Column(name=column.name, type=column.type) for column in sql_analysis.output_columns
     )
-    parsed_refs: tuple[ParsedRef, ...] = tuple(extract_refs(query))
+    parsed_refs: tuple[ParsedRef, ...] = tuple(
+        ParsedRef(
+            name=reference.name,
+            relation_type=reference.relation_type,
+            ref_type=None if reference.ref_type is None else RefType(reference.ref_type),
+            span=reference.span,
+        )
+        for reference in sql_analysis.references
+    )
     validate_transform_refs(transform=transform, parsed_refs=parsed_refs)
     refs: tuple[str, ...] = tuple(parsed_ref.name for parsed_ref in parsed_refs)
     has_mutable_refs: bool = any(
@@ -84,18 +74,12 @@ def compile_transform(
         and parsed_ref.ref_type == RefType.MUTABLE
         for parsed_ref in parsed_refs
     )
-    has_aggregate_semantics: bool = transform_has_aggregate_semantics(
-        transform=transform, query=query
-    )
+    has_aggregate_semantics: bool = sql_analysis.aggregate_facts.has_semantics
     if transform.source not in refs:
         raise PipelineCompileError(
             f"Transform '{transform.name}' must reference its source '{transform.source}' in SQL"
         )
 
-    resolved_query: str = replace_refs(sql=query, resolver=relation_sqls)
-    output_columns: tuple[Column, ...] = derive_transform_output_columns(
-        transform_name=transform.name, query=resolved_query
-    )
     preserves_required_lineage: bool = transform_preserves_required_lineage(
         output_columns=output_columns, replay_lineage_mode=replay_lineage_mode
     )
@@ -105,81 +89,16 @@ def compile_transform(
         has_aggregate_semantics=has_aggregate_semantics,
         preserves_required_lineage=preserves_required_lineage,
     )
-    target_table_key: ObjectKey = ObjectKey(
-        database=None,
-        object_type=DESIRED_OBJECT_TYPE_TABLE,
-        name=transform_table_name(transform.name),
-    )
-    source_table_key: ObjectKey = ObjectKey(
-        database=None,
-        object_type=DESIRED_OBJECT_TYPE_TABLE,
-        name=relation_names[transform.source],
-    )
-    dependency_table_keys: tuple[ObjectKey, ...] = tuple(
-        dict.fromkeys(
-            ObjectKey(
-                database=None,
-                object_type=DESIRED_OBJECT_TYPE_TABLE,
-                name=relation_names[parsed_ref.name],
-            )
-            for parsed_ref in parsed_refs
-        )
-    )
-    materialized_view_key: ObjectKey = ObjectKey(
-        database=None,
-        object_type=DESIRED_OBJECT_TYPE_MATERIALIZED_VIEW,
-        name=transform_mv_name(transform.name),
-    )
-    return CompiledTransformStep(
+    return CompiledModel(
+        key=LogicalResourceKey(resource_type=LogicalResourceType.MODEL, name=transform.name),
+        pipeline_name=pipeline_name,
         transform=transform,
-        parsed_refs=parsed_refs,
-        resolved_query=resolved_query,
-        refs=refs,
-        has_mutable_refs=has_mutable_refs,
-        has_aggregate_semantics=has_aggregate_semantics,
+        sql_analysis=sql_analysis,
         preserves_required_lineage=preserves_required_lineage,
         replay_anchor_eligible=replay_anchor_eligible,
         effective_bounded_replay_fallback=bounded_replay_fallback,
-        target_table=compile_transform_table(
-            transform=transform,
-            output_columns=output_columns,
-            key=target_table_key,
-            source_table_key=source_table_key,
-            bounded_replay_fallback=bounded_replay_fallback,
-        ),
-        materialized_view=DesiredMaterializedView(
-            key=materialized_view_key,
-            deps=(*dependency_table_keys, target_table_key),
-            spec=MaterializedViewSpec(
-                source_table_name=relation_names[transform.source],
-                target_table_name=transform_table_name(transform.name),
-                query=resolved_query,
-            ),
-        ),
-        target_table_name=transform_table_name(transform.name),
+        replay_on_change=replay_on_change,
     )
-
-
-def relation_names_for_pipeline(pipeline: Pipeline) -> dict[str, str]:
-    """Build the logical-to-physical relation name map for a pipeline."""
-
-    relation_names: dict[str, str]
-    if isinstance(pipeline.source, ExternalTableSourceStep):
-        relation_names = {pipeline.source.name: pipeline.source.table_name}
-    else:
-        relation_names = {pipeline.source.name: raw_table_name(pipeline.source.name)}
-    for transform in pipeline.transforms:
-        relation_names[transform.name] = transform_table_name(transform.name)
-    return relation_names
-
-
-def relation_sqls_for_pipeline(pipeline: Pipeline) -> dict[str, str]:
-    """Build the logical-to-SQL relation surface map for a pipeline."""
-
-    relation_sqls: dict[str, str] = relation_names_for_pipeline(pipeline)
-    if isinstance(pipeline.source, ExternalTableSourceStep):
-        relation_sqls[pipeline.source.name] = _external_source_relation_sql(pipeline.source)
-    return relation_sqls
 
 
 def load_transform_query(*, transform: TransformStep, pipeline_file_path: Path) -> str:
@@ -222,26 +141,6 @@ def validate_transform_refs(
             )
 
 
-def transform_has_aggregate_semantics(*, transform: TransformStep, query: str) -> bool:
-    """Return whether a transform is conservatively aggregate/stateful."""
-
-    engine_name: str = transform.engine.lower()
-    if any(name in engine_name for name in AGGREGATING_ENGINE_NAMES):
-        return True
-
-    return _query_has_aggregate_semantics(query)
-
-
-@lru_cache(maxsize=256)
-def _query_has_aggregate_semantics(query: str) -> bool:
-    expression: exp.Expr = parse_one(query, dialect="clickhouse")
-    if expression.find(exp.Group) is not None:
-        return True
-
-    aggregate_function: exp.AggFunc | None = expression.find(exp.AggFunc)
-    return aggregate_function is not None
-
-
 def transform_preserves_required_lineage(
     *,
     output_columns: tuple[Column, ...],
@@ -269,34 +168,6 @@ def required_lineage_column_names(replay_lineage_mode: ReplayLineageMode) -> set
     return set()
 
 
-def _external_source_relation_sql(source: ExternalTableSourceStep) -> str:
-    alias_expressions: list[str] = []
-    if source.replay_boundary.columns.partition is not None:
-        alias_expressions.append(
-            f"{source.replay_boundary.columns.partition} AS {REPLAY_PARTITION_COLUMN_NAME}"
-        )
-    if source.replay_boundary.columns.offset is not None:
-        alias_expressions.append(
-            f"{source.replay_boundary.columns.offset} AS {REPLAY_OFFSET_COLUMN_NAME}"
-        )
-    if source.replay_boundary.columns.timestamp is not None:
-        alias_expressions.append(
-            f"{source.replay_boundary.columns.timestamp} AS {REPLAY_TIMESTAMP_COLUMN_NAME}"
-        )
-    if source.replay_boundary.columns.landed_at is not None:
-        alias_expressions.append(
-            f"{source.replay_boundary.columns.landed_at} AS {REPLAY_LANDED_AT_COLUMN_NAME}"
-        )
-    if source.replay_boundary.columns.cursor is not None:
-        alias_expressions.append(
-            f"{source.replay_boundary.columns.cursor} AS {REPLAY_CURSOR_COLUMN_NAME}"
-        )
-    if not alias_expressions:
-        return source.table_name
-    alias_projection_sql: str = ",\n    ".join(alias_expressions)
-    return f"(SELECT\n    *,\n    {alias_projection_sql}\nFROM {source.table_name})"
-
-
 def build_replay_anchor_eligible(
     *,
     transform: TransformStep,
@@ -315,31 +186,3 @@ def build_replay_anchor_eligible(
     if not preserves_required_lineage:
         return False
     return True
-
-
-def compile_transform_table(
-    *,
-    transform: TransformStep,
-    output_columns: tuple[Column, ...],
-    key: ObjectKey,
-    source_table_key: ObjectKey,
-    bounded_replay_fallback: BoundedReplayFallback | str,
-) -> DesiredTable:
-    """Compile the managed target table for a transform."""
-
-    return DesiredTable(
-        key=key,
-        deps=(source_table_key,),
-        spec=TableSpec(
-            columns=output_columns,
-            storage=TableStorage(
-                engine=transform.engine,
-                order_by=tuple(transform.order_by),
-                partition_by=transform.partition_by,
-                ttl=transform.ttl,
-                settings=transform.settings,
-            ),
-        ),
-        schema_change_backfill=transform.schema_change_backfill,
-        bounded_replay_fallback=BoundedReplayFallback(bounded_replay_fallback),
-    )

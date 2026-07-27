@@ -17,6 +17,10 @@ def render_publish_result(
     if json_output:
         payload: dict[str, object] = {
             "deployment_id": result.deployment_id,
+            "atomicity": {
+                "per_relation_atomic_replace": result.per_relation_atomic_replace,
+                "graph_atomic_publish": result.graph_atomic_publish,
+            },
             "published_views": [
                 {
                     "view_name": view.view_name,
@@ -37,6 +41,14 @@ def render_publish_result(
     view: PublishedView
     for view in result.published_views:
         lines.append(f"- {view.view_name} -> {view.target_table_name}")
+    atomicity_label: dict[bool, str] = {True: "atomic", False: "not atomic"}
+    lines.append("")
+    lines.append(cli_style().section("Atomicity"))
+    lines.append(
+        f"- Each logical binding replacement: {atomicity_label[result.per_relation_atomic_replace]}"
+    )
+    lines.append(f"- Entire deployment publish: {atomicity_label[result.graph_atomic_publish]}")
+    lines.append("- Bindings are replaced one relation at a time")
     lines.append("")
     lines.append(cli_style().section("Next"))
     lines.append("- audit the live logical views in ClickHouse if you want a post-publish check")

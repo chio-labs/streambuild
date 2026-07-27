@@ -30,7 +30,6 @@ from streambuild.compiler.compile.models import (
     ObjectKey,
 )
 from streambuild.compiler.discovery.types import ReplayLineageMode
-from streambuild.compiler.metadata_state.models import DeploymentWatermarkRecord
 from streambuild.compiler.planner.constants import (
     REBUILD_EXECUTION_MODE_SEEDED_BOUNDED,
     REBUILD_EXECUTION_MODE_UNSEEDED_BOUNDED,
@@ -38,7 +37,11 @@ from streambuild.compiler.planner.constants import (
 from streambuild.compiler.planner.main.build_adapter_replay_query import (
     build_adapter_replay_query,
 )
-from streambuild.compiler.planner.models import DeploymentPlan, RebuildSubtree
+from streambuild.compiler.planner.models import (
+    DeploymentPlan,
+    DeploymentWatermarkRecord,
+    RebuildSubtree,
+)
 from streambuild.executor.backfill.exceptions import BackfillExecutionError
 
 

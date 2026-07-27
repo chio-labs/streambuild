@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, cast
 
@@ -21,10 +22,15 @@ from streambuild.compiler.audit_discovery.models import (
 from streambuild.compiler.compile.main._extract_refs import extract_refs
 from streambuild.compiler.compile.models import ParsedRef
 from streambuild.compiler.discovery.types import SqlRelationType
+from streambuild.compiler.macros.models import MacroContext, MacroRegistry
 
 
 def discover_generic_sql_audit_definitions(
+    *,
     root: Path,
+    contents_by_path: Mapping[Path, str] | None = None,
+    macro_registry: MacroRegistry | None = None,
+    macro_context: MacroContext | None = None,
 ) -> tuple[LoadedGenericSqlAuditDefinition, ...]:
     """Load generic SQL audit definitions from `audits/generic/`."""
 
@@ -33,7 +39,14 @@ def discover_generic_sql_audit_definitions(
     definitions: list[LoadedGenericSqlAuditDefinition] = []
     file_path: Path
     for file_path in sorted(root.rglob("*.sql")):
-        definitions.append(parse_generic_sql_audit_definition(file_path))
+        definitions.append(
+            parse_generic_sql_audit_definition(
+                file_path=file_path,
+                contents=None if contents_by_path is None else contents_by_path[file_path],
+                macro_registry=macro_registry,
+                macro_context=macro_context,
+            )
+        )
     duplicate_names: tuple[str, ...] = _find_duplicate_names(
         tuple(definition.name for definition in definitions)
     )
@@ -45,7 +58,9 @@ def discover_generic_sql_audit_definitions(
 
 
 def discover_schema_bound_generic_sql_audit_instances(
+    *,
     project_root: Path,
+    contents_by_path: Mapping[Path, str] | None = None,
 ) -> tuple[LoadedGenericSqlAuditInstance, ...]:
     """Load generic SQL audit instances from `pipelines/**/schema.yml`."""
 
@@ -55,7 +70,12 @@ def discover_schema_bound_generic_sql_audit_instances(
     instances: list[LoadedGenericSqlAuditInstance] = []
     schema_file_path: Path
     for schema_file_path in sorted(pipelines_root.rglob("schema.yml")):
-        instances.extend(_load_schema_file_generic_sql_audit_instances(schema_file_path))
+        instances.extend(
+            _load_schema_file_generic_sql_audit_instances(
+                file_path=schema_file_path,
+                contents=None if contents_by_path is None else contents_by_path[schema_file_path],
+            )
+        )
     return tuple(instances)
 
 
@@ -85,7 +105,9 @@ def render_generic_sql_audits(
             arguments=instance.arguments,
             file_path=instance.file_path,
         )
-        parsed_refs: tuple[ParsedRef, ...] = tuple(extract_refs(rendered_query))
+        parsed_refs: tuple[ParsedRef, ...] = tuple(
+            extract_refs(sql=rendered_query, source_path=instance.file_path)
+        )
         if not parsed_refs:
             raise SqlAuditParseError(
                 f"Rendered generic SQL audit '{instance.name}' must reference at least one model"
@@ -110,9 +132,12 @@ def render_generic_sql_audits(
 
 
 def _load_schema_file_generic_sql_audit_instances(
+    *,
     file_path: Path,
+    contents: str | None = None,
 ) -> list[LoadedGenericSqlAuditInstance]:
-    raw_values: Any = yaml.safe_load(file_path.read_text(encoding="utf-8"))
+    source_contents: str = file_path.read_text(encoding="utf-8") if contents is None else contents
+    raw_values: Any = yaml.safe_load(source_contents)
     if raw_values is None:
         return []
     if not isinstance(raw_values, dict) or not all(isinstance(key, str) for key in raw_values):

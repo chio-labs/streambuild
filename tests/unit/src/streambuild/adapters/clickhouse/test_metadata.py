@@ -5,7 +5,7 @@ from streambuild.adapters.clickhouse._helpers.metadata import (
     render_clickhouse_metadata_migration_statements,
 )
 from streambuild.adapters.clickhouse.models import ClickHouseMetadataStatement
-from streambuild.compiler.metadata_state.main.build_adapter_metadata_state import (
+from streambuild.compiler.planner.main.build_adapter_metadata_state import (
     build_adapter_metadata_state,
 )
 from tests.unit.src.streambuild.adapters.clickhouse._test_types import (

@@ -12,7 +12,7 @@ from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import AdapterConnectionConfig
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from streambuild.compiler.compile.models import CompiledPipeline
-from streambuild.compiler.discovery.types import ReplayLineageMode, SchemaChangeBackfillMode
+from streambuild.compiler.discovery.types import ReplayLineageMode, ReplayOnChangeMode
 from streambuild.compiler.planner.types import RebuildExecutionMode
 from streambuild.executor.audit_backfill.types import AuditAssessment
 from streambuild.executor.backfill.main.execute_backfill import execute_backfill
@@ -44,6 +44,7 @@ from tests.e2e.src.streambuild.executor.helpers import (
     prepare_authored_e2e_project,
     produce_kafka_messages,
     require_managed_source,
+    require_model_resources,
     run_kafka_live_shadow_scenario,
     run_streambuild_audit_backfill_cli,
     run_streambuild_backfill_cli,
@@ -53,7 +54,7 @@ from tests.e2e.src.streambuild.executor.helpers import (
     wait_for_row_count,
     wait_for_table_exists,
     wait_for_table_missing,
-    with_schema_change_backfill_policy,
+    with_replay_on_change_policy,
 )
 from tests.integration.src.streambuild.adapters.clickhouse.helpers import (
     render_create_kafka_table_ddl,
@@ -118,7 +119,7 @@ def test_given_kafka_backed_greenfield_pipeline_when_running_then_it_publishes_e
     compiled_pipeline: CompiledPipeline = build_authored_greenfield_workflow_compiled_pipeline(
         project_dir=project_dir
     )
-    target_table_name: str = compiled_pipeline.transforms[0].target_table_name
+    target_table_name: str = require_model_resources(compiled_pipeline).target_table_name
     e2e_clickhouse_client.command(
         render_create_kafka_table_ddl(
             table=require_managed_source(compiled_pipeline).kafka_table,
@@ -234,7 +235,7 @@ def test_given_kafka_backed_published_deployment_when_view_is_deleted_then_repai
     compiled_pipeline: CompiledPipeline = build_authored_greenfield_workflow_compiled_pipeline(
         project_dir=project_dir
     )
-    target_table_name: str = compiled_pipeline.transforms[0].target_table_name
+    target_table_name: str = require_model_resources(compiled_pipeline).target_table_name
     e2e_clickhouse_client.command(
         render_create_kafka_table_ddl(
             table=require_managed_source(compiled_pipeline).kafka_table,
@@ -579,15 +580,15 @@ def test_given_published_kafka_pipeline_when_schema_changes_then_bounded_policy_
         pipeline_kind=test_case.initial_pipeline_kind,
         topic_suffix=e2e_clickhouse_database,
     )
-    changed_compiled_pipeline: CompiledPipeline = with_schema_change_backfill_policy(
+    changed_compiled_pipeline: CompiledPipeline = with_replay_on_change_policy(
         compiled_pipeline=build_schema_change_workflow_compiled_pipeline(
             kafka_broker_list=e2e_kafka_connection_settings.internal_bootstrap_server,
             pipeline_kind=test_case.changed_pipeline_kind,
             topic_suffix=e2e_clickhouse_database,
         ),
-        breaking_mode=SchemaChangeBackfillMode.BOUNDED,
+        breaking_mode=ReplayOnChangeMode.BOUNDED,
         breaking_lookback_seconds=test_case.lookback_seconds,
-        non_breaking_mode=SchemaChangeBackfillMode.BOUNDED,
+        non_breaking_mode=ReplayOnChangeMode.BOUNDED,
         non_breaking_lookback_seconds=test_case.lookback_seconds,
     )
     e2e_clickhouse_client.command(

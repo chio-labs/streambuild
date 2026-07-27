@@ -23,3 +23,108 @@ class DiscoverPipelinesErrorTestCase:
     pipeline_files: dict[str, str]
     expected_error_type: type[Exception]
     expected_error_fragment: str
+
+
+@dataclass(frozen=True)
+class ProjectConfigurationErrorTestCase:
+    description: str
+    project_contents: str
+    expected_error_fragment: str
+
+
+@dataclass(frozen=True)
+class EffectiveProjectConfigurationTestCase:
+    description: str
+    expected_name: str
+    expected_adapter: str
+    expected_target_name: str
+    expected_database: str
+    expected_virtual_environments: bool
+    expected_variables: tuple[tuple[str, object], ...]
+    expected_connection: tuple[tuple[str, object], ...]
+
+
+@dataclass(frozen=True)
+class LegacyProjectConfigurationTestCase:
+    description: str
+    expected_error_fragment: str
+
+
+@dataclass(frozen=True)
+class SourceRegistryTestCase:
+    description: str
+    expected_source_names: tuple[str, ...]
+    expected_boundary_modes: tuple[str, ...]
+    expected_relative_paths: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class SourceRegistryErrorTestCase:
+    description: str
+    source_files: tuple[tuple[str, str], ...]
+    expected_error_fragment: str
+
+
+@dataclass(frozen=True)
+class InterpolationSuccessTestCase:
+    description: str
+    values: tuple[tuple[str, object], ...]
+    environment: tuple[tuple[str, str], ...]
+    input_value: object
+    expected_value: object
+
+
+@dataclass(frozen=True)
+class InterpolationErrorTestCase:
+    description: str
+    values: tuple[tuple[str, object], ...]
+    environment: tuple[tuple[str, str], ...]
+    input_value: object
+    expected_error_fragment: str
+
+
+@dataclass(frozen=True)
+class MissingProjectConfigurationTestCase:
+    description: str
+    expected_error_fragment: str
+
+
+@dataclass(frozen=True)
+class UnknownTargetTestCase:
+    description: str
+    selected_target: str
+    expected_error_fragment: str
+
+
+@dataclass(frozen=True)
+class LoadedProjectConfigurationTestCase:
+    description: str
+    expected_name: str
+    expected_adapter: str
+    expected_default_target: str
+    expected_has_local_source: bool
+    expected_array: tuple[object, ...]
+    expected_mapping: tuple[tuple[str, object], ...]
+
+
+@dataclass(frozen=True)
+class MixedProjectConfigurationTestCase:
+    description: str
+    expected_error_fragment: str
+
+
+@dataclass(frozen=True)
+class LocalConfigurationErrorTestCase:
+    description: str
+    local_contents: str
+    expected_error_fragment: str
+
+
+@dataclass(frozen=True)
+class SourceBoundaryModeTestCase:
+    description: str
+    source_contents: str
+    expected_source_type_name: str
+    expected_mode: str
+    expected_columns: tuple[str | None, str | None, str | None, str | None, str | None]
+    variables: tuple[tuple[str, object], ...] = ()

@@ -1,34 +1,95 @@
 from collections.abc import Callable
 from dataclasses import replace
+from itertools import chain
 from typing import cast
 
 from clickhouse_connect.driver.client import Client
 
-from streambuild.compiler.compile.main.compile_pipeline import compile_pipeline
+from streambuild.adapter.models import AdapterMaterializedView, AdapterTable
+from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
+from streambuild.cli.entry._helpers.compiler_profile import build_compiler_adapter_profile
+from streambuild.compiler.compile.main._compile_pipeline import (
+    compile_pipeline as compile_pipeline_impl,
+)
 from streambuild.compiler.compile.models import (
     Column,
     CompiledPipeline,
+    CompiledProject,
+    CompilerAdapterProfile,
     DesiredKafkaTable,
     DesiredMaterializedView,
     DesiredState,
     DesiredTable,
-    MaterializedViewSpec,
 )
 from streambuild.compiler.discovery.models import (
     KafkaLandingStep,
     KafkaSettings,
     LoadedPipeline,
     Pipeline,
+    ReplayBoundary,
+    ReplayBoundaryColumns,
     TransformStep,
 )
+from streambuild.compiler.discovery.types import ReplayBoundaryMode
+from streambuild.compiler.pipeline.main._realize_project import realize_project
+from streambuild.compiler.pipeline.models import RealizedProject
 from streambuild.compiler.planner.models import DeploymentPlan, PlannedObjectChange
+from streambuild.compiler.sql_analysis.classes.sql_model_analyzer import SqlModelAnalyzer
 from tests.integration.src.streambuild.adapters.clickhouse.helpers import (
+    render_adapter_table_ddl,
     render_create_materialized_view_ddl,
     render_create_table_ddl,
     render_create_view_ddl,
 )
 from tests.integration.src.streambuild.executor.backfill.helpers import require_managed_source
+from tests.unit.src.streambuild.compiler.compile.helpers import build_realization_analyzer
 from tests.unit.src.streambuild.compiler.planner.helpers import EXAMPLE_PIPELINE_FILE_PATH
+
+
+def compile_pipeline(loaded_pipeline: LoadedPipeline) -> CompiledPipeline:
+    return compile_pipeline_impl(
+        loaded_pipeline=loaded_pipeline,
+        sql_analyzer=SqlModelAnalyzer(dialect="clickhouse"),
+    )
+
+
+def realize_compiled_pipeline(compiled_pipeline: CompiledPipeline) -> RealizedProject:
+    return realize_compiled_pipelines((compiled_pipeline,))
+
+
+def realize_compiled_pipelines(
+    compiled_pipelines: tuple[CompiledPipeline, ...],
+) -> RealizedProject:
+    compiled_project: CompiledProject = CompiledProject(
+        sources=tuple(pipeline.source for pipeline in compiled_pipelines),
+        models=tuple(chain.from_iterable(pipeline.models for pipeline in compiled_pipelines)),
+        pipelines=compiled_pipelines,
+        tests=(),
+        test_cases=(),
+        audits=(),
+    )
+    adapter_profile: CompilerAdapterProfile = build_compiler_adapter_profile(ClickHouseAdapter())
+    return realize_project(
+        project=compiled_project,
+        adapter_profile=adapter_profile,
+        sql_analyzer=build_realization_analyzer(compiled_project),
+    )
+
+
+def realized_model_table(compiled_pipeline: CompiledPipeline) -> AdapterTable:
+    realized_project: RealizedProject = realize_compiled_pipeline(compiled_pipeline)
+    return cast(
+        AdapterTable,
+        realized_project.resources_by_logical_key[compiled_pipeline.models[0].key][0],
+    )
+
+
+def realized_model_view(compiled_pipeline: CompiledPipeline) -> AdapterMaterializedView:
+    realized_project: RealizedProject = realize_compiled_pipeline(compiled_pipeline)
+    return cast(
+        AdapterMaterializedView,
+        realized_project.resources_by_logical_key[compiled_pipeline.models[0].key][1],
+    )
 
 
 def build_changed_sql_compiled_pipeline() -> CompiledPipeline:
@@ -39,6 +100,10 @@ def build_changed_sql_compiled_pipeline() -> CompiledPipeline:
             kafka=KafkaSettings(
                 broker_list="kafka:9092",
                 topic="source.orders.created",
+            ),
+            replay_boundary=ReplayBoundary(
+                mode=ReplayBoundaryMode.TIMESTAMP,
+                columns=ReplayBoundaryColumns(),
             ),
         ),
         transforms=[
@@ -56,7 +121,6 @@ def build_changed_sql_compiled_pipeline() -> CompiledPipeline:
                 replay_anchor="never",
             )
         ],
-        replay_lineage_mode="timestamp",
     )
     return compile_pipeline(
         LoadedPipeline(
@@ -76,6 +140,10 @@ def build_changed_schema_compiled_pipeline() -> CompiledPipeline:
                 broker_list="kafka:9092",
                 topic="source.orders.created",
             ),
+            replay_boundary=ReplayBoundary(
+                mode=ReplayBoundaryMode.TIMESTAMP,
+                columns=ReplayBoundaryColumns(),
+            ),
         ),
         transforms=[
             TransformStep(
@@ -93,7 +161,6 @@ def build_changed_schema_compiled_pipeline() -> CompiledPipeline:
                 replay_anchor="never",
             )
         ],
-        replay_lineage_mode="timestamp",
     )
     return compile_pipeline(
         LoadedPipeline(
@@ -113,6 +180,10 @@ def build_removed_column_compiled_pipeline() -> CompiledPipeline:
                 broker_list="kafka:9092",
                 topic="source.orders.created",
             ),
+            replay_boundary=ReplayBoundary(
+                mode=ReplayBoundaryMode.TIMESTAMP,
+                columns=ReplayBoundaryColumns(),
+            ),
         ),
         transforms=[
             TransformStep(
@@ -124,7 +195,6 @@ def build_removed_column_compiled_pipeline() -> CompiledPipeline:
                 replay_anchor="never",
             )
         ],
-        replay_lineage_mode="timestamp",
     )
     return compile_pipeline(
         LoadedPipeline(
@@ -144,6 +214,10 @@ def build_add_and_remove_columns_compiled_pipeline() -> CompiledPipeline:
                 broker_list="kafka:9092",
                 topic="source.orders.created",
             ),
+            replay_boundary=ReplayBoundary(
+                mode=ReplayBoundaryMode.TIMESTAMP,
+                columns=ReplayBoundaryColumns(),
+            ),
         ),
         transforms=[
             TransformStep(
@@ -159,7 +233,6 @@ def build_add_and_remove_columns_compiled_pipeline() -> CompiledPipeline:
                 replay_anchor="never",
             )
         ],
-        replay_lineage_mode="timestamp",
     )
     return compile_pipeline(
         LoadedPipeline(
@@ -179,6 +252,10 @@ def build_type_changed_compiled_pipeline() -> CompiledPipeline:
                 broker_list="kafka:9092",
                 topic="source.orders.created",
             ),
+            replay_boundary=ReplayBoundary(
+                mode=ReplayBoundaryMode.TIMESTAMP,
+                columns=ReplayBoundaryColumns(),
+            ),
         ),
         transforms=[
             TransformStep(
@@ -194,7 +271,6 @@ def build_type_changed_compiled_pipeline() -> CompiledPipeline:
                 replay_anchor="never",
             )
         ],
-        replay_lineage_mode="timestamp",
     )
     return compile_pipeline(
         LoadedPipeline(
@@ -287,10 +363,9 @@ def _create_suffixed_raw_landing(
             materialized_view=replace(
                 source_materialized_view,
                 key=replace(source_materialized_view.key, name="mv__orders__dep_a"),
-                spec=MaterializedViewSpec(
-                    source_table_name=source_materialized_view.source_table_name,
+                spec=replace(
+                    source_materialized_view.spec,
                     target_table_name="raw__orders__dep_a",
-                    query=source_materialized_view.query,
                 ),
             ),
             database=clickhouse_database,
@@ -302,8 +377,8 @@ def _create_target_table(
     *, clickhouse_client: Client, clickhouse_database: str, compiled_pipeline: CompiledPipeline
 ) -> None:
     clickhouse_client.command(
-        render_create_table_ddl(
-            table=compiled_pipeline.transforms[0].target_table, database=clickhouse_database
+        render_adapter_table_ddl(
+            table=realized_model_table(compiled_pipeline), database=clickhouse_database
         )
     )
 

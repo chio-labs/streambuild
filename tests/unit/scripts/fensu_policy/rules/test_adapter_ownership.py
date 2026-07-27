@@ -4,7 +4,7 @@ import pytest
 from fensu import RuleCase, RuleResult, evaluate_rule
 
 from scripts.fensu_policy.rules.adapter_ownership import (
-    compiler_adapter_independence,
+    adapter_package_ownership,
     warehouse_driver_ownership,
 )
 from tests.unit.scripts.fensu_policy.rules._test_types import CustomRuleTestCase
@@ -43,14 +43,66 @@ from tests.unit.scripts.fensu_policy.rules._test_types import CustomRuleTestCase
             ),
             expected_fault_count=0,
         ),
+        CustomRuleTestCase(
+            description="runtime importing the retired top-level package faults",
+            path="src/streambuild/executor/backfill/_helpers/replay.py",
+            source=dedent(
+                """
+                from streambuild.clickhouse.render.main.render_resources import render_resources
+                """
+            ),
+            expected_fault_count=1,
+        ),
+        CustomRuleTestCase(
+            description="runtime importing the retired integration package faults",
+            path="src/streambuild/cli/entry/main/main.py",
+            source=dedent(
+                """
+                from streambuild.integrations.clickhouse.client import ClickHouseClient
+                """
+            ),
+            expected_fault_count=1,
+        ),
+        CustomRuleTestCase(
+            description="parent package import of retired ClickHouse package faults",
+            path="src/streambuild/executor/backfill/_helpers/replay.py",
+            source=dedent(
+                """
+                from streambuild import clickhouse
+                """
+            ),
+            expected_fault_count=1,
+        ),
+        CustomRuleTestCase(
+            description="parent package import of retired integration package faults",
+            path="src/streambuild/cli/entry/main/main.py",
+            source=dedent(
+                """
+                from streambuild.integrations import clickhouse
+                """
+            ),
+            expected_fault_count=1,
+        ),
+        CustomRuleTestCase(
+            description="dynamic import of retired ClickHouse package faults",
+            path="src/streambuild/executor/backfill/_helpers/replay.py",
+            source=dedent(
+                """
+                import importlib
+
+                importlib.import_module("streambuild.clickhouse.rendering")
+                """
+            ),
+            expected_fault_count=1,
+        ),
     ],
     ids=lambda case: case.description,
 )
-def test_given_compiler_module_when_checking_adapter_independence_then_it_matches_contract(
+def test_given_module_when_checking_adapter_package_ownership_then_it_matches_contract(
     test_case: CustomRuleTestCase,
 ) -> None:
     result: RuleResult = evaluate_rule(
-        rule=compiler_adapter_independence,
+        rule=adapter_package_ownership,
         test_case=RuleCase(
             description=test_case.description,
             source=test_case.source,
@@ -104,6 +156,26 @@ def test_given_compiler_module_when_checking_adapter_independence_then_it_matche
             source=dedent(
                 """
                 from abc import ABC
+                """
+            ),
+            expected_fault_count=0,
+        ),
+        CustomRuleTestCase(
+            description="dynamic driver import outside the adapter faults",
+            path="src/streambuild/adapter/classes/adapter_connection.py",
+            source=dedent(
+                """
+                __import__("clickhouse_connect.driver.client")
+                """
+            ),
+            expected_fault_count=1,
+        ),
+        CustomRuleTestCase(
+            description="dynamic driver import inside the adapter passes",
+            path="src/streambuild/adapters/clickhouse/classes/clickhouse_connection.py",
+            source=dedent(
+                """
+                __import__("clickhouse_connect.driver.client")
                 """
             ),
             expected_fault_count=0,

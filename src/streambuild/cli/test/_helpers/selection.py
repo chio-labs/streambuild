@@ -11,8 +11,8 @@ from streambuild.cli.selection.constants import (
     SELECTOR_NAMESPACE_SEPARATOR,
     UPSTREAM_SELECTOR_PREFIX,
 )
-from streambuild.compiler.compile.main.compiled_transforms import compiled_transforms
-from streambuild.compiler.compile.models import CompiledPipeline, CompiledTransformStep, ParsedRef
+from streambuild.compiler.compile.main.compiled_models import compiled_models
+from streambuild.compiler.compile.models import CompiledModel, CompiledPipeline, ParsedRef
 from streambuild.compiler.test_discovery.models import LoadedSqlTest, SqlTestCte
 
 
@@ -70,7 +70,7 @@ def _resolve_selected_target_names(
     compiled_pipeline: CompiledPipeline
     for compiled_pipeline in compiled_pipelines:
         pipeline_model_names[compiled_pipeline.pipeline.name] = tuple(
-            compiled_transform.transform.name for compiled_transform in compiled_pipeline.transforms
+            compiled_model.transform.name for compiled_model in compiled_pipeline.models
         )
     upstream_names_by_model, downstream_names_by_model = _build_model_graph(compiled_pipelines)
     known_model_names: frozenset[str] = frozenset(downstream_names_by_model)
@@ -149,18 +149,18 @@ def _build_model_graph(
     downstream_names_by_model: dict[str, set[str]] = defaultdict(set)
     upstream_names_by_model: dict[str, set[str]] = defaultdict(set)
     known_model_names: set[str] = {
-        compiled_transform.transform.name
-        for compiled_transform in compiled_transforms(compiled_pipelines=compiled_pipelines)
+        compiled_model.transform.name
+        for compiled_model in compiled_models(compiled_pipelines=compiled_pipelines)
     }
     compiled_pipeline: CompiledPipeline
     for compiled_pipeline in compiled_pipelines:
-        compiled_transform: CompiledTransformStep
-        for compiled_transform in compiled_pipeline.transforms:
-            model_name: str = compiled_transform.transform.name
+        compiled_model: CompiledModel
+        for compiled_model in compiled_pipeline.models:
+            model_name: str = compiled_model.transform.name
             downstream_names_by_model.setdefault(model_name, set())
             upstream_names_by_model.setdefault(model_name, set())
             parsed_ref: ParsedRef
-            for parsed_ref in compiled_transform.parsed_refs:
+            for parsed_ref in compiled_model.parsed_refs:
                 if parsed_ref.name not in known_model_names:
                     continue
                 upstream_names_by_model[model_name].add(parsed_ref.name)

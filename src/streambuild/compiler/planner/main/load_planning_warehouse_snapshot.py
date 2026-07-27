@@ -3,11 +3,10 @@
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.exceptions import AdapterCapabilityError
 from streambuild.adapter.models import CatalogSnapshot
-from streambuild.compiler.metadata_state.models import ObjectStateRecord
 from streambuild.compiler.planner._helpers.warehouse_metadata import (
     load_all_object_state_records,
 )
-from streambuild.compiler.planner.models import PlanningWarehouseSnapshot
+from streambuild.compiler.planner.models import ObjectStateRecord, PlanningWarehouseSnapshot
 
 
 def load_planning_warehouse_snapshot(

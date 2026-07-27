@@ -4,6 +4,7 @@ from dataclasses import replace
 
 from sqlglot import exp, parse_one
 
+from streambuild.adapter.constants import ADAPTER_DATABASE_PLACEHOLDER
 from streambuild.adapter.models import (
     AdapterManagedSource,
     AdapterMaterializedView,
@@ -54,6 +55,14 @@ def build_shadow_adapter_resource(
                     query=desired_object.query,
                     physical_name_by_key=physical_name_by_key,
                 ),
+                database_template=_rewrite_query(
+                    query=(
+                        desired_object.query
+                        if desired_object.spec.database_template is None
+                        else desired_object.spec.database_template
+                    ),
+                    physical_name_by_key=physical_name_by_key,
+                ),
             ),
         )
     )
@@ -77,7 +86,7 @@ def _rewrite_query(*, query: str, physical_name_by_key: dict[ObjectKey, str]) ->
     }
     table: exp.Table
     for table in expression.find_all(exp.Table):
-        if table.db:
+        if table.db and table.db != ADAPTER_DATABASE_PLACEHOLDER:
             continue
         physical_name: str | None = table_name_to_physical_name.get(table.name)
         if physical_name is not None:

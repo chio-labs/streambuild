@@ -3,13 +3,29 @@
 import json
 from pathlib import Path
 
-from streambuild.compiler.discovery.main.discover_pipelines import discover_pipelines
-from streambuild.compiler.discovery.models import LoadedPipeline
+from streambuild.compiler.compile.models import CompilerAdapterProfile
+from streambuild.compiler.discovery.models import LoadedProject
+from streambuild.compiler.pipeline.main.analyze_project import analyze_project
+from streambuild.compiler.pipeline.models import CompileAnalysis
 
 
-def run_discover(pipelines_root: Path) -> int:
+def run_discover(
+    *,
+    pipelines_root: Path,
+    loaded_project: LoadedProject | None,
+    adapter_profile: CompilerAdapterProfile,
+) -> int:
     """Run pipeline discovery for pipeline.yml-rooted folders and print names."""
 
-    loaded_pipelines: list[LoadedPipeline] = discover_pipelines(pipelines_root)
-    print(json.dumps([pipeline.pipeline.name for pipeline in loaded_pipelines], indent=2))
+    analysis: CompileAnalysis = analyze_project(
+        pipelines_root=pipelines_root,
+        loaded_project=loaded_project,
+        adapter_profile=adapter_profile,
+    )
+    print(
+        json.dumps(
+            [pipeline.pipeline.name for pipeline in analysis.compiled_project.pipelines],
+            indent=2,
+        )
+    )
     return 0

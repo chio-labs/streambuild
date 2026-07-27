@@ -4,16 +4,24 @@ from abc import ABC, abstractmethod
 from collections.abc import Callable, Mapping
 
 from streambuild.adapter.models import (
+    AdapterBindingReplacementRequest,
+    AdapterBindingReplacementResult,
     AdapterCapabilities,
+    AdapterDeploymentInventory,
     AdapterIdentity,
     AdapterManagedSource,
     AdapterMaterializedView,
     AdapterMetadataState,
     AdapterQueryResult,
+    AdapterReadinessRequest,
+    AdapterReadinessRootObservation,
+    AdapterRelationCleanupRequest,
+    AdapterRelationCleanupResult,
     AdapterReplayRequest,
     AdapterStableView,
     AdapterTable,
     CatalogSnapshot,
+    InspectedManagedTableState,
 )
 
 
@@ -37,6 +45,10 @@ class AdapterConnection(ABC):
     @abstractmethod
     def metadata_columns(self, *, database: str, table: str) -> frozenset[str]:
         """Return the currently available columns for one framework metadata table."""
+
+    @abstractmethod
+    def inspect_managed_table_state(self, database: str) -> InspectedManagedTableState:
+        """Inspect stable bindings and deployment-specific physical relations."""
 
     @abstractmethod
     def command(self, statement: str) -> None:
@@ -83,8 +95,30 @@ class AdapterConnection(ABC):
         """Persist one batch of adapter-neutral framework metadata."""
 
     @abstractmethod
+    def load_deployment_inventory(self, database: str) -> AdapterDeploymentInventory:
+        """Load persisted deployments and publish events for lifecycle cleanup."""
+
+    @abstractmethod
     def execute_replay(self, request: AdapterReplayRequest) -> None:
         """Seed and replay one mode-neutral rebuild-root request."""
+
+    @abstractmethod
+    def compare_readiness(
+        self, request: AdapterReadinessRequest
+    ) -> tuple[AdapterReadinessRootObservation, ...]:
+        """Compare live and staged relations for publish readiness."""
+
+    @abstractmethod
+    def replace_stable_bindings(
+        self, request: AdapterBindingReplacementRequest
+    ) -> AdapterBindingReplacementResult:
+        """Replace stable logical bindings and report actual atomicity."""
+
+    @abstractmethod
+    def cleanup_relations(
+        self, request: AdapterRelationCleanupRequest
+    ) -> AdapterRelationCleanupResult:
+        """Remove requested physical relations and report the completed cleanup."""
 
     @abstractmethod
     def close(self) -> None:

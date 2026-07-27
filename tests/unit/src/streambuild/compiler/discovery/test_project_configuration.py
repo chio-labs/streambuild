@@ -1,0 +1,498 @@
+from collections.abc import Mapping
+from pathlib import Path
+from typing import cast
+
+import pytest
+
+from streambuild.compiler.discovery._helpers.configuration import load_project_configuration
+from streambuild.compiler.discovery._helpers.effective_configuration import (
+    resolve_effective_project_configuration,
+)
+from streambuild.compiler.discovery._helpers.interpolation import (
+    interpolate_config_value,
+    resolve_variable_values,
+)
+from streambuild.compiler.discovery.exceptions import ProjectConfigError
+from streambuild.compiler.discovery.models import (
+    EffectiveProjectConfiguration,
+    LoadedProjectConfiguration,
+)
+from tests.unit.src.streambuild.compiler.discovery._test_types import (
+    EffectiveProjectConfigurationTestCase,
+    InterpolationErrorTestCase,
+    InterpolationSuccessTestCase,
+    LegacyProjectConfigurationTestCase,
+    LoadedProjectConfigurationTestCase,
+    LocalConfigurationErrorTestCase,
+    MissingProjectConfigurationTestCase,
+    MixedProjectConfigurationTestCase,
+    ProjectConfigurationErrorTestCase,
+    UnknownTargetTestCase,
+)
+from tests.unit.src.streambuild.compiler.discovery.helpers import (
+    write_legacy_project_yaml,
+    write_local_toml,
+    write_project_toml,
+)
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        EffectiveProjectConfigurationTestCase(
+            description="local private target and CLI vars resolve through one immutable config",
+            expected_name="analytics",
+            expected_adapter="clickhouse",
+            expected_target_name="private",
+            expected_database="cli_database",
+            expected_virtual_environments=True,
+            expected_variables=(
+                ("adapter_name", "clickhouse"),
+                ("database_name", "cli_database"),
+                ("native_count", 7),
+                ("region", "local"),
+                ("rendered", "local-events"),
+                ("target_value", "private"),
+                ("virtual_mode", True),
+            ),
+            expected_connection=(
+                ("host", "private-host"),
+                ("password", "${ENV:MISSING_PASSWORD}"),
+                ("port", 8123),
+                ("username", "local-user"),
+            ),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_project_and_local_toml_when_resolving_then_applies_locked_precedence(
+    test_case: EffectiveProjectConfigurationTestCase,
+    tmp_path: Path,
+) -> None:
+    write_project_toml(
+        project_dir=tmp_path,
+        contents="""
+        name = "analytics"
+        adapter = "project-adapter"
+        default_target = "dev"
+
+        [settings]
+        virtual_environments = false
+
+        [connection]
+        host = "project-host"
+        port = 8123
+        username = "project-user"
+        password = "${ENV:MISSING_PASSWORD}"
+
+        [vars]
+        region = "project"
+        rendered = "${region}-events"
+        native_count = 7
+
+        [targets.dev]
+        database = "dev_database"
+
+        [targets.private]
+        database = "${database_name}"
+
+        [targets.private.vars]
+        database_name = "project_private_database"
+        target_value = "project"
+
+        [targets.private.connection]
+        host = "project-private-host"
+        """,
+    )
+    write_local_toml(
+        project_dir=tmp_path,
+        contents="""
+        target = "private"
+        adapter = "${adapter_name}"
+
+        [settings]
+        virtual_environments = "${virtual_mode}"
+
+        [connection]
+        username = "local-user"
+
+        [vars]
+        adapter_name = "clickhouse"
+        region = "local"
+        virtual_mode = true
+
+        [targets.private]
+        database = "${database_name}"
+
+        [targets.private.vars]
+        database_name = "local_private_database"
+        target_value = "private"
+
+        [targets.private.connection]
+        host = "private-host"
+        """,
+    )
+    loaded: LoadedProjectConfiguration = load_project_configuration(project_dir=tmp_path)
+
+    effective: EffectiveProjectConfiguration = resolve_effective_project_configuration(
+        loaded=loaded,
+        selected_target=None,
+        cli_variables={"database_name": "cli_database"},
+        environment={},
+    )
+
+    assert effective.name == test_case.expected_name
+    assert effective.adapter == test_case.expected_adapter
+    assert effective.target_name == test_case.expected_target_name
+    assert effective.database == test_case.expected_database
+    assert effective.settings.virtual_environments is test_case.expected_virtual_environments
+    assert effective.variables == test_case.expected_variables
+    assert effective.connection.values == test_case.expected_connection
+    assert loaded.project_source.contents.startswith('name = "analytics"')
+    assert loaded.local_source is not None
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        LoadedProjectConfigurationTestCase(
+            description="uses immutable defaults when local TOML is absent",
+            expected_name="analytics",
+            expected_adapter="clickhouse",
+            expected_default_target="dev",
+            expected_has_local_source=False,
+            expected_array=(1, 2),
+            expected_mapping=(("key", "value"),),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_absent_local_toml_when_loading_then_returns_typed_defaults(
+    test_case: LoadedProjectConfigurationTestCase,
+    tmp_path: Path,
+) -> None:
+    write_project_toml(
+        project_dir=tmp_path,
+        contents=(
+            'name = "analytics"\ndefault_target = "dev"\n'
+            '[vars]\narray = [1, 2]\nmapping = {key = "value"}\n[targets.dev]\n'
+        ),
+    )
+
+    loaded: LoadedProjectConfiguration = load_project_configuration(project_dir=tmp_path)
+
+    assert loaded.project.name == test_case.expected_name
+    assert loaded.project.adapter == test_case.expected_adapter
+    assert loaded.project.default_target == test_case.expected_default_target
+    assert (loaded.local_source is not None) is test_case.expected_has_local_source
+    variables: dict[str, object] = dict(loaded.project.variables)
+    assert variables["array"] == test_case.expected_array
+    mapping: Mapping[str, object] = cast(Mapping[str, object], variables["mapping"])
+    assert tuple(sorted(mapping.items())) == test_case.expected_mapping
+    mutable_mapping: dict[str, object] = cast(dict[str, object], mapping)
+    with pytest.raises(TypeError):
+        mutable_mapping["mutated"] = True
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ProjectConfigurationErrorTestCase(
+            description="rejects a removed top-level version key",
+            project_contents='name = "analytics"\ndefault_target = "dev"\nversion = 2\n',
+            expected_error_fragment="unsupported keys: version",
+        ),
+        ProjectConfigurationErrorTestCase(
+            description="rejects a target-level project-wide mode",
+            project_contents=(
+                'name = "analytics"\ndefault_target = "dev"\n'
+                '[targets.dev]\ndatabase = "analytics"\nvirtual_environments = true\n'
+            ),
+            expected_error_fragment="targets.dev contains unsupported keys: virtual_environments",
+        ),
+        ProjectConfigurationErrorTestCase(
+            description="rejects the removed bounded parenthesis spelling",
+            project_contents=(
+                'name = "analytics"\ndefault_target = "dev"\n'
+                '[targets.dev]\ndatabase = "analytics"\n'
+                '[defaults.replay_on_change]\nbreaking = "bounded(7d)"\n'
+            ),
+            expected_error_fragment="must be 'full' or 'bounded-<duration>'",
+        ),
+        ProjectConfigurationErrorTestCase(
+            description="rejects invalid TOML",
+            project_contents='name = "analytics\ndefault_target = "dev"',
+            expected_error_fragment="contains invalid TOML",
+        ),
+        ProjectConfigurationErrorTestCase(
+            description="rejects a missing project name",
+            project_contents='default_target = "dev"\n[targets.dev]\n',
+            expected_error_fragment="must define non-empty string 'name'",
+        ),
+        ProjectConfigurationErrorTestCase(
+            description="rejects a missing default target",
+            project_contents='name = "analytics"\n[targets.dev]\n',
+            expected_error_fragment="must define non-empty string 'default_target'",
+        ),
+        ProjectConfigurationErrorTestCase(
+            description="rejects an unknown project key",
+            project_contents='name = "analytics"\ndefault_target = "dev"\nunknown = true',
+            expected_error_fragment="unsupported keys: unknown",
+        ),
+        ProjectConfigurationErrorTestCase(
+            description="rejects the removed fallback value",
+            project_contents=(
+                'name = "analytics"\ndefault_target = "dev"\n'
+                '[targets.dev]\ndatabase = "analytics"\n'
+                '[defaults]\nbounded_replay_fallback = "full_refresh"\n'
+            ),
+            expected_error_fragment="must be 'full' or 'bounded_without_history'",
+        ),
+        ProjectConfigurationErrorTestCase(
+            description="rejects interpolation in open mapping keys",
+            project_contents=(
+                'name = "analytics"\ndefault_target = "dev"\n'
+                '[connection]\n"${connection_key}" = "secret"\n[targets.dev]\n'
+            ),
+            expected_error_fragment="must not interpolate mapping keys",
+        ),
+        ProjectConfigurationErrorTestCase(
+            description="rejects interpolation of committed project identity",
+            project_contents=('name = "${project_name}"\ndefault_target = "dev"\n[targets.dev]\n'),
+            expected_error_fragment="project.name must be a committed literal",
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_invalid_toml_contract_when_loading_then_rejects_with_field_context(
+    test_case: ProjectConfigurationErrorTestCase,
+    tmp_path: Path,
+) -> None:
+    write_project_toml(project_dir=tmp_path, contents=test_case.project_contents)
+
+    with pytest.raises(ProjectConfigError, match=test_case.expected_error_fragment):
+        load_project_configuration(project_dir=tmp_path)
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        LocalConfigurationErrorTestCase(
+            description="rejects local mode at target scope",
+            local_contents="""
+            [targets.private]
+            database = "analytics"
+            virtual_environments = false
+            """,
+            expected_error_fragment=(
+                "streambuild_local.toml targets.private contains unsupported keys: "
+                "virtual_environments"
+            ),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_target_scoped_local_mode_when_loading_then_it_rejects_non_project_scope(
+    test_case: LocalConfigurationErrorTestCase,
+    tmp_path: Path,
+) -> None:
+    write_project_toml(
+        project_dir=tmp_path,
+        contents='name = "analytics"\ndefault_target = "dev"\n[targets.dev]\n',
+    )
+    write_local_toml(project_dir=tmp_path, contents=test_case.local_contents)
+
+    with pytest.raises(ProjectConfigError, match=test_case.expected_error_fragment):
+        load_project_configuration(project_dir=tmp_path)
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        LegacyProjectConfigurationTestCase(
+            description="rejects YAML directly without a compatibility loader",
+            expected_error_fragment="streambuild_project.yml is not supported",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_legacy_yaml_when_loading_then_requires_toml_conversion(
+    test_case: LegacyProjectConfigurationTestCase,
+    tmp_path: Path,
+) -> None:
+    write_legacy_project_yaml(project_dir=tmp_path)
+
+    with pytest.raises(ProjectConfigError, match=test_case.expected_error_fragment):
+        load_project_configuration(project_dir=tmp_path)
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        MixedProjectConfigurationTestCase(
+            description="rejects mixed TOML and YAML project formats",
+            expected_error_fragment="Mixed project config formats are not supported",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_mixed_project_formats_when_loading_then_it_rejects_both(
+    test_case: MixedProjectConfigurationTestCase,
+    tmp_path: Path,
+) -> None:
+    write_project_toml(
+        project_dir=tmp_path,
+        contents='name = "analytics"\ndefault_target = "dev"\n[targets.dev]\n',
+    )
+    write_legacy_project_yaml(project_dir=tmp_path)
+
+    with pytest.raises(ProjectConfigError, match=test_case.expected_error_fragment):
+        load_project_configuration(project_dir=tmp_path)
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        MissingProjectConfigurationTestCase(
+            description="reports the required TOML path when no project exists",
+            expected_error_fragment="Project config not found: .*streambuild_project.toml",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_missing_project_when_loading_then_it_reports_required_toml(
+    test_case: MissingProjectConfigurationTestCase,
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(ProjectConfigError, match=test_case.expected_error_fragment):
+        load_project_configuration(project_dir=tmp_path)
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        UnknownTargetTestCase(
+            description="rejects a selected target absent from project and local config",
+            selected_target="missing",
+            expected_error_fragment="Unknown target 'missing'",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_unknown_target_when_resolving_then_it_fails_before_connection(
+    test_case: UnknownTargetTestCase,
+    tmp_path: Path,
+) -> None:
+    write_project_toml(
+        project_dir=tmp_path,
+        contents='name = "analytics"\ndefault_target = "dev"\n[targets.dev]\n',
+    )
+    loaded: LoadedProjectConfiguration = load_project_configuration(project_dir=tmp_path)
+
+    with pytest.raises(ProjectConfigError, match=test_case.expected_error_fragment):
+        resolve_effective_project_configuration(
+            loaded=loaded,
+            selected_target=test_case.selected_target,
+            cli_variables={},
+            environment={},
+        )
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        InterpolationSuccessTestCase(
+            description="preserves a recursively resolved native whole-value scalar",
+            values=(("alias", "${count}"), ("count", 7)),
+            environment=(),
+            input_value="${alias}",
+            expected_value=7,
+        ),
+        InterpolationSuccessTestCase(
+            description="renders effective variables and environment values into text",
+            values=(("suffix", "events"),),
+            environment=(("HOST", "warehouse"),),
+            input_value="https://${ENV:HOST}/${suffix}",
+            expected_value="https://warehouse/events",
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_interpolation_values_when_resolving_then_it_preserves_expected_type(
+    test_case: InterpolationSuccessTestCase,
+) -> None:
+    environment: dict[str, str] = dict(test_case.environment)
+    variables: dict[str, object] = resolve_variable_values(
+        values=dict(test_case.values),
+        environment=environment,
+        field_path_prefix="streambuild_project.toml",
+    )
+
+    result: object = interpolate_config_value(
+        value=test_case.input_value,
+        variables=variables,
+        environment=environment,
+        field_path="streambuild_project.toml test.value",
+    )
+
+    assert result == test_case.expected_value
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        InterpolationErrorTestCase(
+            description="rejects a missing project variable",
+            values=(),
+            environment=(),
+            input_value="${missing}",
+            expected_error_fragment="test.value references unknown project variable 'missing'",
+        ),
+        InterpolationErrorTestCase(
+            description="rejects a missing environment variable",
+            values=(),
+            environment=(),
+            input_value="${ENV:MISSING}",
+            expected_error_fragment="references missing environment variable 'MISSING'",
+        ),
+        InterpolationErrorTestCase(
+            description="rejects an unsupported namespace",
+            values=(),
+            environment=(),
+            input_value="${CTX:value}",
+            expected_error_fragment="uses unsupported interpolation namespace 'CTX'",
+        ),
+        InterpolationErrorTestCase(
+            description="rejects recursive variable cycles",
+            values=(("left", "${right}"), ("right", "${left}")),
+            environment=(),
+            input_value="unused",
+            expected_error_fragment="variable interpolation cycle: left -> right -> left",
+        ),
+        InterpolationErrorTestCase(
+            description="rejects an object interpolated into text",
+            values=(("mapping", {"key": "value"}),),
+            environment=(),
+            input_value="prefix-${mapping}",
+            expected_error_fragment="cannot interpolate an object or array into text",
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_invalid_interpolation_when_resolving_then_it_reports_field_context(
+    test_case: InterpolationErrorTestCase,
+) -> None:
+    environment: dict[str, str] = dict(test_case.environment)
+
+    with pytest.raises(ProjectConfigError, match=test_case.expected_error_fragment):
+        variables: dict[str, object] = resolve_variable_values(
+            values=dict(test_case.values),
+            environment=environment,
+            field_path_prefix="streambuild_project.toml",
+        )
+        interpolate_config_value(
+            value=test_case.input_value,
+            variables=variables,
+            environment=environment,
+            field_path="streambuild_project.toml test.value",
+        )

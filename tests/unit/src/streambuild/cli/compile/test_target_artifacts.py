@@ -1,0 +1,572 @@
+import json
+import os
+from pathlib import Path
+from unittest.mock import DEFAULT, Mock
+
+import pytest
+
+from streambuild.cli.entry.main.main import main
+from tests.unit.src.streambuild.cli.compile._test_types import (
+    AdoptedCompileTargetTestCase,
+    CompileArtifactIdentityTestCase,
+    CompileCheckArtifactsTestCase,
+    CompileDiagnosticOutputTestCase,
+    CompileGenerationFailureTestCase,
+    EmptyCompileTargetTestCase,
+    ExactCompileTargetTestCase,
+    PublicationRollbackTestCase,
+    RemovedStaticInputsTestCase,
+    SourceSecretRedactionTestCase,
+    StaticReplacementTestCase,
+)
+from tests.unit.src.streambuild.cli.compile.helpers import (
+    compile_project,
+    compile_project_with_render_failure,
+    copy_basic_project,
+    copy_orders_demo,
+    static_target_snapshot,
+    target_file_paths,
+    target_snapshot,
+    write_adopted_source,
+    write_artifact_leaf_model,
+    write_empty_project,
+    write_invalid_model,
+    write_invalid_model_header,
+    write_invalid_reference_model,
+    write_secret_source,
+)
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ExactCompileTargetTestCase(
+            description="writes the exact managed static target without runtime evidence",
+            expected_relative_files=(
+                "compiled/models/orders/orders_enriched.sql",
+                "compiled/resources/models/orders/orders_enriched.mv.sql",
+                "compiled/resources/models/orders/orders_enriched.table.sql",
+                "compiled/resources/sources/orders/kafka__orders.sql",
+                "compiled/resources/sources/orders/mv__orders.sql",
+                "compiled/resources/sources/orders/raw__orders.sql",
+                "compiled/workflows/orders/steps/0001_kafka_table.sql",
+                "compiled/workflows/orders/steps/0002_raw_table.sql",
+                "compiled/workflows/orders/steps/0003_landing_mv.sql",
+                "compiled/workflows/orders/steps/0010_orders_enriched.table.sql",
+                "compiled/workflows/orders/steps/0011_orders_enriched.mv.sql",
+                "compiled/workflows/orders/workflow.json",
+                "compiled/workflows/orders/workflow.sql",
+                "manifest.json",
+                "streambuild_dag.json",
+            ),
+            expected_forbidden_path="run",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_managed_project_when_compiling_then_writes_exact_static_target_tree(
+    test_case: ExactCompileTargetTestCase,
+    tmp_path: Path,
+) -> None:
+    project_dir: Path = tmp_path / "project"
+    target_dir: Path = project_dir / "target"
+    copy_basic_project(project_dir=project_dir)
+
+    exit_code: int = compile_project(project_dir=project_dir, target_dir=target_dir)
+
+    assert exit_code == 0
+    assert target_file_paths(target_dir=target_dir) == test_case.expected_relative_files
+    assert not (target_dir / test_case.expected_forbidden_path).exists()
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        AdoptedCompileTargetTestCase(
+            description="records adopted identity without claiming source resource candidates",
+            expected_relation_name="existing_orders",
+            expected_source_resource_count=0,
+            expected_workflow_step_names=(
+                "0010_orders_enriched.table.sql",
+                "0011_orders_enriched.mv.sql",
+            ),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_adopted_source_when_compiling_then_omits_managed_source_candidates(
+    test_case: AdoptedCompileTargetTestCase,
+    tmp_path: Path,
+) -> None:
+    project_dir: Path = tmp_path / "project"
+    target_dir: Path = project_dir / "target"
+    copy_basic_project(project_dir=project_dir)
+    write_adopted_source(project_dir=project_dir)
+
+    exit_code: int = compile_project(project_dir=project_dir, target_dir=target_dir)
+    manifest: dict[str, object] = json.loads((target_dir / "manifest.json").read_text())
+    source_entry: dict[str, object] = manifest["sources"]["orders"]
+    workflow: dict[str, object] = json.loads(
+        (target_dir / "compiled/workflows/orders/workflow.json").read_text()
+    )
+
+    assert exit_code == 0
+    assert source_entry["relation_name"] == test_case.expected_relation_name
+    assert len(source_entry["resources"]) == test_case.expected_source_resource_count
+    assert tuple(Path(step["file"]).name for step in workflow["steps"]) == (
+        test_case.expected_workflow_step_names
+    )
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        StaticReplacementTestCase(
+            description="replaces all static owners deterministically while preserving runtime",
+            stale_relative_paths=(
+                "compiled/models/orders/removed_model.sql",
+                "compiled/tests/removed/removed_test.sql",
+                "compiled/audits/removed_audit.sql",
+            ),
+            runtime_relative_path="run/tests/orders/executed.sql",
+            runtime_contents=b"SELECT exact_runtime_bytes",
+            legacy_relative_path="orders/run/workflow/old_candidate.sql",
+            expected_exit_code=0,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_stale_static_and_runtime_files_when_recompiling_then_replaces_only_static_owners(
+    test_case: StaticReplacementTestCase,
+    tmp_path: Path,
+) -> None:
+    project_dir: Path = tmp_path / "project"
+    target_dir: Path = project_dir / "target"
+    copy_basic_project(project_dir=project_dir)
+    _ = compile_project(project_dir=project_dir, target_dir=target_dir)
+    baseline_snapshot: tuple[tuple[str, bytes], ...] = static_target_snapshot(target_dir=target_dir)
+    stale_path: str
+    for stale_path in test_case.stale_relative_paths:
+        (target_dir / stale_path).parent.mkdir(parents=True, exist_ok=True)
+        (target_dir / stale_path).write_text("stale", encoding="utf-8")
+    runtime_path: Path = target_dir / test_case.runtime_relative_path
+    runtime_path.parent.mkdir(parents=True, exist_ok=True)
+    runtime_path.write_bytes(test_case.runtime_contents)
+    legacy_path: Path = target_dir / test_case.legacy_relative_path
+    legacy_path.parent.mkdir(parents=True, exist_ok=True)
+    legacy_path.write_text("old compile candidate", encoding="utf-8")
+    (target_dir / "manifest.json").write_text(
+        json.dumps({"pipelines": {"compiled": {}, "orders": {}, "run": {}}}) + "\n",
+        encoding="utf-8",
+    )
+
+    exit_code: int = compile_project(project_dir=project_dir, target_dir=target_dir)
+    rerun_static_snapshot: tuple[tuple[str, bytes], ...] = static_target_snapshot(
+        target_dir=target_dir
+    )
+
+    assert exit_code == test_case.expected_exit_code
+    assert rerun_static_snapshot == baseline_snapshot
+    assert tuple((target_dir / path).exists() for path in test_case.stale_relative_paths) == (
+        False,
+        False,
+        False,
+    )
+    assert runtime_path.read_bytes() == test_case.runtime_contents
+    assert not legacy_path.exists()
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CompileGenerationFailureTestCase(
+            description="preserves the complete prior static target when generation fails",
+            expected_error_fragment="artifact render failure",
+            expected_snapshot_preserved=True,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_existing_static_target_when_generation_fails_then_preserves_previous_snapshot(
+    test_case: CompileGenerationFailureTestCase,
+    tmp_path: Path,
+) -> None:
+    project_dir: Path = tmp_path / "project"
+    target_dir: Path = project_dir / "target"
+    copy_basic_project(project_dir=project_dir)
+    _ = compile_project(project_dir=project_dir, target_dir=target_dir)
+    baseline_snapshot: tuple[tuple[str, bytes], ...] = target_snapshot(target_dir=target_dir)
+
+    with pytest.raises(RuntimeError, match=test_case.expected_error_fragment):
+        compile_project_with_render_failure(project_dir=project_dir, target_dir=target_dir)
+
+    assert (target_snapshot(target_dir=target_dir) == baseline_snapshot) is (
+        test_case.expected_snapshot_preserved
+    )
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CompileArtifactIdentityTestCase(
+            description="manifest and DAG agree on logical and realized resource identities",
+            expected_manifest_sources=("orders",),
+            expected_manifest_models=("orders_enriched",),
+            expected_dag_node_ids=("source:orders", "model:orders_enriched"),
+            expected_edge=("source:orders", "model:orders_enriched", "driving_input"),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_one_analysis_when_writing_manifest_and_dag_then_artifacts_agree(
+    test_case: CompileArtifactIdentityTestCase,
+    tmp_path: Path,
+) -> None:
+    project_dir: Path = tmp_path / "project"
+    target_dir: Path = project_dir / "target"
+    copy_basic_project(project_dir=project_dir)
+    _ = compile_project(project_dir=project_dir, target_dir=target_dir)
+    manifest: dict[str, object] = json.loads((target_dir / "manifest.json").read_text())
+    dag: dict[str, object] = json.loads((target_dir / "streambuild_dag.json").read_text())
+
+    assert tuple(manifest["sources"]) == test_case.expected_manifest_sources
+    assert tuple(manifest["models"]) == test_case.expected_manifest_models
+    assert tuple(node["id"] for node in dag["nodes"]) == test_case.expected_dag_node_ids
+    assert tuple((edge["from_id"], edge["to_id"], edge["edge_type"]) for edge in dag["edges"]) == (
+        test_case.expected_edge,
+    )
+    assert tuple(manifest["artifacts"])[-1].startswith("compiled/workflows/")
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CompileCheckArtifactsTestCase(
+            description="writes assembled tests and mirrored audits from the compiled project",
+            expected_test_path=("compiled/tests/order_items/line total computes correctly.sql"),
+            expected_audit_path=("compiled/audits/order_events/no_null_order_ids.sql"),
+            expected_test_target="order_items",
+            expected_audit_model="order_items",
+            expected_ordered_model_steps=(
+                "orders.table.sql",
+                "order_items.table.sql",
+                "daily_revenue.table.sql",
+            ),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_tests_and_audits_when_compiling_then_writes_static_check_artifacts(
+    test_case: CompileCheckArtifactsTestCase,
+    tmp_path: Path,
+) -> None:
+    project_dir: Path = tmp_path / "project"
+    target_dir: Path = project_dir / "target"
+    copy_orders_demo(project_dir=project_dir)
+
+    exit_code: int = compile_project(project_dir=project_dir, target_dir=target_dir)
+    manifest: dict[str, object] = json.loads((target_dir / "manifest.json").read_text())
+    test_entry: dict[str, object] = manifest["tests"]["line total computes correctly"]
+    audit_entry: dict[str, object] = manifest["audits"]["no_null_order_ids"]
+    workflow: dict[str, object] = json.loads(
+        (target_dir / "compiled/workflows/order_events/workflow.json").read_text()
+    )
+    workflow_step_names: tuple[str, ...] = tuple(
+        Path(step["file"]).name.split("_", 1)[1] for step in workflow["steps"]
+    )
+
+    assert exit_code == 0
+    assert test_entry["path"] == test_case.expected_test_path
+    assert audit_entry["path"] == test_case.expected_audit_path
+    assert tuple(test_entry["targets"]) == (test_case.expected_test_target,)
+    assert tuple(audit_entry["referenced_models"]) == (test_case.expected_audit_model,)
+    assert tuple(
+        workflow_step_names.index(step_name) for step_name in test_case.expected_ordered_model_steps
+    ) == tuple(
+        sorted(
+            workflow_step_names.index(step_name)
+            for step_name in test_case.expected_ordered_model_steps
+        )
+    )
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CompileDiagnosticOutputTestCase(
+            description="renders compile errors with structured file line and phase context",
+            expected_exit_code=1,
+            expected_error_fragments=(
+                "error [STB-COMPILE-001]",
+                "phase: compilation",
+                "resource: orders_enriched",
+                "orders_enriched.sql:6:8",
+            ),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_invalid_model_when_compiling_then_cli_renders_structured_source_diagnostic(
+    test_case: CompileDiagnosticOutputTestCase,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    project_dir: Path = tmp_path / "project"
+    copy_basic_project(project_dir=project_dir)
+    write_invalid_model(project_dir=project_dir)
+
+    exit_code: int = main(("stb", "compile", "--project-dir", str(project_dir)))
+    stderr: str = capsys.readouterr().err
+
+    assert exit_code == test_case.expected_exit_code
+    assert tuple(fragment in stderr for fragment in test_case.expected_error_fragments) == (
+        True,
+        True,
+        True,
+        True,
+    )
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CompileDiagnosticOutputTestCase(
+            description="renders discovery errors with the authored model location",
+            expected_exit_code=1,
+            expected_error_fragments=(
+                "error [STB-DISCOVERY-001]",
+                "phase: discovery",
+                "resource: orders_enriched",
+                "orders_enriched.sql:1:1",
+            ),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_invalid_model_header_when_compiling_then_cli_renders_discovery_diagnostic(
+    test_case: CompileDiagnosticOutputTestCase,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    project_dir: Path = tmp_path / "project"
+    copy_basic_project(project_dir=project_dir)
+    write_invalid_model_header(project_dir=project_dir)
+
+    exit_code: int = main(("stb", "compile", "--project-dir", str(project_dir)))
+    stderr: str = capsys.readouterr().err
+
+    assert exit_code == test_case.expected_exit_code
+    assert tuple(fragment in stderr for fragment in test_case.expected_error_fragments) == (
+        True,
+        True,
+        True,
+        True,
+    )
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CompileDiagnosticOutputTestCase(
+            description="renders malformed reference errors at the authored query span",
+            expected_exit_code=1,
+            expected_error_fragments=(
+                "error [STB-DISCOVERY-001]",
+                "phase: discovery",
+                "orders_enriched.sql:6:",
+                "unclosed quoted text",
+            ),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_malformed_reference_when_compiling_then_cli_renders_authored_source_diagnostic(
+    test_case: CompileDiagnosticOutputTestCase,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    project_dir: Path = tmp_path / "project"
+    copy_basic_project(project_dir=project_dir)
+    write_invalid_reference_model(project_dir=project_dir)
+
+    exit_code: int = main(("stb", "compile", "--project-dir", str(project_dir)))
+    stderr: str = capsys.readouterr().err
+
+    assert exit_code == test_case.expected_exit_code
+    assert tuple(fragment in stderr for fragment in test_case.expected_error_fragments) == (
+        True,
+        True,
+        True,
+        True,
+    )
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        EmptyCompileTargetTestCase(
+            description="publishes a complete empty static target",
+            expected_relative_files=("manifest.json", "streambuild_dag.json"),
+            expected_pipeline_count=0,
+            expected_model_count=0,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_empty_project_when_compiling_then_publishes_empty_compiled_owner(
+    test_case: EmptyCompileTargetTestCase,
+    tmp_path: Path,
+) -> None:
+    project_dir: Path = tmp_path / "project"
+    target_dir: Path = project_dir / "target"
+    write_empty_project(project_dir=project_dir)
+
+    exit_code: int = compile_project(project_dir=project_dir, target_dir=target_dir)
+    manifest: dict[str, object] = json.loads((target_dir / "manifest.json").read_text())
+
+    assert exit_code == 0
+    assert target_file_paths(target_dir=target_dir) == test_case.expected_relative_files
+    assert (target_dir / "compiled").is_dir()
+    assert len(manifest["pipelines"]) == test_case.expected_pipeline_count
+    assert len(manifest["models"]) == test_case.expected_model_count
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        SourceSecretRedactionTestCase(
+            description="redacts broker userinfo and sensitive Kafka settings from every artifact",
+            broker_secret="broker-secret-sentinel",
+            setting_secret="setting-secret-sentinel",
+            expected_placeholder="***",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_secret_bearing_source_when_compiling_then_redacts_all_static_artifacts(
+    test_case: SourceSecretRedactionTestCase,
+    tmp_path: Path,
+) -> None:
+    project_dir: Path = tmp_path / "project"
+    target_dir: Path = project_dir / "target"
+    copy_basic_project(project_dir=project_dir)
+    write_secret_source(project_dir=project_dir)
+
+    exit_code: int = compile_project(
+        project_dir=project_dir,
+        target_dir=target_dir,
+        environment={
+            "BROKER_LIST": f"kafka://user:{test_case.broker_secret}@broker:9092",
+            "KAFKA_SASL_PASSWORD": test_case.setting_secret,
+        },
+    )
+    artifact_bytes: bytes = b"\n".join(path.read_bytes() for path in target_dir.glob("**/*.*"))
+
+    assert exit_code == 0
+    assert test_case.broker_secret.encode() not in artifact_bytes
+    assert test_case.setting_secret.encode() not in artifact_bytes
+    assert test_case.expected_placeholder.encode() in artifact_bytes
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        PublicationRollbackTestCase(
+            description="restores every prior static owner when publication fails midway",
+            failing_replace_call=4,
+            expected_error_fragment="injected rename failure",
+            expected_snapshot_preserved=True,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_existing_target_when_atomic_publication_fails_then_rolls_back_all_owners(
+    test_case: PublicationRollbackTestCase,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project_dir: Path = tmp_path / "project"
+    target_dir: Path = project_dir / "target"
+    copy_basic_project(project_dir=project_dir)
+    _ = compile_project(project_dir=project_dir, target_dir=target_dir)
+    baseline_snapshot: tuple[tuple[str, bytes], ...] = target_snapshot(target_dir=target_dir)
+    side_effects: tuple[object, ...] = (
+        *(DEFAULT for _index in range(test_case.failing_replace_call - 1)),
+        OSError(test_case.expected_error_fragment),
+        DEFAULT,
+        DEFAULT,
+    )
+    replace_mock: Mock = Mock(wraps=os.replace, side_effect=side_effects)
+    monkeypatch.setattr(
+        "streambuild.cli.compile._helpers.publication.os.replace",
+        replace_mock,
+    )
+
+    with pytest.raises(OSError, match=test_case.expected_error_fragment):
+        compile_project(project_dir=project_dir, target_dir=target_dir)
+
+    assert (target_snapshot(target_dir=target_dir) == baseline_snapshot) is (
+        test_case.expected_snapshot_preserved
+    )
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        RemovedStaticInputsTestCase(
+            description="removes model test and audit artifacts after authored inputs disappear",
+            removed_relative_inputs=(
+                "pipelines/order_events/artifact_leaf.sql",
+                "tests/order_events/test_line_total.sql",
+                "audits/order_events/no_null_order_ids.sql",
+            ),
+            expected_removed_artifacts=(
+                "compiled/models/order_events/artifact_leaf.sql",
+                "compiled/tests/order_items/line total computes correctly.sql",
+                "compiled/audits/order_events/no_null_order_ids.sql",
+            ),
+            expected_removed_manifest_names=(
+                "artifact_leaf",
+                "line total computes correctly",
+                "no_null_order_ids",
+            ),
+            expected_removed_dag_node_ids=(
+                "model:artifact_leaf",
+                "test:line total computes correctly",
+                "audit:no_null_order_ids",
+            ),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_removed_authored_inputs_when_recompiling_then_removes_all_static_references(
+    test_case: RemovedStaticInputsTestCase,
+    tmp_path: Path,
+) -> None:
+    project_dir: Path = tmp_path / "project"
+    target_dir: Path = project_dir / "target"
+    copy_orders_demo(project_dir=project_dir)
+    write_artifact_leaf_model(project_dir=project_dir)
+    _ = compile_project(project_dir=project_dir, target_dir=target_dir)
+    relative_input: str
+    for relative_input in test_case.removed_relative_inputs:
+        (project_dir / relative_input).unlink()
+
+    exit_code: int = compile_project(project_dir=project_dir, target_dir=target_dir)
+    manifest_text: str = (target_dir / "manifest.json").read_text()
+    dag_text: str = (target_dir / "streambuild_dag.json").read_text()
+
+    assert exit_code == 0
+    assert tuple(
+        (target_dir / artifact_path).exists()
+        for artifact_path in test_case.expected_removed_artifacts
+    ) == (False, False, False)
+    assert tuple(
+        resource_name in manifest_text
+        for resource_name in test_case.expected_removed_manifest_names
+    ) == (False, False, False)
+    assert tuple(node_id in dag_text for node_id in test_case.expected_removed_dag_node_ids) == (
+        False,
+        False,
+        False,
+    )

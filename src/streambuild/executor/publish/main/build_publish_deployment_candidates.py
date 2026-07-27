@@ -2,9 +2,6 @@
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import InspectedManagedTableState
-from streambuild.adapters.clickhouse.main.inspect_managed_table_state import (
-    inspect_managed_table_state,
-)
 from streambuild.compiler.compile.constants import DESIRED_OBJECT_TYPE_TABLE
 from streambuild.compiler.compile.models import ObjectKey
 from streambuild.compiler.planner.main.deployment_id_from_physical_name import (
@@ -24,9 +21,8 @@ def build_publish_deployment_candidates(
 ) -> tuple[AuditDeploymentCandidate, ...]:
     """Build candidate staged deployments visible to publish default resolution."""
 
-    inspected_state: InspectedManagedTableState = inspect_managed_table_state(
-        client=client,
-        database=default_database,
+    inspected_state: InspectedManagedTableState = client.inspect_managed_table_state(
+        default_database
     )
     all_deployment_ids: tuple[str, ...] = tuple(
         sorted(

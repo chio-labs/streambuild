@@ -24,6 +24,7 @@ from tests.integration.src.streambuild.executor.backfill.helpers import (
     build_scalar_replay_request,
     build_scalar_target_insert_select_sql,
     require_managed_source,
+    require_model_resources,
 )
 from tests.integration.src.streambuild.executor.publish._test_types import (
     ExecutePublishIntegrationTestCase,
@@ -65,6 +66,14 @@ from tests.integration.src.streambuild.executor.publish.helpers import (
                 ("tbl__orders_enriched", "View"),
                 ("tbl__orders_enriched__20260409T180000Z_ab12cd", "MergeTree"),
             ),
+            expected_publish_history_rows=(
+                (
+                    "20260409T180000Z_ab12cd",
+                    '["tbl__orders_enriched"]',
+                ),
+            ),
+            expected_per_relation_atomic_replace=True,
+            expected_graph_atomic_publish=False,
         )
     ],
     ids=lambda case: case.description,
@@ -171,9 +180,18 @@ def test_given_greenfield_staged_deployment_when_publishing_then_it_creates_stab
         "SELECT name, engine FROM system.tables "
         f"WHERE database = '{clickhouse_database}' ORDER BY name"
     ).result_rows
+    publish_history_rows: Sequence[Sequence[object]] = clickhouse_client.query(
+        "SELECT deployment_id, logical_view_names_json FROM "
+        f"{clickhouse_database}.streambuild_publish_history "
+        "ORDER BY deployment_id, published_at"
+    ).result_rows
 
     assert backfill_result.bootstrap.deployment_id == deployment_id
     assert publish_result.deployment_id == deployment_id
+    assert (
+        publish_result.per_relation_atomic_replace is test_case.expected_per_relation_atomic_replace
+    )
+    assert publish_result.graph_atomic_publish is test_case.expected_graph_atomic_publish
     assert publish_result.published_views[0].view_name == test_case.expected_view_name
     assert (
         publish_result.published_views[0].target_table_name == test_case.expected_target_table_name
@@ -181,6 +199,7 @@ def test_given_greenfield_staged_deployment_when_publishing_then_it_creates_stab
     assert system_view_rows == [(test_case.expected_view_name, "View")]
     assert published_rows == [(order_id,) for order_id in test_case.expected_published_order_ids]
     assert full_layout_rows == list(test_case.expected_full_layout)
+    assert publish_history_rows == list(test_case.expected_publish_history_rows)
 
 
 @pytest.mark.integration
@@ -194,6 +213,7 @@ def test_given_greenfield_staged_deployment_when_publishing_then_it_creates_stab
             second_deployment_id="20260409T221500Z_cd34ef",
             expected_resolved_deployment_id="20260409T221500Z_cd34ef",
             expected_error_fragment=None,
+            expected_target_table_name="tbl__orders_enriched__20260409T221500Z_cd34ef",
         ),
     ],
     ids=lambda case: case.description,
@@ -225,7 +245,11 @@ def test_given_active_view_when_resolving_publish_without_deployment_id_then_it_
     finally:
         managed_client.close()
 
+    assert test_case.expected_target_table_name is not None
     assert result.deployment_id == test_case.expected_resolved_deployment_id
+    assert result.published_views[0].target_table_name == test_case.expected_target_table_name
+    assert result.per_relation_atomic_replace is True
+    assert result.graph_atomic_publish is False
 
 
 @pytest.mark.integration
@@ -529,9 +553,10 @@ def test_given_deleted_active_view_when_publishing_then_it_recreates_stable_view
     )
     clickhouse_client.command(
         render_create_table_ddl(
-            table=compiled_pipeline.transforms[0].target_table, database=clickhouse_database
+            table=require_model_resources(compiled_pipeline).target_table,
+            database=clickhouse_database,
         ).replace(
-            f"{clickhouse_database}.{compiled_pipeline.transforms[0].target_table.name}",
+            f"{clickhouse_database}.{require_model_resources(compiled_pipeline).target_table.name}",
             (f"{clickhouse_database}.tbl__orders_enriched__{test_case.active_deployment_id}"),
             1,
         )
@@ -576,9 +601,10 @@ def test_given_deleted_active_view_when_publishing_then_it_recreates_stable_view
     )
     clickhouse_client.command(
         render_create_table_ddl(
-            table=compiled_pipeline.transforms[0].target_table, database=clickhouse_database
+            table=require_model_resources(compiled_pipeline).target_table,
+            database=clickhouse_database,
         ).replace(
-            f"{clickhouse_database}.{compiled_pipeline.transforms[0].target_table.name}",
+            f"{clickhouse_database}.{require_model_resources(compiled_pipeline).target_table.name}",
             f"{clickhouse_database}.tbl__orders_enriched__{test_case.staged_deployment_id}",
             1,
         )

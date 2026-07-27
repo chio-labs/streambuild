@@ -9,14 +9,16 @@ from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import AdapterConnectionConfig
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from streambuild.compiler.compile.models import CompiledPipeline, DesiredState
-from streambuild.compiler.desired_state.main.build_desired_state import build_desired_state
 from streambuild.compiler.discovery.types import ReplayLineageMode
-from streambuild.compiler.metadata_state.models import DeploymentWatermarkRecord
 from streambuild.compiler.planner.constants import (
     REBUILD_EXECUTION_MODE_FULL,
     REBUILD_EXECUTION_MODE_UNSEEDED_BOUNDED,
 )
-from streambuild.compiler.planner.models import DeploymentPlan, RebuildSubtree
+from streambuild.compiler.planner.models import (
+    DeploymentPlan,
+    DeploymentWatermarkRecord,
+    RebuildSubtree,
+)
 from streambuild.compiler.planner.types import RebuildExecutionMode
 from streambuild.executor.backfill._helpers.replay import (
     execute_offset_replay,
@@ -81,6 +83,7 @@ from tests.integration.src.streambuild.executor.backfill.helpers import (
     build_changed_offset_replay_compiled_pipeline,
     build_changed_scalar_replay_compiled_pipeline,
     build_compiled_pipeline,
+    build_desired_state,
     build_external_source_aggregate_offset_replay_compiled_pipeline,
     build_external_source_aggregate_offset_replay_request,
     build_external_source_cursor_replay_compiled_pipeline,
@@ -100,6 +103,7 @@ from tests.integration.src.streambuild.executor.backfill.helpers import (
     build_scalar_replay_request,
     prepare_live_landing_objects,
     require_managed_source,
+    require_model_resources,
     run_bounded_preservation_matrix_scenario,
     run_start_time_replay_scenario,
 )
@@ -1043,7 +1047,7 @@ def test_given_external_source_offset_replay_when_executing_then_it_uses_declare
     ).result_rows
     shadow_rows: Sequence[Sequence[object]] = clickhouse_client.query(
         "SELECT order_id FROM "
-        f"{clickhouse_database}.{compiled_pipeline.transforms[0].target_table_name}__"
+        f"{clickhouse_database}.{require_model_resources(compiled_pipeline).target_table_name}__"
         f"{test_case.deployment_id} "
         "ORDER BY order_id"
     ).result_rows
@@ -1132,7 +1136,7 @@ def test_given_external_source_cursor_replay_when_executing_then_it_replays_by_c
     ).result_rows
     shadow_rows: Sequence[Sequence[object]] = clickhouse_client.query(
         "SELECT order_id FROM "
-        f"{clickhouse_database}.{compiled_pipeline.transforms[0].target_table_name}__"
+        f"{clickhouse_database}.{require_model_resources(compiled_pipeline).target_table_name}__"
         f"{test_case.deployment_id} ORDER BY order_id"
     ).result_rows
 
@@ -1351,7 +1355,9 @@ def test_given_adopted_aggregate_offset_replay_when_executing_then_it_uses_physi
     ).result_rows
 
     assert result.bootstrap.deployment_id == test_case.deployment_id
-    assert compiled_pipeline.transforms[0].target_table_name == "tbl__hourly_order_volume"
+    assert (
+        require_model_resources(compiled_pipeline).target_table_name == "tbl__hourly_order_volume"
+    )
     assert shadow_rows == list(test_case.expected_shadow_rows)
 
 
@@ -1368,7 +1374,7 @@ def test_given_adopted_aggregate_offset_replay_when_executing_then_it_uses_physi
             changed_boundary_time="2026-04-09 15:15:00.000",
             lower_bound_source_order_id="frontier-order",
             lower_bound_offset_millis=1,
-            bounded_replay_fallback="full_refresh",
+            bounded_replay_fallback="full",
             expected_execution_mode=REBUILD_EXECUTION_MODE_FULL,
         ),
         ResolveAggregateUnsupportedReplayBehaviorIntegrationTestCase(
@@ -1492,7 +1498,9 @@ def test_given_aggregate_start_time_when_bootstrapping_then_it_resolves_policy_p
                 replay_lineage_mode="offsets",
                 deployment_id=test_case.changed_deployment_id,
                 created_at=test_case.created_at,
-                start_time_keys=frozenset({compiled_pipeline.transforms[0].target_table.key}),
+                start_time_keys=frozenset(
+                    {require_model_resources(compiled_pipeline).target_table.key}
+                ),
                 start_time=converted_start_time,
                 boundary_time=test_case.changed_boundary_time,
                 stabilization_seconds=0.0,
@@ -1631,7 +1639,9 @@ def test_given_aggregate_start_time_when_executing_then_it_falls_back_to_full_re
                 replay_lineage_mode="offsets",
                 deployment_id=test_case.changed_deployment_id,
                 created_at=test_case.created_at,
-                start_time_keys=frozenset({compiled_pipeline.transforms[0].target_table.key}),
+                start_time_keys=frozenset(
+                    {require_model_resources(compiled_pipeline).target_table.key}
+                ),
                 start_time=converted_start_time,
                 boundary_time=test_case.changed_boundary_time,
                 stabilization_seconds=0.0,

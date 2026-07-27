@@ -19,7 +19,6 @@ from streambuild.compiler.compile.models import (
     ObjectKey,
     TableSpec,
 )
-from streambuild.compiler.metadata_state.models import ObjectStateRecord
 from streambuild.compiler.planner._helpers.warehouse_catalog import (
     active_table_specs_from_catalog,
     existing_table_names,
@@ -33,6 +32,7 @@ from streambuild.compiler.planner.main.logical_name_from_physical_name import (
 )
 from streambuild.compiler.planner.models import (
     ActualStateInspection,
+    ObjectStateRecord,
     PlanningWarehouseSnapshot,
     RootDeploymentInspection,
 )

@@ -7,7 +7,6 @@ from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import AdapterConnectionConfig
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from streambuild.compiler.compile.models import CompiledPipeline, DesiredState
-from streambuild.compiler.desired_state.main.build_desired_state import build_desired_state
 from streambuild.compiler.planner.main.load_actual_state import load_actual_state
 from streambuild.compiler.planner.models import ActualMaterializedView, ActualState
 from streambuild.executor.backfill.main.execute_backfill import execute_backfill
@@ -29,6 +28,7 @@ from tests.integration.src.streambuild.compiler.planner._test_types import (
 from tests.integration.src.streambuild.compiler.planner.helpers import (
     ACTUAL_STATE_SETUP_STEPS,
     MIXED_ROOT_SETUP_STEPS,
+    realize_compiled_pipelines,
 )
 from tests.integration.src.streambuild.conftest import ClickHouseConnectionSettings
 from tests.integration.src.streambuild.executor.backfill.helpers import (
@@ -106,7 +106,7 @@ def test_given_clickhouse_state_when_loading_actual_state_then_it_returns_expect
     clickhouse_database: str,
 ) -> None:
     compiled_pipeline: CompiledPipeline = build_scalar_replay_compiled_pipeline("timestamp")
-    desired_state: DesiredState = build_desired_state((compiled_pipeline,))
+    desired_state: DesiredState = realize_compiled_pipelines((compiled_pipeline,)).desired_state
     clickhouse_client.command(
         render_create_kafka_table_ddl(
             table=require_managed_source(compiled_pipeline).kafka_table,
@@ -173,7 +173,7 @@ def test_given_conflicting_metadata_when_loading_actual_state_then_live_view_bin
     clickhouse_database: str,
 ) -> None:
     compiled_pipeline: CompiledPipeline = build_scalar_replay_compiled_pipeline("timestamp")
-    desired_state: DesiredState = build_desired_state((compiled_pipeline,))
+    desired_state: DesiredState = realize_compiled_pipelines((compiled_pipeline,)).desired_state
     clickhouse_client.command(
         render_create_kafka_table_ddl(
             table=require_managed_source(compiled_pipeline).kafka_table,
@@ -333,7 +333,9 @@ def test_given_mixed_root_clickhouse_state_when_loading_then_it_preserves_per_ro
         transform_name="customers_enriched",
         topic="source.customers.created",
     )
-    desired_state: DesiredState = build_desired_state((orders_pipeline, customers_pipeline))
+    desired_state: DesiredState = realize_compiled_pipelines(
+        (orders_pipeline, customers_pipeline)
+    ).desired_state
     compiled_pipeline: CompiledPipeline
     for compiled_pipeline in (orders_pipeline, customers_pipeline):
         clickhouse_client.command(
@@ -425,7 +427,7 @@ def test_given_published_state_when_metadata_is_deleted_then_load_actual_state_u
     clickhouse_database: str,
 ) -> None:
     compiled_pipeline: CompiledPipeline = build_scalar_replay_compiled_pipeline("timestamp")
-    desired_state: DesiredState = build_desired_state((compiled_pipeline,))
+    desired_state: DesiredState = realize_compiled_pipelines((compiled_pipeline,)).desired_state
     clickhouse_client.command(
         render_create_kafka_table_ddl(
             table=require_managed_source(compiled_pipeline).kafka_table,
@@ -518,8 +520,10 @@ RECONCILE_OVERRIDE_QUERY: str = (
 )
 
 ACTIVE_BASELINE_QUERY: str = (
-    "SELECT CAST(kafka_key AS String) AS order_id, "
-    "CAST(_replay_timestamp AS DateTime64(3)) AS _replay_timestamp FROM raw__orders"
+    "SELECT\n"
+    "  CAST(kafka_key AS String) AS order_id,\n"
+    "  CAST(_replay_timestamp AS DateTime64(3)) AS _replay_timestamp\n"
+    "FROM raw__orders"
 )
 
 
@@ -554,7 +558,7 @@ def test_given_latest_object_state_record_when_loading_then_only_reconcile_overr
     clickhouse_database: str,
 ) -> None:
     compiled_pipeline: CompiledPipeline = build_scalar_replay_compiled_pipeline("timestamp")
-    desired_state: DesiredState = build_desired_state((compiled_pipeline,))
+    desired_state: DesiredState = realize_compiled_pipelines((compiled_pipeline,)).desired_state
     clickhouse_client.command(
         render_create_kafka_table_ddl(
             table=require_managed_source(compiled_pipeline).kafka_table,

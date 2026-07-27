@@ -1,0 +1,7 @@
+sources:
+  - name: orders
+    kind: kafka
+    broker_list: kafka:9092
+    topic: source.orders.created
+    replay_boundary:
+      mode: offsets

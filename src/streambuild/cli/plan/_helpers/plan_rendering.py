@@ -11,7 +11,7 @@ from streambuild.compiler.compile.constants import (
     TRANSFORM_TABLE_NAME_PREFIX,
 )
 from streambuild.compiler.compile.models import DesiredMaterializedView, DesiredTable, ObjectKey
-from streambuild.compiler.discovery.types import BoundedReplayFallback, SchemaChangeBackfillMode
+from streambuild.compiler.discovery.types import BoundedReplayFallback, ReplayOnChangeMode
 from streambuild.compiler.planner.constants import (
     PLANNED_CHANGE_TYPE_CREATE,
     PLANNED_CHANGE_TYPE_NO_OP,
@@ -119,7 +119,7 @@ def render_sql_diff_plan_context(
         if subtree.configured_backfill_mode is not None:
             lines.append(
                 cli_style().label_value(
-                    label="Schema-change backfill", value=format_backfill_policy(subtree)
+                    label="Replay on change", value=format_backfill_policy(subtree)
                 )
             )
         lines.append(
@@ -334,9 +334,7 @@ def compact_changed_target_detail_lines(
             if object_change.schema_change_kind is not None:
                 detail_lines.append("table schema changed")
                 if subtree.configured_backfill_mode is not None:
-                    detail_lines.append(
-                        f"schema-change backfill: {format_backfill_policy(subtree)}"
-                    )
+                    detail_lines.append(f"replay on change: {format_backfill_policy(subtree)}")
                 detail_lines.extend(unsupported_replay_detail_lines(subtree))
                 detail_lines.append(f"plan: {describe_subtree_rebuild_behavior(subtree)}")
                 continue
@@ -422,18 +420,18 @@ def render_workflow_summary(
 
 
 def format_backfill_policy(subtree: RebuildSubtree) -> str:
-    if subtree.configured_backfill_mode == SchemaChangeBackfillMode.FULL:
-        return str(SchemaChangeBackfillMode.FULL)
+    if subtree.configured_backfill_mode == ReplayOnChangeMode.FULL:
+        return str(ReplayOnChangeMode.FULL)
     if subtree.execution_lookback_seconds is None:
-        return str(SchemaChangeBackfillMode.BOUNDED)
-    return f"bounded({format_duration_seconds(subtree.execution_lookback_seconds)})"
+        return str(ReplayOnChangeMode.BOUNDED)
+    return f"bounded-{format_duration_seconds(subtree.execution_lookback_seconds)}"
 
 
 def describe_subtree_rebuild_behavior(subtree: RebuildSubtree) -> str:
     if subtree.execution_mode == REBUILD_EXECUTION_MODE_FULL:
         if subtree.forced_full_refresh:
             return "full refresh requested; replay all history for this subtree"
-        if subtree.resolved_bounded_replay_fallback == BoundedReplayFallback.FULL_REFRESH:
+        if subtree.resolved_bounded_replay_fallback == BoundedReplayFallback.FULL:
             return "full refresh will be used instead of bounded replay"
         return "refresh all history for this subtree"
     if subtree.forced_start_time is not None:
@@ -460,10 +458,10 @@ def describe_subtree_rebuild_behavior(subtree: RebuildSubtree) -> str:
 def unsupported_replay_detail_lines(subtree: RebuildSubtree) -> tuple[str, ...]:
     if subtree.history_preserving_bounded_supported:
         return ()
-    if subtree.resolved_bounded_replay_fallback == BoundedReplayFallback.FULL_REFRESH:
+    if subtree.resolved_bounded_replay_fallback == BoundedReplayFallback.FULL:
         return (
             "bounded replay cannot preserve prior history for this target",
-            "bounded replay fallback: full_refresh",
+            "bounded replay fallback: full",
         )
     if subtree.resolved_bounded_replay_fallback == BoundedReplayFallback.BOUNDED_WITHOUT_HISTORY:
         return (

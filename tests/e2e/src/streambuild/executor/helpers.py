@@ -6,30 +6,28 @@ from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from shutil import copytree
-from typing import Any
+from textwrap import dedent
+from typing import Any, cast
 
 from clickhouse_connect.driver.client import Client
 from kafka import KafkaProducer
 
-from streambuild.compiler.compile.main.compile_pipeline import compile_pipeline
+from streambuild.compiler.compile.main._compile_pipeline import compile_pipeline
 from streambuild.compiler.compile.models import (
-    Column,
-    CompiledManagedSource,
+    CompiledModel,
     CompiledPipeline,
-    CompiledTransformStep,
-    DesiredKafkaTable,
     DesiredState,
-    KafkaSettings,
-    KafkaTableSpec,
 )
-from streambuild.compiler.desired_state.main.build_desired_state import build_desired_state
-from streambuild.compiler.discovery.main.discover_pipelines import discover_pipelines
+from streambuild.compiler.discovery.main._discover_pipelines import discover_pipelines
 from streambuild.compiler.discovery.models import (
+    KafkaLandingStep,
     LoadedPipeline,
-    SchemaChangeBackfillPolicy,
-    SchemaChangeBackfillRule,
+    ReplayOnChangePolicy,
+    ReplayOnChangeRule,
 )
-from streambuild.compiler.discovery.types import ReplayLineageMode, SchemaChangeBackfillMode
+from streambuild.compiler.discovery.types import ReplayLineageMode, ReplayOnChangeMode
+from streambuild.compiler.sql_analysis.classes.sql_model_analyzer import SqlModelAnalyzer
+from streambuild.compiler.sql_analysis.models import SqlModelAnalysis
 from streambuild.executor.backfill.models import BackfillBootstrapRequest
 from tests.e2e.src.streambuild.conftest import (
     E2EClickHouseConnectionSettings,
@@ -48,21 +46,17 @@ from tests.integration.src.streambuild.compiler.planner.helpers import (
     build_changed_schema_variant_compiled_pipeline,
 )
 from tests.integration.src.streambuild.executor.backfill.helpers import (
+    build_desired_state,
     build_offset_replay_compiled_pipeline,
     build_scalar_replay_compiled_pipeline,
+    require_managed_source,
+    require_model_resources,
 )
 
 E2E_KAFKA_TIMESTAMP_PROJECT_DIR: Path = Path("tests/fixtures/e2e_kafka_timestamp_project")
 E2E_KAFKA_OFFSET_PROJECT_DIR: Path = Path("tests/fixtures/e2e_kafka_offset_project")
 E2E_KAFKA_LANDED_AT_PROJECT_DIR: Path = Path("tests/fixtures/e2e_kafka_landed_at_project")
 REPO_ROOT: Path = Path(__file__).resolve().parents[5]
-
-
-def require_managed_source(compiled_pipeline: CompiledPipeline) -> CompiledManagedSource:
-    assert isinstance(compiled_pipeline.source, CompiledManagedSource), (
-        "Expected compiled pipeline to use a managed Kafka source"
-    )
-    return compiled_pipeline.source
 
 
 def build_greenfield_workflow_compiled_pipeline(
@@ -81,7 +75,10 @@ def build_greenfield_workflow_compiled_pipeline(
 def build_authored_greenfield_workflow_compiled_pipeline(*, project_dir: Path) -> CompiledPipeline:
     loaded_pipelines: list[LoadedPipeline] = discover_pipelines(project_dir / "pipelines")
     assert not (len(loaded_pipelines) != 1), "Expected exactly one authored e2e pipeline fixture"
-    return compile_pipeline(loaded_pipelines[0])
+    return compile_pipeline(
+        loaded_pipeline=loaded_pipelines[0],
+        sql_analyzer=SqlModelAnalyzer(dialect="clickhouse"),
+    )
 
 
 def prepare_authored_e2e_project(
@@ -93,16 +90,16 @@ def prepare_authored_e2e_project(
 ) -> Path:
     project_dir: Path = tmp_path / fixture_project_dir.name
     copytree(fixture_project_dir, project_dir)
-    pipeline_file: Path = project_dir / "pipelines" / "order_events" / "pipeline.yml"
-    pipeline_contents: str = pipeline_file.read_text(encoding="utf-8")
-    pipeline_contents = pipeline_contents.replace(
+    source_file: Path = project_dir / "sources" / "order_events.yml"
+    source_contents: str = source_file.read_text(encoding="utf-8")
+    source_contents = source_contents.replace(
         "broker_list: kafka:9092", f"broker_list: {kafka_broker_list}"
     )
-    pipeline_contents = pipeline_contents.replace(
+    source_contents = source_contents.replace(
         "topic: source.order_events.created",
         f"topic: source.order_events.created_{topic_suffix}",
     )
-    pipeline_file.write_text(pipeline_contents, encoding="utf-8")
+    source_file.write_text(source_contents, encoding="utf-8")
     return project_dir
 
 
@@ -124,7 +121,7 @@ def run_kafka_live_shadow_scenario(
     compiled_pipeline: CompiledPipeline = build_authored_greenfield_workflow_compiled_pipeline(
         project_dir=project_dir
     )
-    target_table_name: str = compiled_pipeline.transforms[0].target_table_name
+    target_table_name: str = require_model_resources(compiled_pipeline).target_table_name
     clickhouse_client.command(
         render_create_kafka_table_ddl(
             table=require_managed_source(compiled_pipeline).kafka_table,
@@ -238,21 +235,21 @@ def prepare_external_source_e2e_project(*, tmp_path: Path) -> Path:
     project_dir: Path = tmp_path / "external_source_project"
     pipeline_dir: Path = project_dir / "pipelines" / "orders"
     pipeline_dir.mkdir(parents=True, exist_ok=True)
-    (project_dir / "streambuild_project.yml").write_text("{}\n", encoding="utf-8")
-    (pipeline_dir / "pipeline.yml").write_text(
-        """
-source:
-  kind: kafka
-  name: orders
-  table_name: orders_existing
-  replay_boundary:
-    mode: timestamp
-    columns:
-      _replay_timestamp: event_timestamp
-""".strip()
-        + "\n",
-        encoding="utf-8",
+    _write_external_source_project_config(project_dir=project_dir)
+    _write_external_source(
+        project_dir=project_dir,
+        contents="""
+sources:
+  - kind: stream_table
+    name: orders
+    table_name: orders_existing
+    replay_boundary:
+      mode: timestamp
+      columns:
+        _replay_timestamp: event_timestamp
+""",
     )
+    (pipeline_dir / "pipeline.yml").write_text("source: orders\n", encoding="utf-8")
     (pipeline_dir / "orders_enriched.sql").write_text(
         """
 MODEL (
@@ -275,23 +272,23 @@ def prepare_external_source_offset_e2e_project(*, tmp_path: Path) -> Path:
     project_dir: Path = tmp_path / "external_source_offset_project"
     pipeline_dir: Path = project_dir / "pipelines" / "orders"
     pipeline_dir.mkdir(parents=True, exist_ok=True)
-    (project_dir / "streambuild_project.yml").write_text("{}\n", encoding="utf-8")
-    (pipeline_dir / "pipeline.yml").write_text(
-        """
-source:
-  kind: kafka
-  name: orders
-  table_name: orders_existing
-  replay_boundary:
-    mode: offsets
-    columns:
-      _replay_partition: event_partition
-      _replay_offset: event_offset
-      _replay_timestamp: event_timestamp
-""".strip()
-        + "\n",
-        encoding="utf-8",
+    _write_external_source_project_config(project_dir=project_dir)
+    _write_external_source(
+        project_dir=project_dir,
+        contents="""
+sources:
+  - kind: stream_table
+    name: orders
+    table_name: orders_existing
+    replay_boundary:
+      mode: offsets
+      columns:
+        _replay_partition: event_partition
+        _replay_offset: event_offset
+        _replay_timestamp: event_timestamp
+""",
     )
+    (pipeline_dir / "pipeline.yml").write_text("source: orders\n", encoding="utf-8")
     (pipeline_dir / "orders_enriched.sql").write_text(
         """
 MODEL (
@@ -315,22 +312,22 @@ def prepare_external_source_cursor_e2e_project(*, tmp_path: Path) -> Path:
     project_dir: Path = tmp_path / "external_source_cursor_project"
     pipeline_dir: Path = project_dir / "pipelines" / "orders"
     pipeline_dir.mkdir(parents=True, exist_ok=True)
-    (project_dir / "streambuild_project.yml").write_text("{}\n", encoding="utf-8")
-    (pipeline_dir / "pipeline.yml").write_text(
-        """
-source:
-  kind: stream_table
-  name: orders
-  table_name: orders_existing
-  replay_boundary:
-    mode: cursor
-    columns:
-      _replay_cursor: event_cursor
-      _replay_timestamp: event_timestamp
-""".strip()
-        + "\n",
-        encoding="utf-8",
+    _write_external_source_project_config(project_dir=project_dir)
+    _write_external_source(
+        project_dir=project_dir,
+        contents="""
+sources:
+  - kind: stream_table
+    name: orders
+    table_name: orders_existing
+    replay_boundary:
+      mode: cursor
+      columns:
+        _replay_cursor: event_cursor
+        _replay_timestamp: event_timestamp
+""",
     )
+    (pipeline_dir / "pipeline.yml").write_text("source: orders\n", encoding="utf-8")
     (pipeline_dir / "orders_enriched.sql").write_text(
         """
 MODEL (
@@ -347,6 +344,24 @@ FROM __ref("orders")
         encoding="utf-8",
     )
     return project_dir
+
+
+def _write_external_source_project_config(*, project_dir: Path) -> None:
+    (project_dir / "streambuild_project.toml").write_text(
+        'name = "external_source_project"\ndefault_target = "test"\n\n'
+        "[settings]\nvirtual_environments = true\n\n"
+        '[targets.test]\ndatabase = "analytics"\n',
+        encoding="utf-8",
+    )
+
+
+def _write_external_source(*, project_dir: Path, contents: str) -> None:
+    source_dir: Path = project_dir / "sources"
+    source_dir.mkdir()
+    (source_dir / "orders.yml").write_text(
+        dedent(contents).strip() + "\n",
+        encoding="utf-8",
+    )
 
 
 def run_streambuild_backfill_cli(
@@ -535,17 +550,12 @@ def build_changed_greenfield_workflow_compiled_pipeline(
         kafka_broker_list=kafka_broker_list,
         topic_suffix=topic_suffix,
     )
-    original_transform: CompiledTransformStep = compiled_pipeline.transforms[0]
-    changed_query: str = f"{original_transform.materialized_view.query} WHERE 1 = 1"
-    changed_transform: CompiledTransformStep = replace(
-        original_transform,
-        resolved_query=f"{original_transform.resolved_query} WHERE 1 = 1",
-        materialized_view=replace(
-            original_transform.materialized_view,
-            spec=replace(original_transform.materialized_view.spec, query=changed_query),
-        ),
+    original_model: CompiledModel = compiled_pipeline.models[0]
+    changed_model: CompiledModel = _analyzed_model_with_query(
+        model=original_model,
+        query=f"{original_model.query} WHERE 1 = 1",
     )
-    return replace(compiled_pipeline, transforms=(changed_transform,))
+    return replace(compiled_pipeline, models=(changed_model,))
 
 
 def build_greenfield_workflow_request(
@@ -600,31 +610,28 @@ def build_schema_change_workflow_compiled_pipeline(
     )
 
 
-def with_schema_change_backfill_policy(
+def with_replay_on_change_policy(
     *,
     compiled_pipeline: CompiledPipeline,
-    breaking_mode: SchemaChangeBackfillMode | str,
+    breaking_mode: ReplayOnChangeMode | str,
     breaking_lookback_seconds: int | None,
-    non_breaking_mode: SchemaChangeBackfillMode | str,
+    non_breaking_mode: ReplayOnChangeMode | str,
     non_breaking_lookback_seconds: int | None,
 ) -> CompiledPipeline:
-    original_transform: CompiledTransformStep = compiled_pipeline.transforms[0]
+    original_model: CompiledModel = compiled_pipeline.models[0]
     return replace(
         compiled_pipeline,
-        transforms=(
+        models=(
             replace(
-                original_transform,
-                target_table=replace(
-                    original_transform.target_table,
-                    schema_change_backfill=SchemaChangeBackfillPolicy(
-                        breaking=SchemaChangeBackfillRule(
-                            mode=SchemaChangeBackfillMode(breaking_mode),
-                            lookback_seconds=breaking_lookback_seconds,
-                        ),
-                        non_breaking=SchemaChangeBackfillRule(
-                            mode=SchemaChangeBackfillMode(non_breaking_mode),
-                            lookback_seconds=non_breaking_lookback_seconds,
-                        ),
+                original_model,
+                replay_on_change=ReplayOnChangePolicy(
+                    breaking=ReplayOnChangeRule(
+                        mode=ReplayOnChangeMode(breaking_mode),
+                        lookback_seconds=breaking_lookback_seconds,
+                    ),
+                    non_breaking=ReplayOnChangeRule(
+                        mode=ReplayOnChangeMode(non_breaking_mode),
+                        lookback_seconds=non_breaking_lookback_seconds,
                     ),
                 ),
             ),
@@ -645,74 +652,51 @@ def _with_kafka_broker_list_and_topic(
     kafka_broker_list: str,
     topic_suffix: str | None,
 ) -> CompiledPipeline:
-    original_kafka_table: DesiredKafkaTable = require_managed_source(compiled_pipeline).kafka_table
-    base_topic_name: str = original_kafka_table.spec.kafka.topic
+    source: KafkaLandingStep = cast(KafkaLandingStep, compiled_pipeline.source.source)
+    base_topic_name: str = source.kafka.topic
     topic_parts: tuple[str, ...] = tuple(filter(None, (base_topic_name, topic_suffix)))
     topic_name: str = "_".join(topic_parts)
-    kafka_table: DesiredKafkaTable = DesiredKafkaTable(
-        key=original_kafka_table.key,
-        deps=original_kafka_table.deps,
-        spec=KafkaTableSpec(
-            columns=original_kafka_table.spec.columns,
-            kafka=KafkaSettings(
-                broker_list=kafka_broker_list,
-                topic=topic_name,
-                consumer_group=original_kafka_table.spec.kafka.consumer_group,
-                format=original_kafka_table.spec.kafka.format,
-                settings=original_kafka_table.spec.kafka.settings,
-            ),
-        ),
+    updated_source: KafkaLandingStep = replace(
+        source,
+        kafka=replace(source.kafka, broker_list=kafka_broker_list, topic=topic_name),
     )
-    return CompiledPipeline(
-        pipeline=compiled_pipeline.pipeline,
-        project=compiled_pipeline.project,
-        file_path=compiled_pipeline.file_path,
-        relation_names=compiled_pipeline.relation_names,
-        relation_sqls=compiled_pipeline.relation_sqls,
-        effective_replay_lineage_mode=compiled_pipeline.effective_replay_lineage_mode,
-        source=CompiledManagedSource(
-            kafka_table=kafka_table,
-            raw_table=require_managed_source(compiled_pipeline).raw_table,
-            materialized_view=require_managed_source(compiled_pipeline).materialized_view,
-        ),
-        transforms=compiled_pipeline.transforms,
+    return replace(
+        compiled_pipeline,
+        pipeline=replace(compiled_pipeline.pipeline, source=updated_source),
+        source=replace(compiled_pipeline.source, source=updated_source),
     )
 
 
 def _build_non_boundary_type_change_compiled_pipeline() -> CompiledPipeline:
     base_pipeline: CompiledPipeline = build_changed_schema_variant_compiled_pipeline("add_column")
-    original_transform: CompiledTransformStep = base_pipeline.transforms[0]
-    changed_query: str = original_transform.materialized_view.query.replace(
+    original_model: CompiledModel = base_pipeline.models[0]
+    changed_query: str = original_model.query.replace(
         "CAST(kafka_topic AS String) AS kafka_topic",
         "CAST(kafka_topic AS FixedString(128)) AS kafka_topic",
     )
-    changed_column_types: dict[str, str] = {"kafka_topic": "FixedString(128)"}
-    changed_columns: tuple[Column, ...] = tuple(
-        replace(column, type=changed_column_types.get(column.name, column.type))
-        for column in original_transform.target_table.columns
-    )
     return replace(
         base_pipeline,
-        transforms=(
-            replace(
-                original_transform,
-                resolved_query=original_transform.resolved_query.replace(
-                    "CAST(kafka_topic AS String) AS kafka_topic",
-                    "CAST(kafka_topic AS FixedString(128)) AS kafka_topic",
-                ),
-                materialized_view=replace(
-                    original_transform.materialized_view,
-                    spec=replace(original_transform.materialized_view.spec, query=changed_query),
-                ),
-                target_table=replace(
-                    original_transform.target_table,
-                    spec=replace(
-                        original_transform.target_table.spec,
-                        columns=changed_columns,
-                    ),
-                ),
+        models=(
+            _analyzed_model_with_query(
+                model=original_model,
+                query=changed_query,
             ),
         ),
+    )
+
+
+def _analyzed_model_with_query(*, model: CompiledModel, query: str) -> CompiledModel:
+    sql_analysis: SqlModelAnalysis = SqlModelAnalyzer(dialect="clickhouse").analyze(
+        sql=query,
+        engine=model.transform.engine,
+        order_by=tuple(model.transform.order_by),
+        partition_by=model.transform.partition_by,
+        ttl=model.transform.ttl,
+    )
+    return replace(
+        model,
+        transform=replace(model.transform, query=query, sql_file=None),
+        sql_analysis=sql_analysis,
     )
 
 

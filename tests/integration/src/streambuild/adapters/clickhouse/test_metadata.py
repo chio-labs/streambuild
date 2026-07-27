@@ -6,12 +6,14 @@ import pytest
 from clickhouse_connect.driver.client import Client
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.adapter.models import AdapterConnectionConfig
+from streambuild.adapter.models import (
+    AdapterConnectionConfig,
+    AdapterDeploymentInventory,
+    AdapterDeploymentRecord,
+)
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
-from streambuild.compiler.metadata_state.models import DeploymentRecord
 from streambuild.executor.audit_backfill.main.load_audit_deployment import load_audit_deployment
 from streambuild.executor.audit_backfill.models import LoadedAuditDeployment
-from streambuild.executor.janitor._helpers.metadata import load_deployments
 from tests.integration.src.streambuild.adapters.clickhouse._test_types import (
     LegacyMetadataMigrationIntegrationTestCase,
     MetadataMigrationIntegrationTestCase,
@@ -245,9 +247,11 @@ def test_given_legacy_metadata_when_migrating_then_rows_remain_readable_and_unmo
             metadata_database=clickhouse_database,
             deployment_id="legacy_deployment",
         )
-        loaded_janitor_deployments: tuple[DeploymentRecord, ...] = load_deployments(
-            client=connection,
-            metadata_database=clickhouse_database,
+        deployment_inventory: AdapterDeploymentInventory = connection.load_deployment_inventory(
+            clickhouse_database
+        )
+        loaded_janitor_deployments: tuple[AdapterDeploymentRecord, ...] = (
+            deployment_inventory.deployments
         )
         connection.migrate_metadata_state(clickhouse_database)
     finally:

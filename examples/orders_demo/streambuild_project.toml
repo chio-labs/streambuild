@@ -1,0 +1,14 @@
+name = "orders_demo"
+default_target = "demo"
+
+[settings]
+virtual_environments = true
+
+[connection]
+host = "localhost"
+port = 18123
+username = "clickhouse"
+password = "clickhouse"
+
+[targets.demo]
+database = "orders_demo"

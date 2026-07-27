@@ -2,24 +2,39 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import cast
 
 import clickhouse_connect
 from clickhouse_connect.driver.exceptions import ClickHouseError, StreamFailureError
 
 from streambuild.adapter.classes.adapter import Adapter
+from streambuild.adapter.exceptions import AdapterConfigurationError
 from streambuild.adapter.models import (
+    AdapterAdoptedSourceRealizationRequest,
     AdapterConnectionConfig,
     AdapterIdentity,
     AdapterManagedSource,
+    AdapterManagedSourceRealizationRequest,
     AdapterMaterializedView,
+    AdapterModelRealization,
+    AdapterModelRealizationRequest,
+    AdapterSourceRealization,
     AdapterStableView,
     AdapterTable,
 )
 from streambuild.adapters.clickhouse._helpers.errors import translate_driver_error
+from streambuild.adapters.clickhouse._helpers.realization import realize_clickhouse_source
 from streambuild.adapters.clickhouse._helpers.rendering import render_clickhouse_resource
 from streambuild.adapters.clickhouse.classes.clickhouse_connection import ClickHouseConnection
-from streambuild.adapters.clickhouse.constants import CLICKHOUSE_ADAPTER_NAME
+from streambuild.adapters.clickhouse.constants import (
+    CLICKHOUSE_ADAPTER_NAME,
+    CLICKHOUSE_CONNECTION_CONFIG_KEYS,
+    CLICKHOUSE_DEFAULT_DATABASE,
+    CLICKHOUSE_MODEL_TABLE_NAME_PREFIX,
+    CLICKHOUSE_SQL_ANALYSIS_DIALECT,
+)
+from streambuild.adapters.clickhouse.main._realize_model import realize_clickhouse_model
 from streambuild.adapters.clickhouse.types import RawClickHouseClient
 
 
@@ -32,6 +47,24 @@ class ClickHouseAdapter(Adapter):
 
         return AdapterIdentity(name=CLICKHOUSE_ADAPTER_NAME)
 
+    @property
+    def sql_analysis_dialect(self) -> str:
+        """Return the mandatory Polyglot dialect name."""
+
+        return CLICKHOUSE_SQL_ANALYSIS_DIALECT
+
+    @property
+    def default_database(self) -> str:
+        """Return ClickHouse's default database name."""
+
+        return CLICKHOUSE_DEFAULT_DATABASE
+
+    @property
+    def default_schema(self) -> None:
+        """Return no schema because ClickHouse uses database-qualified relations."""
+
+        return None
+
     def connect(self, config: AdapterConnectionConfig) -> ClickHouseConnection:
         """Open a ClickHouse connection for the resolved configuration."""
 
@@ -40,6 +73,43 @@ class ClickHouseAdapter(Adapter):
         except (ClickHouseError, StreamFailureError) as error:
             raise translate_driver_error(error) from error
         return ClickHouseConnection(raw_client)
+
+    def build_connection_config(
+        self,
+        *,
+        values: Mapping[str, object],
+        database: str | None,
+    ) -> AdapterConnectionConfig:
+        """Validate the exercised ClickHouse connection fields without opening a connection."""
+
+        unknown_keys: tuple[str, ...] = tuple(
+            sorted(set(values) - CLICKHOUSE_CONNECTION_CONFIG_KEYS)
+        )
+        if unknown_keys:
+            raise AdapterConfigurationError(
+                f"ClickHouse connection contains unsupported fields: {', '.join(unknown_keys)}"
+            )
+        host: object | None = values.get("host")
+        port: object | None = values.get("port")
+        username: object | None = values.get("username")
+        password: object | None = values.get("password")
+        if not isinstance(host, str) or not host:
+            raise AdapterConfigurationError("ClickHouse connection requires non-empty string host")
+        if not isinstance(port, int):
+            raise AdapterConfigurationError("ClickHouse connection requires integer port")
+        if not isinstance(username, str) or not username:
+            raise AdapterConfigurationError(
+                "ClickHouse connection requires non-empty string username"
+            )
+        if not isinstance(password, str):
+            raise AdapterConfigurationError("ClickHouse connection requires string password")
+        return AdapterConnectionConfig(
+            host=host,
+            port=port,
+            username=username,
+            password=password,
+            database=database,
+        )
 
     def render_resource(
         self,
@@ -55,6 +125,25 @@ class ClickHouseAdapter(Adapter):
             database=database,
             if_not_exists=if_not_exists,
         )
+
+    def realize_source(
+        self,
+        *,
+        request: AdapterManagedSourceRealizationRequest | AdapterAdoptedSourceRealizationRequest,
+    ) -> AdapterSourceRealization:
+        """Map one logical source to ClickHouse resources."""
+
+        return realize_clickhouse_source(request=request)
+
+    def model_relation_name(self, *, logical_name: str) -> str:
+        """Resolve the ClickHouse table name for one logical model."""
+
+        return f"{CLICKHOUSE_MODEL_TABLE_NAME_PREFIX}{logical_name}"
+
+    def realize_model(self, *, request: AdapterModelRealizationRequest) -> AdapterModelRealization:
+        """Map one semantically compiled model to ClickHouse resources."""
+
+        return realize_clickhouse_model(request=request)
 
     def _open_raw_client(self, config: AdapterConnectionConfig) -> RawClickHouseClient:
         if config.database is None:

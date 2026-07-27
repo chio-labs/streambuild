@@ -76,6 +76,8 @@ def build_publish_preview() -> PublishResult:
                 target_table_name="tbl__orders_enriched_20260410T120000Z_ab12cd",
             ),
         ),
+        per_relation_atomic_replace=True,
+        graph_atomic_publish=False,
     )
 
 

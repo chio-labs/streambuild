@@ -1,0 +1,13 @@
+sources:
+  - name: orders
+    kind: kafka
+    broker_list: kafka:9092
+    topic: source.orders.created
+    replay_boundary:
+      mode: offsets
+  - name: payments
+    kind: kafka
+    broker_list: kafka:9092
+    topic: source.payments.created
+    replay_boundary:
+      mode: offsets

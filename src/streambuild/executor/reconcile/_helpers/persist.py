@@ -6,13 +6,13 @@ from dataclasses import asdict
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.compiler.compile.models import DesiredMaterializedView, DesiredTable
-from streambuild.compiler.metadata_state.main.build_adapter_metadata_state import (
+from streambuild.compiler.planner.main.build_adapter_metadata_state import (
     build_adapter_metadata_state,
 )
-from streambuild.compiler.metadata_state.models import MetadataState, ObjectStateRecord
 from streambuild.compiler.planner.main.build_normalized_fingerprint import (
     build_normalized_fingerprint,
 )
+from streambuild.compiler.planner.models import MetadataState, ObjectStateRecord
 from streambuild.executor.reconcile.models import ReconcilePreview, ReconcileResult
 
 

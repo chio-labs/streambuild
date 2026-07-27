@@ -12,26 +12,7 @@ from streambuild.compiler.compile.constants import (
     REPLAY_PARTITION_COLUMN_NAME,
     REPLAY_TIMESTAMP_COLUMN_NAME,
 )
-from streambuild.compiler.compile.models import (
-    CompiledExternalSource,
-    ExternalSourceReplayConfig,
-)
-
-
-def build_external_source_replay_config(
-    source_step: CompiledExternalSource,
-) -> ExternalSourceReplayConfig:
-    return ExternalSourceReplayConfig(
-        key=source_step.source_key,
-        table_name=source_step.source.table_name,
-        source_kind=source_step.source.kind,
-        replay_boundary_mode=source_step.source.replay_boundary.mode,
-        partition_column_name=source_step.source.replay_boundary.columns.partition,
-        offset_column_name=source_step.source.replay_boundary.columns.offset,
-        timestamp_column_name=source_step.source.replay_boundary.columns.timestamp,
-        landed_at_column_name=source_step.source.replay_boundary.columns.landed_at,
-        cursor_column_name=source_step.source.replay_boundary.columns.cursor,
-    )
+from streambuild.compiler.compile.models import ExternalSourceReplayConfig
 
 
 def validate_injected_alias_collisions(

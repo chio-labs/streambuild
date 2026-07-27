@@ -26,6 +26,7 @@ from tests.integration.src.streambuild.executor.doctor.helpers import prepare_do
             expected_state_kind="active_view_present",
             expected_active_deployment_id="dep_a",
             expected_candidate_deployment_ids=("dep_a", "dep_b"),
+            expected_status_count=1,
         ),
         ExecuteDoctorIntegrationTestCase(
             description="reports recoverable missing logical view when one candidate exists",
@@ -36,6 +37,7 @@ from tests.integration.src.streambuild.executor.doctor.helpers import prepare_do
             expected_state_kind="logical_view_missing",
             expected_active_deployment_id=None,
             expected_candidate_deployment_ids=("dep_a",),
+            expected_status_count=1,
         ),
         ExecuteDoctorIntegrationTestCase(
             description="reports ambiguous missing logical view when many candidates exist",
@@ -46,6 +48,7 @@ from tests.integration.src.streambuild.executor.doctor.helpers import prepare_do
             expected_state_kind="logical_view_missing",
             expected_active_deployment_id=None,
             expected_candidate_deployment_ids=("dep_a", "dep_b"),
+            expected_status_count=1,
         ),
         ExecuteDoctorIntegrationTestCase(
             description=(
@@ -58,6 +61,7 @@ from tests.integration.src.streambuild.executor.doctor.helpers import prepare_do
             expected_state_kind="invalid_active_view",
             expected_active_deployment_id=None,
             expected_candidate_deployment_ids=(),
+            expected_status_count=1,
         ),
     ],
     ids=lambda case: case.description,
@@ -95,6 +99,7 @@ def test_given_clickhouse_state_when_doctoring_then_it_reports_expected_active_v
     finally:
         managed_client.close()
 
+    assert len(result.active_views) == test_case.expected_status_count
     status: ActiveViewStatus = result.active_views[0]
     assert status.table_name == "tbl__orders_enriched"
     assert status.state_kind == test_case.expected_state_kind

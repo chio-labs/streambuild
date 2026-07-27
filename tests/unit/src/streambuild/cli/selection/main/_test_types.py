@@ -5,6 +5,7 @@ from dataclasses import dataclass
 class CliSelectionResolutionTestCase:
     description: str
     selectors: tuple[str, ...]
+    expected_selected_logical_model_names: tuple[str, ...]
     expected_selected_model_names: tuple[str, ...]
     expected_object_names: tuple[str, ...]
 
@@ -22,6 +23,19 @@ class CliSelectionLineageMismatchTestCase:
     selectors: tuple[str, ...]
     mutated_pipeline_name: str
     expected_error_fragment: str
+
+
+@dataclass(frozen=True)
+class CliExecutionClosureLineageMismatchTestCase:
+    description: str
+    selectors: tuple[str, ...]
+    expected_error_fragment: str
+
+
+@dataclass(frozen=True)
+class CliSelectionDesiredStateIdentityTestCase:
+    description: str
+    expected_same_identity: bool
 
 
 @dataclass(frozen=True)

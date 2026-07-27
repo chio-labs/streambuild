@@ -28,3 +28,29 @@ class ExpandProjectSqlMacrosCollisionTestCase:
     second_macro_file_contents: str
     sql_body: str
     expected_error_fragment: str
+
+
+@dataclass(frozen=True)
+class MacroRuntimeImmutabilityTestCase:
+    description: str
+    variables: dict[str, object]
+    expected_macro_names: tuple[str, ...]
+    expected_nested_values: tuple[object, ...]
+
+
+@dataclass(frozen=True)
+class MacroExecutionDiagnosticTestCase:
+    description: str
+    macro_file_contents: str
+    sql_body: str
+    expected_error_fragment: str
+    expected_sql_line: int
+    expected_definition_line: int
+
+
+@dataclass(frozen=True)
+class MacroImportDiagnosticTestCase:
+    description: str
+    macro_file_contents: str
+    expected_error_fragment: str
+    expected_definition_line: int

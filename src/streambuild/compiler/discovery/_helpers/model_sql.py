@@ -21,28 +21,76 @@ from streambuild.compiler.discovery.constants import (
 )
 from streambuild.compiler.discovery.exceptions import PipelineDiscoveryError
 from streambuild.compiler.discovery.models import (
-    SchemaChangeBackfillPolicy,
-    SchemaChangeBackfillRule,
+    ReplayOnChangePolicy,
+    ReplayOnChangeRule,
     TransformStep,
 )
 from streambuild.compiler.discovery.types import (
     BoundedReplayFallback,
     ReplayAnchorMode,
-    SchemaChangeBackfillMode,
+    ReplayOnChangeMode,
     SchemaChangeKind,
     SqlRelationType,
 )
-from streambuild.compiler.macros.main._expand_macro_calls import expand_project_sql_macros
+from streambuild.compiler.macros.main._expand_macro_calls import expand_macro_calls
+from streambuild.compiler.macros.models import MacroContext, MacroRegistry
+from streambuild.diagnostics.models import CompilerDiagnostic, SourceLocation
+from streambuild.diagnostics.types import DiagnosticPhase, DiagnosticSeverity
 
 
-def load_transform_from_sql_file(file_path: Path) -> TransformStep:
+def load_transform_from_sql_file(
+    *,
+    file_path: Path,
+    contents: str | None = None,
+    macro_registry: MacroRegistry | None = None,
+    macro_context: MacroContext | None = None,
+) -> TransformStep:
     """Load one authored SQL model file into an internal transform step."""
 
-    contents: str = file_path.read_text(encoding="utf-8")
-    header_values, query = parse_model_sql(contents=contents, file_path=file_path)
+    source_contents: str = file_path.read_text(encoding="utf-8") if contents is None else contents
+    try:
+        return _load_transform_from_sql_contents(
+            file_path=file_path,
+            source_contents=source_contents,
+            macro_registry=macro_registry,
+            macro_context=macro_context,
+        )
+    except PipelineDiscoveryError as error:
+        error.diagnostic = CompilerDiagnostic(
+            phase=DiagnosticPhase.DISCOVERY,
+            severity=DiagnosticSeverity.ERROR,
+            code="STB-DISCOVERY-001",
+            message=str(error),
+            resource_name=file_path.stem,
+            location=SourceLocation(path=file_path, line=1, column=1),
+        )
+        raise
+
+
+def _load_transform_from_sql_contents(
+    *,
+    file_path: Path,
+    source_contents: str,
+    macro_registry: MacroRegistry | None,
+    macro_context: MacroContext | None,
+) -> TransformStep:
+    header_values, query = parse_model_sql(
+        contents=source_contents,
+        file_path=file_path,
+        macro_registry=macro_registry,
+        macro_context=macro_context,
+    )
+    query_line: int
+    query_column: int
+    query_line, query_column = _query_source_position(source_contents)
     return TransformStep(
         name=file_path.stem,
-        source=infer_transform_source(query=query, file_path=file_path),
+        source=infer_transform_source(
+            query=query,
+            file_path=file_path,
+            source_line=query_line,
+            source_column=query_column,
+        ),
         engine=_sql_model_engine(header_values=header_values, file_path=file_path),
         order_by=_sql_model_order_by(header_values=header_values, file_path=file_path),
         partition_by=_optional_string(
@@ -53,17 +101,26 @@ def load_transform_from_sql_file(file_path: Path) -> TransformStep:
             header_values=header_values, key="settings", file_path=file_path
         ),
         replay_anchor=_optional_replay_anchor(header_values=header_values, file_path=file_path),
-        schema_change_backfill=_optional_schema_change_backfill(
+        replay_on_change=_optional_replay_on_change(
             header_values=header_values, file_path=file_path
         ),
         bounded_replay_fallback=_optional_bounded_replay_fallback(
             header_values=header_values, file_path=file_path
         ),
         query=query,
+        source_file_path=file_path,
+        source_line=query_line,
+        source_column=query_column,
     )
 
 
-def parse_model_sql(*, contents: str, file_path: Path) -> tuple[dict[str, Any], str]:
+def parse_model_sql(
+    *,
+    contents: str,
+    file_path: Path,
+    macro_registry: MacroRegistry | None = None,
+    macro_context: MacroContext | None = None,
+) -> tuple[dict[str, Any], str]:
     """Parse the required `MODEL(...)` header and SQL query body."""
 
     header_match: re.Match[str] | None = MODEL_HEADER_PATTERN.match(contents)
@@ -76,9 +133,16 @@ def parse_model_sql(*, contents: str, file_path: Path) -> tuple[dict[str, Any], 
     header_values: dict[str, Any] = _parse_model_header(
         header=header_match.group("header"), file_path=file_path
     )
-    query: str = expand_project_sql_macros(
+    query_line: int
+    query_column: int
+    query_line, query_column = _query_source_position(contents)
+    query: str = _expanded_query(
         sql=header_match.group("sql").strip(),
         file_path=file_path,
+        macro_registry=macro_registry,
+        macro_context=macro_context,
+        source_line=query_line,
+        source_column=query_column,
     )
     if not query:
         raise PipelineDiscoveryError(
@@ -87,10 +151,53 @@ def parse_model_sql(*, contents: str, file_path: Path) -> tuple[dict[str, Any], 
     return header_values, query
 
 
-def infer_transform_source(*, query: str, file_path: Path) -> str:
+def _expanded_query(
+    *,
+    sql: str,
+    file_path: Path,
+    macro_registry: MacroRegistry | None,
+    macro_context: MacroContext | None,
+    source_line: int,
+    source_column: int,
+) -> str:
+    if macro_registry is None or macro_context is None:
+        return sql
+    return expand_macro_calls(
+        sql=sql,
+        file_path=file_path,
+        registry=macro_registry,
+        context=macro_context,
+        source_line=source_line,
+        source_column=source_column,
+    )
+
+
+def _query_source_position(contents: str) -> tuple[int, int]:
+    header_match: re.Match[str] | None = MODEL_HEADER_PATTERN.match(contents)
+    if header_match is None:
+        raise PipelineDiscoveryError("Cannot locate SQL model query after a valid MODEL header")
+    raw_query: str = header_match.group("sql")
+    leading_length: int = len(raw_query) - len(raw_query.lstrip())
+    query_index: int = header_match.start("sql") + leading_length
+    line: int = contents.count("\n", 0, query_index) + 1
+    previous_newline_index: int = contents.rfind("\n", 0, query_index)
+    column: int = query_index - previous_newline_index
+    return line, column
+
+
+def infer_transform_source(
+    *, query: str, file_path: Path, source_line: int, source_column: int
+) -> str:
     """Infer the driving source from the single untyped relation reference."""
 
-    parsed_refs: tuple[ParsedRef, ...] = tuple(extract_refs(query))
+    parsed_refs: tuple[ParsedRef, ...] = tuple(
+        extract_refs(
+            sql=query,
+            source_path=file_path,
+            source_line=source_line,
+            source_column=source_column,
+        )
+    )
     if not parsed_refs:
         raise PipelineDiscoveryError(
             f"SQL model '{file_path}' must reference exactly one driving input using "
@@ -234,32 +341,31 @@ def _optional_replay_anchor(*, header_values: dict[str, Any], file_path: Path) -
     return ReplayAnchorMode(value)
 
 
-def _optional_schema_change_backfill(
+def _optional_replay_on_change(
     *, header_values: dict[str, Any], file_path: Path
-) -> SchemaChangeBackfillPolicy | None:
-    value: Any = header_values.get("schema_change_backfill")
+) -> ReplayOnChangePolicy | None:
+    value: Any = header_values.get("replay_on_change")
     if value is None:
         return None
     if not isinstance(value, dict) or not all(isinstance(map_key, str) for map_key in value):
         raise PipelineDiscoveryError(
-            "MODEL(...) in "
-            f"'{file_path}' must define 'schema_change_backfill' as a mapping when set"
+            f"MODEL(...) in '{file_path}' must define 'replay_on_change' as a mapping when set"
         )
     rule_values: dict[str, Any] = value
     unknown_keys: list[str] = [key for key in rule_values if key not in SCHEMA_CHANGE_RULE_KEYS]
     if unknown_keys:
         unknown_key_list: str = ", ".join(sorted(unknown_keys))
         raise PipelineDiscoveryError(
-            f"MODEL(...) in '{file_path}' contains unsupported schema_change_backfill keys: "
+            f"MODEL(...) in '{file_path}' contains unsupported replay_on_change keys: "
             f"{unknown_key_list}"
         )
-    return SchemaChangeBackfillPolicy(
-        breaking=_optional_schema_change_backfill_rule(
+    return ReplayOnChangePolicy(
+        breaking=_optional_replay_on_change_rule(
             rule_values=rule_values,
             key=SchemaChangeKind(SchemaChangeKind.BREAKING),
             file_path=file_path,
         ),
-        non_breaking=_optional_schema_change_backfill_rule(
+        non_breaking=_optional_replay_on_change_rule(
             rule_values=rule_values,
             key=SchemaChangeKind(SchemaChangeKind.NON_BREAKING),
             file_path=file_path,
@@ -267,40 +373,38 @@ def _optional_schema_change_backfill(
     )
 
 
-def _optional_schema_change_backfill_rule(
+def _optional_replay_on_change_rule(
     *,
     rule_values: dict[str, Any],
     key: SchemaChangeKind,
     file_path: Path,
-) -> SchemaChangeBackfillRule | None:
+) -> ReplayOnChangeRule | None:
     value: Any = rule_values.get(key)
     if value is None:
         return None
     if not isinstance(value, str) or not value:
         raise PipelineDiscoveryError(
-            f"MODEL(...) in '{file_path}' must define schema_change_backfill.{key} as a string"
+            f"MODEL(...) in '{file_path}' must define replay_on_change.{key} as a string"
         )
-    return _parse_schema_change_backfill_rule(value=value, key=key, file_path=file_path)
+    return _parse_replay_on_change_rule(value=value, key=key, file_path=file_path)
 
 
-def _parse_schema_change_backfill_rule(
+def _parse_replay_on_change_rule(
     *, value: str, key: SchemaChangeKind, file_path: Path
-) -> SchemaChangeBackfillRule:
+) -> ReplayOnChangeRule:
     normalized: str = value.strip()
-    if normalized == SchemaChangeBackfillMode.FULL:
-        return SchemaChangeBackfillRule(
-            mode=SchemaChangeBackfillMode(SchemaChangeBackfillMode.FULL)
-        )
-    bounded_match: re.Match[str] | None = re.fullmatch(r"bounded\((\d+)([dhms])\)", normalized)
+    if normalized == ReplayOnChangeMode.FULL:
+        return ReplayOnChangeRule(mode=ReplayOnChangeMode(ReplayOnChangeMode.FULL))
+    bounded_match: re.Match[str] | None = re.fullmatch(r"bounded-(\d+)([dhms])", normalized)
     if bounded_match is None:
         raise PipelineDiscoveryError(
-            f"MODEL(...) in '{file_path}' must define schema_change_backfill.{key} as 'full' "
-            "or 'bounded(<duration>)'"
+            f"MODEL(...) in '{file_path}' must define replay_on_change.{key} as 'full' "
+            "or 'bounded-<duration>'"
         )
     duration_value: int = int(bounded_match.group(1))
     duration_unit: str = bounded_match.group(2)
-    return SchemaChangeBackfillRule(
-        mode=SchemaChangeBackfillMode(SchemaChangeBackfillMode.BOUNDED),
+    return ReplayOnChangeRule(
+        mode=ReplayOnChangeMode(ReplayOnChangeMode.BOUNDED),
         lookback_seconds=_duration_seconds(
             duration_value=duration_value, duration_unit=duration_unit
         ),
@@ -318,7 +422,7 @@ def _optional_bounded_replay_fallback(
     if value is None:
         return None
     if value not in {
-        BoundedReplayFallback.FULL_REFRESH,
+        BoundedReplayFallback.FULL,
         BoundedReplayFallback.BOUNDED_WITHOUT_HISTORY,
     }:
         raise PipelineDiscoveryError(

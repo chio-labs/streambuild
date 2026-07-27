@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 import argparse
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
 from streambuild.adapter.classes.adapter import Adapter
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import AdapterConnectionConfig
-from streambuild.compiler.discovery.models import Project
+from streambuild.compiler.discovery.models import LoadedProject, RawConnectionConfig
 
 
 @dataclass(frozen=True)
@@ -27,12 +27,14 @@ class CliEntrypointHandlers:
     run_repair_active_view: Callable[..., int]
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, repr=False)
 class ResolvedCliProjectConfig:
     connection: AdapterConnectionConfig | None
     default_database: str | None
     adapter_name: str
-    project: Project | None
+    loaded_project: LoadedProject | None
+    raw_connection: RawConnectionConfig | None = None
+    variables: tuple[tuple[str, object], ...] = ()
 
 
 @dataclass(frozen=True, repr=False)
@@ -42,15 +44,19 @@ class CliConnectionOptions:
     username: str | None
     password: str | None
     project_connection: AdapterConnectionConfig | None
+    raw_project_connection: RawConnectionConfig | None = None
+    variables: tuple[tuple[str, object], ...] = ()
+    environment: Mapping[str, str] | None = None
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, repr=False)
 class ResolvedCliInvocation:
     args: argparse.Namespace
     project_dir: Path | None
     pipelines_root: Path | None
     database: str | None
     adapter: Adapter
+    loaded_project: LoadedProject | None
     connection: CliConnectionOptions
 
 

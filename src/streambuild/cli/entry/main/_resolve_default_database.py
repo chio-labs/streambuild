@@ -20,6 +20,6 @@ def resolve_default_database(
         return project_database
 
     raise CliUserError(
-        "No database was provided. Pass --database or define "
-        "default_database in streambuild_project.yml"
+        "No database was provided. Pass --database or define database on the selected "
+        "target in streambuild_project.toml"
     )

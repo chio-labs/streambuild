@@ -47,6 +47,7 @@ clickhouse_db/
 data/
 
 # Demo-local secrets
+streambuild_local.toml
 examples/flights_demo/.env
 examples/orders_demo/pipelines/target
 examples/orders_demo/target

@@ -1,18 +1,21 @@
 from dataclasses import dataclass
 
-from streambuild.compiler.compile.models import CompiledExternalSource, CompiledManagedSource
-from streambuild.compiler.discovery.models import SchemaChangeBackfillPolicy
+from streambuild.compiler.discovery.models import (
+    ExternalTableSourceStep,
+    KafkaLandingStep,
+    ReplayOnChangePolicy,
+)
 from streambuild.compiler.discovery.types import (
     ReplayAnchorMode,
     ReplayBoundaryMode,
     ReplayLineageMode,
+    ReplayOnChangeMode,
 )
 from streambuild.compiler.planner.types import (
     DeploymentAction,
     PlannedChangeType,
     RebuildExecutionMode,
     RebuildStrategy,
-    SchemaChangeBackfillMode,
     TableSchemaChangeKind,
     TableSchemaSeedCompatibility,
 )
@@ -167,7 +170,7 @@ class PlannerPreservationMatrixTestCase:
     description: str
     source_ownership: str
     replay_lineage_mode: ReplayLineageMode
-    expected_source_type: type[CompiledManagedSource] | type[CompiledExternalSource]
+    expected_source_type: type[KafkaLandingStep] | type[ExternalTableSourceStep]
     expected_desired_object_count: int
     expected_external_replay_boundary_modes: tuple[ReplayBoundaryMode, ...]
     expected_upstream_boundary_key: tuple[str | None, str, str]
@@ -185,14 +188,26 @@ class PlannerTableSchemaClassificationTestCase:
 
 
 @dataclass(frozen=True)
+class BuildMetadataStateTestCase:
+    description: str
+    expected_object_state_keys: tuple[tuple[str | None, str, str], ...]
+    expected_deployment_ids: tuple[str, ...]
+    expected_first_deployment_root_keys: tuple[tuple[str | None, str, str], ...]
+    expected_first_deployment_warning_codes: tuple[str, ...]
+    expected_first_deployment_mapping_names: tuple[str, ...]
+    expected_watermark_boundary_keys: tuple[str, ...]
+    expected_runtime_detail_target_names: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class PlannerExecutionModeTestCase:
     description: str
     schema_change_kind: TableSchemaChangeKind | str | None
     seed_compatibility: TableSchemaSeedCompatibility | str | None
     expected_execution_mode: RebuildExecutionMode
-    configured_backfill_mode: SchemaChangeBackfillMode | str | None = None
+    configured_backfill_mode: ReplayOnChangeMode | str | None = None
     configured_lookback_seconds: int | None = None
-    schema_change_backfill: SchemaChangeBackfillPolicy | None = None
+    replay_on_change: ReplayOnChangePolicy | None = None
 
 
 @dataclass(frozen=True)

@@ -1,21 +1,30 @@
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
+from textwrap import dedent
 
 from clickhouse_connect.driver.client import Client
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import (
+    AdapterBindingReplacementRequest,
+    AdapterBindingReplacementResult,
     AdapterCapabilities,
     AdapterConnectionConfig,
+    AdapterDeploymentInventory,
     AdapterIdentity,
     AdapterManagedSource,
     AdapterMaterializedView,
     AdapterMetadataState,
     AdapterQueryResult,
+    AdapterReadinessRequest,
+    AdapterReadinessRootObservation,
+    AdapterRelationCleanupRequest,
+    AdapterRelationCleanupResult,
     AdapterReplayRequest,
     AdapterStableView,
     AdapterTable,
     CatalogSnapshot,
+    InspectedManagedTableState,
 )
 from streambuild.adapters.clickhouse._helpers.inspection import load_clickhouse_catalog
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
@@ -24,6 +33,30 @@ from tests.integration.src.streambuild.conftest import ClickHouseConnectionSetti
 
 BACKFILL_PIPELINES_ROOT: Path = Path("tests/fixtures/basic_project/pipelines")
 SELECTOR_PIPELINES_ROOT: Path = Path("tests/fixtures/selector_project/pipelines")
+
+
+def write_managed_source_project(
+    *, project_dir: Path, replay_boundary_mode: str = "offsets"
+) -> None:
+    project_dir.mkdir(parents=True, exist_ok=True)
+    (project_dir / "streambuild_project.toml").write_text(
+        'name = "integration_project"\ndefault_target = "test"\n\n'
+        "[settings]\nvirtual_environments = true\n\n"
+        '[targets.test]\ndatabase = "analytics"\n',
+        encoding="utf-8",
+    )
+    source_dir: Path = project_dir / "sources"
+    source_dir.mkdir()
+    (source_dir / "orders.yml").write_text(
+        "sources:\n"
+        "  - name: orders\n"
+        "    kind: kafka\n"
+        "    broker_list: kafka:9092\n"
+        "    topic: source.orders\n"
+        "    replay_boundary:\n"
+        f"      mode: {replay_boundary_mode}\n",
+        encoding="utf-8",
+    )
 
 
 class RecordingDelegatingConnection(AdapterConnection):
@@ -50,6 +83,9 @@ class RecordingDelegatingConnection(AdapterConnection):
 
     def metadata_columns(self, *, database: str, table: str) -> frozenset[str]:
         return self._delegate.metadata_columns(database=database, table=table)
+
+    def inspect_managed_table_state(self, database: str) -> InspectedManagedTableState:
+        return self._delegate.inspect_managed_table_state(database)
 
     def command(self, statement: str) -> None:
         self._delegate.command(statement)
@@ -96,8 +132,26 @@ class RecordingDelegatingConnection(AdapterConnection):
     def persist_metadata_state(self, *, database: str, state: AdapterMetadataState) -> None:
         self._delegate.persist_metadata_state(database=database, state=state)
 
+    def load_deployment_inventory(self, database: str) -> AdapterDeploymentInventory:
+        return self._delegate.load_deployment_inventory(database)
+
     def execute_replay(self, request: AdapterReplayRequest) -> None:
         self._delegate.execute_replay(request)
+
+    def compare_readiness(
+        self, request: AdapterReadinessRequest
+    ) -> tuple[AdapterReadinessRootObservation, ...]:
+        return self._delegate.compare_readiness(request)
+
+    def replace_stable_bindings(
+        self, request: AdapterBindingReplacementRequest
+    ) -> AdapterBindingReplacementResult:
+        return self._delegate.replace_stable_bindings(request)
+
+    def cleanup_relations(
+        self, request: AdapterRelationCleanupRequest
+    ) -> AdapterRelationCleanupResult:
+        return self._delegate.cleanup_relations(request)
 
     def close(self) -> None:
         self._delegate.close()
@@ -133,35 +187,32 @@ def build_runtime_details_table_query(database: str) -> str:
     )
 
 
-def write_adopted_source_plan_project(project_dir: Path) -> Path:
+def write_source_mode_plan_project(
+    *, project_dir: Path, source_contents: str, model_contents: str
+) -> Path:
+    """Write one registry-backed plan project for a managed or adopted source mode."""
+
     pipelines_root: Path = project_dir / "pipelines"
     pipeline_dir: Path = pipelines_root / "orders"
     pipeline_dir.mkdir(parents=True)
+    (project_dir / "streambuild_project.toml").write_text(
+        'name = "source_mode_project"\ndefault_target = "test"\n\n'
+        "[settings]\nvirtual_environments = true\n\n"
+        '[targets.test]\ndatabase = "analytics"\n',
+        encoding="utf-8",
+    )
+    source_dir: Path = project_dir / "sources"
+    source_dir.mkdir()
+    (source_dir / "orders.yml").write_text(
+        dedent(source_contents).strip() + "\n",
+        encoding="utf-8",
+    )
     (pipeline_dir / "pipeline.yml").write_text(
-        """
-source:
-  kind: kafka
-  name: orders
-  table_name: orders_existing
-  replay_boundary:
-    mode: timestamp
-    columns:
-      _replay_timestamp: event_timestamp
-""".lstrip(),
+        "source: orders\n",
         encoding="utf-8",
     )
     (pipeline_dir / "orders_enriched.sql").write_text(
-        """
-MODEL (
-  engine: "MergeTree()",
-  order_by: ["order_id"]
-);
-
-SELECT
-  CAST(order_id AS String) AS order_id,
-  CAST(_replay_timestamp AS DateTime64(3)) AS _replay_timestamp
-FROM __ref("orders")
-""".lstrip(),
+        dedent(model_contents).strip() + "\n",
         encoding="utf-8",
     )
     return pipelines_root
@@ -175,15 +226,10 @@ def write_audit_project_files(project_dir: Path) -> None:
         write_pipeline_file,
     )
 
+    write_managed_source_project(project_dir=project_dir)
     write_pipeline_file(
         project_dir / "pipelines" / "order_events" / "pipeline.yml",
-        """
-        source:
-          kind: kafka
-          name: orders
-          broker_list: kafka:9092
-          topic: source.orders
-        """,
+        "source: orders",
     )
     write_pipeline_file(
         project_dir / "pipelines" / "order_events" / "order_items.sql",
@@ -221,15 +267,10 @@ def write_backfill_audit_project_files(project_dir: Path) -> None:
         write_pipeline_file,
     )
 
+    write_managed_source_project(project_dir=project_dir, replay_boundary_mode="timestamp")
     write_pipeline_file(
         project_dir / "pipelines" / "order_events" / "pipeline.yml",
-        """
-        source:
-          kind: kafka
-          name: orders
-          broker_list: kafka:9092
-          topic: source.orders.created
-        """,
+        "source: orders",
     )
     write_pipeline_file(
         project_dir / "pipelines" / "order_events" / "orders_enriched.sql",
@@ -267,15 +308,10 @@ def write_generic_audit_project_files(project_dir: Path) -> None:
         write_pipeline_file,
     )
 
+    write_managed_source_project(project_dir=project_dir)
     write_pipeline_file(
         project_dir / "pipelines" / "order_events" / "pipeline.yml",
-        """
-        source:
-          kind: kafka
-          name: orders
-          broker_list: kafka:9092
-          topic: source.orders
-        """,
+        "source: orders",
     )
     write_pipeline_file(
         project_dir / "pipelines" / "order_events" / "order_items.sql",
@@ -323,15 +359,10 @@ def write_multi_audit_project_files(project_dir: Path) -> None:
         write_pipeline_file,
     )
 
+    write_managed_source_project(project_dir=project_dir)
     write_pipeline_file(
         project_dir / "pipelines" / "order_events" / "pipeline.yml",
-        """
-        source:
-          kind: kafka
-          name: orders
-          broker_list: kafka:9092
-          topic: source.orders
-        """,
+        "source: orders",
     )
     write_pipeline_file(
         project_dir / "pipelines" / "order_events" / "order_items.sql",

@@ -10,8 +10,9 @@ A runnable local `streambuild` demo using synthetic e-commerce order events.
 
 - `docker/compose.yml`: Redpanda, Redpanda Console, and ClickHouse
 - `producer/fake_orders_producer.py`: generates synthetic order events
-- `streambuild_project.yml`: project defaults and ClickHouse connection config
-- `pipelines/order_events/pipeline.yml`: pipeline source config
+- `streambuild_project.toml`: project defaults, target, and ClickHouse connection config
+- `sources/order_events.yml`: managed Kafka source and replay boundary
+- `pipelines/order_events/pipeline.yml`: pipeline source identity
 - `pipelines/order_events/*.sql`: transform graph for orders, items, rollups
 
 ## Model DAG
@@ -54,25 +55,25 @@ Services:
 Plan:
 
 ```bash
-uv run stb plan examples/orders_demo/pipelines
+uv run stb plan --project-dir examples/orders_demo
 ```
 
 Backfill:
 
 ```bash
-uv run stb backfill examples/orders_demo/pipelines
+uv run stb backfill --project-dir examples/orders_demo
 ```
 
 Audit:
 
 ```bash
-uv run stb audit backfill
+uv run stb audit backfill --project-dir examples/orders_demo
 ```
 
 Publish:
 
 ```bash
-uv run stb publish
+uv run stb publish --project-dir examples/orders_demo
 ```
 
 ## Producer Config

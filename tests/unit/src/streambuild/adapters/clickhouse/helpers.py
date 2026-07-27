@@ -15,7 +15,7 @@ from streambuild.compiler.compile.models import (
     TableSpec,
     TableStorage,
 )
-from streambuild.compiler.metadata_state.models import (
+from streambuild.compiler.planner.models import (
     DeploymentRecord,
     DeploymentRuntimeDetailRecord,
     DeploymentWatermarkRecord,
@@ -232,7 +232,7 @@ def build_table(
     )
 
 
-def build_materialized_view(query: str) -> DesiredMaterializedView:
+def build_materialized_view(*, query: str, database_template: str) -> DesiredMaterializedView:
     return DesiredMaterializedView(
         key=ObjectKey(
             database=None,
@@ -244,6 +244,7 @@ def build_materialized_view(query: str) -> DesiredMaterializedView:
             source_table_name="raw__orders",
             target_table_name="tbl__orders_enriched",
             query=query,
+            database_template=database_template,
         ),
     )
 

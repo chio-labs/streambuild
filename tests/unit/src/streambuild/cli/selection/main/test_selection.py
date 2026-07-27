@@ -9,13 +9,21 @@ from streambuild.cli.selection.main._selection import resolve_selection
 from streambuild.cli.selection.models import SelectionResolution
 from streambuild.compiler.compile.models import CompiledPipeline
 from streambuild.compiler.discovery.types import ReplayLineageMode
+from streambuild.compiler.graph.main._build_project_graph import (
+    build_project_graph_from_compiled_project,
+)
+from streambuild.compiler.pipeline.models import RealizedProject
 from tests.unit.src.streambuild.cli.selection.main._test_types import (
+    CliExecutionClosureLineageMismatchTestCase,
+    CliSelectionDesiredStateIdentityTestCase,
     CliSelectionLineageMismatchTestCase,
     CliSelectionResolutionErrorTestCase,
     CliSelectionResolutionTestCase,
 )
 from tests.unit.src.streambuild.cli.selection.main.helpers import (
-    compile_selector_project_pipelines,
+    compile_selector_project,
+    realize_cross_pipeline_reference_project,
+    realize_selector_project,
 )
 
 
@@ -25,6 +33,7 @@ from tests.unit.src.streambuild.cli.selection.main.helpers import (
         CliSelectionResolutionTestCase(
             description="bare model selector includes downstream closure and upstream deps",
             selectors=("orders_clean",),
+            expected_selected_logical_model_names=("orders_clean",),
             expected_selected_model_names=("tbl__orders_clean",),
             expected_object_names=(
                 "kafka__orders",
@@ -39,6 +48,7 @@ from tests.unit.src.streambuild.cli.selection.main.helpers import (
         CliSelectionResolutionTestCase(
             description="pipeline selector includes all authored models in one pipeline only",
             selectors=("pipeline:payments",),
+            expected_selected_logical_model_names=("payments_enriched",),
             expected_selected_model_names=("tbl__payments_enriched",),
             expected_object_names=(
                 "kafka__payments",
@@ -51,6 +61,7 @@ from tests.unit.src.streambuild.cli.selection.main.helpers import (
         CliSelectionResolutionTestCase(
             description="multiple selectors union before closure expansion",
             selectors=("orders_clean", "pipeline:payments"),
+            expected_selected_logical_model_names=("orders_clean", "payments_enriched"),
             expected_selected_model_names=("tbl__orders_clean", "tbl__payments_enriched"),
             expected_object_names=(
                 "kafka__orders",
@@ -73,18 +84,49 @@ from tests.unit.src.streambuild.cli.selection.main.helpers import (
 def test_given_valid_selectors_when_resolving_then_it_returns_expected_filtered_desired_state(
     test_case: CliSelectionResolutionTestCase,
 ) -> None:
-    compiled_pipelines: tuple[CompiledPipeline, ...] = compile_selector_project_pipelines()
+    realized_project: RealizedProject = compile_selector_project()
 
     resolution: SelectionResolution = resolve_selection(
-        compiled_pipelines=compiled_pipelines, selectors=test_case.selectors
+        realized_project=realized_project,
+        graph=build_project_graph_from_compiled_project(project=realized_project.project),
+        selectors=test_case.selectors,
     )
 
     assert tuple(sorted(key.name for key in resolution.selected_model_keys)) == tuple(
         sorted(test_case.expected_selected_model_names)
     )
+    assert tuple(sorted(key.name for key in resolution.selected_logical_model_keys)) == tuple(
+        sorted(test_case.expected_selected_logical_model_names)
+    )
     assert tuple(sorted(object_.name for object_ in resolution.desired_state.objects)) == tuple(
         sorted(test_case.expected_object_names)
     )
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliSelectionDesiredStateIdentityTestCase(
+            description="unfiltered selection retains the lifecycle desired-state artifact",
+            expected_same_identity=True,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_unfiltered_compiled_project_when_resolving_then_reuses_desired_state(
+    test_case: CliSelectionDesiredStateIdentityTestCase,
+) -> None:
+    realized_project: RealizedProject = compile_selector_project()
+
+    resolution: SelectionResolution = resolve_selection(
+        realized_project=realized_project,
+        graph=build_project_graph_from_compiled_project(project=realized_project.project),
+        selectors=(),
+    )
+
+    assert (
+        resolution.desired_state is realized_project.desired_state
+    ) is test_case.expected_same_identity
 
 
 @pytest.mark.parametrize(
@@ -106,10 +148,14 @@ def test_given_valid_selectors_when_resolving_then_it_returns_expected_filtered_
 def test_given_invalid_selectors_when_resolving_then_it_raises_clear_error(
     test_case: CliSelectionResolutionErrorTestCase,
 ) -> None:
-    compiled_pipelines: tuple[CompiledPipeline, ...] = compile_selector_project_pipelines()
+    realized_project: RealizedProject = compile_selector_project()
 
     with pytest.raises(CliUserError, match=test_case.expected_error_fragment):
-        resolve_selection(compiled_pipelines=compiled_pipelines, selectors=test_case.selectors)
+        resolve_selection(
+            realized_project=realized_project,
+            graph=build_project_graph_from_compiled_project(project=realized_project.project),
+            selectors=test_case.selectors,
+        )
 
 
 @pytest.mark.parametrize(
@@ -130,7 +176,8 @@ def test_given_invalid_selectors_when_resolving_then_it_raises_clear_error(
 def test_given_conflicting_selected_pipeline_modes_when_resolving_then_it_raises_contextual_error(
     test_case: CliSelectionLineageMismatchTestCase,
 ) -> None:
-    compiled_pipelines: tuple[CompiledPipeline, ...] = compile_selector_project_pipelines()
+    realized_project: RealizedProject = compile_selector_project()
+    compiled_pipelines: tuple[CompiledPipeline, ...] = realized_project.project.pipelines
     pipeline_names: tuple[str, ...] = tuple(
         compiled_pipeline.pipeline.name for compiled_pipeline in compiled_pipelines
     )
@@ -145,7 +192,40 @@ def test_given_conflicting_selected_pipeline_modes_when_resolving_then_it_raises
         *compiled_pipelines[mutated_pipeline_index + 1 :],
     )
 
+    mutated_realized_project: RealizedProject = realize_selector_project(mutated_compiled_pipelines)
+
     with pytest.raises(CliUserError, match=test_case.expected_error_fragment):
         resolve_selection(
-            compiled_pipelines=mutated_compiled_pipelines, selectors=test_case.selectors
+            realized_project=mutated_realized_project,
+            graph=build_project_graph_from_compiled_project(
+                project=mutated_realized_project.project
+            ),
+            selectors=test_case.selectors,
+        )
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliExecutionClosureLineageMismatchTestCase(
+            description="rejects replay modes that conflict only after side-ref closure",
+            selectors=("payments_enriched",),
+            expected_error_fragment=(
+                "Selected pipelines disagree on replay_lineage_mode: "
+                "orders=timestamp, payments=offsets"
+            ),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_side_ref_expands_to_conflicting_mode_when_resolving_then_rejects_closure(
+    test_case: CliExecutionClosureLineageMismatchTestCase,
+) -> None:
+    realized_project: RealizedProject = realize_cross_pipeline_reference_project()
+
+    with pytest.raises(CliUserError, match=test_case.expected_error_fragment):
+        resolve_selection(
+            realized_project=realized_project,
+            graph=build_project_graph_from_compiled_project(project=realized_project.project),
+            selectors=test_case.selectors,
         )

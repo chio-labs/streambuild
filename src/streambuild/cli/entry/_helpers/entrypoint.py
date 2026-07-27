@@ -8,8 +8,10 @@ from streambuild.adapter.models import AdapterConnectionConfig
 from streambuild.cli.entry.exceptions import CliUserError
 from streambuild.cli.entry.models import ResolvedCliProjectConfig
 from streambuild.compiler.discovery.constants import DEFAULT_ADAPTER_NAME
-from streambuild.compiler.discovery.main.load_project_for_path import load_project_for_path
-from streambuild.compiler.discovery.models import Project
+from streambuild.compiler.discovery.main.load_project_input_for_path import (
+    load_project_input_for_path,
+)
+from streambuild.compiler.discovery.models import EffectiveProjectConfiguration, LoadedProject
 
 
 def argv_for_parse_args(argv: Sequence[str] | None) -> list[str] | None:
@@ -55,31 +57,35 @@ def resolve_project_config(
     pipelines_root: Path | None,
     project_dir: Path | None,
     working_directory: Path,
+    selected_target: str | None = None,
+    cli_variables: Mapping[str, object] | None = None,
+    environment: Mapping[str, str] | None = None,
 ) -> ResolvedCliProjectConfig:
-    project: Project | None = load_project_for_path(
-        pipelines_root
+    loaded_project: LoadedProject | None = load_project_input_for_path(
+        path=pipelines_root
         if pipelines_root is not None
         else project_dir
         if project_dir is not None
-        else working_directory
+        else working_directory,
+        selected_target=selected_target,
+        cli_variables={} if cli_variables is None else cli_variables,
+        environment={} if environment is None else environment,
     )
-    if project is None or project.clickhouse is None:
+    if loaded_project is not None and loaded_project.effective_configuration is not None:
+        effective: EffectiveProjectConfiguration = loaded_project.effective_configuration
         return ResolvedCliProjectConfig(
             connection=None,
-            default_database=None if project is None else project.default_database,
-            adapter_name=DEFAULT_ADAPTER_NAME if project is None else project.adapter,
-            project=project,
+            default_database=effective.database,
+            adapter_name=effective.adapter,
+            loaded_project=loaded_project,
+            raw_connection=effective.connection,
+            variables=effective.variables,
         )
     return ResolvedCliProjectConfig(
-        connection=AdapterConnectionConfig(
-            host=project.clickhouse.host,
-            port=project.clickhouse.port,
-            username=project.clickhouse.username,
-            password=project.clickhouse.password,
-        ),
-        default_database=project.default_database,
-        adapter_name=project.adapter,
-        project=project,
+        connection=None,
+        default_database=None,
+        adapter_name=DEFAULT_ADAPTER_NAME,
+        loaded_project=loaded_project,
     )
 
 
@@ -103,9 +109,10 @@ def resolve_pipelines_root(
         if current_directory.exists():
             return current_directory
     while True:
-        project_file: Path = current_directory / "streambuild_project.yml"
+        project_file: Path = current_directory / "streambuild_project.toml"
+        legacy_project_file: Path = current_directory / "streambuild_project.yml"
         pipelines_root: Path = current_directory / "pipelines"
-        if project_file.exists():
+        if project_file.exists() or legacy_project_file.exists():
             if not pipelines_root.exists():
                 raise CliUserError(
                     f"Found StreamBuild project at '{current_directory}', but '{pipelines_root}' "

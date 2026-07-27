@@ -9,7 +9,10 @@ from streambuild.compiler.compile.exceptions import (
 from tests.unit.src.streambuild.compiler.compile.sql_contract._test_types import (
     ValidateOrderByExpressionsTestCase,
 )
-from tests.unit.src.streambuild.compiler.compile.sql_contract.helpers import build_expected_columns
+from tests.unit.src.streambuild.compiler.compile.sql_contract.helpers import (
+    build_expected_columns,
+    build_sql_analyzer,
+)
 
 
 @pytest.mark.parametrize(
@@ -35,6 +38,7 @@ def test_given_valid_order_by_expressions_when_validating_then_it_returns_normal
     test_case: ValidateOrderByExpressionsTestCase,
 ) -> None:
     validate_order_by_expressions(
+        analyzer=build_sql_analyzer(),
         transform_name="orders_enriched",
         order_by=test_case.order_by,
         available_columns=test_case.available_columns,
@@ -75,6 +79,7 @@ def test_given_unknown_order_by_columns_when_validating_then_it_raises_contextua
 
     with pytest.raises(expected_error_type) as error_info:
         validate_order_by_expressions(
+            analyzer=build_sql_analyzer(),
             transform_name="orders_enriched",
             order_by=test_case.order_by,
             available_columns=test_case.available_columns,

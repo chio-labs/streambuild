@@ -2,9 +2,11 @@ from pathlib import Path
 
 import pytest
 
-from streambuild.compiler.test_discovery.main.discover_sql_tests import discover_sql_tests
+from streambuild.compiler.macros.models import MacroContext, MacroRegistry
+from streambuild.compiler.test_discovery.main._discover_sql_tests import discover_sql_tests
 from streambuild.compiler.test_discovery.models import LoadedSqlTest
 from tests.unit.src.streambuild.compiler.macros.helpers import (
+    build_test_macro_runtime,
     write_macro_file,
     write_project_file,
 )
@@ -98,7 +100,7 @@ def test_given_valid_sql_test_files_when_discovering_then_it_returns_loaded_sql_
     tests_root: Path = tmp_path / "tests"
     write_sql_test_file(tests_root / test_case.relative_file_path, test_case.file_contents)
 
-    loaded_tests: list[LoadedSqlTest] = discover_sql_tests(tests_root)
+    loaded_tests: list[LoadedSqlTest] = discover_sql_tests(root=tests_root)
 
     assert len(loaded_tests) == 1
     assert tuple(
@@ -219,7 +221,7 @@ def test_given_invalid_sql_test_files_when_discovering_then_it_raises_clear_erro
     write_sql_test_file(tests_root / test_case.relative_file_path, test_case.file_contents)
 
     with pytest.raises(ValueError, match=test_case.expected_error_fragment):
-        discover_sql_tests(tests_root)
+        discover_sql_tests(root=tests_root)
 
 
 @pytest.mark.parametrize(
@@ -256,8 +258,15 @@ def test_given_sql_test_macros_when_discovering_then_it_expands_test_body(
     write_project_file(tmp_path)
     write_macro_file(tmp_path, "mock_helpers.py", test_case.macro_file_contents)
     write_sql_test_file(tests_root / "order_events/test_macro.sql", test_case.test_file_contents)
+    macro_registry: MacroRegistry
+    macro_context: MacroContext
+    macro_registry, macro_context = build_test_macro_runtime(tmp_path)
 
-    loaded_tests: list[LoadedSqlTest] = discover_sql_tests(tests_root)
+    loaded_tests: list[LoadedSqlTest] = discover_sql_tests(
+        root=tests_root,
+        macro_registry=macro_registry,
+        macro_context=macro_context,
+    )
 
     assert test_case.expected_mock_query_fragment in loaded_tests[0].mocks[0].query
 
@@ -307,7 +316,7 @@ def test_given_multiple_sql_tests_in_one_file_when_discovering_then_it_returns_e
     tests_root: Path = tmp_path / "tests"
     write_sql_test_file(tests_root / "order_events/test_multi.sql", test_case.file_contents)
 
-    loaded_tests: list[LoadedSqlTest] = discover_sql_tests(tests_root)
+    loaded_tests: list[LoadedSqlTest] = discover_sql_tests(root=tests_root)
 
     assert (
         tuple(

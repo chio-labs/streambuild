@@ -13,8 +13,8 @@ from streambuild.compiler.compile.models import (
     TableStorage,
 )
 from streambuild.compiler.discovery.models import (
-    SchemaChangeBackfillPolicy,
-    SchemaChangeBackfillRule,
+    ReplayOnChangePolicy,
+    ReplayOnChangeRule,
 )
 from streambuild.compiler.planner.models import (
     DeploymentPlan,
@@ -311,9 +311,9 @@ def build_plan_preview_desired_state() -> DesiredState:
                         order_by=("order_id",),
                     ),
                 ),
-                schema_change_backfill=SchemaChangeBackfillPolicy(
-                    breaking=SchemaChangeBackfillRule(mode="full"),
-                    non_breaking=SchemaChangeBackfillRule(
+                replay_on_change=ReplayOnChangePolicy(
+                    breaking=ReplayOnChangeRule(mode="full"),
+                    non_breaking=ReplayOnChangeRule(
                         mode="bounded",
                         lookback_seconds=7 * 24 * 60 * 60,
                     ),
@@ -429,12 +429,12 @@ def build_type_change_plan_preview_desired_state() -> DesiredState:
                         order_by=("order_id",),
                     ),
                 ),
-                schema_change_backfill=SchemaChangeBackfillPolicy(
-                    breaking=SchemaChangeBackfillRule(
+                replay_on_change=ReplayOnChangePolicy(
+                    breaking=ReplayOnChangeRule(
                         mode="bounded",
                         lookback_seconds=7 * 24 * 60 * 60,
                     ),
-                    non_breaking=SchemaChangeBackfillRule(
+                    non_breaking=ReplayOnChangeRule(
                         mode="bounded",
                         lookback_seconds=7 * 24 * 60 * 60,
                     ),

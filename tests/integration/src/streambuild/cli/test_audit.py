@@ -1,15 +1,21 @@
 import json
 from pathlib import Path
+from typing import cast
 
 import pytest
 from _pytest.capture import CaptureResult
 from clickhouse_connect.driver.client import Client
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from streambuild.cli.audit.main._run_audit import run_audit
 from streambuild.cli.audit_backfill.main._run_audit_backfill import run_audit_backfill
+from streambuild.cli.entry._helpers.compiler_profile import build_compiler_adapter_profile
 from streambuild.compiler.compile.main.transform_table_name import transform_table_name
-from streambuild.compiler.compile.models import CompiledManagedSource, CompiledPipeline
+from streambuild.compiler.compile.models import CompiledPipeline
+from streambuild.compiler.discovery.main.load_project_input_for_path import (
+    load_project_input_for_path,
+)
 from streambuild.compiler.planner.main.build_deployment_physical_name import (
     build_deployment_physical_name,
 )
@@ -23,6 +29,7 @@ from tests.integration.src.streambuild.adapters.clickhouse.helpers import (
 from tests.integration.src.streambuild.cli._test_types import (
     CliAuditBackfillCommandIntegrationTestCase,
     CliAuditCommandIntegrationTestCase,
+    CliManagedSourceResources,
 )
 from tests.integration.src.streambuild.cli.helpers import (
     KEYED_ORDER_ITEMS_COLUMNS,
@@ -132,6 +139,8 @@ def test_given_audit_project_when_running_live_audit_then_it_reports_expected_re
             selectors=test_case.selectors,
             json_output=False,
             client=managed_client,
+            loaded_project=load_project_input_for_path(path=tmp_path),
+            adapter_profile=build_compiler_adapter_profile(ClickHouseAdapter()),
         )
     finally:
         managed_client.close()
@@ -170,7 +179,10 @@ def test_given_audit_project_when_running_audit_backfill_then_it_includes_qualit
     boundary_time: str = "2026-04-20 00:00:00.000"
     write_backfill_audit_project_files(tmp_path)
     compiled_pipeline: CompiledPipeline = build_scalar_replay_compiled_pipeline("timestamp")
-    managed_source: CompiledManagedSource = require_managed_source(compiled_pipeline)
+    managed_source: CliManagedSourceResources = cast(
+        CliManagedSourceResources,
+        require_managed_source(compiled_pipeline),
+    )
     clickhouse_client.command(
         render_create_kafka_table_ddl(
             table=managed_source.kafka_table, database=clickhouse_database
@@ -238,6 +250,8 @@ def test_given_audit_project_when_running_audit_backfill_then_it_includes_qualit
             deployment_id=deployment_id,
             json_output=True,
             client=managed_client,
+            loaded_project=load_project_input_for_path(path=tmp_path),
+            adapter_profile=build_compiler_adapter_profile(ClickHouseAdapter()),
         )
     finally:
         managed_client.close()

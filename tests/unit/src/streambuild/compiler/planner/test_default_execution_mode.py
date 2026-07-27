@@ -2,10 +2,10 @@ import pytest
 
 from streambuild.compiler.compile.models import DesiredState
 from streambuild.compiler.discovery.models import (
-    SchemaChangeBackfillPolicy,
-    SchemaChangeBackfillRule,
+    ReplayOnChangePolicy,
+    ReplayOnChangeRule,
 )
-from streambuild.compiler.discovery.types import SchemaChangeBackfillMode
+from streambuild.compiler.discovery.types import ReplayOnChangeMode
 from streambuild.compiler.planner._helpers.rebuild import emit_rebuild_subtrees_from_changes
 from streambuild.compiler.planner.constants import (
     PLANNED_CHANGE_TYPE_REBUILD,
@@ -16,7 +16,7 @@ from streambuild.compiler.planner.constants import (
 from streambuild.compiler.planner.models import PlannedObjectChange, RebuildSubtree
 from tests.unit.src.streambuild.compiler.planner._test_types import PlannerExecutionModeTestCase
 from tests.unit.src.streambuild.compiler.planner.helpers import (
-    build_example_desired_state_with_backfill_policy,
+    build_example_desired_state_with_replay_on_change,
     build_key,
 )
 
@@ -54,9 +54,9 @@ from tests.unit.src.streambuild.compiler.planner.helpers import (
             seed_compatibility="seedable",
             expected_execution_mode=REBUILD_EXECUTION_MODE_FULL,
             configured_backfill_mode="full",
-            schema_change_backfill=SchemaChangeBackfillPolicy(
-                non_breaking=SchemaChangeBackfillRule(
-                    mode=SchemaChangeBackfillMode.FULL, lookback_seconds=None
+            replay_on_change=ReplayOnChangePolicy(
+                non_breaking=ReplayOnChangeRule(
+                    mode=ReplayOnChangeMode.FULL, lookback_seconds=None
                 ),
                 breaking=None,
             ),
@@ -70,11 +70,9 @@ from tests.unit.src.streambuild.compiler.planner.helpers import (
             expected_execution_mode=REBUILD_EXECUTION_MODE_SEEDED_BOUNDED,
             configured_backfill_mode="bounded",
             configured_lookback_seconds=1800,
-            schema_change_backfill=SchemaChangeBackfillPolicy(
+            replay_on_change=ReplayOnChangePolicy(
                 non_breaking=None,
-                breaking=SchemaChangeBackfillRule(
-                    mode=SchemaChangeBackfillMode.BOUNDED, lookback_seconds=1800
-                ),
+                breaking=ReplayOnChangeRule(mode=ReplayOnChangeMode.BOUNDED, lookback_seconds=1800),
             ),
         ),
         PlannerExecutionModeTestCase(
@@ -87,11 +85,9 @@ from tests.unit.src.streambuild.compiler.planner.helpers import (
             expected_execution_mode=REBUILD_EXECUTION_MODE_UNSEEDED_BOUNDED,
             configured_backfill_mode="bounded",
             configured_lookback_seconds=1800,
-            schema_change_backfill=SchemaChangeBackfillPolicy(
+            replay_on_change=ReplayOnChangePolicy(
                 non_breaking=None,
-                breaking=SchemaChangeBackfillRule(
-                    mode=SchemaChangeBackfillMode.BOUNDED, lookback_seconds=1800
-                ),
+                breaking=ReplayOnChangeRule(mode=ReplayOnChangeMode.BOUNDED, lookback_seconds=1800),
             ),
         ),
     ],
@@ -100,8 +96,8 @@ from tests.unit.src.streambuild.compiler.planner.helpers import (
 def test_given_planned_change_metadata_when_building_subtrees_then_it_sets_expected_execution_mode(
     test_case: PlannerExecutionModeTestCase,
 ) -> None:
-    desired_state: DesiredState = build_example_desired_state_with_backfill_policy(
-        schema_change_backfill=test_case.schema_change_backfill
+    desired_state: DesiredState = build_example_desired_state_with_replay_on_change(
+        replay_on_change=test_case.replay_on_change
     )
     rebuild_subtrees: tuple[RebuildSubtree, ...] = emit_rebuild_subtrees_from_changes(
         desired_state=desired_state,

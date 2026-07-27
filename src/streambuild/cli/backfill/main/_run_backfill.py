@@ -11,6 +11,8 @@ from streambuild.cli.entry.exceptions import CliUserError
 from streambuild.cli.plan.main._normalize_cli_start_time import normalize_cli_start_time
 from streambuild.cli.plan.main.render_plan_result import render_plan_result
 from streambuild.compiler.compile.exceptions import TransformSqlContractError
+from streambuild.compiler.compile.models import CompilerAdapterProfile
+from streambuild.compiler.discovery.models import LoadedProject
 from streambuild.executor.backfill.main.execute_backfill import execute_backfill
 from streambuild.executor.backfill.models import BackfillBootstrapRequest, BackfillExecutionResult
 
@@ -19,6 +21,8 @@ def run_backfill(
     *,
     options: BackfillCommandOptions,
     client: AdapterConnection,
+    loaded_project: LoadedProject | None,
+    adapter_profile: CompilerAdapterProfile,
 ) -> int:
     """Execute a staged backfill and print the runtime result payload."""
 
@@ -50,6 +54,8 @@ def run_backfill(
             full_refresh=options.full_refresh,
             start_time_utc=normalized_utc_start_time,
             client=client,
+            loaded_project=loaded_project,
+            adapter_profile=adapter_profile,
         )
     except (CliUserError, TransformSqlContractError, ValueError) as error:
         print(str(error), file=sys.stderr)

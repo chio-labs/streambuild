@@ -9,7 +9,6 @@ from streambuild.adapter.models import AdapterConnectionConfig
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from streambuild.compiler.compile.models import DesiredState
 from streambuild.compiler.planner.models import ActualState
-from streambuild.executor.reconcile.constants import RECONCILE_DEPLOYMENT_ID_PREFIX
 from streambuild.executor.reconcile.main.execute_reconcile import execute_reconcile
 from streambuild.executor.reconcile.models import ReconcileResult
 from tests.integration.src.streambuild.conftest import ClickHouseConnectionSettings
@@ -32,6 +31,7 @@ from tests.integration.src.streambuild.executor.reconcile.helpers import (
                 ("table", "tbl__orders", None),
             ),
             expected_id_prefix_matches=(True, True),
+            expected_reconcile_id_prefix="reconcile_",
         )
     ],
     ids=lambda case: case.description,
@@ -77,7 +77,7 @@ def test_given_compatible_live_objects_when_applying_reconcile_then_persists_bas
 
     assert tuple(tuple(row[1:]) for row in rows) == test_case.expected_rows
     assert (
-        tuple(str(row[0]).startswith(RECONCILE_DEPLOYMENT_ID_PREFIX) for row in rows)
+        tuple(str(row[0]).startswith(test_case.expected_reconcile_id_prefix) for row in rows)
         == test_case.expected_id_prefix_matches
     )
-    assert result.reconcile_id.startswith(RECONCILE_DEPLOYMENT_ID_PREFIX)
+    assert result.reconcile_id.startswith(test_case.expected_reconcile_id_prefix)

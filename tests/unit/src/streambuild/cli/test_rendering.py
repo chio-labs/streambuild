@@ -21,10 +21,9 @@ from streambuild.compiler.compile.models import (
     TableSpec,
     TableStorage,
 )
-from streambuild.compiler.desired_state.main.build_desired_state import build_desired_state
 from streambuild.compiler.discovery.models import (
-    SchemaChangeBackfillPolicy,
-    SchemaChangeBackfillRule,
+    ReplayOnChangePolicy,
+    ReplayOnChangeRule,
 )
 from streambuild.compiler.planner.constants import (
     DEPLOYMENT_ACTION_PLAN_SHADOW_TABLE,
@@ -60,8 +59,10 @@ from tests.integration.src.streambuild.executor.backfill.helpers import (
 )
 from tests.unit.src.streambuild.cli._test_types import (
     CliPlanRenderingBaselineTestCase,
+    CliPublishAtomicityRenderingTestCase,
     CliRenderingTestCase,
 )
+from tests.unit.src.streambuild.compiler.planner.helpers import realize_compiled_pipelines
 
 
 @pytest.mark.parametrize(
@@ -107,7 +108,7 @@ from tests.unit.src.streambuild.cli._test_types import (
                         "configured_backfill_mode": "bounded",
                         "execution_lookback_seconds": 3600,
                         "history_preserving_bounded_supported": True,
-                        "resolved_bounded_replay_fallback": "full_refresh",
+                        "resolved_bounded_replay_fallback": "full",
                     }
                 ],
                 "warnings": [
@@ -198,7 +199,7 @@ def test_given_virtual_environment_plan_when_rendering_then_preserves_complete_o
                 execution_mode="seeded_bounded_rebuild",
                 configured_backfill_mode="bounded",
                 execution_lookback_seconds=3600,
-                resolved_bounded_replay_fallback="full_refresh",
+                resolved_bounded_replay_fallback="full",
             ),
         ),
         steps=(
@@ -309,7 +310,9 @@ def test_given_plan_result_when_rendering_text_then_it_returns_operator_summary(
             ),
             warnings=(),
         ),
-        desired_state=build_desired_state((build_scalar_replay_compiled_pipeline("timestamp"),)),
+        desired_state=realize_compiled_pipelines(
+            (build_scalar_replay_compiled_pipeline("timestamp"),)
+        ).desired_state,
         database="analytics",
         json_output=False,
     )
@@ -329,7 +332,7 @@ def test_given_plan_result_when_rendering_text_then_it_returns_operator_summary(
                 "tbl__orders_enriched",
                 "- transform query changed",
                 "- table schema changed",
-                "- schema-change backfill: bounded(7d)",
+                "- replay on change: bounded-7d",
                 "- plan: bounded replay with history will keep older active rows "
                 "and replay the last 7d",
             ),
@@ -408,9 +411,9 @@ def test_given_overlapping_subtrees_when_rendering_compact_plan_then_it_deduplic
                         columns=(Column("id", "UInt64"), Column("amount", "UInt64")),
                         storage=TableStorage(engine="MergeTree", order_by=("id",)),
                     ),
-                    schema_change_backfill=SchemaChangeBackfillPolicy(
-                        breaking=SchemaChangeBackfillRule(mode="full"),
-                        non_breaking=SchemaChangeBackfillRule(
+                    replay_on_change=ReplayOnChangePolicy(
+                        breaking=ReplayOnChangeRule(mode="full"),
+                        non_breaking=ReplayOnChangeRule(
                             mode="bounded",
                             lookback_seconds=7 * 24 * 60 * 60,
                         ),
@@ -622,7 +625,9 @@ def test_given_plan_with_multiple_live_targets_when_rendering_text_then_it_rende
             prepared_shadow_objects=(),
             warnings=(),
         ),
-        desired_state=build_desired_state((build_scalar_replay_compiled_pipeline("timestamp"),)),
+        desired_state=realize_compiled_pipelines(
+            (build_scalar_replay_compiled_pipeline("timestamp"),)
+        ).desired_state,
         database="analytics",
         json_output=False,
     )
@@ -689,7 +694,9 @@ def test_given_mv_root_change_when_rendering_plan_then_it_maps_to_live_target_ta
                 ),
             ),
         ),
-        desired_state=build_desired_state((build_scalar_replay_compiled_pipeline("timestamp"),)),
+        desired_state=realize_compiled_pipelines(
+            (build_scalar_replay_compiled_pipeline("timestamp"),)
+        ).desired_state,
         database="analytics",
         json_output=False,
     )
@@ -707,7 +714,7 @@ def test_given_mv_root_change_when_rendering_plan_then_it_maps_to_live_target_ta
                 "Changes detected",
                 "tbl__orders_enriched",
                 "- table schema changed",
-                "- schema-change backfill: bounded(7d)",
+                "- replay on change: bounded-7d",
                 "- plan: bounded replay with history will keep older active rows "
                 "and replay the last 7d",
             ),
@@ -748,9 +755,9 @@ def test_given_schema_change_plan_when_rendering_text_then_it_explains_policy_pe
                         order_by=("order_id",),
                     ),
                 ),
-                schema_change_backfill=SchemaChangeBackfillPolicy(
-                    breaking=SchemaChangeBackfillRule(mode="full"),
-                    non_breaking=SchemaChangeBackfillRule(
+                replay_on_change=ReplayOnChangePolicy(
+                    breaking=ReplayOnChangeRule(mode="full"),
+                    non_breaking=ReplayOnChangeRule(
                         mode="bounded",
                         lookback_seconds=7 * 24 * 60 * 60,
                     ),
@@ -918,7 +925,7 @@ def test_given_forced_full_refresh_when_rendering_plan_then_it_explains_operator
                 "Changes detected",
                 "tbl__orders_enriched",
                 "- table schema changed",
-                "- schema-change backfill: bounded(7d)",
+                "- replay on change: bounded-7d",
             ),
         )
     ],
@@ -962,7 +969,9 @@ def test_given_mixed_subtree_when_rendering_compact_plan_then_it_separates_new_t
             warnings=(),
             sql_diffs=(),
         ),
-        desired_state=build_desired_state((build_scalar_replay_compiled_pipeline("timestamp"),)),
+        desired_state=realize_compiled_pipelines(
+            (build_scalar_replay_compiled_pipeline("timestamp"),)
+        ).desired_state,
         database="analytics",
         json_output=False,
     )
@@ -1036,7 +1045,9 @@ def test_given_verbose_plan_when_rendering_text_then_it_shows_expanded_details(
                 ),
             ),
         ),
-        desired_state=build_desired_state((build_scalar_replay_compiled_pipeline("timestamp"),)),
+        desired_state=realize_compiled_pipelines(
+            (build_scalar_replay_compiled_pipeline("timestamp"),)
+        ).desired_state,
         database="analytics",
         json_output=False,
         verbose=True,
@@ -1084,7 +1095,9 @@ def test_given_forced_color_when_rendering_plan_then_it_includes_ansi_styles(
                 ),
             ),
         ),
-        desired_state=build_desired_state((build_scalar_replay_compiled_pipeline("timestamp"),)),
+        desired_state=realize_compiled_pipelines(
+            (build_scalar_replay_compiled_pipeline("timestamp"),)
+        ).desired_state,
         database="analytics",
         json_output=False,
         verbose=True,
@@ -1295,6 +1308,10 @@ def test_given_audit_result_when_rendering_text_then_it_returns_operator_summary
                 "Database: analytics",
                 "Deployment: 20260410T000000Z_ab12cd",
                 "- tbl__orders_enriched -> tbl__orders_enriched__20260410T000000Z_ab12cd",
+                "Atomicity",
+                "- Each logical binding replacement: atomic",
+                "- Entire deployment publish: not atomic",
+                "- Bindings are replaced one relation at a time",
                 "Next",
                 "post-publish check",
             ),
@@ -1314,6 +1331,8 @@ def test_given_publish_result_when_rendering_text_then_it_returns_operator_summa
                     target_table_name="tbl__orders_enriched__20260410T000000Z_ab12cd",
                 ),
             ),
+            per_relation_atomic_replace=True,
+            graph_atomic_publish=False,
         ),
         database="analytics",
         json_output=False,
@@ -1321,6 +1340,44 @@ def test_given_publish_result_when_rendering_text_then_it_returns_operator_summa
 
     for expected_fragment in test_case.expected_fragments:
         assert expected_fragment in rendered
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliPublishAtomicityRenderingTestCase(
+            description="renders exact publish atomicity in JSON",
+            per_relation_atomic_replace=True,
+            graph_atomic_publish=False,
+            expected_atomicity={
+                "per_relation_atomic_replace": True,
+                "graph_atomic_publish": False,
+            },
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_publish_result_when_rendering_json_then_atomicity_is_machine_readable(
+    test_case: CliPublishAtomicityRenderingTestCase,
+) -> None:
+    rendered: str = render_publish_result(
+        result=PublishResult(
+            deployment_id="20260410T000000Z_ab12cd",
+            published_views=(
+                PublishedView(
+                    view_name="tbl__orders_enriched",
+                    target_table_name="tbl__orders_enriched__20260410T000000Z_ab12cd",
+                ),
+            ),
+            per_relation_atomic_replace=test_case.per_relation_atomic_replace,
+            graph_atomic_publish=test_case.graph_atomic_publish,
+        ),
+        database="analytics",
+        json_output=True,
+    )
+    payload: dict[str, object] = json.loads(rendered)
+
+    assert payload["atomicity"] == test_case.expected_atomicity
 
 
 @pytest.mark.parametrize(

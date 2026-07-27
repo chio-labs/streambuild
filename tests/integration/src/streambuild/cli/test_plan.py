@@ -4,17 +4,26 @@ import pytest
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import CatalogSnapshot
+from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
+from streambuild.cli.entry._helpers.compiler_profile import build_compiler_adapter_profile
 from streambuild.cli.plan.main._run_plan import run_plan
 from streambuild.cli.plan.main._warnings import add_empty_replay_source_warnings
 from streambuild.compiler.compile.models import (
     Column,
+    CompilerAdapterProfile,
     DesiredState,
     DesiredTable,
     ObjectKey,
     TableSpec,
     TableStorage,
 )
+from streambuild.compiler.discovery.main.load_project_input_for_path import (
+    load_project_input_for_path,
+)
+from streambuild.compiler.discovery.models import LoadedProject
 from streambuild.compiler.discovery.types import ReplayLineageMode
+from streambuild.compiler.pipeline.main.analyze_project import analyze_project
+from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.compiler.planner.constants import (
     REBUILD_EXECUTION_MODE_SEEDED_BOUNDED,
     REBUILD_STRATEGY_SHADOW,
@@ -37,9 +46,30 @@ from tests.integration.src.streambuild.cli._test_types import (
 from tests.integration.src.streambuild.cli.helpers import (
     RecordingDelegatingConnection,
     build_managed_clickhouse_client,
-    write_adopted_source_plan_project,
+    write_source_mode_plan_project,
 )
 from tests.integration.src.streambuild.conftest import ClickHouseConnectionSettings
+
+MANAGED_PLAN_SOURCE_TEMPLATE: str = """
+sources:
+  - kind: kafka
+    name: orders
+    broker_list: kafka:9092
+    topic: source.orders
+    replay_boundary:
+      mode: {mode}
+"""
+MANAGED_PLAN_MODEL_TEMPLATE: str = """
+MODEL (
+  engine: "MergeTree()",
+  order_by: ["order_id"]
+);
+
+SELECT
+  CAST(kafka_key AS String) AS order_id,
+  CAST({lineage_column} AS {lineage_type}) AS {lineage_column}
+FROM __ref("orders")
+"""
 
 
 @pytest.mark.integration
@@ -47,29 +77,166 @@ from tests.integration.src.streambuild.conftest import ClickHouseConnectionSetti
     "test_case",
     [
         CliPlanSnapshotIntegrationTestCase(
-            description="validates an adopted source through the real catalog snapshot",
+            description="plans a managed offsets source against real ClickHouse",
+            source_contents=MANAGED_PLAN_SOURCE_TEMPLATE.format(mode="offsets"),
+            model_contents=MANAGED_PLAN_MODEL_TEMPLATE.format(
+                lineage_column="_replay_offset", lineage_type="Int64"
+            ),
+            existing_table_ddl_statements=(),
+            expected_replay_lineage_mode="offsets",
             expected_exit_code=0,
             expected_output_fragment="Plan Ready",
-        )
+        ),
+        CliPlanSnapshotIntegrationTestCase(
+            description="plans a managed timestamp source against real ClickHouse",
+            source_contents=MANAGED_PLAN_SOURCE_TEMPLATE.format(mode="timestamp"),
+            model_contents=MANAGED_PLAN_MODEL_TEMPLATE.format(
+                lineage_column="_replay_timestamp", lineage_type="DateTime64(3)"
+            ),
+            existing_table_ddl_statements=(),
+            expected_replay_lineage_mode="timestamp",
+            expected_exit_code=0,
+            expected_output_fragment="Plan Ready",
+        ),
+        CliPlanSnapshotIntegrationTestCase(
+            description="plans a managed landed-at source against real ClickHouse",
+            source_contents=MANAGED_PLAN_SOURCE_TEMPLATE.format(mode="landed_at"),
+            model_contents=MANAGED_PLAN_MODEL_TEMPLATE.format(
+                lineage_column="_replay_landed_at", lineage_type="DateTime64(3)"
+            ),
+            existing_table_ddl_statements=(),
+            expected_replay_lineage_mode="landed_at",
+            expected_exit_code=0,
+            expected_output_fragment="Plan Ready",
+        ),
+        CliPlanSnapshotIntegrationTestCase(
+            description="plans an adopted offsets source against real ClickHouse",
+            source_contents="""
+            sources:
+              - kind: stream_table
+                name: orders
+                table_name: orders_existing
+                replay_boundary:
+                  mode: offsets
+                  columns:
+                    _replay_partition: event_partition
+                    _replay_offset: event_offset
+                    _replay_timestamp: event_timestamp
+            """,
+            model_contents="""
+            MODEL (
+              engine: "MergeTree()",
+              order_by: ["order_id"]
+            );
+
+            SELECT
+              CAST(order_id AS String) AS order_id,
+              CAST(_replay_partition AS Int32) AS _replay_partition,
+              CAST(_replay_offset AS Int64) AS _replay_offset
+            FROM __ref("orders")
+            """,
+            existing_table_ddl_statements=(
+                "CREATE TABLE {database}.orders_existing "
+                "(order_id String, event_partition Int32, event_offset Int64, "
+                "event_timestamp DateTime64(3)) ENGINE = MergeTree ORDER BY order_id",
+            ),
+            expected_replay_lineage_mode="offsets",
+            expected_exit_code=0,
+            expected_output_fragment="Plan Ready",
+        ),
+        CliPlanSnapshotIntegrationTestCase(
+            description="plans an adopted timestamp source against real ClickHouse",
+            source_contents="""
+            sources:
+              - kind: stream_table
+                name: orders
+                table_name: orders_existing
+                replay_boundary:
+                  mode: timestamp
+                  columns:
+                    _replay_timestamp: event_timestamp
+            """,
+            model_contents="""
+            MODEL (
+              engine: "MergeTree()",
+              order_by: ["order_id"]
+            );
+
+            SELECT
+              CAST(order_id AS String) AS order_id,
+              CAST(_replay_timestamp AS DateTime64(3)) AS _replay_timestamp
+            FROM __ref("orders")
+            """,
+            existing_table_ddl_statements=(
+                "CREATE TABLE {database}.orders_existing "
+                "(order_id String, event_timestamp DateTime64(3)) "
+                "ENGINE = MergeTree ORDER BY order_id",
+            ),
+            expected_replay_lineage_mode="timestamp",
+            expected_exit_code=0,
+            expected_output_fragment="Plan Ready",
+        ),
+        CliPlanSnapshotIntegrationTestCase(
+            description="plans an adopted cursor source against real ClickHouse",
+            source_contents="""
+            sources:
+              - kind: stream_table
+                name: orders
+                table_name: orders_existing
+                replay_boundary:
+                  mode: cursor
+                  columns:
+                    _replay_cursor: event_cursor
+                    _replay_timestamp: event_timestamp
+            """,
+            model_contents="""
+            MODEL (
+              engine: "MergeTree()",
+              order_by: ["order_id"]
+            );
+
+            SELECT
+              CAST(order_id AS String) AS order_id,
+              CAST(_replay_cursor AS UInt64) AS _replay_cursor
+            FROM __ref("orders")
+            """,
+            existing_table_ddl_statements=(
+                "CREATE TABLE {database}.orders_existing "
+                "(order_id String, event_cursor UInt64, event_timestamp DateTime64(3)) "
+                "ENGINE = MergeTree ORDER BY order_id",
+            ),
+            expected_replay_lineage_mode="cursor",
+            expected_exit_code=0,
+            expected_output_fragment="Plan Ready",
+        ),
     ],
     ids=lambda case: case.description,
 )
-def test_given_real_adopted_source_when_planning_then_snapshot_validation_succeeds(
+def test_given_real_source_mode_when_planning_then_snapshot_validation_succeeds(
     test_case: CliPlanSnapshotIntegrationTestCase,
     clickhouse_connection_settings: ClickHouseConnectionSettings,
     clickhouse_database: str,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    pipelines_root: Path = write_adopted_source_plan_project(tmp_path / "project")
+    pipelines_root: Path = write_source_mode_plan_project(
+        project_dir=tmp_path / "project",
+        source_contents=test_case.source_contents,
+        model_contents=test_case.model_contents,
+    )
     client: AdapterConnection = build_managed_clickhouse_client(
         clickhouse_connection_settings,
         database=clickhouse_database,
     )
-    client.command(
-        f"CREATE TABLE {clickhouse_database}.orders_existing "
-        "(order_id String, event_timestamp DateTime64(3)) "
-        "ENGINE = MergeTree ORDER BY order_id"
+    ddl_statement: str
+    for ddl_statement in test_case.existing_table_ddl_statements:
+        client.command(ddl_statement.format(database=clickhouse_database))
+    loaded_project: LoadedProject | None = load_project_input_for_path(path=pipelines_root)
+    adapter_profile: CompilerAdapterProfile = build_compiler_adapter_profile(ClickHouseAdapter())
+    analysis: CompileAnalysis = analyze_project(
+        pipelines_root=pipelines_root,
+        loaded_project=loaded_project,
+        adapter_profile=adapter_profile,
     )
 
     try:
@@ -82,12 +249,18 @@ def test_given_real_adopted_source_when_planning_then_snapshot_validation_succee
             json_output=False,
             verbose=False,
             client=client,
+            loaded_project=loaded_project,
+            adapter_profile=adapter_profile,
         )
     finally:
         client.close()
 
     assert exit_code == test_case.expected_exit_code
     assert test_case.expected_output_fragment in capsys.readouterr().out
+    assert (
+        str(analysis.compiled_project.pipelines[0].effective_replay_lineage_mode)
+        == test_case.expected_replay_lineage_mode
+    )
 
 
 @pytest.mark.integration

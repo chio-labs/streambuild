@@ -14,9 +14,10 @@ from streambuild.compiler.compile.models import (
     DesiredTable,
     ObjectKey,
 )
-from streambuild.compiler.discovery.models import SchemaChangeBackfillRule
-from streambuild.compiler.planner._helpers.graph import (
-    descendant_keys,
+from streambuild.compiler.discovery.models import ReplayOnChangeRule
+from streambuild.compiler.discovery.types import ReplayOnChangeMode
+from streambuild.compiler.graph.main._descendant_keys import descendant_keys
+from streambuild.compiler.graph.main._nearest_upstream_replay_anchor_key import (
     nearest_upstream_replay_anchor_key,
 )
 from streambuild.compiler.planner.constants import (
@@ -32,7 +33,6 @@ from streambuild.compiler.planner.constants import (
 from streambuild.compiler.planner.models import PlannedObjectChange, RebuildSubtree
 from streambuild.compiler.planner.types import (
     RebuildExecutionMode,
-    SchemaChangeBackfillMode,
 )
 
 
@@ -43,7 +43,7 @@ def build_rebuild_subtree(
     execution_mode: RebuildExecutionMode = REBUILD_EXECUTION_MODE_FULL,
     forced_full_refresh: bool = False,
     forced_start_time: str | None = None,
-    configured_backfill_mode: SchemaChangeBackfillMode | None = None,
+    configured_backfill_mode: ReplayOnChangeMode | None = None,
     execution_lookback_seconds: int | None = None,
 ) -> RebuildSubtree:
     """Build a conservative rebuild subtree from a changed desired object key."""
@@ -148,7 +148,7 @@ def _build_rebuild_subtree_for_change(
             root_key=object_change.key,
             execution_mode=REBUILD_EXECUTION_MODE_FULL,
             forced_full_refresh=True,
-            configured_backfill_mode=SchemaChangeBackfillMode(SchemaChangeBackfillMode.FULL),
+            configured_backfill_mode=ReplayOnChangeMode(ReplayOnChangeMode.FULL),
             execution_lookback_seconds=None,
         )
     if object_change.forced_start_time is not None:
@@ -179,31 +179,29 @@ def _resolve_execution_policy(
     *,
     object_change: PlannedObjectChange,
     desired_table: DesiredTable | None,
-) -> tuple[RebuildExecutionMode, SchemaChangeBackfillMode | None, int | None]:
-    if desired_table is None or desired_table.schema_change_backfill is None:
+) -> tuple[RebuildExecutionMode, ReplayOnChangeMode | None, int | None]:
+    if desired_table is None or desired_table.replay_on_change is None:
         return (_default_execution_mode_for_change(object_change), None, None)
     if object_change.schema_change_kind == TABLE_SCHEMA_CHANGE_KIND_NON_BREAKING:
-        policy_rule: SchemaChangeBackfillRule | None = (
-            desired_table.schema_change_backfill.non_breaking
-        )
+        policy_rule: ReplayOnChangeRule | None = desired_table.replay_on_change.non_breaking
     else:
-        policy_rule = desired_table.schema_change_backfill.breaking
+        policy_rule = desired_table.replay_on_change.breaking
     if policy_rule is None:
         return (_default_execution_mode_for_change(object_change), None, None)
-    if policy_rule.mode == SchemaChangeBackfillMode.FULL:
+    if policy_rule.mode == ReplayOnChangeMode.FULL:
         return (
             REBUILD_EXECUTION_MODE_FULL,
-            SchemaChangeBackfillMode(SchemaChangeBackfillMode.FULL),
+            ReplayOnChangeMode(ReplayOnChangeMode.FULL),
             None,
         )
     if object_change.seed_compatibility == TABLE_SCHEMA_SEED_COMPATIBILITY_SEEDABLE:
         return (
             REBUILD_EXECUTION_MODE_SEEDED_BOUNDED,
-            SchemaChangeBackfillMode(SchemaChangeBackfillMode.BOUNDED),
+            ReplayOnChangeMode(ReplayOnChangeMode.BOUNDED),
             policy_rule.lookback_seconds,
         )
     return (
         REBUILD_EXECUTION_MODE_UNSEEDED_BOUNDED,
-        SchemaChangeBackfillMode(SchemaChangeBackfillMode.BOUNDED),
+        ReplayOnChangeMode(ReplayOnChangeMode.BOUNDED),
         policy_rule.lookback_seconds,
     )

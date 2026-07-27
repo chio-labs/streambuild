@@ -1,5 +1,18 @@
 from dataclasses import dataclass
 from pathlib import Path
+from typing import NamedTuple
+
+from streambuild.compiler.compile.models import (
+    DesiredKafkaTable,
+    DesiredMaterializedView,
+    DesiredTable,
+)
+
+
+class CliManagedSourceResources(NamedTuple):
+    kafka_table: DesiredKafkaTable
+    raw_table: DesiredTable
+    materialized_view: DesiredMaterializedView
 
 
 @dataclass(frozen=True)
@@ -57,6 +70,10 @@ class CliAuditBackfillCommandIntegrationTestCase:
 @dataclass(frozen=True)
 class CliPlanSnapshotIntegrationTestCase:
     description: str
+    source_contents: str
+    model_contents: str
+    existing_table_ddl_statements: tuple[str, ...]
+    expected_replay_lineage_mode: str
     expected_exit_code: int
     expected_output_fragment: str
 

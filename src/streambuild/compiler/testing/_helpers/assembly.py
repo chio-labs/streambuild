@@ -9,21 +9,26 @@ from typing import cast
 from sqlglot import exp, parse_one
 
 from streambuild.compiler.compile.main.replace_refs import replace_refs
-from streambuild.compiler.compile.models import CompiledPipeline, CompiledTransformStep
+from streambuild.compiler.compile.models import CompiledModel, CompiledPipeline
+from streambuild.compiler.sql_analysis.classes.sql_reference_rewriter import (
+    SqlReferenceRewriter,
+)
 from streambuild.compiler.test_discovery.constants import EXPECTED_CTE_PREFIX
-from streambuild.compiler.test_discovery.models import LoadedSqlTest, SqlTestCte
-from streambuild.compiler.testing.exceptions import SqlTestAssemblyError
-from streambuild.compiler.testing.models import (
-    CompiledSqlTestModelEntry,
+from streambuild.compiler.test_discovery.models import (
+    LoadedSqlTest,
     SqlTestCase,
+    SqlTestCte,
     SqlTestTargetCase,
 )
+from streambuild.compiler.testing.exceptions import SqlTestAssemblyError
+from streambuild.compiler.testing.models import CompiledSqlTestModelEntry
 
 
 def build_sql_test_case(
     *,
     loaded_test: LoadedSqlTest,
     compiled_pipelines: tuple[CompiledPipeline, ...],
+    reference_rewriter: SqlReferenceRewriter,
 ) -> SqlTestCase:
     registry: dict[str, CompiledSqlTestModelEntry] = _build_compiled_model_registry(
         compiled_pipelines
@@ -63,6 +68,7 @@ def build_sql_test_case(
             assembled_name_by_logical_name=assembled_name_by_logical_name,
             assembled_model_ctes=assembled_model_ctes,
             resolution_stack=frozenset(),
+            reference_rewriter=reference_rewriter,
         )
         expected_column_names: tuple[str, ...] = _derive_expected_column_names(
             query=expected_target.query,
@@ -72,8 +78,7 @@ def build_sql_test_case(
             },
         )
         output_column_type_by_name: Mapping[str, str] = {
-            column.name: column.type
-            for column in target_entry.compiled_transform.target_table.columns
+            column.name: column.type for column in target_entry.compiled_model.output_columns
         }
         missing_columns: tuple[str, ...] = tuple(
             column_name
@@ -141,6 +146,7 @@ def _resolve_relation(
     assembled_name_by_logical_name: dict[str, str],
     assembled_model_ctes: tuple[tuple[str, str], ...],
     resolution_stack: frozenset[str],
+    reference_rewriter: SqlReferenceRewriter,
 ) -> tuple[str, dict[str, str], tuple[tuple[str, str], ...]]:
     if logical_name in mock_name_by_logical_name:
         return (
@@ -172,15 +178,10 @@ def _resolve_relation(
             f"`{suggestion_prefix}{logical_name}` to mock it directly."
         )
     entry: CompiledSqlTestModelEntry = registry[logical_name]
-    query: str | None = entry.compiled_transform.transform.query
-    if query is None:
-        raise SqlTestAssemblyError(
-            f"SQL test '{loaded_test.file_path}' could not load query text "
-            f"for model '{logical_name}'"
-        )
+    query: str = entry.compiled_model.query
     resolver: dict[str, str] = {}
     next_resolution_stack: frozenset[str] = resolution_stack | {logical_name}
-    for parsed_ref in entry.compiled_transform.parsed_refs:
+    for parsed_ref in entry.compiled_model.parsed_refs:
         resolved_name: str
         (
             resolved_name,
@@ -195,6 +196,7 @@ def _resolve_relation(
             assembled_name_by_logical_name=assembled_name_by_logical_name,
             assembled_model_ctes=assembled_model_ctes,
             resolution_stack=next_resolution_stack,
+            reference_rewriter=reference_rewriter,
         )
         resolver[parsed_ref.name] = resolved_name
     cte_name: str = f"__model__{logical_name}"
@@ -204,7 +206,7 @@ def _resolve_relation(
     }
     updated_ctes: tuple[tuple[str, str], ...] = (
         *assembled_model_ctes,
-        (cte_name, replace_refs(sql=query, resolver=resolver)),
+        (cte_name, replace_refs(sql=query, resolver=resolver, rewriter=reference_rewriter)),
     )
     return cte_name, updated_names, updated_ctes
 
@@ -215,11 +217,11 @@ def _build_compiled_model_registry(
     registry: dict[str, CompiledSqlTestModelEntry] = {}
     compiled_pipeline: CompiledPipeline
     for compiled_pipeline in compiled_pipelines:
-        compiled_transform: CompiledTransformStep
-        for compiled_transform in compiled_pipeline.transforms:
-            registry[compiled_transform.transform.name] = CompiledSqlTestModelEntry(
+        compiled_model: CompiledModel
+        for compiled_model in compiled_pipeline.models:
+            registry[compiled_model.transform.name] = CompiledSqlTestModelEntry(
                 compiled_pipeline=compiled_pipeline,
-                compiled_transform=compiled_transform,
+                compiled_model=compiled_model,
             )
     return registry
 

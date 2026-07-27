@@ -5,9 +5,6 @@ import sys
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.exceptions import AdapterWarehouseError
 from streambuild.adapter.models import InspectedManagedTableState
-from streambuild.adapters.clickhouse.main.inspect_managed_table_state import (
-    inspect_managed_table_state,
-)
 from streambuild.cli.audit_backfill.main._render_no_deployment_candidates_message import (
     render_no_deployment_candidates_message,
 )
@@ -56,9 +53,8 @@ def run_publish(
                 )
                 return 1
             if len(candidates) > 1:
-                inspected_state: InspectedManagedTableState = inspect_managed_table_state(
-                    client=client,
-                    database=database,
+                inspected_state: InspectedManagedTableState = client.inspect_managed_table_state(
+                    database
                 )
                 print(
                     render_ambiguous_deployment_message(

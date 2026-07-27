@@ -1,4 +1,5 @@
 from pathlib import Path
+from textwrap import dedent, indent
 
 import pytest
 
@@ -25,6 +26,8 @@ source:
   name: order_events
   broker_list: kafka:9092
   topic: source.order_events
+  replay_boundary:
+    mode: offsets
 """.lstrip(),
             model_file_contents="""
 MODEL (
@@ -51,6 +54,8 @@ source:
   name: order_events
   broker_list: kafka:9092
   topic: source.order_events
+  replay_boundary:
+    mode: timestamp
 """.lstrip(),
             model_file_contents="""
 MODEL (
@@ -68,14 +73,16 @@ FROM __ref("order_events")
             expected_query_count=1,
         ),
         CliPlanPreservationMatrixTestCase(
-            description="plans managed cursor replay through one catalog snapshot",
-            replay_lineage_mode="cursor",
+            description="plans managed landed-at replay through one catalog snapshot",
+            replay_lineage_mode="landed_at",
             pipeline_file_contents="""
 source:
   kind: kafka
   name: order_events
   broker_list: kafka:9092
   topic: source.order_events
+  replay_boundary:
+    mode: landed_at
 """.lstrip(),
             model_file_contents="""
 MODEL (
@@ -83,7 +90,7 @@ MODEL (
   order_by: ["order_id"],
 );
 SELECT kafka_key::String AS order_id,
-  _replay_cursor::UInt64 AS _replay_cursor
+  _replay_landed_at::DateTime64(3) AS _replay_landed_at
 FROM __ref("order_events")
 """.lstrip(),
             catalog_relations=(),
@@ -97,7 +104,7 @@ FROM __ref("order_events")
             replay_lineage_mode="offsets",
             pipeline_file_contents="""
 source:
-  kind: kafka
+  kind: stream_table
   name: order_events
   table_name: orders_existing
   replay_boundary:
@@ -139,7 +146,7 @@ FROM __ref("order_events")
             replay_lineage_mode="timestamp",
             pipeline_file_contents="""
 source:
-  kind: kafka
+  kind: stream_table
   name: order_events
   table_name: orders_existing
   replay_boundary:
@@ -222,15 +229,23 @@ def test_given_preservation_source_mode_when_running_plan_then_snapshot_path_sta
     project_dir: Path = tmp_path / "project"
     pipeline_dir: Path = project_dir / "pipelines" / "order_events"
     pipeline_dir.mkdir(parents=True)
-    (project_dir / "streambuild_project.yml").write_text(
-        "version: 2\nadapter: clickhouse\ndefault_database: analytics\n"
-        f"replay_lineage_mode: {test_case.replay_lineage_mode}\n"
-        "clickhouse:\n  host: localhost\n  port: 8123\n"
-        "  username: streambuild\n  password: streambuild\n",
+    (project_dir / "streambuild_project.toml").write_text(
+        'name = "matrix_project"\ndefault_target = "test"\n\n'
+        "[settings]\nvirtual_environments = true\n\n"
+        '[targets.test]\ndatabase = "analytics"\n\n'
+        '[targets.test.connection]\nhost = "localhost"\nport = 8123\n'
+        'username = "streambuild"\npassword = "streambuild"\n',
+        encoding="utf-8",
+    )
+    source_body: str = dedent(dedent(test_case.pipeline_file_contents).removeprefix("source:\n"))
+    source_dir: Path = project_dir / "sources"
+    source_dir.mkdir()
+    (source_dir / "order_events.yml").write_text(
+        "sources:\n  - " + indent(source_body, "    ").lstrip(),
         encoding="utf-8",
     )
     (pipeline_dir / "pipeline.yml").write_text(
-        test_case.pipeline_file_contents,
+        "source: order_events\n",
         encoding="utf-8",
     )
     (pipeline_dir / "orders_enriched.sql").write_text(

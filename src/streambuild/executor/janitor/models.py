@@ -2,8 +2,6 @@
 
 from dataclasses import dataclass
 
-from streambuild.compiler.discovery.types import ReplayLineageMode
-
 
 @dataclass(frozen=True)
 class JanitorPreviewCandidate:
@@ -37,18 +35,3 @@ class JanitorRequest:
     metadata_database: str
     retention_days: int
     apply: bool
-
-
-@dataclass(frozen=True)
-class DeploymentMetadataRow:
-    deployment_id: str
-    created_at: str
-    status: str
-    replay_lineage_mode: ReplayLineageMode
-    prepared_object_mappings_json: str
-
-
-@dataclass(frozen=True)
-class PublishHistoryMetadataRow:
-    deployment_id: str
-    latest_published_at: str

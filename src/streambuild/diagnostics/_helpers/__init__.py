@@ -1,0 +1,1 @@
+"""Internal diagnostic rendering behavior."""
