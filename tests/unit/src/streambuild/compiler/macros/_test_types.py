@@ -45,6 +45,7 @@ class MacroExecutionDiagnosticTestCase:
     sql_body: str
     expected_error_fragment: str
     expected_sql_line: int
+    expected_sql_column: int
     expected_definition_line: int
 
 
@@ -54,3 +55,11 @@ class MacroImportDiagnosticTestCase:
     macro_file_contents: str
     expected_error_fragment: str
     expected_definition_line: int
+
+
+@dataclass(frozen=True)
+class MacroRegistrationTestCase:
+    description: str
+    expected_macro_names: tuple[str, ...]
+    expected_relative_path: str
+    expected_source_fragment: str

@@ -62,7 +62,7 @@ def write_compilation_project(project_dir: Path) -> None:
             SELECT CAST(1 AS UInt64) AS order_id
           ),
           __expected__alpha_model AS (
-            SELECT CAST(1 AS UInt64) AS order_id
+            SELECT CAST(@identity_sql('1') AS UInt64) AS order_id
           )
         SELECT 1
         """,
@@ -72,7 +72,7 @@ def write_compilation_project(project_dir: Path) -> None:
         """
         AUDIT (name: "alpha quality");
 
-        SELECT order_id FROM __ref("alpha_model") WHERE order_id = 0
+        SELECT order_id FROM __ref("alpha_model") WHERE order_id = @identity_sql('0')
         """,
     )
     _write(

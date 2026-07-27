@@ -23,9 +23,9 @@ def build_test_macro_runtime(project_dir: Path) -> tuple[MacroRegistry, MacroCon
         dialect="clickhouse",
         target_name="dev",
         database="analytics",
-        schema=None,
+        schema="analytics_schema",
         virtual_environments=False,
-        variables={},
+        variables={"nested": {"value": "configured"}},
     )
     return registry, context
 

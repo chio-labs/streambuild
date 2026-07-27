@@ -11,6 +11,7 @@ from tests.unit.src.streambuild.compiler.discovery._helpers.load._test_types imp
     LoadReplayPoliciesTestCase,
     MismatchedSourceTestCase,
     RemovedPipelineSurfaceTestCase,
+    StandaloneMacroOwnershipTestCase,
 )
 from tests.unit.src.streambuild.compiler.discovery._helpers.load.helpers import (
     write_registry_project,
@@ -182,3 +183,32 @@ def test_given_wrong_model_source_when_loading_then_it_fails(
 
     with pytest.raises(PipelineDiscoveryError, match=test_case.expected_error_fragment):
         load_pipeline_file(pipeline_file_path)
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        StandaloneMacroOwnershipTestCase(
+            description="leaves project macro execution to compile input construction",
+            macro_contents='raise RuntimeError("standalone loader executed macros")',
+            expected_query=('SELECT @project_macro() AS order_id FROM __source("orders")'),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_project_macros_when_loading_one_pipeline_then_compile_phase_retains_ownership(
+    test_case: StandaloneMacroOwnershipTestCase,
+    tmp_path: Path,
+) -> None:
+    pipeline_file_path: Path = write_registry_project(
+        project_dir=tmp_path,
+        pipeline_contents="source: orders",
+        model_contents=('MODEL ();\nSELECT @project_macro() AS order_id FROM __source("orders")'),
+    )
+    macro_file_path: Path = tmp_path / "macros" / "failed.py"
+    macro_file_path.parent.mkdir(parents=True, exist_ok=True)
+    macro_file_path.write_text(test_case.macro_contents, encoding="utf-8")
+
+    loaded_pipeline: LoadedPipeline = load_pipeline_file(pipeline_file_path)
+
+    assert loaded_pipeline.pipeline.transforms[0].query == test_case.expected_query

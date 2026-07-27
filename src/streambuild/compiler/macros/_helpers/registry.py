@@ -1,10 +1,12 @@
-"""Registry loading for authored Python SQL macros."""
+"""Apache-2.0: SQLBuild compiler/compile/_helpers/render/macros.py@7e3b2f854f05."""
 
 from __future__ import annotations
 
 import ast
 import hashlib
 import inspect
+import traceback
+from pathlib import Path
 from types import ModuleType
 
 from streambuild.compiler.discovery.models import DiscoveredProjectFile
@@ -65,7 +67,11 @@ def _load_macro_module(*, macro_file: DiscoveredProjectFile) -> ModuleType:
     except Exception as error:
         raise MacroError(
             f"Failed to load {macro_file.file_path}: {error}",
-            location=SourceLocation(path=macro_file.file_path, line=1, column=1),
+            location=SourceLocation(
+                path=macro_file.file_path,
+                line=_macro_exception_line(error=error, macro_file=macro_file),
+                column=1,
+            ),
         ) from error
     return module
 
@@ -82,6 +88,7 @@ def _load_public_macros_from_module(
             name.startswith("_")
             or function.__module__ != module.__name__
             or inspect.iscoroutinefunction(function)
+            or name not in definition_line_by_name
         ):
             continue
         loaded_macros.append(
@@ -127,3 +134,11 @@ def _definition_location(macro: LoadedMacro) -> SourceLocation:
         line=macro.definition_line,
         column=1,
     )
+
+
+def _macro_exception_line(*, error: Exception, macro_file: DiscoveredProjectFile) -> int:
+    frame: traceback.FrameSummary
+    for frame in reversed(traceback.extract_tb(error.__traceback__)):
+        if Path(frame.filename) == macro_file.file_path:
+            return frame.lineno or 1
+    return 1
