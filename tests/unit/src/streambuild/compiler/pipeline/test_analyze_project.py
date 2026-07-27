@@ -1,3 +1,4 @@
+import json
 from collections.abc import Callable
 from dataclasses import FrozenInstanceError, replace
 from functools import partial
@@ -666,6 +667,18 @@ def test_given_complete_project_when_expanding_macros_then_all_inputs_share_one_
     assert (
         analysis.compiled_project.macro_context is analysis.compile_inputs.macro_context
     ) is test_case.expected_context_identity
+    expanded_model_queries: tuple[str, ...] = (
+        analysis.compile_inputs.pipelines[0].pipeline.transforms[0].query or "",
+        analysis.compile_inputs.pipelines[1].pipeline.transforms[0].query or "",
+    )
+    assert tuple("@identity_sql" not in query for query in expanded_model_queries) == (
+        True,
+        True,
+    )
+    assert "@identity_sql" not in analysis.compile_inputs.tests[0].expected_targets[0].query
+    assert "CAST(1 AS UInt64)" in analysis.compile_inputs.tests[0].expected_targets[0].query
+    assert "@identity_sql" not in analysis.compile_inputs.audits[0].query
+    assert "order_id = 0" in analysis.compile_inputs.audits[0].query
 
 
 @pytest.mark.parametrize(
@@ -720,6 +733,9 @@ def test_given_private_macro_modules_when_analyzing_then_only_public_modules_are
             expected_exit_code=0,
             expected_macro_loader_read_count=0,
             expected_macro_import_count=1,
+            expected_macro_names=("identity_sql",),
+            expected_macro_relative_path="macros/formatting.py",
+            expected_macro_source_fragment="def identity_sql(value: str) -> str:",
         )
     ],
     ids=lambda case: case.description,
@@ -766,7 +782,18 @@ def test_given_compile_artifacts_when_writing_then_discovered_sources_are_not_re
         path.is_relative_to(project_dir / "macros") for path in loader_read_paths
     )
     macro_import_count: int = len(macro_import_counter.read_text(encoding="utf-8").splitlines())
+    manifest: dict[str, object] = json.loads(
+        (project_dir / "target" / "manifest.json").read_text(encoding="utf-8")
+    )
+    dag: dict[str, object] = json.loads(
+        (project_dir / "target" / "streambuild_dag.json").read_text(encoding="utf-8")
+    )
+    manifest_macros: dict[str, dict[str, str]] = cast(dict[str, dict[str, str]], manifest["macros"])
     assert exit_code == test_case.expected_exit_code
     assert relative_read_paths == test_case.expected_relative_source_paths
     assert macro_loader_read_count == test_case.expected_macro_loader_read_count
     assert macro_import_count == test_case.expected_macro_import_count
+    assert tuple(manifest_macros) == test_case.expected_macro_names
+    assert manifest_macros["identity_sql"]["file"] == test_case.expected_macro_relative_path
+    assert test_case.expected_macro_source_fragment in manifest_macros["identity_sql"]["source"]
+    assert tuple(dag["macros"]) == test_case.expected_macro_names

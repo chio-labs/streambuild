@@ -63,6 +63,9 @@ class ReadOnceCompilationTestCase:
     expected_exit_code: int
     expected_macro_loader_read_count: int
     expected_macro_import_count: int
+    expected_macro_names: tuple[str, ...]
+    expected_macro_relative_path: str
+    expected_macro_source_fragment: str
 
 
 @dataclass(frozen=True)

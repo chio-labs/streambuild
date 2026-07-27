@@ -34,3 +34,10 @@ class MismatchedSourceTestCase:
     description: str
     model_source_name: str
     expected_error_fragment: str
+
+
+@dataclass(frozen=True)
+class StandaloneMacroOwnershipTestCase:
+    description: str
+    macro_contents: str
+    expected_query: str

@@ -1,4 +1,4 @@
-"""Expansion helpers for authored Python SQL macros."""
+"""Apache-2.0: SQLBuild compiler/compile/_helpers/render/macros.py@7e3b2f854f05."""
 
 from __future__ import annotations
 
@@ -55,23 +55,6 @@ def expand_sql_body_macros(
             source_column=source_column,
         )
         macro_result: str = str(evaluated_result)
-        unexpanded_index: int | None = _find_next_macro_start(sql=macro_result, start_index=0)
-        if unexpanded_index is not None:
-            unexpanded_name: str = _parse_macro_name(
-                sql=macro_result,
-                call_start_index=unexpanded_index,
-            )
-            raise MacroError(
-                f"Macro expansion in '{file_path}' produced output containing unexpanded macro "
-                f"call '@{unexpanded_name}('. Compose macros in Python instead.",
-                location=_sql_location(
-                    sql=sql,
-                    index=macro_start_index,
-                    file_path=file_path,
-                    source_line=source_line,
-                    source_column=source_column,
-                ),
-            )
         rendered_sql_parts.append(macro_result)
         cursor = next_index
     return "".join(rendered_sql_parts)
@@ -107,18 +90,32 @@ def _evaluate_macro_call(
     opening_paren_index: int = _skip_whitespace(
         sql=sql, start_index=call_start_index + 1 + len(macro_name)
     )
-    closing_paren_index: int = _find_matching_paren(
-        sql=sql, opening_paren_index=opening_paren_index
-    )
+    try:
+        closing_paren_index: int = _find_matching_paren(
+            sql=sql, opening_paren_index=opening_paren_index
+        )
+    except MacroError as error:
+        raise _locate_macro_error(
+            error=error,
+            call_location=call_location,
+            loaded_macro=loaded_macro,
+        ) from error
     args_source: str = sql[opening_paren_index + 1 : closing_paren_index]
+    args_location: SourceLocation = _sql_location(
+        sql=sql,
+        index=opening_paren_index + 1,
+        file_path=file_path,
+        source_line=source_line,
+        source_column=source_column,
+    )
     try:
         args, kwargs = _parse_macro_arguments(
             args_source=args_source,
             file_path=file_path,
             loaded_macros=loaded_macros,
             context=context,
-            source_line=source_line,
-            source_column=source_column,
+            source_line=args_location.line,
+            source_column=args_location.column,
         )
     except MacroError as error:
         raise _locate_macro_error(
@@ -149,14 +146,30 @@ def _evaluate_macro_call(
             location=call_location,
             related_locations=_definition_related_location(loaded_macro),
         ) from error
-    if top_level and not isinstance(macro_result, str):
-        raise MacroError(
-            f"Macro '@{macro_name}' in '{file_path}' must return a SQL string when "
-            "used directly in SQL",
-            location=call_location,
-            related_locations=_definition_related_location(loaded_macro),
+    if top_level:
+        if not isinstance(macro_result, str):
+            raise MacroError(
+                f"Macro '@{macro_name}' in '{file_path}' must return a SQL string when "
+                "used directly in SQL",
+                location=call_location,
+                related_locations=_definition_related_location(loaded_macro),
+            )
+        unexpanded_index: int | None = _find_next_macro_start(
+            sql=macro_result,
+            start_index=0,
         )
-    if not top_level:
+        if unexpanded_index is not None:
+            unexpanded_name: str = _parse_macro_name(
+                sql=macro_result,
+                call_start_index=unexpanded_index,
+            )
+            raise MacroError(
+                f"Macro expansion in '{file_path}' produced output containing unexpanded macro "
+                f"call '@{unexpanded_name}('. Compose macros in Python instead.",
+                location=call_location,
+                related_locations=_definition_related_location(loaded_macro),
+            )
+    else:
         try:
             _validate_nested_macro_result(result=macro_result, file_path=file_path)
         except MacroError as error:
@@ -251,6 +264,9 @@ def _rewrite_nested_macro_calls(
             source_column=source_column,
         )
         placeholder: str = f"__streambuild_macro_arg_{replacement_index}"
+        while placeholder in args_source:
+            replacement_index += 1
+            placeholder = f"__streambuild_macro_arg_{replacement_index}"
         replacement_index += 1
         placeholder_values[placeholder] = nested_result
         rewritten_parts.append(placeholder)

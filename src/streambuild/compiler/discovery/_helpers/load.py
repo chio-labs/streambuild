@@ -30,13 +30,11 @@ from streambuild.compiler.discovery.constants import (
     PIPELINE_FILE_NAME,
     PIPELINE_KEYS,
     PIPELINE_NAME_KEY,
-    PYTHON_PACKAGE_INITIALIZER_FILE_NAME,
     SCHEMA_CHANGE_RULE_KEYS,
     SECONDS_BY_DURATION_UNIT,
 )
 from streambuild.compiler.discovery.exceptions import PipelineDiscoveryError
 from streambuild.compiler.discovery.models import (
-    DiscoveredProjectFile,
     EffectiveProjectConfiguration,
     ExternalTableSourceStep,
     KafkaLandingStep,
@@ -52,13 +50,11 @@ from streambuild.compiler.discovery.types import (
     ReplayOnChangeMode,
     SqlRelationType,
 )
-from streambuild.compiler.macros.main._build_macro_context import build_macro_context
-from streambuild.compiler.macros.main._load_macro_registry import load_macro_registry
 from streambuild.compiler.macros.models import MacroContext, MacroRegistry
 
 
 def load_pipeline_file(file_path: Path) -> LoadedPipeline:
-    """Load one pipeline through the TOML project and standalone source registry."""
+    """Load one pipeline without the project compiler's macro expansion phase."""
 
     project_dir: Path | None = find_project_configuration_dir(file_path)
     if project_dir is None:
@@ -80,23 +76,9 @@ def load_pipeline_file(file_path: Path) -> LoadedPipeline:
             )
         )
     )
-    macro_registry: MacroRegistry = load_macro_registry(
-        macro_files=_discovered_macro_files(project_dir)
-    )
-    macro_context: MacroContext = build_macro_context(
-        adapter_name=effective.adapter,
-        dialect="clickhouse",
-        target_name=effective.target_name,
-        database=effective.database,
-        schema=None,
-        virtual_environments=effective.settings.virtual_environments,
-        variables=dict(effective.variables),
-    )
     pipeline: Pipeline = load_pipeline_yaml(
         file_path=file_path,
         sources_by_name=sources_by_name,
-        macro_registry=macro_registry,
-        macro_context=macro_context,
     )
     loaded_pipeline: LoadedPipeline = LoadedPipeline(
         pipeline=pipeline,
@@ -315,25 +297,6 @@ def _load_pipeline_transforms(
             )
         )
     return transforms
-
-
-def _discovered_macro_files(project_dir: Path) -> tuple[DiscoveredProjectFile, ...]:
-    macro_files: list[DiscoveredProjectFile] = []
-    macro_path: Path
-    for macro_path in sorted((project_dir / "macros").rglob("*.py")):
-        relative_path: Path = macro_path.relative_to(project_dir)
-        if macro_path.name == PYTHON_PACKAGE_INITIALIZER_FILE_NAME or any(
-            part.startswith("_") for part in relative_path.parts
-        ):
-            continue
-        macro_files.append(
-            DiscoveredProjectFile(
-                file_path=macro_path,
-                relative_path=relative_path,
-                contents=macro_path.read_text(encoding="utf-8"),
-            )
-        )
-    return tuple(macro_files)
 
 
 def _validate_source_references(
