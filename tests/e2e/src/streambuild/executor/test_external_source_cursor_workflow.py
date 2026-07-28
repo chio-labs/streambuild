@@ -60,6 +60,7 @@ def test_given_external_cursor_source_pipeline_when_running_then_it_publishes_ex
         deployment_id=test_case.deployment_id,
     )
     run_streambuild_publish_cli(
+        project_dir=project_dir,
         host=isolated_e2e_clickhouse_connection_settings.host,
         port=isolated_e2e_clickhouse_connection_settings.port,
         username=isolated_e2e_clickhouse_connection_settings.username,

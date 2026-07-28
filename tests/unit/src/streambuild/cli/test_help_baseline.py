@@ -58,7 +58,7 @@ from tests.unit.src.streambuild.cli._test_types import CliHelpBaselineTestCase
         CliHelpBaselineTestCase(
             description="captures publish help",
             argv=("publish", "--help"),
-            expected_sha256="b146b78f63c6833813c263d1b980b8e5ed6d88495c94649a78c9fdd12ad4d10c",
+            expected_sha256="39c99476dba74e42b9bb8262a892e4421b9be2e42e9f5980b07781e8c6a82e31",
         ),
         CliHelpBaselineTestCase(
             description="captures reconcile help",
@@ -68,12 +68,12 @@ from tests.unit.src.streambuild.cli._test_types import CliHelpBaselineTestCase
         CliHelpBaselineTestCase(
             description="captures janitor help",
             argv=("janitor", "--help"),
-            expected_sha256="608566c20ec37889bb540d3da1cf4c225fac75ffb020db9f393723a38bb85905",
+            expected_sha256="a0dfaff8fdd35f96641f3ad92875507adc4a6ea3f6bf9bb0a347515e0e01a539",
         ),
         CliHelpBaselineTestCase(
             description="captures doctor help",
             argv=("doctor", "--help"),
-            expected_sha256="e653ccda0c6db5f2bd9c2479a3154dc6a0b63a031819b71ff6ff3aed2ca31b89",
+            expected_sha256="6a054bd5e903db0fed2564ee45a901b4582c6da9c70253c266cad7a9881c360e",
         ),
         CliHelpBaselineTestCase(
             description="captures repair help",
@@ -83,7 +83,7 @@ from tests.unit.src.streambuild.cli._test_types import CliHelpBaselineTestCase
         CliHelpBaselineTestCase(
             description="captures repair active-view help",
             argv=("repair", "active-view", "--help"),
-            expected_sha256="ab6002a5ceacf347c51e252864df9e6172f0a6da31f4b92427e16bca7576b024",
+            expected_sha256="cf33e901a1eeae1bbada96c65d0e0d7ae760b249110c1e326a69d44aef8ad23e",
         ),
     ],
     ids=lambda case: case.description,

@@ -21,6 +21,17 @@ COMMANDS_REQUIRING_PIPELINES_ROOT: frozenset[CliCommand] = frozenset(
 COMMANDS_WITHOUT_ADAPTER_CONNECTION: frozenset[CliCommand] = frozenset(
     {CliCommand.DISCOVER, CliCommand.COMPILE}
 )
+STANDARD_ONLY_COMMANDS: frozenset[CliCommand] = frozenset({CliCommand.BUILD})
+VIRTUAL_ENVIRONMENT_ONLY_COMMANDS: frozenset[CliCommand] = frozenset(
+    {
+        CliCommand.BACKFILL,
+        CliCommand.PUBLISH,
+        CliCommand.RECONCILE,
+        CliCommand.JANITOR,
+        CliCommand.DOCTOR,
+        CliCommand.REPAIR,
+    }
+)
 
 DISPLAY_NAME_BY_COMMAND: Mapping[CliCommand, str] = {
     CliCommand.AUDIT: "audit",

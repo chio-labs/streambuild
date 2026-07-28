@@ -225,6 +225,8 @@ class PlanCommandRunner:
             argv=(
                 "stb",
                 "publish",
+                "--project-dir",
+                "tests/fixtures/basic_project",
                 "--host",
                 "localhost",
                 "--port",
@@ -254,6 +256,8 @@ class PlanCommandRunner:
             argv=(
                 "stb",
                 "doctor",
+                "--project-dir",
+                "tests/fixtures/basic_project",
                 "--host",
                 "localhost",
                 "--port",
@@ -282,6 +286,8 @@ class PlanCommandRunner:
                 "stb",
                 "repair",
                 "active-view",
+                "--project-dir",
+                "tests/fixtures/basic_project",
                 "--host",
                 "localhost",
                 "--port",
@@ -861,6 +867,8 @@ def test_given_selectors_when_running_plan_then_it_passes_selection_kwargs_to_co
             argv=(
                 "stb",
                 "janitor",
+                "--project-dir",
+                "tests/fixtures/basic_project",
                 "--host",
                 "localhost",
                 "--port",
@@ -905,6 +913,8 @@ def test_given_apply_flag_when_running_janitor_then_it_passes_apply_to_command(
             argv=(
                 "stb",
                 "publish",
+                "--project-dir",
+                "tests/fixtures/basic_project",
                 "--host",
                 "localhost",
                 "--port",
@@ -926,6 +936,8 @@ def test_given_apply_flag_when_running_janitor_then_it_passes_apply_to_command(
             argv=(
                 "stb",
                 "doctor",
+                "--project-dir",
+                "tests/fixtures/basic_project",
                 "--host",
                 "localhost",
                 "--port",

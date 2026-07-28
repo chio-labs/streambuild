@@ -197,6 +197,7 @@ def build_cli_parser() -> argparse.ArgumentParser:
             "Dry-run by default; use --apply to drop tables."
         ),
     )
+    _add_project_dir_arg(parser=janitor_parser)
     _add_clickhouse_args(parser=janitor_parser)
     janitor_parser.add_argument(
         "--retention-days",
@@ -242,6 +243,7 @@ def build_cli_parser() -> argparse.ArgumentParser:
             "deployment's shadow table."
         ),
     )
+    _add_project_dir_arg(parser=repair_active_view_parser)
     _add_clickhouse_args(parser=repair_active_view_parser)
     repair_active_view_parser.add_argument(
         "--table",
@@ -264,6 +266,13 @@ def build_cli_parser() -> argparse.ArgumentParser:
         audit_backfill_parser=audit_backfill_parser,
         reconcile_parser=reconcile_parser,
     )
+    for lifecycle_parser in (
+        publish_parser,
+        janitor_parser,
+        doctor_parser,
+        repair_active_view_parser,
+    ):
+        _add_compilation_config_args(parser=lifecycle_parser)
     return parser
 
 

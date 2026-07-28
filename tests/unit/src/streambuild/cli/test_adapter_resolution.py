@@ -3,10 +3,12 @@ from __future__ import annotations
 import re
 from pathlib import Path
 from shutil import copytree
+from typing import cast
 from unittest.mock import Mock
 
 import pytest
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import AdapterConnectionConfig
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from streambuild.cli.entry.main.main import _main_with_dependencies
@@ -20,15 +22,27 @@ from tests.unit.src.streambuild.cli._test_types import (
     CliAdapterRejectionTestCase,
     CliCredentialRedactionTestCase,
     CliLazyConnectionTestCase,
+    CliModeGateErrorTestCase,
+    CliModeOverrideTestCase,
     CliProjectSecretRedactionTestCase,
     CliTargetSelectionTestCase,
 )
 from tests.unit.src.streambuild.cli.helpers import (
     AdapterConnectionProvider,
+    FakeCliClickHouseClient,
     RecordingAdapterConnection,
     handlers_with_overrides,
     write_cli_compilation_project,
     write_cli_target_project,
+)
+
+_STANDARD_PROJECT_CONFIG: str = (
+    'name = "mode_gate"\ndefault_target = "test"\n\n[targets.test]\ndatabase = "analytics"\n'
+)
+_VIRTUAL_ENVIRONMENT_PROJECT_CONFIG: str = (
+    'name = "mode_gate"\ndefault_target = "test"\n\n'
+    "[settings]\nvirtual_environments = true\n\n"
+    '[targets.test]\ndatabase = "analytics"\n'
 )
 
 
@@ -220,6 +234,157 @@ def test_given_cli_connection_options_when_rendering_then_credentials_are_not_ex
     )
 
     assert test_case.expected_absent_fragment not in repr(options)
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliModeGateErrorTestCase(
+            description="rejects standard build when virtual environments are enabled",
+            argv=("stb", "build"),
+            project_file_contents=_VIRTUAL_ENVIRONMENT_PROJECT_CONFIG,
+            expected_error_fragment=(
+                "stb build is unavailable while virtual environments are enabled"
+            ),
+        ),
+        CliModeGateErrorTestCase(
+            description="rejects backfill when virtual environments are omitted",
+            argv=("stb", "backfill"),
+            project_file_contents=_STANDARD_PROJECT_CONFIG,
+            expected_error_fragment="stb backfill requires virtual environments to be enabled",
+        ),
+        CliModeGateErrorTestCase(
+            description="rejects audit backfill when virtual environments are omitted",
+            argv=("stb", "audit", "backfill"),
+            project_file_contents=_STANDARD_PROJECT_CONFIG,
+            expected_error_fragment=(
+                "stb audit backfill requires virtual environments to be enabled"
+            ),
+        ),
+        CliModeGateErrorTestCase(
+            description="rejects publish when virtual environments are omitted",
+            argv=("stb", "publish"),
+            project_file_contents=_STANDARD_PROJECT_CONFIG,
+            expected_error_fragment="stb publish requires virtual environments to be enabled",
+        ),
+        CliModeGateErrorTestCase(
+            description="rejects reconcile when virtual environments are omitted",
+            argv=("stb", "reconcile"),
+            project_file_contents=_STANDARD_PROJECT_CONFIG,
+            expected_error_fragment="stb reconcile requires virtual environments to be enabled",
+        ),
+        CliModeGateErrorTestCase(
+            description="rejects janitor when virtual environments are omitted",
+            argv=("stb", "janitor"),
+            project_file_contents=_STANDARD_PROJECT_CONFIG,
+            expected_error_fragment="stb janitor requires virtual environments to be enabled",
+        ),
+        CliModeGateErrorTestCase(
+            description="rejects doctor when virtual environments are omitted",
+            argv=("stb", "doctor"),
+            project_file_contents=_STANDARD_PROJECT_CONFIG,
+            expected_error_fragment="stb doctor requires virtual environments to be enabled",
+        ),
+        CliModeGateErrorTestCase(
+            description="rejects repair when virtual environments are omitted",
+            argv=(
+                "stb",
+                "repair",
+                "active-view",
+                "--table",
+                "tbl__orders",
+                "--deployment-id",
+                "dep_a",
+            ),
+            project_file_contents=_STANDARD_PROJECT_CONFIG,
+            expected_error_fragment=(
+                "stb repair active-view requires virtual environments to be enabled"
+            ),
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_mode_specific_command_when_mode_conflicts_then_it_fails_before_connecting(
+    test_case: CliModeGateErrorTestCase,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project_dir: Path = tmp_path / "project"
+    copytree(Path("tests/fixtures/basic_project"), project_dir)
+    (project_dir / "streambuild_project.toml").write_text(
+        test_case.project_file_contents,
+        encoding="utf-8",
+    )
+    connect: Mock = Mock(side_effect=AssertionError("connection IO occurred"))
+    monkeypatch.setattr(ClickHouseAdapter, "connect", connect)
+
+    exit_code: int = _main_with_dependencies(
+        argv=test_case.argv,
+        handlers=handlers_with_overrides(),
+        environment={},
+        working_directory=project_dir,
+    )
+    captured_error: str = capsys.readouterr().err
+
+    assert exit_code == 1
+    assert connect.call_count == 0
+    assert test_case.expected_error_fragment in captured_error
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliModeOverrideTestCase(
+            description="local override enables virtual environment lifecycle",
+            argv=("stb", "backfill"),
+            project_file_contents=_STANDARD_PROJECT_CONFIG,
+            local_file_contents="[settings]\nvirtual_environments = true\n",
+            expected_handler_name="run_backfill",
+            expected_exit_code=0,
+            expected_handler_call_count=1,
+        ),
+        CliModeOverrideTestCase(
+            description="local override enables standard build",
+            argv=("stb", "build"),
+            project_file_contents=_VIRTUAL_ENVIRONMENT_PROJECT_CONFIG,
+            local_file_contents="[settings]\nvirtual_environments = false\n",
+            expected_handler_name="run_build",
+            expected_exit_code=0,
+            expected_handler_call_count=1,
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_local_mode_override_when_running_specific_command_then_effective_mode_routes_it(
+    test_case: CliModeOverrideTestCase,
+    tmp_path: Path,
+) -> None:
+    project_dir: Path = tmp_path / "project"
+    copytree(Path("tests/fixtures/basic_project"), project_dir)
+    (project_dir / "streambuild_project.toml").write_text(
+        test_case.project_file_contents,
+        encoding="utf-8",
+    )
+    (project_dir / "streambuild_local.toml").write_text(
+        test_case.local_file_contents,
+        encoding="utf-8",
+    )
+    runner: Mock = Mock(return_value=0)
+    handlers: CliEntrypointHandlers = handlers_with_overrides(
+        **{test_case.expected_handler_name: runner}
+    )
+
+    exit_code: int = _main_with_dependencies(
+        argv=test_case.argv,
+        handlers=handlers,
+        environment={},
+        working_directory=project_dir,
+        adapter_connection=cast(AdapterConnection, FakeCliClickHouseClient()),
+    )
+
+    assert exit_code == test_case.expected_exit_code
+    assert runner.call_count == test_case.expected_handler_call_count
 
 
 @pytest.mark.parametrize(
