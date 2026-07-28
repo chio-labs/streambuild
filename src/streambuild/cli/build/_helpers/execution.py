@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.cli.build.constants import STREAMBUILD_TOOL_VERSION
 from streambuild.cli.build.models import BuildCommandOptions, BuildPreviewContext
 from streambuild.cli.entry.constants import AFFIRMATIVE_RESPONSES
 from streambuild.executor.standard.main.execute_standard_build import execute_standard_build
 from streambuild.executor.standard.models import StandardBuildRequest, StandardBuildResult
-from streambuild.cli.build.constants import STREAMBUILD_TOOL_VERSION
 
 
 def execute_confirmed_standard_build(

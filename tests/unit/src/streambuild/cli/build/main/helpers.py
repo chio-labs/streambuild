@@ -12,9 +12,7 @@ from tests.unit.src.streambuild.cli.helpers import RecordingAdapterConnection
 from tests.unit.src.streambuild.compiler.planner.helpers import build_settled_standard_snapshot
 
 
-def run_scope_project_build(
-    *, project_root: Path, json_output: bool, auto_approve: bool
-) -> int:
+def run_scope_project_build(*, project_root: Path, json_output: bool, auto_approve: bool) -> int:
     """Run `stb build` against the scope project with a settled fake warehouse."""
 
     snapshot: StandardWarehouseSnapshot = build_settled_standard_snapshot()
