@@ -11,3 +11,5 @@ ACCEPTED_START_TIME_FORMATS: tuple[str, ...] = (
 START_OF_DAY_CLICKHOUSE_FORMAT: str = "%Y-%m-%d 00:00:00.000"
 CLICKHOUSE_TIMESTAMP_FORMAT: str = "%Y-%m-%d %H:%M:%S.%f"
 DATETIME_TYPE_MARKER: str = "datetime"
+STANDARD_MODE_LABEL: str = "standard"
+VIRTUAL_ENVIRONMENTS_MODE_LABEL: str = "virtual environments"

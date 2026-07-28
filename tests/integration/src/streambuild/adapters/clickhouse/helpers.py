@@ -7,6 +7,7 @@ from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import (
     AdapterConnectionConfig,
     AdapterMaterializedView,
+    AdapterOwnershipRecord,
     AdapterStableView,
     AdapterTable,
 )
@@ -129,3 +130,26 @@ def run_metadata_migration(
         connection.migrate_metadata_state(database)
     finally:
         connection.close()
+
+
+def ownership_summaries(
+    records: tuple[AdapterOwnershipRecord, ...],
+) -> tuple[tuple[str, str, str], ...]:
+    return tuple(
+        (record.relation_name, record.logical_model_name, str(record.owning_mode))
+        for record in records
+    )
+
+
+def connect_clickhouse(
+    *, connection_settings: ClickHouseConnectionSettings, database: str
+) -> AdapterConnection:
+    return ClickHouseAdapter().connect(
+        AdapterConnectionConfig(
+            host=connection_settings.host,
+            port=connection_settings.port,
+            username=connection_settings.username,
+            password=connection_settings.password,
+            database=database,
+        )
+    )

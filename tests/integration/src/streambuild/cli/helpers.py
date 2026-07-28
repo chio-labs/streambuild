@@ -1,6 +1,8 @@
+import json
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from textwrap import dedent
+from typing import cast
 
 from clickhouse_connect.driver.client import Client
 
@@ -15,6 +17,7 @@ from streambuild.adapter.models import (
     AdapterManagedSource,
     AdapterMaterializedView,
     AdapterMetadataState,
+    AdapterOwnershipRecord,
     AdapterQueryResult,
     AdapterReadinessRequest,
     AdapterReadinessRootObservation,
@@ -28,6 +31,11 @@ from streambuild.adapter.models import (
 )
 from streambuild.adapters.clickhouse._helpers.inspection import load_clickhouse_catalog
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
+from streambuild.cli.entry._helpers.compiler_profile import build_compiler_adapter_profile
+from streambuild.cli.plan.main._run_plan import run_plan
+from streambuild.compiler.discovery.main.load_project_input_for_path import (
+    load_project_input_for_path,
+)
 from streambuild.executor.backfill.main._ensure_metadata_tables import ensure_metadata_tables
 from tests.integration.src.streambuild.conftest import ClickHouseConnectionSettings
 
@@ -86,6 +94,9 @@ class RecordingDelegatingConnection(AdapterConnection):
 
     def inspect_managed_table_state(self, database: str) -> InspectedManagedTableState:
         return self._delegate.inspect_managed_table_state(database)
+
+    def load_target_ownership(self, database: str) -> tuple[AdapterOwnershipRecord, ...]:
+        return self._delegate.load_target_ownership(database)
 
     def command(self, statement: str) -> None:
         self._delegate.command(statement)
@@ -647,3 +658,115 @@ def write_sql_test_semantics_project(
     (macro_dir / "helpers.py").write_text(
         dedent(macro_file_contents).strip() + "\n", encoding="utf-8"
     )
+
+
+STANDARD_SCOPE_PREREQUISITE_RELATIONS: tuple[str, ...] = ("raw__orders",)
+STANDARD_SCOPE_MODEL_RELATIONS: tuple[str, ...] = (
+    "tbl__alpha",
+    "mv__alpha",
+    "tbl__beta",
+    "mv__beta",
+    "tbl__gamma",
+    "mv__gamma",
+    "tbl__delta",
+    "mv__delta",
+)
+_OWNERSHIP_ROW_NAMES_BY_FLAG: dict[bool, tuple[str, ...]] = {
+    False: (),
+    True: STANDARD_SCOPE_MODEL_RELATIONS,
+}
+_RELATION_NAMES_BY_FLAG: dict[bool, tuple[str, ...]] = {
+    False: STANDARD_SCOPE_PREREQUISITE_RELATIONS,
+    True: (*STANDARD_SCOPE_PREREQUISITE_RELATIONS, *STANDARD_SCOPE_MODEL_RELATIONS),
+}
+
+
+def settle_standard_scope_warehouse(
+    *, connection: AdapterConnection, database: str, record_ownership: bool
+) -> None:
+    """Create the scope project's warehouse relations and optional standard ownership rows."""
+
+    connection.ensure_database(database)
+    connection.migrate_metadata_state(database)
+    relation_name: str
+    for relation_name in _RELATION_NAMES_BY_FLAG[record_ownership]:
+        connection.command(
+            f"CREATE TABLE IF NOT EXISTS {database}.{relation_name} "
+            "(order_id UInt64) ENGINE = MergeTree ORDER BY order_id"
+        )
+    ownership_relation_names: tuple[str, ...] = _OWNERSHIP_ROW_NAMES_BY_FLAG[record_ownership]
+    ownership_rows: tuple[dict[str, object], ...] = tuple(
+        cast(
+            dict[str, object],
+            {
+                "database_name": database,
+                "relation_name": relation_name,
+                "resource_kind": "table",
+                "logical_model_database": "",
+                "logical_model_name": relation_name.split("__")[-1],
+                "owning_mode": "standard",
+                "tool_version": "integration",
+            },
+        )
+        for relation_name in ownership_relation_names
+    )
+    connection.insert_rows(
+        table=f"{database}.streambuild_target_ownership",
+        rows=ownership_rows,
+    )
+
+
+def run_standard_plan(*, project_root: Path, database: str, connection: AdapterConnection) -> int:
+    """Run `stb plan` in standard mode against a live warehouse connection."""
+
+    return run_plan(
+        pipelines_root=project_root / "pipelines",
+        database=database,
+        selectors=(),
+        full_refresh=False,
+        start_time=None,
+        json_output=True,
+        verbose=False,
+        client=connection,
+        loaded_project=load_project_input_for_path(path=project_root),
+        adapter_profile=build_compiler_adapter_profile(ClickHouseAdapter()),
+    )
+
+
+def plan_scope_names(*, plan_json: str) -> tuple[str, ...]:
+    """Return the execution scope model names reported by one standard plan."""
+
+    payload: dict[str, object] = json.loads(plan_json)
+    return tuple(cast(list[str], payload["execution_scope"]))
+
+
+def plan_replay_root_models(*, plan_json: str) -> tuple[str, ...]:
+    """Return the replay root model names reported by one standard plan."""
+
+    payload: dict[str, object] = json.loads(plan_json)
+    roots: list[dict[str, object]] = cast(list[dict[str, object]], payload["replay_roots"])
+    return tuple(str(root["model"]) for root in roots)
+
+
+def plan_relation_operations(*, plan_json: str) -> tuple[tuple[str, str], ...]:
+    """Return every teardown and creation operation reported by one standard plan."""
+
+    payload: dict[str, object] = json.loads(plan_json)
+    operations: list[dict[str, object]] = [
+        *cast(list[dict[str, object]], payload["teardown"]),
+        *cast(list[dict[str, object]], payload["creation"]),
+    ]
+    return tuple((str(operation["action"]), str(operation["relation"])) for operation in operations)
+
+
+def plan_ownership_labels(*, plan_json: str) -> tuple[str, ...]:
+    """Return the distinct ownership labels reported across every plan entry."""
+
+    payload: dict[str, object] = json.loads(plan_json)
+    entries: list[dict[str, object]] = cast(list[dict[str, object]], payload["entries"])
+    labels: set[str] = set()
+    entry: dict[str, object]
+    for entry in entries:
+        classifications: list[dict[str, str]] = cast(list[dict[str, str]], entry["ownership"])
+        labels.update(classification["ownership"] for classification in classifications)
+    return tuple(sorted(labels))

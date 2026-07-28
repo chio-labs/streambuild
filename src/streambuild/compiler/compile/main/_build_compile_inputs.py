@@ -59,6 +59,11 @@ def build_compile_inputs(
     variables: tuple[tuple[str, object], ...] = (
         () if effective_configuration is None else effective_configuration.variables
     )
+    virtual_environments: bool = (
+        False
+        if effective_configuration is None
+        else effective_configuration.settings.virtual_environments
+    )
     macro_registry: MacroRegistry = load_macro_registry(macro_files=discovered_inputs.macro_files)
     macro_context: MacroContext = build_macro_context(
         adapter_name=adapter_profile.identity.name,
@@ -68,11 +73,7 @@ def build_compile_inputs(
         ),
         database=effective_target.default_database,
         schema=effective_target.default_schema,
-        virtual_environments=(
-            False
-            if effective_configuration is None
-            else effective_configuration.settings.virtual_environments
-        ),
+        virtual_environments=virtual_environments,
         variables=dict(variables),
     )
     sources_by_name: dict[str, KafkaLandingStep | ExternalTableSourceStep] = (
@@ -127,4 +128,5 @@ def build_compile_inputs(
         pipelines=pipelines,
         tests=tests,
         audits=audits,
+        virtual_environments=virtual_environments,
     )

@@ -60,3 +60,21 @@ class CliExternalSourceValidationErrorTestCase:
     description: str
     existing_column_names: tuple[str, ...]
     expected_error_fragment: str
+
+
+@dataclass(frozen=True)
+class CliPlanModeRoutingTestCase:
+    description: str
+    virtual_environments: bool | None
+    expected_mode: str
+    expected_title: str
+    expected_execution_scope: tuple[str, ...] = ()
+    expected_replay_root_models: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class CliStandardPlanFlagRejectionTestCase:
+    description: str
+    full_refresh: bool
+    start_time: str | None
+    expected_error_fragment: str

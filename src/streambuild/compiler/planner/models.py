@@ -5,11 +5,12 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-from streambuild.adapter.models import CatalogSnapshot
+from streambuild.adapter.models import AdapterOwnershipRecord, CatalogSnapshot
 from streambuild.compiler.compile.models import (
     Column,
     KafkaSettings,
     KafkaTableSpec,
+    LogicalResourceKey,
     MaterializedViewSpec,
     ObjectKey,
     TableSpec,
@@ -25,8 +26,11 @@ from streambuild.compiler.planner.types import (
     PlannedChangeType,
     RebuildExecutionMode,
     RebuildStrategy,
+    StandardPlanReason,
+    StandardRelationAction,
     TableSchemaChangeKind,
     TableSchemaSeedCompatibility,
+    TargetOwnership,
 )
 
 
@@ -385,3 +389,89 @@ class MetadataState:
     deployment_watermarks: tuple[DeploymentWatermarkRecord, ...]
     deployment_runtime_details: tuple[DeploymentRuntimeDetailRecord, ...]
     publish_events: tuple[PublishEventRecord, ...]
+
+
+@dataclass(frozen=True)
+class StandardWarehouseSnapshot:
+    """Immutable live catalog and durable ownership captured for one standard plan."""
+
+    catalog: CatalogSnapshot
+    ownership_records: tuple[AdapterOwnershipRecord, ...]
+
+
+@dataclass(frozen=True)
+class TargetOwnershipClassification:
+    """One relation and the ownership the warehouse proves for it."""
+
+    relation_name: str
+    ownership: TargetOwnership | str
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "ownership", TargetOwnership(self.ownership))
+
+
+@dataclass(frozen=True)
+class StandardPlanEntry:
+    """One logical model the standard plan will tear down and rebuild."""
+
+    model_key: LogicalResourceKey
+    reason: StandardPlanReason | str
+    relation_names: tuple[str, ...]
+    ownership: tuple[TargetOwnershipClassification, ...]
+    driving_input_key: LogicalResourceKey
+    is_replay_root: bool
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "reason", StandardPlanReason(self.reason))
+
+
+@dataclass(frozen=True)
+class StandardPrerequisite:
+    """One upstream resource that must exist but is never executed."""
+
+    key: LogicalResourceKey
+    relation_names: tuple[str, ...]
+    present: bool
+
+
+@dataclass(frozen=True)
+class StandardReplayRoot:
+    """One executed model replayed from its own preserved driving input."""
+
+    model_key: LogicalResourceKey
+    driving_input_key: LogicalResourceKey
+    driving_input_relation_name: str
+    replay_boundary_mode: ReplayLineageMode | str
+    propagated_model_keys: tuple[LogicalResourceKey, ...]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "replay_boundary_mode", ReplayLineageMode(self.replay_boundary_mode)
+        )
+
+
+@dataclass(frozen=True)
+class StandardRelationOperation:
+    """One destructive or constructive relation action in dependency-safe order."""
+
+    relation_name: str
+    action: StandardRelationAction | str
+    model_key: LogicalResourceKey
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "action", StandardRelationAction(self.action))
+
+
+@dataclass(frozen=True)
+class StandardPlan:
+    """One deterministic standard-mode execution plan for a selected closure."""
+
+    database: str
+    user_scope: tuple[LogicalResourceKey, ...]
+    execution_scope: tuple[LogicalResourceKey, ...]
+    prerequisite_scope: tuple[StandardPrerequisite, ...]
+    entries: tuple[StandardPlanEntry, ...]
+    replay_roots: tuple[StandardReplayRoot, ...]
+    teardown_operations: tuple[StandardRelationOperation, ...]
+    creation_operations: tuple[StandardRelationOperation, ...]
+    warnings: tuple[PlannerWarning, ...] = ()

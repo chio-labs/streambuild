@@ -16,6 +16,7 @@ from scripts.cli_output_preview_support._helpers.result_fixtures import (
     build_publish_preview,
 )
 from scripts.cli_output_preview_support.models import PreviewRequest
+from streambuild.adapters.clickhouse.constants import CLICKHOUSE_ADAPTER_NAME
 from streambuild.cli.audit_backfill.main.render_ambiguous_deployment_message import (
     render_ambiguous_deployment_message,
 )
@@ -34,6 +35,7 @@ def render_plan_preview(request: PreviewRequest) -> str:
         plan=build_plan_preview(),
         desired_state=build_plan_preview_desired_state(),
         database=request.database,
+        adapter_name=CLICKHOUSE_ADAPTER_NAME,
         json_output=request.json_output,
         verbose=request.verbose,
     )
@@ -46,6 +48,7 @@ def render_multi_target_plan_preview(request: PreviewRequest) -> str:
         plan=build_multi_target_plan_preview(),
         desired_state=build_multi_target_plan_preview_desired_state(),
         database=request.database,
+        adapter_name=CLICKHOUSE_ADAPTER_NAME,
         json_output=request.json_output,
         verbose=request.verbose,
     )
@@ -58,6 +61,7 @@ def render_type_change_plan_preview(request: PreviewRequest) -> str:
         plan=build_type_change_plan_preview(),
         desired_state=build_type_change_plan_preview_desired_state(),
         database=request.database,
+        adapter_name=CLICKHOUSE_ADAPTER_NAME,
         json_output=request.json_output,
         verbose=request.verbose,
     )

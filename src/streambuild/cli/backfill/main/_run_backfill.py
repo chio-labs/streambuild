@@ -67,6 +67,7 @@ def run_backfill(
                 plan=preview_context.plan,
                 desired_state=preview_context.desired_state,
                 database=preview_context.resolved_database,
+                adapter_name=client.adapter_identity.name,
                 json_output=False,
                 verbose=options.verbose,
             )
