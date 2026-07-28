@@ -24,6 +24,10 @@ class CreateShadowObjectsOrderingTestCase:
     description: str
     expected_preceding_fragment: str
     expected_following_fragment: str
+    expected_rewritten_query_fragment: str
+    expected_absent_query_fragment: str
+    expected_canonical_query_fragment: str
+    expected_database_template_fragment: str
 
 
 @dataclass(frozen=True)

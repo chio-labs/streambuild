@@ -356,6 +356,9 @@ def _parse_relation(*, target: str, dialect: str) -> _CachedRelation:
     expressions: Any = from_payload.get(POLYGLOT_EXPRESSIONS_KEY)
     if not isinstance(expressions, list) or len(expressions) != 1:
         raise SqlAnalysisError(f"Resolved relation '{target}' is not a valid SQL relation")
+    joins: Any = select_payload.get(POLYGLOT_JOINS_KEY)
+    if isinstance(joins, list) and joins:
+        raise SqlAnalysisError(f"Resolved relation '{target}' is not a valid SQL relation")
     relation: Any = expressions[0]
     if not isinstance(relation, dict):
         raise SqlAnalysisError(f"Resolved relation '{target}' is not a valid SQL relation")
