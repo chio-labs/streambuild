@@ -53,6 +53,7 @@ from tests.unit.src.streambuild.compiler.pipeline.helpers import (
     write_shared_source_project,
     write_source_model_name_collision,
 )
+from tests.unit.src.streambuild.compiler.test_discovery.helpers import model_payload
 
 
 @pytest.mark.parametrize(
@@ -94,7 +95,7 @@ def test_given_adapter_profile_when_analyzing_then_references_use_its_dialect(
             expected_model_count=2,
             expected_parse_calls=2,
             expected_parse_one_calls=8,
-            expected_analyze_calls=2,
+            expected_analyze_calls=3,
             expected_generate_calls=20,
         )
     ],
@@ -675,8 +676,11 @@ def test_given_complete_project_when_expanding_macros_then_all_inputs_share_one_
         True,
         True,
     )
-    assert "@identity_sql" not in analysis.compile_inputs.tests[0].expected_targets[0].query
-    assert "CAST(1 AS UInt64)" in analysis.compile_inputs.tests[0].expected_targets[0].query
+    expected_test_query: str = (
+        model_payload(analysis.compile_inputs.tests[0]).expected_targets[0].query
+    )
+    assert "@identity_sql" not in expected_test_query
+    assert "CAST(1 AS UInt64)" in expected_test_query
     assert "@identity_sql" not in analysis.compile_inputs.audits[0].query
     assert "order_id = 0" in analysis.compile_inputs.audits[0].query
 

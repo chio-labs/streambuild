@@ -1,9 +1,15 @@
 """Shared SQL lexical scanning behavior for compiler-owned syntaxes."""
 
+from streambuild.compiler.sql_analysis._helpers.cte_scanning import (
+    extract_top_level_ctes_impl,
+    try_consume_keyword_impl,
+)
 from streambuild.compiler.sql_analysis._helpers.scanning import (
     find_matching_parenthesis,
     find_next_unquoted_character,
+    skip_trivia,
 )
+from streambuild.compiler.sql_analysis.models import SqlTopLevelCtes
 
 
 class SqlLexicalScanner:
@@ -28,3 +34,21 @@ class SqlLexicalScanner:
             character=character,
             start=start,
         )
+
+    @staticmethod
+    def skip_trivia(*, sql: str, start: int) -> int:
+        """Return the next index that is neither whitespace nor a comment."""
+
+        return skip_trivia(sql=sql, start=start)
+
+    @staticmethod
+    def try_consume_keyword(*, sql: str, start: int, keyword: str) -> int | None:
+        """Return the index after one case-insensitive keyword, or None."""
+
+        return try_consume_keyword_impl(sql=sql, start=start, keyword=keyword)
+
+    @staticmethod
+    def extract_top_level_ctes(*, sql: str, context: str) -> SqlTopLevelCtes:
+        """Return the authored top-level WITH clause and its trailing statement."""
+
+        return extract_top_level_ctes_impl(sql=sql, context=context)

@@ -43,6 +43,7 @@ def render_sql_test_results(
         )
         status: str = _style_status(text="PASS" if result.passed else "FAIL", passed=result.passed)
         lines.append(f"{status}  {_render_target_label(result)}  {relative_path}")
+        lines.extend(_render_warnings(result))
         if result.passed:
             continue
         if result.file_path not in failed_paths:
@@ -60,6 +61,10 @@ def render_sql_test_results(
                 f"  stb test {_render_result_path(file_path=failed_path, project_dir=project_dir)}"
             )
     return "\n".join(lines)
+
+
+def _render_warnings(result: SqlTestExecutionResult) -> tuple[str, ...]:
+    return tuple(f"  warning: {warning}" for warning in result.warnings)
 
 
 def _render_failed_result(

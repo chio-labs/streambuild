@@ -7,7 +7,8 @@ from streambuild.compiler.dag.models import DagArtifact, DagEdge, DagNode
 from streambuild.compiler.dag.types import DagCheckEdgeType, DagNodeType
 from streambuild.compiler.graph.models import DependencyEdge, ProjectGraph
 from streambuild.compiler.macros.models import MacroRegistry
-from streambuild.compiler.test_discovery.models import LoadedSqlTest, SqlTestCase
+from streambuild.compiler.test_discovery.models import LoadedSqlTest
+from streambuild.compiler.testing.models import SqlTestCase
 
 
 def build_dag_artifact(*, graph: ProjectGraph, macro_registry: MacroRegistry) -> DagArtifact:
@@ -90,6 +91,7 @@ def _test_edges(*, graph: ProjectGraph) -> list[DagEdge]:
     test_case_by_identity: dict[str, SqlTestCase] = {
         _test_case_identity(test_case): test_case for test_case in graph.project.test_cases
     }
+    model_names: frozenset[str] = frozenset(model.key.name for model in graph.project.models)
     loaded_test: LoadedSqlTest
     for loaded_test in graph.project.tests:
         test_name: str = _test_identity(loaded_test)
@@ -97,7 +99,13 @@ def _test_edges(*, graph: ProjectGraph) -> list[DagEdge]:
         if test_case is None:
             continue
         target_names: tuple[str, ...] = tuple(
-            sorted({target.target_model_name for target in test_case.target_cases})
+            sorted(
+                {
+                    target.target_model_name
+                    for target in test_case.target_cases
+                    if target.target_model_name in model_names
+                }
+            )
         )
         target_name: str
         for target_name in target_names:

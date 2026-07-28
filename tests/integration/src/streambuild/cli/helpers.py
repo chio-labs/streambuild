@@ -552,3 +552,98 @@ DOWNSTREAM_REF_SQL_TEST: str = """
     )
     SELECT 1
     """
+
+
+SEMANTICS_MODEL_SQL_BY_NAME: tuple[tuple[str, str], ...] = (
+    (
+        "order_items",
+        """
+        MODEL (
+          order_by: ["order_id"]
+        );
+
+        SELECT
+          CAST(order_id AS String) AS order_id,
+          CAST(quantity * unit_price AS Nullable(Float64)) AS line_total
+        FROM __source("orders")
+        """,
+    ),
+    (
+        "daily_revenue",
+        """
+        MODEL (
+          order_by: ["order_id"]
+        );
+
+        SELECT
+          CAST(order_id AS String) AS order_id,
+          CAST(line_total AS Nullable(Float64)) AS line_total
+        FROM __ref("order_items")
+        """,
+    ),
+    (
+        "revenue_report",
+        """
+        MODEL (
+          order_by: ["order_id"]
+        );
+
+        SELECT
+          CAST(order_id AS String) AS order_id,
+          CAST(line_total AS Nullable(Float64)) AS reported_total
+        FROM __ref("daily_revenue")
+        """,
+    ),
+    (
+        "order_tax",
+        """
+        MODEL (
+          order_by: ["order_id"]
+        );
+
+        SELECT
+          CAST(order_id AS String) AS order_id,
+          CAST(line_total * 0.1 AS Nullable(Float64)) AS tax_total
+        FROM __ref("order_items")
+        """,
+    ),
+    (
+        "order_summary",
+        """
+        MODEL (
+          order_by: ["order_id"]
+        );
+
+        SELECT
+          CAST(daily.order_id AS String) AS order_id,
+          CAST(daily.line_total + tax.tax_total AS Nullable(Float64)) AS total_with_tax
+        FROM __ref("daily_revenue") AS daily
+        JOIN __ref("order_tax", ref_type='reference') AS tax ON daily.order_id = tax.order_id
+        """,
+    ),
+)
+
+
+def write_sql_test_semantics_project(
+    *, project_dir: Path, sql_test_content: str, macro_file_contents: str
+) -> None:
+    """Write one three-model project used to prove SQL-test comparison semantics."""
+
+    write_managed_source_project(project_dir=project_dir)
+    pipeline_dir: Path = project_dir / "pipelines" / "order_events"
+    pipeline_dir.mkdir(parents=True)
+    (pipeline_dir / "pipeline.yml").write_text("source: orders\n", encoding="utf-8")
+    model_name: str
+    model_sql: str
+    for model_name, model_sql in SEMANTICS_MODEL_SQL_BY_NAME:
+        (pipeline_dir / f"{model_name}.sql").write_text(
+            dedent(model_sql).strip() + "\n", encoding="utf-8"
+        )
+    test_file_path: Path = project_dir / "tests" / "order_events" / "test_semantics.sql"
+    test_file_path.parent.mkdir(parents=True, exist_ok=True)
+    test_file_path.write_text(dedent(sql_test_content).strip() + "\n", encoding="utf-8")
+    macro_dir: Path = project_dir / "macros"
+    macro_dir.mkdir(parents=True, exist_ok=True)
+    (macro_dir / "helpers.py").write_text(
+        dedent(macro_file_contents).strip() + "\n", encoding="utf-8"
+    )

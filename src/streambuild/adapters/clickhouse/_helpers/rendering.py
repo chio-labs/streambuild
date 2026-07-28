@@ -6,6 +6,8 @@ from streambuild.adapter.models import (
     AdapterColumn,
     AdapterManagedSource,
     AdapterMaterializedView,
+    AdapterSetDifferenceComparisonRequest,
+    AdapterSetDifferenceTarget,
     AdapterStableView,
     AdapterTable,
 )
@@ -34,6 +36,19 @@ def render_clickhouse_resource(
     if isinstance(resource, AdapterMaterializedView):
         return _render_materialized_view(resource=resource, database=database)
     return _render_stable_view(resource=resource, database=database)
+
+
+def render_clickhouse_set_difference_comparison(
+    *, request: AdapterSetDifferenceComparisonRequest
+) -> str:
+    """Render bidirectional bag comparisons with explicit NULL-safe equality."""
+
+    if not request.targets:
+        raise AdapterCapabilityError("ClickHouse comparison requires at least one target")
+    return "\nUNION ALL\n".join(
+        f"(\n{_render_set_difference_target(target=target, index=index)}\n)"
+        for index, target in enumerate(request.targets)
+    )
 
 
 def _render_managed_source(
@@ -118,3 +133,134 @@ def _render_column_definition(column: AdapterColumn) -> str:
 def _database_scoped_consumer_group(*, consumer_group: str, database: str) -> str:
     normalized_database: str = database.replace("-", "_")
     return f"{consumer_group}_{normalized_database}"
+
+
+def _render_set_difference_target(*, target: AdapterSetDifferenceTarget, index: int) -> str:
+    suffix: str = str(index)
+    expected_counts_name: str = f"__streambuild_expected_counts_{suffix}"
+    actual_counts_name: str = f"__streambuild_actual_counts_{suffix}"
+    rendered_ctes: list[str] = [f"{name} AS (\n{query}\n)" for name, query in target.ctes]
+    if target.expected_query is not None:
+        rendered_ctes.append(
+            _render_grouped_counts_cte(
+                name=expected_counts_name,
+                query=target.expected_query,
+                column_names=target.column_names,
+            )
+        )
+    rendered_ctes.append(
+        _render_grouped_counts_cte(
+            name=actual_counts_name,
+            query=target.actual_query,
+            column_names=target.column_names,
+        )
+    )
+    comparison_sql: str = _render_unexpected_rows(
+        index=index,
+        actual_counts_name=actual_counts_name,
+        expected_counts_name=expected_counts_name,
+        column_names=target.column_names,
+        expected_empty=target.expected_query is None,
+    )
+    if target.expected_query is not None:
+        comparison_sql = (
+            _render_missing_rows(
+                index=index,
+                expected_counts_name=expected_counts_name,
+                actual_counts_name=actual_counts_name,
+                column_names=target.column_names,
+            )
+            + "\nUNION ALL\n"
+            + comparison_sql
+        )
+    return "WITH\n" + ",\n".join(rendered_ctes) + "\n" + comparison_sql
+
+
+def _render_grouped_counts_cte(*, name: str, query: str, column_names: tuple[str, ...]) -> str:
+    columns: str = ", ".join(column_names)
+    return (
+        f"{name} AS (\n"
+        f"SELECT {columns}, count() AS __streambuild_multiplicity\n"
+        f"FROM (\n{query}\n)\n"
+        f"GROUP BY {columns}\n)"
+    )
+
+
+def _render_missing_rows(
+    *,
+    index: int,
+    expected_counts_name: str,
+    actual_counts_name: str,
+    column_names: tuple[str, ...],
+) -> str:
+    return _render_directional_rows(
+        index=index,
+        diff_type="missing",
+        primary_alias="expected_rows",
+        secondary_alias="actual_rows",
+        primary_name=expected_counts_name,
+        secondary_name=actual_counts_name,
+        column_names=column_names,
+    )
+
+
+def _render_unexpected_rows(
+    *,
+    index: int,
+    actual_counts_name: str,
+    expected_counts_name: str,
+    column_names: tuple[str, ...],
+    expected_empty: bool,
+) -> str:
+    if expected_empty:
+        row_values: str = _render_row_values(alias="actual_rows", column_names=column_names)
+        return (
+            f"SELECT {index} AS _case_index, 'unexpected' AS _diff_type,\n"
+            f"       {row_values} AS _row_values,\n"
+            "       actual_rows.__streambuild_multiplicity AS _multiplicity\n"
+            f"FROM {actual_counts_name} AS actual_rows"
+        )
+    return _render_directional_rows(
+        index=index,
+        diff_type="unexpected",
+        primary_alias="actual_rows",
+        secondary_alias="expected_rows",
+        primary_name=actual_counts_name,
+        secondary_name=expected_counts_name,
+        column_names=column_names,
+    )
+
+
+def _render_directional_rows(
+    *,
+    index: int,
+    diff_type: str,
+    primary_alias: str,
+    secondary_alias: str,
+    primary_name: str,
+    secondary_name: str,
+    column_names: tuple[str, ...],
+) -> str:
+    row_values: str = _render_row_values(alias=primary_alias, column_names=column_names)
+    join_conditions: str = " AND ".join(
+        f"isNotDistinctFrom({primary_alias}.{column}, {secondary_alias}.{column})"
+        for column in column_names
+    )
+    return (
+        f"SELECT {index} AS _case_index, '{diff_type}' AS _diff_type,\n"
+        f"       {row_values} AS _row_values,\n"
+        f"       {primary_alias}.__streambuild_multiplicity - "
+        f"ifNull({secondary_alias}.__streambuild_multiplicity, 0) AS _multiplicity\n"
+        f"FROM {primary_name} AS {primary_alias}\n"
+        f"ALL LEFT JOIN {secondary_name} AS {secondary_alias}\n"
+        f"ON {join_conditions}\n"
+        f"WHERE {primary_alias}.__streambuild_multiplicity > "
+        f"ifNull({secondary_alias}.__streambuild_multiplicity, 0)"
+    )
+
+
+def _render_row_values(*, alias: str, column_names: tuple[str, ...]) -> str:
+    values: str = ", ".join(
+        f"CAST({alias}.{column} AS Nullable(String))" for column in column_names
+    )
+    return f"[{values}]"

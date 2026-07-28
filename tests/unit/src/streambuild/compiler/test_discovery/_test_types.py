@@ -34,3 +34,38 @@ class DiscoverSqlTestsErrorTestCase:
     relative_file_path: str
     file_contents: str
     expected_error_fragment: str
+
+
+@dataclass(frozen=True)
+class DiscoverMacroSqlTestTestCase:
+    description: str
+    file_contents: str
+    expected_name: str
+    expected_helper_cte_names: tuple[str, ...]
+    expected_actual_fragment: str
+    expected_expected_fragment: str
+
+
+@dataclass(frozen=True)
+class DiscoverAssertionSqlTestTestCase:
+    description: str
+    file_contents: str
+    expected_assertion_cte_names: tuple[str, ...]
+    expected_assertion_reference_names: tuple[str, ...]
+    expected_target_names: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class ScannedSqlTestCteTestCase:
+    description: str
+    file_contents: str
+    expected_cte_names: tuple[str, ...]
+    expected_body_fragment: str
+
+
+@dataclass(frozen=True)
+class MacroModeRestrictionTestCase:
+    description: str
+    macro_file_contents: str
+    file_contents: str
+    expected_error_fragment: str

@@ -24,7 +24,7 @@ from streambuild.compiler.compile.models import (
 )
 from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.compiler.pipeline.types import AdapterResource
-from streambuild.compiler.test_discovery.models import SqlTestCase
+from streambuild.compiler.testing.models import SqlTestCase
 
 
 def build_manifest_json(

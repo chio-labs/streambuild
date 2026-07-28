@@ -25,4 +25,5 @@ def build_compiler_adapter_profile(adapter: Adapter) -> CompilerAdapterProfile:
         model_relation_name=adapter.model_relation_name,
         realize_model=adapter.realize_model,
         render_resource=adapter.render_resource,
+        render_set_difference_comparison=adapter.render_set_difference_comparison,
     )

@@ -8,7 +8,7 @@ from streambuild.cli.compile.constants import (
 )
 from streambuild.cli.compile.exceptions import CompileArtifactError
 from streambuild.compiler.audit_discovery.models import LoadedSqlAudit
-from streambuild.compiler.test_discovery.models import SqlTestCase
+from streambuild.compiler.testing.models import SqlTestCase
 
 
 def model_query_path(*, pipeline_name: str, model_name: str) -> Path:
@@ -97,6 +97,10 @@ def static_test_path(*, test_case: SqlTestCase) -> Path:
         value=test_case.name or test_case.file_path.stem,
         kind="SQL test",
     )
+    return Path("compiled", "tests", _test_folder(test_case=test_case), f"{test_name}.sql")
+
+
+def _test_folder(*, test_case: SqlTestCase) -> Path:
     target_names: tuple[str, ...] = tuple(
         sorted(
             {
@@ -105,12 +109,13 @@ def static_test_path(*, test_case: SqlTestCase) -> Path:
             }
         )
     )
-    folder: Path = (
-        Path(target_names[0])
-        if len(target_names) == 1
-        else Path("_chain_", "__".join(target_names))
-    )
-    return Path("compiled", "tests", folder, f"{test_name}.sql")
+    if not target_names:
+        return Path(
+            _safe_segment(value=test_case.name or test_case.file_path.stem, kind="SQL test")
+        )
+    if len(target_names) == 1:
+        return Path(target_names[0])
+    return Path("_chain_", "__".join(target_names))
 
 
 def runtime_test_path(*, test_case: SqlTestCase) -> Path:

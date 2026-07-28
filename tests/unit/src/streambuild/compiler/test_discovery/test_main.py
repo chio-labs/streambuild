@@ -4,7 +4,7 @@ import pytest
 
 from streambuild.compiler.macros.models import MacroContext, MacroRegistry
 from streambuild.compiler.test_discovery.main._discover_sql_tests import discover_sql_tests
-from streambuild.compiler.test_discovery.models import LoadedSqlTest
+from streambuild.compiler.test_discovery.models import LoadedSqlTest, SqlTestModelPayload
 from tests.unit.src.streambuild.compiler.macros.helpers import (
     build_test_macro_runtime,
     write_macro_file,
@@ -17,6 +17,7 @@ from tests.unit.src.streambuild.compiler.test_discovery._test_types import (
     DiscoverSqlTestsWithMacrosTestCase,
 )
 from tests.unit.src.streambuild.compiler.test_discovery.helpers import (
+    model_payload,
     write_sql_test_file,
 )
 
@@ -102,16 +103,18 @@ def test_given_valid_sql_test_files_when_discovering_then_it_returns_loaded_sql_
 
     loaded_tests: list[LoadedSqlTest] = discover_sql_tests(root=tests_root)
 
+    payload: SqlTestModelPayload = model_payload(loaded_tests[0])
+
     assert len(loaded_tests) == 1
-    assert tuple(
-        cte.name.removeprefix("__expected__") for cte in loaded_tests[0].expected_targets
-    ) == (test_case.expected_target_model_names)
+    assert tuple(cte.name.removeprefix("__expected__") for cte in payload.expected_targets) == (
+        test_case.expected_target_model_names
+    )
     assert (
         tuple(cte.name for cte in loaded_tests[0].authored_ctes)
         == test_case.expected_authored_cte_names
     )
-    assert tuple(mock.name for mock in loaded_tests[0].mocks) == test_case.expected_mock_names
-    assert loaded_tests[0].expected_targets
+    assert tuple(mock.name for mock in payload.mocks) == test_case.expected_mock_names
+    assert payload.expected_targets
 
 
 @pytest.mark.parametrize(
@@ -268,7 +271,7 @@ def test_given_sql_test_macros_when_discovering_then_it_expands_test_body(
         macro_context=macro_context,
     )
 
-    assert test_case.expected_mock_query_fragment in loaded_tests[0].mocks[0].query
+    assert test_case.expected_mock_query_fragment in model_payload(loaded_tests[0]).mocks[0].query
 
 
 @pytest.mark.parametrize(
@@ -320,7 +323,7 @@ def test_given_multiple_sql_tests_in_one_file_when_discovering_then_it_returns_e
 
     assert (
         tuple(
-            loaded_test.expected_targets[0].name.removeprefix("__expected__")
+            model_payload(loaded_test).expected_targets[0].name.removeprefix("__expected__")
             for loaded_test in loaded_tests
         )
         == test_case.expected_target_model_names

@@ -11,6 +11,14 @@ class SqlAnalysisError(ValueError):
         self.span: SqlSourceSpan | None = span
 
 
+class SqlMissingWithClauseError(SqlAnalysisError):
+    """Raised when a statement expected to open with a WITH clause does not."""
+
+    def __init__(self, *, context: str, span: SqlSourceSpan) -> None:
+        super().__init__(f"{context} must declare CTEs in a WITH clause", span=span)
+        self.context: str = context
+
+
 class SqlStatementCountError(SqlAnalysisError):
     """Raised when authored model SQL does not contain exactly one statement."""
 

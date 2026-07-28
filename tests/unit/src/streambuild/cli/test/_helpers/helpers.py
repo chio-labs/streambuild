@@ -3,6 +3,7 @@ from pathlib import Path
 from streambuild.compiler.compile.models import CompiledPipeline
 from streambuild.compiler.test_discovery.main._discover_sql_tests import discover_sql_tests
 from streambuild.compiler.test_discovery.models import LoadedSqlTest
+from streambuild.compiler.testing.models import SqlTestCase, SqlTestChainStep
 from streambuild.executor.testing.models import SqlTestExecutionResult, SqlTestTargetExecutionResult
 from tests.unit.src.streambuild.cli.plan.main.helpers import (
     compile_selector_project_pipelines,
@@ -83,6 +84,7 @@ def build_render_sql_test_results(description: str) -> tuple[SqlTestExecutionRes
                         unexpected_rows=(("ord_001", 20.0),),
                     ),
                 ),
+                executed_sql="SELECT 1",
                 name="line total computes correctly",
             ),
         ),
@@ -99,6 +101,7 @@ def build_render_sql_test_results(description: str) -> tuple[SqlTestExecutionRes
                         unexpected_rows=(("ord_004", 99.0, "ap-south"),),
                     ),
                 ),
+                executed_sql="SELECT 1",
             ),
         ),
         "renders blank lines between failed multi target sections": (
@@ -121,6 +124,7 @@ def build_render_sql_test_results(description: str) -> tuple[SqlTestExecutionRes
                         unexpected_rows=(("ord_001", 20.0),),
                     ),
                 ),
+                executed_sql="SELECT 1",
             ),
         ),
         "truncates long sections when not verbose": (
@@ -138,6 +142,7 @@ def build_render_sql_test_results(description: str) -> tuple[SqlTestExecutionRes
                         ),
                     ),
                 ),
+                executed_sql="SELECT 1",
             ),
         ),
         "renders all rows when verbose": (
@@ -155,7 +160,85 @@ def build_render_sql_test_results(description: str) -> tuple[SqlTestExecutionRes
                         ),
                     ),
                 ),
+                executed_sql="SELECT 1",
             ),
         ),
     }
     return results_by_description[description]
+
+
+def build_runtime_test_cases(
+    *,
+    target_model_names: tuple[str, ...],
+    test_name: str,
+    executed_sql: str,
+) -> tuple[SqlTestCase, ...]:
+    return (
+        SqlTestCase(
+            file_path=Path("/project/tests/order_events/test_line_total.sql"),
+            query=executed_sql,
+            target_cases=tuple(
+                SqlTestChainStep(
+                    target_model_name=target_model_name,
+                    expected_column_names=("order_id",),
+                    ctes=(),
+                    actual_query="SELECT order_id FROM __model__order_items",
+                    expected_query="SELECT 'ord_001' AS order_id",
+                )
+                for target_model_name in target_model_names
+            ),
+            name=test_name,
+        ),
+    )
+
+
+def build_runtime_test_results(
+    *, test_cases: tuple[SqlTestCase, ...], executed_sql: str
+) -> tuple[SqlTestExecutionResult, ...]:
+    return tuple(
+        SqlTestExecutionResult(
+            file_path=test_case.file_path,
+            test_index=test_case.test_index,
+            passed=True,
+            target_results=(),
+            executed_sql=executed_sql,
+            name=test_case.name,
+        )
+        for test_case in test_cases
+    )
+
+
+def seed_existing_target_tree(*, target_dir: Path) -> None:
+    compiled_path: Path = target_dir / "compiled" / "models" / "orders" / "stale.sql"
+    compiled_path.parent.mkdir(parents=True, exist_ok=True)
+    compiled_path.write_text("SELECT 'compiled'\n", encoding="utf-8")
+    (target_dir / "manifest.json").write_text("{}\n", encoding="utf-8")
+    (target_dir / "streambuild_dag.json").write_text("{}\n", encoding="utf-8")
+    stale_runtime_path: Path = target_dir / "run" / "tests" / "order_items" / "stale.sql"
+    stale_runtime_path.parent.mkdir(parents=True, exist_ok=True)
+    stale_runtime_path.write_text("SELECT 'stale'\n", encoding="utf-8")
+    other_runtime_path: Path = target_dir / "run" / "other" / "keep.sql"
+    other_runtime_path.parent.mkdir(parents=True, exist_ok=True)
+    other_runtime_path.write_text("SELECT 3\n", encoding="utf-8")
+
+
+MACRO_SQL_TEST_CONTENTS: str = """
+TEST (mode: macro, name: "orphan macro check");
+
+WITH
+__macro_actual__ AS (
+  SELECT 42 AS doubled
+),
+__macro_expected__ AS (
+  SELECT 42 AS doubled
+)
+SELECT 1
+"""
+
+
+def build_selector_project_loaded_tests_with_macro(tmp_path: Path) -> tuple[LoadedSqlTest, ...]:
+    tests_root: Path = tmp_path / "tests"
+    loaded_tests: tuple[LoadedSqlTest, ...] = build_selector_project_loaded_tests(tmp_path)
+    write_sql_test_file(tests_root / "macros" / "test_orphan_macro.sql", MACRO_SQL_TEST_CONTENTS)
+    del loaded_tests
+    return tuple(discover_sql_tests(root=tests_root))

@@ -2,26 +2,30 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from pathlib import Path
-from typing import cast
-
-from sqlglot import exp, parse_one
-
-from streambuild.compiler.compile.main.replace_refs import replace_refs
-from streambuild.compiler.compile.models import CompiledModel, CompiledPipeline
+from streambuild.adapter.types import AdapterSetDifferenceComparisonRenderer
+from streambuild.compiler.compile.models import CompiledPipeline
 from streambuild.compiler.sql_analysis.classes.sql_reference_rewriter import (
     SqlReferenceRewriter,
 )
-from streambuild.compiler.test_discovery.constants import EXPECTED_CTE_PREFIX
 from streambuild.compiler.test_discovery.models import (
     LoadedSqlTest,
-    SqlTestCase,
-    SqlTestCte,
-    SqlTestTargetCase,
+    SqlTestMacroPayload,
+    SqlTestModelPayload,
 )
+from streambuild.compiler.test_discovery.types import SqlTestMode
+from streambuild.compiler.testing._helpers.comparison import render_comparison_query
+from streambuild.compiler.testing._helpers.macro_assembly import build_macro_target
+from streambuild.compiler.testing._helpers.model_assembly import (
+    build_assertion_steps,
+    build_chain_steps,
+)
+from streambuild.compiler.testing.classes.sql_test_chain_assembler import SqlTestChainAssembler
 from streambuild.compiler.testing.exceptions import SqlTestAssemblyError
-from streambuild.compiler.testing.models import CompiledSqlTestModelEntry
+from streambuild.compiler.testing.models import (
+    SqlTestAssertionStep,
+    SqlTestCase,
+    SqlTestChainStep,
+)
 
 
 def build_sql_test_case(
@@ -29,559 +33,105 @@ def build_sql_test_case(
     loaded_test: LoadedSqlTest,
     compiled_pipelines: tuple[CompiledPipeline, ...],
     reference_rewriter: SqlReferenceRewriter,
+    comparison_renderer: AdapterSetDifferenceComparisonRenderer,
+    dialect: str,
 ) -> SqlTestCase:
-    registry: dict[str, CompiledSqlTestModelEntry] = _build_compiled_model_registry(
-        compiled_pipelines
-    )
-    source_names: set[str] = {
-        compiled_pipeline.pipeline.source.name for compiled_pipeline in compiled_pipelines
-    }
-    mock_name_by_logical_name: dict[str, str] = {
-        mock.name: mock.cte_name for mock in loaded_test.mocks
-    }
-    authored_ctes: list[tuple[str, str]] = [
-        (cte.name, cte.query) for cte in loaded_test.authored_ctes
-    ]
-    assembled_model_ctes: tuple[tuple[str, str], ...] = ()
-    assembled_name_by_logical_name: dict[str, str] = {}
+    """Assemble one discovered SQL test into an executable comparison statement."""
 
-    target_cases: list[SqlTestTargetCase] = []
-    expected_target: SqlTestCte
-    for expected_target in loaded_test.expected_targets:
-        target_model_name: str = expected_target.name.removeprefix(EXPECTED_CTE_PREFIX)
-        if target_model_name not in registry:
-            raise SqlTestAssemblyError(
-                f"SQL test '{loaded_test.file_path}' targets unknown model '{target_model_name}'"
-            )
-        target_entry: CompiledSqlTestModelEntry = registry[target_model_name]
-        actual_cte_name: str
-        (
-            actual_cte_name,
-            assembled_name_by_logical_name,
-            assembled_model_ctes,
-        ) = _resolve_relation(
-            logical_name=target_model_name,
+    if loaded_test.mode == SqlTestMode.MACRO:
+        return _build_macro_test_case(
             loaded_test=loaded_test,
-            registry=registry,
-            source_names=source_names,
-            mock_name_by_logical_name=mock_name_by_logical_name,
-            assembled_name_by_logical_name=assembled_name_by_logical_name,
-            assembled_model_ctes=assembled_model_ctes,
-            resolution_stack=frozenset(),
-            reference_rewriter=reference_rewriter,
+            comparison_renderer=comparison_renderer,
+            dialect=dialect,
         )
-        expected_column_names: tuple[str, ...] = _derive_expected_column_names(
-            query=expected_target.query,
-            file_path=loaded_test.file_path,
-            available_cte_queries_by_name={
-                cte.name: cte.query for cte in loaded_test.authored_ctes
-            },
-        )
-        output_column_type_by_name: Mapping[str, str] = {
-            column.name: column.type for column in target_entry.compiled_model.output_columns
-        }
-        missing_columns: tuple[str, ...] = tuple(
-            column_name
-            for column_name in expected_column_names
-            if column_name not in output_column_type_by_name
-        )
-        if missing_columns:
-            raise SqlTestAssemblyError(
-                f"SQL test '{loaded_test.file_path}' expects columns not produced by "
-                f"'{target_model_name}': {', '.join(missing_columns)}"
-            )
-        typed_expected_query: str = _build_typed_expected_query(
-            expected_query=expected_target.query,
-            expected_column_names=expected_column_names,
-            output_column_type_by_name=output_column_type_by_name,
-        )
-        actual_projection_query: str = (
-            "SELECT " + ", ".join(expected_column_names) + f" FROM {actual_cte_name}"
-        )
-        target_case_ctes: list[tuple[str, str]] = [
-            *authored_ctes,
-            *assembled_model_ctes,
-            ("__expected__typed", typed_expected_query),
-            ("__actual__projected", actual_projection_query),
-            (
-                "__missing__",
-                "SELECT * FROM __expected__typed EXCEPT SELECT * FROM __actual__projected",
-            ),
-            (
-                "__unexpected__",
-                "SELECT * FROM __actual__projected EXCEPT SELECT * FROM __expected__typed",
-            ),
-        ]
-        final_query: str = (
-            "WITH\n"
-            + ",\n".join(
-                f"{cte_name} AS (\n{cte_query}\n)" for cte_name, cte_query in target_case_ctes
-            )
-            + "\nSELECT 'missing' AS _diff_type, * FROM __missing__\n"
-            + "UNION ALL\n"
-            + "SELECT 'unexpected' AS _diff_type, * FROM __unexpected__"
-        )
-        target_cases.append(
-            SqlTestTargetCase(
-                target_model_name=target_model_name,
-                expected_column_names=expected_column_names,
-                query=final_query,
-            )
-        )
+    return _build_model_test_case(
+        loaded_test=loaded_test,
+        compiled_pipelines=compiled_pipelines,
+        reference_rewriter=reference_rewriter,
+        comparison_renderer=comparison_renderer,
+        dialect=dialect,
+    )
+
+
+def _build_model_test_case(
+    *,
+    loaded_test: LoadedSqlTest,
+    compiled_pipelines: tuple[CompiledPipeline, ...],
+    reference_rewriter: SqlReferenceRewriter,
+    comparison_renderer: AdapterSetDifferenceComparisonRenderer,
+    dialect: str,
+) -> SqlTestCase:
+    payload: SqlTestModelPayload = _require_model_payload(loaded_test)
+    assembler: SqlTestChainAssembler = SqlTestChainAssembler(
+        loaded_test=loaded_test,
+        payload=payload,
+        compiled_pipelines=compiled_pipelines,
+        reference_rewriter=reference_rewriter,
+    )
+    authored_ctes: tuple[tuple[str, str], ...] = tuple(
+        (cte.name, cte.query) for cte in loaded_test.authored_ctes
+    )
+    target_cases: tuple[SqlTestChainStep, ...] = build_chain_steps(
+        loaded_test=loaded_test,
+        payload=payload,
+        assembler=assembler,
+        authored_ctes=authored_ctes,
+        dialect=dialect,
+    )
+    assertion_cases: tuple[SqlTestAssertionStep, ...] = build_assertion_steps(
+        loaded_test=loaded_test,
+        payload=payload,
+        assembler=assembler,
+        authored_ctes=authored_ctes,
+        dialect=dialect,
+    )
     return SqlTestCase(
         file_path=loaded_test.file_path,
-        target_cases=tuple(target_cases),
+        query=render_comparison_query(
+            comparison_renderer=comparison_renderer,
+            target_cases=target_cases,
+            assertion_cases=assertion_cases,
+        ),
+        target_cases=target_cases,
+        assertion_cases=assertion_cases,
+        warnings=assembler.unreachable_mock_warnings(),
         test_index=loaded_test.test_index,
         name=loaded_test.name,
     )
 
 
-def _resolve_relation(
+def _build_macro_test_case(
     *,
-    logical_name: str,
     loaded_test: LoadedSqlTest,
-    registry: Mapping[str, CompiledSqlTestModelEntry],
-    source_names: set[str],
-    mock_name_by_logical_name: Mapping[str, str],
-    assembled_name_by_logical_name: dict[str, str],
-    assembled_model_ctes: tuple[tuple[str, str], ...],
-    resolution_stack: frozenset[str],
-    reference_rewriter: SqlReferenceRewriter,
-) -> tuple[str, dict[str, str], tuple[tuple[str, str], ...]]:
-    if logical_name in mock_name_by_logical_name:
-        return (
-            mock_name_by_logical_name[logical_name],
-            assembled_name_by_logical_name,
-            assembled_model_ctes,
-        )
-    if logical_name in assembled_name_by_logical_name:
-        return (
-            assembled_name_by_logical_name[logical_name],
-            assembled_name_by_logical_name,
-            assembled_model_ctes,
-        )
-    if logical_name in resolution_stack:
-        raise SqlTestAssemblyError(
-            f"SQL test '{loaded_test.file_path}' encountered a cyclic dependency "
-            f"while assembling '{logical_name}'"
-        )
-    if logical_name not in registry:
-        suggestion_prefix: str = "__source__" if logical_name in source_names else "__ref__"
-        target_model_names: str = ", ".join(
-            expected_target.name.removeprefix(EXPECTED_CTE_PREFIX)
-            for expected_target in loaded_test.expected_targets
-        )
-        raise SqlTestAssemblyError(
-            f"SQL test '{loaded_test.file_path}' targets "
-            f"'{target_model_names}', but dependency '{logical_name}' "
-            "cannot be resolved. Add "
-            f"`{suggestion_prefix}{logical_name}` to mock it directly."
-        )
-    entry: CompiledSqlTestModelEntry = registry[logical_name]
-    query: str = entry.compiled_model.query
-    resolver: dict[str, str] = {}
-    next_resolution_stack: frozenset[str] = resolution_stack | {logical_name}
-    for parsed_ref in entry.compiled_model.parsed_refs:
-        resolved_name: str
-        (
-            resolved_name,
-            assembled_name_by_logical_name,
-            assembled_model_ctes,
-        ) = _resolve_relation(
-            logical_name=parsed_ref.name,
-            loaded_test=loaded_test,
-            registry=registry,
-            source_names=source_names,
-            mock_name_by_logical_name=mock_name_by_logical_name,
-            assembled_name_by_logical_name=assembled_name_by_logical_name,
-            assembled_model_ctes=assembled_model_ctes,
-            resolution_stack=next_resolution_stack,
-            reference_rewriter=reference_rewriter,
-        )
-        resolver[parsed_ref.name] = resolved_name
-    cte_name: str = f"__model__{logical_name}"
-    updated_names: dict[str, str] = {
-        **assembled_name_by_logical_name,
-        logical_name: cte_name,
-    }
-    updated_ctes: tuple[tuple[str, str], ...] = (
-        *assembled_model_ctes,
-        (cte_name, replace_refs(sql=query, resolver=resolver, rewriter=reference_rewriter)),
+    comparison_renderer: AdapterSetDifferenceComparisonRenderer,
+    dialect: str,
+) -> SqlTestCase:
+    payload: SqlTestMacroPayload = _require_macro_payload(loaded_test)
+    target_cases: tuple[SqlTestChainStep, ...] = (
+        build_macro_target(loaded_test=loaded_test, payload=payload, dialect=dialect),
     )
-    return cte_name, updated_names, updated_ctes
-
-
-def _build_compiled_model_registry(
-    compiled_pipelines: tuple[CompiledPipeline, ...],
-) -> dict[str, CompiledSqlTestModelEntry]:
-    registry: dict[str, CompiledSqlTestModelEntry] = {}
-    compiled_pipeline: CompiledPipeline
-    for compiled_pipeline in compiled_pipelines:
-        compiled_model: CompiledModel
-        for compiled_model in compiled_pipeline.models:
-            registry[compiled_model.transform.name] = CompiledSqlTestModelEntry(
-                compiled_pipeline=compiled_pipeline,
-                compiled_model=compiled_model,
-            )
-    return registry
-
-
-def _derive_expected_column_names(
-    *,
-    query: str,
-    file_path: Path,
-    available_cte_queries_by_name: Mapping[str, str],
-) -> tuple[str, ...]:
-    return _infer_query_column_names(
-        query=query,
-        file_path=file_path,
-        available_cte_queries_by_name=available_cte_queries_by_name,
-        resolution_stack=(),
+    return SqlTestCase(
+        file_path=loaded_test.file_path,
+        query=render_comparison_query(
+            comparison_renderer=comparison_renderer,
+            target_cases=target_cases,
+            assertion_cases=(),
+        ),
+        target_cases=target_cases,
+        test_index=loaded_test.test_index,
+        name=loaded_test.name,
     )
 
 
-def _infer_query_column_names(
-    *,
-    query: str,
-    file_path: Path,
-    available_cte_queries_by_name: Mapping[str, str],
-    resolution_stack: tuple[str, ...],
-) -> tuple[str, ...]:
-    statement: exp.Expr = parse_one(query, read="clickhouse")
-    if isinstance(statement, exp.Select):
-        return _infer_select_column_names(
-            statement=statement,
-            file_path=file_path,
-            available_cte_queries_by_name=available_cte_queries_by_name,
-            resolution_stack=resolution_stack,
-        )
-    if isinstance(statement, exp.SetOperation):
-        return _infer_set_operation_column_names(
-            statement=statement,
-            file_path=file_path,
-            available_cte_queries_by_name=available_cte_queries_by_name,
-            resolution_stack=resolution_stack,
-        )
-    if isinstance(statement, exp.Subquery):
-        return _infer_expression_column_names(
-            statement=statement.this,
-            file_path=file_path,
-            available_cte_queries_by_name=available_cte_queries_by_name,
-            resolution_stack=resolution_stack,
-        )
-    raise SqlTestAssemblyError(
-        f"SQL test '{file_path}' must define __expected__<model> as a SELECT query"
-    )
+def _require_model_payload(loaded_test: LoadedSqlTest) -> SqlTestModelPayload:
+    payload: object = loaded_test.payload
+    if isinstance(payload, SqlTestModelPayload):
+        return payload
+    raise SqlTestAssemblyError(f"SQL test '{loaded_test.file_path}' is not a model-mode test")
 
 
-def _infer_expression_column_names(
-    *,
-    statement: exp.Expression,
-    file_path: Path,
-    available_cte_queries_by_name: Mapping[str, str],
-    resolution_stack: tuple[str, ...],
-) -> tuple[str, ...]:
-    if isinstance(statement, exp.Select):
-        return _infer_select_column_names(
-            statement=statement,
-            file_path=file_path,
-            available_cte_queries_by_name=available_cte_queries_by_name,
-            resolution_stack=resolution_stack,
-        )
-    if isinstance(statement, exp.SetOperation):
-        return _infer_set_operation_column_names(
-            statement=statement,
-            file_path=file_path,
-            available_cte_queries_by_name=available_cte_queries_by_name,
-            resolution_stack=resolution_stack,
-        )
-    if isinstance(statement, exp.Subquery):
-        return _infer_expression_column_names(
-            statement=statement.this,
-            file_path=file_path,
-            available_cte_queries_by_name=available_cte_queries_by_name,
-            resolution_stack=resolution_stack,
-        )
-    raise SqlTestAssemblyError(
-        f"SQL test '{file_path}' must define __expected__<model> as a SELECT query"
-    )
-
-
-def _infer_set_operation_column_names(
-    *,
-    statement: exp.SetOperation,
-    file_path: Path,
-    available_cte_queries_by_name: Mapping[str, str],
-    resolution_stack: tuple[str, ...],
-) -> tuple[str, ...]:
-    left_column_names: tuple[str, ...] = _infer_expression_column_names(
-        statement=statement.this,
-        file_path=file_path,
-        available_cte_queries_by_name=available_cte_queries_by_name,
-        resolution_stack=resolution_stack,
-    )
-    right_expression: exp.Expression | None = statement.expression
-    if right_expression is None:
-        raise SqlTestAssemblyError(
-            f"SQL test '{file_path}' must define __expected__<model> as a SELECT query"
-        )
-    right_projection_count: int = _infer_expression_projection_count(
-        statement=right_expression,
-        file_path=file_path,
-        available_cte_queries_by_name=available_cte_queries_by_name,
-        resolution_stack=resolution_stack,
-    )
-    if len(left_column_names) != right_projection_count:
-        raise SqlTestAssemblyError(
-            f"SQL test '{file_path}' must keep the same projected column count across "
-            "all __expected__<model> set-operation branches"
-        )
-    return left_column_names
-
-
-def _infer_expression_projection_count(
-    *,
-    statement: exp.Expression,
-    file_path: Path,
-    available_cte_queries_by_name: Mapping[str, str],
-    resolution_stack: tuple[str, ...],
-) -> int:
-    if isinstance(statement, exp.Select):
-        return _infer_select_projection_count(
-            statement=statement,
-            file_path=file_path,
-            available_cte_queries_by_name=available_cte_queries_by_name,
-            resolution_stack=resolution_stack,
-        )
-    if isinstance(statement, exp.SetOperation):
-        left_count: int = _infer_expression_projection_count(
-            statement=statement.this,
-            file_path=file_path,
-            available_cte_queries_by_name=available_cte_queries_by_name,
-            resolution_stack=resolution_stack,
-        )
-        right_expression: exp.Expression | None = statement.expression
-        if right_expression is None:
-            raise SqlTestAssemblyError(
-                f"SQL test '{file_path}' must define __expected__<model> as a SELECT query"
-            )
-        right_count: int = _infer_expression_projection_count(
-            statement=right_expression,
-            file_path=file_path,
-            available_cte_queries_by_name=available_cte_queries_by_name,
-            resolution_stack=resolution_stack,
-        )
-        if left_count != right_count:
-            raise SqlTestAssemblyError(
-                f"SQL test '{file_path}' must keep the same projected column count across "
-                "all __expected__<model> set-operation branches"
-            )
-        return left_count
-    if isinstance(statement, exp.Subquery):
-        return _infer_expression_projection_count(
-            statement=statement.this,
-            file_path=file_path,
-            available_cte_queries_by_name=available_cte_queries_by_name,
-            resolution_stack=resolution_stack,
-        )
-    raise SqlTestAssemblyError(
-        f"SQL test '{file_path}' must define __expected__<model> as a SELECT query"
-    )
-
-
-def _infer_select_projection_count(
-    *,
-    statement: exp.Select,
-    file_path: Path,
-    available_cte_queries_by_name: Mapping[str, str],
-    resolution_stack: tuple[str, ...],
-) -> int:
-    projection_count: int = 0
-    source_name_by_alias: dict[str, str] = _build_select_source_name_by_alias(statement)
-    projection: exp.Expression
-    for projection in statement.expressions:
-        if isinstance(projection, exp.Star):
-            projection_count += len(
-                _expand_star_projection(
-                    source_name=None,
-                    statement=statement,
-                    file_path=file_path,
-                    available_cte_queries_by_name=available_cte_queries_by_name,
-                    source_name_by_alias=source_name_by_alias,
-                    resolution_stack=resolution_stack,
-                )
-            )
-            continue
-        if isinstance(projection, exp.Column) and projection.is_star:
-            projection_count += len(
-                _expand_star_projection(
-                    source_name=projection.table,
-                    statement=statement,
-                    file_path=file_path,
-                    available_cte_queries_by_name=available_cte_queries_by_name,
-                    source_name_by_alias=source_name_by_alias,
-                    resolution_stack=resolution_stack,
-                )
-            )
-            continue
-        projection_count += 1
-    if projection_count == 0:
-        raise SqlTestAssemblyError(
-            f"SQL test '{file_path}' must define at least one projected column "
-            "in __expected__<model>"
-        )
-    return projection_count
-
-
-def _infer_select_column_names(
-    *,
-    statement: exp.Select,
-    file_path: Path,
-    available_cte_queries_by_name: Mapping[str, str],
-    resolution_stack: tuple[str, ...],
-) -> tuple[str, ...]:
-    column_names: list[str] = []
-    source_name_by_alias: dict[str, str] = _build_select_source_name_by_alias(statement)
-    projection: exp.Expression
-    for projection in statement.expressions:
-        if isinstance(projection, exp.Alias):
-            column_names.append(projection.alias)
-            continue
-        if isinstance(projection, exp.Column) and projection.table is None:
-            column_names.append(projection.name)
-            continue
-        if isinstance(projection, exp.Star):
-            column_names.extend(
-                _expand_star_projection(
-                    source_name=None,
-                    statement=statement,
-                    file_path=file_path,
-                    available_cte_queries_by_name=available_cte_queries_by_name,
-                    source_name_by_alias=source_name_by_alias,
-                    resolution_stack=resolution_stack,
-                )
-            )
-            continue
-        if isinstance(projection, exp.Column) and projection.is_star:
-            column_names.extend(
-                _expand_star_projection(
-                    source_name=projection.table,
-                    statement=statement,
-                    file_path=file_path,
-                    available_cte_queries_by_name=available_cte_queries_by_name,
-                    source_name_by_alias=source_name_by_alias,
-                    resolution_stack=resolution_stack,
-                )
-            )
-            continue
-        raise SqlTestAssemblyError(
-            f"SQL test '{file_path}' must alias every __expected__<model> projection, "
-            "or use SELECT * from a helper/mock CTE with inferrable columns"
-        )
-    if not column_names:
-        raise SqlTestAssemblyError(
-            f"SQL test '{file_path}' must define at least one projected column "
-            "in __expected__<model>"
-        )
-    return tuple(column_names)
-
-
-def _expand_star_projection(
-    *,
-    source_name: str | None,
-    statement: exp.Select,
-    file_path: Path,
-    available_cte_queries_by_name: Mapping[str, str],
-    source_name_by_alias: Mapping[str, str],
-    resolution_stack: tuple[str, ...],
-) -> tuple[str, ...]:
-    resolved_source_name: str = _resolve_star_source_name(
-        source_name=source_name,
-        statement=statement,
-        file_path=file_path,
-        source_name_by_alias=source_name_by_alias,
-    )
-    if resolved_source_name in resolution_stack:
-        cycle_path: str = " -> ".join((*resolution_stack, resolved_source_name))
-        raise SqlTestAssemblyError(
-            f"SQL test '{file_path}' contains a cyclic helper CTE dependency while "
-            f"inferring expected columns: {cycle_path}"
-        )
-    source_query: str | None = available_cte_queries_by_name.get(resolved_source_name)
-    if source_query is None:
-        raise SqlTestAssemblyError(
-            f"SQL test '{file_path}' cannot infer columns from '{resolved_source_name}'; "
-            "SELECT * is only supported for helper/mock CTEs authored in the same test file"
-        )
-    return _infer_query_column_names(
-        query=source_query,
-        file_path=file_path,
-        available_cte_queries_by_name=available_cte_queries_by_name,
-        resolution_stack=(*resolution_stack, resolved_source_name),
-    )
-
-
-def _resolve_star_source_name(
-    *,
-    source_name: str | None,
-    statement: exp.Select,
-    file_path: Path,
-    source_name_by_alias: Mapping[str, str],
-) -> str:
-    if source_name is not None:
-        resolved_source_name: str | None = source_name_by_alias.get(source_name)
-        if resolved_source_name is None:
-            raise SqlTestAssemblyError(
-                f"SQL test '{file_path}' cannot resolve SELECT * source '{source_name}'"
-            )
-        return resolved_source_name
-    if len(source_name_by_alias) != 1:
-        raise SqlTestAssemblyError(
-            f"SQL test '{file_path}' must use an explicit alias before SELECT * when "
-            "the expected query reads from multiple sources"
-        )
-    return next(iter(source_name_by_alias.values()))
-
-
-def _build_select_source_name_by_alias(statement: exp.Select) -> dict[str, str]:
-    source_name_by_alias: dict[str, str] = {}
-    from_expression: exp.From | None = cast(exp.From | None, statement.args.get("from_"))
-    if from_expression is not None:
-        source_name_by_alias = _register_table_source(
-            source_expression=from_expression.this, source_name_by_alias=source_name_by_alias
-        )
-    joins: tuple[exp.Expression, ...] = cast(
-        tuple[exp.Expression, ...], tuple(statement.args.get("joins") or ())
-    )
-    join_expression: exp.Expression
-    for join_expression in joins:
-        if not isinstance(join_expression, exp.Join):
-            continue
-        source_name_by_alias = _register_table_source(
-            source_expression=join_expression.this, source_name_by_alias=source_name_by_alias
-        )
-    return source_name_by_alias
-
-
-def _register_table_source(
-    *,
-    source_expression: exp.Expression | None,
-    source_name_by_alias: dict[str, str],
-) -> dict[str, str]:
-    if not isinstance(source_expression, exp.Table):
-        return source_name_by_alias
-    source_name_by_alias[source_expression.alias_or_name] = source_expression.name
-    return source_name_by_alias
-
-
-def _build_typed_expected_query(
-    *,
-    expected_query: str,
-    expected_column_names: tuple[str, ...],
-    output_column_type_by_name: Mapping[str, str],
-) -> str:
-    cast_projections: str = ",\n".join(
-        f"    CAST({column_name} AS {output_column_type_by_name[column_name]}) AS {column_name}"
-        for column_name in expected_column_names
-    )
-    return f"SELECT\n{cast_projections}\nFROM (\n{expected_query}\n) AS expected_source"
+def _require_macro_payload(loaded_test: LoadedSqlTest) -> SqlTestMacroPayload:
+    payload: object = loaded_test.payload
+    if isinstance(payload, SqlTestMacroPayload):
+        return payload
+    raise SqlTestAssemblyError(f"SQL test '{loaded_test.file_path}' is not a macro-mode test")

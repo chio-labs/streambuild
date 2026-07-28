@@ -5,14 +5,19 @@ import pytest
 
 from streambuild.cli.entry.exceptions import CliUserError
 from streambuild.cli.test._helpers.selection import select_loaded_sql_tests
-from streambuild.compiler.test_discovery.models import LoadedSqlTest, SqlTestCte
+from streambuild.compiler.test_discovery.main.sql_test_target_names import (
+    sql_test_target_names,
+)
+from streambuild.compiler.test_discovery.models import LoadedSqlTest
 from tests.unit.src.streambuild.cli.test._helpers._test_types import (
+    MacroSqlTestSelectionTestCase,
     SelectLoadedSqlTestsErrorTestCase,
     SelectLoadedSqlTestsTestCase,
 )
 from tests.unit.src.streambuild.cli.test._helpers.helpers import (
     build_selector_project_compiled_pipelines,
     build_selector_project_loaded_tests,
+    build_selector_project_loaded_tests_with_macro,
 )
 
 
@@ -82,15 +87,13 @@ def test_given_valid_test_selectors_when_selecting_then_it_returns_expected_targ
         project_dir=tmp_path,
     )
 
-    selected_expected_targets: tuple[SqlTestCte, ...] = tuple(
-        chain.from_iterable(test.expected_targets for test in selected_tests)
-    )
     selected_target_model_names: tuple[str, ...] = tuple(
         sorted(
-            {
-                expected_target.name.removeprefix("__expected__")
-                for expected_target in selected_expected_targets
-            }
+            set(
+                chain.from_iterable(
+                    sql_test_target_names(loaded_test=test) for test in selected_tests
+                )
+            )
         )
     )
 
@@ -129,3 +132,53 @@ def test_given_invalid_test_selectors_when_selecting_then_it_raises_clear_errors
             paths=tuple(Path(path) for path in test_case.paths),
             project_dir=tmp_path,
         )
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        MacroSqlTestSelectionTestCase(
+            description="no selector runs every test including an orphan macro test",
+            selectors=(),
+            paths=(),
+            expected_selected_file_names=(
+                "test_orphan_macro.sql",
+                "test_orders_clean.sql",
+                "test_orders_enriched.sql",
+                "test_payments_enriched.sql",
+            ),
+        ),
+        MacroSqlTestSelectionTestCase(
+            description="an explicit path selects the orphan macro test",
+            selectors=(),
+            paths=("tests/macros/test_orphan_macro.sql",),
+            expected_selected_file_names=("test_orphan_macro.sql",),
+        ),
+        MacroSqlTestSelectionTestCase(
+            description="a model name selector never matches a macro test",
+            selectors=("orders_clean",),
+            paths=(),
+            expected_selected_file_names=("test_orders_clean.sql",),
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_orphan_macro_test_when_selecting_then_only_default_and_path_selection_match(
+    test_case: MacroSqlTestSelectionTestCase,
+    tmp_path: Path,
+) -> None:
+    loaded_tests: tuple[LoadedSqlTest, ...] = build_selector_project_loaded_tests_with_macro(
+        tmp_path
+    )
+
+    selected_tests: tuple[LoadedSqlTest, ...] = select_loaded_sql_tests(
+        loaded_tests=loaded_tests,
+        compiled_pipelines=build_selector_project_compiled_pipelines(),
+        selectors=test_case.selectors,
+        paths=tuple(Path(path) for path in test_case.paths),
+        project_dir=tmp_path,
+    )
+
+    assert tuple(sorted({test.file_path.name for test in selected_tests})) == tuple(
+        sorted(test_case.expected_selected_file_names)
+    )

@@ -19,13 +19,17 @@ from streambuild.adapter.models import (
     AdapterMaterializedView,
     AdapterModelRealization,
     AdapterModelRealizationRequest,
+    AdapterSetDifferenceComparisonRequest,
     AdapterSourceRealization,
     AdapterStableView,
     AdapterTable,
 )
 from streambuild.adapters.clickhouse._helpers.errors import translate_driver_error
 from streambuild.adapters.clickhouse._helpers.realization import realize_clickhouse_source
-from streambuild.adapters.clickhouse._helpers.rendering import render_clickhouse_resource
+from streambuild.adapters.clickhouse._helpers.rendering import (
+    render_clickhouse_resource,
+    render_clickhouse_set_difference_comparison,
+)
 from streambuild.adapters.clickhouse.classes.clickhouse_connection import ClickHouseConnection
 from streambuild.adapters.clickhouse.constants import (
     CLICKHOUSE_ADAPTER_NAME,
@@ -144,6 +148,13 @@ class ClickHouseAdapter(Adapter):
         """Map one semantically compiled model to ClickHouse resources."""
 
         return realize_clickhouse_model(request=request)
+
+    def render_set_difference_comparison(
+        self, *, request: AdapterSetDifferenceComparisonRequest
+    ) -> str:
+        """Render neutral bag-comparison inputs as one ClickHouse query."""
+
+        return render_clickhouse_set_difference_comparison(request=request)
 
     def _open_raw_client(self, config: AdapterConnectionConfig) -> RawClickHouseClient:
         if config.database is None:

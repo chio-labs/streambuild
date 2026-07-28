@@ -65,6 +65,11 @@ def build_cli_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Show all diff rows for failing tests",
     )
+    test_parser.add_argument(
+        "--target-dir",
+        type=Path,
+        help="Replace the project-level target/ artifact root",
+    )
 
     plan_parser: argparse.ArgumentParser = subparsers.add_parser(
         "plan",

@@ -12,6 +12,7 @@ from streambuild.adapter.types import (
     AdapterModelRealizer,
     AdapterModelRelationNamer,
     AdapterResourceRenderer,
+    AdapterSetDifferenceComparisonRenderer,
     AdapterSourceRealizer,
 )
 from streambuild.compiler.audit_discovery.models import LoadedSqlAudit
@@ -36,7 +37,8 @@ from streambuild.compiler.discovery.types import (
 )
 from streambuild.compiler.macros.models import MacroContext, MacroRegistry
 from streambuild.compiler.sql_analysis.models import SqlModelAnalysis, SqlSourceSpan
-from streambuild.compiler.test_discovery.models import LoadedSqlTest, SqlTestCase
+from streambuild.compiler.test_discovery.models import LoadedSqlTest
+from streambuild.compiler.testing.models import SqlTestCase
 
 
 @dataclass(frozen=True)
@@ -360,6 +362,7 @@ class CompilerAdapterProfile:
     model_relation_name: AdapterModelRelationNamer
     realize_model: AdapterModelRealizer
     render_resource: AdapterResourceRenderer
+    render_set_difference_comparison: AdapterSetDifferenceComparisonRenderer
 
 
 @dataclass(frozen=True)

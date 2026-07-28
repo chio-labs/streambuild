@@ -506,3 +506,26 @@ def _locate_macro_error(
         location=call_location,
         related_locations=_definition_related_location(loaded_macro),
     )
+
+
+def find_macro_call_names_impl(sql: str) -> tuple[str, ...]:
+    """Return unique authored macro call names in encounter order."""
+
+    if MACRO_SIGIL not in sql:
+        return ()
+    names: list[str] = []
+    seen: set[str] = set()
+    cursor: int = 0
+    while cursor < len(sql):
+        call_start_index: int | None = _find_next_macro_start(sql=sql, start_index=cursor)
+        if call_start_index is None:
+            break
+        macro_name: str = _parse_macro_name(sql=sql, call_start_index=call_start_index)
+        if macro_name not in seen:
+            seen.add(macro_name)
+            names.append(macro_name)
+        opening_paren_index: int = _skip_whitespace(
+            sql=sql, start_index=call_start_index + 1 + len(macro_name)
+        )
+        cursor = _find_matching_paren(sql=sql, opening_paren_index=opening_paren_index) + 1
+    return tuple(names)

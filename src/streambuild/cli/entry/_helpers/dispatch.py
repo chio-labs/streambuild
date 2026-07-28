@@ -56,6 +56,7 @@ def dispatch_cli_command(
             client=client,
             loaded_project=invocation.loaded_project,
             adapter_profile=adapter_profile,
+            target_dir=getattr(args, "target_dir", None),
         )
     if args.command == CliSubcommand.BACKFILL:
         return handlers.run_backfill(

@@ -32,6 +32,25 @@ class AdapterCapabilities:
     stable_logical_bindings: bool
     per_relation_atomic_replace: bool
     graph_atomic_publish: bool
+    set_difference_comparison: bool
+
+
+@dataclass(frozen=True)
+class AdapterSetDifferenceTarget:
+    """One neutral actual/expected bag comparison requested from an adapter."""
+
+    name: str
+    column_names: tuple[str, ...]
+    ctes: tuple[tuple[str, str], ...]
+    actual_query: str
+    expected_query: str | None
+
+
+@dataclass(frozen=True)
+class AdapterSetDifferenceComparisonRequest:
+    """One executable statement containing every SQL-test comparison target."""
+
+    targets: tuple[AdapterSetDifferenceTarget, ...]
 
 
 @dataclass(frozen=True)

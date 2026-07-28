@@ -13,8 +13,8 @@ from streambuild.compiler.sql_analysis.classes.sql_model_analyzer import SqlMode
 from streambuild.compiler.sql_analysis.classes.sql_reference_rewriter import (
     SqlReferenceRewriter,
 )
-from streambuild.compiler.test_discovery.models import SqlTestCase
 from streambuild.compiler.testing.main._build_sql_test_cases import build_sql_test_cases
+from streambuild.compiler.testing.models import SqlTestCase
 
 
 def assemble_project(
@@ -39,6 +39,8 @@ def assemble_project(
         loaded_tests=inputs.tests,
         compiled_pipelines=pipelines,
         reference_rewriter=reference_rewriter,
+        comparison_renderer=inputs.adapter_profile.render_set_difference_comparison,
+        dialect=inputs.adapter_profile.sql_analysis_dialect,
     )
     return CompiledProject(
         sources=tuple(sources_by_name.values()),
