@@ -15,11 +15,12 @@ def render_plan_result(
     plan: DeploymentPlan,
     desired_state: DesiredState,
     database: str,
+    adapter_name: str,
     json_output: bool,
     verbose: bool = False,
 ) -> str:
     if json_output:
-        return render_plan_json(plan)
+        return render_plan_json(plan=plan, adapter_name=adapter_name)
     return render_plan_text(
         plan=plan,
         desired_state=desired_state,

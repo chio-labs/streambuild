@@ -4,6 +4,7 @@ from pathlib import Path
 
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from streambuild.cli.entry._helpers.compiler_profile import build_compiler_adapter_profile
+from streambuild.cli.plan.main._run_plan import run_plan
 from streambuild.compiler.compile.main._compile_pipeline import compile_pipeline
 from streambuild.compiler.compile.models import (
     CompiledPipeline,
@@ -11,6 +12,9 @@ from streambuild.compiler.compile.models import (
     CompilerAdapterProfile,
 )
 from streambuild.compiler.discovery.main._discover_pipelines import discover_pipelines
+from streambuild.compiler.discovery.main.load_project_input_for_path import (
+    load_project_input_for_path,
+)
 from streambuild.compiler.discovery.models import (
     ExternalTableSourceStep,
     LoadedPipeline,
@@ -22,8 +26,11 @@ from streambuild.compiler.discovery.models import (
 from streambuild.compiler.discovery.types import ReplayBoundaryMode, SourceKind
 from streambuild.compiler.pipeline.main._realize_project import realize_project
 from streambuild.compiler.pipeline.models import RealizedProject
+from streambuild.compiler.planner.models import StandardWarehouseSnapshot
 from streambuild.compiler.sql_analysis.classes.sql_model_analyzer import SqlModelAnalyzer
+from tests.unit.src.streambuild.cli.helpers import RecordingAdapterConnection
 from tests.unit.src.streambuild.compiler.compile.helpers import build_realization_analyzer
+from tests.unit.src.streambuild.compiler.planner.helpers import build_settled_standard_snapshot
 
 SELECTOR_PIPELINES_ROOT: Path = Path("tests/fixtures/selector_project/pipelines")
 
@@ -92,4 +99,32 @@ def build_realized_external_source_project() -> RealizedProject:
         project=compiled_project,
         adapter_profile=adapter_profile,
         sql_analyzer=build_realization_analyzer(compiled_project),
+    )
+
+
+def run_scope_project_plan(
+    *,
+    project_root: Path,
+    json_output: bool,
+    selectors: tuple[str, ...] = (),
+    full_refresh: bool = False,
+    start_time: str | None = None,
+) -> int:
+    """Run `stb plan` against the standard scope project with a settled warehouse."""
+
+    snapshot: StandardWarehouseSnapshot = build_settled_standard_snapshot()
+    return run_plan(
+        pipelines_root=project_root / "pipelines",
+        database=None,
+        selectors=selectors,
+        full_refresh=full_refresh,
+        start_time=start_time,
+        json_output=json_output,
+        verbose=False,
+        client=RecordingAdapterConnection(
+            relations=snapshot.catalog.relations,
+            ownership_records=snapshot.ownership_records,
+        ),
+        loaded_project=load_project_input_for_path(path=project_root),
+        adapter_profile=build_compiler_adapter_profile(ClickHouseAdapter()),
     )

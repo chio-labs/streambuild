@@ -47,3 +47,12 @@ class LegacyMetadataMigrationIntegrationTestCase:
     expected_object_state_count: int
     expected_version_rows: tuple[tuple[int], ...]
     expected_legacy_deployment_count: int
+
+
+@dataclass(frozen=True)
+class TargetOwnershipIntegrationTestCase:
+    description: str
+    inserted_rows: tuple[dict[str, object], ...]
+    expected_records_before_migration: tuple[tuple[str, str, str], ...]
+    expected_records_after_migration: tuple[tuple[str, str, str], ...]
+    expected_records_after_insert: tuple[tuple[str, str, str], ...]

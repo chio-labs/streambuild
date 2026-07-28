@@ -10,6 +10,7 @@ from streambuild.adapter.models import (
     AdapterConnectionConfig,
     AdapterDeploymentInventory,
     AdapterDeploymentRecord,
+    AdapterOwnershipRecord,
 )
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from streambuild.executor.audit_backfill.main.load_audit_deployment import load_audit_deployment
@@ -17,9 +18,12 @@ from streambuild.executor.audit_backfill.models import LoadedAuditDeployment
 from tests.integration.src.streambuild.adapters.clickhouse._test_types import (
     LegacyMetadataMigrationIntegrationTestCase,
     MetadataMigrationIntegrationTestCase,
+    TargetOwnershipIntegrationTestCase,
 )
 from tests.integration.src.streambuild.adapters.clickhouse.helpers import (
+    connect_clickhouse,
     integer_rows,
+    ownership_summaries,
     run_metadata_migration,
 )
 from tests.integration.src.streambuild.conftest import ClickHouseConnectionSettings
@@ -277,3 +281,73 @@ def test_given_legacy_metadata_when_migrating_then_rows_remain_readable_and_unmo
     )
     assert int(str(object_state_rows[0][0])) == test_case.expected_object_state_count
     assert integer_rows(version_rows) == test_case.expected_version_rows
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        TargetOwnershipIntegrationTestCase(
+            description="durable ownership becomes readable only after rows are recorded",
+            inserted_rows=(
+                {
+                    "database_name": "analytics",
+                    "relation_name": "tbl__orders_enriched",
+                    "resource_kind": "table",
+                    "logical_model_database": "",
+                    "logical_model_name": "orders_enriched",
+                    "owning_mode": "standard",
+                    "tool_version": "0.1.0",
+                },
+                {
+                    "database_name": "analytics",
+                    "relation_name": "mv__orders_enriched",
+                    "resource_kind": "materialized_view",
+                    "logical_model_database": "",
+                    "logical_model_name": "orders_enriched",
+                    "owning_mode": "virtual_environment",
+                    "tool_version": "0.1.0",
+                },
+            ),
+            expected_records_before_migration=(),
+            expected_records_after_migration=(),
+            expected_records_after_insert=(
+                ("mv__orders_enriched", "orders_enriched", "virtual_environment"),
+                ("tbl__orders_enriched", "orders_enriched", "standard"),
+            ),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_recorded_target_ownership_when_loading_then_durable_claims_are_returned(
+    test_case: TargetOwnershipIntegrationTestCase,
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_database: str,
+) -> None:
+    connection: AdapterConnection = connect_clickhouse(
+        connection_settings=clickhouse_connection_settings,
+        database=clickhouse_database,
+    )
+
+    try:
+        connection.ensure_database(clickhouse_database)
+        before_migration: tuple[AdapterOwnershipRecord, ...] = connection.load_target_ownership(
+            clickhouse_database
+        )
+        connection.migrate_metadata_state(clickhouse_database)
+        after_migration: tuple[AdapterOwnershipRecord, ...] = connection.load_target_ownership(
+            clickhouse_database
+        )
+        connection.insert_rows(
+            table=f"{clickhouse_database}.streambuild_target_ownership",
+            rows=test_case.inserted_rows,
+        )
+        after_insert: tuple[AdapterOwnershipRecord, ...] = connection.load_target_ownership(
+            clickhouse_database
+        )
+    finally:
+        connection.close()
+
+    assert ownership_summaries(before_migration) == test_case.expected_records_before_migration
+    assert ownership_summaries(after_migration) == test_case.expected_records_after_migration
+    assert ownership_summaries(after_insert) == test_case.expected_records_after_insert

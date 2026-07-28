@@ -16,8 +16,10 @@ from streambuild.compiler.planner.types import (
     PlannedChangeType,
     RebuildExecutionMode,
     RebuildStrategy,
+    StandardPlanReason,
     TableSchemaChangeKind,
     TableSchemaSeedCompatibility,
+    TargetOwnership,
 )
 
 
@@ -223,3 +225,45 @@ class DeploymentPhysicalNameParsingTestCase:
     physical_name: str
     expected_logical_name: str
     expected_deployment_id: str
+
+
+@dataclass(frozen=True)
+class StandardScopeTestCase:
+    description: str
+    selected_model_names: tuple[str, ...]
+    expected_user_scope: tuple[str, ...]
+    expected_execution_scope: tuple[str, ...]
+    expected_reasons: tuple[StandardPlanReason, ...]
+    expected_prerequisites: tuple[str, ...]
+    expected_replay_roots: tuple[tuple[str, str, tuple[str, ...]], ...] = ()
+    expected_teardown: tuple[tuple[str, str], ...] = ()
+    expected_creation: tuple[tuple[str, str], ...] = ()
+
+
+@dataclass(frozen=True)
+class StandardOwnershipTestCase:
+    description: str
+    relation_names: tuple[str, ...]
+    standard_owned_names: tuple[str, ...]
+    virtual_environment_owned_names: tuple[str, ...]
+    stable_binding_names: tuple[str, ...]
+    classified_relation_names: tuple[str, ...]
+    expected_ownership: tuple[TargetOwnership, ...]
+
+
+@dataclass(frozen=True)
+class StandardPlanRejectionTestCase:
+    description: str
+    selected_model_names: tuple[str, ...]
+    present_relation_names: tuple[str, ...]
+    standard_owned_names: tuple[str, ...]
+    virtual_environment_owned_names: tuple[str, ...]
+    stable_binding_names: tuple[str, ...]
+    expected_error_fragment: str
+
+
+@dataclass(frozen=True)
+class PlannerSettledPlanTestCase:
+    description: str
+    expected_rebuild_subtree_count: int
+    expected_step_count: int

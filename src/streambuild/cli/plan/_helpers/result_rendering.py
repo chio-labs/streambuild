@@ -15,6 +15,7 @@ from streambuild.cli.plan._helpers.plan_rendering import (
     render_workflow_summary,
     rollout_object_entries,
 )
+from streambuild.cli.plan.constants import VIRTUAL_ENVIRONMENTS_MODE_LABEL
 from streambuild.cli.plan.models import CompactChangedTargetSummary
 from streambuild.cli.presentation.classes.cli_style import CliStyle
 from streambuild.cli.presentation.main._cli_style import cli_style
@@ -32,8 +33,10 @@ from streambuild.compiler.planner.models import (
 )
 
 
-def render_plan_json(plan: DeploymentPlan) -> str:
+def render_plan_json(*, plan: DeploymentPlan, adapter_name: str) -> str:
     payload: dict[str, object] = {
+        "mode": VIRTUAL_ENVIRONMENTS_MODE_LABEL,
+        "adapter": adapter_name,
         "steps": [
             {
                 "step_id": step.step_id,

@@ -7,3 +7,7 @@ class DeploymentPlanError(ValueError):
 
 class ActualStateError(ValueError):
     """Raised when actual-state input or state is invalid."""
+
+
+class StandardPlanError(ValueError):
+    """Raised when a standard-mode plan cannot be built safely."""

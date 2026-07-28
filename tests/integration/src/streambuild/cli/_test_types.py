@@ -96,3 +96,12 @@ class CliTestSemanticsIntegrationTestCase:
     macro_file_contents: str
     expected_exit_code: int
     expected_output_fragments: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class CliStandardPlanIntegrationTestCase:
+    description: str
+    expected_execution_scope: tuple[str, ...]
+    expected_replay_root_models: tuple[str, ...]
+    expected_initial_ownership: tuple[str, ...]
+    expected_settled_ownership: tuple[str, ...]

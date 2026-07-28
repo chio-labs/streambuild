@@ -12,6 +12,7 @@ from tests.unit.src.streambuild.compiler.planner._test_types import (
     PlannerDeploymentPlanTestCase,
     PlannerFullRefreshPlanTestCase,
     PlannerMutableWarningTestCase,
+    PlannerSettledPlanTestCase,
     PlannerShadowIdentityTestCase,
 )
 from tests.unit.src.streambuild.compiler.planner.helpers import (
@@ -202,3 +203,31 @@ def test_given_full_refresh_key_when_planning_deployment_then_it_forces_full_reb
     assert tuple(subtree.execution_mode for subtree in deployment_plan.rebuild_subtrees) == (
         test_case.expected_execution_mode,
     )
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        PlannerSettledPlanTestCase(
+            description="a published virtual-environment deployment still plans no rebuild work",
+            expected_rebuild_subtree_count=0,
+            expected_step_count=0,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_matching_actual_state_when_planning_deployment_then_it_remains_a_no_op(
+    test_case: PlannerSettledPlanTestCase,
+) -> None:
+    desired_state: DesiredState = build_example_desired_state()
+    actual_state: ActualState = build_actual_state_matching_desired(desired_state)
+
+    deployment_plan: DeploymentPlan = plan_deployment(
+        desired_state=desired_state,
+        actual_state=actual_state,
+        default_database="analytics",
+        render_resource=ClickHouseAdapter().render_resource,
+    )
+
+    assert len(deployment_plan.rebuild_subtrees) == test_case.expected_rebuild_subtree_count
+    assert len(deployment_plan.steps) == test_case.expected_step_count

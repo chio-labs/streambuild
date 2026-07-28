@@ -70,3 +70,28 @@ class RootDeploymentStateKind(StrEnum):
     GREENFIELD = "greenfield"
     LOGICAL_VIEW_MISSING = "logical_view_missing"
     INVALID_ACTIVE_VIEW = "invalid_active_view"
+
+
+class TargetOwnership(StrEnum):
+    """How one warehouse relation is owned, per D-019 durable evidence."""
+
+    ABSENT = "absent"
+    UNMANAGED = "unmanaged"
+    STANDARD = "standard"
+    VIRTUAL_ENVIRONMENT = "virtual_environment"
+    CONFLICTED = "conflicted"
+
+
+class StandardPlanReason(StrEnum):
+    """Why one logical model is in the standard execution scope."""
+
+    SELECTED = "selected"
+    DOWNSTREAM_OF_SELECTED = "downstream_of_selected"
+    ALL_MODELS = "all_models"
+
+
+class StandardRelationAction(StrEnum):
+    """One destructive or constructive relation action in a standard plan."""
+
+    DROP = "drop"
+    CREATE = "create"

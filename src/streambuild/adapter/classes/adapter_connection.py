@@ -12,6 +12,7 @@ from streambuild.adapter.models import (
     AdapterManagedSource,
     AdapterMaterializedView,
     AdapterMetadataState,
+    AdapterOwnershipRecord,
     AdapterQueryResult,
     AdapterReadinessRequest,
     AdapterReadinessRootObservation,
@@ -49,6 +50,10 @@ class AdapterConnection(ABC):
     @abstractmethod
     def inspect_managed_table_state(self, database: str) -> InspectedManagedTableState:
         """Inspect stable bindings and deployment-specific physical relations."""
+
+    @abstractmethod
+    def load_target_ownership(self, database: str) -> tuple[AdapterOwnershipRecord, ...]:
+        """Load every durable StreamBuild ownership record for one database."""
 
     @abstractmethod
     def command(self, statement: str) -> None:

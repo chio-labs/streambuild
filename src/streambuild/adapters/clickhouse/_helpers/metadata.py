@@ -13,7 +13,7 @@ from streambuild.adapter.constants import (
     METADATA_SCHEMA_VERSIONS_TABLE_NAME,
     METADATA_TARGET_OWNERSHIP_TABLE_NAME,
 )
-from streambuild.adapter.exceptions import AdapterWarehouseError
+from streambuild.adapter.exceptions import AdapterResultError, AdapterWarehouseError
 from streambuild.adapter.models import (
     AdapterDeploymentRecord,
     AdapterDeploymentRuntimeDetailRecord,
@@ -21,9 +21,15 @@ from streambuild.adapter.models import (
     AdapterMetadataObjectKey,
     AdapterMetadataState,
     AdapterObjectStateRecord,
+    AdapterOwnershipRecord,
     AdapterPreparedObjectMapping,
     AdapterPublishEventRecord,
     AdapterQueryResult,
+)
+from streambuild.adapters.clickhouse.constants import (
+    EMPTY_DEFAULT_EXPRESSIONS,
+    OWNERSHIP_ROW_LENGTH,
+    OWNERSHIP_TABLE_EXISTS_QUERY,
 )
 from streambuild.adapters.clickhouse.models import ClickHouseMetadataStatement
 
@@ -416,3 +422,51 @@ def _prepared_mapping_payload(mapping: AdapterPreparedObjectMapping) -> dict[str
         "logical_key": _object_key_payload(mapping.logical_key),
         "physical_name": mapping.physical_name,
     }
+
+
+def load_clickhouse_target_ownership(
+    *, connection: AdapterConnection, database: str
+) -> tuple[AdapterOwnershipRecord, ...]:
+    """Return every ownership record recorded for one ClickHouse database."""
+
+    if not _ownership_table_exists(connection=connection, database=database):
+        return ()
+    result: AdapterQueryResult = connection.query(
+        "SELECT database_name, relation_name, resource_kind, logical_model_database, "
+        "logical_model_name, owning_mode, tool_version "
+        f"FROM {database}.{METADATA_TARGET_OWNERSHIP_TABLE_NAME} FINAL "
+        "ORDER BY database_name, relation_name"
+    )
+    return tuple(_ownership_record(row=row) for row in result.rows)
+
+
+def _ownership_table_exists(*, connection: AdapterConnection, database: str) -> bool:
+    result: AdapterQueryResult = connection.query(
+        OWNERSHIP_TABLE_EXISTS_QUERY.format(
+            database=database, table=METADATA_TARGET_OWNERSHIP_TABLE_NAME
+        )
+    )
+    return bool(result.rows)
+
+
+def _ownership_record(*, row: tuple[object, ...]) -> AdapterOwnershipRecord:
+    if len(row) != OWNERSHIP_ROW_LENGTH:
+        raise AdapterResultError(
+            f"ClickHouse ownership row had {len(row)} columns where "
+            f"{OWNERSHIP_ROW_LENGTH} were required"
+        )
+    return AdapterOwnershipRecord(
+        database_name=str(row[0]),
+        relation_name=str(row[1]),
+        resource_kind=str(row[2]),
+        logical_model_database=_optional_text(row[3]),
+        logical_model_name=str(row[4]),
+        owning_mode=str(row[5]),
+        tool_version=str(row[6]),
+    )
+
+
+def _optional_text(value: object) -> str | None:
+    if value in EMPTY_DEFAULT_EXPRESSIONS:
+        return None
+    return str(value)

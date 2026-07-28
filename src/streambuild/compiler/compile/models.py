@@ -378,6 +378,7 @@ class CompileProjectInputs:
     pipelines: tuple[LoadedPipeline, ...]
     tests: tuple[LoadedSqlTest, ...]
     audits: tuple[LoadedSqlAudit, ...]
+    virtual_environments: bool = False
 
 
 @dataclass(frozen=True)

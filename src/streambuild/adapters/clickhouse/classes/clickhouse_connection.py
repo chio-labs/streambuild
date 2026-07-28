@@ -16,6 +16,7 @@ from streambuild.adapter.models import (
     AdapterManagedSource,
     AdapterMaterializedView,
     AdapterMetadataState,
+    AdapterOwnershipRecord,
     AdapterQueryResult,
     AdapterReadinessRequest,
     AdapterReadinessRootObservation,
@@ -38,6 +39,7 @@ from streambuild.adapters.clickhouse._helpers.managed_tables import (
     build_inspected_managed_table_state,
 )
 from streambuild.adapters.clickhouse._helpers.metadata import (
+    load_clickhouse_target_ownership,
     migrate_clickhouse_metadata_state,
     persist_clickhouse_metadata_state,
 )
@@ -53,6 +55,7 @@ from streambuild.adapters.clickhouse.constants import (
     CLICKHOUSE_REPLAY_BOUNDARY_MODES,
     CLICKHOUSE_SET_DIFFERENCE_COMPARISON_SUPPORTED,
     CLICKHOUSE_STABLE_LOGICAL_BINDINGS_SUPPORTED,
+    CLICKHOUSE_STANDARD_REBUILD_SUPPORTED,
     CLICKHOUSE_VIRTUAL_ENVIRONMENTS_SUPPORTED,
 )
 from streambuild.adapters.clickhouse.types import (
@@ -86,6 +89,7 @@ class ClickHouseConnection(AdapterConnection):
             per_relation_atomic_replace=CLICKHOUSE_PER_RELATION_ATOMIC_REPLACE,
             graph_atomic_publish=CLICKHOUSE_GRAPH_ATOMIC_PUBLISH,
             set_difference_comparison=CLICKHOUSE_SET_DIFFERENCE_COMPARISON_SUPPORTED,
+            standard_rebuild=CLICKHOUSE_STANDARD_REBUILD_SUPPORTED,
         )
 
     def load_catalog(self, database: str) -> CatalogSnapshot:
@@ -109,6 +113,11 @@ class ClickHouseConnection(AdapterConnection):
         """Inspect ClickHouse stable bindings and deployment-specific tables."""
 
         return build_inspected_managed_table_state(client=self, database=database)
+
+    def load_target_ownership(self, database: str) -> tuple[AdapterOwnershipRecord, ...]:
+        """Load durable StreamBuild ownership records for a ClickHouse database."""
+
+        return load_clickhouse_target_ownership(connection=self, database=database)
 
     def command(self, statement: str) -> None:
         """Execute a ClickHouse command statement."""

@@ -14,6 +14,7 @@ from streambuild.adapter.models import (
     AdapterManagedSource,
     AdapterMaterializedView,
     AdapterMetadataState,
+    AdapterOwnershipRecord,
     AdapterQueryResult,
     AdapterReadinessRequest,
     AdapterReadinessRootObservation,
@@ -28,7 +29,7 @@ from streambuild.adapter.models import (
     CatalogSnapshot,
     InspectedManagedTableState,
 )
-from streambuild.adapter.types import AdapterReplayBoundaryMode
+from streambuild.adapter.types import AdapterOwningMode, AdapterReplayBoundaryMode
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from streambuild.cli.entry._helpers.compiler_profile import build_compiler_adapter_profile
 from streambuild.compiler.compile.constants import (
@@ -50,6 +51,7 @@ from streambuild.compiler.compile.models import (
     DesiredState,
     DesiredTable,
     KafkaTableSpec,
+    LogicalResourceKey,
     MaterializedViewSpec,
     ObjectKey,
     TableSpec,
@@ -60,6 +62,9 @@ from streambuild.compiler.compile.models import (
 )
 from streambuild.compiler.compile.types import DesiredObjectType
 from streambuild.compiler.discovery._helpers.load import load_pipeline_file
+from streambuild.compiler.discovery.main.load_project_input_for_path import (
+    load_project_input_for_path,
+)
 from streambuild.compiler.discovery.models import (
     ExternalTableSourceStep,
     KafkaLandingStep,
@@ -78,7 +83,9 @@ from streambuild.compiler.discovery.types import (
     SourceKind,
 )
 from streambuild.compiler.pipeline.main._realize_project import realize_project
-from streambuild.compiler.pipeline.models import RealizedProject
+from streambuild.compiler.pipeline.main.analyze_project import analyze_project
+from streambuild.compiler.pipeline.models import CompileAnalysis, RealizedProject
+from streambuild.compiler.planner.main.plan_standard_build import plan_standard_build
 from streambuild.compiler.planner.models import (
     ActualKafkaTable,
     ActualMaterializedView,
@@ -92,6 +99,9 @@ from streambuild.compiler.planner.models import (
     PreparedObjectMapping,
     PublishEventRecord,
     RootDeploymentInspection,
+    StandardPlan,
+    StandardRelationOperation,
+    StandardWarehouseSnapshot,
 )
 from streambuild.compiler.sql_analysis.classes.sql_model_analyzer import SqlModelAnalyzer
 from tests.unit.src.streambuild.compiler.compile.helpers import build_realization_analyzer
@@ -115,9 +125,12 @@ class SnapshotRecordingConnection(AdapterConnection):
         catalog: CatalogSnapshot,
         metadata_result: AdapterQueryResult,
         virtual_environments: bool,
+        standard_rebuild: bool = True,
+        ownership_records: tuple[AdapterOwnershipRecord, ...] = (),
     ) -> None:
         self._catalog: CatalogSnapshot = catalog
         self._metadata_result: AdapterQueryResult = metadata_result
+        self._ownership_records: tuple[AdapterOwnershipRecord, ...] = ownership_records
         self._capabilities: AdapterCapabilities = AdapterCapabilities(
             virtual_environments=virtual_environments,
             managed_source_kinds=frozenset({"kafka"}),
@@ -127,6 +140,7 @@ class SnapshotRecordingConnection(AdapterConnection):
             per_relation_atomic_replace=True,
             graph_atomic_publish=False,
             set_difference_comparison=True,
+            standard_rebuild=standard_rebuild,
         )
         self.catalog_load_count: int = 0
         self.query_count: int = 0
@@ -147,6 +161,10 @@ class SnapshotRecordingConnection(AdapterConnection):
     def metadata_columns(self, *, database: str, table: str) -> frozenset[str]:
         del database, table
         return frozenset()
+
+    def load_target_ownership(self, database: str) -> tuple[AdapterOwnershipRecord, ...]:
+        del database
+        return self._ownership_records
 
     def inspect_managed_table_state(self, database: str) -> InspectedManagedTableState:
         del database
@@ -543,6 +561,208 @@ def build_mutable_ref_desired_state() -> DesiredState:
                 ("customer_id",),
             ),
         ),
+    )
+
+
+STANDARD_SCOPE_MODEL_SQL_BY_NAME: dict[str, str] = {
+    "alpha": 'SELECT order_id::UInt64 AS order_id FROM __source("orders")',
+    "beta": 'SELECT order_id::UInt64 AS order_id FROM __ref("alpha")',
+    "gamma": 'SELECT order_id::UInt64 AS order_id FROM __ref("beta")',
+    "delta": (
+        'SELECT a.order_id::UInt64 AS order_id FROM __ref("alpha") AS a '
+        'LEFT JOIN __ref("gamma", ref_type="reference") AS g ON a.order_id = g.order_id'
+    ),
+}
+STANDARD_SCOPE_MODEL_NAMES: tuple[str, ...] = ("alpha", "beta", "gamma", "delta")
+STANDARD_SCOPE_SOURCE_RELATION_NAMES: tuple[str, ...] = (
+    "kafka__orders",
+    "raw__orders",
+    "mv__orders",
+)
+_STANDARD_SCOPE_SETTINGS_BLOCK_BY_FLAG: dict[bool | None, str] = {
+    None: "",
+    True: "\n[settings]\nvirtual_environments = true\n",
+    False: "\n[settings]\nvirtual_environments = false\n",
+}
+_STANDARD_SCOPE_SOURCE_YML: str = (
+    "sources:\n"
+    "  - name: orders\n"
+    "    kind: kafka\n"
+    "    broker_list: kafka:9092\n"
+    "    topic: source.orders\n"
+    "    replay_boundary: {mode: offsets}\n"
+)
+
+
+def write_standard_scope_project(
+    *, project_root: Path, virtual_environments: bool | None = None
+) -> None:
+    """Write the alpha/beta/gamma/delta scope project used by standard planning tests."""
+
+    pipeline_root: Path = project_root / "pipelines" / "orders"
+    source_root: Path = project_root / "sources"
+    pipeline_root.mkdir(parents=True, exist_ok=True)
+    source_root.mkdir(parents=True, exist_ok=True)
+    (project_root / "streambuild_project.toml").write_text(
+        'name = "standard_scope"\n'
+        'default_target = "test"\n'
+        f"{_STANDARD_SCOPE_SETTINGS_BLOCK_BY_FLAG[virtual_environments]}"
+        "\n[targets.test]\n"
+        'database = "analytics"\n',
+        encoding="utf-8",
+    )
+    (source_root / "orders.yml").write_text(_STANDARD_SCOPE_SOURCE_YML, encoding="utf-8")
+    (pipeline_root / "pipeline.yml").write_text("source: orders\n", encoding="utf-8")
+    model_name: str
+    model_sql: str
+    for model_name, model_sql in STANDARD_SCOPE_MODEL_SQL_BY_NAME.items():
+        (pipeline_root / f"{model_name}.sql").write_text(
+            f'MODEL (order_by: ["order_id"]);\n{model_sql}\n',
+            encoding="utf-8",
+        )
+
+
+def analyze_standard_scope_project(*, project_root: Path) -> CompileAnalysis:
+    """Analyze a written scope project exactly as the CLI does."""
+
+    return analyze_project(
+        pipelines_root=project_root / "pipelines",
+        loaded_project=load_project_input_for_path(path=project_root),
+        adapter_profile=build_compiler_adapter_profile(ClickHouseAdapter()),
+    )
+
+
+def standard_model_keys(
+    *, analysis: CompileAnalysis, names: tuple[str, ...]
+) -> frozenset[LogicalResourceKey]:
+    """Return the logical model keys for the named models."""
+
+    key_by_name: dict[str, LogicalResourceKey] = {
+        key.name: key for key in analysis.graph.ordered_keys
+    }
+    return frozenset(key_by_name[name] for name in names)
+
+
+def build_standard_snapshot(
+    *,
+    relation_names: tuple[str, ...] = (),
+    standard_owned_names: tuple[str, ...] = (),
+    virtual_environment_owned_names: tuple[str, ...] = (),
+    stable_binding_names: tuple[str, ...] = (),
+) -> StandardWarehouseSnapshot:
+    """Build one immutable standard snapshot from explicit relation and ownership facts."""
+
+    stable_binding_by_name: dict[str, str | None] = {
+        relation_name: f"{relation_name}__binding" for relation_name in stable_binding_names
+    }
+    return StandardWarehouseSnapshot(
+        catalog=CatalogSnapshot(
+            identity=CatalogIdentity(
+                adapter=AdapterIdentity(name="clickhouse"),
+                database="analytics",
+            ),
+            warehouse_timezone="UTC",
+            relations=tuple(
+                CatalogRelation(
+                    name=relation_name,
+                    engine="MergeTree",
+                    columns=(CatalogColumn(name="order_id", type="UInt64"),),
+                    stable_binding_name=stable_binding_by_name.get(relation_name),
+                )
+                for relation_name in relation_names
+            ),
+        ),
+        ownership_records=(
+            *_ownership_records(
+                relation_names=standard_owned_names, mode=AdapterOwningMode.STANDARD
+            ),
+            *_ownership_records(
+                relation_names=virtual_environment_owned_names,
+                mode=AdapterOwningMode.VIRTUAL_ENVIRONMENT,
+            ),
+        ),
+    )
+
+
+def _ownership_records(
+    *, relation_names: tuple[str, ...], mode: AdapterOwningMode
+) -> tuple[AdapterOwnershipRecord, ...]:
+    return tuple(
+        AdapterOwnershipRecord(
+            database_name="analytics",
+            relation_name=relation_name,
+            resource_kind="table",
+            logical_model_name=relation_name.split("__")[-1],
+            owning_mode=mode,
+            tool_version="test",
+        )
+        for relation_name in relation_names
+    )
+
+
+def plan_standard_scope(
+    *,
+    analysis: CompileAnalysis,
+    snapshot: StandardWarehouseSnapshot,
+    selected_model_names: tuple[str, ...],
+) -> StandardPlan:
+    """Plan the standard closure of the scope project for the named selection."""
+
+    return plan_standard_build(
+        graph=analysis.graph,
+        realized_project=analysis.realized_project,
+        snapshot=snapshot,
+        database="analytics",
+        selected_model_keys=standard_model_keys(analysis=analysis, names=selected_model_names),
+    )
+
+
+def logical_key_names(keys: tuple[LogicalResourceKey, ...]) -> tuple[str, ...]:
+    """Return the names of logical resource keys in their original order."""
+
+    return tuple(key.name for key in keys)
+
+
+def replay_root_summaries(*, plan: StandardPlan) -> tuple[tuple[str, str, tuple[str, ...]], ...]:
+    """Summarize each replay root as model, driving relation, and propagated models."""
+
+    return tuple(
+        (
+            root.model_key.name,
+            root.driving_input_relation_name,
+            logical_key_names(root.propagated_model_keys),
+        )
+        for root in plan.replay_roots
+    )
+
+
+def relation_operation_summaries(
+    *, operations: tuple[StandardRelationOperation, ...]
+) -> tuple[tuple[str, str], ...]:
+    """Summarize relation operations as ordered action and relation-name pairs."""
+
+    return tuple((str(operation.action), operation.relation_name) for operation in operations)
+
+
+def build_settled_standard_snapshot() -> StandardWarehouseSnapshot:
+    """Build the snapshot of a warehouse that standard mode already built end to end."""
+
+    model_relation_names: tuple[str, ...] = standard_scope_relation_names(
+        model_names=STANDARD_SCOPE_MODEL_NAMES
+    )
+    return build_standard_snapshot(
+        relation_names=(*STANDARD_SCOPE_SOURCE_RELATION_NAMES, *model_relation_names),
+        standard_owned_names=model_relation_names,
+    )
+
+
+def standard_scope_relation_names(*, model_names: tuple[str, ...]) -> tuple[str, ...]:
+    """Return the table and view relation names owned by the named models."""
+
+    return tuple(
+        chain.from_iterable(
+            (f"tbl__{model_name}", f"mv__{model_name}") for model_name in model_names
+        )
     )
 
 

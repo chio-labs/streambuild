@@ -71,6 +71,8 @@ from tests.unit.src.streambuild.compiler.planner.helpers import realize_compiled
         CliPlanRenderingBaselineTestCase(
             description="renders the complete virtual-environment plan output contracts",
             expected_payload={
+                "mode": "virtual environments",
+                "adapter": "clickhouse",
                 "steps": [
                     {
                         "step_id": "step-1",
@@ -237,18 +239,21 @@ def test_given_virtual_environment_plan_when_rendering_then_preserves_complete_o
         plan=plan,
         desired_state=desired_state,
         database="analytics",
+        adapter_name="clickhouse",
         json_output=True,
     )
     rendered_compact: str = render_plan_result(
         plan=plan,
         desired_state=desired_state,
         database="analytics",
+        adapter_name="clickhouse",
         json_output=False,
     )
     rendered_verbose: str = render_plan_result(
         plan=plan,
         desired_state=desired_state,
         database="analytics",
+        adapter_name="clickhouse",
         json_output=False,
         verbose=True,
     )
@@ -314,6 +319,7 @@ def test_given_plan_result_when_rendering_text_then_it_returns_operator_summary(
             (build_scalar_replay_compiled_pipeline("timestamp"),)
         ).desired_state,
         database="analytics",
+        adapter_name="clickhouse",
         json_output=False,
     )
 
@@ -442,6 +448,7 @@ def test_given_overlapping_subtrees_when_rendering_compact_plan_then_it_deduplic
             mutable_ref_warning_keys=frozenset(),
         ),
         database="analytics",
+        adapter_name="clickhouse",
         json_output=False,
     )
 
@@ -629,6 +636,7 @@ def test_given_plan_with_multiple_live_targets_when_rendering_text_then_it_rende
             (build_scalar_replay_compiled_pipeline("timestamp"),)
         ).desired_state,
         database="analytics",
+        adapter_name="clickhouse",
         json_output=False,
     )
 
@@ -698,6 +706,7 @@ def test_given_mv_root_change_when_rendering_plan_then_it_maps_to_live_target_ta
             (build_scalar_replay_compiled_pipeline("timestamp"),)
         ).desired_state,
         database="analytics",
+        adapter_name="clickhouse",
         json_output=False,
     )
 
@@ -823,6 +832,7 @@ def test_given_schema_change_plan_when_rendering_text_then_it_explains_policy_pe
         ),
         desired_state=desired_state,
         database="analytics",
+        adapter_name="clickhouse",
         json_output=False,
     )
 
@@ -900,6 +910,7 @@ def test_given_forced_full_refresh_when_rendering_plan_then_it_explains_operator
         ),
         desired_state=desired_state,
         database="analytics",
+        adapter_name="clickhouse",
         json_output=False,
     )
 
@@ -973,6 +984,7 @@ def test_given_mixed_subtree_when_rendering_compact_plan_then_it_separates_new_t
             (build_scalar_replay_compiled_pipeline("timestamp"),)
         ).desired_state,
         database="analytics",
+        adapter_name="clickhouse",
         json_output=False,
     )
 
@@ -1049,6 +1061,7 @@ def test_given_verbose_plan_when_rendering_text_then_it_shows_expanded_details(
             (build_scalar_replay_compiled_pipeline("timestamp"),)
         ).desired_state,
         database="analytics",
+        adapter_name="clickhouse",
         json_output=False,
         verbose=True,
     )
@@ -1099,6 +1112,7 @@ def test_given_forced_color_when_rendering_plan_then_it_includes_ansi_styles(
             (build_scalar_replay_compiled_pipeline("timestamp"),)
         ).desired_state,
         database="analytics",
+        adapter_name="clickhouse",
         json_output=False,
         verbose=True,
     )

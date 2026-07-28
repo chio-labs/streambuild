@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from streambuild.adapter.constants import REDACTED_SECRET_PLACEHOLDER
 from streambuild.adapter.exceptions import AdapterResultError
 from streambuild.adapter.types import (
+    AdapterOwningMode,
     AdapterReplayBoundaryMode,
     AdapterReplayLowerBoundMode,
     AdapterReplaySeedMode,
@@ -33,6 +34,23 @@ class AdapterCapabilities:
     per_relation_atomic_replace: bool
     graph_atomic_publish: bool
     set_difference_comparison: bool
+    standard_rebuild: bool
+
+
+@dataclass(frozen=True)
+class AdapterOwnershipRecord:
+    """One durable claim that StreamBuild manages a specific warehouse relation."""
+
+    database_name: str
+    relation_name: str
+    resource_kind: str
+    logical_model_name: str
+    owning_mode: AdapterOwningMode | str
+    tool_version: str
+    logical_model_database: str | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "owning_mode", AdapterOwningMode(self.owning_mode))
 
 
 @dataclass(frozen=True)

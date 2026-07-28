@@ -16,6 +16,7 @@ from streambuild.adapter.models import (
     AdapterManagedSource,
     AdapterMaterializedView,
     AdapterMetadataState,
+    AdapterOwnershipRecord,
     AdapterQueryResult,
     AdapterReadinessRequest,
     AdapterReadinessRootObservation,
@@ -162,10 +163,12 @@ class RecordingAdapterConnection(AdapterConnection):
         per_relation_atomic_replace: bool = True,
         graph_atomic_publish: bool = False,
         set_difference_comparison: bool = True,
+        standard_rebuild: bool = True,
         relations: tuple[CatalogRelation, ...] = (),
         managed_table_state: InspectedManagedTableState = _EMPTY_MANAGED_TABLE_STATE,
         readiness_observations: tuple[AdapterReadinessRootObservation, ...] = (),
         deployment_inventory: AdapterDeploymentInventory = _EMPTY_DEPLOYMENT_INVENTORY,
+        ownership_records: tuple[AdapterOwnershipRecord, ...] = (),
     ) -> None:
         self.statements: list[str] = []
         self.catalog_databases: list[str] = []
@@ -183,6 +186,7 @@ class RecordingAdapterConnection(AdapterConnection):
             per_relation_atomic_replace=per_relation_atomic_replace,
             graph_atomic_publish=graph_atomic_publish,
             set_difference_comparison=set_difference_comparison,
+            standard_rebuild=standard_rebuild,
         )
         self._relations: tuple[CatalogRelation, ...] = relations
         self._managed_table_state: InspectedManagedTableState = managed_table_state
@@ -190,6 +194,7 @@ class RecordingAdapterConnection(AdapterConnection):
             readiness_observations
         )
         self._deployment_inventory: AdapterDeploymentInventory = deployment_inventory
+        self._ownership_records: tuple[AdapterOwnershipRecord, ...] = ownership_records
 
     @property
     def adapter_identity(self) -> AdapterIdentity:
@@ -214,6 +219,10 @@ class RecordingAdapterConnection(AdapterConnection):
     def inspect_managed_table_state(self, database: str) -> InspectedManagedTableState:
         del database
         return self._managed_table_state
+
+    def load_target_ownership(self, database: str) -> tuple[AdapterOwnershipRecord, ...]:
+        del database
+        return self._ownership_records
 
     def command(self, statement: str) -> None:
         self.statements.append(statement)
