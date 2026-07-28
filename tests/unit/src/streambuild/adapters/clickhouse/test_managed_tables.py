@@ -20,13 +20,27 @@ from tests.unit.src.streambuild.adapters.clickhouse._test_types import (
             description=(
                 "ignores materialized view deployment candidates in managed table inspection"
             ),
+            active_binding_rows=(),
             system_rows=(
                 ("tbl__orders_enriched__dep_a", "MergeTree"),
                 ("raw__orders__dep_a", "MergeTree"),
                 ("mv__orders_enriched__dep_a", "MaterializedView"),
             ),
             expected_logical_names=("tbl__orders_enriched", "raw__orders"),
-        )
+            expected_active_bindings=(),
+        ),
+        BuildInspectedManagedTableStateTestCase(
+            description="parses quoted dotted stable bindings without textual splitting",
+            active_binding_rows=(
+                (
+                    "tbl__orders_enriched",
+                    "select * from `analytics-db`.`tbl__orders.with.dot`",
+                ),
+            ),
+            system_rows=(),
+            expected_logical_names=(),
+            expected_active_bindings=(("tbl__orders_enriched", "tbl__orders.with.dot"),),
+        ),
     ],
     ids=lambda case: case.description,
 )
@@ -35,10 +49,14 @@ def test_given_physical_candidates_when_building_inspected_state_then_it_ignores
 ) -> None:
     class QueryingClient:
         def __init__(self) -> None:
+            active_binding_rows: tuple[Mapping[str, object], ...] = tuple(
+                {"name": name, "as_select": as_select}
+                for name, as_select in test_case.active_binding_rows
+            )
             physical_candidate_rows: tuple[Mapping[str, object], ...] = tuple(
                 {"name": name} for name, _engine in test_case.system_rows
             )
-            self.response_rows = iter(((), physical_candidate_rows))
+            self.response_rows = iter((active_binding_rows, physical_candidate_rows))
 
         def query_many(
             self,
@@ -56,4 +74,11 @@ def test_given_physical_candidates_when_building_inspected_state_then_it_ignores
 
     assert tuple(candidate.logical_name for candidate in inspected_state.physical_candidates) == (
         test_case.expected_logical_names
+    )
+    assert (
+        tuple(
+            (binding.logical_name, binding.physical_name)
+            for binding in inspected_state.active_bindings
+        )
+        == test_case.expected_active_bindings
     )

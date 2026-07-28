@@ -1,11 +1,11 @@
-"""Parse ClickHouse catalog details not exposed as dedicated system columns."""
+"""Parse ClickHouse catalog details through the SQL-analysis boundary."""
 
-from sqlglot import exp, parse_one
-
-from streambuild.adapters.clickhouse.constants import (
-    CLICKHOUSE_VIEW_ENGINE,
-    EMPTY_KEY_EXPRESSIONS,
-)
+from streambuild.adapter.exceptions import AdapterResultError
+from streambuild.adapters.clickhouse.constants import CLICKHOUSE_VIEW_ENGINE, EMPTY_KEY_EXPRESSIONS
+from streambuild.compiler.sql_analysis.exceptions import SqlAnalysisError
+from streambuild.compiler.sql_analysis.main.analyze_catalog_sql import analyze_catalog_sql
+from streambuild.compiler.sql_analysis.main.parse_expression_list import parse_expression_list
+from streambuild.compiler.sql_analysis.models import SqlCatalogAnalysis
 
 
 def parse_catalog_ddl_details(
@@ -13,31 +13,11 @@ def parse_catalog_ddl_details(
 ) -> tuple[str | None, tuple[tuple[str, str], ...], str | None]:
     """Return TTL, settings, and materialized-view target from one catalog DDL."""
 
-    expression: exp.Expr = parse_one(create_table_query, dialect="clickhouse")
-    properties: exp.Properties | None = expression.args.get("properties")
-    if properties is None:
-        return None, (), None
-    ttl_property: exp.MergeTreeTTL | None = properties.find(exp.MergeTreeTTL)
-    settings_property: exp.SettingsProperty | None = properties.find(exp.SettingsProperty)
-    target_property: exp.ToTableProperty | None = properties.find(exp.ToTableProperty)
-    ttl: str | None = None
-    if ttl_property is not None:
-        ttl = ", ".join(
-            ttl_expression.sql(dialect="clickhouse") for ttl_expression in ttl_property.expressions
-        )
-    settings: tuple[tuple[str, str], ...] = ()
-    if settings_property is not None:
-        settings = tuple(
-            (
-                setting.this.sql(dialect="clickhouse"),
-                setting.expression.sql(dialect="clickhouse"),
-            )
-            for setting in settings_property.expressions
-        )
-    target_relation_name: str | None = None
-    if target_property is not None:
-        target_relation_name = target_property.this.name
-    return ttl, settings, target_relation_name
+    analysis: SqlCatalogAnalysis = _analyze(create_table_query)
+    target_name: str | None = (
+        None if analysis.target_relation is None else analysis.target_relation.name
+    )
+    return analysis.ttl, analysis.settings, target_name
 
 
 def parse_sorting_key(value: str) -> tuple[str, ...]:
@@ -46,9 +26,10 @@ def parse_sorting_key(value: str) -> tuple[str, ...]:
     normalized: str = value.strip()
     if not normalized:
         return ()
-    if normalized.startswith("(") and normalized.endswith(")"):
-        normalized = normalized[1:-1]
-    return tuple(part.strip() for part in normalized.split(",") if part.strip())
+    try:
+        return parse_expression_list(sql=normalized, dialect="clickhouse")
+    except SqlAnalysisError as error:
+        raise AdapterResultError(f"ClickHouse sorting key could not be parsed: {error}") from None
 
 
 def normalize_partition_key(value: str) -> str | None:
@@ -58,28 +39,58 @@ def normalize_partition_key(value: str) -> str | None:
 
 
 def normalize_catalog_query(value: str) -> str | None:
-    """Normalize a relation query using the adapter's current SQL parser."""
+    """Normalize a relation query using the mandatory SQL-analysis boundary."""
+
+    normalized: str = value.strip()
+    return None if not normalized else _analyze(normalized).canonical_sql
+
+
+def parse_catalog_query_details(
+    *, engine: str, value: str
+) -> tuple[str | None, str | None, str | None]:
+    """Return canonical SQL, first source, and a valid direct stable binding."""
 
     normalized: str = value.strip()
     if not normalized:
-        return None
-    return parse_one(normalized, dialect="clickhouse").sql(dialect="clickhouse")
+        return None, None, None
+    analysis: SqlCatalogAnalysis = _analyze(normalized)
+    source_name: str | None = None if analysis.first_source is None else analysis.first_source.name
+    stable_binding_name: str | None = (
+        analysis.direct_source.name
+        if engine == CLICKHOUSE_VIEW_ENGINE and analysis.direct_source is not None
+        else None
+    )
+    return analysis.canonical_sql, source_name, stable_binding_name
 
 
 def extract_source_relation_name(value: str) -> str | None:
-    """Return the first source relation named by a catalog query."""
+    """Return the first physical source relation named by a catalog query."""
 
     normalized: str = value.strip()
     if not normalized:
         return None
-    source: exp.Table | None = parse_one(normalized, dialect="clickhouse").find(exp.Table)
-    return None if source is None else source.name
+    analysis: SqlCatalogAnalysis = _analyze(normalized)
+    return None if analysis.first_source is None else analysis.first_source.name
 
 
 def extract_stable_binding(*, engine: str, as_select: str) -> str | None:
-    """Preserve the characterized stable-view target extraction behavior."""
+    """Return a direct stable-view target relation when the query has the expected shape."""
 
-    marker: str = "FROM "
-    if engine != CLICKHOUSE_VIEW_ENGINE or marker not in as_select:
+    if engine != CLICKHOUSE_VIEW_ENGINE or not as_select.strip():
         return None
-    return as_select.split(marker, 1)[1].strip().split(".", 1)[1]
+    analysis: SqlCatalogAnalysis = _analyze(as_select)
+    return None if analysis.direct_source is None else analysis.direct_source.name
+
+
+def extract_create_query_source(create_table_query: str) -> str | None:
+    """Return the first physical source from one CREATE VIEW catalog statement."""
+
+    analysis: SqlCatalogAnalysis = _analyze(create_table_query)
+    return None if analysis.first_source is None else analysis.first_source.name
+
+
+def _analyze(sql: str) -> SqlCatalogAnalysis:
+    try:
+        return analyze_catalog_sql(sql=sql, dialect="clickhouse")
+    except SqlAnalysisError as error:
+        raise AdapterResultError(f"ClickHouse catalog SQL could not be parsed: {error}") from None

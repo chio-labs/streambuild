@@ -6,13 +6,10 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from sqlglot import exp, parse
-from sqlglot.errors import ParseError
 
 from streambuild.compiler.audit_discovery.constants import (
     ALLOWED_AUDIT_KEYS,
     ALLOWED_AUDIT_SEVERITIES,
-    AUDIT_BLOCK_PATTERN,
     GENERIC_AUDIT_QUOTED_PARAMETER_PATTERN,
     GENERIC_AUDIT_RAW_PARAMETER_PATTERN,
 )
@@ -26,6 +23,10 @@ from streambuild.compiler.compile.models import ParsedRef
 from streambuild.compiler.discovery.types import SqlRelationType
 from streambuild.compiler.macros.main._expand_macro_calls import expand_macro_calls
 from streambuild.compiler.macros.models import MacroContext, MacroRegistry
+from streambuild.compiler.sql_analysis.exceptions import SqlAnalysisError
+from streambuild.compiler.sql_analysis.main._split_header_blocks import split_sql_header_blocks
+from streambuild.compiler.sql_analysis.main._validate_query import validate_query
+from streambuild.compiler.sql_analysis.models import SqlHeaderBlock
 
 
 def parse_sql_audit_file(
@@ -38,16 +39,16 @@ def parse_sql_audit_file(
     """Parse one authored SQL audit file into one or more discovered audit specs."""
 
     source_contents: str = file_path.read_text(encoding="utf-8") if contents is None else contents
-    matched_blocks: tuple[tuple[int, int, str, str], ...] = tuple(
-        (match.start(), match.start("sql"), match.group("header"), match.group("sql"))
-        for match in AUDIT_BLOCK_PATTERN.finditer(source_contents)
+    matched_blocks: tuple[SqlHeaderBlock, ...] = _audit_blocks(
+        file_path=file_path,
+        contents=source_contents,
     )
     if not matched_blocks:
         raise SqlAuditParseError(
             f"SQL audit '{file_path}' must start with an AUDIT(...) header as the first "
             "non-whitespace content"
         )
-    if source_contents[: matched_blocks[0][0]].strip():
+    if source_contents[: matched_blocks[0].start].strip():
         raise SqlAuditParseError(
             f"SQL audit '{file_path}' must not contain content before the first AUDIT(...) block"
         )
@@ -55,17 +56,16 @@ def parse_sql_audit_file(
     block_index: int
     header: str
     sql: str
-    _start_index: int
-    sql_start_index: int
-    for block_index, (_start_index, sql_start_index, header, sql) in enumerate(
-        matched_blocks, start=1
-    ):
+    block: SqlHeaderBlock
+    for block_index, block in enumerate(matched_blocks, start=1):
+        header: str = block.header
+        sql: str = block.body
         leading_length: int = len(sql) - len(sql.lstrip())
         source_line: int
         source_column: int
         source_line, source_column = _source_position(
             contents=source_contents,
-            index=sql_start_index + leading_length,
+            index=block.body_start + leading_length,
         )
         loaded_audits.append(
             _parse_concrete_audit_block(
@@ -94,18 +94,22 @@ def parse_generic_sql_audit_definition(
     """Parse one generic SQL audit definition from `audits/generic/`."""
 
     source_contents: str = file_path.read_text(encoding="utf-8") if contents is None else contents
-    matched_blocks: tuple[tuple[int, str, str], ...] = tuple(
-        (match.start("sql"), match.group("header"), match.group("sql"))
-        for match in AUDIT_BLOCK_PATTERN.finditer(source_contents)
+    matched_blocks: tuple[SqlHeaderBlock, ...] = _audit_blocks(
+        file_path=file_path,
+        contents=source_contents,
     )
     if len(matched_blocks) != 1:
         raise SqlAuditParseError(
             f"Generic SQL audit definition '{file_path}' must contain exactly one AUDIT(...) block"
         )
-    first_header: str
-    first_sql: str
-    first_sql_start: int
-    first_sql_start, first_header, first_sql = matched_blocks[0]
+    first_block: SqlHeaderBlock = matched_blocks[0]
+    if source_contents[: first_block.start].strip():
+        raise SqlAuditParseError(
+            f"Generic SQL audit definition '{file_path}' must not contain content before the "
+            "AUDIT(...) block"
+        )
+    first_header: str = first_block.header
+    first_sql: str = first_block.body
     header_values: dict[str, Any] = _parse_audit_header(
         header=first_header,
         file_path=file_path,
@@ -119,7 +123,7 @@ def parse_generic_sql_audit_definition(
     source_column: int
     source_line, source_column = _source_position(
         contents=source_contents,
-        index=first_sql_start + leading_length,
+        index=first_block.body_start + leading_length,
     )
     query: str = _expand_audit_query(
         sql=first_sql.strip(),
@@ -291,16 +295,21 @@ def _discover_quoted_generic_sql_audit_parameter_names(query: str) -> tuple[str,
 
 def _validate_single_query(*, file_path: Path, sql: str) -> None:
     try:
-        parsed_statements: list[exp.Expr | None] = parse(sql, read="clickhouse")
-    except ParseError as error:
-        raise SqlAuditParseError(f"SQL audit '{file_path}' could not be parsed: {error}") from error
-    statements: tuple[exp.Expr, ...] = tuple(
-        statement for statement in parsed_statements if statement is not None
-    )
-    if len(statements) != 1:
+        validate_query(sql=sql, dialect="clickhouse")
+    except SqlAnalysisError as error:
         raise SqlAuditParseError(
-            f"SQL audit '{file_path}' must contain exactly one top-level query after AUDIT()"
-        )
+            f"SQL audit '{file_path}' must contain exactly one valid top-level query after "
+            f"AUDIT(): {error}"
+        ) from None
+
+
+def _audit_blocks(*, file_path: Path, contents: str) -> tuple[SqlHeaderBlock, ...]:
+    try:
+        return split_sql_header_blocks(sql=contents, keyword="AUDIT")
+    except SqlAnalysisError as error:
+        raise SqlAuditParseError(
+            f"SQL audit '{file_path}' header could not be parsed: {error}"
+        ) from None
 
 
 def _validate_multi_audit_names(

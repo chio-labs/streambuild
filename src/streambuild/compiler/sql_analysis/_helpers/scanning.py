@@ -24,7 +24,7 @@ from streambuild.compiler.sql_analysis.constants import (
     VALID_REFERENCE_ARGUMENT_COUNTS,
 )
 from streambuild.compiler.sql_analysis.exceptions import SqlAnalysisError
-from streambuild.compiler.sql_analysis.models import SqlReference, SqlSourceSpan
+from streambuild.compiler.sql_analysis.models import SqlHeaderBlock, SqlReference, SqlSourceSpan
 from streambuild.compiler.sql_analysis.types import RefType, SqlRelationType
 
 _REFERENCE_CONTEXT: str = "SQL reference"
@@ -52,6 +52,83 @@ def extract_references_impl(sql: str) -> tuple[SqlReference, ...]:
             continue
         index += 1
     return tuple(references)
+
+
+def split_header_blocks(*, sql: str, keyword: str) -> tuple[SqlHeaderBlock, ...]:
+    """Split line-leading extension headers while ignoring SQL literals and comments."""
+
+    starts: list[tuple[int, int, int]] = []
+    index: int = 0
+    while index < len(sql):
+        if sql.startswith(SQL_LINE_COMMENT, index) or sql.startswith(SQL_HASH_COMMENT, index):
+            index = skip_line_comment(sql=sql, start=index)
+            continue
+        if sql.startswith(SQL_BLOCK_COMMENT_OPEN, index):
+            index = skip_block_comment(sql=sql, start=index)
+            continue
+        if sql[index] in SQL_QUOTE_CHARACTERS:
+            index = skip_quoted_text(sql=sql, start=index)
+            continue
+        marker: tuple[int, int, int] | None = _header_marker(sql=sql, keyword=keyword, start=index)
+        if marker is not None:
+            starts.append(marker)
+            index = marker[2]
+            continue
+        index += 1
+    return _build_header_blocks(sql=sql, starts=tuple(starts))
+
+
+def _header_marker(*, sql: str, keyword: str, start: int) -> tuple[int, int, int] | None:
+    if not sql.startswith(keyword, start) or not _line_prefix_is_whitespace(sql=sql, start=start):
+        return None
+    keyword_end: int = start + len(keyword)
+    if keyword_end < len(sql) and (
+        sql[keyword_end].isalnum() or sql[keyword_end] == SQL_IDENTIFIER_PREFIX
+    ):
+        return None
+    open_index: int = skip_trivia(sql=sql, start=keyword_end)
+    if open_index >= len(sql) or sql[open_index] != SQL_OPEN_PARENTHESIS:
+        return None
+    close_index: int = find_matching_parenthesis(
+        sql=sql,
+        open_index=open_index,
+        context=f"{keyword} header",
+    )
+    semicolon_index: int = skip_trivia(sql=sql, start=close_index + 1)
+    if semicolon_index >= len(sql) or sql[semicolon_index] != SQL_STATEMENT_DELIMITER:
+        raise SqlAnalysisError(f"{keyword} header must end with a semicolon")
+    return start, open_index + 1, semicolon_index + 1
+
+
+def _build_header_blocks(
+    *, sql: str, starts: tuple[tuple[int, int, int], ...]
+) -> tuple[SqlHeaderBlock, ...]:
+    blocks: list[SqlHeaderBlock] = []
+    index: int
+    marker_start: int
+    header_start: int
+    body_start: int
+    for index, (marker_start, header_start, body_start) in enumerate(starts):
+        next_start: int = len(sql) if index + 1 == len(starts) else starts[index + 1][0]
+        close_index: int = find_matching_parenthesis(
+            sql=sql,
+            open_index=header_start - 1,
+            context="SQL extension header",
+        )
+        blocks.append(
+            SqlHeaderBlock(
+                start=marker_start,
+                body_start=body_start,
+                header=sql[header_start:close_index],
+                body=sql[body_start:next_start],
+            )
+        )
+    return tuple(blocks)
+
+
+def _line_prefix_is_whitespace(*, sql: str, start: int) -> bool:
+    line_start: int = sql.rfind("\n", 0, start) + 1
+    return not sql[line_start:start].strip()
 
 
 def skip_quoted_text(*, sql: str, start: int) -> int:

@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Any, cast
 
 import yaml
-from sqlglot import exp
 
 from streambuild.compiler.audit_discovery._helpers.parsing import (
     parse_generic_sql_audit_definition,
@@ -23,6 +22,7 @@ from streambuild.compiler.compile.main._extract_refs import extract_refs
 from streambuild.compiler.compile.models import ParsedRef
 from streambuild.compiler.discovery.types import SqlRelationType
 from streambuild.compiler.macros.models import MacroContext, MacroRegistry
+from streambuild.compiler.sql_analysis.main._render_string_literal import render_string_literal
 
 
 def discover_generic_sql_audit_definitions(
@@ -450,10 +450,11 @@ def _render_quoted_generic_sql_audit_argument(
                 "list of strings"
             )
         return ", ".join(
-            exp.Literal.string(item).sql(dialect="clickhouse") for item in argument_value
+            render_string_literal(value=cast(str, item), dialect="clickhouse")
+            for item in argument_value
         )
     if isinstance(argument_value, str):
-        return exp.Literal.string(argument_value).sql(dialect="clickhouse")
+        return render_string_literal(value=argument_value, dialect="clickhouse")
     raise SqlAuditParseError(
         f"Generic SQL audit arg '{parameter_name}' in '{file_path}' must be a string "
         "or list of strings"
