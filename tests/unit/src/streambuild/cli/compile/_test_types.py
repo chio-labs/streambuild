@@ -111,7 +111,6 @@ class SourceSecretRedactionTestCase:
 class MultiTargetTestSqlTestCase:
     description: str
     target_names: tuple[str, ...]
-    expected_statement_count: int
     expected_fragments: tuple[str, ...]
 
 

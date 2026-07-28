@@ -62,7 +62,7 @@ from tests.unit.src.streambuild.adapters.clickhouse.helpers import (
                 SELECT 0 AS _replay_partition, 9000 AS start_offset
             )
             SELECT
-                CAST(dateTrunc('HOUR', _replay_timestamp) AS DateTime64(3)) AS event_hour,
+                CAST(toStartOfHour(_replay_timestamp) AS DateTime64(3)) AS event_hour,
                 CAST(category AS String) AS category,
                 CAST(count() AS UInt64) AS order_event_count
             FROM (

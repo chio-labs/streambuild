@@ -87,10 +87,11 @@ class PolyglotInvocationCacheTestCase:
 class SqlAnalysisBoundaryTestCase:
     description: str
     forbidden_import: str
+    removed_dependency_name: str
     expected_outside_import_paths: tuple[str, ...]
+    expected_removed_source_paths: tuple[str, ...]
     expected_retired_path_exists: bool
     expected_dependency_spec: str
-    expected_fallback_import_paths: tuple[str, ...]
 
 
 @dataclass(frozen=True)

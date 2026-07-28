@@ -1,7 +1,6 @@
 from pathlib import Path
 
 import pytest
-from sqlglot import parse
 
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from streambuild.cli.compile._helpers.content import static_test_sql
@@ -16,6 +15,7 @@ from streambuild.cli.compile._helpers.static_artifacts import _validate_unique_p
 from streambuild.cli.compile.exceptions import CompileArtifactError
 from streambuild.cli.compile.models import StaticArtifactFile
 from streambuild.compiler.audit_discovery.models import LoadedSqlAudit
+from streambuild.compiler.sql_analysis.main._validate_query import validate_query
 from streambuild.compiler.testing._helpers.comparison import render_comparison_query
 from streambuild.compiler.testing.models import SqlTestCase, SqlTestChainStep
 from tests.unit.src.streambuild.cli.compile._test_types import (
@@ -242,7 +242,6 @@ def test_given_duplicate_static_paths_when_validating_then_rejects_collision(
         MultiTargetTestSqlTestCase(
             description="assembles multiple target comparisons into one executable statement",
             target_names=("orders", "payments"),
-            expected_statement_count=1,
             expected_fragments=(
                 "0 AS _case_index",
                 "1 AS _case_index",
@@ -279,7 +278,7 @@ def test_given_multi_target_test_when_assembling_static_sql_then_emits_one_state
 
     sql: str = static_test_sql(test_case=compiled_test)
 
-    assert len(parse(sql, dialect="clickhouse")) == test_case.expected_statement_count
+    validate_query(sql=sql, dialect="clickhouse")
     assert tuple(fragment in sql for fragment in test_case.expected_fragments) == (
         True,
         True,

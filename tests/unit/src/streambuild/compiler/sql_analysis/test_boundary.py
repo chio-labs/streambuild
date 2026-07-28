@@ -3,6 +3,8 @@ from pathlib import Path
 from typing import cast
 
 import pytest
+from packaging.requirements import Requirement
+from packaging.utils import canonicalize_name
 
 from tests.unit.src.streambuild.compiler.sql_analysis._test_types import (
     SqlAnalysisBoundaryTestCase,
@@ -15,10 +17,11 @@ from tests.unit.src.streambuild.compiler.sql_analysis._test_types import (
         SqlAnalysisBoundaryTestCase(
             description="keeps Polyglot imports and AST objects inside sql analysis",
             forbidden_import="polyglot_sql",
+            removed_dependency_name="sqlglot",
             expected_outside_import_paths=(),
+            expected_removed_source_paths=(),
             expected_retired_path_exists=False,
             expected_dependency_spec="polyglot-sql>=0.5.10",
-            expected_fallback_import_paths=(),
         )
     ],
     ids=lambda case: case.description,
@@ -39,11 +42,11 @@ def test_given_runtime_source_when_checking_polyglot_boundary_then_only_analysis
             outside_files,
         )
     )
-    fallback_import_paths: tuple[str, ...] = tuple(
+    removed_source_paths: tuple[str, ...] = tuple(
         path.as_posix()
         for path in filter(
-            lambda path: "sqlglot" in path.read_text(),
-            analysis_root.rglob("*.py"),
+            lambda path: test_case.removed_dependency_name in path.read_text(),
+            runtime_files,
         )
     )
     retired_path: Path = source_root / "compiler" / "compile" / "_helpers" / "refs.py"
@@ -52,7 +55,13 @@ def test_given_runtime_source_when_checking_polyglot_boundary_then_only_analysis
     dependencies: list[str] = cast(list[str], project["dependencies"])
 
     assert outside_import_paths == test_case.expected_outside_import_paths
-    assert fallback_import_paths == test_case.expected_fallback_import_paths
+    assert removed_source_paths == test_case.expected_removed_source_paths
     assert retired_path.exists() is test_case.expected_retired_path_exists
     assert test_case.expected_dependency_spec in dependencies
-    assert test_case.expected_dependency_spec.split(">=")[0] in Path("uv.lock").read_text()
+    lock_contents: str = Path("uv.lock").read_text()
+
+    assert canonicalize_name(test_case.removed_dependency_name) not in tuple(
+        canonicalize_name(Requirement(dependency).name) for dependency in dependencies
+    )
+    assert f'name = "{test_case.removed_dependency_name}"' not in lock_contents
+    assert test_case.expected_dependency_spec.split(">=")[0] in lock_contents
