@@ -250,3 +250,28 @@ class CliStandardSelectedAuditIntegrationTestCase:
     selectors: tuple[str, ...]
     audit_sql_by_name: tuple[tuple[str, str], ...]
     expected_query_markers: tuple[tuple[str, bool], ...]
+
+
+@dataclass(frozen=True)
+class CliStandardAdoptedSourceIntegrationTestCase:
+    description: str
+    source_yml: str
+    model_sql: str
+    source_columns_sql: str
+    initial_values_sql: str
+    live_values_sql: str
+    source_projection_sql: str
+    expected_source_rows: tuple[tuple[str, ...], ...]
+    expected_order_ids: tuple[str, ...]
+    expected_replay_mode: str
+    expected_replay_columns: tuple[str, str, str, str, str]
+
+
+@dataclass(frozen=True)
+class CliStandardAdoptedSourceFailureIntegrationTestCase:
+    description: str
+    source_table_name: str
+    source_yml: str
+    model_sql: str
+    source_columns_sql: str
+    expected_error_fragment: str

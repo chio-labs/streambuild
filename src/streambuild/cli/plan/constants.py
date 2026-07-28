@@ -10,6 +10,24 @@ ACCEPTED_START_TIME_FORMATS: tuple[str, ...] = (
 )
 START_OF_DAY_CLICKHOUSE_FORMAT: str = "%Y-%m-%d 00:00:00.000"
 CLICKHOUSE_TIMESTAMP_FORMAT: str = "%Y-%m-%d %H:%M:%S.%f"
-DATETIME_TYPE_MARKER: str = "datetime"
+CLICKHOUSE_INTEGER_TYPES: frozenset[str] = frozenset(
+    {
+        "Int8",
+        "Int16",
+        "Int32",
+        "Int64",
+        "Int128",
+        "Int256",
+        "UInt8",
+        "UInt16",
+        "UInt32",
+        "UInt64",
+        "UInt128",
+        "UInt256",
+    }
+)
+CLICKHOUSE_DATETIME_TYPES: frozenset[str] = frozenset({"DateTime", "DateTime64"})
+CLICKHOUSE_DATETIME_PREFIXES: tuple[str, ...] = ("DateTime(", "DateTime64(")
+CLICKHOUSE_SCALAR_TYPE_WRAPPERS: tuple[str, ...] = ("Nullable", "LowCardinality")
 STANDARD_MODE_LABEL: str = "standard"
 VIRTUAL_ENVIRONMENTS_MODE_LABEL: str = "virtual environments"

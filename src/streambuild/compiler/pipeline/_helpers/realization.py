@@ -183,23 +183,23 @@ def _relation_sql_by_logical_name(
 
 def _external_source_relation_sql(source: ExternalTableSourceStep) -> str:
     alias_expressions: list[str] = []
-    if source.replay_boundary.columns.partition is not None:
+    if source.replay_boundary.columns.partition not in {None, REPLAY_PARTITION_COLUMN_NAME}:
         alias_expressions.append(
             f"{source.replay_boundary.columns.partition} AS {REPLAY_PARTITION_COLUMN_NAME}"
         )
-    if source.replay_boundary.columns.offset is not None:
+    if source.replay_boundary.columns.offset not in {None, REPLAY_OFFSET_COLUMN_NAME}:
         alias_expressions.append(
             f"{source.replay_boundary.columns.offset} AS {REPLAY_OFFSET_COLUMN_NAME}"
         )
-    if source.replay_boundary.columns.timestamp is not None:
+    if source.replay_boundary.columns.timestamp not in {None, REPLAY_TIMESTAMP_COLUMN_NAME}:
         alias_expressions.append(
             f"{source.replay_boundary.columns.timestamp} AS {REPLAY_TIMESTAMP_COLUMN_NAME}"
         )
-    if source.replay_boundary.columns.landed_at is not None:
+    if source.replay_boundary.columns.landed_at not in {None, REPLAY_LANDED_AT_COLUMN_NAME}:
         alias_expressions.append(
             f"{source.replay_boundary.columns.landed_at} AS {REPLAY_LANDED_AT_COLUMN_NAME}"
         )
-    if source.replay_boundary.columns.cursor is not None:
+    if source.replay_boundary.columns.cursor not in {None, REPLAY_CURSOR_COLUMN_NAME}:
         alias_expressions.append(
             f"{source.replay_boundary.columns.cursor} AS {REPLAY_CURSOR_COLUMN_NAME}"
         )

@@ -57,6 +57,10 @@ E2E_KAFKA_TIMESTAMP_PROJECT_DIR: Path = Path("tests/fixtures/e2e_kafka_timestamp
 E2E_KAFKA_OFFSET_PROJECT_DIR: Path = Path("tests/fixtures/e2e_kafka_offset_project")
 E2E_KAFKA_LANDED_AT_PROJECT_DIR: Path = Path("tests/fixtures/e2e_kafka_landed_at_project")
 REPO_ROOT: Path = Path(__file__).resolve().parents[5]
+_EXTERNAL_SOURCE_SETTINGS_BY_MODE: dict[bool, str] = {
+    False: "",
+    True: "\n[settings]\nvirtual_environments = true\n",
+}
 
 
 def build_greenfield_workflow_compiled_pipeline(
@@ -268,11 +272,15 @@ FROM __ref("orders")
     return project_dir
 
 
-def prepare_external_source_offset_e2e_project(*, tmp_path: Path) -> Path:
+def prepare_external_source_offset_e2e_project(
+    *, tmp_path: Path, virtual_environments: bool = True
+) -> Path:
     project_dir: Path = tmp_path / "external_source_offset_project"
     pipeline_dir: Path = project_dir / "pipelines" / "orders"
     pipeline_dir.mkdir(parents=True, exist_ok=True)
-    _write_external_source_project_config(project_dir=project_dir)
+    _write_external_source_project_config(
+        project_dir=project_dir, virtual_environments=virtual_environments
+    )
     _write_external_source(
         project_dir=project_dir,
         contents="""
@@ -346,11 +354,13 @@ FROM __ref("orders")
     return project_dir
 
 
-def _write_external_source_project_config(*, project_dir: Path) -> None:
+def _write_external_source_project_config(
+    *, project_dir: Path, virtual_environments: bool = True
+) -> None:
     (project_dir / "streambuild_project.toml").write_text(
         'name = "external_source_project"\ndefault_target = "test"\n\n'
-        "[settings]\nvirtual_environments = true\n\n"
-        '[targets.test]\ndatabase = "analytics"\n',
+        '[targets.test]\ndatabase = "analytics"\n'
+        f"{_EXTERNAL_SOURCE_SETTINGS_BY_MODE[virtual_environments]}",
         encoding="utf-8",
     )
 
@@ -391,6 +401,31 @@ def run_streambuild_backfill_cli(
             database,
             "--deployment-id",
             deployment_id,
+            "--auto-approve",
+        )
+    )
+
+
+def run_streambuild_build_cli(
+    *, project_dir: Path, host: str, port: int, username: str, password: str, database: str
+) -> None:
+    """Run the standard build command through the installed CLI surface."""
+
+    _run_streambuild_cli(
+        command=(
+            "build",
+            "--project-dir",
+            str(project_dir),
+            "--host",
+            host,
+            "--port",
+            str(port),
+            "--username",
+            username,
+            "--password",
+            password,
+            "--database",
+            database,
             "--auto-approve",
         )
     )

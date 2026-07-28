@@ -5,7 +5,11 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-from streambuild.adapter.models import AdapterOwnershipRecord, CatalogSnapshot
+from streambuild.adapter.models import (
+    AdapterOwnershipRecord,
+    AdapterReplayColumns,
+    CatalogSnapshot,
+)
 from streambuild.compiler.compile.models import (
     Column,
     KafkaSettings,
@@ -442,6 +446,7 @@ class StandardReplayRoot:
     model_key: LogicalResourceKey
     driving_input_key: LogicalResourceKey
     driving_input_relation_name: str
+    driving_input_replay_columns: AdapterReplayColumns
     replay_boundary_mode: ReplayLineageMode | str
     propagated_model_keys: tuple[LogicalResourceKey, ...]
 
@@ -458,6 +463,7 @@ class StandardPopulationSegment:
     model_key: LogicalResourceKey
     driving_input_key: LogicalResourceKey
     driving_input_relation_name: str
+    driving_input_replay_columns: AdapterReplayColumns
     replay_boundary_mode: ReplayLineageMode | str
 
     def __post_init__(self) -> None:

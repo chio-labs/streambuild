@@ -2,10 +2,18 @@
 
 from __future__ import annotations
 
-from streambuild.adapter.models import AdapterMaterializedView, AdapterTable
+from streambuild.adapter.models import AdapterMaterializedView, AdapterReplayColumns, AdapterTable
+from streambuild.compiler.compile.constants import (
+    REPLAY_CURSOR_COLUMN_NAME,
+    REPLAY_LANDED_AT_COLUMN_NAME,
+    REPLAY_OFFSET_COLUMN_NAME,
+    REPLAY_PARTITION_COLUMN_NAME,
+    REPLAY_TIMESTAMP_COLUMN_NAME,
+)
 from streambuild.compiler.compile.models import (
     CompiledModel,
     CompiledPipeline,
+    ExternalSourceReplayConfig,
     LogicalResourceKey,
 )
 from streambuild.compiler.compile.types import LogicalResourceType
@@ -18,6 +26,7 @@ from streambuild.compiler.pipeline.models import RealizedProject
 from streambuild.compiler.planner._helpers.standard_ownership import classify_relation_ownership
 from streambuild.compiler.planner.exceptions import StandardPlanError
 from streambuild.compiler.planner.models import (
+    PlannerWarning,
     StandardPlan,
     StandardPlanEntry,
     StandardPopulationSegment,
@@ -37,6 +46,13 @@ _BLOCKING_OWNERSHIP: frozenset[TargetOwnership] = frozenset(
 )
 _TABLE_RELATION_INDEX: int = 0
 _VIEW_RELATION_INDEX: int = 1
+_CANONICAL_REPLAY_COLUMNS: AdapterReplayColumns = AdapterReplayColumns(
+    partition=REPLAY_PARTITION_COLUMN_NAME,
+    offset=REPLAY_OFFSET_COLUMN_NAME,
+    timestamp=REPLAY_TIMESTAMP_COLUMN_NAME,
+    landed_at=REPLAY_LANDED_AT_COLUMN_NAME,
+    cursor=REPLAY_CURSOR_COLUMN_NAME,
+)
 
 
 class StandardPlanBuilder:
@@ -67,11 +83,16 @@ class StandardPlanBuilder:
         self._aggregate_model_keys: frozenset[LogicalResourceKey] = frozenset(
             model.key for model in realized_project.project.models if model.has_aggregate_semantics
         )
+        self._external_config_by_relation_name: dict[str, ExternalSourceReplayConfig] = {
+            config.table_name: config
+            for config in realized_project.desired_state.external_source_replay_configs
+        }
 
     def build(self) -> StandardPlan:
         """Return the complete execution closure without consulting equality."""
 
         self._reject_aggregate_models()
+        self._reject_adopted_source_target_collisions()
         prerequisites: tuple[StandardPrerequisite, ...] = self._build_prerequisites()
         self._reject_missing_prerequisites(prerequisites=prerequisites)
         entries: tuple[StandardPlanEntry, ...] = self._build_entries()
@@ -88,6 +109,7 @@ class StandardPlanBuilder:
             population_segments=self._build_population_segments(),
             teardown_operations=_teardown_operations(entries=entries),
             creation_operations=_creation_operations(entries=entries),
+            warnings=self._build_warnings(entries=entries),
         )
 
     def _resolve_execution_scope(self) -> tuple[LogicalResourceKey, ...]:
@@ -189,6 +211,9 @@ class StandardPlanBuilder:
             model_key=model_key,
             driving_input_key=driving_input_key,
             driving_input_relation_name=self._relation_name(key=driving_input_key),
+            driving_input_replay_columns=self._driving_input_replay_columns(
+                driving_input_key=driving_input_key
+            ),
             replay_boundary_mode=self._replay_boundary_mode(model_key=model_key),
         )
 
@@ -203,6 +228,9 @@ class StandardPlanBuilder:
             model_key=root_key,
             driving_input_key=driving_input_key,
             driving_input_relation_name=self._relation_name(key=driving_input_key),
+            driving_input_replay_columns=self._driving_input_replay_columns(
+                driving_input_key=driving_input_key
+            ),
             replay_boundary_mode=self._replay_boundary_mode(model_key=root_key),
             propagated_model_keys=propagated_model_keys,
         )
@@ -216,6 +244,67 @@ class StandardPlanBuilder:
                 "Standard mode cannot safely rebuild aggregate models without an atomic "
                 f"replay/live frontier: {', '.join(aggregate_names)}"
             )
+
+    def _reject_adopted_source_target_collisions(self) -> None:
+        target_names: set[str] = set()
+        model_key: LogicalResourceKey
+        for model_key in self._execution_scope:
+            target_names.update(self._model_relation_names(model_key=model_key))
+        collisions: tuple[str, ...] = tuple(
+            sorted(target_names & self._external_config_by_relation_name.keys())
+        )
+        if collisions:
+            raise StandardPlanError(
+                "Standard mode refuses adopted source relations that collide with managed "
+                f"targets: {', '.join(collisions)}"
+            )
+
+    def _driving_input_replay_columns(
+        self, *, driving_input_key: LogicalResourceKey
+    ) -> AdapterReplayColumns:
+        if driving_input_key.resource_type != LogicalResourceType.SOURCE:
+            return _CANONICAL_REPLAY_COLUMNS
+        relation_name: str = self._relation_name(key=driving_input_key)
+        config: ExternalSourceReplayConfig | None = self._external_config_by_relation_name.get(
+            relation_name
+        )
+        if config is None:
+            return _CANONICAL_REPLAY_COLUMNS
+        return AdapterReplayColumns(
+            partition=config.partition_column_name or REPLAY_PARTITION_COLUMN_NAME,
+            offset=config.offset_column_name or REPLAY_OFFSET_COLUMN_NAME,
+            timestamp=config.timestamp_column_name or REPLAY_TIMESTAMP_COLUMN_NAME,
+            landed_at=(
+                config.landed_at_column_name
+                or config.timestamp_column_name
+                or REPLAY_LANDED_AT_COLUMN_NAME
+            ),
+            cursor=config.cursor_column_name or REPLAY_CURSOR_COLUMN_NAME,
+        )
+
+    def _build_warnings(
+        self, *, entries: tuple[StandardPlanEntry, ...]
+    ) -> tuple[PlannerWarning, ...]:
+        target_names: frozenset[str] = frozenset(
+            entry.relation_names[_TABLE_RELATION_INDEX] for entry in entries
+        )
+        return tuple(
+            PlannerWarning(
+                warning_code="mutable_ref_replay_not_guaranteed",
+                message=(
+                    "Transform uses mutable side refs; exact historical replay equivalence "
+                    "cannot be guaranteed because side-table state may differ from the original "
+                    "processing time."
+                ),
+                root_key=key,
+                target_key=key,
+            )
+            for key in sorted(
+                self._realized_project.desired_state.mutable_ref_warning_keys,
+                key=lambda candidate: candidate.name,
+            )
+            if key.name in target_names
+        )
 
     def _replay_root_key(self, *, model_key: LogicalResourceKey) -> LogicalResourceKey:
         current_key: LogicalResourceKey = model_key

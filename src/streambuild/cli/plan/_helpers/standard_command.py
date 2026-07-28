@@ -7,6 +7,7 @@ from streambuild.cli.plan._helpers.standard_rendering import (
     render_standard_plan_json,
     render_standard_plan_text,
 )
+from streambuild.cli.plan.main._source_validation import validate_declared_external_sources
 from streambuild.cli.plan.models import PlanCommandOptions
 from streambuild.cli.selection.main._selection import resolve_selection
 from streambuild.cli.selection.models import SelectionResolution
@@ -31,6 +32,13 @@ def execute_standard_plan(
         client=client,
         database=options.database,
         metadata_database=options.database,
+    )
+    validate_declared_external_sources(
+        catalog=snapshot.catalog,
+        external_source_replay_configs=(
+            analysis.realized_project.desired_state.external_source_replay_configs
+        ),
+        database=options.database,
     )
     selection: SelectionResolution = resolve_selection(
         realized_project=analysis.realized_project,

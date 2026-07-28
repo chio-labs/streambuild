@@ -16,4 +16,7 @@ class ExecuteStandardBuildTestCase:
 class ReplayCoverageInputChangeTestCase:
     description: str
     persisted_driving_input_relation_name: str
+    persisted_partition_column_name: str
+    persisted_position_column_name: str
+    persisted_timestamp_column_name: str
     expected_error_fragment: str

@@ -8,7 +8,6 @@ from streambuild.adapter.models import (
     AdapterMaterializedView,
     AdapterPhysicalRelationMapping,
     AdapterReplayBoundary,
-    AdapterReplayColumns,
     AdapterReplayQuery,
     AdapterReplayRelations,
     AdapterReplayRequest,
@@ -19,13 +18,6 @@ from streambuild.adapter.types import (
     AdapterReplayBoundaryMode,
     AdapterReplayLowerBoundMode,
     AdapterReplaySeedMode,
-)
-from streambuild.compiler.compile.constants import (
-    REPLAY_CURSOR_COLUMN_NAME,
-    REPLAY_LANDED_AT_COLUMN_NAME,
-    REPLAY_OFFSET_COLUMN_NAME,
-    REPLAY_PARTITION_COLUMN_NAME,
-    REPLAY_TIMESTAMP_COLUMN_NAME,
 )
 from streambuild.compiler.compile.models import LogicalResourceKey
 from streambuild.compiler.pipeline.models import RealizedProject
@@ -39,14 +31,6 @@ from streambuild.compiler.planner.models import (
 )
 from streambuild.executor.standard.exceptions import StandardBuildError
 from streambuild.executor.standard.models import StandardReplayBoundary
-
-_STANDARD_REPLAY_COLUMNS: AdapterReplayColumns = AdapterReplayColumns(
-    partition=REPLAY_PARTITION_COLUMN_NAME,
-    offset=REPLAY_OFFSET_COLUMN_NAME,
-    timestamp=REPLAY_TIMESTAMP_COLUMN_NAME,
-    landed_at=REPLAY_LANDED_AT_COLUMN_NAME,
-    cursor=REPLAY_CURSOR_COLUMN_NAME,
-)
 
 
 def execute_standard_replay(
@@ -154,7 +138,7 @@ def _build_replay_request(
             database=database,
         ),
         boundaries=_adapter_boundaries(mode=mode, root_boundaries=root_boundaries),
-        columns=_STANDARD_REPLAY_COLUMNS,
+        columns=root.driving_input_replay_columns,
         window=AdapterReplayWindow(
             lower_bound_mode=AdapterReplayLowerBoundMode.NONE,
             lower_bound_inclusive=True,

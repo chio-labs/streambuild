@@ -11,6 +11,7 @@ from tests.e2e.src.streambuild.conftest import E2EClickHouseConnectionSettings
 from tests.e2e.src.streambuild.executor._test_types import (
     ExternalSourceOffsetWorkflowE2ETestCase,
     ExternalSourceWorkflowE2ETestCase,
+    StandardExternalSourceBuildE2ETestCase,
 )
 from tests.e2e.src.streambuild.executor.helpers import (
     build_authored_greenfield_workflow_compiled_pipeline,
@@ -18,6 +19,7 @@ from tests.e2e.src.streambuild.executor.helpers import (
     prepare_external_source_offset_e2e_project,
     run_streambuild_audit_backfill_cli,
     run_streambuild_backfill_cli,
+    run_streambuild_build_cli,
     run_streambuild_publish_cli,
 )
 
@@ -172,3 +174,66 @@ def test_given_external_offset_source_pipeline_when_running_then_it_publishes_of
     )
     assert watermark_rows == list(test_case.expected_watermark_rows)
     assert published_rows == [(order_id,) for order_id in test_case.expected_order_ids]
+
+
+@pytest.mark.e2e
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        StandardExternalSourceBuildE2ETestCase(
+            description="runs standard build directly from adopted offset source",
+            expected_order_ids=("order-1", "order-2"),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_standard_adopted_source_when_building_then_it_preserves_source_and_builds_rows(
+    test_case: StandardExternalSourceBuildE2ETestCase,
+    isolated_e2e_clickhouse_connection_settings: E2EClickHouseConnectionSettings,
+    isolated_e2e_clickhouse_client: Client,
+    isolated_e2e_clickhouse_database: str,
+    tmp_path: Path,
+) -> None:
+    project_dir: Path = prepare_external_source_offset_e2e_project(
+        tmp_path=tmp_path, virtual_environments=False
+    )
+    isolated_e2e_clickhouse_client.command(
+        f"CREATE TABLE {isolated_e2e_clickhouse_database}.orders_existing ("
+        "order_id String, event_partition Int32, event_offset Int64, "
+        "event_timestamp DateTime64(3)) "
+        "ENGINE = MergeTree() ORDER BY (event_partition, event_offset)"
+    )
+    isolated_e2e_clickhouse_client.insert(
+        table=f"{isolated_e2e_clickhouse_database}.orders_existing",
+        data=[
+            ("order-1", 0, 10, "2026-04-10 01:29:59.000"),
+            ("order-2", 0, 11, "2026-04-10 01:29:59.500"),
+        ],
+        column_names=["order_id", "event_partition", "event_offset", "event_timestamp"],
+    )
+    source_ddl_before: str = str(
+        isolated_e2e_clickhouse_client.query(
+            f"SHOW CREATE TABLE {isolated_e2e_clickhouse_database}.orders_existing"
+        ).result_rows[0][0]
+    )
+
+    run_streambuild_build_cli(
+        project_dir=project_dir,
+        host=isolated_e2e_clickhouse_connection_settings.host,
+        port=isolated_e2e_clickhouse_connection_settings.port,
+        username=isolated_e2e_clickhouse_connection_settings.username,
+        password=isolated_e2e_clickhouse_connection_settings.password,
+        database=isolated_e2e_clickhouse_database,
+    )
+
+    source_ddl_after: str = str(
+        isolated_e2e_clickhouse_client.query(
+            f"SHOW CREATE TABLE {isolated_e2e_clickhouse_database}.orders_existing"
+        ).result_rows[0][0]
+    )
+    built_rows: Sequence[Sequence[object]] = isolated_e2e_clickhouse_client.query(
+        f"SELECT order_id FROM {isolated_e2e_clickhouse_database}.tbl__orders_enriched "
+        "ORDER BY order_id"
+    ).result_rows
+    assert source_ddl_after == source_ddl_before
+    assert built_rows == [(order_id,) for order_id in test_case.expected_order_ids]
