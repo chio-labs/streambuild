@@ -33,6 +33,14 @@ from tests.unit.src.streambuild.executor.backfill._helpers._test_types import (
             expected_following_fragment=(
                 "CREATE MATERIALIZED VIEW analytics.mv__orders_enriched__dep_ref"
             ),
+            expected_rewritten_query_fragment=(
+                "LEFT JOIN analytics.tbl__region_lookup__dep_ref AS r"
+            ),
+            expected_absent_query_fragment=("LEFT JOIN analytics.tbl__region_lookup AS r"),
+            expected_canonical_query_fragment=("LEFT JOIN tbl__region_lookup__dep_ref AS r"),
+            expected_database_template_fragment=(
+                "LEFT JOIN __streambuild_target_database__.tbl__region_lookup__dep_ref AS r"
+            ),
         )
     ],
     ids=lambda case: case.description,
@@ -43,6 +51,9 @@ def test_given_reference_ref_when_creating_shadow_objects_then_it_creates_depend
     class RecordingClient:
         def __init__(self) -> None:
             self.commands: list[str] = []
+            self.resources: list[
+                AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterStableView
+            ] = []
 
         def query(self, _statement: str) -> object:
             class QueryResult:
@@ -63,6 +74,7 @@ def test_given_reference_ref_when_creating_shadow_objects_then_it_creates_depend
             database: str,
             if_not_exists: bool = False,
         ) -> None:
+            self.resources.append(resource)
             adapter: ClickHouseAdapter = ClickHouseAdapter()
             self.command(
                 adapter.render_resource(
@@ -110,7 +122,12 @@ def test_given_reference_ref_when_creating_shadow_objects_then_it_creates_depend
     )
 
     rendered_commands: str = "\n".join(client.commands)
+    rewritten_resources: str = "\n".join(str(resource) for resource in client.resources)
     preceding_index: int = rendered_commands.index(test_case.expected_preceding_fragment)
     following_index: int = rendered_commands.index(test_case.expected_following_fragment)
 
     assert preceding_index < following_index
+    assert test_case.expected_rewritten_query_fragment in rendered_commands
+    assert test_case.expected_absent_query_fragment not in rendered_commands
+    assert test_case.expected_canonical_query_fragment in rewritten_resources
+    assert test_case.expected_database_template_fragment in rewritten_resources

@@ -157,8 +157,22 @@ class RenderScalarReplayBoundaryTestCase:
     boundary_column_type: str
     cutoff_value: str
     lower_bound_value: str
+    cutoff_inclusive: bool
+    lower_bound_inclusive: bool
+    query: str
     expected_lower_fragment: str
     expected_upper_fragment: str
+    expected_where_fragment: str
+
+
+@dataclass(frozen=True)
+class RenderAggregateScalarPhysicalBoundaryTestCase:
+    description: str
+    expected_source_fragment: str
+    expected_lower_fragment: str
+    expected_upper_fragment: str
+    expected_outer_where_fragment: str
+    expected_absent_fragment: str
 
 
 @dataclass(frozen=True)

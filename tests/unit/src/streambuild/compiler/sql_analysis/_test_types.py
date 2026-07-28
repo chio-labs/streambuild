@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 
+from streambuild.compiler.sql_analysis.models import SqlNamedQuery, SqlRelationRewrite
+
 
 @dataclass(frozen=True)
 class ReferenceExtractionTestCase:
@@ -159,3 +161,28 @@ class ModelAnalysisOrderingTestCase:
     description: str
     sql_by_model: tuple[str, ...]
     expected_output_names: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class QueryRelationRewriteTestCase:
+    description: str
+    sql: str
+    rewrites: tuple[SqlRelationRewrite, ...]
+    expected_fragments: tuple[str, ...]
+    expected_absent_fragments: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class QueryPredicateRewriteTestCase:
+    description: str
+    sql: str
+    predicate: str
+    expected_query: str
+
+
+@dataclass(frozen=True)
+class QueryRewriteErrorTestCase:
+    description: str
+    sql: str
+    named_queries: tuple[SqlNamedQuery, ...]
+    expected_error_fragment: str

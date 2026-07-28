@@ -2,8 +2,6 @@
 
 from dataclasses import replace
 
-from sqlglot import exp, parse_one
-
 from streambuild.adapter.constants import ADAPTER_DATABASE_PLACEHOLDER
 from streambuild.adapter.models import (
     AdapterManagedSource,
@@ -19,6 +17,8 @@ from streambuild.compiler.compile.models import (
     ObjectKey,
 )
 from streambuild.compiler.planner.main.build_adapter_resource import build_adapter_resource
+from streambuild.compiler.sql_analysis.main.rewrite_query import rewrite_query
+from streambuild.compiler.sql_analysis.models import SqlQueryRewriteResult, SqlRelationRewrite
 
 
 def build_shadow_adapter_resource(
@@ -78,17 +78,18 @@ def _physical_table_name(*, logical_name: str, physical_name_by_key: dict[Object
 
 
 def _rewrite_query(*, query: str, physical_name_by_key: dict[ObjectKey, str]) -> str:
-    expression: exp.Expr = parse_one(query, dialect="clickhouse")
-    table_name_to_physical_name: dict[str, str] = {
-        key.name: physical_name
-        for key, physical_name in physical_name_by_key.items()
-        if key.object_type == DESIRED_OBJECT_TYPE_TABLE
-    }
-    table: exp.Table
-    for table in expression.find_all(exp.Table):
-        if table.db and table.db != ADAPTER_DATABASE_PLACEHOLDER:
-            continue
-        physical_name: str | None = table_name_to_physical_name.get(table.name)
-        if physical_name is not None:
-            table.set("this", exp.to_identifier(physical_name))
-    return expression.sql(dialect="clickhouse")
+    result: SqlQueryRewriteResult = rewrite_query(
+        sql=query,
+        dialect="clickhouse",
+        relation_rewrites=tuple(
+            SqlRelationRewrite(
+                source_name=key.name,
+                target_relation=physical_name,
+                source_databases=(None, ADAPTER_DATABASE_PLACEHOLDER),
+                preserve_source_database=True,
+            )
+            for key, physical_name in physical_name_by_key.items()
+            if key.object_type == DESIRED_OBJECT_TYPE_TABLE
+        ),
+    )
+    return result.query

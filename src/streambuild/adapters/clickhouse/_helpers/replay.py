@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from sqlglot import exp, parse_one
-
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.exceptions import AdapterReplayError
 from streambuild.adapter.models import (
@@ -22,6 +20,14 @@ from streambuild.adapters.clickhouse._helpers.catalog_parsing import extract_sta
 from streambuild.adapters.clickhouse.constants import CLICKHOUSE_VIEW_ENGINE
 from streambuild.adapters.clickhouse.models import (
     ClickHouseReplayOffsetFrontier,
+)
+from streambuild.compiler.sql_analysis.exceptions import SqlAnalysisError
+from streambuild.compiler.sql_analysis.main.build_insert_query import build_insert_query
+from streambuild.compiler.sql_analysis.main.rewrite_query import rewrite_query
+from streambuild.compiler.sql_analysis.models import (
+    SqlNamedQuery,
+    SqlQueryRewriteResult,
+    SqlRelationRewrite,
 )
 
 _CANONICAL_REPLAY_PARTITION: str = "_replay_partition"
@@ -58,7 +64,6 @@ def _execute_scalar_replay(
     boundary_column_type: str = _load_boundary_column_type(
         connection=connection,
         request=request,
-        boundary_key=boundary.boundary_key,
     )
     lower_bound_value: str | None = _resolve_scalar_lower_bound(
         connection=connection,
@@ -191,56 +196,80 @@ def _render_scalar_replay(
     boundary_column_type: str,
     lower_bound_value: str | None,
 ) -> str:
-    expression: exp.Select = _replay_select(request)
-    _replace_source_relation(expression=expression, request=request)
+    source_rewrite: SqlRelationRewrite = SqlRelationRewrite(
+        source_name=request.relations.source,
+        target_relation=f"{request.database}.{request.relations.anchor}",
+    )
+    rewritten_query: str = _rewrite_replay_query(
+        sql=request.replay_query.query,
+        relation_rewrites=(source_rewrite,),
+    ).query
     if not boundary.cutoff_value:
-        return (
-            f"INSERT INTO {request.database}.{request.relations.target}\n"
-            f"SELECT * FROM ({expression.sql(dialect='clickhouse')}) WHERE 0"
+        empty_query: str = _rewrite_replay_query(
+            sql=f"SELECT * FROM ({rewritten_query}) WHERE 0"
+        ).query
+        return _build_replay_insert(
+            request=request,
+            query=empty_query,
         )
-    boundary_literal: exp.Expr = parse_one(
-        _render_cast_literal(
-            value=boundary.cutoff_value,
-            column_type=boundary_column_type,
-        ),
-        dialect="clickhouse",
+    canonical_predicate: str = _scalar_boundary_predicate(
+        column_name=boundary.boundary_key,
+        boundary=boundary,
+        boundary_column_type=boundary_column_type,
+        lower_bound_value=lower_bound_value,
+        lower_bound_inclusive=request.window.lower_bound_inclusive,
     )
-    replay_boundary: exp.Condition = (
-        exp.LTE(this=exp.column(boundary.boundary_key), expression=boundary_literal)
-        if boundary.cutoff_inclusive
-        else exp.LT(this=exp.column(boundary.boundary_key), expression=boundary_literal)
-    )
-    if lower_bound_value is not None:
-        lower_bound_literal: exp.Expr = parse_one(
-            _render_cast_literal(
-                value=lower_bound_value,
-                column_type=boundary_column_type,
-            ),
-            dialect="clickhouse",
+    if request.replay_query.aggregate_semantics:
+        physical_predicate: str = _scalar_boundary_predicate(
+            column_name=f"anchor.{_physical_boundary_column(request)}",
+            boundary=boundary,
+            boundary_column_type=boundary_column_type,
+            lower_bound_value=lower_bound_value,
+            lower_bound_inclusive=request.window.lower_bound_inclusive,
         )
-        lower_bound_condition: exp.Condition = (
-            exp.GTE(this=exp.column(boundary.boundary_key), expression=lower_bound_literal)
-            if request.window.lower_bound_inclusive
-            else exp.GT(this=exp.column(boundary.boundary_key), expression=lower_bound_literal)
-        )
-        replay_boundary = exp.and_(
-            lower_bound_condition,
-            replay_boundary,
-        )
-    existing_where: exp.Where | None = expression.args.get("where")
-    expression.set(
-        "where",
-        exp.Where(
-            this=(
-                replay_boundary
-                if existing_where is None
-                else exp.and_(existing_where.this, replay_boundary)
+        filtered_anchor: str = _rewrite_replay_query(
+            sql=(
+                f"SELECT anchor.* FROM {request.database}.{request.relations.anchor} AS anchor "
+                f"WHERE {physical_predicate}"
             )
-        ),
+        ).query
+        rewritten_query = _rewrite_replay_query(
+            sql=request.replay_query.query,
+            relation_rewrites=(
+                SqlRelationRewrite(
+                    source_name=request.relations.source,
+                    target_relation=f"({filtered_anchor})",
+                ),
+            ),
+        ).query
+    else:
+        rewritten_query = _rewrite_replay_query(
+            sql=rewritten_query,
+            predicate=canonical_predicate,
+        ).query
+    return _build_replay_insert(request=request, query=rewritten_query)
+
+
+def _scalar_boundary_predicate(
+    *,
+    column_name: str,
+    boundary: AdapterReplayBoundary,
+    boundary_column_type: str,
+    lower_bound_value: str | None,
+    lower_bound_inclusive: bool,
+) -> str:
+    upper_operator: str = "<=" if boundary.cutoff_inclusive else "<"
+    upper_predicate: str = (
+        f"{column_name} {upper_operator} "
+        f"{_render_cast_literal(value=boundary.cutoff_value, column_type=boundary_column_type)}"
     )
+    if lower_bound_value is None:
+        return upper_predicate
+    lower_operator: str = ">=" if lower_bound_inclusive else ">"
     return (
-        f"INSERT INTO {request.database}.{request.relations.target}\n"
-        f"{expression.sql(dialect='clickhouse')}"
+        f"{column_name} {lower_operator} "
+        f"{_render_cast_literal(value=lower_bound_value, column_type=boundary_column_type)} "
+        f"AND {upper_predicate}"
     )
 
 
@@ -249,7 +278,6 @@ def _render_offset_replay(
     request: AdapterReplayRequest,
     lower_bound_rows: tuple[ClickHouseReplayOffsetFrontier, ...],
 ) -> str:
-    expression: exp.Select = _replay_select(request)
     cutoff_cte_sql: str = _offset_frontier_cte(
         boundaries=request.boundaries,
         value_alias="cutoff_offset",
@@ -258,12 +286,19 @@ def _render_offset_replay(
     if request.replay_query.aggregate_semantics:
         return _render_aggregate_offset_replay(
             request=request,
-            expression=expression,
             cutoff_cte_sql=cutoff_cte_sql,
             lower_bound_cte_sql=lower_bound_cte_sql,
             has_lower_bound=bool(lower_bound_rows),
         )
-    _replace_source_relation(expression=expression, request=request)
+    replay_query: str = _rewrite_replay_query(
+        sql=request.replay_query.query,
+        relation_rewrites=(
+            SqlRelationRewrite(
+                source_name=request.relations.source,
+                target_relation=f"{request.database}.{request.relations.anchor}",
+            ),
+        ),
+    ).query
     lower_bound_clause: str = _offset_lower_bound_clause(
         source_alias="replay_source",
         offset_column=_CANONICAL_REPLAY_OFFSET,
@@ -282,12 +317,11 @@ def _render_offset_replay(
         source_alias="replay_source",
         offset_column=_CANONICAL_REPLAY_OFFSET,
     )
-    return (
-        f"INSERT INTO {request.database}.{request.relations.target}\n"
+    wrapped_query: str = (
         f"WITH cutoff_offsets AS (\n{cutoff_cte_sql}\n)"
         f"{lower_bound_cte}"
         "SELECT replay_source.*\n"
-        f"FROM (\n{expression.sql(dialect='clickhouse')}\n) AS replay_source\n"
+        f"FROM (\n{replay_query}\n) AS replay_source\n"
         "INNER JOIN cutoff_offsets\n"
         f"ON replay_source.{_CANONICAL_REPLAY_PARTITION} = "
         f"cutoff_offsets.{_CANONICAL_REPLAY_PARTITION}\n"
@@ -295,12 +329,15 @@ def _render_offset_replay(
         f"WHERE {upper_bound_clause}\n"
         f"{lower_bound_clause}".rstrip()
     )
+    return _build_replay_insert(
+        request=request,
+        query=_rewrite_replay_query(sql=wrapped_query).query,
+    )
 
 
 def _render_aggregate_offset_replay(
     *,
     request: AdapterReplayRequest,
-    expression: exp.Select,
     cutoff_cte_sql: str,
     lower_bound_cte_sql: str,
     has_lower_bound: bool,
@@ -320,48 +357,37 @@ def _render_aggregate_offset_replay(
         source_alias="anchor",
         offset_column=request.columns.offset,
     )
-    table: exp.Table
-    for table in expression.find_all(exp.Table):
-        if table.name != request.relations.source:
-            continue
-        source_alias: exp.TableAlias | None = table.args.get("alias")
-        source_sql: str = (
-            f"SELECT anchor.*\n"
-            f"FROM {request.database}.{request.relations.anchor} AS anchor\n"
-            "INNER JOIN cutoff_offsets\n"
-            f"ON anchor.{request.columns.partition} = "
-            f"cutoff_offsets.{_CANONICAL_REPLAY_PARTITION}\n"
-            f"{lower_bound_join}"
-            f"WHERE {upper_bound_clause}\n"
-            f"{lower_bound_clause}"
-        ).rstrip()
-        table.replace(
-            exp.Subquery(
-                this=parse_one(source_sql, dialect="clickhouse"),
-                alias=None if source_alias is None else source_alias.copy(),
-            )
-        )
-    cte_expressions: list[exp.CTE] = [
-        exp.CTE(
-            this=parse_one(cutoff_cte_sql, dialect="clickhouse"),
-            alias=exp.TableAlias(this=exp.to_identifier("cutoff_offsets")),
-        )
-    ]
-    if has_lower_bound:
-        cte_expressions.append(
-            exp.CTE(
-                this=parse_one(lower_bound_cte_sql, dialect="clickhouse"),
-                alias=exp.TableAlias(this=exp.to_identifier("active_start_offsets")),
-            )
-        )
-    existing_with: exp.With | None = expression.args.get("with_")
-    if existing_with is None:
-        expression.set("with_", exp.With(expressions=cte_expressions))
-    else:
-        existing_with.set("expressions", [*cte_expressions, *existing_with.expressions])
-    return (
-        f"INSERT INTO {request.database}.{request.relations.target}\n"
-        f"{expression.sql(dialect='clickhouse')}"
+    source_sql: str = (
+        f"SELECT anchor.*\n"
+        f"FROM {request.database}.{request.relations.anchor} AS anchor\n"
+        "INNER JOIN cutoff_offsets\n"
+        f"ON anchor.{request.columns.partition} = "
+        f"cutoff_offsets.{_CANONICAL_REPLAY_PARTITION}\n"
+        f"{lower_bound_join}"
+        f"WHERE {upper_bound_clause}\n"
+        f"{lower_bound_clause}"
+    ).rstrip()
+    named_queries: tuple[SqlNamedQuery, ...] = (
+        SqlNamedQuery(name="cutoff_offsets", query=cutoff_cte_sql),
+        *(
+            (SqlNamedQuery(name="active_start_offsets", query=lower_bound_cte_sql),)
+            if has_lower_bound
+            else ()
+        ),
+    )
+    rewritten_query: str = _rewrite_replay_query(
+        sql=request.replay_query.query,
+        relation_rewrites=(
+            SqlRelationRewrite(
+                source_name=request.relations.source,
+                target_relation=f"({source_sql})",
+            ),
+        ),
+        prepend_ctes=named_queries,
+    ).query
+    return _build_replay_insert(
+        request=request,
+        query=rewritten_query,
     )
 
 
@@ -528,13 +554,8 @@ def _load_boundary_column_type(
     *,
     connection: AdapterConnection,
     request: AdapterReplayRequest,
-    boundary_key: str,
 ) -> str:
-    physical_boundary_key: str = {
-        AdapterReplayBoundaryMode.CURSOR: request.columns.cursor,
-        AdapterReplayBoundaryMode.TIMESTAMP: request.columns.timestamp,
-        AdapterReplayBoundaryMode.LANDED_AT: request.columns.landed_at,
-    }[request.mode]
+    physical_boundary_key: str = _physical_boundary_column(request)
     result: AdapterQueryResult = connection.query(
         "SELECT name, type FROM system.columns "
         f"WHERE database = '{request.database}' AND table = '{request.relations.anchor}' "
@@ -545,8 +566,15 @@ def _load_boundary_column_type(
             "Could not resolve boundary column type for '"
             f"{physical_boundary_key}' on {request.database}.{request.relations.anchor}"
         )
-    del boundary_key
     return str(result.rows[0][1])
+
+
+def _physical_boundary_column(request: AdapterReplayRequest) -> str:
+    return {
+        AdapterReplayBoundaryMode.CURSOR: request.columns.cursor,
+        AdapterReplayBoundaryMode.TIMESTAMP: request.columns.timestamp,
+        AdapterReplayBoundaryMode.LANDED_AT: request.columns.landed_at,
+    }[request.mode]
 
 
 def _relation_columns(
@@ -556,19 +584,34 @@ def _relation_columns(
     return frozenset(str(row[0]) for row in result.rows)
 
 
-def _replay_select(request: AdapterReplayRequest) -> exp.Select:
-    parsed_expression: object = parse_one(request.replay_query.query, dialect="clickhouse")
-    if not isinstance(parsed_expression, exp.Select):
-        raise AdapterReplayError("Replay expects a SELECT query")
-    return parsed_expression
+def _rewrite_replay_query(
+    *,
+    sql: str,
+    relation_rewrites: tuple[SqlRelationRewrite, ...] = (),
+    predicate: str | None = None,
+    prepend_ctes: tuple[SqlNamedQuery, ...] = (),
+) -> SqlQueryRewriteResult:
+    try:
+        return rewrite_query(
+            sql=sql,
+            dialect="clickhouse",
+            relation_rewrites=relation_rewrites,
+            predicate=predicate,
+            prepend_ctes=prepend_ctes,
+        )
+    except SqlAnalysisError as error:
+        raise AdapterReplayError(f"Replay SQL could not be rewritten: {error}") from None
 
 
-def _replace_source_relation(*, expression: exp.Select, request: AdapterReplayRequest) -> None:
-    table: exp.Table
-    for table in expression.find_all(exp.Table):
-        if table.name == request.relations.source:
-            table.set("this", exp.to_identifier(request.relations.anchor))
-            table.set("db", exp.to_identifier(request.database))
+def _build_replay_insert(*, request: AdapterReplayRequest, query: str) -> str:
+    try:
+        return build_insert_query(
+            target_relation=f"{request.database}.{request.relations.target}",
+            query=query,
+            dialect="clickhouse",
+        )
+    except SqlAnalysisError as error:
+        raise AdapterReplayError(f"Replay SQL could not be generated: {error}") from None
 
 
 def _offset_frontier_cte(*, boundaries: tuple[AdapterReplayBoundary, ...], value_alias: str) -> str:

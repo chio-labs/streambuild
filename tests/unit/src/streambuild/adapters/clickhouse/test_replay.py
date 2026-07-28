@@ -25,6 +25,7 @@ from streambuild.compiler.planner.main.build_adapter_replay_query import (
 )
 from tests.unit.src.streambuild.adapters.clickhouse._test_types import (
     RenderAggregateOffsetPhysicalBoundaryTestCase,
+    RenderAggregateScalarPhysicalBoundaryTestCase,
     RenderOffsetReplayStatementTestCase,
     RenderScalarReplayBoundaryTestCase,
 )
@@ -460,12 +461,19 @@ def test_given_repeated_adopted_aggregate_source_when_rendering_then_each_source
             boundary_column_type="DateTime64(3)",
             cutoff_value="2026-04-08 13:00:00.000",
             lower_bound_value="2026-04-08 12:00:00.000",
+            cutoff_inclusive=True,
+            lower_bound_inclusive=True,
+            query=(
+                "SELECT order_id, _replay_timestamp, _replay_landed_at, _replay_cursor "
+                "FROM raw__orders"
+            ),
             expected_lower_fragment=(
                 "_replay_timestamp >= CAST('2026-04-08 12:00:00.000' AS DateTime64(3))"
             ),
             expected_upper_fragment=(
                 "_replay_timestamp <= CAST('2026-04-08 13:00:00.000' AS DateTime64(3))"
             ),
+            expected_where_fragment="WHERE _replay_timestamp >=",
         ),
         RenderScalarReplayBoundaryTestCase(
             description="renders inclusive landed-at replay boundaries",
@@ -474,12 +482,19 @@ def test_given_repeated_adopted_aggregate_source_when_rendering_then_each_source
             boundary_column_type="DateTime64(3)",
             cutoff_value="2026-04-08 13:00:00.000",
             lower_bound_value="2026-04-08 12:00:00.000",
+            cutoff_inclusive=True,
+            lower_bound_inclusive=True,
+            query=(
+                "SELECT order_id, _replay_timestamp, _replay_landed_at, _replay_cursor "
+                "FROM raw__orders"
+            ),
             expected_lower_fragment=(
                 "_replay_landed_at >= CAST('2026-04-08 12:00:00.000' AS DateTime64(3))"
             ),
             expected_upper_fragment=(
                 "_replay_landed_at <= CAST('2026-04-08 13:00:00.000' AS DateTime64(3))"
             ),
+            expected_where_fragment="WHERE _replay_landed_at >=",
         ),
         RenderScalarReplayBoundaryTestCase(
             description="renders inclusive cursor replay boundaries",
@@ -488,19 +503,60 @@ def test_given_repeated_adopted_aggregate_source_when_rendering_then_each_source
             boundary_column_type="UInt64",
             cutoff_value="20",
             lower_bound_value="10",
+            cutoff_inclusive=True,
+            lower_bound_inclusive=True,
+            query=(
+                "SELECT order_id, _replay_timestamp, _replay_landed_at, _replay_cursor "
+                "FROM raw__orders"
+            ),
             expected_lower_fragment="_replay_cursor >= CAST('10' AS UInt64)",
             expected_upper_fragment="_replay_cursor <= CAST('20' AS UInt64)",
+            expected_where_fragment="WHERE _replay_cursor >=",
+        ),
+        RenderScalarReplayBoundaryTestCase(
+            description="preserves authored disjunction before cursor replay boundaries",
+            mode=AdapterReplayBoundaryMode.CURSOR,
+            boundary_key="_replay_cursor",
+            boundary_column_type="UInt64",
+            cutoff_value="20",
+            lower_bound_value="10",
+            cutoff_inclusive=True,
+            lower_bound_inclusive=True,
+            query=(
+                "SELECT order_id, _replay_cursor FROM raw__orders "
+                "WHERE status = 'open' OR status = 'held'"
+            ),
+            expected_lower_fragment="_replay_cursor >= CAST('10' AS UInt64)",
+            expected_upper_fragment="_replay_cursor <= CAST('20' AS UInt64)",
+            expected_where_fragment=(
+                "WHERE (status = 'open' OR status = 'held') "
+                "AND (_replay_cursor >= CAST('10' AS UInt64)"
+            ),
+        ),
+        RenderScalarReplayBoundaryTestCase(
+            description="renders exclusive scalar replay boundaries",
+            mode=AdapterReplayBoundaryMode.CURSOR,
+            boundary_key="_replay_cursor",
+            boundary_column_type="UInt64",
+            cutoff_value="20",
+            lower_bound_value="10",
+            cutoff_inclusive=False,
+            lower_bound_inclusive=False,
+            query="SELECT order_id, _replay_cursor FROM raw__orders",
+            expected_lower_fragment="_replay_cursor > CAST('10' AS UInt64)",
+            expected_upper_fragment="_replay_cursor < CAST('20' AS UInt64)",
+            expected_where_fragment="WHERE _replay_cursor >",
         ),
     ],
     ids=lambda case: case.description,
 )
-def test_given_scalar_replay_boundary_when_rendering_then_both_edges_are_inclusive(
+def test_given_scalar_replay_boundary_when_rendering_then_expected_edges_are_used(
     test_case: RenderScalarReplayBoundaryTestCase,
 ) -> None:
     boundary: AdapterReplayBoundary = AdapterReplayBoundary(
         boundary_key=test_case.boundary_key,
         cutoff_value=test_case.cutoff_value,
-        cutoff_inclusive=True,
+        cutoff_inclusive=test_case.cutoff_inclusive,
     )
     request: AdapterReplayRequest = AdapterReplayRequest(
         mode=test_case.mode,
@@ -512,8 +568,7 @@ def test_given_scalar_replay_boundary_when_rendering_then_both_edges_are_inclusi
             target="tbl__orders_enriched__dep",
         ),
         replay_query=build_adapter_replay_query(
-            query="SELECT order_id, _replay_timestamp, _replay_landed_at, _replay_cursor "
-            "FROM raw__orders",
+            query=test_case.query,
             source_relation_name="raw__orders",
             database="orders_demo",
             physical_relation_mappings=(
@@ -533,7 +588,7 @@ def test_given_scalar_replay_boundary_when_rendering_then_both_edges_are_inclusi
         ),
         window=AdapterReplayWindow(
             lower_bound_mode=AdapterReplayLowerBoundMode.ACTIVE_FRONTIER,
-            lower_bound_inclusive=True,
+            lower_bound_inclusive=test_case.lower_bound_inclusive,
             boundary_time="2026-04-08 13:00:00.000",
             forced_start_time=None,
             lookback_seconds=None,
@@ -552,3 +607,86 @@ def test_given_scalar_replay_boundary_when_rendering_then_both_edges_are_inclusi
 
     assert test_case.expected_lower_fragment in normalized_statement
     assert test_case.expected_upper_fragment in normalized_statement
+    assert test_case.expected_where_fragment in normalized_statement
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        RenderAggregateScalarPhysicalBoundaryTestCase(
+            description="filters adopted anchor rows before scalar aggregation",
+            expected_source_fragment=(
+                "FROM (SELECT anchor.* FROM orders_demo.orders_existing AS anchor"
+            ),
+            expected_lower_fragment="anchor.event_cursor >= CAST('10' AS UInt64)",
+            expected_upper_fragment="anchor.event_cursor <= CAST('20' AS UInt64)",
+            expected_outer_where_fragment="AS item_rows WHERE status = 'created' GROUP BY category",
+            expected_absent_fragment="WHERE _replay_cursor >=",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_aggregate_scalar_replay_when_rendering_then_anchor_is_filtered_before_grouping(
+    test_case: RenderAggregateScalarPhysicalBoundaryTestCase,
+) -> None:
+    boundary: AdapterReplayBoundary = AdapterReplayBoundary(
+        boundary_key="_replay_cursor",
+        cutoff_value="20",
+        cutoff_inclusive=True,
+    )
+    request: AdapterReplayRequest = AdapterReplayRequest(
+        mode=AdapterReplayBoundaryMode.CURSOR,
+        database="orders_demo",
+        relations=AdapterReplayRelations(
+            root="tbl__order_counts",
+            source="orders_existing",
+            anchor="orders_existing",
+            target="tbl__order_counts__dep",
+        ),
+        replay_query=build_adapter_replay_query(
+            query=(
+                "SELECT category, count() AS order_count "
+                "FROM orders_existing AS item_rows "
+                "WHERE status = 'created' GROUP BY category"
+            ),
+            source_relation_name="orders_existing",
+            database="orders_demo",
+            physical_relation_mappings=(
+                AdapterPhysicalRelationMapping(
+                    logical_name="orders_existing",
+                    physical_name="orders_existing",
+                ),
+            ),
+        ),
+        boundaries=(boundary,),
+        columns=AdapterReplayColumns(
+            partition="event_partition",
+            offset="event_offset",
+            timestamp="event_timestamp",
+            landed_at="event_landed_at",
+            cursor="event_cursor",
+        ),
+        window=AdapterReplayWindow(
+            lower_bound_mode=AdapterReplayLowerBoundMode.ACTIVE_FRONTIER,
+            lower_bound_inclusive=True,
+            boundary_time="2026-04-08 13:00:00.000",
+            forced_start_time=None,
+            lookback_seconds=None,
+        ),
+        seed_mode=AdapterReplaySeedMode.NONE,
+        target_column_names=(),
+    )
+
+    rendered_statement: str = _render_scalar_replay(
+        request=request,
+        boundary=boundary,
+        boundary_column_type="UInt64",
+        lower_bound_value="10",
+    )
+    normalized_statement: str = normalize_clickhouse_sql(rendered_statement)
+
+    assert test_case.expected_source_fragment in normalized_statement
+    assert test_case.expected_lower_fragment in normalized_statement
+    assert test_case.expected_upper_fragment in normalized_statement
+    assert test_case.expected_outer_where_fragment in normalized_statement
+    assert test_case.expected_absent_fragment not in normalized_statement

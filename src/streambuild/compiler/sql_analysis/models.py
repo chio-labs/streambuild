@@ -138,3 +138,29 @@ class SqlResolvedQuery:
 
     canonical_sql: str
     database_template: str
+
+
+@dataclass(frozen=True)
+class SqlRelationRewrite:
+    """One eligible relation identity and its replacement relation SQL."""
+
+    source_name: str
+    target_relation: str
+    source_databases: tuple[str | None, ...] | None = None
+    preserve_source_database: bool = False
+
+
+@dataclass(frozen=True)
+class SqlNamedQuery:
+    """One named query to prepend to a rewritten SELECT."""
+
+    name: str
+    query: str
+
+
+@dataclass(frozen=True)
+class SqlQueryRewriteResult:
+    """Canonical rewritten SELECT SQL and its aggregate classification."""
+
+    query: str
+    has_aggregate_semantics: bool
