@@ -16,6 +16,10 @@ SQL_WILDCARD: str = "*"
 SQL_WITH_KEYWORD: str = "WITH"
 SQL_RECURSIVE_KEYWORD: str = "RECURSIVE"
 SQL_AS_KEYWORD: str = "AS"
+CLICKHOUSE_AGGREGATE_STATE_TYPE_NAMES: frozenset[str] = frozenset(
+    {"aggregatefunction", "simpleaggregatefunction"}
+)
+CLICKHOUSE_NAMED_FIELD_TYPE_NAMES: frozenset[str] = frozenset({"tuple", "nested"})
 
 SOURCE_REFERENCE_FUNCTION: str = "__source"
 MODEL_REFERENCE_FUNCTION: str = "__ref"

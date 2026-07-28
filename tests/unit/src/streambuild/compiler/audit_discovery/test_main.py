@@ -6,6 +6,7 @@ from streambuild.compiler.audit_discovery.main._discover_sql_audits import disco
 from streambuild.compiler.audit_discovery.models import LoadedSqlAudit
 from streambuild.compiler.macros.models import MacroContext, MacroRegistry
 from tests.unit.src.streambuild.compiler.audit_discovery._test_types import (
+    DiscoverGenericSqlAuditsErrorTestCase,
     DiscoverGenericSqlAuditsTestCase,
     DiscoverSqlAuditsErrorTestCase,
     DiscoverSqlAuditsTestCase,
@@ -62,6 +63,23 @@ from tests.unit.src.streambuild.compiler.macros.helpers import (
             expected_referenced_model_names=(("order_items",), ("order_items", "orders")),
             expected_severities=("warning", "error"),
             expected_descriptions=(None, None),
+        ),
+        DiscoverSqlAuditsTestCase(
+            description="ignores audit marker lookalikes inside strings and comments",
+            relative_file_path="order_events/marker_literals.sql",
+            file_contents="""
+        AUDIT ();
+
+        SELECT 'marker
+        AUDIT (name: fake);
+        still marker' AS marker
+        -- AUDIT (name: ignored);
+        FROM __ref("order_items")
+        """,
+            expected_audit_names=(None,),
+            expected_referenced_model_names=(("order_items",),),
+            expected_severities=("error",),
+            expected_descriptions=(None,),
         ),
     ],
     ids=lambda case: case.description,
@@ -140,6 +158,33 @@ def test_given_valid_sql_audit_files_when_discovering_then_it_returns_loaded_sql
                 r"blocks; each must define name"
             ),
         ),
+        DiscoverSqlAuditsErrorTestCase(
+            description="rejects malformed audit SQL through Polyglot",
+            relative_file_path="order_events/malformed.sql",
+            file_contents="""
+        AUDIT ();
+        SELECT * FROM __ref("order_items") WHERE (
+        """,
+            expected_error_fragment="exactly one valid top-level query",
+        ),
+        DiscoverSqlAuditsErrorTestCase(
+            description="rejects multiple audit SQL statements",
+            relative_file_path="order_events/multiple.sql",
+            file_contents="""
+        AUDIT ();
+        SELECT * FROM __ref("order_items"); SELECT 2
+        """,
+            expected_error_fragment="exactly one valid top-level query",
+        ),
+        DiscoverSqlAuditsErrorTestCase(
+            description="rejects non-query audit statements",
+            relative_file_path="order_events/delete.sql",
+            file_contents="""
+        AUDIT ();
+        DELETE FROM __ref("order_items") WHERE order_id = 1
+        """,
+            expected_error_fragment="SELECT or set-operation query",
+        ),
     ],
     ids=lambda case: case.description,
 )
@@ -203,6 +248,7 @@ def test_given_sql_audit_macros_when_discovering_then_it_expands_audit_body(
     [
         DiscoverGenericSqlAuditsTestCase(
             description="renders generic sql audits from schema attached instances",
+            definition_name="not_null",
             definition_file_contents="""
             AUDIT ();
 
@@ -221,9 +267,38 @@ def test_given_sql_audit_macros_when_discovering_then_it_expands_audit_body(
                           severity: warning
             """,
             expected_name="order items order id not null",
-            expected_query_fragment='FROM __ref("order_items")',
+            expected_query_fragments=('FROM __ref("order_items")',),
             expected_referenced_model_names=("order_items",),
-        )
+        ),
+        DiscoverGenericSqlAuditsTestCase(
+            description="renders escaped quoted generic audit argument lists",
+            definition_name="accepted_values",
+            definition_file_contents="""
+            AUDIT ();
+
+            SELECT @column
+            FROM __ref("@model")
+            WHERE @column NOT IN (@'values')
+            """,
+            schema_file_contents="""
+            models:
+              - name: order_items
+                columns:
+                  - name: category
+                    audits:
+                      - accepted_values:
+                          name: accepted categories
+                          values:
+                            - "O'Reilly"
+                            - "cafe雪"
+            """,
+            expected_name="accepted categories",
+            expected_query_fragments=(
+                "NOT IN ('O''Reilly', 'cafe雪')",
+                'FROM __ref("order_items")',
+            ),
+            expected_referenced_model_names=("order_items",),
+        ),
     ],
     ids=lambda case: case.description,
 )
@@ -243,7 +318,8 @@ def test_given_generic_sql_audits_when_discovering_then_it_renders_concrete_audi
         """,
     )
     write_sql_audit_file(
-        audits_root / "generic" / "not_null.sql", test_case.definition_file_contents
+        audits_root / "generic" / f"{test_case.definition_name}.sql",
+        test_case.definition_file_contents,
     )
     write_schema_yaml_file(
         tmp_path / "pipelines" / "order_events" / "schema.yml",
@@ -253,5 +329,36 @@ def test_given_generic_sql_audits_when_discovering_then_it_renders_concrete_audi
     loaded_audits: list[LoadedSqlAudit] = discover_sql_audits(root=audits_root)
 
     assert loaded_audits[0].name == test_case.expected_name
-    assert test_case.expected_query_fragment in loaded_audits[0].query
+    assert all(
+        fragment in loaded_audits[0].query for fragment in test_case.expected_query_fragments
+    )
     assert loaded_audits[0].referenced_model_names == test_case.expected_referenced_model_names
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DiscoverGenericSqlAuditsErrorTestCase(
+            description="rejects content before the generic audit header",
+            definition_file_contents="""
+            SELECT 1;
+            AUDIT ();
+            SELECT @column FROM __ref("@model")
+            """,
+            expected_error_fragment="must not contain content before the AUDIT",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_invalid_generic_sql_audit_when_discovering_then_it_raises_clear_error(
+    test_case: DiscoverGenericSqlAuditsErrorTestCase,
+    tmp_path: Path,
+) -> None:
+    audits_root: Path = tmp_path / "audits"
+    write_sql_audit_file(
+        audits_root / "generic" / "invalid.sql",
+        test_case.definition_file_contents,
+    )
+
+    with pytest.raises(ValueError, match=test_case.expected_error_fragment):
+        discover_sql_audits(root=audits_root)

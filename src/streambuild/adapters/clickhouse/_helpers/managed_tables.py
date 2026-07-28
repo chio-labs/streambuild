@@ -8,6 +8,8 @@ from streambuild.adapter.models import (
     InspectedManagedTableState,
     InspectedPhysicalTableCandidate,
 )
+from streambuild.adapters.clickhouse._helpers.catalog_parsing import extract_stable_binding
+from streambuild.adapters.clickhouse.constants import CLICKHOUSE_VIEW_ENGINE
 from streambuild.adapters.clickhouse.models import (
     ActiveBindingSystemRow,
     PhysicalCandidateSystemRow,
@@ -43,7 +45,10 @@ def build_inspected_managed_table_state(
     active_bindings: list[InspectedActiveTableBinding] = []
     row: ActiveBindingSystemRow
     for row in active_binding_rows:
-        physical_name: str | None = _extract_physical_table_name(row.as_select)
+        physical_name: str | None = extract_stable_binding(
+            engine=CLICKHOUSE_VIEW_ENGINE,
+            as_select=row.as_select,
+        )
         if physical_name is None:
             continue
         active_bindings.append(
@@ -68,13 +73,6 @@ def build_inspected_managed_table_state(
         active_bindings=tuple(active_bindings),
         physical_candidates=physical_candidates,
     )
-
-
-def _extract_physical_table_name(as_select: str) -> str | None:
-    marker: str = "FROM "
-    if marker not in as_select:
-        return None
-    return as_select.split(marker, 1)[1].strip().split(".", 1)[1]
 
 
 def _logical_name_from_physical_name(physical_name: str) -> str:

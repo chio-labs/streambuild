@@ -1,10 +1,7 @@
 """Compare staged and active relations for ClickHouse readiness."""
 
-import re
 from collections.abc import Mapping
 from typing import cast
-
-from sqlglot import exp, parse_one
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.exceptions import AdapterRelationNotFoundError, AdapterResultError
@@ -16,6 +13,7 @@ from streambuild.adapter.models import (
     AdapterReadinessScalarSummary,
 )
 from streambuild.adapter.types import AdapterReplayBoundaryMode
+from streambuild.adapters.clickhouse._helpers.catalog_parsing import extract_create_query_source
 from streambuild.adapters.clickhouse.models import (
     ClickHouseReadinessColumnRow,
     ClickHouseReadinessCountRow,
@@ -338,16 +336,7 @@ def _resolve_staged_source_relation(
     )
     if row is None:
         return None
-    query_match: re.Match[str] | None = re.search(
-        r"\bAS\b\s*(SELECT.*)$",
-        row.create_table_query,
-        re.DOTALL,
-    )
-    if query_match is None:
-        return None
-    expression: exp.Expr = parse_one(query_match.group(1), dialect="clickhouse")
-    source_table: exp.Table | None = next(expression.find_all(exp.Table), None)
-    return None if source_table is None else source_table.name
+    return extract_create_query_source(row.create_table_query)
 
 
 def _resolve_offset_boundary_column(

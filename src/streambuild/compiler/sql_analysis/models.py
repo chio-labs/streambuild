@@ -164,3 +164,34 @@ class SqlQueryRewriteResult:
 
     query: str
     has_aggregate_semantics: bool
+
+
+@dataclass(frozen=True)
+class SqlRelationIdentity:
+    """One physical SQL relation identity."""
+
+    database: str | None
+    name: str
+
+
+@dataclass(frozen=True)
+class SqlCatalogAnalysis:
+    """Canonical query and ClickHouse catalog facts from one SQL statement."""
+
+    canonical_sql: str
+    query_sql: str | None
+    first_source: SqlRelationIdentity | None
+    direct_source: SqlRelationIdentity | None
+    target_relation: SqlRelationIdentity | None
+    ttl: str | None
+    settings: tuple[tuple[str, str], ...]
+
+
+@dataclass(frozen=True)
+class SqlHeaderBlock:
+    """One lexically isolated SQL extension header and following body."""
+
+    start: int
+    body_start: int
+    header: str
+    body: str

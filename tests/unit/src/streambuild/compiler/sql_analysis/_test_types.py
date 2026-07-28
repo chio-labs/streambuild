@@ -186,3 +186,37 @@ class QueryRewriteErrorTestCase:
     sql: str
     named_queries: tuple[SqlNamedQuery, ...]
     expected_error_fragment: str
+
+
+@dataclass(frozen=True)
+class CatalogSqlAnalysisTestCase:
+    description: str
+    sql: str
+    expected_query_fragment: str
+    expected_first_source: tuple[str | None, str | None]
+    expected_direct_source: tuple[str | None, str | None]
+    expected_target_relation: tuple[str | None, str | None]
+    expected_ttl: str | None
+    expected_settings: tuple[tuple[str, str], ...]
+
+
+@dataclass(frozen=True)
+class SqlExpressionListTestCase:
+    description: str
+    sql: str
+    expected_expressions: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class SqlStringLiteralTestCase:
+    description: str
+    value: str
+    expected_literal: str
+
+
+@dataclass(frozen=True)
+class SqlHeaderBlockTestCase:
+    description: str
+    sql: str
+    expected_headers: tuple[str, ...]
+    expected_body_fragments: tuple[str, ...]

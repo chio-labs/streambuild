@@ -12,11 +12,9 @@ from streambuild.adapter.models import (
     CatalogSnapshot,
 )
 from streambuild.adapters.clickhouse._helpers.catalog_parsing import (
-    extract_source_relation_name,
-    extract_stable_binding,
-    normalize_catalog_query,
     normalize_partition_key,
     parse_catalog_ddl_details,
+    parse_catalog_query_details,
     parse_sorting_key,
 )
 from streambuild.adapters.clickhouse.constants import EMPTY_DEFAULT_EXPRESSIONS
@@ -84,6 +82,13 @@ def _build_catalog_relation(
     settings: tuple[tuple[str, str], ...]
     target_relation_name: str | None
     ttl, settings, target_relation_name = parse_catalog_ddl_details(row.create_table_query)
+    query_sql: str | None
+    source_relation_name: str | None
+    stable_binding_name: str | None
+    query_sql, source_relation_name, stable_binding_name = parse_catalog_query_details(
+        engine=row.engine,
+        value=row.as_select,
+    )
     return CatalogRelation(
         name=row.name,
         engine=row.engine,
@@ -93,10 +98,10 @@ def _build_catalog_relation(
         ttl=ttl,
         settings=settings,
         definition_sql=row.create_table_query,
-        query_sql=normalize_catalog_query(row.as_select),
-        source_relation_name=extract_source_relation_name(row.as_select),
+        query_sql=query_sql,
+        source_relation_name=source_relation_name,
         target_relation_name=target_relation_name,
-        stable_binding_name=extract_stable_binding(engine=row.engine, as_select=row.as_select),
+        stable_binding_name=stable_binding_name,
     )
 
 

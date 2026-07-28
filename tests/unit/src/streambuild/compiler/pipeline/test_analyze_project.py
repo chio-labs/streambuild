@@ -94,7 +94,7 @@ def test_given_adapter_profile_when_analyzing_then_references_use_its_dialect(
             description="bounds Polyglot calls across one complete two-model project analysis",
             expected_model_count=2,
             expected_parse_calls=2,
-            expected_parse_one_calls=8,
+            expected_parse_one_calls=9,
             expected_analyze_calls=3,
             expected_generate_calls=20,
         )

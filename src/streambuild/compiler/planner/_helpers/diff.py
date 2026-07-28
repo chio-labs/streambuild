@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from sqlglot import exp, parse_one
-
 from streambuild.compiler.compile.models import (
     Column,
     DesiredState,
@@ -31,6 +29,8 @@ from streambuild.compiler.planner.types import (
     TableSchemaChangeKind,
     TableSchemaSeedCompatibility,
 )
+from streambuild.compiler.sql_analysis.exceptions import SqlAnalysisError
+from streambuild.compiler.sql_analysis.main._normalize_data_type import normalize_sql_data_type
 
 
 def classify_object_changes(
@@ -207,14 +207,9 @@ def _columns_equal(*, desired_column: Column, actual_column: Column) -> bool:
 
 
 def _normalize_clickhouse_type(type_sql: str) -> str:
-    parsed_expression: exp.Expr = parse_one(
-        f"CREATE TABLE t (c {type_sql}) ENGINE = MergeTree ORDER BY tuple()",
-        dialect="clickhouse",
-    )
-    if not isinstance(parsed_expression, exp.Create):
-        raise DeploymentPlanError(f"Expected CREATE statement when normalizing type '{type_sql}'")
-    column_definition: exp.ColumnDef = next(parsed_expression.find_all(exp.ColumnDef))
-    data_type: exp.DataType | None = column_definition.kind
-    if data_type is None:
-        raise DeploymentPlanError(f"Expected column type when normalizing type '{type_sql}'")
-    return data_type.sql(dialect="clickhouse")
+    try:
+        return normalize_sql_data_type(sql=type_sql, dialect="clickhouse")
+    except SqlAnalysisError as error:
+        raise DeploymentPlanError(
+            f"Could not normalize ClickHouse type '{type_sql}': {error}"
+        ) from None
