@@ -15,6 +15,7 @@ from streambuild.cli.entry._helpers.adapter_connection import (
 from streambuild.cli.entry._helpers.dispatch import dispatch_cli_command
 from streambuild.cli.entry._helpers.entrypoint import argv_for_parse_args
 from streambuild.cli.entry._helpers.invocation import resolve_cli_invocation
+from streambuild.cli.entry._helpers.mode import validate_cli_command_mode
 from streambuild.cli.entry._helpers.parser import build_cli_parser
 from streambuild.cli.entry.constants import DISPLAY_NAME_BY_COMMAND
 from streambuild.cli.entry.exceptions import CliUserError
@@ -83,6 +84,7 @@ def _main_with_dependencies(
             environment=environment,
             working_directory=working_directory,
         )
+        validate_cli_command_mode(invocation=invocation)
         resolved_database = invocation.database
         resolved_connection: ResolvedInvocationConnection = resolve_invocation_connection(
             invocation=invocation,

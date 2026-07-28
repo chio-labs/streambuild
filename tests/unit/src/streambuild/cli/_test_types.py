@@ -152,6 +152,25 @@ class CliLazyConnectionTestCase:
 
 
 @dataclass(frozen=True)
+class CliModeGateErrorTestCase:
+    description: str
+    argv: tuple[str, ...]
+    project_file_contents: str
+    expected_error_fragment: str
+
+
+@dataclass(frozen=True)
+class CliModeOverrideTestCase:
+    description: str
+    argv: tuple[str, ...]
+    project_file_contents: str
+    local_file_contents: str
+    expected_handler_name: str
+    expected_exit_code: int
+    expected_handler_call_count: int
+
+
+@dataclass(frozen=True)
 class CliProjectSecretRedactionTestCase:
     description: str
     secret: str

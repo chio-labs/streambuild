@@ -80,6 +80,7 @@ def test_given_external_source_pipeline_when_running_then_it_publishes_expected_
         deployment_id=test_case.deployment_id,
     )
     run_streambuild_publish_cli(
+        project_dir=project_dir,
         host=isolated_e2e_clickhouse_connection_settings.host,
         port=isolated_e2e_clickhouse_connection_settings.port,
         username=isolated_e2e_clickhouse_connection_settings.username,
@@ -156,6 +157,7 @@ def test_given_external_offset_source_pipeline_when_running_then_it_publishes_of
         "ORDER BY boundary_key"
     ).result_rows
     run_streambuild_publish_cli(
+        project_dir=project_dir,
         host=isolated_e2e_clickhouse_connection_settings.host,
         port=isolated_e2e_clickhouse_connection_settings.port,
         username=isolated_e2e_clickhouse_connection_settings.username,

@@ -217,6 +217,7 @@ def run_kafka_live_shadow_scenario(
     ).result_rows
 
     run_streambuild_publish_cli(
+        project_dir=project_dir,
         host=clickhouse_connection_settings.host,
         port=clickhouse_connection_settings.port,
         username=clickhouse_connection_settings.username,
@@ -466,6 +467,7 @@ def run_streambuild_audit_backfill_cli(
 
 def run_streambuild_publish_cli(
     *,
+    project_dir: Path,
     host: str,
     port: int,
     username: str,
@@ -476,6 +478,8 @@ def run_streambuild_publish_cli(
     _run_streambuild_cli(
         command=(
             "publish",
+            "--project-dir",
+            str(project_dir),
             "--host",
             host,
             "--port",
@@ -494,6 +498,7 @@ def run_streambuild_publish_cli(
 
 def run_streambuild_doctor_cli(
     *,
+    project_dir: Path,
     host: str,
     port: int,
     username: str,
@@ -503,6 +508,8 @@ def run_streambuild_doctor_cli(
     return _run_streambuild_cli_json(
         command=(
             "doctor",
+            "--project-dir",
+            str(project_dir),
             "--host",
             host,
             "--port",
@@ -519,6 +526,7 @@ def run_streambuild_doctor_cli(
 
 def run_streambuild_repair_active_view_cli(
     *,
+    project_dir: Path,
     host: str,
     port: int,
     username: str,
@@ -531,6 +539,8 @@ def run_streambuild_repair_active_view_cli(
         command=(
             "repair",
             "active-view",
+            "--project-dir",
+            str(project_dir),
             "--host",
             host,
             "--port",

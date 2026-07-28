@@ -180,6 +180,7 @@ def test_given_kafka_backed_greenfield_pipeline_when_running_then_it_publishes_e
         deployment_id=test_case.deployment_id,
     )
     run_streambuild_publish_cli(
+        project_dir=project_dir,
         host=e2e_clickhouse_connection_settings.host,
         port=e2e_clickhouse_connection_settings.port,
         username=e2e_clickhouse_connection_settings.username,
@@ -287,6 +288,7 @@ def test_given_kafka_backed_published_deployment_when_view_is_deleted_then_repai
         deployment_id=test_case.deployment_id,
     )
     run_streambuild_publish_cli(
+        project_dir=project_dir,
         host=e2e_clickhouse_connection_settings.host,
         port=e2e_clickhouse_connection_settings.port,
         username=e2e_clickhouse_connection_settings.username,
@@ -301,6 +303,7 @@ def test_given_kafka_backed_published_deployment_when_view_is_deleted_then_repai
         table_name=target_table_name,
     )
     doctor_result: dict[str, object] = run_streambuild_doctor_cli(
+        project_dir=project_dir,
         host=e2e_clickhouse_connection_settings.host,
         port=e2e_clickhouse_connection_settings.port,
         username=e2e_clickhouse_connection_settings.username,
@@ -308,6 +311,7 @@ def test_given_kafka_backed_published_deployment_when_view_is_deleted_then_repai
         database=e2e_clickhouse_database,
     )
     repair_result: dict[str, object] = run_streambuild_repair_active_view_cli(
+        project_dir=project_dir,
         host=e2e_clickhouse_connection_settings.host,
         port=e2e_clickhouse_connection_settings.port,
         username=e2e_clickhouse_connection_settings.username,
