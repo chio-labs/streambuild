@@ -102,3 +102,11 @@ def with_timestamps(rows: list[dict], ts: str) -> list[dict]:
         }
         result.append(enriched)
     return result
+
+
+def line_total_expression(quantity_column: str, unit_price_column: str) -> str:
+    """Generate the NULL-safe line total expression used by order_items."""
+    return (
+        f"if(isNull({quantity_column}) OR isNull({unit_price_column}), "
+        f"NULL, {quantity_column} * {unit_price_column})"
+    )

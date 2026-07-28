@@ -13,6 +13,7 @@ from streambuild.adapter.models import (
     AdapterMaterializedView,
     AdapterModelRealization,
     AdapterModelRealizationRequest,
+    AdapterSetDifferenceComparisonRequest,
     AdapterSourceRealization,
     AdapterStableView,
     AdapterTable,
@@ -80,3 +81,9 @@ class Adapter(ABC):
     @abstractmethod
     def realize_model(self, *, request: AdapterModelRealizationRequest) -> AdapterModelRealization:
         """Map one semantically compiled logical model to adapter resources."""
+
+    @abstractmethod
+    def render_set_difference_comparison(
+        self, *, request: AdapterSetDifferenceComparisonRequest
+    ) -> str:
+        """Render one neutral bidirectional bag-comparison statement."""

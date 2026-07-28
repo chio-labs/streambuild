@@ -87,3 +87,12 @@ class CliBoundedPlanSnapshotIntegrationTestCase:
     expected_catalog_load_count: int
     expected_query_count: int
     expected_point_in_time_query_count: int
+
+
+@dataclass(frozen=True)
+class CliTestSemanticsIntegrationTestCase:
+    description: str
+    sql_test_content: str
+    macro_file_contents: str
+    expected_exit_code: int
+    expected_output_fragments: tuple[str, ...]

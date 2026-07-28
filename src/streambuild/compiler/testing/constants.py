@@ -1,0 +1,9 @@
+"""Constants for compiler-side SQL test assembly."""
+
+ASSEMBLED_MODEL_CTE_PREFIX: str = "__model__"
+ASSERTION_TARGET_LABEL_PREFIX: str = "assert "
+MACRO_TARGET_LABEL_PREFIX: str = "macro "
+EXPECTED_COLUMNS_LABEL: str = "__expected__ "
+ASSERTION_COLUMNS_LABEL: str = "__assert__ "
+MACRO_ACTUAL_COLUMNS_LABEL: str = "__macro_actual__"
+MACRO_EXPECTED_COLUMNS_LABEL: str = "__macro_expected__"

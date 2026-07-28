@@ -13,7 +13,10 @@ from streambuild.cli.selection.constants import (
 )
 from streambuild.compiler.compile.main.compiled_models import compiled_models
 from streambuild.compiler.compile.models import CompiledModel, CompiledPipeline, ParsedRef
-from streambuild.compiler.test_discovery.models import LoadedSqlTest, SqlTestCte
+from streambuild.compiler.test_discovery.main.sql_test_target_names import (
+    sql_test_target_names,
+)
+from streambuild.compiler.test_discovery.models import LoadedSqlTest
 
 
 def select_loaded_sql_tests(
@@ -136,11 +139,8 @@ def _resolve_selector_target_names(
 
 
 def _targets_selected(*, loaded_test: LoadedSqlTest, selected_target_names: frozenset[str]) -> bool:
-    expected_target: SqlTestCte
-    for expected_target in loaded_test.expected_targets:
-        if expected_target.name.removeprefix("__expected__") in selected_target_names:
-            return True
-    return False
+    target_names: frozenset[str] = frozenset(sql_test_target_names(loaded_test=loaded_test))
+    return bool(selected_target_names & target_names)
 
 
 def _build_model_graph(

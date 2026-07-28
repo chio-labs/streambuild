@@ -37,6 +37,24 @@ class SqlReference:
 
 
 @dataclass(frozen=True)
+class SqlCommonTableExpression:
+    """One authored top-level common table expression and its verbatim body."""
+
+    name: str
+    query: str
+    span: SqlSourceSpan
+
+
+@dataclass(frozen=True)
+class SqlTopLevelCtes:
+    """Authored top-level CTEs plus the statement text that follows them."""
+
+    ctes: tuple[SqlCommonTableExpression, ...]
+    trailing_sql: str
+    trailing_span: SqlSourceSpan
+
+
+@dataclass(frozen=True)
 class SqlOutputColumn:
     """One exact typed output from the outer model projection list."""
 

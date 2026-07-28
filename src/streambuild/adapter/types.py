@@ -13,6 +13,7 @@ if TYPE_CHECKING:
         AdapterMaterializedView,
         AdapterModelRealization,
         AdapterModelRealizationRequest,
+        AdapterSetDifferenceComparisonRequest,
         AdapterSourceRealization,
         AdapterStableView,
         AdapterTable,
@@ -76,3 +77,9 @@ class AdapterModelRealizer(Protocol):
     """Realize one semantically compiled logical model."""
 
     def __call__(self, *, request: AdapterModelRealizationRequest) -> AdapterModelRealization: ...
+
+
+class AdapterSetDifferenceComparisonRenderer(Protocol):
+    """Render neutral bidirectional bag comparisons as one adapter statement."""
+
+    def __call__(self, *, request: AdapterSetDifferenceComparisonRequest) -> str: ...

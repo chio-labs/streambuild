@@ -126,6 +126,7 @@ class SnapshotRecordingConnection(AdapterConnection):
             stable_logical_bindings=True,
             per_relation_atomic_replace=True,
             graph_atomic_publish=False,
+            set_difference_comparison=True,
         )
         self.catalog_load_count: int = 0
         self.query_count: int = 0

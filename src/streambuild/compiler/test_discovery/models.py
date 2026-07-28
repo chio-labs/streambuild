@@ -6,6 +6,15 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from streambuild.compiler.discovery.types import SqlRelationType
+from streambuild.compiler.test_discovery.types import SqlTestMode
+
+
+@dataclass(frozen=True)
+class SqlTestHeader:
+    """One parsed TEST(...) header."""
+
+    name: str | None
+    mode: SqlTestMode
 
 
 @dataclass(frozen=True)
@@ -30,31 +39,30 @@ class SqlTestCte:
 
 
 @dataclass(frozen=True)
-class LoadedSqlTest:
-    """One discovered SQL test file with extracted mock and expectation CTEs."""
+class SqlTestModelPayload:
+    """Mocks, expectations, and assertions authored by one model-mode test."""
 
-    file_path: Path
-    authored_ctes: tuple[SqlTestCte, ...]
     mocks: tuple[SqlTestMock, ...]
     expected_targets: tuple[SqlTestCte, ...]
-    name: str | None = None
-    test_index: int = 1
+    assertions: tuple[SqlTestCte, ...]
+    assertion_reference_names: tuple[str, ...]
 
 
 @dataclass(frozen=True)
-class SqlTestTargetCase:
-    """One assembled target comparison inside a SQL-native test case."""
+class SqlTestMacroPayload:
+    """The actual and expected comparison authored by one macro-mode test."""
 
-    target_model_name: str
-    expected_column_names: tuple[str, ...]
-    query: str
+    actual: SqlTestCte
+    expected: SqlTestCte
 
 
 @dataclass(frozen=True)
-class SqlTestCase:
-    """One fully assembled SQL-native test scenario ready for execution."""
+class LoadedSqlTest:
+    """One discovered SQL test block with its classified authored CTEs."""
 
     file_path: Path
-    target_cases: tuple[SqlTestTargetCase, ...]
+    mode: SqlTestMode
+    authored_ctes: tuple[SqlTestCte, ...]
+    payload: SqlTestModelPayload | SqlTestMacroPayload
     name: str | None = None
     test_index: int = 1

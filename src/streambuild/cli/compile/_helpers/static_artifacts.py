@@ -34,7 +34,7 @@ from streambuild.compiler.compile.models import (
 from streambuild.compiler.dag.main.build_dag_json import build_dag_json
 from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.compiler.pipeline.types import AdapterResource
-from streambuild.compiler.test_discovery.models import SqlTestCase
+from streambuild.compiler.testing.models import SqlTestCase
 
 
 def build_static_compile_artifacts(*, analysis: CompileAnalysis) -> StaticCompileArtifacts:

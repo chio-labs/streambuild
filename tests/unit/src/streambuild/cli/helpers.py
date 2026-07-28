@@ -161,6 +161,7 @@ class RecordingAdapterConnection(AdapterConnection):
         stable_logical_bindings: bool = True,
         per_relation_atomic_replace: bool = True,
         graph_atomic_publish: bool = False,
+        set_difference_comparison: bool = True,
         relations: tuple[CatalogRelation, ...] = (),
         managed_table_state: InspectedManagedTableState = _EMPTY_MANAGED_TABLE_STATE,
         readiness_observations: tuple[AdapterReadinessRootObservation, ...] = (),
@@ -181,6 +182,7 @@ class RecordingAdapterConnection(AdapterConnection):
             stable_logical_bindings=stable_logical_bindings,
             per_relation_atomic_replace=per_relation_atomic_replace,
             graph_atomic_publish=graph_atomic_publish,
+            set_difference_comparison=set_difference_comparison,
         )
         self._relations: tuple[CatalogRelation, ...] = relations
         self._managed_table_state: InspectedManagedTableState = managed_table_state

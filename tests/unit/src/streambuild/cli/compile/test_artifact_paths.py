@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 from sqlglot import parse
 
+from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from streambuild.cli.compile._helpers.content import static_test_sql
 from streambuild.cli.compile._helpers.paths import (
     audit_path,
@@ -15,7 +16,8 @@ from streambuild.cli.compile._helpers.static_artifacts import _validate_unique_p
 from streambuild.cli.compile.exceptions import CompileArtifactError
 from streambuild.cli.compile.models import StaticArtifactFile
 from streambuild.compiler.audit_discovery.models import LoadedSqlAudit
-from streambuild.compiler.test_discovery.models import SqlTestCase, SqlTestTargetCase
+from streambuild.compiler.testing._helpers.comparison import render_comparison_query
+from streambuild.compiler.testing.models import SqlTestCase, SqlTestChainStep
 from tests.unit.src.streambuild.cli.compile._test_types import (
     AuditArtifactPathTestCase,
     DuplicateArtifactPathTestCase,
@@ -50,12 +52,15 @@ def test_given_compiled_sql_test_when_resolving_artifact_path_then_uses_target_c
 ) -> None:
     test_case_model: SqlTestCase = SqlTestCase(
         file_path=Path("tests/example.sql"),
+        query="SELECT 1",
         name=test_case.test_name,
         target_cases=tuple(
-            SqlTestTargetCase(
+            SqlTestChainStep(
                 target_model_name=target_name,
                 expected_column_names=("id",),
-                query="SELECT 1 AS id",
+                ctes=(),
+                actual_query="SELECT 1 AS id",
+                expected_query="SELECT 1 AS id",
             )
             for target_name in test_case.target_names
         ),
@@ -143,12 +148,15 @@ def test_given_unsafe_test_name_when_resolving_path_then_rejects_escape(
 ) -> None:
     compiled_test: SqlTestCase = SqlTestCase(
         file_path=Path("tests/check.sql"),
+        query="SELECT 1",
         name=test_case.unsafe_name,
         target_cases=(
-            SqlTestTargetCase(
+            SqlTestChainStep(
                 target_model_name="orders",
                 expected_column_names=("id",),
-                query="SELECT 1 AS id",
+                ctes=(),
+                actual_query="SELECT 1 AS id",
+                expected_query="SELECT 1 AS id",
             ),
         ),
     )
@@ -236,10 +244,10 @@ def test_given_duplicate_static_paths_when_validating_then_rejects_collision(
             target_names=("orders", "payments"),
             expected_statement_count=1,
             expected_fragments=(
-                "__streambuild_target_1",
-                "__streambuild_target_2",
-                "'orders' AS _target",
-                "'payments' AS _target",
+                "0 AS _case_index",
+                "1 AS _case_index",
+                "'missing' AS _diff_type",
+                "'unexpected' AS _diff_type",
             ),
         )
     ],
@@ -248,17 +256,25 @@ def test_given_duplicate_static_paths_when_validating_then_rejects_collision(
 def test_given_multi_target_test_when_assembling_static_sql_then_emits_one_statement(
     test_case: MultiTargetTestSqlTestCase,
 ) -> None:
+    target_cases: tuple[SqlTestChainStep, ...] = tuple(
+        SqlTestChainStep(
+            target_model_name=target_name,
+            expected_column_names=("id",),
+            ctes=(),
+            actual_query="SELECT 1 AS id",
+            expected_query="SELECT 1 AS id",
+        )
+        for target_name in test_case.target_names
+    )
     compiled_test: SqlTestCase = SqlTestCase(
         file_path=Path("tests/chain.sql"),
-        name="chain",
-        target_cases=tuple(
-            SqlTestTargetCase(
-                target_model_name=target_name,
-                expected_column_names=("id",),
-                query="SELECT 1 AS id",
-            )
-            for target_name in test_case.target_names
+        query=render_comparison_query(
+            comparison_renderer=ClickHouseAdapter().render_set_difference_comparison,
+            target_cases=target_cases,
+            assertion_cases=(),
         ),
+        name="chain",
+        target_cases=target_cases,
     )
 
     sql: str = static_test_sql(test_case=compiled_test)

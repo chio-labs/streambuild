@@ -51,6 +51,7 @@ from streambuild.adapters.clickhouse.constants import (
     CLICKHOUSE_MANAGED_SOURCE_KINDS,
     CLICKHOUSE_PER_RELATION_ATOMIC_REPLACE,
     CLICKHOUSE_REPLAY_BOUNDARY_MODES,
+    CLICKHOUSE_SET_DIFFERENCE_COMPARISON_SUPPORTED,
     CLICKHOUSE_STABLE_LOGICAL_BINDINGS_SUPPORTED,
     CLICKHOUSE_VIRTUAL_ENVIRONMENTS_SUPPORTED,
 )
@@ -84,6 +85,7 @@ class ClickHouseConnection(AdapterConnection):
             stable_logical_bindings=CLICKHOUSE_STABLE_LOGICAL_BINDINGS_SUPPORTED,
             per_relation_atomic_replace=CLICKHOUSE_PER_RELATION_ATOMIC_REPLACE,
             graph_atomic_publish=CLICKHOUSE_GRAPH_ATOMIC_PUBLISH,
+            set_difference_comparison=CLICKHOUSE_SET_DIFFERENCE_COMPARISON_SUPPORTED,
         )
 
     def load_catalog(self, database: str) -> CatalogSnapshot:

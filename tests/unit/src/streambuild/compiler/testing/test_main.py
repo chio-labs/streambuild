@@ -2,11 +2,12 @@ from pathlib import Path
 
 import pytest
 
+from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from streambuild.compiler.sql_analysis.classes.sql_reference_rewriter import (
     SqlReferenceRewriter,
 )
-from streambuild.compiler.test_discovery.models import SqlTestCase
 from streambuild.compiler.testing.main._build_sql_test_cases import build_sql_test_cases
+from streambuild.compiler.testing.models import SqlTestCase
 from tests.unit.src.streambuild.compiler.testing._test_types import (
     BuildSqlTestCasesErrorTestCase,
     BuildSqlTestCasesTestCase,
@@ -182,20 +183,17 @@ def test_given_discovered_sql_tests_when_building_cases_then_it_assembles_expect
         loaded_tests=(loaded_test,),
         compiled_pipelines=(compiled_pipeline,),
         reference_rewriter=SqlReferenceRewriter(dialect="clickhouse"),
+        comparison_renderer=ClickHouseAdapter().render_set_difference_comparison,
+        dialect="clickhouse",
     )[0]
 
     assert tuple(
         target_case.target_model_name for target_case in test_case_result.target_cases
     ) == (test_case.expected_target_model_names)
     for expected_fragment in test_case.expected_query_fragments:
-        assert any(
-            expected_fragment in target_case.query for target_case in test_case_result.target_cases
-        )
+        assert expected_fragment in test_case_result.query
     for expected_absent_fragment in test_case.expected_absent_fragments:
-        assert all(
-            expected_absent_fragment not in target_case.query
-            for target_case in test_case_result.target_cases
-        )
+        assert expected_absent_fragment not in test_case_result.query
 
 
 @pytest.mark.parametrize(
@@ -234,4 +232,6 @@ def test_given_invalid_sql_tests_when_building_cases_then_it_raises_clear_errors
             loaded_tests=(loaded_test,),
             compiled_pipelines=(compiled_pipeline,),
             reference_rewriter=SqlReferenceRewriter(dialect="clickhouse"),
+            comparison_renderer=ClickHouseAdapter().render_set_difference_comparison,
+            dialect="clickhouse",
         )

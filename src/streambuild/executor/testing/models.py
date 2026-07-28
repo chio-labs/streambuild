@@ -7,6 +7,14 @@ from pathlib import Path
 
 
 @dataclass(frozen=True)
+class ComparisonRows:
+    """Missing and unexpected rows expanded per comparison case."""
+
+    missing: tuple[tuple[tuple[object, ...], ...], ...]
+    unexpected: tuple[tuple[tuple[object, ...], ...], ...]
+
+
+@dataclass(frozen=True)
 class SqlTestTargetExecutionResult:
     """One executed target comparison inside a SQL-native test scenario."""
 
@@ -24,5 +32,7 @@ class SqlTestExecutionResult:
     file_path: Path
     passed: bool
     target_results: tuple[SqlTestTargetExecutionResult, ...]
+    executed_sql: str
+    warnings: tuple[str, ...] = ()
     name: str | None = None
     test_index: int = 1

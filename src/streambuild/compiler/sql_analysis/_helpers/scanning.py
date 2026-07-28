@@ -148,7 +148,7 @@ def _parse_reference_at(*, sql: str, start: int) -> tuple[SqlReference, int] | N
     )
     if function_name is None or not _has_marker_boundary(sql=sql, start=start):
         return None
-    open_index: int = _skip_trivia(sql=sql, start=start + len(function_name))
+    open_index: int = skip_trivia(sql=sql, start=start + len(function_name))
     if open_index >= len(sql) or sql[open_index] != SQL_OPEN_PARENTHESIS:
         return None
     close_index: int = find_matching_parenthesis(sql=sql, open_index=open_index)
@@ -207,7 +207,9 @@ def _is_identifier_character(character: str) -> bool:
     return character.isalnum() or character == SQL_IDENTIFIER_PREFIX
 
 
-def _skip_trivia(*, sql: str, start: int) -> int:
+def skip_trivia(*, sql: str, start: int) -> int:
+    """Skip whitespace and SQL comments."""
+
     index: int = start
     while index < len(sql):
         if sql[index].isspace():

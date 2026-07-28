@@ -1,15 +1,40 @@
-"""Models for assembled SQL-native test cases."""
+"""Compiler-side SQL test models."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-
-from streambuild.compiler.compile.models import CompiledModel, CompiledPipeline
+from pathlib import Path
 
 
 @dataclass(frozen=True)
-class CompiledSqlTestModelEntry:
-    """One compiled model entry used while assembling SQL test cases."""
+class SqlTestChainStep:
+    """One recursively assembled actual/expected comparison."""
 
-    compiled_pipeline: CompiledPipeline
-    compiled_model: CompiledModel
+    target_model_name: str
+    expected_column_names: tuple[str, ...]
+    ctes: tuple[tuple[str, str], ...]
+    actual_query: str
+    expected_query: str
+
+
+@dataclass(frozen=True)
+class SqlTestAssertionStep:
+    """One zero-row assertion assembled against the resolved test chain."""
+
+    name: str
+    column_names: tuple[str, ...]
+    ctes: tuple[tuple[str, str], ...]
+    query: str
+
+
+@dataclass(frozen=True)
+class SqlTestCase:
+    """One fully assembled SQL-native test and its canonical adapter statement."""
+
+    file_path: Path
+    query: str
+    target_cases: tuple[SqlTestChainStep, ...]
+    assertion_cases: tuple[SqlTestAssertionStep, ...] = ()
+    warnings: tuple[str, ...] = ()
+    name: str | None = None
+    test_index: int = 1
