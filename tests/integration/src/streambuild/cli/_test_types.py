@@ -118,6 +118,7 @@ class CliStandardBuildIntegrationTestCase:
     expected_final_order_ids: tuple[str, ...]
     expected_deployment_row_count: int
     expected_stable_view_count: int
+    expected_replay_coverage_ranges: tuple[tuple[str, str, str], ...]
 
 
 @dataclass(frozen=True)
@@ -155,3 +156,39 @@ class CliReciprocalOwnershipIntegrationTestCase:
     description: str
     expected_exit_code: int
     expected_error_fragment: str
+
+
+@dataclass(frozen=True)
+class CliStandardBuildAuditIntegrationTestCase:
+    description: str
+    audit_sql_by_name: tuple[tuple[str, str], ...]
+    landing_rows: tuple[tuple[str, int, int], ...]
+    late_landing_rows: tuple[tuple[str, int, int], ...]
+    expected_exit_code: int
+    expected_stdout_fragment: str
+    expected_final_order_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class CliStandardBuildRerunIntegrationTestCase:
+    description: str
+    landing_rows: tuple[tuple[str, int, int], ...]
+    restored_landing_rows: tuple[tuple[str, int, int], ...]
+    late_landing_rows: tuple[tuple[str, int, int], ...]
+    expected_failed_exit_code: int
+    expected_incomplete_target_count: int
+    expected_retention_exit_code: int
+    expected_retention_error_fragment: str
+    expected_rerun_exit_code: int
+    expected_final_order_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class CliStandardBuildPartialFailureIntegrationTestCase:
+    description: str
+    landing_rows: tuple[tuple[str, int, int], ...]
+    partial_landing_rows: tuple[tuple[str, int, int], ...]
+    expected_failed_exit_code: int
+    expected_retention_exit_code: int
+    expected_retention_error_fragment: str
+    expected_partial_order_ids: tuple[str, ...]

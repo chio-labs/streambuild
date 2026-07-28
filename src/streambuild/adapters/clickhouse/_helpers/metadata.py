@@ -2,6 +2,7 @@
 
 import json
 from datetime import UTC, datetime
+from typing import cast
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.constants import (
@@ -25,6 +26,7 @@ from streambuild.adapter.models import (
     AdapterPreparedObjectMapping,
     AdapterPublishEventRecord,
     AdapterQueryResult,
+    AdapterReplayCoverageRange,
 )
 from streambuild.adapters.clickhouse.constants import (
     EMPTY_DEFAULT_EXPRESSIONS,
@@ -85,6 +87,7 @@ _REQUIRED_SCHEMA_COLUMNS: tuple[tuple[str, str], ...] = (
     (METADATA_TARGET_OWNERSHIP_TABLE_NAME, "logical_model_name"),
     (METADATA_TARGET_OWNERSHIP_TABLE_NAME, "owning_mode"),
     (METADATA_TARGET_OWNERSHIP_TABLE_NAME, "tool_version"),
+    (METADATA_TARGET_OWNERSHIP_TABLE_NAME, "replay_coverage_json"),
     (METADATA_TARGET_OWNERSHIP_TABLE_NAME, "created_at"),
     (METADATA_TARGET_OWNERSHIP_TABLE_NAME, "updated_at"),
 )
@@ -336,6 +339,7 @@ def _render_target_ownership_table(database: str) -> str:
         "    logical_model_name String,\n"
         "    owning_mode String,\n"
         "    tool_version String,\n"
+        "    replay_coverage_json String DEFAULT '[]',\n"
         "    created_at DateTime64(3, 'UTC'),\n"
         "    updated_at DateTime64(3, 'UTC')\n"
         ") ENGINE = ReplacingMergeTree(updated_at)\n"
@@ -433,7 +437,7 @@ def load_clickhouse_target_ownership(
         return ()
     result: AdapterQueryResult = connection.query(
         "SELECT database_name, relation_name, resource_kind, logical_model_database, "
-        "logical_model_name, owning_mode, tool_version "
+        "logical_model_name, owning_mode, tool_version, replay_coverage_json "
         f"FROM {database}.{METADATA_TARGET_OWNERSHIP_TABLE_NAME} FINAL "
         "ORDER BY database_name, relation_name"
     )
@@ -468,6 +472,9 @@ def _ownership_row(*, record: AdapterOwnershipRecord, recorded_at: str) -> dict[
         "logical_model_name": record.logical_model_name,
         "owning_mode": str(record.owning_mode),
         "tool_version": record.tool_version,
+        "replay_coverage_json": json.dumps(
+            [_replay_coverage_payload(coverage) for coverage in record.replay_coverage]
+        ),
         "created_at": recorded_at,
         "updated_at": recorded_at,
     }
@@ -496,6 +503,31 @@ def _ownership_record(*, row: tuple[object, ...]) -> AdapterOwnershipRecord:
         logical_model_name=str(row[4]),
         owning_mode=str(row[5]),
         tool_version=str(row[6]),
+        replay_coverage=_replay_coverage_ranges(row[7]),
+    )
+
+
+def _replay_coverage_payload(coverage: AdapterReplayCoverageRange) -> dict[str, str]:
+    return {
+        "driving_input_relation_name": coverage.driving_input_relation_name,
+        "replay_boundary_mode": str(coverage.replay_boundary_mode),
+        "boundary_key": coverage.boundary_key,
+        "lower_value": coverage.lower_value,
+        "upper_value": coverage.upper_value,
+    }
+
+
+def _replay_coverage_ranges(value: object) -> tuple[AdapterReplayCoverageRange, ...]:
+    payloads: list[dict[str, object]] = cast(list[dict[str, object]], json.loads(str(value)))
+    return tuple(
+        AdapterReplayCoverageRange(
+            driving_input_relation_name=str(payload["driving_input_relation_name"]),
+            replay_boundary_mode=str(payload["replay_boundary_mode"]),
+            boundary_key=str(payload["boundary_key"]),
+            lower_value=str(payload["lower_value"]),
+            upper_value=str(payload["upper_value"]),
+        )
+        for payload in payloads
     )
 
 

@@ -116,6 +116,7 @@ from tests.unit.src.streambuild.adapters.clickhouse.helpers import build_metadat
                 "    logical_model_name String,\n"
                 "    owning_mode String,\n"
                 "    tool_version String,\n"
+                "    replay_coverage_json String DEFAULT '[]',\n"
                 "    created_at DateTime64(3, 'UTC'),\n"
                 "    updated_at DateTime64(3, 'UTC')\n"
                 ") ENGINE = ReplacingMergeTree(updated_at)\n"
