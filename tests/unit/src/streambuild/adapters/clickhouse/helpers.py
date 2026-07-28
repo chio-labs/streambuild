@@ -1,7 +1,5 @@
 from collections.abc import Callable, Iterator, Sequence
 
-from sqlglot import parse_one
-
 from streambuild.adapter.models import AdapterQueryResult
 from streambuild.compiler.compile.models import (
     Column,
@@ -24,6 +22,7 @@ from streambuild.compiler.planner.models import (
     PreparedObjectMapping,
     PublishEventRecord,
 )
+from streambuild.compiler.sql_analysis.main._canonicalize_sql import canonicalize_sql
 
 
 class FakeRawClickHouseQueryResult:
@@ -318,4 +317,4 @@ def build_metadata_state() -> MetadataState:
 
 
 def normalize_clickhouse_sql(sql: str) -> str:
-    return parse_one(sql, dialect="clickhouse").sql(dialect="clickhouse")
+    return canonicalize_sql(sql=sql, dialect="clickhouse")

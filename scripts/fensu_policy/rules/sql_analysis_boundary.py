@@ -19,8 +19,8 @@ from scripts.fensu_policy.constants import (
     slug="sql-analysis-import-ownership",
     message="SQL analysis engines must remain inside their migration boundary",
     remediation=(
-        "Import Polyglot only from src/streambuild/compiler/sql_analysis/, and do not add "
-        "a SQLGlot fallback to migrated SQL-analysis responsibilities."
+        "Import Polyglot only from src/streambuild/compiler/sql_analysis/, and do not "
+        "reintroduce a removed SQL analysis engine."
     ),
 )
 def sql_analysis_import_ownership(*, module: object, ctx: RuleContext) -> list[Fault]:
@@ -40,10 +40,8 @@ def sql_analysis_import_ownership(*, module: object, ctx: RuleContext) -> list[F
         imports_polyglot_outside_boundary: bool = (
             POLYGLOT_ROOT_MODULE in imported_roots and not is_analysis_module
         )
-        imports_sqlglot_fallback: bool = (
-            SQLGLOT_ROOT_MODULE in imported_roots and is_analysis_module
-        )
-        if imports_polyglot_outside_boundary or imports_sqlglot_fallback:
+        imports_removed_engine: bool = SQLGLOT_ROOT_MODULE in imported_roots
+        if imports_polyglot_outside_boundary or imports_removed_engine:
             faults.append(ctx.fault_at(location=imported.location))
     called: NamedCallFact
     for called in ctx.facts.named_calls():
@@ -54,7 +52,7 @@ def sql_analysis_import_ownership(*, module: object, ctx: RuleContext) -> list[F
                 literal_module_name == POLYGLOT_ROOT_MODULE
                 or literal_module_name.startswith(f"{POLYGLOT_ROOT_MODULE}.")
             )
-            imports_sqlglot: bool = (
+            imports_removed_engine: bool = (
                 literal_module_name == SQLGLOT_ROOT_MODULE
                 or literal_module_name.startswith(f"{SQLGLOT_ROOT_MODULE}.")
             )
@@ -62,10 +60,7 @@ def sql_analysis_import_ownership(*, module: object, ctx: RuleContext) -> list[F
                 called.name in DYNAMIC_IMPORT_CALL_NAMES
                 and literal_argument.position == 0
                 and isinstance(literal_argument.value, str)
-                and (
-                    (imports_polyglot and not is_analysis_module)
-                    or (imports_sqlglot and is_analysis_module)
-                )
+                and ((imports_polyglot and not is_analysis_module) or imports_removed_engine)
             ):
                 faults.append(ctx.fault_at(location=called.location))
     return faults

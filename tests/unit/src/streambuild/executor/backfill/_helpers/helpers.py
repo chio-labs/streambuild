@@ -1,8 +1,6 @@
 from collections.abc import Callable
 from typing import cast
 
-from sqlglot import parse_one
-
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import AdapterReplayRequest
 from streambuild.compiler.compile.models import DesiredState
@@ -20,10 +18,6 @@ class RecordingReplayConnection:
 
     def execute_replay(self, request: AdapterReplayRequest) -> None:
         self.requests.append(request)
-
-
-def normalize_clickhouse_sql(sql: str) -> str:
-    return parse_one(sql, dialect="clickhouse").sql(dialect="clickhouse")
 
 
 def capture_replay_requests(

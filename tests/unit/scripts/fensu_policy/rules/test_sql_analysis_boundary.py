@@ -23,16 +23,16 @@ from tests.unit.scripts.fensu_policy.rules._test_types import CustomRuleTestCase
             expected_fault_count=0,
         ),
         CustomRuleTestCase(
-            description="SQL analysis importing SQLGlot fallback faults",
+            description="SQL analysis importing removed engine faults",
             path="src/streambuild/compiler/sql_analysis/_helpers/polyglot.py",
             source="from sqlglot import parse_one\n",
             expected_fault_count=1,
         ),
         CustomRuleTestCase(
-            description="temporary unmigrated SQLGlot import passes",
+            description="runtime importing removed engine faults",
             path="src/streambuild/compiler/compile/_helpers/sql_contract.py",
             source="from sqlglot import parse_one\n",
-            expected_fault_count=0,
+            expected_fault_count=1,
         ),
         CustomRuleTestCase(
             description="dynamic Polyglot import outside boundary faults",
@@ -47,9 +47,15 @@ from tests.unit.scripts.fensu_policy.rules._test_types import CustomRuleTestCase
             expected_fault_count=1,
         ),
         CustomRuleTestCase(
-            description="dynamic SQLGlot fallback inside boundary faults",
+            description="dynamic removed engine import inside boundary faults",
             path="src/streambuild/compiler/sql_analysis/_helpers/polyglot.py",
             source='__import__("sqlglot.expressions")\n',
+            expected_fault_count=1,
+        ),
+        CustomRuleTestCase(
+            description="dynamic removed engine import outside boundary faults",
+            path="src/streambuild/compiler/compile/_helpers/transforms.py",
+            source='importlib.import_module("sqlglot")\n',
             expected_fault_count=1,
         ),
     ],
