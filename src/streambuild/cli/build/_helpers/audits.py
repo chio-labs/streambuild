@@ -5,7 +5,7 @@ from __future__ import annotations
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.cli.build.models import BuildPreviewContext
 from streambuild.compiler.audit_discovery.models import LoadedSqlAudit
-from streambuild.compiler.compile.models import CompiledModel, CompilerAdapterProfile
+from streambuild.compiler.compile.models import CompilerAdapterProfile
 from streambuild.executor.auditing.main.execute_sql_audits import execute_sql_audits
 from streambuild.executor.auditing.models import SqlAuditRunResult
 
@@ -19,7 +19,6 @@ def run_standard_build_audits(
     """Audit the directly named relations the build just made live."""
 
     audits: tuple[LoadedSqlAudit, ...] = preview.analysis.compiled_project.audits
-    model: CompiledModel
     return execute_sql_audits(
         loaded_audits=audits,
         resolver={

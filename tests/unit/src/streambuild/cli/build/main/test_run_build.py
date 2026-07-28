@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+from _pytest.capture import CaptureResult
 
 from tests.unit.src.streambuild.cli.build.main._test_types import CliBuildGateTestCase
 from tests.unit.src.streambuild.cli.build.main.helpers import run_scope_project_build
@@ -60,7 +61,7 @@ def test_given_build_command_gates_when_running_then_it_refuses_before_writing(
         auto_approve=test_case.auto_approve,
     )
 
-    captured: pytest.CaptureResult[str] = capsys.readouterr()
+    captured: CaptureResult[str] = capsys.readouterr()
     assert exit_code == test_case.expected_exit_code
     assert test_case.expected_stderr_fragment in captured.err
     assert test_case.expected_stdout_fragment in captured.out
