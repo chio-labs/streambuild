@@ -137,9 +137,15 @@ class StandardPlanBuilder:
                 key=prerequisite_key,
                 relation_names=(self._relation_name(key=prerequisite_key),),
                 present=self._relation_name(key=prerequisite_key) in existing_names,
+                framework_managed=self._is_framework_managed_source(key=prerequisite_key),
             )
             for prerequisite_key in self._prerequisite_keys()
         )
+
+    def _is_framework_managed_source(self, *, key: LogicalResourceKey) -> bool:
+        if key.resource_type != LogicalResourceType.SOURCE:
+            return False
+        return bool(self._realized_project.resources_by_logical_key[key])
 
     def _prerequisite_keys(self) -> tuple[LogicalResourceKey, ...]:
         prerequisite_keys: set[LogicalResourceKey] = set()
@@ -230,7 +236,7 @@ class StandardPlanBuilder:
         missing_names: tuple[str, ...] = tuple(
             prerequisite.relation_names[0]
             for prerequisite in prerequisites
-            if not prerequisite.present
+            if not prerequisite.present and not prerequisite.framework_managed
         )
         if missing_names:
             raise StandardPlanError(

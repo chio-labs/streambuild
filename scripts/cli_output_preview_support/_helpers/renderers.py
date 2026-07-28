@@ -5,6 +5,7 @@ from scripts.cli_output_preview_support._helpers.plan_fixtures import (
     build_multi_target_plan_preview_desired_state,
     build_plan_preview,
     build_plan_preview_desired_state,
+    build_standard_plan_preview,
     build_type_change_plan_preview,
     build_type_change_plan_preview_desired_state,
 )
@@ -25,6 +26,7 @@ from streambuild.cli.audit_backfill.main.render_audit_backfill_result import (
 )
 from streambuild.cli.backfill.main.render_backfill_result import render_backfill_result
 from streambuild.cli.plan.main.render_plan_result import render_plan_result
+from streambuild.cli.plan.main.render_standard_plan_text import render_standard_plan_text
 from streambuild.cli.publish.main.render_publish_result import render_publish_result
 
 
@@ -64,6 +66,16 @@ def render_type_change_plan_preview(request: PreviewRequest) -> str:
         adapter_name=CLICKHOUSE_ADAPTER_NAME,
         json_output=request.json_output,
         verbose=request.verbose,
+    )
+
+
+def render_standard_plan_preview(request: PreviewRequest) -> str:
+    """Render the standard plan preview scenario."""
+
+    del request
+    return render_standard_plan_text(
+        plan=build_standard_plan_preview(),
+        adapter_name=CLICKHOUSE_ADAPTER_NAME,
     )
 
 

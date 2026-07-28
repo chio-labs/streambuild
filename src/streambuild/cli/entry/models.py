@@ -19,6 +19,7 @@ class CliEntrypointHandlers:
     run_audit: Callable[..., int]
     run_plan: Callable[..., int]
     run_backfill: Callable[..., int]
+    run_build: Callable[..., int]
     run_audit_backfill: Callable[..., int]
     run_publish: Callable[..., int]
     run_reconcile: Callable[..., int]

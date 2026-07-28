@@ -7,15 +7,18 @@ from streambuild.compiler.compile.models import (
     DesiredMaterializedView,
     DesiredState,
     DesiredTable,
+    LogicalResourceKey,
     MaterializedViewSpec,
     ObjectKey,
     TableSpec,
     TableStorage,
 )
+from streambuild.compiler.compile.types import LogicalResourceType
 from streambuild.compiler.discovery.models import (
     ReplayOnChangePolicy,
     ReplayOnChangeRule,
 )
+from streambuild.compiler.discovery.types import ReplayLineageMode
 from streambuild.compiler.planner.models import (
     DeploymentPlan,
     DeploymentStep,
@@ -24,6 +27,17 @@ from streambuild.compiler.planner.models import (
     PlannerWarning,
     PreparedShadowObject,
     RebuildSubtree,
+    StandardPlan,
+    StandardPlanEntry,
+    StandardPrerequisite,
+    StandardRelationOperation,
+    StandardReplayRoot,
+    TargetOwnershipClassification,
+)
+from streambuild.compiler.planner.types import (
+    StandardPlanReason,
+    StandardRelationAction,
+    TargetOwnership,
 )
 
 
@@ -457,4 +471,79 @@ def build_type_change_plan_preview_desired_state() -> DesiredState:
         ),
         replay_anchor_keys=frozenset({raw_orders_key}),
         mutable_ref_warning_keys=frozenset(),
+    )
+
+
+def build_standard_plan_preview() -> StandardPlan:
+    """Build one representative standard plan for output preview."""
+
+    orders_key: LogicalResourceKey = LogicalResourceKey(
+        resource_type=LogicalResourceType.SOURCE, name="orders"
+    )
+    enriched_key: LogicalResourceKey = LogicalResourceKey(
+        resource_type=LogicalResourceType.MODEL, name="orders_enriched"
+    )
+    return StandardPlan(
+        database="analytics",
+        user_scope=(enriched_key,),
+        execution_scope=(enriched_key,),
+        prerequisite_scope=(
+            StandardPrerequisite(
+                key=orders_key,
+                relation_names=("raw__orders",),
+                present=True,
+            ),
+        ),
+        entries=(
+            StandardPlanEntry(
+                model_key=enriched_key,
+                reason=StandardPlanReason.SELECTED,
+                relation_names=("tbl__orders_enriched", "mv__orders_enriched"),
+                ownership=(
+                    TargetOwnershipClassification(
+                        relation_name="tbl__orders_enriched",
+                        ownership=TargetOwnership.STANDARD,
+                    ),
+                    TargetOwnershipClassification(
+                        relation_name="mv__orders_enriched",
+                        ownership=TargetOwnership.STANDARD,
+                    ),
+                ),
+                driving_input_key=orders_key,
+                is_replay_root=True,
+            ),
+        ),
+        replay_roots=(
+            StandardReplayRoot(
+                model_key=enriched_key,
+                driving_input_key=orders_key,
+                driving_input_relation_name="raw__orders",
+                replay_boundary_mode=ReplayLineageMode.OFFSETS,
+                propagated_model_keys=(enriched_key,),
+            ),
+        ),
+        teardown_operations=(
+            StandardRelationOperation(
+                relation_name="mv__orders_enriched",
+                action=StandardRelationAction.DROP,
+                model_key=enriched_key,
+            ),
+            StandardRelationOperation(
+                relation_name="tbl__orders_enriched",
+                action=StandardRelationAction.DROP,
+                model_key=enriched_key,
+            ),
+        ),
+        creation_operations=(
+            StandardRelationOperation(
+                relation_name="tbl__orders_enriched",
+                action=StandardRelationAction.CREATE,
+                model_key=enriched_key,
+            ),
+            StandardRelationOperation(
+                relation_name="mv__orders_enriched",
+                action=StandardRelationAction.CREATE,
+                model_key=enriched_key,
+            ),
+        ),
     )

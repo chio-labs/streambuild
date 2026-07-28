@@ -13,6 +13,7 @@ COMMANDS_REQUIRING_PIPELINES_ROOT: frozenset[CliCommand] = frozenset(
         CliCommand.TEST,
         CliCommand.PLAN,
         CliCommand.BACKFILL,
+        CliCommand.BUILD,
         CliCommand.RECONCILE,
         CliCommand.AUDIT,
     }

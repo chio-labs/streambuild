@@ -131,6 +131,7 @@ class SnapshotRecordingConnection(AdapterConnection):
         self._catalog: CatalogSnapshot = catalog
         self._metadata_result: AdapterQueryResult = metadata_result
         self._ownership_records: tuple[AdapterOwnershipRecord, ...] = ownership_records
+        self.recorded_ownership_records: tuple[AdapterOwnershipRecord, ...] = ()
         self._capabilities: AdapterCapabilities = AdapterCapabilities(
             virtual_environments=virtual_environments,
             managed_source_kinds=frozenset({"kafka"}),
@@ -165,6 +166,12 @@ class SnapshotRecordingConnection(AdapterConnection):
     def load_target_ownership(self, database: str) -> tuple[AdapterOwnershipRecord, ...]:
         del database
         return self._ownership_records
+
+    def record_target_ownership(
+        self, *, database: str, records: tuple[AdapterOwnershipRecord, ...]
+    ) -> None:
+        del database
+        self.recorded_ownership_records = (*self.recorded_ownership_records, *records)
 
     def inspect_managed_table_state(self, database: str) -> InspectedManagedTableState:
         del database

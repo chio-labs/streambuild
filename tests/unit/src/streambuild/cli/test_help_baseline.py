@@ -13,7 +13,7 @@ from tests.unit.src.streambuild.cli._test_types import CliHelpBaselineTestCase
         CliHelpBaselineTestCase(
             description="captures root help",
             argv=("--help",),
-            expected_sha256="6e2e6f1c14aa17885dd1dd6cdf01622f8b485f0f347918af16a68d6cc9009cd7",
+            expected_sha256="6502c4420187595fb4557eb59a7a05557d6e1cd5f959b9424d2cf85997480334",
         ),
         CliHelpBaselineTestCase(
             description="captures discover help",
@@ -39,6 +39,11 @@ from tests.unit.src.streambuild.cli._test_types import CliHelpBaselineTestCase
             description="captures backfill help",
             argv=("backfill", "--help"),
             expected_sha256="9acc0f3cf1715a2bfd98fb685e17aa75ece62e9f46497e092f629fa6a11b4895",
+        ),
+        CliHelpBaselineTestCase(
+            description="captures build help",
+            argv=("build", "--help"),
+            expected_sha256="4eb5b528cae24b0d9b09972e9f44fc053f741e705db2fbd64396e8008a46f84f",
         ),
         CliHelpBaselineTestCase(
             description="captures audit help",

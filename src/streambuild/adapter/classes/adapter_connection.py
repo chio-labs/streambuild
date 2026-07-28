@@ -56,6 +56,12 @@ class AdapterConnection(ABC):
         """Load every durable StreamBuild ownership record for one database."""
 
     @abstractmethod
+    def record_target_ownership(
+        self, *, database: str, records: tuple[AdapterOwnershipRecord, ...]
+    ) -> None:
+        """Durably claim every requested relation before it is created or replaced."""
+
+    @abstractmethod
     def command(self, statement: str) -> None:
         """Execute a statement that returns no result rows."""
 

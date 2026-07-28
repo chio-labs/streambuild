@@ -11,6 +11,7 @@ class CliCommand(StrEnum):
     TEST = "test"
     PLAN = "plan"
     BACKFILL = "backfill"
+    BUILD = "build"
     AUDIT = "audit"
     PUBLISH = "publish"
     RECONCILE = "reconcile"
