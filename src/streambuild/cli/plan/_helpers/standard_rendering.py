@@ -134,6 +134,7 @@ def _prerequisite_payload(prerequisite: StandardPrerequisite) -> dict[str, objec
         "resource_type": str(prerequisite.key.resource_type),
         "relations": list(prerequisite.relation_names),
         "present": prerequisite.present,
+        "framework_managed": prerequisite.framework_managed,
     }
 
 

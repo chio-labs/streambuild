@@ -105,3 +105,53 @@ class CliStandardPlanIntegrationTestCase:
     expected_replay_root_models: tuple[str, ...]
     expected_initial_ownership: tuple[str, ...]
     expected_settled_ownership: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class CliStandardBuildIntegrationTestCase:
+    description: str
+    landing_rows: tuple[tuple[str, int, int], ...]
+    late_landing_rows: tuple[tuple[str, int, int], ...]
+    expected_created_relations: tuple[str, ...]
+    expected_owned_relations: tuple[str, ...]
+    expected_replayed_order_ids: tuple[str, ...]
+    expected_final_order_ids: tuple[str, ...]
+    expected_deployment_row_count: int
+    expected_stable_view_count: int
+
+
+@dataclass(frozen=True)
+class CliStandardBuildBoundaryIntegrationTestCase:
+    description: str
+    landing_rows: tuple[tuple[str, int, int], ...]
+    pre_capture_statements: tuple[str, ...]
+    expected_boundary_keys: tuple[str, ...]
+    expected_cutoff_values: tuple[str, ...]
+    expected_cutoff_inclusive: tuple[bool, ...]
+
+
+@dataclass(frozen=True)
+class CliStandardBuildRejectionIntegrationTestCase:
+    description: str
+    landing_rows: tuple[tuple[str, int, int], ...]
+    rebuilt_topic: str
+    expected_error_fragment: str
+    expected_order_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class CliStandardBuildGuardIntegrationTestCase:
+    description: str
+    landing_rows: tuple[tuple[str, int, int], ...]
+    rebuilt_topic: str
+    pre_rebuild_statements: tuple[str, ...]
+    expected_exit_code: int
+    expected_error_fragment: str
+    expected_order_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class CliReciprocalOwnershipIntegrationTestCase:
+    description: str
+    expected_exit_code: int
+    expected_error_fragment: str

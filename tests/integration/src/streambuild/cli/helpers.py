@@ -1,4 +1,5 @@
 import json
+import time
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from textwrap import dedent
@@ -31,12 +32,27 @@ from streambuild.adapter.models import (
 )
 from streambuild.adapters.clickhouse._helpers.inspection import load_clickhouse_catalog
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
+from streambuild.cli.backfill.main._run_backfill import run_backfill
+from streambuild.cli.backfill.models import BackfillCommandOptions
+from streambuild.cli.build._helpers.preview import build_standard_build_preview
+from streambuild.cli.build.constants import STREAMBUILD_TOOL_VERSION
+from streambuild.cli.build.main._run_build import run_build
+from streambuild.cli.build.models import BuildCommandOptions, BuildPreviewContext
 from streambuild.cli.entry._helpers.compiler_profile import build_compiler_adapter_profile
 from streambuild.cli.plan.main._run_plan import run_plan
 from streambuild.compiler.discovery.main.load_project_input_for_path import (
     load_project_input_for_path,
 )
 from streambuild.executor.backfill.main._ensure_metadata_tables import ensure_metadata_tables
+from streambuild.executor.standard._helpers.boundaries import capture_replay_boundaries
+from streambuild.executor.standard._helpers.preflight import current_boundary_time
+from streambuild.executor.standard._helpers.relations import target_relation_name_by_model_name
+from streambuild.executor.standard.main.execute_standard_build import execute_standard_build
+from streambuild.executor.standard.models import (
+    StandardBuildRequest,
+    StandardBuildResult,
+    StandardReplayBoundary,
+)
 from tests.integration.src.streambuild.conftest import ClickHouseConnectionSettings
 
 BACKFILL_PIPELINES_ROOT: Path = Path("tests/fixtures/basic_project/pipelines")
@@ -97,6 +113,11 @@ class RecordingDelegatingConnection(AdapterConnection):
 
     def load_target_ownership(self, database: str) -> tuple[AdapterOwnershipRecord, ...]:
         return self._delegate.load_target_ownership(database)
+
+    def record_target_ownership(
+        self, *, database: str, records: tuple[AdapterOwnershipRecord, ...]
+    ) -> None:
+        self._delegate.record_target_ownership(database=database, records=records)
 
     def command(self, statement: str) -> None:
         self._delegate.command(statement)
@@ -770,3 +791,257 @@ def plan_ownership_labels(*, plan_json: str) -> tuple[str, ...]:
         classifications: list[dict[str, str]] = cast(list[dict[str, str]], entry["ownership"])
         labels.update(classification["ownership"] for classification in classifications)
     return tuple(sorted(labels))
+
+
+STANDARD_BUILD_MODEL_SQL: str = (
+    "SELECT\n"
+    "  kafka_key::String AS order_id,\n"
+    "  _replay_partition::Int32 AS _replay_partition,\n"
+    "  _replay_offset::Int64 AS _replay_offset\n"
+    'FROM __source("orders")'
+)
+STANDARD_BUILD_MODEL_NAME: str = "orders_enriched"
+STANDARD_BUILD_TARGET_TABLE_NAME: str = "tbl__orders_enriched"
+STANDARD_BUILD_LANDING_TABLE_NAME: str = "raw__orders"
+_STANDARD_BUILD_SOURCE_YML: str = (
+    "sources:\n"
+    "  - name: orders\n"
+    "    kind: kafka\n"
+    "    broker_list: {broker_list}\n"
+    "    topic: {topic}\n"
+    "    replay_boundary: {{mode: offsets}}\n"
+)
+
+
+def write_standard_build_project(
+    *,
+    project_root: Path,
+    topic: str = "source.orders",
+    broker_list: str = "kafka:9092",
+    audit_sql_by_name: tuple[tuple[str, str], ...] = (),
+) -> None:
+    """Write a managed Kafka standard-mode project with one offsets-lineage model."""
+
+    pipeline_root: Path = project_root / "pipelines" / "orders"
+    source_root: Path = project_root / "sources"
+    audit_root: Path = project_root / "audits"
+    pipeline_root.mkdir(parents=True, exist_ok=True)
+    source_root.mkdir(parents=True, exist_ok=True)
+    audit_root.mkdir(parents=True, exist_ok=True)
+    (project_root / "streambuild_project.toml").write_text(
+        'name = "standard_build"\ndefault_target = "test"\n\n'
+        '[targets.test]\ndatabase = "analytics"\n',
+        encoding="utf-8",
+    )
+    (source_root / "orders.yml").write_text(
+        _STANDARD_BUILD_SOURCE_YML.format(broker_list=broker_list, topic=topic),
+        encoding="utf-8",
+    )
+    (pipeline_root / "pipeline.yml").write_text("source: orders\n", encoding="utf-8")
+    (pipeline_root / f"{STANDARD_BUILD_MODEL_NAME}.sql").write_text(
+        f'MODEL (order_by: ["order_id"]);\n{STANDARD_BUILD_MODEL_SQL}\n',
+        encoding="utf-8",
+    )
+    audit_name: str
+    audit_sql: str
+    for audit_name, audit_sql in audit_sql_by_name:
+        (audit_root / audit_name).write_text(audit_sql, encoding="utf-8")
+
+
+def run_standard_build(
+    *,
+    project_root: Path,
+    database: str,
+    connection: AdapterConnection,
+    selectors: tuple[str, ...] = (),
+    json_output: bool = True,
+    auto_approve: bool = True,
+) -> int:
+    """Run `stb build` in standard mode against a live warehouse connection."""
+
+    return run_build(
+        options=BuildCommandOptions(
+            pipelines_root=project_root / "pipelines",
+            database=database,
+            metadata_database=database,
+            selectors=selectors,
+            json_output=json_output,
+            verbose=False,
+            auto_approve=auto_approve,
+        ),
+        client=connection,
+        loaded_project=load_project_input_for_path(path=project_root),
+        adapter_profile=build_compiler_adapter_profile(ClickHouseAdapter()),
+    )
+
+
+def insert_landing_rows(
+    *,
+    connection: AdapterConnection,
+    database: str,
+    rows: tuple[tuple[str, int, int], ...],
+) -> None:
+    """Insert replayable landing rows directly into the preserved raw relation."""
+
+    values: str = ", ".join(
+        f"('{order_key}', '', '', {partition_value}, {offset_value}, now64(3), "
+        f"{partition_value}, {offset_value}, now64(3), '', now64(3), now64(3))"
+        for order_key, partition_value, offset_value in rows
+    )
+    connection.command(
+        f"INSERT INTO {database}.{STANDARD_BUILD_LANDING_TABLE_NAME} "
+        "(kafka_key, kafka_value, kafka_topic, kafka_partition, kafka_offset, kafka_timestamp, "
+        "_replay_partition, _replay_offset, _replay_timestamp, kafka_headers, kafka_landed_at, "
+        f"_replay_landed_at) VALUES {values}"
+    )
+
+
+def insert_landing_rows_after_delay(
+    *,
+    connection_settings: ClickHouseConnectionSettings,
+    database: str,
+    rows: tuple[tuple[str, int, int], ...],
+    delay_seconds: float,
+) -> None:
+    """Land rows on an independent connection while a build is stabilizing."""
+
+    time.sleep(delay_seconds)
+    connection: AdapterConnection = build_managed_clickhouse_client(
+        connection_settings, database=database
+    )
+    try:
+        insert_landing_rows(connection=connection, database=database, rows=rows)
+    finally:
+        connection.close()
+
+
+def execute_standard_build_directly(
+    *,
+    project_root: Path,
+    database: str,
+    connection: AdapterConnection,
+    stabilization_seconds: float,
+) -> StandardBuildResult:
+    """Plan and execute one standard build with an explicit stabilization window."""
+
+    preview: BuildPreviewContext = build_standard_build_preview(
+        options=BuildCommandOptions(
+            pipelines_root=project_root / "pipelines",
+            database=database,
+            metadata_database=database,
+            selectors=(),
+            json_output=True,
+            verbose=False,
+            auto_approve=True,
+        ),
+        client=connection,
+        loaded_project=load_project_input_for_path(path=project_root),
+        adapter_profile=build_compiler_adapter_profile(ClickHouseAdapter()),
+    )
+    return execute_standard_build(
+        request=StandardBuildRequest(
+            plan=preview.plan,
+            realized_project=preview.analysis.realized_project,
+            database=preview.database,
+            metadata_database=preview.metadata_database,
+            tool_version=STREAMBUILD_TOOL_VERSION,
+            stabilization_seconds=stabilization_seconds,
+        ),
+        client=connection,
+    )
+
+
+def capture_standard_build_boundaries(
+    *,
+    project_root: Path,
+    database: str,
+    connection: AdapterConnection,
+) -> tuple[StandardReplayBoundary, ...]:
+    """Capture the replay boundaries a build would use against current warehouse state."""
+
+    preview: BuildPreviewContext = build_standard_build_preview(
+        options=BuildCommandOptions(
+            pipelines_root=project_root / "pipelines",
+            database=database,
+            metadata_database=database,
+            selectors=(),
+            json_output=True,
+            verbose=False,
+            auto_approve=True,
+        ),
+        client=connection,
+        loaded_project=load_project_input_for_path(path=project_root),
+        adapter_profile=build_compiler_adapter_profile(ClickHouseAdapter()),
+    )
+    return capture_replay_boundaries(
+        client=connection,
+        plan=preview.plan,
+        database=database,
+        boundary_time=current_boundary_time(),
+        target_relation_name_by_model_name=target_relation_name_by_model_name(plan=preview.plan),
+    )
+
+
+def execute_warehouse_statements(
+    *,
+    connection: AdapterConnection,
+    database: str,
+    statements: tuple[str, ...],
+) -> None:
+    """Run explicit warehouse statements while arranging one integration scenario."""
+
+    statement: str
+    for statement in statements:
+        connection.command(statement.format(database=database))
+
+
+def run_virtual_environment_backfill(
+    *,
+    project_root: Path,
+    database: str,
+    connection: AdapterConnection,
+) -> int:
+    """Run `stb backfill` against a warehouse that standard mode may already own."""
+
+    return run_backfill(
+        options=BackfillCommandOptions(
+            pipelines_root=project_root / "pipelines",
+            database=database,
+            metadata_database=database,
+            selectors=(),
+            deployment_id=None,
+            full_refresh=False,
+            start_time=None,
+            json_output=True,
+            verbose=False,
+            auto_approve=True,
+        ),
+        client=connection,
+        loaded_project=load_project_input_for_path(path=project_root),
+        adapter_profile=build_compiler_adapter_profile(ClickHouseAdapter()),
+    )
+
+
+def standard_build_order_ids(*, clickhouse_client: Client, database: str) -> tuple[str, ...]:
+    """Return the order ids currently materialized in the standard build target."""
+
+    rows: Sequence[Sequence[object]] = clickhouse_client.query(
+        f"SELECT order_id FROM {database}.{STANDARD_BUILD_TARGET_TABLE_NAME} ORDER BY order_id"
+    ).result_rows
+    return tuple(str(row[0]) for row in rows)
+
+
+def warehouse_row_count(*, clickhouse_client: Client, database: str, statement: str) -> int:
+    """Return one scalar count from a database-templated statement."""
+
+    return int(clickhouse_client.query(statement.format(database=database)).result_rows[0][0])
+
+
+def standard_owned_relation_names(
+    *, connection: AdapterConnection, database: str
+) -> tuple[str, ...]:
+    """Return every relation name durably claimed in the ownership table."""
+
+    return tuple(
+        sorted(record.relation_name for record in connection.load_target_ownership(database))
+    )

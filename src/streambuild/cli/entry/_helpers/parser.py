@@ -103,46 +103,8 @@ def build_cli_parser() -> argparse.ArgumentParser:
         help="Show full schema diffs for changed models",
     )
 
-    backfill_parser: argparse.ArgumentParser = subparsers.add_parser(
-        "backfill",
-        help="Create shadow tables and replay historical data",
-        description=(
-            "Run a plan, create shadow tables, and replay historical data into them. "
-            "Shows the plan and asks for confirmation before making changes."
-        ),
-    )
-    _add_project_dir_arg(parser=backfill_parser)
-    _add_clickhouse_args(parser=backfill_parser)
-    _add_select_args(backfill_parser)
-    backfill_parser.add_argument(
-        "--deployment-id",
-        help="Use a specific deployment ID (auto-generated if omitted)",
-    )
-    backfill_parser.add_argument(
-        "--full-refresh",
-        action="store_true",
-        help="Force a full refresh of selected models (requires --select)",
-    )
-    backfill_parser.add_argument(
-        "--start-time",
-        help="Replay from a specific time, e.g. '2026-04-17T18:00:00' (requires --select)",
-    )
-    backfill_parser.add_argument(
-        "--json",
-        action="store_true",
-        help="Output as JSON",
-    )
-    backfill_parser.add_argument(
-        "-v",
-        "--verbose",
-        action="store_true",
-        help="Show full schema diffs for changed models",
-    )
-    backfill_parser.add_argument(
-        "--auto-approve",
-        action="store_true",
-        help="Skip the confirmation prompt",
-    )
+    backfill_parser: argparse.ArgumentParser = _add_backfill_parser(subparsers=subparsers)
+    build_parser: argparse.ArgumentParser = _add_build_parser(subparsers=subparsers)
 
     audit_parser: argparse.ArgumentParser = subparsers.add_parser(
         "audit",
@@ -297,11 +259,92 @@ def build_cli_parser() -> argparse.ArgumentParser:
         test_parser=test_parser,
         plan_parser=plan_parser,
         backfill_parser=backfill_parser,
+        build_parser=build_parser,
         audit_parser=audit_parser,
         audit_backfill_parser=audit_backfill_parser,
         reconcile_parser=reconcile_parser,
     )
     return parser
+
+
+def _add_backfill_parser(
+    *, subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]"
+) -> argparse.ArgumentParser:
+    backfill_parser: argparse.ArgumentParser = subparsers.add_parser(
+        "backfill",
+        help="Create shadow tables and replay historical data",
+        description=(
+            "Run a plan, create shadow tables, and replay historical data into them. "
+            "Shows the plan and asks for confirmation before making changes."
+        ),
+    )
+    _add_project_dir_arg(parser=backfill_parser)
+    _add_clickhouse_args(parser=backfill_parser)
+    _add_select_args(backfill_parser)
+    backfill_parser.add_argument(
+        "--deployment-id",
+        help="Use a specific deployment ID (auto-generated if omitted)",
+    )
+    backfill_parser.add_argument(
+        "--full-refresh",
+        action="store_true",
+        help="Force a full refresh of selected models (requires --select)",
+    )
+    backfill_parser.add_argument(
+        "--start-time",
+        help="Replay from a specific time, e.g. '2026-04-17T18:00:00' (requires --select)",
+    )
+    backfill_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output as JSON",
+    )
+    backfill_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show full schema diffs for changed models",
+    )
+    backfill_parser.add_argument(
+        "--auto-approve",
+        action="store_true",
+        help="Skip the confirmation prompt",
+    )
+    return backfill_parser
+
+
+def _add_build_parser(
+    *, subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]"
+) -> argparse.ArgumentParser:
+    build_parser: argparse.ArgumentParser = subparsers.add_parser(
+        "build",
+        help="Rebuild selected models directly in standard mode",
+        description=(
+            "Preserve managed sources, rebuild the selected downstream closure at its ordinary "
+            "names, and replay preserved history. Shows the plan and asks for confirmation "
+            "before making changes."
+        ),
+    )
+    _add_project_dir_arg(parser=build_parser)
+    _add_clickhouse_args(parser=build_parser)
+    _add_select_args(build_parser)
+    build_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output as JSON",
+    )
+    build_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show full schema diffs for changed models",
+    )
+    build_parser.add_argument(
+        "--auto-approve",
+        action="store_true",
+        help="Skip the confirmation prompt",
+    )
+    return build_parser
 
 
 def _add_project_dir_arg(
@@ -346,6 +389,7 @@ def _add_compilation_config_args_to_commands(
     test_parser: argparse.ArgumentParser,
     plan_parser: argparse.ArgumentParser,
     backfill_parser: argparse.ArgumentParser,
+    build_parser: argparse.ArgumentParser,
     audit_parser: argparse.ArgumentParser,
     audit_backfill_parser: argparse.ArgumentParser,
     reconcile_parser: argparse.ArgumentParser,
@@ -357,6 +401,7 @@ def _add_compilation_config_args_to_commands(
         test_parser,
         plan_parser,
         backfill_parser,
+        build_parser,
         audit_parser,
         reconcile_parser,
     ):

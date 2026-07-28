@@ -533,18 +533,19 @@ def test_given_standard_mode_policy_when_analyzing_then_it_rejects_vde_only_sett
     "test_case",
     [
         CompilationEntrypointsTestCase(
-            description="routes exactly eight command paths through one compilation service",
+            description="routes exactly nine command paths through one compilation service",
             expected_entrypoint_paths=(
                 "src/streambuild/cli/audit/main/_run_audit.py",
                 "src/streambuild/cli/audit_backfill/main/_run_audit_backfill.py",
                 "src/streambuild/cli/backfill/_helpers/preview.py",
+                "src/streambuild/cli/build/_helpers/preview.py",
                 "src/streambuild/cli/compile/main/_run_compile.py",
                 "src/streambuild/cli/discover/main/_run_discover.py",
                 "src/streambuild/cli/plan/main/_run_plan.py",
                 "src/streambuild/cli/reconcile/main/_run_reconcile.py",
                 "src/streambuild/cli/test/main/_run_test.py",
             ),
-            expected_entrypoint_count=8,
+            expected_entrypoint_count=9,
             expected_assembly_call_count=1,
             expected_realization_call_count=1,
             expected_consumer_rebuild_count=0,

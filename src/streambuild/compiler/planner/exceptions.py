@@ -11,3 +11,7 @@ class ActualStateError(ValueError):
 
 class StandardPlanError(ValueError):
     """Raised when a standard-mode plan cannot be built safely."""
+
+
+class TargetOwnershipConflictError(ValueError):
+    """Raised when one mode would take over relations another mode already owns."""

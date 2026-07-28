@@ -42,6 +42,7 @@ from streambuild.adapters.clickhouse._helpers.metadata import (
     load_clickhouse_target_ownership,
     migrate_clickhouse_metadata_state,
     persist_clickhouse_metadata_state,
+    record_clickhouse_target_ownership,
 )
 from streambuild.adapters.clickhouse._helpers.readiness import compare_clickhouse_readiness
 from streambuild.adapters.clickhouse._helpers.rendering import render_clickhouse_resource
@@ -118,6 +119,13 @@ class ClickHouseConnection(AdapterConnection):
         """Load durable StreamBuild ownership records for a ClickHouse database."""
 
         return load_clickhouse_target_ownership(connection=self, database=database)
+
+    def record_target_ownership(
+        self, *, database: str, records: tuple[AdapterOwnershipRecord, ...]
+    ) -> None:
+        """Durably claim ClickHouse relations before they are created or replaced."""
+
+        record_clickhouse_target_ownership(connection=self, database=database, records=records)
 
     def command(self, statement: str) -> None:
         """Execute a ClickHouse command statement."""

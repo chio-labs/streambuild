@@ -45,6 +45,7 @@ update_changelog_on_bump = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+norecursedirs = ["*.egg", ".*", "_darcs", "CVS", "dist", "node_modules", "venv", "{arch}"]
 markers = [
   "integration: marks tests that require real external services",
   "e2e: marks tests that exercise full end-to-end workflows",

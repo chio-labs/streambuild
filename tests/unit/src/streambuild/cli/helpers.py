@@ -36,6 +36,7 @@ from streambuild.cli.audit.main._run_audit import run_audit
 from streambuild.cli.audit_backfill.main._run_audit_backfill import run_audit_backfill
 from streambuild.cli.backfill.main._run_backfill import run_backfill
 from streambuild.cli.backfill.models import BackfillCommandOptions
+from streambuild.cli.build.main._run_build import run_build
 from streambuild.cli.compile.main._run_compile import run_compile
 from streambuild.cli.discover.main._run_discover import run_discover
 from streambuild.cli.doctor.main._run_doctor import run_doctor
@@ -195,6 +196,7 @@ class RecordingAdapterConnection(AdapterConnection):
         )
         self._deployment_inventory: AdapterDeploymentInventory = deployment_inventory
         self._ownership_records: tuple[AdapterOwnershipRecord, ...] = ownership_records
+        self.recorded_ownership_records: tuple[AdapterOwnershipRecord, ...] = ()
 
     @property
     def adapter_identity(self) -> AdapterIdentity:
@@ -223,6 +225,12 @@ class RecordingAdapterConnection(AdapterConnection):
     def load_target_ownership(self, database: str) -> tuple[AdapterOwnershipRecord, ...]:
         del database
         return self._ownership_records
+
+    def record_target_ownership(
+        self, *, database: str, records: tuple[AdapterOwnershipRecord, ...]
+    ) -> None:
+        del database
+        self.recorded_ownership_records = (*self.recorded_ownership_records, *records)
 
     def command(self, statement: str) -> None:
         self.statements.append(statement)
@@ -359,6 +367,7 @@ def handlers_with_overrides(**overrides: object) -> CliEntrypointHandlers:
             run_audit=run_audit,
             run_plan=run_plan,
             run_backfill=backfill_handler,
+            run_build=run_build,
             run_audit_backfill=run_audit_backfill,
             run_publish=run_publish,
             run_reconcile=run_reconcile,

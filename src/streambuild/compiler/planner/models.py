@@ -432,6 +432,7 @@ class StandardPrerequisite:
     key: LogicalResourceKey
     relation_names: tuple[str, ...]
     present: bool
+    framework_managed: bool = False
 
 
 @dataclass(frozen=True)

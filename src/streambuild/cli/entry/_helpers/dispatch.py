@@ -5,6 +5,7 @@ from pathlib import Path
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.cli.backfill.models import BackfillCommandOptions
+from streambuild.cli.build.models import BuildCommandOptions
 from streambuild.cli.entry._helpers.compiler_profile import build_compiler_adapter_profile
 from streambuild.cli.entry.exceptions import CliUserError
 from streambuild.cli.entry.models import (
@@ -68,6 +69,21 @@ def dispatch_cli_command(
                 deployment_id=getattr(args, "deployment_id", None),
                 full_refresh=bool(getattr(args, "full_refresh", False)),
                 start_time=getattr(args, "start_time", None),
+                json_output=bool(getattr(args, "json", False)),
+                verbose=bool(getattr(args, "verbose", False)),
+                auto_approve=bool(getattr(args, "auto_approve", False)),
+            ),
+            client=client,
+            loaded_project=invocation.loaded_project,
+            adapter_profile=adapter_profile,
+        )
+    if args.command == CliCommand.BUILD:
+        return handlers.run_build(
+            options=BuildCommandOptions(
+                pipelines_root=_require_pipelines_root(invocation),
+                database=invocation.database,
+                metadata_database=getattr(args, "metadata_database", None),
+                selectors=tuple(getattr(args, "select", [])),
                 json_output=bool(getattr(args, "json", False)),
                 verbose=bool(getattr(args, "verbose", False)),
                 auto_approve=bool(getattr(args, "auto_approve", False)),
@@ -171,5 +187,5 @@ def _resolve_connection(
 
 def _require_pipelines_root(invocation: ResolvedCliInvocation) -> Path:
     if invocation.pipelines_root is None:
-        raise CliUserError("Backfill command requires a resolved pipelines root")
+        raise CliUserError("Command requires a resolved pipelines root")
     return invocation.pipelines_root

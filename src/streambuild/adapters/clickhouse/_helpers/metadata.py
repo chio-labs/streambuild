@@ -108,7 +108,7 @@ def migrate_clickhouse_metadata_state(*, connection: AdapterConnection, database
         rows=(
             {
                 "version": _CURRENT_STATE_SCHEMA_VERSION,
-                "applied_at": datetime.now(tz=UTC).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
+                "applied_at": _current_metadata_timestamp(),
             },
         ),
     )
@@ -438,6 +438,39 @@ def load_clickhouse_target_ownership(
         "ORDER BY database_name, relation_name"
     )
     return tuple(_ownership_record(row=row) for row in result.rows)
+
+
+def record_clickhouse_target_ownership(
+    *,
+    connection: AdapterConnection,
+    database: str,
+    records: tuple[AdapterOwnershipRecord, ...],
+) -> None:
+    """Insert or replace every requested ClickHouse ownership claim."""
+
+    recorded_at: str = _current_metadata_timestamp()
+    connection.insert_rows(
+        table=f"{database}.{METADATA_TARGET_OWNERSHIP_TABLE_NAME}",
+        rows=tuple(_ownership_row(record=record, recorded_at=recorded_at) for record in records),
+    )
+
+
+def _current_metadata_timestamp() -> str:
+    return datetime.now(tz=UTC).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+
+
+def _ownership_row(*, record: AdapterOwnershipRecord, recorded_at: str) -> dict[str, object]:
+    return {
+        "database_name": record.database_name,
+        "relation_name": record.relation_name,
+        "resource_kind": record.resource_kind,
+        "logical_model_database": record.logical_model_database,
+        "logical_model_name": record.logical_model_name,
+        "owning_mode": str(record.owning_mode),
+        "tool_version": record.tool_version,
+        "created_at": recorded_at,
+        "updated_at": recorded_at,
+    }
 
 
 def _ownership_table_exists(*, connection: AdapterConnection, database: str) -> bool:
