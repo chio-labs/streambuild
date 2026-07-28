@@ -630,6 +630,19 @@ def write_standard_scope_project(
         )
 
 
+def write_standard_mutable_scope_project(*, project_root: Path) -> None:
+    """Write the standard scope with delta using a mutable side reference."""
+
+    write_standard_scope_project(project_root=project_root)
+    delta_path: Path = project_root / "pipelines" / "orders" / "delta.sql"
+    delta_path.write_text(
+        delta_path.read_text(encoding="utf-8").replace(
+            'ref_type="reference"', 'ref_type="mutable"'
+        ),
+        encoding="utf-8",
+    )
+
+
 def analyze_standard_scope_project(*, project_root: Path) -> CompileAnalysis:
     """Analyze a written scope project exactly as the CLI does."""
 

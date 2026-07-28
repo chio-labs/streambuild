@@ -1,6 +1,17 @@
+from dataclasses import replace
+from pathlib import Path
+
 import pytest
 
-from streambuild.compiler.pipeline.models import CompileAnalysis
+from streambuild.adapter.models import AdapterReplayColumns
+from streambuild.compiler.compile.models import (
+    DesiredState,
+    ExternalSourceReplayConfig,
+    ObjectKey,
+)
+from streambuild.compiler.compile.types import DesiredObjectType
+from streambuild.compiler.discovery.types import ReplayBoundaryMode, SourceKind
+from streambuild.compiler.pipeline.models import CompileAnalysis, RealizedProject
 from streambuild.compiler.planner._helpers.standard_ownership import classify_relation_ownership
 from streambuild.compiler.planner.exceptions import StandardPlanError
 from streambuild.compiler.planner.models import (
@@ -10,17 +21,21 @@ from streambuild.compiler.planner.models import (
 )
 from streambuild.compiler.planner.types import StandardPlanReason, TargetOwnership
 from tests.unit.src.streambuild.compiler.planner._test_types import (
+    StandardModelInputReplayColumnsTestCase,
+    StandardMutableWarningTestCase,
     StandardOwnershipTestCase,
     StandardPlanRejectionTestCase,
     StandardScopeTestCase,
 )
 from tests.unit.src.streambuild.compiler.planner.helpers import (
+    analyze_standard_scope_project,
     build_settled_standard_snapshot,
     build_standard_snapshot,
     logical_key_names,
     plan_standard_scope,
     relation_operation_summaries,
     replay_root_summaries,
+    write_standard_mutable_scope_project,
 )
 
 
@@ -389,3 +404,92 @@ def test_given_unsafe_warehouse_state_when_planning_standard_then_planning_is_re
         )
 
     assert test_case.expected_error_fragment in str(rejection.value)
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        StandardMutableWarningTestCase(
+            description="executed mutable side reference emits replay warning",
+            expected_warning_code="mutable_ref_replay_not_guaranteed",
+            expected_warning_fragment="exact historical replay equivalence cannot be guaranteed",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_mutable_side_reference_when_planning_standard_then_warning_is_emitted(
+    test_case: StandardMutableWarningTestCase, tmp_path: Path
+) -> None:
+    write_standard_mutable_scope_project(project_root=tmp_path)
+    analysis: CompileAnalysis = analyze_standard_scope_project(project_root=tmp_path)
+
+    plan: StandardPlan = plan_standard_scope(
+        analysis=analysis,
+        snapshot=build_settled_standard_snapshot(),
+        selected_model_names=("delta",),
+    )
+
+    assert tuple(warning.warning_code for warning in plan.warnings) == (
+        test_case.expected_warning_code,
+    )
+    assert test_case.expected_warning_fragment in plan.warnings[0].message
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        StandardModelInputReplayColumnsTestCase(
+            description="preserved model input ignores unrelated adopted physical mapping",
+            expected_replay_columns=(
+                "_replay_partition",
+                "_replay_offset",
+                "_replay_timestamp",
+                "_replay_landed_at",
+                "_replay_cursor",
+            ),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_model_input_name_matching_adopted_relation_when_planning_then_columns_are_canonical(
+    test_case: StandardModelInputReplayColumnsTestCase, tmp_path: Path
+) -> None:
+    write_standard_mutable_scope_project(project_root=tmp_path)
+    analysis: CompileAnalysis = analyze_standard_scope_project(project_root=tmp_path)
+    desired_state: DesiredState = replace(
+        analysis.realized_project.desired_state,
+        external_source_replay_configs=(
+            ExternalSourceReplayConfig(
+                key=ObjectKey(
+                    database=None,
+                    object_type=DesiredObjectType.TABLE,
+                    name="tbl__alpha",
+                ),
+                table_name="tbl__alpha",
+                source_kind=SourceKind.STREAM_TABLE,
+                replay_boundary_mode=ReplayBoundaryMode.OFFSETS,
+                partition_column_name="external_partition",
+                offset_column_name="external_offset",
+                timestamp_column_name="external_timestamp",
+            ),
+        ),
+    )
+    realized_project: RealizedProject = replace(
+        analysis.realized_project, desired_state=desired_state
+    )
+    mutated_analysis: CompileAnalysis = replace(analysis, realized_project=realized_project)
+
+    plan: StandardPlan = plan_standard_scope(
+        analysis=mutated_analysis,
+        snapshot=build_settled_standard_snapshot(),
+        selected_model_names=("beta",),
+    )
+
+    replay_columns: AdapterReplayColumns = plan.replay_roots[0].driving_input_replay_columns
+    assert (
+        replay_columns.partition,
+        replay_columns.offset,
+        replay_columns.timestamp,
+        replay_columns.landed_at,
+        replay_columns.cursor,
+    ) == test_case.expected_replay_columns

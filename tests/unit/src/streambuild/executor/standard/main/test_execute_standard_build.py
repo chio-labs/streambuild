@@ -112,12 +112,31 @@ def test_given_standard_build_plan_when_executing_then_adapter_actions_match_pla
         ReplayCoverageInputChangeTestCase(
             description="durable coverage from another driving input is rejected",
             persisted_driving_input_relation_name="tbl__old_alpha",
-            expected_error_fragment="driving input or replay mode changed",
-        )
+            persisted_partition_column_name="_replay_partition",
+            persisted_position_column_name="_replay_offset",
+            persisted_timestamp_column_name="_replay_timestamp",
+            expected_error_fragment="driving input, replay mode, or physical mapping changed",
+        ),
+        ReplayCoverageInputChangeTestCase(
+            description="durable coverage from another physical mapping is rejected",
+            persisted_driving_input_relation_name="tbl__alpha",
+            persisted_partition_column_name="old_partition",
+            persisted_position_column_name="old_offset",
+            persisted_timestamp_column_name="_replay_timestamp",
+            expected_error_fragment="driving input, replay mode, or physical mapping changed",
+        ),
+        ReplayCoverageInputChangeTestCase(
+            description="durable coverage from another timestamp mapping is rejected",
+            persisted_driving_input_relation_name="tbl__alpha",
+            persisted_partition_column_name="_replay_partition",
+            persisted_position_column_name="_replay_offset",
+            persisted_timestamp_column_name="old_timestamp",
+            expected_error_fragment="driving input, replay mode, or physical mapping changed",
+        ),
     ],
     ids=lambda case: case.description,
 )
-def test_given_changed_driving_input_when_resolving_coverage_then_it_is_rejected(
+def test_given_changed_replay_contract_when_resolving_coverage_then_it_is_rejected(
     test_case: ReplayCoverageInputChangeTestCase, tmp_path: Path
 ) -> None:
     request: StandardBuildRequest = build_standard_execution_request(
@@ -137,6 +156,9 @@ def test_given_changed_driving_input_when_resolving_coverage_then_it_is_rejected
                     driving_input_relation_name=test_case.persisted_driving_input_relation_name,
                     replay_boundary_mode=AdapterReplayBoundaryMode.OFFSETS,
                     boundary_key="_replay_partition=0",
+                    source_partition_column_name=test_case.persisted_partition_column_name,
+                    source_position_column_name=test_case.persisted_position_column_name,
+                    source_timestamp_column_name=test_case.persisted_timestamp_column_name,
                     lower_value="1",
                     upper_value="2",
                 ),

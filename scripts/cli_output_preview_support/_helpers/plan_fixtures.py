@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from streambuild.adapter.models import AdapterReplayColumns
 from streambuild.compiler.compile.models import (
     Column,
     DesiredMaterializedView,
@@ -519,6 +520,13 @@ def build_standard_plan_preview() -> StandardPlan:
                 model_key=enriched_key,
                 driving_input_key=orders_key,
                 driving_input_relation_name="raw__orders",
+                driving_input_replay_columns=AdapterReplayColumns(
+                    partition="_replay_partition",
+                    offset="_replay_offset",
+                    timestamp="_replay_timestamp",
+                    landed_at="_replay_landed_at",
+                    cursor="_replay_cursor",
+                ),
                 replay_boundary_mode=ReplayLineageMode.OFFSETS,
                 propagated_model_keys=(enriched_key,),
             ),
@@ -528,6 +536,13 @@ def build_standard_plan_preview() -> StandardPlan:
                 model_key=enriched_key,
                 driving_input_key=orders_key,
                 driving_input_relation_name="raw__orders",
+                driving_input_replay_columns=AdapterReplayColumns(
+                    partition="_replay_partition",
+                    offset="_replay_offset",
+                    timestamp="_replay_timestamp",
+                    landed_at="_replay_landed_at",
+                    cursor="_replay_cursor",
+                ),
                 replay_boundary_mode=ReplayLineageMode.OFFSETS,
             ),
         ),

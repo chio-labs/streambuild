@@ -1,6 +1,6 @@
 import pytest
 
-from streambuild.adapter.models import AdapterQueryResult
+from streambuild.adapter.models import AdapterQueryResult, AdapterReplayColumns
 from streambuild.compiler.compile.models import LogicalResourceKey
 from streambuild.compiler.compile.types import LogicalResourceType
 from streambuild.compiler.discovery.types import ReplayLineageMode
@@ -45,6 +45,13 @@ def test_given_scalar_source_when_capturing_empty_target_then_source_maximum_is_
         model_key=LogicalResourceKey(resource_type=LogicalResourceType.MODEL, name="beta"),
         driving_input_key=LogicalResourceKey(resource_type=LogicalResourceType.MODEL, name="alpha"),
         driving_input_relation_name="tbl__alpha",
+        driving_input_replay_columns=AdapterReplayColumns(
+            partition="_replay_partition",
+            offset="_replay_offset",
+            timestamp="_replay_timestamp",
+            landed_at="_replay_landed_at",
+            cursor="_replay_cursor",
+        ),
         replay_boundary_mode=ReplayLineageMode.TIMESTAMP,
     )
 

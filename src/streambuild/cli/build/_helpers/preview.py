@@ -6,6 +6,7 @@ from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.cli.build.models import BuildCommandOptions, BuildPreviewContext
 from streambuild.cli.entry.exceptions import CliUserError
 from streambuild.cli.entry.main._resolve_default_database import resolve_default_database
+from streambuild.cli.plan.main._source_validation import validate_declared_external_sources
 from streambuild.cli.selection.main._selection import resolve_selection
 from streambuild.cli.selection.models import SelectionResolution
 from streambuild.compiler.compile.models import CompilerAdapterProfile, LogicalResourceKey
@@ -41,6 +42,13 @@ def build_standard_build_preview(
     metadata_database: str = options.metadata_database or database
     snapshot: StandardWarehouseSnapshot = load_standard_warehouse_snapshot(
         client=client, database=database, metadata_database=metadata_database
+    )
+    validate_declared_external_sources(
+        catalog=snapshot.catalog,
+        external_source_replay_configs=(
+            analysis.realized_project.desired_state.external_source_replay_configs
+        ),
+        database=database,
     )
     selection: SelectionResolution = resolve_selection(
         realized_project=analysis.realized_project,

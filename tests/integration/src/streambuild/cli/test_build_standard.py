@@ -5,9 +5,13 @@ import pytest
 from clickhouse_connect.driver.client import Client
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.executor.standard.models import StandardReplayBoundary
+from streambuild.adapter.models import AdapterReplayRequest
+from streambuild.compiler.discovery.exceptions import PipelineDiscoveryError
+from streambuild.executor.standard.models import StandardBuildResult, StandardReplayBoundary
 from tests.integration.src.streambuild.cli._test_types import (
     CliReciprocalOwnershipIntegrationTestCase,
+    CliStandardAdoptedSourceFailureIntegrationTestCase,
+    CliStandardAdoptedSourceIntegrationTestCase,
     CliStandardAggregateBuildIntegrationTestCase,
     CliStandardBuildAuditIntegrationTestCase,
     CliStandardBuildBoundaryIntegrationTestCase,
@@ -22,6 +26,7 @@ from tests.integration.src.streambuild.cli._test_types import (
     CliStandardSelectionMatrixIntegrationTestCase,
 )
 from tests.integration.src.streambuild.cli.helpers import (
+    AdoptedLiveInsertConnection,
     FailFinalOwnershipOnceConnection,
     FailOnceBoundaryQueryConnection,
     FailOnceDropConnection,
@@ -43,13 +48,143 @@ from tests.integration.src.streambuild.cli.helpers import (
     standard_graph_order_ids,
     standard_owned_relation_names,
     standard_owned_replay_coverage_ranges,
+    stringify_warehouse_rows,
     warehouse_row_count,
+    write_standard_adopted_source_project,
     write_standard_aggregate_project,
     write_standard_build_project,
     write_standard_selected_graph_audits,
     write_standard_selected_graph_project,
 )
 from tests.integration.src.streambuild.conftest import ClickHouseConnectionSettings
+
+_ADOPTED_SOURCE_TEST_CASES: tuple[CliStandardAdoptedSourceIntegrationTestCase, ...] = (
+    CliStandardAdoptedSourceIntegrationTestCase(
+        description="offset adopted source rebuilds through mapped columns",
+        source_yml=(
+            "sources:\n"
+            "  - kind: stream_table\n"
+            "    name: orders\n"
+            "    table_name: orders_existing\n"
+            "    replay_boundary:\n"
+            "      mode: offsets\n"
+            "      columns:\n"
+            "        _replay_partition: event_partition\n"
+            "        _replay_offset: event_offset\n"
+            "        _replay_timestamp: event_timestamp\n"
+        ),
+        model_sql=(
+            'MODEL (\n  engine: "MergeTree()",\n  order_by: ["order_id"]\n);\n'
+            "SELECT order_id::String AS order_id, "
+            "_replay_partition::Int32 AS _replay_partition, "
+            '_replay_offset::Int64 AS _replay_offset FROM __ref("orders")\n'
+        ),
+        source_columns_sql=(
+            "order_id String, event_partition Int32, event_offset Int64, "
+            "event_timestamp DateTime64(3)"
+        ),
+        initial_values_sql=(
+            "('order-1', 0, 1, '2026-07-28 00:00:01.000'), "
+            "('order-2', 0, 2, '2026-07-28 00:00:02.000')"
+        ),
+        live_values_sql="('order-3', 0, 3, '2026-07-28 00:00:03.000')",
+        source_projection_sql=(
+            "order_id, toString(event_partition), toString(event_offset), toString(event_timestamp)"
+        ),
+        expected_source_rows=(
+            ("order-1", "0", "1", "2026-07-28 00:00:01.000"),
+            ("order-2", "0", "2", "2026-07-28 00:00:02.000"),
+            ("order-3", "0", "3", "2026-07-28 00:00:03.000"),
+        ),
+        expected_order_ids=("order-1", "order-2", "order-3"),
+        expected_replay_mode="offsets",
+        expected_replay_columns=(
+            "event_partition",
+            "event_offset",
+            "event_timestamp",
+            "event_timestamp",
+            "_replay_cursor",
+        ),
+    ),
+    CliStandardAdoptedSourceIntegrationTestCase(
+        description="timestamp adopted source rebuilds through mapped columns",
+        source_yml=(
+            "sources:\n"
+            "  - kind: stream_table\n"
+            "    name: orders\n"
+            "    table_name: orders_existing\n"
+            "    replay_boundary:\n"
+            "      mode: timestamp\n"
+            "      columns:\n"
+            "        _replay_timestamp: event_timestamp\n"
+        ),
+        model_sql=(
+            'MODEL (\n  engine: "MergeTree()",\n  order_by: ["order_id"]\n);\n'
+            "SELECT order_id::String AS order_id, "
+            "_replay_timestamp::DateTime64(3) AS _replay_timestamp "
+            'FROM __ref("orders")\n'
+        ),
+        source_columns_sql="order_id String, event_timestamp DateTime64(3)",
+        initial_values_sql=(
+            "('order-1', '2026-07-28 00:00:01.000'), ('order-2', '2026-07-28 00:00:02.000')"
+        ),
+        live_values_sql="('order-3', '2026-07-28 00:00:03.000')",
+        source_projection_sql="order_id, toString(event_timestamp)",
+        expected_source_rows=(
+            ("order-1", "2026-07-28 00:00:01.000"),
+            ("order-2", "2026-07-28 00:00:02.000"),
+            ("order-3", "2026-07-28 00:00:03.000"),
+        ),
+        expected_order_ids=("order-1", "order-2", "order-3"),
+        expected_replay_mode="timestamp",
+        expected_replay_columns=(
+            "_replay_partition",
+            "_replay_offset",
+            "event_timestamp",
+            "event_timestamp",
+            "_replay_cursor",
+        ),
+    ),
+    CliStandardAdoptedSourceIntegrationTestCase(
+        description="cursor adopted source rebuilds through mapped columns",
+        source_yml=(
+            "sources:\n"
+            "  - kind: stream_table\n"
+            "    name: orders\n"
+            "    table_name: orders_existing\n"
+            "    replay_boundary:\n"
+            "      mode: cursor\n"
+            "      columns:\n"
+            "        _replay_cursor: event_cursor\n"
+            "        _replay_timestamp: event_timestamp\n"
+        ),
+        model_sql=(
+            'MODEL (\n  engine: "MergeTree()",\n  order_by: ["order_id"]\n);\n'
+            "SELECT order_id::String AS order_id, "
+            '_replay_cursor::UInt64 AS _replay_cursor FROM __ref("orders")\n'
+        ),
+        source_columns_sql=("order_id String, event_cursor UInt64, event_timestamp DateTime64(3)"),
+        initial_values_sql=(
+            "('order-1', 1, '2026-07-28 00:00:01.000'), ('order-2', 2, '2026-07-28 00:00:02.000')"
+        ),
+        live_values_sql="('order-3', 3, '2026-07-28 00:00:03.000')",
+        source_projection_sql="order_id, toString(event_cursor), toString(event_timestamp)",
+        expected_source_rows=(
+            ("order-1", "1", "2026-07-28 00:00:01.000"),
+            ("order-2", "2", "2026-07-28 00:00:02.000"),
+            ("order-3", "3", "2026-07-28 00:00:03.000"),
+        ),
+        expected_order_ids=("order-1", "order-2", "order-3"),
+        expected_replay_mode="cursor",
+        expected_replay_columns=(
+            "_replay_partition",
+            "_replay_offset",
+            "event_timestamp",
+            "event_timestamp",
+            "event_cursor",
+        ),
+    ),
+)
 
 
 @pytest.mark.integration
@@ -1196,3 +1331,306 @@ def test_given_selected_build_audits_when_building_then_only_covered_audits_run(
         )
         == test_case.expected_query_markers
     )
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliStandardAdoptedSourceIntegrationTestCase(
+            description=case.description,
+            source_yml=case.source_yml,
+            model_sql=case.model_sql,
+            source_columns_sql=case.source_columns_sql,
+            initial_values_sql=case.initial_values_sql,
+            live_values_sql=case.live_values_sql,
+            source_projection_sql=case.source_projection_sql,
+            expected_source_rows=case.expected_source_rows,
+            expected_order_ids=case.expected_order_ids,
+            expected_replay_mode=case.expected_replay_mode,
+            expected_replay_columns=case.expected_replay_columns,
+        )
+        for case in _ADOPTED_SOURCE_TEST_CASES
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_adopted_source_when_building_standard_then_source_is_preserved_and_rows_are_exact(
+    test_case: CliStandardAdoptedSourceIntegrationTestCase,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    write_standard_adopted_source_project(
+        project_root=tmp_path,
+        source_yml=test_case.source_yml,
+        model_sql=test_case.model_sql,
+    )
+    delegate: AdapterConnection = build_managed_clickhouse_client(
+        clickhouse_connection_settings, database=clickhouse_database
+    )
+
+    try:
+        delegate.command(
+            f"CREATE TABLE {clickhouse_database}.orders_existing "
+            f"({test_case.source_columns_sql}) ENGINE = MergeTree() ORDER BY order_id"
+        )
+        delegate.command(
+            f"INSERT INTO {clickhouse_database}.orders_existing VALUES "
+            f"{test_case.initial_values_sql}"
+        )
+        source_ddl_before: str = str(
+            clickhouse_client.query(
+                f"SHOW CREATE TABLE {clickhouse_database}.orders_existing"
+            ).result_rows[0][0]
+        )
+        connection: AdoptedLiveInsertConnection = AdoptedLiveInsertConnection(
+            delegate,
+            database=clickhouse_database,
+            values_sql=test_case.live_values_sql,
+        )
+        build_result: StandardBuildResult = execute_standard_build_directly(
+            project_root=tmp_path,
+            database=clickhouse_database,
+            connection=connection,
+            stabilization_seconds=0,
+            selectors=(),
+        )
+        rerun_connection: StandardActionRecordingConnection = StandardActionRecordingConnection(
+            delegate
+        )
+        rerun_exit_code: int = run_standard_build(
+            project_root=tmp_path,
+            database=clickhouse_database,
+            connection=rerun_connection,
+            selectors=(),
+        )
+        _ = capsys.readouterr()
+        source_ddl_after: str = str(
+            clickhouse_client.query(
+                f"SHOW CREATE TABLE {clickhouse_database}.orders_existing"
+            ).result_rows[0][0]
+        )
+        source_rows: tuple[tuple[str, ...], ...] = stringify_warehouse_rows(
+            rows=clickhouse_client.query(
+                f"SELECT {test_case.source_projection_sql} FROM "
+                f"{clickhouse_database}.orders_existing ORDER BY order_id"
+            ).result_rows,
+        )
+        target_rows: tuple[str, ...] = standard_build_order_ids(
+            clickhouse_client=clickhouse_client, database=clickhouse_database
+        )
+        ownership_names: tuple[str, ...] = standard_owned_relation_names(
+            connection=connection, database=clickhouse_database
+        )
+    finally:
+        delegate.close()
+
+    replay_request: AdapterReplayRequest = connection.replay_requests[0]
+    assert source_ddl_after == source_ddl_before
+    assert rerun_exit_code == 0
+    assert source_rows == test_case.expected_source_rows
+    assert target_rows == test_case.expected_order_ids
+    assert str(replay_request.mode) == test_case.expected_replay_mode
+    assert (
+        replay_request.columns.partition,
+        replay_request.columns.offset,
+        replay_request.columns.timestamp,
+        replay_request.columns.landed_at,
+        replay_request.columns.cursor,
+    ) == test_case.expected_replay_columns
+    assert tuple(boundary.cutoff_inclusive for boundary in build_result.boundaries) == (False,)
+    assert "orders_existing" not in ownership_names
+    assert not any("orders_existing" in statement for statement in connection.command_statements)
+    assert not any(
+        "orders_existing" in statement for statement in rerun_connection.command_statements
+    )
+    assert "adopted-audit-marker" in "\n".join(rerun_connection.query_statements)
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliStandardAdoptedSourceFailureIntegrationTestCase(
+            description="missing adopted mapping column rejects before teardown",
+            source_table_name="orders_existing",
+            source_yml=_ADOPTED_SOURCE_TEST_CASES[0].source_yml,
+            model_sql=_ADOPTED_SOURCE_TEST_CASES[0].model_sql,
+            source_columns_sql=(
+                "order_id String, event_partition Int32, event_timestamp DateTime64(3)"
+            ),
+            expected_error_fragment="is missing declared offset column 'event_offset'",
+        ),
+        CliStandardAdoptedSourceFailureIntegrationTestCase(
+            description="injected replay alias collision rejects before teardown",
+            source_table_name="orders_existing",
+            source_yml=_ADOPTED_SOURCE_TEST_CASES[0].source_yml,
+            model_sql=_ADOPTED_SOURCE_TEST_CASES[0].model_sql,
+            source_columns_sql=(
+                "order_id String, event_partition Int32, event_offset Int64, "
+                "event_timestamp DateTime64(3), _replay_offset Int64"
+            ),
+            expected_error_fragment="conflicts with the injected replay alias",
+        ),
+        CliStandardAdoptedSourceFailureIntegrationTestCase(
+            description="adopted source target collision rejects before teardown",
+            source_table_name="tbl__orders_enriched",
+            source_yml=(
+                "sources:\n"
+                "  - kind: stream_table\n"
+                "    name: orders\n"
+                "    table_name: tbl__orders_enriched\n"
+                "    replay_boundary:\n"
+                "      mode: offsets\n"
+                "      columns:\n"
+                "        _replay_partition: event_partition\n"
+                "        _replay_offset: event_offset\n"
+                "        _replay_timestamp: event_timestamp\n"
+            ),
+            model_sql=_ADOPTED_SOURCE_TEST_CASES[0].model_sql,
+            source_columns_sql=(
+                "order_id String, event_partition Int32, event_offset Int64, "
+                "event_timestamp DateTime64(3)"
+            ),
+            expected_error_fragment=(
+                "adopted source relations that collide with managed targets: tbl__orders_enriched"
+            ),
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_invalid_adopted_source_when_building_then_it_rejects_before_destructive_work(
+    test_case: CliStandardAdoptedSourceFailureIntegrationTestCase,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    write_standard_adopted_source_project(
+        project_root=tmp_path,
+        source_yml=test_case.source_yml,
+        model_sql=test_case.model_sql,
+    )
+    delegate: AdapterConnection = build_managed_clickhouse_client(
+        clickhouse_connection_settings, database=clickhouse_database
+    )
+
+    try:
+        delegate.command(
+            f"CREATE TABLE {clickhouse_database}.{test_case.source_table_name} "
+            f"({test_case.source_columns_sql}) ENGINE = MergeTree() ORDER BY order_id"
+        )
+        source_ddl_before: str = str(
+            clickhouse_client.query(
+                f"SHOW CREATE TABLE {clickhouse_database}.{test_case.source_table_name}"
+            ).result_rows[0][0]
+        )
+        connection: StandardActionRecordingConnection = StandardActionRecordingConnection(delegate)
+        exit_code: int = run_standard_build(
+            project_root=tmp_path,
+            database=clickhouse_database,
+            connection=connection,
+        )
+        build_error: str = capsys.readouterr().err
+        source_ddl_after: str = str(
+            clickhouse_client.query(
+                f"SHOW CREATE TABLE {clickhouse_database}.{test_case.source_table_name}"
+            ).result_rows[0][0]
+        )
+    finally:
+        delegate.close()
+
+    assert exit_code == 1
+    assert test_case.expected_error_fragment in build_error
+    assert source_ddl_after == source_ddl_before
+    assert connection.command_statements == []
+    assert connection.realized_relation_names == []
+    assert connection.replay_targets == []
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliStandardAdoptedSourceFailureIntegrationTestCase(
+            description="shared adopted table with conflicting mappings is rejected",
+            source_table_name="orders_existing",
+            source_yml=(
+                "sources:\n"
+                "  - kind: stream_table\n"
+                "    name: orders\n"
+                "    table_name: orders_existing\n"
+                "    replay_boundary:\n"
+                "      mode: offsets\n"
+                "      columns:\n"
+                "        _replay_partition: event_partition\n"
+                "        _replay_offset: event_offset\n"
+                "        _replay_timestamp: event_timestamp\n"
+                "  - kind: stream_table\n"
+                "    name: orders_cursor\n"
+                "    table_name: orders_existing\n"
+                "    replay_boundary:\n"
+                "      mode: cursor\n"
+                "      columns:\n"
+                "        _replay_cursor: event_cursor\n"
+                "        _replay_timestamp: event_timestamp\n"
+            ),
+            model_sql=_ADOPTED_SOURCE_TEST_CASES[0].model_sql,
+            source_columns_sql=(
+                "order_id String, event_partition Int32, event_offset Int64, "
+                "event_cursor UInt64, event_timestamp DateTime64(3)"
+            ),
+            expected_error_fragment=(
+                "Adopted source table 'orders_existing' has conflicting replay mappings"
+            ),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_conflicting_adopted_mappings_when_loading_build_then_discovery_rejects(
+    test_case: CliStandardAdoptedSourceFailureIntegrationTestCase,
+    tmp_path: Path,
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    write_standard_adopted_source_project(
+        project_root=tmp_path,
+        source_yml=test_case.source_yml,
+        model_sql=test_case.model_sql,
+    )
+    delegate: AdapterConnection = build_managed_clickhouse_client(
+        clickhouse_connection_settings, database=clickhouse_database
+    )
+
+    try:
+        delegate.command(
+            f"CREATE TABLE {clickhouse_database}.{test_case.source_table_name} "
+            f"({test_case.source_columns_sql}) ENGINE = MergeTree() ORDER BY order_id"
+        )
+        source_ddl_before: str = str(
+            clickhouse_client.query(
+                f"SHOW CREATE TABLE {clickhouse_database}.{test_case.source_table_name}"
+            ).result_rows[0][0]
+        )
+        connection: StandardActionRecordingConnection = StandardActionRecordingConnection(delegate)
+        with pytest.raises(PipelineDiscoveryError) as rejection:
+            _ = run_standard_build(
+                project_root=tmp_path,
+                database=clickhouse_database,
+                connection=connection,
+            )
+        source_ddl_after: str = str(
+            clickhouse_client.query(
+                f"SHOW CREATE TABLE {clickhouse_database}.{test_case.source_table_name}"
+            ).result_rows[0][0]
+        )
+    finally:
+        delegate.close()
+
+    assert test_case.expected_error_fragment in str(rejection.value)
+    assert source_ddl_after == source_ddl_before
+    assert connection.command_statements == []

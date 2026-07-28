@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.adapter.models import AdapterQueryResult
+from streambuild.adapter.models import AdapterQueryResult, AdapterReplayColumns
 from streambuild.compiler.compile.constants import (
+    REPLAY_CURSOR_COLUMN_NAME,
+    REPLAY_LANDED_AT_COLUMN_NAME,
     REPLAY_OFFSET_COLUMN_NAME,
     REPLAY_PARTITION_COLUMN_NAME,
+    REPLAY_TIMESTAMP_COLUMN_NAME,
 )
 from streambuild.compiler.discovery.types import ReplayLineageMode
 from streambuild.compiler.planner.models import (
@@ -14,9 +17,16 @@ from streambuild.compiler.planner.models import (
     StandardPopulationSegment,
     StandardReplayRoot,
 )
-from streambuild.executor.standard.constants import SCALAR_BOUNDARY_COLUMN_BY_MODE
 from streambuild.executor.standard.exceptions import StandardBuildError
 from streambuild.executor.standard.models import StandardReplayBoundary
+
+_CANONICAL_REPLAY_COLUMNS: AdapterReplayColumns = AdapterReplayColumns(
+    partition=REPLAY_PARTITION_COLUMN_NAME,
+    offset=REPLAY_OFFSET_COLUMN_NAME,
+    timestamp=REPLAY_TIMESTAMP_COLUMN_NAME,
+    landed_at=REPLAY_LANDED_AT_COLUMN_NAME,
+    cursor=REPLAY_CURSOR_COLUMN_NAME,
+)
 
 
 def capture_replay_boundaries(
@@ -90,11 +100,12 @@ def _offset_boundaries(
     database: str,
     target_relation_name: str,
 ) -> tuple[StandardReplayBoundary, ...]:
+    source_columns: AdapterReplayColumns = root.driving_input_replay_columns
     preserved_cutoff_by_partition: dict[str, str] = _partition_values(
         result=client.query(
-            f"SELECT {REPLAY_PARTITION_COLUMN_NAME}, max({REPLAY_OFFSET_COLUMN_NAME}) "
+            f"SELECT {source_columns.partition}, max({source_columns.offset}) "
             f"FROM {database}.{root.driving_input_relation_name} "
-            f"GROUP BY {REPLAY_PARTITION_COLUMN_NAME}"
+            f"GROUP BY {source_columns.partition}"
         )
     )
     live_floor_by_partition: dict[str, str] = _partition_values(
@@ -122,12 +133,12 @@ def _scalar_boundaries(
     database: str,
     target_relation_name: str,
 ) -> tuple[StandardReplayBoundary, ...]:
-    boundary_column: str | None = SCALAR_BOUNDARY_COLUMN_BY_MODE.get(mode)
-    if boundary_column is None:
-        raise StandardBuildError(
-            f"Standard build does not support replay boundary mode '{mode}' for "
-            f"model '{root.model_key.name}'"
-        )
+    boundary_column: str = _source_position_column(
+        mode=mode, columns=root.driving_input_replay_columns
+    )
+    canonical_boundary_column: str = _source_position_column(
+        mode=mode, columns=_CANONICAL_REPLAY_COLUMNS
+    )
     preserved_cutoff: str | None = _scalar_value(
         result=client.query(
             f"SELECT max({boundary_column}) FROM "
@@ -138,14 +149,14 @@ def _scalar_boundaries(
         return ()
     live_floor: str | None = _scalar_value(
         result=client.query(
-            f"SELECT min({boundary_column}) FROM {database}.{target_relation_name} "
+            f"SELECT min({canonical_boundary_column}) FROM {database}.{target_relation_name} "
             "HAVING count() > 0"
         )
     )
     return (
         _boundary(
             root=root,
-            boundary_key=boundary_column,
+            boundary_key=canonical_boundary_column,
             live_floor=live_floor,
             preserved_cutoff=preserved_cutoff,
         ),
@@ -179,3 +190,14 @@ def _scalar_value(*, result: AdapterQueryResult) -> str | None:
     if not result.rows or result.rows[0][0] is None:
         return None
     return str(result.rows[0][0])
+
+
+def _source_position_column(*, mode: ReplayLineageMode, columns: AdapterReplayColumns) -> str:
+    position_column: str | None = {
+        ReplayLineageMode.TIMESTAMP: columns.timestamp,
+        ReplayLineageMode.LANDED_AT: columns.landed_at,
+        ReplayLineageMode.CURSOR: columns.cursor,
+    }.get(mode)
+    if position_column is None:
+        raise StandardBuildError(f"Standard build does not support replay boundary mode '{mode}'")
+    return position_column

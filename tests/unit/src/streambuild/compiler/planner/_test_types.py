@@ -49,6 +49,19 @@ class PlanningSnapshotCapabilityTestCase:
 
 
 @dataclass(frozen=True)
+class StandardMutableWarningTestCase:
+    description: str
+    expected_warning_code: str
+    expected_warning_fragment: str
+
+
+@dataclass(frozen=True)
+class StandardModelInputReplayColumnsTestCase:
+    description: str
+    expected_replay_columns: tuple[str, str, str, str, str]
+
+
+@dataclass(frozen=True)
 class BuildActualStateTestCase:
     description: str
     expected_ordered_keys: tuple[tuple[str | None, str, str], ...]

@@ -51,6 +51,7 @@ def discover_source_registry(
         for file_path in sorted(sources_root.glob("*.yml"))
     )
     _validate_unique_source_names(discovered_files)
+    _validate_consistent_adopted_table_mappings(discovered_files)
     return discovered_files
 
 
@@ -66,6 +67,24 @@ def source_registry_by_name(
         for source in source_file.sources:
             sources_by_name[source.name] = source
     return sources_by_name
+
+
+def _validate_consistent_adopted_table_mappings(
+    source_files: tuple[DiscoveredSourceFile, ...],
+) -> None:
+    boundary_by_table_name: dict[str, ReplayBoundary] = {}
+    source_file: DiscoveredSourceFile
+    for source_file in source_files:
+        source: KafkaLandingStep | ExternalTableSourceStep
+        for source in source_file.sources:
+            if not isinstance(source, ExternalTableSourceStep):
+                continue
+            existing_boundary: ReplayBoundary | None = boundary_by_table_name.get(source.table_name)
+            if existing_boundary is not None and existing_boundary != source.replay_boundary:
+                raise PipelineDiscoveryError(
+                    f"Adopted source table '{source.table_name}' has conflicting replay mappings"
+                )
+            boundary_by_table_name[source.table_name] = source.replay_boundary
 
 
 def _load_source_file(

@@ -378,6 +378,7 @@ class StandardActionRecordingConnection(RecordingDelegatingConnection):
         self.command_statements: list[str] = []
         self.realized_relation_names: list[str] = []
         self.replay_targets: list[str] = []
+        self.replay_requests: list[AdapterReplayRequest] = []
 
     def command(self, statement: str) -> None:
         self.command_statements.append(statement)
@@ -395,7 +396,36 @@ class StandardActionRecordingConnection(RecordingDelegatingConnection):
 
     def execute_replay(self, request: AdapterReplayRequest) -> None:
         self.replay_targets.append(request.relations.target)
+        self.replay_requests.append(request)
         super().execute_replay(request)
+
+
+class AdoptedLiveInsertConnection(StandardActionRecordingConnection):
+    def __init__(self, delegate: AdapterConnection, *, database: str, values_sql: str) -> None:
+        super().__init__(delegate)
+        self._database: str = database
+        self._values_sql: str = values_sql
+        self._post_realization_actions: Iterator[Callable[[], None]] = iter(
+            (self._do_nothing, self._insert_live_rows)
+        )
+
+    def realize_resource(
+        self,
+        *,
+        resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterStableView,
+        database: str,
+        if_not_exists: bool = False,
+    ) -> None:
+        super().realize_resource(resource=resource, database=database, if_not_exists=if_not_exists)
+        next(self._post_realization_actions)()
+
+    def _do_nothing(self) -> None:
+        return None
+
+    def _insert_live_rows(self) -> None:
+        self._delegate.command(
+            f"INSERT INTO {self._database}.orders_existing VALUES {self._values_sql}"
+        )
 
 
 def build_managed_clickhouse_client(
@@ -1148,6 +1178,33 @@ def write_standard_selected_graph_audits(
         (audit_root / audit_name).write_text(audit_sql, encoding="utf-8")
 
 
+def write_standard_adopted_source_project(
+    *, project_root: Path, source_yml: str, model_sql: str
+) -> None:
+    """Write a standard project driven by one adopted source relation."""
+
+    pipeline_root: Path = project_root / "pipelines" / "orders"
+    source_root: Path = project_root / "sources"
+    audit_root: Path = project_root / "audits"
+    pipeline_root.mkdir(parents=True, exist_ok=True)
+    source_root.mkdir(parents=True, exist_ok=True)
+    audit_root.mkdir(parents=True, exist_ok=True)
+    (project_root / "streambuild_project.toml").write_text(
+        'name = "standard_adopted_source"\ndefault_target = "test"\n\n'
+        '[targets.test]\ndatabase = "analytics"\n',
+        encoding="utf-8",
+    )
+    (source_root / "orders.yml").write_text(source_yml, encoding="utf-8")
+    (pipeline_root / "pipeline.yml").write_text("source: orders\n", encoding="utf-8")
+    (pipeline_root / "orders_enriched.sql").write_text(model_sql, encoding="utf-8")
+    (audit_root / "adopted_target.sql").write_text(
+        'AUDIT (description: "adopted target is live");\n'
+        "SELECT 'adopted-audit-marker' AS marker "
+        'FROM __ref("orders_enriched") WHERE 0\n',
+        encoding="utf-8",
+    )
+
+
 def run_standard_build(
     *,
     project_root: Path,
@@ -1382,3 +1439,13 @@ def standard_graph_delta_rows(
         f"SELECT order_id, gamma_marker FROM {database}.tbl__delta ORDER BY order_id"
     ).result_rows
     return tuple((str(row[0]), str(row[1])) for row in rows)
+
+
+def stringify_warehouse_rows(*, rows: Sequence[Sequence[object]]) -> tuple[tuple[str, ...], ...]:
+    """Convert driver row values to deterministic strings."""
+
+    converted: list[tuple[str, ...]] = []
+    row: Sequence[object]
+    for row in rows:
+        converted.append(tuple(map(str, row)))
+    return tuple(converted)

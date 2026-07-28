@@ -44,6 +44,9 @@ class AdapterReplayCoverageRange:
     driving_input_relation_name: str
     replay_boundary_mode: AdapterReplayBoundaryMode | str
     boundary_key: str
+    source_partition_column_name: str | None
+    source_position_column_name: str
+    source_timestamp_column_name: str | None
     lower_value: str
     upper_value: str
 

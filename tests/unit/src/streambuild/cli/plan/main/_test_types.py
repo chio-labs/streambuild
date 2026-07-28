@@ -58,7 +58,7 @@ class CliReplaySourceWarningTestCase:
 @dataclass(frozen=True)
 class CliExternalSourceValidationErrorTestCase:
     description: str
-    existing_column_names: tuple[str, ...]
+    existing_columns: tuple[tuple[str, str], ...]
     expected_error_fragment: str
 
 

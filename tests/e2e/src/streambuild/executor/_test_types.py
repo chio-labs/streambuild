@@ -94,3 +94,9 @@ class ExternalSourceOffsetWorkflowE2ETestCase:
     expected_order_ids: tuple[str, ...]
     expected_watermark_rows: tuple[tuple[str, str], ...]
     expected_replay_lineage_mode: ReplayLineageMode
+
+
+@dataclass(frozen=True)
+class StandardExternalSourceBuildE2ETestCase:
+    description: str
+    expected_order_ids: tuple[str, ...]
