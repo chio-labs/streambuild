@@ -46,7 +46,6 @@ from streambuild.compiler.discovery.main.load_project_input_for_path import (
 )
 from streambuild.executor.backfill.main._ensure_metadata_tables import ensure_metadata_tables
 from streambuild.executor.standard._helpers.boundaries import capture_replay_boundaries
-from streambuild.executor.standard._helpers.preflight import current_boundary_time
 from streambuild.executor.standard._helpers.relations import target_relation_name_by_model_name
 from streambuild.executor.standard.main.execute_standard_build import execute_standard_build
 from streambuild.executor.standard.models import (
@@ -236,6 +235,167 @@ class FailOnceReplayConnection(RecordingDelegatingConnection):
     def _reject_replay(self, request: AdapterReplayRequest) -> None:
         del request
         raise AdapterWarehouseError("injected failure after standard relations became live")
+
+
+class FailSecondReplayOnceConnection(RecordingDelegatingConnection):
+    def __init__(self, delegate: AdapterConnection) -> None:
+        super().__init__(delegate)
+        self.replay_targets: list[str] = []
+        self._replay_actions: Iterator[Callable[[AdapterReplayRequest], None]] = iter(
+            (
+                self._delegate.execute_replay,
+                self._reject_replay,
+                self._delegate.execute_replay,
+                self._delegate.execute_replay,
+                self._delegate.execute_replay,
+            )
+        )
+
+    def execute_replay(self, request: AdapterReplayRequest) -> None:
+        self.replay_targets.append(request.relations.target)
+        next(self._replay_actions)(request)
+
+    def _reject_replay(self, request: AdapterReplayRequest) -> None:
+        del request
+        raise AdapterWarehouseError("injected failure during second population segment")
+
+
+class FailOnceDropConnection(RecordingDelegatingConnection):
+    def __init__(self, delegate: AdapterConnection) -> None:
+        super().__init__(delegate)
+        self._command_actions: Iterator[Callable[[str], None]] = iter(
+            (
+                self._reject_command,
+                self._delegate.command,
+                self._delegate.command,
+                self._delegate.command,
+                self._delegate.command,
+                self._delegate.command,
+                self._delegate.command,
+            )
+        )
+
+    def command(self, statement: str) -> None:
+        next(self._command_actions)(statement)
+
+    def _reject_command(self, statement: str) -> None:
+        del statement
+        raise AdapterWarehouseError("injected failure during selected teardown")
+
+
+class FailOnceViewRealizationConnection(RecordingDelegatingConnection):
+    def __init__(self, delegate: AdapterConnection) -> None:
+        super().__init__(delegate)
+        self._realization_actions: Iterator[Callable[..., None]] = iter(
+            (
+                self._delegate.realize_resource,
+                self._delegate.realize_resource,
+                self._delegate.realize_resource,
+                self._reject_realization,
+                self._delegate.realize_resource,
+                self._delegate.realize_resource,
+                self._delegate.realize_resource,
+                self._delegate.realize_resource,
+                self._delegate.realize_resource,
+                self._delegate.realize_resource,
+            )
+        )
+
+    def realize_resource(
+        self,
+        *,
+        resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterStableView,
+        database: str,
+        if_not_exists: bool = False,
+    ) -> None:
+        next(self._realization_actions)(
+            resource=resource, database=database, if_not_exists=if_not_exists
+        )
+
+    def _reject_realization(
+        self,
+        *,
+        resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterStableView,
+        database: str,
+        if_not_exists: bool = False,
+    ) -> None:
+        del resource, database, if_not_exists
+        raise AdapterWarehouseError("injected failure during selected view attachment")
+
+
+class FailOnceBoundaryQueryConnection(RecordingDelegatingConnection):
+    def __init__(self, delegate: AdapterConnection) -> None:
+        super().__init__(delegate)
+        self._query_actions: Iterator[Callable[[str], AdapterQueryResult]] = iter(
+            (
+                self._delegate.query,
+                self._delegate.query,
+                self._delegate.query,
+                self._delegate.query,
+                self._reject_query,
+                *([self._delegate.query] * 16),
+            )
+        )
+
+    def load_catalog(self, database: str) -> CatalogSnapshot:
+        return self._delegate.load_catalog(database)
+
+    def query(self, statement: str) -> AdapterQueryResult:
+        return next(self._query_actions)(statement)
+
+    def _reject_query(self, statement: str) -> AdapterQueryResult:
+        del statement
+        raise AdapterWarehouseError("injected failure during selected boundary capture")
+
+
+class FailFinalOwnershipOnceConnection(RecordingDelegatingConnection):
+    def __init__(self, delegate: AdapterConnection) -> None:
+        super().__init__(delegate)
+        self._ownership_actions: Iterator[Callable[..., None]] = iter(
+            (
+                self._delegate.record_target_ownership,
+                self._reject_ownership,
+                self._delegate.record_target_ownership,
+                self._delegate.record_target_ownership,
+            )
+        )
+
+    def record_target_ownership(
+        self, *, database: str, records: tuple[AdapterOwnershipRecord, ...]
+    ) -> None:
+        next(self._ownership_actions)(database=database, records=records)
+
+    def _reject_ownership(
+        self, *, database: str, records: tuple[AdapterOwnershipRecord, ...]
+    ) -> None:
+        del database, records
+        raise AdapterWarehouseError("injected failure during final ownership persistence")
+
+
+class StandardActionRecordingConnection(RecordingDelegatingConnection):
+    def __init__(self, delegate: AdapterConnection) -> None:
+        super().__init__(delegate)
+        self.command_statements: list[str] = []
+        self.realized_relation_names: list[str] = []
+        self.replay_targets: list[str] = []
+
+    def command(self, statement: str) -> None:
+        self.command_statements.append(statement)
+        super().command(statement)
+
+    def realize_resource(
+        self,
+        *,
+        resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterStableView,
+        database: str,
+        if_not_exists: bool = False,
+    ) -> None:
+        self.realized_relation_names.append(resource.name)
+        super().realize_resource(resource=resource, database=database, if_not_exists=if_not_exists)
+
+    def execute_replay(self, request: AdapterReplayRequest) -> None:
+        self.replay_targets.append(request.relations.target)
+        super().execute_replay(request)
 
 
 def build_managed_clickhouse_client(
@@ -864,6 +1024,38 @@ _STANDARD_BUILD_SETTINGS_BY_MODE: dict[bool, str] = {
     False: "",
     True: "\n[settings]\nvirtual_environments = true\n",
 }
+_STANDARD_SELECTED_GRAPH_SQL_BY_NAME: tuple[tuple[str, str], ...] = (
+    (
+        "alpha",
+        "SELECT kafka_key::String AS order_id, "
+        "_replay_partition::Int32 AS _replay_partition, "
+        "_replay_offset::Int64 AS _replay_offset "
+        'FROM __source("orders")',
+    ),
+    (
+        "beta",
+        "SELECT order_id::String AS order_id, "
+        "_replay_partition::Int32 AS _replay_partition, "
+        "_replay_offset::Int64 AS _replay_offset "
+        'FROM __ref("alpha")',
+    ),
+    (
+        "gamma",
+        "SELECT order_id::String AS order_id, "
+        "concat(order_id, '-gamma')::String AS gamma_marker, "
+        "_replay_partition::Int32 AS _replay_partition, "
+        "_replay_offset::Int64 AS _replay_offset "
+        'FROM __ref("beta")',
+    ),
+    (
+        "delta",
+        "SELECT a.order_id::String AS order_id, g.gamma_marker::String AS gamma_marker, "
+        "a._replay_partition::Int32 AS _replay_partition, "
+        "a._replay_offset::Int64 AS _replay_offset "
+        'FROM __ref("alpha") AS a INNER JOIN '
+        '__ref("gamma", ref_type="reference") AS g ON a.order_id = g.order_id',
+    ),
+)
 
 
 def write_standard_build_project(
@@ -897,6 +1089,59 @@ def write_standard_build_project(
         f'MODEL (order_by: ["order_id"]);\n{STANDARD_BUILD_MODEL_SQL}\n',
         encoding="utf-8",
     )
+    audit_name: str
+    audit_sql: str
+    for audit_name, audit_sql in audit_sql_by_name:
+        (audit_root / audit_name).write_text(audit_sql, encoding="utf-8")
+
+
+def write_standard_selected_graph_project(*, project_root: Path) -> None:
+    """Write the selected-rebuild fan-in graph with replay lineage on every model."""
+
+    pipeline_root: Path = project_root / "pipelines" / "orders"
+    source_root: Path = project_root / "sources"
+    pipeline_root.mkdir(parents=True, exist_ok=True)
+    source_root.mkdir(parents=True, exist_ok=True)
+    (project_root / "streambuild_project.toml").write_text(
+        'name = "standard_selected_graph"\ndefault_target = "test"\n\n'
+        '[targets.test]\ndatabase = "analytics"\n',
+        encoding="utf-8",
+    )
+    (source_root / "orders.yml").write_text(
+        _STANDARD_BUILD_SOURCE_YML.format(broker_list="kafka:9092", topic="source.selected_orders"),
+        encoding="utf-8",
+    )
+    (pipeline_root / "pipeline.yml").write_text("source: orders\n", encoding="utf-8")
+    model_name: str
+    model_sql: str
+    for model_name, model_sql in _STANDARD_SELECTED_GRAPH_SQL_BY_NAME:
+        (pipeline_root / f"{model_name}.sql").write_text(
+            f'MODEL (order_by: ["order_id"]);\n{model_sql}\n', encoding="utf-8"
+        )
+
+
+def write_standard_aggregate_project(*, project_root: Path) -> None:
+    """Write an alpha-to-aggregate-beta standard rebuild project."""
+
+    write_standard_selected_graph_project(project_root=project_root)
+    pipeline_root: Path = project_root / "pipelines" / "orders"
+    (pipeline_root / "gamma.sql").unlink()
+    (pipeline_root / "delta.sql").unlink()
+    (pipeline_root / "beta.sql").write_text(
+        'MODEL (order_by: ["order_id"]);\n'
+        "SELECT order_id::String AS order_id, count()::UInt64 AS order_count "
+        'FROM __ref("alpha") GROUP BY order_id\n',
+        encoding="utf-8",
+    )
+
+
+def write_standard_selected_graph_audits(
+    *, project_root: Path, audit_sql_by_name: tuple[tuple[str, str], ...]
+) -> None:
+    """Write discovered audits for the selected-rebuild graph."""
+
+    audit_root: Path = project_root / "audits"
+    audit_root.mkdir(exist_ok=True)
     audit_name: str
     audit_sql: str
     for audit_name, audit_sql in audit_sql_by_name:
@@ -976,6 +1221,7 @@ def execute_standard_build_directly(
     database: str,
     connection: AdapterConnection,
     stabilization_seconds: float,
+    selectors: tuple[str, ...],
 ) -> StandardBuildResult:
     """Plan and execute one standard build with an explicit stabilization window."""
 
@@ -984,7 +1230,7 @@ def execute_standard_build_directly(
             pipelines_root=project_root / "pipelines",
             database=database,
             metadata_database=database,
-            selectors=(),
+            selectors=selectors,
             json_output=True,
             verbose=False,
             auto_approve=True,
@@ -1032,7 +1278,6 @@ def capture_standard_build_boundaries(
         client=connection,
         plan=preview.plan,
         database=database,
-        boundary_time=current_boundary_time(),
         target_relation_name_by_model_name=target_relation_name_by_model_name(plan=preview.plan),
     )
 
@@ -1115,3 +1360,25 @@ def standard_owned_replay_coverage_ranges(
         (coverage.boundary_key, coverage.lower_value, coverage.upper_value)
         for coverage in record.replay_coverage
     )
+
+
+def standard_graph_order_ids(
+    *, clickhouse_client: Client, database: str, model_name: str
+) -> tuple[str, ...]:
+    """Return ordered identities from one selected-graph model target."""
+
+    rows: Sequence[Sequence[object]] = clickhouse_client.query(
+        f"SELECT order_id FROM {database}.tbl__{model_name} ORDER BY order_id"
+    ).result_rows
+    return tuple(str(row[0]) for row in rows)
+
+
+def standard_graph_delta_rows(
+    *, clickhouse_client: Client, database: str
+) -> tuple[tuple[str, str], ...]:
+    """Return the fan-in target's identity and side-reference marker rows."""
+
+    rows: Sequence[Sequence[object]] = clickhouse_client.query(
+        f"SELECT order_id, gamma_marker FROM {database}.tbl__delta ORDER BY order_id"
+    ).result_rows
+    return tuple((str(row[0]), str(row[1])) for row in rows)

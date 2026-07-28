@@ -11,16 +11,18 @@ from streambuild.compiler.planner.exceptions import TargetOwnershipConflictError
 def assert_no_standard_owned_targets(
     *,
     client: AdapterConnection,
-    database: str,
+    metadata_database: str,
+    target_database: str,
     relation_names: tuple[str, ...],
 ) -> None:
     """Refuse virtual-environment writes to any relation standard mode already owns."""
 
-    records: tuple[AdapterOwnershipRecord, ...] = client.load_target_ownership(database)
+    records: tuple[AdapterOwnershipRecord, ...] = client.load_target_ownership(metadata_database)
     standard_owned_names: frozenset[str] = frozenset(
         record.relation_name
         for record in records
-        if record.owning_mode == AdapterOwningMode.STANDARD
+        if record.database_name == target_database
+        and record.owning_mode == AdapterOwningMode.STANDARD
     )
     blocked_names: tuple[str, ...] = tuple(
         relation_name for relation_name in relation_names if relation_name in standard_owned_names

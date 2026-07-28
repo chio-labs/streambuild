@@ -23,7 +23,9 @@ def classify_relation_ownership(
     """Classify every requested relation from durable warehouse evidence."""
 
     standard_names: frozenset[str] = _owned_relation_names(
-        records=snapshot.ownership_records, mode=AdapterOwningMode.STANDARD
+        records=snapshot.ownership_records,
+        mode=AdapterOwningMode.STANDARD,
+        database=snapshot.catalog.identity.database,
     )
     virtual_environment_names: frozenset[str] = _virtual_environment_names(snapshot=snapshot)
     existing_names: frozenset[str] = snapshot.catalog.relation_names()
@@ -62,15 +64,21 @@ def _ownership_for(
 
 
 def _owned_relation_names(
-    *, records: tuple[AdapterOwnershipRecord, ...], mode: AdapterOwningMode
+    *, records: tuple[AdapterOwnershipRecord, ...], mode: AdapterOwningMode, database: str
 ) -> frozenset[str]:
-    return frozenset(record.relation_name for record in records if record.owning_mode == mode)
+    return frozenset(
+        record.relation_name
+        for record in records
+        if record.owning_mode == mode and record.database_name == database
+    )
 
 
 def _virtual_environment_names(*, snapshot: StandardWarehouseSnapshot) -> frozenset[str]:
     names: set[str] = set(
         _owned_relation_names(
-            records=snapshot.ownership_records, mode=AdapterOwningMode.VIRTUAL_ENVIRONMENT
+            records=snapshot.ownership_records,
+            mode=AdapterOwningMode.VIRTUAL_ENVIRONMENT,
+            database=snapshot.catalog.identity.database,
         )
     )
     relation: CatalogRelation

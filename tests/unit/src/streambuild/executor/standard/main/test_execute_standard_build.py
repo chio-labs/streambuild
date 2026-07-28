@@ -43,7 +43,13 @@ from tests.unit.src.streambuild.executor.standard.main.helpers import (
             ),
             expected_replay_relations=(
                 ("tbl__beta", "tbl__alpha", "tbl__beta"),
+                ("tbl__gamma", "tbl__beta", "tbl__gamma"),
                 ("tbl__delta", "tbl__alpha", "tbl__delta"),
+            ),
+            expected_replay_query_fragments=(
+                "tbl__alpha",
+                "tbl__beta",
+                "analytics.tbl__gamma",
             ),
             expected_ownership_record_count=2,
         )
@@ -82,6 +88,14 @@ def test_given_standard_build_plan_when_executing_then_adapter_actions_match_pla
         )
         == test_case.expected_replay_relations
     )
+    assert tuple(
+        fragment in request.replay_query.query
+        for fragment, request in zip(
+            test_case.expected_replay_query_fragments,
+            connection.replay_requests,
+            strict=True,
+        )
+    ) == (True, True, True)
     first_ownership_index: int = connection.adapter_actions.index("record_ownership")
     completed_ownership_index: int = connection.adapter_actions.index(
         "record_ownership", first_ownership_index + 1

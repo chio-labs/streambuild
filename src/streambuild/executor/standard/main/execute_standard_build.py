@@ -2,25 +2,23 @@
 
 from __future__ import annotations
 
-import time
-
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import AdapterOwnershipRecord, CatalogSnapshot
-from streambuild.executor.standard._helpers.boundaries import capture_replay_boundaries
+from streambuild.compiler.planner.models import StandardPlan
 from streambuild.executor.standard._helpers.ownership import (
     build_standard_ownership_records,
     record_standard_ownership,
 )
+from streambuild.executor.standard._helpers.population import execute_standard_population
 from streambuild.executor.standard._helpers.preflight import (
     current_boundary_time,
     reject_incapable_adapter,
 )
 from streambuild.executor.standard._helpers.relations import (
-    create_planned_relations,
+    create_planned_tables,
     drop_planned_relations,
     target_relation_name_by_model_name,
 )
-from streambuild.executor.standard._helpers.replay import execute_standard_replay
 from streambuild.executor.standard._helpers.retention import (
     assert_preserved_history_covers_ranges,
     capture_completed_replay_coverage,
@@ -33,6 +31,7 @@ from streambuild.executor.standard._helpers.sources import (
 from streambuild.executor.standard.models import (
     StandardBuildRequest,
     StandardBuildResult,
+    StandardPopulationResult,
     StandardReplayBoundary,
     StandardReplayCoverage,
 )
@@ -82,28 +81,20 @@ def execute_standard_build(
     dropped: tuple[str, ...] = drop_planned_relations(
         client=client, plan=request.plan, database=request.database
     )
-    created: tuple[str, ...] = create_planned_relations(
+    created_tables: tuple[str, ...] = create_planned_tables(
         client=client,
         plan=request.plan,
         realized_project=request.realized_project,
         database=request.database,
     )
-    time.sleep(request.stabilization_seconds)
     boundary_time: str = request.boundary_time or current_boundary_time()
-    boundaries: tuple[StandardReplayBoundary, ...] = capture_replay_boundaries(
-        client=client,
-        plan=request.plan,
-        database=request.database,
-        boundary_time=boundary_time,
-        target_relation_name_by_model_name=target_relation_names,
-    )
-    replayed_model_names: tuple[str, ...] = execute_standard_replay(
+    population: StandardPopulationResult = execute_standard_population(
         client=client,
         plan=request.plan,
         realized_project=request.realized_project,
         database=request.database,
         boundary_time=boundary_time,
-        boundaries=boundaries,
+        stabilization_seconds=request.stabilization_seconds,
     )
     completed_coverage: tuple[StandardReplayCoverage, ...] = capture_completed_replay_coverage(
         client=client, plan=request.plan, database=request.database
@@ -127,8 +118,17 @@ def execute_standard_build(
         preserved_source_relation_names=preserved.preserved_relation_names,
         created_source_relation_names=preserved.created_relation_names,
         dropped_relation_names=dropped,
-        created_relation_names=created,
+        created_relation_names=(*created_tables, *population.created_view_relation_names),
         boundary_time=boundary_time,
-        boundaries=boundaries,
-        replayed_model_names=replayed_model_names,
+        boundaries=_logical_root_boundaries(plan=request.plan, population=population),
+        replayed_model_names=tuple(root.model_key.name for root in request.plan.replay_roots),
+    )
+
+
+def _logical_root_boundaries(
+    *, plan: StandardPlan, population: StandardPopulationResult
+) -> tuple[StandardReplayBoundary, ...]:
+    root_names: frozenset[str] = frozenset(root.model_key.name for root in plan.replay_roots)
+    return tuple(
+        boundary for boundary in population.boundaries if boundary.model_name in root_names
     )

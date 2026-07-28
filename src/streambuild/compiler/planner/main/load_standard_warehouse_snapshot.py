@@ -8,7 +8,7 @@ from streambuild.compiler.planner.models import StandardWarehouseSnapshot
 
 
 def load_standard_warehouse_snapshot(
-    *, client: AdapterConnection, database: str
+    *, client: AdapterConnection, database: str, metadata_database: str
 ) -> StandardWarehouseSnapshot:
     """Read the catalog and durable ownership exactly once for standard planning."""
 
@@ -18,5 +18,5 @@ def load_standard_warehouse_snapshot(
         )
     return StandardWarehouseSnapshot(
         catalog=client.load_catalog(database),
-        ownership_records=client.load_target_ownership(database),
+        ownership_records=client.load_target_ownership(metadata_database),
     )

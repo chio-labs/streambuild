@@ -29,6 +29,7 @@ from streambuild.compiler.planner.models import (
     RebuildSubtree,
     StandardPlan,
     StandardPlanEntry,
+    StandardPopulationSegment,
     StandardPrerequisite,
     StandardRelationOperation,
     StandardReplayRoot,
@@ -520,6 +521,14 @@ def build_standard_plan_preview() -> StandardPlan:
                 driving_input_relation_name="raw__orders",
                 replay_boundary_mode=ReplayLineageMode.OFFSETS,
                 propagated_model_keys=(enriched_key,),
+            ),
+        ),
+        population_segments=(
+            StandardPopulationSegment(
+                model_key=enriched_key,
+                driving_input_key=orders_key,
+                driving_input_relation_name="raw__orders",
+                replay_boundary_mode=ReplayLineageMode.OFFSETS,
             ),
         ),
         teardown_operations=(

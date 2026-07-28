@@ -97,7 +97,8 @@ def build_backfill_preview_context(
     desired_state: DesiredState = selection.desired_state
     assert_no_standard_owned_targets(
         client=client,
-        database=resolved_metadata_database,
+        metadata_database=resolved_metadata_database,
+        target_database=resolved_database,
         relation_names=tuple(object_.name for object_ in desired_state.objects),
     )
     actual_state: ActualState = load_actual_state_from_snapshot(

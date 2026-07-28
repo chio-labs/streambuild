@@ -8,6 +8,7 @@ class ExecuteStandardBuildTestCase:
     expected_drop_statements: tuple[str, ...]
     expected_created_relation_names: tuple[str, ...]
     expected_replay_relations: tuple[tuple[str, str, str], ...]
+    expected_replay_query_fragments: tuple[str, ...]
     expected_ownership_record_count: int
 
 

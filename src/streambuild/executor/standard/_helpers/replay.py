@@ -32,7 +32,11 @@ from streambuild.compiler.pipeline.models import RealizedProject
 from streambuild.compiler.planner.main.build_adapter_replay_query import (
     build_adapter_replay_query,
 )
-from streambuild.compiler.planner.models import StandardPlan, StandardReplayRoot
+from streambuild.compiler.planner.models import (
+    StandardPlan,
+    StandardPopulationSegment,
+    StandardReplayRoot,
+)
 from streambuild.executor.standard.exceptions import StandardBuildError
 from streambuild.executor.standard.models import StandardReplayBoundary
 
@@ -75,6 +79,30 @@ def execute_standard_replay(
     return tuple(replayed)
 
 
+def execute_standard_population_segment(
+    *,
+    client: AdapterConnection,
+    segment: StandardPopulationSegment,
+    realized_project: RealizedProject,
+    database: str,
+    boundary_time: str,
+    boundaries: tuple[StandardReplayBoundary, ...],
+) -> str:
+    """Populate one attached model exactly once from its completed driving input."""
+
+    if boundaries:
+        client.execute_replay(
+            _build_replay_request(
+                root=segment,
+                realized_project=realized_project,
+                database=database,
+                boundary_time=boundary_time,
+                root_boundaries=boundaries,
+            )
+        )
+    return segment.model_key.name
+
+
 def _execute_root_replay(
     *,
     client: AdapterConnection,
@@ -100,7 +128,7 @@ def _execute_root_replay(
 
 def _build_replay_request(
     *,
-    root: StandardReplayRoot,
+    root: StandardReplayRoot | StandardPopulationSegment,
     realized_project: RealizedProject,
     database: str,
     boundary_time: str,

@@ -37,6 +37,7 @@ class PlanningSnapshotAssemblyTestCase:
     description: str
     expected_catalog_load_count: int
     expected_query_count: int
+    expected_ownership_databases: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -249,6 +250,7 @@ class StandardOwnershipTestCase:
     stable_binding_names: tuple[str, ...]
     classified_relation_names: tuple[str, ...]
     expected_ownership: tuple[TargetOwnership, ...]
+    ownership_database: str = "analytics"
 
 
 @dataclass(frozen=True)

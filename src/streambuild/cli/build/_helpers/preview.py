@@ -38,8 +38,9 @@ def build_standard_build_preview(
         loaded_pipelines=list(analysis.compile_inputs.pipelines),
         override=options.database,
     )
+    metadata_database: str = options.metadata_database or database
     snapshot: StandardWarehouseSnapshot = load_standard_warehouse_snapshot(
-        client=client, database=database
+        client=client, database=database, metadata_database=metadata_database
     )
     selection: SelectionResolution = resolve_selection(
         realized_project=analysis.realized_project,
@@ -58,7 +59,7 @@ def build_standard_build_preview(
         analysis=analysis,
         plan=plan,
         database=database,
-        metadata_database=options.metadata_database or database,
+        metadata_database=metadata_database,
         adapter_name=client.adapter_identity.name,
     )
 
