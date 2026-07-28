@@ -121,6 +121,10 @@ def test_given_selection_when_planning_standard_then_scope_and_replay_roots_matc
 
     assert logical_key_names(plan.user_scope) == test_case.expected_user_scope
     assert logical_key_names(plan.execution_scope) == test_case.expected_execution_scope
+    assert (
+        logical_key_names(tuple(segment.model_key for segment in plan.population_segments))
+        == test_case.expected_execution_scope
+    )
     assert tuple(entry.reason for entry in plan.entries) == test_case.expected_reasons
     assert (
         tuple(prerequisite.key.name for prerequisite in plan.prerequisite_scope)
@@ -254,6 +258,16 @@ def test_given_executed_scope_when_planning_standard_then_relation_actions_are_d
             expected_ownership=(TargetOwnership.UNMANAGED,),
         ),
         StandardOwnershipTestCase(
+            description="a claim for the same relation in another database is ignored",
+            relation_names=("tbl__alpha",),
+            standard_owned_names=("tbl__alpha",),
+            virtual_environment_owned_names=(),
+            stable_binding_names=(),
+            classified_relation_names=("tbl__alpha",),
+            expected_ownership=(TargetOwnership.UNMANAGED,),
+            ownership_database="other_database",
+        ),
+        StandardOwnershipTestCase(
             description="a relation with a virtual-environment claim is virtual-environment owned",
             relation_names=("tbl__alpha",),
             standard_owned_names=(),
@@ -291,6 +305,7 @@ def test_given_durable_evidence_when_classifying_ownership_then_classification_m
         standard_owned_names=test_case.standard_owned_names,
         virtual_environment_owned_names=test_case.virtual_environment_owned_names,
         stable_binding_names=test_case.stable_binding_names,
+        ownership_database=test_case.ownership_database,
     )
 
     classifications: tuple[TargetOwnershipClassification, ...] = classify_relation_ownership(

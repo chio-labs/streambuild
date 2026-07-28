@@ -35,6 +35,7 @@ from tests.unit.src.streambuild.compiler.planner.helpers import (
             description="captures the catalog and metadata exactly once",
             expected_catalog_load_count=1,
             expected_query_count=1,
+            expected_ownership_databases=(),
         )
     ],
     ids=lambda case: case.description,
@@ -73,6 +74,7 @@ def test_given_warehouse_state_when_loading_snapshot_then_it_reads_each_source_o
     assert snapshot.object_state_records[0].key.name == "tbl__orders"
     assert connection.catalog_load_count == test_case.expected_catalog_load_count
     assert connection.query_count == test_case.expected_query_count
+    assert tuple(connection.ownership_databases) == test_case.expected_ownership_databases
 
 
 @pytest.mark.parametrize(
@@ -113,6 +115,7 @@ def test_given_missing_capability_when_loading_snapshot_then_it_rejects_before_r
             description="reads the catalog and durable ownership exactly once each",
             expected_catalog_load_count=1,
             expected_query_count=0,
+            expected_ownership_databases=("metadata",),
         )
     ],
     ids=lambda case: case.description,
@@ -140,12 +143,14 @@ def test_given_capable_adapter_when_loading_standard_snapshot_then_it_reads_each
     snapshot: StandardWarehouseSnapshot = load_standard_warehouse_snapshot(
         client=connection,
         database="analytics",
+        metadata_database="metadata",
     )
 
     assert snapshot.catalog is catalog
     assert snapshot.ownership_records[0].relation_name == "tbl__orders"
     assert connection.catalog_load_count == test_case.expected_catalog_load_count
     assert connection.query_count == test_case.expected_query_count
+    assert tuple(connection.ownership_databases) == test_case.expected_ownership_databases
 
 
 @pytest.mark.parametrize(
@@ -171,7 +176,9 @@ def test_given_incapable_adapter_when_loading_standard_snapshot_then_it_rejects_
     )
 
     with pytest.raises(AdapterCapabilityError, match=test_case.expected_error_message):
-        load_standard_warehouse_snapshot(client=connection, database="analytics")
+        load_standard_warehouse_snapshot(
+            client=connection, database="analytics", metadata_database="metadata"
+        )
 
     assert connection.catalog_load_count == test_case.expected_catalog_load_count
     assert connection.query_count == test_case.expected_query_count

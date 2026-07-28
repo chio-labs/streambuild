@@ -5,12 +5,15 @@ from __future__ import annotations
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import AdapterQueryResult
 from streambuild.compiler.compile.constants import (
-    REPLAY_LANDED_AT_COLUMN_NAME,
     REPLAY_OFFSET_COLUMN_NAME,
     REPLAY_PARTITION_COLUMN_NAME,
 )
 from streambuild.compiler.discovery.types import ReplayLineageMode
-from streambuild.compiler.planner.models import StandardPlan, StandardReplayRoot
+from streambuild.compiler.planner.models import (
+    StandardPlan,
+    StandardPopulationSegment,
+    StandardReplayRoot,
+)
 from streambuild.executor.standard.constants import SCALAR_BOUNDARY_COLUMN_BY_MODE
 from streambuild.executor.standard.exceptions import StandardBuildError
 from streambuild.executor.standard.models import StandardReplayBoundary
@@ -21,7 +24,6 @@ def capture_replay_boundaries(
     client: AdapterConnection,
     plan: StandardPlan,
     database: str,
-    boundary_time: str,
     target_relation_name_by_model_name: dict[str, str],
 ) -> tuple[StandardReplayBoundary, ...]:
     """Capture one boundary per replay root from live and preserved warehouse evidence."""
@@ -34,19 +36,34 @@ def capture_replay_boundaries(
                 client=client,
                 root=root,
                 database=database,
-                boundary_time=boundary_time,
                 target_relation_name=target_relation_name_by_model_name[root.model_key.name],
             )
         )
     return tuple(boundaries)
 
 
+def capture_population_segment_boundaries(
+    *,
+    client: AdapterConnection,
+    segment: StandardPopulationSegment,
+    database: str,
+    target_relation_name: str,
+) -> tuple[StandardReplayBoundary, ...]:
+    """Capture one model segment's replay/live cutover after its view is attached."""
+
+    return _root_boundaries(
+        client=client,
+        root=segment,
+        database=database,
+        target_relation_name=target_relation_name,
+    )
+
+
 def _root_boundaries(
     *,
     client: AdapterConnection,
-    root: StandardReplayRoot,
+    root: StandardReplayRoot | StandardPopulationSegment,
     database: str,
-    boundary_time: str,
     target_relation_name: str,
 ) -> tuple[StandardReplayBoundary, ...]:
     mode: ReplayLineageMode = ReplayLineageMode(root.replay_boundary_mode)
@@ -55,7 +72,6 @@ def _root_boundaries(
             client=client,
             root=root,
             database=database,
-            boundary_time=boundary_time,
             target_relation_name=target_relation_name,
         )
     return _scalar_boundaries(
@@ -63,7 +79,6 @@ def _root_boundaries(
         root=root,
         mode=mode,
         database=database,
-        boundary_time=boundary_time,
         target_relation_name=target_relation_name,
     )
 
@@ -71,23 +86,21 @@ def _root_boundaries(
 def _offset_boundaries(
     *,
     client: AdapterConnection,
-    root: StandardReplayRoot,
+    root: StandardReplayRoot | StandardPopulationSegment,
     database: str,
-    boundary_time: str,
     target_relation_name: str,
 ) -> tuple[StandardReplayBoundary, ...]:
-    live_floor_by_partition: dict[str, str] = _partition_values(
-        result=client.query(
-            f"SELECT {REPLAY_PARTITION_COLUMN_NAME}, min({REPLAY_OFFSET_COLUMN_NAME}) "
-            f"FROM {database}.{target_relation_name} GROUP BY {REPLAY_PARTITION_COLUMN_NAME}"
-        )
-    )
     preserved_cutoff_by_partition: dict[str, str] = _partition_values(
         result=client.query(
             f"SELECT {REPLAY_PARTITION_COLUMN_NAME}, max({REPLAY_OFFSET_COLUMN_NAME}) "
             f"FROM {database}.{root.driving_input_relation_name} "
-            f"WHERE {REPLAY_LANDED_AT_COLUMN_NAME} <= CAST('{boundary_time}' AS DateTime64(3)) "
             f"GROUP BY {REPLAY_PARTITION_COLUMN_NAME}"
+        )
+    )
+    live_floor_by_partition: dict[str, str] = _partition_values(
+        result=client.query(
+            f"SELECT {REPLAY_PARTITION_COLUMN_NAME}, min({REPLAY_OFFSET_COLUMN_NAME}) "
+            f"FROM {database}.{target_relation_name} GROUP BY {REPLAY_PARTITION_COLUMN_NAME}"
         )
     )
     return tuple(
@@ -104,10 +117,9 @@ def _offset_boundaries(
 def _scalar_boundaries(
     *,
     client: AdapterConnection,
-    root: StandardReplayRoot,
+    root: StandardReplayRoot | StandardPopulationSegment,
     mode: ReplayLineageMode,
     database: str,
-    boundary_time: str,
     target_relation_name: str,
 ) -> tuple[StandardReplayBoundary, ...]:
     boundary_column: str | None = SCALAR_BOUNDARY_COLUMN_BY_MODE.get(mode)
@@ -116,6 +128,14 @@ def _scalar_boundaries(
             f"Standard build does not support replay boundary mode '{mode}' for "
             f"model '{root.model_key.name}'"
         )
+    preserved_cutoff: str | None = _scalar_value(
+        result=client.query(
+            f"SELECT max({boundary_column}) FROM "
+            f"{database}.{root.driving_input_relation_name} HAVING count() > 0"
+        )
+    )
+    if preserved_cutoff is None:
+        return ()
     live_floor: str | None = _scalar_value(
         result=client.query(
             f"SELECT min({boundary_column}) FROM {database}.{target_relation_name} "
@@ -127,14 +147,14 @@ def _scalar_boundaries(
             root=root,
             boundary_key=boundary_column,
             live_floor=live_floor,
-            preserved_cutoff=boundary_time,
+            preserved_cutoff=preserved_cutoff,
         ),
     )
 
 
 def _boundary(
     *,
-    root: StandardReplayRoot,
+    root: StandardReplayRoot | StandardPopulationSegment,
     boundary_key: str,
     live_floor: str | None,
     preserved_cutoff: str,

@@ -28,14 +28,14 @@ def drop_planned_relations(
     return tuple(dropped)
 
 
-def create_planned_relations(
+def create_planned_tables(
     *,
     client: AdapterConnection,
     plan: StandardPlan,
     realized_project: RealizedProject,
     database: str,
 ) -> tuple[str, ...]:
-    """Create every planned relation at its ordinary logical name in dependency order."""
+    """Create every planned target table before dependency-ordered view attachment."""
 
     resource_by_name: dict[str, AdapterTable | AdapterMaterializedView] = (
         _model_resource_by_relation_name(plan=plan, realized_project=realized_project)
@@ -43,13 +43,30 @@ def create_planned_relations(
     created: list[str] = []
     operation: StandardRelationOperation
     for operation in plan.creation_operations:
-        client.realize_resource(
-            resource=resource_by_name[operation.relation_name],
-            database=database,
-            if_not_exists=False,
-        )
-        created.append(operation.relation_name)
+        resource: AdapterTable | AdapterMaterializedView = resource_by_name[operation.relation_name]
+        if isinstance(resource, AdapterTable):
+            client.realize_resource(resource=resource, database=database, if_not_exists=False)
+            created.append(operation.relation_name)
     return tuple(created)
+
+
+def create_planned_materialized_view(
+    *,
+    client: AdapterConnection,
+    model_key: LogicalResourceKey,
+    realized_project: RealizedProject,
+    database: str,
+) -> str:
+    """Attach one canonical model view after its executed dependencies are populated."""
+
+    resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView
+    for resource in realized_project.resources_by_logical_key[model_key]:
+        if isinstance(resource, AdapterMaterializedView):
+            client.realize_resource(resource=resource, database=database, if_not_exists=False)
+            return resource.name
+    raise StandardBuildError(
+        f"Standard build cannot find the materialized view of model '{model_key.name}'"
+    )
 
 
 def _model_resource_by_relation_name(

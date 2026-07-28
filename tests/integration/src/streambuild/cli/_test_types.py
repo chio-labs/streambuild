@@ -1,7 +1,9 @@
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import NamedTuple
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.compiler.compile.models import (
     DesiredKafkaTable,
     DesiredMaterializedView,
@@ -192,3 +194,59 @@ class CliStandardBuildPartialFailureIntegrationTestCase:
     expected_retention_exit_code: int
     expected_retention_error_fragment: str
     expected_partial_order_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class CliStandardSelectedBuildIntegrationTestCase:
+    description: str
+    selectors: tuple[str, ...]
+    landing_rows: tuple[tuple[str, int, int], ...]
+    boundary_landing_rows: tuple[tuple[str, int, int], ...]
+    expected_order_ids: tuple[str, ...]
+    expected_delta_rows: tuple[tuple[str, str], ...]
+    expected_drop_statements: tuple[str, ...]
+    expected_realized_relation_names: tuple[str, ...]
+    expected_replay_targets: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class CliStandardAggregateBuildIntegrationTestCase:
+    description: str
+    selectors: tuple[str, ...]
+    landing_rows: tuple[tuple[str, int, int], ...]
+    expected_error_fragment: str
+    expected_preserved_order_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class CliStandardSelectedFailureIntegrationTestCase:
+    description: str
+    selectors: tuple[str, ...]
+    landing_rows: tuple[tuple[str, int, int], ...]
+    expected_order_ids: tuple[str, ...]
+    expected_delta_rows: tuple[tuple[str, str], ...]
+    expected_failure_fragment: str
+    expected_replay_targets: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class CliStandardExecutionStepFailureIntegrationTestCase:
+    description: str
+    connection_factory: Callable[[AdapterConnection], AdapterConnection]
+    expected_failure_fragment: str
+
+
+@dataclass(frozen=True)
+class CliStandardSelectionMatrixIntegrationTestCase:
+    description: str
+    selectors: tuple[str, ...]
+    expected_drop_relation_names: tuple[str, ...]
+    expected_replay_targets: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class CliStandardSelectedAuditIntegrationTestCase:
+    description: str
+    selectors: tuple[str, ...]
+    audit_sql_by_name: tuple[tuple[str, str], ...]
+    expected_query_markers: tuple[tuple[str, bool], ...]

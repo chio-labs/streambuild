@@ -30,6 +30,7 @@ def execute_standard_plan(
     snapshot: StandardWarehouseSnapshot = load_standard_warehouse_snapshot(
         client=client,
         database=options.database,
+        metadata_database=options.database,
     )
     selection: SelectionResolution = resolve_selection(
         realized_project=analysis.realized_project,

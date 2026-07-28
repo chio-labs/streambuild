@@ -1,3 +1,4 @@
+from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -7,27 +8,46 @@ from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.executor.standard.models import StandardReplayBoundary
 from tests.integration.src.streambuild.cli._test_types import (
     CliReciprocalOwnershipIntegrationTestCase,
+    CliStandardAggregateBuildIntegrationTestCase,
     CliStandardBuildAuditIntegrationTestCase,
     CliStandardBuildBoundaryIntegrationTestCase,
     CliStandardBuildGuardIntegrationTestCase,
     CliStandardBuildIntegrationTestCase,
     CliStandardBuildPartialFailureIntegrationTestCase,
     CliStandardBuildRerunIntegrationTestCase,
+    CliStandardExecutionStepFailureIntegrationTestCase,
+    CliStandardSelectedAuditIntegrationTestCase,
+    CliStandardSelectedBuildIntegrationTestCase,
+    CliStandardSelectedFailureIntegrationTestCase,
+    CliStandardSelectionMatrixIntegrationTestCase,
 )
 from tests.integration.src.streambuild.cli.helpers import (
+    FailFinalOwnershipOnceConnection,
+    FailOnceBoundaryQueryConnection,
+    FailOnceDropConnection,
     FailOnceRealizationConnection,
     FailOnceReplayConnection,
+    FailOnceViewRealizationConnection,
+    FailSecondReplayOnceConnection,
+    StandardActionRecordingConnection,
     build_managed_clickhouse_client,
     capture_standard_build_boundaries,
+    execute_standard_build_directly,
     execute_warehouse_statements,
     insert_landing_rows,
+    insert_landing_rows_after_delay,
     run_standard_build,
     run_virtual_environment_backfill,
     standard_build_order_ids,
+    standard_graph_delta_rows,
+    standard_graph_order_ids,
     standard_owned_relation_names,
     standard_owned_replay_coverage_ranges,
     warehouse_row_count,
+    write_standard_aggregate_project,
     write_standard_build_project,
+    write_standard_selected_graph_audits,
+    write_standard_selected_graph_project,
 )
 from tests.integration.src.streambuild.conftest import ClickHouseConnectionSettings
 
@@ -596,3 +616,583 @@ def test_given_partial_target_after_failure_when_rerunning_then_durable_coverage
     assert retention_exit_code == test_case.expected_retention_exit_code
     assert test_case.expected_retention_error_fragment in retention_error
     assert partial_order_ids == test_case.expected_partial_order_ids
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliStandardSelectedBuildIntegrationTestCase(
+            description="selected fan-in closure rebuilds once and repeats when unchanged",
+            selectors=("beta",),
+            landing_rows=(("order-1", 0, 1), ("order-2", 0, 2)),
+            boundary_landing_rows=(("order-3", 0, 3),),
+            expected_order_ids=("order-1", "order-2", "order-3"),
+            expected_delta_rows=(
+                ("order-1", "order-1-gamma"),
+                ("order-2", "order-2-gamma"),
+                ("order-3", "order-3-gamma"),
+            ),
+            expected_drop_statements=(
+                "DROP TABLE IF EXISTS {database}.mv__delta SYNC",
+                "DROP TABLE IF EXISTS {database}.mv__gamma SYNC",
+                "DROP TABLE IF EXISTS {database}.mv__beta SYNC",
+                "DROP TABLE IF EXISTS {database}.tbl__delta SYNC",
+                "DROP TABLE IF EXISTS {database}.tbl__gamma SYNC",
+                "DROP TABLE IF EXISTS {database}.tbl__beta SYNC",
+            ),
+            expected_realized_relation_names=(
+                "tbl__beta",
+                "tbl__gamma",
+                "tbl__delta",
+                "mv__beta",
+                "mv__gamma",
+                "mv__delta",
+            ),
+            expected_replay_targets=("tbl__beta", "tbl__gamma", "tbl__delta"),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_settled_graph_when_building_selected_model_then_closure_rebuilds_once(
+    test_case: CliStandardSelectedBuildIntegrationTestCase,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    write_standard_selected_graph_project(project_root=tmp_path)
+    delegate: AdapterConnection = build_managed_clickhouse_client(
+        clickhouse_connection_settings, database=clickhouse_database
+    )
+
+    try:
+        initial_exit_code: int = run_standard_build(
+            project_root=tmp_path, database=clickhouse_database, connection=delegate
+        )
+        _ = capsys.readouterr()
+        insert_landing_rows(
+            connection=delegate, database=clickhouse_database, rows=test_case.landing_rows
+        )
+        prerequisite_before: tuple[str, ...] = standard_graph_order_ids(
+            clickhouse_client=clickhouse_client,
+            database=clickhouse_database,
+            model_name="alpha",
+        )
+        connection: StandardActionRecordingConnection = StandardActionRecordingConnection(delegate)
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            boundary_future: Future[None] = executor.submit(
+                insert_landing_rows_after_delay,
+                connection_settings=clickhouse_connection_settings,
+                database=clickhouse_database,
+                rows=test_case.boundary_landing_rows,
+                delay_seconds=0.2,
+            )
+            _ = execute_standard_build_directly(
+                project_root=tmp_path,
+                database=clickhouse_database,
+                connection=connection,
+                stabilization_seconds=1.0,
+                selectors=test_case.selectors,
+            )
+            _ = boundary_future.result()
+        repeated_exit_code: int = run_standard_build(
+            project_root=tmp_path,
+            database=clickhouse_database,
+            connection=connection,
+            selectors=test_case.selectors,
+        )
+        _ = capsys.readouterr()
+        prerequisite_after: tuple[str, ...] = standard_graph_order_ids(
+            clickhouse_client=clickhouse_client,
+            database=clickhouse_database,
+            model_name="alpha",
+        )
+        beta_rows: tuple[str, ...] = standard_graph_order_ids(
+            clickhouse_client=clickhouse_client,
+            database=clickhouse_database,
+            model_name="beta",
+        )
+        gamma_rows: tuple[str, ...] = standard_graph_order_ids(
+            clickhouse_client=clickhouse_client,
+            database=clickhouse_database,
+            model_name="gamma",
+        )
+        delta_rows: tuple[tuple[str, str], ...] = standard_graph_delta_rows(
+            clickhouse_client=clickhouse_client, database=clickhouse_database
+        )
+    finally:
+        delegate.close()
+
+    expected_drop_statements: tuple[str, ...] = tuple(
+        statement.format(database=clickhouse_database)
+        for statement in test_case.expected_drop_statements
+    )
+    assert initial_exit_code == 0
+    assert repeated_exit_code == 0
+    assert prerequisite_before == test_case.expected_order_ids[:-1]
+    assert prerequisite_after == test_case.expected_order_ids
+    assert beta_rows == test_case.expected_order_ids
+    assert gamma_rows == test_case.expected_order_ids
+    assert delta_rows == test_case.expected_delta_rows
+    assert tuple(
+        connection.command_statements.count(statement) for statement in expected_drop_statements
+    ) == (2, 2, 2, 2, 2, 2)
+    assert tuple(connection.realized_relation_names) == (
+        *test_case.expected_realized_relation_names,
+        *test_case.expected_realized_relation_names,
+    )
+    assert tuple(connection.replay_targets) == (
+        *test_case.expected_replay_targets,
+        *test_case.expected_replay_targets,
+    )
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliStandardAggregateBuildIntegrationTestCase(
+            description="aggregate root is rejected before selected writes",
+            selectors=("beta",),
+            landing_rows=(("order-1", 0, 1), ("order-2", 0, 2)),
+            expected_error_fragment=(
+                "Standard mode cannot safely rebuild aggregate models without an atomic "
+                "replay/live frontier: beta"
+            ),
+            expected_preserved_order_ids=("order-1", "order-2"),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_aggregate_root_when_building_selected_model_then_it_rejects_before_writes(
+    test_case: CliStandardAggregateBuildIntegrationTestCase,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    write_standard_selected_graph_project(project_root=tmp_path)
+    delegate: AdapterConnection = build_managed_clickhouse_client(
+        clickhouse_connection_settings, database=clickhouse_database
+    )
+
+    try:
+        initial_exit_code: int = run_standard_build(
+            project_root=tmp_path, database=clickhouse_database, connection=delegate
+        )
+        _ = capsys.readouterr()
+        insert_landing_rows(
+            connection=delegate,
+            database=clickhouse_database,
+            rows=test_case.landing_rows,
+        )
+        write_standard_aggregate_project(project_root=tmp_path)
+        connection: StandardActionRecordingConnection = StandardActionRecordingConnection(delegate)
+        rejected_exit_code: int = run_standard_build(
+            project_root=tmp_path,
+            database=clickhouse_database,
+            connection=connection,
+            selectors=test_case.selectors,
+        )
+        rejection_error: str = capsys.readouterr().err
+        preserved_order_ids: tuple[str, ...] = standard_graph_order_ids(
+            clickhouse_client=clickhouse_client,
+            database=clickhouse_database,
+            model_name="beta",
+        )
+    finally:
+        delegate.close()
+
+    assert (initial_exit_code, rejected_exit_code) == (0, 1)
+    assert test_case.expected_error_fragment in rejection_error
+    assert preserved_order_ids == test_case.expected_preserved_order_ids
+    assert connection.command_statements == []
+    assert connection.realized_relation_names == []
+    assert connection.replay_targets == []
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliStandardSelectedFailureIntegrationTestCase(
+            description="second selected population failure reconstructs exactly on retry",
+            selectors=("beta",),
+            landing_rows=(("order-1", 0, 1), ("order-2", 0, 2)),
+            expected_order_ids=("order-1", "order-2"),
+            expected_delta_rows=(
+                ("order-1", "order-1-gamma"),
+                ("order-2", "order-2-gamma"),
+            ),
+            expected_failure_fragment="injected failure during second population segment",
+            expected_replay_targets=(
+                "tbl__beta",
+                "tbl__gamma",
+                "tbl__beta",
+                "tbl__gamma",
+                "tbl__delta",
+            ),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_partial_selected_population_when_retrying_then_closure_reconstructs_exactly(
+    test_case: CliStandardSelectedFailureIntegrationTestCase,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    write_standard_selected_graph_project(project_root=tmp_path)
+    delegate: AdapterConnection = build_managed_clickhouse_client(
+        clickhouse_connection_settings, database=clickhouse_database
+    )
+
+    try:
+        initial_exit_code: int = run_standard_build(
+            project_root=tmp_path, database=clickhouse_database, connection=delegate
+        )
+        _ = capsys.readouterr()
+        insert_landing_rows(
+            connection=delegate, database=clickhouse_database, rows=test_case.landing_rows
+        )
+        connection: FailSecondReplayOnceConnection = FailSecondReplayOnceConnection(delegate)
+        failed_exit_code: int = run_standard_build(
+            project_root=tmp_path,
+            database=clickhouse_database,
+            connection=connection,
+            selectors=test_case.selectors,
+        )
+        failure_error: str = capsys.readouterr().err
+        rerun_exit_code: int = run_standard_build(
+            project_root=tmp_path,
+            database=clickhouse_database,
+            connection=connection,
+            selectors=test_case.selectors,
+        )
+        rerun_error: str = capsys.readouterr().err
+        beta_rows: tuple[str, ...] = standard_graph_order_ids(
+            clickhouse_client=clickhouse_client,
+            database=clickhouse_database,
+            model_name="beta",
+        )
+        gamma_rows: tuple[str, ...] = standard_graph_order_ids(
+            clickhouse_client=clickhouse_client,
+            database=clickhouse_database,
+            model_name="gamma",
+        )
+        delta_rows: tuple[tuple[str, str], ...] = standard_graph_delta_rows(
+            clickhouse_client=clickhouse_client, database=clickhouse_database
+        )
+    finally:
+        delegate.close()
+
+    assert (initial_exit_code, failed_exit_code, rerun_exit_code) == (0, 1, 0)
+    assert test_case.expected_failure_fragment in failure_error
+    assert rerun_error == ""
+    assert (beta_rows, gamma_rows) == (
+        test_case.expected_order_ids,
+        test_case.expected_order_ids,
+    )
+    assert delta_rows == test_case.expected_delta_rows
+    assert tuple(connection.replay_targets) == test_case.expected_replay_targets
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliStandardExecutionStepFailureIntegrationTestCase(
+            description="teardown failure is safe to retry",
+            connection_factory=FailOnceDropConnection,
+            expected_failure_fragment="injected failure during selected teardown",
+        ),
+        CliStandardExecutionStepFailureIntegrationTestCase(
+            description="view attachment failure is safe to retry",
+            connection_factory=FailOnceViewRealizationConnection,
+            expected_failure_fragment="injected failure during selected view attachment",
+        ),
+        CliStandardExecutionStepFailureIntegrationTestCase(
+            description="boundary capture failure is safe to retry",
+            connection_factory=FailOnceBoundaryQueryConnection,
+            expected_failure_fragment="injected failure during selected boundary capture",
+        ),
+        CliStandardExecutionStepFailureIntegrationTestCase(
+            description="final ownership failure is safe to retry",
+            connection_factory=FailFinalOwnershipOnceConnection,
+            expected_failure_fragment="injected failure during final ownership persistence",
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_selected_execution_step_failure_when_retrying_then_result_is_exact(
+    test_case: CliStandardExecutionStepFailureIntegrationTestCase,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    write_standard_selected_graph_project(project_root=tmp_path)
+    delegate: AdapterConnection = build_managed_clickhouse_client(
+        clickhouse_connection_settings, database=clickhouse_database
+    )
+
+    try:
+        initial_exit_code: int = run_standard_build(
+            project_root=tmp_path, database=clickhouse_database, connection=delegate
+        )
+        _ = capsys.readouterr()
+        insert_landing_rows(
+            connection=delegate,
+            database=clickhouse_database,
+            rows=(("order-1", 0, 1), ("order-2", 0, 2)),
+        )
+        connection: AdapterConnection = test_case.connection_factory(delegate)
+        failed_exit_code: int = run_standard_build(
+            project_root=tmp_path,
+            database=clickhouse_database,
+            connection=connection,
+            selectors=("beta",),
+        )
+        failure_error: str = capsys.readouterr().err
+        rerun_exit_code: int = run_standard_build(
+            project_root=tmp_path,
+            database=clickhouse_database,
+            connection=connection,
+            selectors=("beta",),
+        )
+        rerun_error: str = capsys.readouterr().err
+        beta_rows: tuple[str, ...] = standard_graph_order_ids(
+            clickhouse_client=clickhouse_client,
+            database=clickhouse_database,
+            model_name="beta",
+        )
+        gamma_rows: tuple[str, ...] = standard_graph_order_ids(
+            clickhouse_client=clickhouse_client,
+            database=clickhouse_database,
+            model_name="gamma",
+        )
+        delta_rows: tuple[tuple[str, str], ...] = standard_graph_delta_rows(
+            clickhouse_client=clickhouse_client, database=clickhouse_database
+        )
+    finally:
+        delegate.close()
+
+    assert (initial_exit_code, failed_exit_code, rerun_exit_code) == (0, 1, 0)
+    assert test_case.expected_failure_fragment in failure_error
+    assert rerun_error == ""
+    assert (beta_rows, gamma_rows) == (
+        ("order-1", "order-2"),
+        ("order-1", "order-2"),
+    )
+    assert delta_rows == (
+        ("order-1", "order-1-gamma"),
+        ("order-2", "order-2-gamma"),
+    )
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliStandardSelectionMatrixIntegrationTestCase(
+            description="head selection rebuilds every model",
+            selectors=("alpha",),
+            expected_drop_relation_names=(
+                "mv__delta",
+                "mv__gamma",
+                "mv__beta",
+                "mv__alpha",
+                "tbl__delta",
+                "tbl__gamma",
+                "tbl__beta",
+                "tbl__alpha",
+            ),
+            expected_replay_targets=(
+                "tbl__alpha",
+                "tbl__beta",
+                "tbl__gamma",
+                "tbl__delta",
+            ),
+        ),
+        CliStandardSelectionMatrixIntegrationTestCase(
+            description="side-reference selection rebuilds its dependent closure",
+            selectors=("gamma",),
+            expected_drop_relation_names=(
+                "mv__delta",
+                "mv__gamma",
+                "tbl__delta",
+                "tbl__gamma",
+            ),
+            expected_replay_targets=("tbl__gamma", "tbl__delta"),
+        ),
+        CliStandardSelectionMatrixIntegrationTestCase(
+            description="leaf selection rebuilds only the leaf",
+            selectors=("delta",),
+            expected_drop_relation_names=("mv__delta", "tbl__delta"),
+            expected_replay_targets=("tbl__delta",),
+        ),
+        CliStandardSelectionMatrixIntegrationTestCase(
+            description="overlapping selections execute each model once",
+            selectors=("gamma", "delta"),
+            expected_drop_relation_names=(
+                "mv__delta",
+                "mv__gamma",
+                "tbl__delta",
+                "tbl__gamma",
+            ),
+            expected_replay_targets=("tbl__gamma", "tbl__delta"),
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_selection_matrix_when_building_then_exact_closure_is_reconstructed(
+    test_case: CliStandardSelectionMatrixIntegrationTestCase,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    write_standard_selected_graph_project(project_root=tmp_path)
+    delegate: AdapterConnection = build_managed_clickhouse_client(
+        clickhouse_connection_settings, database=clickhouse_database
+    )
+
+    try:
+        initial_exit_code: int = run_standard_build(
+            project_root=tmp_path, database=clickhouse_database, connection=delegate
+        )
+        _ = capsys.readouterr()
+        insert_landing_rows(
+            connection=delegate,
+            database=clickhouse_database,
+            rows=(("order-1", 0, 1), ("order-2", 0, 2)),
+        )
+        connection: StandardActionRecordingConnection = StandardActionRecordingConnection(delegate)
+        selected_exit_code: int = run_standard_build(
+            project_root=tmp_path,
+            database=clickhouse_database,
+            connection=connection,
+            selectors=test_case.selectors,
+        )
+        selected_error: str = capsys.readouterr().err
+        alpha_rows: tuple[str, ...] = standard_graph_order_ids(
+            clickhouse_client=clickhouse_client,
+            database=clickhouse_database,
+            model_name="alpha",
+        )
+        beta_rows: tuple[str, ...] = standard_graph_order_ids(
+            clickhouse_client=clickhouse_client,
+            database=clickhouse_database,
+            model_name="beta",
+        )
+        gamma_rows: tuple[str, ...] = standard_graph_order_ids(
+            clickhouse_client=clickhouse_client,
+            database=clickhouse_database,
+            model_name="gamma",
+        )
+        delta_rows: tuple[tuple[str, str], ...] = standard_graph_delta_rows(
+            clickhouse_client=clickhouse_client, database=clickhouse_database
+        )
+    finally:
+        delegate.close()
+
+    expected_drop_statements: tuple[str, ...] = tuple(
+        f"DROP TABLE IF EXISTS {clickhouse_database}.{name} SYNC"
+        for name in test_case.expected_drop_relation_names
+    )
+    assert (initial_exit_code, selected_exit_code) == (0, 0)
+    assert selected_error == ""
+    assert tuple(connection.command_statements) == expected_drop_statements
+    assert tuple(connection.replay_targets) == test_case.expected_replay_targets
+    assert (alpha_rows, beta_rows, gamma_rows) == (
+        ("order-1", "order-2"),
+        ("order-1", "order-2"),
+        ("order-1", "order-2"),
+    )
+    assert delta_rows == (
+        ("order-1", "order-1-gamma"),
+        ("order-2", "order-2-gamma"),
+    )
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliStandardSelectedAuditIntegrationTestCase(
+            description="selected build runs only audits fully covered by execution scope",
+            selectors=("beta",),
+            audit_sql_by_name=(
+                (
+                    "covered.sql",
+                    'AUDIT (description: "covered");\n'
+                    "SELECT 'covered-audit-marker' AS marker "
+                    'FROM __ref("beta") WHERE 0\n',
+                ),
+                (
+                    "excluded.sql",
+                    'AUDIT (description: "excluded");\n'
+                    "SELECT 'excluded-audit-marker' AS marker "
+                    'FROM __ref("alpha")\n',
+                ),
+            ),
+            expected_query_markers=(
+                ("covered-audit-marker", True),
+                ("excluded-audit-marker", False),
+            ),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_selected_build_audits_when_building_then_only_covered_audits_run(
+    test_case: CliStandardSelectedAuditIntegrationTestCase,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_database: str,
+) -> None:
+    write_standard_selected_graph_project(project_root=tmp_path)
+    delegate: AdapterConnection = build_managed_clickhouse_client(
+        clickhouse_connection_settings, database=clickhouse_database
+    )
+
+    try:
+        initial_exit_code: int = run_standard_build(
+            project_root=tmp_path, database=clickhouse_database, connection=delegate
+        )
+        _ = capsys.readouterr()
+        insert_landing_rows(
+            connection=delegate,
+            database=clickhouse_database,
+            rows=(("order-1", 0, 1),),
+        )
+        write_standard_selected_graph_audits(
+            project_root=tmp_path, audit_sql_by_name=test_case.audit_sql_by_name
+        )
+        connection: StandardActionRecordingConnection = StandardActionRecordingConnection(delegate)
+        selected_exit_code: int = run_standard_build(
+            project_root=tmp_path,
+            database=clickhouse_database,
+            connection=connection,
+            selectors=test_case.selectors,
+        )
+        selected_error: str = capsys.readouterr().err
+    finally:
+        delegate.close()
+
+    executed_queries: str = "\n".join(connection.query_statements)
+    assert (initial_exit_code, selected_exit_code) == (0, 0)
+    assert selected_error == ""
+    assert (
+        tuple(
+            (marker, marker in executed_queries) for marker, _ in test_case.expected_query_markers
+        )
+        == test_case.expected_query_markers
+    )

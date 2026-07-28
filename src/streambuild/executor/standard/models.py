@@ -57,6 +57,15 @@ class StandardReplayCoverage:
 
 
 @dataclass(frozen=True)
+class StandardPopulationResult:
+    """Relations, boundaries, and models completed by ordered standard population."""
+
+    created_view_relation_names: tuple[str, ...]
+    boundaries: tuple[StandardReplayBoundary, ...]
+    populated_model_names: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class StandardBuildResult:
     """Everything one standard build durably changed, in execution order."""
 

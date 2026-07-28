@@ -132,6 +132,7 @@ class SnapshotRecordingConnection(AdapterConnection):
         self._metadata_result: AdapterQueryResult = metadata_result
         self._ownership_records: tuple[AdapterOwnershipRecord, ...] = ownership_records
         self.recorded_ownership_records: tuple[AdapterOwnershipRecord, ...] = ()
+        self.ownership_databases: list[str] = []
         self._capabilities: AdapterCapabilities = AdapterCapabilities(
             virtual_environments=virtual_environments,
             managed_source_kinds=frozenset({"kafka"}),
@@ -164,7 +165,7 @@ class SnapshotRecordingConnection(AdapterConnection):
         return frozenset()
 
     def load_target_ownership(self, database: str) -> tuple[AdapterOwnershipRecord, ...]:
-        del database
+        self.ownership_databases.append(database)
         return self._ownership_records
 
     def record_target_ownership(
@@ -656,6 +657,7 @@ def build_standard_snapshot(
     standard_owned_names: tuple[str, ...] = (),
     virtual_environment_owned_names: tuple[str, ...] = (),
     stable_binding_names: tuple[str, ...] = (),
+    ownership_database: str = "analytics",
 ) -> StandardWarehouseSnapshot:
     """Build one immutable standard snapshot from explicit relation and ownership facts."""
 
@@ -681,22 +683,25 @@ def build_standard_snapshot(
         ),
         ownership_records=(
             *_ownership_records(
-                relation_names=standard_owned_names, mode=AdapterOwningMode.STANDARD
+                relation_names=standard_owned_names,
+                mode=AdapterOwningMode.STANDARD,
+                database=ownership_database,
             ),
             *_ownership_records(
                 relation_names=virtual_environment_owned_names,
                 mode=AdapterOwningMode.VIRTUAL_ENVIRONMENT,
+                database=ownership_database,
             ),
         ),
     )
 
 
 def _ownership_records(
-    *, relation_names: tuple[str, ...], mode: AdapterOwningMode
+    *, relation_names: tuple[str, ...], mode: AdapterOwningMode, database: str
 ) -> tuple[AdapterOwnershipRecord, ...]:
     return tuple(
         AdapterOwnershipRecord(
-            database_name="analytics",
+            database_name=database,
             relation_name=relation_name,
             resource_kind="table",
             logical_model_name=relation_name.split("__")[-1],

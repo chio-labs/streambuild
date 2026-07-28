@@ -452,6 +452,21 @@ class StandardReplayRoot:
 
 
 @dataclass(frozen=True)
+class StandardPopulationSegment:
+    """One dependency-ordered model attachment and historical population step."""
+
+    model_key: LogicalResourceKey
+    driving_input_key: LogicalResourceKey
+    driving_input_relation_name: str
+    replay_boundary_mode: ReplayLineageMode | str
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "replay_boundary_mode", ReplayLineageMode(self.replay_boundary_mode)
+        )
+
+
+@dataclass(frozen=True)
 class StandardRelationOperation:
     """One destructive or constructive relation action in dependency-safe order."""
 
@@ -473,6 +488,7 @@ class StandardPlan:
     prerequisite_scope: tuple[StandardPrerequisite, ...]
     entries: tuple[StandardPlanEntry, ...]
     replay_roots: tuple[StandardReplayRoot, ...]
+    population_segments: tuple[StandardPopulationSegment, ...]
     teardown_operations: tuple[StandardRelationOperation, ...]
     creation_operations: tuple[StandardRelationOperation, ...]
     warnings: tuple[PlannerWarning, ...] = ()

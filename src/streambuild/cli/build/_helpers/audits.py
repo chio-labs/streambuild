@@ -18,7 +18,11 @@ def run_standard_build_audits(
 ) -> SqlAuditRunResult:
     """Audit the directly named relations the build just made live."""
 
-    audits: tuple[LoadedSqlAudit, ...] = preview.analysis.compiled_project.audits
+    audits: tuple[LoadedSqlAudit, ...] = select_standard_build_audits(
+        audits=preview.analysis.compiled_project.audits,
+        execution_model_names=frozenset(key.name for key in preview.plan.execution_scope),
+        full_build=not preview.plan.user_scope,
+    )
     return execute_sql_audits(
         loaded_audits=audits,
         resolver={
@@ -31,3 +35,26 @@ def run_standard_build_audits(
         client=client,
         dialect=adapter_profile.sql_analysis_dialect,
     )
+
+
+def select_standard_build_audits(
+    *,
+    audits: tuple[LoadedSqlAudit, ...],
+    execution_model_names: frozenset[str],
+    full_build: bool,
+) -> tuple[LoadedSqlAudit, ...]:
+    """Keep audits whose complete managed-model reference set was rebuilt."""
+
+    if full_build:
+        return audits
+    return tuple(
+        audit
+        for audit in audits
+        if _is_audit_fully_covered(audit=audit, execution_model_names=execution_model_names)
+    )
+
+
+def _is_audit_fully_covered(
+    *, audit: LoadedSqlAudit, execution_model_names: frozenset[str]
+) -> bool:
+    return frozenset(audit.referenced_model_names) <= execution_model_names
