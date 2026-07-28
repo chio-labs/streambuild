@@ -38,6 +38,22 @@ class AdapterCapabilities:
 
 
 @dataclass(frozen=True)
+class AdapterReplayCoverageRange:
+    """One retained lineage range required to reproduce a standard target."""
+
+    driving_input_relation_name: str
+    replay_boundary_mode: AdapterReplayBoundaryMode | str
+    boundary_key: str
+    lower_value: str
+    upper_value: str
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "replay_boundary_mode", AdapterReplayBoundaryMode(self.replay_boundary_mode)
+        )
+
+
+@dataclass(frozen=True)
 class AdapterOwnershipRecord:
     """One durable claim that StreamBuild manages a specific warehouse relation."""
 
@@ -48,6 +64,7 @@ class AdapterOwnershipRecord:
     owning_mode: AdapterOwningMode | str
     tool_version: str
     logical_model_database: str | None = None
+    replay_coverage: tuple[AdapterReplayCoverageRange, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "owning_mode", AdapterOwningMode(self.owning_mode))

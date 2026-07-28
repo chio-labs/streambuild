@@ -12,6 +12,7 @@ from streambuild.executor.standard.constants import (
     STANDARD_TABLE_RESOURCE_KIND,
     STANDARD_VIEW_RESOURCE_KIND,
 )
+from streambuild.executor.standard.models import StandardReplayCoverage
 
 _RESOURCE_KIND_BY_RELATION_INDEX: dict[int, str] = {
     MODEL_TABLE_RELATION_INDEX: STANDARD_TABLE_RESOURCE_KIND,
@@ -20,14 +21,25 @@ _RESOURCE_KIND_BY_RELATION_INDEX: dict[int, str] = {
 
 
 def build_standard_ownership_records(
-    *, plan: StandardPlan, database: str, tool_version: str
+    *,
+    plan: StandardPlan,
+    database: str,
+    tool_version: str,
+    replay_coverage: tuple[StandardReplayCoverage, ...],
 ) -> tuple[AdapterOwnershipRecord, ...]:
     """Claim every relation the planned closure will create or replace."""
 
     records: list[AdapterOwnershipRecord] = []
     entry: StandardPlanEntry
     for entry in plan.entries:
-        records.extend(_entry_records(entry=entry, database=database, tool_version=tool_version))
+        records.extend(
+            _entry_records(
+                entry=entry,
+                database=database,
+                tool_version=tool_version,
+                replay_coverage=replay_coverage,
+            )
+        )
     return tuple(records)
 
 
@@ -43,8 +55,16 @@ def record_standard_ownership(
 
 
 def _entry_records(
-    *, entry: StandardPlanEntry, database: str, tool_version: str
+    *,
+    entry: StandardPlanEntry,
+    database: str,
+    tool_version: str,
+    replay_coverage: tuple[StandardReplayCoverage, ...],
 ) -> tuple[AdapterOwnershipRecord, ...]:
+    model_coverage: StandardReplayCoverage | None = next(
+        (coverage for coverage in replay_coverage if coverage.model_name == entry.model_key.name),
+        None,
+    )
     return tuple(
         AdapterOwnershipRecord(
             database_name=database,
@@ -53,6 +73,7 @@ def _entry_records(
             logical_model_name=entry.model_key.name,
             owning_mode=AdapterOwningMode.STANDARD,
             tool_version=tool_version,
+            replay_coverage=() if model_coverage is None else model_coverage.ranges,
         )
         for relation_index, relation_name in enumerate(entry.relation_names)
     )

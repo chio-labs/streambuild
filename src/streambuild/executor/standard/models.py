@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from streambuild.adapter.models import AdapterOwnershipRecord
+from streambuild.adapter.models import AdapterOwnershipRecord, AdapterReplayCoverageRange
 from streambuild.compiler.discovery.types import ReplayLineageMode
 from streambuild.compiler.pipeline.models import RealizedProject
 from streambuild.compiler.planner.models import StandardPlan
@@ -46,6 +46,14 @@ class StandardReplayBoundary:
         object.__setattr__(
             self, "replay_boundary_mode", ReplayLineageMode(self.replay_boundary_mode)
         )
+
+
+@dataclass(frozen=True)
+class StandardReplayCoverage:
+    """Durable replay ranges required to reproduce one standard model."""
+
+    model_name: str
+    ranges: tuple[AdapterReplayCoverageRange, ...]
 
 
 @dataclass(frozen=True)

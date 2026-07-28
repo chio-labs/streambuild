@@ -187,6 +187,7 @@ def migration_schema_result() -> AdapterQueryResult:
             ("streambuild_target_ownership", "logical_model_name"),
             ("streambuild_target_ownership", "owning_mode"),
             ("streambuild_target_ownership", "tool_version"),
+            ("streambuild_target_ownership", "replay_coverage_json"),
             ("streambuild_target_ownership", "created_at"),
             ("streambuild_target_ownership", "updated_at"),
         )

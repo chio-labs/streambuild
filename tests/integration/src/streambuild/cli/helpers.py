@@ -1,6 +1,6 @@
 import json
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from pathlib import Path
 from textwrap import dedent
 from typing import cast
@@ -8,6 +8,7 @@ from typing import cast
 from clickhouse_connect.driver.client import Client
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.exceptions import AdapterWarehouseError
 from streambuild.adapter.models import (
     AdapterBindingReplacementRequest,
     AdapterBindingReplacementResult,
@@ -187,6 +188,54 @@ class RecordingDelegatingConnection(AdapterConnection):
 
     def close(self) -> None:
         self._delegate.close()
+
+
+class FailOnceRealizationConnection(RecordingDelegatingConnection):
+    def __init__(self, delegate: AdapterConnection) -> None:
+        super().__init__(delegate)
+        self._realization_actions: Iterator[Callable[..., None]] = iter(
+            (
+                self._reject_realization,
+                self._delegate.realize_resource,
+                self._delegate.realize_resource,
+            )
+        )
+
+    def realize_resource(
+        self,
+        *,
+        resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterStableView,
+        database: str,
+        if_not_exists: bool = False,
+    ) -> None:
+        next(self._realization_actions)(
+            resource=resource, database=database, if_not_exists=if_not_exists
+        )
+
+    def _reject_realization(
+        self,
+        *,
+        resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterStableView,
+        database: str,
+        if_not_exists: bool = False,
+    ) -> None:
+        del resource, database, if_not_exists
+        raise AdapterWarehouseError("injected failure after standard teardown")
+
+
+class FailOnceReplayConnection(RecordingDelegatingConnection):
+    def __init__(self, delegate: AdapterConnection) -> None:
+        super().__init__(delegate)
+        self._replay_actions: Iterator[Callable[[AdapterReplayRequest], None]] = iter(
+            (self._reject_replay, self._delegate.execute_replay)
+        )
+
+    def execute_replay(self, request: AdapterReplayRequest) -> None:
+        next(self._replay_actions)(request)
+
+    def _reject_replay(self, request: AdapterReplayRequest) -> None:
+        del request
+        raise AdapterWarehouseError("injected failure after standard relations became live")
 
 
 def build_managed_clickhouse_client(
@@ -811,6 +860,10 @@ _STANDARD_BUILD_SOURCE_YML: str = (
     "    topic: {topic}\n"
     "    replay_boundary: {{mode: offsets}}\n"
 )
+_STANDARD_BUILD_SETTINGS_BY_MODE: dict[bool, str] = {
+    False: "",
+    True: "\n[settings]\nvirtual_environments = true\n",
+}
 
 
 def write_standard_build_project(
@@ -819,6 +872,7 @@ def write_standard_build_project(
     topic: str = "source.orders",
     broker_list: str = "kafka:9092",
     audit_sql_by_name: tuple[tuple[str, str], ...] = (),
+    virtual_environments: bool = False,
 ) -> None:
     """Write a managed Kafka standard-mode project with one offsets-lineage model."""
 
@@ -830,7 +884,8 @@ def write_standard_build_project(
     audit_root.mkdir(parents=True, exist_ok=True)
     (project_root / "streambuild_project.toml").write_text(
         'name = "standard_build"\ndefault_target = "test"\n\n'
-        '[targets.test]\ndatabase = "analytics"\n',
+        '[targets.test]\ndatabase = "analytics"\n'
+        f"{_STANDARD_BUILD_SETTINGS_BY_MODE[virtual_environments]}",
         encoding="utf-8",
     )
     (source_root / "orders.yml").write_text(
@@ -1044,4 +1099,19 @@ def standard_owned_relation_names(
 
     return tuple(
         sorted(record.relation_name for record in connection.load_target_ownership(database))
+    )
+
+
+def standard_owned_replay_coverage_ranges(
+    *, connection: AdapterConnection, database: str
+) -> tuple[tuple[str, str, str], ...]:
+    """Return the table claim's persisted replay intervals in deterministic order."""
+
+    record_by_name: dict[str, AdapterOwnershipRecord] = {
+        record.relation_name: record for record in connection.load_target_ownership(database)
+    }
+    record: AdapterOwnershipRecord = record_by_name[STANDARD_BUILD_TARGET_TABLE_NAME]
+    return tuple(
+        (coverage.boundary_key, coverage.lower_value, coverage.upper_value)
+        for coverage in record.replay_coverage
     )
