@@ -21,7 +21,8 @@ def render_sql_test_results(
     lines: list[str] = []
     failed_paths: list[Path] = []
     passed_count: int = sum(1 for result in results if result.passed)
-    failed_count: int = len(results) - passed_count
+    error_count: int = sum(1 for result in results if result.error_message is not None)
+    failed_count: int = len(results) - passed_count - error_count
     result_index: int
     result: SqlTestExecutionResult
     for result_index, result in enumerate(results):
@@ -41,7 +42,10 @@ def render_sql_test_results(
             test_index=result.test_index,
             project_dir=project_dir,
         )
-        status: str = _style_status(text="PASS" if result.passed else "FAIL", passed=result.passed)
+        status_text: str = (
+            "ERROR" if result.error_message is not None else "PASS" if result.passed else "FAIL"
+        )
+        status: str = _style_status(text=status_text, passed=result.passed)
         lines.append(f"{status}  {_render_target_label(result)}  {relative_path}")
         lines.extend(_render_warnings(result))
         if result.passed:
@@ -52,7 +56,12 @@ def render_sql_test_results(
         if next_result is not None:
             lines.append("")
     summary_text: str = f"Results: {passed_count} passed, {failed_count} failed"
-    lines.append(_style_summary(text=summary_text, has_failures=failed_count > 0))
+    if error_count:
+        error_label: str = "error" if error_count == 1 else "errors"
+        summary_text += f", {error_count} {error_label}"
+    lines.append(
+        _style_summary(text=summary_text, has_failures=failed_count > 0 or error_count > 0)
+    )
     if failed_paths:
         lines.append("Failed:")
         failed_path: Path
@@ -72,6 +81,8 @@ def _render_failed_result(
     result: SqlTestExecutionResult,
     verbose: bool,
 ) -> tuple[str, ...]:
+    if result.error_message is not None:
+        return (f"  error: {result.error_message}",)
     if len(result.target_results) > 1:
         lines: list[str] = []
         target_result: SqlTestTargetExecutionResult
@@ -346,6 +357,8 @@ def _render_result_label(
 
 
 def _render_target_label(result: SqlTestExecutionResult) -> str:
+    if result.error_message is not None:
+        return "execution"
     target_model_names: tuple[str, ...] = tuple(
         target_result.target_model_name for target_result in result.target_results
     )

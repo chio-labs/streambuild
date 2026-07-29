@@ -164,19 +164,16 @@ def _interpolate_value(
         )
     if isinstance(value, Mapping):
         mapping: Mapping[str, object] = cast(Mapping[str, object], value)
-        return tuple(
-            (
-                key,
-                _interpolate_value(
-                    value=item,
-                    variables=variables,
-                    environment=environment,
-                    field_path=f"{field_path}.{key}",
-                    defer_missing_environment=defer_missing_environment,
-                ),
+        return {
+            key: _interpolate_value(
+                value=item,
+                variables=variables,
+                environment=environment,
+                field_path=f"{field_path}.{key}",
+                defer_missing_environment=defer_missing_environment,
             )
             for key, item in sorted(mapping.items())
-        )
+        }
     return value
 
 
@@ -207,7 +204,7 @@ def _interpolate_string(
             field_path=field_path,
             defer_missing_environment=defer_missing_environment,
         )
-        if isinstance(token_value, (tuple, list, dict)):
+        if isinstance(token_value, (tuple, list, Mapping)):
             raise ProjectConfigError(
                 f"{field_path} cannot interpolate an object or array into text; "
                 "consume the value through a macro"

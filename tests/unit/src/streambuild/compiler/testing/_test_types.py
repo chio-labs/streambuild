@@ -42,6 +42,14 @@ class SqlTestWarningTestCase:
 
 
 @dataclass(frozen=True)
+class SqlTestDeepChainTestCase:
+    description: str
+    model_count: int
+    expected_terminal_cte_name: str
+    expected_assembled_count: int
+
+
+@dataclass(frozen=True)
 class MacroSqlTestAssemblyTestCase:
     description: str
     test_file_contents: str

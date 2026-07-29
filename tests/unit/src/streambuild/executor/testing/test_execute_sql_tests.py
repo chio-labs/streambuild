@@ -6,8 +6,10 @@ from streambuild.executor.testing.models import SqlTestExecutionResult
 from tests.unit.src.streambuild.executor.testing._test_types import (
     ComparisonDecodingErrorTestCase,
     ComparisonDecodingTestCase,
+    SqlTestExecutionFailureTestCase,
 )
 from tests.unit.src.streambuild.executor.testing.helpers import (
+    FailingFirstComparisonConnection,
     StubComparisonConnection,
     build_chain_test_case,
 )
@@ -91,6 +93,36 @@ def test_given_comparison_rows_when_executing_then_it_builds_directional_results
     )
     assert results[0].executed_sql == "SELECT 1"
     assert connection.statements == ["SELECT 1"]
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        SqlTestExecutionFailureTestCase(
+            description="records one warehouse error and continues with the remaining tests",
+            expected_passed=(False, True),
+            expected_error_fragment="warehouse rejected test SQL",
+            expected_statements=("SELECT broken", "SELECT 1"),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_one_warehouse_error_when_executing_suite_then_remaining_tests_still_run(
+    test_case: SqlTestExecutionFailureTestCase,
+) -> None:
+    connection: FailingFirstComparisonConnection = FailingFirstComparisonConnection()
+
+    results: tuple[SqlTestExecutionResult, ...] = execute_sql_tests(
+        test_cases=(
+            build_chain_test_case(query="SELECT broken"),
+            build_chain_test_case(query="SELECT 1"),
+        ),
+        client=connection,
+    )
+
+    assert tuple(result.passed for result in results) == test_case.expected_passed
+    assert test_case.expected_error_fragment in str(results[0].error_message)
+    assert tuple(connection.statements) == test_case.expected_statements
 
 
 @pytest.mark.parametrize(

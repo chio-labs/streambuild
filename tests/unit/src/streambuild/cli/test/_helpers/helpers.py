@@ -163,6 +163,15 @@ def build_render_sql_test_results(description: str) -> tuple[SqlTestExecutionRes
                 executed_sql="SELECT 1",
             ),
         ),
+        "renders a warehouse execution error without target diffs": (
+            SqlTestExecutionResult(
+                file_path=Path("/project/tests/order_events/test_broken.sql"),
+                passed=False,
+                target_results=(),
+                executed_sql="SELECT broken",
+                error_message="warehouse rejected test SQL",
+            ),
+        ),
     }
     return results_by_description[description]
 

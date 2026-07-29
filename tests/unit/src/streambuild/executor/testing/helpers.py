@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from streambuild.adapter.exceptions import AdapterWarehouseError
 from streambuild.adapter.models import AdapterQueryResult
 from streambuild.compiler.testing.models import (
     SqlTestAssertionStep,
@@ -22,6 +23,22 @@ class StubComparisonConnection(RecordingAdapterConnection):
     def query(self, statement: str) -> AdapterQueryResult:
         self.statements.append(statement)
         return AdapterQueryResult(rows=self._rows)
+
+
+class FailingFirstComparisonConnection(RecordingAdapterConnection):
+    def __init__(self) -> None:
+        super().__init__(set_difference_comparison=True)
+        self._queries = iter((self._raise_warehouse_error, self._empty_result))
+
+    def query(self, statement: str) -> AdapterQueryResult:
+        self.statements.append(statement)
+        return next(self._queries)()
+
+    def _raise_warehouse_error(self) -> AdapterQueryResult:
+        raise AdapterWarehouseError("warehouse rejected test SQL")
+
+    def _empty_result(self) -> AdapterQueryResult:
+        return AdapterQueryResult(rows=())
 
 
 def build_chain_test_case(

@@ -415,6 +415,13 @@ def test_given_unknown_target_when_resolving_then_it_fails_before_connection(
             input_value="https://${ENV:HOST}/${suffix}",
             expected_value="https://warehouse/events",
         ),
+        InterpolationSuccessTestCase(
+            description="preserves a structured variable as a mapping for macro consumption",
+            values=(("mapping", {"role": "analyst"}),),
+            environment=(),
+            input_value="${mapping}",
+            expected_value={"role": "analyst"},
+        ),
     ],
     ids=lambda case: case.description,
 )

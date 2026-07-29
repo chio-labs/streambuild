@@ -36,3 +36,4 @@ class SqlTestExecutionResult:
     warnings: tuple[str, ...] = ()
     name: str | None = None
     test_index: int = 1
+    error_message: str | None = None
