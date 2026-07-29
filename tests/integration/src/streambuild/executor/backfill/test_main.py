@@ -20,15 +20,6 @@ from streambuild.compiler.planner.models import (
     RebuildSubtree,
 )
 from streambuild.compiler.planner.types import RebuildExecutionMode
-from streambuild.executor.backfill._helpers.replay import (
-    execute_offset_replay,
-    execute_scalar_replay,
-)
-from streambuild.executor.backfill._helpers.watermarks import (
-    persist_deployment_watermarks,
-    resolve_offset_watermarks,
-    resolve_scalar_watermarks,
-)
 from streambuild.executor.backfill.main.execute_backfill import (
     execute_backfill,
     execute_backfill_bootstrap,
@@ -101,9 +92,14 @@ from tests.integration.src.streambuild.executor.backfill.helpers import (
     build_reference_join_replay_request,
     build_scalar_replay_compiled_pipeline,
     build_scalar_replay_request,
+    execute_offset_replay,
+    execute_scalar_replay,
+    persist_deployment_watermarks,
     prepare_live_landing_objects,
     require_managed_source,
     require_model_resources,
+    resolve_offset_watermarks,
+    resolve_scalar_watermarks,
     run_bounded_preservation_matrix_scenario,
     run_start_time_replay_scenario,
 )
@@ -192,7 +188,7 @@ def test_given_changed_pipeline_when_bootstrapping_then_it_creates_metadata_and_
     )
 
     try:
-        result: BackfillBootstrapResult = execute_backfill_bootstrap(
+        execution_result: BackfillExecutionResult = execute_backfill(
             request=build_backfill_bootstrap_request(
                 database=clickhouse_database,
                 deployment_id=test_case.deployment_id,
@@ -227,8 +223,8 @@ def test_given_changed_pipeline_when_bootstrapping_then_it_creates_metadata_and_
         f"WHERE database = '{clickhouse_database}' ORDER BY name"
     ).result_rows
 
-    assert result.deployment_id == test_case.deployment_id
-    assert result.root_reports[0].replay_strategy == "create_from_scratch"
+    assert execution_result.bootstrap.deployment_id == test_case.deployment_id
+    assert execution_result.bootstrap.root_reports[0].replay_strategy == "create_from_scratch"
     assert metadata_rows == [(test_case.deployment_id, test_case.expected_deployment_status)]
     assert runtime_detail_rows == [
         (
@@ -3165,7 +3161,7 @@ def test_given_deleted_staged_table_after_bootstrap_when_rerunning_then_backfill
     )
 
     try:
-        execute_backfill_bootstrap(
+        _ = execute_backfill(
             request=build_scalar_replay_request(
                 database=clickhouse_database,
                 deployment_id=test_case.deployment_id,

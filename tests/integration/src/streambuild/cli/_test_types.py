@@ -214,8 +214,8 @@ class CliStandardAggregateBuildIntegrationTestCase:
     description: str
     selectors: tuple[str, ...]
     landing_rows: tuple[tuple[str, int, int], ...]
-    expected_error_fragment: str
-    expected_preserved_order_ids: tuple[str, ...]
+    expected_aggregate_rows: tuple[tuple[str, int], ...]
+    expected_replay_targets: tuple[str, ...]
 
 
 @dataclass(frozen=True)

@@ -56,16 +56,6 @@ from streambuild.compiler.planner.constants import REBUILD_EXECUTION_MODE_UNSEED
 from streambuild.compiler.planner.models import DeploymentPlan, DeploymentWatermarkRecord
 from streambuild.compiler.planner.types import RebuildExecutionMode
 from streambuild.compiler.sql_analysis.classes.sql_model_analyzer import SqlModelAnalyzer
-from streambuild.executor.backfill._helpers.replay import (
-    execute_offset_replay,
-    execute_scalar_replay,
-)
-from streambuild.executor.backfill._helpers.watermarks import (
-    persist_deployment_watermarks,
-    resolve_cursor_watermarks,
-    resolve_offset_watermarks,
-    resolve_scalar_watermarks,
-)
 from streambuild.executor.backfill.main.execute_backfill import (
     execute_backfill,
     execute_backfill_bootstrap,
@@ -74,6 +64,16 @@ from streambuild.executor.backfill.models import (
     BackfillBootstrapRequest,
     BackfillBootstrapResult,
     BackfillExecutionResult,
+)
+from streambuild.executor.population._helpers.persistence import persist_population_watermarks
+from streambuild.executor.population._helpers.relations import realize_population_objects
+from streambuild.executor.population._helpers.replay import execute_population_replay
+from streambuild.executor.population._helpers.watermarks import resolve_population_watermarks
+from streambuild.executor.population.models import (
+    PopulationObject,
+    PopulationPlan,
+    PopulationRoot,
+    PopulationWatermark,
 )
 from streambuild.executor.publish.main.execute_publish import execute_publish
 from streambuild.executor.publish.models import PublishRequest
@@ -1364,6 +1364,253 @@ def _execute_matrix_scalar_replay(
         replay_lineage_mode=replay_lineage_mode,
         deployment_watermarks=deployment_watermarks,
         boundary_time=boundary_time,
+    )
+
+
+def resolve_offset_watermarks(
+    *,
+    client: AdapterConnection,
+    deployment_id: str,
+    deployment_plan: DeploymentPlan,
+    desired_state: DesiredState,
+    default_database: str,
+    boundary_time: str,
+) -> tuple[DeploymentWatermarkRecord, ...]:
+    """Resolve offset cutoffs through the shared population implementation."""
+
+    return _resolve_test_watermarks(
+        client=client,
+        deployment_id=deployment_id,
+        deployment_plan=deployment_plan,
+        desired_state=desired_state,
+        default_database=default_database,
+        replay_lineage_mode=ReplayLineageMode.OFFSETS,
+        boundary_time=boundary_time,
+    )
+
+
+def resolve_scalar_watermarks(
+    *,
+    deployment_id: str,
+    deployment_plan: DeploymentPlan,
+    desired_state: DesiredState,
+    replay_lineage_mode: ReplayLineageMode | str,
+    boundary_time: str,
+) -> tuple[DeploymentWatermarkRecord, ...]:
+    """Resolve scalar cutoffs through the shared population implementation."""
+
+    return _resolve_test_watermarks(
+        client=cast(AdapterConnection, object()),
+        deployment_id=deployment_id,
+        deployment_plan=deployment_plan,
+        desired_state=desired_state,
+        default_database="analytics",
+        replay_lineage_mode=ReplayLineageMode(replay_lineage_mode),
+        boundary_time=boundary_time,
+    )
+
+
+def resolve_cursor_watermarks(
+    *,
+    client: AdapterConnection,
+    deployment_id: str,
+    deployment_plan: DeploymentPlan,
+    desired_state: DesiredState,
+    default_database: str,
+) -> tuple[DeploymentWatermarkRecord, ...]:
+    """Resolve cursor cutoffs through the shared population implementation."""
+
+    return _resolve_test_watermarks(
+        client=client,
+        deployment_id=deployment_id,
+        deployment_plan=deployment_plan,
+        desired_state=desired_state,
+        default_database=default_database,
+        replay_lineage_mode=ReplayLineageMode.CURSOR,
+        boundary_time="",
+    )
+
+
+def persist_deployment_watermarks(
+    *,
+    client: AdapterConnection,
+    metadata_database: str,
+    deployment_watermarks: tuple[DeploymentWatermarkRecord, ...],
+) -> None:
+    """Persist test cutoffs through the shared population implementation."""
+
+    plan: PopulationPlan = PopulationPlan(
+        execution_id=deployment_watermarks[0].deployment_id,
+        roots=tuple(
+            PopulationRoot(
+                root_key=watermark.root_key,
+                affected_keys=(watermark.root_key,),
+                upstream_boundary_key=watermark.anchor_key,
+                replay_lineage_mode=ReplayLineageMode.OFFSETS,
+            )
+            for watermark in deployment_watermarks
+        ),
+        objects=(),
+    )
+    persist_population_watermarks(
+        client=client,
+        metadata_database=metadata_database,
+        plan=plan,
+        watermarks=_population_watermarks(deployment_watermarks),
+    )
+
+
+def execute_offset_replay(
+    *,
+    client: AdapterConnection,
+    deployment_plan: DeploymentPlan,
+    desired_state: DesiredState,
+    default_database: str,
+    deployment_watermarks: tuple[DeploymentWatermarkRecord, ...],
+    boundary_time: str,
+) -> None:
+    """Execute offset replay through the shared population implementation."""
+
+    _execute_test_replay(
+        client=client,
+        deployment_plan=deployment_plan,
+        desired_state=desired_state,
+        default_database=default_database,
+        replay_lineage_mode=ReplayLineageMode.OFFSETS,
+        deployment_watermarks=deployment_watermarks,
+        boundary_time=boundary_time,
+    )
+
+
+def execute_scalar_replay(
+    *,
+    client: AdapterConnection,
+    deployment_plan: DeploymentPlan,
+    desired_state: DesiredState,
+    default_database: str,
+    replay_lineage_mode: ReplayLineageMode | str,
+    deployment_watermarks: tuple[DeploymentWatermarkRecord, ...],
+    boundary_time: str,
+) -> None:
+    """Execute scalar replay through the shared population implementation."""
+
+    _execute_test_replay(
+        client=client,
+        deployment_plan=deployment_plan,
+        desired_state=desired_state,
+        default_database=default_database,
+        replay_lineage_mode=ReplayLineageMode(replay_lineage_mode),
+        deployment_watermarks=deployment_watermarks,
+        boundary_time=boundary_time,
+    )
+
+
+def _resolve_test_watermarks(
+    *,
+    client: AdapterConnection,
+    deployment_id: str,
+    deployment_plan: DeploymentPlan,
+    desired_state: DesiredState,
+    default_database: str,
+    replay_lineage_mode: ReplayLineageMode,
+    boundary_time: str,
+) -> tuple[DeploymentWatermarkRecord, ...]:
+    plan: PopulationPlan = _test_population_plan(
+        deployment_plan=deployment_plan,
+        deployment_id=deployment_id,
+        replay_lineage_mode=replay_lineage_mode,
+    )
+    watermarks: tuple[PopulationWatermark, ...] = resolve_population_watermarks(
+        client=client,
+        plan=plan,
+        desired_state=desired_state,
+        default_database=default_database,
+        boundary_time=boundary_time,
+    )
+    return tuple(
+        DeploymentWatermarkRecord(
+            deployment_id=deployment_id,
+            root_key=watermark.root_key,
+            anchor_key=watermark.anchor_key,
+            boundary_key=watermark.boundary_key,
+            cutoff_value=watermark.cutoff_value,
+        )
+        for watermark in watermarks
+    )
+
+
+def _execute_test_replay(
+    *,
+    client: AdapterConnection,
+    deployment_plan: DeploymentPlan,
+    desired_state: DesiredState,
+    default_database: str,
+    replay_lineage_mode: ReplayLineageMode,
+    deployment_watermarks: tuple[DeploymentWatermarkRecord, ...],
+    boundary_time: str,
+) -> None:
+    population_plan: PopulationPlan = _test_population_plan(
+        deployment_plan=deployment_plan,
+        deployment_id=deployment_plan.deployment_id or "test",
+        replay_lineage_mode=replay_lineage_mode,
+    )
+    _ = realize_population_objects(
+        client=client,
+        plan=population_plan,
+        desired_state=desired_state,
+        default_database=default_database,
+    )
+    _ = execute_population_replay(
+        client=client,
+        plan=population_plan,
+        desired_state=desired_state,
+        default_database=default_database,
+        watermarks=_population_watermarks(deployment_watermarks),
+        boundary_time=boundary_time,
+    )
+
+
+def _test_population_plan(
+    *,
+    deployment_plan: DeploymentPlan,
+    deployment_id: str,
+    replay_lineage_mode: ReplayLineageMode,
+) -> PopulationPlan:
+    return PopulationPlan(
+        execution_id=deployment_id,
+        roots=tuple(
+            PopulationRoot(
+                root_key=subtree.root_key,
+                affected_keys=subtree.affected_keys,
+                upstream_boundary_key=subtree.upstream_boundary_key,
+                replay_lineage_mode=replay_lineage_mode,
+                execution_mode=subtree.execution_mode,
+                forced_start_time=subtree.forced_start_time,
+                execution_lookback_seconds=subtree.execution_lookback_seconds,
+            )
+            for subtree in deployment_plan.rebuild_subtrees
+        ),
+        objects=tuple(
+            PopulationObject(
+                logical_key=prepared.logical_key,
+                physical_name=prepared.physical_name,
+            )
+            for prepared in deployment_plan.prepared_shadow_objects
+        ),
+    )
+
+
+def _population_watermarks(
+    deployment_watermarks: tuple[DeploymentWatermarkRecord, ...],
+) -> tuple[PopulationWatermark, ...]:
+    return tuple(
+        PopulationWatermark(
+            root_key=watermark.root_key,
+            anchor_key=watermark.anchor_key,
+            boundary_key=watermark.boundary_key,
+            cutoff_value=watermark.cutoff_value,
+        )
+        for watermark in deployment_watermarks
     )
 
 

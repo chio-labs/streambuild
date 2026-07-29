@@ -449,22 +449,7 @@ class StandardReplayRoot:
     driving_input_replay_columns: AdapterReplayColumns
     replay_boundary_mode: ReplayLineageMode | str
     propagated_model_keys: tuple[LogicalResourceKey, ...]
-
-    def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "replay_boundary_mode", ReplayLineageMode(self.replay_boundary_mode)
-        )
-
-
-@dataclass(frozen=True)
-class StandardPopulationSegment:
-    """One dependency-ordered model attachment and historical population step."""
-
-    model_key: LogicalResourceKey
-    driving_input_key: LogicalResourceKey
-    driving_input_relation_name: str
-    driving_input_replay_columns: AdapterReplayColumns
-    replay_boundary_mode: ReplayLineageMode | str
+    has_aggregate_semantics: bool = False
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -494,7 +479,6 @@ class StandardPlan:
     prerequisite_scope: tuple[StandardPrerequisite, ...]
     entries: tuple[StandardPlanEntry, ...]
     replay_roots: tuple[StandardReplayRoot, ...]
-    population_segments: tuple[StandardPopulationSegment, ...]
     teardown_operations: tuple[StandardRelationOperation, ...]
     creation_operations: tuple[StandardRelationOperation, ...]
     warnings: tuple[PlannerWarning, ...] = ()

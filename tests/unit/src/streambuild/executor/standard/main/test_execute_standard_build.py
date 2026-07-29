@@ -35,20 +35,18 @@ from tests.unit.src.streambuild.executor.standard.main.helpers import (
             ),
             expected_created_relation_names=(
                 "tbl__beta",
+                "mv__beta",
                 "tbl__gamma",
                 "tbl__delta",
-                "mv__beta",
-                "mv__gamma",
                 "mv__delta",
+                "mv__gamma",
             ),
             expected_replay_relations=(
                 ("tbl__beta", "tbl__alpha", "tbl__beta"),
-                ("tbl__gamma", "tbl__beta", "tbl__gamma"),
                 ("tbl__delta", "tbl__alpha", "tbl__delta"),
             ),
             expected_replay_query_fragments=(
                 "tbl__alpha",
-                "tbl__beta",
                 "analytics.tbl__gamma",
             ),
             expected_ownership_record_count=2,
@@ -95,7 +93,7 @@ def test_given_standard_build_plan_when_executing_then_adapter_actions_match_pla
             connection.replay_requests,
             strict=True,
         )
-    ) == (True, True, True)
+    ) == tuple(True for _fragment in test_case.expected_replay_query_fragments)
     first_ownership_index: int = connection.adapter_actions.index("record_ownership")
     completed_ownership_index: int = connection.adapter_actions.index(
         "record_ownership", first_ownership_index + 1

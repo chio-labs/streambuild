@@ -1,28 +1,20 @@
 """Backfill execution entrypoint."""
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.compiler.discovery.types import ReplayLineageMode
-from streambuild.compiler.planner.models import DeploymentWatermarkRecord
+from streambuild.compiler.planner.models import DeploymentPlan
 from streambuild.executor.backfill._helpers.bootstrap import execute_backfill_bootstrap
-from streambuild.executor.backfill._helpers.replay import (
-    execute_offset_replay,
-    execute_scalar_replay,
-)
-from streambuild.executor.backfill._helpers.timing import (
-    build_current_timestamp,
-    wait_for_shadow_stabilization,
-)
-from streambuild.executor.backfill._helpers.watermarks import (
-    persist_deployment_watermarks,
-    resolve_cursor_watermarks,
-    resolve_offset_watermarks,
-    resolve_scalar_watermarks,
-)
-from streambuild.executor.backfill.exceptions import BackfillExecutionError
 from streambuild.executor.backfill.models import (
     BackfillBootstrapRequest,
     BackfillBootstrapResult,
     BackfillExecutionResult,
+)
+from streambuild.executor.population.main._execute_population import execute_population
+from streambuild.executor.population.models import (
+    PopulationObject,
+    PopulationPlan,
+    PopulationRequest,
+    PopulationResult,
+    PopulationRoot,
 )
 
 
@@ -33,80 +25,52 @@ def execute_backfill(
 ) -> BackfillExecutionResult:
     """Execute staged backfill through boundary capture and supported replay steps."""
 
-    replay_lineage_mode: ReplayLineageMode = ReplayLineageMode(request.replay_lineage_mode)
     bootstrap_result: BackfillBootstrapResult = execute_backfill_bootstrap(
         request=request, client=client
     )
-    wait_for_shadow_stabilization(request.stabilization_seconds)
-    boundary_time: str = request.boundary_time or build_current_timestamp()
-    if replay_lineage_mode in {
-        ReplayLineageMode.TIMESTAMP,
-        ReplayLineageMode.LANDED_AT,
-        ReplayLineageMode.CURSOR,
-    }:
-        deployment_watermarks: tuple[DeploymentWatermarkRecord, ...]
-        if replay_lineage_mode == ReplayLineageMode.CURSOR:
-            deployment_watermarks = resolve_cursor_watermarks(
-                client=client,
-                deployment_id=bootstrap_result.deployment_id,
+    population: PopulationResult = execute_population(
+        request=PopulationRequest(
+            plan=_population_plan(
                 deployment_plan=bootstrap_result.deployment_plan,
-                desired_state=request.desired_state,
-                default_database=request.default_database,
-            )
-        else:
-            deployment_watermarks = resolve_scalar_watermarks(
-                deployment_id=bootstrap_result.deployment_id,
-                deployment_plan=bootstrap_result.deployment_plan,
-                desired_state=request.desired_state,
+                execution_id=bootstrap_result.deployment_id,
+                replay_lineage_mode=request.replay_lineage_mode,
+            ),
+            desired_state=request.desired_state,
+            default_database=request.default_database,
+            stabilization_seconds=request.stabilization_seconds,
+            boundary_time=request.boundary_time,
+            watermark_metadata_database=request.metadata_database,
+        ),
+        client=client,
+    )
+    return BackfillExecutionResult(
+        bootstrap=bootstrap_result,
+        boundary_time=population.boundary_time,
+    )
+
+
+def _population_plan(
+    *, deployment_plan: DeploymentPlan, execution_id: str, replay_lineage_mode: str
+) -> PopulationPlan:
+    return PopulationPlan(
+        execution_id=execution_id,
+        roots=tuple(
+            PopulationRoot(
+                root_key=subtree.root_key,
+                affected_keys=subtree.affected_keys,
+                upstream_boundary_key=subtree.upstream_boundary_key,
                 replay_lineage_mode=replay_lineage_mode,
-                boundary_time=boundary_time,
+                execution_mode=subtree.execution_mode,
+                forced_start_time=subtree.forced_start_time,
+                execution_lookback_seconds=subtree.execution_lookback_seconds,
             )
-        persist_deployment_watermarks(
-            client=client,
-            metadata_database=request.metadata_database,
-            deployment_watermarks=deployment_watermarks,
-        )
-        execute_scalar_replay(
-            client=client,
-            deployment_plan=bootstrap_result.deployment_plan,
-            desired_state=request.desired_state,
-            default_database=request.default_database,
-            replay_lineage_mode=replay_lineage_mode,
-            deployment_watermarks=deployment_watermarks,
-            boundary_time=boundary_time,
-        )
-        return BackfillExecutionResult(
-            bootstrap=bootstrap_result,
-            boundary_time=boundary_time,
-        )
-
-    if replay_lineage_mode == ReplayLineageMode.OFFSETS:
-        deployment_watermarks: tuple[DeploymentWatermarkRecord, ...] = resolve_offset_watermarks(
-            client=client,
-            deployment_id=bootstrap_result.deployment_id,
-            deployment_plan=bootstrap_result.deployment_plan,
-            desired_state=request.desired_state,
-            default_database=request.default_database,
-            boundary_time=boundary_time,
-        )
-        persist_deployment_watermarks(
-            client=client,
-            metadata_database=request.metadata_database,
-            deployment_watermarks=deployment_watermarks,
-        )
-        execute_offset_replay(
-            client=client,
-            deployment_plan=bootstrap_result.deployment_plan,
-            desired_state=request.desired_state,
-            default_database=request.default_database,
-            deployment_watermarks=deployment_watermarks,
-            boundary_time=boundary_time,
-        )
-        return BackfillExecutionResult(
-            bootstrap=bootstrap_result,
-            boundary_time=boundary_time,
-        )
-
-    raise BackfillExecutionError(
-        f"Backfill execution does not yet support replay mode '{request.replay_lineage_mode}'"
+            for subtree in deployment_plan.rebuild_subtrees
+        ),
+        objects=tuple(
+            PopulationObject(
+                logical_key=prepared.logical_key,
+                physical_name=prepared.physical_name,
+            )
+            for prepared in deployment_plan.prepared_shadow_objects
+        ),
     )

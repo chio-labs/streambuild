@@ -32,12 +32,12 @@ class RecordingStandardBuildConnection(RecordingAdapterConnection):
             (
                 AdapterQueryResult(rows=()),
                 AdapterQueryResult(rows=()),
-                AdapterQueryResult(rows=((0, 5),)),
-                AdapterQueryResult(rows=()),
-                AdapterQueryResult(rows=((0, 5),)),
-                AdapterQueryResult(rows=()),
-                AdapterQueryResult(rows=((0, 5),)),
-                AdapterQueryResult(rows=()),
+                AdapterQueryResult(
+                    rows=((0, 5),), column_names=("_replay_partition", "cutoff_offset")
+                ),
+                AdapterQueryResult(
+                    rows=((0, 5),), column_names=("_replay_partition", "cutoff_offset")
+                ),
                 AdapterQueryResult(rows=((0, 1, 5),)),
                 AdapterQueryResult(rows=((0, 1, 5),)),
             )

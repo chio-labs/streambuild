@@ -13,7 +13,8 @@ from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHous
 from streambuild.compiler.compile.models import DesiredState
 from streambuild.compiler.planner.main.plan_deployment import plan_deployment
 from streambuild.compiler.planner.models import ActualState, DeploymentPlan
-from streambuild.executor.backfill._helpers.shadow_objects import create_shadow_objects
+from streambuild.executor.population._helpers.relations import realize_population_objects
+from streambuild.executor.population.models import PopulationObject, PopulationPlan
 from tests.unit.src.streambuild.compiler.planner.helpers import (
     build_single_transform_desired_state,
 )
@@ -113,12 +114,19 @@ def test_given_reference_ref_when_creating_shadow_objects_then_it_creates_depend
     )
     client: RecordingClient = RecordingClient()
 
-    create_shadow_objects(
+    population_plan: PopulationPlan = PopulationPlan(
+        execution_id="dep_ref",
+        roots=(),
+        objects=tuple(
+            PopulationObject(logical_key=prepared.logical_key, physical_name=prepared.physical_name)
+            for prepared in deployment_plan.prepared_shadow_objects
+        ),
+    )
+    _ = realize_population_objects(
         client=cast(AdapterConnection, client),
-        deployment_plan=deployment_plan,
+        plan=population_plan,
         desired_state=desired_state,
         default_database="analytics",
-        existing_relation_names=frozenset(),
     )
 
     rendered_commands: str = "\n".join(client.commands)
