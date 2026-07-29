@@ -56,6 +56,7 @@ def resolve_required_replay_coverage(
                     existing_relation_names=existing_relation_names,
                     existing_ownership=existing_ownership,
                     target_relation_name=target_relation_name_by_model_name[root.model_key.name],
+                    has_aggregate_semantics=root.has_aggregate_semantics,
                 ),
             )
         )
@@ -115,9 +116,10 @@ def _required_root_ranges(
     existing_relation_names: frozenset[str],
     existing_ownership: tuple[AdapterOwnershipRecord, ...],
     target_relation_name: str,
+    has_aggregate_semantics: bool,
 ) -> tuple[AdapterReplayCoverageRange, ...]:
     live_ranges: tuple[AdapterReplayCoverageRange, ...] = ()
-    if target_relation_name in existing_relation_names:
+    if target_relation_name in existing_relation_names and not has_aggregate_semantics:
         live_ranges = _relation_ranges(
             client=client,
             model_name=root.model_key.name,

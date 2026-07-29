@@ -45,13 +45,10 @@ from streambuild.compiler.discovery.main.load_project_input_for_path import (
     load_project_input_for_path,
 )
 from streambuild.executor.backfill.main._ensure_metadata_tables import ensure_metadata_tables
-from streambuild.executor.standard._helpers.boundaries import capture_replay_boundaries
-from streambuild.executor.standard._helpers.relations import target_relation_name_by_model_name
 from streambuild.executor.standard.main.execute_standard_build import execute_standard_build
 from streambuild.executor.standard.models import (
     StandardBuildRequest,
     StandardBuildResult,
-    StandardReplayBoundary,
 )
 from tests.integration.src.streambuild.conftest import ClickHouseConnectionSettings
 
@@ -425,6 +422,42 @@ class AdoptedLiveInsertConnection(StandardActionRecordingConnection):
     def _insert_live_rows(self) -> None:
         self._delegate.command(
             f"INSERT INTO {self._database}.orders_existing VALUES {self._values_sql}"
+        )
+
+
+class ManagedLiveInsertConnection(StandardActionRecordingConnection):
+    def __init__(
+        self,
+        delegate: AdapterConnection,
+        *,
+        database: str,
+        rows: tuple[tuple[str, int, int], ...],
+    ) -> None:
+        super().__init__(delegate)
+        self._database: str = database
+        self._rows: tuple[tuple[str, int, int], ...] = rows
+        self._post_realization_actions: Iterator[Callable[[], None]] = iter(
+            (self._do_nothing, self._insert_live_rows)
+        )
+
+    def realize_resource(
+        self,
+        *,
+        resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterStableView,
+        database: str,
+        if_not_exists: bool = False,
+    ) -> None:
+        super().realize_resource(resource=resource, database=database, if_not_exists=if_not_exists)
+        next(self._post_realization_actions)()
+
+    def _do_nothing(self) -> None:
+        return None
+
+    def _insert_live_rows(self) -> None:
+        insert_landing_rows(
+            connection=self._delegate,
+            database=self._database,
+            rows=self._rows,
         )
 
 
@@ -1306,36 +1339,6 @@ def execute_standard_build_directly(
             stabilization_seconds=stabilization_seconds,
         ),
         client=connection,
-    )
-
-
-def capture_standard_build_boundaries(
-    *,
-    project_root: Path,
-    database: str,
-    connection: AdapterConnection,
-) -> tuple[StandardReplayBoundary, ...]:
-    """Capture the replay boundaries a build would use against current warehouse state."""
-
-    preview: BuildPreviewContext = build_standard_build_preview(
-        options=BuildCommandOptions(
-            pipelines_root=project_root / "pipelines",
-            database=database,
-            metadata_database=database,
-            selectors=(),
-            json_output=True,
-            verbose=False,
-            auto_approve=True,
-        ),
-        client=connection,
-        loaded_project=load_project_input_for_path(path=project_root),
-        adapter_profile=build_compiler_adapter_profile(ClickHouseAdapter()),
-    )
-    return capture_replay_boundaries(
-        client=connection,
-        plan=preview.plan,
-        database=database,
-        target_relation_name_by_model_name=target_relation_name_by_model_name(plan=preview.plan),
     )
 
 

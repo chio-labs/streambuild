@@ -29,7 +29,6 @@ from streambuild.compiler.planner.models import (
     PlannerWarning,
     StandardPlan,
     StandardPlanEntry,
-    StandardPopulationSegment,
     StandardPrerequisite,
     StandardRelationOperation,
     StandardReplayRoot,
@@ -91,7 +90,6 @@ class StandardPlanBuilder:
     def build(self) -> StandardPlan:
         """Return the complete execution closure without consulting equality."""
 
-        self._reject_aggregate_models()
         self._reject_adopted_source_target_collisions()
         prerequisites: tuple[StandardPrerequisite, ...] = self._build_prerequisites()
         self._reject_missing_prerequisites(prerequisites=prerequisites)
@@ -106,7 +104,6 @@ class StandardPlanBuilder:
             prerequisite_scope=prerequisites,
             entries=entries,
             replay_roots=self._build_replay_roots(),
-            population_segments=self._build_population_segments(),
             teardown_operations=_teardown_operations(entries=entries),
             creation_operations=_creation_operations(entries=entries),
             warnings=self._build_warnings(entries=entries),
@@ -200,23 +197,6 @@ class StandardPlanBuilder:
             if root_key in propagated_by_root
         )
 
-    def _build_population_segments(self) -> tuple[StandardPopulationSegment, ...]:
-        return tuple(self._build_population_segment(model_key=key) for key in self._execution_scope)
-
-    def _build_population_segment(
-        self, *, model_key: LogicalResourceKey
-    ) -> StandardPopulationSegment:
-        driving_input_key: LogicalResourceKey = self._require_driving_parent(model_key=model_key)
-        return StandardPopulationSegment(
-            model_key=model_key,
-            driving_input_key=driving_input_key,
-            driving_input_relation_name=self._relation_name(key=driving_input_key),
-            driving_input_replay_columns=self._driving_input_replay_columns(
-                driving_input_key=driving_input_key
-            ),
-            replay_boundary_mode=self._replay_boundary_mode(model_key=model_key),
-        )
-
     def _build_replay_root(
         self,
         *,
@@ -233,17 +213,8 @@ class StandardPlanBuilder:
             ),
             replay_boundary_mode=self._replay_boundary_mode(model_key=root_key),
             propagated_model_keys=propagated_model_keys,
+            has_aggregate_semantics=root_key in self._aggregate_model_keys,
         )
-
-    def _reject_aggregate_models(self) -> None:
-        aggregate_names: tuple[str, ...] = tuple(
-            key.name for key in self._execution_scope if key in self._aggregate_model_keys
-        )
-        if aggregate_names:
-            raise StandardPlanError(
-                "Standard mode cannot safely rebuild aggregate models without an atomic "
-                f"replay/live frontier: {', '.join(aggregate_names)}"
-            )
 
     def _reject_adopted_source_target_collisions(self) -> None:
         target_names: set[str] = set()

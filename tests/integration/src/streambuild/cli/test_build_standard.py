@@ -34,9 +34,9 @@ from tests.integration.src.streambuild.cli.helpers import (
     FailOnceReplayConnection,
     FailOnceViewRealizationConnection,
     FailSecondReplayOnceConnection,
+    ManagedLiveInsertConnection,
     StandardActionRecordingConnection,
     build_managed_clickhouse_client,
-    capture_standard_build_boundaries,
     execute_standard_build_directly,
     execute_warehouse_statements,
     insert_landing_rows,
@@ -294,17 +294,17 @@ def test_given_retained_landing_rows_when_building_then_history_replays_and_live
             expected_cutoff_inclusive=(True,),
         ),
         CliStandardBuildBoundaryIntegrationTestCase(
-            description="live rows already in the target yield one exclusive live floor",
+            description="live rows already in the target still use the inclusive source cutoff",
             landing_rows=(("order-1", 0, 1), ("order-2", 0, 2)),
             pre_capture_statements=(),
             expected_boundary_keys=("_replay_partition=0",),
-            expected_cutoff_values=("1",),
-            expected_cutoff_inclusive=(False,),
+            expected_cutoff_values=("2",),
+            expected_cutoff_inclusive=(True,),
         ),
     ],
     ids=lambda case: case.description,
 )
-def test_given_live_and_preserved_rows_when_capturing_boundaries_then_one_contract_is_used(
+def test_given_different_target_states_when_rebuilding_then_inclusive_source_contract_is_used(
     test_case: CliStandardBuildBoundaryIntegrationTestCase,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -329,9 +329,14 @@ def test_given_live_and_preserved_rows_when_capturing_boundaries_then_one_contra
             database=clickhouse_database,
             statements=test_case.pre_capture_statements,
         )
-        boundaries: tuple[StandardReplayBoundary, ...] = capture_standard_build_boundaries(
-            project_root=tmp_path, database=clickhouse_database, connection=connection
+        result: StandardBuildResult = execute_standard_build_directly(
+            project_root=tmp_path,
+            database=clickhouse_database,
+            connection=connection,
+            stabilization_seconds=0,
+            selectors=(),
         )
+        boundaries: tuple[StandardReplayBoundary, ...] = result.boundaries
     finally:
         connection.close()
 
@@ -778,13 +783,13 @@ def test_given_partial_target_after_failure_when_rerunning_then_durable_coverage
             ),
             expected_realized_relation_names=(
                 "tbl__beta",
+                "mv__beta",
                 "tbl__gamma",
                 "tbl__delta",
-                "mv__beta",
-                "mv__gamma",
                 "mv__delta",
+                "mv__gamma",
             ),
-            expected_replay_targets=("tbl__beta", "tbl__gamma", "tbl__delta"),
+            expected_replay_targets=("tbl__beta", "tbl__delta"),
         )
     ],
     ids=lambda case: case.description,
@@ -889,19 +894,19 @@ def test_given_settled_graph_when_building_selected_model_then_closure_rebuilds_
     "test_case",
     [
         CliStandardAggregateBuildIntegrationTestCase(
-            description="aggregate root is rejected before selected writes",
+            description="aggregate root rebuilds through the shared replay path",
             selectors=("beta",),
             landing_rows=(("order-1", 0, 1), ("order-2", 0, 2)),
-            expected_error_fragment=(
-                "Standard mode cannot safely rebuild aggregate models without an atomic "
-                "replay/live frontier: beta"
+            expected_aggregate_rows=(
+                ("order-1", 2),
+                ("order-2", 2),
             ),
-            expected_preserved_order_ids=("order-1", "order-2"),
+            expected_replay_targets=("tbl__beta",),
         )
     ],
     ids=lambda case: case.description,
 )
-def test_given_aggregate_root_when_building_selected_model_then_it_rejects_before_writes(
+def test_given_aggregate_root_when_building_selected_model_then_it_uses_shared_replay(
     test_case: CliStandardAggregateBuildIntegrationTestCase,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -909,7 +914,7 @@ def test_given_aggregate_root_when_building_selected_model_then_it_rejects_befor
     clickhouse_client: Client,
     clickhouse_database: str,
 ) -> None:
-    write_standard_selected_graph_project(project_root=tmp_path)
+    write_standard_aggregate_project(project_root=tmp_path)
     delegate: AdapterConnection = build_managed_clickhouse_client(
         clickhouse_connection_settings, database=clickhouse_database
     )
@@ -919,34 +924,35 @@ def test_given_aggregate_root_when_building_selected_model_then_it_rejects_befor
             project_root=tmp_path, database=clickhouse_database, connection=delegate
         )
         _ = capsys.readouterr()
-        insert_landing_rows(
-            connection=delegate,
+        connection: ManagedLiveInsertConnection = ManagedLiveInsertConnection(
+            delegate,
             database=clickhouse_database,
             rows=test_case.landing_rows,
         )
-        write_standard_aggregate_project(project_root=tmp_path)
-        connection: StandardActionRecordingConnection = StandardActionRecordingConnection(delegate)
-        rejected_exit_code: int = run_standard_build(
+        aggregate_exit_code: int = run_standard_build(
             project_root=tmp_path,
             database=clickhouse_database,
             connection=connection,
             selectors=test_case.selectors,
         )
-        rejection_error: str = capsys.readouterr().err
-        preserved_order_ids: tuple[str, ...] = standard_graph_order_ids(
-            clickhouse_client=clickhouse_client,
-            database=clickhouse_database,
-            model_name="beta",
+        aggregate_error: str = capsys.readouterr().err
+        aggregate_rows: tuple[tuple[str, int], ...] = tuple(
+            (str(row[0]), int(row[1]))
+            for row in clickhouse_client.query(
+                f"SELECT order_id, sum(order_count) FROM {clickhouse_database}.tbl__beta "
+                "GROUP BY order_id "
+                "ORDER BY order_id"
+            ).result_rows
         )
     finally:
         delegate.close()
 
-    assert (initial_exit_code, rejected_exit_code) == (0, 1)
-    assert test_case.expected_error_fragment in rejection_error
-    assert preserved_order_ids == test_case.expected_preserved_order_ids
-    assert connection.command_statements == []
-    assert connection.realized_relation_names == []
-    assert connection.replay_targets == []
+    assert aggregate_error == ""
+    assert (initial_exit_code, aggregate_exit_code) == (0, 0)
+    assert aggregate_rows == test_case.expected_aggregate_rows
+    assert tuple(connection.replay_targets) == test_case.expected_replay_targets
+    assert "tbl__beta" in connection.realized_relation_names
+    assert "mv__beta" in connection.realized_relation_names
 
 
 @pytest.mark.integration
@@ -965,9 +971,8 @@ def test_given_aggregate_root_when_building_selected_model_then_it_rejects_befor
             expected_failure_fragment="injected failure during second population segment",
             expected_replay_targets=(
                 "tbl__beta",
-                "tbl__gamma",
+                "tbl__delta",
                 "tbl__beta",
-                "tbl__gamma",
                 "tbl__delta",
             ),
         )
@@ -1148,12 +1153,7 @@ def test_given_selected_execution_step_failure_when_retrying_then_result_is_exac
                 "tbl__beta",
                 "tbl__alpha",
             ),
-            expected_replay_targets=(
-                "tbl__alpha",
-                "tbl__beta",
-                "tbl__gamma",
-                "tbl__delta",
-            ),
+            expected_replay_targets=("tbl__alpha", "tbl__delta"),
         ),
         CliStandardSelectionMatrixIntegrationTestCase(
             description="side-reference selection rebuilds its dependent closure",
@@ -1440,7 +1440,7 @@ def test_given_adopted_source_when_building_standard_then_source_is_preserved_an
         replay_request.columns.landed_at,
         replay_request.columns.cursor,
     ) == test_case.expected_replay_columns
-    assert tuple(boundary.cutoff_inclusive for boundary in build_result.boundaries) == (False,)
+    assert tuple(boundary.cutoff_inclusive for boundary in build_result.boundaries) == (True,)
     assert "orders_existing" not in ownership_names
     assert not any("orders_existing" in statement for statement in connection.command_statements)
     assert not any(

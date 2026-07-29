@@ -136,10 +136,6 @@ def test_given_selection_when_planning_standard_then_scope_and_replay_roots_matc
 
     assert logical_key_names(plan.user_scope) == test_case.expected_user_scope
     assert logical_key_names(plan.execution_scope) == test_case.expected_execution_scope
-    assert (
-        logical_key_names(tuple(segment.model_key for segment in plan.population_segments))
-        == test_case.expected_execution_scope
-    )
     assert tuple(entry.reason for entry in plan.entries) == test_case.expected_reasons
     assert (
         tuple(prerequisite.key.name for prerequisite in plan.prerequisite_scope)
