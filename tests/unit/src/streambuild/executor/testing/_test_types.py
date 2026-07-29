@@ -19,3 +19,11 @@ class ComparisonDecodingErrorTestCase:
     rows: tuple[tuple[object, ...], ...]
     set_difference_comparison: bool
     expected_error_fragment: str
+
+
+@dataclass(frozen=True)
+class SqlTestExecutionFailureTestCase:
+    description: str
+    expected_passed: tuple[bool, ...]
+    expected_error_fragment: str
+    expected_statements: tuple[str, ...]

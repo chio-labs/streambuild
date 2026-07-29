@@ -67,6 +67,7 @@ _DIRECT_BINDING_TRANSFORM_KEYS: tuple[str, ...] = (
     "distinct_on",
     "top",
     "sample",
+    "prewhere",
     "windows",
     "connect",
     "into",
@@ -166,15 +167,19 @@ def _rewrite_select(
 ) -> None:
     local_ctes: list[Any] = _select_ctes(select_payload)
     all_visible_ctes: frozenset[str] = visible_ctes | _cte_names(local_ctes)
+    cte_visible_ctes: frozenset[str] = (
+        all_visible_ctes if _has_recursive_ctes(select_payload) else visible_ctes
+    )
     cte: Any
     for cte in local_ctes:
         if isinstance(cte, dict):
             _rewrite_node(
                 node=cte.get(POLYGLOT_ALIAS_VALUE_KEY),
                 rewrites=rewrites,
-                visible_ctes=all_visible_ctes,
+                visible_ctes=cte_visible_ctes,
                 dialect=dialect,
             )
+            cte_visible_ctes = cte_visible_ctes | _cte_names((cte,))
     _rewrite_relation_slots(
         select_payload=select_payload,
         rewrites=rewrites,
@@ -396,6 +401,11 @@ def _select_ctes(select_payload: dict[str, Any]) -> list[Any]:
     return ctes if isinstance(ctes, list) else []
 
 
+def _has_recursive_ctes(select_payload: dict[str, Any]) -> bool:
+    with_payload: Any = select_payload.get(POLYGLOT_WITH_KEY)
+    return isinstance(with_payload, dict) and with_payload.get("recursive") is True
+
+
 def _cte_names(ctes: Iterable[Any]) -> frozenset[str]:
     names: set[str] = set()
     cte: Any
@@ -572,7 +582,11 @@ def _direct_relation(tree: dict[str, Any]) -> SqlRelationIdentity | None:
     table_payload: Any = relation.get(POLYGLOT_TABLE_KEY) if isinstance(relation, dict) else None
     if not isinstance(table_payload, dict):
         return None
-    if table_payload.get("final_") is True or table_payload.get("only") is True:
+    if (
+        table_payload.get("final_") is True
+        or table_payload.get("only") is True
+        or table_payload.get("table_sample") is not None
+    ):
         return None
     return _table_identity(table_payload)
 

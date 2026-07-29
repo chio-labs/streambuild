@@ -84,6 +84,36 @@ from tests.unit.src.streambuild.compiler.sql_analysis._test_types import (
                 "__streambuild_target_database__.orders AS source_rows",
             ),
         ),
+        QueryRelationRewriteTestCase(
+            description="rewrites a physical relation shadowed by a nonrecursive CTE name",
+            sql="WITH orders AS (SELECT * FROM orders) SELECT * FROM orders",
+            rewrites=(
+                SqlRelationRewrite(
+                    source_name="orders",
+                    target_relation="orders__shadow",
+                ),
+            ),
+            expected_fragments=(
+                "WITH orders AS (SELECT * FROM orders__shadow)",
+                "SELECT * FROM orders",
+            ),
+            expected_absent_fragments=("WITH orders AS (SELECT * FROM orders)",),
+        ),
+        QueryRelationRewriteTestCase(
+            description="preserves a recursive CTE identity inside its own body",
+            sql="WITH RECURSIVE orders AS (SELECT * FROM orders) SELECT * FROM orders",
+            rewrites=(
+                SqlRelationRewrite(
+                    source_name="orders",
+                    target_relation="orders__shadow",
+                ),
+            ),
+            expected_fragments=(
+                "WITH RECURSIVE orders AS (SELECT * FROM orders)",
+                "SELECT * FROM orders",
+            ),
+            expected_absent_fragments=("orders__shadow",),
+        ),
     ],
     ids=lambda case: case.description,
 )

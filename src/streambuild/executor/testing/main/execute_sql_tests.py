@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.exceptions import AdapterWarehouseError
 from streambuild.adapter.models import AdapterQueryResult
 from streambuild.compiler.testing.models import SqlTestCase
 from streambuild.executor.testing._helpers.results import build_target_results
@@ -24,7 +25,22 @@ def execute_sql_tests(
     results: list[SqlTestExecutionResult] = []
     test_case: SqlTestCase
     for test_case in test_cases:
-        result: AdapterQueryResult = client.query(test_case.query)
+        try:
+            result: AdapterQueryResult = client.query(test_case.query)
+        except AdapterWarehouseError as error:
+            results.append(
+                SqlTestExecutionResult(
+                    file_path=test_case.file_path,
+                    test_index=test_case.test_index,
+                    passed=False,
+                    target_results=(),
+                    executed_sql=test_case.query,
+                    warnings=test_case.warnings,
+                    name=test_case.name,
+                    error_message=str(error),
+                )
+            )
+            continue
         target_results: tuple[SqlTestTargetExecutionResult, ...] = build_target_results(
             test_case=test_case,
             result=result,

@@ -77,6 +77,9 @@ def build_realized_project(
     model: CompiledModel
     for model in project.models:
         relation_names[model.key] = adapter_profile.model_relation_name(logical_name=model.key.name)
+    relation_name_by_logical_name: dict[str, str] = {
+        key.name: relation_name for key, relation_name in relation_names.items()
+    }
     relation_sql_by_name: dict[str, str] = _relation_sql_by_logical_name(
         project=project,
         relation_names=relation_names,
@@ -93,6 +96,7 @@ def build_realized_project(
                 model=model,
                 resolved_query=resolved_query,
                 relation_names=relation_names,
+                relation_name_by_logical_name=relation_name_by_logical_name,
             )
         )
         _validate_model_relation_name(
@@ -214,15 +218,12 @@ def _model_request(
     model: CompiledModel,
     resolved_query: SqlResolvedQuery,
     relation_names: dict[LogicalResourceKey, str],
+    relation_name_by_logical_name: dict[str, str],
 ) -> AdapterModelRealizationRequest:
     settings: tuple[tuple[str, str], ...] = (
         () if model.transform.settings is None else tuple(sorted(model.transform.settings.items()))
     )
-    source_relation_name: str = next(
-        relation_name
-        for key, relation_name in relation_names.items()
-        if key.name == model.transform.source
-    )
+    source_relation_name: str = relation_name_by_logical_name[model.transform.source]
     return AdapterModelRealizationRequest(
         logical_name=model.key.name,
         target_relation_name=relation_names[model.key],

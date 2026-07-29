@@ -2,13 +2,18 @@ from pathlib import Path
 
 import pytest
 
+from streambuild.compiler.testing.classes.sql_test_chain_assembler import SqlTestChainAssembler
 from streambuild.compiler.testing.models import SqlTestCase
 from tests.unit.src.streambuild.compiler.testing._test_types import (
     BuildSqlTestCasesErrorTestCase,
     SqlTestChainClosureTestCase,
+    SqlTestDeepChainTestCase,
     SqlTestWarningTestCase,
 )
-from tests.unit.src.streambuild.compiler.testing.helpers import build_single_sql_test_case
+from tests.unit.src.streambuild.compiler.testing.helpers import (
+    build_deep_chain_assembler,
+    build_single_sql_test_case,
+)
 
 
 @pytest.mark.parametrize(
@@ -123,6 +128,29 @@ def test_given_terminal_expected_target_when_assembling_then_it_resolves_the_rea
     assert tuple(target.target_model_name for target in assembled.target_cases) == (
         test_case.expected_target_model_names
     )
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        SqlTestDeepChainTestCase(
+            description="assembles a chain deeper than the Python recursion limit",
+            model_count=1100,
+            expected_terminal_cte_name="__model__model_1099",
+            expected_assembled_count=1100,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_deep_model_chain_when_resolving_then_it_uses_iterative_dependency_order(
+    test_case: SqlTestDeepChainTestCase,
+) -> None:
+    assembler: SqlTestChainAssembler = build_deep_chain_assembler(model_count=test_case.model_count)
+
+    terminal_cte_name: str = assembler.resolve(logical_name=f"model_{test_case.model_count - 1}")
+
+    assert terminal_cte_name == test_case.expected_terminal_cte_name
+    assert len(assembler.assembled_ctes) == test_case.expected_assembled_count
 
 
 @pytest.mark.parametrize(

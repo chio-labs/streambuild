@@ -69,6 +69,15 @@ from tests.unit.src.streambuild.cli.test._helpers.helpers import build_render_sq
                 "\n\n  target: daily_revenue\n  diff (1 row differs):",
             ),
         ),
+        RenderSqlTestResultsTestCase(
+            description="renders a warehouse execution error without target diffs",
+            verbose=False,
+            expected_fragments=(
+                "ERROR  execution  tests/order_events/test_broken.sql",
+                "error: warehouse rejected test SQL",
+                "Results: 0 passed, 0 failed, 1 error",
+            ),
+        ),
     ],
     ids=lambda case: case.description,
 )
