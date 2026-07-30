@@ -7,10 +7,10 @@ from scripts.cli_output_preview_support._helpers.renderers import (
     render_audit_caution_preview,
     render_audit_preview,
     render_backfill_preview,
+    render_direct_plan_preview,
     render_multi_target_plan_preview,
     render_plan_preview,
     render_publish_preview,
-    render_standard_plan_preview,
     render_type_change_plan_preview,
 )
 from scripts.cli_output_preview_support.types import PreviewRenderer
@@ -22,7 +22,7 @@ PREVIEW_RENDERER_BY_SCENARIO: Mapping[str, PreviewRenderer] = {
     "plan": render_plan_preview,
     "plan-multi": render_multi_target_plan_preview,
     "plan-type-change": render_type_change_plan_preview,
-    "plan-standard": render_standard_plan_preview,
+    "plan-direct": render_direct_plan_preview,
     "backfill": render_backfill_preview,
     "audit": render_audit_preview,
     "audit-caution": render_audit_caution_preview,

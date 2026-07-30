@@ -132,8 +132,8 @@ def write_source_model_name_collision(project_dir: Path) -> None:
         project_dir / "pipelines" / "alpha" / "alpha_source.sql",
         """
         MODEL (
-          engine: "MergeTree()",
-          order_by: ["order_id"],
+          engine "MergeTree()",
+          order_by ["order_id"],
         );
 
         SELECT CAST(order_id AS UInt64) AS order_id FROM __ref("alpha_source")
@@ -236,9 +236,9 @@ def _write_pipeline(
         pipeline_dir / f"{model_name}.sql",
         f"""
         MODEL (
-          engine: "MergeTree()",
-          order_by: ["order_id"],
-          settings: {{index_granularity: "8192"}},
+          engine "MergeTree()",
+          order_by ["order_id"],
+          settings (index_granularity "8192"),
         );
 
         SELECT @identity_sql('CAST(order_id AS UInt64)') AS order_id FROM __ref("{source_name}")
@@ -255,8 +255,8 @@ def _write_shared_source_pipeline(
         pipeline_dir / f"{model_name}.sql",
         """
         MODEL (
-          engine: "MergeTree()",
-          order_by: ["order_id"],
+          engine "MergeTree()",
+          order_by ["order_id"],
         );
 
         SELECT CAST(order_id AS UInt64) AS order_id FROM __ref("orders")

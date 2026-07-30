@@ -12,6 +12,7 @@ from streambuild.compiler.macros.models import MacroContext, MacroRegistry
 from tests.unit.src.streambuild.compiler.discovery._helpers._test_types import (
     InferTransformSourceErrorTestCase,
     LoadTransformFromSqlFileTestCase,
+    ParseModelSqlHeaderErrorTestCase,
     ParseModelSqlHeaderTestCase,
 )
 from tests.unit.src.streambuild.compiler.macros.helpers import (
@@ -39,15 +40,16 @@ from tests.unit.src.streambuild.compiler.macros.helpers import (
             description="accepts blank lines inside multiline replay on change header",
             contents="""
         MODEL (
-          engine: "MergeTree()",
+          engine "MergeTree()",
 
-          order_by: ["order_id"],
-          replay_anchor: never,
+          order_by ["order_id"],
+          replay_anchor never,
 
-          replay_on_change:
-            breaking: bounded-8s
+          replay_on_change (
+            breaking bounded-8s
 
-            non_breaking: bounded-8s,
+            non_breaking bounded-8s,
+          ),
         );
 
         SELECT kafka_key::String AS order_id FROM __source("orders")
@@ -64,15 +66,16 @@ from tests.unit.src.streambuild.compiler.macros.helpers import (
             expected_query='SELECT kafka_key::String AS order_id FROM __source("orders")',
         ),
         ParseModelSqlHeaderTestCase(
-            description="accepts mixed block and inline header mappings",
+            description="accepts nested and inline SQLBuild header mappings",
             contents="""
         MODEL (
-          engine: "MergeTree()",
-          order_by: ["order_id"],
-          settings:
-            index_granularity: 8192
-            allow_nullable_key: 1,
-          replay_on_change: {breaking: full, non_breaking: bounded-30m},
+          engine "MergeTree()",
+          order_by ["order_id"],
+          settings (
+            index_granularity 8192
+            allow_nullable_key 1,
+          ),
+          replay_on_change (breaking full, non_breaking bounded-30m),
         );
 
         SELECT kafka_key::String AS order_id FROM __source("orders")
@@ -95,9 +98,9 @@ from tests.unit.src.streambuild.compiler.macros.helpers import (
             description="accepts whitespace-only lines and indented header entries",
             contents=(
                 "   \n"
-                'MODEL (\n    engine: "MergeTree()",\n  \n'
-                '    order_by: ["order_id"],\n'
-                "    bounded_replay_fallback: bounded_without_history,\n"
+                'MODEL (\n    engine "MergeTree()",\n  \n'
+                '    order_by ["order_id"],\n'
+                "    bounded_replay_fallback bounded_without_history,\n"
                 ");\n \n"
                 'SELECT kafka_key::String AS order_id FROM __source("orders")'
             ),
@@ -120,6 +123,42 @@ def test_given_sql_model_header_variants_when_parsing_then_it_returns_expected_h
 
     assert header_values == test_case.expected_header_values
     assert query == test_case.expected_query
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ParseModelSqlHeaderErrorTestCase(
+            description="rejects the removed YAML-like key separator",
+            contents='MODEL (engine: "MergeTree()"); SELECT 1::UInt8 AS value',
+            expected_error_fragment=(
+                "unexpected ':' after key 'engine'; use SQLBuild syntax 'engine value'"
+            ),
+        ),
+        ParseModelSqlHeaderErrorTestCase(
+            description="rejects a nested YAML-like brace mapping",
+            contents=("MODEL (settings {index_granularity: 8192}); SELECT 1::UInt8 AS value"),
+            expected_error_fragment=(
+                "YAML-like brace mappings are not supported at position 9; "
+                "use SQLBuild parenthesized mapping syntax"
+            ),
+        ),
+        ParseModelSqlHeaderErrorTestCase(
+            description="rejects a top-level YAML-like brace mapping",
+            contents='MODEL ({engine: "MergeTree()"}); SELECT 1::UInt8 AS value',
+            expected_error_fragment=(
+                "YAML-like brace mappings are not supported at position 0; "
+                "use SQLBuild parenthesized mapping syntax"
+            ),
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_yaml_like_model_header_when_parsing_then_it_raises_conversion_guidance(
+    test_case: ParseModelSqlHeaderErrorTestCase,
+) -> None:
+    with pytest.raises(ValueError, match=test_case.expected_error_fragment):
+        parse_model_sql(contents=test_case.contents, file_path=Path("orders.sql"))
 
 
 @pytest.mark.parametrize(
@@ -156,7 +195,7 @@ def test_given_typed_driving_ref_when_inferring_transform_source_then_it_raises_
             """,
             model_file_contents="""
             MODEL (
-              order_by: ["order_id"]
+              order_by ["order_id"]
             );
 
             SELECT order_id, @replay_columns() FROM __source("orders")

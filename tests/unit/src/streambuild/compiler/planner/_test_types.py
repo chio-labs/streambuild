@@ -13,10 +13,10 @@ from streambuild.compiler.discovery.types import (
 )
 from streambuild.compiler.planner.types import (
     DeploymentAction,
+    DirectPlanReason,
     PlannedChangeType,
     RebuildExecutionMode,
     RebuildStrategy,
-    StandardPlanReason,
     TableSchemaChangeKind,
     TableSchemaSeedCompatibility,
     TargetOwnership,
@@ -49,14 +49,14 @@ class PlanningSnapshotCapabilityTestCase:
 
 
 @dataclass(frozen=True)
-class StandardMutableWarningTestCase:
+class DirectMutableWarningTestCase:
     description: str
     expected_warning_code: str
     expected_warning_fragment: str
 
 
 @dataclass(frozen=True)
-class StandardModelInputReplayColumnsTestCase:
+class DirectModelInputReplayColumnsTestCase:
     description: str
     expected_replay_columns: tuple[str, str, str, str, str]
 
@@ -242,12 +242,12 @@ class DeploymentPhysicalNameParsingTestCase:
 
 
 @dataclass(frozen=True)
-class StandardScopeTestCase:
+class DirectScopeTestCase:
     description: str
     selected_model_names: tuple[str, ...]
     expected_user_scope: tuple[str, ...]
     expected_execution_scope: tuple[str, ...]
-    expected_reasons: tuple[StandardPlanReason, ...]
+    expected_reasons: tuple[DirectPlanReason, ...]
     expected_prerequisites: tuple[str, ...]
     expected_replay_roots: tuple[tuple[str, str, tuple[str, ...]], ...] = ()
     expected_teardown: tuple[tuple[str, str], ...] = ()
@@ -255,10 +255,10 @@ class StandardScopeTestCase:
 
 
 @dataclass(frozen=True)
-class StandardOwnershipTestCase:
+class DirectOwnershipTestCase:
     description: str
     relation_names: tuple[str, ...]
-    standard_owned_names: tuple[str, ...]
+    direct_owned_names: tuple[str, ...]
     virtual_environment_owned_names: tuple[str, ...]
     stable_binding_names: tuple[str, ...]
     classified_relation_names: tuple[str, ...]
@@ -267,11 +267,11 @@ class StandardOwnershipTestCase:
 
 
 @dataclass(frozen=True)
-class StandardPlanRejectionTestCase:
+class DirectPlanRejectionTestCase:
     description: str
     selected_model_names: tuple[str, ...]
     present_relation_names: tuple[str, ...]
-    standard_owned_names: tuple[str, ...]
+    direct_owned_names: tuple[str, ...]
     virtual_environment_owned_names: tuple[str, ...]
     stable_binding_names: tuple[str, ...]
     expected_error_fragment: str

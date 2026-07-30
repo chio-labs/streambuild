@@ -85,7 +85,7 @@ from streambuild.compiler.discovery.types import (
 from streambuild.compiler.pipeline.main._realize_project import realize_project
 from streambuild.compiler.pipeline.main.analyze_project import analyze_project
 from streambuild.compiler.pipeline.models import CompileAnalysis, RealizedProject
-from streambuild.compiler.planner.main.plan_standard_build import plan_standard_build
+from streambuild.compiler.planner.main.plan_direct_build import plan_direct_build
 from streambuild.compiler.planner.models import (
     ActualKafkaTable,
     ActualMaterializedView,
@@ -95,13 +95,13 @@ from streambuild.compiler.planner.models import (
     DeploymentRecord,
     DeploymentRuntimeDetailRecord,
     DeploymentWatermarkRecord,
+    DirectPlan,
+    DirectRelationOperation,
+    DirectWarehouseSnapshot,
     ObjectStateRecord,
     PreparedObjectMapping,
     PublishEventRecord,
     RootDeploymentInspection,
-    StandardPlan,
-    StandardRelationOperation,
-    StandardWarehouseSnapshot,
 )
 from streambuild.compiler.sql_analysis.classes.sql_model_analyzer import SqlModelAnalyzer
 from tests.unit.src.streambuild.compiler.compile.helpers import build_realization_analyzer
@@ -125,7 +125,7 @@ class SnapshotRecordingConnection(AdapterConnection):
         catalog: CatalogSnapshot,
         metadata_result: AdapterQueryResult,
         virtual_environments: bool,
-        standard_rebuild: bool = True,
+        direct_rebuild: bool = True,
         ownership_records: tuple[AdapterOwnershipRecord, ...] = (),
     ) -> None:
         self._catalog: CatalogSnapshot = catalog
@@ -142,7 +142,7 @@ class SnapshotRecordingConnection(AdapterConnection):
             per_relation_atomic_replace=True,
             graph_atomic_publish=False,
             set_difference_comparison=True,
-            standard_rebuild=standard_rebuild,
+            direct_rebuild=direct_rebuild,
         )
         self.catalog_load_count: int = 0
         self.query_count: int = 0
@@ -572,7 +572,7 @@ def build_mutable_ref_desired_state() -> DesiredState:
     )
 
 
-STANDARD_SCOPE_MODEL_SQL_BY_NAME: dict[str, str] = {
+DIRECT_SCOPE_MODEL_SQL_BY_NAME: dict[str, str] = {
     "alpha": 'SELECT order_id::UInt64 AS order_id FROM __source("orders")',
     "beta": 'SELECT order_id::UInt64 AS order_id FROM __ref("alpha")',
     "gamma": 'SELECT order_id::UInt64 AS order_id FROM __ref("beta")',
@@ -581,18 +581,18 @@ STANDARD_SCOPE_MODEL_SQL_BY_NAME: dict[str, str] = {
         'LEFT JOIN __ref("gamma", ref_type="reference") AS g ON a.order_id = g.order_id'
     ),
 }
-STANDARD_SCOPE_MODEL_NAMES: tuple[str, ...] = ("alpha", "beta", "gamma", "delta")
-STANDARD_SCOPE_SOURCE_RELATION_NAMES: tuple[str, ...] = (
+DIRECT_SCOPE_MODEL_NAMES: tuple[str, ...] = ("alpha", "beta", "gamma", "delta")
+DIRECT_SCOPE_SOURCE_RELATION_NAMES: tuple[str, ...] = (
     "kafka__orders",
     "raw__orders",
     "mv__orders",
 )
-_STANDARD_SCOPE_SETTINGS_BLOCK_BY_FLAG: dict[bool | None, str] = {
+_DIRECT_SCOPE_SETTINGS_BLOCK_BY_FLAG: dict[bool | None, str] = {
     None: "",
     True: "\n[settings]\nvirtual_environments = true\n",
     False: "\n[settings]\nvirtual_environments = false\n",
 }
-_STANDARD_SCOPE_SOURCE_YML: str = (
+_DIRECT_SCOPE_SOURCE_YML: str = (
     "sources:\n"
     "  - name: orders\n"
     "    kind: kafka\n"
@@ -602,38 +602,38 @@ _STANDARD_SCOPE_SOURCE_YML: str = (
 )
 
 
-def write_standard_scope_project(
+def write_direct_scope_project(
     *, project_root: Path, virtual_environments: bool | None = None
 ) -> None:
-    """Write the alpha/beta/gamma/delta scope project used by standard planning tests."""
+    """Write the alpha/beta/gamma/delta scope project used by direct planning tests."""
 
     pipeline_root: Path = project_root / "pipelines" / "orders"
     source_root: Path = project_root / "sources"
     pipeline_root.mkdir(parents=True, exist_ok=True)
     source_root.mkdir(parents=True, exist_ok=True)
     (project_root / "streambuild_project.toml").write_text(
-        'name = "standard_scope"\n'
+        'name = "direct_scope"\n'
         'default_target = "test"\n'
-        f"{_STANDARD_SCOPE_SETTINGS_BLOCK_BY_FLAG[virtual_environments]}"
+        f"{_DIRECT_SCOPE_SETTINGS_BLOCK_BY_FLAG[virtual_environments]}"
         "\n[targets.test]\n"
         'database = "analytics"\n',
         encoding="utf-8",
     )
-    (source_root / "orders.yml").write_text(_STANDARD_SCOPE_SOURCE_YML, encoding="utf-8")
+    (source_root / "orders.yml").write_text(_DIRECT_SCOPE_SOURCE_YML, encoding="utf-8")
     (pipeline_root / "pipeline.yml").write_text("source: orders\n", encoding="utf-8")
     model_name: str
     model_sql: str
-    for model_name, model_sql in STANDARD_SCOPE_MODEL_SQL_BY_NAME.items():
+    for model_name, model_sql in DIRECT_SCOPE_MODEL_SQL_BY_NAME.items():
         (pipeline_root / f"{model_name}.sql").write_text(
-            f'MODEL (order_by: ["order_id"]);\n{model_sql}\n',
+            f'MODEL (order_by ["order_id"]);\n{model_sql}\n',
             encoding="utf-8",
         )
 
 
-def write_standard_mutable_scope_project(*, project_root: Path) -> None:
-    """Write the standard scope with delta using a mutable side reference."""
+def write_direct_mutable_scope_project(*, project_root: Path) -> None:
+    """Write the direct scope with delta using a mutable side reference."""
 
-    write_standard_scope_project(project_root=project_root)
+    write_direct_scope_project(project_root=project_root)
     delta_path: Path = project_root / "pipelines" / "orders" / "delta.sql"
     delta_path.write_text(
         delta_path.read_text(encoding="utf-8").replace(
@@ -643,7 +643,7 @@ def write_standard_mutable_scope_project(*, project_root: Path) -> None:
     )
 
 
-def analyze_standard_scope_project(*, project_root: Path) -> CompileAnalysis:
+def analyze_direct_scope_project(*, project_root: Path) -> CompileAnalysis:
     """Analyze a written scope project exactly as the CLI does."""
 
     return analyze_project(
@@ -653,7 +653,7 @@ def analyze_standard_scope_project(*, project_root: Path) -> CompileAnalysis:
     )
 
 
-def standard_model_keys(
+def direct_model_keys(
     *, analysis: CompileAnalysis, names: tuple[str, ...]
 ) -> frozenset[LogicalResourceKey]:
     """Return the logical model keys for the named models."""
@@ -664,20 +664,20 @@ def standard_model_keys(
     return frozenset(key_by_name[name] for name in names)
 
 
-def build_standard_snapshot(
+def build_direct_snapshot(
     *,
     relation_names: tuple[str, ...] = (),
-    standard_owned_names: tuple[str, ...] = (),
+    direct_owned_names: tuple[str, ...] = (),
     virtual_environment_owned_names: tuple[str, ...] = (),
     stable_binding_names: tuple[str, ...] = (),
     ownership_database: str = "analytics",
-) -> StandardWarehouseSnapshot:
-    """Build one immutable standard snapshot from explicit relation and ownership facts."""
+) -> DirectWarehouseSnapshot:
+    """Build one immutable direct snapshot from explicit relation and ownership facts."""
 
     stable_binding_by_name: dict[str, str | None] = {
         relation_name: f"{relation_name}__binding" for relation_name in stable_binding_names
     }
-    return StandardWarehouseSnapshot(
+    return DirectWarehouseSnapshot(
         catalog=CatalogSnapshot(
             identity=CatalogIdentity(
                 adapter=AdapterIdentity(name="clickhouse"),
@@ -696,8 +696,8 @@ def build_standard_snapshot(
         ),
         ownership_records=(
             *_ownership_records(
-                relation_names=standard_owned_names,
-                mode=AdapterOwningMode.STANDARD,
+                relation_names=direct_owned_names,
+                mode=AdapterOwningMode.DIRECT,
                 database=ownership_database,
             ),
             *_ownership_records(
@@ -725,20 +725,20 @@ def _ownership_records(
     )
 
 
-def plan_standard_scope(
+def plan_direct_scope(
     *,
     analysis: CompileAnalysis,
-    snapshot: StandardWarehouseSnapshot,
+    snapshot: DirectWarehouseSnapshot,
     selected_model_names: tuple[str, ...],
-) -> StandardPlan:
-    """Plan the standard closure of the scope project for the named selection."""
+) -> DirectPlan:
+    """Plan the direct closure of the scope project for the named selection."""
 
-    return plan_standard_build(
+    return plan_direct_build(
         graph=analysis.graph,
         realized_project=analysis.realized_project,
         snapshot=snapshot,
         database="analytics",
-        selected_model_keys=standard_model_keys(analysis=analysis, names=selected_model_names),
+        selected_model_keys=direct_model_keys(analysis=analysis, names=selected_model_names),
     )
 
 
@@ -748,7 +748,7 @@ def logical_key_names(keys: tuple[LogicalResourceKey, ...]) -> tuple[str, ...]:
     return tuple(key.name for key in keys)
 
 
-def replay_root_summaries(*, plan: StandardPlan) -> tuple[tuple[str, str, tuple[str, ...]], ...]:
+def replay_root_summaries(*, plan: DirectPlan) -> tuple[tuple[str, str, tuple[str, ...]], ...]:
     """Summarize each replay root as model, driving relation, and propagated models."""
 
     return tuple(
@@ -762,26 +762,26 @@ def replay_root_summaries(*, plan: StandardPlan) -> tuple[tuple[str, str, tuple[
 
 
 def relation_operation_summaries(
-    *, operations: tuple[StandardRelationOperation, ...]
+    *, operations: tuple[DirectRelationOperation, ...]
 ) -> tuple[tuple[str, str], ...]:
     """Summarize relation operations as ordered action and relation-name pairs."""
 
     return tuple((str(operation.action), operation.relation_name) for operation in operations)
 
 
-def build_settled_standard_snapshot() -> StandardWarehouseSnapshot:
-    """Build the snapshot of a warehouse that standard mode already built end to end."""
+def build_settled_direct_snapshot() -> DirectWarehouseSnapshot:
+    """Build the snapshot of a warehouse that direct mode already built end to end."""
 
-    model_relation_names: tuple[str, ...] = standard_scope_relation_names(
-        model_names=STANDARD_SCOPE_MODEL_NAMES
+    model_relation_names: tuple[str, ...] = direct_scope_relation_names(
+        model_names=DIRECT_SCOPE_MODEL_NAMES
     )
-    return build_standard_snapshot(
-        relation_names=(*STANDARD_SCOPE_SOURCE_RELATION_NAMES, *model_relation_names),
-        standard_owned_names=model_relation_names,
+    return build_direct_snapshot(
+        relation_names=(*DIRECT_SCOPE_SOURCE_RELATION_NAMES, *model_relation_names),
+        direct_owned_names=model_relation_names,
     )
 
 
-def standard_scope_relation_names(*, model_names: tuple[str, ...]) -> tuple[str, ...]:
+def direct_scope_relation_names(*, model_names: tuple[str, ...]) -> tuple[str, ...]:
     """Return the table and view relation names owned by the named models."""
 
     return tuple(

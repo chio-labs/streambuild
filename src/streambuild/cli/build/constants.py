@@ -1,4 +1,4 @@
-"""Standard build command constants."""
+"""Direct build command constants."""
 
 from importlib.metadata import version
 

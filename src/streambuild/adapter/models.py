@@ -34,12 +34,12 @@ class AdapterCapabilities:
     per_relation_atomic_replace: bool
     graph_atomic_publish: bool
     set_difference_comparison: bool
-    standard_rebuild: bool
+    direct_rebuild: bool
 
 
 @dataclass(frozen=True)
 class AdapterReplayCoverageRange:
-    """One retained lineage range required to reproduce a standard target."""
+    """One retained lineage range required to reproduce a direct target."""
 
     driving_input_relation_name: str
     replay_boundary_mode: AdapterReplayBoundaryMode | str

@@ -1,1 +1,0 @@
-"""Standard-mode build execution."""

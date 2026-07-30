@@ -21,7 +21,7 @@ COMMANDS_REQUIRING_PIPELINES_ROOT: frozenset[CliCommand] = frozenset(
 COMMANDS_WITHOUT_ADAPTER_CONNECTION: frozenset[CliCommand] = frozenset(
     {CliCommand.DISCOVER, CliCommand.COMPILE}
 )
-STANDARD_ONLY_COMMANDS: frozenset[CliCommand] = frozenset({CliCommand.BUILD})
+DIRECT_ONLY_COMMANDS: frozenset[CliCommand] = frozenset({CliCommand.BUILD})
 VIRTUAL_ENVIRONMENT_ONLY_COMMANDS: frozenset[CliCommand] = frozenset(
     {
         CliCommand.BACKFILL,

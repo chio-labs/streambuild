@@ -327,7 +327,7 @@ def _add_build_parser(
 ) -> argparse.ArgumentParser:
     build_parser: argparse.ArgumentParser = subparsers.add_parser(
         "build",
-        help="Rebuild selected models directly in standard mode",
+        help="Rebuild selected models directly in direct mode",
         description=(
             "Preserve managed sources, rebuild the selected downstream closure at its ordinary "
             "names, and replay preserved history. Shows the plan and asks for confirmation "

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.cli.entry.exceptions import CliUserError
-from streambuild.cli.plan._helpers.standard_command import execute_standard_plan
+from streambuild.cli.plan._helpers.direct_command import execute_direct_plan
 from streambuild.cli.plan._helpers.virtual_environment_command import (
     execute_virtual_environment_plan,
 )
@@ -34,7 +34,7 @@ def execute_plan_command(
             normalized_utc_start_time=_normalized_utc_start_time(options=options),
         )
     _reject_virtual_environment_only_flags(options=options)
-    return execute_standard_plan(analysis=analysis, options=options, client=client)
+    return execute_direct_plan(analysis=analysis, options=options, client=client)
 
 
 def validate_plan_flags(*, options: PlanCommandOptions) -> None:
@@ -60,5 +60,5 @@ def _reject_virtual_environment_only_flags(*, options: PlanCommandOptions) -> No
         if getattr(options, attribute_name):
             raise CliUserError(
                 f"{flag_name} is a virtual-environment replay control and is not available in "
-                "standard mode. Enable settings.virtual_environments to use it."
+                "direct mode. Enable settings.virtual_environments to use it."
             )

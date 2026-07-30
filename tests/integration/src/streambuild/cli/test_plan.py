@@ -61,8 +61,8 @@ sources:
 """
 MANAGED_PLAN_MODEL_TEMPLATE: str = """
 MODEL (
-  engine: "MergeTree()",
-  order_by: ["order_id"]
+  engine "MergeTree()",
+  order_by ["order_id"]
 );
 
 SELECT
@@ -125,8 +125,8 @@ FROM __ref("orders")
             """,
             model_contents="""
             MODEL (
-              engine: "MergeTree()",
-              order_by: ["order_id"]
+              engine "MergeTree()",
+              order_by ["order_id"]
             );
 
             SELECT
@@ -158,8 +158,8 @@ FROM __ref("orders")
             """,
             model_contents="""
             MODEL (
-              engine: "MergeTree()",
-              order_by: ["order_id"]
+              engine "MergeTree()",
+              order_by ["order_id"]
             );
 
             SELECT
@@ -191,8 +191,8 @@ FROM __ref("orders")
             """,
             model_contents="""
             MODEL (
-              engine: "MergeTree()",
-              order_by: ["order_id"]
+              engine "MergeTree()",
+              order_by ["order_id"]
             );
 
             SELECT

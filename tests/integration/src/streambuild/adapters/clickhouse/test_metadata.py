@@ -296,7 +296,7 @@ def test_given_legacy_metadata_when_migrating_then_rows_remain_readable_and_unmo
                     "resource_kind": "table",
                     "logical_model_database": "",
                     "logical_model_name": "orders_enriched",
-                    "owning_mode": "standard",
+                    "owning_mode": "direct",
                     "tool_version": "0.1.0",
                 },
                 {
@@ -313,7 +313,7 @@ def test_given_legacy_metadata_when_migrating_then_rows_remain_readable_and_unmo
             expected_records_after_migration=(),
             expected_records_after_insert=(
                 ("mv__orders_enriched", "orders_enriched", "virtual_environment"),
-                ("tbl__orders_enriched", "orders_enriched", "standard"),
+                ("tbl__orders_enriched", "orders_enriched", "direct"),
             ),
         )
     ],

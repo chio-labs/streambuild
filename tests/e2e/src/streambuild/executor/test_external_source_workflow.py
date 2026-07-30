@@ -9,9 +9,9 @@ from streambuild.compiler.discovery.types import ReplayLineageMode
 from streambuild.executor.audit_backfill.types import AuditAssessment
 from tests.e2e.src.streambuild.conftest import E2EClickHouseConnectionSettings
 from tests.e2e.src.streambuild.executor._test_types import (
+    DirectExternalSourceBuildE2ETestCase,
     ExternalSourceOffsetWorkflowE2ETestCase,
     ExternalSourceWorkflowE2ETestCase,
-    StandardExternalSourceBuildE2ETestCase,
 )
 from tests.e2e.src.streambuild.executor.helpers import (
     build_authored_greenfield_workflow_compiled_pipeline,
@@ -182,15 +182,15 @@ def test_given_external_offset_source_pipeline_when_running_then_it_publishes_of
 @pytest.mark.parametrize(
     "test_case",
     [
-        StandardExternalSourceBuildE2ETestCase(
-            description="runs standard build directly from adopted offset source",
+        DirectExternalSourceBuildE2ETestCase(
+            description="runs direct build directly from adopted offset source",
             expected_order_ids=("order-1", "order-2"),
         )
     ],
     ids=lambda case: case.description,
 )
-def test_given_standard_adopted_source_when_building_then_it_preserves_source_and_builds_rows(
-    test_case: StandardExternalSourceBuildE2ETestCase,
+def test_given_direct_adopted_source_when_building_then_it_preserves_source_and_builds_rows(
+    test_case: DirectExternalSourceBuildE2ETestCase,
     isolated_e2e_clickhouse_connection_settings: E2EClickHouseConnectionSettings,
     isolated_e2e_clickhouse_client: Client,
     isolated_e2e_clickhouse_database: str,

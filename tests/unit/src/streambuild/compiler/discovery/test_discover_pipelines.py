@@ -49,8 +49,8 @@ def test_given_pipeline_root_when_discovering_pipelines_then_returns_loaded_pipe
                     """,
                 "alpha/shared.sql": """
                 MODEL (
-                  engine: "MergeTree()",
-                  order_by: ["order_id"],
+                  engine "MergeTree()",
+                  order_by ["order_id"],
                 );
 
                 SELECT CAST(order_id AS UInt64) AS order_id FROM __ref("orders")
@@ -60,8 +60,8 @@ def test_given_pipeline_root_when_discovering_pipelines_then_returns_loaded_pipe
                     """,
                 "beta/shared.sql": """
                 MODEL (
-                  engine: "MergeTree()",
-                  order_by: ["order_id"],
+                  engine "MergeTree()",
+                  order_by ["order_id"],
                 );
 
                 SELECT CAST(order_id AS UInt64) AS order_id FROM __ref("orders")

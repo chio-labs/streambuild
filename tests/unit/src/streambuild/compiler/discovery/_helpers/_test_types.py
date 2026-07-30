@@ -10,6 +10,13 @@ class ParseModelSqlHeaderTestCase:
 
 
 @dataclass(frozen=True)
+class ParseModelSqlHeaderErrorTestCase:
+    description: str
+    contents: str
+    expected_error_fragment: str
+
+
+@dataclass(frozen=True)
 class InferTransformSourceErrorTestCase:
     description: str
     query: str

@@ -13,7 +13,7 @@ from streambuild.compiler.compile.models import CompilerAdapterProfile
 from streambuild.compiler.discovery.models import LoadedProject
 from streambuild.compiler.pipeline.main.analyze_project import analyze_project
 from streambuild.compiler.pipeline.models import CompileAnalysis
-from streambuild.compiler.planner.exceptions import StandardPlanError
+from streambuild.compiler.planner.exceptions import DirectPlanError
 
 
 def run_plan(
@@ -49,7 +49,7 @@ def run_plan(
         )
         validate_plan_flags(options=options)
         print(execute_plan_command(analysis=analysis, options=options, client=client))
-    except (TransformSqlContractError, CliUserError, StandardPlanError, ValueError) as error:
+    except (TransformSqlContractError, CliUserError, DirectPlanError, ValueError) as error:
         print(str(error), file=sys.stderr)
         return 1
     return 0

@@ -1,8 +1,8 @@
 MODEL (
-  engine: "ReplacingMergeTree(updated_at)",
-  order_by: ["order_id", "updated_at"],
-  partition_by: "toYYYYMM(created_at)",
-  ttl: "toDateTime(created_at) + INTERVAL 30 DAY",
+  engine "ReplacingMergeTree(updated_at)",
+  order_by ["order_id", "updated_at"],
+  partition_by "toYYYYMM(created_at)",
+  ttl "toDateTime(created_at) + INTERVAL 30 DAY",
 );
 
 SELECT

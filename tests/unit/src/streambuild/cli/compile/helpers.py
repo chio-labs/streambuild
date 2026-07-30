@@ -42,8 +42,8 @@ def write_adopted_source(*, project_dir: Path) -> None:
 def write_invalid_model(*, project_dir: Path) -> None:
     (project_dir / "pipelines" / "orders" / "orders_enriched.sql").write_text(
         """MODEL (
-  engine: "MergeTree()",
-  order_by: ["order_id"],
+  engine "MergeTree()",
+  order_by ["order_id"],
 );
 
 SELECT *
@@ -63,8 +63,8 @@ def write_invalid_model_header(*, project_dir: Path) -> None:
 def write_invalid_reference_model(*, project_dir: Path) -> None:
     (project_dir / "pipelines" / "orders" / "orders_enriched.sql").write_text(
         """MODEL (
-  engine: "MergeTree()",
-  order_by: ["order_id"],
+  engine "MergeTree()",
+  order_by ["order_id"],
 );
 
 SELECT CAST(1 AS UInt64) AS order_id FROM __ref("orders)
@@ -106,8 +106,8 @@ def write_secret_source(*, project_dir: Path) -> None:
 def write_artifact_leaf_model(*, project_dir: Path) -> None:
     (project_dir / "pipelines" / "order_events" / "artifact_leaf.sql").write_text(
         """MODEL (
-  engine: "MergeTree()",
-  order_by: ["region"],
+  engine "MergeTree()",
+  order_by ["region"],
 );
 
 SELECT region::String AS region

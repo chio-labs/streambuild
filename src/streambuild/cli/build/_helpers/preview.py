@@ -1,4 +1,4 @@
-"""Resolve the standard plan a build renders and confirms before it writes."""
+"""Resolve the direct plan a build renders and confirms before it writes."""
 
 from __future__ import annotations
 
@@ -13,14 +13,14 @@ from streambuild.compiler.compile.models import CompilerAdapterProfile, LogicalR
 from streambuild.compiler.discovery.models import LoadedProject
 from streambuild.compiler.pipeline.main.analyze_project import analyze_project
 from streambuild.compiler.pipeline.models import CompileAnalysis
-from streambuild.compiler.planner.main.load_standard_warehouse_snapshot import (
-    load_standard_warehouse_snapshot,
+from streambuild.compiler.planner.main.load_direct_warehouse_snapshot import (
+    load_direct_warehouse_snapshot,
 )
-from streambuild.compiler.planner.main.plan_standard_build import plan_standard_build
-from streambuild.compiler.planner.models import StandardPlan, StandardWarehouseSnapshot
+from streambuild.compiler.planner.main.plan_direct_build import plan_direct_build
+from streambuild.compiler.planner.models import DirectPlan, DirectWarehouseSnapshot
 
 
-def build_standard_build_preview(
+def build_direct_build_preview(
     *,
     options: BuildCommandOptions,
     client: AdapterConnection,
@@ -40,7 +40,7 @@ def build_standard_build_preview(
         override=options.database,
     )
     metadata_database: str = options.metadata_database or database
-    snapshot: StandardWarehouseSnapshot = load_standard_warehouse_snapshot(
+    snapshot: DirectWarehouseSnapshot = load_direct_warehouse_snapshot(
         client=client, database=database, metadata_database=metadata_database
     )
     validate_declared_external_sources(
@@ -56,7 +56,7 @@ def build_standard_build_preview(
         selectors=options.selectors,
     )
     selected_model_keys: frozenset[LogicalResourceKey] = selection.selected_logical_model_keys
-    plan: StandardPlan = plan_standard_build(
+    plan: DirectPlan = plan_direct_build(
         graph=analysis.graph,
         realized_project=analysis.realized_project,
         snapshot=snapshot,
@@ -75,6 +75,6 @@ def build_standard_build_preview(
 def _reject_virtual_environment_project(*, analysis: CompileAnalysis) -> None:
     if analysis.compile_inputs.virtual_environments:
         raise CliUserError(
-            "stb build is a standard-mode command and this project enables "
+            "stb build is a direct-mode command and this project enables "
             "settings.virtual_environments. Use stb backfill and stb publish instead."
         )

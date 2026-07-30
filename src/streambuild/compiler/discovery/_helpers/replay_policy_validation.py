@@ -13,7 +13,7 @@ def validate_replay_policies_for_mode(
     project_file_path: Path | None,
     loaded_pipelines: tuple[LoadedPipeline, ...],
 ) -> None:
-    """Reject change-driven policy at every authored level in standard mode."""
+    """Reject change-driven policy at every authored level in direct mode."""
 
     if virtual_environments:
         return

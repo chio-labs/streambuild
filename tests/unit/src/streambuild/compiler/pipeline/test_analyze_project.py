@@ -427,7 +427,7 @@ def test_given_source_and_model_share_name_when_analyzing_then_rejects_logical_c
     "test_case",
     [
         ReplayPolicyModeErrorTestCase(
-            description="rejects project replay on change in standard mode",
+            description="rejects project replay on change in direct mode",
             project_contents="""
             name = "policy_project"
             default_target = "test"
@@ -439,13 +439,13 @@ def test_given_source_and_model_share_name_when_analyzing_then_rejects_logical_c
             local_contents="",
             pipeline_contents="source: orders",
             model_contents="""
-            MODEL (order_by: ["order_id"]);
+            MODEL (order_by ["order_id"]);
             SELECT order_id::UInt64 AS order_id FROM __source("orders")
             """,
             expected_error_fragment="cannot define defaults.replay_on_change",
         ),
         ReplayPolicyModeErrorTestCase(
-            description="rejects pipeline bounded fallback in standard mode",
+            description="rejects pipeline bounded fallback in direct mode",
             project_contents="""
             name = "policy_project"
             default_target = "test"
@@ -458,13 +458,13 @@ def test_given_source_and_model_share_name_when_analyzing_then_rejects_logical_c
             bounded_replay_fallback: full
             """,
             model_contents="""
-            MODEL (order_by: ["order_id"]);
+            MODEL (order_by ["order_id"]);
             SELECT order_id::UInt64 AS order_id FROM __source("orders")
             """,
             expected_error_fragment="cannot define bounded_replay_fallback",
         ),
         ReplayPolicyModeErrorTestCase(
-            description="rejects model replay on change in standard mode",
+            description="rejects model replay on change in direct mode",
             project_contents="""
             name = "policy_project"
             default_target = "test"
@@ -475,15 +475,15 @@ def test_given_source_and_model_share_name_when_analyzing_then_rejects_logical_c
             pipeline_contents="source: orders",
             model_contents="""
             MODEL (
-              order_by: ["order_id"],
-              replay_on_change: {breaking: full},
+              order_by ["order_id"],
+              replay_on_change (breaking full),
             );
             SELECT order_id::UInt64 AS order_id FROM __source("orders")
             """,
             expected_error_fragment="cannot define replay_on_change",
         ),
         ReplayPolicyModeErrorTestCase(
-            description="revalidates project policy after local switches mode to standard",
+            description="revalidates project policy after local switches mode to direct",
             project_contents="""
             name = "policy_project"
             default_target = "test"
@@ -500,7 +500,7 @@ def test_given_source_and_model_share_name_when_analyzing_then_rejects_logical_c
             """,
             pipeline_contents="source: orders",
             model_contents="""
-            MODEL (order_by: ["order_id"]);
+            MODEL (order_by ["order_id"]);
             SELECT order_id::UInt64 AS order_id FROM __source("orders")
             """,
             expected_error_fragment="cannot define defaults.bounded_replay_fallback",
@@ -508,7 +508,7 @@ def test_given_source_and_model_share_name_when_analyzing_then_rejects_logical_c
     ],
     ids=lambda case: case.description,
 )
-def test_given_standard_mode_policy_when_analyzing_then_it_rejects_vde_only_setting(
+def test_given_direct_mode_policy_when_analyzing_then_it_rejects_vde_only_setting(
     test_case: ReplayPolicyModeErrorTestCase,
     tmp_path: Path,
 ) -> None:

@@ -4,13 +4,11 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from textwrap import dedent
 from typing import Any
-
-import yaml
 
 from streambuild.compiler.compile.main._extract_refs import extract_refs
 from streambuild.compiler.compile.models import ParsedRef
+from streambuild.compiler.discovery._helpers.model_header import parse_model_header
 from streambuild.compiler.discovery.constants import (
     ALLOWED_MODEL_KEYS,
     DEFAULT_SQL_MODEL_ENGINE,
@@ -19,7 +17,7 @@ from streambuild.compiler.discovery.constants import (
     SCHEMA_CHANGE_RULE_KEYS,
     SECONDS_BY_DURATION_UNIT,
 )
-from streambuild.compiler.discovery.exceptions import PipelineDiscoveryError
+from streambuild.compiler.discovery.exceptions import ModelHeaderSyntaxError, PipelineDiscoveryError
 from streambuild.compiler.discovery.models import (
     ReplayOnChangePolicy,
     ReplayOnChangeRule,
@@ -244,34 +242,20 @@ def infer_transform_source(
 
 
 def _parse_model_header(*, header: str, file_path: Path) -> dict[str, Any]:
-    normalized_header: str = _normalize_model_header_yaml(header)
-    parsed_header: Any = yaml.safe_load(normalized_header)
-    if parsed_header is None:
-        return {}
-    if not isinstance(parsed_header, dict) or not all(
-        isinstance(key, str) for key in parsed_header
-    ):
+    try:
+        parsed_header: dict[str, object] = parse_model_header(header=header)
+    except ModelHeaderSyntaxError as error:
         raise PipelineDiscoveryError(
-            f"MODEL(...) in '{file_path}' must define a mapping of key: value pairs"
-        )
-    typed_parsed_header: dict[str, Any] = parsed_header
+            f"MODEL(...) in '{file_path}' contains invalid SQLBuild header syntax: {error}"
+        ) from error
 
-    unknown_keys: list[str] = [
-        key for key in typed_parsed_header.keys() if key not in ALLOWED_MODEL_KEYS
-    ]
+    unknown_keys: list[str] = [key for key in parsed_header if key not in ALLOWED_MODEL_KEYS]
     if unknown_keys:
         unknown_key_list: str = ", ".join(sorted(unknown_keys))
         raise PipelineDiscoveryError(
             f"MODEL(...) in '{file_path}' contains unsupported keys: {unknown_key_list}"
         )
-    return typed_parsed_header
-
-
-def _normalize_model_header_yaml(header: str) -> str:
-    """Normalize SQL-model header syntax into valid YAML block mapping text."""
-
-    normalized_header: str = dedent(header).strip()
-    return re.sub(r",(?=\s*(?:\n|$))", "", normalized_header)
+    return parsed_header
 
 
 def _require_string(*, header_values: dict[str, Any], key: str, file_path: Path) -> str:

@@ -7,15 +7,15 @@ from streambuild.cli.entry._helpers.compiler_profile import build_compiler_adapt
 from streambuild.compiler.discovery.main.load_project_input_for_path import (
     load_project_input_for_path,
 )
-from streambuild.compiler.planner.models import StandardWarehouseSnapshot
+from streambuild.compiler.planner.models import DirectWarehouseSnapshot
 from tests.unit.src.streambuild.cli.helpers import RecordingAdapterConnection
-from tests.unit.src.streambuild.compiler.planner.helpers import build_settled_standard_snapshot
+from tests.unit.src.streambuild.compiler.planner.helpers import build_settled_direct_snapshot
 
 
 def run_scope_project_build(*, project_root: Path, json_output: bool, auto_approve: bool) -> int:
     """Run `stb build` against the scope project with a settled fake warehouse."""
 
-    snapshot: StandardWarehouseSnapshot = build_settled_standard_snapshot()
+    snapshot: DirectWarehouseSnapshot = build_settled_direct_snapshot()
     return run_build(
         options=BuildCommandOptions(
             pipelines_root=project_root / "pipelines",

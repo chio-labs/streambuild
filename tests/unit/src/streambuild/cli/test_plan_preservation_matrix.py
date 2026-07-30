@@ -31,8 +31,8 @@ source:
 """.lstrip(),
             model_file_contents="""
 MODEL (
-  engine: "MergeTree()",
-  order_by: ["order_id"],
+  engine "MergeTree()",
+  order_by ["order_id"],
 );
 SELECT kafka_key::String AS order_id,
   _replay_partition::Int64 AS _replay_partition,
@@ -59,8 +59,8 @@ source:
 """.lstrip(),
             model_file_contents="""
 MODEL (
-  engine: "MergeTree()",
-  order_by: ["order_id"],
+  engine "MergeTree()",
+  order_by ["order_id"],
 );
 SELECT kafka_key::String AS order_id,
   _replay_timestamp::DateTime64(3) AS _replay_timestamp
@@ -86,8 +86,8 @@ source:
 """.lstrip(),
             model_file_contents="""
 MODEL (
-  engine: "MergeTree()",
-  order_by: ["order_id"],
+  engine "MergeTree()",
+  order_by ["order_id"],
 );
 SELECT kafka_key::String AS order_id,
   _replay_landed_at::DateTime64(3) AS _replay_landed_at
@@ -116,8 +116,8 @@ source:
 """.lstrip(),
             model_file_contents="""
 MODEL (
-  engine: "MergeTree()",
-  order_by: ["order_id"],
+  engine "MergeTree()",
+  order_by ["order_id"],
 );
 SELECT order_id::String AS order_id,
   _replay_partition::Int64 AS _replay_partition,
@@ -156,8 +156,8 @@ source:
 """.lstrip(),
             model_file_contents="""
 MODEL (
-  engine: "MergeTree()",
-  order_by: ["order_id"],
+  engine "MergeTree()",
+  order_by ["order_id"],
 );
 SELECT order_id::String AS order_id,
   _replay_timestamp::DateTime64(3) AS _replay_timestamp
@@ -194,8 +194,8 @@ source:
 """.lstrip(),
             model_file_contents="""
 MODEL (
-  engine: "MergeTree()",
-  order_by: ["order_id"],
+  engine "MergeTree()",
+  order_by ["order_id"],
 );
 SELECT order_id::String AS order_id,
   _replay_cursor::UInt64 AS _replay_cursor

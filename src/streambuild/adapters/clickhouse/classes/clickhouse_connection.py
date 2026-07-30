@@ -49,6 +49,7 @@ from streambuild.adapters.clickhouse._helpers.rendering import render_clickhouse
 from streambuild.adapters.clickhouse._helpers.replay import execute_clickhouse_replay
 from streambuild.adapters.clickhouse.constants import (
     CLICKHOUSE_ADAPTER_NAME,
+    CLICKHOUSE_DIRECT_REBUILD_SUPPORTED,
     CLICKHOUSE_GRAPH_ATOMIC_PUBLISH,
     CLICKHOUSE_HISTORY_PREFIX_SEED_SUPPORTED,
     CLICKHOUSE_MANAGED_SOURCE_KINDS,
@@ -56,7 +57,6 @@ from streambuild.adapters.clickhouse.constants import (
     CLICKHOUSE_REPLAY_BOUNDARY_MODES,
     CLICKHOUSE_SET_DIFFERENCE_COMPARISON_SUPPORTED,
     CLICKHOUSE_STABLE_LOGICAL_BINDINGS_SUPPORTED,
-    CLICKHOUSE_STANDARD_REBUILD_SUPPORTED,
     CLICKHOUSE_VIRTUAL_ENVIRONMENTS_SUPPORTED,
 )
 from streambuild.adapters.clickhouse.types import (
@@ -90,7 +90,7 @@ class ClickHouseConnection(AdapterConnection):
             per_relation_atomic_replace=CLICKHOUSE_PER_RELATION_ATOMIC_REPLACE,
             graph_atomic_publish=CLICKHOUSE_GRAPH_ATOMIC_PUBLISH,
             set_difference_comparison=CLICKHOUSE_SET_DIFFERENCE_COMPARISON_SUPPORTED,
-            standard_rebuild=CLICKHOUSE_STANDARD_REBUILD_SUPPORTED,
+            direct_rebuild=CLICKHOUSE_DIRECT_REBUILD_SUPPORTED,
         )
 
     def load_catalog(self, database: str) -> CatalogSnapshot:

@@ -36,7 +36,7 @@ from tests.unit.src.streambuild.cli.helpers import (
     write_cli_target_project,
 )
 
-_STANDARD_PROJECT_CONFIG: str = (
+_DIRECT_PROJECT_CONFIG: str = (
     'name = "mode_gate"\ndefault_target = "test"\n\n[targets.test]\ndatabase = "analytics"\n'
 )
 _VIRTUAL_ENVIRONMENT_PROJECT_CONFIG: str = (
@@ -240,7 +240,7 @@ def test_given_cli_connection_options_when_rendering_then_credentials_are_not_ex
     "test_case",
     [
         CliModeGateErrorTestCase(
-            description="rejects standard build when virtual environments are enabled",
+            description="rejects direct build when virtual environments are enabled",
             argv=("stb", "build"),
             project_file_contents=_VIRTUAL_ENVIRONMENT_PROJECT_CONFIG,
             expected_error_fragment=(
@@ -250,13 +250,13 @@ def test_given_cli_connection_options_when_rendering_then_credentials_are_not_ex
         CliModeGateErrorTestCase(
             description="rejects backfill when virtual environments are omitted",
             argv=("stb", "backfill"),
-            project_file_contents=_STANDARD_PROJECT_CONFIG,
+            project_file_contents=_DIRECT_PROJECT_CONFIG,
             expected_error_fragment="stb backfill requires virtual environments to be enabled",
         ),
         CliModeGateErrorTestCase(
             description="rejects audit backfill when virtual environments are omitted",
             argv=("stb", "audit", "backfill"),
-            project_file_contents=_STANDARD_PROJECT_CONFIG,
+            project_file_contents=_DIRECT_PROJECT_CONFIG,
             expected_error_fragment=(
                 "stb audit backfill requires virtual environments to be enabled"
             ),
@@ -264,25 +264,25 @@ def test_given_cli_connection_options_when_rendering_then_credentials_are_not_ex
         CliModeGateErrorTestCase(
             description="rejects publish when virtual environments are omitted",
             argv=("stb", "publish"),
-            project_file_contents=_STANDARD_PROJECT_CONFIG,
+            project_file_contents=_DIRECT_PROJECT_CONFIG,
             expected_error_fragment="stb publish requires virtual environments to be enabled",
         ),
         CliModeGateErrorTestCase(
             description="rejects reconcile when virtual environments are omitted",
             argv=("stb", "reconcile"),
-            project_file_contents=_STANDARD_PROJECT_CONFIG,
+            project_file_contents=_DIRECT_PROJECT_CONFIG,
             expected_error_fragment="stb reconcile requires virtual environments to be enabled",
         ),
         CliModeGateErrorTestCase(
             description="rejects janitor when virtual environments are omitted",
             argv=("stb", "janitor"),
-            project_file_contents=_STANDARD_PROJECT_CONFIG,
+            project_file_contents=_DIRECT_PROJECT_CONFIG,
             expected_error_fragment="stb janitor requires virtual environments to be enabled",
         ),
         CliModeGateErrorTestCase(
             description="rejects doctor when virtual environments are omitted",
             argv=("stb", "doctor"),
-            project_file_contents=_STANDARD_PROJECT_CONFIG,
+            project_file_contents=_DIRECT_PROJECT_CONFIG,
             expected_error_fragment="stb doctor requires virtual environments to be enabled",
         ),
         CliModeGateErrorTestCase(
@@ -296,7 +296,7 @@ def test_given_cli_connection_options_when_rendering_then_credentials_are_not_ex
                 "--deployment-id",
                 "dep_a",
             ),
-            project_file_contents=_STANDARD_PROJECT_CONFIG,
+            project_file_contents=_DIRECT_PROJECT_CONFIG,
             expected_error_fragment=(
                 "stb repair active-view requires virtual environments to be enabled"
             ),
@@ -338,14 +338,14 @@ def test_given_mode_specific_command_when_mode_conflicts_then_it_fails_before_co
         CliModeOverrideTestCase(
             description="local override enables virtual environment lifecycle",
             argv=("stb", "backfill"),
-            project_file_contents=_STANDARD_PROJECT_CONFIG,
+            project_file_contents=_DIRECT_PROJECT_CONFIG,
             local_file_contents="[settings]\nvirtual_environments = true\n",
             expected_handler_name="run_backfill",
             expected_exit_code=0,
             expected_handler_call_count=1,
         ),
         CliModeOverrideTestCase(
-            description="local override enables standard build",
+            description="local override enables direct build",
             argv=("stb", "build"),
             project_file_contents=_VIRTUAL_ENVIRONMENT_PROJECT_CONFIG,
             local_file_contents="[settings]\nvirtual_environments = false\n",
@@ -490,7 +490,7 @@ def test_given_resolved_project_secret_when_rendering_surfaces_then_it_is_never_
     write_cli_compilation_project(
         project_root=project_dir,
         model_sql="""
-        MODEL (order_by: ["order_id"]);
+        MODEL (order_by ["order_id"]);
         SELECT order_id::UInt64 AS order_id FROM __source("orders")
         """,
     )

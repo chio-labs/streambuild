@@ -1,6 +1,6 @@
 MODEL (
-  engine: "MergeTree()",
-  order_by: ["order_id", "_replay_landed_at"],
+  engine "MergeTree()",
+  order_by ["order_id", "_replay_landed_at"],
 );
 
 SELECT

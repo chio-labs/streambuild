@@ -9,8 +9,8 @@ class ActualStateError(ValueError):
     """Raised when actual-state input or state is invalid."""
 
 
-class StandardPlanError(ValueError):
-    """Raised when a standard-mode plan cannot be built safely."""
+class DirectPlanError(ValueError):
+    """Raised when a direct-mode plan cannot be built safely."""
 
 
 class TargetOwnershipConflictError(ValueError):

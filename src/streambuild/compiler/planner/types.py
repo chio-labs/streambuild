@@ -77,21 +77,21 @@ class TargetOwnership(StrEnum):
 
     ABSENT = "absent"
     UNMANAGED = "unmanaged"
-    STANDARD = "standard"
+    DIRECT = "direct"
     VIRTUAL_ENVIRONMENT = "virtual_environment"
     CONFLICTED = "conflicted"
 
 
-class StandardPlanReason(StrEnum):
-    """Why one logical model is in the standard execution scope."""
+class DirectPlanReason(StrEnum):
+    """Why one logical model is in the direct execution scope."""
 
     SELECTED = "selected"
     DOWNSTREAM_OF_SELECTED = "downstream_of_selected"
     ALL_MODELS = "all_models"
 
 
-class StandardRelationAction(StrEnum):
-    """One destructive or constructive relation action in a standard plan."""
+class DirectRelationAction(StrEnum):
+    """One destructive or constructive relation action in a direct plan."""
 
     DROP = "drop"
     CREATE = "create"

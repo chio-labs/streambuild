@@ -1,1 +1,1 @@
-"""Standard build command entrypoints."""
+"""Direct build command entrypoints."""

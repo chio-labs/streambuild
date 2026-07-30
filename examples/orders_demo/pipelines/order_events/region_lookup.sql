@@ -1,6 +1,6 @@
 MODEL (
-  engine: "ReplacingMergeTree()",
-  order_by: ["region"],
+  engine "ReplacingMergeTree()",
+  order_by ["region"],
 );
 
 SELECT
