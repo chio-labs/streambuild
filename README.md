@@ -126,6 +126,9 @@ port = 8123
 username = "clickhouse"
 password = "${ENV:CLICKHOUSE_PASSWORD}"
 
+[defaults]
+managed_source_ttl = "_replay_landed_at + INTERVAL 14 DAY"
+
 [targets.dev]
 database = "analytics"
 ```
@@ -153,6 +156,7 @@ sources:
     name: orders
     broker_list: kafka:9092
     topic: source.orders.created
+    ttl: _replay_landed_at + INTERVAL 30 DAY
     replay_boundary:
       mode: offsets
 ```
@@ -161,6 +165,7 @@ This is the managed source shape:
 
 - StreamBuild creates the Kafka table
 - StreamBuild creates the raw landing table and landing MV
+- source `ttl` overrides `[defaults].managed_source_ttl`; omitting both keeps data indefinitely
 - downstream models usually read the source via `__source("orders")`
 
 ### Adopted External Source

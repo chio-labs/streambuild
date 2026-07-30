@@ -35,6 +35,7 @@ def discover_source_registry(
     project_dir: Path,
     variables: Mapping[str, object],
     environment: Mapping[str, str],
+    default_managed_source_ttl: str | None = None,
 ) -> tuple[DiscoveredSourceFile, ...]:
     """Load direct sources/*.yml files once in stable order and validate uniqueness."""
 
@@ -47,6 +48,7 @@ def discover_source_registry(
             project_dir=project_dir,
             variables=variables,
             environment=environment,
+            default_managed_source_ttl=default_managed_source_ttl,
         )
         for file_path in sorted(sources_root.glob("*.yml"))
     )
@@ -93,6 +95,7 @@ def _load_source_file(
     project_dir: Path,
     variables: Mapping[str, object],
     environment: Mapping[str, str],
+    default_managed_source_ttl: str | None,
 ) -> DiscoveredSourceFile:
     contents: str = file_path.read_text(encoding="utf-8")
     source_file: DiscoveredProjectFile = DiscoveredProjectFile(
@@ -106,6 +109,7 @@ def _load_source_file(
             source_file=source_file,
             variables=variables,
             environment=environment,
+            default_managed_source_ttl=default_managed_source_ttl,
         ),
     )
 
@@ -115,6 +119,7 @@ def _parse_source_file(
     source_file: DiscoveredProjectFile,
     variables: Mapping[str, object],
     environment: Mapping[str, str],
+    default_managed_source_ttl: str | None,
 ) -> tuple[KafkaLandingStep | ExternalTableSourceStep, ...]:
     try:
         raw_payload: object = yaml.safe_load(source_file.contents)
@@ -145,6 +150,7 @@ def _parse_source_file(
             file_path=source_file.file_path,
             variables=variables,
             environment=environment,
+            default_managed_source_ttl=default_managed_source_ttl,
         )
         for index, raw_source in enumerate(raw_sources)
     )
@@ -157,6 +163,7 @@ def _parse_source(
     file_path: Path,
     variables: Mapping[str, object],
     environment: Mapping[str, str],
+    default_managed_source_ttl: str | None,
 ) -> KafkaLandingStep | ExternalTableSourceStep:
     label: str = f"sources[{index}]"
     mapping: dict[str, object] = _mapping(
@@ -195,6 +202,7 @@ def _parse_source(
             file_path=file_path,
             variables=variables,
             environment=environment,
+            default_managed_source_ttl=default_managed_source_ttl,
         )
     return _parse_adopted_source(
         mapping=mapping,
@@ -214,6 +222,7 @@ def _parse_managed_kafka_source(
     file_path: Path,
     variables: Mapping[str, object],
     environment: Mapping[str, str],
+    default_managed_source_ttl: str | None,
 ) -> KafkaLandingStep:
     if mapping.get("table_name") is not None:
         raise PipelineDiscoveryError(
@@ -286,6 +295,15 @@ def _parse_managed_kafka_source(
                 environment=environment,
             )
             or "JSONAsString",
+            ttl=_optional_string(
+                mapping=mapping,
+                key="ttl",
+                field_path=label,
+                file_path=file_path,
+                variables=variables,
+                environment=environment,
+            )
+            or default_managed_source_ttl,
             settings=settings or None,
         ),
         replay_boundary=replay_boundary,
@@ -303,7 +321,7 @@ def _parse_adopted_source(
 ) -> ExternalTableSourceStep:
     managed_fields: tuple[str, ...] = tuple(
         field
-        for field in ("broker_list", "topic", "consumer_group", "format", "settings")
+        for field in ("broker_list", "topic", "consumer_group", "format", "ttl", "settings")
         if mapping.get(field) is not None
     )
     if managed_fields:

@@ -99,3 +99,11 @@ class SharedSourceRealizationTestCase:
     expected_model_count: int
     expected_source_resource_count: int
     expected_consumer_group: str
+
+
+@dataclass(frozen=True)
+class ManagedSourceTtlPrecedenceTestCase:
+    description: str
+    project_default_ttl: str
+    source_ttl_declaration: str
+    expected_landing_ttl: str

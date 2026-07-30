@@ -190,6 +190,7 @@ class ClickHouseManagedSourceRealizationTestCase:
     expected_relation_name: str
     expected_resource_names: tuple[str, ...]
     expected_consumer_group: str
+    expected_landing_ttl: str | None
 
 
 @dataclass(frozen=True)

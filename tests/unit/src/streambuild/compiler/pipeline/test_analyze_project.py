@@ -10,13 +10,14 @@ from unittest.mock import Mock, patch
 import polyglot_sql
 import pytest
 
-from streambuild.adapter.models import AdapterManagedSource
+from streambuild.adapter.models import AdapterManagedSource, AdapterTable
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from streambuild.cli.compile.main._run_compile import run_compile
 from streambuild.cli.entry._helpers.compiler_profile import build_compiler_adapter_profile
 from streambuild.compiler.compile.exceptions import PipelineCompileError
 from streambuild.compiler.compile.main._build_compile_inputs import build_compile_inputs
-from streambuild.compiler.compile.models import CompilerAdapterProfile
+from streambuild.compiler.compile.models import CompilerAdapterProfile, DesiredTable
+from streambuild.compiler.discovery._helpers.load import load_pipeline_file
 from streambuild.compiler.discovery.exceptions import PipelineDiscoveryError
 from streambuild.compiler.discovery.main._discover_project_inputs import (
     discover_project_inputs,
@@ -24,7 +25,7 @@ from streambuild.compiler.discovery.main._discover_project_inputs import (
 from streambuild.compiler.discovery.main.load_project_input_for_path import (
     load_project_input_for_path,
 )
-from streambuild.compiler.discovery.models import LoadedProject
+from streambuild.compiler.discovery.models import KafkaLandingStep, LoadedPipeline, LoadedProject
 from streambuild.compiler.graph.main._build_project_graph import (
     build_project_graph_from_compiled_project,
 )
@@ -36,6 +37,7 @@ from tests.unit.src.streambuild.compiler.pipeline._test_types import (
     AnalyzeProjectTestCase,
     CompilationEntrypointsTestCase,
     DuplicateProjectInputTestCase,
+    ManagedSourceTtlPrecedenceTestCase,
     PrivateMacroDiscoveryTestCase,
     ProjectSqlAnalysisCallCountTestCase,
     ReadOnceCompilationTestCase,
@@ -49,6 +51,7 @@ from tests.unit.src.streambuild.compiler.pipeline.helpers import (
     write_compilation_project,
     write_duplicate_test,
     write_macro_import_counter,
+    write_managed_source_ttl_project,
     write_policy_validation_project,
     write_shared_source_project,
     write_source_model_name_collision,
@@ -369,6 +372,62 @@ def test_given_two_pipelines_share_source_when_analyzing_then_realizes_source_on
     frozen_field_name: str = "discovery_ms"
     with pytest.raises(FrozenInstanceError):
         setattr(analysis.timings, frozen_field_name, -1)
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ManagedSourceTtlPrecedenceTestCase(
+            description="uses the project default when a managed source omits TTL",
+            project_default_ttl="_replay_landed_at + INTERVAL 7 DAY",
+            source_ttl_declaration="",
+            expected_landing_ttl="_replay_landed_at + INTERVAL 7 DAY",
+        ),
+        ManagedSourceTtlPrecedenceTestCase(
+            description="uses the managed source TTL instead of the project default",
+            project_default_ttl="_replay_landed_at + INTERVAL 7 DAY",
+            source_ttl_declaration='ttl: "_replay_landed_at + INTERVAL 30 DAY"',
+            expected_landing_ttl="_replay_landed_at + INTERVAL 30 DAY",
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_managed_source_ttl_when_analyzing_then_applies_source_over_project_precedence(
+    test_case: ManagedSourceTtlPrecedenceTestCase,
+    tmp_path: Path,
+) -> None:
+    project_dir: Path = tmp_path / "project"
+    write_managed_source_ttl_project(
+        project_dir=project_dir,
+        project_default_ttl=test_case.project_default_ttl,
+        source_ttl_declaration=test_case.source_ttl_declaration,
+    )
+    loaded_project: LoadedProject | None = load_project_input_for_path(path=project_dir)
+    loaded_pipeline: LoadedPipeline = load_pipeline_file(
+        project_dir / "pipelines" / "orders" / "pipeline.yml"
+    )
+
+    analysis: CompileAnalysis = analyze_project(
+        pipelines_root=project_dir / "pipelines",
+        loaded_project=loaded_project,
+        adapter_profile=build_compiler_adapter_profile(ClickHouseAdapter()),
+    )
+    source_resources: tuple[object, ...] = analysis.realized_project.resources_by_logical_key[
+        analysis.compiled_project.sources[0].key
+    ]
+    landing_table: AdapterTable = cast(AdapterTable, source_resources[1])
+    desired_objects_by_name: dict[str, object] = {
+        object_.name: object_ for object_ in analysis.realized_project.desired_state.objects
+    }
+    desired_landing_table: DesiredTable = cast(
+        DesiredTable,
+        desired_objects_by_name[landing_table.name],
+    )
+    standalone_source: KafkaLandingStep = cast(KafkaLandingStep, loaded_pipeline.pipeline.source)
+
+    assert standalone_source.kafka.ttl == test_case.expected_landing_ttl
+    assert landing_table.ttl == test_case.expected_landing_ttl
+    assert desired_landing_table.ttl == test_case.expected_landing_ttl
 
 
 @pytest.mark.parametrize(

@@ -103,9 +103,10 @@ class ReplayOnChangePolicy:
 
 
 @dataclass(frozen=True)
-class ProjectReplayDefaults:
-    """Committed project-wide replay policy defaults."""
+class ProjectDefaults:
+    """Committed project-wide authored defaults."""
 
+    managed_source_ttl: str | None = None
     replay_on_change: ReplayOnChangePolicy | None = None
     bounded_replay_fallback: BoundedReplayFallback | None = None
 
@@ -121,7 +122,7 @@ class AuthoredProjectConfig:
     connection: RawConnectionConfig
     variables: tuple[tuple[str, object], ...]
     targets: tuple[tuple[str, ProjectTarget], ...]
-    defaults: ProjectReplayDefaults = field(default_factory=ProjectReplayDefaults)
+    defaults: ProjectDefaults = field(default_factory=ProjectDefaults)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "variables", immutable_config_pairs(self.variables))
@@ -163,7 +164,7 @@ class EffectiveProjectConfiguration:
     database: str | None
     connection: RawConnectionConfig
     variables: tuple[tuple[str, object], ...]
-    defaults: ProjectReplayDefaults
+    defaults: ProjectDefaults
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "variables", immutable_config_pairs(self.variables))
@@ -177,6 +178,7 @@ class KafkaSettings:
     topic: str
     consumer_group: str | None = None
     format: str = "JSONAsString"
+    ttl: str | None = None
     settings: Mapping[str, str] | None = None
 
     def __post_init__(self) -> None:

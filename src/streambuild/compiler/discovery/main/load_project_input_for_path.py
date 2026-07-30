@@ -53,5 +53,6 @@ def load_project_input_for_path(
             project_dir=project_dir,
             variables=dict(effective.variables),
             environment={} if environment is None else environment,
+            default_managed_source_ttl=effective.defaults.managed_source_ttl,
         ),
     )

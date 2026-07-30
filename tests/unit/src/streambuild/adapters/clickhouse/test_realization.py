@@ -30,6 +30,7 @@ from tests.unit.src.streambuild.adapters.clickhouse._test_types import (
             expected_relation_name="raw__orders",
             expected_resource_names=("kafka__orders", "raw__orders", "mv__orders"),
             expected_consumer_group="streambuild_orders_orders",
+            expected_landing_ttl="_replay_landed_at + INTERVAL 7 DAY",
         )
     ],
     ids=lambda case: case.description,
@@ -45,15 +46,18 @@ def test_given_managed_source_request_when_realizing_then_returns_expected_resou
             topic="source.orders",
             consumer_group=None,
             format="JSONAsString",
+            ttl="_replay_landed_at + INTERVAL 7 DAY",
         )
     )
     managed_source: AdapterManagedSource = cast(AdapterManagedSource, realization.resources[0])
+    landing_table: AdapterTable = cast(AdapterTable, realization.resources[1])
 
     assert realization.relation_name == test_case.expected_relation_name
     assert tuple(resource.name for resource in realization.resources) == (
         test_case.expected_resource_names
     )
     assert managed_source.consumer_group == test_case.expected_consumer_group
+    assert landing_table.ttl == test_case.expected_landing_ttl
 
 
 @pytest.mark.parametrize(
@@ -64,6 +68,7 @@ def test_given_managed_source_request_when_realizing_then_returns_expected_resou
             expected_relation_name="existing_orders",
             expected_resource_names=(),
             expected_consumer_group="",
+            expected_landing_ttl=None,
         )
     ],
     ids=lambda case: case.description,

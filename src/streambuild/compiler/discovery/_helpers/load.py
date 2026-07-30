@@ -73,6 +73,7 @@ def load_pipeline_file(file_path: Path) -> LoadedPipeline:
                 project_dir=project_dir,
                 variables=dict(effective.variables),
                 environment={},
+                default_managed_source_ttl=effective.defaults.managed_source_ttl,
             )
         )
     )
