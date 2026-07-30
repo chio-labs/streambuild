@@ -42,6 +42,7 @@ class EffectiveProjectConfigurationTestCase:
     expected_virtual_environments: bool
     expected_variables: tuple[tuple[str, object], ...]
     expected_connection: tuple[tuple[str, object], ...]
+    expected_managed_source_ttl: str
 
 
 @dataclass(frozen=True)
@@ -56,6 +57,7 @@ class SourceRegistryTestCase:
     expected_source_names: tuple[str, ...]
     expected_boundary_modes: tuple[str, ...]
     expected_relative_paths: tuple[str, ...]
+    expected_managed_source_ttl: str
 
 
 @dataclass(frozen=True)

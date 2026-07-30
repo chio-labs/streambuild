@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import replace
 
 from streambuild.compiler.discovery._helpers.interpolation import (
     interpolate_config_value,
@@ -15,6 +16,7 @@ from streambuild.compiler.discovery.models import (
     LoadedProjectConfiguration,
     LocalProjectConfig,
     LocalProjectTarget,
+    ProjectDefaults,
     ProjectSettings,
     ProjectTarget,
     RawConnectionConfig,
@@ -91,7 +93,11 @@ def resolve_effective_project_configuration(
             )
         ),
         variables=tuple(sorted(variables.items())),
-        defaults=project.defaults,
+        defaults=_resolve_project_defaults(
+            loaded=loaded,
+            variables=variables,
+            environment=environment,
+        ),
     )
 
 
@@ -121,6 +127,24 @@ def _resolve_virtual_environments(
             f"{source_path} settings.virtual_environments must resolve to a boolean"
         )
     return value
+
+
+def _resolve_project_defaults(
+    *,
+    loaded: LoadedProjectConfiguration,
+    variables: Mapping[str, object],
+    environment: Mapping[str, str],
+) -> ProjectDefaults:
+    defaults: ProjectDefaults = loaded.project.defaults
+    return replace(
+        defaults,
+        managed_source_ttl=_optional_interpolated_string(
+            value=defaults.managed_source_ttl,
+            variables=variables,
+            environment=environment,
+            field_path=f"{loaded.project_source.file_path} defaults.managed_source_ttl",
+        ),
+    )
 
 
 def _optional_interpolated_string(

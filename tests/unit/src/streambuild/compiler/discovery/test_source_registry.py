@@ -30,6 +30,7 @@ from tests.unit.src.streambuild.compiler.discovery.helpers import (
             expected_source_names=("orders", "external_orders"),
             expected_boundary_modes=("offsets", "cursor"),
             expected_relative_paths=("sources/a.yml", "sources/z.yml"),
+            expected_managed_source_ttl="_replay_landed_at + INTERVAL 14 DAY",
         )
     ],
     ids=lambda case: case.description,
@@ -62,6 +63,7 @@ def test_given_source_files_when_discovering_then_returns_stable_typed_registry(
             kind: kafka
             broker_list: "${ENV:BROKER_LIST}"
             topic: source.orders
+            ttl: "_replay_landed_at + INTERVAL ${ttl_days} DAY"
             replay_boundary:
               mode: offsets
         """,
@@ -69,7 +71,7 @@ def test_given_source_files_when_discovering_then_returns_stable_typed_registry(
 
     source_files: tuple[DiscoveredSourceFile, ...] = discover_source_registry(
         project_dir=tmp_path,
-        variables={"table_name": "orders_existing"},
+        variables={"table_name": "orders_existing", "ttl_days": 14},
         environment={"BROKER_LIST": "redpanda:9092"},
     )
     sources: tuple[KafkaLandingStep | ExternalTableSourceStep, ...] = flatten_source_registry(
@@ -84,6 +86,8 @@ def test_given_source_files_when_discovering_then_returns_stable_typed_registry(
     assert tuple(str(item.source_file.relative_path) for item in source_files) == (
         test_case.expected_relative_paths
     )
+    managed_source: KafkaLandingStep = cast(KafkaLandingStep, sources[0])
+    assert managed_source.kafka.ttl == test_case.expected_managed_source_ttl
 
 
 @pytest.mark.parametrize(
@@ -285,6 +289,25 @@ def test_given_supported_source_mode_when_discovering_then_it_retains_boundary_c
                 ),
             ),
             expected_error_fragment="must not mix adopted and Kafka fields: topic",
+        ),
+        SourceRegistryErrorTestCase(
+            description="rejects TTL on an adopted source",
+            source_files=(
+                (
+                    "adopted_ttl.yml",
+                    """
+                    sources:
+                      - name: orders
+                        kind: stream_table
+                        table_name: orders_existing
+                        ttl: _replay_landed_at + INTERVAL 7 DAY
+                        replay_boundary:
+                          mode: timestamp
+                          columns: {_replay_timestamp: event_timestamp}
+                    """,
+                ),
+            ),
+            expected_error_fragment="must not mix adopted and Kafka fields: ttl",
         ),
         SourceRegistryErrorTestCase(
             description="rejects managed cursor mode",

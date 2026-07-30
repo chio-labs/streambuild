@@ -55,6 +55,7 @@ def realize_clickhouse_source(
                 columns=_raw_landing_columns(),
                 engine="MergeTree()",
                 order_by=(_REPLAY_PARTITION_COLUMN_NAME, _REPLAY_OFFSET_COLUMN_NAME),
+                ttl=request.ttl,
             ),
             AdapterMaterializedView(
                 name=f"{CLICKHOUSE_MATERIALIZED_VIEW_NAME_PREFIX}{request.logical_name}",

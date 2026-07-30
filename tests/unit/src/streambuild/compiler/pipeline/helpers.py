@@ -178,6 +178,45 @@ def write_shared_source_project(project_dir: Path) -> None:
     )
 
 
+def write_managed_source_ttl_project(
+    *, project_dir: Path, project_default_ttl: str, source_ttl_declaration: str
+) -> None:
+    _write(
+        project_dir / "streambuild_project.toml",
+        f"""
+        name = "managed_source_ttl_project"
+        default_target = "test"
+
+        [defaults]
+        managed_source_ttl = "{project_default_ttl}"
+
+        [targets.test]
+        database = "analytics"
+        """,
+    )
+    _write(
+        project_dir / "sources" / "orders.yml",
+        f"""
+        sources:
+          - name: orders
+            kind: kafka
+            broker_list: kafka:9092
+            topic: source.orders
+            {source_ttl_declaration}
+            replay_boundary: {{mode: offsets}}
+        """,
+    )
+    _write(project_dir / "pipelines" / "orders" / "pipeline.yml", "source: orders")
+    _write(
+        project_dir / "pipelines" / "orders" / "orders_enriched.sql",
+        """
+        MODEL (order_by ["order_id"]);
+
+        SELECT CAST(kafka_value AS UInt64) AS order_id FROM __source("orders")
+        """,
+    )
+
+
 def write_policy_validation_project(
     *,
     project_dir: Path,

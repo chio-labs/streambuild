@@ -166,6 +166,7 @@ def _source_request(
         topic=authored_source.kafka.topic,
         consumer_group=authored_source.kafka.consumer_group,
         format=authored_source.kafka.format,
+        ttl=authored_source.kafka.ttl,
         settings=settings,
     )
 

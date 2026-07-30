@@ -148,6 +148,7 @@ class AdapterManagedSourceRealizationRequest:
     topic: str
     consumer_group: str | None
     format: str
+    ttl: str | None = None
     settings: tuple[tuple[str, str], ...] = ()
 
 

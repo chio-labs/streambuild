@@ -44,7 +44,9 @@ LOCAL_CONFIG_KEYS: frozenset[str] = frozenset(
 )
 SETTINGS_KEYS: frozenset[str] = frozenset({"virtual_environments"})
 TARGET_KEYS: frozenset[str] = frozenset({"database", "connection", "vars"})
-DEFAULTS_KEYS: frozenset[str] = frozenset({"replay_on_change", "bounded_replay_fallback"})
+DEFAULTS_KEYS: frozenset[str] = frozenset(
+    {"managed_source_ttl", "replay_on_change", "bounded_replay_fallback"}
+)
 SOURCE_FILE_KEYS: frozenset[str] = frozenset({"sources"})
 SOURCE_KEYS: frozenset[str] = frozenset(
     {
@@ -54,6 +56,7 @@ SOURCE_KEYS: frozenset[str] = frozenset(
         "topic",
         "consumer_group",
         "format",
+        "ttl",
         "settings",
         "table_name",
         "replay_boundary",

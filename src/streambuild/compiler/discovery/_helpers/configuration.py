@@ -31,7 +31,7 @@ from streambuild.compiler.discovery.models import (
     LocalProjectConfig,
     LocalProjectSettings,
     LocalProjectTarget,
-    ProjectReplayDefaults,
+    ProjectDefaults,
     ProjectTarget,
     RawConnectionConfig,
     ReplayOnChangePolicy,
@@ -376,7 +376,7 @@ def _parse_variables(
     return tuple(sorted(mapping.items()))
 
 
-def _parse_project_defaults(*, payload: object, file_path: Path) -> ProjectReplayDefaults:
+def _parse_project_defaults(*, payload: object, file_path: Path) -> ProjectDefaults:
     mapping: dict[str, object] = _optional_mapping(
         payload=payload,
         label="defaults",
@@ -388,7 +388,13 @@ def _parse_project_defaults(*, payload: object, file_path: Path) -> ProjectRepla
         label="defaults",
         file_path=file_path,
     )
-    return ProjectReplayDefaults(
+    return ProjectDefaults(
+        managed_source_ttl=_optional_non_empty_string(
+            mapping=mapping,
+            key="managed_source_ttl",
+            label="defaults",
+            file_path=file_path,
+        ),
         replay_on_change=_parse_replay_on_change(
             payload=mapping.get("replay_on_change"),
             label="defaults.replay_on_change",
