@@ -1,27 +1,27 @@
-"""Render what one standard build durably changed as operator text or JSON."""
+"""Render what one direct build durably changed as operator text or JSON."""
 
 from __future__ import annotations
 
 import json
 
-from streambuild.cli.plan.constants import STANDARD_MODE_LABEL
+from streambuild.cli.plan.constants import DIRECT_MODE_LABEL
 from streambuild.cli.presentation.main._cli_style import cli_style
 from streambuild.executor.auditing.models import SqlAuditResult, SqlAuditRunResult
-from streambuild.executor.standard.models import StandardBuildResult, StandardReplayBoundary
+from streambuild.executor.direct.models import DirectBuildResult, DirectReplayBoundary
 
 _AUDIT_STATUS_BY_OUTCOME: dict[bool, str] = {True: "pass", False: "FAIL"}
 
 
-def render_standard_build_json(
+def render_direct_build_json(
     *,
-    result: StandardBuildResult,
+    result: DirectBuildResult,
     adapter_name: str,
     audit_result: SqlAuditRunResult,
 ) -> str:
-    """Render one completed standard build as deterministic JSON."""
+    """Render one completed direct build as deterministic JSON."""
 
     payload: dict[str, object] = {
-        "mode": STANDARD_MODE_LABEL,
+        "mode": DIRECT_MODE_LABEL,
         "adapter": adapter_name,
         "database": result.database,
         "preserved_sources": list(result.preserved_source_relation_names),
@@ -37,13 +37,13 @@ def render_standard_build_json(
     return json.dumps(payload, indent=2)
 
 
-def render_standard_build_text(
+def render_direct_build_text(
     *,
-    result: StandardBuildResult,
+    result: DirectBuildResult,
     adapter_name: str,
     audit_result: SqlAuditRunResult,
 ) -> str:
-    """Render one completed standard build as operator-facing text."""
+    """Render one completed direct build as operator-facing text."""
 
     return "\n".join(
         (
@@ -55,11 +55,11 @@ def render_standard_build_text(
     )
 
 
-def _render_header(*, result: StandardBuildResult, adapter_name: str) -> tuple[str, ...]:
+def _render_header(*, result: DirectBuildResult, adapter_name: str) -> tuple[str, ...]:
     return (
-        cli_style().title("Standard Build Complete"),
+        cli_style().title("Direct Build Complete"),
         cli_style().label_value(label="Adapter", value=adapter_name),
-        cli_style().label_value(label="Mode", value=STANDARD_MODE_LABEL),
+        cli_style().label_value(label="Mode", value=DIRECT_MODE_LABEL),
         cli_style().label_value(label="Database", value=result.database),
         cli_style().label_value(
             label="Preserved sources", value=str(len(result.preserved_source_relation_names))
@@ -71,7 +71,7 @@ def _render_header(*, result: StandardBuildResult, adapter_name: str) -> tuple[s
     )
 
 
-def _render_relations(*, result: StandardBuildResult) -> tuple[str, ...]:
+def _render_relations(*, result: DirectBuildResult) -> tuple[str, ...]:
     return (
         cli_style().section("Relations"),
         *_or_none(lines=tuple(f"  dropped  {name}" for name in result.dropped_relation_names)),
@@ -80,7 +80,7 @@ def _render_relations(*, result: StandardBuildResult) -> tuple[str, ...]:
     )
 
 
-def _render_boundaries(*, result: StandardBuildResult) -> tuple[str, ...]:
+def _render_boundaries(*, result: DirectBuildResult) -> tuple[str, ...]:
     return (
         cli_style().section("Replay boundaries"),
         cli_style().label_value(label="Boundary time", value=result.boundary_time),
@@ -91,7 +91,7 @@ def _render_boundaries(*, result: StandardBuildResult) -> tuple[str, ...]:
     )
 
 
-def _render_boundary(boundary: StandardReplayBoundary) -> str:
+def _render_boundary(boundary: DirectReplayBoundary) -> str:
     edge: str = "<=" if boundary.cutoff_inclusive else "<"
     return (
         f"  {boundary.model_name} replays {boundary.driving_input_relation_name} "
@@ -115,7 +115,7 @@ def _audit_label(audit: SqlAuditResult) -> str:
     return audit.name or audit.file_path.name
 
 
-def _boundary_payload(boundary: StandardReplayBoundary) -> dict[str, object]:
+def _boundary_payload(boundary: DirectReplayBoundary) -> dict[str, object]:
     return {
         "model": boundary.model_name,
         "driving_input_relation": boundary.driving_input_relation_name,

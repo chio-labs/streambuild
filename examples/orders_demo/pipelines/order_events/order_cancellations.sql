@@ -1,6 +1,6 @@
 MODEL (
-  order_by: ["event_at", "order_id", "_replay_partition", "_replay_offset"],
-  partition_by: "toYYYYMM(event_at)",
+  order_by ["event_at", "order_id", "_replay_partition", "_replay_offset"],
+  partition_by "toYYYYMM(event_at)",
 );
 
 SELECT

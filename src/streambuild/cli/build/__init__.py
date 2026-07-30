@@ -1,1 +1,1 @@
-"""Standard build command."""
+"""Direct build command."""

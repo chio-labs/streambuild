@@ -46,14 +46,14 @@ from tests.integration.src.streambuild.executor.backfill.helpers import (
     [
         LoadActualStateIntegrationTestCase(
             description="loads greenfield state when no stable view exists",
-            setup_steps=("standard_raw_landing", "target_table"),
+            setup_steps=("direct_raw_landing", "target_table"),
             expected_actual_object_names=("kafka__orders", "mv__orders", "raw__orders"),
             expected_error_fragment=None,
         ),
         LoadActualStateIntegrationTestCase(
             description="loads active managed objects when stable view points at deployment table",
             setup_steps=(
-                "standard_raw_landing",
+                "direct_raw_landing",
                 "target_table",
                 "physical_candidates",
                 "candidate_materialized_view",
@@ -88,7 +88,7 @@ from tests.integration.src.streambuild.executor.backfill.helpers import (
         LoadActualStateIntegrationTestCase(
             description="loads no active managed objects when view is missing but candidates exist",
             setup_steps=(
-                "standard_raw_landing",
+                "direct_raw_landing",
                 "target_table",
                 "physical_candidates",
                 "candidate_materialized_view",

@@ -327,7 +327,7 @@ def get_orders_enriched_change(plan: DeploymentPlan) -> PlannedObjectChange:
     return change_by_name["tbl__orders_enriched"]
 
 
-def _create_standard_raw_landing(
+def _create_direct_raw_landing(
     *, clickhouse_client: Client, clickhouse_database: str, compiled_pipeline: CompiledPipeline
 ) -> None:
     clickhouse_client.command(
@@ -422,7 +422,7 @@ def _create_stable_view(
 
 
 ACTUAL_STATE_SETUP_STEPS: dict[str, Callable[..., None]] = {
-    "standard_raw_landing": _create_standard_raw_landing,
+    "direct_raw_landing": _create_direct_raw_landing,
     "suffixed_raw_landing": _create_suffixed_raw_landing,
     "target_table": _create_target_table,
     "physical_candidates": _create_physical_candidates,

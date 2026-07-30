@@ -73,7 +73,7 @@ class CliPlanModeRoutingTestCase:
 
 
 @dataclass(frozen=True)
-class CliStandardPlanFlagRejectionTestCase:
+class CliDirectPlanFlagRejectionTestCase:
     description: str
     full_refresh: bool
     start_time: str | None

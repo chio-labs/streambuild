@@ -75,8 +75,8 @@ def test_given_replay_policies_when_loading_then_it_uses_renamed_values(
         """,
         model_contents="""
         MODEL (
-          replay_on_change: {breaking: bounded-8s, non_breaking: full},
-          bounded_replay_fallback: full,
+          replay_on_change (breaking bounded-8s, non_breaking full),
+          bounded_replay_fallback full,
         );
         SELECT order_id::UInt64 AS order_id FROM __source("orders")
         """,

@@ -1,7 +1,7 @@
 MODEL (
-  engine: "SummingMergeTree()",
-  order_by: ["event_day", "category", "region"],
-  partition_by: "toYYYYMM(event_day)",
+  engine "SummingMergeTree()",
+  order_by ["event_day", "category", "region"],
+  partition_by "toYYYYMM(event_day)",
 );
 
 SELECT

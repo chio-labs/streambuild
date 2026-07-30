@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 
 from streambuild.cli.entry.constants import (
-    STANDARD_ONLY_COMMANDS,
+    DIRECT_ONLY_COMMANDS,
     VIRTUAL_ENVIRONMENT_ONLY_COMMANDS,
 )
 from streambuild.cli.entry.exceptions import CliUserError
@@ -17,7 +17,7 @@ def validate_cli_command_mode(*, invocation: ResolvedCliInvocation) -> None:
 
     command: CliCommand = CliCommand(invocation.args.command)
     virtual_environments: bool = _virtual_environments_enabled(invocation.loaded_project)
-    if command in STANDARD_ONLY_COMMANDS and virtual_environments:
+    if command in DIRECT_ONLY_COMMANDS and virtual_environments:
         raise CliUserError(
             f"stb {command.value} is unavailable while virtual environments are enabled. "
             "Disable settings.virtual_environments in streambuild_project.toml or "

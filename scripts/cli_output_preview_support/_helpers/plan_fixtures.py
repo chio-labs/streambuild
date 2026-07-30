@@ -23,21 +23,21 @@ from streambuild.compiler.discovery.types import ReplayLineageMode
 from streambuild.compiler.planner.models import (
     DeploymentPlan,
     DeploymentStep,
+    DirectPlan,
+    DirectPlanEntry,
+    DirectPrerequisite,
+    DirectRelationOperation,
+    DirectReplayRoot,
     PlannedObjectChange,
     PlannedSqlDiff,
     PlannerWarning,
     PreparedShadowObject,
     RebuildSubtree,
-    StandardPlan,
-    StandardPlanEntry,
-    StandardPrerequisite,
-    StandardRelationOperation,
-    StandardReplayRoot,
     TargetOwnershipClassification,
 )
 from streambuild.compiler.planner.types import (
-    StandardPlanReason,
-    StandardRelationAction,
+    DirectPlanReason,
+    DirectRelationAction,
     TargetOwnership,
 )
 
@@ -475,8 +475,8 @@ def build_type_change_plan_preview_desired_state() -> DesiredState:
     )
 
 
-def build_standard_plan_preview() -> StandardPlan:
-    """Build one representative standard plan for output preview."""
+def build_direct_plan_preview() -> DirectPlan:
+    """Build one representative direct plan for output preview."""
 
     orders_key: LogicalResourceKey = LogicalResourceKey(
         resource_type=LogicalResourceType.SOURCE, name="orders"
@@ -484,30 +484,30 @@ def build_standard_plan_preview() -> StandardPlan:
     enriched_key: LogicalResourceKey = LogicalResourceKey(
         resource_type=LogicalResourceType.MODEL, name="orders_enriched"
     )
-    return StandardPlan(
+    return DirectPlan(
         database="analytics",
         user_scope=(enriched_key,),
         execution_scope=(enriched_key,),
         prerequisite_scope=(
-            StandardPrerequisite(
+            DirectPrerequisite(
                 key=orders_key,
                 relation_names=("raw__orders",),
                 present=True,
             ),
         ),
         entries=(
-            StandardPlanEntry(
+            DirectPlanEntry(
                 model_key=enriched_key,
-                reason=StandardPlanReason.SELECTED,
+                reason=DirectPlanReason.SELECTED,
                 relation_names=("tbl__orders_enriched", "mv__orders_enriched"),
                 ownership=(
                     TargetOwnershipClassification(
                         relation_name="tbl__orders_enriched",
-                        ownership=TargetOwnership.STANDARD,
+                        ownership=TargetOwnership.DIRECT,
                     ),
                     TargetOwnershipClassification(
                         relation_name="mv__orders_enriched",
-                        ownership=TargetOwnership.STANDARD,
+                        ownership=TargetOwnership.DIRECT,
                     ),
                 ),
                 driving_input_key=orders_key,
@@ -515,7 +515,7 @@ def build_standard_plan_preview() -> StandardPlan:
             ),
         ),
         replay_roots=(
-            StandardReplayRoot(
+            DirectReplayRoot(
                 model_key=enriched_key,
                 driving_input_key=orders_key,
                 driving_input_relation_name="raw__orders",
@@ -531,26 +531,26 @@ def build_standard_plan_preview() -> StandardPlan:
             ),
         ),
         teardown_operations=(
-            StandardRelationOperation(
+            DirectRelationOperation(
                 relation_name="mv__orders_enriched",
-                action=StandardRelationAction.DROP,
+                action=DirectRelationAction.DROP,
                 model_key=enriched_key,
             ),
-            StandardRelationOperation(
+            DirectRelationOperation(
                 relation_name="tbl__orders_enriched",
-                action=StandardRelationAction.DROP,
+                action=DirectRelationAction.DROP,
                 model_key=enriched_key,
             ),
         ),
         creation_operations=(
-            StandardRelationOperation(
+            DirectRelationOperation(
                 relation_name="tbl__orders_enriched",
-                action=StandardRelationAction.CREATE,
+                action=DirectRelationAction.CREATE,
                 model_key=enriched_key,
             ),
-            StandardRelationOperation(
+            DirectRelationOperation(
                 relation_name="mv__orders_enriched",
-                action=StandardRelationAction.CREATE,
+                action=DirectRelationAction.CREATE,
                 model_key=enriched_key,
             ),
         ),

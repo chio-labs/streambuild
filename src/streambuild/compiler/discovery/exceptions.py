@@ -11,6 +11,10 @@ class PipelineDiscoveryError(ValueError):
         self.diagnostic: CompilerDiagnostic | None = None
 
 
+class ModelHeaderSyntaxError(ValueError):
+    """Raised when a MODEL header does not follow SQLBuild syntax."""
+
+
 class ProjectSpecError(ValueError):
     """Raised when authored specification input or state is invalid."""
 

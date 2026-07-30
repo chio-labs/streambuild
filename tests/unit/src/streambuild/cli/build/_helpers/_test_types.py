@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
-class StandardBuildAuditSelectionTestCase:
+class DirectBuildAuditSelectionTestCase:
     description: str
     audit_refs_by_name: tuple[tuple[str, tuple[str, ...]], ...]
     execution_model_names: frozenset[str]

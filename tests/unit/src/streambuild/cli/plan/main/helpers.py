@@ -26,11 +26,11 @@ from streambuild.compiler.discovery.models import (
 from streambuild.compiler.discovery.types import ReplayBoundaryMode, SourceKind
 from streambuild.compiler.pipeline.main._realize_project import realize_project
 from streambuild.compiler.pipeline.models import RealizedProject
-from streambuild.compiler.planner.models import StandardWarehouseSnapshot
+from streambuild.compiler.planner.models import DirectWarehouseSnapshot
 from streambuild.compiler.sql_analysis.classes.sql_model_analyzer import SqlModelAnalyzer
 from tests.unit.src.streambuild.cli.helpers import RecordingAdapterConnection
 from tests.unit.src.streambuild.compiler.compile.helpers import build_realization_analyzer
-from tests.unit.src.streambuild.compiler.planner.helpers import build_settled_standard_snapshot
+from tests.unit.src.streambuild.compiler.planner.helpers import build_settled_direct_snapshot
 
 SELECTOR_PIPELINES_ROOT: Path = Path("tests/fixtures/selector_project/pipelines")
 
@@ -110,9 +110,9 @@ def run_scope_project_plan(
     full_refresh: bool = False,
     start_time: str | None = None,
 ) -> int:
-    """Run `stb plan` against the standard scope project with a settled warehouse."""
+    """Run `stb plan` against the direct scope project with a settled warehouse."""
 
-    snapshot: StandardWarehouseSnapshot = build_settled_standard_snapshot()
+    snapshot: DirectWarehouseSnapshot = build_settled_direct_snapshot()
     return run_plan(
         pipelines_root=project_root / "pipelines",
         database=None,

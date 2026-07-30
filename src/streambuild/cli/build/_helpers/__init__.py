@@ -1,1 +1,1 @@
-"""Internal standard build command behavior."""
+"""Internal direct build command behavior."""

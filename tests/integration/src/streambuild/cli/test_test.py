@@ -119,7 +119,7 @@ def test_given_sql_native_test_project_when_running_test_command_then_it_reports
         transform_file_path,
         """
         MODEL (
-          order_by: ["order_id"]
+          order_by ["order_id"]
         );
 
         SELECT
@@ -132,7 +132,7 @@ def test_given_sql_native_test_project_when_running_test_command_then_it_reports
         downstream_file_path,
         """
         MODEL (
-          order_by: ["order_id"]
+          order_by ["order_id"]
         );
 
         SELECT

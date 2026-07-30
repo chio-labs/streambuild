@@ -1,4 +1,4 @@
-"""Run user SQL audits after standard resources are live under D-025."""
+"""Run user SQL audits after direct resources are live under D-025."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from streambuild.executor.auditing.main.execute_sql_audits import execute_sql_au
 from streambuild.executor.auditing.models import SqlAuditRunResult
 
 
-def run_standard_build_audits(
+def run_direct_build_audits(
     *,
     preview: BuildPreviewContext,
     client: AdapterConnection,
@@ -18,7 +18,7 @@ def run_standard_build_audits(
 ) -> SqlAuditRunResult:
     """Audit the directly named relations the build just made live."""
 
-    audits: tuple[LoadedSqlAudit, ...] = select_standard_build_audits(
+    audits: tuple[LoadedSqlAudit, ...] = select_direct_build_audits(
         audits=preview.analysis.compiled_project.audits,
         execution_model_names=frozenset(key.name for key in preview.plan.execution_scope),
         full_build=not preview.plan.user_scope,
@@ -37,7 +37,7 @@ def run_standard_build_audits(
     )
 
 
-def select_standard_build_audits(
+def select_direct_build_audits(
     *,
     audits: tuple[LoadedSqlAudit, ...],
     execution_model_names: frozenset[str],

@@ -27,11 +27,11 @@ from streambuild.compiler.discovery.types import (
 from streambuild.compiler.planner.types import (
     DeploymentAction,
     DeploymentPhase,
+    DirectPlanReason,
+    DirectRelationAction,
     PlannedChangeType,
     RebuildExecutionMode,
     RebuildStrategy,
-    StandardPlanReason,
-    StandardRelationAction,
     TableSchemaChangeKind,
     TableSchemaSeedCompatibility,
     TargetOwnership,
@@ -396,8 +396,8 @@ class MetadataState:
 
 
 @dataclass(frozen=True)
-class StandardWarehouseSnapshot:
-    """Immutable live catalog and durable ownership captured for one standard plan."""
+class DirectWarehouseSnapshot:
+    """Immutable live catalog and durable ownership captured for one direct plan."""
 
     catalog: CatalogSnapshot
     ownership_records: tuple[AdapterOwnershipRecord, ...]
@@ -415,22 +415,22 @@ class TargetOwnershipClassification:
 
 
 @dataclass(frozen=True)
-class StandardPlanEntry:
-    """One logical model the standard plan will tear down and rebuild."""
+class DirectPlanEntry:
+    """One logical model the direct plan will tear down and rebuild."""
 
     model_key: LogicalResourceKey
-    reason: StandardPlanReason | str
+    reason: DirectPlanReason | str
     relation_names: tuple[str, ...]
     ownership: tuple[TargetOwnershipClassification, ...]
     driving_input_key: LogicalResourceKey
     is_replay_root: bool
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "reason", StandardPlanReason(self.reason))
+        object.__setattr__(self, "reason", DirectPlanReason(self.reason))
 
 
 @dataclass(frozen=True)
-class StandardPrerequisite:
+class DirectPrerequisite:
     """One upstream resource that must exist but is never executed."""
 
     key: LogicalResourceKey
@@ -440,7 +440,7 @@ class StandardPrerequisite:
 
 
 @dataclass(frozen=True)
-class StandardReplayRoot:
+class DirectReplayRoot:
     """One executed model replayed from its own preserved driving input."""
 
     model_key: LogicalResourceKey
@@ -458,27 +458,27 @@ class StandardReplayRoot:
 
 
 @dataclass(frozen=True)
-class StandardRelationOperation:
+class DirectRelationOperation:
     """One destructive or constructive relation action in dependency-safe order."""
 
     relation_name: str
-    action: StandardRelationAction | str
+    action: DirectRelationAction | str
     model_key: LogicalResourceKey
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "action", StandardRelationAction(self.action))
+        object.__setattr__(self, "action", DirectRelationAction(self.action))
 
 
 @dataclass(frozen=True)
-class StandardPlan:
-    """One deterministic standard-mode execution plan for a selected closure."""
+class DirectPlan:
+    """One deterministic direct-mode execution plan for a selected closure."""
 
     database: str
     user_scope: tuple[LogicalResourceKey, ...]
     execution_scope: tuple[LogicalResourceKey, ...]
-    prerequisite_scope: tuple[StandardPrerequisite, ...]
-    entries: tuple[StandardPlanEntry, ...]
-    replay_roots: tuple[StandardReplayRoot, ...]
-    teardown_operations: tuple[StandardRelationOperation, ...]
-    creation_operations: tuple[StandardRelationOperation, ...]
+    prerequisite_scope: tuple[DirectPrerequisite, ...]
+    entries: tuple[DirectPlanEntry, ...]
+    replay_roots: tuple[DirectReplayRoot, ...]
+    teardown_operations: tuple[DirectRelationOperation, ...]
+    creation_operations: tuple[DirectRelationOperation, ...]
     warnings: tuple[PlannerWarning, ...] = ()

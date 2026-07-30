@@ -35,7 +35,7 @@ from streambuild.adapters.clickhouse._helpers.inspection import load_clickhouse_
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from streambuild.cli.backfill.main._run_backfill import run_backfill
 from streambuild.cli.backfill.models import BackfillCommandOptions
-from streambuild.cli.build._helpers.preview import build_standard_build_preview
+from streambuild.cli.build._helpers.preview import build_direct_build_preview
 from streambuild.cli.build.constants import STREAMBUILD_TOOL_VERSION
 from streambuild.cli.build.main._run_build import run_build
 from streambuild.cli.build.models import BuildCommandOptions, BuildPreviewContext
@@ -45,10 +45,10 @@ from streambuild.compiler.discovery.main.load_project_input_for_path import (
     load_project_input_for_path,
 )
 from streambuild.executor.backfill.main._ensure_metadata_tables import ensure_metadata_tables
-from streambuild.executor.standard.main.execute_standard_build import execute_standard_build
-from streambuild.executor.standard.models import (
-    StandardBuildRequest,
-    StandardBuildResult,
+from streambuild.executor.direct.main.execute_direct_build import execute_direct_build
+from streambuild.executor.direct.models import (
+    DirectBuildRequest,
+    DirectBuildResult,
 )
 from tests.integration.src.streambuild.conftest import ClickHouseConnectionSettings
 
@@ -216,7 +216,7 @@ class FailOnceRealizationConnection(RecordingDelegatingConnection):
         if_not_exists: bool = False,
     ) -> None:
         del resource, database, if_not_exists
-        raise AdapterWarehouseError("injected failure after standard teardown")
+        raise AdapterWarehouseError("injected failure after direct teardown")
 
 
 class FailOnceReplayConnection(RecordingDelegatingConnection):
@@ -231,7 +231,7 @@ class FailOnceReplayConnection(RecordingDelegatingConnection):
 
     def _reject_replay(self, request: AdapterReplayRequest) -> None:
         del request
-        raise AdapterWarehouseError("injected failure after standard relations became live")
+        raise AdapterWarehouseError("injected failure after direct relations became live")
 
 
 class FailSecondReplayOnceConnection(RecordingDelegatingConnection):
@@ -369,7 +369,7 @@ class FailFinalOwnershipOnceConnection(RecordingDelegatingConnection):
         raise AdapterWarehouseError("injected failure during final ownership persistence")
 
 
-class StandardActionRecordingConnection(RecordingDelegatingConnection):
+class DirectActionRecordingConnection(RecordingDelegatingConnection):
     def __init__(self, delegate: AdapterConnection) -> None:
         super().__init__(delegate)
         self.command_statements: list[str] = []
@@ -397,7 +397,7 @@ class StandardActionRecordingConnection(RecordingDelegatingConnection):
         super().execute_replay(request)
 
 
-class AdoptedLiveInsertConnection(StandardActionRecordingConnection):
+class AdoptedLiveInsertConnection(DirectActionRecordingConnection):
     def __init__(self, delegate: AdapterConnection, *, database: str, values_sql: str) -> None:
         super().__init__(delegate)
         self._database: str = database
@@ -425,7 +425,7 @@ class AdoptedLiveInsertConnection(StandardActionRecordingConnection):
         )
 
 
-class ManagedLiveInsertConnection(StandardActionRecordingConnection):
+class ManagedLiveInsertConnection(DirectActionRecordingConnection):
     def __init__(
         self,
         delegate: AdapterConnection,
@@ -539,7 +539,7 @@ def write_audit_project_files(project_dir: Path) -> None:
         project_dir / "pipelines" / "order_events" / "order_items.sql",
         """
         MODEL (
-          order_by: ["order_id"]
+          order_by ["order_id"]
         );
 
         SELECT
@@ -580,7 +580,7 @@ def write_backfill_audit_project_files(project_dir: Path) -> None:
         project_dir / "pipelines" / "order_events" / "orders_enriched.sql",
         """
         MODEL (
-          order_by: ["order_id"]
+          order_by ["order_id"]
         );
 
         SELECT
@@ -621,7 +621,7 @@ def write_generic_audit_project_files(project_dir: Path) -> None:
         project_dir / "pipelines" / "order_events" / "order_items.sql",
         """
         MODEL (
-          order_by: ["order_id"]
+          order_by ["order_id"]
         );
 
         SELECT
@@ -672,7 +672,7 @@ def write_multi_audit_project_files(project_dir: Path) -> None:
         project_dir / "pipelines" / "order_events" / "order_items.sql",
         """
         MODEL (
-          order_by: ["order_id"]
+          order_by ["order_id"]
         );
 
         SELECT
@@ -863,7 +863,7 @@ SEMANTICS_MODEL_SQL_BY_NAME: tuple[tuple[str, str], ...] = (
         "order_items",
         """
         MODEL (
-          order_by: ["order_id"]
+          order_by ["order_id"]
         );
 
         SELECT
@@ -876,7 +876,7 @@ SEMANTICS_MODEL_SQL_BY_NAME: tuple[tuple[str, str], ...] = (
         "daily_revenue",
         """
         MODEL (
-          order_by: ["order_id"]
+          order_by ["order_id"]
         );
 
         SELECT
@@ -889,7 +889,7 @@ SEMANTICS_MODEL_SQL_BY_NAME: tuple[tuple[str, str], ...] = (
         "revenue_report",
         """
         MODEL (
-          order_by: ["order_id"]
+          order_by ["order_id"]
         );
 
         SELECT
@@ -902,7 +902,7 @@ SEMANTICS_MODEL_SQL_BY_NAME: tuple[tuple[str, str], ...] = (
         "order_tax",
         """
         MODEL (
-          order_by: ["order_id"]
+          order_by ["order_id"]
         );
 
         SELECT
@@ -915,7 +915,7 @@ SEMANTICS_MODEL_SQL_BY_NAME: tuple[tuple[str, str], ...] = (
         "order_summary",
         """
         MODEL (
-          order_by: ["order_id"]
+          order_by ["order_id"]
         );
 
         SELECT
@@ -953,8 +953,8 @@ def write_sql_test_semantics_project(
     )
 
 
-STANDARD_SCOPE_PREREQUISITE_RELATIONS: tuple[str, ...] = ("raw__orders",)
-STANDARD_SCOPE_MODEL_RELATIONS: tuple[str, ...] = (
+DIRECT_SCOPE_PREREQUISITE_RELATIONS: tuple[str, ...] = ("raw__orders",)
+DIRECT_SCOPE_MODEL_RELATIONS: tuple[str, ...] = (
     "tbl__alpha",
     "mv__alpha",
     "tbl__beta",
@@ -966,18 +966,18 @@ STANDARD_SCOPE_MODEL_RELATIONS: tuple[str, ...] = (
 )
 _OWNERSHIP_ROW_NAMES_BY_FLAG: dict[bool, tuple[str, ...]] = {
     False: (),
-    True: STANDARD_SCOPE_MODEL_RELATIONS,
+    True: DIRECT_SCOPE_MODEL_RELATIONS,
 }
 _RELATION_NAMES_BY_FLAG: dict[bool, tuple[str, ...]] = {
-    False: STANDARD_SCOPE_PREREQUISITE_RELATIONS,
-    True: (*STANDARD_SCOPE_PREREQUISITE_RELATIONS, *STANDARD_SCOPE_MODEL_RELATIONS),
+    False: DIRECT_SCOPE_PREREQUISITE_RELATIONS,
+    True: (*DIRECT_SCOPE_PREREQUISITE_RELATIONS, *DIRECT_SCOPE_MODEL_RELATIONS),
 }
 
 
-def settle_standard_scope_warehouse(
+def settle_direct_scope_warehouse(
     *, connection: AdapterConnection, database: str, record_ownership: bool
 ) -> None:
-    """Create the scope project's warehouse relations and optional standard ownership rows."""
+    """Create the scope project's warehouse relations and optional direct ownership rows."""
 
     connection.ensure_database(database)
     connection.migrate_metadata_state(database)
@@ -997,7 +997,7 @@ def settle_standard_scope_warehouse(
                 "resource_kind": "table",
                 "logical_model_database": "",
                 "logical_model_name": relation_name.split("__")[-1],
-                "owning_mode": "standard",
+                "owning_mode": "direct",
                 "tool_version": "integration",
             },
         )
@@ -1009,8 +1009,8 @@ def settle_standard_scope_warehouse(
     )
 
 
-def run_standard_plan(*, project_root: Path, database: str, connection: AdapterConnection) -> int:
-    """Run `stb plan` in standard mode against a live warehouse connection."""
+def run_direct_plan(*, project_root: Path, database: str, connection: AdapterConnection) -> int:
+    """Run `stb plan` in direct mode against a live warehouse connection."""
 
     return run_plan(
         pipelines_root=project_root / "pipelines",
@@ -1027,14 +1027,14 @@ def run_standard_plan(*, project_root: Path, database: str, connection: AdapterC
 
 
 def plan_scope_names(*, plan_json: str) -> tuple[str, ...]:
-    """Return the execution scope model names reported by one standard plan."""
+    """Return the execution scope model names reported by one direct plan."""
 
     payload: dict[str, object] = json.loads(plan_json)
     return tuple(cast(list[str], payload["execution_scope"]))
 
 
 def plan_replay_root_models(*, plan_json: str) -> tuple[str, ...]:
-    """Return the replay root model names reported by one standard plan."""
+    """Return the replay root model names reported by one direct plan."""
 
     payload: dict[str, object] = json.loads(plan_json)
     roots: list[dict[str, object]] = cast(list[dict[str, object]], payload["replay_roots"])
@@ -1042,7 +1042,7 @@ def plan_replay_root_models(*, plan_json: str) -> tuple[str, ...]:
 
 
 def plan_relation_operations(*, plan_json: str) -> tuple[tuple[str, str], ...]:
-    """Return every teardown and creation operation reported by one standard plan."""
+    """Return every teardown and creation operation reported by one direct plan."""
 
     payload: dict[str, object] = json.loads(plan_json)
     operations: list[dict[str, object]] = [
@@ -1065,17 +1065,17 @@ def plan_ownership_labels(*, plan_json: str) -> tuple[str, ...]:
     return tuple(sorted(labels))
 
 
-STANDARD_BUILD_MODEL_SQL: str = (
+DIRECT_BUILD_MODEL_SQL: str = (
     "SELECT\n"
     "  kafka_key::String AS order_id,\n"
     "  _replay_partition::Int32 AS _replay_partition,\n"
     "  _replay_offset::Int64 AS _replay_offset\n"
     'FROM __source("orders")'
 )
-STANDARD_BUILD_MODEL_NAME: str = "orders_enriched"
-STANDARD_BUILD_TARGET_TABLE_NAME: str = "tbl__orders_enriched"
-STANDARD_BUILD_LANDING_TABLE_NAME: str = "raw__orders"
-_STANDARD_BUILD_SOURCE_YML: str = (
+DIRECT_BUILD_MODEL_NAME: str = "orders_enriched"
+DIRECT_BUILD_TARGET_TABLE_NAME: str = "tbl__orders_enriched"
+DIRECT_BUILD_LANDING_TABLE_NAME: str = "raw__orders"
+_DIRECT_BUILD_SOURCE_YML: str = (
     "sources:\n"
     "  - name: orders\n"
     "    kind: kafka\n"
@@ -1083,11 +1083,11 @@ _STANDARD_BUILD_SOURCE_YML: str = (
     "    topic: {topic}\n"
     "    replay_boundary: {{mode: offsets}}\n"
 )
-_STANDARD_BUILD_SETTINGS_BY_MODE: dict[bool, str] = {
+_DIRECT_BUILD_SETTINGS_BY_MODE: dict[bool, str] = {
     False: "",
     True: "\n[settings]\nvirtual_environments = true\n",
 }
-_STANDARD_SELECTED_GRAPH_SQL_BY_NAME: tuple[tuple[str, str], ...] = (
+_DIRECT_SELECTED_GRAPH_SQL_BY_NAME: tuple[tuple[str, str], ...] = (
     (
         "alpha",
         "SELECT kafka_key::String AS order_id, "
@@ -1121,7 +1121,7 @@ _STANDARD_SELECTED_GRAPH_SQL_BY_NAME: tuple[tuple[str, str], ...] = (
 )
 
 
-def write_standard_build_project(
+def write_direct_build_project(
     *,
     project_root: Path,
     topic: str = "source.orders",
@@ -1129,7 +1129,7 @@ def write_standard_build_project(
     audit_sql_by_name: tuple[tuple[str, str], ...] = (),
     virtual_environments: bool = False,
 ) -> None:
-    """Write a managed Kafka standard-mode project with one offsets-lineage model."""
+    """Write a managed Kafka direct-mode project with one offsets-lineage model."""
 
     pipeline_root: Path = project_root / "pipelines" / "orders"
     source_root: Path = project_root / "sources"
@@ -1138,18 +1138,18 @@ def write_standard_build_project(
     source_root.mkdir(parents=True, exist_ok=True)
     audit_root.mkdir(parents=True, exist_ok=True)
     (project_root / "streambuild_project.toml").write_text(
-        'name = "standard_build"\ndefault_target = "test"\n\n'
+        'name = "direct_build"\ndefault_target = "test"\n\n'
         '[targets.test]\ndatabase = "analytics"\n'
-        f"{_STANDARD_BUILD_SETTINGS_BY_MODE[virtual_environments]}",
+        f"{_DIRECT_BUILD_SETTINGS_BY_MODE[virtual_environments]}",
         encoding="utf-8",
     )
     (source_root / "orders.yml").write_text(
-        _STANDARD_BUILD_SOURCE_YML.format(broker_list=broker_list, topic=topic),
+        _DIRECT_BUILD_SOURCE_YML.format(broker_list=broker_list, topic=topic),
         encoding="utf-8",
     )
     (pipeline_root / "pipeline.yml").write_text("source: orders\n", encoding="utf-8")
-    (pipeline_root / f"{STANDARD_BUILD_MODEL_NAME}.sql").write_text(
-        f'MODEL (order_by: ["order_id"]);\n{STANDARD_BUILD_MODEL_SQL}\n',
+    (pipeline_root / f"{DIRECT_BUILD_MODEL_NAME}.sql").write_text(
+        f'MODEL (order_by ["order_id"]);\n{DIRECT_BUILD_MODEL_SQL}\n',
         encoding="utf-8",
     )
     audit_name: str
@@ -1158,7 +1158,7 @@ def write_standard_build_project(
         (audit_root / audit_name).write_text(audit_sql, encoding="utf-8")
 
 
-def write_standard_selected_graph_project(*, project_root: Path) -> None:
+def write_direct_selected_graph_project(*, project_root: Path) -> None:
     """Write the selected-rebuild fan-in graph with replay lineage on every model."""
 
     pipeline_root: Path = project_root / "pipelines" / "orders"
@@ -1166,39 +1166,39 @@ def write_standard_selected_graph_project(*, project_root: Path) -> None:
     pipeline_root.mkdir(parents=True, exist_ok=True)
     source_root.mkdir(parents=True, exist_ok=True)
     (project_root / "streambuild_project.toml").write_text(
-        'name = "standard_selected_graph"\ndefault_target = "test"\n\n'
+        'name = "direct_selected_graph"\ndefault_target = "test"\n\n'
         '[targets.test]\ndatabase = "analytics"\n',
         encoding="utf-8",
     )
     (source_root / "orders.yml").write_text(
-        _STANDARD_BUILD_SOURCE_YML.format(broker_list="kafka:9092", topic="source.selected_orders"),
+        _DIRECT_BUILD_SOURCE_YML.format(broker_list="kafka:9092", topic="source.selected_orders"),
         encoding="utf-8",
     )
     (pipeline_root / "pipeline.yml").write_text("source: orders\n", encoding="utf-8")
     model_name: str
     model_sql: str
-    for model_name, model_sql in _STANDARD_SELECTED_GRAPH_SQL_BY_NAME:
+    for model_name, model_sql in _DIRECT_SELECTED_GRAPH_SQL_BY_NAME:
         (pipeline_root / f"{model_name}.sql").write_text(
-            f'MODEL (order_by: ["order_id"]);\n{model_sql}\n', encoding="utf-8"
+            f'MODEL (order_by ["order_id"]);\n{model_sql}\n', encoding="utf-8"
         )
 
 
-def write_standard_aggregate_project(*, project_root: Path) -> None:
-    """Write an alpha-to-aggregate-beta standard rebuild project."""
+def write_direct_aggregate_project(*, project_root: Path) -> None:
+    """Write an alpha-to-aggregate-beta direct rebuild project."""
 
-    write_standard_selected_graph_project(project_root=project_root)
+    write_direct_selected_graph_project(project_root=project_root)
     pipeline_root: Path = project_root / "pipelines" / "orders"
     (pipeline_root / "gamma.sql").unlink()
     (pipeline_root / "delta.sql").unlink()
     (pipeline_root / "beta.sql").write_text(
-        'MODEL (order_by: ["order_id"]);\n'
+        'MODEL (order_by ["order_id"]);\n'
         "SELECT order_id::String AS order_id, count()::UInt64 AS order_count "
         'FROM __ref("alpha") GROUP BY order_id\n',
         encoding="utf-8",
     )
 
 
-def write_standard_selected_graph_audits(
+def write_direct_selected_graph_audits(
     *, project_root: Path, audit_sql_by_name: tuple[tuple[str, str], ...]
 ) -> None:
     """Write discovered audits for the selected-rebuild graph."""
@@ -1211,10 +1211,10 @@ def write_standard_selected_graph_audits(
         (audit_root / audit_name).write_text(audit_sql, encoding="utf-8")
 
 
-def write_standard_adopted_source_project(
+def write_direct_adopted_source_project(
     *, project_root: Path, source_yml: str, model_sql: str
 ) -> None:
-    """Write a standard project driven by one adopted source relation."""
+    """Write a direct project driven by one adopted source relation."""
 
     pipeline_root: Path = project_root / "pipelines" / "orders"
     source_root: Path = project_root / "sources"
@@ -1223,7 +1223,7 @@ def write_standard_adopted_source_project(
     source_root.mkdir(parents=True, exist_ok=True)
     audit_root.mkdir(parents=True, exist_ok=True)
     (project_root / "streambuild_project.toml").write_text(
-        'name = "standard_adopted_source"\ndefault_target = "test"\n\n'
+        'name = "direct_adopted_source"\ndefault_target = "test"\n\n'
         '[targets.test]\ndatabase = "analytics"\n',
         encoding="utf-8",
     )
@@ -1238,7 +1238,7 @@ def write_standard_adopted_source_project(
     )
 
 
-def run_standard_build(
+def run_direct_build(
     *,
     project_root: Path,
     database: str,
@@ -1247,7 +1247,7 @@ def run_standard_build(
     json_output: bool = True,
     auto_approve: bool = True,
 ) -> int:
-    """Run `stb build` in standard mode against a live warehouse connection."""
+    """Run `stb build` in direct mode against a live warehouse connection."""
 
     return run_build(
         options=BuildCommandOptions(
@@ -1279,7 +1279,7 @@ def insert_landing_rows(
         for order_key, partition_value, offset_value in rows
     )
     connection.command(
-        f"INSERT INTO {database}.{STANDARD_BUILD_LANDING_TABLE_NAME} "
+        f"INSERT INTO {database}.{DIRECT_BUILD_LANDING_TABLE_NAME} "
         "(kafka_key, kafka_value, kafka_topic, kafka_partition, kafka_offset, kafka_timestamp, "
         "_replay_partition, _replay_offset, _replay_timestamp, kafka_headers, kafka_landed_at, "
         f"_replay_landed_at) VALUES {values}"
@@ -1305,17 +1305,17 @@ def insert_landing_rows_after_delay(
         connection.close()
 
 
-def execute_standard_build_directly(
+def execute_direct_build_directly(
     *,
     project_root: Path,
     database: str,
     connection: AdapterConnection,
     stabilization_seconds: float,
     selectors: tuple[str, ...],
-) -> StandardBuildResult:
-    """Plan and execute one standard build with an explicit stabilization window."""
+) -> DirectBuildResult:
+    """Plan and execute one direct build with an explicit stabilization window."""
 
-    preview: BuildPreviewContext = build_standard_build_preview(
+    preview: BuildPreviewContext = build_direct_build_preview(
         options=BuildCommandOptions(
             pipelines_root=project_root / "pipelines",
             database=database,
@@ -1329,8 +1329,8 @@ def execute_standard_build_directly(
         loaded_project=load_project_input_for_path(path=project_root),
         adapter_profile=build_compiler_adapter_profile(ClickHouseAdapter()),
     )
-    return execute_standard_build(
-        request=StandardBuildRequest(
+    return execute_direct_build(
+        request=DirectBuildRequest(
             plan=preview.plan,
             realized_project=preview.analysis.realized_project,
             database=preview.database,
@@ -1361,7 +1361,7 @@ def run_virtual_environment_backfill(
     database: str,
     connection: AdapterConnection,
 ) -> int:
-    """Run `stb backfill` against a warehouse that standard mode may already own."""
+    """Run `stb backfill` against a warehouse that direct mode may already own."""
 
     return run_backfill(
         options=BackfillCommandOptions(
@@ -1382,11 +1382,11 @@ def run_virtual_environment_backfill(
     )
 
 
-def standard_build_order_ids(*, clickhouse_client: Client, database: str) -> tuple[str, ...]:
-    """Return the order ids currently materialized in the standard build target."""
+def direct_build_order_ids(*, clickhouse_client: Client, database: str) -> tuple[str, ...]:
+    """Return the order ids currently materialized in the direct build target."""
 
     rows: Sequence[Sequence[object]] = clickhouse_client.query(
-        f"SELECT order_id FROM {database}.{STANDARD_BUILD_TARGET_TABLE_NAME} ORDER BY order_id"
+        f"SELECT order_id FROM {database}.{DIRECT_BUILD_TARGET_TABLE_NAME} ORDER BY order_id"
     ).result_rows
     return tuple(str(row[0]) for row in rows)
 
@@ -1397,9 +1397,7 @@ def warehouse_row_count(*, clickhouse_client: Client, database: str, statement: 
     return int(clickhouse_client.query(statement.format(database=database)).result_rows[0][0])
 
 
-def standard_owned_relation_names(
-    *, connection: AdapterConnection, database: str
-) -> tuple[str, ...]:
+def direct_owned_relation_names(*, connection: AdapterConnection, database: str) -> tuple[str, ...]:
     """Return every relation name durably claimed in the ownership table."""
 
     return tuple(
@@ -1407,7 +1405,7 @@ def standard_owned_relation_names(
     )
 
 
-def standard_owned_replay_coverage_ranges(
+def direct_owned_replay_coverage_ranges(
     *, connection: AdapterConnection, database: str
 ) -> tuple[tuple[str, str, str], ...]:
     """Return the table claim's persisted replay intervals in deterministic order."""
@@ -1415,14 +1413,14 @@ def standard_owned_replay_coverage_ranges(
     record_by_name: dict[str, AdapterOwnershipRecord] = {
         record.relation_name: record for record in connection.load_target_ownership(database)
     }
-    record: AdapterOwnershipRecord = record_by_name[STANDARD_BUILD_TARGET_TABLE_NAME]
+    record: AdapterOwnershipRecord = record_by_name[DIRECT_BUILD_TARGET_TABLE_NAME]
     return tuple(
         (coverage.boundary_key, coverage.lower_value, coverage.upper_value)
         for coverage in record.replay_coverage
     )
 
 
-def standard_graph_order_ids(
+def direct_graph_order_ids(
     *, clickhouse_client: Client, database: str, model_name: str
 ) -> tuple[str, ...]:
     """Return ordered identities from one selected-graph model target."""
@@ -1433,7 +1431,7 @@ def standard_graph_order_ids(
     return tuple(str(row[0]) for row in rows)
 
 
-def standard_graph_delta_rows(
+def direct_graph_delta_rows(
     *, clickhouse_client: Client, database: str
 ) -> tuple[tuple[str, str], ...]:
     """Return the fan-in target's identity and side-reference marker rows."""

@@ -420,8 +420,8 @@ def test_given_invalid_transform_sql_when_running_compile_then_it_prints_a_clear
         project_root=tmp_path,
         model_sql="""
         MODEL (
-          engine: "MergeTree()",
-          order_by: ["order_id"],
+          engine "MergeTree()",
+          order_by ["order_id"],
         );
 
         SELECT CAST(order_id AS UInt64) AS order_id FROM __ref("orders")
@@ -584,8 +584,8 @@ def test_given_project_yaml_when_running_plan_then_it_uses_project_database_defa
         project_root=project_root,
         model_sql="""
         MODEL (
-          engine: "MergeTree()",
-          order_by: ["order_id"],
+          engine "MergeTree()",
+          order_by ["order_id"],
         );
 
         SELECT order_id::UInt64 AS order_id FROM __ref("orders")
@@ -646,8 +646,8 @@ def test_given_project_yaml_when_running_runtime_command_then_it_uses_project_de
         project_root=project_root,
         model_sql="""
         MODEL (
-          engine: "MergeTree()",
-          order_by: ["order_id"],
+          engine "MergeTree()",
+          order_by ["order_id"],
         );
 
         SELECT order_id::UInt64 AS order_id FROM __ref("orders")
@@ -705,8 +705,8 @@ def test_given_project_dir_when_running_runtime_command_then_it_uses_project_def
         project_root=project_root,
         model_sql="""
         MODEL (
-          engine: "MergeTree()",
-          order_by: ["order_id"],
+          engine "MergeTree()",
+          order_by ["order_id"],
         );
 
         SELECT order_id::UInt64 AS order_id FROM __ref("orders")

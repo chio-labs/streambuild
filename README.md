@@ -214,10 +214,22 @@ The same policies can be defaults in `streambuild_project.toml` and overrides in
 Each SQL model starts with a `MODEL (...)` header.
 
 ```sql
-MODEL ();
+MODEL (
+  engine "MergeTree()",
+  order_by ["order_id", "_replay_partition", "_replay_offset"],
+  partition_by "toYYYYMM(event_at)",
+  ttl "event_at + INTERVAL 30 DAY",
+  settings (
+    index_granularity 8192,
+  ),
+  replay_anchor auto,
+);
 
 SELECT
-  CAST(order_id AS UInt64) AS order_id
+  CAST(order_id AS UInt64) AS order_id,
+  CAST(event_at AS DateTime64(3)) AS event_at,
+  CAST(_replay_partition AS Int32) AS _replay_partition,
+  CAST(_replay_offset AS Int64) AS _replay_offset
 FROM __source("orders")
 ```
 
@@ -226,7 +238,8 @@ Notes:
 - the driving replay input may be declared with `__source(...)` for source roots or `__ref(...)` for managed upstream models
 - additional managed dependencies are declared with `__ref(...)`
 - additional `__ref(...)` dependencies must declare `ref_type`
-- omitted SQL storage settings default to `engine: "MergeTree()"` and `order_by: ["_replay_timestamp"]`
+- header fields use SQLBuild syntax: whitespace-separated `key value` entries, lists in `[...]`, and nested mappings in `(...)`
+- omitted SQL storage settings default to `engine "MergeTree()"` and `order_by ["_replay_timestamp"]`
 - both `CAST(expr AS Type)` and `expr::Type` are accepted
 
 ## Replay Lineage

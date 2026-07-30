@@ -2,7 +2,7 @@
 
 
 def replay_columns() -> str:
-    """Generate the standard replay lineage columns."""
+    """Generate the direct replay lineage columns."""
     return (
         "_replay_partition::Int64 AS _replay_partition,\n"
         "  _replay_offset::Int64 AS _replay_offset,\n"

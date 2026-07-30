@@ -258,8 +258,8 @@ sources:
     (pipeline_dir / "orders_enriched.sql").write_text(
         """
 MODEL (
-  engine: "MergeTree()",
-  order_by: ["order_id"],
+  engine "MergeTree()",
+  order_by ["order_id"],
 );
 
 SELECT
@@ -301,8 +301,8 @@ sources:
     (pipeline_dir / "orders_enriched.sql").write_text(
         """
 MODEL (
-  engine: "MergeTree()",
-  order_by: ["order_id"],
+  engine "MergeTree()",
+  order_by ["order_id"],
 );
 
 SELECT
@@ -340,8 +340,8 @@ sources:
     (pipeline_dir / "orders_enriched.sql").write_text(
         """
 MODEL (
-  engine: "MergeTree()",
-  order_by: ["order_id"],
+  engine "MergeTree()",
+  order_by ["order_id"],
 );
 
 SELECT
@@ -410,7 +410,7 @@ def run_streambuild_backfill_cli(
 def run_streambuild_build_cli(
     *, project_dir: Path, host: str, port: int, username: str, password: str, database: str
 ) -> None:
-    """Run the standard build command through the installed CLI surface."""
+    """Run the direct build command through the installed CLI surface."""
 
     _run_streambuild_cli(
         command=(

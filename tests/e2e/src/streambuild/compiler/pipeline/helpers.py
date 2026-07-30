@@ -58,7 +58,7 @@ def write_compile_benchmark_project(*, project_dir: Path, model_count: int) -> N
 
 def _model_sql(*, upstream_name: str) -> str:
     return (
-        'MODEL (\n  engine: "MergeTree()",\n  order_by: ["order_id"],\n);\n\n'
+        'MODEL (\n  engine "MergeTree()",\n  order_by ["order_id"],\n);\n\n'
         "WITH base AS (\n"
         "  SELECT CAST(order_id AS UInt64) AS order_id\n"
         f'  FROM __ref("{upstream_name}")\n'

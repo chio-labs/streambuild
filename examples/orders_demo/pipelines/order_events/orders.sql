@@ -1,7 +1,7 @@
 MODEL (
-  order_by: ["order_id", "event_at", "_replay_partition", "_replay_offset"],
-  partition_by: "toYYYYMM(event_at)",
-  replay_on_change: {breaking: full, non_breaking: bounded-7d},
+  order_by ["order_id", "event_at", "_replay_partition", "_replay_offset"],
+  partition_by "toYYYYMM(event_at)",
+  replay_on_change (breaking full, non_breaking bounded-7d),
 );
 
 SELECT

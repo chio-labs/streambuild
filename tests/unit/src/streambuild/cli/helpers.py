@@ -115,7 +115,7 @@ def write_cli_target_project(*, project_root: Path, local_contents: str) -> None
     write_cli_compilation_project(
         project_root=project_root,
         model_sql="""
-        MODEL (order_by: ["order_id"]);
+        MODEL (order_by ["order_id"]);
         SELECT order_id::UInt64 AS order_id FROM __source("orders")
         """,
     )
@@ -164,7 +164,7 @@ class RecordingAdapterConnection(AdapterConnection):
         per_relation_atomic_replace: bool = True,
         graph_atomic_publish: bool = False,
         set_difference_comparison: bool = True,
-        standard_rebuild: bool = True,
+        direct_rebuild: bool = True,
         relations: tuple[CatalogRelation, ...] = (),
         managed_table_state: InspectedManagedTableState = _EMPTY_MANAGED_TABLE_STATE,
         readiness_observations: tuple[AdapterReadinessRootObservation, ...] = (),
@@ -187,7 +187,7 @@ class RecordingAdapterConnection(AdapterConnection):
             per_relation_atomic_replace=per_relation_atomic_replace,
             graph_atomic_publish=graph_atomic_publish,
             set_difference_comparison=set_difference_comparison,
-            standard_rebuild=standard_rebuild,
+            direct_rebuild=direct_rebuild,
         )
         self._relations: tuple[CatalogRelation, ...] = relations
         self._managed_table_state: InspectedManagedTableState = managed_table_state

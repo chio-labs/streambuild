@@ -3,29 +3,29 @@ from pathlib import Path
 
 import pytest
 
-from streambuild.cli.plan.constants import STANDARD_MODE_LABEL, VIRTUAL_ENVIRONMENTS_MODE_LABEL
+from streambuild.cli.plan.constants import DIRECT_MODE_LABEL, VIRTUAL_ENVIRONMENTS_MODE_LABEL
 from tests.unit.src.streambuild.cli.plan.main._test_types import (
+    CliDirectPlanFlagRejectionTestCase,
     CliPlanModeRoutingTestCase,
-    CliStandardPlanFlagRejectionTestCase,
 )
 from tests.unit.src.streambuild.cli.plan.main.helpers import run_scope_project_plan
-from tests.unit.src.streambuild.compiler.planner.helpers import write_standard_scope_project
+from tests.unit.src.streambuild.compiler.planner.helpers import write_direct_scope_project
 
 
 @pytest.mark.parametrize(
     "test_case",
     [
         CliPlanModeRoutingTestCase(
-            description="an omitted virtual_environments setting plans in standard mode",
+            description="an omitted virtual_environments setting plans in direct mode",
             virtual_environments=None,
-            expected_mode=STANDARD_MODE_LABEL,
-            expected_title="Standard Plan",
+            expected_mode=DIRECT_MODE_LABEL,
+            expected_title="Direct Plan",
         ),
         CliPlanModeRoutingTestCase(
-            description="a disabled virtual_environments setting plans in standard mode",
+            description="a disabled virtual_environments setting plans in direct mode",
             virtual_environments=False,
-            expected_mode=STANDARD_MODE_LABEL,
-            expected_title="Standard Plan",
+            expected_mode=DIRECT_MODE_LABEL,
+            expected_title="Direct Plan",
         ),
         CliPlanModeRoutingTestCase(
             description="an enabled virtual_environments setting preserves deployment planning",
@@ -39,7 +39,7 @@ from tests.unit.src.streambuild.compiler.planner.helpers import write_standard_s
 def test_given_effective_project_mode_when_planning_then_that_mode_is_used(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], test_case: CliPlanModeRoutingTestCase
 ) -> None:
-    write_standard_scope_project(
+    write_direct_scope_project(
         project_root=tmp_path, virtual_environments=test_case.virtual_environments
     )
 
@@ -58,20 +58,20 @@ def test_given_effective_project_mode_when_planning_then_that_mode_is_used(
     "test_case",
     [
         CliPlanModeRoutingTestCase(
-            description="standard mode reports the complete closure and its single replay root",
+            description="direct mode reports the complete closure and its single replay root",
             virtual_environments=None,
-            expected_mode=STANDARD_MODE_LABEL,
-            expected_title="Standard Plan",
+            expected_mode=DIRECT_MODE_LABEL,
+            expected_title="Direct Plan",
             expected_execution_scope=("alpha", "beta", "gamma", "delta"),
             expected_replay_root_models=("alpha",),
         )
     ],
     ids=lambda case: case.description,
 )
-def test_given_standard_mode_when_planning_then_full_closure_is_reported(
+def test_given_direct_mode_when_planning_then_full_closure_is_reported(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], test_case: CliPlanModeRoutingTestCase
 ) -> None:
-    write_standard_scope_project(
+    write_direct_scope_project(
         project_root=tmp_path, virtual_environments=test_case.virtual_environments
     )
 
@@ -90,14 +90,14 @@ def test_given_standard_mode_when_planning_then_full_closure_is_reported(
 @pytest.mark.parametrize(
     "test_case",
     [
-        CliStandardPlanFlagRejectionTestCase(
-            description="--full-refresh is rejected in standard mode",
+        CliDirectPlanFlagRejectionTestCase(
+            description="--full-refresh is rejected in direct mode",
             full_refresh=True,
             start_time=None,
             expected_error_fragment="--full-refresh is a virtual-environment replay control",
         ),
-        CliStandardPlanFlagRejectionTestCase(
-            description="--start-time is rejected in standard mode",
+        CliDirectPlanFlagRejectionTestCase(
+            description="--start-time is rejected in direct mode",
             full_refresh=False,
             start_time="2026-01-01",
             expected_error_fragment="--start-time is a virtual-environment replay control",
@@ -105,12 +105,12 @@ def test_given_standard_mode_when_planning_then_full_closure_is_reported(
     ],
     ids=lambda case: case.description,
 )
-def test_given_replay_control_flag_in_standard_mode_when_planning_then_command_fails(
+def test_given_replay_control_flag_in_direct_mode_when_planning_then_command_fails(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
-    test_case: CliStandardPlanFlagRejectionTestCase,
+    test_case: CliDirectPlanFlagRejectionTestCase,
 ) -> None:
-    write_standard_scope_project(project_root=tmp_path)
+    write_direct_scope_project(project_root=tmp_path)
 
     exit_code: int = run_scope_project_plan(
         project_root=tmp_path,

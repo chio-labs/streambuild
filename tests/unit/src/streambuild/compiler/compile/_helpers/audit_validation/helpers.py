@@ -41,7 +41,7 @@ def validate_project_sql_audits(
         tmp_path / "pipelines" / "order_events" / "orders_clean.sql",
         """
         MODEL (
-          order_by: ["order_id"]
+          order_by ["order_id"]
         );
 
         SELECT CAST(order_id AS String) AS order_id
@@ -52,7 +52,7 @@ def validate_project_sql_audits(
         tmp_path / "pipelines" / "order_events" / "order_items.sql",
         """
         MODEL (
-          order_by: ["order_id"]
+          order_by ["order_id"]
         );
 
         SELECT

@@ -101,7 +101,7 @@ class CliTestSemanticsIntegrationTestCase:
 
 
 @dataclass(frozen=True)
-class CliStandardPlanIntegrationTestCase:
+class CliDirectPlanIntegrationTestCase:
     description: str
     expected_execution_scope: tuple[str, ...]
     expected_replay_root_models: tuple[str, ...]
@@ -110,7 +110,7 @@ class CliStandardPlanIntegrationTestCase:
 
 
 @dataclass(frozen=True)
-class CliStandardBuildIntegrationTestCase:
+class CliDirectBuildIntegrationTestCase:
     description: str
     landing_rows: tuple[tuple[str, int, int], ...]
     late_landing_rows: tuple[tuple[str, int, int], ...]
@@ -124,7 +124,7 @@ class CliStandardBuildIntegrationTestCase:
 
 
 @dataclass(frozen=True)
-class CliStandardBuildBoundaryIntegrationTestCase:
+class CliDirectBuildBoundaryIntegrationTestCase:
     description: str
     landing_rows: tuple[tuple[str, int, int], ...]
     pre_capture_statements: tuple[str, ...]
@@ -134,7 +134,7 @@ class CliStandardBuildBoundaryIntegrationTestCase:
 
 
 @dataclass(frozen=True)
-class CliStandardBuildRejectionIntegrationTestCase:
+class CliDirectBuildRejectionIntegrationTestCase:
     description: str
     landing_rows: tuple[tuple[str, int, int], ...]
     rebuilt_topic: str
@@ -143,7 +143,7 @@ class CliStandardBuildRejectionIntegrationTestCase:
 
 
 @dataclass(frozen=True)
-class CliStandardBuildGuardIntegrationTestCase:
+class CliDirectBuildGuardIntegrationTestCase:
     description: str
     landing_rows: tuple[tuple[str, int, int], ...]
     rebuilt_topic: str
@@ -161,7 +161,7 @@ class CliReciprocalOwnershipIntegrationTestCase:
 
 
 @dataclass(frozen=True)
-class CliStandardBuildAuditIntegrationTestCase:
+class CliDirectBuildAuditIntegrationTestCase:
     description: str
     audit_sql_by_name: tuple[tuple[str, str], ...]
     landing_rows: tuple[tuple[str, int, int], ...]
@@ -172,7 +172,7 @@ class CliStandardBuildAuditIntegrationTestCase:
 
 
 @dataclass(frozen=True)
-class CliStandardBuildRerunIntegrationTestCase:
+class CliDirectBuildRerunIntegrationTestCase:
     description: str
     landing_rows: tuple[tuple[str, int, int], ...]
     restored_landing_rows: tuple[tuple[str, int, int], ...]
@@ -186,7 +186,7 @@ class CliStandardBuildRerunIntegrationTestCase:
 
 
 @dataclass(frozen=True)
-class CliStandardBuildPartialFailureIntegrationTestCase:
+class CliDirectBuildPartialFailureIntegrationTestCase:
     description: str
     landing_rows: tuple[tuple[str, int, int], ...]
     partial_landing_rows: tuple[tuple[str, int, int], ...]
@@ -197,7 +197,7 @@ class CliStandardBuildPartialFailureIntegrationTestCase:
 
 
 @dataclass(frozen=True)
-class CliStandardSelectedBuildIntegrationTestCase:
+class CliDirectSelectedBuildIntegrationTestCase:
     description: str
     selectors: tuple[str, ...]
     landing_rows: tuple[tuple[str, int, int], ...]
@@ -210,7 +210,7 @@ class CliStandardSelectedBuildIntegrationTestCase:
 
 
 @dataclass(frozen=True)
-class CliStandardAggregateBuildIntegrationTestCase:
+class CliDirectAggregateBuildIntegrationTestCase:
     description: str
     selectors: tuple[str, ...]
     landing_rows: tuple[tuple[str, int, int], ...]
@@ -219,7 +219,7 @@ class CliStandardAggregateBuildIntegrationTestCase:
 
 
 @dataclass(frozen=True)
-class CliStandardSelectedFailureIntegrationTestCase:
+class CliDirectSelectedFailureIntegrationTestCase:
     description: str
     selectors: tuple[str, ...]
     landing_rows: tuple[tuple[str, int, int], ...]
@@ -230,14 +230,14 @@ class CliStandardSelectedFailureIntegrationTestCase:
 
 
 @dataclass(frozen=True)
-class CliStandardExecutionStepFailureIntegrationTestCase:
+class CliDirectExecutionStepFailureIntegrationTestCase:
     description: str
     connection_factory: Callable[[AdapterConnection], AdapterConnection]
     expected_failure_fragment: str
 
 
 @dataclass(frozen=True)
-class CliStandardSelectionMatrixIntegrationTestCase:
+class CliDirectSelectionMatrixIntegrationTestCase:
     description: str
     selectors: tuple[str, ...]
     expected_drop_relation_names: tuple[str, ...]
@@ -245,7 +245,7 @@ class CliStandardSelectionMatrixIntegrationTestCase:
 
 
 @dataclass(frozen=True)
-class CliStandardSelectedAuditIntegrationTestCase:
+class CliDirectSelectedAuditIntegrationTestCase:
     description: str
     selectors: tuple[str, ...]
     audit_sql_by_name: tuple[tuple[str, str], ...]
@@ -253,7 +253,7 @@ class CliStandardSelectedAuditIntegrationTestCase:
 
 
 @dataclass(frozen=True)
-class CliStandardAdoptedSourceIntegrationTestCase:
+class CliDirectAdoptedSourceIntegrationTestCase:
     description: str
     source_yml: str
     model_sql: str
@@ -268,7 +268,7 @@ class CliStandardAdoptedSourceIntegrationTestCase:
 
 
 @dataclass(frozen=True)
-class CliStandardAdoptedSourceFailureIntegrationTestCase:
+class CliDirectAdoptedSourceFailureIntegrationTestCase:
     description: str
     source_table_name: str
     source_yml: str

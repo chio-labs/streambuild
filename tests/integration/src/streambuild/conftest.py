@@ -20,6 +20,7 @@ os.environ.setdefault("TESTCONTAINERS_RYUK_DISABLED", "true")
 
 CLICKHOUSE_USERNAME: str = "streambuild"
 CLICKHOUSE_PASSWORD: str = "streambuild"
+CONTAINER_STARTUP_TIMEOUT_SECONDS: int = 90
 
 
 @dataclass(frozen=True)
@@ -72,7 +73,7 @@ def _reserve_host_port() -> int:
 
 
 def _wait_for_clickhouse_client(host: str, port: int) -> Client:
-    deadline: float = time.time() + 30
+    deadline: float = time.time() + CONTAINER_STARTUP_TIMEOUT_SECONDS
     last_error: Exception | None = None
     clickhouse_logger: logging.Logger = logging.getLogger("clickhouse_connect.driver.httpclient")
     previous_level: int = clickhouse_logger.level

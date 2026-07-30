@@ -51,7 +51,7 @@ MODEL_SQL_BY_NAME: tuple[tuple[str, str], ...] = (
         "order_items",
         """
         MODEL (
-          order_by: ["order_id"]
+          order_by ["order_id"]
         );
 
         SELECT
@@ -64,7 +64,7 @@ MODEL_SQL_BY_NAME: tuple[tuple[str, str], ...] = (
         "daily_revenue",
         """
         MODEL (
-          order_by: ["order_id"]
+          order_by ["order_id"]
         );
 
         SELECT
@@ -77,7 +77,7 @@ MODEL_SQL_BY_NAME: tuple[tuple[str, str], ...] = (
         "revenue_report",
         """
         MODEL (
-          order_by: ["order_id"]
+          order_by ["order_id"]
         );
 
         SELECT
@@ -90,7 +90,7 @@ MODEL_SQL_BY_NAME: tuple[tuple[str, str], ...] = (
         "order_tax",
         """
         MODEL (
-          order_by: ["order_id"]
+          order_by ["order_id"]
         );
 
         SELECT
@@ -103,7 +103,7 @@ MODEL_SQL_BY_NAME: tuple[tuple[str, str], ...] = (
         "order_summary",
         """
         MODEL (
-          order_by: ["order_id"]
+          order_by ["order_id"]
         );
 
         SELECT
@@ -269,7 +269,7 @@ CYCLIC_MODEL_SQL_BY_NAME: tuple[tuple[str, str], ...] = (
         "loop_a",
         """
         MODEL (
-          order_by: ["order_id"]
+          order_by ["order_id"]
         );
 
         SELECT CAST(order_id AS String) AS order_id FROM __ref("loop_b")
@@ -279,7 +279,7 @@ CYCLIC_MODEL_SQL_BY_NAME: tuple[tuple[str, str], ...] = (
         "loop_b",
         """
         MODEL (
-          order_by: ["order_id"]
+          order_by ["order_id"]
         );
 
         SELECT CAST(order_id AS String) AS order_id FROM __ref("loop_a")

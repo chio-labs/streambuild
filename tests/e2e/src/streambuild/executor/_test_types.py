@@ -97,6 +97,6 @@ class ExternalSourceOffsetWorkflowE2ETestCase:
 
 
 @dataclass(frozen=True)
-class StandardExternalSourceBuildE2ETestCase:
+class DirectExternalSourceBuildE2ETestCase:
     description: str
     expected_order_ids: tuple[str, ...]

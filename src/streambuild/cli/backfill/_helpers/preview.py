@@ -22,8 +22,8 @@ from streambuild.compiler.compile.models import (
 from streambuild.compiler.discovery.models import LoadedPipeline, LoadedProject
 from streambuild.compiler.pipeline.main.analyze_project import analyze_project
 from streambuild.compiler.pipeline.models import CompileAnalysis
-from streambuild.compiler.planner.main.assert_no_standard_owned_targets import (
-    assert_no_standard_owned_targets,
+from streambuild.compiler.planner.main.assert_no_direct_owned_targets import (
+    assert_no_direct_owned_targets,
 )
 from streambuild.compiler.planner.main.load_actual_state_from_snapshot import (
     load_actual_state_from_snapshot,
@@ -95,7 +95,7 @@ def build_backfill_preview_context(
         selectors=selectors,
     )
     desired_state: DesiredState = selection.desired_state
-    assert_no_standard_owned_targets(
+    assert_no_direct_owned_targets(
         client=client,
         metadata_database=resolved_metadata_database,
         target_database=resolved_database,

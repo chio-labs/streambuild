@@ -8,15 +8,15 @@ from streambuild.adapter.models import (
     CatalogSnapshot,
 )
 from streambuild.adapter.types import AdapterOwningMode
+from streambuild.compiler.planner.main.load_direct_warehouse_snapshot import (
+    load_direct_warehouse_snapshot,
+)
 from streambuild.compiler.planner.main.load_planning_warehouse_snapshot import (
     load_planning_warehouse_snapshot,
 )
-from streambuild.compiler.planner.main.load_standard_warehouse_snapshot import (
-    load_standard_warehouse_snapshot,
-)
 from streambuild.compiler.planner.models import (
+    DirectWarehouseSnapshot,
     PlanningWarehouseSnapshot,
-    StandardWarehouseSnapshot,
 )
 from tests.unit.src.streambuild.compiler.planner._test_types import (
     PlanningSnapshotAssemblyTestCase,
@@ -120,7 +120,7 @@ def test_given_missing_capability_when_loading_snapshot_then_it_rejects_before_r
     ],
     ids=lambda case: case.description,
 )
-def test_given_capable_adapter_when_loading_standard_snapshot_then_it_reads_each_source_once(
+def test_given_capable_adapter_when_loading_direct_snapshot_then_it_reads_each_source_once(
     test_case: PlanningSnapshotAssemblyTestCase,
 ) -> None:
     catalog: CatalogSnapshot = build_snapshot_catalog()
@@ -134,13 +134,13 @@ def test_given_capable_adapter_when_loading_standard_snapshot_then_it_reads_each
                 relation_name="tbl__orders",
                 resource_kind="table",
                 logical_model_name="orders",
-                owning_mode=AdapterOwningMode.STANDARD,
+                owning_mode=AdapterOwningMode.DIRECT,
                 tool_version="test",
             ),
         ),
     )
 
-    snapshot: StandardWarehouseSnapshot = load_standard_warehouse_snapshot(
+    snapshot: DirectWarehouseSnapshot = load_direct_warehouse_snapshot(
         client=connection,
         database="analytics",
         metadata_database="metadata",
@@ -157,26 +157,26 @@ def test_given_capable_adapter_when_loading_standard_snapshot_then_it_reads_each
     "test_case",
     [
         PlanningSnapshotCapabilityTestCase(
-            description="rejects adapters without standard rebuild support before warehouse reads",
-            expected_error_message="Adapter 'clickhouse' does not support standard rebuilds",
+            description="rejects adapters without direct rebuild support before warehouse reads",
+            expected_error_message="Adapter 'clickhouse' does not support direct rebuilds",
             expected_catalog_load_count=0,
             expected_query_count=0,
         )
     ],
     ids=lambda case: case.description,
 )
-def test_given_incapable_adapter_when_loading_standard_snapshot_then_it_rejects_before_reads(
+def test_given_incapable_adapter_when_loading_direct_snapshot_then_it_rejects_before_reads(
     test_case: PlanningSnapshotCapabilityTestCase,
 ) -> None:
     connection: SnapshotRecordingConnection = SnapshotRecordingConnection(
         catalog=build_snapshot_catalog(),
         metadata_result=AdapterQueryResult(rows=()),
         virtual_environments=False,
-        standard_rebuild=False,
+        direct_rebuild=False,
     )
 
     with pytest.raises(AdapterCapabilityError, match=test_case.expected_error_message):
-        load_standard_warehouse_snapshot(
+        load_direct_warehouse_snapshot(
             client=connection, database="analytics", metadata_database="metadata"
         )
 
