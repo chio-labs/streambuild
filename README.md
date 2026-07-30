@@ -1,6 +1,10 @@
-# streambuild
+<p align="center">
+  <img src="https://raw.githubusercontent.com/chio-labs/streambuild/main/.github/streambuild-logo-dark.png" alt="StreamBuild" width="100%">
+</p>
 
-Declarative ClickHouse streaming pipeline deployment for staged backfill, audit, and publish workflows.
+<p align="center">
+  Declarative ClickHouse streaming pipeline deployment for staged backfill, audit, and publish workflows.
+</p>
 
 `streambuild` is aimed at streaming data teams who want dbt-like authored models, but with deployment semantics that fit live ClickHouse pipelines:
 
