@@ -17,7 +17,7 @@ def execute_confirmed_direct_build(
     client: AdapterConnection,
     plan_text: str,
 ) -> DirectBuildResult | None:
-    """Show the destructive plan, honor D-018 confirmation, then build."""
+    """Show the destructive plan, require confirmation, then build."""
 
     _announce_plan(options=options, plan_text=plan_text)
     if not _approved(options=options):

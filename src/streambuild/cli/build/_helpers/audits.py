@@ -1,4 +1,4 @@
-"""Run user SQL audits after direct resources are live under D-025."""
+"""Run user SQL audits after direct resources are live."""
 
 from __future__ import annotations
 

@@ -17,6 +17,7 @@ The current product is centered on ClickHouse and streaming replay semantics. Ka
 Current implemented workflow:
 
 - `stb plan`
+- `stb build`
 - `stb backfill`
 - `stb audit backfill`
 - `stb publish`
@@ -37,7 +38,7 @@ Current rollout model:
 
 Requirements:
 
-- Python `>=3.14`
+- Python `>=3.12`
 - ClickHouse
 
 Local dev install:
@@ -270,6 +271,7 @@ From a project directory:
 
 ```bash
 uv run stb plan
+uv run stb build
 uv run stb backfill
 uv run stb audit backfill
 uv run stb publish

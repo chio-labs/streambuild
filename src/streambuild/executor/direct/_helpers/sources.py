@@ -1,4 +1,4 @@
-"""Preserve managed source and landing resources and block on drift under D-016."""
+"""Preserve managed source and landing resources and block on drift."""
 
 from __future__ import annotations
 
