@@ -73,7 +73,7 @@ class RootDeploymentStateKind(StrEnum):
 
 
 class TargetOwnership(StrEnum):
-    """How one warehouse relation is owned, per D-019 durable evidence."""
+    """How durable evidence says one warehouse relation is owned."""
 
     ABSENT = "absent"
     UNMANAGED = "unmanaged"

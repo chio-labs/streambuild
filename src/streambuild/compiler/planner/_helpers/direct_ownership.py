@@ -1,4 +1,4 @@
-"""Classify durable ownership evidence for direct-mode targets under D-019."""
+"""Classify durable ownership evidence for direct-mode targets."""
 
 from __future__ import annotations
 
