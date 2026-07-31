@@ -20,6 +20,14 @@ class GreenfieldKafkaWorkflowE2ETestCase:
 
 
 @dataclass(frozen=True)
+class ManagedSourceBootstrapE2ETestCase:
+    description: str
+    fixture_project_dir: Path
+    deployment_id: str
+    expected_order_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class KafkaRecoveryWorkflowE2ETestCase:
     description: str
     deployment_id: str

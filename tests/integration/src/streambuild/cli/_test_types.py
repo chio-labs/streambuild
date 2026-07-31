@@ -121,6 +121,15 @@ class CliDirectBuildIntegrationTestCase:
     expected_deployment_row_count: int
     expected_stable_view_count: int
     expected_replay_coverage_ranges: tuple[tuple[str, str, str], ...]
+    expected_warehouse_written_rows: tuple[int | None, ...]
+
+
+@dataclass(frozen=True)
+class CliDirectLandedAtClockIntegrationTestCase:
+    description: str
+    landing_rows: tuple[tuple[str, int, int], ...]
+    expected_order_ids: tuple[str, ...]
+    expected_warehouse_written_rows: tuple[int | None, ...]
 
 
 @dataclass(frozen=True)

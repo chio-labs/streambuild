@@ -30,6 +30,7 @@ from tests.e2e.src.streambuild.executor._test_types import (
     KafkaOffsetAuditWorkflowE2ETestCase,
     KafkaRecoveryWorkflowE2ETestCase,
     KafkaSchemaChangeWorkflowE2ETestCase,
+    ManagedSourceBootstrapE2ETestCase,
 )
 from tests.e2e.src.streambuild.executor.helpers import (
     E2E_KAFKA_LANDED_AT_PROJECT_DIR,
@@ -202,6 +203,77 @@ def test_given_kafka_backed_greenfield_pipeline_when_running_then_it_publishes_e
     assert audit_result["assessment"] == test_case.expected_audit_assessment
     assert compiled_pipeline.effective_replay_lineage_mode == test_case.expected_replay_lineage_mode
     assert tuple(row[0] for row in published_rows) == test_case.expected_order_ids
+
+
+@pytest.mark.e2e
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ManagedSourceBootstrapE2ETestCase(
+            description=(
+                "backfills every message produced before StreamBuild creates managed resources"
+            ),
+            fixture_project_dir=E2E_KAFKA_LANDED_AT_PROJECT_DIR,
+            deployment_id="20260731T120000Z_bootstrap",
+            expected_order_ids=("pre-source-1", "pre-source-2", "pre-source-3"),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_messages_before_managed_source_creation_when_backfilling_then_output_is_complete(
+    test_case: ManagedSourceBootstrapE2ETestCase,
+    e2e_clickhouse_connection_settings: E2EClickHouseConnectionSettings,
+    e2e_kafka_connection_settings: E2EKafkaConnectionSettings,
+    e2e_clickhouse_client: Client,
+    e2e_clickhouse_database: str,
+    tmp_path: Path,
+) -> None:
+    project_dir: Path = prepare_authored_e2e_project(
+        fixture_project_dir=test_case.fixture_project_dir,
+        tmp_path=tmp_path,
+        kafka_broker_list=e2e_kafka_connection_settings.internal_bootstrap_server,
+        topic_suffix=e2e_clickhouse_database,
+    )
+    compiled_pipeline: CompiledPipeline = build_authored_greenfield_workflow_compiled_pipeline(
+        project_dir=project_dir
+    )
+    producer: KafkaProducer = build_kafka_producer(
+        bootstrap_server=e2e_kafka_connection_settings.bootstrap_server
+    )
+    try:
+        produce_kafka_messages(
+            producer=producer,
+            topic=require_managed_source(compiled_pipeline).kafka_table.spec.kafka.topic,
+            messages=tuple(
+                (order_id, json.dumps({"order_id": order_id}))
+                for order_id in test_case.expected_order_ids
+            ),
+        )
+    finally:
+        producer.close()
+
+    run_streambuild_backfill_cli(
+        project_dir=project_dir,
+        host=e2e_clickhouse_connection_settings.host,
+        port=e2e_clickhouse_connection_settings.port,
+        username=e2e_clickhouse_connection_settings.username,
+        password=e2e_clickhouse_connection_settings.password,
+        database=e2e_clickhouse_database,
+        deployment_id=test_case.deployment_id,
+    )
+    target_table_name: str = require_model_resources(compiled_pipeline).target_table_name
+    staged_table_name: str = f"{target_table_name}__{test_case.deployment_id}"
+    wait_for_row_count(
+        clickhouse_client=e2e_clickhouse_client,
+        clickhouse_database=e2e_clickhouse_database,
+        table_name=staged_table_name,
+        expected_count=len(test_case.expected_order_ids),
+    )
+    output_rows: Sequence[Sequence[object]] = e2e_clickhouse_client.query(
+        f"SELECT order_id FROM {e2e_clickhouse_database}.{staged_table_name} ORDER BY order_id"
+    ).result_rows
+
+    assert tuple(row[0] for row in output_rows) == test_case.expected_order_ids
 
 
 @pytest.mark.e2e

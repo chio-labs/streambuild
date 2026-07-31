@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import AdapterOwnershipRecord, CatalogSnapshot
-from streambuild.compiler.planner.models import DirectPlan
+from streambuild.executor.direct._helpers.execution_result import (
+    build_direct_execution_result,
+    resolve_completed_direct_model_names,
+)
 from streambuild.executor.direct._helpers.ownership import (
     build_direct_ownership_records,
     claim_direct_ownership,
@@ -22,13 +25,11 @@ from streambuild.executor.direct._helpers.retention import (
     resolve_required_replay_coverage,
 )
 from streambuild.executor.direct._helpers.sources import (
-    PreservedSourceRealization,
-    preserve_managed_sources,
+    prepare_preserved_managed_sources,
 )
 from streambuild.executor.direct.models import (
     DirectBuildRequest,
     DirectBuildResult,
-    DirectReplayBoundary,
     DirectReplayCoverage,
 )
 from streambuild.executor.population.main._execute_population import execute_population
@@ -36,7 +37,7 @@ from streambuild.executor.population.models import (
     PopulationPlan,
     PopulationRequest,
     PopulationResult,
-    PopulationWatermark,
+    PopulationSourcePreparation,
 )
 
 
@@ -53,7 +54,7 @@ def execute_direct_build(
     existing_ownership: tuple[AdapterOwnershipRecord, ...] = client.load_target_ownership(
         request.metadata_database
     )
-    preserved: PreservedSourceRealization = preserve_managed_sources(
+    source_preparation: PopulationSourcePreparation = prepare_preserved_managed_sources(
         client=client,
         realized_project=request.realized_project,
         catalog=catalog,
@@ -90,6 +91,7 @@ def execute_direct_build(
             plan=population_plan,
             desired_state=request.realized_project.desired_state,
             default_database=request.database,
+            source_preparation=source_preparation,
             stabilization_seconds=request.stabilization_seconds,
             boundary_time=request.boundary_time,
         ),
@@ -98,35 +100,47 @@ def execute_direct_build(
     completed_ownership_records: tuple[AdapterOwnershipRecord, ...] = _finalize_ownership(
         request=request,
         client=client,
-    )
-    return DirectBuildResult(
-        database=request.database,
-        ownership_records=completed_ownership_records,
-        preserved_source_relation_names=preserved.preserved_relation_names,
-        created_source_relation_names=preserved.created_relation_names,
-        dropped_relation_names=dropped,
-        created_relation_names=population.created_relation_names,
-        boundary_time=population.boundary_time,
-        boundaries=_logical_root_boundaries(
+        completed_model_names=resolve_completed_direct_model_names(
             plan=request.plan,
             population_plan=population_plan,
             population=population,
         ),
-        replayed_model_names=tuple(root.model_key.name for root in request.plan.replay_roots),
+        preflight_replay_coverage=replay_coverage,
+    )
+    return build_direct_execution_result(
+        request=request,
+        population_plan=population_plan,
+        population=population,
+        ownership_records=completed_ownership_records,
+        dropped_relation_names=dropped,
     )
 
 
 def _finalize_ownership(
-    *, request: DirectBuildRequest, client: AdapterConnection
+    *,
+    request: DirectBuildRequest,
+    client: AdapterConnection,
+    completed_model_names: frozenset[str],
+    preflight_replay_coverage: tuple[DirectReplayCoverage, ...],
 ) -> tuple[AdapterOwnershipRecord, ...]:
     completed_coverage: tuple[DirectReplayCoverage, ...] = capture_completed_replay_coverage(
-        client=client, plan=request.plan, database=request.database
+        client=client,
+        plan=request.plan,
+        database=request.database,
+        completed_model_names=completed_model_names,
+    )
+    completed_coverage_by_model_name: dict[str, DirectReplayCoverage] = {
+        coverage.model_name: coverage for coverage in completed_coverage
+    }
+    finalized_coverage: tuple[DirectReplayCoverage, ...] = tuple(
+        completed_coverage_by_model_name.get(coverage.model_name, coverage)
+        for coverage in preflight_replay_coverage
     )
     records: tuple[AdapterOwnershipRecord, ...] = build_direct_ownership_records(
         plan=request.plan,
         database=request.database,
         tool_version=request.tool_version,
-        replay_coverage=completed_coverage,
+        replay_coverage=finalized_coverage,
     )
     finalize_direct_ownership(
         client=client,
@@ -135,24 +149,3 @@ def _finalize_ownership(
         plan=request.plan,
     )
     return records
-
-
-def _logical_root_boundaries(
-    *, plan: DirectPlan, population_plan: PopulationPlan, population: PopulationResult
-) -> tuple[DirectReplayBoundary, ...]:
-    boundaries: list[DirectReplayBoundary] = []
-    for direct_root, population_root in zip(plan.replay_roots, population_plan.roots, strict=True):
-        watermark: PopulationWatermark
-        for watermark in population.watermarks:
-            if watermark.root_key == population_root.root_key:
-                boundaries.append(
-                    DirectReplayBoundary(
-                        model_name=direct_root.model_key.name,
-                        driving_input_relation_name=direct_root.driving_input_relation_name,
-                        replay_boundary_mode=population_root.replay_lineage_mode,
-                        boundary_key=watermark.boundary_key,
-                        cutoff_value=watermark.cutoff_value,
-                        cutoff_inclusive=True,
-                    )
-                )
-    return tuple(boundaries)

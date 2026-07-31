@@ -5,8 +5,10 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from clickhouse_connect.driver.exceptions import ClickHouseError, StreamFailureError
+from clickhouse_connect.driver.summary import QuerySummary
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.exceptions import AdapterResultError
 from streambuild.adapter.models import (
     AdapterBindingReplacementRequest,
     AdapterBindingReplacementResult,
@@ -23,6 +25,7 @@ from streambuild.adapter.models import (
     AdapterRelationCleanupRequest,
     AdapterRelationCleanupResult,
     AdapterReplayRequest,
+    AdapterReplayResult,
     AdapterStableView,
     AdapterTable,
     AdapterView,
@@ -60,6 +63,7 @@ from streambuild.adapters.clickhouse.constants import (
     CLICKHOUSE_SET_DIFFERENCE_COMPARISON_SUPPORTED,
     CLICKHOUSE_STABLE_LOGICAL_BINDINGS_SUPPORTED,
     CLICKHOUSE_VIRTUAL_ENVIRONMENTS_SUPPORTED,
+    CLICKHOUSE_WRITTEN_ROWS_SUMMARY_KEY,
 )
 from streambuild.adapters.clickhouse.types import (
     RawClickHouseClient,
@@ -166,6 +170,16 @@ class ClickHouseConnection(AdapterConnection):
             rows=tuple(tuple(row) for row in result_rows),
         )
 
+    def capture_warehouse_timestamp(self) -> str:
+        """Capture ClickHouse server time as an exact UTC DateTime64(3) string."""
+
+        result: AdapterQueryResult = self.query(
+            "SELECT toString(now64(3, 'UTC'), 'UTC') AS warehouse_timestamp"
+        )
+        if not result.rows:
+            raise AdapterResultError("ClickHouse returned no warehouse timestamp")
+        return str(result.rows[0][0])
+
     def insert_rows(self, *, table: str, rows: tuple[dict[str, object], ...]) -> None:
         """Insert row mappings into a ClickHouse table."""
 
@@ -246,10 +260,26 @@ class ClickHouseConnection(AdapterConnection):
 
         return load_clickhouse_deployment_inventory(connection=self, database=database)
 
-    def execute_replay(self, request: AdapterReplayRequest) -> None:
+    def execute_replay(self, request: AdapterReplayRequest) -> AdapterReplayResult:
         """Seed and execute one replay request in ClickHouse."""
 
-        execute_clickhouse_replay(connection=self, request=request)
+        return execute_clickhouse_replay(
+            connection=self,
+            request=request,
+            execute_insert=self._execute_replay_insert,
+        )
+
+    def _execute_replay_insert(self, statement: str) -> AdapterReplayResult:
+        try:
+            summary: object = self._raw_client.command(statement)
+        except (ClickHouseError, StreamFailureError) as error:
+            raise translate_driver_error(error) from error
+        if (
+            not isinstance(summary, QuerySummary)
+            or CLICKHOUSE_WRITTEN_ROWS_SUMMARY_KEY not in summary.summary
+        ):
+            return AdapterReplayResult(written_rows=None)
+        return AdapterReplayResult(written_rows=summary.written_rows)
 
     def compare_readiness(
         self, request: AdapterReadinessRequest

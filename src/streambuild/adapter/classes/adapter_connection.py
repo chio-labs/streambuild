@@ -19,6 +19,7 @@ from streambuild.adapter.models import (
     AdapterRelationCleanupRequest,
     AdapterRelationCleanupResult,
     AdapterReplayRequest,
+    AdapterReplayResult,
     AdapterStableView,
     AdapterTable,
     AdapterView,
@@ -81,6 +82,10 @@ class AdapterConnection(ABC):
         """Execute a query and return its normalized result."""
 
     @abstractmethod
+    def capture_warehouse_timestamp(self) -> str:
+        """Capture the active warehouse server's UTC millisecond timestamp."""
+
+    @abstractmethod
     def insert_rows(self, *, table: str, rows: tuple[dict[str, object], ...]) -> None:
         """Insert row mappings into a warehouse table."""
 
@@ -133,8 +138,8 @@ class AdapterConnection(ABC):
         """Load persisted deployments and publish events for lifecycle cleanup."""
 
     @abstractmethod
-    def execute_replay(self, request: AdapterReplayRequest) -> None:
-        """Seed and replay one mode-neutral rebuild-root request."""
+    def execute_replay(self, request: AdapterReplayRequest) -> AdapterReplayResult:
+        """Seed and replay one root and return the warehouse-reported outcome."""
 
     @abstractmethod
     def compare_readiness(

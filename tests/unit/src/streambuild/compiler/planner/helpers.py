@@ -21,6 +21,7 @@ from streambuild.adapter.models import (
     AdapterRelationCleanupRequest,
     AdapterRelationCleanupResult,
     AdapterReplayRequest,
+    AdapterReplayResult,
     AdapterStableView,
     AdapterTable,
     AdapterView,
@@ -196,6 +197,9 @@ class SnapshotRecordingConnection(AdapterConnection):
         self.query_count += 1
         return self._metadata_result
 
+    def capture_warehouse_timestamp(self) -> str:
+        return "2026-07-31 12:00:00.000"
+
     def insert_rows(self, *, table: str, rows: tuple[dict[str, object], ...]) -> None:
         del table, rows
 
@@ -242,8 +246,9 @@ class SnapshotRecordingConnection(AdapterConnection):
         del database
         return AdapterDeploymentInventory(deployments=(), publish_events=())
 
-    def execute_replay(self, request: AdapterReplayRequest) -> None:
+    def execute_replay(self, request: AdapterReplayRequest) -> AdapterReplayResult:
         del request
+        return AdapterReplayResult(written_rows=None)
 
     def compare_readiness(
         self, request: AdapterReadinessRequest

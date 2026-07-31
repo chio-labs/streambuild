@@ -6,13 +6,14 @@ from streambuild.executor.population._helpers.persistence import persist_populat
 from streambuild.executor.population._helpers.relations import realize_population_objects
 from streambuild.executor.population._helpers.replay import execute_population_replay
 from streambuild.executor.population._helpers.roots import expand_fan_in_roots
-from streambuild.executor.population._helpers.timing import (
-    build_current_timestamp,
-    wait_for_population_stabilization,
+from streambuild.executor.population._helpers.sources import (
+    activate_population_sources,
 )
+from streambuild.executor.population._helpers.timing import wait_for_population_stabilization
 from streambuild.executor.population._helpers.watermarks import resolve_population_watermarks
 from streambuild.executor.population.models import (
     PopulationPlan,
+    PopulationReplayExecution,
     PopulationRequest,
     PopulationResult,
     PopulationWatermark,
@@ -33,8 +34,17 @@ def execute_population(
         desired_state=request.desired_state,
         default_database=request.default_database,
     )
+    activate_population_sources(
+        client=client,
+        preparation=request.source_preparation,
+        default_database=request.default_database,
+    )
     wait_for_population_stabilization(request.stabilization_seconds)
-    boundary_time: str = request.boundary_time or build_current_timestamp()
+    boundary_time: str = (
+        request.boundary_time
+        if request.boundary_time is not None
+        else client.capture_warehouse_timestamp()
+    )
     watermarks: tuple[PopulationWatermark, ...] = resolve_population_watermarks(
         client=client,
         plan=plan,
@@ -49,7 +59,9 @@ def execute_population(
             plan=plan,
             watermarks=watermarks,
         )
-    replayed_root_keys: tuple[ObjectKey, ...] = execute_population_replay(
+    replay_executions: tuple[PopulationReplayExecution, ...]
+    completed_root_keys: tuple[ObjectKey, ...]
+    replay_executions, completed_root_keys = execute_population_replay(
         client=client,
         plan=plan,
         desired_state=request.desired_state,
@@ -60,6 +72,9 @@ def execute_population(
     return PopulationResult(
         boundary_time=boundary_time,
         created_relation_names=created_relation_names,
+        preserved_source_relation_names=request.source_preparation.preserved_relation_names,
+        created_source_relation_names=request.source_preparation.created_relation_names,
         watermarks=watermarks,
-        replayed_root_keys=replayed_root_keys,
+        replay_executions=replay_executions,
+        completed_root_keys=completed_root_keys,
     )

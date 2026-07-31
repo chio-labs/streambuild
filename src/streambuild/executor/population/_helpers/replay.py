@@ -3,11 +3,13 @@
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import (
     AdapterPhysicalRelationMapping,
+    AdapterQueryResult,
     AdapterReplayBoundary,
     AdapterReplayColumns,
     AdapterReplayQuery,
     AdapterReplayRelations,
     AdapterReplayRequest,
+    AdapterReplayResult,
     AdapterReplayWindow,
 )
 from streambuild.adapter.types import (
@@ -34,8 +36,10 @@ from streambuild.compiler.planner.constants import (
     REBUILD_EXECUTION_MODE_UNSEEDED_BOUNDED,
 )
 from streambuild.compiler.planner.main.build_adapter_replay_query import build_adapter_replay_query
+from streambuild.executor.population.exceptions import PopulationExecutionError
 from streambuild.executor.population.models import (
     PopulationPlan,
+    PopulationReplayExecution,
     PopulationRoot,
     PopulationWatermark,
 )
@@ -49,7 +53,7 @@ def execute_population_replay(
     default_database: str,
     watermarks: tuple[PopulationWatermark, ...],
     boundary_time: str,
-) -> tuple[ObjectKey, ...]:
+) -> tuple[tuple[PopulationReplayExecution, ...], tuple[ObjectKey, ...]]:
     """Execute every populated root through one request builder."""
 
     requests: tuple[tuple[ObjectKey, AdapterReplayRequest], ...] = _build_replay_requests(
@@ -59,10 +63,27 @@ def execute_population_replay(
         watermarks=watermarks,
         boundary_time=boundary_time,
     )
-    request: AdapterReplayRequest
-    for _root_key, request in requests:
-        client.execute_replay(request)
-    return tuple(root_key for root_key, _request in requests)
+    request_by_root_key: dict[ObjectKey, AdapterReplayRequest] = dict(requests)
+    executions: list[PopulationReplayExecution] = []
+    root: PopulationRoot
+    for root in plan.roots:
+        if not _root_has_qualifying_replay_input(
+            client=client,
+            root=root,
+            plan=plan,
+            desired_state=desired_state,
+            default_database=default_database,
+            watermarks=watermarks,
+            boundary_time=boundary_time,
+        ):
+            continue
+        request: AdapterReplayRequest = request_by_root_key[root.root_key]
+        result: AdapterReplayResult = client.execute_replay(request)
+        executions.append(
+            PopulationReplayExecution(root_key=root.root_key, written_rows=result.written_rows)
+        )
+    completed_keys: tuple[ObjectKey, ...] = tuple(execution.root_key for execution in executions)
+    return tuple(executions), completed_keys
 
 
 def _build_replay_requests(
@@ -149,6 +170,88 @@ def _build_replay_requests(
             )
         )
     return tuple(requests)
+
+
+def _root_has_qualifying_replay_input(
+    *,
+    client: AdapterConnection,
+    root: PopulationRoot,
+    plan: PopulationPlan,
+    desired_state: DesiredState,
+    default_database: str,
+    watermarks: tuple[PopulationWatermark, ...],
+    boundary_time: str,
+) -> bool:
+    physical_name_by_key: dict[ObjectKey, str] = {
+        prepared.logical_key: prepared.physical_name for prepared in plan.objects
+    }
+    database: str = root.root_key.database or default_database
+    relation_name: str = physical_name_by_key.get(
+        root.upstream_boundary_key, root.upstream_boundary_key.name
+    )
+    if not _query_has_rows(
+        client=client,
+        statement=f"SELECT 1 FROM {database}.{relation_name} LIMIT 1",
+    ):
+        return False
+    mode: AdapterReplayBoundaryMode = AdapterReplayBoundaryMode(root.replay_lineage_mode)
+    root_watermarks: tuple[PopulationWatermark, ...] = tuple(
+        watermark for watermark in watermarks if watermark.root_key == root.root_key
+    )
+    columns: AdapterReplayColumns = _adapter_replay_columns(
+        _external_source_config(desired_state=desired_state, key=root.upstream_boundary_key)
+    )
+    qualifying_statement: str | None = _qualifying_input_statement(
+        mode=mode,
+        database=database,
+        relation_name=relation_name,
+        columns=columns,
+        watermarks=root_watermarks,
+        boundary_time=boundary_time,
+    )
+    if qualifying_statement is None or not _query_has_rows(
+        client=client, statement=qualifying_statement
+    ):
+        raise PopulationExecutionError(
+            f"Replay root '{root.root_key.name}' retained input "
+            f"'{database}.{relation_name}' has rows but no qualifying {mode} cutoff at "
+            f"warehouse boundary {boundary_time}"
+        )
+    return True
+
+
+def _qualifying_input_statement(
+    *,
+    mode: AdapterReplayBoundaryMode,
+    database: str,
+    relation_name: str,
+    columns: AdapterReplayColumns,
+    watermarks: tuple[PopulationWatermark, ...],
+    boundary_time: str,
+) -> str | None:
+    predicate: str | None = None
+    if mode == AdapterReplayBoundaryMode.OFFSETS and watermarks:
+        parts: tuple[str, ...] = tuple(
+            f"(toString({columns.partition}) = '{watermark.boundary_key.split('=', 1)[1]}' "
+            f"AND {columns.offset} <= toInt64('{watermark.cutoff_value}'))"
+            for watermark in watermarks
+        )
+        predicate = " OR ".join(parts)
+    elif mode == AdapterReplayBoundaryMode.CURSOR and watermarks and watermarks[0].cutoff_value:
+        predicate = f"{columns.cursor} <= toInt64('{watermarks[0].cutoff_value}')"
+    elif mode in {AdapterReplayBoundaryMode.TIMESTAMP, AdapterReplayBoundaryMode.LANDED_AT}:
+        boundary_column: str = (
+            columns.timestamp if mode == AdapterReplayBoundaryMode.TIMESTAMP else columns.landed_at
+        )
+        predicate = f"{boundary_column} <= CAST('{boundary_time}' AS DateTime64(3, 'UTC'))"
+    if predicate is None:
+        return None
+    return f"SELECT 1 FROM {database}.{relation_name} WHERE {predicate} LIMIT 1"
+
+
+def _query_has_rows(*, client: AdapterConnection, statement: str) -> bool:
+    result: AdapterQueryResult = client.query(statement)
+    return bool(result.rows)
 
 
 def _adapter_boundaries(

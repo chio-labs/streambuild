@@ -14,6 +14,7 @@ from streambuild.executor.audit_backfill.models import (
 from streambuild.executor.backfill.models import (
     BackfillBootstrapResult,
     BackfillExecutionResult,
+    BackfillRootReplayResult,
     RootBackfillReport,
 )
 from streambuild.executor.publish.models import PublishedView, PublishResult
@@ -33,8 +34,15 @@ def build_backfill_preview() -> BackfillExecutionResult:
                     active_deployment_id=None,
                 ),
             ),
+            existing_relation_names=frozenset(),
         ),
         boundary_time="2026-04-10 12:00:00.000",
+        replay_results=(
+            BackfillRootReplayResult(
+                root_key=ObjectKey(None, "table", "tbl__orders_enriched"),
+                written_rows=1203,
+            ),
+        ),
     )
 
 
