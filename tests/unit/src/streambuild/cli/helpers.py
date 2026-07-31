@@ -104,7 +104,6 @@ def write_cli_compilation_project(*, project_root: Path, model_sql: str) -> None
         + "\n",
         encoding="utf-8",
     )
-    (pipeline_root / "pipeline.yml").write_text("source: orders\n", encoding="utf-8")
     (pipeline_root / "orders_enriched.sql").write_text(
         dedent(model_sql).strip() + "\n",
         encoding="utf-8",

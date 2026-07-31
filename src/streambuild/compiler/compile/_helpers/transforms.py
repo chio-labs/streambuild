@@ -35,7 +35,7 @@ from streambuild.compiler.sql_analysis.models import SqlModelAnalysis
 def compile_model(
     *,
     transform: TransformStep,
-    pipeline_file_path: Path,
+    pipeline_dir: Path,
     pipeline_name: str,
     replay_lineage_mode: ReplayLineageMode,
     bounded_replay_fallback: BoundedReplayFallback,
@@ -44,7 +44,7 @@ def compile_model(
 ) -> CompiledModel:
     """Compile one authored transform into a logical model."""
 
-    query: str = load_transform_query(transform=transform, pipeline_file_path=pipeline_file_path)
+    query: str = load_transform_query(transform=transform, pipeline_dir=pipeline_dir)
     sql_analysis: SqlModelAnalysis = analyze_transform_model_sql(
         analyzer=sql_analyzer,
         transform_name=transform.name,
@@ -101,7 +101,7 @@ def compile_model(
     )
 
 
-def load_transform_query(*, transform: TransformStep, pipeline_file_path: Path) -> str:
+def load_transform_query(*, transform: TransformStep, pipeline_dir: Path) -> str:
     """Load a transform query from inline SQL or a relative file."""
 
     if transform.query is not None:
@@ -111,7 +111,7 @@ def load_transform_query(*, transform: TransformStep, pipeline_file_path: Path) 
         raise PipelineCompileError(
             f"Transform '{transform.name}' must define exactly one of 'query' or 'sql_file'"
         )
-    sql_file_path: Path = (pipeline_file_path.parent / transform.sql_file).resolve()
+    sql_file_path: Path = (pipeline_dir / transform.sql_file).resolve()
     return sql_file_path.read_text(encoding="utf-8").strip()
 
 

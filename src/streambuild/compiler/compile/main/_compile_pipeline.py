@@ -72,7 +72,7 @@ def _compile_models(
             compiled_model: CompiledModel = compile_model(
                 transform=transform,
                 pipeline_name=loaded_pipeline.pipeline.name,
-                pipeline_file_path=loaded_pipeline.file_path,
+                pipeline_dir=loaded_pipeline.file_path,
                 replay_lineage_mode=replay_lineage_mode,
                 sql_analyzer=sql_analyzer,
                 replay_on_change=resolve_replay_on_change(

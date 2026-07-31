@@ -254,7 +254,6 @@ sources:
         _replay_timestamp: event_timestamp
 """,
     )
-    (pipeline_dir / "pipeline.yml").write_text("source: orders\n", encoding="utf-8")
     (pipeline_dir / "orders_enriched.sql").write_text(
         """
 MODEL (
@@ -297,7 +296,6 @@ sources:
         _replay_timestamp: event_timestamp
 """,
     )
-    (pipeline_dir / "pipeline.yml").write_text("source: orders\n", encoding="utf-8")
     (pipeline_dir / "orders_enriched.sql").write_text(
         """
 MODEL (
@@ -336,7 +334,6 @@ sources:
         _replay_timestamp: event_timestamp
 """,
     )
-    (pipeline_dir / "pipeline.yml").write_text("source: orders\n", encoding="utf-8")
     (pipeline_dir / "orders_enriched.sql").write_text(
         """
 MODEL (

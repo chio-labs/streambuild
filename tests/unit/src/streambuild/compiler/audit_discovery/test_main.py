@@ -16,7 +16,6 @@ from tests.unit.src.streambuild.compiler.audit_discovery.helpers import (
     write_schema_yaml_file,
     write_sql_audit_file,
 )
-from tests.unit.src.streambuild.compiler.discovery._helpers.load.helpers import write_pipeline_file
 from tests.unit.src.streambuild.compiler.macros.helpers import (
     build_test_macro_runtime,
     write_macro_file,
@@ -307,16 +306,8 @@ def test_given_generic_sql_audits_when_discovering_then_it_renders_concrete_audi
     tmp_path: Path,
 ) -> None:
     audits_root: Path = tmp_path / "audits"
-    write_pipeline_file(
-        tmp_path / "pipelines" / "order_events" / "pipeline.yml",
-        """
-        source:
-          kind: kafka
-          name: orders
-          broker_list: kafka:9092
-          topic: source.orders
-        """,
-    )
+    pipeline_dir: Path = tmp_path / "pipelines" / "order_events"
+    pipeline_dir.mkdir(parents=True)
     write_sql_audit_file(
         audits_root / "generic" / f"{test_case.definition_name}.sql",
         test_case.definition_file_contents,

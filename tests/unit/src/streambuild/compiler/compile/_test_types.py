@@ -12,7 +12,7 @@ from streambuild.compiler.discovery.types import (
 @dataclass(frozen=True)
 class CompilePipelineInlineRefsTestCase:
     description: str
-    pipeline_file_path: str
+    pipeline_dir: str
     expected_relation_names: dict[str, str]
     expected_kafka_table_name: str
     expected_raw_table_name: str

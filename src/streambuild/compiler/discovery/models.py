@@ -334,13 +334,21 @@ class DiscoveredSourceFile:
 
 
 @dataclass(frozen=True, repr=False)
+class DiscoveredPipelineDirectory:
+    """One direct pipeline directory and its optional retained configuration."""
+
+    pipeline_dir: Path
+    config_file: DiscoveredProjectFile | None = None
+
+
+@dataclass(frozen=True, repr=False)
 class DiscoveredProjectInputs:
     """All raw project inputs captured before semantic compilation."""
 
     project_dir: Path
     loaded_project: LoadedProject | None
     source_files: tuple[DiscoveredSourceFile, ...]
-    pipeline_files: tuple[DiscoveredProjectFile, ...]
+    pipeline_directories: tuple[DiscoveredPipelineDirectory, ...]
     model_files: tuple[DiscoveredProjectFile, ...]
     test_files: tuple[DiscoveredProjectFile, ...]
     audit_files: tuple[DiscoveredProjectFile, ...]

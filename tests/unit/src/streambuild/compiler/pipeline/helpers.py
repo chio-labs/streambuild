@@ -206,7 +206,6 @@ def write_managed_source_ttl_project(
             replay_boundary: {{mode: offsets}}
         """,
     )
-    _write(project_dir / "pipelines" / "orders" / "pipeline.yml", "source: orders")
     _write(
         project_dir / "pipelines" / "orders" / "orders_enriched.sql",
         """
@@ -222,7 +221,7 @@ def write_policy_validation_project(
     project_dir: Path,
     project_contents: str,
     local_contents: str,
-    pipeline_contents: str,
+    pipeline_config_contents: str,
     model_contents: str,
 ) -> None:
     _write(project_dir / "streambuild_project.toml", project_contents)
@@ -238,7 +237,10 @@ def write_policy_validation_project(
             replay_boundary: {mode: offsets}
         """,
     )
-    _write(project_dir / "pipelines" / "orders" / "pipeline.yml", pipeline_contents)
+    _write(
+        project_dir / "pipelines" / "orders" / "pipeline.toml",
+        pipeline_config_contents,
+    )
     _write(project_dir / "pipelines" / "orders" / "orders_enriched.sql", model_contents)
 
 
@@ -266,12 +268,6 @@ def _write_pipeline(
         """,
     )
     _write(
-        pipeline_dir / "pipeline.yml",
-        f"""
-        source: {source_name}
-        """,
-    )
-    _write(
         pipeline_dir / f"{model_name}.sql",
         f"""
         MODEL (
@@ -289,7 +285,6 @@ def _write_shared_source_pipeline(
     *, project_dir: Path, pipeline_name: str, model_name: str
 ) -> None:
     pipeline_dir: Path = project_dir / "pipelines" / pipeline_name
-    _write(pipeline_dir / "pipeline.yml", "source: orders")
     _write(
         pipeline_dir / f"{model_name}.sql",
         """
