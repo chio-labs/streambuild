@@ -18,7 +18,7 @@ from streambuild.compiler.compile.models import (
     DesiredState,
     DesiredTable,
 )
-from streambuild.compiler.discovery._helpers.load import load_pipeline_file
+from streambuild.compiler.discovery._helpers.load import load_pipeline_directory
 from streambuild.compiler.discovery.models import (
     ExternalTableSourceStep,
     KafkaLandingStep,
@@ -87,7 +87,7 @@ from tests.unit.src.streambuild.compiler.planner.helpers import (
     [
         CompilePipelineInlineRefsTestCase(
             description="resolves inline refs for example pipeline",
-            pipeline_file_path="tests/fixtures/basic_project/pipelines/orders/pipeline.yml",
+            pipeline_dir="tests/fixtures/basic_project/pipelines/orders",
             expected_relation_names={
                 "orders": "raw__orders",
                 "orders_enriched": "tbl__orders_enriched",
@@ -127,7 +127,7 @@ from tests.unit.src.streambuild.compiler.planner.helpers import (
 def test_given_example_pipeline_when_compiling_then_resolves_inline_refs(
     test_case: CompilePipelineInlineRefsTestCase,
 ) -> None:
-    loaded_pipeline: LoadedPipeline = load_pipeline_file(Path(test_case.pipeline_file_path))
+    loaded_pipeline: LoadedPipeline = load_pipeline_directory(Path(test_case.pipeline_dir))
     compiled_pipeline: CompiledPipeline
     realized_project: RealizedProject
     compiled_pipeline, realized_project = compile_and_realize_pipeline(loaded_pipeline)
@@ -230,13 +230,13 @@ def test_given_adopted_source_when_compiling_then_it_uses_existing_table_relatio
     test_case: CompilePipelineAdoptedSourceTestCase,
     tmp_path: Path,
 ) -> None:
-    pipeline_file_path: Path = write_registry_pipeline_project(
+    pipeline_dir: Path = write_registry_pipeline_project(
         project_dir=tmp_path,
         source_contents=test_case.pipeline_file_contents,
         model_contents=test_case.sql_contents,
     )
 
-    loaded_pipeline: LoadedPipeline = load_pipeline_file(pipeline_file_path)
+    loaded_pipeline: LoadedPipeline = load_pipeline_directory(pipeline_dir)
 
     compiled_pipeline: CompiledPipeline
     realized_project: RealizedProject
@@ -549,7 +549,7 @@ def test_given_loaded_pipeline_when_compiling_then_it_resolves_effective_unsuppo
     ]
 
     compiled_pipeline: CompiledPipeline = compile_test_pipeline(
-        LoadedPipeline(pipeline=pipeline, file_path=Path("pipeline.yml"), project=project)
+        LoadedPipeline(pipeline=pipeline, file_path=Path("pipeline"), project=project)
     )
 
     assert (
@@ -687,7 +687,7 @@ def test_given_transform_when_compiling_then_it_sets_replay_anchor_inference_fla
     )
     loaded_pipeline: LoadedPipeline = LoadedPipeline(
         pipeline=pipeline,
-        file_path=Path("tests/fixtures/basic_project/pipelines/orders/pipeline.yml"),
+        file_path=Path("tests/fixtures/basic_project/pipelines/orders"),
         project=None,
     )
 
@@ -806,7 +806,7 @@ def test_given_pipeline_when_compiling_then_it_exposes_the_replay_surface(
 ) -> None:
     loaded_pipeline: LoadedPipeline = LoadedPipeline(
         pipeline=test_case.pipeline,
-        file_path=Path("tests/fixtures/basic_project/pipelines/orders/pipeline.yml"),
+        file_path=Path("tests/fixtures/basic_project/pipelines/orders"),
         project=None,
     )
     compiled_pipeline: CompiledPipeline
@@ -860,7 +860,7 @@ def test_given_pipeline_when_compiling_then_it_resolves_expected_replay_lineage_
     compiled_pipeline: CompiledPipeline = compile_test_pipeline(
         LoadedPipeline(
             pipeline=test_case.pipeline,
-            file_path=Path("tests/fixtures/basic_project/pipelines/orders/pipeline.yml"),
+            file_path=Path("tests/fixtures/basic_project/pipelines/orders"),
             project=None,
         )
     )
@@ -1079,7 +1079,7 @@ def test_given_sql_model_without_replay_timestamp_when_compiling_then_it_raises_
     test_case: CompilePipelineSqlModelDefaultOrderByTestCase,
     tmp_path: Path,
 ) -> None:
-    pipeline_file_path: Path = write_registry_pipeline_project(
+    pipeline_dir: Path = write_registry_pipeline_project(
         project_dir=tmp_path,
         source_contents="""
         source:
@@ -1092,7 +1092,7 @@ def test_given_sql_model_without_replay_timestamp_when_compiling_then_it_raises_
         """,
         model_contents=test_case.sql_contents,
     )
-    loaded_pipeline: LoadedPipeline = load_pipeline_file(pipeline_file_path)
+    loaded_pipeline: LoadedPipeline = load_pipeline_directory(pipeline_dir)
 
     with pytest.raises(test_case.expected_error_type) as error_info:
         compile_test_pipeline(loaded_pipeline)

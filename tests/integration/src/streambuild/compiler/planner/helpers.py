@@ -43,7 +43,7 @@ from tests.integration.src.streambuild.adapters.clickhouse.helpers import (
 )
 from tests.integration.src.streambuild.executor.backfill.helpers import require_managed_source
 from tests.unit.src.streambuild.compiler.compile.helpers import build_realization_analyzer
-from tests.unit.src.streambuild.compiler.planner.helpers import EXAMPLE_PIPELINE_FILE_PATH
+from tests.unit.src.streambuild.compiler.planner.helpers import EXAMPLE_PIPELINE_DIRECTORY
 
 
 def compile_pipeline(loaded_pipeline: LoadedPipeline) -> CompiledPipeline:
@@ -125,7 +125,7 @@ def build_changed_sql_compiled_pipeline() -> CompiledPipeline:
     return compile_pipeline(
         LoadedPipeline(
             pipeline=pipeline,
-            file_path=EXAMPLE_PIPELINE_FILE_PATH,
+            file_path=EXAMPLE_PIPELINE_DIRECTORY,
             project=None,
         )
     )
@@ -165,7 +165,7 @@ def build_changed_schema_compiled_pipeline() -> CompiledPipeline:
     return compile_pipeline(
         LoadedPipeline(
             pipeline=pipeline,
-            file_path=EXAMPLE_PIPELINE_FILE_PATH,
+            file_path=EXAMPLE_PIPELINE_DIRECTORY,
             project=None,
         )
     )
@@ -199,7 +199,7 @@ def build_removed_column_compiled_pipeline() -> CompiledPipeline:
     return compile_pipeline(
         LoadedPipeline(
             pipeline=pipeline,
-            file_path=EXAMPLE_PIPELINE_FILE_PATH,
+            file_path=EXAMPLE_PIPELINE_DIRECTORY,
             project=None,
         )
     )
@@ -237,7 +237,7 @@ def build_add_and_remove_columns_compiled_pipeline() -> CompiledPipeline:
     return compile_pipeline(
         LoadedPipeline(
             pipeline=pipeline,
-            file_path=EXAMPLE_PIPELINE_FILE_PATH,
+            file_path=EXAMPLE_PIPELINE_DIRECTORY,
             project=None,
         )
     )
@@ -275,7 +275,7 @@ def build_type_changed_compiled_pipeline() -> CompiledPipeline:
     return compile_pipeline(
         LoadedPipeline(
             pipeline=pipeline,
-            file_path=EXAMPLE_PIPELINE_FILE_PATH,
+            file_path=EXAMPLE_PIPELINE_DIRECTORY,
             project=None,
         )
     )

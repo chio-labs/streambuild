@@ -69,17 +69,18 @@ macros/
   common.py
 pipelines/
   orders/
-    pipeline.yml
     orders_enriched.sql
     order_rollups.sql
 ```
 
 Rules:
 
-- each pipeline folder contains one `pipeline.yml`
+- each direct child folder under `pipelines/` is one pipeline
 - recursive `*.sql` files under that folder belong to that pipeline
 - pipeline name is inferred from the folder name
+- pipeline source is inferred transitively from model driving inputs
 - model name is inferred from the SQL filename stem
+- optional `pipeline.toml` stores pipeline-wide virtual-environment policy
 
 ## Macros
 
@@ -145,8 +146,9 @@ Notes:
 
 ## Pipeline Sources
 
-Reusable replay-driving sources live under `sources/*.yml`. Each `pipeline.yml` contains
-one source registry identity, for example `source: orders`.
+Reusable replay-driving sources live under `sources/*.yml`. StreamBuild follows each model's
+`__source(...)` or untyped `__ref(...)` driving input until it reaches a registered source. Every
+pipeline must resolve to exactly one source.
 
 ### Managed Kafka Landing
 
@@ -208,16 +210,17 @@ Currently supported external-source replay boundary modes:
 Virtual-environment projects can choose change-driven replay independently from the
 fallback used when bounded replay cannot preserve aggregate history:
 
-```yaml
-source: orders
-replay_on_change:
-  breaking: full
-  non_breaking: bounded-7d
-bounded_replay_fallback: bounded_without_history
+```toml
+bounded_replay_fallback = "bounded_without_history"
+
+[replay_on_change]
+breaking = "full"
+non_breaking = "bounded-7d"
 ```
 
-The same policies can be defaults in `streambuild_project.toml` and overrides in a model
-`MODEL(...)` header. They are rejected when `settings.virtual_environments` is false.
+This optional `pipeline.toml` sits directly in the pipeline directory. The same policies can be
+defaults in `streambuild_project.toml` and overrides in a model `MODEL(...)` header. They are
+rejected when `settings.virtual_environments` is false.
 
 ## Models
 

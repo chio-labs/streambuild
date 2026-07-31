@@ -15,7 +15,7 @@ def run_discover(
     loaded_project: LoadedProject | None,
     adapter_profile: CompilerAdapterProfile,
 ) -> int:
-    """Run pipeline discovery for pipeline.yml-rooted folders and print names."""
+    """Run direct-child pipeline directory discovery and print names."""
 
     analysis: CompileAnalysis = analyze_project(
         pipelines_root=pipelines_root,

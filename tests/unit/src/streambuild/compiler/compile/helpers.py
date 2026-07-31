@@ -133,13 +133,11 @@ def write_registry_pipeline_project(
         "sources:\n  - " + indent(source_body, "    ").lstrip() + "\n",
         encoding="utf-8",
     )
-    pipeline_file_path: Path = pipeline_root / "pipeline.yml"
-    pipeline_file_path.write_text("source: orders\n", encoding="utf-8")
     (pipeline_root / "orders_enriched.sql").write_text(
         dedent(model_contents).strip() + "\n",
         encoding="utf-8",
     )
-    return pipeline_file_path
+    return pipeline_root
 
 
 def build_sql_file_pipeline(
@@ -171,7 +169,7 @@ def build_sql_file_pipeline(
         ],
     )
 
-    return LoadedPipeline(pipeline=pipeline, file_path=pipeline_root / "pipeline.yml")
+    return LoadedPipeline(pipeline=pipeline, file_path=pipeline_root)
 
 
 def build_missing_source_ref_pipeline(transform_query: str) -> LoadedPipeline:
@@ -198,7 +196,7 @@ def build_missing_source_ref_pipeline(transform_query: str) -> LoadedPipeline:
 
     return LoadedPipeline(
         pipeline=pipeline,
-        file_path=Path("tests/fixtures/basic_project/pipelines/orders/pipeline.yml"),
+        file_path=Path("tests/fixtures/basic_project/pipelines/orders"),
     )
 
 
@@ -226,7 +224,7 @@ def build_inline_sql_pipeline(transform_query: str) -> LoadedPipeline:
 
     return LoadedPipeline(
         pipeline=pipeline,
-        file_path=Path("tests/fixtures/basic_project/pipelines/orders/pipeline.yml"),
+        file_path=Path("tests/fixtures/basic_project/pipelines/orders"),
     )
 
 
@@ -268,5 +266,5 @@ def build_invalid_storage_expression_pipeline(
 
     return LoadedPipeline(
         pipeline=pipeline,
-        file_path=Path("tests/fixtures/basic_project/pipelines/orders/pipeline.yml"),
+        file_path=Path("tests/fixtures/basic_project/pipelines/orders"),
     )

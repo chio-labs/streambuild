@@ -77,7 +77,7 @@ def build_compiled_external_source_pipeline() -> CompiledPipeline:
     return compile_pipeline(
         loaded_pipeline=LoadedPipeline(
             pipeline=pipeline,
-            file_path=Path("tests/fixtures/selector_project/pipelines/orders/pipeline.yml"),
+            file_path=Path("tests/fixtures/selector_project/pipelines/orders"),
             project=None,
         ),
         sql_analyzer=SqlModelAnalyzer(dialect="clickhouse"),

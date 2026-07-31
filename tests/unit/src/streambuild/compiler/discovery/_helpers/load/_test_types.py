@@ -25,7 +25,7 @@ class LoadReplayPoliciesTestCase:
 @dataclass(frozen=True)
 class RemovedPipelineSurfaceTestCase:
     description: str
-    pipeline_contents: str
+    pipeline_config_contents: str
     expected_error_fragment: str
 
 

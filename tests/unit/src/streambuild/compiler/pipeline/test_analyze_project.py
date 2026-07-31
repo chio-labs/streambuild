@@ -17,7 +17,7 @@ from streambuild.cli.entry._helpers.compiler_profile import build_compiler_adapt
 from streambuild.compiler.compile.exceptions import PipelineCompileError
 from streambuild.compiler.compile.main._build_compile_inputs import build_compile_inputs
 from streambuild.compiler.compile.models import CompilerAdapterProfile, DesiredTable
-from streambuild.compiler.discovery._helpers.load import load_pipeline_file
+from streambuild.compiler.discovery._helpers.load import load_pipeline_directory
 from streambuild.compiler.discovery.exceptions import PipelineDiscoveryError
 from streambuild.compiler.discovery.main._discover_project_inputs import (
     discover_project_inputs,
@@ -158,7 +158,7 @@ def test_given_complete_project_when_analyzing_then_polyglot_calls_remain_bounde
             expected_adapter_name="clickhouse",
             expected_dialect="clickhouse",
             expected_default_database="analytics",
-            expected_source_file_count=11,
+            expected_source_file_count=9,
             expected_phase_call_count=1,
             expected_test_case_count=1,
             expected_assembly_realization_order=(
@@ -288,7 +288,6 @@ def test_given_project_sources_when_analyzing_then_builds_one_stable_offline_res
         1
         + len(
             (
-                *analysis.discovered_inputs.pipeline_files,
                 *(item.source_file for item in analysis.discovered_inputs.source_files),
                 *analysis.discovered_inputs.model_files,
                 *analysis.discovered_inputs.test_files,
@@ -403,9 +402,7 @@ def test_given_managed_source_ttl_when_analyzing_then_applies_source_over_projec
         source_ttl_declaration=test_case.source_ttl_declaration,
     )
     loaded_project: LoadedProject | None = load_project_input_for_path(path=project_dir)
-    loaded_pipeline: LoadedPipeline = load_pipeline_file(
-        project_dir / "pipelines" / "orders" / "pipeline.yml"
-    )
+    loaded_pipeline: LoadedPipeline = load_pipeline_directory(project_dir / "pipelines" / "orders")
 
     analysis: CompileAnalysis = analyze_project(
         pipelines_root=project_dir / "pipelines",
@@ -496,7 +493,7 @@ def test_given_source_and_model_share_name_when_analyzing_then_rejects_logical_c
             breaking = "full"
             """,
             local_contents="",
-            pipeline_contents="source: orders",
+            pipeline_config_contents="",
             model_contents="""
             MODEL (order_by ["order_id"]);
             SELECT order_id::UInt64 AS order_id FROM __source("orders")
@@ -512,10 +509,7 @@ def test_given_source_and_model_share_name_when_analyzing_then_rejects_logical_c
             database = "analytics"
             """,
             local_contents="",
-            pipeline_contents="""
-            source: orders
-            bounded_replay_fallback: full
-            """,
+            pipeline_config_contents='bounded_replay_fallback = "full"',
             model_contents="""
             MODEL (order_by ["order_id"]);
             SELECT order_id::UInt64 AS order_id FROM __source("orders")
@@ -531,7 +525,7 @@ def test_given_source_and_model_share_name_when_analyzing_then_rejects_logical_c
             database = "analytics"
             """,
             local_contents="",
-            pipeline_contents="source: orders",
+            pipeline_config_contents="",
             model_contents="""
             MODEL (
               order_by ["order_id"],
@@ -557,7 +551,7 @@ def test_given_source_and_model_share_name_when_analyzing_then_rejects_logical_c
             [settings]
             virtual_environments = false
             """,
-            pipeline_contents="source: orders",
+            pipeline_config_contents="",
             model_contents="""
             MODEL (order_by ["order_id"]);
             SELECT order_id::UInt64 AS order_id FROM __source("orders")
@@ -576,7 +570,7 @@ def test_given_direct_mode_policy_when_analyzing_then_it_rejects_vde_only_settin
         project_dir=project_dir,
         project_contents=test_case.project_contents,
         local_contents=test_case.local_contents,
-        pipeline_contents=test_case.pipeline_contents,
+        pipeline_config_contents=test_case.pipeline_config_contents,
         model_contents=test_case.model_contents,
     )
 
@@ -785,9 +779,7 @@ def test_given_private_macro_modules_when_analyzing_then_only_public_modules_are
                 "audits/quality/alpha_audit.sql",
                 "macros/formatting.py",
                 "pipelines/alpha/alpha_model.sql",
-                "pipelines/alpha/pipeline.yml",
                 "pipelines/alpha/schema.yml",
-                "pipelines/zeta/pipeline.yml",
                 "pipelines/zeta/zeta_model.sql",
                 "sources/alpha_source.yml",
                 "sources/zeta_source.yml",

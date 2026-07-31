@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from streambuild.compiler.discovery._helpers.load import load_pipeline_file
+from streambuild.compiler.discovery._helpers.load import load_pipeline_directory
 from streambuild.compiler.discovery.exceptions import PipelineDiscoveryError
 from streambuild.compiler.discovery.models import LoadedPipeline, ReplayOnChangePolicy
 from streambuild.compiler.discovery.types import BoundedReplayFallback, ReplayOnChangeMode
@@ -33,8 +33,8 @@ from tests.unit.src.streambuild.compiler.discovery._helpers.load.helpers import 
 def test_given_registry_project_when_loading_pipeline_then_it_resolves_source(
     test_case: LoadRegistryPipelineTestCase,
 ) -> None:
-    loaded: LoadedPipeline = load_pipeline_file(
-        Path("tests/fixtures/basic_project/pipelines/orders/pipeline.yml")
+    loaded: LoadedPipeline = load_pipeline_directory(
+        Path("tests/fixtures/basic_project/pipelines/orders")
     )
 
     assert loaded.pipeline.name == test_case.expected_pipeline_name
@@ -64,14 +64,14 @@ def test_given_replay_policies_when_loading_then_it_uses_renamed_values(
     test_case: LoadReplayPoliciesTestCase,
     tmp_path: Path,
 ) -> None:
-    pipeline_file_path: Path = write_registry_project(
+    pipeline_dir: Path = write_registry_project(
         project_dir=tmp_path,
-        pipeline_contents="""
-        source: orders
-        replay_on_change:
-          breaking: bounded-30m
-          non_breaking: full
-        bounded_replay_fallback: bounded_without_history
+        pipeline_config_contents="""
+        bounded_replay_fallback = "bounded_without_history"
+
+        [replay_on_change]
+        breaking = "bounded-30m"
+        non_breaking = "full"
         """,
         model_contents="""
         MODEL (
@@ -82,7 +82,7 @@ def test_given_replay_policies_when_loading_then_it_uses_renamed_values(
         """,
     )
 
-    loaded: LoadedPipeline = load_pipeline_file(pipeline_file_path)
+    loaded: LoadedPipeline = load_pipeline_directory(pipeline_dir)
     pipeline_policy: ReplayOnChangePolicy | None = loaded.pipeline.replay_on_change
     model_policy: ReplayOnChangePolicy | None = loaded.pipeline.transforms[0].replay_on_change
 
@@ -105,33 +105,28 @@ def test_given_replay_policies_when_loading_then_it_uses_renamed_values(
     "test_case",
     [
         RemovedPipelineSurfaceTestCase(
-            description="rejects an embedded source",
-            pipeline_contents="source: {name: orders, kind: kafka}",
-            expected_error_fragment="source as one non-empty registry name",
-        ),
-        RemovedPipelineSurfaceTestCase(
-            description="rejects an unknown source",
-            pipeline_contents="source: missing",
-            expected_error_fragment="references unknown source 'missing'",
+            description="rejects a redundant source key",
+            pipeline_config_contents='source = "orders"',
+            expected_error_fragment="unsupported keys: source",
         ),
         RemovedPipelineSurfaceTestCase(
             description="rejects a pipeline-owned boundary",
-            pipeline_contents="source: orders\nreplay_lineage_mode: offsets",
+            pipeline_config_contents='replay_lineage_mode = "offsets"',
             expected_error_fragment="unsupported keys: replay_lineage_mode",
         ),
         RemovedPipelineSurfaceTestCase(
             description="rejects the old policy key",
-            pipeline_contents="source: orders\nschema_change_backfill: {breaking: full}",
+            pipeline_config_contents='schema_change_backfill = "full"',
             expected_error_fragment="unsupported keys: schema_change_backfill",
         ),
         RemovedPipelineSurfaceTestCase(
             description="rejects the old bounded value",
-            pipeline_contents="source: orders\nreplay_on_change: {breaking: bounded(1h)}",
+            pipeline_config_contents='[replay_on_change]\nbreaking = "bounded(1h)"',
             expected_error_fragment="'full' or 'bounded-<duration>'",
         ),
         RemovedPipelineSurfaceTestCase(
             description="rejects the old fallback value",
-            pipeline_contents="source: orders\nbounded_replay_fallback: full_refresh",
+            pipeline_config_contents='bounded_replay_fallback = "full_refresh"',
             expected_error_fragment="expected 'full' or 'bounded_without_history'",
         ),
     ],
@@ -141,9 +136,9 @@ def test_given_removed_pipeline_surface_when_loading_then_it_fails_with_source_d
     test_case: RemovedPipelineSurfaceTestCase,
     tmp_path: Path,
 ) -> None:
-    pipeline_file_path: Path = write_registry_project(
+    pipeline_dir: Path = write_registry_project(
         project_dir=tmp_path,
-        pipeline_contents=test_case.pipeline_contents,
+        pipeline_config_contents=test_case.pipeline_config_contents,
         model_contents="""
         MODEL ();
         SELECT order_id::UInt64 AS order_id FROM __source("orders")
@@ -151,10 +146,10 @@ def test_given_removed_pipeline_surface_when_loading_then_it_fails_with_source_d
     )
 
     with pytest.raises(PipelineDiscoveryError) as error_info:
-        load_pipeline_file(pipeline_file_path)
+        load_pipeline_directory(pipeline_dir)
 
     assert test_case.expected_error_fragment in str(error_info.value)
-    assert str(pipeline_file_path) in str(error_info.value)
+    assert str(pipeline_dir / "pipeline.toml") in str(error_info.value)
 
 
 @pytest.mark.parametrize(
@@ -163,7 +158,7 @@ def test_given_removed_pipeline_surface_when_loading_then_it_fails_with_source_d
         MismatchedSourceTestCase(
             description="rejects a model driving from another source",
             model_source_name="customers",
-            expected_error_fragment="selects source 'orders'.*'customers'",
+            expected_error_fragment="references unknown driving input 'customers'",
         )
     ],
     ids=lambda case: case.description,
@@ -172,9 +167,9 @@ def test_given_wrong_model_source_when_loading_then_it_fails(
     test_case: MismatchedSourceTestCase,
     tmp_path: Path,
 ) -> None:
-    pipeline_file_path: Path = write_registry_project(
+    pipeline_dir: Path = write_registry_project(
         project_dir=tmp_path,
-        pipeline_contents="source: orders",
+        pipeline_config_contents="",
         model_contents=(
             "MODEL ();\n"
             f'SELECT order_id::UInt64 AS order_id FROM __source("{test_case.model_source_name}")'
@@ -182,7 +177,7 @@ def test_given_wrong_model_source_when_loading_then_it_fails(
     )
 
     with pytest.raises(PipelineDiscoveryError, match=test_case.expected_error_fragment):
-        load_pipeline_file(pipeline_file_path)
+        load_pipeline_directory(pipeline_dir)
 
 
 @pytest.mark.parametrize(
@@ -200,15 +195,15 @@ def test_given_project_macros_when_loading_one_pipeline_then_compile_phase_retai
     test_case: StandaloneMacroOwnershipTestCase,
     tmp_path: Path,
 ) -> None:
-    pipeline_file_path: Path = write_registry_project(
+    pipeline_dir: Path = write_registry_project(
         project_dir=tmp_path,
-        pipeline_contents="source: orders",
+        pipeline_config_contents="",
         model_contents=('MODEL ();\nSELECT @project_macro() AS order_id FROM __source("orders")'),
     )
     macro_file_path: Path = tmp_path / "macros" / "failed.py"
     macro_file_path.parent.mkdir(parents=True, exist_ok=True)
     macro_file_path.write_text(test_case.macro_contents, encoding="utf-8")
 
-    loaded_pipeline: LoadedPipeline = load_pipeline_file(pipeline_file_path)
+    loaded_pipeline: LoadedPipeline = load_pipeline_directory(pipeline_dir)
 
     assert loaded_pipeline.pipeline.transforms[0].query == test_case.expected_query
