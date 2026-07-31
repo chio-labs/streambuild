@@ -106,15 +106,10 @@ def test_given_sql_native_test_project_when_running_test_command_then_it_reports
     capsys: pytest.CaptureFixture[str],
     tmp_path: Path,
 ) -> None:
-    pipeline_file_path: Path = tmp_path / "pipelines" / "order_events" / "pipeline.yml"
     transform_file_path: Path = tmp_path / "pipelines" / "order_events" / "order_items.sql"
     downstream_file_path: Path = tmp_path / "pipelines" / "order_events" / "daily_revenue.sql"
     test_file_path: Path = tmp_path / "tests" / "order_events" / "test_line_total.sql"
     write_managed_source_project(project_dir=tmp_path)
-    write_pipeline_file(
-        pipeline_file_path,
-        "source: orders",
-    )
     write_pipeline_file(
         transform_file_path,
         """

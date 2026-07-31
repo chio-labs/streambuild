@@ -87,7 +87,7 @@ class ReplayPolicyModeErrorTestCase:
     description: str
     project_contents: str
     local_contents: str
-    pipeline_contents: str
+    pipeline_config_contents: str
     model_contents: str
     expected_error_fragment: str
 

@@ -6,6 +6,7 @@ from streambuild.compiler.discovery._helpers.project_inputs import (
     load_discovered_pipelines as load_discovered_pipelines_impl,
 )
 from streambuild.compiler.discovery.models import (
+    DiscoveredPipelineDirectory,
     DiscoveredProjectFile,
     ExternalTableSourceStep,
     KafkaLandingStep,
@@ -17,7 +18,7 @@ from streambuild.compiler.macros.models import MacroContext, MacroRegistry
 
 def load_discovered_pipelines(
     *,
-    pipeline_files: tuple[DiscoveredProjectFile, ...],
+    pipeline_directories: tuple[DiscoveredPipelineDirectory, ...],
     model_files: tuple[DiscoveredProjectFile, ...],
     macro_registry: MacroRegistry,
     macro_context: MacroContext,
@@ -27,7 +28,7 @@ def load_discovered_pipelines(
     """Attach retained pipeline/model sources without rereading or loading macros."""
 
     return load_discovered_pipelines_impl(
-        pipeline_files=pipeline_files,
+        pipeline_directories=pipeline_directories,
         model_files=model_files,
         macro_registry=macro_registry,
         macro_context=macro_context,

@@ -2,9 +2,13 @@
 
 from pathlib import Path
 
-from streambuild.compiler.discovery._helpers.project_inputs import read_discovered_files
+from streambuild.compiler.discovery._helpers.project_inputs import (
+    discover_pipeline_directories,
+    read_discovered_files,
+)
 from streambuild.compiler.discovery.constants import PYTHON_PACKAGE_INITIALIZER_FILE_NAME
 from streambuild.compiler.discovery.models import (
+    DiscoveredPipelineDirectory,
     DiscoveredProjectFile,
     DiscoveredProjectInputs,
     DiscoveredSourceFile,
@@ -18,8 +22,8 @@ def discover_project_inputs(
     """Load all project source kinds once in stable path order, then validate the aggregate."""
 
     project_dir: Path = pipelines_root.parent
-    pipeline_files: tuple[DiscoveredProjectFile, ...] = read_discovered_files(
-        file_paths=tuple(pipelines_root.rglob("pipeline.yml")),
+    pipeline_directories: tuple[DiscoveredPipelineDirectory, ...] = discover_pipeline_directories(
+        pipelines_root=pipelines_root,
         project_dir=project_dir,
     )
     model_files: tuple[DiscoveredProjectFile, ...] = read_discovered_files(
@@ -53,7 +57,7 @@ def discover_project_inputs(
         project_dir=project_dir,
         loaded_project=loaded_project,
         source_files=source_files,
-        pipeline_files=pipeline_files,
+        pipeline_directories=pipeline_directories,
         model_files=model_files,
         test_files=test_files,
         audit_files=audit_files,

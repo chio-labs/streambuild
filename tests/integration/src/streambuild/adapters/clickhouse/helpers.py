@@ -19,7 +19,7 @@ from streambuild.compiler.compile.models import (
     DesiredMaterializedView,
     DesiredTable,
 )
-from streambuild.compiler.discovery._helpers.load import load_pipeline_file
+from streambuild.compiler.discovery._helpers.load import load_pipeline_directory
 from streambuild.compiler.planner.main.build_adapter_resource import build_adapter_resource
 from streambuild.compiler.sql_analysis.classes.sql_model_analyzer import SqlModelAnalyzer
 from tests.integration.src.streambuild.conftest import ClickHouseConnectionSettings
@@ -70,8 +70,8 @@ def render_create_view_ddl(*, database: str, view_name: str, target_table_name: 
 
 def build_compiled_example_pipeline() -> CompiledPipeline:
     return compile_pipeline(
-        loaded_pipeline=load_pipeline_file(
-            Path("tests/fixtures/basic_project/pipelines/orders/pipeline.yml")
+        loaded_pipeline=load_pipeline_directory(
+            Path("tests/fixtures/basic_project/pipelines/orders")
         ),
         sql_analyzer=SqlModelAnalyzer(dialect="clickhouse"),
     )

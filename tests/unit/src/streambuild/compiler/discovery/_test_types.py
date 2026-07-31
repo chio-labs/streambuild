@@ -3,14 +3,6 @@ from pathlib import Path
 
 
 @dataclass(frozen=True)
-class LoadPipelineFileTestCase:
-    description: str
-    pipeline_file_path: Path
-    expected_pipeline_name: str
-    expected_source_name: str
-
-
-@dataclass(frozen=True)
 class DiscoverPipelinesTestCase:
     description: str
     pipelines_root: Path
@@ -20,8 +12,24 @@ class DiscoverPipelinesTestCase:
 @dataclass(frozen=True)
 class DiscoverPipelinesErrorTestCase:
     description: str
-    pipeline_files: dict[str, str]
+    project_files: dict[str, str]
     expected_error_type: type[Exception]
+    expected_error_fragment: str
+
+
+@dataclass(frozen=True)
+class PipelineSourceInferenceTestCase:
+    description: str
+    project_files: dict[str, str]
+    source_contents: str
+    expected_pipeline_sources: tuple[tuple[str, str], ...]
+
+
+@dataclass(frozen=True)
+class PipelineSourceInferenceErrorTestCase:
+    description: str
+    project_files: dict[str, str]
+    source_contents: str
     expected_error_fragment: str
 
 

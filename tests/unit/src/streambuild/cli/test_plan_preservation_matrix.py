@@ -244,10 +244,6 @@ def test_given_preservation_source_mode_when_running_plan_then_snapshot_path_sta
         "sources:\n  - " + indent(source_body, "    ").lstrip(),
         encoding="utf-8",
     )
-    (pipeline_dir / "pipeline.yml").write_text(
-        "source: order_events\n",
-        encoding="utf-8",
-    )
     (pipeline_dir / "orders_enriched.sql").write_text(
         test_case.model_file_contents,
         encoding="utf-8",

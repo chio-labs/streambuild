@@ -61,7 +61,7 @@ from streambuild.compiler.compile.models import (
     KafkaSettings as CompiledKafkaSettings,
 )
 from streambuild.compiler.compile.types import DesiredObjectType
-from streambuild.compiler.discovery._helpers.load import load_pipeline_file
+from streambuild.compiler.discovery._helpers.load import load_pipeline_directory
 from streambuild.compiler.discovery.main.load_project_input_for_path import (
     load_project_input_for_path,
 )
@@ -106,9 +106,7 @@ from streambuild.compiler.planner.models import (
 from streambuild.compiler.sql_analysis.classes.sql_model_analyzer import SqlModelAnalyzer
 from tests.unit.src.streambuild.compiler.compile.helpers import build_realization_analyzer
 
-EXAMPLE_PIPELINE_FILE_PATH: Path = Path(
-    "tests/fixtures/basic_project/pipelines/orders/pipeline.yml"
-)
+EXAMPLE_PIPELINE_DIRECTORY: Path = Path("tests/fixtures/basic_project/pipelines/orders")
 
 
 def compile_pipeline(loaded_pipeline: LoadedPipeline) -> CompiledPipeline:
@@ -398,7 +396,7 @@ def build_metadata_records() -> tuple[
 
 
 def build_example_desired_state() -> DesiredState:
-    loaded_pipeline: LoadedPipeline = load_pipeline_file(EXAMPLE_PIPELINE_FILE_PATH)
+    loaded_pipeline: LoadedPipeline = load_pipeline_directory(EXAMPLE_PIPELINE_DIRECTORY)
     return realize_compiled_pipelines((compile_pipeline(loaded_pipeline),)).desired_state
 
 
@@ -450,7 +448,7 @@ def build_single_transform_desired_state(
     )
     loaded_pipeline: LoadedPipeline = LoadedPipeline(
         pipeline=pipeline,
-        file_path=EXAMPLE_PIPELINE_FILE_PATH,
+        file_path=EXAMPLE_PIPELINE_DIRECTORY,
     )
     return realize_compiled_pipelines((compile_pipeline(loaded_pipeline),)).desired_state
 
@@ -483,7 +481,7 @@ def _build_managed_preservation_compiled_pipeline(
         ),
         transforms=[_build_preservation_transform(replay_lineage_mode)],
     )
-    return compile_pipeline(LoadedPipeline(pipeline=pipeline, file_path=EXAMPLE_PIPELINE_FILE_PATH))
+    return compile_pipeline(LoadedPipeline(pipeline=pipeline, file_path=EXAMPLE_PIPELINE_DIRECTORY))
 
 
 def _build_adopted_preservation_compiled_pipeline(
@@ -503,7 +501,7 @@ def _build_adopted_preservation_compiled_pipeline(
         ),
         transforms=[_build_preservation_transform(replay_lineage_mode)],
     )
-    return compile_pipeline(LoadedPipeline(pipeline=pipeline, file_path=EXAMPLE_PIPELINE_FILE_PATH))
+    return compile_pipeline(LoadedPipeline(pipeline=pipeline, file_path=EXAMPLE_PIPELINE_DIRECTORY))
 
 
 def _build_preservation_transform(replay_lineage_mode: ReplayLineageMode) -> TransformStep:
@@ -620,7 +618,6 @@ def write_direct_scope_project(
         encoding="utf-8",
     )
     (source_root / "orders.yml").write_text(_DIRECT_SCOPE_SOURCE_YML, encoding="utf-8")
-    (pipeline_root / "pipeline.yml").write_text("source: orders\n", encoding="utf-8")
     model_name: str
     model_sql: str
     for model_name, model_sql in DIRECT_SCOPE_MODEL_SQL_BY_NAME.items():
@@ -800,7 +797,7 @@ def build_example_desired_state_with_replay_on_change(
 ) -> DesiredState:
     """Build the example desired state with replay-on-change on every transform."""
 
-    loaded_pipeline: LoadedPipeline = load_pipeline_file(EXAMPLE_PIPELINE_FILE_PATH)
+    loaded_pipeline: LoadedPipeline = load_pipeline_directory(EXAMPLE_PIPELINE_DIRECTORY)
     pipeline_with_policy: Pipeline = replace(
         loaded_pipeline.pipeline,
         transforms=[

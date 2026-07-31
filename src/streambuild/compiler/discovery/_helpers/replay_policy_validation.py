@@ -31,12 +31,12 @@ def validate_replay_policies_for_mode(
     for loaded_pipeline in loaded_pipelines:
         if loaded_pipeline.pipeline.replay_on_change is not None:
             raise PipelineDiscoveryError(
-                f"Pipeline file '{loaded_pipeline.file_path}' cannot define replay_on_change "
+                f"Pipeline '{loaded_pipeline.file_path}' cannot define replay_on_change "
                 "when settings.virtual_environments is false"
             )
         if loaded_pipeline.pipeline.bounded_replay_fallback is not None:
             raise PipelineDiscoveryError(
-                f"Pipeline file '{loaded_pipeline.file_path}' cannot define "
+                f"Pipeline '{loaded_pipeline.file_path}' cannot define "
                 "bounded_replay_fallback when settings.virtual_environments is false"
             )
         for transform in loaded_pipeline.pipeline.transforms:

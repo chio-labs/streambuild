@@ -40,10 +40,6 @@ def write_compile_benchmark_project(*, project_dir: Path, model_count: int) -> N
         "      mode: offsets\n",
         encoding="utf-8",
     )
-    (pipeline_dir / "pipeline.yml").write_text(
-        "source: benchmark_source\n",
-        encoding="utf-8",
-    )
     (pipeline_dir / "model_00000.sql").write_text(
         _model_sql(upstream_name="benchmark_source"),
         encoding="utf-8",

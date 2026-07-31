@@ -8,16 +8,16 @@ def write_pipeline_file(pipeline_file_path: Path, contents: str) -> None:
 
 
 def write_registry_project(
-    *, project_dir: Path, pipeline_contents: str, model_contents: str
+    *, project_dir: Path, pipeline_config_contents: str, model_contents: str
 ) -> Path:
-    pipeline_file_path: Path = project_dir / "pipelines" / "orders" / "pipeline.yml"
+    pipeline_dir: Path = project_dir / "pipelines" / "orders"
     write_project_configuration_and_source(project_dir=project_dir)
-    write_pipeline_file(pipeline_file_path, pipeline_contents)
+    write_pipeline_file(pipeline_dir / "pipeline.toml", pipeline_config_contents)
     write_pipeline_file(
-        project_dir / "pipelines" / "orders" / "orders_enriched.sql",
+        pipeline_dir / "orders_enriched.sql",
         model_contents,
     )
-    return pipeline_file_path
+    return pipeline_dir
 
 
 def write_project_configuration_and_source(*, project_dir: Path) -> None:

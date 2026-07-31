@@ -29,8 +29,8 @@ LOCAL_CONFIG_FILE_NAME: str = "streambuild_local.toml"
 LEGACY_PROJECT_CONFIG_FILE_NAME: str = "streambuild_project.yml"
 LEGACY_LOCAL_CONFIG_FILE_NAME: str = "streambuild_local.yml"
 
-PIPELINE_FILE_NAME: str = "pipeline.yml"
-PIPELINE_KEYS: frozenset[str] = frozenset({"source", "replay_on_change", "bounded_replay_fallback"})
+PIPELINE_CONFIG_FILE_NAME: str = "pipeline.toml"
+PIPELINE_CONFIG_KEYS: frozenset[str] = frozenset({"replay_on_change", "bounded_replay_fallback"})
 DEFAULT_ADAPTER_NAME: str = "clickhouse"
 PYTHON_PACKAGE_INITIALIZER_FILE_NAME: str = "__init__.py"
 FULL_REPLAY_POLICY_VALUE: str = "full"
@@ -78,5 +78,3 @@ SECONDS_BY_DURATION_UNIT: dict[str, int] = {
     "m": 60,
     "s": 1,
 }
-
-PIPELINE_NAME_KEY: str = "name"
