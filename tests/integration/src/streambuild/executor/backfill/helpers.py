@@ -31,7 +31,7 @@ from streambuild.compiler.compile.models import (
     DesiredTable,
     ObjectKey,
 )
-from streambuild.compiler.discovery._helpers.load import load_pipeline_file
+from streambuild.compiler.discovery._helpers.load import load_pipeline_directory
 from streambuild.compiler.discovery.models import (
     ExternalTableSourceStep,
     KafkaLandingStep,
@@ -93,7 +93,7 @@ from tests.integration.src.streambuild.executor.backfill._test_types import (
     StartTimeReplayScenarioResult,
 )
 from tests.unit.src.streambuild.compiler.compile.helpers import build_realization_analyzer
-from tests.unit.src.streambuild.compiler.planner.helpers import EXAMPLE_PIPELINE_FILE_PATH
+from tests.unit.src.streambuild.compiler.planner.helpers import EXAMPLE_PIPELINE_DIRECTORY
 
 KAFKA_TOPIC_PROJECTION: dict[bool, str] = {
     True: "CAST(kafka_topic AS String) AS kafka_topic, ",
@@ -129,7 +129,7 @@ def build_backfill_bootstrap_request(
     created_at: str,
 ) -> BackfillBootstrapRequest:
     desired_state: DesiredState = build_desired_state(
-        (compile_pipeline(load_pipeline_file(EXAMPLE_PIPELINE_FILE_PATH)),)
+        (compile_pipeline(load_pipeline_directory(EXAMPLE_PIPELINE_DIRECTORY)),)
     )
     return BackfillBootstrapRequest(
         desired_state=desired_state,
@@ -224,7 +224,7 @@ def build_named_scalar_replay_compiled_pipeline(
     return compile_pipeline(
         LoadedPipeline(
             pipeline=pipeline,
-            file_path=EXAMPLE_PIPELINE_FILE_PATH,
+            file_path=EXAMPLE_PIPELINE_DIRECTORY,
             project=None,
         )
     )
@@ -446,7 +446,7 @@ def _build_reference_join_compiled_pipeline(*, include_enriched_orders: bool) ->
     return compile_pipeline(
         LoadedPipeline(
             pipeline=pipeline,
-            file_path=EXAMPLE_PIPELINE_FILE_PATH,
+            file_path=EXAMPLE_PIPELINE_DIRECTORY,
             project=None,
         )
     )
@@ -487,7 +487,7 @@ def build_external_source_offset_replay_compiled_pipeline() -> CompiledPipeline:
     return compile_pipeline(
         LoadedPipeline(
             pipeline=pipeline,
-            file_path=EXAMPLE_PIPELINE_FILE_PATH,
+            file_path=EXAMPLE_PIPELINE_DIRECTORY,
             project=None,
         )
     )
@@ -526,7 +526,7 @@ def build_external_source_cursor_replay_compiled_pipeline() -> CompiledPipeline:
     return compile_pipeline(
         LoadedPipeline(
             pipeline=pipeline,
-            file_path=EXAMPLE_PIPELINE_FILE_PATH,
+            file_path=EXAMPLE_PIPELINE_DIRECTORY,
             project=None,
         )
     )
@@ -563,7 +563,7 @@ def build_aggregate_offset_replay_compiled_pipeline() -> CompiledPipeline:
     return compile_pipeline(
         LoadedPipeline(
             pipeline=pipeline,
-            file_path=EXAMPLE_PIPELINE_FILE_PATH,
+            file_path=EXAMPLE_PIPELINE_DIRECTORY,
             project=None,
         )
     )
@@ -606,7 +606,7 @@ def build_external_source_aggregate_offset_replay_compiled_pipeline() -> Compile
     return compile_pipeline(
         LoadedPipeline(
             pipeline=pipeline,
-            file_path=EXAMPLE_PIPELINE_FILE_PATH,
+            file_path=EXAMPLE_PIPELINE_DIRECTORY,
             project=None,
         )
     )
@@ -651,7 +651,7 @@ def build_changed_aggregate_offset_replay_compiled_pipeline(
     return compile_pipeline(
         LoadedPipeline(
             pipeline=pipeline,
-            file_path=EXAMPLE_PIPELINE_FILE_PATH,
+            file_path=EXAMPLE_PIPELINE_DIRECTORY,
             project=None,
         )
     )
@@ -690,7 +690,7 @@ def build_named_offset_replay_compiled_pipeline(
     return compile_pipeline(
         LoadedPipeline(
             pipeline=pipeline,
-            file_path=EXAMPLE_PIPELINE_FILE_PATH,
+            file_path=EXAMPLE_PIPELINE_DIRECTORY,
             project=None,
         )
     )
@@ -908,7 +908,7 @@ def _build_matrix_compiled_pipeline(
     return compile_pipeline(
         LoadedPipeline(
             pipeline=pipeline,
-            file_path=EXAMPLE_PIPELINE_FILE_PATH,
+            file_path=EXAMPLE_PIPELINE_DIRECTORY,
             project=None,
         )
     )

@@ -221,7 +221,7 @@ def test_given_invalid_assertion_or_macro_test_when_assembling_then_it_raises_cl
         )
         SELECT 1
         """,
-            expected_error_fragment="encountered a cyclic dependency while assembling 'loop_a'",
+            expected_error_fragment="has a driving-input cycle: loop_a, loop_b",
         )
     ],
     ids=lambda case: case.description,

@@ -34,10 +34,6 @@ def validate_project_sql_audits(
 ) -> tuple[LoadedSqlAudit, ...]:
     write_project_configuration_and_source(project_dir=tmp_path)
     write_pipeline_file(
-        tmp_path / "pipelines" / "order_events" / "pipeline.yml",
-        "source: orders",
-    )
-    write_pipeline_file(
         tmp_path / "pipelines" / "order_events" / "orders_clean.sql",
         """
         MODEL (

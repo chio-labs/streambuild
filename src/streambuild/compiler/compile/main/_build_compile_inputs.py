@@ -80,7 +80,7 @@ def build_compile_inputs(
         source_registry_by_name(discovered_inputs.source_files)
     )
     pipelines: tuple[LoadedPipeline, ...] = load_discovered_pipelines(
-        pipeline_files=discovered_inputs.pipeline_files,
+        pipeline_directories=discovered_inputs.pipeline_directories,
         model_files=discovered_inputs.model_files,
         macro_registry=macro_registry,
         macro_context=macro_context,

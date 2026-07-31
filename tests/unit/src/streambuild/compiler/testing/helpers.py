@@ -9,7 +9,7 @@ from streambuild.compiler.compile.models import (
     LogicalResourceKey,
 )
 from streambuild.compiler.compile.types import LogicalResourceType
-from streambuild.compiler.discovery._helpers.load import load_pipeline_file
+from streambuild.compiler.discovery._helpers.load import load_pipeline_directory
 from streambuild.compiler.discovery.models import (
     KafkaLandingStep,
     KafkaSettings,
@@ -119,13 +119,12 @@ MODEL_SQL_BY_NAME: tuple[tuple[str, str], ...] = (
 def write_sql_test_project(*, tmp_path: Path, test_file_contents: str) -> Path:
     pipeline_dir: Path = tmp_path / "pipelines" / "order_events"
     write_project_configuration_and_source(project_dir=tmp_path)
-    write_pipeline_file(pipeline_dir / "pipeline.yml", "source: orders")
     model_name: str
     model_sql: str
     for model_name, model_sql in MODEL_SQL_BY_NAME:
         write_pipeline_file(pipeline_dir / f"{model_name}.sql", model_sql)
     write_sql_test_file(tmp_path / "tests" / "order_events" / "test_case.sql", test_file_contents)
-    return pipeline_dir / "pipeline.yml"
+    return pipeline_dir
 
 
 def build_compiled_pipeline_with_tests(
@@ -133,11 +132,11 @@ def build_compiled_pipeline_with_tests(
     tmp_path: Path,
     test_file_contents: str,
 ) -> tuple[CompiledPipeline, LoadedSqlTest]:
-    pipeline_file_path: Path = write_sql_test_project(
+    pipeline_dir: Path = write_sql_test_project(
         tmp_path=tmp_path, test_file_contents=test_file_contents
     )
     compiled_pipeline: CompiledPipeline = compile_pipeline(
-        loaded_pipeline=load_pipeline_file(pipeline_file_path),
+        loaded_pipeline=load_pipeline_directory(pipeline_dir),
         sql_analyzer=SqlModelAnalyzer(dialect="clickhouse"),
     )
     loaded_test: LoadedSqlTest = discover_sql_tests(root=tmp_path / "tests")[0]
@@ -254,7 +253,7 @@ def build_deep_chain_assembler(*, model_count: int) -> SqlTestChainAssembler:
             CompiledPipeline(
                 pipeline=pipeline,
                 project=None,
-                file_path=Path("/project/pipelines/deep_chain/pipeline.yml"),
+                file_path=Path("/project/pipelines/deep_chain"),
                 effective_replay_lineage_mode=ReplayLineageMode.OFFSETS,
                 source=compiled_source,
                 models=tuple(models),
@@ -291,14 +290,13 @@ CYCLIC_MODEL_SQL_BY_NAME: tuple[tuple[str, str], ...] = (
 def build_cyclic_sql_test_case(*, tmp_path: Path, test_file_contents: str) -> SqlTestCase:
     pipeline_dir: Path = tmp_path / "pipelines" / "order_events"
     write_project_configuration_and_source(project_dir=tmp_path)
-    write_pipeline_file(pipeline_dir / "pipeline.yml", "source: orders")
     model_name: str
     model_sql: str
     for model_name, model_sql in CYCLIC_MODEL_SQL_BY_NAME:
         write_pipeline_file(pipeline_dir / f"{model_name}.sql", model_sql)
     write_sql_test_file(tmp_path / "tests" / "order_events" / "test_case.sql", test_file_contents)
     compiled_pipeline: CompiledPipeline = compile_pipeline(
-        loaded_pipeline=load_pipeline_file(pipeline_dir / "pipeline.yml"),
+        loaded_pipeline=load_pipeline_directory(pipeline_dir),
         sql_analyzer=SqlModelAnalyzer(dialect="clickhouse"),
     )
     loaded_test: LoadedSqlTest = discover_sql_tests(root=tmp_path / "tests")[0]

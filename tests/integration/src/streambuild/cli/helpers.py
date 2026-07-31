@@ -511,10 +511,6 @@ def write_source_mode_plan_project(
         dedent(source_contents).strip() + "\n",
         encoding="utf-8",
     )
-    (pipeline_dir / "pipeline.yml").write_text(
-        "source: orders\n",
-        encoding="utf-8",
-    )
     (pipeline_dir / "orders_enriched.sql").write_text(
         dedent(model_contents).strip() + "\n",
         encoding="utf-8",
@@ -531,10 +527,6 @@ def write_audit_project_files(project_dir: Path) -> None:
     )
 
     write_managed_source_project(project_dir=project_dir)
-    write_pipeline_file(
-        project_dir / "pipelines" / "order_events" / "pipeline.yml",
-        "source: orders",
-    )
     write_pipeline_file(
         project_dir / "pipelines" / "order_events" / "order_items.sql",
         """
@@ -573,10 +565,6 @@ def write_backfill_audit_project_files(project_dir: Path) -> None:
 
     write_managed_source_project(project_dir=project_dir, replay_boundary_mode="timestamp")
     write_pipeline_file(
-        project_dir / "pipelines" / "order_events" / "pipeline.yml",
-        "source: orders",
-    )
-    write_pipeline_file(
         project_dir / "pipelines" / "order_events" / "orders_enriched.sql",
         """
         MODEL (
@@ -613,10 +601,6 @@ def write_generic_audit_project_files(project_dir: Path) -> None:
     )
 
     write_managed_source_project(project_dir=project_dir)
-    write_pipeline_file(
-        project_dir / "pipelines" / "order_events" / "pipeline.yml",
-        "source: orders",
-    )
     write_pipeline_file(
         project_dir / "pipelines" / "order_events" / "order_items.sql",
         """
@@ -664,10 +648,6 @@ def write_multi_audit_project_files(project_dir: Path) -> None:
     )
 
     write_managed_source_project(project_dir=project_dir)
-    write_pipeline_file(
-        project_dir / "pipelines" / "order_events" / "pipeline.yml",
-        "source: orders",
-    )
     write_pipeline_file(
         project_dir / "pipelines" / "order_events" / "order_items.sql",
         """
@@ -936,7 +916,6 @@ def write_sql_test_semantics_project(
     write_managed_source_project(project_dir=project_dir)
     pipeline_dir: Path = project_dir / "pipelines" / "order_events"
     pipeline_dir.mkdir(parents=True)
-    (pipeline_dir / "pipeline.yml").write_text("source: orders\n", encoding="utf-8")
     model_name: str
     model_sql: str
     for model_name, model_sql in SEMANTICS_MODEL_SQL_BY_NAME:
@@ -1147,7 +1126,6 @@ def write_direct_build_project(
         _DIRECT_BUILD_SOURCE_YML.format(broker_list=broker_list, topic=topic),
         encoding="utf-8",
     )
-    (pipeline_root / "pipeline.yml").write_text("source: orders\n", encoding="utf-8")
     (pipeline_root / f"{DIRECT_BUILD_MODEL_NAME}.sql").write_text(
         f'MODEL (order_by ["order_id"]);\n{DIRECT_BUILD_MODEL_SQL}\n',
         encoding="utf-8",
@@ -1174,7 +1152,6 @@ def write_direct_selected_graph_project(*, project_root: Path) -> None:
         _DIRECT_BUILD_SOURCE_YML.format(broker_list="kafka:9092", topic="source.selected_orders"),
         encoding="utf-8",
     )
-    (pipeline_root / "pipeline.yml").write_text("source: orders\n", encoding="utf-8")
     model_name: str
     model_sql: str
     for model_name, model_sql in _DIRECT_SELECTED_GRAPH_SQL_BY_NAME:
@@ -1228,7 +1205,6 @@ def write_direct_adopted_source_project(
         encoding="utf-8",
     )
     (source_root / "orders.yml").write_text(source_yml, encoding="utf-8")
-    (pipeline_root / "pipeline.yml").write_text("source: orders\n", encoding="utf-8")
     (pipeline_root / "orders_enriched.sql").write_text(model_sql, encoding="utf-8")
     (audit_root / "adopted_target.sql").write_text(
         'AUDIT (description: "adopted target is live");\n'

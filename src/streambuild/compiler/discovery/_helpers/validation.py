@@ -3,7 +3,6 @@
 from pathlib import Path
 
 from streambuild.compiler.audit_discovery.models import LoadedSqlAudit
-from streambuild.compiler.discovery._helpers.load import updated_unique_logical_names
 from streambuild.compiler.discovery._helpers.replay_policy_validation import (
     validate_replay_policies_for_mode,
 )
@@ -39,13 +38,10 @@ def validate_discovered_project_inputs(
         project_file_path=None if loaded_project is None else loaded_project.source_file.file_path,
         loaded_pipelines=loaded_pipelines,
     )
-    logical_node_names: dict[str, Path] = _source_logical_names(source_files)
-    loaded_pipeline: LoadedPipeline
-    for loaded_pipeline in loaded_pipelines:
-        logical_node_names = updated_unique_logical_names(
-            loaded_pipeline=loaded_pipeline,
-            logical_node_names=logical_node_names,
-        )
+    _validate_logical_node_names(
+        logical_node_names=_source_logical_names(source_files),
+        loaded_pipelines=loaded_pipelines,
+    )
     _validate_test_names(loaded_tests)
     _validate_audit_names(loaded_audits)
 
@@ -60,6 +56,23 @@ def _source_logical_names(
         for source in source_file.sources:
             logical_node_names[source.name] = source_file.source_file.file_path
     return logical_node_names
+
+
+def _validate_logical_node_names(
+    *, logical_node_names: dict[str, Path], loaded_pipelines: tuple[LoadedPipeline, ...]
+) -> None:
+    known_logical_node_names: dict[str, Path] = dict(logical_node_names)
+    loaded_pipeline: LoadedPipeline
+    for loaded_pipeline in loaded_pipelines:
+        logical_name: str
+        for logical_name in (transform.name for transform in loaded_pipeline.pipeline.transforms):
+            existing_path: Path | None = known_logical_node_names.get(logical_name)
+            if existing_path is not None:
+                raise PipelineDiscoveryError(
+                    f"Logical node name '{logical_name}' is defined in both "
+                    f"'{existing_path}' and '{loaded_pipeline.file_path}'"
+                )
+            known_logical_node_names[logical_name] = loaded_pipeline.file_path
 
 
 def _validate_pipeline_names(loaded_pipelines: tuple[LoadedPipeline, ...]) -> None:
