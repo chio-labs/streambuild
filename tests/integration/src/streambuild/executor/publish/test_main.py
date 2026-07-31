@@ -424,7 +424,7 @@ def test_given_deleted_publish_metadata_when_publishing_then_it_uses_live_clickh
         PublishMissingStagedTableIntegrationTestCase(
             description="fails when the staged table was deleted before publish",
             deployment_id="20260409T224000Z_ab12cd",
-            expected_error_fragment="has no staged physical tables to publish",
+            expected_error_fragment="is missing staged relations",
         )
     ],
     ids=lambda case: case.description,

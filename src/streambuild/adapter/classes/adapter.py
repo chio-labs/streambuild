@@ -17,6 +17,8 @@ from streambuild.adapter.models import (
     AdapterSourceRealization,
     AdapterStableView,
     AdapterTable,
+    AdapterView,
+    AdapterViewRealizationRequest,
 )
 
 
@@ -60,7 +62,13 @@ class Adapter(ABC):
     def render_resource(
         self,
         *,
-        resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterStableView,
+        resource: (
+            AdapterManagedSource
+            | AdapterTable
+            | AdapterMaterializedView
+            | AdapterView
+            | AdapterStableView
+        ),
         database: str,
         if_not_exists: bool = False,
     ) -> str:
@@ -79,7 +87,9 @@ class Adapter(ABC):
         """Resolve the adapter relation name for one logical model."""
 
     @abstractmethod
-    def realize_model(self, *, request: AdapterModelRealizationRequest) -> AdapterModelRealization:
+    def realize_model(
+        self, *, request: AdapterModelRealizationRequest | AdapterViewRealizationRequest
+    ) -> AdapterModelRealization:
         """Map one semantically compiled logical model to adapter resources."""
 
     @abstractmethod

@@ -128,5 +128,6 @@ def build_compile_inputs(
         pipelines=pipelines,
         tests=tests,
         audits=audits,
+        sources=tuple(sources_by_name[name] for name in sorted(sources_by_name)),
         virtual_environments=virtual_environments,
     )

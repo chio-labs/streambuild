@@ -139,6 +139,15 @@ class AdapterMaterializedView:
 
 
 @dataclass(frozen=True)
+class AdapterView:
+    """An ordinary query view to realize in a warehouse."""
+
+    name: str
+    query: str
+    database_template: str
+
+
+@dataclass(frozen=True)
 class AdapterManagedSourceRealizationRequest:
     """Logical managed-source fields needed for adapter realization."""
 
@@ -186,11 +195,21 @@ class AdapterModelRealizationRequest:
 
 
 @dataclass(frozen=True)
+class AdapterViewRealizationRequest:
+    """One compiled query-only view ready for adapter realization."""
+
+    logical_name: str
+    target_relation_name: str
+    resolved_query: str
+    resolved_database_template: str
+
+
+@dataclass(frozen=True)
 class AdapterModelRealization:
     """One logical model mapped to its adapter relation and resources."""
 
     relation_name: str
-    resources: tuple[AdapterTable | AdapterMaterializedView, ...]
+    resources: tuple[AdapterTable | AdapterMaterializedView | AdapterView, ...]
 
 
 @dataclass(frozen=True)
@@ -211,10 +230,19 @@ class AdapterStableBinding:
 
 
 @dataclass(frozen=True)
+class AdapterStableBindingRemoval:
+    """One obsolete framework-owned stable binding to remove."""
+
+    database: str
+    logical_name: str
+
+
+@dataclass(frozen=True)
 class AdapterBindingReplacementRequest:
     """A set of stable bindings to replace during one publish operation."""
 
     bindings: tuple[AdapterStableBinding, ...]
+    removals: tuple[AdapterStableBindingRemoval, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -224,6 +252,7 @@ class AdapterBindingReplacementResult:
     bindings: tuple[AdapterStableBinding, ...]
     per_relation_atomic_replace: bool
     graph_atomic_publish: bool
+    removals: tuple[AdapterStableBindingRemoval, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -390,6 +419,7 @@ class AdapterPreparedObjectMapping:
 
     logical_key: AdapterMetadataObjectKey
     physical_name: str
+    logical_model_name: str
 
 
 @dataclass(frozen=True)
@@ -537,11 +567,12 @@ class InspectedActiveTableBinding:
 
 @dataclass(frozen=True)
 class InspectedPhysicalTableCandidate:
-    """A deployment-suffixed physical table candidate for a logical root."""
+    """A deployment-suffixed physical model candidate for a logical root."""
 
     database: str
     logical_name: str
     physical_name: str
+    object_type: str = "table"
 
 
 @dataclass(frozen=True)

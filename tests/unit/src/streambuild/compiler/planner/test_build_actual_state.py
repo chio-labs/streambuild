@@ -6,6 +6,7 @@ from streambuild.compiler.planner.models import (
     ActualMaterializedView,
     ActualState,
     ActualTable,
+    ActualView,
 )
 from tests.unit.src.streambuild.compiler.planner._test_types import (
     BuildActualStateTestCase,
@@ -34,11 +35,15 @@ def test_given_unsorted_actual_objects_when_building_actual_state_then_it_return
     test_case: BuildActualStateTestCase,
 ) -> None:
     actual_state: ActualState = build_actual_state(build_actual_objects())
-    kafka_table: ActualKafkaTable | ActualTable | ActualMaterializedView = actual_state.objects[0]
-    materialized_view: ActualKafkaTable | ActualTable | ActualMaterializedView = (
+    kafka_table: ActualKafkaTable | ActualTable | ActualMaterializedView | ActualView = (
+        actual_state.objects[0]
+    )
+    materialized_view: ActualKafkaTable | ActualTable | ActualMaterializedView | ActualView = (
         actual_state.objects[1]
     )
-    table: ActualKafkaTable | ActualTable | ActualMaterializedView = actual_state.objects[2]
+    table: ActualKafkaTable | ActualTable | ActualMaterializedView | ActualView = (
+        actual_state.objects[2]
+    )
     assert isinstance(kafka_table, ActualKafkaTable)
     assert isinstance(materialized_view, ActualMaterializedView)
     assert isinstance(table, ActualTable)

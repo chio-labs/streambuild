@@ -8,9 +8,15 @@ from streambuild.compiler.compile.constants import (
     DESIRED_OBJECT_TYPE_KAFKA_TABLE,
     DESIRED_OBJECT_TYPE_MATERIALIZED_VIEW,
     DESIRED_OBJECT_TYPE_TABLE,
-    TRANSFORM_TABLE_NAME_PREFIX,
+    DESIRED_OBJECT_TYPE_VIEW,
+    RAW_TABLE_NAME_PREFIX,
 )
-from streambuild.compiler.compile.models import DesiredMaterializedView, DesiredTable, ObjectKey
+from streambuild.compiler.compile.models import (
+    DesiredMaterializedView,
+    DesiredTable,
+    DesiredView,
+    ObjectKey,
+)
 from streambuild.compiler.discovery.types import BoundedReplayFallback, ReplayOnChangeMode
 from streambuild.compiler.planner.constants import (
     PLANNED_CHANGE_TYPE_CREATE,
@@ -39,13 +45,19 @@ def object_key_payload(key: ObjectKey) -> dict[str, str | None]:
 def render_subtree_diagram(
     *,
     subtree: RebuildSubtree,
-    desired_object_by_key: dict[ObjectKey, DesiredTable | DesiredMaterializedView],
+    desired_object_by_key: dict[ObjectKey, DesiredTable | DesiredMaterializedView | DesiredView],
 ) -> list[str]:
     live_targets: tuple[str, ...] = live_target_names(
         subtree=subtree,
         desired_object_by_key=desired_object_by_key,
     )
-    lines: list[str] = [f"[replay start] {subtree.upstream_boundary_key.name}"]
+    lines: list[str] = [
+        (
+            f"[replay start] {subtree.upstream_boundary_key.name}"
+            if subtree.replay_required
+            else f"[deploy] {subtree.root_key.name}"
+        )
+    ]
     if not live_targets:
         lines.append(f"└── [live target] {subtree.root_key.name}")
         return lines
@@ -59,29 +71,34 @@ def render_subtree_diagram(
 def live_target_names(
     *,
     subtree: RebuildSubtree,
-    desired_object_by_key: dict[ObjectKey, DesiredTable | DesiredMaterializedView],
+    desired_object_by_key: dict[ObjectKey, DesiredTable | DesiredMaterializedView | DesiredView],
 ) -> tuple[str, ...]:
     live_targets: tuple[str, ...] = tuple(
         sorted(
             key.name
             for key in subtree.affected_keys
-            if key.object_type == DESIRED_OBJECT_TYPE_TABLE
-            and key.name.startswith(TRANSFORM_TABLE_NAME_PREFIX)
+            if key.object_type in {DESIRED_OBJECT_TYPE_TABLE, DESIRED_OBJECT_TYPE_VIEW}
+            and not key.name.startswith(RAW_TABLE_NAME_PREFIX)
         )
     )
     if live_targets:
         return live_targets
-    desired_object: DesiredTable | DesiredMaterializedView | None = desired_object_by_key.get(
-        subtree.root_key
+    desired_object: DesiredTable | DesiredMaterializedView | DesiredView | None = (
+        desired_object_by_key.get(subtree.root_key)
     )
-    if isinstance(
-        desired_object, DesiredMaterializedView
-    ) and desired_object.target_table_name.startswith(TRANSFORM_TABLE_NAME_PREFIX):
-        return (desired_object.target_table_name,)
+    model_table_names: frozenset[str] = frozenset(
+        object_.name
+        for object_ in desired_object_by_key.values()
+        if isinstance(object_, DesiredTable) and not object_.name.startswith(RAW_TABLE_NAME_PREFIX)
+    )
     if (
-        subtree.root_key.object_type == DESIRED_OBJECT_TYPE_TABLE
-        and subtree.root_key.name.startswith(TRANSFORM_TABLE_NAME_PREFIX)
+        isinstance(desired_object, DesiredMaterializedView)
+        and desired_object.target_table_name in model_table_names
     ):
+        return (desired_object.target_table_name,)
+    if isinstance(
+        desired_object, (DesiredTable, DesiredView)
+    ) and not desired_object.name.startswith(RAW_TABLE_NAME_PREFIX):
         return (subtree.root_key.name,)
     return ()
 
@@ -90,7 +107,7 @@ def render_sql_diff_plan_context(
     *,
     sql_diff: PlannedSqlDiff,
     plan: DeploymentPlan,
-    desired_object_by_key: dict[ObjectKey, DesiredTable | DesiredMaterializedView],
+    desired_object_by_key: dict[ObjectKey, DesiredTable | DesiredMaterializedView | DesiredView],
 ) -> list[str]:
     subtree: RebuildSubtree | None = subtree_for_key(
         rebuild_subtrees=plan.rebuild_subtrees, key=sql_diff.key
@@ -156,7 +173,6 @@ def schema_change_for_subtree(
             object_change
             for object_change in schema_changes
             if object_change.key.object_type == DESIRED_OBJECT_TYPE_TABLE
-            and object_change.key.name.startswith(TRANSFORM_TABLE_NAME_PREFIX)
         ),
         None,
     )
@@ -168,7 +184,7 @@ def schema_change_for_subtree(
 def diff_target_names(
     *,
     plan: DeploymentPlan,
-    desired_object_by_key: dict[ObjectKey, DesiredTable | DesiredMaterializedView],
+    desired_object_by_key: dict[ObjectKey, DesiredTable | DesiredMaterializedView | DesiredView],
 ) -> tuple[str, ...]:
     target_names: list[str] = []
     sql_diff: PlannedSqlDiff
@@ -197,7 +213,8 @@ def new_target_names_for_subtree(
             object_change.key.name
             for object_change in object_changes
             if object_change.key in subtree.affected_keys
-            and object_change.key.object_type == DESIRED_OBJECT_TYPE_TABLE
+            and object_change.key.object_type
+            in {DESIRED_OBJECT_TYPE_TABLE, DESIRED_OBJECT_TYPE_VIEW}
             and object_change.schema_change_kind is None
             and object_change.change_type
             in {PLANNED_CHANGE_TYPE_CREATE, PLANNED_CHANGE_TYPE_REPLACE}
@@ -208,7 +225,7 @@ def new_target_names_for_subtree(
 def new_target_names(
     *,
     plan: DeploymentPlan,
-    desired_object_by_key: dict[ObjectKey, DesiredTable | DesiredMaterializedView],
+    desired_object_by_key: dict[ObjectKey, DesiredTable | DesiredMaterializedView | DesiredView],
 ) -> tuple[str, ...]:
     new_target_names: list[str] = []
     subtree: RebuildSubtree
@@ -244,7 +261,8 @@ def target_is_new(
     for object_change in object_changes:
         if (
             object_change.key in subtree.affected_keys
-            and object_change.key.object_type == DESIRED_OBJECT_TYPE_TABLE
+            and object_change.key.object_type
+            in {DESIRED_OBJECT_TYPE_TABLE, DESIRED_OBJECT_TYPE_VIEW}
             and object_change.key.name == target_name
             and object_change.change_type
             in {PLANNED_CHANGE_TYPE_CREATE, PLANNED_CHANGE_TYPE_REPLACE}
@@ -257,7 +275,7 @@ def target_is_new(
 def compact_changed_target_summaries(
     *,
     plan: DeploymentPlan,
-    desired_object_by_key: dict[ObjectKey, DesiredTable | DesiredMaterializedView],
+    desired_object_by_key: dict[ObjectKey, DesiredTable | DesiredMaterializedView | DesiredView],
 ) -> tuple[CompactChangedTargetSummary, ...]:
     detail_lines_by_target_name: dict[str, list[str]] = {}
     subtree: RebuildSubtree
@@ -295,7 +313,7 @@ def compact_changed_target_detail_lines(
     target_name: str,
     subtree: RebuildSubtree,
     plan: DeploymentPlan,
-    desired_object_by_key: dict[ObjectKey, DesiredTable | DesiredMaterializedView],
+    desired_object_by_key: dict[ObjectKey, DesiredTable | DesiredMaterializedView | DesiredView],
 ) -> tuple[str, ...]:
     detail_lines: list[str] = []
     object_change: PlannedObjectChange
@@ -305,8 +323,8 @@ def compact_changed_target_detail_lines(
             or object_change.change_type == PLANNED_CHANGE_TYPE_NO_OP
         ):
             continue
-        desired_object: DesiredTable | DesiredMaterializedView | None = desired_object_by_key.get(
-            object_change.key
+        desired_object: DesiredTable | DesiredMaterializedView | DesiredView | None = (
+            desired_object_by_key.get(object_change.key)
         )
         if (
             isinstance(desired_object, DesiredMaterializedView)
@@ -314,6 +332,9 @@ def compact_changed_target_detail_lines(
             and object_change.schema_change_kind is None
         ):
             detail_lines.append("transform query changed")
+            continue
+        if isinstance(desired_object, DesiredView):
+            detail_lines.append("view query changed")
             continue
         if (
             object_change.key.object_type == DESIRED_OBJECT_TYPE_TABLE
@@ -349,17 +370,20 @@ def compact_changed_target_detail_lines(
 def rollout_object_entries(
     *,
     plan: DeploymentPlan,
-    desired_object_by_key: dict[ObjectKey, DesiredTable | DesiredMaterializedView],
+    desired_object_by_key: dict[ObjectKey, DesiredTable | DesiredMaterializedView | DesiredView],
 ) -> tuple[tuple[str, str], ...]:
     rollout_objects: list[tuple[str, str]] = []
     subtree: RebuildSubtree
     for subtree in plan.rebuild_subtrees:
-        rollout_objects.append(("replay source", subtree.upstream_boundary_key.name))
-        desired_object: DesiredTable | DesiredMaterializedView | None = desired_object_by_key.get(
-            subtree.root_key
+        if subtree.replay_required:
+            rollout_objects.append(("replay source", subtree.upstream_boundary_key.name))
+        desired_object: DesiredTable | DesiredMaterializedView | DesiredView | None = (
+            desired_object_by_key.get(subtree.root_key)
         )
         if isinstance(desired_object, DesiredMaterializedView):
             rollout_objects.append(("transform", desired_object.name))
+        elif isinstance(desired_object, DesiredView):
+            rollout_objects.append(("view", desired_object.name))
         live_target_name: str
         for live_target_name in live_target_names(
             subtree=subtree,
@@ -373,19 +397,26 @@ def rollout_object_entries(
 def changed_object_entries(
     *,
     plan: DeploymentPlan,
-    desired_object_by_key: dict[ObjectKey, DesiredTable | DesiredMaterializedView],
+    desired_object_by_key: dict[ObjectKey, DesiredTable | DesiredMaterializedView | DesiredView],
 ) -> tuple[tuple[str, str], ...]:
     changed_entries: list[tuple[str, str]] = []
     object_change: PlannedObjectChange
     for object_change in plan.object_changes:
         if object_change.change_type == PLANNED_CHANGE_TYPE_NO_OP:
             continue
-        desired_object: DesiredTable | DesiredMaterializedView | None = desired_object_by_key.get(
-            object_change.key
+        desired_object: DesiredTable | DesiredMaterializedView | DesiredView | None = (
+            desired_object_by_key.get(object_change.key)
         )
-        if isinstance(
-            desired_object, DesiredMaterializedView
-        ) and desired_object.target_table_name.startswith(TRANSFORM_TABLE_NAME_PREFIX):
+        model_table_names: frozenset[str] = frozenset(
+            object_.name
+            for object_ in desired_object_by_key.values()
+            if isinstance(object_, DesiredTable)
+            and not object_.name.startswith(RAW_TABLE_NAME_PREFIX)
+        )
+        if (
+            isinstance(desired_object, DesiredMaterializedView)
+            and desired_object.target_table_name in model_table_names
+        ):
             changed_entries.append(("transform", desired_object.name))
             continue
         changed_entries.append(
@@ -398,7 +429,7 @@ def changed_object_entries(
 def render_workflow_summary(
     *,
     plan: DeploymentPlan,
-    desired_object_by_key: dict[ObjectKey, DesiredTable | DesiredMaterializedView],
+    desired_object_by_key: dict[ObjectKey, DesiredTable | DesiredMaterializedView | DesiredView],
 ) -> list[str]:
     lines: list[str] = []
     subtree: RebuildSubtree
@@ -409,7 +440,8 @@ def render_workflow_summary(
         )
         workflow_target_name: str = live_targets[0] if live_targets else subtree.root_key.name
         lines.append(f"- prepare staged objects for subtree rooted at {workflow_target_name}")
-        lines.append(f"- backfill from {subtree.upstream_boundary_key.name}")
+        if subtree.replay_required:
+            lines.append(f"- backfill from {subtree.upstream_boundary_key.name}")
         if live_targets:
             lines.append(f"- audit staged {', '.join(live_targets)}")
             lines.append(f"- publish {', '.join(live_targets)}")
@@ -486,5 +518,6 @@ def humanize_object_type(value: str) -> str:
         DESIRED_OBJECT_TYPE_TABLE: "table",
         DESIRED_OBJECT_TYPE_MATERIALIZED_VIEW: "materialized view",
         DESIRED_OBJECT_TYPE_KAFKA_TABLE: "kafka table",
+        DESIRED_OBJECT_TYPE_VIEW: "view",
     }
     return object_type_by_value.get(value, value.replace("_", " "))

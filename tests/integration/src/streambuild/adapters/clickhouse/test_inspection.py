@@ -17,10 +17,21 @@ from tests.integration.src.streambuild.conftest import ClickHouseConnectionSetti
     [
         InspectManagedTableStateIntegrationTestCase(
             description="inspects stable view bindings and physical deployment candidates",
-            expected_active_bindings=(("tbl__orders_enriched", "tbl__orders_enriched__dep_a"),),
+            expected_active_bindings=(
+                (
+                    "tbl__orders_enriched",
+                    "tbl__orders_enriched__20260731T120000Z_depaaa",
+                ),
+            ),
             expected_physical_candidates=(
-                ("tbl__orders_enriched", "tbl__orders_enriched__dep_a"),
-                ("tbl__orders_enriched", "tbl__orders_enriched__dep_b"),
+                (
+                    "tbl__orders_enriched",
+                    "tbl__orders_enriched__20260731T120000Z_depaaa",
+                ),
+                (
+                    "tbl__orders_enriched",
+                    "tbl__orders_enriched__20260731T130000Z_depbbb",
+                ),
             ),
         )
     ],
@@ -33,18 +44,18 @@ def test_given_views_and_physical_tables_when_inspecting_then_it_returns_expecte
     clickhouse_database: str,
 ) -> None:
     clickhouse_client.command(
-        f"CREATE TABLE {clickhouse_database}.tbl__orders_enriched__dep_a "
+        f"CREATE TABLE {clickhouse_database}.tbl__orders_enriched__20260731T120000Z_depaaa "
         "(order_id String) ENGINE = MergeTree ORDER BY (order_id)"
     )
     clickhouse_client.command(
-        f"CREATE TABLE {clickhouse_database}.tbl__orders_enriched__dep_b "
+        f"CREATE TABLE {clickhouse_database}.tbl__orders_enriched__20260731T130000Z_depbbb "
         "(order_id String) ENGINE = MergeTree ORDER BY (order_id)"
     )
     clickhouse_client.command(
         render_create_view_ddl(
             database=clickhouse_database,
             view_name="tbl__orders_enriched",
-            target_table_name="tbl__orders_enriched__dep_a",
+            target_table_name="tbl__orders_enriched__20260731T120000Z_depaaa",
         )
     )
 

@@ -13,6 +13,8 @@ from streambuild.adapter.models import (
     AdapterModelRealizationRequest,
     AdapterSourceRealization,
     AdapterTable,
+    AdapterView,
+    AdapterViewRealizationRequest,
 )
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from tests.unit.src.streambuild.adapters.clickhouse._test_types import (
@@ -161,3 +163,36 @@ def test_given_compiled_model_request_when_realizing_then_returns_two_resources(
     assert realization.relation_name == test_case.expected_relation_name
     assert (table.name, view.name) == test_case.expected_resource_names
     assert view.source_relation_name == test_case.expected_source_relation_name
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ClickHouseModelRealizationTestCase(
+            description="realizes an exact ordinary view name as one query-only resource",
+            expected_relation_name="customer_orders",
+            expected_resource_names=("customer_orders",),
+            expected_source_relation_name="",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_compiled_view_request_when_realizing_then_returns_one_view_resource(
+    test_case: ClickHouseModelRealizationTestCase,
+) -> None:
+    realization: AdapterModelRealization = ClickHouseAdapter().realize_model(
+        request=AdapterViewRealizationRequest(
+            logical_name="orders_view",
+            target_relation_name="customer_orders",
+            resolved_query="SELECT order_id FROM orders",
+            resolved_database_template=(
+                "SELECT order_id FROM __streambuild_target_database__.orders"
+            ),
+        )
+    )
+
+    view: AdapterView = cast(AdapterView, realization.resources[0])
+    assert isinstance(view, AdapterView)
+    assert realization.relation_name == test_case.expected_relation_name
+    assert (view.name,) == test_case.expected_resource_names
+    assert realization.resources == (view,)

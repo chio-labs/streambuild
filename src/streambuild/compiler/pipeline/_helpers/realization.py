@@ -13,11 +13,14 @@ from streambuild.adapter.models import (
     AdapterModelRealizationRequest,
     AdapterSourceRealization,
     AdapterTable,
+    AdapterView,
+    AdapterViewRealizationRequest,
 )
 from streambuild.compiler.compile.constants import (
     DESIRED_OBJECT_TYPE_KAFKA_TABLE,
     DESIRED_OBJECT_TYPE_MATERIALIZED_VIEW,
     DESIRED_OBJECT_TYPE_TABLE,
+    DESIRED_OBJECT_TYPE_VIEW,
     REPLAY_CURSOR_COLUMN_NAME,
     REPLAY_LANDED_AT_COLUMN_NAME,
     REPLAY_OFFSET_COLUMN_NAME,
@@ -30,11 +33,14 @@ from streambuild.compiler.compile.models import (
     CompiledModel,
     CompiledProject,
     CompiledSource,
+    CompiledTableModel,
+    CompiledViewModel,
     CompilerAdapterProfile,
     DesiredKafkaTable,
     DesiredMaterializedView,
     DesiredState,
     DesiredTable,
+    DesiredView,
     ExternalSourceReplayConfig,
     KafkaSettings,
     KafkaTableSpec,
@@ -43,6 +49,7 @@ from streambuild.compiler.compile.models import (
     ObjectKey,
     TableSpec,
     TableStorage,
+    ViewSpec,
 )
 from streambuild.compiler.discovery.models import (
     ExternalTableSourceStep,
@@ -76,7 +83,7 @@ def build_realized_project(
     }
     model: CompiledModel
     for model in project.models:
-        relation_names[model.key] = adapter_profile.model_relation_name(logical_name=model.key.name)
+        relation_names[model.key] = model.relation_name
     relation_name_by_logical_name: dict[str, str] = {
         key.name: relation_name for key, relation_name in relation_names.items()
     }
@@ -220,7 +227,16 @@ def _model_request(
     resolved_query: SqlResolvedQuery,
     relation_names: dict[LogicalResourceKey, str],
     relation_name_by_logical_name: dict[str, str],
-) -> AdapterModelRealizationRequest:
+) -> AdapterModelRealizationRequest | AdapterViewRealizationRequest:
+    if isinstance(model, CompiledViewModel):
+        return AdapterViewRealizationRequest(
+            logical_name=model.key.name,
+            target_relation_name=relation_names[model.key],
+            resolved_query=resolved_query.canonical_sql,
+            resolved_database_template=resolved_query.database_template,
+        )
+    if not isinstance(model, CompiledTableModel):
+        raise PipelineCompileError(f"Unsupported compiled model type for '{model.key.name}'")
     settings: tuple[tuple[str, str], ...] = (
         () if model.transform.settings is None else tuple(sorted(model.transform.settings.items()))
     )
@@ -288,19 +304,32 @@ def _build_desired_state(
     for model in project.models:
         relation_key_by_name[model.key.name] = _object_key(
             name=model_realizations[model.key].relation_name,
-            object_type=DESIRED_OBJECT_TYPE_TABLE,
+            object_type=(
+                DESIRED_OBJECT_TYPE_TABLE
+                if isinstance(model, CompiledTableModel)
+                else DESIRED_OBJECT_TYPE_VIEW
+            ),
         )
     for model in project.models:
-        model_objects: tuple[DesiredTable, DesiredMaterializedView] = _model_desired_objects(
-            model=model,
-            realization=model_realizations[model.key],
-            relation_key_by_name=relation_key_by_name,
-        )
-        objects.extend(model_objects)
-        if model.replay_anchor_eligible:
-            replay_anchor_keys.add(model_objects[0].key)
-        if model.has_mutable_refs:
-            mutable_ref_warning_keys.add(model_objects[0].key)
+        if isinstance(model, CompiledViewModel):
+            objects.append(
+                _view_model_desired_object(
+                    model=model,
+                    realization=model_realizations[model.key],
+                    relation_key_by_name=relation_key_by_name,
+                )
+            )
+        elif isinstance(model, CompiledTableModel):
+            model_objects: tuple[DesiredTable, DesiredMaterializedView] = _model_desired_objects(
+                model=model,
+                realization=model_realizations[model.key],
+                relation_key_by_name=relation_key_by_name,
+            )
+            objects.extend(model_objects)
+            if model.replay_anchor_eligible:
+                replay_anchor_keys.add(model_objects[0].key)
+            if model.has_mutable_refs:
+                mutable_ref_warning_keys.add(model_objects[0].key)
     return DesiredState(
         objects=tuple(sorted(objects, key=lambda item: (item.key.object_type, item.key.name))),
         replay_anchor_keys=frozenset(replay_anchor_keys),
@@ -339,14 +368,23 @@ def _source_desired_objects(
     table_key: ObjectKey = _object_key(name=table.name, object_type=DESIRED_OBJECT_TYPE_TABLE)
     return (
         _desired_managed_source(resource=managed_source, key=source_key),
-        _desired_table(resource=table, key=table_key, deps=()),
-        _desired_view(resource=view, deps=(source_key, table_key)),
+        _desired_table(
+            resource=table,
+            key=table_key,
+            deps=(),
+            logical_model_name=source.key.name,
+        ),
+        _desired_view(
+            resource=view,
+            deps=(source_key, table_key),
+            logical_model_name=source.key.name,
+        ),
     )
 
 
 def _model_desired_objects(
     *,
-    model: CompiledModel,
+    model: CompiledTableModel,
     realization: AdapterModelRealization,
     relation_key_by_name: dict[str, ObjectKey],
 ) -> tuple[DesiredTable, DesiredMaterializedView]:
@@ -367,9 +405,37 @@ def _model_desired_objects(
             resource=table,
             key=table_key,
             deps=(relation_key_by_name[model.transform.source],),
+            logical_model_name=model.key.name,
             model=model,
         ),
-        _desired_view(resource=view, deps=(*ref_keys, table_key)),
+        _desired_view(
+            resource=view,
+            deps=(*ref_keys, table_key),
+            logical_model_name=model.key.name,
+        ),
+    )
+
+
+def _view_model_desired_object(
+    *,
+    model: CompiledViewModel,
+    realization: AdapterModelRealization,
+    relation_key_by_name: dict[str, ObjectKey],
+) -> DesiredView:
+    view: AdapterView = _ordinary_view_resource(
+        resources=realization.resources,
+        logical_name=model.key.name,
+    )
+    return DesiredView(
+        key=_object_key(name=view.name, object_type=DESIRED_OBJECT_TYPE_VIEW),
+        deps=tuple(
+            dict.fromkeys(relation_key_by_name[parsed_ref.name] for parsed_ref in model.parsed_refs)
+        ),
+        spec=ViewSpec(
+            query=view.query,
+            database_template=view.database_template,
+        ),
+        logical_model_name=model.key.name,
     )
 
 
@@ -395,7 +461,8 @@ def _desired_table(
     resource: AdapterTable,
     key: ObjectKey,
     deps: tuple[ObjectKey, ...],
-    model: CompiledModel | None = None,
+    logical_model_name: str,
+    model: CompiledTableModel | None = None,
 ) -> DesiredTable:
     replay_fallback: BoundedReplayFallback = (
         BoundedReplayFallback.FULL if model is None else model.effective_bounded_replay_fallback
@@ -413,13 +480,17 @@ def _desired_table(
                 settings=None if not resource.settings else dict(resource.settings),
             ),
         ),
+        logical_model_name=logical_model_name,
         replay_on_change=None if model is None else model.replay_on_change,
         bounded_replay_fallback=replay_fallback,
     )
 
 
 def _desired_view(
-    *, resource: AdapterMaterializedView, deps: tuple[ObjectKey, ...]
+    *,
+    resource: AdapterMaterializedView,
+    deps: tuple[ObjectKey, ...],
+    logical_model_name: str,
 ) -> DesiredMaterializedView:
     return DesiredMaterializedView(
         key=_object_key(
@@ -433,6 +504,7 @@ def _desired_view(
             query=resource.query,
             database_template=resource.database_template,
         ),
+        logical_model_name=logical_model_name,
     )
 
 
@@ -496,6 +568,22 @@ def _view_resource(
     if len(matches) != 1:
         raise PipelineCompileError(
             f"Adapter realization for '{logical_name}' requires exactly one materialized view; "
+            f"got {len(matches)}"
+        )
+    return matches[0]
+
+
+def _ordinary_view_resource(
+    *,
+    resources: tuple[AdapterResource, ...],
+    logical_name: str,
+) -> AdapterView:
+    matches: tuple[AdapterView, ...] = tuple(
+        resource for resource in resources if isinstance(resource, AdapterView)
+    )
+    if len(matches) != 1:
+        raise PipelineCompileError(
+            f"Adapter realization for '{logical_name}' requires exactly one ordinary view; "
             f"got {len(matches)}"
         )
     return matches[0]

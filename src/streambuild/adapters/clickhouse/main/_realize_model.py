@@ -5,12 +5,28 @@ from streambuild.adapter.models import (
     AdapterModelRealization,
     AdapterModelRealizationRequest,
     AdapterTable,
+    AdapterView,
+    AdapterViewRealizationRequest,
 )
 from streambuild.adapters.clickhouse.constants import CLICKHOUSE_MATERIALIZED_VIEW_NAME_PREFIX
 
 
-def realize_clickhouse_model(*, request: AdapterModelRealizationRequest) -> AdapterModelRealization:
-    """Realize one logical model as a ClickHouse table and materialized view."""
+def realize_clickhouse_model(
+    *, request: AdapterModelRealizationRequest | AdapterViewRealizationRequest
+) -> AdapterModelRealization:
+    """Realize one logical model as its ClickHouse resources."""
+
+    if isinstance(request, AdapterViewRealizationRequest):
+        return AdapterModelRealization(
+            relation_name=request.target_relation_name,
+            resources=(
+                AdapterView(
+                    name=request.target_relation_name,
+                    query=request.resolved_query,
+                    database_template=request.resolved_database_template,
+                ),
+            ),
+        )
 
     return AdapterModelRealization(
         relation_name=request.target_relation_name,

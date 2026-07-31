@@ -166,6 +166,16 @@ class PlannerDeploymentPlanTestCase:
 
 
 @dataclass(frozen=True)
+class PlannerViewDeploymentTestCase:
+    description: str
+    deployment_id: str
+    expected_root_key: tuple[str | None, str, str]
+    expected_physical_name: str
+    expected_action: DeploymentAction
+    expected_replay_required: bool
+
+
+@dataclass(frozen=True)
 class PlannerFullRefreshPlanTestCase:
     description: str
     full_refresh_key: tuple[str | None, str, str]
@@ -177,7 +187,7 @@ class PlannerFullRefreshPlanTestCase:
 class PlannerShadowIdentityTestCase:
     description: str
     deployment_id: str
-    expected_prepared_shadow_objects: tuple[tuple[tuple[str | None, str, str], str], ...]
+    expected_prepared_shadow_objects: tuple[tuple[tuple[str | None, str, str], str, str], ...]
     expected_plan_step_physical_names: tuple[str, ...]
 
 
@@ -255,6 +265,15 @@ class DirectScopeTestCase:
 
 
 @dataclass(frozen=True)
+class DirectViewPlanTestCase:
+    description: str
+    selected_model_names: tuple[str, ...]
+    present_relation_names: tuple[str, ...]
+    expected_relation_name: str
+    expected_prerequisites: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class DirectOwnershipTestCase:
     description: str
     relation_names: tuple[str, ...]
@@ -275,6 +294,16 @@ class DirectPlanRejectionTestCase:
     virtual_environment_owned_names: tuple[str, ...]
     stable_binding_names: tuple[str, ...]
     expected_error_fragment: str
+
+
+@dataclass(frozen=True)
+class DirectRenameTeardownTestCase:
+    description: str
+    selected_model_names: tuple[str, ...]
+    stale_relation_name: str
+    stale_logical_model_name: str
+    owning_mode: str
+    expected_stale_teardown: bool
 
 
 @dataclass(frozen=True)

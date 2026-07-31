@@ -11,6 +11,8 @@ from streambuild.adapter.models import (
     AdapterReadinessRootObservation,
     AdapterReadinessRootRequest,
     AdapterReadinessScalarSummary,
+    CatalogRelation,
+    CatalogSnapshot,
 )
 from streambuild.adapter.types import AdapterReplayBoundaryMode
 from streambuild.adapters.clickhouse._helpers.catalog_parsing import extract_create_query_source
@@ -22,12 +24,10 @@ from streambuild.adapters.clickhouse.models import (
     ClickHouseReadinessScalarRow,
 )
 from streambuild.compiler.compile.constants import (
-    MATERIALIZED_VIEW_NAME_PREFIX,
     REPLAY_LANDED_AT_COLUMN_NAME,
     REPLAY_OFFSET_COLUMN_NAME,
     REPLAY_PARTITION_COLUMN_NAME,
     REPLAY_TIMESTAMP_COLUMN_NAME,
-    TRANSFORM_TABLE_NAME_PREFIX,
 )
 from streambuild.compiler.planner.constants import BLANK_VALUES
 
@@ -74,8 +74,10 @@ def _compare_root(
         database=root_request.database,
         table_name=root_request.staged_relation_name,
     )
-    staged_materialized_view_name: str = _staged_materialized_view_name(
-        root_request.staged_relation_name
+    staged_materialized_view_name: str | None = _staged_materialized_view_name(
+        connection=connection,
+        database=root_request.database,
+        staged_relation_name=root_request.staged_relation_name,
     )
     replay_source_name: str | None = (
         _resolve_staged_source_relation(
@@ -83,7 +85,7 @@ def _compare_root(
             database=root_request.database,
             staged_materialized_view_name=staged_materialized_view_name,
         )
-        if staged_exists
+        if staged_exists and staged_materialized_view_name is not None
         else None
     )
     replay_source_row_count: int | None = (
@@ -105,7 +107,12 @@ def _compare_root(
             staged_materialized_view_name=staged_materialized_view_name,
             active_queryable=active_queryable,
         )
-    elif active_queryable and staged_exists and boundary_mode is not None:
+    elif (
+        active_queryable
+        and staged_exists
+        and boundary_mode
+        in {AdapterReplayBoundaryMode.TIMESTAMP, AdapterReplayBoundaryMode.LANDED_AT}
+    ):
         scalar_summary = _scalar_summary(
             connection=connection,
             root_request=root_request,
@@ -172,7 +179,7 @@ def _offset_summary(
     *,
     connection: AdapterConnection,
     root_request: AdapterReadinessRootRequest,
-    staged_materialized_view_name: str,
+    staged_materialized_view_name: str | None,
     active_queryable: bool,
 ) -> AdapterReadinessOffsetSummary:
     active_offsets_sql: str = _active_offsets_sql(
@@ -184,10 +191,14 @@ def _offset_summary(
         f"FROM {root_request.database}.{root_request.staged_relation_name} "
         f"GROUP BY {REPLAY_PARTITION_COLUMN_NAME}"
     )
-    source_relation_name: str | None = _resolve_staged_source_relation(
-        connection=connection,
-        database=root_request.database,
-        staged_materialized_view_name=staged_materialized_view_name,
+    source_relation_name: str | None = (
+        _resolve_staged_source_relation(
+            connection=connection,
+            database=root_request.database,
+            staged_materialized_view_name=staged_materialized_view_name,
+        )
+        if staged_materialized_view_name is not None
+        else None
     )
     boundary_column: str | None = (
         None
@@ -318,12 +329,20 @@ def _scalar_summary(
     )
 
 
-def _staged_materialized_view_name(staged_relation_name: str) -> str:
-    if not staged_relation_name.startswith(TRANSFORM_TABLE_NAME_PREFIX):
-        return staged_relation_name
-    return MATERIALIZED_VIEW_NAME_PREFIX + staged_relation_name.removeprefix(
-        TRANSFORM_TABLE_NAME_PREFIX
+def _staged_materialized_view_name(
+    *, connection: AdapterConnection, database: str, staged_relation_name: str
+) -> str | None:
+    catalog: CatalogSnapshot = connection.load_catalog(database)
+    matching_relations: tuple[CatalogRelation, ...] = tuple(
+        relation
+        for relation in catalog.relations
+        if relation.target_relation_name == staged_relation_name
     )
+    if len(matching_relations) > 1:
+        raise AdapterResultError(
+            f"Multiple materialized views target staged relation '{staged_relation_name}'"
+        )
+    return None if not matching_relations else matching_relations[0].name
 
 
 def _resolve_staged_source_relation(

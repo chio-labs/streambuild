@@ -2,7 +2,7 @@
 
 from streambuild.adapter.models import CatalogSnapshot, InspectedManagedTableState
 from streambuild.compiler.compile.constants import (
-    TRANSFORM_TABLE_NAME_PREFIX,
+    RAW_TABLE_NAME_PREFIX,
 )
 from streambuild.compiler.compile.models import DesiredState, DesiredTable, ObjectKey
 from streambuild.compiler.planner.main.build_inspected_managed_table_state_from_catalog import (
@@ -30,8 +30,7 @@ def build_root_backfill_reports(
     root_keys: tuple[ObjectKey, ...] = tuple(
         object_.key
         for object_ in desired_state.objects
-        if isinstance(object_, DesiredTable)
-        and object_.name.startswith(TRANSFORM_TABLE_NAME_PREFIX)
+        if isinstance(object_, DesiredTable) and not object_.name.startswith(RAW_TABLE_NAME_PREFIX)
     )
     return tuple(
         _build_root_backfill_report(

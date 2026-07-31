@@ -2,7 +2,7 @@
 
 from streambuild.compiler.compile.constants import (
     DESIRED_OBJECT_TYPE_TABLE,
-    TRANSFORM_TABLE_NAME_PREFIX,
+    RAW_TABLE_NAME_PREFIX,
 )
 from streambuild.compiler.compile.models import ObjectKey
 from streambuild.compiler.planner.models import (
@@ -24,8 +24,8 @@ def filter_root_backfill_reports_for_deployment(
     for subtree in deployment_plan.rebuild_subtrees:
         key: ObjectKey
         for key in subtree.affected_keys:
-            if key.object_type == DESIRED_OBJECT_TYPE_TABLE and key.name.startswith(
-                TRANSFORM_TABLE_NAME_PREFIX
+            if key.object_type == DESIRED_OBJECT_TYPE_TABLE and not key.name.startswith(
+                RAW_TABLE_NAME_PREFIX
             ):
                 deployment_live_target_keys.add(key)
     return tuple(

@@ -1,10 +1,11 @@
 """Normalize a direct closure into the shared population contract."""
 
-from streambuild.adapter.models import AdapterMaterializedView, AdapterTable
+from streambuild.adapter.models import AdapterMaterializedView, AdapterTable, AdapterView
 from streambuild.compiler.compile.models import (
     DesiredMaterializedView,
     DesiredState,
     DesiredTable,
+    DesiredView,
     LogicalResourceKey,
     ObjectKey,
 )
@@ -22,7 +23,7 @@ def build_direct_population_plan(
     desired_key_by_name: dict[str, ObjectKey] = {
         object_.name: object_.key
         for object_ in desired_state.objects
-        if isinstance(object_, DesiredTable | DesiredMaterializedView)
+        if isinstance(object_, DesiredTable | DesiredMaterializedView | DesiredView)
     }
     planned_keys: tuple[ObjectKey, ...] = _resource_keys(
         model_keys=plan.execution_scope,
@@ -92,7 +93,7 @@ def _resource_keys(
     for model_key in model_keys:
         resource: object
         for resource in realized_project.resources_by_logical_key[model_key]:
-            if isinstance(resource, AdapterTable | AdapterMaterializedView):
+            if isinstance(resource, AdapterTable | AdapterMaterializedView | AdapterView):
                 keys.append(desired_key_by_name[resource.name])
     return tuple(keys)
 

@@ -7,6 +7,7 @@ from streambuild.compiler.compile.models import (
     DesiredMaterializedView,
     DesiredState,
     DesiredTable,
+    DesiredView,
 )
 from streambuild.compiler.planner.main.build_adapter_resource import build_adapter_resource
 
@@ -21,7 +22,7 @@ def ensure_live_landing_objects(
     """Ensure the stable source side exists before creating populated targets."""
 
     existing_names: set[str] = set(existing_relation_names)
-    desired_object: DesiredKafkaTable | DesiredTable | DesiredMaterializedView
+    desired_object: DesiredKafkaTable | DesiredTable | DesiredMaterializedView | DesiredView
     for desired_object in desired_state.objects:
         database: str = desired_object.key.database or default_database
         if isinstance(desired_object, DesiredKafkaTable):

@@ -24,9 +24,9 @@ from tests.unit.src.streambuild.compiler.planner._test_types import (
             expected_is_deployment_name=True,
         ),
         DeploymentPhysicalNameRecognitionTestCase(
-            description="rejects an unmanaged name with a deployment-like suffix",
+            description="recognizes a custom model name with a deployment suffix",
             physical_name="orders_enriched__20260410T130000Z_ab12cd",
-            expected_is_deployment_name=False,
+            expected_is_deployment_name=True,
         ),
         DeploymentPhysicalNameRecognitionTestCase(
             description="rejects a managed logical name without a deployment suffix",
@@ -36,6 +36,11 @@ from tests.unit.src.streambuild.compiler.planner._test_types import (
         DeploymentPhysicalNameRecognitionTestCase(
             description="rejects a managed name with an empty deployment suffix",
             physical_name="tbl__orders_enriched__",
+            expected_is_deployment_name=False,
+        ),
+        DeploymentPhysicalNameRecognitionTestCase(
+            description="rejects an arbitrary non-deployment suffix",
+            physical_name="orders_enriched__draft",
             expected_is_deployment_name=False,
         ),
     ],

@@ -65,6 +65,7 @@ def _population_plan(
                 execution_lookback_seconds=subtree.execution_lookback_seconds,
             )
             for subtree in deployment_plan.rebuild_subtrees
+            if subtree.replay_required
         ),
         objects=tuple(
             PopulationObject(

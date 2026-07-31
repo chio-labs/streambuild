@@ -2,7 +2,12 @@ import pytest
 
 from streambuild.adapter.exceptions import AdapterCapabilityError, AdapterResultError
 from streambuild.adapter.models import (
+    AdapterDeploymentInventory,
+    AdapterDeploymentRecord,
+    AdapterMetadataObjectKey,
+    AdapterPreparedObjectMapping,
     AdapterStableBinding,
+    CatalogRelation,
     InspectedManagedTableState,
     InspectedPhysicalTableCandidate,
 )
@@ -75,6 +80,37 @@ def test_given_adapter_returns_wrong_binding_when_publishing_then_history_is_not
                     logical_name="tbl__orders_enriched",
                     physical_name=f"tbl__orders_enriched__{deployment_id}",
                 ),
+            ),
+        ),
+        deployment_inventory=AdapterDeploymentInventory(
+            deployments=(
+                AdapterDeploymentRecord(
+                    deployment_id=deployment_id,
+                    created_at="2026-07-26 19:00:00.000",
+                    status="backfilling",
+                    replay_lineage_mode="offsets",
+                    selected_root_keys=(),
+                    warning_codes=(),
+                    prepared_object_mappings=(
+                        AdapterPreparedObjectMapping(
+                            logical_key=AdapterMetadataObjectKey(
+                                database=None,
+                                object_type="table",
+                                name="tbl__orders_enriched",
+                            ),
+                            physical_name=f"tbl__orders_enriched__{deployment_id}",
+                            logical_model_name="orders_enriched",
+                        ),
+                    ),
+                ),
+            ),
+            publish_events=(),
+        ),
+        relations=(
+            CatalogRelation(
+                name=f"tbl__orders_enriched__{deployment_id}",
+                engine="MergeTree",
+                columns=(),
             ),
         ),
         returned_bindings=(

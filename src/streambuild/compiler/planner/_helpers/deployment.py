@@ -3,8 +3,17 @@
 from __future__ import annotations
 
 from streambuild.adapter.types import AdapterResourceRenderer
-from streambuild.compiler.compile.constants import DESIRED_OBJECT_TYPE_MATERIALIZED_VIEW
-from streambuild.compiler.compile.models import DesiredState, ObjectKey
+from streambuild.compiler.compile.constants import (
+    DESIRED_OBJECT_TYPE_MATERIALIZED_VIEW,
+    DESIRED_OBJECT_TYPE_VIEW,
+)
+from streambuild.compiler.compile.models import (
+    DesiredMaterializedView,
+    DesiredState,
+    DesiredTable,
+    DesiredView,
+    ObjectKey,
+)
 from streambuild.compiler.planner._helpers.diff import classify_object_changes
 from streambuild.compiler.planner._helpers.rebuild import emit_rebuild_subtrees_from_changes
 from streambuild.compiler.planner._helpers.sql_diffs import build_planned_sql_diffs
@@ -13,6 +22,7 @@ from streambuild.compiler.planner.constants import (
     DEPLOYMENT_ACTION_BACKFILL_SUBTREE,
     DEPLOYMENT_ACTION_PLAN_SHADOW_MATERIALIZED_VIEW,
     DEPLOYMENT_ACTION_PLAN_SHADOW_TABLE,
+    DEPLOYMENT_ACTION_PLAN_SHADOW_VIEW,
     DEPLOYMENT_ACTION_PUBLISH_SUBTREE,
     DEPLOYMENT_PHASE_AUDIT,
     DEPLOYMENT_PHASE_BACKFILL,
@@ -60,6 +70,7 @@ def build_deployment_plan(
         object_changes=object_changes,
     )
     prepared_shadow_objects: tuple[PreparedShadowObject, ...] = build_prepared_shadow_objects(
+        desired_state=desired_state,
         rebuild_subtrees=rebuild_subtrees,
         deployment_id=deployment_id,
     )
@@ -144,6 +155,7 @@ def emit_deployment_steps(
 
 def build_prepared_shadow_objects(
     *,
+    desired_state: DesiredState,
     rebuild_subtrees: tuple[RebuildSubtree, ...],
     deployment_id: str | None,
 ) -> tuple[PreparedShadowObject, ...]:
@@ -153,6 +165,12 @@ def build_prepared_shadow_objects(
         return ()
 
     prepared_shadow_objects: list[PreparedShadowObject] = []
+    logical_model_name_by_key: dict[ObjectKey, str] = {
+        object_.key: object_.logical_model_name
+        for object_ in desired_state.objects
+        if isinstance(object_, (DesiredTable, DesiredMaterializedView, DesiredView))
+        and object_.logical_model_name is not None
+    }
     seen_keys: set[ObjectKey] = set()
     subtree: RebuildSubtree
     for subtree in rebuild_subtrees:
@@ -167,6 +185,7 @@ def build_prepared_shadow_objects(
                     physical_name=build_shadow_physical_name(
                         logical_name=target_key.name, deployment_id=deployment_id
                     ),
+                    logical_model_name=logical_model_name_by_key[target_key],
                 )
             )
 
@@ -195,6 +214,8 @@ def plan_action_for_key(key: ObjectKey) -> DeploymentAction:
 
     if key.object_type == DESIRED_OBJECT_TYPE_MATERIALIZED_VIEW:
         return DEPLOYMENT_ACTION_PLAN_SHADOW_MATERIALIZED_VIEW
+    if key.object_type == DESIRED_OBJECT_TYPE_VIEW:
+        return DEPLOYMENT_ACTION_PLAN_SHADOW_VIEW
     return DEPLOYMENT_ACTION_PLAN_SHADOW_TABLE
 
 

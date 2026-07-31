@@ -73,7 +73,7 @@ def _resolve_selected_target_names(
     compiled_pipeline: CompiledPipeline
     for compiled_pipeline in compiled_pipelines:
         pipeline_model_names[compiled_pipeline.pipeline.name] = tuple(
-            compiled_model.transform.name for compiled_model in compiled_pipeline.models
+            compiled_model.key.name for compiled_model in compiled_pipeline.models
         )
     upstream_names_by_model, downstream_names_by_model = _build_model_graph(compiled_pipelines)
     known_model_names: frozenset[str] = frozenset(downstream_names_by_model)
@@ -149,14 +149,14 @@ def _build_model_graph(
     downstream_names_by_model: dict[str, set[str]] = defaultdict(set)
     upstream_names_by_model: dict[str, set[str]] = defaultdict(set)
     known_model_names: set[str] = {
-        compiled_model.transform.name
+        compiled_model.key.name
         for compiled_model in compiled_models(compiled_pipelines=compiled_pipelines)
     }
     compiled_pipeline: CompiledPipeline
     for compiled_pipeline in compiled_pipelines:
         compiled_model: CompiledModel
         for compiled_model in compiled_pipeline.models:
-            model_name: str = compiled_model.transform.name
+            model_name: str = compiled_model.key.name
             downstream_names_by_model.setdefault(model_name, set())
             upstream_names_by_model.setdefault(model_name, set())
             parsed_ref: ParsedRef

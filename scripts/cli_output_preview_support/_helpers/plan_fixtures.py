@@ -38,6 +38,7 @@ from streambuild.compiler.planner.models import (
 from streambuild.compiler.planner.types import (
     DirectPlanReason,
     DirectRelationAction,
+    DirectResourceKind,
     TargetOwnership,
 )
 
@@ -127,18 +128,22 @@ def build_plan_preview() -> DeploymentPlan:
             PreparedShadowObject(
                 logical_key=ObjectKey(None, "table", "raw__orders"),
                 physical_name="raw__orders_20260410T120000Z_ab12cd",
+                logical_model_name="orders",
             ),
             PreparedShadowObject(
                 logical_key=ObjectKey(None, "materialized_view", "mv__orders"),
                 physical_name="mv__orders_20260410T120000Z_ab12cd",
+                logical_model_name="orders",
             ),
             PreparedShadowObject(
                 logical_key=ObjectKey(None, "table", "tbl__orders_enriched"),
                 physical_name="tbl__orders_enriched_20260410T120000Z_ab12cd",
+                logical_model_name="orders_enriched",
             ),
             PreparedShadowObject(
                 logical_key=ObjectKey(None, "materialized_view", "mv__orders_enriched"),
                 physical_name="mv__orders_enriched_20260410T120000Z_ab12cd",
+                logical_model_name="orders_enriched",
             ),
         ),
         warnings=(),
@@ -500,6 +505,10 @@ def build_direct_plan_preview() -> DirectPlan:
                 model_key=enriched_key,
                 reason=DirectPlanReason.SELECTED,
                 relation_names=("tbl__orders_enriched", "mv__orders_enriched"),
+                resource_kinds=(
+                    DirectResourceKind.TABLE,
+                    DirectResourceKind.MATERIALIZED_VIEW,
+                ),
                 ownership=(
                     TargetOwnershipClassification(
                         relation_name="tbl__orders_enriched",
@@ -535,11 +544,13 @@ def build_direct_plan_preview() -> DirectPlan:
                 relation_name="mv__orders_enriched",
                 action=DirectRelationAction.DROP,
                 model_key=enriched_key,
+                resource_kind=DirectResourceKind.MATERIALIZED_VIEW,
             ),
             DirectRelationOperation(
                 relation_name="tbl__orders_enriched",
                 action=DirectRelationAction.DROP,
                 model_key=enriched_key,
+                resource_kind=DirectResourceKind.TABLE,
             ),
         ),
         creation_operations=(
@@ -547,11 +558,13 @@ def build_direct_plan_preview() -> DirectPlan:
                 relation_name="tbl__orders_enriched",
                 action=DirectRelationAction.CREATE,
                 model_key=enriched_key,
+                resource_kind=DirectResourceKind.TABLE,
             ),
             DirectRelationOperation(
                 relation_name="mv__orders_enriched",
                 action=DirectRelationAction.CREATE,
                 model_key=enriched_key,
+                resource_kind=DirectResourceKind.MATERIALIZED_VIEW,
             ),
         ),
     )

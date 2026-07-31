@@ -11,7 +11,6 @@ from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHous
 from streambuild.cli.audit.main._run_audit import run_audit
 from streambuild.cli.audit_backfill.main._run_audit_backfill import run_audit_backfill
 from streambuild.cli.entry._helpers.compiler_profile import build_compiler_adapter_profile
-from streambuild.compiler.compile.main.transform_table_name import transform_table_name
 from streambuild.compiler.compile.models import CompiledPipeline
 from streambuild.compiler.discovery.main.load_project_input_for_path import (
     load_project_input_for_path,
@@ -235,7 +234,7 @@ def test_given_audit_project_when_running_audit_backfill_then_it_includes_qualit
             client=managed_client,
         )
         staged_table_name: str = build_deployment_physical_name(
-            logical_name=transform_table_name("orders_enriched"),
+            logical_name="tbl__orders_enriched",
             deployment_id=backfill_result.bootstrap.deployment_id,
         )
         clickhouse_client.command(

@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from streambuild.compiler.compile.models import (
     DesiredMaterializedView,
     DesiredTable,
+    DesiredView,
     ObjectKey,
 )
 from streambuild.compiler.planner.models import (
@@ -28,6 +29,7 @@ class ReconcileCandidate:
 class ReconcileObjectIndex:
     desired_table_by_key: dict[ObjectKey, DesiredTable]
     desired_mv_by_target_key: dict[ObjectKey, DesiredMaterializedView]
+    desired_view_by_key: dict[ObjectKey, DesiredView]
     actual_table_by_key: dict[ObjectKey, ActualTable]
     actual_mv_by_key: dict[ObjectKey, ActualMaterializedView]
     target_keys: tuple[ObjectKey, ...]

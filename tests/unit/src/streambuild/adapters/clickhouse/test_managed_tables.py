@@ -22,9 +22,9 @@ from tests.unit.src.streambuild.adapters.clickhouse._test_types import (
             ),
             active_binding_rows=(),
             system_rows=(
-                ("tbl__orders_enriched__dep_a", "MergeTree"),
-                ("raw__orders__dep_a", "MergeTree"),
-                ("mv__orders_enriched__dep_a", "MaterializedView"),
+                ("tbl__orders_enriched__20260726T180000Z_depa01", "MergeTree"),
+                ("raw__orders__20260726T180000Z_depa01", "MergeTree"),
+                ("mv__orders_enriched__20260726T180000Z_depa01", "MaterializedView"),
             ),
             expected_logical_names=("tbl__orders_enriched", "raw__orders"),
             expected_active_bindings=(),

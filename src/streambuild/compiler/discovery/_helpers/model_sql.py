@@ -16,15 +16,18 @@ from streambuild.compiler.discovery.constants import (
     MODEL_HEADER_PATTERN,
     SCHEMA_CHANGE_RULE_KEYS,
     SECONDS_BY_DURATION_UNIT,
+    VIEW_FORBIDDEN_MODEL_KEYS,
 )
 from streambuild.compiler.discovery.exceptions import ModelHeaderSyntaxError, PipelineDiscoveryError
 from streambuild.compiler.discovery.models import (
     ReplayOnChangePolicy,
     ReplayOnChangeRule,
     TransformStep,
+    ViewStep,
 )
 from streambuild.compiler.discovery.types import (
     BoundedReplayFallback,
+    ModelKind,
     ReplayAnchorMode,
     ReplayOnChangeMode,
     SchemaChangeKind,
@@ -42,8 +45,8 @@ def load_transform_from_sql_file(
     contents: str | None = None,
     macro_registry: MacroRegistry | None = None,
     macro_context: MacroContext | None = None,
-) -> TransformStep:
-    """Load one authored SQL model file into an internal transform step."""
+) -> TransformStep | ViewStep:
+    """Load one authored SQL model file into its kind-specific model step."""
 
     source_contents: str = file_path.read_text(encoding="utf-8") if contents is None else contents
     try:
@@ -71,7 +74,7 @@ def _load_transform_from_sql_contents(
     source_contents: str,
     macro_registry: MacroRegistry | None,
     macro_context: MacroContext | None,
-) -> TransformStep:
+) -> TransformStep | ViewStep:
     header_values, query = parse_model_sql(
         contents=source_contents,
         file_path=file_path,
@@ -81,6 +84,28 @@ def _load_transform_from_sql_contents(
     query_line: int
     query_column: int
     query_line, query_column = _query_source_position(source_contents)
+    model_kind: ModelKind = _model_kind(header_values=header_values, file_path=file_path)
+    relation_name: str | None = _optional_string(
+        header_values=header_values,
+        key="relation_name",
+        file_path=file_path,
+    )
+    if model_kind == ModelKind.VIEW:
+        _validate_view_header(header_values=header_values, file_path=file_path)
+        _validate_view_refs(
+            query=query,
+            file_path=file_path,
+            source_line=query_line,
+            source_column=query_column,
+        )
+        return ViewStep(
+            name=file_path.stem,
+            query=query,
+            relation_name=relation_name,
+            source_file_path=file_path,
+            source_line=query_line,
+            source_column=query_column,
+        )
     return TransformStep(
         name=file_path.stem,
         source=infer_transform_source(
@@ -91,6 +116,7 @@ def _load_transform_from_sql_contents(
         ),
         engine=_sql_model_engine(header_values=header_values, file_path=file_path),
         order_by=_sql_model_order_by(header_values=header_values, file_path=file_path),
+        relation_name=relation_name,
         partition_by=_optional_string(
             header_values=header_values, key="partition_by", file_path=file_path
         ),
@@ -256,6 +282,48 @@ def _parse_model_header(*, header: str, file_path: Path) -> dict[str, Any]:
             f"MODEL(...) in '{file_path}' contains unsupported keys: {unknown_key_list}"
         )
     return parsed_header
+
+
+def _model_kind(*, header_values: dict[str, Any], file_path: Path) -> ModelKind:
+    value: Any = header_values.get("kind", ModelKind.TABLE)
+    try:
+        return ModelKind(value)
+    except (TypeError, ValueError) as error:
+        raise PipelineDiscoveryError(
+            f"MODEL(...) in '{file_path}' must define 'kind' as 'table' or 'view'"
+        ) from error
+
+
+def _validate_view_header(*, header_values: dict[str, Any], file_path: Path) -> None:
+    forbidden_keys: tuple[str, ...] = tuple(
+        sorted(key for key in header_values if key in VIEW_FORBIDDEN_MODEL_KEYS)
+    )
+    if forbidden_keys:
+        raise PipelineDiscoveryError(
+            f"View MODEL(...) in '{file_path}' cannot define table/replay fields: "
+            f"{', '.join(forbidden_keys)}"
+        )
+
+
+def _validate_view_refs(
+    *, query: str, file_path: Path, source_line: int, source_column: int
+) -> None:
+    parsed_refs: tuple[ParsedRef, ...] = tuple(
+        extract_refs(
+            sql=query,
+            source_path=file_path,
+            source_line=source_line,
+            source_column=source_column,
+        )
+    )
+    typed_ref_names: tuple[str, ...] = tuple(
+        sorted({parsed_ref.name for parsed_ref in parsed_refs if parsed_ref.ref_type is not None})
+    )
+    if typed_ref_names:
+        raise PipelineDiscoveryError(
+            f"View MODEL(...) in '{file_path}' cannot declare ref_type annotations for: "
+            f"{', '.join(typed_ref_names)}"
+        )
 
 
 def _require_string(*, header_values: dict[str, Any], key: str, file_path: Path) -> str:

@@ -1,14 +1,16 @@
 """Build the selectable audit deployment candidates for a target."""
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.adapter.models import InspectedManagedTableState
-from streambuild.compiler.compile.constants import DESIRED_OBJECT_TYPE_TABLE
-from streambuild.compiler.compile.models import ObjectKey
+from streambuild.adapter.models import (
+    AdapterDeploymentInventory,
+    AdapterDeploymentRecord,
+    InspectedManagedTableState,
+)
 from streambuild.compiler.planner.main.deployment_id_from_physical_name import (
     deployment_id_from_physical_name,
 )
-from streambuild.compiler.planner.main.inspect_root_deployment_state import (
-    inspect_root_deployment_state,
+from streambuild.compiler.planner.main.is_deployment_physical_name import (
+    is_deployment_physical_name,
 )
 from streambuild.executor.audit_backfill.models import AuditDeploymentCandidate
 
@@ -24,33 +26,28 @@ def build_audit_deployment_candidates(
     inspected_state: InspectedManagedTableState = client.inspect_managed_table_state(
         default_database
     )
+    inventory: AdapterDeploymentInventory = client.load_deployment_inventory(metadata_database)
+    existing_names: frozenset[str] = client.load_catalog(default_database).relation_names()
+    persisted_deployment_ids: set[str] = {
+        deployment.deployment_id
+        for deployment in inventory.deployments
+        if _deployment_has_existing_mapping(deployment=deployment, existing_names=existing_names)
+    }
+    inspected_deployment_ids: set[str] = {
+        deployment_id_from_physical_name(candidate.physical_name)
+        for candidate in inspected_state.physical_candidates
+        if is_deployment_physical_name(candidate.physical_name)
+    }
     all_deployment_ids: tuple[str, ...] = tuple(
-        sorted(
-            {
-                deployment_id_from_physical_name(candidate.physical_name)
-                for candidate in inspected_state.physical_candidates
-            }
-        )
+        sorted(persisted_deployment_ids | inspected_deployment_ids)
     )
-    relevant_root_keys: tuple[ObjectKey, ...] = tuple(
-        ObjectKey(
-            database=default_database,
-            object_type=DESIRED_OBJECT_TYPE_TABLE,
-            name=binding.logical_name,
-        )
+    active_deployment_ids: set[str] = {
+        deployment_id_from_physical_name(binding.physical_name)
         for binding in inspected_state.active_bindings
-    )
-    if not relevant_root_keys:
+        if is_deployment_physical_name(binding.physical_name)
+    }
+    if not active_deployment_ids:
         return tuple(AuditDeploymentCandidate(deployment_id=value) for value in all_deployment_ids)
-
-    active_deployment_ids: set[str] = set()
-    root_key: ObjectKey
-    for root_key in relevant_root_keys:
-        active_deployment_id: str | None = inspect_root_deployment_state(
-            inspected_state=inspected_state, root_key=root_key
-        ).active_deployment_id
-        if active_deployment_id is not None:
-            active_deployment_ids.add(active_deployment_id)
     if len(active_deployment_ids) != 1:
         return tuple(AuditDeploymentCandidate(deployment_id=value) for value in all_deployment_ids)
 
@@ -59,4 +56,12 @@ def build_audit_deployment_candidates(
         AuditDeploymentCandidate(deployment_id=value)
         for value in all_deployment_ids
         if value > active_deployment_id
+    )
+
+
+def _deployment_has_existing_mapping(
+    *, deployment: AdapterDeploymentRecord, existing_names: frozenset[str]
+) -> bool:
+    return any(
+        mapping.physical_name in existing_names for mapping in deployment.prepared_object_mappings
     )

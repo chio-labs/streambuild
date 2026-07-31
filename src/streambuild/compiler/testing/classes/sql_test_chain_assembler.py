@@ -38,7 +38,9 @@ class SqlTestChainAssembler:
         self._reference_rewriter: SqlReferenceRewriter = reference_rewriter
         self._registry: dict[str, CompiledModel] = _build_registry(compiled_pipelines)
         self._source_names: frozenset[str] = frozenset(
-            compiled_pipeline.pipeline.source.name for compiled_pipeline in compiled_pipelines
+            compiled_pipeline.source.key.name
+            for compiled_pipeline in compiled_pipelines
+            if compiled_pipeline.source is not None
         )
         self._mock_cte_by_name: dict[str, str] = {
             mock.name: mock.cte_name for mock in payload.mocks
@@ -152,5 +154,5 @@ def _build_registry(
     for compiled_pipeline in compiled_pipelines:
         compiled_model: CompiledModel
         for compiled_model in compiled_pipeline.models:
-            registry[compiled_model.transform.name] = compiled_model
+            registry[compiled_model.key.name] = compiled_model
     return registry

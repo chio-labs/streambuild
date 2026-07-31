@@ -188,7 +188,8 @@ def test_given_metadata_database_when_rendering_then_it_returns_expected_metadat
                 "prepared_object_mappings_json": (
                     '[{"logical_key": {"database": null, "object_type": "table", '
                     '"name": "tbl__orders_enriched"}, "physical_name": '
-                    '"tbl__orders_enriched__20260408T130000Z_ab12cd"}]'
+                    '"tbl__orders_enriched__20260408T130000Z_ab12cd", '
+                    '"logical_model_name": "orders_enriched"}]'
                 ),
             },
         ),

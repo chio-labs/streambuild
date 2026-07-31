@@ -25,6 +25,7 @@ from streambuild.adapter.models import (
     AdapterReplayRequest,
     AdapterStableView,
     AdapterTable,
+    AdapterView,
     CatalogSnapshot,
     InspectedManagedTableState,
 )
@@ -43,6 +44,7 @@ from streambuild.adapters.clickhouse._helpers.metadata import (
     migrate_clickhouse_metadata_state,
     persist_clickhouse_metadata_state,
     record_clickhouse_target_ownership,
+    remove_clickhouse_target_ownership,
 )
 from streambuild.adapters.clickhouse._helpers.readiness import compare_clickhouse_readiness
 from streambuild.adapters.clickhouse._helpers.rendering import render_clickhouse_resource
@@ -127,6 +129,22 @@ class ClickHouseConnection(AdapterConnection):
 
         record_clickhouse_target_ownership(connection=self, database=database, records=records)
 
+    def remove_target_ownership(
+        self,
+        *,
+        database: str,
+        target_database: str,
+        relation_names: tuple[str, ...],
+    ) -> None:
+        """Remove retired ClickHouse ownership claims."""
+
+        remove_clickhouse_target_ownership(
+            connection=self,
+            database=database,
+            target_database=target_database,
+            relation_names=relation_names,
+        )
+
     def command(self, statement: str) -> None:
         """Execute a ClickHouse command statement."""
 
@@ -172,7 +190,13 @@ class ClickHouseConnection(AdapterConnection):
     def render_resource(
         self,
         *,
-        resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterStableView,
+        resource: (
+            AdapterManagedSource
+            | AdapterTable
+            | AdapterMaterializedView
+            | AdapterView
+            | AdapterStableView
+        ),
         database: str,
         if_not_exists: bool = False,
     ) -> str:
@@ -187,7 +211,13 @@ class ClickHouseConnection(AdapterConnection):
     def realize_resource(
         self,
         *,
-        resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterStableView,
+        resource: (
+            AdapterManagedSource
+            | AdapterTable
+            | AdapterMaterializedView
+            | AdapterView
+            | AdapterStableView
+        ),
         database: str,
         if_not_exists: bool = False,
     ) -> None:

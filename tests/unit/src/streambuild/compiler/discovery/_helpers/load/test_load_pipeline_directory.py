@@ -1,10 +1,16 @@
 from pathlib import Path
+from typing import cast
 
 import pytest
 
 from streambuild.compiler.discovery._helpers.load import load_pipeline_directory
 from streambuild.compiler.discovery.exceptions import PipelineDiscoveryError
-from streambuild.compiler.discovery.models import LoadedPipeline, ReplayOnChangePolicy
+from streambuild.compiler.discovery.models import (
+    KafkaLandingStep,
+    LoadedPipeline,
+    ReplayOnChangePolicy,
+    TransformStep,
+)
 from streambuild.compiler.discovery.types import BoundedReplayFallback, ReplayOnChangeMode
 from tests.unit.src.streambuild.compiler.discovery._helpers.load._test_types import (
     LoadRegistryPipelineTestCase,
@@ -38,7 +44,8 @@ def test_given_registry_project_when_loading_pipeline_then_it_resolves_source(
     )
 
     assert loaded.pipeline.name == test_case.expected_pipeline_name
-    assert loaded.pipeline.source.name == test_case.expected_source_name
+    source: KafkaLandingStep = cast(KafkaLandingStep, loaded.pipeline.source)
+    assert source.name == test_case.expected_source_name
     assert (
         tuple(transform.name for transform in loaded.pipeline.transforms)
         == test_case.expected_transform_names
@@ -84,7 +91,8 @@ def test_given_replay_policies_when_loading_then_it_uses_renamed_values(
 
     loaded: LoadedPipeline = load_pipeline_directory(pipeline_dir)
     pipeline_policy: ReplayOnChangePolicy | None = loaded.pipeline.replay_on_change
-    model_policy: ReplayOnChangePolicy | None = loaded.pipeline.transforms[0].replay_on_change
+    transform: TransformStep = cast(TransformStep, loaded.pipeline.transforms[0])
+    model_policy: ReplayOnChangePolicy | None = transform.replay_on_change
 
     assert pipeline_policy is not None
     assert pipeline_policy.breaking is not None
@@ -96,9 +104,7 @@ def test_given_replay_policies_when_loading_then_it_uses_renamed_values(
     assert model_policy is not None
     assert model_policy.breaking is not None
     assert model_policy.breaking.lookback_seconds == test_case.expected_model_breaking_seconds
-    assert (
-        loaded.pipeline.transforms[0].bounded_replay_fallback == test_case.expected_model_fallback
-    )
+    assert transform.bounded_replay_fallback == test_case.expected_model_fallback
 
 
 @pytest.mark.parametrize(

@@ -22,3 +22,24 @@ class FilteredClosureTestCase:
 class GraphCycleTestCase:
     description: str
     expected_error_fragment: str
+
+
+@dataclass(frozen=True)
+class ViewGraphTestCase:
+    description: str
+    expected_upstream_edges: tuple[tuple[str, str], ...]
+    expected_downstream_edges: tuple[tuple[str, str], ...]
+
+
+@dataclass(frozen=True)
+class NonTerminalViewGraphTestCase:
+    description: str
+    expected_error_fragment: str
+
+
+@dataclass(frozen=True)
+class ViewAuxiliaryReferenceTestCase:
+    description: str
+    expected_test_case_count: int
+    expected_audit_count: int
+    expected_graph_names: tuple[str, ...]

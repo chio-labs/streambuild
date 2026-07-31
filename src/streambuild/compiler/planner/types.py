@@ -7,6 +7,7 @@ from streambuild.compiler.compile.models import (
     DesiredKafkaTable,
     DesiredMaterializedView,
     DesiredTable,
+    DesiredView,
 )
 
 if TYPE_CHECKING:
@@ -14,10 +15,11 @@ if TYPE_CHECKING:
         ActualKafkaTable,
         ActualMaterializedView,
         ActualTable,
+        ActualView,
     )
 
-type DesiredObject = DesiredKafkaTable | DesiredTable | DesiredMaterializedView
-type ActualObject = ActualKafkaTable | ActualTable | ActualMaterializedView
+type DesiredObject = DesiredKafkaTable | DesiredTable | DesiredMaterializedView | DesiredView
+type ActualObject = ActualKafkaTable | ActualTable | ActualMaterializedView | ActualView
 
 
 class PlannedChangeType(StrEnum):
@@ -58,6 +60,7 @@ class DeploymentPhase(StrEnum):
 class DeploymentAction(StrEnum):
     PLAN_SHADOW_TABLE = "plan_shadow_table"
     PLAN_SHADOW_MATERIALIZED_VIEW = "plan_shadow_materialized_view"
+    PLAN_SHADOW_VIEW = "plan_shadow_view"
     BACKFILL_SUBTREE = "backfill_subtree"
     AUDIT_SUBTREE = "audit_subtree"
     PUBLISH_SUBTREE = "publish_subtree"
@@ -95,3 +98,11 @@ class DirectRelationAction(StrEnum):
 
     DROP = "drop"
     CREATE = "create"
+
+
+class DirectResourceKind(StrEnum):
+    """The physical resource kind of one direct relation."""
+
+    TABLE = "table"
+    MATERIALIZED_VIEW = "materialized_view"
+    VIEW = "view"

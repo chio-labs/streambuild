@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import cast
 
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from streambuild.cli.entry._helpers.compiler_profile import build_compiler_adapter_profile
@@ -9,6 +10,7 @@ from streambuild.compiler.compile.main._compile_pipeline import compile_pipeline
 from streambuild.compiler.compile.models import (
     CompiledPipeline,
     CompiledProject,
+    CompiledSource,
     CompilerAdapterProfile,
 )
 from streambuild.compiler.discovery.main._discover_pipelines import discover_pipelines
@@ -87,7 +89,7 @@ def build_compiled_external_source_pipeline() -> CompiledPipeline:
 def build_realized_external_source_project() -> RealizedProject:
     compiled_pipeline: CompiledPipeline = build_compiled_external_source_pipeline()
     compiled_project: CompiledProject = CompiledProject(
-        sources=(compiled_pipeline.source,),
+        sources=(cast(CompiledSource, compiled_pipeline.source),),
         models=compiled_pipeline.models,
         pipelines=(compiled_pipeline,),
         tests=(),
