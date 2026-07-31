@@ -2,7 +2,12 @@
 
 from pathlib import Path
 
-from streambuild.adapter.models import AdapterManagedSource, AdapterMaterializedView, AdapterTable
+from streambuild.adapter.models import (
+    AdapterManagedSource,
+    AdapterMaterializedView,
+    AdapterTable,
+    AdapterView,
+)
 from streambuild.cli.compile._helpers.content import (
     normalized_sql,
     static_test_sql,
@@ -12,6 +17,7 @@ from streambuild.cli.compile._helpers.content import (
 from streambuild.cli.compile._helpers.manifest import build_manifest_json
 from streambuild.cli.compile._helpers.paths import (
     audit_path,
+    model_ordinary_view_path,
     model_query_path,
     model_table_path,
     model_view_path,
@@ -71,7 +77,8 @@ def _rendered_resources_by_logical_key(
     pipeline: CompiledPipeline
     for pipeline in analysis.compiled_project.pipelines:
         database: str = _pipeline_database(analysis=analysis, pipeline=pipeline)
-        database_by_key.setdefault(pipeline.source.key, database)
+        if pipeline.source is not None:
+            database_by_key.setdefault(pipeline.source.key, database)
         model: CompiledModel
         for model in pipeline.models:
             database_by_key[model.key] = database
@@ -234,12 +241,13 @@ def _workflow_entries(
     source_index: int
     source_resource: AdapterResource
     source_sql: str
-    for source_index, (source_resource, source_sql) in enumerate(
-        rendered_by_key[pipeline.source.key], start=1
-    ):
-        entries.append(
-            (f"{source_index:04d}_{_resource_step_name(source_resource)}.sql", source_sql)
-        )
+    if pipeline.source is not None:
+        for source_index, (source_resource, source_sql) in enumerate(
+            rendered_by_key[pipeline.source.key], start=1
+        ):
+            entries.append(
+                (f"{source_index:04d}_{_resource_step_name(source_resource)}.sql", source_sql)
+            )
     model_index: int
     model: CompiledModel
     for model_index, model in enumerate(ordered_models, start=1):
@@ -256,6 +264,10 @@ def _workflow_entries(
 def _model_resource_path(*, model: CompiledModel, resource: AdapterResource) -> Path:
     if isinstance(resource, AdapterTable):
         return model_table_path(pipeline_name=model.pipeline_name, model_name=model.key.name)
+    if isinstance(resource, AdapterView):
+        return model_ordinary_view_path(
+            pipeline_name=model.pipeline_name, model_name=model.key.name
+        )
     return model_view_path(pipeline_name=model.pipeline_name, model_name=model.key.name)
 
 
@@ -268,7 +280,11 @@ def _resource_step_name(resource: AdapterResource) -> str:
 
 
 def _resource_suffix(resource: AdapterResource) -> str:
-    return "table" if isinstance(resource, AdapterTable) else "mv"
+    if isinstance(resource, AdapterTable):
+        return "table"
+    if isinstance(resource, AdapterView):
+        return "view"
+    return "mv"
 
 
 def _pipeline_database(*, analysis: CompileAnalysis, pipeline: CompiledPipeline) -> str:

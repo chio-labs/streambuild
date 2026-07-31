@@ -152,7 +152,7 @@ def build_janitor_integration_state(
         publish_rows=(
             (
                 active_deployment_id,
-                _format_clickhouse_time(now - timedelta(days=30)),
+                _format_clickhouse_time(now),
                 ("tbl__orders_enriched",),
             ),
             (

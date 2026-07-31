@@ -8,14 +8,16 @@ from streambuild.adapter.models import (
     InspectedPhysicalTableCandidate,
 )
 from streambuild.compiler.compile.constants import (
+    KAFKA_TABLE_NAME_PREFIX,
+    MATERIALIZED_VIEW_NAME_PREFIX,
     RAW_TABLE_NAME_PREFIX,
-    TRANSFORM_TABLE_NAME_PREFIX,
 )
 from streambuild.compiler.compile.models import (
     DesiredKafkaTable,
     DesiredMaterializedView,
     DesiredState,
     DesiredTable,
+    DesiredView,
     ObjectKey,
     TableSpec,
 )
@@ -23,9 +25,11 @@ from streambuild.compiler.planner._helpers.warehouse_catalog import (
     active_table_specs_from_catalog,
     existing_table_names,
 )
-from streambuild.compiler.planner.constants import VIEW_RELATION_ENGINE
 from streambuild.compiler.planner.main.inspect_root_deployment_state import (
     inspect_root_deployment_state,
+)
+from streambuild.compiler.planner.main.is_deployment_physical_name import (
+    is_deployment_physical_name,
 )
 from streambuild.compiler.planner.main.logical_name_from_physical_name import (
     logical_name_from_physical_name,
@@ -47,23 +51,25 @@ def build_inspected_managed_table_state_from_catalog(
     physical_candidates: list[InspectedPhysicalTableCandidate] = []
     relation: CatalogRelation
     for relation in catalog.relations:
-        if relation.stable_binding_name is not None:
-            active_bindings.append(
-                InspectedActiveTableBinding(
-                    database=database,
-                    logical_name=relation.name,
-                    physical_name=relation.stable_binding_name,
-                )
-            )
         logical_name: str = logical_name_from_physical_name(relation.name)
-        if relation.engine != VIEW_RELATION_ENGINE and logical_name.startswith(
-            (RAW_TABLE_NAME_PREFIX, TRANSFORM_TABLE_NAME_PREFIX)
+        if is_deployment_physical_name(relation.name) and not logical_name.startswith(
+            (KAFKA_TABLE_NAME_PREFIX, MATERIALIZED_VIEW_NAME_PREFIX)
         ):
             physical_candidates.append(
                 InspectedPhysicalTableCandidate(
                     database=database,
                     logical_name=logical_name,
                     physical_name=relation.name,
+                    object_type="view" if relation.query_sql is not None else "table",
+                )
+            )
+            continue
+        if relation.stable_binding_name is not None:
+            active_bindings.append(
+                InspectedActiveTableBinding(
+                    database=database,
+                    logical_name=relation.name,
+                    physical_name=relation.stable_binding_name,
                 )
             )
     return InspectedManagedTableState(
@@ -128,11 +134,13 @@ def _inspect_active_deployments(
     inspected_state: InspectedManagedTableState,
 ) -> dict[ObjectKey, RootDeploymentInspection]:
     active_deployment_by_root: dict[ObjectKey, RootDeploymentInspection] = {}
-    desired_object: DesiredKafkaTable | DesiredTable | DesiredMaterializedView
+    desired_object: DesiredKafkaTable | DesiredTable | DesiredMaterializedView | DesiredView
     for desired_object in desired_state.objects:
-        if not isinstance(desired_object, DesiredTable):
+        if not isinstance(desired_object, (DesiredTable, DesiredView)):
             continue
-        if not desired_object.name.startswith(TRANSFORM_TABLE_NAME_PREFIX):
+        if isinstance(desired_object, DesiredTable) and desired_object.name.startswith(
+            RAW_TABLE_NAME_PREFIX
+        ):
             continue
         active_deployment_by_root[desired_object.key] = inspect_root_deployment_state(
             inspected_state=inspected_state,
@@ -182,12 +190,17 @@ def _latest_object_state_records_by_keys(
 
 
 def _transform_view_keys(desired_state: DesiredState) -> tuple[ObjectKey, ...]:
+    model_table_names: frozenset[str] = frozenset(
+        object_.name
+        for object_ in desired_state.objects
+        if isinstance(object_, DesiredTable) and not object_.name.startswith(RAW_TABLE_NAME_PREFIX)
+    )
     keys: list[ObjectKey] = []
-    desired_object: DesiredKafkaTable | DesiredTable | DesiredMaterializedView
+    desired_object: DesiredKafkaTable | DesiredTable | DesiredMaterializedView | DesiredView
     for desired_object in desired_state.objects:
         if not isinstance(desired_object, DesiredMaterializedView):
             continue
-        if desired_object.target_table_name.startswith(TRANSFORM_TABLE_NAME_PREFIX):
+        if desired_object.target_table_name in model_table_names:
             keys.append(desired_object.key)
     return tuple(keys)
 
@@ -207,11 +220,11 @@ def _active_table_names(
     active_physical_names_by_logical_name: dict[str, str],
 ) -> tuple[str, ...]:
     active_table_names: set[str] = set()
-    desired_object: DesiredKafkaTable | DesiredTable | DesiredMaterializedView
+    desired_object: DesiredKafkaTable | DesiredTable | DesiredMaterializedView | DesiredView
     for desired_object in desired_state.objects:
         if not isinstance(desired_object, DesiredTable):
             continue
-        if not desired_object.name.startswith(TRANSFORM_TABLE_NAME_PREFIX):
+        if desired_object.name.startswith(RAW_TABLE_NAME_PREFIX):
             continue
         root_inspection: RootDeploymentInspection = active_deployment_by_root[desired_object.key]
         if root_inspection.state_kind != RootDeploymentStateKind.ACTIVE_VIEW_PRESENT:

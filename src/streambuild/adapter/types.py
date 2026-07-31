@@ -17,6 +17,8 @@ if TYPE_CHECKING:
         AdapterSourceRealization,
         AdapterStableView,
         AdapterTable,
+        AdapterView,
+        AdapterViewRealizationRequest,
     )
 
 
@@ -58,7 +60,13 @@ class AdapterResourceRenderer(Protocol):
     def __call__(
         self,
         *,
-        resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterStableView,
+        resource: (
+            AdapterManagedSource
+            | AdapterTable
+            | AdapterMaterializedView
+            | AdapterView
+            | AdapterStableView
+        ),
         database: str,
         if_not_exists: bool = False,
     ) -> str: ...
@@ -83,7 +91,9 @@ class AdapterModelRelationNamer(Protocol):
 class AdapterModelRealizer(Protocol):
     """Realize one semantically compiled logical model."""
 
-    def __call__(self, *, request: AdapterModelRealizationRequest) -> AdapterModelRealization: ...
+    def __call__(
+        self, *, request: AdapterModelRealizationRequest | AdapterViewRealizationRequest
+    ) -> AdapterModelRealization: ...
 
 
 class AdapterSetDifferenceComparisonRenderer(Protocol):

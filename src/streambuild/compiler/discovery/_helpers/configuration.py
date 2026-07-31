@@ -16,6 +16,9 @@ from streambuild.compiler.discovery.constants import (
     LEGACY_PROJECT_CONFIG_FILE_NAME,
     LOCAL_CONFIG_FILE_NAME,
     LOCAL_CONFIG_KEYS,
+    NAMING_KEYS,
+    NAMING_TABLE_PREFIX_KEY,
+    NAMING_VIEW_PREFIX_KEY,
     PROJECT_CONFIG_FILE_NAME,
     PROJECT_CONFIG_KEYS,
     SECONDS_BY_DURATION_UNIT,
@@ -32,6 +35,7 @@ from streambuild.compiler.discovery.models import (
     LocalProjectSettings,
     LocalProjectTarget,
     ProjectDefaults,
+    ProjectNaming,
     ProjectTarget,
     RawConnectionConfig,
     ReplayOnChangePolicy,
@@ -183,6 +187,7 @@ def _parse_project_config(
         ),
         targets=_parse_project_targets(payload=payload.get("targets"), file_path=file_path),
         defaults=_parse_project_defaults(payload=payload.get("defaults"), file_path=file_path),
+        naming=_parse_project_naming(payload=payload.get("naming"), file_path=file_path),
     )
 
 
@@ -408,6 +413,39 @@ def _parse_project_defaults(*, payload: object, file_path: Path) -> ProjectDefau
     )
 
 
+def _parse_project_naming(*, payload: object, file_path: Path) -> ProjectNaming:
+    mapping: dict[str, object] = _optional_mapping(
+        payload=payload,
+        label="naming",
+        file_path=file_path,
+    )
+    _validate_allowed_keys(
+        mapping=mapping,
+        allowed_keys=NAMING_KEYS,
+        label="naming",
+        file_path=file_path,
+    )
+    defaults: ProjectNaming = ProjectNaming()
+    return ProjectNaming(
+        table_prefix=_optional_string_allowing_empty(
+            mapping=mapping,
+            key=NAMING_TABLE_PREFIX_KEY,
+            label="naming",
+            file_path=file_path,
+        )
+        if NAMING_TABLE_PREFIX_KEY in mapping
+        else defaults.table_prefix,
+        view_prefix=_optional_string_allowing_empty(
+            mapping=mapping,
+            key=NAMING_VIEW_PREFIX_KEY,
+            label="naming",
+            file_path=file_path,
+        )
+        if NAMING_VIEW_PREFIX_KEY in mapping
+        else defaults.view_prefix,
+    )
+
+
 def _parse_replay_on_change(
     *, payload: object, label: str, file_path: Path
 ) -> ReplayOnChangePolicy | None:
@@ -484,6 +522,15 @@ def _optional_mapping(*, payload: object, label: str, file_path: Path) -> dict[s
             f"{file_path} {label} must not interpolate mapping keys: {', '.join(interpolated_keys)}"
         )
     return mapping
+
+
+def _optional_string_allowing_empty(
+    *, mapping: dict[str, object], key: str, label: str, file_path: Path
+) -> str:
+    value: object = mapping.get(key)
+    if not isinstance(value, str):
+        raise ProjectConfigError(f"{file_path} {label}.{key} must be a string")
+    return value
 
 
 def _require_non_empty_string(

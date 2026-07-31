@@ -6,6 +6,7 @@ from streambuild.compiler.compile.models import (
     DesiredMaterializedView,
     DesiredState,
     DesiredTable,
+    DesiredView,
     ObjectKey,
 )
 from streambuild.compiler.graph.exceptions import GraphInputError
@@ -17,7 +18,7 @@ def build_desired_reverse_deps(
     """Build downstream desired-object keys by upstream key."""
 
     reverse_deps: dict[ObjectKey, list[ObjectKey]] = {}
-    object_: DesiredKafkaTable | DesiredTable | DesiredMaterializedView
+    object_: DesiredKafkaTable | DesiredTable | DesiredMaterializedView | DesiredView
     for object_ in desired_state.objects:
         dep_key: ObjectKey
         for dep_key in object_.deps:
@@ -36,17 +37,17 @@ def order_desired_keys(
     desired_index_by_key: dict[ObjectKey, int] = {
         object_.key: index for index, object_ in enumerate(desired_state.objects)
     }
-    object_by_key: dict[ObjectKey, DesiredKafkaTable | DesiredTable | DesiredMaterializedView] = {
-        object_.key: object_ for object_ in desired_state.objects if object_.key in included_keys
-    }
+    object_by_key: dict[
+        ObjectKey, DesiredKafkaTable | DesiredTable | DesiredMaterializedView | DesiredView
+    ] = {object_.key: object_ for object_ in desired_state.objects if object_.key in included_keys}
     reverse_deps: dict[ObjectKey, tuple[ObjectKey, ...]] = build_desired_reverse_deps(
         desired_state=desired_state
     )
     indegree_by_key: dict[ObjectKey, int] = {}
     key: ObjectKey
-    object_: DesiredKafkaTable | DesiredTable | DesiredMaterializedView
+    object_: DesiredKafkaTable | DesiredTable | DesiredMaterializedView | DesiredView
     for key, object_ in object_by_key.items():
-        indegree_by_key[key] = sum(1 for dep_key in object_.deps if dep_key in included_keys)
+        indegree_by_key[key] = sum(1 for dep_key in object_.deps if dep_key in object_by_key)
     ready_keys: list[ObjectKey] = sorted(
         (key for key, indegree in indegree_by_key.items() if indegree == 0),
         key=desired_index_by_key.__getitem__,
@@ -102,16 +103,16 @@ def find_nearest_replay_anchor_key(
 ) -> ObjectKey:
     """Find the nearest eligible table through realized driving dependencies only."""
 
-    object_by_key: dict[ObjectKey, DesiredKafkaTable | DesiredTable | DesiredMaterializedView] = {
-        object_.key: object_ for object_ in desired_state.objects
-    }
+    object_by_key: dict[
+        ObjectKey, DesiredKafkaTable | DesiredTable | DesiredMaterializedView | DesiredView
+    ] = {object_.key: object_ for object_ in desired_state.objects}
     current_key: ObjectKey = root_key
     visited_keys: set[ObjectKey] = set()
     while current_key not in visited_keys:
         visited_keys.add(current_key)
-        current_object: DesiredKafkaTable | DesiredTable | DesiredMaterializedView | None = (
-            object_by_key.get(current_key)
-        )
+        current_object: (
+            DesiredKafkaTable | DesiredTable | DesiredMaterializedView | DesiredView | None
+        ) = object_by_key.get(current_key)
         if current_object is None:
             return current_key
         if isinstance(current_object, DesiredMaterializedView):

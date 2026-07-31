@@ -6,6 +6,7 @@ from streambuild.compiler.compile.models import (
     CompiledModel,
     CompiledPipeline,
     CompiledSource,
+    CompiledTableModel,
     LogicalResourceKey,
 )
 from streambuild.compiler.compile.types import LogicalResourceType
@@ -194,12 +195,14 @@ def build_deep_chain_assembler(*, model_count: int) -> SqlTestChainAssembler:
         )
         transforms.append(transform)
         models.append(
-            CompiledModel(
+            CompiledTableModel(
                 key=LogicalResourceKey(
                     resource_type=LogicalResourceType.MODEL,
                     name=model_name,
                 ),
                 pipeline_name="deep_chain",
+                relation_name=f"tbl__{model_name}",
+                kind="table",
                 transform=transform,
                 sql_analysis=SqlModelAnalysis(
                     authored_sql=query,

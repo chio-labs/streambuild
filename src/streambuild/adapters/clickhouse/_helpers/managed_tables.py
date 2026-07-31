@@ -15,8 +15,11 @@ from streambuild.adapters.clickhouse.models import (
     PhysicalCandidateSystemRow,
 )
 from streambuild.compiler.compile.constants import (
-    RAW_TABLE_NAME_PREFIX,
-    TRANSFORM_TABLE_NAME_PREFIX,
+    KAFKA_TABLE_NAME_PREFIX,
+    MATERIALIZED_VIEW_NAME_PREFIX,
+)
+from streambuild.compiler.planner.main.is_deployment_physical_name import (
+    is_deployment_physical_name,
 )
 from streambuild.compiler.planner.main.logical_name_from_physical_name import (
     logical_name_from_physical_name,
@@ -43,8 +46,20 @@ def build_inspected_managed_table_state(
     )
 
     active_bindings: list[InspectedActiveTableBinding] = []
+    physical_candidates: list[InspectedPhysicalTableCandidate] = []
     row: ActiveBindingSystemRow
     for row in active_binding_rows:
+        logical_name: str = _logical_name_from_physical_name(row.name)
+        if is_deployment_physical_name(row.name) and _is_model_relation_name(logical_name):
+            physical_candidates.append(
+                InspectedPhysicalTableCandidate(
+                    database=database,
+                    logical_name=logical_name,
+                    physical_name=row.name,
+                    object_type="view",
+                )
+            )
+            continue
         physical_name: str | None = extract_stable_binding(
             engine=CLICKHOUSE_VIEW_ENGINE,
             as_select=row.as_select,
@@ -59,19 +74,25 @@ def build_inspected_managed_table_state(
             )
         )
 
-    physical_candidates: tuple[InspectedPhysicalTableCandidate, ...] = tuple(
-        InspectedPhysicalTableCandidate(
-            database=database,
-            logical_name=_logical_name_from_physical_name(row.name),
-            physical_name=row.name,
+    physical_candidate_row: PhysicalCandidateSystemRow
+    for physical_candidate_row in physical_candidate_rows:
+        logical_name: str = _logical_name_from_physical_name(physical_candidate_row.name)
+        if not is_deployment_physical_name(physical_candidate_row.name):
+            continue
+        if not _is_model_relation_name(logical_name):
+            continue
+        physical_candidates.append(
+            InspectedPhysicalTableCandidate(
+                database=database,
+                logical_name=logical_name,
+                physical_name=physical_candidate_row.name,
+                object_type="table",
+            )
         )
-        for row in physical_candidate_rows
-        if _is_managed_table_logical_name(_logical_name_from_physical_name(row.name))
-    )
 
     return InspectedManagedTableState(
         active_bindings=tuple(active_bindings),
-        physical_candidates=physical_candidates,
+        physical_candidates=tuple(physical_candidates),
     )
 
 
@@ -79,8 +100,8 @@ def _logical_name_from_physical_name(physical_name: str) -> str:
     return logical_name_from_physical_name(physical_name)
 
 
-def _is_managed_table_logical_name(logical_name: str) -> bool:
-    return logical_name.startswith((RAW_TABLE_NAME_PREFIX, TRANSFORM_TABLE_NAME_PREFIX))
+def _is_model_relation_name(logical_name: str) -> bool:
+    return not logical_name.startswith((KAFKA_TABLE_NAME_PREFIX, MATERIALIZED_VIEW_NAME_PREFIX))
 
 
 def _decode_active_binding_system_row(row: Mapping[str, object]) -> ActiveBindingSystemRow:

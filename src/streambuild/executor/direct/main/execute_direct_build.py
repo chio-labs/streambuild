@@ -7,7 +7,8 @@ from streambuild.adapter.models import AdapterOwnershipRecord, CatalogSnapshot
 from streambuild.compiler.planner.models import DirectPlan
 from streambuild.executor.direct._helpers.ownership import (
     build_direct_ownership_records,
-    record_direct_ownership,
+    claim_direct_ownership,
+    finalize_direct_ownership,
 )
 from streambuild.executor.direct._helpers.population_plan import build_direct_population_plan
 from streambuild.executor.direct._helpers.preflight import reject_incapable_adapter
@@ -69,16 +70,13 @@ def execute_direct_build(
     assert_preserved_history_covers_ranges(
         client=client, replay_coverage=replay_coverage, database=request.database
     )
-    ownership_records: tuple[AdapterOwnershipRecord, ...] = build_direct_ownership_records(
+    _ = claim_direct_ownership(
+        client=client,
         plan=request.plan,
-        database=request.database,
+        target_database=request.database,
+        metadata_database=request.metadata_database,
         tool_version=request.tool_version,
         replay_coverage=replay_coverage,
-    )
-    record_direct_ownership(
-        client=client,
-        database=request.metadata_database,
-        records=ownership_records,
     )
     dropped: tuple[str, ...] = drop_planned_relations(
         client=client, plan=request.plan, database=request.database
@@ -97,21 +95,9 @@ def execute_direct_build(
         ),
         client=client,
     )
-    completed_coverage: tuple[DirectReplayCoverage, ...] = capture_completed_replay_coverage(
-        client=client, plan=request.plan, database=request.database
-    )
-    completed_ownership_records: tuple[AdapterOwnershipRecord, ...] = (
-        build_direct_ownership_records(
-            plan=request.plan,
-            database=request.database,
-            tool_version=request.tool_version,
-            replay_coverage=completed_coverage,
-        )
-    )
-    record_direct_ownership(
+    completed_ownership_records: tuple[AdapterOwnershipRecord, ...] = _finalize_ownership(
+        request=request,
         client=client,
-        database=request.metadata_database,
-        records=completed_ownership_records,
     )
     return DirectBuildResult(
         database=request.database,
@@ -128,6 +114,27 @@ def execute_direct_build(
         ),
         replayed_model_names=tuple(root.model_key.name for root in request.plan.replay_roots),
     )
+
+
+def _finalize_ownership(
+    *, request: DirectBuildRequest, client: AdapterConnection
+) -> tuple[AdapterOwnershipRecord, ...]:
+    completed_coverage: tuple[DirectReplayCoverage, ...] = capture_completed_replay_coverage(
+        client=client, plan=request.plan, database=request.database
+    )
+    records: tuple[AdapterOwnershipRecord, ...] = build_direct_ownership_records(
+        plan=request.plan,
+        database=request.database,
+        tool_version=request.tool_version,
+        replay_coverage=completed_coverage,
+    )
+    finalize_direct_ownership(
+        client=client,
+        database=request.metadata_database,
+        records=records,
+        plan=request.plan,
+    )
+    return records
 
 
 def _logical_root_boundaries(

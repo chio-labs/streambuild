@@ -16,6 +16,7 @@ from tests.unit.src.streambuild.executor.direct.main._test_types import (
 from tests.unit.src.streambuild.executor.direct.main.helpers import (
     RecordingDirectBuildConnection,
     build_direct_execution_request,
+    build_direct_view_execution_request,
 )
 
 
@@ -102,6 +103,40 @@ def test_given_direct_build_plan_when_executing_then_adapter_actions_match_plan_
         test_case.expected_ownership_record_count
     )
     assert completed_ownership_index > connection.adapter_actions.index("replay:tbl__delta")
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ExecuteDirectBuildTestCase(
+            description="ordinary view build creates ownership without replay activity",
+            selected_model_names=("customer_orders",),
+            expected_drop_statements=("DROP VIEW IF EXISTS analytics.customer_orders SYNC",),
+            expected_created_relation_names=("customer_orders",),
+            expected_replay_relations=(),
+            expected_replay_query_fragments=(),
+            expected_ownership_record_count=2,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_view_only_direct_build_when_executing_then_view_is_replaced_without_replay(
+    test_case: ExecuteDirectBuildTestCase, tmp_path: Path
+) -> None:
+    request: DirectBuildRequest = build_direct_view_execution_request(project_root=tmp_path)
+    connection: RecordingDirectBuildConnection = RecordingDirectBuildConnection()
+
+    result: DirectBuildResult = execute_direct_build(request=request, client=connection)
+
+    assert test_case.expected_drop_statements[0] in connection.adapter_actions
+    assert result.created_relation_names == test_case.expected_created_relation_names
+    assert connection.replay_requests == []
+    assert result.boundaries == ()
+    assert result.replayed_model_names == ()
+    assert tuple(record.resource_kind for record in result.ownership_records) == ("view",)
+    assert connection.adapter_actions.count("record_ownership") == (
+        test_case.expected_ownership_record_count
+    )
 
 
 @pytest.mark.parametrize(

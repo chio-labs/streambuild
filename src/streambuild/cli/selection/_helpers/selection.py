@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-from streambuild.adapter.models import AdapterManagedSource, AdapterMaterializedView, AdapterTable
+from streambuild.adapter.models import (
+    AdapterManagedSource,
+    AdapterMaterializedView,
+    AdapterTable,
+    AdapterView,
+)
 from streambuild.cli.entry.exceptions import CliUserError
 from streambuild.cli.selection.constants import (
     PIPELINE_SELECTOR_NAMESPACE,
@@ -15,6 +20,7 @@ from streambuild.compiler.compile.models import (
     DesiredMaterializedView,
     DesiredState,
     DesiredTable,
+    DesiredView,
     LogicalResourceKey,
     ObjectKey,
 )
@@ -82,10 +88,10 @@ def expand_included_keys(
     selected_model_keys: frozenset[ObjectKey],
 ) -> frozenset[ObjectKey]:
     reverse_deps: dict[ObjectKey, tuple[ObjectKey, ...]] = build_reverse_deps(desired_state)
-    object_by_key: dict[ObjectKey, DesiredTable | DesiredMaterializedView] = {
+    object_by_key: dict[ObjectKey, DesiredTable | DesiredMaterializedView | DesiredView] = {
         object_.key: object_
         for object_ in desired_state.objects
-        if isinstance(object_, (DesiredTable, DesiredMaterializedView))
+        if isinstance(object_, (DesiredTable, DesiredMaterializedView, DesiredView))
     }
     included_keys: set[ObjectKey] = set(selected_model_keys)
     compiled_pipeline: CompiledPipeline
@@ -118,7 +124,9 @@ def expand_included_keys(
         changed = False
         key: ObjectKey
         for key in tuple(included_keys):
-            desired_object: DesiredTable | DesiredMaterializedView | None = object_by_key.get(key)
+            desired_object: DesiredTable | DesiredMaterializedView | DesiredView | None = (
+                object_by_key.get(key)
+            )
             if desired_object is None:
                 continue
             dep_key: ObjectKey
@@ -139,12 +147,12 @@ def filter_desired_state(
     ordered_keys: tuple[ObjectKey, ...] = topologically_order_keys(
         desired_state=desired_state, included_keys=set(included_keys)
     )
-    object_by_key: dict[ObjectKey, DesiredKafkaTable | DesiredTable | DesiredMaterializedView] = {
-        object_.key: object_ for object_ in desired_state.objects if object_.key in included_keys
-    }
-    filtered_objects: tuple[DesiredKafkaTable | DesiredTable | DesiredMaterializedView, ...] = (
-        tuple(object_by_key[key] for key in ordered_keys)
-    )
+    object_by_key: dict[
+        ObjectKey, DesiredKafkaTable | DesiredTable | DesiredMaterializedView | DesiredView
+    ] = {object_.key: object_ for object_ in desired_state.objects if object_.key in included_keys}
+    filtered_objects: tuple[
+        DesiredKafkaTable | DesiredTable | DesiredMaterializedView | DesiredView, ...
+    ] = tuple(object_by_key[key] for key in ordered_keys)
     return DesiredState(
         objects=filtered_objects,
         replay_anchor_keys=frozenset(
@@ -164,6 +172,8 @@ def filter_desired_state(
 def pipeline_source_keys(
     *, compiled_pipeline: CompiledPipeline, realized_project: RealizedProject
 ) -> frozenset[ObjectKey]:
+    if compiled_pipeline.source is None:
+        return frozenset()
     resources: tuple[AdapterResource, ...] = realized_project.resources_by_logical_key[
         compiled_pipeline.source.key
     ]
@@ -182,7 +192,7 @@ def resolve_replay_lineage_mode(
     *,
     compiled_pipelines: tuple[CompiledPipeline, ...],
     selected_model_keys: frozenset[LogicalResourceKey],
-) -> ReplayLineageMode:
+) -> ReplayLineageMode | None:
     replay_lineage_modes: set[ReplayLineageMode] = set()
     selected_pipeline_modes: list[tuple[str, ReplayLineageMode]] = []
     compiled_pipeline: CompiledPipeline
@@ -192,20 +202,25 @@ def resolve_replay_lineage_mode(
         )
         if selected_model_keys and not (pipeline_model_keys & selected_model_keys):
             continue
-        replay_lineage_modes.add(compiled_pipeline.effective_replay_lineage_mode)
+        replay_lineage_mode: ReplayLineageMode | None = (
+            compiled_pipeline.effective_replay_lineage_mode
+        )
+        if replay_lineage_mode is None:
+            continue
+        replay_lineage_modes.add(replay_lineage_mode)
         selected_pipeline_modes.append(
             (
                 compiled_pipeline.pipeline.name,
-                compiled_pipeline.effective_replay_lineage_mode,
+                replay_lineage_mode,
             )
         )
-    if len(replay_lineage_modes) != 1:
+    if len(replay_lineage_modes) > 1:
         mode_details: str = ", ".join(
             f"{pipeline_name}={replay_lineage_mode}"
             for pipeline_name, replay_lineage_mode in sorted(selected_pipeline_modes)
         )
         raise CliUserError(f"Selected pipelines disagree on replay_lineage_mode: {mode_details}")
-    return next(iter(replay_lineage_modes))
+    return next(iter(replay_lineage_modes), None)
 
 
 def model_keys_by_pipeline(
@@ -230,23 +245,25 @@ def physical_model_keys(
     for logical_key in logical_model_keys:
         if logical_key.resource_type != LogicalResourceType.MODEL:
             raise CliUserError(f"Cannot select non-model logical resource '{logical_key.name}'")
-        resource: AdapterTable = next(
+        resource: AdapterTable | AdapterView = next(
             resource
             for resource in realized_project.resources_by_logical_key[logical_key]
-            if isinstance(resource, AdapterTable)
+            if isinstance(resource, (AdapterTable, AdapterView))
         )
         keys.add(_resource_key(resource))
     return frozenset(keys)
 
 
 def _resource_key(
-    resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView,
+    resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterView,
 ) -> ObjectKey:
     object_type: str
     if isinstance(resource, AdapterManagedSource):
         object_type = "kafka_table"
     elif isinstance(resource, AdapterMaterializedView):
         object_type = "materialized_view"
+    elif isinstance(resource, AdapterView):
+        object_type = "view"
     else:
         object_type = "table"
     return ObjectKey(database=None, object_type=object_type, name=resource.name)

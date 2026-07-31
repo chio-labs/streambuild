@@ -22,10 +22,20 @@ from tests.unit.src.streambuild.compiler.planner._test_types import (
     [
         InspectRootDeploymentStateTestCase(
             description="classifies active view binding as active deployment",
-            active_bindings=(("tbl__orders_enriched", "tbl__orders_enriched__dep_a"),),
-            physical_candidates=(("tbl__orders_enriched", "tbl__orders_enriched__dep_a"),),
+            active_bindings=(
+                (
+                    "tbl__orders_enriched",
+                    "tbl__orders_enriched__20260726T180000Z_depa01",
+                ),
+            ),
+            physical_candidates=(
+                (
+                    "tbl__orders_enriched",
+                    "tbl__orders_enriched__20260726T180000Z_depa01",
+                ),
+            ),
             expected_state_kind="active_view_present",
-            expected_active_deployment_id="dep_a",
+            expected_active_deployment_id="20260726T180000Z_depa01",
         ),
         InspectRootDeploymentStateTestCase(
             description="classifies no view and no candidates as greenfield",
@@ -38,8 +48,14 @@ from tests.unit.src.streambuild.compiler.planner._test_types import (
             description="classifies no view with candidates as logical view missing",
             active_bindings=(),
             physical_candidates=(
-                ("tbl__orders_enriched", "tbl__orders_enriched__dep_a"),
-                ("tbl__orders_enriched", "tbl__orders_enriched__dep_b"),
+                (
+                    "tbl__orders_enriched",
+                    "tbl__orders_enriched__20260726T180000Z_depa01",
+                ),
+                (
+                    "tbl__orders_enriched",
+                    "tbl__orders_enriched__20260726T190000Z_depb02",
+                ),
             ),
             expected_state_kind="logical_view_missing",
             expected_active_deployment_id=None,

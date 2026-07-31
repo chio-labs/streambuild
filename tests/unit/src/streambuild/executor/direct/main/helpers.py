@@ -9,6 +9,7 @@ from streambuild.adapter.models import (
     AdapterReplayRequest,
     AdapterStableView,
     AdapterTable,
+    AdapterView,
 )
 from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.compiler.planner.models import DirectPlan
@@ -19,6 +20,7 @@ from tests.unit.src.streambuild.compiler.planner.helpers import (
     build_settled_direct_snapshot,
     plan_direct_scope,
     write_direct_scope_project,
+    write_direct_view_only_project,
 )
 
 
@@ -60,7 +62,11 @@ class RecordingDirectBuildConnection(RecordingAdapterConnection):
     def realize_resource(
         self,
         *,
-        resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterStableView,
+        resource: AdapterManagedSource
+        | AdapterTable
+        | AdapterMaterializedView
+        | AdapterView
+        | AdapterStableView,
         database: str,
         if_not_exists: bool = False,
     ) -> None:
@@ -81,6 +87,25 @@ def build_direct_execution_request(
         analysis=analysis,
         snapshot=build_settled_direct_snapshot(),
         selected_model_names=selected_model_names,
+    )
+    return DirectBuildRequest(
+        plan=plan,
+        realized_project=analysis.realized_project,
+        database="analytics",
+        metadata_database="analytics",
+        tool_version="test",
+        stabilization_seconds=0,
+        boundary_time="2026-07-28 00:00:00.000",
+    )
+
+
+def build_direct_view_execution_request(*, project_root: Path) -> DirectBuildRequest:
+    write_direct_view_only_project(project_root=project_root)
+    analysis: CompileAnalysis = analyze_direct_scope_project(project_root=project_root)
+    plan: DirectPlan = plan_direct_scope(
+        analysis=analysis,
+        snapshot=build_settled_direct_snapshot(),
+        selected_model_names=("customer_orders",),
     )
     return DirectBuildRequest(
         plan=plan,

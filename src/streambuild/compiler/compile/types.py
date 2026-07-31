@@ -7,6 +7,7 @@ class DesiredObjectType(StrEnum):
     KAFKA_TABLE = "kafka_table"
     TABLE = "table"
     MATERIALIZED_VIEW = "materialized_view"
+    VIEW = "view"
 
 
 class LogicalResourceType(StrEnum):

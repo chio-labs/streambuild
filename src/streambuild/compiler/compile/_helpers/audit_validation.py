@@ -14,7 +14,7 @@ def validated_sql_audits(
     """Return audits after validating each target against a compiled model."""
 
     known_model_names: frozenset[str] = frozenset(
-        model.transform.name for model in compiled_models(compiled_pipelines=compiled_pipelines)
+        model.key.name for model in compiled_models(compiled_pipelines=compiled_pipelines)
     )
     loaded_audit: LoadedSqlAudit
     for loaded_audit in loaded_audits:

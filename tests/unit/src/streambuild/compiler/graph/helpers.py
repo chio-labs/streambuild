@@ -2,13 +2,21 @@ from streambuild.compiler.compile.models import (
     CompiledModel,
     CompiledProject,
     CompiledSource,
+    CompiledTableModel,
+    CompiledViewModel,
     LogicalResourceKey,
     ParsedRef,
 )
 from streambuild.compiler.compile.types import LogicalResourceType
-from streambuild.compiler.discovery.models import KafkaLandingStep, KafkaSettings, TransformStep
+from streambuild.compiler.discovery.models import (
+    KafkaLandingStep,
+    KafkaSettings,
+    TransformStep,
+    ViewStep,
+)
 from streambuild.compiler.discovery.types import (
     BoundedReplayFallback,
+    ModelKind,
     RefType,
     ReplayLineageMode,
     SqlRelationType,
@@ -87,6 +95,49 @@ def build_cyclic_graph_project() -> CompiledProject:
     )
 
 
+def build_terminal_view_graph_project() -> CompiledProject:
+    return CompiledProject(
+        sources=(_compiled_source("orders"),),
+        models=(
+            _compiled_model(
+                name="lookup",
+                source_name="orders",
+                parsed_refs=(_driving_ref("orders"),),
+            ),
+            _compiled_view(
+                name="summary",
+                parsed_refs=(_source_ref("orders"), _driving_ref("lookup")),
+            ),
+        ),
+        pipelines=(),
+        tests=(),
+        test_cases=(),
+        audits=(),
+    )
+
+
+def build_nonterminal_view_graph_project() -> CompiledProject:
+    terminal_project: CompiledProject = build_terminal_view_graph_project()
+    return CompiledProject(
+        sources=terminal_project.sources,
+        models=(
+            *terminal_project.models,
+            _compiled_model(
+                name="consumer",
+                source_name="orders",
+                parsed_refs=(
+                    _driving_ref("orders"),
+                    _side_ref(name="summary", ref_type=RefType.REFERENCE),
+                ),
+            ),
+        ),
+        pipelines=(),
+        tests=(),
+        test_cases=(),
+        audits=(),
+    )
+
+
 def logical_key(name: str) -> LogicalResourceKey:
     return LogicalResourceKey(resource_type=LogicalResourceType.MODEL, name=name)
 
@@ -105,9 +156,11 @@ def _compiled_source(name: str) -> CompiledSource:
 def _compiled_model(
     *, name: str, source_name: str, parsed_refs: tuple[ParsedRef, ...]
 ) -> CompiledModel:
-    return CompiledModel(
+    return CompiledTableModel(
         key=logical_key(name),
         pipeline_name="graph",
+        relation_name=f"tbl__{name}",
+        kind=ModelKind.TABLE,
         transform=TransformStep(
             name=name,
             source=source_name,
@@ -119,6 +172,17 @@ def _compiled_model(
         preserves_required_lineage=True,
         replay_anchor_eligible=True,
         effective_bounded_replay_fallback=BoundedReplayFallback.FULL,
+    )
+
+
+def _compiled_view(*, name: str, parsed_refs: tuple[ParsedRef, ...]) -> CompiledViewModel:
+    return CompiledViewModel(
+        key=logical_key(name),
+        pipeline_name="graph",
+        relation_name=f"view__{name}",
+        kind=ModelKind.VIEW,
+        sql_analysis=_sql_analysis(parsed_refs),
+        view=ViewStep(name=name, query="SELECT 1 AS id"),
     )
 
 
@@ -157,6 +221,10 @@ def _sql_analysis(parsed_refs: tuple[ParsedRef, ...]) -> SqlModelAnalysis:
 
 def _driving_ref(name: str) -> ParsedRef:
     return ParsedRef(name=name, relation_type=SqlRelationType.REF, ref_type=None)
+
+
+def _source_ref(name: str) -> ParsedRef:
+    return ParsedRef(name=name, relation_type=SqlRelationType.SOURCE, ref_type=None)
 
 
 def _side_ref(*, name: str, ref_type: RefType) -> ParsedRef:

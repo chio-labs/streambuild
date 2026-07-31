@@ -11,15 +11,9 @@ from streambuild.adapter.models import (
     InspectedManagedTableState,
 )
 from streambuild.adapter.types import AdapterReplayBoundaryMode
-from streambuild.compiler.compile.constants import (
-    DESIRED_OBJECT_TYPE_TABLE,
-    TRANSFORM_TABLE_NAME_PREFIX,
-)
+from streambuild.compiler.compile.constants import DESIRED_OBJECT_TYPE_TABLE
 from streambuild.compiler.compile.models import ObjectKey
 from streambuild.compiler.discovery.types import ReplayLineageMode
-from streambuild.compiler.planner.main.build_deployment_physical_name import (
-    build_deployment_physical_name,
-)
 from streambuild.compiler.planner.types import RootDeploymentStateKind
 from streambuild.executor.audit_backfill.constants import (
     ACCEPTABLE_LAG_SECONDS,
@@ -37,26 +31,20 @@ def build_root_audit_results(
     *,
     client: AdapterConnection,
     default_database: str,
-    deployment_id: str,
     inspected_state: InspectedManagedTableState,
+    root_keys: tuple[ObjectKey, ...],
+    prepared_object_mappings: tuple[tuple[ObjectKey, str], ...],
 ) -> tuple[RootAuditResult, ...]:
     """Build audit decisions for each adapter-observed staged root."""
 
+    physical_name_by_key: dict[ObjectKey, str] = dict(prepared_object_mappings)
     staged_name_by_root: dict[ObjectKey, str] = {
-        ObjectKey(
-            database=candidate.database,
-            object_type=DESIRED_OBJECT_TYPE_TABLE,
-            name=candidate.logical_name,
-        ): candidate.physical_name
-        for candidate in inspected_state.physical_candidates
-        if candidate.logical_name.startswith(TRANSFORM_TABLE_NAME_PREFIX)
-        if candidate.physical_name
-        == build_deployment_physical_name(
-            logical_name=candidate.logical_name,
-            deployment_id=deployment_id,
-        )
+        root_key: physical_name_by_key[root_key]
+        for root_key in root_keys
+        if root_key.object_type == DESIRED_OBJECT_TYPE_TABLE
+        if root_key in physical_name_by_key
     }
-    root_keys: tuple[ObjectKey, ...] = tuple(
+    ordered_root_keys: tuple[ObjectKey, ...] = tuple(
         sorted(
             staged_name_by_root,
             key=lambda value: (value.database or "", value.object_type, value.name),
@@ -72,7 +60,7 @@ def build_root_audit_results(
                 root_key=root_key,
             ),
         )
-        for root_key in root_keys
+        for root_key in ordered_root_keys
     )
     observations: tuple[AdapterReadinessRootObservation, ...] = client.compare_readiness(
         AdapterReadinessRequest(roots=root_requests)
@@ -87,7 +75,7 @@ def build_root_audit_results(
             observation=observation_by_root[root_request],
         )
         for root_key, root_request in zip(
-            root_keys,
+            ordered_root_keys,
             root_requests,
             strict=True,
         )

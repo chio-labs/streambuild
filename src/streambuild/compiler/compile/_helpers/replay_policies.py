@@ -16,19 +16,32 @@ from streambuild.compiler.discovery.types import BoundedReplayFallback, ReplayLi
 def resolve_replay_lineage_mode(*, loaded_pipeline: LoadedPipeline) -> ReplayLineageMode:
     """Resolve lineage from the selected source-owned physical replay contract."""
 
-    if isinstance(loaded_pipeline.pipeline.source, ExternalTableSourceStep):
+    source: KafkaLandingStep | ExternalTableSourceStep | None = loaded_pipeline.pipeline.source
+    if source is None:
+        raise PipelineCompileError(
+            f"Pipeline '{loaded_pipeline.pipeline.name}' has no replay-driving source"
+        )
+    return resolve_source_replay_lineage_mode(source=source)
+
+
+def resolve_source_replay_lineage_mode(
+    *, source: KafkaLandingStep | ExternalTableSourceStep
+) -> ReplayLineageMode:
+    """Resolve replay lineage directly from one source-owned physical contract."""
+
+    if isinstance(source, ExternalTableSourceStep):
         lineage_mode: ReplayLineageMode | None = LINEAGE_MODE_BY_REPLAY_BOUNDARY.get(
-            loaded_pipeline.pipeline.source.replay_boundary.mode
+            source.replay_boundary.mode
         )
         if lineage_mode is not None:
             return lineage_mode
         raise PipelineCompileError(
             "External source replay boundary mode '"
-            f"{loaded_pipeline.pipeline.source.replay_boundary.mode}"
+            f"{source.replay_boundary.mode}"
             "' is not supported by compile/backfill"
         )
-    if isinstance(loaded_pipeline.pipeline.source, KafkaLandingStep):
-        replay_boundary: ReplayBoundary | None = loaded_pipeline.pipeline.source.replay_boundary
+    if isinstance(source, KafkaLandingStep):
+        replay_boundary: ReplayBoundary | None = source.replay_boundary
         if replay_boundary is not None:
             managed_lineage_mode: ReplayLineageMode | None = LINEAGE_MODE_BY_REPLAY_BOUNDARY.get(
                 replay_boundary.mode

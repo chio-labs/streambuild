@@ -43,6 +43,7 @@ def load_project_input_for_path(
         default_database=effective.database,
         adapter=effective.adapter,
         bounded_replay_fallback=effective.defaults.bounded_replay_fallback,
+        naming=effective.naming,
     )
     return LoadedProject(
         project=project,

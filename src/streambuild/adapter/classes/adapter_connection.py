@@ -21,6 +21,7 @@ from streambuild.adapter.models import (
     AdapterReplayRequest,
     AdapterStableView,
     AdapterTable,
+    AdapterView,
     CatalogSnapshot,
     InspectedManagedTableState,
 )
@@ -62,6 +63,16 @@ class AdapterConnection(ABC):
         """Durably claim every requested relation before it is created or replaced."""
 
     @abstractmethod
+    def remove_target_ownership(
+        self,
+        *,
+        database: str,
+        target_database: str,
+        relation_names: tuple[str, ...],
+    ) -> None:
+        """Remove durable claims for relations retired after a successful rename."""
+
+    @abstractmethod
     def command(self, statement: str) -> None:
         """Execute a statement that returns no result rows."""
 
@@ -81,7 +92,13 @@ class AdapterConnection(ABC):
     def render_resource(
         self,
         *,
-        resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterStableView,
+        resource: (
+            AdapterManagedSource
+            | AdapterTable
+            | AdapterMaterializedView
+            | AdapterView
+            | AdapterStableView
+        ),
         database: str,
         if_not_exists: bool = False,
     ) -> str:
@@ -91,7 +108,13 @@ class AdapterConnection(ABC):
     def realize_resource(
         self,
         *,
-        resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterStableView,
+        resource: (
+            AdapterManagedSource
+            | AdapterTable
+            | AdapterMaterializedView
+            | AdapterView
+            | AdapterStableView
+        ),
         database: str,
         if_not_exists: bool = False,
     ) -> None:

@@ -71,7 +71,11 @@ def _managed_source_resources(
     source: CompiledSource
     for source in realized_project.project.sources:
         key: LogicalResourceKey = source.key
-        resources.extend(realized_project.resources_by_logical_key[key])
+        resources.extend(
+            resource
+            for resource in realized_project.resources_by_logical_key[key]
+            if isinstance(resource, (AdapterManagedSource, AdapterTable, AdapterMaterializedView))
+        )
     return tuple(resources)
 
 

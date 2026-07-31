@@ -111,6 +111,7 @@ from tests.unit.src.streambuild.compiler.planner.helpers import realize_compiled
                         "execution_lookback_seconds": 3600,
                         "history_preserving_bounded_supported": True,
                         "resolved_bounded_replay_fallback": "full",
+                        "replay_required": True,
                     }
                 ],
                 "warnings": [
@@ -311,6 +312,7 @@ def test_given_plan_result_when_rendering_text_then_it_returns_operator_summary(
                 PreparedShadowObject(
                     logical_key=ObjectKey(None, "table", "tbl__orders_enriched"),
                     physical_name="tbl__orders_enriched__20260410T000000Z_ab12cd",
+                    logical_model_name="orders_enriched",
                 ),
             ),
             warnings=(),

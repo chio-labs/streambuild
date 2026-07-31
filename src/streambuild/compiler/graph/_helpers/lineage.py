@@ -3,6 +3,8 @@
 from streambuild.compiler.compile.models import (
     CompiledModel,
     CompiledProject,
+    CompiledTableModel,
+    CompiledViewModel,
     LogicalResourceKey,
     ParsedRef,
 )
@@ -51,6 +53,26 @@ def build_lineage_downstream_edges(
     }
 
 
+def validate_terminal_views(
+    *,
+    project: CompiledProject,
+    downstream_edges_by_key: dict[LogicalResourceKey, tuple[DependencyEdge, ...]],
+) -> None:
+    """Reject every authored view that has a downstream logical model edge."""
+
+    model: CompiledModel
+    for model in project.models:
+        if not isinstance(model, CompiledViewModel):
+            continue
+        downstream_edges: tuple[DependencyEdge, ...] = downstream_edges_by_key[model.key]
+        if downstream_edges:
+            downstream_names: str = ", ".join(edge.downstream_key.name for edge in downstream_edges)
+            raise GraphInputError(
+                f"View model '{model.key.name}' must be terminal; referenced by downstream "
+                f"model(s): {downstream_names}"
+            )
+
+
 def _model_upstream_edges(
     *,
     model: CompiledModel,
@@ -80,6 +102,10 @@ def _model_upstream_edges(
 
 
 def _edge_type(*, model: CompiledModel, parsed_ref: ParsedRef) -> DependencyEdgeType:
+    if isinstance(model, CompiledViewModel):
+        return DependencyEdgeType.REFERENCE
+    if not isinstance(model, CompiledTableModel):
+        raise GraphInputError(f"Model '{model.key.name}' has an unsupported compiled kind")
     if parsed_ref.name == model.transform.source:
         return DependencyEdgeType.DRIVING_INPUT
     if parsed_ref.ref_type == RefType.REFERENCE:

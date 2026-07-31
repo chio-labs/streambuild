@@ -25,6 +25,7 @@ from streambuild.adapter.models import (
     AdapterReplayRequest,
     AdapterStableView,
     AdapterTable,
+    AdapterView,
     CatalogIdentity,
     CatalogRelation,
     CatalogSnapshot,
@@ -231,6 +232,15 @@ class RecordingAdapterConnection(AdapterConnection):
         del database
         self.recorded_ownership_records = (*self.recorded_ownership_records, *records)
 
+    def remove_target_ownership(
+        self,
+        *,
+        database: str,
+        target_database: str,
+        relation_names: tuple[str, ...],
+    ) -> None:
+        del database, target_database, relation_names
+
     def command(self, statement: str) -> None:
         self.statements.append(statement)
 
@@ -247,7 +257,11 @@ class RecordingAdapterConnection(AdapterConnection):
     def render_resource(
         self,
         *,
-        resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterStableView,
+        resource: AdapterManagedSource
+        | AdapterTable
+        | AdapterMaterializedView
+        | AdapterView
+        | AdapterStableView,
         database: str,
         if_not_exists: bool = False,
     ) -> str:
@@ -260,7 +274,11 @@ class RecordingAdapterConnection(AdapterConnection):
     def realize_resource(
         self,
         *,
-        resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterStableView,
+        resource: AdapterManagedSource
+        | AdapterTable
+        | AdapterMaterializedView
+        | AdapterView
+        | AdapterStableView,
         database: str,
         if_not_exists: bool = False,
     ) -> None:
@@ -300,6 +318,7 @@ class RecordingAdapterConnection(AdapterConnection):
             bindings=request.bindings,
             per_relation_atomic_replace=self.capabilities.per_relation_atomic_replace,
             graph_atomic_publish=self.capabilities.graph_atomic_publish,
+            removals=request.removals,
         )
 
     def cleanup_relations(

@@ -124,6 +124,15 @@ class CliDirectBuildIntegrationTestCase:
 
 
 @dataclass(frozen=True)
+class CliDirectViewBuildIntegrationTestCase:
+    description: str
+    selectors: tuple[str, ...]
+    expected_rows: tuple[tuple[str, str], ...]
+    expected_relation_name: str
+    expected_resource_kind: str
+
+
+@dataclass(frozen=True)
 class CliDirectBuildBoundaryIntegrationTestCase:
     description: str
     landing_rows: tuple[tuple[str, int, int], ...]
@@ -275,3 +284,33 @@ class CliDirectAdoptedSourceFailureIntegrationTestCase:
     model_sql: str
     source_columns_sql: str
     expected_error_fragment: str
+
+
+@dataclass(frozen=True)
+class CliVirtualEnvironmentViewIntegrationTestCase:
+    description: str
+    expected_initial_rows: tuple[tuple[str, str], ...]
+    expected_revised_rows: tuple[tuple[str, str], ...]
+    expected_final_rows: tuple[tuple[str, str], ...]
+    expected_initial_mapping_types: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class CliDirectRelationRenameIntegrationTestCase:
+    description: str
+    initial_relation_name: str
+    renamed_relation_name: str
+    expected_rows: tuple[str, ...]
+    expected_owned_relations: tuple[str, ...]
+    expected_dropped_relations: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class CliVirtualEnvironmentRenameIntegrationTestCase:
+    description: str
+    initial_table_name: str
+    initial_view_name: str
+    renamed_table_name: str
+    renamed_view_name: str
+    expected_rows: tuple[tuple[str, str], ...]
+    expected_logical_model_names: tuple[str, ...]

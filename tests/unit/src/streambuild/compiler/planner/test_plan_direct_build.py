@@ -3,7 +3,12 @@ from pathlib import Path
 
 import pytest
 
-from streambuild.adapter.models import AdapterReplayColumns
+from streambuild.adapter.models import (
+    AdapterOwnershipRecord,
+    AdapterReplayColumns,
+    CatalogRelation,
+)
+from streambuild.adapter.types import AdapterOwningMode
 from streambuild.compiler.compile.models import (
     DesiredState,
     ExternalSourceReplayConfig,
@@ -19,13 +24,19 @@ from streambuild.compiler.planner.models import (
     DirectWarehouseSnapshot,
     TargetOwnershipClassification,
 )
-from streambuild.compiler.planner.types import DirectPlanReason, TargetOwnership
+from streambuild.compiler.planner.types import (
+    DirectPlanReason,
+    DirectResourceKind,
+    TargetOwnership,
+)
 from tests.unit.src.streambuild.compiler.planner._test_types import (
     DirectModelInputReplayColumnsTestCase,
     DirectMutableWarningTestCase,
     DirectOwnershipTestCase,
     DirectPlanRejectionTestCase,
+    DirectRenameTeardownTestCase,
     DirectScopeTestCase,
+    DirectViewPlanTestCase,
 )
 from tests.unit.src.streambuild.compiler.planner.helpers import (
     analyze_direct_scope_project,
@@ -35,6 +46,7 @@ from tests.unit.src.streambuild.compiler.planner.helpers import (
     plan_direct_scope,
     relation_operation_summaries,
     replay_root_summaries,
+    write_direct_multi_upstream_view_project,
     write_direct_mutable_scope_project,
 )
 
@@ -143,6 +155,117 @@ def test_given_selection_when_planning_direct_then_scope_and_replay_roots_match(
     )
     assert all(prerequisite.present for prerequisite in plan.prerequisite_scope)
     assert replay_root_summaries(plan=plan) == test_case.expected_replay_roots
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DirectRenameTeardownTestCase(
+            description="tears down prior direct-owned relation for executed logical model",
+            selected_model_names=("alpha",),
+            stale_relation_name="legacy_alpha",
+            stale_logical_model_name="alpha",
+            owning_mode="direct",
+            expected_stale_teardown=True,
+        ),
+        DirectRenameTeardownTestCase(
+            description="does not tear down relation owned by model outside execution scope",
+            selected_model_names=("gamma",),
+            stale_relation_name="legacy_beta",
+            stale_logical_model_name="beta",
+            owning_mode="direct",
+            expected_stale_teardown=False,
+        ),
+        DirectRenameTeardownTestCase(
+            description="does not tear down virtual-environment relation for matching model",
+            selected_model_names=("alpha",),
+            stale_relation_name="legacy_alpha",
+            stale_logical_model_name="alpha",
+            owning_mode="virtual_environment",
+            expected_stale_teardown=False,
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_prior_relation_when_planning_direct_then_only_owned_model_rename_is_torn_down(
+    direct_scope_analysis: CompileAnalysis,
+    test_case: DirectRenameTeardownTestCase,
+) -> None:
+    base_snapshot: DirectWarehouseSnapshot = build_settled_direct_snapshot()
+    snapshot: DirectWarehouseSnapshot = replace(
+        base_snapshot,
+        catalog=replace(
+            base_snapshot.catalog,
+            relations=(
+                *base_snapshot.catalog.relations,
+                CatalogRelation(
+                    name=test_case.stale_relation_name,
+                    engine="View",
+                    columns=(),
+                ),
+            ),
+        ),
+        ownership_records=(
+            *base_snapshot.ownership_records,
+            AdapterOwnershipRecord(
+                database_name="analytics",
+                relation_name=test_case.stale_relation_name,
+                resource_kind=DirectResourceKind.VIEW,
+                logical_model_name=test_case.stale_logical_model_name,
+                owning_mode=AdapterOwningMode(test_case.owning_mode),
+                tool_version="test",
+            ),
+        ),
+    )
+
+    plan: DirectPlan = plan_direct_scope(
+        analysis=direct_scope_analysis,
+        snapshot=snapshot,
+        selected_model_names=test_case.selected_model_names,
+    )
+
+    teardown_names: tuple[str, ...] = tuple(
+        operation.relation_name for operation in plan.teardown_operations
+    )
+    assert (test_case.stale_relation_name in teardown_names) is test_case.expected_stale_teardown
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DirectViewPlanTestCase(
+            description="selected multi-upstream view is query-only with explicit view identity",
+            selected_model_names=("customer_orders",),
+            present_relation_names=("raw__orders", "orders_rollup"),
+            expected_relation_name="customer_orders",
+            expected_prerequisites=("orders", "orders_base"),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_terminal_view_when_planning_direct_then_it_has_no_replay_work(
+    test_case: DirectViewPlanTestCase, tmp_path: Path
+) -> None:
+    write_direct_multi_upstream_view_project(project_root=tmp_path)
+    analysis: CompileAnalysis = analyze_direct_scope_project(project_root=tmp_path)
+    plan: DirectPlan = plan_direct_scope(
+        analysis=analysis,
+        snapshot=build_direct_snapshot(relation_names=test_case.present_relation_names),
+        selected_model_names=test_case.selected_model_names,
+    )
+
+    assert logical_key_names(plan.execution_scope) == test_case.selected_model_names
+    assert (
+        tuple(prerequisite.key.name for prerequisite in plan.prerequisite_scope)
+        == test_case.expected_prerequisites
+    )
+    assert plan.entries[0].relation_names == (test_case.expected_relation_name,)
+    assert plan.entries[0].resource_kinds == (DirectResourceKind.VIEW,)
+    assert plan.entries[0].driving_input_key is None
+    assert plan.replay_roots == ()
+    assert tuple(operation.resource_kind for operation in plan.teardown_operations) == (
+        DirectResourceKind.VIEW,
+    )
 
 
 @pytest.mark.parametrize(

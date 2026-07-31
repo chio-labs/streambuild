@@ -15,14 +15,17 @@ from streambuild.compiler.compile.constants import (
 from streambuild.compiler.compile.exceptions import PipelineCompileError
 from streambuild.compiler.compile.models import (
     Column,
-    CompiledModel,
+    CompiledTableModel,
+    CompiledViewModel,
     LogicalResourceKey,
     ParsedRef,
 )
 from streambuild.compiler.compile.types import LogicalResourceType
-from streambuild.compiler.discovery.models import ReplayOnChangePolicy, TransformStep
+from streambuild.compiler.discovery.constants import DEFAULT_SQL_MODEL_ENGINE
+from streambuild.compiler.discovery.models import ReplayOnChangePolicy, TransformStep, ViewStep
 from streambuild.compiler.discovery.types import (
     BoundedReplayFallback,
+    ModelKind,
     RefType,
     ReplayAnchorMode,
     ReplayLineageMode,
@@ -38,10 +41,11 @@ def compile_model(
     pipeline_dir: Path,
     pipeline_name: str,
     replay_lineage_mode: ReplayLineageMode,
+    relation_name: str,
     bounded_replay_fallback: BoundedReplayFallback,
     sql_analyzer: SqlModelAnalyzer,
     replay_on_change: ReplayOnChangePolicy | None = None,
-) -> CompiledModel:
+) -> CompiledTableModel:
     """Compile one authored transform into a logical model."""
 
     query: str = load_transform_query(transform=transform, pipeline_dir=pipeline_dir)
@@ -89,11 +93,13 @@ def compile_model(
         has_aggregate_semantics=has_aggregate_semantics,
         preserves_required_lineage=preserves_required_lineage,
     )
-    return CompiledModel(
+    return CompiledTableModel(
         key=LogicalResourceKey(resource_type=LogicalResourceType.MODEL, name=transform.name),
         pipeline_name=pipeline_name,
-        transform=transform,
+        relation_name=relation_name,
+        kind=ModelKind.TABLE,
         sql_analysis=sql_analysis,
+        transform=transform,
         preserves_required_lineage=preserves_required_lineage,
         replay_anchor_eligible=replay_anchor_eligible,
         effective_bounded_replay_fallback=bounded_replay_fallback,
@@ -101,17 +107,63 @@ def compile_model(
     )
 
 
+def compile_view(
+    *,
+    view: ViewStep,
+    pipeline_dir: Path,
+    pipeline_name: str,
+    relation_name: str,
+    sql_analyzer: SqlModelAnalyzer,
+) -> CompiledViewModel:
+    """Compile one authored terminal view without table or replay semantics."""
+
+    query: str = load_model_query(model=view, pipeline_dir=pipeline_dir)
+    sql_analysis: SqlModelAnalysis = analyze_transform_model_sql(
+        analyzer=sql_analyzer,
+        transform_name=view.name,
+        query=query,
+        engine=DEFAULT_SQL_MODEL_ENGINE,
+        order_by=(),
+        partition_by=None,
+        ttl=None,
+    )
+    parsed_refs: tuple[ParsedRef, ...] = tuple(
+        ParsedRef(
+            name=reference.name,
+            relation_type=reference.relation_type,
+            ref_type=None if reference.ref_type is None else RefType(reference.ref_type),
+            span=reference.span,
+        )
+        for reference in sql_analysis.references
+    )
+    validate_view_refs(view=view, parsed_refs=parsed_refs)
+    return CompiledViewModel(
+        key=LogicalResourceKey(resource_type=LogicalResourceType.MODEL, name=view.name),
+        pipeline_name=pipeline_name,
+        relation_name=relation_name,
+        kind=ModelKind.VIEW,
+        sql_analysis=sql_analysis,
+        view=view,
+    )
+
+
 def load_transform_query(*, transform: TransformStep, pipeline_dir: Path) -> str:
     """Load a transform query from inline SQL or a relative file."""
 
-    if transform.query is not None:
-        return transform.query.strip()
+    return load_model_query(model=transform, pipeline_dir=pipeline_dir)
 
-    if transform.sql_file is None:
+
+def load_model_query(*, model: TransformStep | ViewStep, pipeline_dir: Path) -> str:
+    """Load a table or view query from inline SQL or a relative file."""
+
+    if model.query is not None:
+        return model.query.strip()
+
+    if model.sql_file is None:
         raise PipelineCompileError(
-            f"Transform '{transform.name}' must define exactly one of 'query' or 'sql_file'"
+            f"Model '{model.name}' must define exactly one of 'query' or 'sql_file'"
         )
-    sql_file_path: Path = (pipeline_dir / transform.sql_file).resolve()
+    sql_file_path: Path = (pipeline_dir / model.sql_file).resolve()
     return sql_file_path.read_text(encoding="utf-8").strip()
 
 
@@ -139,6 +191,19 @@ def validate_transform_refs(
                 f"Transform '{transform.name}' must reference additional dependency "
                 f"'{parsed_ref.name}' with __ref(...)"
             )
+
+
+def validate_view_refs(*, view: ViewStep, parsed_refs: tuple[ParsedRef, ...]) -> None:
+    """Reject table-only reference annotations on an ordinary view."""
+
+    typed_ref_names: tuple[str, ...] = tuple(
+        sorted({parsed_ref.name for parsed_ref in parsed_refs if parsed_ref.ref_type is not None})
+    )
+    if typed_ref_names:
+        raise PipelineCompileError(
+            f"View '{view.name}' must not declare ref_type annotations for: "
+            f"{', '.join(typed_ref_names)}"
+        )
 
 
 def transform_preserves_required_lineage(

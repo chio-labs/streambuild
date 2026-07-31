@@ -2,10 +2,12 @@
 
 import json
 from pathlib import Path
+from typing import cast
 
-from streambuild.adapter.models import AdapterManagedSource, AdapterTable
+from streambuild.adapter.models import AdapterManagedSource, AdapterTable, AdapterView
 from streambuild.cli.compile._helpers.paths import (
     audit_path,
+    model_ordinary_view_path,
     model_query_path,
     model_table_path,
     model_view_path,
@@ -20,6 +22,8 @@ from streambuild.compiler.compile.models import (
     CompiledModel,
     CompiledPipeline,
     CompiledSource,
+    CompiledTableModel,
+    CompiledViewModel,
     LogicalResourceKey,
 )
 from streambuild.compiler.pipeline.models import CompileAnalysis
@@ -71,8 +75,11 @@ def build_manifest_json(
 
 
 def _pipeline_entry(*, pipeline: CompiledPipeline, analysis: CompileAnalysis) -> dict[str, object]:
+    source_keys: tuple[LogicalResourceKey, ...] = (
+        () if pipeline.source is None else (pipeline.source.key,)
+    )
     logical_keys: tuple[LogicalResourceKey, ...] = (
-        pipeline.source.key,
+        *source_keys,
         *(model.key for model in pipeline.models),
     )
     return {
@@ -85,7 +92,7 @@ def _pipeline_entry(*, pipeline: CompiledPipeline, analysis: CompileAnalysis) ->
             for key in logical_keys
         },
         "resolved_database": _pipeline_database(pipeline=pipeline, analysis=analysis),
-        "source_name": pipeline.source.key.name,
+        "source_name": None if pipeline.source is None else pipeline.source.key.name,
         "workflow_json_path": workflow_json_path(pipeline_name=pipeline.pipeline.name).as_posix(),
         "workflow_sql_path": workflow_sql_path(pipeline_name=pipeline.pipeline.name).as_posix(),
     }
@@ -118,10 +125,7 @@ def _model_entry(*, model: CompiledModel, analysis: CompileAnalysis) -> dict[str
     resources: tuple[AdapterResource, ...] = analysis.realized_project.resources_by_logical_key[
         model.key
     ]
-    table: AdapterTable = next(
-        resource for resource in resources if isinstance(resource, AdapterTable)
-    )
-    return {
+    entry: dict[str, object] = {
         "logical_key": f"model:{model.key.name}",
         "name": model.key.name,
         "pipeline": model.pipeline_name,
@@ -138,23 +142,35 @@ def _model_entry(*, model: CompiledModel, analysis: CompileAnalysis) -> dict[str
             }
             for resource in resources
         ),
-        "source": model.transform.source,
-        "spec": {
-            "columns": tuple(
-                {
-                    "default": column.default_expression,
-                    "name": column.name,
-                    "type": column.type,
-                }
-                for column in table.columns
-            ),
-            "engine": table.engine,
-            "order_by": tuple(table.order_by),
-            "partition_by": table.partition_by,
-            "settings": None if not table.settings else dict(table.settings),
-            "ttl": table.ttl,
-        },
     }
+    if isinstance(model, CompiledViewModel):
+        entry.update({"source": None, "spec": None})
+        return entry
+    table_model: CompiledTableModel = cast(CompiledTableModel, model)
+    table: AdapterTable = next(
+        resource for resource in resources if isinstance(resource, AdapterTable)
+    )
+    entry.update(
+        {
+            "source": table_model.transform.source,
+            "spec": {
+                "columns": tuple(
+                    {
+                        "default": column.default_expression,
+                        "name": column.name,
+                        "type": column.type,
+                    }
+                    for column in table.columns
+                ),
+                "engine": table.engine,
+                "order_by": tuple(table.order_by),
+                "partition_by": table.partition_by,
+                "settings": None if not table.settings else dict(table.settings),
+                "ttl": table.ttl,
+            },
+        }
+    )
+    return entry
 
 
 def _audit_entry(*, audit: LoadedSqlAudit, analysis: CompileAnalysis) -> dict[str, object]:
@@ -182,6 +198,10 @@ def _test_entry(*, test_case: SqlTestCase, analysis: CompileAnalysis) -> dict[st
 def _model_resource_path(*, model: CompiledModel, resource: AdapterResource) -> Path:
     if isinstance(resource, AdapterTable):
         return model_table_path(pipeline_name=model.pipeline_name, model_name=model.key.name)
+    if isinstance(resource, AdapterView):
+        return model_ordinary_view_path(
+            pipeline_name=model.pipeline_name, model_name=model.key.name
+        )
     return model_view_path(pipeline_name=model.pipeline_name, model_name=model.key.name)
 
 
@@ -190,6 +210,8 @@ def _resource_kind(resource: AdapterResource) -> str:
         return "managed_source"
     if isinstance(resource, AdapterTable):
         return "table"
+    if isinstance(resource, AdapterView):
+        return "view"
     return "materialized_view"
 
 

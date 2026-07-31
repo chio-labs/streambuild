@@ -2967,7 +2967,11 @@ def test_given_published_raw_root_when_backfilling_again_then_it_uses_bounded_re
             boundary_time="2026-04-09 23:08:00.000",
             expected_report_rows=(
                 ("tbl__customers_enriched", "full_rebuild_required", None),
-                ("tbl__orders_enriched", "bounded_replay", "dep_orders"),
+                (
+                    "tbl__orders_enriched",
+                    "bounded_replay",
+                    "20260409T230000Z_orders1",
+                ),
             ),
         )
     ],
@@ -3015,14 +3019,14 @@ def test_given_mixed_root_state_when_backfilling_then_it_reports_per_root_strate
         )
     clickhouse_client.command(
         "CREATE TABLE "
-        f"{clickhouse_database}.tbl__orders_enriched__dep_orders "
+        f"{clickhouse_database}.tbl__orders_enriched__20260409T230000Z_orders1 "
         "(order_id String, _replay_timestamp DateTime64(3)) "
         "ENGINE = MergeTree ORDER BY (order_id)"
     )
     clickhouse_client.command(
         "CREATE MATERIALIZED VIEW "
-        f"{clickhouse_database}.mv__orders_enriched__dep_orders "
-        f"TO {clickhouse_database}.tbl__orders_enriched__dep_orders AS "
+        f"{clickhouse_database}.mv__orders_enriched__20260409T230000Z_orders1 "
+        f"TO {clickhouse_database}.tbl__orders_enriched__20260409T230000Z_orders1 AS "
         "SELECT CAST(kafka_key AS String) AS order_id, "
         "CAST(_replay_timestamp AS DateTime64(3)) AS _replay_timestamp "
         f"FROM {clickhouse_database}.raw__orders"
@@ -3031,19 +3035,19 @@ def test_given_mixed_root_state_when_backfilling_then_it_reports_per_root_strate
         render_create_view_ddl(
             database=clickhouse_database,
             view_name="tbl__orders_enriched",
-            target_table_name="tbl__orders_enriched__dep_orders",
+            target_table_name="tbl__orders_enriched__20260409T230000Z_orders1",
         )
     )
     clickhouse_client.command(
         "CREATE TABLE "
-        f"{clickhouse_database}.tbl__customers_enriched__dep_customers "
+        f"{clickhouse_database}.tbl__customers_enriched__20260409T230100Z_custom1 "
         "(order_id String, _replay_timestamp DateTime64(3)) "
         "ENGINE = MergeTree ORDER BY (order_id)"
     )
     clickhouse_client.command(
         "CREATE MATERIALIZED VIEW "
-        f"{clickhouse_database}.mv__customers_enriched__dep_customers "
-        f"TO {clickhouse_database}.tbl__customers_enriched__dep_customers AS "
+        f"{clickhouse_database}.mv__customers_enriched__20260409T230100Z_custom1 "
+        f"TO {clickhouse_database}.tbl__customers_enriched__20260409T230100Z_custom1 AS "
         "SELECT CAST(kafka_key AS String) AS order_id, "
         "CAST(_replay_timestamp AS DateTime64(3)) AS _replay_timestamp "
         f"FROM {clickhouse_database}.raw__customers"

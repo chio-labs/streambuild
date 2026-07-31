@@ -20,6 +20,7 @@ from streambuild.compiler.compile.models import (
     DesiredState,
 )
 from streambuild.compiler.discovery.models import LoadedPipeline, LoadedProject
+from streambuild.compiler.discovery.types import ReplayLineageMode
 from streambuild.compiler.pipeline.main.analyze_project import analyze_project
 from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.compiler.planner.main.assert_no_direct_owned_targets import (
@@ -94,6 +95,9 @@ def build_backfill_preview_context(
         graph=analysis.graph,
         selectors=selectors,
     )
+    replay_lineage_mode: ReplayLineageMode = (
+        selection.replay_lineage_mode or ReplayLineageMode.OFFSETS
+    )
     desired_state: DesiredState = selection.desired_state
     assert_no_direct_owned_targets(
         client=client,
@@ -128,7 +132,7 @@ def build_backfill_preview_context(
         deployment_plan=plan,
         desired_state=desired_state,
         default_database=resolved_database,
-        replay_lineage_mode=selection.replay_lineage_mode,
+        replay_lineage_mode=replay_lineage_mode,
     )
     if start_time is not None:
         preview_root_reports: tuple[RootBackfillReport, ...] = build_root_backfill_reports(
@@ -151,7 +155,7 @@ def build_backfill_preview_context(
         resolved_metadata_database=resolved_metadata_database,
         desired_state=desired_state,
         plan=plan,
-        replay_lineage_mode=selection.replay_lineage_mode,
+        replay_lineage_mode=replay_lineage_mode,
         full_refresh_keys=selection.selected_model_keys if full_refresh else frozenset(),
         start_time_keys=selection.selected_model_keys if start_time is not None else frozenset(),
         start_time=start_time,

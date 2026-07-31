@@ -10,6 +10,8 @@ from streambuild.adapter.models import (
     InspectedPhysicalTableCandidate,
 )
 from streambuild.adapter.types import AdapterReplayBoundaryMode
+from streambuild.compiler.compile.models import ObjectKey
+from streambuild.compiler.compile.types import DesiredObjectType
 from streambuild.executor.audit_backfill._helpers.comparisons import build_root_audit_results
 from streambuild.executor.audit_backfill.models import RootAuditResult
 from streambuild.executor.audit_backfill.types import AuditAssessment
@@ -120,8 +122,26 @@ def test_given_staged_state_when_building_readiness_then_adapter_request_and_pol
     results: tuple[RootAuditResult, ...] = build_root_audit_results(
         client=connection,
         default_database="analytics",
-        deployment_id=test_case.deployment_id,
         inspected_state=test_case.inspected_state,
+        root_keys=tuple(
+            ObjectKey(
+                database="analytics",
+                object_type=DesiredObjectType.TABLE,
+                name=root.logical_name,
+            )
+            for root in test_case.expected_request.roots
+        ),
+        prepared_object_mappings=tuple(
+            (
+                ObjectKey(
+                    database="analytics",
+                    object_type=DesiredObjectType.TABLE,
+                    name=root.logical_name,
+                ),
+                root.staged_relation_name,
+            )
+            for root in test_case.expected_request.roots
+        ),
     )
 
     assert connection.readiness_requests == [test_case.expected_request]

@@ -4,7 +4,12 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
 
-from streambuild.adapter.models import AdapterManagedSource, AdapterMaterializedView, AdapterTable
+from streambuild.adapter.models import (
+    AdapterManagedSource,
+    AdapterMaterializedView,
+    AdapterTable,
+    AdapterView,
+)
 from streambuild.compiler.compile.models import (
     CompiledProject,
     CompileProjectInputs,
@@ -35,7 +40,7 @@ class RealizedProject:
     project: CompiledProject
     resources_by_logical_key: Mapping[
         LogicalResourceKey,
-        tuple[AdapterManagedSource | AdapterTable | AdapterMaterializedView, ...],
+        tuple[AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterView, ...],
     ]
     relation_name_by_logical_key: Mapping[LogicalResourceKey, str]
     resolved_query_by_model_key: Mapping[LogicalResourceKey, str]

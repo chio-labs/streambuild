@@ -1,11 +1,12 @@
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
+from typing import cast
 
 import pytest
 from clickhouse_connect.driver.client import Client
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.adapter.models import AdapterReplayRequest
+from streambuild.adapter.models import AdapterReplayRequest, CatalogRelation
 from streambuild.compiler.discovery.exceptions import PipelineDiscoveryError
 from streambuild.executor.direct.models import DirectBuildResult, DirectReplayBoundary
 from tests.integration.src.streambuild.cli._test_types import (
@@ -19,10 +20,12 @@ from tests.integration.src.streambuild.cli._test_types import (
     CliDirectBuildPartialFailureIntegrationTestCase,
     CliDirectBuildRerunIntegrationTestCase,
     CliDirectExecutionStepFailureIntegrationTestCase,
+    CliDirectRelationRenameIntegrationTestCase,
     CliDirectSelectedAuditIntegrationTestCase,
     CliDirectSelectedBuildIntegrationTestCase,
     CliDirectSelectedFailureIntegrationTestCase,
     CliDirectSelectionMatrixIntegrationTestCase,
+    CliDirectViewBuildIntegrationTestCase,
     CliReciprocalOwnershipIntegrationTestCase,
 )
 from tests.integration.src.streambuild.cli.helpers import (
@@ -42,6 +45,7 @@ from tests.integration.src.streambuild.cli.helpers import (
     direct_graph_order_ids,
     direct_owned_relation_names,
     direct_owned_replay_coverage_ranges,
+    direct_relation_order_ids,
     execute_direct_build_directly,
     execute_warehouse_statements,
     insert_landing_rows,
@@ -55,6 +59,7 @@ from tests.integration.src.streambuild.cli.helpers import (
     write_direct_build_project,
     write_direct_selected_graph_audits,
     write_direct_selected_graph_project,
+    write_direct_view_project,
 )
 from tests.integration.src.streambuild.conftest import ClickHouseConnectionSettings
 
@@ -277,6 +282,180 @@ def test_given_retained_landing_rows_when_building_then_history_replays_and_live
         )
         == test_case.expected_stable_view_count
     )
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliDirectRelationRenameIntegrationTestCase(
+            description="direct relation rename removes prior owned table and claim",
+            initial_relation_name="orders_before_rename",
+            renamed_relation_name="orders_after_rename",
+            expected_rows=("order-1", "order-2"),
+            expected_owned_relations=("mv__orders_enriched", "orders_after_rename"),
+            expected_dropped_relations=(
+                "mv__orders_enriched",
+                "orders_after_rename",
+                "orders_before_rename",
+            ),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_direct_owned_model_when_relation_name_changes_then_old_relation_is_retired(
+    test_case: CliDirectRelationRenameIntegrationTestCase,
+    tmp_path: Path,
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    write_direct_build_project(
+        project_root=tmp_path,
+        relation_name=test_case.initial_relation_name,
+    )
+    connection: AdapterConnection = build_managed_clickhouse_client(
+        clickhouse_connection_settings, database=clickhouse_database
+    )
+
+    try:
+        _ = execute_direct_build_directly(
+            project_root=tmp_path,
+            database=clickhouse_database,
+            connection=connection,
+            stabilization_seconds=0,
+            selectors=(),
+        )
+        insert_landing_rows(
+            connection=connection,
+            database=clickhouse_database,
+            rows=(("order-1", 0, 1), ("order-2", 0, 2)),
+        )
+        _ = execute_direct_build_directly(
+            project_root=tmp_path,
+            database=clickhouse_database,
+            connection=connection,
+            stabilization_seconds=0,
+            selectors=(),
+        )
+        write_direct_build_project(
+            project_root=tmp_path,
+            relation_name=test_case.renamed_relation_name,
+        )
+        result: DirectBuildResult = execute_direct_build_directly(
+            project_root=tmp_path,
+            database=clickhouse_database,
+            connection=connection,
+            stabilization_seconds=0,
+            selectors=(),
+        )
+        renamed_rows: tuple[str, ...] = direct_relation_order_ids(
+            clickhouse_client=clickhouse_client,
+            database=clickhouse_database,
+            relation_name=test_case.renamed_relation_name,
+        )
+        catalog_relation_names: frozenset[str] = connection.load_catalog(
+            clickhouse_database
+        ).relation_names()
+        owned_relation_names: tuple[str, ...] = direct_owned_relation_names(
+            connection=connection,
+            database=clickhouse_database,
+        )
+        materialized_view_target: str | None = cast(
+            CatalogRelation,
+            connection.load_catalog(clickhouse_database).relation("mv__orders_enriched"),
+        ).target_relation_name
+    finally:
+        connection.close()
+
+    assert renamed_rows == test_case.expected_rows
+    assert result.dropped_relation_names == test_case.expected_dropped_relations
+    assert owned_relation_names == test_case.expected_owned_relations
+    assert test_case.initial_relation_name not in catalog_relation_names
+    assert materialized_view_target == test_case.renamed_relation_name
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliDirectViewBuildIntegrationTestCase(
+            description="selected multi-upstream view builds and reruns without replay state",
+            selectors=("customer_orders",),
+            expected_rows=(("order-1", "Ada"), ("order-2", "Grace")),
+            expected_relation_name="customer_orders",
+            expected_resource_kind="view",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_multi_upstream_view_when_building_direct_then_it_is_queryable_and_owned(
+    test_case: CliDirectViewBuildIntegrationTestCase,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    write_direct_view_project(project_root=tmp_path)
+    connection: AdapterConnection = build_managed_clickhouse_client(
+        clickhouse_connection_settings, database=clickhouse_database
+    )
+
+    try:
+        connection.command(
+            f"CREATE TABLE {clickhouse_database}.direct_orders_input "
+            "(order_id String, customer_id UInt64, event_timestamp DateTime64(3)) "
+            "ENGINE = MergeTree ORDER BY order_id"
+        )
+        connection.command(
+            f"CREATE TABLE {clickhouse_database}.direct_customers_input "
+            "(customer_id UInt64, customer_name String, event_timestamp DateTime64(3)) "
+            "ENGINE = MergeTree ORDER BY customer_id"
+        )
+        connection.command(
+            f"INSERT INTO {clickhouse_database}.direct_orders_input VALUES "
+            "('order-1', 1, now64(3)), ('order-2', 2, now64(3))"
+        )
+        connection.command(
+            f"INSERT INTO {clickhouse_database}.direct_customers_input VALUES "
+            "(1, 'Ada', now64(3)), (2, 'Grace', now64(3))"
+        )
+        first_exit_code: int = run_direct_build(
+            project_root=tmp_path,
+            database=clickhouse_database,
+            connection=connection,
+            selectors=test_case.selectors,
+        )
+        _ = capsys.readouterr()
+        result: DirectBuildResult = execute_direct_build_directly(
+            project_root=tmp_path,
+            database=clickhouse_database,
+            connection=connection,
+            stabilization_seconds=0,
+            selectors=test_case.selectors,
+        )
+        rows: tuple[tuple[str, str], ...] = tuple(
+            (str(row[0]), str(row[1]))
+            for row in clickhouse_client.query(
+                f"SELECT order_id, customer_name FROM {clickhouse_database}.customer_orders "
+                "ORDER BY order_id"
+            ).result_rows
+        )
+        ownership_rows: tuple[tuple[object, ...], ...] = connection.query(
+            f"SELECT DISTINCT relation_name, resource_kind FROM "
+            f"{clickhouse_database}.streambuild_target_ownership "
+            "WHERE relation_name = 'customer_orders'"
+        ).rows
+    finally:
+        connection.close()
+
+    assert first_exit_code == 0
+    assert rows == test_case.expected_rows
+    assert ownership_rows == ((test_case.expected_relation_name, test_case.expected_resource_kind),)
+    assert result.replayed_model_names == ()
+    assert result.boundaries == ()
+    assert result.ownership_records[0].replay_coverage == ()
 
 
 @pytest.mark.integration
@@ -1493,7 +1672,8 @@ def test_given_adopted_source_when_building_direct_then_source_is_preserved_and_
                 "event_timestamp DateTime64(3)"
             ),
             expected_error_fragment=(
-                "adopted source relations that collide with managed targets: tbl__orders_enriched"
+                "Relation name 'tbl__orders_enriched' is used by both model "
+                "'orders_enriched' and adopted source 'orders'"
             ),
         ),
     ],

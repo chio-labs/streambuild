@@ -150,7 +150,9 @@ def _entry_payload(entry: DirectPlanEntry) -> dict[str, object]:
             }
             for classification in entry.ownership
         ],
-        "driving_input": entry.driving_input_key.name,
+        "driving_input": (
+            None if entry.driving_input_key is None else entry.driving_input_key.name
+        ),
         "replay_root": entry.is_replay_root,
     }
 

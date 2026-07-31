@@ -23,9 +23,13 @@ from streambuild.adapter.models import (
     AdapterRelationCleanupRequest,
     AdapterRelationCleanupResult,
     AdapterStableBinding,
+    AdapterStableBindingRemoval,
     AdapterStableView,
+    CatalogRelation,
+    CatalogSnapshot,
     InspectedManagedTableState,
 )
+from streambuild.adapters.clickhouse.constants import CLICKHOUSE_VIEW_ENGINE
 from streambuild.adapters.clickhouse.models import (
     ClickHouseDeploymentInventoryRow,
     ClickHousePublishEventInventoryRow,
@@ -46,11 +50,10 @@ def load_clickhouse_deployment_inventory(
         if METADATA_REPLAY_LINEAGE_MODE_COLUMN_NAME in metadata_columns
         else (f"'{DEFAULT_REPLAY_LINEAGE_MODE}' AS {METADATA_REPLAY_LINEAGE_MODE_COLUMN_NAME}")
     )
-    deployment_rows: tuple[ClickHouseDeploymentInventoryRow, ...] = connection.query_many(
-        statement=f"SELECT deployment_id, created_at, status, {replay_lineage_projection}, "
-        "selected_root_keys_json, warning_codes_json, prepared_object_mappings_json "
-        f"FROM {database}.{METADATA_DEPLOYMENTS_TABLE_NAME}",
-        decode=_decode_deployment_row,
+    deployment_rows: tuple[ClickHouseDeploymentInventoryRow, ...] = _load_deployment_rows(
+        connection=connection,
+        database=database,
+        replay_lineage_projection=replay_lineage_projection,
     )
     publish_rows: tuple[ClickHousePublishEventInventoryRow, ...] = _load_publish_rows(
         connection=connection,
@@ -62,12 +65,27 @@ def load_clickhouse_deployment_inventory(
     )
 
 
+def _load_deployment_rows(
+    *, connection: AdapterConnection, database: str, replay_lineage_projection: str
+) -> tuple[ClickHouseDeploymentInventoryRow, ...]:
+    try:
+        return connection.query_many(
+            statement=f"SELECT deployment_id, created_at, status, {replay_lineage_projection}, "
+            "selected_root_keys_json, warning_codes_json, prepared_object_mappings_json "
+            f"FROM {database}.{METADATA_DEPLOYMENTS_TABLE_NAME}",
+            decode=_decode_deployment_row,
+        )
+    except AdapterRelationNotFoundError:
+        return ()
+
+
 def cleanup_clickhouse_relations(
     *, connection: AdapterConnection, request: AdapterRelationCleanupRequest
 ) -> AdapterRelationCleanupResult:
     """Drop every requested ClickHouse relation synchronously."""
 
     relation_name: str
+    catalog: CatalogSnapshot = connection.load_catalog(request.database)
     for relation_name in request.relation_names:
         current_state: InspectedManagedTableState = connection.inspect_managed_table_state(
             request.database
@@ -79,7 +97,15 @@ def cleanup_clickhouse_relations(
             raise AdapterResultError(
                 f"Refusing to clean active physical relation '{relation_name}'"
             )
-        connection.command(f"DROP TABLE IF EXISTS {request.database}.{relation_name} SYNC")
+        relation: CatalogRelation | None = catalog.relation(relation_name)
+        relation_kind: str = (
+            "VIEW"
+            if relation is not None and relation.engine == CLICKHOUSE_VIEW_ENGINE
+            else "TABLE"
+        )
+        connection.command(
+            f"DROP {relation_kind} IF EXISTS {request.database}.{relation_name} SYNC"
+        )
     return AdapterRelationCleanupResult(relation_names=request.relation_names)
 
 
@@ -97,10 +123,14 @@ def replace_clickhouse_stable_bindings(
                 target_relation_name=binding.physical_name,
             ),
         )
+    removal: AdapterStableBindingRemoval
+    for removal in request.removals:
+        connection.command(f"DROP VIEW IF EXISTS {removal.database}.{removal.logical_name} SYNC")
     return AdapterBindingReplacementResult(
         bindings=request.bindings,
         per_relation_atomic_replace=connection.capabilities.per_relation_atomic_replace,
         graph_atomic_publish=connection.capabilities.graph_atomic_publish,
+        removals=request.removals,
     )
 
 
@@ -132,6 +162,7 @@ def _deployment_record(row: ClickHouseDeploymentInventoryRow) -> AdapterDeployme
             AdapterPreparedObjectMapping(
                 logical_key=_object_key(cast(dict[str, object], payload["logical_key"])),
                 physical_name=str(payload["physical_name"]),
+                logical_model_name=str(payload["logical_model_name"]),
             )
             for payload in mapping_payloads
         ),

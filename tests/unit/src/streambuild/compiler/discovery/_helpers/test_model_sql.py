@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -7,10 +8,11 @@ from streambuild.compiler.discovery._helpers.model_sql import (
     load_transform_from_sql_file,
     parse_model_sql,
 )
-from streambuild.compiler.discovery.models import TransformStep
+from streambuild.compiler.discovery.models import TransformStep, ViewStep
 from streambuild.compiler.macros.models import MacroContext, MacroRegistry
 from tests.unit.src.streambuild.compiler.discovery._helpers._test_types import (
     InferTransformSourceErrorTestCase,
+    LoadModelKindTestCase,
     LoadTransformFromSqlFileTestCase,
     ParseModelSqlHeaderErrorTestCase,
     ParseModelSqlHeaderTestCase,
@@ -128,6 +130,50 @@ def test_given_sql_model_header_variants_when_parsing_then_it_returns_expected_h
 @pytest.mark.parametrize(
     "test_case",
     [
+        LoadModelKindTestCase(
+            description="defaults an empty MODEL header to a table step",
+            contents='MODEL (); SELECT 1::UInt8 AS value FROM __source("orders")',
+            expected_step_type=TransformStep,
+            expected_relation_name=None,
+            expected_has_engine=True,
+        ),
+        LoadModelKindTestCase(
+            description="loads a zero-upstream view without table fields",
+            contents="MODEL (kind view, relation_name exact_view); SELECT 1::UInt8 AS value",
+            expected_step_type=ViewStep,
+            expected_relation_name="exact_view",
+            expected_has_engine=False,
+        ),
+        LoadModelKindTestCase(
+            description="loads a view with arbitrary source and model upstreams",
+            contents=(
+                'MODEL (kind view); SELECT 1::UInt8 AS value FROM __source("orders") '
+                'JOIN __source("payments") ON 1 = 1 JOIN __ref("customers") ON 1 = 1'
+            ),
+            expected_step_type=ViewStep,
+            expected_relation_name=None,
+            expected_has_engine=False,
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_model_kind_when_loading_sql_then_returns_coherent_step(
+    test_case: LoadModelKindTestCase,
+    tmp_path: Path,
+) -> None:
+    model_path: Path = tmp_path / "model.sql"
+    model_path.write_text(test_case.contents, encoding="utf-8")
+
+    model: TransformStep | ViewStep = load_transform_from_sql_file(file_path=model_path)
+
+    assert isinstance(model, test_case.expected_step_type)
+    assert model.relation_name == test_case.expected_relation_name
+    assert hasattr(model, "engine") is test_case.expected_has_engine
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
         ParseModelSqlHeaderErrorTestCase(
             description="rejects the removed YAML-like key separator",
             contents='MODEL (engine: "MergeTree()"); SELECT 1::UInt8 AS value',
@@ -159,6 +205,73 @@ def test_given_yaml_like_model_header_when_parsing_then_it_raises_conversion_gui
 ) -> None:
     with pytest.raises(ValueError, match=test_case.expected_error_fragment):
         parse_model_sql(contents=test_case.contents, file_path=Path("orders.sql"))
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ParseModelSqlHeaderErrorTestCase(
+            description="rejects engine on a view",
+            contents='MODEL (kind view, engine "MergeTree()"); SELECT 1::UInt8 AS value',
+            expected_error_fragment="cannot define table/replay fields: engine",
+        ),
+        ParseModelSqlHeaderErrorTestCase(
+            description="rejects order by on a view",
+            contents="MODEL (kind view, order_by [value]); SELECT 1::UInt8 AS value",
+            expected_error_fragment="cannot define table/replay fields: order_by",
+        ),
+        ParseModelSqlHeaderErrorTestCase(
+            description="rejects partition by on a view",
+            contents="MODEL (kind view, partition_by value); SELECT 1::UInt8 AS value",
+            expected_error_fragment="cannot define table/replay fields: partition_by",
+        ),
+        ParseModelSqlHeaderErrorTestCase(
+            description="rejects ttl on a view",
+            contents="MODEL (kind view, ttl value); SELECT 1::UInt8 AS value",
+            expected_error_fragment="cannot define table/replay fields: ttl",
+        ),
+        ParseModelSqlHeaderErrorTestCase(
+            description="rejects settings on a view",
+            contents="MODEL (kind view, settings (value 1)); SELECT 1::UInt8 AS value",
+            expected_error_fragment="cannot define table/replay fields: settings",
+        ),
+        ParseModelSqlHeaderErrorTestCase(
+            description="rejects replay anchor on a view",
+            contents="MODEL (kind view, replay_anchor never); SELECT 1::UInt8 AS value",
+            expected_error_fragment="cannot define table/replay fields: replay_anchor",
+        ),
+        ParseModelSqlHeaderErrorTestCase(
+            description="rejects replay on change on a view",
+            contents=(
+                "MODEL (kind view, replay_on_change (breaking full)); SELECT 1::UInt8 AS value"
+            ),
+            expected_error_fragment="cannot define table/replay fields: replay_on_change",
+        ),
+        ParseModelSqlHeaderErrorTestCase(
+            description="rejects bounded replay fallback on a view",
+            contents=("MODEL (kind view, bounded_replay_fallback full); SELECT 1::UInt8 AS value"),
+            expected_error_fragment="cannot define table/replay fields: bounded_replay_fallback",
+        ),
+        ParseModelSqlHeaderErrorTestCase(
+            description="rejects ref type annotations on a view",
+            contents=(
+                "MODEL (kind view); SELECT 1::UInt8 AS value FROM "
+                '__ref("orders", ref_type="reference")'
+            ),
+            expected_error_fragment="cannot declare ref_type annotations for: orders",
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_view_with_table_semantics_when_loading_then_rejects_field(
+    test_case: ParseModelSqlHeaderErrorTestCase,
+    tmp_path: Path,
+) -> None:
+    model_path: Path = tmp_path / "view.sql"
+    model_path.write_text(test_case.contents, encoding="utf-8")
+
+    with pytest.raises(ValueError, match=test_case.expected_error_fragment):
+        load_transform_from_sql_file(file_path=model_path)
 
 
 @pytest.mark.parametrize(
@@ -222,10 +335,13 @@ def test_given_sql_model_macros_when_loading_then_it_expands_query_body(
     macro_context: MacroContext
     macro_registry, macro_context = build_test_macro_runtime(tmp_path)
 
-    transform: TransformStep = load_transform_from_sql_file(
-        file_path=model_file_path,
-        macro_registry=macro_registry,
-        macro_context=macro_context,
+    transform: TransformStep = cast(
+        TransformStep,
+        load_transform_from_sql_file(
+            file_path=model_file_path,
+            macro_registry=macro_registry,
+            macro_context=macro_context,
+        ),
     )
 
     assert transform.query is not None
