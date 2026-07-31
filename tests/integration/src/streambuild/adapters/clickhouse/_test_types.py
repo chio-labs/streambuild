@@ -9,6 +9,12 @@ class ClickHouseClientIntegrationTestCase:
 
 
 @dataclass(frozen=True)
+class ClickHouseWarehouseTimestampIntegrationTestCase:
+    description: str
+    expected_fractional_digits: int
+
+
+@dataclass(frozen=True)
 class ClickHouseCatalogIntegrationTestCase:
     description: str
     expected_relation_names: frozenset[str]

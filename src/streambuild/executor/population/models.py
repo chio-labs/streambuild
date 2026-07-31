@@ -2,7 +2,12 @@
 
 from dataclasses import dataclass
 
-from streambuild.compiler.compile.models import DesiredState, ObjectKey
+from streambuild.compiler.compile.models import (
+    DesiredMaterializedView,
+    DesiredState,
+    ExternalSourceReplayConfig,
+    ObjectKey,
+)
 from streambuild.compiler.discovery.types import ReplayLineageMode
 from streambuild.compiler.planner.types import RebuildExecutionMode
 
@@ -53,15 +58,41 @@ class PopulationWatermark:
 
 
 @dataclass(frozen=True)
+class PopulationWatermarkInput:
+    """Resolved physical input and adopted-source metadata for watermark capture."""
+
+    table_name: str
+    external_source_config: ExternalSourceReplayConfig | None
+
+
+@dataclass(frozen=True)
+class PopulationSourcePreparation:
+    """Managed source resources preserved, created, and awaiting activation."""
+
+    preserved_relation_names: tuple[str, ...]
+    created_relation_names: tuple[str, ...]
+    landing_views: tuple[DesiredMaterializedView, ...]
+
+
+@dataclass(frozen=True)
 class PopulationRequest:
     """Inputs for one shared physical population execution."""
 
     plan: PopulationPlan
     desired_state: DesiredState
     default_database: str
+    source_preparation: PopulationSourcePreparation
     stabilization_seconds: float
     boundary_time: str | None = None
     watermark_metadata_database: str | None = None
+
+
+@dataclass(frozen=True)
+class PopulationReplayExecution:
+    """One replay root actually submitted to the warehouse."""
+
+    root_key: ObjectKey
+    written_rows: int | None
 
 
 @dataclass(frozen=True)
@@ -70,8 +101,11 @@ class PopulationResult:
 
     boundary_time: str
     created_relation_names: tuple[str, ...]
+    preserved_source_relation_names: tuple[str, ...]
+    created_source_relation_names: tuple[str, ...]
     watermarks: tuple[PopulationWatermark, ...]
-    replayed_root_keys: tuple[ObjectKey, ...]
+    replay_executions: tuple[PopulationReplayExecution, ...]
+    completed_root_keys: tuple[ObjectKey, ...]
 
 
 @dataclass(frozen=True)

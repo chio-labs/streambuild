@@ -5,6 +5,7 @@ from streambuild.adapter.models import CatalogRelation, CatalogSnapshot
 from tests.integration.src.streambuild.adapters.clickhouse._test_types import (
     ClickHouseCatalogIntegrationTestCase,
     ClickHouseClientIntegrationTestCase,
+    ClickHouseWarehouseTimestampIntegrationTestCase,
 )
 
 
@@ -44,6 +45,27 @@ def test_given_real_clickhouse_when_using_client_then_it_executes_expected_opera
     ).rows
 
     assert result_rows == test_case.expected_rows
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ClickHouseWarehouseTimestampIntegrationTestCase(
+            description="captures the active ClickHouse server UTC DateTime64 millisecond clock",
+            expected_fractional_digits=3,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_real_clickhouse_when_capturing_warehouse_time_then_returns_utc_milliseconds(
+    test_case: ClickHouseWarehouseTimestampIntegrationTestCase,
+    managed_clickhouse_client: AdapterConnection,
+) -> None:
+    warehouse_timestamp: str = managed_clickhouse_client.capture_warehouse_timestamp()
+    fractional_seconds: str = warehouse_timestamp.rsplit(".", 1)[1]
+
+    assert len(fractional_seconds) == test_case.expected_fractional_digits
 
 
 @pytest.mark.integration

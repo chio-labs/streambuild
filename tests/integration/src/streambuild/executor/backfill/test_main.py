@@ -30,6 +30,7 @@ from streambuild.executor.backfill.models import (
     BackfillExecutionResult,
     RootBackfillReport,
 )
+from streambuild.executor.population.exceptions import PopulationExecutionError
 from streambuild.executor.publish.main.execute_publish import execute_publish
 from streambuild.executor.publish.models import PublishRequest
 from tests.integration.src.streambuild.adapters.clickhouse.helpers import (
@@ -61,6 +62,9 @@ from tests.integration.src.streambuild.executor.backfill._test_types import (
     ExecuteStartTimeReplayIntegrationTestCase,
     ExecuteUnseededBoundedOffsetReplayIntegrationTestCase,
     ExecuteUnseededBoundedScalarReplayIntegrationTestCase,
+    ManagedSourceResources,
+    MissingOffsetReplayCutoffIntegrationTestCase,
+    MissingScalarReplayCutoffIntegrationTestCase,
     PersistWatermarksWithoutMetadataTableIntegrationTestCase,
     ResolveAggregateUnsupportedReplayBehaviorIntegrationTestCase,
     StartTimeReplayScenarioResult,
@@ -420,6 +424,7 @@ def test_given_bounded_preservation_pair_when_replaying_then_it_preserves_seed_p
                 ),
             ),
             expected_shadow_order_ids=("historical-order", "live-order"),
+            expected_replay_written_rows=(1,),
         ),
         ExecuteBackfillScalarReplayIntegrationTestCase(
             description="replays historical rows for kafka landed at mode and persists watermarks",
@@ -448,6 +453,7 @@ def test_given_bounded_preservation_pair_when_replaying_then_it_preserves_seed_p
                 ),
             ),
             expected_shadow_order_ids=("historical-order", "live-order"),
+            expected_replay_written_rows=(1,),
         ),
     ],
     ids=lambda case: case.description,
@@ -545,6 +551,200 @@ def test_given_scalar_replay_mode_when_executing_then_it_persists_watermarks_and
     assert result.bootstrap.root_reports[0].replay_strategy == "create_from_scratch"
     assert watermark_rows == [(test_case.expected_boundary_key, test_case.boundary_time)]
     assert shadow_rows == [(order_id,) for order_id in test_case.expected_shadow_order_ids]
+    assert tuple(replay.written_rows for replay in result.replay_results) == (
+        test_case.expected_replay_written_rows
+    )
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        MissingOffsetReplayCutoffIntegrationTestCase(
+            description="rejects retained offset input entirely newer than the warehouse cutoff",
+            boundary_time="2026-04-09 15:00:00.000",
+            raw_rows=(
+                build_raw_orders_row(
+                    kafka_key="future-order",
+                    _replay_partition=0,
+                    _replay_offset=1,
+                    _replay_timestamp="2026-04-10 15:00:01.000",
+                    _replay_landed_at="2026-04-10 15:00:01.000",
+                ),
+            ),
+            expected_error_fragment="has rows but no qualifying offsets cutoff",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_nonempty_offset_input_without_cutoff_when_replaying_then_population_fails(
+    test_case: MissingOffsetReplayCutoffIntegrationTestCase,
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    compiled_pipeline: CompiledPipeline = build_offset_replay_compiled_pipeline()
+    source_resources: ManagedSourceResources = require_managed_source(compiled_pipeline)
+    clickhouse_client.command(
+        render_create_kafka_table_ddl(
+            table=source_resources.kafka_table,
+            database=clickhouse_database,
+        )
+    )
+    clickhouse_client.command(
+        render_create_table_ddl(
+            table=source_resources.raw_table,
+            database=clickhouse_database,
+        )
+    )
+    clickhouse_client.command(
+        render_create_materialized_view_ddl(
+            materialized_view=source_resources.materialized_view,
+            database=clickhouse_database,
+        )
+    )
+    clickhouse_client.insert(
+        table=f"{clickhouse_database}.{source_resources.raw_table.name}",
+        data=list(test_case.raw_rows),
+        column_names=[
+            "kafka_key",
+            "kafka_value",
+            "kafka_topic",
+            "_replay_partition",
+            "_replay_offset",
+            "_replay_timestamp",
+            "kafka_headers",
+            "_replay_landed_at",
+        ],
+    )
+    managed_client: AdapterConnection = ClickHouseAdapter().connect(
+        AdapterConnectionConfig(
+            host=clickhouse_connection_settings.host,
+            port=clickhouse_connection_settings.port,
+            username=clickhouse_connection_settings.username,
+            password=clickhouse_connection_settings.password,
+            database=clickhouse_database,
+        )
+    )
+
+    try:
+        with pytest.raises(PopulationExecutionError, match=test_case.expected_error_fragment):
+            execute_backfill(
+                request=build_offset_replay_request(
+                    database=clickhouse_database,
+                    deployment_id="20260409T152000Z_missing",
+                    created_at="2026-04-09 15:20:00.123",
+                    boundary_time=test_case.boundary_time,
+                ),
+                client=managed_client,
+            )
+    finally:
+        managed_client.close()
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        MissingScalarReplayCutoffIntegrationTestCase(
+            description="rejects retained timestamp input entirely newer than the warehouse cutoff",
+            replay_lineage_mode=ReplayLineageMode.TIMESTAMP,
+            boundary_time="2026-04-09 16:00:00.000",
+            raw_rows=(
+                build_raw_orders_row(
+                    kafka_key="future-timestamp-order",
+                    _replay_partition=0,
+                    _replay_offset=1,
+                    _replay_timestamp="2026-04-10 16:00:01.000",
+                    _replay_landed_at="2026-04-10 16:00:01.000",
+                ),
+            ),
+            expected_error_fragment="has rows but no qualifying timestamp cutoff",
+        ),
+        MissingScalarReplayCutoffIntegrationTestCase(
+            description="rejects retained landed-at input entirely newer than the warehouse cutoff",
+            replay_lineage_mode=ReplayLineageMode.LANDED_AT,
+            boundary_time="2026-04-09 16:00:00.000",
+            raw_rows=(
+                build_raw_orders_row(
+                    kafka_key="future-landed-order",
+                    _replay_partition=0,
+                    _replay_offset=1,
+                    _replay_timestamp="2026-04-10 16:00:01.000",
+                    _replay_landed_at="2026-04-10 16:00:01.000",
+                ),
+            ),
+            expected_error_fragment="has rows but no qualifying landed_at cutoff",
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_nonempty_scalar_input_without_cutoff_when_replaying_then_population_fails(
+    test_case: MissingScalarReplayCutoffIntegrationTestCase,
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    compiled_pipeline: CompiledPipeline = build_scalar_replay_compiled_pipeline(
+        test_case.replay_lineage_mode
+    )
+    source_resources: ManagedSourceResources = require_managed_source(compiled_pipeline)
+    clickhouse_client.command(
+        render_create_kafka_table_ddl(
+            table=source_resources.kafka_table,
+            database=clickhouse_database,
+        )
+    )
+    clickhouse_client.command(
+        render_create_table_ddl(
+            table=source_resources.raw_table,
+            database=clickhouse_database,
+        )
+    )
+    clickhouse_client.command(
+        render_create_materialized_view_ddl(
+            materialized_view=source_resources.materialized_view,
+            database=clickhouse_database,
+        )
+    )
+    clickhouse_client.insert(
+        table=f"{clickhouse_database}.{source_resources.raw_table.name}",
+        data=list(test_case.raw_rows),
+        column_names=[
+            "kafka_key",
+            "kafka_value",
+            "kafka_topic",
+            "_replay_partition",
+            "_replay_offset",
+            "_replay_timestamp",
+            "kafka_headers",
+            "_replay_landed_at",
+        ],
+    )
+    managed_client: AdapterConnection = ClickHouseAdapter().connect(
+        AdapterConnectionConfig(
+            host=clickhouse_connection_settings.host,
+            port=clickhouse_connection_settings.port,
+            username=clickhouse_connection_settings.username,
+            password=clickhouse_connection_settings.password,
+            database=clickhouse_database,
+        )
+    )
+
+    try:
+        with pytest.raises(PopulationExecutionError, match=test_case.expected_error_fragment):
+            execute_backfill(
+                request=build_scalar_replay_request(
+                    database=clickhouse_database,
+                    deployment_id="20260409T162000Z_missing",
+                    created_at="2026-04-09 16:20:00.123",
+                    boundary_time=test_case.boundary_time,
+                    replay_lineage_mode=test_case.replay_lineage_mode,
+                ),
+                client=managed_client,
+            )
+    finally:
+        managed_client.close()
 
 
 @pytest.mark.integration
@@ -598,6 +798,7 @@ def test_given_scalar_replay_mode_when_executing_then_it_persists_watermarks_and
                 "historical-partition-1",
                 "live-partition-0",
             ),
+            expected_replay_written_rows=(2,),
         ),
         ExecuteBackfillOffsetReplayIntegrationTestCase(
             description="treats empty offset cutoffs as a no-op instead of failing",
@@ -609,6 +810,7 @@ def test_given_scalar_replay_mode_when_executing_then_it_persists_watermarks_and
             live_raw_rows=(),
             expected_watermark_rows=(),
             expected_shadow_order_ids=(),
+            expected_replay_written_rows=(),
         ),
     ],
     ids=lambda case: case.description,
@@ -703,6 +905,9 @@ def test_given_offset_replay_mode_when_executing_then_it_persists_partition_wate
     assert result.bootstrap.root_reports[0].replay_strategy == "create_from_scratch"
     assert watermark_rows == list(test_case.expected_watermark_rows)
     assert shadow_rows == [(order_id,) for order_id in test_case.expected_shadow_order_ids]
+    assert tuple(replay.written_rows for replay in result.replay_results) == (
+        test_case.expected_replay_written_rows
+    )
 
 
 @pytest.mark.integration

@@ -9,6 +9,10 @@ from streambuild.cli.audit_backfill.main.render_audit_backfill_result import (
     render_audit_backfill_result,
 )
 from streambuild.cli.backfill.main.render_backfill_result import render_backfill_result
+from streambuild.cli.build._helpers.rendering import (
+    render_direct_build_json,
+    render_direct_build_text,
+)
 from streambuild.cli.plan.main.render_plan_result import render_plan_result
 from streambuild.cli.publish.main.render_publish_result import render_publish_result
 from streambuild.compiler.compile.models import (
@@ -48,11 +52,14 @@ from streambuild.executor.audit_backfill.models import (
     RootAuditResult,
     ScalarCatchupSummary,
 )
+from streambuild.executor.auditing.models import SqlAuditRunResult
 from streambuild.executor.backfill.models import (
     BackfillBootstrapResult,
     BackfillExecutionResult,
+    BackfillRootReplayResult,
     RootBackfillReport,
 )
+from streambuild.executor.direct.models import DirectBuildResult, DirectRootReplayResult
 from streambuild.executor.publish.models import PublishedView, PublishResult
 from tests.integration.src.streambuild.executor.backfill.helpers import (
     build_scalar_replay_compiled_pipeline,
@@ -1136,6 +1143,8 @@ def test_given_forced_color_when_rendering_plan_then_it_includes_ansi_styles(
                 "Roots",
                 "- tbl__orders_enriched",
                 "strategy: create_from_scratch",
+                "warehouse-written rows: 12",
+                '"warehouse_written_rows": 12',
                 "stb audit backfill --deployment-id 20260410T000000Z_ab12cd",
             ),
         )
@@ -1145,36 +1154,98 @@ def test_given_forced_color_when_rendering_plan_then_it_includes_ansi_styles(
 def test_given_backfill_result_when_rendering_text_then_it_returns_operator_summary(
     test_case: CliRenderingTestCase,
 ) -> None:
-    rendered: str = render_backfill_result(
-        result=BackfillExecutionResult(
-            bootstrap=BackfillBootstrapResult(
-                deployment_id="20260410T000000Z_ab12cd",
-                created_at="2026-04-10 00:00:00.000",
-                deployment_plan=DeploymentPlan(
-                    deployment_id=None,
-                    object_changes=(),
-                    rebuild_subtrees=(),
-                    steps=(),
-                    prepared_shadow_objects=(),
-                    warnings=(),
-                ),
-                root_reports=(
-                    RootBackfillReport(
-                        root_key=ObjectKey(None, "table", "tbl__orders_enriched"),
-                        state_kind="greenfield",
-                        replay_strategy="create_from_scratch",
-                        active_deployment_id=None,
-                    ),
+    result: BackfillExecutionResult = BackfillExecutionResult(
+        bootstrap=BackfillBootstrapResult(
+            deployment_id="20260410T000000Z_ab12cd",
+            created_at="2026-04-10 00:00:00.000",
+            deployment_plan=DeploymentPlan(
+                deployment_id=None,
+                object_changes=(),
+                rebuild_subtrees=(),
+                steps=(),
+                prepared_shadow_objects=(),
+                warnings=(),
+            ),
+            root_reports=(
+                RootBackfillReport(
+                    root_key=ObjectKey(None, "table", "tbl__orders_enriched"),
+                    state_kind="greenfield",
+                    replay_strategy="create_from_scratch",
+                    active_deployment_id=None,
                 ),
             ),
-            boundary_time="2026-04-10 00:00:00.000",
+            existing_relation_names=frozenset(),
         ),
+        boundary_time="2026-04-10 00:00:00.000",
+        replay_results=(
+            BackfillRootReplayResult(
+                root_key=ObjectKey(None, "table", "tbl__orders_enriched"),
+                written_rows=12,
+            ),
+        ),
+    )
+    rendered: str = render_backfill_result(
+        result=result,
         database="analytics",
         json_output=False,
     )
+    json_rendered: str = render_backfill_result(
+        result=result,
+        database="analytics",
+        json_output=True,
+    )
 
     for expected_fragment in test_case.expected_fragments:
-        assert expected_fragment in rendered
+        assert expected_fragment in f"{rendered}\n{json_rendered}"
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliRenderingTestCase(
+            description="renders actual direct replay roots and warehouse-written rows",
+            expected_fragments=(
+                "Replay roots executed: 2",
+                "orders_enriched  warehouse-written rows: 7",
+                "order_totals  warehouse-written rows: unavailable",
+                '"warehouse_written_rows": 7',
+                '"warehouse_written_rows": null',
+            ),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_direct_replay_results_when_rendering_then_text_and_json_report_warehouse_rows(
+    test_case: CliRenderingTestCase,
+) -> None:
+    result: DirectBuildResult = DirectBuildResult(
+        database="analytics",
+        ownership_records=(),
+        preserved_source_relation_names=(),
+        created_source_relation_names=(),
+        dropped_relation_names=(),
+        created_relation_names=(),
+        boundary_time="2026-07-31 12:00:00.000",
+        boundaries=(),
+        replay_results=(
+            DirectRootReplayResult(model_name="orders_enriched", written_rows=7),
+            DirectRootReplayResult(model_name="order_totals", written_rows=None),
+        ),
+    )
+    audit_result: SqlAuditRunResult = SqlAuditRunResult(audit_results=())
+    rendered_text: str = render_direct_build_text(
+        result=result,
+        adapter_name="clickhouse",
+        audit_result=audit_result,
+    )
+    rendered_json: str = render_direct_build_json(
+        result=result,
+        adapter_name="clickhouse",
+        audit_result=audit_result,
+    )
+
+    for expected_fragment in test_case.expected_fragments:
+        assert expected_fragment in f"{rendered_text}\n{rendered_json}"
 
 
 @pytest.mark.parametrize(

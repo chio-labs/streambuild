@@ -1,7 +1,7 @@
 from typing import cast
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.adapter.models import AdapterReplayRequest
+from streambuild.adapter.models import AdapterQueryResult, AdapterReplayRequest, AdapterReplayResult
 from streambuild.compiler.compile.models import DesiredState
 from streambuild.compiler.discovery.types import ReplayLineageMode
 from streambuild.compiler.planner.models import DeploymentPlan, DeploymentWatermarkRecord
@@ -18,8 +18,13 @@ class RecordingReplayConnection:
     def __init__(self) -> None:
         self.requests: list[AdapterReplayRequest] = []
 
-    def execute_replay(self, request: AdapterReplayRequest) -> None:
+    def execute_replay(self, request: AdapterReplayRequest) -> AdapterReplayResult:
         self.requests.append(request)
+        return AdapterReplayResult(written_rows=None)
+
+    def query(self, statement: str) -> AdapterQueryResult:
+        del statement
+        return AdapterQueryResult(rows=((1,),))
 
 
 def capture_replay_requests(

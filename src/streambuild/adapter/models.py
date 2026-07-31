@@ -405,6 +405,13 @@ class AdapterReplayRequest:
 
 
 @dataclass(frozen=True)
+class AdapterReplayResult:
+    """Warehouse-reported outcome for one replay command sequence."""
+
+    written_rows: int | None
+
+
+@dataclass(frozen=True)
 class AdapterMetadataObjectKey:
     """A logical object identity stored in framework metadata."""
 

@@ -7,6 +7,7 @@ from streambuild.adapter.models import (
     AdapterOwnershipRecord,
     AdapterQueryResult,
     AdapterReplayRequest,
+    AdapterReplayResult,
     AdapterStableView,
     AdapterTable,
     AdapterView,
@@ -40,6 +41,10 @@ class RecordingDirectBuildConnection(RecordingAdapterConnection):
                 AdapterQueryResult(
                     rows=((0, 5),), column_names=("_replay_partition", "cutoff_offset")
                 ),
+                AdapterQueryResult(rows=((1,),)),
+                AdapterQueryResult(rows=((1,),)),
+                AdapterQueryResult(rows=((1,),)),
+                AdapterQueryResult(rows=((1,),)),
                 AdapterQueryResult(rows=((0, 1, 5),)),
                 AdapterQueryResult(rows=((0, 1, 5),)),
             )
@@ -73,9 +78,28 @@ class RecordingDirectBuildConnection(RecordingAdapterConnection):
         self.realized_resource_names.append(resource.name)
         super().realize_resource(resource=resource, database=database, if_not_exists=if_not_exists)
 
-    def execute_replay(self, request: AdapterReplayRequest) -> None:
+    def execute_replay(self, request: AdapterReplayRequest) -> AdapterReplayResult:
         self.adapter_actions.append(f"replay:{request.relations.root}")
         self.replay_requests.append(request)
+        return AdapterReplayResult(written_rows=7)
+
+
+class EmptyReplayDirectBuildConnection(RecordingDirectBuildConnection):
+    def __init__(self, ownership_records: tuple[AdapterOwnershipRecord, ...]) -> None:
+        super().__init__()
+        self._ownership_records = ownership_records
+        self._query_results = iter(
+            (
+                AdapterQueryResult(rows=((0, 1, 5),)),
+                AdapterQueryResult(rows=((0, 1, 5),)),
+                AdapterQueryResult(rows=()),
+                AdapterQueryResult(rows=()),
+                AdapterQueryResult(rows=()),
+                AdapterQueryResult(rows=()),
+                AdapterQueryResult(rows=()),
+                AdapterQueryResult(rows=()),
+            )
+        )
 
 
 def build_direct_execution_request(

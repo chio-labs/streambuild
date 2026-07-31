@@ -28,6 +28,7 @@ from streambuild.adapter.models import (
     AdapterRelationCleanupRequest,
     AdapterRelationCleanupResult,
     AdapterReplayRequest,
+    AdapterReplayResult,
     AdapterStableView,
     AdapterTable,
     AdapterView,
@@ -139,6 +140,9 @@ class RecordingDelegatingConnection(AdapterConnection):
         self.query_statements.append(statement)
         return self._delegate.query(statement)
 
+    def capture_warehouse_timestamp(self) -> str:
+        return self._delegate.capture_warehouse_timestamp()
+
     def insert_rows(self, *, table: str, rows: tuple[dict[str, object], ...]) -> None:
         self._delegate.insert_rows(table=table, rows=rows)
 
@@ -188,8 +192,8 @@ class RecordingDelegatingConnection(AdapterConnection):
     def load_deployment_inventory(self, database: str) -> AdapterDeploymentInventory:
         return self._delegate.load_deployment_inventory(database)
 
-    def execute_replay(self, request: AdapterReplayRequest) -> None:
-        self._delegate.execute_replay(request)
+    def execute_replay(self, request: AdapterReplayRequest) -> AdapterReplayResult:
+        return self._delegate.execute_replay(request)
 
     def compare_readiness(
         self, request: AdapterReadinessRequest
@@ -254,14 +258,14 @@ class FailOnceRealizationConnection(RecordingDelegatingConnection):
 class FailOnceReplayConnection(RecordingDelegatingConnection):
     def __init__(self, delegate: AdapterConnection) -> None:
         super().__init__(delegate)
-        self._replay_actions: Iterator[Callable[[AdapterReplayRequest], None]] = iter(
-            (self._reject_replay, self._delegate.execute_replay)
+        self._replay_actions: Iterator[Callable[[AdapterReplayRequest], AdapterReplayResult]] = (
+            iter((self._reject_replay, self._delegate.execute_replay))
         )
 
-    def execute_replay(self, request: AdapterReplayRequest) -> None:
-        next(self._replay_actions)(request)
+    def execute_replay(self, request: AdapterReplayRequest) -> AdapterReplayResult:
+        return next(self._replay_actions)(request)
 
-    def _reject_replay(self, request: AdapterReplayRequest) -> None:
+    def _reject_replay(self, request: AdapterReplayRequest) -> AdapterReplayResult:
         del request
         raise AdapterWarehouseError("injected failure after direct relations became live")
 
@@ -270,21 +274,23 @@ class FailSecondReplayOnceConnection(RecordingDelegatingConnection):
     def __init__(self, delegate: AdapterConnection) -> None:
         super().__init__(delegate)
         self.replay_targets: list[str] = []
-        self._replay_actions: Iterator[Callable[[AdapterReplayRequest], None]] = iter(
-            (
-                self._delegate.execute_replay,
-                self._reject_replay,
-                self._delegate.execute_replay,
-                self._delegate.execute_replay,
-                self._delegate.execute_replay,
+        self._replay_actions: Iterator[Callable[[AdapterReplayRequest], AdapterReplayResult]] = (
+            iter(
+                (
+                    self._delegate.execute_replay,
+                    self._reject_replay,
+                    self._delegate.execute_replay,
+                    self._delegate.execute_replay,
+                    self._delegate.execute_replay,
+                )
             )
         )
 
-    def execute_replay(self, request: AdapterReplayRequest) -> None:
+    def execute_replay(self, request: AdapterReplayRequest) -> AdapterReplayResult:
         self.replay_targets.append(request.relations.target)
-        next(self._replay_actions)(request)
+        return next(self._replay_actions)(request)
 
-    def _reject_replay(self, request: AdapterReplayRequest) -> None:
+    def _reject_replay(self, request: AdapterReplayRequest) -> AdapterReplayResult:
         del request
         raise AdapterWarehouseError("injected failure during second population segment")
 
@@ -435,10 +441,10 @@ class DirectActionRecordingConnection(RecordingDelegatingConnection):
         self.realized_relation_names.append(resource.name)
         super().realize_resource(resource=resource, database=database, if_not_exists=if_not_exists)
 
-    def execute_replay(self, request: AdapterReplayRequest) -> None:
+    def execute_replay(self, request: AdapterReplayRequest) -> AdapterReplayResult:
         self.replay_targets.append(request.relations.target)
         self.replay_requests.append(request)
-        super().execute_replay(request)
+        return super().execute_replay(request)
 
 
 class AdoptedLiveInsertConnection(DirectActionRecordingConnection):
@@ -1103,6 +1109,16 @@ DIRECT_BUILD_MODEL_SQL: str = (
     "  _replay_offset::Int64 AS _replay_offset\n"
     'FROM __source("orders")'
 )
+_DIRECT_BUILD_LANDED_AT_MODEL_SQL: str = (
+    "SELECT\n"
+    "  kafka_key::String AS order_id,\n"
+    "  _replay_landed_at::DateTime64(3) AS _replay_landed_at\n"
+    'FROM __source("orders")'
+)
+_DIRECT_BUILD_MODEL_SQL_BY_REPLAY_MODE: dict[str, str] = {
+    "offsets": DIRECT_BUILD_MODEL_SQL,
+    "landed_at": _DIRECT_BUILD_LANDED_AT_MODEL_SQL,
+}
 DIRECT_BUILD_MODEL_NAME: str = "orders_enriched"
 DIRECT_BUILD_TARGET_TABLE_NAME: str = "tbl__orders_enriched"
 DIRECT_BUILD_LANDING_TABLE_NAME: str = "raw__orders"
@@ -1112,7 +1128,7 @@ _DIRECT_BUILD_SOURCE_YML: str = (
     "    kind: kafka\n"
     "    broker_list: {broker_list}\n"
     "    topic: {topic}\n"
-    "    replay_boundary: {{mode: offsets}}\n"
+    "    replay_boundary: {{mode: {replay_boundary_mode}}}\n"
 )
 _DIRECT_BUILD_SETTINGS_BY_MODE: dict[bool, str] = {
     False: "",
@@ -1160,8 +1176,9 @@ def write_direct_build_project(
     audit_sql_by_name: tuple[tuple[str, str], ...] = (),
     virtual_environments: bool = False,
     relation_name: str = DIRECT_BUILD_TARGET_TABLE_NAME,
+    replay_boundary_mode: str = "offsets",
 ) -> None:
-    """Write a managed Kafka direct-mode project with one offsets-lineage model."""
+    """Write a managed Kafka direct-mode project with one replayable model."""
 
     pipeline_root: Path = project_root / "pipelines" / "orders"
     source_root: Path = project_root / "sources"
@@ -1176,12 +1193,16 @@ def write_direct_build_project(
         encoding="utf-8",
     )
     (source_root / "orders.yml").write_text(
-        _DIRECT_BUILD_SOURCE_YML.format(broker_list=broker_list, topic=topic),
+        _DIRECT_BUILD_SOURCE_YML.format(
+            broker_list=broker_list,
+            topic=topic,
+            replay_boundary_mode=replay_boundary_mode,
+        ),
         encoding="utf-8",
     )
     (pipeline_root / f"{DIRECT_BUILD_MODEL_NAME}.sql").write_text(
         f'MODEL (relation_name {relation_name}, order_by ["order_id"]);\n'
-        f"{DIRECT_BUILD_MODEL_SQL}\n",
+        f"{_DIRECT_BUILD_MODEL_SQL_BY_REPLAY_MODE[replay_boundary_mode]}\n",
         encoding="utf-8",
     )
     audit_name: str
@@ -1203,7 +1224,11 @@ def write_direct_selected_graph_project(*, project_root: Path) -> None:
         encoding="utf-8",
     )
     (source_root / "orders.yml").write_text(
-        _DIRECT_BUILD_SOURCE_YML.format(broker_list="kafka:9092", topic="source.selected_orders"),
+        _DIRECT_BUILD_SOURCE_YML.format(
+            broker_list="kafka:9092",
+            topic="source.selected_orders",
+            replay_boundary_mode="offsets",
+        ),
         encoding="utf-8",
     )
     model_name: str

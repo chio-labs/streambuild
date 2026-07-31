@@ -1,3 +1,4 @@
+import json
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from typing import cast
@@ -20,6 +21,7 @@ from tests.integration.src.streambuild.cli._test_types import (
     CliDirectBuildPartialFailureIntegrationTestCase,
     CliDirectBuildRerunIntegrationTestCase,
     CliDirectExecutionStepFailureIntegrationTestCase,
+    CliDirectLandedAtClockIntegrationTestCase,
     CliDirectRelationRenameIntegrationTestCase,
     CliDirectSelectedAuditIntegrationTestCase,
     CliDirectSelectedBuildIntegrationTestCase,
@@ -211,6 +213,7 @@ _ADOPTED_SOURCE_TEST_CASES: tuple[CliDirectAdoptedSourceIntegrationTestCase, ...
                 ("_replay_partition=0", "3", "3"),
                 ("_replay_partition=1", "1", "1"),
             ),
+            expected_warehouse_written_rows=(3,),
         )
     ],
     ids=lambda case: case.description,
@@ -239,7 +242,11 @@ def test_given_retained_landing_rows_when_building_then_history_replays_and_live
         second_exit_code: int = run_direct_build(
             project_root=tmp_path, database=clickhouse_database, connection=connection
         )
-        _ = capsys.readouterr()
+        second_output: str = capsys.readouterr().out
+        second_payload: dict[str, object] = json.loads(second_output)
+        replay_payloads: list[dict[str, object]] = cast(
+            list[dict[str, object]], second_payload["replays"]
+        )
         replayed_order_ids: tuple[str, ...] = direct_build_order_ids(
             clickhouse_client=clickhouse_client, database=clickhouse_database
         )
@@ -263,6 +270,9 @@ def test_given_retained_landing_rows_when_building_then_history_replays_and_live
     assert final_order_ids == test_case.expected_final_order_ids
     assert owned_relation_names == test_case.expected_owned_relations
     assert replay_coverage_ranges == test_case.expected_replay_coverage_ranges
+    assert tuple(payload["warehouse_written_rows"] for payload in replay_payloads) == (
+        test_case.expected_warehouse_written_rows
+    )
     assert (
         warehouse_row_count(
             clickhouse_client=clickhouse_client,
@@ -281,6 +291,63 @@ def test_given_retained_landing_rows_when_building_then_history_replays_and_live
             ),
         )
         == test_case.expected_stable_view_count
+    )
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliDirectLandedAtClockIntegrationTestCase(
+            description="replays server-stamped landed-at rows with an implicit warehouse cutoff",
+            landing_rows=(("landed-1", 0, 1), ("landed-2", 0, 2)),
+            expected_order_ids=("landed-1", "landed-2"),
+            expected_warehouse_written_rows=(2,),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_server_stamped_landed_at_rows_when_direct_building_then_client_clock_is_irrelevant(
+    test_case: CliDirectLandedAtClockIntegrationTestCase,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    write_direct_build_project(project_root=tmp_path, replay_boundary_mode="landed_at")
+    connection: AdapterConnection = build_managed_clickhouse_client(
+        clickhouse_connection_settings, database=clickhouse_database
+    )
+
+    try:
+        first_exit_code: int = run_direct_build(
+            project_root=tmp_path, database=clickhouse_database, connection=connection
+        )
+        _ = capsys.readouterr()
+        insert_landing_rows(
+            connection=connection,
+            database=clickhouse_database,
+            rows=test_case.landing_rows,
+        )
+        second_exit_code: int = run_direct_build(
+            project_root=tmp_path, database=clickhouse_database, connection=connection
+        )
+        second_payload: dict[str, object] = json.loads(capsys.readouterr().out)
+        replay_payloads: list[dict[str, object]] = cast(
+            list[dict[str, object]], second_payload["replays"]
+        )
+        order_ids: tuple[str, ...] = direct_build_order_ids(
+            clickhouse_client=clickhouse_client,
+            database=clickhouse_database,
+        )
+    finally:
+        connection.close()
+
+    assert (first_exit_code, second_exit_code) == (0, 0)
+    assert order_ids == test_case.expected_order_ids
+    assert tuple(payload["warehouse_written_rows"] for payload in replay_payloads) == (
+        test_case.expected_warehouse_written_rows
     )
 
 
@@ -453,7 +520,7 @@ def test_given_multi_upstream_view_when_building_direct_then_it_is_queryable_and
     assert first_exit_code == 0
     assert rows == test_case.expected_rows
     assert ownership_rows == ((test_case.expected_relation_name, test_case.expected_resource_kind),)
-    assert result.replayed_model_names == ()
+    assert result.replay_results == ()
     assert result.boundaries == ()
     assert result.ownership_records[0].replay_coverage == ()
 

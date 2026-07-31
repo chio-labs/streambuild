@@ -7,7 +7,11 @@ import json
 from streambuild.cli.plan.constants import DIRECT_MODE_LABEL
 from streambuild.cli.presentation.main._cli_style import cli_style
 from streambuild.executor.auditing.models import SqlAuditResult, SqlAuditRunResult
-from streambuild.executor.direct.models import DirectBuildResult, DirectReplayBoundary
+from streambuild.executor.direct.models import (
+    DirectBuildResult,
+    DirectReplayBoundary,
+    DirectRootReplayResult,
+)
 
 _AUDIT_STATUS_BY_OUTCOME: dict[bool, str] = {True: "pass", False: "FAIL"}
 
@@ -31,7 +35,7 @@ def render_direct_build_json(
         "created": list(result.created_relation_names),
         "boundary_time": result.boundary_time,
         "boundaries": [_boundary_payload(boundary) for boundary in result.boundaries],
-        "replayed": list(result.replayed_model_names),
+        "replays": [_replay_payload(replay) for replay in result.replay_results],
         "audits": _audit_payload(audit_result),
     }
     return json.dumps(payload, indent=2)
@@ -50,6 +54,7 @@ def render_direct_build_text(
             *_render_header(result=result, adapter_name=adapter_name),
             *_render_relations(result=result),
             *_render_boundaries(result=result),
+            *_render_replays(result=result),
             *_render_audits(audit_result=audit_result),
         )
     )
@@ -65,7 +70,7 @@ def _render_header(*, result: DirectBuildResult, adapter_name: str) -> tuple[str
             label="Preserved sources", value=str(len(result.preserved_source_relation_names))
         ),
         cli_style().label_value(
-            label="Models replayed", value=str(len(result.replayed_model_names))
+            label="Replay roots executed", value=str(len(result.replay_results))
         ),
         "",
     )
@@ -99,6 +104,19 @@ def _render_boundary(boundary: DirectReplayBoundary) -> str:
     )
 
 
+def _render_replays(*, result: DirectBuildResult) -> tuple[str, ...]:
+    return (
+        cli_style().section("Replay execution"),
+        *_or_none(lines=tuple(_render_replay(replay) for replay in result.replay_results)),
+        "",
+    )
+
+
+def _render_replay(replay: DirectRootReplayResult) -> str:
+    written_rows: str = "unavailable" if replay.written_rows is None else str(replay.written_rows)
+    return f"  {replay.model_name}  warehouse-written rows: {written_rows}"
+
+
 def _render_audits(*, audit_result: SqlAuditRunResult) -> tuple[str, ...]:
     return (
         cli_style().section("Audits"),
@@ -123,6 +141,13 @@ def _boundary_payload(boundary: DirectReplayBoundary) -> dict[str, object]:
         "boundary_key": boundary.boundary_key,
         "cutoff_value": boundary.cutoff_value,
         "cutoff_inclusive": boundary.cutoff_inclusive,
+    }
+
+
+def _replay_payload(replay: DirectRootReplayResult) -> dict[str, object]:
+    return {
+        "model": replay.model_name,
+        "warehouse_written_rows": replay.written_rows,
     }
 
 
