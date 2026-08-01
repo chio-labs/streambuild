@@ -156,7 +156,7 @@ def test_given_audit_project_when_running_live_audit_then_it_reports_expected_re
     "test_case",
     [
         CliAuditBackfillCommandIntegrationTestCase(
-            description="runs project sql quality checks during audit backfill",
+            description="runs project sql quality checks during deployment audit",
             expected_exit_code=0,
             expected_quality_check_count=1,
             expected_assessment="not_ready",

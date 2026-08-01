@@ -1,14 +1,16 @@
-"""Atomic publication for the disposable connected plan artifact."""
+"""Atomic publication for one disposable connected plan artifact."""
 
 import os
 import tempfile
 from pathlib import Path
 
+from streambuild.cli.workflow_artifacts.types import WorkflowArtifactOwner
 
-def publish_plan_artifact(*, target_dir: Path, contents: str) -> None:
-    """Atomically replace the complete connected plan without making it state."""
 
-    owner_dir: Path = target_dir / "run" / "plan"
+def publish_plan_artifact(*, target_dir: Path, owner: WorkflowArtifactOwner, contents: str) -> None:
+    """Atomically replace a complete connected plan without making it state."""
+
+    owner_dir: Path = target_dir / "run" / owner
     owner_dir.mkdir(parents=True, exist_ok=True)
     descriptor: int
     staged_name: str

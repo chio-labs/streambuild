@@ -55,7 +55,7 @@ from tests.unit.src.streambuild.cli._test_types import (
                 "Publish could not start",
                 "Database: flights_demo",
                 "target ClickHouse database does not exist",
-                "run stb backfill first",
+                "run stb build first",
             ),
         ),
         CliExpectedErrorRenderingTestCase(
@@ -68,7 +68,7 @@ from tests.unit.src.streambuild.cli._test_types import (
                 "Publish could not start",
                 "Database: flights_demo",
                 "StreamBuild metadata tables do not exist",
-                "run stb backfill first",
+                "run stb build first",
             ),
         ),
         CliExpectedErrorRenderingTestCase(
@@ -113,7 +113,7 @@ def test_given_expected_warehouse_error_when_rendering_then_it_returns_operator_
             expected_error_fragments=(
                 "Publish could not start",
                 "Database: flights_demo",
-                "run stb backfill first",
+                "run stb build first",
             ),
         )
     ],

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.cli.build.models import BuildPreviewContext
+from streambuild.cli.build.models import DirectBuildPreviewContext
 from streambuild.compiler.audit_discovery.models import LoadedSqlAudit
 from streambuild.compiler.compile.models import CompilerAdapterProfile
 from streambuild.executor.auditing.main.execute_sql_audits import execute_sql_audits
@@ -12,7 +12,7 @@ from streambuild.executor.auditing.models import SqlAuditRunResult
 
 def run_direct_build_audits(
     *,
-    preview: BuildPreviewContext,
+    preview: DirectBuildPreviewContext,
     client: AdapterConnection,
     adapter_profile: CompilerAdapterProfile,
 ) -> SqlAuditRunResult:

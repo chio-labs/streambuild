@@ -18,7 +18,7 @@ class CliManagedSourceResources(NamedTuple):
 
 
 @dataclass(frozen=True)
-class CliBackfillIntegrationTestCase:
+class CliVirtualBuildIntegrationTestCase:
     description: str
     pipelines_root: Path
     selectors: tuple[str, ...]

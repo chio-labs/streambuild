@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.cli.backfill.models import BackfillPreviewContext
+from streambuild.cli.build.models import (
+    BuildCommandOptions,
+    VirtualBuildPreviewContext,
+)
 from streambuild.cli.entry.exceptions import CliUserError
 from streambuild.cli.entry.main._resolve_default_database import resolve_default_database
 from streambuild.cli.plan.main._convert_utc_timestamp_for_clickhouse import (
@@ -15,13 +16,9 @@ from streambuild.cli.plan.main._source_validation import (
 from streambuild.cli.plan.main._warnings import add_empty_replay_source_warnings
 from streambuild.cli.selection.main._selection import resolve_selection
 from streambuild.cli.selection.models import SelectionResolution
-from streambuild.compiler.compile.models import (
-    CompilerAdapterProfile,
-    DesiredState,
-)
-from streambuild.compiler.discovery.models import LoadedPipeline, LoadedProject
+from streambuild.compiler.compile.models import DesiredState
+from streambuild.compiler.discovery.models import LoadedPipeline
 from streambuild.compiler.discovery.types import ReplayLineageMode
-from streambuild.compiler.pipeline.main.analyze_project import analyze_project
 from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.compiler.planner.main.assert_no_direct_owned_targets import (
     assert_no_direct_owned_targets,
@@ -39,36 +36,28 @@ from streambuild.compiler.planner.models import (
     PlanningWarehouseSnapshot,
 )
 from streambuild.compiler.planner.types import RootDeploymentStateKind
+from streambuild.executor.backfill.main.build_backfill_deployment_identity import (
+    build_backfill_deployment_identity,
+)
 from streambuild.executor.backfill.main.build_root_backfill_reports import (
     build_root_backfill_reports,
 )
 from streambuild.executor.backfill.main.resolve_unsupported_bounded_replay_behavior import (
     resolve_unsupported_bounded_replay_behavior,
 )
-from streambuild.executor.backfill.models import RootBackfillReport
+from streambuild.executor.backfill.models import BackfillDeploymentIdentity, RootBackfillReport
 
 
-def build_backfill_preview_context(
+def build_virtual_build_preview(
     *,
-    pipelines_root: Path,
-    database: str | None,
-    metadata_database: str | None,
-    selectors: tuple[str, ...],
-    deployment_id: str | None,
-    full_refresh: bool,
+    options: BuildCommandOptions,
     start_time_utc: str | None,
     client: AdapterConnection,
-    loaded_project: LoadedProject | None,
-    adapter_profile: CompilerAdapterProfile,
-) -> BackfillPreviewContext:
-    analysis: CompileAnalysis = analyze_project(
-        pipelines_root=pipelines_root,
-        loaded_project=loaded_project,
-        adapter_profile=adapter_profile,
-    )
+    analysis: CompileAnalysis,
+) -> VirtualBuildPreviewContext:
     loaded_pipelines: tuple[LoadedPipeline, ...] = analysis.compile_inputs.pipelines
     resolved_database: str = resolve_default_database(
-        loaded_pipelines=list(loaded_pipelines), override=database
+        loaded_pipelines=list(loaded_pipelines), override=options.database
     )
     snapshot: PlanningWarehouseSnapshot = load_planning_warehouse_snapshot(
         client=client,
@@ -89,11 +78,11 @@ def build_backfill_preview_context(
         ),
         database=resolved_database,
     )
-    resolved_metadata_database: str = metadata_database or resolved_database
+    resolved_metadata_database: str = options.metadata_database or resolved_database
     selection: SelectionResolution = resolve_selection(
         realized_project=analysis.realized_project,
         graph=analysis.graph,
-        selectors=selectors,
+        selectors=options.selectors,
     )
     replay_lineage_mode: ReplayLineageMode = (
         selection.replay_lineage_mode or ReplayLineageMode.OFFSETS
@@ -110,13 +99,16 @@ def build_backfill_preview_context(
         desired_state=desired_state,
         database=resolved_database,
     )
+    deployment_identity: BackfillDeploymentIdentity = build_backfill_deployment_identity(
+        deployment_id=options.deployment_id
+    )
     plan: DeploymentPlan = plan_deployment(
         desired_state=desired_state,
         actual_state=actual_state,
         default_database=resolved_database,
         render_resource=client.render_resource,
-        deployment_id=deployment_id,
-        full_refresh_keys=selection.selected_model_keys if full_refresh else frozenset(),
+        deployment_id=deployment_identity.deployment_id,
+        full_refresh_keys=selection.selected_model_keys if options.full_refresh else frozenset(),
         start_time_keys=selection.selected_model_keys if start_time is not None else frozenset(),
         start_time=start_time,
     )
@@ -150,13 +142,15 @@ def build_backfill_preview_context(
                 "--start-time requires an active published root for every selected target; "
                 f"found unsupported state for {root_name_list}"
             )
-    return BackfillPreviewContext(
-        resolved_database=resolved_database,
-        resolved_metadata_database=resolved_metadata_database,
+    return VirtualBuildPreviewContext(
+        database=resolved_database,
+        metadata_database=resolved_metadata_database,
         desired_state=desired_state,
         plan=plan,
         replay_lineage_mode=replay_lineage_mode,
-        full_refresh_keys=selection.selected_model_keys if full_refresh else frozenset(),
+        deployment_id=deployment_identity.deployment_id,
+        created_at=deployment_identity.created_at,
+        full_refresh_keys=(selection.selected_model_keys if options.full_refresh else frozenset()),
         start_time_keys=selection.selected_model_keys if start_time is not None else frozenset(),
         start_time=start_time,
     )

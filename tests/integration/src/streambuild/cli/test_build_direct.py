@@ -53,7 +53,7 @@ from tests.integration.src.streambuild.cli.helpers import (
     insert_landing_rows,
     insert_landing_rows_after_delay,
     run_direct_build,
-    run_virtual_environment_backfill,
+    run_virtual_environment_build,
     stringify_warehouse_rows,
     warehouse_row_count,
     write_direct_adopted_source_project,
@@ -695,7 +695,7 @@ def test_given_unsafe_warehouse_state_when_building_then_it_blocks_before_teardo
     "test_case",
     [
         CliReciprocalOwnershipIntegrationTestCase(
-            description="virtual-environment backfill refuses a direct-owned target",
+            description="virtual build refuses a direct-owned target",
             expected_exit_code=1,
             expected_error_fragment=(
                 "Virtual environments refuse to take over relations owned by direct mode"
@@ -704,7 +704,7 @@ def test_given_unsafe_warehouse_state_when_building_then_it_blocks_before_teardo
     ],
     ids=lambda case: case.description,
 )
-def test_given_direct_owned_targets_when_backfilling_then_virtual_environments_are_rejected(
+def test_given_direct_owned_targets_when_building_virtual_then_virtual_environments_are_rejected(
     test_case: CliReciprocalOwnershipIntegrationTestCase,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -721,16 +721,17 @@ def test_given_direct_owned_targets_when_backfilling_then_virtual_environments_a
             project_root=tmp_path, database=clickhouse_database, connection=connection
         )
         _ = capsys.readouterr()
-        backfill_exit_code: int = run_virtual_environment_backfill(
+        write_direct_build_project(project_root=tmp_path, virtual_environments=True)
+        virtual_build_exit_code: int = run_virtual_environment_build(
             project_root=tmp_path, database=clickhouse_database, connection=connection
         )
-        backfill_error: str = capsys.readouterr().err
+        virtual_build_error: str = capsys.readouterr().err
     finally:
         connection.close()
 
     assert build_exit_code == 0
-    assert backfill_exit_code == test_case.expected_exit_code
-    assert test_case.expected_error_fragment in backfill_error
+    assert virtual_build_exit_code == test_case.expected_exit_code
+    assert test_case.expected_error_fragment in virtual_build_error
 
 
 @pytest.mark.integration
@@ -758,7 +759,7 @@ def test_given_virtual_environment_target_when_building_direct_then_it_is_reject
     )
 
     try:
-        backfill_exit_code: int = run_virtual_environment_backfill(
+        virtual_build_exit_code: int = run_virtual_environment_build(
             project_root=tmp_path, database=clickhouse_database, connection=connection
         )
         _ = capsys.readouterr()
@@ -770,7 +771,7 @@ def test_given_virtual_environment_target_when_building_direct_then_it_is_reject
     finally:
         connection.close()
 
-    assert backfill_exit_code == 0
+    assert virtual_build_exit_code == 0
     assert build_exit_code == test_case.expected_exit_code
     assert test_case.expected_error_fragment in build_error
 

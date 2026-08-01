@@ -1,4 +1,4 @@
-"""Render the backfill result for CLI output."""
+"""Render a virtual-environment build result for CLI output."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from streambuild.executor.backfill.models import (
 )
 
 
-def render_backfill_result(
+def render_virtual_build_result(
     *,
     result: BackfillExecutionResult,
     database: str,
@@ -42,7 +42,7 @@ def render_backfill_result(
         return json.dumps(payload, indent=2)
 
     lines: list[str] = [
-        cli_style().title("Backfill Started"),
+        cli_style().title("Virtual Build Ready"),
         cli_style().label_value(label="Database", value=database),
         cli_style().label_value(label="Deployment", value=result.bootstrap.deployment_id),
         cli_style().label_value(label="Boundary time", value=result.boundary_time),
@@ -74,7 +74,7 @@ def render_backfill_result(
         [
             "",
             cli_style().section("Next"),
-            f"- stb audit backfill --deployment-id {result.bootstrap.deployment_id}",
+            f"- stb audit deployment --deployment-id {result.bootstrap.deployment_id}",
             f"- stb publish --deployment-id {result.bootstrap.deployment_id}",
         ]
     )

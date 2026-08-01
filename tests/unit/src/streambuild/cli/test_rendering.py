@@ -8,11 +8,11 @@ from streambuild.cli.audit_backfill.main.render_ambiguous_deployment_message imp
 from streambuild.cli.audit_backfill.main.render_audit_backfill_result import (
     render_audit_backfill_result,
 )
-from streambuild.cli.backfill.main.render_backfill_result import render_backfill_result
 from streambuild.cli.build._helpers.rendering import (
     render_direct_build_json,
     render_direct_build_text,
 )
+from streambuild.cli.build.main.render_virtual_build_result import render_virtual_build_result
 from streambuild.cli.plan.main.render_plan_result import render_plan_result
 from streambuild.cli.publish.main.render_publish_result import render_publish_result
 from streambuild.compiler.compile.models import (
@@ -1152,9 +1152,9 @@ def test_given_forced_color_when_rendering_plan_then_it_includes_ansi_styles(
     "test_case",
     [
         CliRenderingTestCase(
-            description="renders human-readable backfill summary",
+            description="renders human-readable virtual build summary",
             expected_fragments=(
-                "Backfill Started",
+                "Virtual Build Ready",
                 "Database: analytics",
                 "Deployment: 20260410T000000Z_ab12cd",
                 "Roots",
@@ -1162,13 +1162,13 @@ def test_given_forced_color_when_rendering_plan_then_it_includes_ansi_styles(
                 "strategy: create_from_scratch",
                 "warehouse-written rows: 12",
                 '"warehouse_written_rows": 12',
-                "stb audit backfill --deployment-id 20260410T000000Z_ab12cd",
+                "stb audit deployment --deployment-id 20260410T000000Z_ab12cd",
             ),
         )
     ],
     ids=lambda case: case.description,
 )
-def test_given_backfill_result_when_rendering_text_then_it_returns_operator_summary(
+def test_given_virtual_build_result_when_rendering_text_then_it_returns_operator_summary(
     test_case: CliRenderingTestCase,
 ) -> None:
     result: BackfillExecutionResult = BackfillExecutionResult(
@@ -1201,12 +1201,12 @@ def test_given_backfill_result_when_rendering_text_then_it_returns_operator_summ
             ),
         ),
     )
-    rendered: str = render_backfill_result(
+    rendered: str = render_virtual_build_result(
         result=result,
         database="analytics",
         json_output=False,
     )
-    json_rendered: str = render_backfill_result(
+    json_rendered: str = render_virtual_build_result(
         result=result,
         database="analytics",
         json_output=True,
@@ -1490,7 +1490,7 @@ def test_given_publish_result_when_rendering_json_then_atomicity_is_machine_read
         CliRenderingTestCase(
             description="renders ambiguity guidance with roots and next command",
             expected_fragments=(
-                "Audit Backfill deployment selection is ambiguous",
+                "Audit Deployment selection is ambiguous",
                 "Affected roots",
                 "- tbl__orders_enriched",
                 "Candidate deployments",
@@ -1499,7 +1499,7 @@ def test_given_publish_result_when_rendering_json_then_atomicity_is_machine_read
                 "status: backfilling",
                 "roots: tbl__orders_enriched",
                 "Recommended",
-                "- stb audit backfill --deployment-id 20260410T000000Z_cd34ef",
+                "- stb audit deployment --deployment-id 20260410T000000Z_cd34ef",
             ),
         )
     ],
@@ -1509,7 +1509,7 @@ def test_given_ambiguous_candidates_when_rendering_message_then_it_returns_guida
     test_case: CliRenderingTestCase,
 ) -> None:
     rendered: str = render_ambiguous_deployment_message(
-        command_name="audit backfill",
+        command_name="audit deployment",
         database="analytics",
         root_names=("tbl__orders_enriched",),
         candidates=(

@@ -17,6 +17,7 @@ class BackfillBootstrapRequest:
     default_database: str
     metadata_database: str
     replay_lineage_mode: ReplayLineageMode | str
+    confirmed_plan: DeploymentPlan | None = None
     deployment_id: str | None = None
     full_refresh_keys: frozenset[ObjectKey] = frozenset()
     start_time_keys: frozenset[ObjectKey] = frozenset()
@@ -55,6 +56,14 @@ class BackfillExecutionResult:
     bootstrap: BackfillBootstrapResult
     boundary_time: str
     replay_results: tuple[BackfillRootReplayResult, ...]
+
+
+@dataclass(frozen=True)
+class BackfillDeploymentIdentity:
+    """Deployment identity fixed before a virtual build is confirmed."""
+
+    deployment_id: str
+    created_at: str
 
 
 @dataclass(frozen=True)

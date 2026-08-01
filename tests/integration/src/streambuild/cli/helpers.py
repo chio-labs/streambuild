@@ -37,17 +37,17 @@ from streambuild.adapter.models import (
 )
 from streambuild.adapters.clickhouse._helpers.inspection import load_clickhouse_catalog
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
-from streambuild.cli.backfill.main._run_backfill import run_backfill
-from streambuild.cli.backfill.models import BackfillCommandOptions
 from streambuild.cli.build._helpers.preview import build_direct_build_preview
 from streambuild.cli.build.constants import STREAMBUILD_TOOL_VERSION
 from streambuild.cli.build.main._run_build import run_build
-from streambuild.cli.build.models import BuildCommandOptions, BuildPreviewContext
+from streambuild.cli.build.models import BuildCommandOptions, DirectBuildPreviewContext
 from streambuild.cli.entry._helpers.compiler_profile import build_compiler_adapter_profile
 from streambuild.cli.plan.main._run_plan import run_plan
 from streambuild.compiler.discovery.main.load_project_input_for_path import (
     load_project_input_for_path,
 )
+from streambuild.compiler.pipeline.main.analyze_project import analyze_project
+from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.executor.backfill.main._ensure_metadata_tables import ensure_metadata_tables
 from streambuild.executor.direct.main.execute_direct_build import execute_direct_build
 from streambuild.executor.direct.models import (
@@ -1486,7 +1486,12 @@ def execute_direct_build_directly(
 ) -> DirectBuildResult:
     """Plan and execute one direct build with an explicit stabilization window."""
 
-    preview: BuildPreviewContext = build_direct_build_preview(
+    analysis: CompileAnalysis = analyze_project(
+        pipelines_root=project_root / "pipelines",
+        loaded_project=load_project_input_for_path(path=project_root),
+        adapter_profile=build_compiler_adapter_profile(ClickHouseAdapter()),
+    )
+    preview: DirectBuildPreviewContext = build_direct_build_preview(
         options=BuildCommandOptions(
             pipelines_root=project_root / "pipelines",
             database=database,
@@ -1497,8 +1502,7 @@ def execute_direct_build_directly(
             auto_approve=True,
         ),
         client=connection,
-        loaded_project=load_project_input_for_path(path=project_root),
-        adapter_profile=build_compiler_adapter_profile(ClickHouseAdapter()),
+        analysis=analysis,
     )
     return execute_direct_build(
         request=DirectBuildRequest(
@@ -1526,16 +1530,16 @@ def execute_warehouse_statements(
         connection.command(statement.format(database=database))
 
 
-def run_virtual_environment_backfill(
+def run_virtual_environment_build(
     *,
     project_root: Path,
     database: str,
     connection: AdapterConnection,
 ) -> int:
-    """Run `stb backfill` against a warehouse that direct mode may already own."""
+    """Run `stb build` in virtual mode against a live warehouse connection."""
 
-    return run_backfill(
-        options=BackfillCommandOptions(
+    return run_build(
+        options=BuildCommandOptions(
             pipelines_root=project_root / "pipelines",
             database=database,
             metadata_database=database,
@@ -1563,7 +1567,7 @@ def run_new_virtual_environment_deployment(
     previous_ids: frozenset[str] = frozenset(
         deployment.deployment_id for deployment in previous_inventory.deployments
     )
-    exit_code: int = run_virtual_environment_backfill(
+    exit_code: int = run_virtual_environment_build(
         project_root=project_root,
         database=database,
         connection=connection,

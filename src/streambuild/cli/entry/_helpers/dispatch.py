@@ -4,7 +4,6 @@ import argparse
 from pathlib import Path
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.cli.backfill.models import BackfillCommandOptions
 from streambuild.cli.build.models import BuildCommandOptions
 from streambuild.cli.entry._helpers.compiler_profile import build_compiler_adapter_profile
 from streambuild.cli.entry.exceptions import CliUserError
@@ -59,9 +58,9 @@ def dispatch_cli_command(
             adapter_profile=adapter_profile,
             target_dir=getattr(args, "target_dir", None),
         )
-    if args.command == CliSubcommand.BACKFILL:
-        return handlers.run_backfill(
-            options=BackfillCommandOptions(
+    if args.command == CliCommand.BUILD:
+        return handlers.run_build(
+            options=BuildCommandOptions(
                 pipelines_root=_require_pipelines_root(invocation),
                 database=invocation.database,
                 metadata_database=getattr(args, "metadata_database", None),
@@ -77,23 +76,8 @@ def dispatch_cli_command(
             loaded_project=invocation.loaded_project,
             adapter_profile=adapter_profile,
         )
-    if args.command == CliCommand.BUILD:
-        return handlers.run_build(
-            options=BuildCommandOptions(
-                pipelines_root=_require_pipelines_root(invocation),
-                database=invocation.database,
-                metadata_database=getattr(args, "metadata_database", None),
-                selectors=tuple(getattr(args, "select", [])),
-                json_output=bool(getattr(args, "json", False)),
-                verbose=bool(getattr(args, "verbose", False)),
-                auto_approve=bool(getattr(args, "auto_approve", False)),
-            ),
-            client=client,
-            loaded_project=invocation.loaded_project,
-            adapter_profile=adapter_profile,
-        )
     if args.command == CliCommand.AUDIT:
-        if getattr(args, "audit_command", None) == CliSubcommand.BACKFILL:
+        if getattr(args, "audit_command", None) == CliSubcommand.DEPLOYMENT:
             return handlers.run_audit_backfill(
                 pipelines_root=invocation.pipelines_root,
                 project_dir=(

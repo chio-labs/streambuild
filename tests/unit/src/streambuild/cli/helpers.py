@@ -3,7 +3,6 @@ from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 from textwrap import dedent
-from typing import cast
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import (
@@ -36,8 +35,6 @@ from streambuild.adapter.types import AdapterReplayBoundaryMode
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from streambuild.cli.audit.main._run_audit import run_audit
 from streambuild.cli.audit_backfill.main._run_audit_backfill import run_audit_backfill
-from streambuild.cli.backfill.main._run_backfill import run_backfill
-from streambuild.cli.backfill.models import BackfillCommandOptions
 from streambuild.cli.build.main._run_build import run_build
 from streambuild.cli.compile.main._run_compile import run_compile
 from streambuild.cli.discover.main._run_discover import run_discover
@@ -346,42 +343,7 @@ class AdapterConnectionProvider:
         return self.connection
 
 
-class BackfillCommandRunnerAdapter:
-    def __init__(self, runner: Callable[..., int]) -> None:
-        self._runner: Callable[..., int] = runner
-
-    def __call__(
-        self,
-        *,
-        options: BackfillCommandOptions,
-        client: object,
-        loaded_project: object,
-        adapter_profile: object,
-    ) -> int:
-        return self._runner(
-            pipelines_root=options.pipelines_root,
-            database=options.database,
-            metadata_database=options.metadata_database,
-            selectors=options.selectors,
-            deployment_id=options.deployment_id,
-            full_refresh=options.full_refresh,
-            start_time=options.start_time,
-            json_output=options.json_output,
-            verbose=options.verbose,
-            auto_approve=options.auto_approve,
-            client=client,
-            loaded_project=loaded_project,
-            adapter_profile=adapter_profile,
-        )
-
-
 def handlers_with_overrides(**overrides: object) -> CliEntrypointHandlers:
-    has_backfill_override: bool = "run_backfill" in overrides
-    backfill_override: object = overrides.pop("run_backfill", run_backfill)
-    backfill_handler: Callable[..., int] = {
-        False: run_backfill,
-        True: BackfillCommandRunnerAdapter(cast(Callable[..., int], backfill_override)),
-    }[has_backfill_override]
     return replace(
         CliEntrypointHandlers(
             run_discover=run_discover,
@@ -389,7 +351,6 @@ def handlers_with_overrides(**overrides: object) -> CliEntrypointHandlers:
             run_test=run_test,
             run_audit=run_audit,
             run_plan=run_plan,
-            run_backfill=backfill_handler,
             run_build=run_build,
             run_audit_backfill=run_audit_backfill,
             run_publish=run_publish,
@@ -403,13 +364,13 @@ def handlers_with_overrides(**overrides: object) -> CliEntrypointHandlers:
 
 
 CLI_COMMAND_HANDLER_NAMES: dict[str, str] = {
-    "audit backfill": "run_audit_backfill",
+    "audit deployment": "run_audit_backfill",
     "publish": "run_publish",
     "doctor": "run_doctor",
 }
 
 CLI_COMMAND_ARGV: dict[str, tuple[str, ...]] = {
-    "audit backfill": ("stb", "audit", "backfill"),
+    "audit deployment": ("stb", "audit", "deployment"),
     "publish": ("stb", "publish"),
     "doctor": ("stb", "doctor"),
 }

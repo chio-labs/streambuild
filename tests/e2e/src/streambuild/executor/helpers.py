@@ -168,7 +168,7 @@ def run_kafka_live_shadow_scenario(
         table_name=require_managed_source(compiled_pipeline).raw_table.name,
         expected_count=len(test_case.initial_order_ids),
     )
-    run_streambuild_backfill_cli(
+    run_streambuild_virtual_build_cli(
         project_dir=project_dir,
         host=clickhouse_connection_settings.host,
         port=clickhouse_connection_settings.port,
@@ -374,7 +374,7 @@ def _write_external_source(*, project_dir: Path, contents: str) -> None:
     )
 
 
-def run_streambuild_backfill_cli(
+def run_streambuild_virtual_build_cli(
     *,
     project_dir: Path,
     host: str,
@@ -386,7 +386,7 @@ def run_streambuild_backfill_cli(
 ) -> None:
     _run_streambuild_cli(
         command=(
-            "backfill",
+            "build",
             "--project-dir",
             str(project_dir),
             "--host",
@@ -431,7 +431,7 @@ def run_streambuild_build_cli(
     )
 
 
-def run_streambuild_audit_backfill_cli(
+def run_streambuild_audit_deployment_cli(
     *,
     project_dir: Path,
     host: str,
@@ -444,7 +444,7 @@ def run_streambuild_audit_backfill_cli(
     return _run_streambuild_cli_json(
         command=(
             "audit",
-            "backfill",
+            "deployment",
             "--project-dir",
             str(project_dir),
             "--host",
