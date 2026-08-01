@@ -38,6 +38,18 @@ def render_plan_json(*, plan: DeploymentPlan, adapter_name: str) -> str:
     payload: dict[str, object] = {
         "mode": VIRTUAL_ENVIRONMENTS_MODE_LABEL,
         "adapter": adapter_name,
+        "deployment_id": plan.deployment_id,
+        "object_changes": [
+            {
+                "key": object_key_payload(change.key),
+                "change_type": change.change_type,
+                "force_full_refresh": change.force_full_refresh,
+                "forced_start_time": change.forced_start_time,
+                "schema_change_kind": change.schema_change_kind,
+                "seed_compatibility": change.seed_compatibility,
+            }
+            for change in plan.object_changes
+        ],
         "steps": [
             {
                 "step_id": step.step_id,
@@ -47,38 +59,35 @@ def render_plan_json(*, plan: DeploymentPlan, adapter_name: str) -> str:
                 "target_key": None
                 if step.target_key is None
                 else object_key_payload(step.target_key),
+                "physical_name": step.physical_name,
             }
             for step in plan.steps
         ],
         "rebuild_subtrees": [
+            _rebuild_subtree_payload(subtree=subtree) for subtree in plan.rebuild_subtrees
+        ],
+        "prepared_shadow_objects": [
             {
-                "root_key": object_key_payload(subtree.root_key),
-                "upstream_boundary_key": object_key_payload(subtree.upstream_boundary_key),
-                "strategy": subtree.strategy,
-                "replay_required": subtree.replay_required,
-                "execution_mode": subtree.execution_mode,
-                "forced_full_refresh": subtree.forced_full_refresh,
-                "forced_start_time": subtree.forced_start_time,
-                "requested_start_time": subtree.requested_start_time,
-                "configured_backfill_mode": subtree.configured_backfill_mode,
-                "execution_lookback_seconds": subtree.execution_lookback_seconds,
-                "history_preserving_bounded_supported": (
-                    subtree.history_preserving_bounded_supported
-                ),
-                "resolved_bounded_replay_fallback": subtree.resolved_bounded_replay_fallback,
+                "logical_key": object_key_payload(prepared.logical_key),
+                "physical_name": prepared.physical_name,
+                "logical_model_name": prepared.logical_model_name,
             }
-            for subtree in plan.rebuild_subtrees
+            for prepared in plan.prepared_shadow_objects
         ],
         "warnings": [
             {
                 "warning_code": warning.warning_code,
                 "root_key": object_key_payload(warning.root_key),
+                "target_key": None
+                if warning.target_key is None
+                else object_key_payload(warning.target_key),
                 "message": warning.message,
             }
             for warning in plan.warnings
         ],
         "sql_diffs": [
             {
+                "key": object_key_payload(sql_diff.key),
                 "object_type": sql_diff.object_type,
                 "name": sql_diff.name,
                 "diff_lines": list(sql_diff.diff_lines),
@@ -86,7 +95,25 @@ def render_plan_json(*, plan: DeploymentPlan, adapter_name: str) -> str:
             for sql_diff in plan.sql_diffs
         ],
     }
-    return json.dumps(payload, indent=2)
+    return json.dumps(payload, indent=2) + "\n"
+
+
+def _rebuild_subtree_payload(*, subtree: RebuildSubtree) -> dict[str, object]:
+    return {
+        "root_key": object_key_payload(subtree.root_key),
+        "upstream_boundary_key": object_key_payload(subtree.upstream_boundary_key),
+        "affected_keys": [object_key_payload(key) for key in subtree.affected_keys],
+        "strategy": subtree.strategy,
+        "replay_required": subtree.replay_required,
+        "execution_mode": subtree.execution_mode,
+        "forced_full_refresh": subtree.forced_full_refresh,
+        "forced_start_time": subtree.forced_start_time,
+        "requested_start_time": subtree.requested_start_time,
+        "configured_backfill_mode": subtree.configured_backfill_mode,
+        "execution_lookback_seconds": subtree.execution_lookback_seconds,
+        "history_preserving_bounded_supported": subtree.history_preserving_bounded_supported,
+        "resolved_bounded_replay_fallback": subtree.resolved_bounded_replay_fallback,
+    }
 
 
 def render_plan_text(

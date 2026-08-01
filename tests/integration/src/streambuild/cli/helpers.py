@@ -1067,7 +1067,8 @@ def plan_scope_names(*, plan_json: str) -> tuple[str, ...]:
     """Return the execution scope model names reported by one direct plan."""
 
     payload: dict[str, object] = json.loads(plan_json)
-    return tuple(cast(list[str], payload["execution_scope"]))
+    scope: list[dict[str, str]] = cast(list[dict[str, str]], payload["execution_scope"])
+    return tuple(key["name"] for key in scope)
 
 
 def plan_replay_root_models(*, plan_json: str) -> tuple[str, ...]:
@@ -1075,7 +1076,7 @@ def plan_replay_root_models(*, plan_json: str) -> tuple[str, ...]:
 
     payload: dict[str, object] = json.loads(plan_json)
     roots: list[dict[str, object]] = cast(list[dict[str, object]], payload["replay_roots"])
-    return tuple(str(root["model"]) for root in roots)
+    return tuple(cast(dict[str, str], root["model_key"])["name"] for root in roots)
 
 
 def plan_relation_operations(*, plan_json: str) -> tuple[tuple[str, str], ...]:
@@ -1086,7 +1087,9 @@ def plan_relation_operations(*, plan_json: str) -> tuple[tuple[str, str], ...]:
         *cast(list[dict[str, object]], payload["teardown"]),
         *cast(list[dict[str, object]], payload["creation"]),
     ]
-    return tuple((str(operation["action"]), str(operation["relation"])) for operation in operations)
+    return tuple(
+        (str(operation["action"]), str(operation["relation_name"])) for operation in operations
+    )
 
 
 def plan_ownership_labels(*, plan_json: str) -> tuple[str, ...]:

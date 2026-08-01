@@ -21,7 +21,7 @@ class AdoptedCompileTargetTestCase:
     description: str
     expected_relation_name: str
     expected_source_resource_count: int
-    expected_workflow_step_names: tuple[str, ...]
+    expected_forbidden_workflow_path: str
 
 
 @dataclass(frozen=True)
@@ -96,7 +96,6 @@ class CompileCheckArtifactsTestCase:
     expected_audit_path: str
     expected_test_target: str
     expected_audit_model: str
-    expected_ordered_model_steps: tuple[str, ...]
 
 
 @dataclass(frozen=True)

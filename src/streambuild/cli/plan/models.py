@@ -21,3 +21,11 @@ class PlanCommandOptions:
     start_time: str | None
     json_output: bool
     verbose: bool
+
+
+@dataclass(frozen=True)
+class PlanCommandResult:
+    """Operator output and exact machine-readable connected plan."""
+
+    rendered_output: str
+    serialized_plan: str

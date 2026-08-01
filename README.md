@@ -347,13 +347,10 @@ target/
     resources/
       sources/<source>/
       models/<pipeline>/
-    workflows/<pipeline>/
-      steps/
-      workflow.sql
-      workflow.json
     audits/
     tests/
   run/
+    plan/plan.json
     tests/
 ```
 
@@ -369,7 +366,11 @@ The compile manifest includes:
 - logical tests and audits
 - realized adapter resources
 - every emitted static artifact path
-- workflow paths and logical DAG identity
+- logical DAG identity
+
+`stb plan` atomically replaces `target/run/plan/plan.json` with the complete deterministic
+connected plan. JSON stdout is byte-identical to this disposable visibility artifact. StreamBuild
+never reads it as warehouse state, and deleting `target/` does not affect subsequent commands.
 
 ## Example
 

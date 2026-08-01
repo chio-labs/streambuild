@@ -13,8 +13,6 @@ from streambuild.cli.compile._helpers.paths import (
     model_view_path,
     source_resource_path,
     static_test_path,
-    workflow_json_path,
-    workflow_sql_path,
 )
 from streambuild.cli.compile.models import StaticArtifactFile
 from streambuild.compiler.audit_discovery.models import LoadedSqlAudit
@@ -93,8 +91,6 @@ def _pipeline_entry(*, pipeline: CompiledPipeline, analysis: CompileAnalysis) ->
         },
         "resolved_database": _pipeline_database(pipeline=pipeline, analysis=analysis),
         "source_name": None if pipeline.source is None else pipeline.source.key.name,
-        "workflow_json_path": workflow_json_path(pipeline_name=pipeline.pipeline.name).as_posix(),
-        "workflow_sql_path": workflow_sql_path(pipeline_name=pipeline.pipeline.name).as_posix(),
     }
 
 

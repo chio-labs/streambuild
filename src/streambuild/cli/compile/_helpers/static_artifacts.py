@@ -4,15 +4,12 @@ from pathlib import Path
 
 from streambuild.adapter.models import (
     AdapterManagedSource,
-    AdapterMaterializedView,
     AdapterTable,
     AdapterView,
 )
 from streambuild.cli.compile._helpers.content import (
     normalized_sql,
     static_test_sql,
-    workflow_json,
-    workflow_sql,
 )
 from streambuild.cli.compile._helpers.manifest import build_manifest_json
 from streambuild.cli.compile._helpers.paths import (
@@ -23,9 +20,6 @@ from streambuild.cli.compile._helpers.paths import (
     model_view_path,
     source_resource_path,
     static_test_path,
-    workflow_json_path,
-    workflow_sql_path,
-    workflow_step_path,
 )
 from streambuild.cli.compile._helpers.redaction import redacted_managed_source
 from streambuild.cli.compile.exceptions import CompileArtifactError
@@ -54,7 +48,6 @@ def build_static_compile_artifacts(*, analysis: CompileAnalysis) -> StaticCompil
         _source_resource_files(analysis=analysis, rendered_by_key=rendered_by_key)
     )
     compiled_files.extend(_model_files(analysis=analysis, rendered_by_key=rendered_by_key))
-    compiled_files.extend(_workflow_files(analysis=analysis, rendered_by_key=rendered_by_key))
     compiled_files.extend(_audit_and_test_files(analysis=analysis))
     ordered_files: tuple[StaticArtifactFile, ...] = tuple(
         sorted(compiled_files, key=lambda file: file.relative_path.as_posix())
@@ -160,53 +153,6 @@ def _model_files(
     return files
 
 
-def _workflow_files(
-    *,
-    analysis: CompileAnalysis,
-    rendered_by_key: dict[LogicalResourceKey, tuple[tuple[AdapterResource, str], ...]],
-) -> list[StaticArtifactFile]:
-    files: list[StaticArtifactFile] = []
-    pipeline: CompiledPipeline
-    for pipeline in analysis.compiled_project.pipelines:
-        model_by_key: dict[LogicalResourceKey, CompiledModel] = {
-            model.key: model for model in pipeline.models
-        }
-        ordered_models: tuple[CompiledModel, ...] = tuple(
-            model_by_key[key] for key in analysis.graph.ordered_keys if key in model_by_key
-        )
-        entries: tuple[tuple[str, str], ...] = _workflow_entries(
-            pipeline=pipeline,
-            ordered_models=ordered_models,
-            rendered_by_key=rendered_by_key,
-        )
-        files.extend(
-            StaticArtifactFile(
-                relative_path=workflow_step_path(
-                    pipeline_name=pipeline.pipeline.name,
-                    step_name=file_name,
-                ),
-                contents=contents,
-            )
-            for file_name, contents in entries
-        )
-        files.append(
-            StaticArtifactFile(
-                relative_path=workflow_sql_path(pipeline_name=pipeline.pipeline.name),
-                contents=workflow_sql(entries=entries),
-            )
-        )
-        files.append(
-            StaticArtifactFile(
-                relative_path=workflow_json_path(pipeline_name=pipeline.pipeline.name),
-                contents=workflow_json(
-                    pipeline_name=pipeline.pipeline.name,
-                    entries=entries,
-                ),
-            )
-        )
-    return files
-
-
 def _audit_and_test_files(*, analysis: CompileAnalysis) -> list[StaticArtifactFile]:
     files: list[StaticArtifactFile] = []
     audit: LoadedSqlAudit
@@ -231,36 +177,6 @@ def _audit_and_test_files(*, analysis: CompileAnalysis) -> list[StaticArtifactFi
     return files
 
 
-def _workflow_entries(
-    *,
-    pipeline: CompiledPipeline,
-    ordered_models: tuple[CompiledModel, ...],
-    rendered_by_key: dict[LogicalResourceKey, tuple[tuple[AdapterResource, str], ...]],
-) -> tuple[tuple[str, str], ...]:
-    entries: list[tuple[str, str]] = []
-    source_index: int
-    source_resource: AdapterResource
-    source_sql: str
-    if pipeline.source is not None:
-        for source_index, (source_resource, source_sql) in enumerate(
-            rendered_by_key[pipeline.source.key], start=1
-        ):
-            entries.append(
-                (f"{source_index:04d}_{_resource_step_name(source_resource)}.sql", source_sql)
-            )
-    model_index: int
-    model: CompiledModel
-    for model_index, model in enumerate(ordered_models, start=1):
-        resource: AdapterResource
-        sql: str
-        for resource, sql in rendered_by_key[model.key]:
-            step_number: int = model_index * 10 + int(isinstance(resource, AdapterMaterializedView))
-            entries.append(
-                (f"{step_number:04d}_{model.key.name}.{_resource_suffix(resource)}.sql", sql)
-            )
-    return tuple(entries)
-
-
 def _model_resource_path(*, model: CompiledModel, resource: AdapterResource) -> Path:
     if isinstance(resource, AdapterTable):
         return model_table_path(pipeline_name=model.pipeline_name, model_name=model.key.name)
@@ -269,22 +185,6 @@ def _model_resource_path(*, model: CompiledModel, resource: AdapterResource) -> 
             pipeline_name=model.pipeline_name, model_name=model.key.name
         )
     return model_view_path(pipeline_name=model.pipeline_name, model_name=model.key.name)
-
-
-def _resource_step_name(resource: AdapterResource) -> str:
-    if isinstance(resource, AdapterManagedSource):
-        return "kafka_table"
-    if isinstance(resource, AdapterTable):
-        return "raw_table"
-    return "landing_mv"
-
-
-def _resource_suffix(resource: AdapterResource) -> str:
-    if isinstance(resource, AdapterTable):
-        return "table"
-    if isinstance(resource, AdapterView):
-        return "view"
-    return "mv"
 
 
 def _pipeline_database(*, analysis: CompileAnalysis, pipeline: CompiledPipeline) -> str:
