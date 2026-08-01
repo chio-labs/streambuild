@@ -7,7 +7,8 @@ from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.cli.entry.exceptions import CliUserError
 from streambuild.cli.entry.main._resolve_default_database import resolve_default_database
 from streambuild.cli.plan._helpers.plan_command import execute_plan_command, validate_plan_flags
-from streambuild.cli.plan.models import PlanCommandOptions
+from streambuild.cli.plan._helpers.publication import publish_plan_artifact
+from streambuild.cli.plan.models import PlanCommandOptions, PlanCommandResult
 from streambuild.compiler.compile.exceptions import TransformSqlContractError
 from streambuild.compiler.compile.models import CompilerAdapterProfile
 from streambuild.compiler.discovery.models import LoadedProject
@@ -48,7 +49,14 @@ def run_plan(
             verbose=verbose,
         )
         validate_plan_flags(options=options)
-        print(execute_plan_command(analysis=analysis, options=options, client=client))
+        result: PlanCommandResult = execute_plan_command(
+            analysis=analysis, options=options, client=client
+        )
+        publish_plan_artifact(
+            target_dir=pipelines_root.parent / "target",
+            contents=result.serialized_plan,
+        )
+        print(result.rendered_output, end="")
     except (TransformSqlContractError, CliUserError, DirectPlanError, ValueError) as error:
         print(str(error), file=sys.stderr)
         return 1

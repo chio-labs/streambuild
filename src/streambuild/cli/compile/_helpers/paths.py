@@ -60,34 +60,6 @@ def model_ordinary_view_path(*, pipeline_name: str, model_name: str) -> Path:
     )
 
 
-def workflow_sql_path(*, pipeline_name: str) -> Path:
-    return Path(
-        "compiled",
-        "workflows",
-        _safe_segment(value=pipeline_name, kind="pipeline"),
-        "workflow.sql",
-    )
-
-
-def workflow_json_path(*, pipeline_name: str) -> Path:
-    return Path(
-        "compiled",
-        "workflows",
-        _safe_segment(value=pipeline_name, kind="pipeline"),
-        "workflow.json",
-    )
-
-
-def workflow_step_path(*, pipeline_name: str, step_name: str) -> Path:
-    return Path(
-        "compiled",
-        "workflows",
-        _safe_segment(value=pipeline_name, kind="pipeline"),
-        "steps",
-        _safe_segment(value=step_name, kind="workflow step"),
-    )
-
-
 def audit_path(*, audit: LoadedSqlAudit, project_dir: Path) -> Path:
     relative_file_path: Path = _audit_relative_path(
         file_path=audit.file_path,

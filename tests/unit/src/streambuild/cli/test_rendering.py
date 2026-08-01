@@ -80,6 +80,8 @@ from tests.unit.src.streambuild.compiler.planner.helpers import realize_compiled
             expected_payload={
                 "mode": "virtual environments",
                 "adapter": "clickhouse",
+                "deployment_id": None,
+                "object_changes": [],
                 "steps": [
                     {
                         "step_id": "step-1",
@@ -95,6 +97,7 @@ from tests.unit.src.streambuild.compiler.planner.helpers import realize_compiled
                             "object_type": "table",
                             "name": "tbl__orders_enriched",
                         },
+                        "physical_name": None,
                     }
                 ],
                 "rebuild_subtrees": [
@@ -109,6 +112,13 @@ from tests.unit.src.streambuild.compiler.planner.helpers import realize_compiled
                             "object_type": "table",
                             "name": "raw__orders",
                         },
+                        "affected_keys": [
+                            {
+                                "database": None,
+                                "object_type": "table",
+                                "name": "tbl__orders_enriched",
+                            }
+                        ],
                         "strategy": "shadow_rebuild",
                         "execution_mode": "seeded_bounded_rebuild",
                         "forced_full_refresh": False,
@@ -121,6 +131,7 @@ from tests.unit.src.streambuild.compiler.planner.helpers import realize_compiled
                         "replay_required": True,
                     }
                 ],
+                "prepared_shadow_objects": [],
                 "warnings": [
                     {
                         "warning_code": "mutable_reference",
@@ -129,11 +140,17 @@ from tests.unit.src.streambuild.compiler.planner.helpers import realize_compiled
                             "object_type": "table",
                             "name": "raw__orders",
                         },
+                        "target_key": None,
                         "message": "mutable side reference is read at execution time",
                     }
                 ],
                 "sql_diffs": [
                     {
+                        "key": {
+                            "database": None,
+                            "object_type": "materialized_view",
+                            "name": "mv__orders_enriched",
+                        },
                         "object_type": "materialized_view",
                         "name": "mv__orders_enriched",
                         "diff_lines": ["- old query", "+ new query"],

@@ -9,7 +9,7 @@ from streambuild.cli.plan._helpers.virtual_environment_command import (
     execute_virtual_environment_plan,
 )
 from streambuild.cli.plan.main._normalize_cli_start_time import normalize_cli_start_time
-from streambuild.cli.plan.models import PlanCommandOptions
+from streambuild.cli.plan.models import PlanCommandOptions, PlanCommandResult
 from streambuild.compiler.pipeline.models import CompileAnalysis
 
 _VIRTUAL_ENVIRONMENT_ONLY_FLAGS: tuple[tuple[str, str], ...] = (
@@ -23,7 +23,7 @@ def execute_plan_command(
     analysis: CompileAnalysis,
     options: PlanCommandOptions,
     client: AdapterConnection,
-) -> str:
+) -> PlanCommandResult:
     """Plan through the mode already resolved from project and local configuration."""
 
     if analysis.compile_inputs.virtual_environments:

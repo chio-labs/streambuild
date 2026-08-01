@@ -70,6 +70,7 @@ class CliPlanModeRoutingTestCase:
     expected_title: str
     expected_execution_scope: tuple[str, ...] = ()
     expected_replay_root_models: tuple[str, ...] = ()
+    expected_artifact_path: str = "target/run/plan/plan.json"
 
 
 @dataclass(frozen=True)
@@ -78,3 +79,18 @@ class CliDirectPlanFlagRejectionTestCase:
     full_refresh: bool
     start_time: str | None
     expected_error_fragment: str
+    expected_preserved_artifact: bytes
+
+
+@dataclass(frozen=True)
+class CliPlanPublicationFailureTestCase:
+    description: str
+    previous_artifact: bytes
+    replacement_artifact: str
+    expected_error_fragment: str
+
+
+@dataclass(frozen=True)
+class CliDirectPlanSerializationTestCase:
+    description: str
+    expected_payload: dict[str, object]

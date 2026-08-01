@@ -8,7 +8,7 @@ from streambuild.cli.plan._helpers.direct_rendering import (
     render_direct_plan_text,
 )
 from streambuild.cli.plan.main._source_validation import validate_declared_external_sources
-from streambuild.cli.plan.models import PlanCommandOptions
+from streambuild.cli.plan.models import PlanCommandOptions, PlanCommandResult
 from streambuild.cli.selection.main._selection import resolve_selection
 from streambuild.cli.selection.models import SelectionResolution
 from streambuild.compiler.compile.models import LogicalResourceKey
@@ -25,7 +25,7 @@ def execute_direct_plan(
     analysis: CompileAnalysis,
     options: PlanCommandOptions,
     client: AdapterConnection,
-) -> str:
+) -> PlanCommandResult:
     """Plan the complete selected downstream closure and render it."""
 
     snapshot: DirectWarehouseSnapshot = load_direct_warehouse_snapshot(
@@ -54,6 +54,10 @@ def execute_direct_plan(
         selected_model_keys=selected_model_keys,
     )
     adapter_name: str = client.adapter_identity.name
-    if options.json_output:
-        return render_direct_plan_json(plan=plan, adapter_name=adapter_name)
-    return render_direct_plan_text(plan=plan, adapter_name=adapter_name)
+    serialized_plan: str = render_direct_plan_json(plan=plan, adapter_name=adapter_name)
+    rendered_output: str = (
+        serialized_plan
+        if options.json_output
+        else render_direct_plan_text(plan=plan, adapter_name=adapter_name) + "\n"
+    )
+    return PlanCommandResult(rendered_output=rendered_output, serialized_plan=serialized_plan)

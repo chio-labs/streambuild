@@ -51,13 +51,6 @@ from tests.unit.src.streambuild.cli.compile.helpers import (
                 "compiled/resources/sources/orders/kafka__orders.sql",
                 "compiled/resources/sources/orders/mv__orders.sql",
                 "compiled/resources/sources/orders/raw__orders.sql",
-                "compiled/workflows/orders/steps/0001_kafka_table.sql",
-                "compiled/workflows/orders/steps/0002_raw_table.sql",
-                "compiled/workflows/orders/steps/0003_landing_mv.sql",
-                "compiled/workflows/orders/steps/0010_orders_enriched.table.sql",
-                "compiled/workflows/orders/steps/0011_orders_enriched.mv.sql",
-                "compiled/workflows/orders/workflow.json",
-                "compiled/workflows/orders/workflow.sql",
                 "manifest.json",
                 "streambuild_dag.json",
             ),
@@ -85,13 +78,10 @@ def test_given_managed_project_when_compiling_then_writes_exact_static_target_tr
     "test_case",
     [
         ViewCompileTargetTestCase(
-            description="ordinary view writes query, resource, workflow, and manifest artifacts",
+            description="ordinary view writes query, resource, and manifest artifacts",
             expected_relative_files=(
                 "compiled/models/consumer/customer_orders.sql",
                 "compiled/resources/models/consumer/customer_orders.view.sql",
-                "compiled/workflows/consumer/steps/0010_customer_orders.view.sql",
-                "compiled/workflows/consumer/workflow.json",
-                "compiled/workflows/consumer/workflow.sql",
                 "manifest.json",
                 "streambuild_dag.json",
             ),
@@ -128,10 +118,7 @@ def test_given_view_project_when_compiling_then_writes_ordinary_view_artifacts(
             description="records adopted identity without claiming source resource candidates",
             expected_relation_name="existing_orders",
             expected_source_resource_count=0,
-            expected_workflow_step_names=(
-                "0010_orders_enriched.table.sql",
-                "0011_orders_enriched.mv.sql",
-            ),
+            expected_forbidden_workflow_path="compiled/workflows",
         )
     ],
     ids=lambda case: case.description,
@@ -148,16 +135,11 @@ def test_given_adopted_source_when_compiling_then_omits_managed_source_candidate
     exit_code: int = compile_project(project_dir=project_dir, target_dir=target_dir)
     manifest: dict[str, object] = json.loads((target_dir / "manifest.json").read_text())
     source_entry: dict[str, object] = manifest["sources"]["orders"]
-    workflow: dict[str, object] = json.loads(
-        (target_dir / "compiled/workflows/orders/workflow.json").read_text()
-    )
 
     assert exit_code == 0
     assert source_entry["relation_name"] == test_case.expected_relation_name
     assert len(source_entry["resources"]) == test_case.expected_source_resource_count
-    assert tuple(Path(step["file"]).name for step in workflow["steps"]) == (
-        test_case.expected_workflow_step_names
-    )
+    assert not (target_dir / test_case.expected_forbidden_workflow_path).exists()
 
 
 @pytest.mark.parametrize(
@@ -170,8 +152,8 @@ def test_given_adopted_source_when_compiling_then_omits_managed_source_candidate
                 "compiled/tests/removed/removed_test.sql",
                 "compiled/audits/removed_audit.sql",
             ),
-            runtime_relative_path="run/tests/orders/executed.sql",
-            runtime_contents=b"SELECT exact_runtime_bytes",
+            runtime_relative_path="run/plan/plan.json",
+            runtime_contents=b'{"exact":"runtime bytes"}\n',
             legacy_relative_path="orders/run/workflow/old_candidate.sql",
             expected_exit_code=0,
         )
@@ -277,7 +259,7 @@ def test_given_one_analysis_when_writing_manifest_and_dag_then_artifacts_agree(
     assert tuple((edge["from_id"], edge["to_id"], edge["edge_type"]) for edge in dag["edges"]) == (
         test_case.expected_edge,
     )
-    assert tuple(manifest["artifacts"])[-1].startswith("compiled/workflows/")
+    assert not any(path.startswith("compiled/workflows/") for path in manifest["artifacts"])
 
 
 @pytest.mark.parametrize(
@@ -289,11 +271,6 @@ def test_given_one_analysis_when_writing_manifest_and_dag_then_artifacts_agree(
             expected_audit_path=("compiled/audits/order_events/no_null_order_ids.sql"),
             expected_test_target="order_items",
             expected_audit_model="order_items",
-            expected_ordered_model_steps=(
-                "orders.table.sql",
-                "order_items.table.sql",
-                "daily_revenue.table.sql",
-            ),
         )
     ],
     ids=lambda case: case.description,
@@ -310,26 +287,12 @@ def test_given_tests_and_audits_when_compiling_then_writes_static_check_artifact
     manifest: dict[str, object] = json.loads((target_dir / "manifest.json").read_text())
     test_entry: dict[str, object] = manifest["tests"]["line total computes correctly"]
     audit_entry: dict[str, object] = manifest["audits"]["no_null_order_ids"]
-    workflow: dict[str, object] = json.loads(
-        (target_dir / "compiled/workflows/order_events/workflow.json").read_text()
-    )
-    workflow_step_names: tuple[str, ...] = tuple(
-        Path(step["file"]).name.split("_", 1)[1] for step in workflow["steps"]
-    )
 
     assert exit_code == 0
     assert test_entry["path"] == test_case.expected_test_path
     assert audit_entry["path"] == test_case.expected_audit_path
     assert tuple(test_entry["targets"]) == (test_case.expected_test_target,)
     assert tuple(audit_entry["referenced_models"]) == (test_case.expected_audit_model,)
-    assert tuple(
-        workflow_step_names.index(step_name) for step_name in test_case.expected_ordered_model_steps
-    ) == tuple(
-        sorted(
-            workflow_step_names.index(step_name)
-            for step_name in test_case.expected_ordered_model_steps
-        )
-    )
 
 
 @pytest.mark.parametrize(

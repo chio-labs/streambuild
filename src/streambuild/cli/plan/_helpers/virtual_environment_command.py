@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.cli.plan._helpers.result_rendering import render_plan_json
 from streambuild.cli.plan.main._convert_utc_timestamp_for_clickhouse import (
     convert_utc_timestamp_for_clickhouse,
 )
 from streambuild.cli.plan.main._source_validation import validate_declared_external_sources
 from streambuild.cli.plan.main._warnings import add_empty_replay_source_warnings
 from streambuild.cli.plan.main.render_plan_result import render_plan_result
-from streambuild.cli.plan.models import PlanCommandOptions
+from streambuild.cli.plan.models import PlanCommandOptions, PlanCommandResult
 from streambuild.cli.selection.main._selection import resolve_selection
 from streambuild.cli.selection.models import SelectionResolution
 from streambuild.compiler.compile.models import DesiredState
@@ -38,7 +39,7 @@ def execute_virtual_environment_plan(
     options: PlanCommandOptions,
     client: AdapterConnection,
     normalized_utc_start_time: str | None,
-) -> str:
+) -> PlanCommandResult:
     """Preserve the staged deployment plan exactly as previously rendered."""
 
     snapshot: PlanningWarehouseSnapshot = load_planning_warehouse_snapshot(
@@ -94,14 +95,22 @@ def execute_virtual_environment_plan(
         default_database=options.database,
         replay_lineage_mode=replay_lineage_mode,
     )
-    return render_plan_result(
-        plan=plan,
-        desired_state=desired_state,
-        database=options.database,
-        adapter_name=client.adapter_identity.name,
-        json_output=options.json_output,
-        verbose=options.verbose,
+    adapter_name: str = client.adapter_identity.name
+    serialized_plan: str = render_plan_json(plan=plan, adapter_name=adapter_name)
+    rendered_output: str = (
+        serialized_plan
+        if options.json_output
+        else render_plan_result(
+            plan=plan,
+            desired_state=desired_state,
+            database=options.database,
+            adapter_name=adapter_name,
+            json_output=False,
+            verbose=options.verbose,
+        )
+        + "\n"
     )
+    return PlanCommandResult(rendered_output=rendered_output, serialized_plan=serialized_plan)
 
 
 def _local_start_time(
