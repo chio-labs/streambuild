@@ -2,7 +2,14 @@
 
 from __future__ import annotations
 
-from streambuild.adapter.models import AdapterMaterializedView, AdapterReplayColumns, AdapterTable
+from streambuild.adapter.models import (
+    AdapterMaterializedView,
+    AdapterOwnershipRecord,
+    AdapterReplayColumns,
+    AdapterTable,
+    AdapterView,
+)
+from streambuild.adapter.types import AdapterOwningMode
 from streambuild.compiler.compile.constants import (
     REPLAY_CURSOR_COLUMN_NAME,
     REPLAY_LANDED_AT_COLUMN_NAME,
@@ -13,6 +20,7 @@ from streambuild.compiler.compile.constants import (
 from streambuild.compiler.compile.models import (
     CompiledModel,
     CompiledPipeline,
+    CompiledTableModel,
     ExternalSourceReplayConfig,
     LogicalResourceKey,
 )
@@ -37,14 +45,13 @@ from streambuild.compiler.planner.models import (
 from streambuild.compiler.planner.types import (
     DirectPlanReason,
     DirectRelationAction,
+    DirectResourceKind,
     TargetOwnership,
 )
 
 _BLOCKING_OWNERSHIP: frozenset[TargetOwnership] = frozenset(
     {TargetOwnership.UNMANAGED, TargetOwnership.VIRTUAL_ENVIRONMENT, TargetOwnership.CONFLICTED}
 )
-_TABLE_RELATION_INDEX: int = 0
-_VIEW_RELATION_INDEX: int = 1
 _CANONICAL_REPLAY_COLUMNS: AdapterReplayColumns = AdapterReplayColumns(
     partition=REPLAY_PARTITION_COLUMN_NAME,
     offset=REPLAY_OFFSET_COLUMN_NAME,
@@ -71,6 +78,9 @@ class DirectPlanBuilder:
         self._snapshot: DirectWarehouseSnapshot = snapshot
         self._database: str = database
         self._selected_model_keys: frozenset[LogicalResourceKey] = selected_model_keys
+        self._model_by_key: dict[LogicalResourceKey, CompiledModel] = {
+            model.key: model for model in realized_project.project.models
+        }
         self._execution_scope: tuple[LogicalResourceKey, ...] = self._resolve_execution_scope()
         self._executed_keys: frozenset[LogicalResourceKey] = frozenset(self._execution_scope)
         self._driving_parent_by_key: dict[LogicalResourceKey, LogicalResourceKey] = (
@@ -80,7 +90,9 @@ class DirectPlanBuilder:
             _replay_lineage_modes_by_key(realized_project=realized_project)
         )
         self._aggregate_model_keys: frozenset[LogicalResourceKey] = frozenset(
-            model.key for model in realized_project.project.models if model.has_aggregate_semantics
+            model.key
+            for model in realized_project.project.models
+            if isinstance(model, CompiledTableModel) and model.has_aggregate_semantics
         )
         self._external_config_by_relation_name: dict[str, ExternalSourceReplayConfig] = {
             config.table_name: config
@@ -95,6 +107,9 @@ class DirectPlanBuilder:
         self._reject_missing_prerequisites(prerequisites=prerequisites)
         entries: tuple[DirectPlanEntry, ...] = self._build_entries()
         self._reject_blocked_ownership(entries=entries)
+        stale_teardown_operations: tuple[DirectRelationOperation, ...] = (
+            self._stale_teardown_operations(entries=entries)
+        )
         return DirectPlan(
             database=self._database,
             user_scope=tuple(
@@ -104,7 +119,10 @@ class DirectPlanBuilder:
             prerequisite_scope=prerequisites,
             entries=entries,
             replay_roots=self._build_replay_roots(),
-            teardown_operations=_teardown_operations(entries=entries),
+            teardown_operations=_teardown_operations(
+                entries=entries,
+                stale_operations=stale_teardown_operations,
+            ),
             creation_operations=_creation_operations(entries=entries),
             warnings=self._build_warnings(entries=entries),
         )
@@ -135,17 +153,27 @@ class DirectPlanBuilder:
         return tuple(self._build_entry(model_key=model_key) for model_key in self._execution_scope)
 
     def _build_entry(self, *, model_key: LogicalResourceKey) -> DirectPlanEntry:
-        driving_parent_key: LogicalResourceKey = self._require_driving_parent(model_key=model_key)
-        relation_names: tuple[str, ...] = self._model_relation_names(model_key=model_key)
+        model: CompiledModel = self._model_by_key[model_key]
+        driving_parent_key: LogicalResourceKey | None = self._driving_parent_by_key.get(model_key)
+        relations: tuple[tuple[str, DirectResourceKind], ...] = self._model_relations(
+            model_key=model_key
+        )
+        if isinstance(model, CompiledTableModel) and driving_parent_key is None:
+            driving_parent_key = self._require_driving_parent(model_key=model_key)
+        relation_names: tuple[str, ...] = tuple(name for name, _kind in relations)
         return DirectPlanEntry(
             model_key=model_key,
             reason=self._plan_reason(model_key=model_key),
             relation_names=relation_names,
+            resource_kinds=tuple(kind for _name, kind in relations),
             ownership=classify_relation_ownership(
                 snapshot=self._snapshot, relation_names=relation_names
             ),
             driving_input_key=driving_parent_key,
-            is_replay_root=driving_parent_key not in self._executed_keys,
+            is_replay_root=(
+                isinstance(model, CompiledTableModel)
+                and driving_parent_key not in self._executed_keys
+            ),
         )
 
     def _plan_reason(self, *, model_key: LogicalResourceKey) -> DirectPlanReason:
@@ -186,6 +214,8 @@ class DirectPlanBuilder:
         propagated_by_root: dict[LogicalResourceKey, list[LogicalResourceKey]] = {}
         model_key: LogicalResourceKey
         for model_key in self._execution_scope:
+            if not isinstance(self._model_by_key[model_key], CompiledTableModel):
+                continue
             root_key: LogicalResourceKey = self._replay_root_key(model_key=model_key)
             propagated_by_root.setdefault(root_key, []).append(model_key)
         root_key: LogicalResourceKey
@@ -220,7 +250,7 @@ class DirectPlanBuilder:
         target_names: set[str] = set()
         model_key: LogicalResourceKey
         for model_key in self._execution_scope:
-            target_names.update(self._model_relation_names(model_key=model_key))
+            target_names.update(name for name, _kind in self._model_relations(model_key=model_key))
         collisions: tuple[str, ...] = tuple(
             sorted(target_names & self._external_config_by_relation_name.keys())
         )
@@ -256,9 +286,16 @@ class DirectPlanBuilder:
     def _build_warnings(
         self, *, entries: tuple[DirectPlanEntry, ...]
     ) -> tuple[PlannerWarning, ...]:
-        target_names: frozenset[str] = frozenset(
-            entry.relation_names[_TABLE_RELATION_INDEX] for entry in entries
-        )
+        target_names: set[str] = set()
+        entry: DirectPlanEntry
+        for entry in entries:
+            relation_name: str
+            resource_kind: DirectResourceKind
+            for relation_name, resource_kind in zip(
+                entry.relation_names, entry.resource_kinds, strict=True
+            ):
+                if resource_kind == DirectResourceKind.TABLE:
+                    target_names.add(relation_name)
         return tuple(
             PlannerWarning(
                 warning_code="mutable_ref_replay_not_guaranteed",
@@ -298,7 +335,9 @@ class DirectPlanBuilder:
     def _relation_name(self, *, key: LogicalResourceKey) -> str:
         return self._realized_project.relation_name_by_logical_key[key]
 
-    def _model_relation_names(self, *, model_key: LogicalResourceKey) -> tuple[str, ...]:
+    def _model_relations(
+        self, *, model_key: LogicalResourceKey
+    ) -> tuple[tuple[str, DirectResourceKind], ...]:
         resources: tuple[object, ...] = self._realized_project.resources_by_logical_key[model_key]
         table_names: tuple[str, ...] = tuple(
             resource.name for resource in resources if isinstance(resource, AdapterTable)
@@ -306,11 +345,19 @@ class DirectPlanBuilder:
         view_names: tuple[str, ...] = tuple(
             resource.name for resource in resources if isinstance(resource, AdapterMaterializedView)
         )
-        if len(table_names) != 1 or len(view_names) != 1:
+        ordinary_view_names: tuple[str, ...] = tuple(
+            resource.name for resource in resources if isinstance(resource, AdapterView)
+        )
+        if len(ordinary_view_names) == 1 and not table_names and not view_names:
+            return ((ordinary_view_names[0], DirectResourceKind.VIEW),)
+        if len(table_names) != 1 or len(view_names) != 1 or ordinary_view_names:
             raise DirectPlanError(
-                f"Direct plan expects one table and one materialized view for '{model_key.name}'"
+                f"Direct plan received invalid realized resources for '{model_key.name}'"
             )
-        return (table_names[0], view_names[0])
+        return (
+            (table_names[0], DirectResourceKind.TABLE),
+            (view_names[0], DirectResourceKind.MATERIALIZED_VIEW),
+        )
 
     def _require_driving_parent(self, *, model_key: LogicalResourceKey) -> LogicalResourceKey:
         driving_parent_key: LogicalResourceKey | None = self._driving_parent_by_key.get(model_key)
@@ -344,6 +391,34 @@ class DirectPlanBuilder:
                 f"Direct mode refuses to replace relations it does not own: {'; '.join(blocked)}"
             )
 
+    def _stale_teardown_operations(
+        self, *, entries: tuple[DirectPlanEntry, ...]
+    ) -> tuple[DirectRelationOperation, ...]:
+        entry_by_model_name: dict[str, DirectPlanEntry] = {
+            entry.model_key.name: entry for entry in entries
+        }
+        current_relation_names: frozenset[str] = _entry_relation_names(entries=entries)
+        operations: list[DirectRelationOperation] = []
+        record: AdapterOwnershipRecord
+        for record in self._snapshot.ownership_records:
+            entry: DirectPlanEntry | None = entry_by_model_name.get(record.logical_model_name)
+            if (
+                entry is None
+                or record.database_name != self._database
+                or record.owning_mode != AdapterOwningMode.DIRECT
+                or record.relation_name in current_relation_names
+            ):
+                continue
+            operations.append(
+                DirectRelationOperation(
+                    relation_name=record.relation_name,
+                    action=DirectRelationAction.DROP,
+                    model_key=entry.model_key,
+                    resource_kind=record.resource_kind,
+                )
+            )
+        return tuple(operations)
+
 
 def _blocked_ownership_details(*, entry: DirectPlanEntry) -> tuple[str, ...]:
     return tuple(
@@ -353,48 +428,83 @@ def _blocked_ownership_details(*, entry: DirectPlanEntry) -> tuple[str, ...]:
     )
 
 
+def _entry_relation_names(*, entries: tuple[DirectPlanEntry, ...]) -> frozenset[str]:
+    relation_names: set[str] = set()
+    for entry in entries:
+        relation_names.update(entry.relation_names)
+    return frozenset(relation_names)
+
+
 def _teardown_operations(
-    *, entries: tuple[DirectPlanEntry, ...]
+    *,
+    entries: tuple[DirectPlanEntry, ...],
+    stale_operations: tuple[DirectRelationOperation, ...] = (),
 ) -> tuple[DirectRelationOperation, ...]:
     reversed_entries: tuple[DirectPlanEntry, ...] = tuple(reversed(entries))
-    return (
-        *_relation_operations(
-            entries=reversed_entries,
-            action=DirectRelationAction.DROP,
-            index=_VIEW_RELATION_INDEX,
-        ),
-        *_relation_operations(
-            entries=reversed_entries,
-            action=DirectRelationAction.DROP,
-            index=_TABLE_RELATION_INDEX,
-        ),
-    )
+    operations: list[DirectRelationOperation] = []
+    resource_kind: DirectResourceKind
+    for resource_kind in (
+        DirectResourceKind.VIEW,
+        DirectResourceKind.MATERIALIZED_VIEW,
+        DirectResourceKind.TABLE,
+    ):
+        operations.extend(
+            _relation_operations(
+                entries=reversed_entries,
+                action=DirectRelationAction.DROP,
+                resource_kind=resource_kind,
+            )
+        )
+        operations.extend(
+            operation for operation in stale_operations if operation.resource_kind == resource_kind
+        )
+    return tuple(operations)
 
 
 def _creation_operations(
     *, entries: tuple[DirectPlanEntry, ...]
 ) -> tuple[DirectRelationOperation, ...]:
-    return (
-        *_relation_operations(
-            entries=entries, action=DirectRelationAction.CREATE, index=_TABLE_RELATION_INDEX
-        ),
-        *_relation_operations(
-            entries=entries, action=DirectRelationAction.CREATE, index=_VIEW_RELATION_INDEX
-        ),
-    )
+    operations: list[DirectRelationOperation] = []
+    resource_kind: DirectResourceKind
+    for resource_kind in (
+        DirectResourceKind.TABLE,
+        DirectResourceKind.MATERIALIZED_VIEW,
+        DirectResourceKind.VIEW,
+    ):
+        operations.extend(
+            _relation_operations(
+                entries=entries,
+                action=DirectRelationAction.CREATE,
+                resource_kind=resource_kind,
+            )
+        )
+    return tuple(operations)
 
 
 def _relation_operations(
-    *, entries: tuple[DirectPlanEntry, ...], action: DirectRelationAction, index: int
+    *,
+    entries: tuple[DirectPlanEntry, ...],
+    action: DirectRelationAction,
+    resource_kind: DirectResourceKind,
 ) -> tuple[DirectRelationOperation, ...]:
-    return tuple(
-        DirectRelationOperation(
-            relation_name=entry.relation_names[index],
-            action=action,
-            model_key=entry.model_key,
-        )
-        for entry in entries
-    )
+    operations: list[DirectRelationOperation] = []
+    entry: DirectPlanEntry
+    for entry in entries:
+        relation_name: str
+        relation_kind: DirectResourceKind
+        for relation_name, relation_kind in zip(
+            entry.relation_names, entry.resource_kinds, strict=True
+        ):
+            if relation_kind == resource_kind:
+                operations.append(
+                    DirectRelationOperation(
+                        relation_name=relation_name,
+                        action=action,
+                        model_key=entry.model_key,
+                        resource_kind=relation_kind,
+                    )
+                )
+    return tuple(operations)
 
 
 def _replay_lineage_modes_by_key(
@@ -403,6 +513,8 @@ def _replay_lineage_modes_by_key(
     replay_lineage_mode_by_key: dict[LogicalResourceKey, ReplayLineageMode] = {}
     pipeline: CompiledPipeline
     for pipeline in realized_project.project.pipelines:
+        if pipeline.source is None or pipeline.effective_replay_lineage_mode is None:
+            continue
         replay_lineage_mode_by_key[pipeline.source.key] = pipeline.effective_replay_lineage_mode
         model: CompiledModel
         for model in pipeline.models:

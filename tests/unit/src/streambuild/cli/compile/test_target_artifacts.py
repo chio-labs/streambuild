@@ -18,6 +18,7 @@ from tests.unit.src.streambuild.cli.compile._test_types import (
     RemovedStaticInputsTestCase,
     SourceSecretRedactionTestCase,
     StaticReplacementTestCase,
+    ViewCompileTargetTestCase,
 )
 from tests.unit.src.streambuild.cli.compile.helpers import (
     compile_project,
@@ -34,6 +35,7 @@ from tests.unit.src.streambuild.cli.compile.helpers import (
     write_invalid_model_header,
     write_invalid_reference_model,
     write_secret_source,
+    write_view_project,
 )
 
 
@@ -77,6 +79,46 @@ def test_given_managed_project_when_compiling_then_writes_exact_static_target_tr
     assert exit_code == 0
     assert target_file_paths(target_dir=target_dir) == test_case.expected_relative_files
     assert not (target_dir / test_case.expected_forbidden_path).exists()
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ViewCompileTargetTestCase(
+            description="ordinary view writes query, resource, workflow, and manifest artifacts",
+            expected_relative_files=(
+                "compiled/models/consumer/customer_orders.sql",
+                "compiled/resources/models/consumer/customer_orders.view.sql",
+                "compiled/workflows/consumer/steps/0010_customer_orders.view.sql",
+                "compiled/workflows/consumer/workflow.json",
+                "compiled/workflows/consumer/workflow.sql",
+                "manifest.json",
+                "streambuild_dag.json",
+            ),
+            expected_resource_kind="view",
+            expected_relation_name="customer_orders",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_view_project_when_compiling_then_writes_ordinary_view_artifacts(
+    test_case: ViewCompileTargetTestCase, tmp_path: Path
+) -> None:
+    project_dir: Path = tmp_path / "project"
+    target_dir: Path = project_dir / "target"
+    write_view_project(project_dir=project_dir)
+
+    exit_code: int = compile_project(project_dir=project_dir, target_dir=target_dir)
+    manifest: dict[str, object] = json.loads((target_dir / "manifest.json").read_text())
+    model_entry: dict[str, object] = manifest["models"]["customer_orders"]
+    resource_entry: dict[str, object] = model_entry["resources"][0]
+
+    assert exit_code == 0
+    assert target_file_paths(target_dir=target_dir) == test_case.expected_relative_files
+    assert resource_entry["kind"] == test_case.expected_resource_kind
+    assert model_entry["relation_name"] == test_case.expected_relation_name
+    assert model_entry["source"] is None
+    assert model_entry["spec"] is None
 
 
 @pytest.mark.parametrize(

@@ -26,9 +26,11 @@ from streambuild.compiler.discovery.models import (
     Project,
     ReplayOnChangePolicy,
     TransformStep,
+    ViewStep,
 )
 from streambuild.compiler.discovery.types import (
     BoundedReplayFallback,
+    ModelKind,
     RefType,
     ReplayBoundaryMode,
     ReplayLineageMode,
@@ -119,6 +121,14 @@ class MaterializedViewSpec:
 
 
 @dataclass(frozen=True)
+class ViewSpec:
+    """Comparable ordinary-view specification."""
+
+    query: str
+    database_template: str | None = field(default=None, compare=False)
+
+
+@dataclass(frozen=True)
 class DesiredKafkaTable:
     """A desired Kafka engine table for a landing step."""
 
@@ -146,6 +156,7 @@ class DesiredTable:
     key: ObjectKey
     deps: tuple[ObjectKey, ...]
     spec: TableSpec
+    logical_model_name: str | None = field(default=None, compare=False)
     replay_on_change: ReplayOnChangePolicy | None = None
     bounded_replay_fallback: BoundedReplayFallback = BoundedReplayFallback(
         BoundedReplayFallback.FULL
@@ -187,6 +198,7 @@ class DesiredMaterializedView:
     key: ObjectKey
     deps: tuple[ObjectKey, ...]
     spec: MaterializedViewSpec
+    logical_model_name: str | None = field(default=None, compare=False)
 
     @property
     def name(self) -> str:
@@ -199,6 +211,24 @@ class DesiredMaterializedView:
     @property
     def target_table_name(self) -> str:
         return self.spec.target_table_name
+
+    @property
+    def query(self) -> str:
+        return self.spec.query
+
+
+@dataclass(frozen=True)
+class DesiredView:
+    """A desired ordinary query view."""
+
+    key: ObjectKey
+    deps: tuple[ObjectKey, ...]
+    spec: ViewSpec
+    logical_model_name: str | None = field(default=None, compare=False)
+
+    @property
+    def name(self) -> str:
+        return self.key.name
 
     @property
     def query(self) -> str:
@@ -244,12 +274,12 @@ class CompiledModel:
 
     key: LogicalResourceKey
     pipeline_name: str
-    transform: TransformStep
+    relation_name: str
+    kind: ModelKind | str
     sql_analysis: SqlModelAnalysis
-    preserves_required_lineage: bool
-    replay_anchor_eligible: bool
-    effective_bounded_replay_fallback: BoundedReplayFallback
-    replay_on_change: ReplayOnChangePolicy | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "kind", ModelKind(self.kind))
 
     @property
     def query(self) -> str:
@@ -279,6 +309,21 @@ class CompiledModel:
         return tuple(reference.name for reference in self.sql_analysis.references)
 
     @property
+    def has_aggregate_semantics(self) -> bool:
+        return self.sql_analysis.aggregate_facts.has_semantics
+
+
+@dataclass(frozen=True)
+class CompiledTableModel(CompiledModel):
+    """One compiled streaming table model and its replay semantics."""
+
+    transform: TransformStep
+    preserves_required_lineage: bool
+    replay_anchor_eligible: bool
+    effective_bounded_replay_fallback: BoundedReplayFallback
+    replay_on_change: ReplayOnChangePolicy | None = None
+
+    @property
     def has_mutable_refs(self) -> bool:
         return any(
             reference.relation_type == SqlRelationType.REF
@@ -287,9 +332,12 @@ class CompiledModel:
             for reference in self.sql_analysis.references
         )
 
-    @property
-    def has_aggregate_semantics(self) -> bool:
-        return self.sql_analysis.aggregate_facts.has_semantics
+
+@dataclass(frozen=True)
+class CompiledViewModel(CompiledModel):
+    """One compiled query-only terminal view model."""
+
+    view: ViewStep
 
 
 @dataclass(frozen=True)
@@ -320,8 +368,8 @@ class CompiledPipeline:
     pipeline: Pipeline
     project: Project | None
     file_path: Path
-    effective_replay_lineage_mode: ReplayLineageMode
-    source: CompiledSource
+    effective_replay_lineage_mode: ReplayLineageMode | None
+    source: CompiledSource | None
     models: tuple[CompiledModel, ...]
 
 
@@ -329,7 +377,7 @@ class CompiledPipeline:
 class DesiredState:
     """Project-level flat desired object graph."""
 
-    objects: tuple[DesiredKafkaTable | DesiredTable | DesiredMaterializedView, ...]
+    objects: tuple[DesiredKafkaTable | DesiredTable | DesiredMaterializedView | DesiredView, ...]
     replay_anchor_keys: frozenset[ObjectKey]
     mutable_ref_warning_keys: frozenset[ObjectKey]
     external_source_replay_configs: tuple[ExternalSourceReplayConfig, ...] = ()
@@ -378,6 +426,7 @@ class CompileProjectInputs:
     pipelines: tuple[LoadedPipeline, ...]
     tests: tuple[LoadedSqlTest, ...]
     audits: tuple[LoadedSqlAudit, ...]
+    sources: tuple[KafkaLandingStep | ExternalTableSourceStep, ...] = ()
     virtual_environments: bool = False
 
 

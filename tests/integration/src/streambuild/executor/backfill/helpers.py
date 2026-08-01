@@ -1618,7 +1618,8 @@ def realize_compiled_pipelines(
     compiled_pipelines: tuple[CompiledPipeline, ...],
 ) -> RealizedProject:
     sources_by_name: dict[str, CompiledSource] = {
-        pipeline.source.key.name: pipeline.source for pipeline in compiled_pipelines
+        cast(CompiledSource, pipeline.source).key.name: cast(CompiledSource, pipeline.source)
+        for pipeline in compiled_pipelines
     }
     compiled_project: CompiledProject = CompiledProject(
         sources=tuple(sources_by_name.values()),
@@ -1642,8 +1643,9 @@ def build_desired_state(compiled_pipelines: tuple[CompiledPipeline, ...]) -> Des
 
 def require_managed_source(compiled_pipeline: CompiledPipeline) -> ManagedSourceResources:
     realized_project: RealizedProject = realize_compiled_pipelines((compiled_pipeline,))
+    compiled_source: CompiledSource = cast(CompiledSource, compiled_pipeline.source)
     source_resources: tuple[AdapterResource, ...] = realized_project.resources_by_logical_key[
-        compiled_pipeline.source.key
+        compiled_source.key
     ]
     managed_source: AdapterManagedSource = cast(AdapterManagedSource, source_resources[0])
     landing_table: AdapterTable = cast(AdapterTable, source_resources[1])

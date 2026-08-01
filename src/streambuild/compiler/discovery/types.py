@@ -20,6 +20,11 @@ class SourceKind(StrEnum):
     STREAM_TABLE = "stream_table"
 
 
+class ModelKind(StrEnum):
+    TABLE = "table"
+    VIEW = "view"
+
+
 class ReplayBoundaryMode(StrEnum):
     OFFSETS = "offsets"
     TIMESTAMP = "timestamp"

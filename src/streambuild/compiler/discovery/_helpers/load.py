@@ -26,6 +26,7 @@ from streambuild.compiler.discovery._helpers.source_registry import (
 )
 from streambuild.compiler.discovery.constants import (
     FULL_REPLAY_POLICY_VALUE,
+    NAMING_KEYS,
     PIPELINE_CONFIG_FILE_NAME,
     PIPELINE_CONFIG_KEYS,
     SCHEMA_CHANGE_RULE_KEYS,
@@ -40,10 +41,12 @@ from streambuild.compiler.discovery.models import (
     KafkaLandingStep,
     LoadedPipeline,
     Pipeline,
+    PipelineNaming,
     Project,
     ReplayOnChangePolicy,
     ReplayOnChangeRule,
     TransformStep,
+    ViewStep,
 )
 from streambuild.compiler.discovery.types import (
     BoundedReplayFallback,
@@ -56,9 +59,10 @@ from streambuild.compiler.macros.models import MacroContext, MacroRegistry
 class _PipelineDraft:
     pipeline_dir: Path
     config_path: Path
-    transforms: tuple[TransformStep, ...]
+    transforms: tuple[TransformStep | ViewStep, ...]
     replay_on_change: ReplayOnChangePolicy | None
     bounded_replay_fallback: BoundedReplayFallback | None
+    naming: PipelineNaming
 
 
 def load_pipeline_directory(pipeline_dir: Path) -> LoadedPipeline:
@@ -112,6 +116,7 @@ def load_pipeline_directory(pipeline_dir: Path) -> LoadedPipeline:
             bounded_replay_fallback=effective.defaults.bounded_replay_fallback,
             default_database=effective.database,
             adapter=effective.adapter,
+            naming=effective.naming,
         ),
     )
     validate_replay_policies_for_mode(
@@ -147,7 +152,7 @@ def load_pipeline_directories(
     pipelines: list[Pipeline] = []
     draft: _PipelineDraft
     for draft in drafts:
-        pipeline_source: KafkaLandingStep | ExternalTableSourceStep
+        pipeline_source: KafkaLandingStep | ExternalTableSourceStep | None
         pipeline_source, source_names_by_transform = _infer_pipeline_source(
             draft=draft,
             transforms_by_name=transforms_by_name,
@@ -161,6 +166,7 @@ def load_pipeline_directories(
                 transforms=draft.transforms,
                 replay_on_change=draft.replay_on_change,
                 bounded_replay_fallback=draft.bounded_replay_fallback,
+                naming=draft.naming,
             )
         )
     return tuple(pipelines)
@@ -181,7 +187,7 @@ def _load_pipeline_draft(
         if pipeline_directory.config_file is None
         else pipeline_directory.config_file.file_path
     )
-    transforms: tuple[TransformStep, ...] = _load_pipeline_transforms(
+    transforms: tuple[TransformStep | ViewStep, ...] = _load_pipeline_transforms(
         pipeline_root=pipeline_directory.pipeline_dir,
         model_contents_by_path=model_contents_by_path,
         macro_registry=macro_registry,
@@ -197,6 +203,10 @@ def _load_pipeline_draft(
         ),
         bounded_replay_fallback=_load_bounded_replay_fallback(
             value=pipeline_values.get("bounded_replay_fallback"),
+            file_path=config_path,
+        ),
+        naming=_load_pipeline_naming(
+            value=pipeline_values.get("naming"),
             file_path=config_path,
         ),
     )
@@ -226,18 +236,17 @@ def _transforms_by_name(*, drafts: tuple[_PipelineDraft, ...]) -> dict[str, Tran
     transform_paths_by_name: dict[str, Path] = {}
     draft: _PipelineDraft
     for draft in drafts:
-        transform: TransformStep
-        for transform in draft.transforms:
-            existing_path: Path | None = transform_paths_by_name.get(transform.name)
+        model: TransformStep | ViewStep
+        for model in draft.transforms:
+            existing_path: Path | None = transform_paths_by_name.get(model.name)
             if existing_path is not None:
                 raise PipelineDiscoveryError(
-                    f"Logical node name '{transform.name}' is defined in both "
-                    f"'{existing_path}' and '{transform.source_file_path}'"
+                    f"Logical node name '{model.name}' is defined in both "
+                    f"'{existing_path}' and '{model.source_file_path}'"
                 )
-            transforms_by_name[transform.name] = transform
-            transform_paths_by_name[transform.name] = (
-                transform.source_file_path or draft.pipeline_dir
-            )
+            if isinstance(model, TransformStep):
+                transforms_by_name[model.name] = model
+            transform_paths_by_name[model.name] = model.source_file_path or draft.pipeline_dir
     return transforms_by_name
 
 
@@ -247,11 +256,14 @@ def _infer_pipeline_source(
     transforms_by_name: Mapping[str, TransformStep],
     sources_by_name: Mapping[str, KafkaLandingStep | ExternalTableSourceStep],
     source_names_by_transform: Mapping[str, str],
-) -> tuple[KafkaLandingStep | ExternalTableSourceStep, dict[str, str]]:
+) -> tuple[KafkaLandingStep | ExternalTableSourceStep | None, dict[str, str]]:
     resolved_source_names: dict[str, str] = dict(source_names_by_transform)
     source_names: set[str] = set()
     transform: TransformStep
-    for transform in draft.transforms:
+    for model in draft.transforms:
+        if isinstance(model, ViewStep):
+            continue
+        transform: TransformStep = model
         source_name: str
         resolved_transform_names: tuple[str, ...]
         source_name, resolved_transform_names = _source_name_for_transform(
@@ -265,6 +277,8 @@ def _infer_pipeline_source(
         resolved_transform_name: str
         for resolved_transform_name in resolved_transform_names:
             resolved_source_names[resolved_transform_name] = source_name
+    if not source_names:
+        return None, resolved_source_names
     if len(source_names) != 1:
         raise PipelineDiscoveryError(
             f"Pipeline directory '{draft.pipeline_dir}' must resolve to exactly one source; "
@@ -374,19 +388,58 @@ def _load_bounded_replay_fallback(
         ) from error
 
 
+def _load_pipeline_naming(*, value: object, file_path: Path) -> PipelineNaming:
+    if value is None:
+        return PipelineNaming()
+    if not isinstance(value, dict) or not all(isinstance(key, str) for key in value):
+        raise PipelineDiscoveryError(
+            f"Pipeline config '{file_path}' must define naming as a mapping"
+        )
+    typed_value: dict[str, object] = cast(dict[str, object], value)
+    unknown_keys: list[str] = [key for key in typed_value if key not in NAMING_KEYS]
+    if unknown_keys:
+        raise PipelineDiscoveryError(
+            f"Pipeline config '{file_path}' contains unsupported naming keys: "
+            f"{', '.join(sorted(unknown_keys))}"
+        )
+    return PipelineNaming(
+        table_prefix=_pipeline_prefix(
+            values=typed_value,
+            key="table_prefix",
+            file_path=file_path,
+        ),
+        view_prefix=_pipeline_prefix(
+            values=typed_value,
+            key="view_prefix",
+            file_path=file_path,
+        ),
+    )
+
+
+def _pipeline_prefix(*, values: dict[str, object], key: str, file_path: Path) -> str | None:
+    value: object = values.get(key)
+    if value is None and key not in values:
+        return None
+    if not isinstance(value, str):
+        raise PipelineDiscoveryError(
+            f"Pipeline config '{file_path}' must define naming.{key} as a string"
+        )
+    return value
+
+
 def _load_pipeline_transforms(
     *,
     pipeline_root: Path,
     model_contents_by_path: Mapping[Path, str] | None = None,
     macro_registry: MacroRegistry | None = None,
     macro_context: MacroContext | None = None,
-) -> tuple[TransformStep, ...]:
+) -> tuple[TransformStep | ViewStep, ...]:
     model_file_paths: list[Path] = sorted(pipeline_root.rglob("*.sql"))
     if not model_file_paths:
         raise PipelineDiscoveryError(
             f"Pipeline root '{pipeline_root}' must contain at least one SQL model file"
         )
-    transforms: list[TransformStep] = []
+    transforms: list[TransformStep | ViewStep] = []
     model_paths_by_name: dict[str, Path] = {}
     model_file_path: Path
     for model_file_path in model_file_paths:

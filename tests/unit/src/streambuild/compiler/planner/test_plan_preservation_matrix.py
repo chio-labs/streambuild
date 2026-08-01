@@ -1,7 +1,9 @@
+from typing import cast
+
 import pytest
 
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
-from streambuild.compiler.compile.models import CompiledPipeline, DesiredState
+from streambuild.compiler.compile.models import CompiledPipeline, CompiledSource, DesiredState
 from streambuild.compiler.discovery.models import ExternalTableSourceStep, KafkaLandingStep
 from streambuild.compiler.discovery.types import ReplayBoundaryMode, ReplayLineageMode
 from streambuild.compiler.planner.main.plan_deployment import plan_deployment
@@ -134,7 +136,8 @@ def test_given_supported_source_mode_pair_when_planning_then_preserves_rebuild_p
         render_resource=ClickHouseAdapter().render_resource,
     )
 
-    assert isinstance(compiled_pipeline.source.source, test_case.expected_source_type)
+    compiled_source: CompiledSource = cast(CompiledSource, compiled_pipeline.source)
+    assert isinstance(compiled_source.source, test_case.expected_source_type)
     assert compiled_pipeline.effective_replay_lineage_mode == test_case.replay_lineage_mode
     assert len(desired_state.objects) == test_case.expected_desired_object_count
     assert (

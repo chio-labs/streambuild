@@ -108,14 +108,14 @@ def _build_upstream_model_graph(
 ) -> dict[str, tuple[str, ...]]:
     upstream_names_by_model: dict[str, set[str]] = defaultdict(set)
     known_model_names: set[str] = {
-        compiled_model.transform.name
+        compiled_model.key.name
         for compiled_model in compiled_models(compiled_pipelines=compiled_pipelines)
     }
     compiled_pipeline: CompiledPipeline
     for compiled_pipeline in compiled_pipelines:
         compiled_model: CompiledModel
         for compiled_model in compiled_pipeline.models:
-            model_name: str = compiled_model.transform.name
+            model_name: str = compiled_model.key.name
             upstream_names_by_model.setdefault(model_name, set())
             parsed_ref: ParsedRef
             for parsed_ref in compiled_model.parsed_refs:
@@ -150,6 +150,6 @@ def _model_names_by_pipeline(
     compiled_pipeline: CompiledPipeline
     for compiled_pipeline in compiled_pipelines:
         names_by_pipeline[compiled_pipeline.pipeline.name] = tuple(
-            compiled_model.transform.name for compiled_model in compiled_pipeline.models
+            compiled_model.key.name for compiled_model in compiled_pipeline.models
         )
     return names_by_pipeline

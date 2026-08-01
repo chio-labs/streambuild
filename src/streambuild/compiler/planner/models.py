@@ -18,6 +18,7 @@ from streambuild.compiler.compile.models import (
     MaterializedViewSpec,
     ObjectKey,
     TableSpec,
+    ViewSpec,
 )
 from streambuild.compiler.discovery.types import (
     BoundedReplayFallback,
@@ -29,6 +30,7 @@ from streambuild.compiler.planner.types import (
     DeploymentPhase,
     DirectPlanReason,
     DirectRelationAction,
+    DirectResourceKind,
     PlannedChangeType,
     RebuildExecutionMode,
     RebuildStrategy,
@@ -127,10 +129,26 @@ class ActualMaterializedView:
 
 
 @dataclass(frozen=True)
+class ActualView:
+    """A normalized actual ordinary view."""
+
+    key: ObjectKey
+    spec: ViewSpec
+
+    @property
+    def name(self) -> str:
+        return self.key.name
+
+    @property
+    def query(self) -> str:
+        return self.spec.query
+
+
+@dataclass(frozen=True)
 class ActualState:
     """Project-level flat actual object graph."""
 
-    objects: tuple[ActualKafkaTable | ActualTable | ActualMaterializedView, ...]
+    objects: tuple[ActualKafkaTable | ActualTable | ActualMaterializedView | ActualView, ...]
 
 
 @dataclass(frozen=True)
@@ -239,6 +257,7 @@ class RebuildSubtree:
     affected_keys: tuple[ObjectKey, ...]
     upstream_boundary_key: ObjectKey
     strategy: RebuildStrategy | str
+    replay_required: bool = True
     execution_mode: RebuildExecutionMode | str = RebuildExecutionMode.FULL_REBUILD
     forced_full_refresh: bool = False
     forced_start_time: str | None = None
@@ -287,6 +306,7 @@ class PreparedShadowObject:
 
     logical_key: ObjectKey
     physical_name: str
+    logical_model_name: str
 
 
 @dataclass(frozen=True)
@@ -318,6 +338,7 @@ class PreparedObjectMapping:
 
     logical_key: ObjectKey
     physical_name: str
+    logical_model_name: str
 
 
 @dataclass(frozen=True)
@@ -421,12 +442,18 @@ class DirectPlanEntry:
     model_key: LogicalResourceKey
     reason: DirectPlanReason | str
     relation_names: tuple[str, ...]
+    resource_kinds: tuple[DirectResourceKind | str, ...]
     ownership: tuple[TargetOwnershipClassification, ...]
-    driving_input_key: LogicalResourceKey
+    driving_input_key: LogicalResourceKey | None
     is_replay_root: bool
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "reason", DirectPlanReason(self.reason))
+        object.__setattr__(
+            self,
+            "resource_kinds",
+            tuple(DirectResourceKind(kind) for kind in self.resource_kinds),
+        )
 
 
 @dataclass(frozen=True)
@@ -464,9 +491,11 @@ class DirectRelationOperation:
     relation_name: str
     action: DirectRelationAction | str
     model_key: LogicalResourceKey
+    resource_kind: DirectResourceKind | str
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "action", DirectRelationAction(self.action))
+        object.__setattr__(self, "resource_kind", DirectResourceKind(self.resource_kind))
 
 
 @dataclass(frozen=True)

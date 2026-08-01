@@ -23,6 +23,7 @@ from streambuild.compiler.compile.models import (
     DesiredMaterializedView,
     DesiredState,
     DesiredTable,
+    DesiredView,
     ObjectKey,
 )
 from streambuild.compiler.planner.models import (
@@ -54,6 +55,7 @@ def render_plan_json(*, plan: DeploymentPlan, adapter_name: str) -> str:
                 "root_key": object_key_payload(subtree.root_key),
                 "upstream_boundary_key": object_key_payload(subtree.upstream_boundary_key),
                 "strategy": subtree.strategy,
+                "replay_required": subtree.replay_required,
                 "execution_mode": subtree.execution_mode,
                 "forced_full_refresh": subtree.forced_full_refresh,
                 "forced_start_time": subtree.forced_start_time,
@@ -94,7 +96,7 @@ def render_plan_text(
     database: str,
     verbose: bool,
 ) -> str:
-    desired_object_by_key: dict[ObjectKey, DesiredTable | DesiredMaterializedView] = (
+    desired_object_by_key: dict[ObjectKey, DesiredTable | DesiredMaterializedView | DesiredView] = (
         _desired_object_by_key(desired_state)
     )
     lines: list[str] = _render_header(plan=plan, database=database)
@@ -146,11 +148,11 @@ def render_plan_text(
 
 def _desired_object_by_key(
     desired_state: DesiredState,
-) -> dict[ObjectKey, DesiredTable | DesiredMaterializedView]:
+) -> dict[ObjectKey, DesiredTable | DesiredMaterializedView | DesiredView]:
     return {
         object_.key: object_
         for object_ in desired_state.objects
-        if isinstance(object_, (DesiredTable, DesiredMaterializedView))
+        if isinstance(object_, (DesiredTable, DesiredMaterializedView, DesiredView))
     }
 
 
@@ -170,7 +172,7 @@ def _render_header(*, plan: DeploymentPlan, database: str) -> list[str]:
 def _render_subtrees(
     *,
     plan: DeploymentPlan,
-    desired_object_by_key: dict[ObjectKey, DesiredTable | DesiredMaterializedView],
+    desired_object_by_key: dict[ObjectKey, DesiredTable | DesiredMaterializedView | DesiredView],
 ) -> list[str]:
     if not plan.rebuild_subtrees:
         return []
@@ -193,7 +195,7 @@ def _render_subtrees(
 def _render_compact_summary(
     *,
     plan: DeploymentPlan,
-    desired_object_by_key: dict[ObjectKey, DesiredTable | DesiredMaterializedView],
+    desired_object_by_key: dict[ObjectKey, DesiredTable | DesiredMaterializedView | DesiredView],
 ) -> list[str]:
     lines: list[str] = []
     rendered_new_target_names: tuple[str, ...] = new_target_names(
@@ -229,7 +231,7 @@ def _render_compact_summary(
 def _render_changed_objects(
     *,
     plan: DeploymentPlan,
-    desired_object_by_key: dict[ObjectKey, DesiredTable | DesiredMaterializedView],
+    desired_object_by_key: dict[ObjectKey, DesiredTable | DesiredMaterializedView | DesiredView],
 ) -> list[str]:
     changed_objects: tuple[tuple[str, str], ...] = changed_object_entries(
         plan=plan,
@@ -248,7 +250,7 @@ def _render_changed_objects(
 def _render_sql_diffs(
     *,
     plan: DeploymentPlan,
-    desired_object_by_key: dict[ObjectKey, DesiredTable | DesiredMaterializedView],
+    desired_object_by_key: dict[ObjectKey, DesiredTable | DesiredMaterializedView | DesiredView],
 ) -> list[str]:
     if not plan.sql_diffs:
         return []
@@ -276,7 +278,7 @@ def _render_sql_diffs(
 def _render_compact_diffs(
     *,
     plan: DeploymentPlan,
-    desired_object_by_key: dict[ObjectKey, DesiredTable | DesiredMaterializedView],
+    desired_object_by_key: dict[ObjectKey, DesiredTable | DesiredMaterializedView | DesiredView],
 ) -> list[str]:
     if not plan.sql_diffs:
         return []
@@ -295,7 +297,7 @@ def _render_compact_diffs(
 def _render_rollout_objects(
     *,
     plan: DeploymentPlan,
-    desired_object_by_key: dict[ObjectKey, DesiredTable | DesiredMaterializedView],
+    desired_object_by_key: dict[ObjectKey, DesiredTable | DesiredMaterializedView | DesiredView],
 ) -> list[str]:
     lines: list[str] = [cli_style().section("Staged rollout objects")]
     rollout_objects: tuple[tuple[str, str], ...] = rollout_object_entries(
@@ -315,7 +317,7 @@ def _render_rollout_objects(
 def _render_workflow(
     *,
     plan: DeploymentPlan,
-    desired_object_by_key: dict[ObjectKey, DesiredTable | DesiredMaterializedView],
+    desired_object_by_key: dict[ObjectKey, DesiredTable | DesiredMaterializedView | DesiredView],
 ) -> list[str]:
     lines: list[str] = [cli_style().section("Workflow")]
     lines.extend(

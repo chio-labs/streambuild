@@ -4,6 +4,7 @@ from streambuild.adapter.constants import MANAGED_SOURCE_KIND_KAFKA
 from streambuild.adapter.types import AdapterReplayBoundaryMode
 
 CLICKHOUSE_ADAPTER_NAME: str = "clickhouse"
+CLICKHOUSE_WRITTEN_ROWS_SUMMARY_KEY: str = "written_rows"
 CLICKHOUSE_DEFAULT_DATABASE: str = "default"
 CLICKHOUSE_SQL_ANALYSIS_DIALECT: str = "clickhouse"
 CLICKHOUSE_CONNECTION_CONFIG_KEYS: frozenset[str] = frozenset(

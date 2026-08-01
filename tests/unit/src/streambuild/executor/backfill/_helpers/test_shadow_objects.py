@@ -8,6 +8,7 @@ from streambuild.adapter.models import (
     AdapterMaterializedView,
     AdapterStableView,
     AdapterTable,
+    AdapterView,
 )
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from streambuild.compiler.compile.models import DesiredState
@@ -53,7 +54,11 @@ def test_given_reference_ref_when_creating_shadow_objects_then_it_creates_depend
         def __init__(self) -> None:
             self.commands: list[str] = []
             self.resources: list[
-                AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterStableView
+                AdapterManagedSource
+                | AdapterTable
+                | AdapterMaterializedView
+                | AdapterView
+                | AdapterStableView
             ] = []
 
         def query(self, _statement: str) -> object:

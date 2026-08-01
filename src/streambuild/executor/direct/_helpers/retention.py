@@ -85,7 +85,11 @@ def assert_preserved_history_covers_ranges(
 
 
 def capture_completed_replay_coverage(
-    *, client: AdapterConnection, plan: DirectPlan, database: str
+    *,
+    client: AdapterConnection,
+    plan: DirectPlan,
+    database: str,
+    completed_model_names: frozenset[str],
 ) -> tuple[DirectReplayCoverage, ...]:
     """Capture the retained input ranges protected after a completed direct replay."""
 
@@ -105,6 +109,7 @@ def capture_completed_replay_coverage(
             ),
         )
         for root in plan.replay_roots
+        if root.model_key.name in completed_model_names
     )
 
 

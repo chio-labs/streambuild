@@ -25,6 +25,7 @@ from streambuild.executor.population.models import (
     PopulationPlan,
     PopulationRoot,
     PopulationWatermark,
+    PopulationWatermarkInput,
 )
 
 
@@ -100,21 +101,19 @@ def _cursor_watermark(
     desired_state: DesiredState,
     default_database: str,
 ) -> PopulationWatermark:
-    external_config: ExternalSourceReplayConfig | None = _external_source_config(
-        desired_state=desired_state, key=root.upstream_boundary_key
+    watermark_input: PopulationWatermarkInput = _watermark_input_for_anchor(
+        desired_state=desired_state, anchor_key=root.upstream_boundary_key
     )
+    external_config: ExternalSourceReplayConfig | None = watermark_input.external_source_config
     cursor_column_name: str = (
         external_config.cursor_column_name
         if external_config is not None and external_config.cursor_column_name is not None
         else REPLAY_CURSOR_COLUMN_NAME
     )
-    anchor_table_name: str = _landing_table_name_for_anchor(
-        desired_state=desired_state, anchor_key=root.upstream_boundary_key
-    )
     row: OffsetWatermarkQueryRow | None = client.query_one(
         statement=(
             f"SELECT coalesce(toString(max({cursor_column_name})), '') AS cutoff_offset "
-            f"FROM {root.root_key.database or default_database}.{anchor_table_name}"
+            f"FROM {root.root_key.database or default_database}.{watermark_input.table_name}"
         ),
         decode=_decode_cursor_cutoff_query_row,
     )
@@ -138,15 +137,14 @@ def _offset_watermarks(
     physical_name_by_key: dict[ObjectKey, str] = {
         prepared.logical_key: prepared.physical_name for prepared in plan.objects
     }
+    watermark_input: PopulationWatermarkInput = _watermark_input_for_anchor(
+        desired_state=desired_state, anchor_key=root.upstream_boundary_key
+    )
     landing_table_name: str = _staged_table_name_if_present(
-        logical_table_name=_landing_table_name_for_anchor(
-            desired_state=desired_state, anchor_key=root.upstream_boundary_key
-        ),
+        logical_table_name=watermark_input.table_name,
         physical_name_by_key=physical_name_by_key,
     )
-    external_config: ExternalSourceReplayConfig | None = _external_source_config(
-        desired_state=desired_state, key=root.upstream_boundary_key
-    )
+    external_config: ExternalSourceReplayConfig | None = watermark_input.external_source_config
     rows: tuple[OffsetWatermarkQueryRow, ...] = client.query_many(
         statement=_render_offset_cutoff_query(
             database=root.root_key.database or default_database,
@@ -236,30 +234,49 @@ def _scalar_boundary_key(
     return REPLAY_LANDED_AT_COLUMN_NAME
 
 
-def _landing_table_name_for_anchor(*, desired_state: DesiredState, anchor_key: ObjectKey) -> str:
-    external_config: ExternalSourceReplayConfig | None = _external_source_config(
-        desired_state=desired_state, key=anchor_key
-    )
-    if external_config is not None:
-        return external_config.table_name
-    desired_anchor: DesiredTable = next(
-        object_
-        for object_ in desired_state.objects
-        if isinstance(object_, DesiredTable) and object_.key == anchor_key
-    )
-    if desired_anchor.name.startswith(RAW_TABLE_NAME_PREFIX):
-        return desired_anchor.name
+def _watermark_input_for_anchor(
+    *, desired_state: DesiredState, anchor_key: ObjectKey
+) -> PopulationWatermarkInput:
     current_key: ObjectKey = anchor_key
     desired_table_by_key: dict[ObjectKey, DesiredTable] = {
         object_.key: object_
         for object_ in desired_state.objects
         if isinstance(object_, DesiredTable)
     }
+    visited_keys: set[ObjectKey] = set()
     while True:
-        current_table: DesiredTable = desired_table_by_key[current_key]
+        if current_key in visited_keys:
+            raise PopulationExecutionError(
+                f"Cannot resolve replay watermark input for anchor '{anchor_key.name}': "
+                f"upstream table traversal contains a cycle at '{current_key.name}'"
+            )
+        visited_keys.add(current_key)
+        external_config: ExternalSourceReplayConfig | None = _external_source_config(
+            desired_state=desired_state, key=current_key
+        )
+        if external_config is not None:
+            return PopulationWatermarkInput(
+                table_name=external_config.table_name,
+                external_source_config=external_config,
+            )
+        current_table: DesiredTable | None = desired_table_by_key.get(current_key)
+        if current_table is None:
+            raise PopulationExecutionError(
+                f"Cannot resolve replay watermark input for anchor '{anchor_key.name}': "
+                f"upstream key '{current_key.name}' is neither a desired table nor an "
+                "adopted source"
+            )
+        if current_table.name.startswith(RAW_TABLE_NAME_PREFIX):
+            return PopulationWatermarkInput(
+                table_name=current_table.name,
+                external_source_config=None,
+            )
+        if not current_table.deps:
+            raise PopulationExecutionError(
+                f"Cannot resolve replay watermark input for anchor '{anchor_key.name}': "
+                f"table '{current_table.name}' has no upstream parent"
+            )
         parent_key: ObjectKey = current_table.deps[0]
-        if parent_key.name.startswith(RAW_TABLE_NAME_PREFIX):
-            return parent_key.name
         current_key = parent_key
 
 

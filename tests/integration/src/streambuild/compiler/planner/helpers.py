@@ -15,11 +15,13 @@ from streambuild.compiler.compile.models import (
     Column,
     CompiledPipeline,
     CompiledProject,
+    CompiledSource,
     CompilerAdapterProfile,
     DesiredKafkaTable,
     DesiredMaterializedView,
     DesiredState,
     DesiredTable,
+    DesiredView,
 )
 from streambuild.compiler.discovery.models import (
     KafkaLandingStep,
@@ -61,7 +63,7 @@ def realize_compiled_pipelines(
     compiled_pipelines: tuple[CompiledPipeline, ...],
 ) -> RealizedProject:
     compiled_project: CompiledProject = CompiledProject(
-        sources=tuple(pipeline.source for pipeline in compiled_pipelines),
+        sources=tuple(cast(CompiledSource, pipeline.source) for pipeline in compiled_pipelines),
         models=tuple(chain.from_iterable(pipeline.models for pipeline in compiled_pipelines)),
         pipelines=compiled_pipelines,
         tests=(),
@@ -296,9 +298,9 @@ def build_changed_schema_variant_compiled_pipeline(kind: str) -> CompiledPipelin
 
 
 def normalize_orders_enriched_timestamp_type(desired_state: DesiredState) -> DesiredState:
-    object_by_name: dict[str, DesiredKafkaTable | DesiredTable | DesiredMaterializedView] = {
-        desired_object.name: desired_object for desired_object in desired_state.objects
-    }
+    object_by_name: dict[
+        str, DesiredKafkaTable | DesiredTable | DesiredMaterializedView | DesiredView
+    ] = {desired_object.name: desired_object for desired_object in desired_state.objects}
     target_table: DesiredTable = cast(DesiredTable, object_by_name["tbl__orders_enriched"])
     column_by_name: dict[str, Column] = {
         column.name: column for column in target_table.spec.columns
@@ -348,7 +350,7 @@ def _create_suffixed_raw_landing(
     *, clickhouse_client: Client, clickhouse_database: str, compiled_pipeline: CompiledPipeline
 ) -> None:
     clickhouse_client.command(
-        f"CREATE TABLE {clickhouse_database}.raw__orders__dep_a "
+        f"CREATE TABLE {clickhouse_database}.raw__orders__20260731T120000Z_depaaa "
         "(kafka_key String, kafka_value String, kafka_topic String, "
         "_replay_partition Int64, _replay_offset Int64, "
         "_replay_timestamp DateTime64(3), kafka_headers String, "
@@ -362,10 +364,13 @@ def _create_suffixed_raw_landing(
         render_create_materialized_view_ddl(
             materialized_view=replace(
                 source_materialized_view,
-                key=replace(source_materialized_view.key, name="mv__orders__dep_a"),
+                key=replace(
+                    source_materialized_view.key,
+                    name="mv__orders__20260731T120000Z_depaaa",
+                ),
                 spec=replace(
                     source_materialized_view.spec,
-                    target_table_name="raw__orders__dep_a",
+                    target_table_name="raw__orders__20260731T120000Z_depaaa",
                 ),
             ),
             database=clickhouse_database,
@@ -388,7 +393,7 @@ def _create_physical_candidates(
 ) -> None:
     del compiled_pipeline
     clickhouse_client.command(
-        f"CREATE TABLE {clickhouse_database}.tbl__orders_enriched__dep_a "
+        f"CREATE TABLE {clickhouse_database}.tbl__orders_enriched__20260731T120000Z_depaaa "
         "(order_id String, _replay_timestamp DateTime64(3)) "
         "ENGINE = MergeTree ORDER BY (order_id)"
     )
@@ -399,8 +404,9 @@ def _create_candidate_materialized_view(
 ) -> None:
     del compiled_pipeline
     clickhouse_client.command(
-        f"CREATE MATERIALIZED VIEW {clickhouse_database}.mv__orders_enriched__dep_a "
-        f"TO {clickhouse_database}.tbl__orders_enriched__dep_a AS "
+        f"CREATE MATERIALIZED VIEW "
+        f"{clickhouse_database}.mv__orders_enriched__20260731T120000Z_depaaa "
+        f"TO {clickhouse_database}.tbl__orders_enriched__20260731T120000Z_depaaa AS "
         "SELECT CAST(kafka_key AS String) AS order_id, "
         "CAST(_replay_timestamp AS DateTime64(3)) AS _replay_timestamp "
         f"FROM {clickhouse_database}.raw__orders"
@@ -416,7 +422,7 @@ def _create_stable_view(
         render_create_view_ddl(
             database=clickhouse_database,
             view_name="tbl__orders_enriched",
-            target_table_name="tbl__orders_enriched__dep_a",
+            target_table_name="tbl__orders_enriched__20260731T120000Z_depaaa",
         )
     )
 
@@ -434,14 +440,14 @@ ACTUAL_STATE_SETUP_STEPS: dict[str, Callable[..., None]] = {
 def _create_orders_candidates(*, clickhouse_client: Client, clickhouse_database: str) -> None:
     clickhouse_client.command(
         "CREATE TABLE "
-        f"{clickhouse_database}.tbl__orders_enriched__dep_a "
+        f"{clickhouse_database}.tbl__orders_enriched__20260731T120000Z_depaaa "
         "(order_id String, _replay_timestamp DateTime64(3)) "
         "ENGINE = MergeTree ORDER BY (order_id)"
     )
     clickhouse_client.command(
         "CREATE MATERIALIZED VIEW "
-        f"{clickhouse_database}.mv__orders_enriched__dep_a "
-        f"TO {clickhouse_database}.tbl__orders_enriched__dep_a AS "
+        f"{clickhouse_database}.mv__orders_enriched__20260731T120000Z_depaaa "
+        f"TO {clickhouse_database}.tbl__orders_enriched__20260731T120000Z_depaaa AS "
         "SELECT CAST(kafka_key AS String) AS order_id, "
         "CAST(_replay_timestamp AS DateTime64(3)) AS _replay_timestamp "
         f"FROM {clickhouse_database}.raw__orders"
@@ -451,14 +457,14 @@ def _create_orders_candidates(*, clickhouse_client: Client, clickhouse_database:
 def _create_customers_candidates(*, clickhouse_client: Client, clickhouse_database: str) -> None:
     clickhouse_client.command(
         "CREATE TABLE "
-        f"{clickhouse_database}.tbl__customers_enriched__dep_b "
+        f"{clickhouse_database}.tbl__customers_enriched__20260731T130000Z_depbbb "
         "(order_id String, _replay_timestamp DateTime64(3)) "
         "ENGINE = MergeTree ORDER BY (order_id)"
     )
     clickhouse_client.command(
         "CREATE MATERIALIZED VIEW "
-        f"{clickhouse_database}.mv__customers_enriched__dep_b "
-        f"TO {clickhouse_database}.tbl__customers_enriched__dep_b AS "
+        f"{clickhouse_database}.mv__customers_enriched__20260731T130000Z_depbbb "
+        f"TO {clickhouse_database}.tbl__customers_enriched__20260731T130000Z_depbbb AS "
         "SELECT CAST(kafka_key AS String) AS order_id, "
         "CAST(_replay_timestamp AS DateTime64(3)) AS _replay_timestamp "
         f"FROM {clickhouse_database}.raw__customers"
@@ -470,7 +476,7 @@ def _create_orders_active_view(*, clickhouse_client: Client, clickhouse_database
         render_create_view_ddl(
             database=clickhouse_database,
             view_name="tbl__orders_enriched",
-            target_table_name="tbl__orders_enriched__dep_a",
+            target_table_name="tbl__orders_enriched__20260731T120000Z_depaaa",
         )
     )
 
@@ -480,7 +486,7 @@ def _create_customers_active_view(*, clickhouse_client: Client, clickhouse_datab
         render_create_view_ddl(
             database=clickhouse_database,
             view_name="tbl__customers_enriched",
-            target_table_name="tbl__customers_enriched__dep_b",
+            target_table_name="tbl__customers_enriched__20260731T130000Z_depbbb",
         )
     )
 

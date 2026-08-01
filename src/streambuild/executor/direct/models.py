@@ -28,14 +28,6 @@ class DirectBuildRequest:
 
 
 @dataclass(frozen=True)
-class PreservedSourceRealization:
-    """Which managed source relations already existed and which were created."""
-
-    preserved_relation_names: tuple[str, ...]
-    created_relation_names: tuple[str, ...]
-
-
-@dataclass(frozen=True)
 class DirectReplayBoundary:
     """One partition-scoped or scalar cutoff separating replay from live propagation."""
 
@@ -62,6 +54,14 @@ class DirectReplayCoverage:
 
 
 @dataclass(frozen=True)
+class DirectRootReplayResult:
+    """One direct replay root actually executed in the warehouse."""
+
+    model_name: str
+    written_rows: int | None
+
+
+@dataclass(frozen=True)
 class DirectBuildResult:
     """Everything one direct build durably changed, in execution order."""
 
@@ -73,4 +73,4 @@ class DirectBuildResult:
     created_relation_names: tuple[str, ...]
     boundary_time: str
     boundaries: tuple[DirectReplayBoundary, ...]
-    replayed_model_names: tuple[str, ...]
+    replay_results: tuple[DirectRootReplayResult, ...]

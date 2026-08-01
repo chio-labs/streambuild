@@ -10,12 +10,19 @@ from streambuild.adapter.models import (
     AdapterSetDifferenceTarget,
     AdapterStableView,
     AdapterTable,
+    AdapterView,
 )
 
 
 def render_clickhouse_resource(
     *,
-    resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterStableView,
+    resource: (
+        AdapterManagedSource
+        | AdapterTable
+        | AdapterMaterializedView
+        | AdapterView
+        | AdapterStableView
+    ),
     database: str,
     if_not_exists: bool = False,
 ) -> str:
@@ -35,6 +42,8 @@ def render_clickhouse_resource(
         return _render_table(resource=resource, database=database)
     if isinstance(resource, AdapterMaterializedView):
         return _render_materialized_view(resource=resource, database=database)
+    if isinstance(resource, AdapterView):
+        return _render_view(resource=resource, database=database)
     return _render_stable_view(resource=resource, database=database)
 
 
@@ -115,6 +124,14 @@ def _render_materialized_view(*, resource: AdapterMaterializedView, database: st
         f"TO {database}.{resource.target_relation_name} AS\n"
         f"{rendered_query}"
     )
+
+
+def _render_view(*, resource: AdapterView, database: str) -> str:
+    rendered_query: str = resource.database_template.replace(
+        f"{ADAPTER_DATABASE_PLACEHOLDER}.",
+        f"{database}.",
+    )
+    return f"CREATE VIEW {database}.{resource.name} AS\n{rendered_query}"
 
 
 def _render_stable_view(*, resource: AdapterStableView, database: str) -> str:

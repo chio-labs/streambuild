@@ -26,6 +26,14 @@ class PipelineSourceInferenceTestCase:
 
 
 @dataclass(frozen=True)
+class ViewPipelineSourceInferenceTestCase:
+    description: str
+    project_files: dict[str, str]
+    source_contents: str
+    expected_pipeline_sources: tuple[tuple[str, str | None], ...]
+
+
+@dataclass(frozen=True)
 class PipelineSourceInferenceErrorTestCase:
     description: str
     project_files: dict[str, str]

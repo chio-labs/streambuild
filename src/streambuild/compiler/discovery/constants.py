@@ -12,6 +12,20 @@ MODEL_HEADER_PATTERN: re.Pattern[str] = re.compile(
 )
 ALLOWED_MODEL_KEYS: frozenset[str] = frozenset(
     {
+        "kind",
+        "relation_name",
+        "engine",
+        "order_by",
+        "partition_by",
+        "ttl",
+        "settings",
+        "replay_anchor",
+        "replay_on_change",
+        "bounded_replay_fallback",
+    }
+)
+VIEW_FORBIDDEN_MODEL_KEYS: frozenset[str] = frozenset(
+    {
         "engine",
         "order_by",
         "partition_by",
@@ -24,20 +38,37 @@ ALLOWED_MODEL_KEYS: frozenset[str] = frozenset(
 )
 DEFAULT_SQL_MODEL_ENGINE: str = "MergeTree()"
 DEFAULT_SQL_MODEL_ORDER_BY: tuple[str, ...] = ("_replay_timestamp",)
+DEFAULT_TABLE_PREFIX: str = "tbl__"
+DEFAULT_VIEW_PREFIX: str = "view__"
 PROJECT_CONFIG_FILE_NAME: str = "streambuild_project.toml"
 LOCAL_CONFIG_FILE_NAME: str = "streambuild_local.toml"
 LEGACY_PROJECT_CONFIG_FILE_NAME: str = "streambuild_project.yml"
 LEGACY_LOCAL_CONFIG_FILE_NAME: str = "streambuild_local.yml"
 
 PIPELINE_CONFIG_FILE_NAME: str = "pipeline.toml"
-PIPELINE_CONFIG_KEYS: frozenset[str] = frozenset({"replay_on_change", "bounded_replay_fallback"})
+PIPELINE_CONFIG_KEYS: frozenset[str] = frozenset(
+    {"replay_on_change", "bounded_replay_fallback", "naming"}
+)
+NAMING_KEYS: frozenset[str] = frozenset({"table_prefix", "view_prefix"})
+NAMING_TABLE_PREFIX_KEY: str = "table_prefix"
+NAMING_VIEW_PREFIX_KEY: str = "view_prefix"
 DEFAULT_ADAPTER_NAME: str = "clickhouse"
 PYTHON_PACKAGE_INITIALIZER_FILE_NAME: str = "__init__.py"
 FULL_REPLAY_POLICY_VALUE: str = "full"
 INTERPOLATION_NAMESPACE_SEPARATOR: str = ":"
 INTERPOLATION_TOKEN_START: str = "${"
 PROJECT_CONFIG_KEYS: frozenset[str] = frozenset(
-    {"name", "adapter", "default_target", "settings", "connection", "vars", "targets", "defaults"}
+    {
+        "name",
+        "adapter",
+        "default_target",
+        "settings",
+        "connection",
+        "vars",
+        "targets",
+        "defaults",
+        "naming",
+    }
 )
 LOCAL_CONFIG_KEYS: frozenset[str] = frozenset(
     {"target", "adapter", "settings", "connection", "vars", "targets"}

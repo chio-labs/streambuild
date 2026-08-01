@@ -2,12 +2,13 @@
 
 from datetime import UTC, datetime
 
-from streambuild.compiler.compile.constants import TRANSFORM_TABLE_NAME_PREFIX
+from streambuild.compiler.compile.constants import RAW_TABLE_NAME_PREFIX
 from streambuild.compiler.compile.models import (
     DesiredKafkaTable,
     DesiredMaterializedView,
     DesiredState,
     DesiredTable,
+    DesiredView,
     ObjectKey,
 )
 from streambuild.compiler.planner.models import (
@@ -15,6 +16,7 @@ from streambuild.compiler.planner.models import (
     ActualMaterializedView,
     ActualState,
     ActualTable,
+    ActualView,
     ObjectStateRecord,
 )
 from streambuild.executor.reconcile._helpers.persist import build_object_state_record
@@ -74,18 +76,23 @@ def _build_reconcile_object_index(
     selected_model_keys: frozenset[ObjectKey],
 ) -> ReconcileObjectIndex:
     desired_table_by_key: dict[ObjectKey, DesiredTable] = {}
-    desired_object: DesiredKafkaTable | DesiredTable | DesiredMaterializedView
+    desired_view_by_key: dict[ObjectKey, DesiredView] = {}
+    desired_object: DesiredKafkaTable | DesiredTable | DesiredMaterializedView | DesiredView
     for desired_object in desired_state.objects:
-        if isinstance(desired_object, DesiredTable) and desired_object.name.startswith(
-            TRANSFORM_TABLE_NAME_PREFIX
+        if isinstance(desired_object, DesiredTable) and not desired_object.name.startswith(
+            RAW_TABLE_NAME_PREFIX
         ):
             desired_table_by_key[desired_object.key] = desired_object
+        elif isinstance(desired_object, DesiredView):
+            desired_view_by_key[desired_object.key] = desired_object
 
     desired_mv_by_target_key: dict[ObjectKey, DesiredMaterializedView] = {}
     for desired_object in desired_state.objects:
         if not isinstance(desired_object, DesiredMaterializedView):
             continue
-        if not desired_object.target_table_name.startswith(TRANSFORM_TABLE_NAME_PREFIX):
+        if desired_object.target_table_name not in {
+            table.name for table in desired_table_by_key.values()
+        }:
             continue
         target_key: ObjectKey = next(
             table.key
@@ -96,7 +103,7 @@ def _build_reconcile_object_index(
 
     actual_table_by_key: dict[ObjectKey, ActualTable] = {}
     actual_mv_by_key: dict[ObjectKey, ActualMaterializedView] = {}
-    actual_object: ActualKafkaTable | ActualTable | ActualMaterializedView
+    actual_object: ActualKafkaTable | ActualTable | ActualMaterializedView | ActualView
     for actual_object in actual_state.objects:
         if isinstance(actual_object, ActualTable):
             actual_table_by_key[actual_object.key] = actual_object
@@ -104,13 +111,14 @@ def _build_reconcile_object_index(
             actual_mv_by_key[actual_object.key] = actual_object
 
     target_keys: tuple[ObjectKey, ...] = tuple(
-        desired_table_by_key.keys()
+        (*desired_table_by_key.keys(), *desired_view_by_key.keys())
         if not selected_model_keys
         else sorted(selected_model_keys, key=lambda key: key.name)
     )
     return ReconcileObjectIndex(
         desired_table_by_key=desired_table_by_key,
         desired_mv_by_target_key=desired_mv_by_target_key,
+        desired_view_by_key=desired_view_by_key,
         actual_table_by_key=actual_table_by_key,
         actual_mv_by_key=actual_mv_by_key,
         target_keys=target_keys,
@@ -125,6 +133,15 @@ def _classify_reconcile_target(
     recorded_at: str,
 ) -> tuple[tuple[ObjectStateRecord, ...], ReconcileRejectedTarget | None]:
     desired_table: DesiredTable | None = object_index.desired_table_by_key.get(target_key)
+    desired_view: DesiredView | None = object_index.desired_view_by_key.get(target_key)
+    if desired_view is not None:
+        return (), ReconcileRejectedTarget(
+            target_key=target_key,
+            target_name=desired_view.name,
+            reasons=(
+                "authored views require persisted deployment query metadata; redeploy the view",
+            ),
+        )
     if desired_table is None:
         return (), None
     desired_mv: DesiredMaterializedView | None = object_index.desired_mv_by_target_key.get(

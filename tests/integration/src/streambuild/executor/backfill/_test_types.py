@@ -56,6 +56,7 @@ class ExecuteBackfillScalarReplayIntegrationTestCase:
     historical_raw_rows: tuple[tuple[object, ...], ...]
     live_raw_rows: tuple[tuple[object, ...], ...]
     expected_shadow_order_ids: tuple[str, ...]
+    expected_replay_written_rows: tuple[int | None, ...]
 
 
 @dataclass(frozen=True)
@@ -69,6 +70,24 @@ class ExecuteBackfillOffsetReplayIntegrationTestCase:
     live_raw_rows: tuple[tuple[object, ...], ...]
     expected_watermark_rows: tuple[tuple[str, str], ...]
     expected_shadow_order_ids: tuple[str, ...]
+    expected_replay_written_rows: tuple[int | None, ...]
+
+
+@dataclass(frozen=True)
+class MissingOffsetReplayCutoffIntegrationTestCase:
+    description: str
+    boundary_time: str
+    raw_rows: tuple[tuple[object, ...], ...]
+    expected_error_fragment: str
+
+
+@dataclass(frozen=True)
+class MissingScalarReplayCutoffIntegrationTestCase:
+    description: str
+    replay_lineage_mode: ReplayLineageMode
+    boundary_time: str
+    raw_rows: tuple[tuple[object, ...], ...]
+    expected_error_fragment: str
 
 
 @dataclass(frozen=True)

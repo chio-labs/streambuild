@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 from itertools import chain
 from pathlib import Path
+from typing import cast
 
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from streambuild.cli.entry._helpers.compiler_profile import build_compiler_adapter_profile
@@ -11,6 +12,8 @@ from streambuild.compiler.compile.models import (
     CompiledModel,
     CompiledPipeline,
     CompiledProject,
+    CompiledSource,
+    CompiledTableModel,
     CompilerAdapterProfile,
 )
 from streambuild.compiler.discovery.main._discover_pipelines import discover_pipelines
@@ -21,6 +24,7 @@ from streambuild.compiler.discovery.models import (
     ReplayBoundary,
     ReplayBoundaryColumns,
     TransformStep,
+    ViewStep,
 )
 from streambuild.compiler.discovery.types import ReplayBoundaryMode, ReplayLineageMode, SourceKind
 from streambuild.compiler.pipeline.main._realize_project import realize_project
@@ -50,7 +54,7 @@ def realize_selector_project(
     compiled_pipelines: tuple[CompiledPipeline, ...],
 ) -> RealizedProject:
     compiled_project: CompiledProject = CompiledProject(
-        sources=tuple(pipeline.source for pipeline in compiled_pipelines),
+        sources=tuple(cast(CompiledSource, pipeline.source) for pipeline in compiled_pipelines),
         models=tuple(chain.from_iterable(pipeline.models for pipeline in compiled_pipelines)),
         pipelines=compiled_pipelines,
         tests=(),
@@ -74,7 +78,10 @@ def realize_cross_pipeline_reference_project() -> RealizedProject:
     orders_models_by_name: dict[str, CompiledModel] = {
         model.key.name: model for model in orders_pipeline.models
     }
-    orders_enriched: CompiledModel = orders_models_by_name["orders_enriched"]
+    orders_enriched: CompiledTableModel = cast(
+        CompiledTableModel,
+        orders_models_by_name["orders_enriched"],
+    )
     cross_pipeline_query: str = (
         f'{orders_enriched.query}\nJOIN __ref("payments_enriched", ref_type="reference") '
         "AS payments ON 1 = 1"
@@ -108,6 +115,43 @@ def realize_cross_pipeline_reference_project() -> RealizedProject:
         effective_replay_lineage_mode=ReplayLineageMode.TIMESTAMP,
     )
     return realize_selector_project((mutated_orders_pipeline, payments_pipeline))
+
+
+def realize_view_selector_project() -> RealizedProject:
+    sql_analyzer: SqlModelAnalyzer = SqlModelAnalyzer(dialect="clickhouse")
+    pipeline: Pipeline = Pipeline(
+        name="consumer",
+        source=None,
+        transforms=[
+            ViewStep(
+                name="customer_orders",
+                relation_name="customer_orders",
+                query="SELECT 1::UInt64 AS order_id",
+            )
+        ],
+    )
+    compiled_pipeline: CompiledPipeline = compile_pipeline(
+        loaded_pipeline=LoadedPipeline(
+            pipeline=pipeline,
+            file_path=Path("tests/fixtures/selector_project/pipelines/consumer"),
+            project=None,
+        ),
+        sql_analyzer=sql_analyzer,
+    )
+    compiled_project: CompiledProject = CompiledProject(
+        sources=(),
+        models=compiled_pipeline.models,
+        pipelines=(compiled_pipeline,),
+        tests=(),
+        test_cases=(),
+        audits=(),
+    )
+    adapter_profile: CompilerAdapterProfile = build_compiler_adapter_profile(ClickHouseAdapter())
+    return realize_project(
+        project=compiled_project,
+        adapter_profile=adapter_profile,
+        sql_analyzer=sql_analyzer,
+    )
 
 
 def build_compiled_external_source_pipeline() -> CompiledPipeline:

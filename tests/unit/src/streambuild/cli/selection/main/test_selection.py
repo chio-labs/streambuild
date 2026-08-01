@@ -24,6 +24,7 @@ from tests.unit.src.streambuild.cli.selection.main.helpers import (
     compile_selector_project,
     realize_cross_pipeline_reference_project,
     realize_selector_project,
+    realize_view_selector_project,
 )
 
 
@@ -101,6 +102,39 @@ def test_given_valid_selectors_when_resolving_then_it_returns_expected_filtered_
     assert tuple(sorted(object_.name for object_ in resolution.desired_state.objects)) == tuple(
         sorted(test_case.expected_object_names)
     )
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliSelectionResolutionTestCase(
+            description="view selector uses the ordinary view as its primary desired key",
+            selectors=("customer_orders",),
+            expected_selected_logical_model_names=("customer_orders",),
+            expected_selected_model_names=("customer_orders",),
+            expected_object_names=("customer_orders",),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_view_only_project_when_resolving_then_selection_requires_no_replay_mode(
+    test_case: CliSelectionResolutionTestCase,
+) -> None:
+    realized_project: RealizedProject = realize_view_selector_project()
+
+    resolution: SelectionResolution = resolve_selection(
+        realized_project=realized_project,
+        graph=build_project_graph_from_compiled_project(project=realized_project.project),
+        selectors=test_case.selectors,
+    )
+
+    assert tuple(key.name for key in resolution.selected_model_keys) == (
+        test_case.expected_selected_model_names
+    )
+    assert tuple(object_.name for object_ in resolution.desired_state.objects) == (
+        test_case.expected_object_names
+    )
+    assert resolution.replay_lineage_mode is None
 
 
 @pytest.mark.parametrize(

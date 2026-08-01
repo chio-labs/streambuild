@@ -6,6 +6,7 @@ from streambuild.compiler.compile.constants import (
     DESIRED_OBJECT_TYPE_KAFKA_TABLE,
     DESIRED_OBJECT_TYPE_MATERIALIZED_VIEW,
     DESIRED_OBJECT_TYPE_TABLE,
+    DESIRED_OBJECT_TYPE_VIEW,
     RAW_TABLE_NAME_PREFIX,
 )
 from streambuild.compiler.compile.models import (
@@ -57,6 +58,7 @@ def build_rebuild_subtree(
             allow_root_key=False,
         ),
         strategy=REBUILD_STRATEGY_SHADOW,
+        replay_required=root_key.object_type != DESIRED_OBJECT_TYPE_VIEW,
         execution_mode=execution_mode,
         forced_full_refresh=forced_full_refresh,
         forced_start_time=forced_start_time,

@@ -3,16 +3,19 @@ from datetime import UTC, datetime, timedelta
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.exceptions import AdapterResultError
 from streambuild.adapter.models import (
+    AdapterBindingReplacementRequest,
+    AdapterBindingReplacementResult,
     AdapterDeploymentInventory,
     AdapterDeploymentRecord,
     AdapterPublishEventRecord,
     AdapterRelationCleanupRequest,
     AdapterRelationCleanupResult,
+    AdapterStableBindingRemoval,
     InspectedManagedTableState,
 )
 from streambuild.compiler.compile.constants import (
     DESIRED_OBJECT_TYPE_TABLE,
-    TRANSFORM_TABLE_NAME_PREFIX,
+    DESIRED_OBJECT_TYPE_VIEW,
 )
 from streambuild.compiler.planner.main.deployment_id_from_physical_name import (
     deployment_id_from_physical_name,
@@ -66,14 +69,16 @@ def _preview_janitor(
     published_at_by_deployment: dict[str, datetime] = _latest_publish_times(
         inventory.publish_events
     )
+    active_relation_names, _obsolete_removals = _binding_activity(
+        inventory=inventory,
+        managed_table_state=managed_table_state,
+    )
     active_deployment_ids: set[str] = {
         deployment_id_from_physical_name(binding.physical_name)
         for binding in managed_table_state.active_bindings
-        if is_deployment_physical_name(binding.physical_name)
+        if binding.physical_name in active_relation_names
+        and is_deployment_physical_name(binding.physical_name)
     }
-    active_relation_names: frozenset[str] = frozenset(
-        binding.physical_name for binding in managed_table_state.active_bindings
-    )
     retention_cutoff: datetime = datetime.now(tz=UTC) - timedelta(days=retention_days)
 
     candidates: list[JanitorPreviewCandidate] = []
@@ -87,8 +92,8 @@ def _preview_janitor(
             sorted(
                 mapping.logical_key.name
                 for mapping in deployment.prepared_object_mappings
-                if mapping.logical_key.object_type == DESIRED_OBJECT_TYPE_TABLE
-                and mapping.logical_key.name.startswith(TRANSFORM_TABLE_NAME_PREFIX)
+                if mapping.logical_key.object_type
+                in {DESIRED_OBJECT_TYPE_TABLE, DESIRED_OBJECT_TYPE_VIEW}
             )
         )
         physical_object_names: tuple[str, ...] = tuple(
@@ -186,6 +191,16 @@ def _apply_janitor(
         retention_days=retention_days,
         managed_table_state=managed_table_state,
     )
+    inventory: AdapterDeploymentInventory = client.load_deployment_inventory(metadata_database)
+    _active_relation_names, obsolete_removals = _binding_activity(
+        inventory=inventory,
+        managed_table_state=managed_table_state,
+    )
+    replacement_result: AdapterBindingReplacementResult = client.replace_stable_bindings(
+        AdapterBindingReplacementRequest(bindings=(), removals=obsolete_removals)
+    )
+    if replacement_result.removals != obsolete_removals:
+        raise AdapterResultError("Adapter did not remove the requested obsolete bindings")
     deleted_deployment_ids: list[str] = []
     requested_object_names: list[str] = []
     candidate: JanitorPreviewCandidate
@@ -246,3 +261,65 @@ def _latest_publish_times(
         if current_latest is None or published_at > current_latest:
             latest_by_deployment[event.deployment_id] = published_at
     return latest_by_deployment
+
+
+def _binding_activity(
+    *,
+    inventory: AdapterDeploymentInventory,
+    managed_table_state: InspectedManagedTableState,
+) -> tuple[frozenset[str], tuple[AdapterStableBindingRemoval, ...]]:
+    published_names_by_deployment: dict[str, set[str]] = {}
+    published_rank_by_deployment: dict[str, tuple[datetime, str]] = {}
+    for event in inventory.publish_events:
+        published_names_by_deployment.setdefault(event.deployment_id, set()).update(
+            event.logical_view_names
+        )
+        published_at: datetime = datetime.fromisoformat(
+            event.published_at.replace(" ", "T")
+        ).replace(tzinfo=UTC)
+        rank: tuple[datetime, str] = (published_at, event.deployment_id)
+        current_rank: tuple[datetime, str] | None = published_rank_by_deployment.get(
+            event.deployment_id
+        )
+        if current_rank is None or rank > current_rank:
+            published_rank_by_deployment[event.deployment_id] = rank
+    known_physical_names: set[str] = set()
+    latest_by_model_name: dict[str, tuple[tuple[datetime, str], str]] = {}
+    for deployment in inventory.deployments:
+        rank: tuple[datetime, str] | None = published_rank_by_deployment.get(
+            deployment.deployment_id
+        )
+        published_names: set[str] = published_names_by_deployment.get(
+            deployment.deployment_id, set()
+        )
+        if rank is None:
+            continue
+        for mapping in deployment.prepared_object_mappings:
+            if mapping.logical_key.name not in published_names:
+                continue
+            known_physical_names.add(mapping.physical_name)
+            current: tuple[tuple[datetime, str], str] | None = latest_by_model_name.get(
+                mapping.logical_model_name
+            )
+            candidate: tuple[tuple[datetime, str], str] = (rank, mapping.physical_name)
+            if current is None or candidate > current:
+                latest_by_model_name[mapping.logical_model_name] = candidate
+    latest_physical_names: frozenset[str] = frozenset(
+        value[1] for value in latest_by_model_name.values()
+    )
+    protected_names: set[str] = set()
+    obsolete_removals: list[AdapterStableBindingRemoval] = []
+    for binding in managed_table_state.active_bindings:
+        if (
+            binding.physical_name in known_physical_names
+            and binding.physical_name not in latest_physical_names
+        ):
+            obsolete_removals.append(
+                AdapterStableBindingRemoval(
+                    database=binding.database,
+                    logical_name=binding.logical_name,
+                )
+            )
+            continue
+        protected_names.add(binding.physical_name)
+    return frozenset(protected_names), tuple(obsolete_removals)

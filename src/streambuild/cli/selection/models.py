@@ -13,4 +13,4 @@ class SelectionResolution:
     desired_state: DesiredState
     selected_logical_model_keys: frozenset[LogicalResourceKey]
     selected_model_keys: frozenset[ObjectKey]
-    replay_lineage_mode: ReplayLineageMode
+    replay_lineage_mode: ReplayLineageMode | None

@@ -25,7 +25,6 @@ from streambuild.compiler.planner.models import (
 from streambuild.executor.backfill._helpers.metadata import (
     persist_deployment_metadata,
 )
-from streambuild.executor.backfill._helpers.sources import ensure_live_landing_objects
 from streambuild.executor.backfill._helpers.timing import build_current_timestamp
 from streambuild.executor.backfill.main._ensure_metadata_tables import ensure_metadata_tables
 from streambuild.executor.backfill.main.build_root_backfill_reports import (
@@ -97,18 +96,12 @@ def execute_backfill_bootstrap(
         replay_lineage_mode=replay_lineage_mode,
         root_reports=root_reports,
     )
-    ensure_live_landing_objects(
-        client=client,
-        desired_state=request.desired_state,
-        default_database=request.default_database,
-        existing_relation_names=snapshot.catalog.relation_names(),
-    )
-
     return BackfillBootstrapResult(
         deployment_id=deployment_id,
         created_at=created_at,
         deployment_plan=deployment_plan,
         root_reports=root_reports,
+        existing_relation_names=snapshot.catalog.relation_names(),
     )
 
 

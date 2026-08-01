@@ -7,24 +7,28 @@ from streambuild.adapter.models import (
     AdapterMaterializedView,
     AdapterStableView,
     AdapterTable,
+    AdapterView,
 )
 from streambuild.compiler.compile.models import (
     Column,
     DesiredKafkaTable,
     DesiredMaterializedView,
     DesiredTable,
+    DesiredView,
 )
 from streambuild.compiler.planner.exceptions import DeploymentPlanError
 
 
 def build_adapter_resource(
-    desired_object: DesiredKafkaTable | DesiredTable | DesiredMaterializedView,
-) -> AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterStableView:
+    desired_object: DesiredKafkaTable | DesiredTable | DesiredMaterializedView | DesiredView,
+) -> (
+    AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterView | AdapterStableView
+):
     """Convert one desired object into a neutral adapter resource request."""
 
     columns: tuple[AdapterColumn, ...] = (
         tuple(_adapter_column(column) for column in desired_object.spec.columns)
-        if not isinstance(desired_object, DesiredMaterializedView)
+        if isinstance(desired_object, (DesiredKafkaTable, DesiredTable))
         else ()
     )
     if isinstance(desired_object, DesiredKafkaTable):
@@ -48,10 +52,16 @@ def build_adapter_resource(
             ttl=desired_object.ttl,
             settings=tuple(sorted((desired_object.settings or {}).items())),
         )
-    return AdapterMaterializedView(
+    if isinstance(desired_object, DesiredMaterializedView):
+        return AdapterMaterializedView(
+            name=desired_object.name,
+            source_relation_name=desired_object.source_table_name,
+            target_relation_name=desired_object.target_table_name,
+            query=desired_object.query,
+            database_template=_database_template(desired_object),
+        )
+    return AdapterView(
         name=desired_object.name,
-        source_relation_name=desired_object.source_table_name,
-        target_relation_name=desired_object.target_table_name,
         query=desired_object.query,
         database_template=_database_template(desired_object),
     )
@@ -65,10 +75,10 @@ def _adapter_column(column: Column) -> AdapterColumn:
     )
 
 
-def _database_template(desired_object: DesiredMaterializedView) -> str:
+def _database_template(desired_object: DesiredMaterializedView | DesiredView) -> str:
     database_template: str | None = desired_object.spec.database_template
     if database_template is None:
         raise DeploymentPlanError(
-            f"Materialized view '{desired_object.name}' lacks an analyzed database template"
+            f"View '{desired_object.name}' lacks an analyzed database template"
         )
     return database_template

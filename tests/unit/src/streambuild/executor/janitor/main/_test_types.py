@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
 from streambuild.adapter.models import (
+    AdapterBindingReplacementRequest,
     AdapterDeploymentInventory,
     AdapterRelationCleanupRequest,
     InspectedManagedTableState,
@@ -15,6 +16,7 @@ class JanitorAdapterCleanupTestCase:
     managed_table_state: InspectedManagedTableState
     request: JanitorRequest
     expected_cleanup_request: AdapterRelationCleanupRequest
+    expected_binding_request: AdapterBindingReplacementRequest
     expected_result: JanitorApplyResult
 
 
@@ -43,3 +45,16 @@ class JanitorConcurrentActivationTestCase:
     managed_states: tuple[InspectedManagedTableState, ...]
     request: JanitorRequest
     expected_error_fragment: str
+
+
+@dataclass(frozen=True)
+class JanitorRollbackSafetyTestCase:
+    description: str
+    inventory: AdapterDeploymentInventory
+    managed_table_state: InspectedManagedTableState
+    preview_request: JanitorRequest
+    apply_request: JanitorRequest
+    expected_preview_states: tuple[tuple[str, bool, str], ...]
+    expected_cleanup_request: AdapterRelationCleanupRequest
+    expected_binding_request: AdapterBindingReplacementRequest
+    expected_result: JanitorApplyResult

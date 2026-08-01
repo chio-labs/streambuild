@@ -8,6 +8,7 @@ from typing import cast
 from clickhouse_connect.driver.client import Client
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.constants import METADATA_DEPLOYMENT_WATERMARKS_TABLE_NAME
 from streambuild.adapter.exceptions import AdapterWarehouseError
 from streambuild.adapter.models import (
     AdapterBindingReplacementRequest,
@@ -15,6 +16,7 @@ from streambuild.adapter.models import (
     AdapterCapabilities,
     AdapterConnectionConfig,
     AdapterDeploymentInventory,
+    AdapterDeploymentRecord,
     AdapterIdentity,
     AdapterManagedSource,
     AdapterMaterializedView,
@@ -26,8 +28,10 @@ from streambuild.adapter.models import (
     AdapterRelationCleanupRequest,
     AdapterRelationCleanupResult,
     AdapterReplayRequest,
+    AdapterReplayResult,
     AdapterStableView,
     AdapterTable,
+    AdapterView,
     CatalogSnapshot,
     InspectedManagedTableState,
 )
@@ -116,12 +120,28 @@ class RecordingDelegatingConnection(AdapterConnection):
     ) -> None:
         self._delegate.record_target_ownership(database=database, records=records)
 
+    def remove_target_ownership(
+        self,
+        *,
+        database: str,
+        target_database: str,
+        relation_names: tuple[str, ...],
+    ) -> None:
+        self._delegate.remove_target_ownership(
+            database=database,
+            target_database=target_database,
+            relation_names=relation_names,
+        )
+
     def command(self, statement: str) -> None:
         self._delegate.command(statement)
 
     def query(self, statement: str) -> AdapterQueryResult:
         self.query_statements.append(statement)
         return self._delegate.query(statement)
+
+    def capture_warehouse_timestamp(self) -> str:
+        return self._delegate.capture_warehouse_timestamp()
 
     def insert_rows(self, *, table: str, rows: tuple[dict[str, object], ...]) -> None:
         self._delegate.insert_rows(table=table, rows=rows)
@@ -132,7 +152,11 @@ class RecordingDelegatingConnection(AdapterConnection):
     def render_resource(
         self,
         *,
-        resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterStableView,
+        resource: AdapterManagedSource
+        | AdapterTable
+        | AdapterMaterializedView
+        | AdapterView
+        | AdapterStableView,
         database: str,
         if_not_exists: bool = False,
     ) -> str:
@@ -145,7 +169,11 @@ class RecordingDelegatingConnection(AdapterConnection):
     def realize_resource(
         self,
         *,
-        resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterStableView,
+        resource: AdapterManagedSource
+        | AdapterTable
+        | AdapterMaterializedView
+        | AdapterView
+        | AdapterStableView,
         database: str,
         if_not_exists: bool = False,
     ) -> None:
@@ -164,8 +192,8 @@ class RecordingDelegatingConnection(AdapterConnection):
     def load_deployment_inventory(self, database: str) -> AdapterDeploymentInventory:
         return self._delegate.load_deployment_inventory(database)
 
-    def execute_replay(self, request: AdapterReplayRequest) -> None:
-        self._delegate.execute_replay(request)
+    def execute_replay(self, request: AdapterReplayRequest) -> AdapterReplayResult:
+        return self._delegate.execute_replay(request)
 
     def compare_readiness(
         self, request: AdapterReadinessRequest
@@ -200,7 +228,11 @@ class FailOnceRealizationConnection(RecordingDelegatingConnection):
     def realize_resource(
         self,
         *,
-        resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterStableView,
+        resource: AdapterManagedSource
+        | AdapterTable
+        | AdapterMaterializedView
+        | AdapterView
+        | AdapterStableView,
         database: str,
         if_not_exists: bool = False,
     ) -> None:
@@ -211,7 +243,11 @@ class FailOnceRealizationConnection(RecordingDelegatingConnection):
     def _reject_realization(
         self,
         *,
-        resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterStableView,
+        resource: AdapterManagedSource
+        | AdapterTable
+        | AdapterMaterializedView
+        | AdapterView
+        | AdapterStableView,
         database: str,
         if_not_exists: bool = False,
     ) -> None:
@@ -222,14 +258,14 @@ class FailOnceRealizationConnection(RecordingDelegatingConnection):
 class FailOnceReplayConnection(RecordingDelegatingConnection):
     def __init__(self, delegate: AdapterConnection) -> None:
         super().__init__(delegate)
-        self._replay_actions: Iterator[Callable[[AdapterReplayRequest], None]] = iter(
-            (self._reject_replay, self._delegate.execute_replay)
+        self._replay_actions: Iterator[Callable[[AdapterReplayRequest], AdapterReplayResult]] = (
+            iter((self._reject_replay, self._delegate.execute_replay))
         )
 
-    def execute_replay(self, request: AdapterReplayRequest) -> None:
-        next(self._replay_actions)(request)
+    def execute_replay(self, request: AdapterReplayRequest) -> AdapterReplayResult:
+        return next(self._replay_actions)(request)
 
-    def _reject_replay(self, request: AdapterReplayRequest) -> None:
+    def _reject_replay(self, request: AdapterReplayRequest) -> AdapterReplayResult:
         del request
         raise AdapterWarehouseError("injected failure after direct relations became live")
 
@@ -238,21 +274,23 @@ class FailSecondReplayOnceConnection(RecordingDelegatingConnection):
     def __init__(self, delegate: AdapterConnection) -> None:
         super().__init__(delegate)
         self.replay_targets: list[str] = []
-        self._replay_actions: Iterator[Callable[[AdapterReplayRequest], None]] = iter(
-            (
-                self._delegate.execute_replay,
-                self._reject_replay,
-                self._delegate.execute_replay,
-                self._delegate.execute_replay,
-                self._delegate.execute_replay,
+        self._replay_actions: Iterator[Callable[[AdapterReplayRequest], AdapterReplayResult]] = (
+            iter(
+                (
+                    self._delegate.execute_replay,
+                    self._reject_replay,
+                    self._delegate.execute_replay,
+                    self._delegate.execute_replay,
+                    self._delegate.execute_replay,
+                )
             )
         )
 
-    def execute_replay(self, request: AdapterReplayRequest) -> None:
+    def execute_replay(self, request: AdapterReplayRequest) -> AdapterReplayResult:
         self.replay_targets.append(request.relations.target)
-        next(self._replay_actions)(request)
+        return next(self._replay_actions)(request)
 
-    def _reject_replay(self, request: AdapterReplayRequest) -> None:
+    def _reject_replay(self, request: AdapterReplayRequest) -> AdapterReplayResult:
         del request
         raise AdapterWarehouseError("injected failure during second population segment")
 
@@ -301,7 +339,11 @@ class FailOnceViewRealizationConnection(RecordingDelegatingConnection):
     def realize_resource(
         self,
         *,
-        resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterStableView,
+        resource: AdapterManagedSource
+        | AdapterTable
+        | AdapterMaterializedView
+        | AdapterView
+        | AdapterStableView,
         database: str,
         if_not_exists: bool = False,
     ) -> None:
@@ -312,7 +354,11 @@ class FailOnceViewRealizationConnection(RecordingDelegatingConnection):
     def _reject_realization(
         self,
         *,
-        resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterStableView,
+        resource: AdapterManagedSource
+        | AdapterTable
+        | AdapterMaterializedView
+        | AdapterView
+        | AdapterStableView,
         database: str,
         if_not_exists: bool = False,
     ) -> None:
@@ -384,17 +430,21 @@ class DirectActionRecordingConnection(RecordingDelegatingConnection):
     def realize_resource(
         self,
         *,
-        resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterStableView,
+        resource: AdapterManagedSource
+        | AdapterTable
+        | AdapterMaterializedView
+        | AdapterView
+        | AdapterStableView,
         database: str,
         if_not_exists: bool = False,
     ) -> None:
         self.realized_relation_names.append(resource.name)
         super().realize_resource(resource=resource, database=database, if_not_exists=if_not_exists)
 
-    def execute_replay(self, request: AdapterReplayRequest) -> None:
+    def execute_replay(self, request: AdapterReplayRequest) -> AdapterReplayResult:
         self.replay_targets.append(request.relations.target)
         self.replay_requests.append(request)
-        super().execute_replay(request)
+        return super().execute_replay(request)
 
 
 class AdoptedLiveInsertConnection(DirectActionRecordingConnection):
@@ -409,7 +459,11 @@ class AdoptedLiveInsertConnection(DirectActionRecordingConnection):
     def realize_resource(
         self,
         *,
-        resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterStableView,
+        resource: AdapterManagedSource
+        | AdapterTable
+        | AdapterMaterializedView
+        | AdapterView
+        | AdapterStableView,
         database: str,
         if_not_exists: bool = False,
     ) -> None:
@@ -443,7 +497,11 @@ class ManagedLiveInsertConnection(DirectActionRecordingConnection):
     def realize_resource(
         self,
         *,
-        resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterStableView,
+        resource: AdapterManagedSource
+        | AdapterTable
+        | AdapterMaterializedView
+        | AdapterView
+        | AdapterStableView,
         database: str,
         if_not_exists: bool = False,
     ) -> None:
@@ -1051,6 +1109,16 @@ DIRECT_BUILD_MODEL_SQL: str = (
     "  _replay_offset::Int64 AS _replay_offset\n"
     'FROM __source("orders")'
 )
+_DIRECT_BUILD_LANDED_AT_MODEL_SQL: str = (
+    "SELECT\n"
+    "  kafka_key::String AS order_id,\n"
+    "  _replay_landed_at::DateTime64(3) AS _replay_landed_at\n"
+    'FROM __source("orders")'
+)
+_DIRECT_BUILD_MODEL_SQL_BY_REPLAY_MODE: dict[str, str] = {
+    "offsets": DIRECT_BUILD_MODEL_SQL,
+    "landed_at": _DIRECT_BUILD_LANDED_AT_MODEL_SQL,
+}
 DIRECT_BUILD_MODEL_NAME: str = "orders_enriched"
 DIRECT_BUILD_TARGET_TABLE_NAME: str = "tbl__orders_enriched"
 DIRECT_BUILD_LANDING_TABLE_NAME: str = "raw__orders"
@@ -1060,7 +1128,7 @@ _DIRECT_BUILD_SOURCE_YML: str = (
     "    kind: kafka\n"
     "    broker_list: {broker_list}\n"
     "    topic: {topic}\n"
-    "    replay_boundary: {{mode: offsets}}\n"
+    "    replay_boundary: {{mode: {replay_boundary_mode}}}\n"
 )
 _DIRECT_BUILD_SETTINGS_BY_MODE: dict[bool, str] = {
     False: "",
@@ -1107,8 +1175,10 @@ def write_direct_build_project(
     broker_list: str = "kafka:9092",
     audit_sql_by_name: tuple[tuple[str, str], ...] = (),
     virtual_environments: bool = False,
+    relation_name: str = DIRECT_BUILD_TARGET_TABLE_NAME,
+    replay_boundary_mode: str = "offsets",
 ) -> None:
-    """Write a managed Kafka direct-mode project with one offsets-lineage model."""
+    """Write a managed Kafka direct-mode project with one replayable model."""
 
     pipeline_root: Path = project_root / "pipelines" / "orders"
     source_root: Path = project_root / "sources"
@@ -1123,11 +1193,16 @@ def write_direct_build_project(
         encoding="utf-8",
     )
     (source_root / "orders.yml").write_text(
-        _DIRECT_BUILD_SOURCE_YML.format(broker_list=broker_list, topic=topic),
+        _DIRECT_BUILD_SOURCE_YML.format(
+            broker_list=broker_list,
+            topic=topic,
+            replay_boundary_mode=replay_boundary_mode,
+        ),
         encoding="utf-8",
     )
     (pipeline_root / f"{DIRECT_BUILD_MODEL_NAME}.sql").write_text(
-        f'MODEL (order_by ["order_id"]);\n{DIRECT_BUILD_MODEL_SQL}\n',
+        f'MODEL (relation_name {relation_name}, order_by ["order_id"]);\n'
+        f"{_DIRECT_BUILD_MODEL_SQL_BY_REPLAY_MODE[replay_boundary_mode]}\n",
         encoding="utf-8",
     )
     audit_name: str
@@ -1149,7 +1224,11 @@ def write_direct_selected_graph_project(*, project_root: Path) -> None:
         encoding="utf-8",
     )
     (source_root / "orders.yml").write_text(
-        _DIRECT_BUILD_SOURCE_YML.format(broker_list="kafka:9092", topic="source.selected_orders"),
+        _DIRECT_BUILD_SOURCE_YML.format(
+            broker_list="kafka:9092",
+            topic="source.selected_orders",
+            replay_boundary_mode="offsets",
+        ),
         encoding="utf-8",
     )
     model_name: str
@@ -1158,6 +1237,119 @@ def write_direct_selected_graph_project(*, project_root: Path) -> None:
         (pipeline_root / f"{model_name}.sql").write_text(
             f'MODEL (order_by ["order_id"]);\n{model_sql}\n', encoding="utf-8"
         )
+
+
+def write_direct_view_project(*, project_root: Path) -> None:
+    """Write a terminal ordinary view over two adopted input relations."""
+
+    pipeline_root: Path = project_root / "pipelines" / "consumer"
+    source_root: Path = project_root / "sources"
+    pipeline_root.mkdir(parents=True, exist_ok=True)
+    source_root.mkdir(parents=True, exist_ok=True)
+    (project_root / "streambuild_project.toml").write_text(
+        'name = "direct_view"\ndefault_target = "test"\n\n[targets.test]\ndatabase = "analytics"\n',
+        encoding="utf-8",
+    )
+    (source_root / "inputs.yml").write_text(
+        "sources:\n"
+        "  - name: orders\n"
+        "    kind: stream_table\n"
+        "    table_name: direct_orders_input\n"
+        "    replay_boundary:\n"
+        "      mode: timestamp\n"
+        "      columns: {_replay_timestamp: event_timestamp}\n"
+        "  - name: customers\n"
+        "    kind: stream_table\n"
+        "    table_name: direct_customers_input\n"
+        "    replay_boundary:\n"
+        "      mode: timestamp\n"
+        "      columns: {_replay_timestamp: event_timestamp}\n",
+        encoding="utf-8",
+    )
+    (pipeline_root / "customer_orders.sql").write_text(
+        "MODEL (kind view, relation_name customer_orders);\n"
+        "SELECT orders.order_id::String AS order_id, "
+        "customers.customer_name::String AS customer_name\n"
+        'FROM __source("orders") AS orders\n'
+        'INNER JOIN __source("customers") AS customers\n'
+        "ON orders.customer_id = customers.customer_id\n",
+        encoding="utf-8",
+    )
+
+
+def write_virtual_environment_view_project(*, project_root: Path) -> None:
+    """Write a custom table feeding a multi-upstream terminal view."""
+
+    pipeline_root: Path = project_root / "pipelines" / "consumer"
+    source_root: Path = project_root / "sources"
+    pipeline_root.mkdir(parents=True, exist_ok=True)
+    source_root.mkdir(parents=True, exist_ok=True)
+    (project_root / "streambuild_project.toml").write_text(
+        'name = "virtual_environment_view"\ndefault_target = "test"\n\n'
+        "[settings]\nvirtual_environments = true\n\n"
+        '[targets.test]\ndatabase = "analytics"\n',
+        encoding="utf-8",
+    )
+    (source_root / "inputs.yml").write_text(
+        "sources:\n"
+        "  - name: orders\n"
+        "    kind: stream_table\n"
+        "    table_name: vde_orders_input\n"
+        "    replay_boundary:\n"
+        "      mode: offsets\n"
+        "      columns:\n"
+        "        _replay_partition: event_partition\n"
+        "        _replay_offset: event_offset\n"
+        "        _replay_timestamp: event_timestamp\n"
+        "  - name: customers\n"
+        "    kind: stream_table\n"
+        "    table_name: vde_customers_input\n"
+        "    replay_boundary:\n"
+        "      mode: timestamp\n"
+        "      columns: {_replay_timestamp: event_timestamp}\n",
+        encoding="utf-8",
+    )
+    write_virtual_environment_table_model(
+        project_root=project_root,
+        relation_name="order_facts",
+    )
+    write_virtual_environment_view_model(
+        project_root=project_root,
+        customer_name_expression="customers.customer_name::String",
+    )
+
+
+def write_virtual_environment_view_model(
+    *,
+    project_root: Path,
+    customer_name_expression: str,
+    relation_name: str = "customer_orders",
+) -> None:
+    """Write one authored query revision for the terminal view."""
+
+    (project_root / "pipelines" / "consumer" / "customer_orders.sql").write_text(
+        f"MODEL (kind view, relation_name {relation_name});\n"
+        "SELECT orders.order_id::String AS order_id, "
+        f"{customer_name_expression} AS customer_name\n"
+        'FROM __ref("orders_enriched") AS orders\n'
+        'INNER JOIN __source("customers") AS customers\n'
+        "ON orders.customer_id = customers.customer_id\n",
+        encoding="utf-8",
+    )
+
+
+def write_virtual_environment_table_model(*, project_root: Path, relation_name: str) -> None:
+    """Write one effective relation-name revision for the replayable table model."""
+
+    (project_root / "pipelines" / "consumer" / "orders_enriched.sql").write_text(
+        f'MODEL (relation_name {relation_name}, engine "MergeTree()", '
+        'order_by ["order_id"]);\n'
+        "SELECT order_id::String AS order_id, customer_id::UInt64 AS customer_id, "
+        "_replay_partition::Int32 AS _replay_partition, "
+        "_replay_offset::Int64 AS _replay_offset "
+        'FROM __source("orders")\n',
+        encoding="utf-8",
+    )
 
 
 def write_direct_aggregate_project(*, project_root: Path) -> None:
@@ -1358,6 +1550,87 @@ def run_virtual_environment_backfill(
     )
 
 
+def run_new_virtual_environment_deployment(
+    *, project_root: Path, database: str, connection: AdapterConnection
+) -> AdapterDeploymentRecord:
+    """Run backfill and return the deployment newly persisted by that invocation."""
+
+    ensure_metadata_tables(client=connection, metadata_database=database)
+    previous_inventory: AdapterDeploymentInventory = connection.load_deployment_inventory(database)
+    previous_ids: frozenset[str] = frozenset(
+        deployment.deployment_id for deployment in previous_inventory.deployments
+    )
+    exit_code: int = run_virtual_environment_backfill(
+        project_root=project_root,
+        database=database,
+        connection=connection,
+    )
+    assert exit_code == 0
+    inventory: AdapterDeploymentInventory = connection.load_deployment_inventory(database)
+    deployment_by_id: dict[str, AdapterDeploymentRecord] = {
+        deployment.deployment_id: deployment for deployment in inventory.deployments
+    }
+    new_deployment_ids: set[str] = set(deployment_by_id) - previous_ids
+    new_deployment_id: str = new_deployment_ids.pop()
+    return deployment_by_id[new_deployment_id]
+
+
+def virtual_environment_view_rows(
+    *, clickhouse_client: Client, database: str, view_name: str = "customer_orders"
+) -> tuple[tuple[str, str], ...]:
+    """Return stable terminal-view rows in deterministic order."""
+
+    return tuple(
+        (str(row[0]), str(row[1]))
+        for row in clickhouse_client.query(
+            f"SELECT order_id, customer_name FROM {database}.{view_name} ORDER BY order_id"
+        ).result_rows
+    )
+
+
+def prepare_virtual_environment_view_sources(
+    *, connection: AdapterConnection, database: str
+) -> None:
+    """Create and seed the adopted inputs used by VDE terminal-view scenarios."""
+
+    connection.command(
+        f"CREATE TABLE {database}.vde_orders_input "
+        "(order_id String, customer_id UInt64, event_partition Int32, "
+        "event_offset Int64, event_timestamp DateTime64(3)) "
+        "ENGINE = MergeTree ORDER BY order_id"
+    )
+    connection.command(
+        f"CREATE TABLE {database}.vde_customers_input "
+        "(customer_id UInt64, customer_name String, event_timestamp DateTime64(3)) "
+        "ENGINE = MergeTree ORDER BY customer_id"
+    )
+    connection.command(
+        f"INSERT INTO {database}.vde_orders_input VALUES "
+        "('order-1', 1, 0, 1, '2026-07-31 00:00:01.000'), "
+        "('order-2', 2, 0, 2, '2026-07-31 00:00:02.000')"
+    )
+    connection.command(
+        f"INSERT INTO {database}.vde_customers_input VALUES "
+        "(1, 'Ada', '2026-07-31 00:00:01.000'), "
+        "(2, 'Grace', '2026-07-31 00:00:02.000')"
+    )
+
+
+def deployment_watermark_count(
+    *, connection: AdapterConnection, database: str, deployment_id: str
+) -> int:
+    """Return the number of persisted replay watermarks for one deployment."""
+
+    return int(
+        str(
+            connection.query(
+                f"SELECT count() FROM {database}.{METADATA_DEPLOYMENT_WATERMARKS_TABLE_NAME} "
+                f"WHERE deployment_id = '{deployment_id}'"
+            ).rows[0][0]
+        )
+    )
+
+
 def direct_build_order_ids(*, clickhouse_client: Client, database: str) -> tuple[str, ...]:
     """Return the order ids currently materialized in the direct build target."""
 
@@ -1403,6 +1676,17 @@ def direct_graph_order_ids(
 
     rows: Sequence[Sequence[object]] = clickhouse_client.query(
         f"SELECT order_id FROM {database}.tbl__{model_name} ORDER BY order_id"
+    ).result_rows
+    return tuple(str(row[0]) for row in rows)
+
+
+def direct_relation_order_ids(
+    *, clickhouse_client: Client, database: str, relation_name: str
+) -> tuple[str, ...]:
+    """Return ordered identities from one exact direct relation name."""
+
+    rows: Sequence[Sequence[object]] = clickhouse_client.query(
+        f"SELECT order_id FROM {database}.{relation_name} ORDER BY order_id"
     ).result_rows
     return tuple(str(row[0]) for row in rows)
 

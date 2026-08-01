@@ -5,16 +5,17 @@ from streambuild.adapter.exceptions import AdapterResultError
 from streambuild.adapter.models import (
     AdapterBindingReplacementRequest,
     AdapterBindingReplacementResult,
+    AdapterDeploymentInventory,
+    AdapterDeploymentRecord,
+    AdapterPreparedObjectMapping,
     AdapterStableBinding,
+    AdapterStableBindingRemoval,
     InspectedManagedTableState,
+    InspectedPhysicalTableCandidate,
 )
 from streambuild.compiler.compile.constants import (
     DESIRED_OBJECT_TYPE_TABLE,
-    TRANSFORM_TABLE_NAME_PREFIX,
-)
-from streambuild.compiler.compile.models import ObjectKey
-from streambuild.compiler.planner.main.build_deployment_physical_name import (
-    build_deployment_physical_name,
+    DESIRED_OBJECT_TYPE_VIEW,
 )
 from streambuild.executor.publish.exceptions import PublishExecutionError
 
@@ -28,54 +29,182 @@ def publish_stable_views(
 ) -> AdapterBindingReplacementResult:
     """Build and apply neutral stable bindings for a staged deployment."""
 
-    inspected_state: InspectedManagedTableState = client.inspect_managed_table_state(
-        default_database
+    inventory: AdapterDeploymentInventory = client.load_deployment_inventory(metadata_database)
+    deployment: AdapterDeploymentRecord | None = next(
+        (
+            candidate
+            for candidate in inventory.deployments
+            if candidate.deployment_id == deployment_id
+        ),
+        None,
     )
-    physical_name_by_key: dict[ObjectKey, str] = {
-        ObjectKey(
-            database=candidate.database,
-            object_type=DESIRED_OBJECT_TYPE_TABLE,
-            name=candidate.logical_name,
-        ): candidate.physical_name
-        for candidate in inspected_state.physical_candidates
-        if candidate.logical_name.startswith(TRANSFORM_TABLE_NAME_PREFIX)
-        if candidate.physical_name
-        == build_deployment_physical_name(
-            logical_name=candidate.logical_name, deployment_id=deployment_id
+    if deployment is None:
+        return _publish_inspected_stable_views(
+            client=client,
+            default_database=default_database,
+            deployment_id=deployment_id,
         )
-    }
-    if not physical_name_by_key:
+    publish_mappings: tuple[AdapterPreparedObjectMapping, ...] = tuple(
+        mapping
+        for mapping in deployment.prepared_object_mappings
+        if mapping.logical_key.object_type in {DESIRED_OBJECT_TYPE_TABLE, DESIRED_OBJECT_TYPE_VIEW}
+    )
+    if not publish_mappings:
         raise PublishExecutionError(
-            f"Deployment '{deployment_id}' has no staged physical tables to publish"
+            f"Deployment '{deployment_id}' has no staged model relations to publish"
         )
-    root_keys: tuple[ObjectKey, ...] = tuple(
+    existing_names: frozenset[str] = client.load_catalog(default_database).relation_names()
+    missing_names: tuple[str, ...] = tuple(
         sorted(
-            physical_name_by_key,
-            key=lambda value: (
-                value.database or "",
-                _published_view_kind_order(value.name),
-                value.object_type,
-                value.name,
+            mapping.physical_name
+            for mapping in publish_mappings
+            if mapping.physical_name not in existing_names
+        )
+    )
+    if missing_names:
+        raise PublishExecutionError(
+            f"Deployment '{deployment_id}' is missing staged relations: {', '.join(missing_names)}"
+        )
+    ordered_mappings: tuple[AdapterPreparedObjectMapping, ...] = tuple(
+        sorted(
+            publish_mappings,
+            key=lambda mapping: (
+                mapping.logical_key.database or "",
+                _published_view_kind_order(mapping.logical_key.object_type),
+                mapping.logical_key.name,
             ),
         )
     )
     replacement_request: AdapterBindingReplacementRequest = AdapterBindingReplacementRequest(
         bindings=tuple(
             AdapterStableBinding(
-                database=root_key.database or default_database,
-                logical_name=root_key.name,
-                physical_name=physical_name_by_key[root_key],
+                database=mapping.logical_key.database or default_database,
+                logical_name=mapping.logical_key.name,
+                physical_name=mapping.physical_name,
             )
-            for root_key in root_keys
-        )
+            for mapping in ordered_mappings
+        ),
+        removals=_obsolete_binding_removals(
+            client=client,
+            inventory=inventory,
+            current_mappings=ordered_mappings,
+            default_database=default_database,
+        ),
     )
-    result: AdapterBindingReplacementResult = client.replace_stable_bindings(replacement_request)
-    if result.bindings != replacement_request.bindings:
+    return _replace_stable_bindings(client=client, request=replacement_request)
+
+
+def _replace_stable_bindings(
+    *, client: AdapterConnection, request: AdapterBindingReplacementRequest
+) -> AdapterBindingReplacementResult:
+    result: AdapterBindingReplacementResult = client.replace_stable_bindings(request)
+    if result.bindings != request.bindings:
         raise AdapterResultError("Adapter returned bindings that did not match the publish request")
+    if result.removals != request.removals:
+        raise AdapterResultError("Adapter returned removals that did not match the publish request")
     return result
 
 
-def _published_view_kind_order(logical_name: str) -> int:
-    if logical_name.startswith(TRANSFORM_TABLE_NAME_PREFIX):
+def _publish_inspected_stable_views(
+    *, client: AdapterConnection, default_database: str, deployment_id: str
+) -> AdapterBindingReplacementResult:
+    candidates: tuple[InspectedPhysicalTableCandidate, ...] = tuple(
+        candidate
+        for candidate in client.inspect_managed_table_state(default_database).physical_candidates
+        if candidate.physical_name.endswith(f"__{deployment_id}")
+        and candidate.object_type in {DESIRED_OBJECT_TYPE_TABLE, DESIRED_OBJECT_TYPE_VIEW}
+    )
+    if not candidates:
+        raise PublishExecutionError(
+            f"Deployment '{deployment_id}' has no staged model relations to publish"
+        )
+    existing_names: frozenset[str] = client.load_catalog(default_database).relation_names()
+    missing_names: tuple[str, ...] = tuple(
+        sorted(
+            candidate.physical_name
+            for candidate in candidates
+            if candidate.physical_name not in existing_names
+        )
+    )
+    if missing_names:
+        raise PublishExecutionError(
+            f"Deployment '{deployment_id}' is missing staged relations: {', '.join(missing_names)}"
+        )
+    ordered_candidates: tuple[InspectedPhysicalTableCandidate, ...] = tuple(
+        sorted(
+            candidates,
+            key=lambda candidate: (
+                candidate.database,
+                _published_view_kind_order(candidate.object_type),
+                candidate.logical_name,
+            ),
+        )
+    )
+    return _replace_stable_bindings(
+        client=client,
+        request=AdapterBindingReplacementRequest(
+            bindings=tuple(
+                AdapterStableBinding(
+                    database=candidate.database,
+                    logical_name=candidate.logical_name,
+                    physical_name=candidate.physical_name,
+                )
+                for candidate in ordered_candidates
+            )
+        ),
+    )
+
+
+def _published_view_kind_order(object_type: str) -> int:
+    if object_type == DESIRED_OBJECT_TYPE_TABLE:
         return 0
     return 1
+
+
+def _obsolete_binding_removals(
+    *,
+    client: AdapterConnection,
+    inventory: AdapterDeploymentInventory,
+    current_mappings: tuple[AdapterPreparedObjectMapping, ...],
+    default_database: str,
+) -> tuple[AdapterStableBindingRemoval, ...]:
+    current_names: frozenset[tuple[str, str]] = frozenset(
+        (mapping.logical_key.database or default_database, mapping.logical_key.name)
+        for mapping in current_mappings
+    )
+    current_model_names: frozenset[str] = frozenset(
+        mapping.logical_model_name for mapping in current_mappings
+    )
+    published_names_by_deployment: dict[str, set[str]] = {}
+    for event in inventory.publish_events:
+        published_names_by_deployment.setdefault(event.deployment_id, set()).update(
+            event.logical_view_names
+        )
+    historical_bindings: set[tuple[str, str, str]] = set()
+    for deployment in inventory.deployments:
+        published_names: set[str] = published_names_by_deployment.get(
+            deployment.deployment_id, set()
+        )
+        for mapping in deployment.prepared_object_mappings:
+            binding_name: tuple[str, str] = (
+                mapping.logical_key.database or default_database,
+                mapping.logical_key.name,
+            )
+            if (
+                mapping.logical_model_name in current_model_names
+                and mapping.logical_key.name in published_names
+                and binding_name not in current_names
+            ):
+                historical_bindings.add((*binding_name, mapping.physical_name))
+    inspected_state: InspectedManagedTableState = client.inspect_managed_table_state(
+        default_database
+    )
+    active_bindings: set[tuple[str, str, str]] = {
+        (binding.database, binding.logical_name, binding.physical_name)
+        for binding in inspected_state.active_bindings
+    }
+    return tuple(
+        AdapterStableBindingRemoval(database=database, logical_name=logical_name)
+        for database, logical_name, physical_name in sorted(historical_bindings)
+        if (database, logical_name, physical_name) in active_bindings
+    )

@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import asdict
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.compiler.compile.models import DesiredMaterializedView, DesiredTable
+from streambuild.compiler.compile.models import DesiredMaterializedView, DesiredTable, DesiredView
 from streambuild.compiler.planner.main.build_adapter_metadata_state import (
     build_adapter_metadata_state,
 )
@@ -41,12 +41,14 @@ def apply_reconcile(*, client: AdapterConnection, preview: ReconcilePreview) -> 
 
 def build_object_state_record(
     *,
-    desired_object: DesiredTable | DesiredMaterializedView,
+    desired_object: DesiredTable | DesiredMaterializedView | DesiredView,
     reconcile_id: str,
     recorded_at: str,
 ) -> ObjectStateRecord:
     normalized_query: str | None = (
-        desired_object.query if isinstance(desired_object, DesiredMaterializedView) else None
+        desired_object.query
+        if isinstance(desired_object, (DesiredMaterializedView, DesiredView))
+        else None
     )
     return ObjectStateRecord(
         deployment_id=reconcile_id,

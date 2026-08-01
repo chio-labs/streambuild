@@ -55,6 +55,9 @@ DEPLOYMENT_ACTION_PLAN_SHADOW_TABLE: Final[DeploymentAction] = DeploymentAction(
 DEPLOYMENT_ACTION_PLAN_SHADOW_MATERIALIZED_VIEW: Final[DeploymentAction] = DeploymentAction(
     DeploymentAction.PLAN_SHADOW_MATERIALIZED_VIEW
 )
+DEPLOYMENT_ACTION_PLAN_SHADOW_VIEW: Final[DeploymentAction] = DeploymentAction(
+    DeploymentAction.PLAN_SHADOW_VIEW
+)
 DEPLOYMENT_ACTION_BACKFILL_SUBTREE: Final[DeploymentAction] = DeploymentAction(
     DeploymentAction.BACKFILL_SUBTREE
 )
@@ -71,3 +74,4 @@ VIEW_RELATION_ENGINE: str = "View"
 ENGINE_ARGUMENT_OPEN: str = "("
 EMPTY_TUPLE_EXPRESSION: str = "tuple()"
 BLANK_VALUES: tuple[object, ...] = (None, "")
+DEPLOYMENT_ID_PATTERN: str = r"\d{8}T\d{6}Z_[A-Za-z0-9]+"

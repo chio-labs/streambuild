@@ -5,12 +5,13 @@ from __future__ import annotations
 import difflib
 
 from streambuild.adapter.types import AdapterResourceRenderer
-from streambuild.compiler.compile.constants import TRANSFORM_TABLE_NAME_PREFIX
+from streambuild.compiler.compile.constants import RAW_TABLE_NAME_PREFIX
 from streambuild.compiler.compile.models import (
     DesiredKafkaTable,
     DesiredMaterializedView,
     DesiredState,
     DesiredTable,
+    DesiredView,
     ObjectKey,
 )
 from streambuild.compiler.planner.constants import (
@@ -23,6 +24,7 @@ from streambuild.compiler.planner.models import (
     ActualMaterializedView,
     ActualState,
     ActualTable,
+    ActualView,
     PlannedObjectChange,
     PlannedSqlDiff,
 )
@@ -41,19 +43,19 @@ def build_planned_sql_diffs(
 
     desired_by_key: dict[
         ObjectKey,
-        DesiredKafkaTable | DesiredTable | DesiredMaterializedView,
+        DesiredKafkaTable | DesiredTable | DesiredMaterializedView | DesiredView,
     ] = {object_.key: object_ for object_ in desired_state.objects}
-    actual_by_key: dict[ObjectKey, ActualKafkaTable | ActualTable | ActualMaterializedView] = {
-        object_.key: object_ for object_ in actual_state.objects
-    }
+    actual_by_key: dict[
+        ObjectKey, ActualKafkaTable | ActualTable | ActualMaterializedView | ActualView
+    ] = {object_.key: object_ for object_ in actual_state.objects}
     sql_diffs: list[PlannedSqlDiff] = []
     object_change: PlannedObjectChange
     for object_change in object_changes:
         if object_change.change_type == PLANNED_CHANGE_TYPE_NO_OP:
             continue
-        desired_object: DesiredKafkaTable | DesiredTable | DesiredMaterializedView | None = (
-            desired_by_key.get(object_change.key)
-        )
+        desired_object: (
+            DesiredKafkaTable | DesiredTable | DesiredMaterializedView | DesiredView | None
+        ) = desired_by_key.get(object_change.key)
         if desired_object is None:
             continue
         desired_sql: str = _render_desired_object_sql(
@@ -61,9 +63,9 @@ def build_planned_sql_diffs(
             default_database=default_database,
             render_resource=render_resource,
         )
-        actual_object: ActualKafkaTable | ActualTable | ActualMaterializedView | None = (
-            actual_by_key.get(object_change.key)
-        )
+        actual_object: (
+            ActualKafkaTable | ActualTable | ActualMaterializedView | ActualView | None
+        ) = actual_by_key.get(object_change.key)
         current_change_type: PlannedChangeType = PlannedChangeType(object_change.change_type)
         current_sql: str = (
             ""
@@ -89,7 +91,7 @@ def build_planned_sql_diffs(
 
 def _render_desired_object_sql(
     *,
-    object_: DesiredKafkaTable | DesiredTable | DesiredMaterializedView,
+    object_: DesiredKafkaTable | DesiredTable | DesiredMaterializedView | DesiredView,
     default_database: str,
     render_resource: AdapterResourceRenderer,
 ) -> str:
@@ -99,7 +101,7 @@ def _render_desired_object_sql(
 
 def _render_actual_object_sql(
     *,
-    object_: ActualKafkaTable | ActualTable | ActualMaterializedView,
+    object_: ActualKafkaTable | ActualTable | ActualMaterializedView | ActualView,
     default_database: str,
     render_resource: AdapterResourceRenderer,
 ) -> str:
@@ -110,12 +112,14 @@ def _render_actual_object_sql(
         )
     elif isinstance(object_, ActualTable):
         desired_object = DesiredTable(key=object_.key, deps=(), spec=object_.spec)
-    else:
+    elif isinstance(object_, ActualMaterializedView):
         desired_object = DesiredMaterializedView(
             key=object_.key,
             deps=(),
             spec=object_.spec,
         )
+    else:
+        desired_object = DesiredView(key=object_.key, deps=(), spec=object_.spec)
     return render_resource(
         resource=build_adapter_resource(desired_object),
         database=database,
@@ -123,17 +127,19 @@ def _render_actual_object_sql(
 
 
 def _display_object_type(
-    object_: DesiredKafkaTable | DesiredTable | DesiredMaterializedView,
+    object_: DesiredKafkaTable | DesiredTable | DesiredMaterializedView | DesiredView,
 ) -> str:
-    if isinstance(object_, DesiredMaterializedView) and object_.target_table_name.startswith(
-        TRANSFORM_TABLE_NAME_PREFIX
+    if isinstance(object_, DesiredMaterializedView) and not object_.target_table_name.startswith(
+        RAW_TABLE_NAME_PREFIX
     ):
         return "transform"
     if isinstance(object_, DesiredKafkaTable):
         return "kafka table"
     if isinstance(object_, DesiredTable):
         return "table"
-    return "materialized view"
+    if isinstance(object_, DesiredMaterializedView):
+        return "materialized view"
+    return "view"
 
 
 def _build_unified_diff_lines(*, current_sql: str, desired_sql: str) -> tuple[str, ...]:

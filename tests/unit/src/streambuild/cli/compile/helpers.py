@@ -3,7 +3,12 @@ from dataclasses import replace
 from pathlib import Path
 from shutil import copytree
 
-from streambuild.adapter.models import AdapterManagedSource, AdapterMaterializedView, AdapterTable
+from streambuild.adapter.models import (
+    AdapterManagedSource,
+    AdapterMaterializedView,
+    AdapterTable,
+    AdapterView,
+)
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from streambuild.cli.compile.main._run_compile import run_compile
 from streambuild.cli.entry._helpers.compiler_profile import build_compiler_adapter_profile
@@ -83,6 +88,20 @@ default_target = "test"
 [targets.test]
 database = "analytics"
 """,
+        encoding="utf-8",
+    )
+
+
+def write_view_project(*, project_dir: Path) -> None:
+    pipeline_dir: Path = project_dir / "pipelines" / "consumer"
+    pipeline_dir.mkdir(parents=True, exist_ok=True)
+    (project_dir / "streambuild_project.toml").write_text(
+        'name = "view_project"\ndefault_target = "test"\n\n'
+        '[targets.test]\ndatabase = "analytics"\n',
+        encoding="utf-8",
+    )
+    (pipeline_dir / "customer_orders.sql").write_text(
+        "MODEL (kind view, relation_name customer_orders);\nSELECT 1::UInt64 AS order_id\n",
         encoding="utf-8",
     )
 
@@ -180,7 +199,7 @@ def static_target_snapshot(*, target_dir: Path) -> tuple[tuple[str, bytes], ...]
 
 def _raise_render_failure(
     *,
-    resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView,
+    resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterView,
     database: str,
     if_not_exists: bool = False,
 ) -> str:
