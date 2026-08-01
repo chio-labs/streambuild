@@ -13,6 +13,7 @@ DESIRED_OBJECT_TYPE_TABLE: DesiredObjectType = DesiredObjectType(DesiredObjectTy
 DESIRED_OBJECT_TYPE_MATERIALIZED_VIEW: DesiredObjectType = DesiredObjectType(
     DesiredObjectType.MATERIALIZED_VIEW
 )
+DESIRED_OBJECT_TYPE_VIEW: DesiredObjectType = DesiredObjectType(DesiredObjectType.VIEW)
 
 KAFKA_TABLE_NAME_PREFIX: str = "kafka__"
 RAW_TABLE_NAME_PREFIX: str = "raw__"

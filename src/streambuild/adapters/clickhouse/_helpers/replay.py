@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import datetime, timedelta
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
@@ -10,6 +11,7 @@ from streambuild.adapter.models import (
     AdapterQueryResult,
     AdapterReplayBoundary,
     AdapterReplayRequest,
+    AdapterReplayResult,
 )
 from streambuild.adapter.types import (
     AdapterReplayBoundaryMode,
@@ -35,22 +37,26 @@ _CANONICAL_REPLAY_OFFSET: str = "_replay_offset"
 
 
 def execute_clickhouse_replay(
-    *, connection: AdapterConnection, request: AdapterReplayRequest
-) -> None:
+    *,
+    connection: AdapterConnection,
+    request: AdapterReplayRequest,
+    execute_insert: Callable[[str], AdapterReplayResult],
+) -> AdapterReplayResult:
     """Seed and execute one replay request in ClickHouse."""
 
     active_relation_name: str = _active_relation_name(connection=connection, request=request)
     if request.mode == AdapterReplayBoundaryMode.OFFSETS:
-        _execute_offset_replay(
+        return _execute_offset_replay(
             connection=connection,
             request=request,
             active_relation_name=active_relation_name,
+            execute_insert=execute_insert,
         )
-        return
-    _execute_scalar_replay(
+    return _execute_scalar_replay(
         connection=connection,
         request=request,
         active_relation_name=active_relation_name,
+        execute_insert=execute_insert,
     )
 
 
@@ -59,7 +65,8 @@ def _execute_scalar_replay(
     connection: AdapterConnection,
     request: AdapterReplayRequest,
     active_relation_name: str,
-) -> None:
+    execute_insert: Callable[[str], AdapterReplayResult],
+) -> AdapterReplayResult:
     boundary: AdapterReplayBoundary = request.boundaries[0]
     boundary_column_type: str = _load_boundary_column_type(
         connection=connection,
@@ -72,16 +79,18 @@ def _execute_scalar_replay(
         boundary=boundary,
         boundary_column_type=boundary_column_type,
     )
+    seed_result: AdapterReplayResult | None = None
     if request.seed_mode == AdapterReplaySeedMode.HISTORY_PREFIX:
-        _seed_scalar_prefix(
+        seed_result = _seed_scalar_prefix(
             connection=connection,
             request=request,
             active_relation_name=active_relation_name,
             boundary=boundary,
             boundary_column_type=boundary_column_type,
             lower_bound_value=lower_bound_value,
+            execute_insert=execute_insert,
         )
-    connection.command(
+    replay_result: AdapterReplayResult = execute_insert(
         _render_scalar_replay(
             request=request,
             boundary=boundary,
@@ -89,6 +98,7 @@ def _execute_scalar_replay(
             lower_bound_value=lower_bound_value,
         )
     )
+    return _combine_replay_results(seed_result=seed_result, replay_result=replay_result)
 
 
 def _execute_offset_replay(
@@ -96,20 +106,26 @@ def _execute_offset_replay(
     connection: AdapterConnection,
     request: AdapterReplayRequest,
     active_relation_name: str,
-) -> None:
+    execute_insert: Callable[[str], AdapterReplayResult],
+) -> AdapterReplayResult:
     lower_bound_rows: tuple[ClickHouseReplayOffsetFrontier, ...] = _resolve_offset_lower_bounds(
         connection=connection,
         request=request,
         active_relation_name=active_relation_name,
     )
+    seed_result: AdapterReplayResult | None = None
     if request.seed_mode == AdapterReplaySeedMode.HISTORY_PREFIX:
-        _seed_offset_prefix(
+        seed_result = _seed_offset_prefix(
             connection=connection,
             request=request,
             active_relation_name=active_relation_name,
             lower_bound_rows=lower_bound_rows,
+            execute_insert=execute_insert,
         )
-    connection.command(_render_offset_replay(request=request, lower_bound_rows=lower_bound_rows))
+    replay_result: AdapterReplayResult = execute_insert(
+        _render_offset_replay(request=request, lower_bound_rows=lower_bound_rows)
+    )
+    return _combine_replay_results(seed_result=seed_result, replay_result=replay_result)
 
 
 def _resolve_scalar_lower_bound(
@@ -399,7 +415,8 @@ def _seed_scalar_prefix(
     boundary: AdapterReplayBoundary,
     boundary_column_type: str,
     lower_bound_value: str | None,
-) -> None:
+    execute_insert: Callable[[str], AdapterReplayResult],
+) -> AdapterReplayResult | None:
     if lower_bound_value is None:
         return
     copyable_columns: tuple[str, ...] = _copyable_columns(
@@ -410,7 +427,7 @@ def _seed_scalar_prefix(
     if not copyable_columns:
         return
     column_list: str = ", ".join(copyable_columns)
-    connection.command(
+    return execute_insert(
         f"INSERT INTO {request.database}.{request.relations.target} ({column_list})\n"
         f"SELECT {column_list}\n"
         f"FROM {request.database}.{active_relation_name}\n"
@@ -426,7 +443,8 @@ def _seed_offset_prefix(
     request: AdapterReplayRequest,
     active_relation_name: str,
     lower_bound_rows: tuple[ClickHouseReplayOffsetFrontier, ...],
-) -> None:
+    execute_insert: Callable[[str], AdapterReplayResult],
+) -> AdapterReplayResult | None:
     if not lower_bound_rows:
         return
     live_columns: frozenset[str] = _relation_columns(
@@ -447,7 +465,7 @@ def _seed_offset_prefix(
     column_list: str = ", ".join(copyable_columns)
     selected_columns: str = ", ".join(f"active.{name}" for name in copyable_columns)
     lower_bound_cte: str = _lower_offset_frontier_cte(lower_bound_rows)
-    connection.command(
+    return execute_insert(
         f"INSERT INTO {request.database}.{request.relations.target} ({column_list})\n"
         f"WITH active_start_offsets AS (\n{lower_bound_cte}\n)\n"
         f"SELECT {selected_columns}\n"
@@ -459,6 +477,17 @@ def _seed_offset_prefix(
         f"{'<' if request.window.lower_bound_inclusive else '<='} "
         "active_start_offsets.start_offset"
     )
+
+
+def _combine_replay_results(
+    *, seed_result: AdapterReplayResult | None, replay_result: AdapterReplayResult
+) -> AdapterReplayResult:
+    results: tuple[AdapterReplayResult, ...] = tuple(
+        result for result in (seed_result, replay_result) if result is not None
+    )
+    if any(result.written_rows is None for result in results):
+        return AdapterReplayResult(written_rows=None)
+    return AdapterReplayResult(written_rows=sum(result.written_rows or 0 for result in results))
 
 
 def _copyable_columns(

@@ -9,6 +9,14 @@ class ExactCompileTargetTestCase:
 
 
 @dataclass(frozen=True)
+class ViewCompileTargetTestCase:
+    description: str
+    expected_relative_files: tuple[str, ...]
+    expected_resource_kind: str
+    expected_relation_name: str
+
+
+@dataclass(frozen=True)
 class AdoptedCompileTargetTestCase:
     description: str
     expected_relation_name: str

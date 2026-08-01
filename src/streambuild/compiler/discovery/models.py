@@ -7,7 +7,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
 
-from streambuild.compiler.discovery.constants import DEFAULT_ADAPTER_NAME
+from streambuild.compiler.discovery.constants import (
+    DEFAULT_ADAPTER_NAME,
+    DEFAULT_TABLE_PREFIX,
+    DEFAULT_VIEW_PREFIX,
+)
 from streambuild.compiler.discovery.exceptions import ProjectSpecError
 from streambuild.compiler.discovery.main._immutable_config_pairs import immutable_config_pairs
 from streambuild.compiler.discovery.types import (
@@ -111,6 +115,22 @@ class ProjectDefaults:
     bounded_replay_fallback: BoundedReplayFallback | None = None
 
 
+@dataclass(frozen=True)
+class ProjectNaming:
+    """Project-wide model relation prefixes by model kind."""
+
+    table_prefix: str = DEFAULT_TABLE_PREFIX
+    view_prefix: str = DEFAULT_VIEW_PREFIX
+
+
+@dataclass(frozen=True)
+class PipelineNaming:
+    """Optional pipeline overrides for project model relation prefixes."""
+
+    table_prefix: str | None = None
+    view_prefix: str | None = None
+
+
 @dataclass(frozen=True, repr=False)
 class AuthoredProjectConfig:
     """Committed TOML project configuration before invocation resolution."""
@@ -123,6 +143,7 @@ class AuthoredProjectConfig:
     variables: tuple[tuple[str, object], ...]
     targets: tuple[tuple[str, ProjectTarget], ...]
     defaults: ProjectDefaults = field(default_factory=ProjectDefaults)
+    naming: ProjectNaming = field(default_factory=ProjectNaming)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "variables", immutable_config_pairs(self.variables))
@@ -165,6 +186,7 @@ class EffectiveProjectConfiguration:
     connection: RawConnectionConfig
     variables: tuple[tuple[str, object], ...]
     defaults: ProjectDefaults
+    naming: ProjectNaming = field(default_factory=ProjectNaming)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "variables", immutable_config_pairs(self.variables))
@@ -238,6 +260,7 @@ class TransformStep:
     source: str
     engine: str
     order_by: Sequence[str]
+    relation_name: str | None = None
     query: str | None = None
     sql_file: str | None = None
     partition_by: str | None = None
@@ -268,6 +291,23 @@ class TransformStep:
 
 
 @dataclass(frozen=True)
+class ViewStep:
+    """A query-only terminal model with arbitrary logical upstreams."""
+
+    name: str
+    query: str | None = None
+    sql_file: str | None = None
+    relation_name: str | None = None
+    source_file_path: Path | None = None
+    source_line: int = 1
+    source_column: int = 1
+
+    def __post_init__(self) -> None:
+        if bool(self.query) == bool(self.sql_file):
+            raise ProjectSpecError("Exactly one of 'query' or 'sql_file' must be provided")
+
+
+@dataclass(frozen=True)
 class Project:
     """Effective project values retained by the current compilation model."""
 
@@ -275,6 +315,7 @@ class Project:
     bounded_replay_fallback: BoundedReplayFallback | str | None = None
     default_database: str | None = None
     adapter: str = DEFAULT_ADAPTER_NAME
+    naming: ProjectNaming = field(default_factory=ProjectNaming)
 
     def __post_init__(self) -> None:
         if self.bounded_replay_fallback is not None:
@@ -290,10 +331,11 @@ class Pipeline:
     """A single authored streaming pipeline."""
 
     name: str
-    source: KafkaLandingStep | ExternalTableSourceStep
-    transforms: Sequence[TransformStep] = field(default_factory=tuple)
+    source: KafkaLandingStep | ExternalTableSourceStep | None
+    transforms: Sequence[TransformStep | ViewStep] = field(default_factory=tuple)
     replay_on_change: ReplayOnChangePolicy | None = None
     bounded_replay_fallback: BoundedReplayFallback | str | None = None
+    naming: PipelineNaming = field(default_factory=PipelineNaming)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "transforms", tuple(self.transforms))

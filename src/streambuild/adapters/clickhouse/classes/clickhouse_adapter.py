@@ -23,6 +23,8 @@ from streambuild.adapter.models import (
     AdapterSourceRealization,
     AdapterStableView,
     AdapterTable,
+    AdapterView,
+    AdapterViewRealizationRequest,
 )
 from streambuild.adapters.clickhouse._helpers.errors import translate_driver_error
 from streambuild.adapters.clickhouse._helpers.realization import realize_clickhouse_source
@@ -118,7 +120,13 @@ class ClickHouseAdapter(Adapter):
     def render_resource(
         self,
         *,
-        resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterStableView,
+        resource: (
+            AdapterManagedSource
+            | AdapterTable
+            | AdapterMaterializedView
+            | AdapterView
+            | AdapterStableView
+        ),
         database: str,
         if_not_exists: bool = False,
     ) -> str:
@@ -144,7 +152,9 @@ class ClickHouseAdapter(Adapter):
 
         return f"{CLICKHOUSE_MODEL_TABLE_NAME_PREFIX}{logical_name}"
 
-    def realize_model(self, *, request: AdapterModelRealizationRequest) -> AdapterModelRealization:
+    def realize_model(
+        self, *, request: AdapterModelRealizationRequest | AdapterViewRealizationRequest
+    ) -> AdapterModelRealization:
         """Map one semantically compiled model to ClickHouse resources."""
 
         return realize_clickhouse_model(request=request)

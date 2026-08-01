@@ -13,6 +13,7 @@ from streambuild.cli.plan.models import PlanCommandOptions
 from streambuild.cli.selection.main._selection import resolve_selection
 from streambuild.cli.selection.models import SelectionResolution
 from streambuild.compiler.compile.models import DesiredState
+from streambuild.compiler.discovery.types import ReplayLineageMode
 from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.compiler.planner.main.load_actual_state_from_snapshot import (
     load_actual_state_from_snapshot,
@@ -59,6 +60,9 @@ def execute_virtual_environment_plan(
         graph=analysis.graph,
         selectors=options.selectors,
     )
+    replay_lineage_mode: ReplayLineageMode = (
+        selection.replay_lineage_mode or ReplayLineageMode.OFFSETS
+    )
     desired_state: DesiredState = selection.desired_state
     actual_state: ActualState = load_actual_state_from_snapshot(
         snapshot=snapshot,
@@ -88,7 +92,7 @@ def execute_virtual_environment_plan(
         deployment_plan=plan,
         desired_state=desired_state,
         default_database=options.database,
-        replay_lineage_mode=selection.replay_lineage_mode,
+        replay_lineage_mode=replay_lineage_mode,
     )
     return render_plan_result(
         plan=plan,

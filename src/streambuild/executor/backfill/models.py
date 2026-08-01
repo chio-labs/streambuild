@@ -37,6 +37,15 @@ class BackfillBootstrapResult:
     created_at: str
     deployment_plan: DeploymentPlan
     root_reports: tuple[RootBackfillReport, ...]
+    existing_relation_names: frozenset[str]
+
+
+@dataclass(frozen=True)
+class BackfillRootReplayResult:
+    """One staged replay root actually executed in the warehouse."""
+
+    root_key: ObjectKey
+    written_rows: int | None
 
 
 @dataclass(frozen=True)
@@ -45,6 +54,7 @@ class BackfillExecutionResult:
 
     bootstrap: BackfillBootstrapResult
     boundary_time: str
+    replay_results: tuple[BackfillRootReplayResult, ...]
 
 
 @dataclass(frozen=True)

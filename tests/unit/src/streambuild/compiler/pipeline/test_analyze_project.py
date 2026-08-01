@@ -166,8 +166,6 @@ def test_given_complete_project_when_analyzing_then_polyglot_calls_remain_bounde
                 "assembly_completed",
                 "realize_source",
                 "realize_source",
-                "model_relation_name",
-                "model_relation_name",
                 "realize_model",
                 "realize_model",
             ),

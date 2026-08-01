@@ -29,3 +29,12 @@ class LoadTransformFromSqlFileTestCase:
     macro_file_contents: str
     model_file_contents: str
     expected_query_fragment: str
+
+
+@dataclass(frozen=True)
+class LoadModelKindTestCase:
+    description: str
+    contents: str
+    expected_step_type: type[object]
+    expected_relation_name: str | None
+    expected_has_engine: bool

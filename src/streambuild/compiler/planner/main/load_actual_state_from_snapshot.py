@@ -14,6 +14,7 @@ from streambuild.compiler.planner.models import (
     ActualState,
     ActualStateInspection,
     ActualTable,
+    ActualView,
     PlanningWarehouseSnapshot,
 )
 
@@ -31,10 +32,10 @@ def load_actual_state_from_snapshot(
         desired_state=desired_state,
         database=database,
     )
-    actual_objects: tuple[ActualKafkaTable | ActualTable | ActualMaterializedView, ...] = (
-        build_inspected_actual_objects(
-            desired_state=desired_state,
-            inspection=inspection,
-        )
+    actual_objects: tuple[
+        ActualKafkaTable | ActualTable | ActualMaterializedView | ActualView, ...
+    ] = build_inspected_actual_objects(
+        desired_state=desired_state,
+        inspection=inspection,
     )
     return build_actual_state(actual_objects)

@@ -4,7 +4,7 @@ from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import InspectedManagedTableState
 from streambuild.compiler.compile.constants import (
     DESIRED_OBJECT_TYPE_TABLE,
-    TRANSFORM_TABLE_NAME_PREFIX,
+    DESIRED_OBJECT_TYPE_VIEW,
 )
 from streambuild.executor.audit_backfill.main.load_audit_deployment import load_audit_deployment
 from streambuild.executor.audit_backfill.models import (
@@ -15,25 +15,13 @@ from streambuild.executor.audit_backfill.models import (
 
 def candidate_root_names(inspected_state: InspectedManagedTableState) -> tuple[str, ...]:
     active_root_names: tuple[str, ...] = tuple(
-        sorted(
-            {
-                binding.logical_name
-                for binding in inspected_state.active_bindings
-                if binding.logical_name.startswith(TRANSFORM_TABLE_NAME_PREFIX)
-            }
-        )
+        sorted({binding.logical_name for binding in inspected_state.active_bindings})
     )
     if active_root_names:
         return active_root_names
 
     return tuple(
-        sorted(
-            {
-                candidate.logical_name
-                for candidate in inspected_state.physical_candidates
-                if candidate.logical_name.startswith(TRANSFORM_TABLE_NAME_PREFIX)
-            }
-        )
+        sorted({candidate.logical_name for candidate in inspected_state.physical_candidates})
     )
 
 
@@ -69,7 +57,7 @@ def loaded_deployment_root_names(loaded: LoadedAuditDeployment) -> tuple[str, ..
         sorted(
             root_key.name
             for root_key in loaded.root_keys
-            if root_key.name.startswith(TRANSFORM_TABLE_NAME_PREFIX)
+            if root_key.object_type in {DESIRED_OBJECT_TYPE_TABLE, DESIRED_OBJECT_TYPE_VIEW}
         )
     )
     if root_names:
@@ -79,7 +67,6 @@ def loaded_deployment_root_names(loaded: LoadedAuditDeployment) -> tuple[str, ..
         sorted(
             logical_key.name
             for logical_key, _physical_name in loaded.prepared_object_mappings
-            if logical_key.object_type == DESIRED_OBJECT_TYPE_TABLE
-            and logical_key.name.startswith(TRANSFORM_TABLE_NAME_PREFIX)
+            if logical_key.object_type in {DESIRED_OBJECT_TYPE_TABLE, DESIRED_OBJECT_TYPE_VIEW}
         )
     )

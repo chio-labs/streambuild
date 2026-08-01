@@ -425,6 +425,7 @@ def _prepared_mapping_payload(mapping: AdapterPreparedObjectMapping) -> dict[str
     return {
         "logical_key": _object_key_payload(mapping.logical_key),
         "physical_name": mapping.physical_name,
+        "logical_model_name": mapping.logical_model_name,
     }
 
 
@@ -456,6 +457,25 @@ def record_clickhouse_target_ownership(
     connection.insert_rows(
         table=f"{database}.{METADATA_TARGET_OWNERSHIP_TABLE_NAME}",
         rows=tuple(_ownership_row(record=record, recorded_at=recorded_at) for record in records),
+    )
+
+
+def remove_clickhouse_target_ownership(
+    *,
+    connection: AdapterConnection,
+    database: str,
+    target_database: str,
+    relation_names: tuple[str, ...],
+) -> None:
+    """Delete exact retired ownership claims after replacement succeeds."""
+
+    if not relation_names:
+        return
+    quoted_names: str = ", ".join(f"'{name}'" for name in relation_names)
+    connection.command(
+        f"ALTER TABLE {database}.{METADATA_TARGET_OWNERSHIP_TABLE_NAME} "
+        f"DELETE WHERE database_name = '{target_database}' "
+        f"AND relation_name IN ({quoted_names}) SETTINGS mutations_sync = 2"
     )
 
 

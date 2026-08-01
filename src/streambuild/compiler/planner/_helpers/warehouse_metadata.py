@@ -134,6 +134,7 @@ def _adapter_mapping(mapping: PreparedObjectMapping) -> AdapterPreparedObjectMap
     return AdapterPreparedObjectMapping(
         logical_key=_adapter_key(mapping.logical_key),
         physical_name=mapping.physical_name,
+        logical_model_name=mapping.logical_model_name,
     )
 
 

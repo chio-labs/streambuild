@@ -19,15 +19,15 @@ from tests.unit.src.streambuild.executor.doctor.main._test_types import (
                     name="tbl__orders_enriched",
                     engine="View",
                     columns=(),
-                    stable_binding_name="tbl__orders_enriched__dep_a",
+                    stable_binding_name=("tbl__orders_enriched__20260731T120000Z_depaaa"),
                 ),
                 CatalogRelation(
-                    name="tbl__orders_enriched__dep_a",
+                    name="tbl__orders_enriched__20260731T120000Z_depaaa",
                     engine="MergeTree",
                     columns=(),
                 ),
                 CatalogRelation(
-                    name="tbl__orders_enriched__dep_b",
+                    name="tbl__orders_enriched__20260731T130000Z_depbbb",
                     engine="MergeTree",
                     columns=(),
                 ),
@@ -38,8 +38,11 @@ from tests.unit.src.streambuild.executor.doctor.main._test_types import (
                     ActiveViewStatus(
                         table_name="tbl__orders_enriched",
                         state_kind="active_view_present",
-                        active_deployment_id="dep_a",
-                        candidate_deployment_ids=("dep_a", "dep_b"),
+                        active_deployment_id="20260731T120000Z_depaaa",
+                        candidate_deployment_ids=(
+                            "20260731T120000Z_depaaa",
+                            "20260731T130000Z_depbbb",
+                        ),
                     ),
                 )
             ),

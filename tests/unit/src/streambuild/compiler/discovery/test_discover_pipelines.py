@@ -1,10 +1,11 @@
 from pathlib import Path
+from typing import cast
 
 import pytest
 
 from streambuild.compiler.discovery.exceptions import PipelineDiscoveryError
 from streambuild.compiler.discovery.main._discover_pipelines import discover_pipelines
-from streambuild.compiler.discovery.models import LoadedPipeline
+from streambuild.compiler.discovery.models import KafkaLandingStep, LoadedPipeline
 from tests.unit.src.streambuild.compiler.discovery._helpers.load.helpers import (
     write_pipeline_file,
 )
@@ -13,6 +14,7 @@ from tests.unit.src.streambuild.compiler.discovery._test_types import (
     DiscoverPipelinesTestCase,
     PipelineSourceInferenceErrorTestCase,
     PipelineSourceInferenceTestCase,
+    ViewPipelineSourceInferenceTestCase,
 )
 from tests.unit.src.streambuild.compiler.discovery.helpers import (
     write_project_toml,
@@ -95,7 +97,95 @@ def test_given_transitive_driving_inputs_when_discovering_then_infers_pipeline_s
     loaded_pipelines: list[LoadedPipeline] = discover_pipelines(pipelines_root)
 
     assert (
-        tuple((loaded.pipeline.name, loaded.pipeline.source.name) for loaded in loaded_pipelines)
+        tuple(
+            (loaded.pipeline.name, cast(KafkaLandingStep, loaded.pipeline.source).name)
+            for loaded in loaded_pipelines
+        )
+        == test_case.expected_pipeline_sources
+    )
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ViewPipelineSourceInferenceTestCase(
+            description="ignores view upstreams when inferring a mixed pipeline source",
+            project_files={
+                "mixed/table_model.sql": (
+                    'MODEL (); SELECT order_id::UInt64 AS order_id FROM __source("orders")'
+                ),
+                "mixed/terminal.sql": (
+                    "MODEL (kind view); SELECT payment_id::UInt64 AS payment_id FROM "
+                    '__source("payments")'
+                ),
+            },
+            source_contents="""
+            sources:
+              - name: orders
+                kind: kafka
+                broker_list: kafka:9092
+                topic: source.orders
+                replay_boundary: {mode: offsets}
+              - name: payments
+                kind: kafka
+                broker_list: kafka:9092
+                topic: source.payments
+                replay_boundary: {mode: offsets}
+            """,
+            expected_pipeline_sources=(("mixed", "orders"),),
+        ),
+        ViewPipelineSourceInferenceTestCase(
+            description="accepts a source-less view-only pipeline",
+            project_files={
+                "views/terminal.sql": (
+                    "MODEL (kind view); SELECT order_id::UInt64 AS order_id FROM "
+                    '__source("orders") JOIN __source("payments") ON 1 = 1'
+                ),
+            },
+            source_contents="""
+            sources:
+              - name: orders
+                kind: kafka
+                broker_list: kafka:9092
+                topic: source.orders
+                replay_boundary: {mode: offsets}
+              - name: payments
+                kind: kafka
+                broker_list: kafka:9092
+                topic: source.payments
+                replay_boundary: {mode: offsets}
+            """,
+            expected_pipeline_sources=(("views", None),),
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_views_when_discovering_then_ignores_them_for_pipeline_source_inference(
+    test_case: ViewPipelineSourceInferenceTestCase,
+    tmp_path: Path,
+) -> None:
+    pipelines_root: Path = tmp_path / "pipelines"
+    relative_path: str
+    file_contents: str
+    for relative_path, file_contents in test_case.project_files.items():
+        write_pipeline_file(pipelines_root / relative_path, file_contents)
+    write_project_toml(
+        project_dir=tmp_path,
+        contents='name = "test"\ndefault_target = "test"\n[targets.test]\n',
+    )
+    write_source_yml(
+        project_dir=tmp_path,
+        relative_path="sources.yml",
+        contents=test_case.source_contents,
+    )
+
+    loaded_pipelines: list[LoadedPipeline] = discover_pipelines(pipelines_root)
+
+    assert (
+        tuple(
+            (loaded.pipeline.name, getattr(loaded.pipeline.source, "name", None))
+            for loaded in loaded_pipelines
+        )
         == test_case.expected_pipeline_sources
     )
 

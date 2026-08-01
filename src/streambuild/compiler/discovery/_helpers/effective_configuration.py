@@ -17,6 +17,7 @@ from streambuild.compiler.discovery.models import (
     LocalProjectConfig,
     LocalProjectTarget,
     ProjectDefaults,
+    ProjectNaming,
     ProjectSettings,
     ProjectTarget,
     RawConnectionConfig,
@@ -98,6 +99,11 @@ def resolve_effective_project_configuration(
             variables=variables,
             environment=environment,
         ),
+        naming=_resolve_project_naming(
+            loaded=loaded,
+            variables=variables,
+            environment=environment,
+        ),
     )
 
 
@@ -143,6 +149,29 @@ def _resolve_project_defaults(
             variables=variables,
             environment=environment,
             field_path=f"{loaded.project_source.file_path} defaults.managed_source_ttl",
+        ),
+    )
+
+
+def _resolve_project_naming(
+    *,
+    loaded: LoadedProjectConfiguration,
+    variables: Mapping[str, object],
+    environment: Mapping[str, str],
+) -> ProjectNaming:
+    naming: ProjectNaming = loaded.project.naming
+    return ProjectNaming(
+        table_prefix=_interpolated_string(
+            value=naming.table_prefix,
+            variables=variables,
+            environment=environment,
+            field_path=f"{loaded.project_source.file_path} naming.table_prefix",
+        ),
+        view_prefix=_interpolated_string(
+            value=naming.view_prefix,
+            variables=variables,
+            environment=environment,
+            field_path=f"{loaded.project_source.file_path} naming.view_prefix",
         ),
     )
 

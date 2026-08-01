@@ -278,6 +278,7 @@ def build_metadata_state() -> MetadataState:
                     PreparedObjectMapping(
                         logical_key=transform_key,
                         physical_name="tbl__orders_enriched__20260408T130000Z_ab12cd",
+                        logical_model_name="orders_enriched",
                     ),
                 ),
             ),

@@ -8,13 +8,16 @@ from streambuild.adapter.models import (
     AdapterMaterializedView,
     AdapterStableView,
     AdapterTable,
+    AdapterView,
 )
 from streambuild.compiler.compile.constants import DESIRED_OBJECT_TYPE_TABLE
 from streambuild.compiler.compile.models import (
     DesiredMaterializedView,
     DesiredTable,
+    DesiredView,
     MaterializedViewSpec,
     ObjectKey,
+    ViewSpec,
 )
 from streambuild.compiler.planner.main.build_adapter_resource import build_adapter_resource
 from streambuild.compiler.sql_analysis.main.rewrite_query import rewrite_query
@@ -23,10 +26,12 @@ from streambuild.compiler.sql_analysis.models import SqlQueryRewriteResult, SqlR
 
 def build_shadow_adapter_resource(
     *,
-    desired_object: DesiredTable | DesiredMaterializedView,
+    desired_object: DesiredTable | DesiredMaterializedView | DesiredView,
     physical_name: str,
     physical_name_by_key: dict[ObjectKey, str],
-) -> AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterStableView:
+) -> (
+    AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterView | AdapterStableView
+):
     """Build a staged physical resource while rewriting logical references."""
 
     if isinstance(desired_object, DesiredTable):
@@ -34,6 +39,26 @@ def build_shadow_adapter_resource(
             replace(
                 desired_object,
                 key=replace(desired_object.key, name=physical_name),
+            )
+        )
+    if isinstance(desired_object, DesiredView):
+        rewritten_query: str = _rewrite_query(
+            query=desired_object.query,
+            physical_name_by_key=physical_name_by_key,
+        )
+        database_template: str = _rewrite_query(
+            query=(
+                desired_object.query
+                if desired_object.spec.database_template is None
+                else desired_object.spec.database_template
+            ),
+            physical_name_by_key=physical_name_by_key,
+        )
+        return build_adapter_resource(
+            replace(
+                desired_object,
+                key=replace(desired_object.key, name=physical_name),
+                spec=ViewSpec(query=rewritten_query, database_template=database_template),
             )
         )
     source_name: str = _physical_table_name(

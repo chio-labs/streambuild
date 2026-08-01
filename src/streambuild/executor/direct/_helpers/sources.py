@@ -13,55 +13,35 @@ from streambuild.adapter.models import (
 from streambuild.compiler.compile.models import CompiledSource, LogicalResourceKey
 from streambuild.compiler.pipeline.models import RealizedProject
 from streambuild.executor.direct.exceptions import DirectBuildError
-from streambuild.executor.direct.models import PreservedSourceRealization
+from streambuild.executor.population.main._prepare_population_sources import (
+    prepare_population_sources,
+)
+from streambuild.executor.population.models import PopulationSourcePreparation
 
 _KAFKA_BROKER_LIST_SETTING: str = "kafka_broker_list"
 _KAFKA_TOPIC_LIST_SETTING: str = "kafka_topic_list"
 _KAFKA_FORMAT_SETTING: str = "kafka_format"
 
 
-def preserve_managed_sources(
+def prepare_preserved_managed_sources(
     *,
     client: AdapterConnection,
     realized_project: RealizedProject,
     catalog: CatalogSnapshot,
     database: str,
-) -> PreservedSourceRealization:
-    """Create absent managed source resources and reject drift before any teardown."""
+) -> PopulationSourcePreparation:
+    """Validate preserved sources and create only absent passive resources."""
 
     resources: tuple[AdapterManagedSource | AdapterTable | AdapterMaterializedView, ...] = (
         _managed_source_resources(realized_project=realized_project)
     )
     _reject_managed_source_drift(resources=resources, catalog=catalog)
-    existing_names: frozenset[str] = catalog.relation_names()
-    resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView
-    for resource in resources:
-        _realize_absent_source_resource(
-            client=client,
-            resource=resource,
-            database=database,
-            existing_names=existing_names,
-        )
-    return PreservedSourceRealization(
-        preserved_relation_names=tuple(
-            resource.name for resource in resources if resource.name in existing_names
-        ),
-        created_relation_names=tuple(
-            resource.name for resource in resources if resource.name not in existing_names
-        ),
+    return prepare_population_sources(
+        client=client,
+        desired_state=realized_project.desired_state,
+        default_database=database,
+        existing_relation_names=catalog.relation_names(),
     )
-
-
-def _realize_absent_source_resource(
-    *,
-    client: AdapterConnection,
-    resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView,
-    database: str,
-    existing_names: frozenset[str],
-) -> None:
-    if resource.name in existing_names:
-        return
-    client.realize_resource(resource=resource, database=database, if_not_exists=True)
 
 
 def _managed_source_resources(
@@ -71,7 +51,11 @@ def _managed_source_resources(
     source: CompiledSource
     for source in realized_project.project.sources:
         key: LogicalResourceKey = source.key
-        resources.extend(realized_project.resources_by_logical_key[key])
+        resources.extend(
+            resource
+            for resource in realized_project.resources_by_logical_key[key]
+            if isinstance(resource, (AdapterManagedSource, AdapterTable, AdapterMaterializedView))
+        )
     return tuple(resources)
 
 

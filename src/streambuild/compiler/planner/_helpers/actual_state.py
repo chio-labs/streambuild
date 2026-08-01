@@ -3,24 +3,26 @@
 from streambuild.compiler.compile.constants import (
     MATERIALIZED_VIEW_NAME_PREFIX,
     RAW_TABLE_NAME_PREFIX,
-    TRANSFORM_TABLE_NAME_PREFIX,
 )
 from streambuild.compiler.compile.models import (
     DesiredKafkaTable,
     DesiredMaterializedView,
     DesiredState,
     DesiredTable,
+    DesiredView,
     KafkaTableSpec,
     MaterializedViewSpec,
     ObjectKey,
     TableSpec,
     TableStorage,
+    ViewSpec,
 )
 from streambuild.compiler.planner.models import (
     ActualKafkaTable,
     ActualMaterializedView,
     ActualStateInspection,
     ActualTable,
+    ActualView,
     ObjectStateRecord,
     RootDeploymentInspection,
 )
@@ -32,13 +34,13 @@ def build_inspected_actual_objects(
     *,
     desired_state: DesiredState,
     inspection: ActualStateInspection,
-) -> tuple[ActualKafkaTable | ActualTable | ActualMaterializedView, ...]:
+) -> tuple[ActualKafkaTable | ActualTable | ActualMaterializedView | ActualView, ...]:
     """Build actual objects corresponding to the desired object graph."""
 
-    actual_objects: list[ActualKafkaTable | ActualTable | ActualMaterializedView] = []
-    desired_object: DesiredKafkaTable | DesiredTable | DesiredMaterializedView
+    actual_objects: list[ActualKafkaTable | ActualTable | ActualMaterializedView | ActualView] = []
+    desired_object: DesiredKafkaTable | DesiredTable | DesiredMaterializedView | DesiredView
     for desired_object in desired_state.objects:
-        actual_object: ActualKafkaTable | ActualTable | ActualMaterializedView | None
+        actual_object: ActualKafkaTable | ActualTable | ActualMaterializedView | ActualView | None
         if isinstance(desired_object, DesiredKafkaTable):
             actual_object = _build_actual_kafka_table(
                 desired_object=desired_object,
@@ -49,10 +51,15 @@ def build_inspected_actual_objects(
                 desired_object=desired_object,
                 inspection=inspection,
             )
-        else:
+        elif isinstance(desired_object, DesiredMaterializedView):
             actual_object = _build_actual_materialized_view(
                 desired_object=desired_object,
                 desired_state=desired_state,
+                inspection=inspection,
+            )
+        else:
+            actual_object = _build_actual_view(
+                desired_object=desired_object,
                 inspection=inspection,
             )
         if actual_object is not None:
@@ -123,7 +130,12 @@ def _build_actual_materialized_view(
         return None
 
     actual_query: str = desired_object.query
-    if is_managed_view and desired_object.target_table_name.startswith(TRANSFORM_TABLE_NAME_PREFIX):
+    model_table_names: frozenset[str] = frozenset(
+        object_.name
+        for object_ in desired_state.objects
+        if isinstance(object_, DesiredTable) and not object_.name.startswith(RAW_TABLE_NAME_PREFIX)
+    )
+    if is_managed_view and desired_object.target_table_name in model_table_names:
         root_key: ObjectKey = _transform_root_key(
             desired_state=desired_state,
             target_table_name=desired_object.target_table_name,
@@ -154,6 +166,36 @@ def _build_actual_materialized_view(
             target_table_name=desired_object.target_table_name,
             query=actual_query,
             database_template=actual_query,
+        ),
+    )
+
+
+def _build_actual_view(
+    *,
+    desired_object: DesiredView,
+    inspection: ActualStateInspection,
+) -> ActualView | None:
+    root_inspection: RootDeploymentInspection | None = inspection.active_deployment_by_root.get(
+        desired_object.key
+    )
+    if (
+        root_inspection is None
+        or root_inspection.state_kind != RootDeploymentStateKind.ACTIVE_VIEW_PRESENT
+        or root_inspection.active_deployment_id is None
+    ):
+        return None
+    object_state_record: ObjectStateRecord | None = (
+        inspection.object_state_by_deployment_and_key.get(
+            (root_inspection.active_deployment_id, desired_object.key)
+        )
+    )
+    if object_state_record is None or object_state_record.normalized_query is None:
+        return None
+    return ActualView(
+        key=desired_object.key,
+        spec=ViewSpec(
+            query=object_state_record.normalized_query,
+            database_template=object_state_record.normalized_query,
         ),
     )
 

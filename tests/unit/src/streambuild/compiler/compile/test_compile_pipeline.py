@@ -6,6 +6,7 @@ import pytest
 
 from streambuild.adapter.models import AdapterManagedSource, AdapterMaterializedView, AdapterTable
 from streambuild.compiler.compile.exceptions import (
+    PipelineCompileError,
     TransformOrderByUnknownColumnError,
     TransformPartitionByUnknownColumnError,
     TransformSqlTopLevelSetOperationError,
@@ -14,6 +15,9 @@ from streambuild.compiler.compile.exceptions import (
 from streambuild.compiler.compile.models import (
     CompiledModel,
     CompiledPipeline,
+    CompiledProject,
+    CompiledSource,
+    CompiledTableModel,
     DesiredMaterializedView,
     DesiredState,
     DesiredTable,
@@ -31,6 +35,7 @@ from streambuild.compiler.discovery.models import (
     ReplayOnChangePolicy,
     ReplayOnChangeRule,
     TransformStep,
+    ViewStep,
 )
 from streambuild.compiler.discovery.types import (
     BoundedReplayFallback,
@@ -42,6 +47,8 @@ from streambuild.compiler.discovery.types import (
 )
 from streambuild.compiler.pipeline.models import RealizedProject
 from tests.unit.src.streambuild.compiler.compile._test_types import (
+    CompileAdoptedSourceSharingTestCase,
+    CompileModelNamingTestCase,
     CompilePipelineAdditionalRefDependencyTestCase,
     CompilePipelineAdoptedSourceTestCase,
     CompilePipelineInlineRefsTestCase,
@@ -61,6 +68,8 @@ from tests.unit.src.streambuild.compiler.compile._test_types import (
     CompilePipelineSqlFileTestCase,
     CompilePipelineSqlModelDefaultOrderByTestCase,
     CompilePipelineUnsupportedReplayBehaviorTestCase,
+    CompileRelationCollisionTestCase,
+    CompileRelationNameErrorTestCase,
 )
 from tests.unit.src.streambuild.compiler.compile.helpers import (
     build_inline_sql_pipeline,
@@ -69,6 +78,7 @@ from tests.unit.src.streambuild.compiler.compile.helpers import (
     build_missing_source_ref_pipeline,
     build_sql_file_pipeline,
     compile_and_realize_pipeline,
+    compile_logical_project,
     compile_test_pipeline,
     realized_managed_source,
     realized_model_table,
@@ -76,6 +86,13 @@ from tests.unit.src.streambuild.compiler.compile.helpers import (
     realized_source_table,
     realized_source_view,
     write_registry_pipeline_project,
+)
+from tests.unit.src.streambuild.compiler.discovery._helpers.load.helpers import (
+    write_pipeline_file,
+)
+from tests.unit.src.streambuild.compiler.discovery.helpers import (
+    write_project_toml,
+    write_source_yml,
 )
 from tests.unit.src.streambuild.compiler.planner.helpers import (
     build_single_transform_desired_state,
@@ -243,7 +260,8 @@ def test_given_adopted_source_when_compiling_then_it_uses_existing_table_relatio
     compiled_pipeline, realized_project = compile_and_realize_pipeline(loaded_pipeline)
     model: CompiledModel = compiled_pipeline.models[0]
 
-    assert isinstance(compiled_pipeline.source.source, ExternalTableSourceStep)
+    compiled_source: CompiledSource = cast(CompiledSource, compiled_pipeline.source)
+    assert isinstance(compiled_source.source, ExternalTableSourceStep)
     assert {
         key.name: name for key, name in realized_project.relation_name_by_logical_key.items()
     } == {
@@ -474,7 +492,8 @@ def test_given_replay_policy_scopes_when_compiling_then_model_pipeline_project_p
         )
     )
 
-    assert compiled_pipeline.models[0].replay_on_change == test_case.expected_policy
+    compiled_model: CompiledTableModel = cast(CompiledTableModel, compiled_pipeline.models[0])
+    assert compiled_model.replay_on_change == test_case.expected_policy
 
 
 @pytest.mark.parametrize(
@@ -552,8 +571,9 @@ def test_given_loaded_pipeline_when_compiling_then_it_resolves_effective_unsuppo
         LoadedPipeline(pipeline=pipeline, file_path=Path("pipeline"), project=project)
     )
 
+    compiled_model: CompiledTableModel = cast(CompiledTableModel, compiled_pipeline.models[0])
     assert (
-        compiled_pipeline.models[0].effective_bounded_replay_fallback
+        compiled_model.effective_bounded_replay_fallback
         == test_case.expected_effective_unsupported_replay_behavior
     )
 
@@ -692,7 +712,7 @@ def test_given_transform_when_compiling_then_it_sets_replay_anchor_inference_fla
     )
 
     compiled_pipeline: CompiledPipeline = compile_test_pipeline(loaded_pipeline)
-    compiled_model: CompiledModel = compiled_pipeline.models[-1]
+    compiled_model: CompiledTableModel = cast(CompiledTableModel, compiled_pipeline.models[-1])
 
     assert compiled_model.has_mutable_refs is test_case.expected_has_mutable_refs
     assert compiled_model.has_aggregate_semantics is test_case.expected_has_aggregate_semantics
@@ -934,7 +954,8 @@ def test_given_repeated_driving_source_refs_when_compiling_then_it_treats_them_a
 
     compiled_pipeline: CompiledPipeline = compile_test_pipeline(loaded_pipeline)
 
-    assert compiled_pipeline.models[0].transform.name == test_case.expected_target_name
+    compiled_model: CompiledTableModel = cast(CompiledTableModel, compiled_pipeline.models[0])
+    assert compiled_model.transform.name == test_case.expected_target_name
 
 
 @pytest.mark.parametrize(
@@ -1173,3 +1194,330 @@ def test_given_invalid_transform_ttl_when_compiling_then_it_raises_a_clear_contr
     error_message: str = str(error_info.value)
     for expected_fragment in test_case.expected_message_fragments:
         assert expected_fragment in error_message
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CompileModelNamingTestCase(
+            description="resolves exact pipeline project and built-in kind naming precedence",
+            project_contents="""
+            name = "naming"
+            default_target = "test"
+
+            [naming]
+            table_prefix = "project_tbl__"
+            view_prefix = "project_view__"
+
+            [targets.test]
+            """,
+            pipeline_contents="""
+            [naming]
+            table_prefix = "pipeline_tbl__"
+            """,
+            model_files={
+                "first.sql": (
+                    "MODEL (relation_name exact_table, order_by [order_id]); "
+                    "SELECT order_id::UInt64 AS order_id "
+                    'FROM __source("orders")'
+                ),
+                "second.sql": (
+                    "MODEL (order_by [order_id]); "
+                    'SELECT order_id::UInt64 AS order_id FROM __ref("first")'
+                ),
+                "exact_view.sql": (
+                    "MODEL (kind view, relation_name exact_view); "
+                    'SELECT order_id::UInt64 AS order_id FROM __ref("second")'
+                ),
+                "summary.sql": (
+                    "MODEL (kind view); SELECT payment_id::UInt64 AS payment_id FROM "
+                    '__source("payments") JOIN __ref("second") ON 1 = 1'
+                ),
+            },
+            expected_relation_names={
+                "exact_view": "exact_view",
+                "first": "exact_table",
+                "second": "pipeline_tbl__second",
+                "summary": "project_view__summary",
+            },
+            expected_model_kinds={
+                "exact_view": "view",
+                "first": "table",
+                "second": "table",
+                "summary": "view",
+            },
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_model_relation_naming_layers_when_compiling_then_resolves_locked_precedence(
+    test_case: CompileModelNamingTestCase,
+    tmp_path: Path,
+) -> None:
+    write_project_toml(project_dir=tmp_path, contents=test_case.project_contents)
+    write_source_yml(
+        project_dir=tmp_path,
+        relative_path="sources.yml",
+        contents="""
+        sources:
+          - name: orders
+            kind: kafka
+            broker_list: kafka:9092
+            topic: source.orders
+            replay_boundary: {mode: offsets}
+          - name: payments
+            kind: kafka
+            broker_list: kafka:9092
+            topic: source.payments
+            replay_boundary: {mode: offsets}
+        """,
+    )
+    pipeline_dir: Path = tmp_path / "pipelines" / "models"
+    write_pipeline_file(pipeline_dir / "pipeline.toml", test_case.pipeline_contents)
+    file_name: str
+    contents: str
+    for file_name, contents in test_case.model_files.items():
+        write_pipeline_file(pipeline_dir / file_name, contents)
+
+    project: CompiledProject = compile_logical_project(tmp_path)
+
+    assert {model.key.name: model.relation_name for model in project.models} == (
+        test_case.expected_relation_names
+    )
+    assert {model.key.name: model.kind for model in project.models} == (
+        test_case.expected_model_kinds
+    )
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CompileRelationNameErrorTestCase(
+            description="rejects an empty exact relation name",
+            relation_name="",
+            expected_error_fragment="expected a non-empty unqualified identifier",
+        ),
+        CompileRelationNameErrorTestCase(
+            description="rejects a qualified exact relation name",
+            relation_name="analytics.orders",
+            expected_error_fragment="expected a non-empty unqualified identifier",
+        ),
+        CompileRelationNameErrorTestCase(
+            description="rejects the reserved Kafka prefix",
+            relation_name="kafka__orders",
+            expected_error_fragment="uses reserved prefix",
+        ),
+        CompileRelationNameErrorTestCase(
+            description="rejects the reserved raw prefix",
+            relation_name="raw__orders",
+            expected_error_fragment="uses reserved prefix",
+        ),
+        CompileRelationNameErrorTestCase(
+            description="rejects the reserved materialized-view prefix",
+            relation_name="mv__orders",
+            expected_error_fragment="uses reserved prefix",
+        ),
+        CompileRelationNameErrorTestCase(
+            description="rejects a fixed deployment suffix lookalike",
+            relation_name="orders__20260731T120000Z_abcdef",
+            expected_error_fragment="looks like a fixed deployment-suffixed physical name",
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_invalid_effective_relation_name_when_compiling_then_rejects_before_realization(
+    test_case: CompileRelationNameErrorTestCase,
+) -> None:
+    loaded_pipeline: LoadedPipeline = LoadedPipeline(
+        pipeline=Pipeline(
+            name="views",
+            source=None,
+            transforms=(
+                ViewStep(
+                    name="orders",
+                    relation_name=test_case.relation_name,
+                    query="SELECT 1::UInt8 AS value",
+                ),
+            ),
+        ),
+        file_path=Path("pipelines/views"),
+    )
+
+    with pytest.raises(PipelineCompileError, match=test_case.expected_error_fragment):
+        compile_test_pipeline(loaded_pipeline)
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CompileRelationCollisionTestCase(
+            description="rejects duplicate model relation names project-wide",
+            model_files={
+                "first.sql": (
+                    "MODEL (kind view, relation_name shared_output); SELECT 1::UInt8 AS value"
+                ),
+                "second.sql": (
+                    "MODEL (kind view, relation_name shared_output); SELECT 2::UInt8 AS value"
+                ),
+            },
+            source_contents="""
+            sources:
+              - name: orders
+                kind: kafka
+                broker_list: kafka:9092
+                topic: source.orders
+                replay_boundary: {mode: offsets}
+            """,
+            expected_error_fragment="Relation name 'shared_output' is used by both",
+        ),
+        CompileRelationCollisionTestCase(
+            description="rejects adopted source collision with generated Kafka table in VDE mode",
+            model_files={"consumer.sql": "MODEL (kind view); SELECT 1::UInt8 AS value"},
+            source_contents="""
+            sources:
+              - name: orders
+                kind: kafka
+                broker_list: kafka:9092
+                topic: source.orders
+                replay_boundary: {mode: offsets}
+              - name: adopted_orders
+                kind: stream_table
+                table_name: kafka__orders
+                replay_boundary:
+                  mode: timestamp
+                  columns: {_replay_timestamp: event_timestamp}
+            """,
+            expected_error_fragment="Relation name 'kafka__orders' is used by both",
+        ),
+        CompileRelationCollisionTestCase(
+            description="rejects adopted source collision with generated raw table in VDE mode",
+            model_files={"consumer.sql": "MODEL (kind view); SELECT 1::UInt8 AS value"},
+            source_contents="""
+            sources:
+              - name: orders
+                kind: kafka
+                broker_list: kafka:9092
+                topic: source.orders
+                replay_boundary: {mode: offsets}
+              - name: adopted_orders
+                kind: stream_table
+                table_name: raw__orders
+                replay_boundary:
+                  mode: timestamp
+                  columns: {_replay_timestamp: event_timestamp}
+            """,
+            expected_error_fragment="Relation name 'raw__orders' is used by both",
+        ),
+        CompileRelationCollisionTestCase(
+            description=(
+                "rejects adopted source collision with generated materialized view in VDE mode"
+            ),
+            model_files={"consumer.sql": "MODEL (kind view); SELECT 1::UInt8 AS value"},
+            source_contents="""
+            sources:
+              - name: orders
+                kind: kafka
+                broker_list: kafka:9092
+                topic: source.orders
+                replay_boundary: {mode: offsets}
+              - name: adopted_orders
+                kind: stream_table
+                table_name: mv__orders
+                replay_boundary:
+                  mode: timestamp
+                  columns: {_replay_timestamp: event_timestamp}
+            """,
+            expected_error_fragment="Relation name 'mv__orders' is used by both",
+        ),
+        CompileRelationCollisionTestCase(
+            description="rejects adopted source collision with authored view relation in VDE mode",
+            model_files={
+                "consumer.sql": (
+                    "MODEL (kind view, relation_name customer_orders); SELECT 1::UInt8 AS value"
+                )
+            },
+            source_contents="""
+            sources:
+              - name: adopted_orders
+                kind: stream_table
+                table_name: customer_orders
+                replay_boundary:
+                  mode: timestamp
+                  columns: {_replay_timestamp: event_timestamp}
+            """,
+            expected_error_fragment="Relation name 'customer_orders' is used by both",
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_relation_collision_when_assembling_project_then_rejects_before_graph(
+    test_case: CompileRelationCollisionTestCase,
+    tmp_path: Path,
+) -> None:
+    write_project_toml(
+        project_dir=tmp_path,
+        contents=(
+            'name = "test"\ndefault_target = "test"\n'
+            "[settings]\nvirtual_environments = true\n[targets.test]\n"
+        ),
+    )
+    write_source_yml(
+        project_dir=tmp_path,
+        relative_path="sources.yml",
+        contents=test_case.source_contents,
+    )
+    pipeline_dir: Path = tmp_path / "pipelines" / "views"
+    file_name: str
+    contents: str
+    for file_name, contents in test_case.model_files.items():
+        write_pipeline_file(pipeline_dir / file_name, contents)
+
+    with pytest.raises(PipelineCompileError, match=test_case.expected_error_fragment):
+        compile_logical_project(tmp_path)
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CompileAdoptedSourceSharingTestCase(
+            description="preserves adopted-to-adopted sharing with identical replay mappings",
+            source_contents="""
+            sources:
+              - name: orders
+                kind: stream_table
+                table_name: shared_orders
+                replay_boundary:
+                  mode: timestamp
+                  columns: {_replay_timestamp: event_timestamp}
+              - name: archived_orders
+                kind: stream_table
+                table_name: shared_orders
+                replay_boundary:
+                  mode: timestamp
+                  columns: {_replay_timestamp: event_timestamp}
+            """,
+            expected_source_table_names=("shared_orders", "shared_orders"),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_consistent_shared_adopted_relation_when_compiling_then_preserves_sharing(
+    test_case: CompileAdoptedSourceSharingTestCase,
+    tmp_path: Path,
+) -> None:
+    write_project_toml(
+        project_dir=tmp_path,
+        contents='name = "test"\ndefault_target = "test"\n[targets.test]\n',
+    )
+    write_source_yml(
+        project_dir=tmp_path,
+        relative_path="sources.yml",
+        contents=test_case.source_contents,
+    )
+
+    project: CompiledProject = compile_logical_project(tmp_path)
+
+    assert (
+        tuple(cast(ExternalTableSourceStep, source.source).table_name for source in project.sources)
+        == test_case.expected_source_table_names
+    )

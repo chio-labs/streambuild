@@ -170,6 +170,38 @@ class CompilePipelineAdoptedSourceTestCase:
 
 
 @dataclass(frozen=True)
+class CompileModelNamingTestCase:
+    description: str
+    project_contents: str
+    pipeline_contents: str
+    model_files: dict[str, str]
+    expected_relation_names: dict[str, str]
+    expected_model_kinds: dict[str, str]
+
+
+@dataclass(frozen=True)
+class CompileRelationNameErrorTestCase:
+    description: str
+    relation_name: str
+    expected_error_fragment: str
+
+
+@dataclass(frozen=True)
+class CompileRelationCollisionTestCase:
+    description: str
+    model_files: dict[str, str]
+    source_contents: str
+    expected_error_fragment: str
+
+
+@dataclass(frozen=True)
+class CompileAdoptedSourceSharingTestCase:
+    description: str
+    source_contents: str
+    expected_source_table_names: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class CompilePipelineReplaySurfaceTestCase:
     description: str
     pipeline: Pipeline

@@ -16,6 +16,8 @@ from streambuild.compiler.compile.main._compile_pipeline import compile_pipeline
 from streambuild.compiler.compile.models import (
     CompiledModel,
     CompiledPipeline,
+    CompiledSource,
+    CompiledTableModel,
     DesiredState,
 )
 from streambuild.compiler.discovery.main._discover_pipelines import discover_pipelines
@@ -613,7 +615,10 @@ def build_greenfield_workflow_request(
         desired_state=desired_state,
         default_database=clickhouse_database,
         metadata_database=clickhouse_database,
-        replay_lineage_mode=compiled_pipeline.effective_replay_lineage_mode,
+        replay_lineage_mode=cast(
+            ReplayLineageMode,
+            compiled_pipeline.effective_replay_lineage_mode,
+        ),
         deployment_id=deployment_id,
         created_at=created_at,
         boundary_time=boundary_time,
@@ -694,7 +699,8 @@ def _with_kafka_broker_list_and_topic(
     kafka_broker_list: str,
     topic_suffix: str | None,
 ) -> CompiledPipeline:
-    source: KafkaLandingStep = cast(KafkaLandingStep, compiled_pipeline.source.source)
+    compiled_source: CompiledSource = cast(CompiledSource, compiled_pipeline.source)
+    source: KafkaLandingStep = cast(KafkaLandingStep, compiled_source.source)
     base_topic_name: str = source.kafka.topic
     topic_parts: tuple[str, ...] = tuple(filter(None, (base_topic_name, topic_suffix)))
     topic_name: str = "_".join(topic_parts)
@@ -705,7 +711,7 @@ def _with_kafka_broker_list_and_topic(
     return replace(
         compiled_pipeline,
         pipeline=replace(compiled_pipeline.pipeline, source=updated_source),
-        source=replace(compiled_pipeline.source, source=updated_source),
+        source=replace(compiled_source, source=updated_source),
     )
 
 
@@ -728,16 +734,17 @@ def _build_non_boundary_type_change_compiled_pipeline() -> CompiledPipeline:
 
 
 def _analyzed_model_with_query(*, model: CompiledModel, query: str) -> CompiledModel:
+    table_model: CompiledTableModel = cast(CompiledTableModel, model)
     sql_analysis: SqlModelAnalysis = SqlModelAnalyzer(dialect="clickhouse").analyze(
         sql=query,
-        engine=model.transform.engine,
-        order_by=tuple(model.transform.order_by),
-        partition_by=model.transform.partition_by,
-        ttl=model.transform.ttl,
+        engine=table_model.transform.engine,
+        order_by=tuple(table_model.transform.order_by),
+        partition_by=table_model.transform.partition_by,
+        ttl=table_model.transform.ttl,
     )
     return replace(
-        model,
-        transform=replace(model.transform, query=query, sql_file=None),
+        table_model,
+        transform=replace(table_model.transform, query=query, sql_file=None),
         sql_analysis=sql_analysis,
     )
 

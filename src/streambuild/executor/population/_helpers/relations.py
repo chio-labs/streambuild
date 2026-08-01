@@ -6,12 +6,14 @@ from streambuild.adapter.models import (
     AdapterMaterializedView,
     AdapterStableView,
     AdapterTable,
+    AdapterView,
 )
 from streambuild.compiler.compile.models import (
     DesiredKafkaTable,
     DesiredMaterializedView,
     DesiredState,
     DesiredTable,
+    DesiredView,
     ObjectKey,
 )
 from streambuild.compiler.planner.main.build_shadow_adapter_resource import (
@@ -29,9 +31,9 @@ def realize_population_objects(
 ) -> tuple[str, ...]:
     """Realize all mapped tables and views once in dependency order."""
 
-    object_by_key: dict[ObjectKey, DesiredKafkaTable | DesiredTable | DesiredMaterializedView] = {
-        object_.key: object_ for object_ in desired_state.objects
-    }
+    object_by_key: dict[
+        ObjectKey, DesiredKafkaTable | DesiredTable | DesiredMaterializedView | DesiredView
+    ] = {object_.key: object_ for object_ in desired_state.objects}
     physical_name_by_key: dict[ObjectKey, str] = {
         prepared.logical_key: prepared.physical_name for prepared in plan.objects
     }
@@ -41,13 +43,17 @@ def realize_population_objects(
         desired_state=desired_state,
         planned_keys=frozenset(physical_name_by_key),
     ):
-        desired_object: DesiredKafkaTable | DesiredTable | DesiredMaterializedView = object_by_key[
-            target_key
-        ]
+        desired_object: DesiredKafkaTable | DesiredTable | DesiredMaterializedView | DesiredView = (
+            object_by_key[target_key]
+        )
         if isinstance(desired_object, DesiredKafkaTable):
             continue
         resource: (
-            AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterStableView
+            AdapterManagedSource
+            | AdapterTable
+            | AdapterMaterializedView
+            | AdapterView
+            | AdapterStableView
         ) = build_shadow_adapter_resource(
             desired_object=desired_object,
             physical_name=physical_name_by_key[target_key],
@@ -64,12 +70,12 @@ def realize_population_objects(
 def _ordered_creation_keys(
     *, desired_state: DesiredState, planned_keys: frozenset[ObjectKey]
 ) -> tuple[ObjectKey, ...]:
-    object_by_key: dict[ObjectKey, DesiredKafkaTable | DesiredTable | DesiredMaterializedView] = {
-        object_.key: object_ for object_ in desired_state.objects
-    }
+    object_by_key: dict[
+        ObjectKey, DesiredKafkaTable | DesiredTable | DesiredMaterializedView | DesiredView
+    ] = {object_.key: object_ for object_ in desired_state.objects}
     ordered_keys: tuple[ObjectKey, ...] = ()
     visited_keys: frozenset[ObjectKey] = frozenset()
-    desired_object: DesiredKafkaTable | DesiredTable | DesiredMaterializedView
+    desired_object: DesiredKafkaTable | DesiredTable | DesiredMaterializedView | DesiredView
     for desired_object in desired_state.objects:
         ordered_keys, visited_keys = _visit_creation_key(
             key=desired_object.key,
@@ -85,14 +91,18 @@ def _visit_creation_key(
     *,
     key: ObjectKey,
     planned_keys: frozenset[ObjectKey],
-    object_by_key: dict[ObjectKey, DesiredKafkaTable | DesiredTable | DesiredMaterializedView],
+    object_by_key: dict[
+        ObjectKey, DesiredKafkaTable | DesiredTable | DesiredMaterializedView | DesiredView
+    ],
     ordered_keys: tuple[ObjectKey, ...],
     visited_keys: frozenset[ObjectKey],
 ) -> tuple[tuple[ObjectKey, ...], frozenset[ObjectKey]]:
     if key not in planned_keys or key in visited_keys:
         return ordered_keys, visited_keys
     updated_visited_keys: frozenset[ObjectKey] = visited_keys | {key}
-    desired_object: DesiredKafkaTable | DesiredTable | DesiredMaterializedView = object_by_key[key]
+    desired_object: DesiredKafkaTable | DesiredTable | DesiredMaterializedView | DesiredView = (
+        object_by_key[key]
+    )
     dependency_key: ObjectKey
     for dependency_key in desired_object.deps:
         ordered_keys, updated_visited_keys = _visit_creation_key(

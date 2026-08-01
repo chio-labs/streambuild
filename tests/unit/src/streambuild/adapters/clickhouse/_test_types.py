@@ -98,6 +98,15 @@ class RenderStableViewTestCase:
 
 
 @dataclass(frozen=True)
+class RenderViewTestCase:
+    description: str
+    database: str
+    view_name: str
+    database_template: str
+    expected_ddl: str
+
+
+@dataclass(frozen=True)
 class RenderMetadataStateDdlTestCase:
     description: str
     statement_index: int

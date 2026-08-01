@@ -7,8 +7,10 @@ from streambuild.adapter.models import (
     AdapterOwnershipRecord,
     AdapterQueryResult,
     AdapterReplayRequest,
+    AdapterReplayResult,
     AdapterStableView,
     AdapterTable,
+    AdapterView,
 )
 from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.compiler.planner.models import DirectPlan
@@ -19,6 +21,7 @@ from tests.unit.src.streambuild.compiler.planner.helpers import (
     build_settled_direct_snapshot,
     plan_direct_scope,
     write_direct_scope_project,
+    write_direct_view_only_project,
 )
 
 
@@ -38,6 +41,10 @@ class RecordingDirectBuildConnection(RecordingAdapterConnection):
                 AdapterQueryResult(
                     rows=((0, 5),), column_names=("_replay_partition", "cutoff_offset")
                 ),
+                AdapterQueryResult(rows=((1,),)),
+                AdapterQueryResult(rows=((1,),)),
+                AdapterQueryResult(rows=((1,),)),
+                AdapterQueryResult(rows=((1,),)),
                 AdapterQueryResult(rows=((0, 1, 5),)),
                 AdapterQueryResult(rows=((0, 1, 5),)),
             )
@@ -60,16 +67,39 @@ class RecordingDirectBuildConnection(RecordingAdapterConnection):
     def realize_resource(
         self,
         *,
-        resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterStableView,
+        resource: AdapterManagedSource
+        | AdapterTable
+        | AdapterMaterializedView
+        | AdapterView
+        | AdapterStableView,
         database: str,
         if_not_exists: bool = False,
     ) -> None:
         self.realized_resource_names.append(resource.name)
         super().realize_resource(resource=resource, database=database, if_not_exists=if_not_exists)
 
-    def execute_replay(self, request: AdapterReplayRequest) -> None:
+    def execute_replay(self, request: AdapterReplayRequest) -> AdapterReplayResult:
         self.adapter_actions.append(f"replay:{request.relations.root}")
         self.replay_requests.append(request)
+        return AdapterReplayResult(written_rows=7)
+
+
+class EmptyReplayDirectBuildConnection(RecordingDirectBuildConnection):
+    def __init__(self, ownership_records: tuple[AdapterOwnershipRecord, ...]) -> None:
+        super().__init__()
+        self._ownership_records = ownership_records
+        self._query_results = iter(
+            (
+                AdapterQueryResult(rows=((0, 1, 5),)),
+                AdapterQueryResult(rows=((0, 1, 5),)),
+                AdapterQueryResult(rows=()),
+                AdapterQueryResult(rows=()),
+                AdapterQueryResult(rows=()),
+                AdapterQueryResult(rows=()),
+                AdapterQueryResult(rows=()),
+                AdapterQueryResult(rows=()),
+            )
+        )
 
 
 def build_direct_execution_request(
@@ -81,6 +111,25 @@ def build_direct_execution_request(
         analysis=analysis,
         snapshot=build_settled_direct_snapshot(),
         selected_model_names=selected_model_names,
+    )
+    return DirectBuildRequest(
+        plan=plan,
+        realized_project=analysis.realized_project,
+        database="analytics",
+        metadata_database="analytics",
+        tool_version="test",
+        stabilization_seconds=0,
+        boundary_time="2026-07-28 00:00:00.000",
+    )
+
+
+def build_direct_view_execution_request(*, project_root: Path) -> DirectBuildRequest:
+    write_direct_view_only_project(project_root=project_root)
+    analysis: CompileAnalysis = analyze_direct_scope_project(project_root=project_root)
+    plan: DirectPlan = plan_direct_scope(
+        analysis=analysis,
+        snapshot=build_settled_direct_snapshot(),
+        selected_model_names=("customer_orders",),
     )
     return DirectBuildRequest(
         plan=plan,

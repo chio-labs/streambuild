@@ -50,6 +50,16 @@ def model_view_path(*, pipeline_name: str, model_name: str) -> Path:
     )
 
 
+def model_ordinary_view_path(*, pipeline_name: str, model_name: str) -> Path:
+    return Path(
+        "compiled",
+        "resources",
+        "models",
+        _safe_segment(value=pipeline_name, kind="pipeline"),
+        f"{_safe_segment(value=model_name, kind='model')}.view.sql",
+    )
+
+
 def workflow_sql_path(*, pipeline_name: str) -> Path:
     return Path(
         "compiled",

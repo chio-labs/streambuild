@@ -8,18 +8,21 @@ from streambuild.compiler.compile.models import (
 from streambuild.compiler.planner.constants import REBUILD_EXECUTION_MODE_FULL
 from streambuild.compiler.planner.main.plan_deployment import plan_deployment
 from streambuild.compiler.planner.models import ActualState, DeploymentPlan
+from streambuild.compiler.planner.types import DeploymentAction
 from tests.unit.src.streambuild.compiler.planner._test_types import (
     PlannerDeploymentPlanTestCase,
     PlannerFullRefreshPlanTestCase,
     PlannerMutableWarningTestCase,
     PlannerSettledPlanTestCase,
     PlannerShadowIdentityTestCase,
+    PlannerViewDeploymentTestCase,
 )
 from tests.unit.src.streambuild.compiler.planner.helpers import (
     build_actual_state_matching_desired,
     build_example_actual_state,
     build_example_desired_state,
     build_mutable_ref_desired_state,
+    build_view_only_desired_state,
     key_parts,
     optional_key_parts,
 )
@@ -81,6 +84,39 @@ def test_given_desired_and_actual_state_when_planning_deployment_then_it_returns
 @pytest.mark.parametrize(
     "test_case",
     [
+        PlannerViewDeploymentTestCase(
+            description="view-only deployment prepares one view without replay work",
+            deployment_id="20260731T200000Z_ab12cd",
+            expected_root_key=(None, "view", "customer_orders"),
+            expected_physical_name="customer_orders__20260731T200000Z_ab12cd",
+            expected_action=DeploymentAction.PLAN_SHADOW_VIEW,
+            expected_replay_required=False,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_view_only_change_when_planning_deployment_then_it_has_no_replay_root(
+    test_case: PlannerViewDeploymentTestCase,
+) -> None:
+    deployment_plan: DeploymentPlan = plan_deployment(
+        desired_state=build_view_only_desired_state(),
+        actual_state=ActualState(objects=()),
+        default_database="analytics",
+        render_resource=ClickHouseAdapter().render_resource,
+        deployment_id=test_case.deployment_id,
+    )
+
+    assert key_parts(deployment_plan.rebuild_subtrees[0].root_key) == test_case.expected_root_key
+    assert deployment_plan.rebuild_subtrees[0].replay_required is test_case.expected_replay_required
+    assert deployment_plan.prepared_shadow_objects[0].physical_name == (
+        test_case.expected_physical_name
+    )
+    assert deployment_plan.steps[0].action == test_case.expected_action
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
         PlannerMutableWarningTestCase(
             description="emits mutable-ref warning for affected transform target",
             expected_warning_code="mutable_ref_replay_not_guaranteed",
@@ -120,10 +156,12 @@ def test_given_desired_state_with_mutable_refs_when_planning_deployment_then_it_
                 (
                     (None, "table", "tbl__orders_enriched"),
                     "tbl__orders_enriched__20260408T153012Z_ab12cd",
+                    "orders_enriched",
                 ),
                 (
                     (None, "materialized_view", "mv__orders_enriched"),
                     "mv__orders_enriched__20260408T153012Z_ab12cd",
+                    "orders_enriched",
                 ),
             ),
             expected_plan_step_physical_names=(
@@ -154,6 +192,7 @@ def test_given_deployment_id_when_planning_deployment_then_it_returns_prepared_s
             (
                 key_parts(prepared_shadow_object.logical_key),
                 prepared_shadow_object.physical_name,
+                prepared_shadow_object.logical_model_name,
             )
             for prepared_shadow_object in deployment_plan.prepared_shadow_objects
         )

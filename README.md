@@ -130,6 +130,10 @@ password = "${ENV:CLICKHOUSE_PASSWORD}"
 [defaults]
 managed_source_ttl = "_replay_landed_at + INTERVAL 14 DAY"
 
+[naming]
+table_prefix = "tbl__"
+view_prefix = "view__"
+
 [targets.dev]
 database = "analytics"
 ```
@@ -141,14 +145,17 @@ Notes:
 - CLI `--vars` accepts one JSON object for `${name}` interpolation
 - connection templates are expanded only for commands that connect
 - metadata lives in the same database by default
+- model relation names use the model's exact `relation_name`, then pipeline, project, and built-in
+  kind-specific prefixes
 - connection precedence is CLI flags, fixed `STREAMBUILD_CLICKHOUSE_*` environment
   variables, local config, selected target, then project config
 
 ## Pipeline Sources
 
-Reusable replay-driving sources live under `sources/*.yml`. StreamBuild follows each model's
+Reusable replay-driving sources live under `sources/*.yml`. StreamBuild follows each table model's
 `__source(...)` or untyped `__ref(...)` driving input until it reaches a registered source. Every
-pipeline must resolve to exactly one source.
+pipeline containing tables must resolve to exactly one source. Terminal views do not participate in
+source inference, so a view-only pipeline is valid and source-less.
 
 ### Managed Kafka Landing
 
@@ -224,7 +231,7 @@ rejected when `settings.virtual_environments` is false.
 
 ## Models
 
-Each SQL model starts with a `MODEL (...)` header.
+Each SQL model starts with a `MODEL (...)` header. Models default to streaming tables.
 
 ```sql
 MODEL (
@@ -250,10 +257,35 @@ Notes:
 
 - the driving replay input may be declared with `__source(...)` for source roots or `__ref(...)` for managed upstream models
 - additional managed dependencies are declared with `__ref(...)`
-- additional `__ref(...)` dependencies must declare `ref_type`
+- for table models only, additional `__ref(...)` dependencies must declare `ref_type`
 - header fields use SQLBuild syntax: whitespace-separated `key value` entries, lists in `[...]`, and nested mappings in `(...)`
 - omitted SQL storage settings default to `engine "MergeTree()"` and `order_by ["_replay_timestamp"]`
 - both `CAST(expr AS Type)` and `expr::Type` are accepted
+
+### Terminal Views
+
+An ordinary query view uses `kind view` and may read any number of upstream sources or models:
+
+```sql
+MODEL (
+  kind view,
+  relation_name customer_orders,
+);
+
+SELECT
+  orders.order_id::UInt64 AS order_id,
+  payments.amount_cents::UInt64 AS amount_cents
+FROM __ref("orders") AS orders
+JOIN __ref("payments") AS payments USING (order_id)
+```
+
+Views have no driving input, storage settings, replay policy, or replay work. View refs reject
+`ref_type`; every `__source(...)` and `__ref(...)` is an ordinary query dependency. A view must be a
+terminal node across the complete project graph: no table or view model may reference it. Tests and
+audits may target it. `relation_name` is an exact warehouse relation override for either model kind;
+without one, table and view names use the effective `table_prefix` or `view_prefix` from optional
+pipeline `[naming]`, project `[naming]`, then the `tbl__` and `view__` defaults. `kafka__`, `raw__`,
+and `mv__` remain framework-reserved.
 
 ## Replay Lineage
 

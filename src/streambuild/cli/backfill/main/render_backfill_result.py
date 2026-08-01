@@ -5,7 +5,11 @@ from __future__ import annotations
 import json
 
 from streambuild.cli.presentation.main._cli_style import cli_style
-from streambuild.executor.backfill.models import BackfillExecutionResult, RootBackfillReport
+from streambuild.executor.backfill.models import (
+    BackfillExecutionResult,
+    BackfillRootReplayResult,
+    RootBackfillReport,
+)
 
 
 def render_backfill_result(
@@ -18,6 +22,13 @@ def render_backfill_result(
         payload: dict[str, object] = {
             "deployment_id": result.bootstrap.deployment_id,
             "boundary_time": result.boundary_time,
+            "replays": [
+                {
+                    "root": replay.root_key.name,
+                    "warehouse_written_rows": replay.written_rows,
+                }
+                for replay in result.replay_results
+            ],
             "root_reports": [
                 {
                     "name": report.root_key.name,
@@ -47,6 +58,18 @@ def render_backfill_result(
             lines.append(
                 f"  {cli_style().label('active deployment')}: {report.active_deployment_id}"
             )
+    lines.extend(("", cli_style().section("Replay execution")))
+    replay: BackfillRootReplayResult
+    for replay in result.replay_results:
+        written_rows: str = (
+            "unavailable" if replay.written_rows is None else str(replay.written_rows)
+        )
+        lines.append(
+            f"- {cli_style().object_name(text=replay.root_key.name)}  "
+            f"warehouse-written rows: {written_rows}"
+        )
+    if not result.replay_results:
+        lines.append("- none")
     lines.extend(
         [
             "",

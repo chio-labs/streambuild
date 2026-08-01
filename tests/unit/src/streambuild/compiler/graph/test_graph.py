@@ -1,7 +1,9 @@
+from pathlib import Path
 from types import MappingProxyType
 
 import pytest
 
+from streambuild.compiler.compile.models import CompiledProject
 from streambuild.compiler.graph.constants import (
     ALL_DEPENDENCY_EDGE_TYPES,
     DRIVING_DEPENDENCY_EDGE_TYPES,
@@ -13,13 +15,23 @@ from streambuild.compiler.graph.main._build_project_graph import (
 from streambuild.compiler.graph.main.collect_reachable_keys import collect_reachable_keys
 from streambuild.compiler.graph.models import DependencyEdge, ProjectGraph
 from streambuild.compiler.graph.types import GraphTraversalDirection
+from tests.unit.src.streambuild.compiler.compile.helpers import compile_logical_project
+from tests.unit.src.streambuild.compiler.discovery._helpers.load.helpers import (
+    write_pipeline_file,
+)
+from tests.unit.src.streambuild.compiler.discovery.helpers import write_project_toml
 from tests.unit.src.streambuild.compiler.graph._test_types import (
     FilteredClosureTestCase,
     GraphCycleTestCase,
+    NonTerminalViewGraphTestCase,
     TypedProjectGraphTestCase,
+    ViewAuxiliaryReferenceTestCase,
+    ViewGraphTestCase,
 )
 from tests.unit.src.streambuild.compiler.graph.helpers import (
     build_cyclic_graph_project,
+    build_nonterminal_view_graph_project,
+    build_terminal_view_graph_project,
     build_typed_graph_project,
     logical_key,
 )
@@ -162,3 +174,110 @@ def test_given_cyclic_models_when_building_graph_then_raises_contextual_error(
 ) -> None:
     with pytest.raises(GraphInputError, match=test_case.expected_error_fragment):
         build_project_graph_from_compiled_project(project=build_cyclic_graph_project())
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ViewGraphTestCase(
+            description="adds every view upstream as an ordinary reference dependency",
+            expected_upstream_edges=(
+                ("lookup", "reference"),
+                ("orders", "reference"),
+            ),
+            expected_downstream_edges=(("summary", "reference"),),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_multi_upstream_terminal_view_when_building_graph_then_adds_reference_edges(
+    test_case: ViewGraphTestCase,
+) -> None:
+    graph: ProjectGraph = build_project_graph_from_compiled_project(
+        project=build_terminal_view_graph_project()
+    )
+
+    assert (
+        tuple(
+            (edge.upstream_key.name, edge.edge_type)
+            for edge in graph.upstream_edges_by_key[logical_key("summary")]
+        )
+        == test_case.expected_upstream_edges
+    )
+    assert (
+        tuple(
+            (edge.downstream_key.name, edge.edge_type)
+            for edge in graph.downstream_edges_by_key[logical_key("lookup")]
+        )
+        == test_case.expected_downstream_edges
+    )
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        NonTerminalViewGraphTestCase(
+            description="rejects a view with a downstream side-reference model project-wide",
+            expected_error_fragment=(
+                "View model 'summary' must be terminal; referenced by downstream "
+                r"model\(s\): consumer"
+            ),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_view_with_downstream_model_when_building_graph_then_rejects_nonterminal_view(
+    test_case: NonTerminalViewGraphTestCase,
+) -> None:
+    with pytest.raises(GraphInputError, match=test_case.expected_error_fragment):
+        build_project_graph_from_compiled_project(project=build_nonterminal_view_graph_project())
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ViewAuxiliaryReferenceTestCase(
+            description="allows SQL tests and audits to target a source-less terminal view",
+            expected_test_case_count=1,
+            expected_audit_count=1,
+            expected_graph_names=("answer",),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_terminal_view_auxiliaries_when_building_graph_then_excludes_auxiliary_edges(
+    test_case: ViewAuxiliaryReferenceTestCase,
+    tmp_path: Path,
+) -> None:
+    write_project_toml(
+        project_dir=tmp_path,
+        contents='name = "test"\ndefault_target = "test"\n[targets.test]\n',
+    )
+    write_pipeline_file(
+        tmp_path / "pipelines" / "views" / "answer.sql",
+        "MODEL (kind view); SELECT 1::UInt8 AS value",
+    )
+    write_pipeline_file(
+        tmp_path / "tests" / "answer.sql",
+        """
+        TEST (name: "answer test");
+        WITH
+          __source__orders AS (SELECT 1::UInt8 AS value),
+          __expected__answer AS (SELECT 1::UInt8 AS value)
+        SELECT 1
+        """,
+    )
+    write_pipeline_file(
+        tmp_path / "audits" / "answer.sql",
+        """
+        AUDIT (name: "answer audit");
+        SELECT value FROM __ref("answer") WHERE value = 0
+        """,
+    )
+    project: CompiledProject = compile_logical_project(tmp_path)
+
+    graph: ProjectGraph = build_project_graph_from_compiled_project(project=project)
+
+    assert len(project.test_cases) == test_case.expected_test_case_count
+    assert len(project.audits) == test_case.expected_audit_count
+    assert tuple(key.name for key in graph.ordered_keys) == test_case.expected_graph_names

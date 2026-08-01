@@ -1,6 +1,8 @@
 from collections.abc import Iterator
 
 from streambuild.adapter.models import (
+    AdapterBindingReplacementRequest,
+    AdapterBindingReplacementResult,
     AdapterDeploymentInventory,
     AdapterRelationCleanupRequest,
     AdapterRelationCleanupResult,
@@ -39,3 +41,23 @@ class SequencedManagedStateAdapterConnection(RecordingAdapterConnection):
     def inspect_managed_table_state(self, database: str) -> InspectedManagedTableState:
         del database
         return next(self._managed_states)
+
+
+class BindingRemovalRecordingAdapterConnection(RecordingAdapterConnection):
+    def replace_stable_bindings(
+        self, request: AdapterBindingReplacementRequest
+    ) -> AdapterBindingReplacementResult:
+        result: AdapterBindingReplacementResult = super().replace_stable_bindings(request)
+        removed_names: frozenset[tuple[str, str]] = frozenset(
+            (removal.database, removal.logical_name) for removal in request.removals
+        )
+        self._managed_table_state = InspectedManagedTableState(
+            active_bindings=tuple(
+                filter(
+                    lambda binding: (binding.database, binding.logical_name) not in removed_names,
+                    self._managed_table_state.active_bindings,
+                )
+            ),
+            physical_candidates=self._managed_table_state.physical_candidates,
+        )
+        return result

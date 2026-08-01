@@ -5,32 +5,64 @@ from typing import cast
 from streambuild.adapter.models import AdapterManagedSource, AdapterMaterializedView, AdapterTable
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from streambuild.cli.entry._helpers.compiler_profile import build_compiler_adapter_profile
+from streambuild.compiler.compile.main._assemble_project import assemble_project
+from streambuild.compiler.compile.main._build_compile_inputs import build_compile_inputs
 from streambuild.compiler.compile.main._compile_pipeline import compile_pipeline
 from streambuild.compiler.compile.models import (
     CompiledModel,
     CompiledPipeline,
     CompiledProject,
     CompiledSource,
+    CompiledTableModel,
+    CompileProjectInputs,
     CompilerAdapterProfile,
     LogicalResourceKey,
 )
 from streambuild.compiler.compile.types import LogicalResourceType
+from streambuild.compiler.discovery.main._discover_project_inputs import discover_project_inputs
+from streambuild.compiler.discovery.main.load_project_input_for_path import (
+    load_project_input_for_path,
+)
 from streambuild.compiler.discovery.models import (
     KafkaLandingStep,
     KafkaSettings,
     LoadedPipeline,
+    LoadedProject,
     Pipeline,
     TransformStep,
 )
 from streambuild.compiler.pipeline.main._realize_project import realize_project
 from streambuild.compiler.pipeline.models import RealizedProject
 from streambuild.compiler.sql_analysis.classes.sql_model_analyzer import SqlModelAnalyzer
+from streambuild.compiler.sql_analysis.classes.sql_reference_rewriter import (
+    SqlReferenceRewriter,
+)
 from streambuild.compiler.sql_analysis.models import SqlModelAnalysis
 
 
 def compile_test_pipeline(loaded_pipeline: LoadedPipeline) -> CompiledPipeline:
     return compile_pipeline(
         loaded_pipeline=loaded_pipeline,
+        sql_analyzer=SqlModelAnalyzer(dialect="clickhouse"),
+    )
+
+
+def compile_logical_project(project_dir: Path) -> CompiledProject:
+    loaded_project: LoadedProject = cast(
+        LoadedProject,
+        load_project_input_for_path(path=project_dir),
+    )
+    adapter_profile: CompilerAdapterProfile = build_compiler_adapter_profile(ClickHouseAdapter())
+    inputs: CompileProjectInputs = build_compile_inputs(
+        discovered_inputs=discover_project_inputs(
+            pipelines_root=project_dir / "pipelines",
+            loaded_project=loaded_project,
+        ),
+        adapter_profile=adapter_profile,
+    )
+    return assemble_project(
+        inputs=inputs,
+        reference_rewriter=SqlReferenceRewriter(dialect="clickhouse"),
         sql_analyzer=SqlModelAnalyzer(dialect="clickhouse"),
     )
 
@@ -51,8 +83,9 @@ def compile_and_realize_pipeline(
 
 def build_realization_analyzer(compiled_project: CompiledProject) -> SqlModelAnalyzer:
     sql_analyzer: SqlModelAnalyzer = SqlModelAnalyzer(dialect="clickhouse")
-    model: CompiledModel
-    for model in compiled_project.models:
+    compiled_model: CompiledModel
+    for compiled_model in compiled_project.models:
+        model: CompiledTableModel = cast(CompiledTableModel, compiled_model)
         analysis: SqlModelAnalysis = sql_analyzer.analyze(
             sql=model.query,
             engine=model.transform.engine,
@@ -68,7 +101,7 @@ def realize_compiled_pipeline(
     *, compiled_pipeline: CompiledPipeline, sql_analyzer: SqlModelAnalyzer
 ) -> RealizedProject:
     compiled_project: CompiledProject = CompiledProject(
-        sources=(compiled_pipeline.source,),
+        sources=(cast(CompiledSource, compiled_pipeline.source),),
         models=compiled_pipeline.models,
         pipelines=(compiled_pipeline,),
         tests=(),

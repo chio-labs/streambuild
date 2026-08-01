@@ -6,9 +6,8 @@ from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.compiler.compile.constants import (
     DESIRED_OBJECT_TYPE_TABLE,
     RAW_TABLE_NAME_PREFIX,
-    TRANSFORM_TABLE_NAME_PREFIX,
 )
-from streambuild.compiler.compile.models import DesiredMaterializedView, ObjectKey
+from streambuild.compiler.compile.models import DesiredMaterializedView, DesiredView, ObjectKey
 from streambuild.compiler.discovery.types import ReplayLineageMode
 from streambuild.compiler.planner.main.build_adapter_metadata_state import (
     build_adapter_metadata_state,
@@ -68,6 +67,7 @@ def persist_deployment_metadata(
                     PreparedObjectMapping(
                         logical_key=prepared_object.logical_key,
                         physical_name=prepared_object.physical_name,
+                        logical_model_name=prepared_object.logical_model_name,
                     )
                     for prepared_object in deployment_plan.prepared_shadow_objects
                 ),
@@ -98,7 +98,7 @@ def _build_object_state_records(
     records: list[ObjectStateRecord] = []
     for desired_object in desired_objects:
         normalized_query: str | None = None
-        if isinstance(desired_object, DesiredMaterializedView):
+        if isinstance(desired_object, (DesiredMaterializedView, DesiredView)):
             normalized_query = desired_object.query
         records.append(
             ObjectStateRecord(
@@ -175,7 +175,7 @@ def _build_deployment_runtime_detail_records(
                         key.name
                         for key in subtree.affected_keys
                         if key.object_type == DESIRED_OBJECT_TYPE_TABLE
-                        and key.name.startswith(TRANSFORM_TABLE_NAME_PREFIX)
+                        and not key.name.startswith(RAW_TABLE_NAME_PREFIX)
                     }
                 )
             )

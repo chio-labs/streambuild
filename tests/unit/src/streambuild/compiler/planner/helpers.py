@@ -21,8 +21,10 @@ from streambuild.adapter.models import (
     AdapterRelationCleanupRequest,
     AdapterRelationCleanupResult,
     AdapterReplayRequest,
+    AdapterReplayResult,
     AdapterStableView,
     AdapterTable,
+    AdapterView,
     CatalogColumn,
     CatalogIdentity,
     CatalogRelation,
@@ -50,12 +52,14 @@ from streambuild.compiler.compile.models import (
     DesiredMaterializedView,
     DesiredState,
     DesiredTable,
+    DesiredView,
     KafkaTableSpec,
     LogicalResourceKey,
     MaterializedViewSpec,
     ObjectKey,
     TableSpec,
     TableStorage,
+    ViewSpec,
 )
 from streambuild.compiler.compile.models import (
     KafkaSettings as CompiledKafkaSettings,
@@ -172,6 +176,15 @@ class SnapshotRecordingConnection(AdapterConnection):
         del database
         self.recorded_ownership_records = (*self.recorded_ownership_records, *records)
 
+    def remove_target_ownership(
+        self,
+        *,
+        database: str,
+        target_database: str,
+        relation_names: tuple[str, ...],
+    ) -> None:
+        del database, target_database, relation_names
+
     def inspect_managed_table_state(self, database: str) -> InspectedManagedTableState:
         del database
         return InspectedManagedTableState(active_bindings=(), physical_candidates=())
@@ -184,6 +197,9 @@ class SnapshotRecordingConnection(AdapterConnection):
         self.query_count += 1
         return self._metadata_result
 
+    def capture_warehouse_timestamp(self) -> str:
+        return "2026-07-31 12:00:00.000"
+
     def insert_rows(self, *, table: str, rows: tuple[dict[str, object], ...]) -> None:
         del table, rows
 
@@ -193,7 +209,11 @@ class SnapshotRecordingConnection(AdapterConnection):
     def render_resource(
         self,
         *,
-        resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterStableView,
+        resource: AdapterManagedSource
+        | AdapterTable
+        | AdapterMaterializedView
+        | AdapterView
+        | AdapterStableView,
         database: str,
         if_not_exists: bool = False,
     ) -> str:
@@ -206,7 +226,11 @@ class SnapshotRecordingConnection(AdapterConnection):
     def realize_resource(
         self,
         *,
-        resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterStableView,
+        resource: AdapterManagedSource
+        | AdapterTable
+        | AdapterMaterializedView
+        | AdapterView
+        | AdapterStableView,
         database: str,
         if_not_exists: bool = False,
     ) -> None:
@@ -222,8 +246,9 @@ class SnapshotRecordingConnection(AdapterConnection):
         del database
         return AdapterDeploymentInventory(deployments=(), publish_events=())
 
-    def execute_replay(self, request: AdapterReplayRequest) -> None:
+    def execute_replay(self, request: AdapterReplayRequest) -> AdapterReplayResult:
         del request
+        return AdapterReplayResult(written_rows=None)
 
     def compare_readiness(
         self, request: AdapterReadinessRequest
@@ -270,7 +295,8 @@ def realize_compiled_pipelines(
     compiled_pipelines: tuple[CompiledPipeline, ...],
 ) -> RealizedProject:
     sources_by_name: dict[str, CompiledSource] = {
-        pipeline.source.key.name: pipeline.source for pipeline in compiled_pipelines
+        cast(CompiledSource, pipeline.source).key.name: cast(CompiledSource, pipeline.source)
+        for pipeline in compiled_pipelines
     }
     compiled_project: CompiledProject = CompiledProject(
         sources=tuple(sources_by_name.values()),
@@ -337,10 +363,12 @@ def build_metadata_records() -> tuple[
                 PreparedObjectMapping(
                     logical_key=mv_key,
                     physical_name="mv__orders_enriched__20260408T130000Z_cd34ef",
+                    logical_model_name="orders_enriched",
                 ),
                 PreparedObjectMapping(
                     logical_key=transform_key,
                     physical_name="tbl__orders_enriched__20260408T130000Z_cd34ef",
+                    logical_model_name="orders_enriched",
                 ),
             ),
         ),
@@ -398,6 +426,27 @@ def build_metadata_records() -> tuple[
 def build_example_desired_state() -> DesiredState:
     loaded_pipeline: LoadedPipeline = load_pipeline_directory(EXAMPLE_PIPELINE_DIRECTORY)
     return realize_compiled_pipelines((compile_pipeline(loaded_pipeline),)).desired_state
+
+
+def build_view_only_desired_state() -> DesiredState:
+    view_key: ObjectKey = ObjectKey(database=None, object_type="view", name="customer_orders")
+    return DesiredState(
+        objects=(
+            DesiredView(
+                key=view_key,
+                deps=(ObjectKey(database=None, object_type="table", name="orders_rollup"),),
+                spec=ViewSpec(
+                    query="SELECT order_id FROM orders_rollup",
+                    database_template=(
+                        "SELECT order_id FROM __streambuild_target_database__.orders_rollup"
+                    ),
+                ),
+                logical_model_name="customer_orders",
+            ),
+        ),
+        replay_anchor_keys=frozenset(),
+        mutable_ref_warning_keys=frozenset(),
+    )
 
 
 def build_single_transform_desired_state(
@@ -640,6 +689,49 @@ def write_direct_mutable_scope_project(*, project_root: Path) -> None:
     )
 
 
+def write_direct_view_only_project(*, project_root: Path) -> None:
+    """Write one source-less direct project containing an exact-named terminal view."""
+
+    pipeline_root: Path = project_root / "pipelines" / "consumer"
+    pipeline_root.mkdir(parents=True, exist_ok=True)
+    _write_direct_project_config(project_root=project_root)
+    (pipeline_root / "customer_orders.sql").write_text(
+        "MODEL (kind view, relation_name customer_orders);\nSELECT 1::UInt64 AS order_id\n",
+        encoding="utf-8",
+    )
+
+
+def write_direct_multi_upstream_view_project(*, project_root: Path) -> None:
+    """Write a custom-named table and terminal view with source and model dependencies."""
+
+    pipeline_root: Path = project_root / "pipelines" / "orders"
+    source_root: Path = project_root / "sources"
+    pipeline_root.mkdir(parents=True, exist_ok=True)
+    source_root.mkdir(parents=True, exist_ok=True)
+    _write_direct_project_config(project_root=project_root)
+    (source_root / "orders.yml").write_text(_DIRECT_SCOPE_SOURCE_YML, encoding="utf-8")
+    (pipeline_root / "orders_base.sql").write_text(
+        "MODEL (relation_name orders_rollup, order_by [order_id]);\n"
+        'SELECT kafka_value::UInt64 AS order_id FROM __source("orders")\n',
+        encoding="utf-8",
+    )
+    (pipeline_root / "customer_orders.sql").write_text(
+        "MODEL (kind view, relation_name customer_orders);\n"
+        "SELECT base.order_id::UInt64 AS order_id\n"
+        'FROM __ref("orders_base") AS base\n'
+        'INNER JOIN __source("orders") AS raw\n'
+        "ON base.order_id = raw.kafka_value::UInt64\n",
+        encoding="utf-8",
+    )
+
+
+def _write_direct_project_config(*, project_root: Path) -> None:
+    (project_root / "streambuild_project.toml").write_text(
+        'name = "direct_view"\ndefault_target = "test"\n\n[targets.test]\ndatabase = "analytics"\n',
+        encoding="utf-8",
+    )
+
+
 def analyze_direct_scope_project(*, project_root: Path) -> CompileAnalysis:
     """Analyze a written scope project exactly as the CLI does."""
 
@@ -812,13 +904,15 @@ def build_example_desired_state_with_replay_on_change(
 
 def build_example_actual_state() -> ActualState:
     desired_state: DesiredState = build_example_desired_state()
-    kafka_table: DesiredKafkaTable | DesiredTable | DesiredMaterializedView = desired_state.objects[
-        0
-    ]
-    landing_mv: DesiredKafkaTable | DesiredTable | DesiredMaterializedView = desired_state.objects[
-        1
-    ]
-    raw_table: DesiredKafkaTable | DesiredTable | DesiredMaterializedView = desired_state.objects[3]
+    kafka_table: DesiredKafkaTable | DesiredTable | DesiredMaterializedView | DesiredView = (
+        desired_state.objects[0]
+    )
+    landing_mv: DesiredKafkaTable | DesiredTable | DesiredMaterializedView | DesiredView = (
+        desired_state.objects[1]
+    )
+    raw_table: DesiredKafkaTable | DesiredTable | DesiredMaterializedView | DesiredView = (
+        desired_state.objects[3]
+    )
     assert isinstance(kafka_table, DesiredKafkaTable)
     assert isinstance(landing_mv, DesiredMaterializedView)
     assert isinstance(raw_table, DesiredTable)

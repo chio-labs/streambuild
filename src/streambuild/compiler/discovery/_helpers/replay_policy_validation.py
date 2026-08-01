@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from streambuild.compiler.discovery.exceptions import PipelineDiscoveryError
-from streambuild.compiler.discovery.models import LoadedPipeline, Project
+from streambuild.compiler.discovery.models import LoadedPipeline, Project, TransformStep, ViewStep
 
 
 def validate_replay_policies_for_mode(
@@ -39,7 +39,11 @@ def validate_replay_policies_for_mode(
                 f"Pipeline '{loaded_pipeline.file_path}' cannot define "
                 "bounded_replay_fallback when settings.virtual_environments is false"
             )
-        for transform in loaded_pipeline.pipeline.transforms:
+        model: TransformStep | ViewStep
+        for model in loaded_pipeline.pipeline.transforms:
+            if not isinstance(model, TransformStep):
+                continue
+            transform: TransformStep = model
             if transform.replay_on_change is not None:
                 raise PipelineDiscoveryError(
                     f"Model '{transform.name}' in '{loaded_pipeline.file_path}' cannot define "

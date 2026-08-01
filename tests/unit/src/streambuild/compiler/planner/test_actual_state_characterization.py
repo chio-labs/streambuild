@@ -32,6 +32,7 @@ from streambuild.compiler.planner.models import (
     ActualMaterializedView,
     ActualStateInspection,
     ActualTable,
+    ActualView,
     TableColumnSystemRow,
     TableStorageSystemRow,
 )
@@ -173,12 +174,12 @@ def test_given_live_names_and_transform_spec_when_projecting_then_preserves_curr
     desired_state: DesiredState
     inspection: ActualStateInspection
     desired_state, inspection = build_projection_characterization_inputs()
-    actual_objects: tuple[ActualKafkaTable | ActualTable | ActualMaterializedView, ...] = (
-        build_inspected_actual_objects(desired_state=desired_state, inspection=inspection)
-    )
-    actual_by_name: dict[str, ActualKafkaTable | ActualTable | ActualMaterializedView] = {
-        actual_object.name: actual_object for actual_object in actual_objects
-    }
+    actual_objects: tuple[
+        ActualKafkaTable | ActualTable | ActualMaterializedView | ActualView, ...
+    ] = build_inspected_actual_objects(desired_state=desired_state, inspection=inspection)
+    actual_by_name: dict[
+        str, ActualKafkaTable | ActualTable | ActualMaterializedView | ActualView
+    ] = {actual_object.name: actual_object for actual_object in actual_objects}
     kafka_table: ActualKafkaTable = cast(ActualKafkaTable, actual_by_name["kafka__orders"])
     raw_table: ActualTable = cast(ActualTable, actual_by_name["raw__orders"])
     landing_mv: ActualMaterializedView = cast(
