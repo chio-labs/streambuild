@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.0](https://github.com/chio-labs/streambuild/compare/v0.2.0...v0.3.0) (2026-08-01)
+
+
+### Features
+
+* add terminal view models ([f2b1974](https://github.com/chio-labs/streambuild/commit/f2b1974a5d0f9ad25bbf615675e6cb521e1b3f6a))
+
+
+### Bug Fixes
+
+* use warehouse time for replay boundaries ([c6d6a78](https://github.com/chio-labs/streambuild/commit/c6d6a7815122bbb80342aae61e3450a7e6b277e0))
+
 ## [0.2.0](https://github.com/chio-labs/streambuild/compare/v0.1.0...v0.2.0) (2026-07-31)
 
 
