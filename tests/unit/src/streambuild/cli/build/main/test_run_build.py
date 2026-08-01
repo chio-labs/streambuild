@@ -1,9 +1,13 @@
+import json
 from pathlib import Path
 
 import pytest
 from _pytest.capture import CaptureResult
 
-from tests.unit.src.streambuild.cli.build.main._test_types import CliBuildGateTestCase
+from tests.unit.src.streambuild.cli.build.main._test_types import (
+    CliBuildArtifactTestCase,
+    CliBuildGateTestCase,
+)
 from tests.unit.src.streambuild.cli.build.main.helpers import run_scope_project_build
 from tests.unit.src.streambuild.compiler.planner.helpers import write_direct_scope_project
 
@@ -19,16 +23,6 @@ from tests.unit.src.streambuild.compiler.planner.helpers import write_direct_sco
             confirmation_response="y",
             expected_exit_code=1,
             expected_stderr_fragment="--json requires --auto-approve for build",
-            expected_stdout_fragment="",
-        ),
-        CliBuildGateTestCase(
-            description="a virtual-environment project cannot be built in direct mode",
-            virtual_environments=True,
-            json_output=False,
-            auto_approve=True,
-            confirmation_response="y",
-            expected_exit_code=1,
-            expected_stderr_fragment="stb build is a direct-mode command",
             expected_stdout_fragment="",
         ),
         CliBuildGateTestCase(
@@ -65,3 +59,37 @@ def test_given_build_command_gates_when_running_then_it_refuses_before_writing(
     assert exit_code == test_case.expected_exit_code
     assert test_case.expected_stderr_fragment in captured.err
     assert test_case.expected_stdout_fragment in captured.out
+    assert not (tmp_path / "target/run/build/plan.json").exists()
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliBuildArtifactTestCase(
+            description="an approved direct build publishes its plan before execution",
+            expected_exit_code=1,
+            expected_mode="direct",
+            expected_adapter="clickhouse",
+            expected_artifact_path="target/run/build/plan.json",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_approved_direct_build_when_running_then_connected_plan_is_published(
+    tmp_path: Path,
+    test_case: CliBuildArtifactTestCase,
+) -> None:
+    write_direct_scope_project(project_root=tmp_path)
+
+    exit_code: int = run_scope_project_build(
+        project_root=tmp_path,
+        json_output=True,
+        auto_approve=True,
+    )
+
+    artifact_payload: dict[str, object] = json.loads(
+        (tmp_path / test_case.expected_artifact_path).read_text(encoding="utf-8")
+    )
+    assert exit_code == test_case.expected_exit_code
+    assert artifact_payload["mode"] == test_case.expected_mode
+    assert artifact_payload["adapter"] == test_case.expected_adapter

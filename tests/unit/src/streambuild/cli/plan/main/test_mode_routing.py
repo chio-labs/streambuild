@@ -4,8 +4,9 @@ from unittest.mock import Mock
 
 import pytest
 
-from streambuild.cli.plan._helpers.publication import publish_plan_artifact
 from streambuild.cli.plan.constants import DIRECT_MODE_LABEL, VIRTUAL_ENVIRONMENTS_MODE_LABEL
+from streambuild.cli.workflow_artifacts.main._write_plan_artifact import write_plan_artifact
+from streambuild.cli.workflow_artifacts.types import WorkflowArtifactOwner
 from tests.unit.src.streambuild.cli.plan.main._test_types import (
     CliDirectPlanFlagRejectionTestCase,
     CliPlanModeRoutingTestCase,
@@ -161,12 +162,16 @@ def test_given_existing_plan_when_atomic_publication_fails_then_preserves_previo
     artifact_path.parent.mkdir(parents=True)
     artifact_path.write_bytes(test_case.previous_artifact)
     monkeypatch.setattr(
-        "streambuild.cli.plan._helpers.publication.os.replace",
+        "streambuild.cli.workflow_artifacts._helpers.publication.os.replace",
         Mock(side_effect=OSError(test_case.expected_error_fragment)),
     )
 
     with pytest.raises(OSError, match=test_case.expected_error_fragment):
-        publish_plan_artifact(target_dir=tmp_path, contents=test_case.replacement_artifact)
+        write_plan_artifact(
+            target_dir=tmp_path,
+            owner=WorkflowArtifactOwner.PLAN,
+            contents=test_case.replacement_artifact,
+        )
 
     assert artifact_path.read_bytes() == test_case.previous_artifact
     assert tuple(artifact_path.parent.iterdir()) == (artifact_path,)

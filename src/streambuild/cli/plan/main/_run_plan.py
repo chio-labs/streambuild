@@ -7,8 +7,9 @@ from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.cli.entry.exceptions import CliUserError
 from streambuild.cli.entry.main._resolve_default_database import resolve_default_database
 from streambuild.cli.plan._helpers.plan_command import execute_plan_command, validate_plan_flags
-from streambuild.cli.plan._helpers.publication import publish_plan_artifact
 from streambuild.cli.plan.models import PlanCommandOptions, PlanCommandResult
+from streambuild.cli.workflow_artifacts.main._write_plan_artifact import write_plan_artifact
+from streambuild.cli.workflow_artifacts.types import WorkflowArtifactOwner
 from streambuild.compiler.compile.exceptions import TransformSqlContractError
 from streambuild.compiler.compile.models import CompilerAdapterProfile
 from streambuild.compiler.discovery.models import LoadedProject
@@ -52,8 +53,9 @@ def run_plan(
         result: PlanCommandResult = execute_plan_command(
             analysis=analysis, options=options, client=client
         )
-        publish_plan_artifact(
+        write_plan_artifact(
             target_dir=pipelines_root.parent / "target",
+            owner=WorkflowArtifactOwner.PLAN,
             contents=result.serialized_plan,
         )
         print(result.rendered_output, end="")

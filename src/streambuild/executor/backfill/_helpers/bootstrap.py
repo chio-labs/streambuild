@@ -26,6 +26,7 @@ from streambuild.executor.backfill._helpers.metadata import (
     persist_deployment_metadata,
 )
 from streambuild.executor.backfill._helpers.timing import build_current_timestamp
+from streambuild.executor.backfill.exceptions import BackfillExecutionError
 from streambuild.executor.backfill.main._ensure_metadata_tables import ensure_metadata_tables
 from streambuild.executor.backfill.main.build_root_backfill_reports import (
     build_root_backfill_reports,
@@ -51,7 +52,7 @@ def execute_backfill_bootstrap(
     _validate_replay_boundary_capability(request=request, client=client)
     replay_lineage_mode: ReplayLineageMode = ReplayLineageMode(request.replay_lineage_mode)
     created_at: str = request.created_at or build_current_timestamp()
-    deployment_id: str = request.deployment_id or _build_deployment_id(created_at)
+    deployment_id: str = request.deployment_id or _build_deployment_id(created_at=created_at)
     snapshot: PlanningWarehouseSnapshot = load_planning_warehouse_snapshot(
         client=client,
         database=request.default_database,
@@ -65,23 +66,29 @@ def execute_backfill_bootstrap(
         catalog=snapshot.catalog,
         desired_state=request.desired_state,
     )
-    deployment_plan: DeploymentPlan = plan_deployment(
-        desired_state=request.desired_state,
-        actual_state=actual_state,
-        default_database=request.default_database,
-        render_resource=client.render_resource,
-        deployment_id=deployment_id,
-        full_refresh_keys=request.full_refresh_keys,
-        start_time_keys=request.start_time_keys,
-        start_time=request.start_time,
-    )
-    deployment_plan = resolve_unsupported_bounded_replay_behavior(
-        catalog=snapshot.catalog,
-        deployment_plan=deployment_plan,
-        desired_state=request.desired_state,
-        default_database=request.default_database,
-        replay_lineage_mode=replay_lineage_mode,
-    )
+    deployment_plan: DeploymentPlan
+    if request.confirmed_plan is None:
+        deployment_plan = plan_deployment(
+            desired_state=request.desired_state,
+            actual_state=actual_state,
+            default_database=request.default_database,
+            render_resource=client.render_resource,
+            deployment_id=deployment_id,
+            full_refresh_keys=request.full_refresh_keys,
+            start_time_keys=request.start_time_keys,
+            start_time=request.start_time,
+        )
+        deployment_plan = resolve_unsupported_bounded_replay_behavior(
+            catalog=snapshot.catalog,
+            deployment_plan=deployment_plan,
+            desired_state=request.desired_state,
+            default_database=request.default_database,
+            replay_lineage_mode=replay_lineage_mode,
+        )
+        deployment_id = deployment_plan.deployment_id or deployment_id
+    else:
+        deployment_plan = request.confirmed_plan
+        deployment_id = _confirmed_deployment_id(request=request)
     _validate_history_prefix_capability(deployment_plan=deployment_plan, client=client)
 
     client.ensure_database(request.default_database)
@@ -105,9 +112,19 @@ def execute_backfill_bootstrap(
     )
 
 
-def _build_deployment_id(created_at: str) -> str:
+def _build_deployment_id(*, created_at: str) -> str:
     timestamp: datetime = datetime.strptime(created_at, "%Y-%m-%d %H:%M:%S.%f").replace(tzinfo=UTC)
     return f"{timestamp.strftime('%Y%m%dT%H%M%SZ')}_{uuid4().hex[:6]}"
+
+
+def _confirmed_deployment_id(*, request: BackfillBootstrapRequest) -> str:
+    if request.deployment_id is None or request.confirmed_plan is None:
+        raise BackfillExecutionError("Confirmed virtual build requires a deployment id and plan")
+    if request.confirmed_plan.deployment_id != request.deployment_id:
+        raise BackfillExecutionError(
+            "Confirmed virtual build plan deployment id does not match the execution request"
+        )
+    return request.deployment_id
 
 
 def _validate_managed_source_capabilities(

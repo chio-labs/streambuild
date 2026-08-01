@@ -47,11 +47,11 @@ from tests.e2e.src.streambuild.executor.helpers import (
     require_managed_source,
     require_model_resources,
     run_kafka_live_shadow_scenario,
-    run_streambuild_audit_backfill_cli,
-    run_streambuild_backfill_cli,
+    run_streambuild_audit_deployment_cli,
     run_streambuild_doctor_cli,
     run_streambuild_publish_cli,
     run_streambuild_repair_active_view_cli,
+    run_streambuild_virtual_build_cli,
     wait_for_row_count,
     wait_for_table_exists,
     wait_for_table_missing,
@@ -162,7 +162,7 @@ def test_given_kafka_backed_greenfield_pipeline_when_running_then_it_publishes_e
         expected_count=len(test_case.expected_order_ids),
     )
 
-    run_streambuild_backfill_cli(
+    run_streambuild_virtual_build_cli(
         project_dir=project_dir,
         host=e2e_clickhouse_connection_settings.host,
         port=e2e_clickhouse_connection_settings.port,
@@ -171,7 +171,7 @@ def test_given_kafka_backed_greenfield_pipeline_when_running_then_it_publishes_e
         database=e2e_clickhouse_database,
         deployment_id=test_case.deployment_id,
     )
-    audit_result: dict[str, object] = run_streambuild_audit_backfill_cli(
+    audit_result: dict[str, object] = run_streambuild_audit_deployment_cli(
         project_dir=project_dir,
         host=e2e_clickhouse_connection_settings.host,
         port=e2e_clickhouse_connection_settings.port,
@@ -211,7 +211,7 @@ def test_given_kafka_backed_greenfield_pipeline_when_running_then_it_publishes_e
     [
         ManagedSourceBootstrapE2ETestCase(
             description=(
-                "backfills every message produced before StreamBuild creates managed resources"
+                "builds every message produced before StreamBuild creates managed resources"
             ),
             fixture_project_dir=E2E_KAFKA_LANDED_AT_PROJECT_DIR,
             deployment_id="20260731T120000Z_bootstrap",
@@ -220,7 +220,7 @@ def test_given_kafka_backed_greenfield_pipeline_when_running_then_it_publishes_e
     ],
     ids=lambda case: case.description,
 )
-def test_given_messages_before_managed_source_creation_when_backfilling_then_output_is_complete(
+def test_given_messages_before_managed_source_creation_when_building_then_output_is_complete(
     test_case: ManagedSourceBootstrapE2ETestCase,
     e2e_clickhouse_connection_settings: E2EClickHouseConnectionSettings,
     e2e_kafka_connection_settings: E2EKafkaConnectionSettings,
@@ -252,7 +252,7 @@ def test_given_messages_before_managed_source_creation_when_backfilling_then_out
     finally:
         producer.close()
 
-    run_streambuild_backfill_cli(
+    run_streambuild_virtual_build_cli(
         project_dir=project_dir,
         host=e2e_clickhouse_connection_settings.host,
         port=e2e_clickhouse_connection_settings.port,
@@ -350,7 +350,7 @@ def test_given_kafka_backed_published_deployment_when_view_is_deleted_then_repai
         expected_count=len(test_case.expected_order_ids),
     )
 
-    run_streambuild_backfill_cli(
+    run_streambuild_virtual_build_cli(
         project_dir=project_dir,
         host=e2e_clickhouse_connection_settings.host,
         port=e2e_clickhouse_connection_settings.port,
@@ -531,7 +531,7 @@ def test_given_offset_mode_staged_kafka_deployment_when_new_rows_arrive_then_aud
         expected_count=len(test_case.initial_order_ids),
     )
 
-    run_streambuild_backfill_cli(
+    run_streambuild_virtual_build_cli(
         project_dir=project_dir,
         host=e2e_clickhouse_connection_settings.host,
         port=e2e_clickhouse_connection_settings.port,
@@ -561,7 +561,7 @@ def test_given_offset_mode_staged_kafka_deployment_when_new_rows_arrive_then_aud
         expected_count=len(test_case.initial_order_ids) + len(test_case.live_order_ids),
     )
 
-    audit_result: dict[str, object] = run_streambuild_audit_backfill_cli(
+    audit_result: dict[str, object] = run_streambuild_audit_deployment_cli(
         project_dir=project_dir,
         host=e2e_clickhouse_connection_settings.host,
         port=e2e_clickhouse_connection_settings.port,

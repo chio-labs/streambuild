@@ -35,7 +35,6 @@ from streambuild.diagnostics.types import DiagnosticPhase
 def main(argv: Sequence[str] | None = None) -> int:
     from streambuild.cli.audit.main._run_audit import run_audit
     from streambuild.cli.audit_backfill.main._run_audit_backfill import run_audit_backfill
-    from streambuild.cli.backfill.main._run_backfill import run_backfill
     from streambuild.cli.build.main._run_build import run_build
     from streambuild.cli.compile.main._run_compile import run_compile
     from streambuild.cli.discover.main._run_discover import run_discover
@@ -55,7 +54,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         run_test=run_test,
         run_audit=run_audit,
         run_plan=run_plan,
-        run_backfill=run_backfill,
         run_build=run_build,
         run_audit_backfill=run_audit_backfill,
         run_publish=run_publish,
@@ -133,7 +131,7 @@ def _command_name(args: argparse.Namespace) -> str:
 
     if (
         args.command == CliCommand.AUDIT
-        and getattr(args, "audit_command", None) == CliSubcommand.BACKFILL
+        and getattr(args, "audit_command", None) == CliSubcommand.DEPLOYMENT
     ):
-        return "audit backfill"
+        return "audit deployment"
     return DISPLAY_NAME_BY_COMMAND.get(args.command, str(args.command))

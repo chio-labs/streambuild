@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import builtins
+import shutil
+from pathlib import Path
 
 import pytest
 from _pytest.capture import CaptureResult
@@ -8,14 +10,14 @@ from clickhouse_connect.driver.client import Client
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
-from streambuild.cli.backfill.main._run_backfill import run_backfill
-from streambuild.cli.backfill.models import BackfillCommandOptions
+from streambuild.cli.build.main._run_build import run_build
+from streambuild.cli.build.models import BuildCommandOptions
 from streambuild.cli.entry._helpers.compiler_profile import build_compiler_adapter_profile
 from streambuild.compiler.discovery.main.load_project_input_for_path import (
     load_project_input_for_path,
 )
 from tests.integration.src.streambuild.cli._test_types import (
-    CliBackfillIntegrationTestCase,
+    CliVirtualBuildIntegrationTestCase,
 )
 from tests.integration.src.streambuild.cli.helpers import (
     BACKFILL_PIPELINES_ROOT,
@@ -33,8 +35,8 @@ from tests.integration.src.streambuild.conftest import ClickHouseConnectionSetti
 @pytest.mark.parametrize(
     "test_case",
     [
-        CliBackfillIntegrationTestCase(
-            description="rejects json backfill without auto approve",
+        CliVirtualBuildIntegrationTestCase(
+            description="rejects json virtual build without auto approve",
             pipelines_root=BACKFILL_PIPELINES_ROOT,
             selectors=(),
             full_refresh=False,
@@ -45,12 +47,12 @@ from tests.integration.src.streambuild.conftest import ClickHouseConnectionSetti
             prompt_response="",
             expected_exit_code=1,
             expected_output_fragments=(),
-            expected_error_fragments=("--json requires --auto-approve for backfill",),
+            expected_error_fragments=("--json requires --auto-approve for build",),
             expected_deployment_status_rows=(),
             expected_absent_output_fragments=("Plan Ready",),
         ),
-        CliBackfillIntegrationTestCase(
-            description="cancels interactive backfill when prompt is declined",
+        CliVirtualBuildIntegrationTestCase(
+            description="cancels interactive virtual build when prompt is declined",
             pipelines_root=BACKFILL_PIPELINES_ROOT,
             selectors=(),
             full_refresh=False,
@@ -60,12 +62,14 @@ from tests.integration.src.streambuild.conftest import ClickHouseConnectionSetti
             auto_approve=False,
             prompt_response="n",
             expected_exit_code=1,
-            expected_output_fragments=("Plan Ready", "Backfill cancelled."),
+            expected_output_fragments=("Plan Ready", "Build cancelled."),
             expected_error_fragments=(),
             expected_deployment_status_rows=(),
         ),
-        CliBackfillIntegrationTestCase(
-            description="executes json backfill with auto approve without printing plan preview",
+        CliVirtualBuildIntegrationTestCase(
+            description=(
+                "executes json virtual build with auto approve without printing plan preview"
+            ),
             pipelines_root=BACKFILL_PIPELINES_ROOT,
             selectors=(),
             full_refresh=False,
@@ -88,7 +92,7 @@ from tests.integration.src.streambuild.conftest import ClickHouseConnectionSetti
             expected_runtime_execution_modes=(("tbl__orders_enriched", "full_rebuild"),),
             expected_absent_output_fragments=("Plan Ready",),
         ),
-        CliBackfillIntegrationTestCase(
+        CliVirtualBuildIntegrationTestCase(
             description="rejects full refresh without selectors",
             pipelines_root=BACKFILL_PIPELINES_ROOT,
             selectors=(),
@@ -103,7 +107,7 @@ from tests.integration.src.streambuild.conftest import ClickHouseConnectionSetti
             expected_error_fragments=("--full-refresh requires at least one --select",),
             expected_deployment_status_rows=(),
         ),
-        CliBackfillIntegrationTestCase(
+        CliVirtualBuildIntegrationTestCase(
             description="rejects start time for roots without an active published view",
             pipelines_root=BACKFILL_PIPELINES_ROOT,
             selectors=("orders_enriched",),
@@ -118,7 +122,7 @@ from tests.integration.src.streambuild.conftest import ClickHouseConnectionSetti
             expected_error_fragments=("--start-time requires an active published root",),
             expected_deployment_status_rows=(),
         ),
-        CliBackfillIntegrationTestCase(
+        CliVirtualBuildIntegrationTestCase(
             description="rejects combining full refresh with start time",
             pipelines_root=BACKFILL_PIPELINES_ROOT,
             selectors=("orders_enriched",),
@@ -133,7 +137,7 @@ from tests.integration.src.streambuild.conftest import ClickHouseConnectionSetti
             expected_error_fragments=("--full-refresh cannot be combined with --start-time",),
             expected_deployment_status_rows=(),
         ),
-        CliBackfillIntegrationTestCase(
+        CliVirtualBuildIntegrationTestCase(
             description="executes selected full refresh for one authored model subtree",
             pipelines_root=SELECTOR_PIPELINES_ROOT,
             selectors=("orders_clean",),
@@ -160,14 +164,18 @@ from tests.integration.src.streambuild.conftest import ClickHouseConnectionSetti
     ],
     ids=lambda case: case.description,
 )
-def test_given_backfill_command_when_running_then_it_behaves_as_expected(
-    test_case: CliBackfillIntegrationTestCase,
+def test_given_virtual_build_command_when_running_then_it_behaves_as_expected(
+    test_case: CliVirtualBuildIntegrationTestCase,
     clickhouse_connection_settings: ClickHouseConnectionSettings,
     clickhouse_client: Client,
     clickhouse_database: str,
+    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    project_root: Path = tmp_path / "project"
+    _ = shutil.copytree(test_case.pipelines_root.parent, project_root)
+    pipelines_root: Path = project_root / "pipelines"
     managed_client: AdapterConnection = build_managed_clickhouse_client(
         clickhouse_connection_settings,
         database=clickhouse_database,
@@ -176,9 +184,9 @@ def test_given_backfill_command_when_running_then_it_behaves_as_expected(
     monkeypatch.setattr(builtins, "input", lambda _prompt: test_case.prompt_response)
 
     try:
-        exit_code: int = run_backfill(
-            options=BackfillCommandOptions(
-                pipelines_root=test_case.pipelines_root,
+        exit_code: int = run_build(
+            options=BuildCommandOptions(
+                pipelines_root=pipelines_root,
                 database=clickhouse_database,
                 metadata_database=clickhouse_database,
                 selectors=test_case.selectors,
@@ -190,7 +198,7 @@ def test_given_backfill_command_when_running_then_it_behaves_as_expected(
                 auto_approve=test_case.auto_approve,
             ),
             client=managed_client,
-            loaded_project=load_project_input_for_path(path=test_case.pipelines_root),
+            loaded_project=load_project_input_for_path(path=project_root),
             adapter_profile=build_compiler_adapter_profile(ClickHouseAdapter()),
         )
     finally:

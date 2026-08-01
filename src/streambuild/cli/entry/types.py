@@ -10,7 +10,6 @@ class CliCommand(StrEnum):
     COMPILE = "compile"
     TEST = "test"
     PLAN = "plan"
-    BACKFILL = "backfill"
     BUILD = "build"
     AUDIT = "audit"
     PUBLISH = "publish"
@@ -23,5 +22,5 @@ class CliCommand(StrEnum):
 class CliSubcommand(StrEnum):
     """One nested `stb <command> <subcommand>` selector."""
 
-    BACKFILL = "backfill"
+    DEPLOYMENT = "deployment"
     ACTIVE_VIEW = "active-view"

@@ -3,26 +3,33 @@
 from __future__ import annotations
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.cli.build._helpers.confirmation import confirm_build
 from streambuild.cli.build.constants import STREAMBUILD_TOOL_VERSION
-from streambuild.cli.build.models import BuildCommandOptions, BuildPreviewContext
-from streambuild.cli.entry.constants import AFFIRMATIVE_RESPONSES
+from streambuild.cli.build.models import BuildCommandOptions, DirectBuildPreviewContext
+from streambuild.cli.plan.main._render_direct_plan_json import render_direct_plan_json
+from streambuild.cli.workflow_artifacts.main._write_plan_artifact import write_plan_artifact
+from streambuild.cli.workflow_artifacts.types import WorkflowArtifactOwner
 from streambuild.executor.direct.main.execute_direct_build import execute_direct_build
 from streambuild.executor.direct.models import DirectBuildRequest, DirectBuildResult
 
 
 def execute_confirmed_direct_build(
     *,
-    preview: BuildPreviewContext,
+    preview: DirectBuildPreviewContext,
     options: BuildCommandOptions,
     client: AdapterConnection,
     plan_text: str,
 ) -> DirectBuildResult | None:
     """Show the destructive plan, require confirmation, then build."""
 
-    _announce_plan(options=options, plan_text=plan_text)
-    if not _approved(options=options):
+    if not confirm_build(options=options, plan_text=plan_text):
         print("Build cancelled.")
         return None
+    write_plan_artifact(
+        target_dir=options.pipelines_root.parent / "target",
+        owner=WorkflowArtifactOwner.BUILD,
+        contents=render_direct_plan_json(plan=preview.plan, adapter_name=preview.adapter_name),
+    )
     return execute_direct_build(
         request=DirectBuildRequest(
             plan=preview.plan,
@@ -33,15 +40,3 @@ def execute_confirmed_direct_build(
         ),
         client=client,
     )
-
-
-def _announce_plan(*, options: BuildCommandOptions, plan_text: str) -> None:
-    if options.json_output:
-        return
-    print(plan_text)
-
-
-def _approved(*, options: BuildCommandOptions) -> bool:
-    if options.auto_approve:
-        return True
-    return input("Proceed with build? [y/N] ").strip().lower() in AFFIRMATIVE_RESPONSES
