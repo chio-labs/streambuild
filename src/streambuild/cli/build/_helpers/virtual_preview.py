@@ -3,8 +3,8 @@ from __future__ import annotations
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import CatalogSnapshot
 from streambuild.cli.build.models import (
-    BuildCommandOptions,
     VirtualBuildPreviewContext,
+    WorkflowPreparationOptions,
 )
 from streambuild.cli.entry.exceptions import CliUserError
 from streambuild.cli.entry.main._resolve_default_database import resolve_default_database
@@ -51,7 +51,7 @@ from streambuild.executor.backfill.models import BackfillDeploymentIdentity, Roo
 
 def build_virtual_build_preview(
     *,
-    options: BuildCommandOptions,
+    options: WorkflowPreparationOptions,
     start_time_utc: str | None,
     client: AdapterConnection,
     analysis: CompileAnalysis,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 
 @dataclass(frozen=True)
@@ -13,19 +14,13 @@ class CompactChangedTargetSummary:
 
 @dataclass(frozen=True)
 class PlanCommandOptions:
-    """One resolved `stb plan` invocation independent of effective mode."""
+    """Every operator-supplied option for one `stb plan` invocation."""
 
-    database: str
+    pipelines_root: Path
+    database: str | None
     selectors: tuple[str, ...]
+    deployment_id: str | None
     full_refresh: bool
     start_time: str | None
     json_output: bool
     verbose: bool
-
-
-@dataclass(frozen=True)
-class PlanCommandResult:
-    """Operator output and exact machine-readable connected plan."""
-
-    rendered_output: str
-    serialized_plan: str

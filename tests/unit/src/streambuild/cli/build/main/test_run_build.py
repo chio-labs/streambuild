@@ -12,10 +12,13 @@ from tests.unit.src.streambuild.cli.build.main._test_types import (
     CliVirtualBuildArtifactTestCase,
 )
 from tests.unit.src.streambuild.cli.build.main.helpers import (
+    build_scope_project_connection,
     publish_scope_project_virtual_workflow,
     run_scope_project_build,
+    run_scope_project_build_with_connection,
     run_scope_project_virtual_build,
 )
+from tests.unit.src.streambuild.cli.helpers import RecordingAdapterConnection
 from tests.unit.src.streambuild.compiler.planner.helpers import write_direct_scope_project
 
 
@@ -55,11 +58,13 @@ def test_given_build_command_gates_when_running_then_it_refuses_before_writing(
         project_root=tmp_path, virtual_environments=test_case.virtual_environments
     )
     monkeypatch.setattr("builtins.input", lambda _prompt: test_case.confirmation_response)
+    connection: RecordingAdapterConnection = build_scope_project_connection()
 
-    exit_code: int = run_scope_project_build(
+    exit_code: int = run_scope_project_build_with_connection(
         project_root=tmp_path,
         json_output=test_case.json_output,
         auto_approve=test_case.auto_approve,
+        connection=connection,
     )
 
     captured: CaptureResult[str] = capsys.readouterr()
@@ -67,6 +72,7 @@ def test_given_build_command_gates_when_running_then_it_refuses_before_writing(
     assert test_case.expected_stderr_fragment in captured.err
     assert test_case.expected_stdout_fragment in captured.out
     assert not (tmp_path / "target/run/build/plan.json").exists()
+    assert connection.workflow_mutation_statements == []
 
 
 @pytest.mark.parametrize(

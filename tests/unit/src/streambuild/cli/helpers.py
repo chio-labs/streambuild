@@ -196,6 +196,7 @@ class RecordingAdapterConnection(AdapterConnection):
         )
         self._deployment_inventory: AdapterDeploymentInventory = deployment_inventory
         self._ownership_records: tuple[AdapterOwnershipRecord, ...] = ownership_records
+        self.workflow_mutation_statements: list[str] = []
 
     @property
     def adapter_identity(self) -> AdapterIdentity:
@@ -247,6 +248,7 @@ class RecordingAdapterConnection(AdapterConnection):
 
     def execute_workflow_sql(self, statement: str) -> AdapterMutationResult:
         self.statements.append(statement)
+        self.workflow_mutation_statements.append(statement)
         return AdapterMutationResult()
 
     def capture_warehouse_timestamp(self) -> str:

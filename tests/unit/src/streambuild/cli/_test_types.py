@@ -63,6 +63,7 @@ class CliSelectorForwardingTestCase:
     expected_exit_code: int
     expected_selectors: tuple[str, ...]
     expected_full_refresh: bool
+    expected_deployment_id: str | None
 
 
 @dataclass(frozen=True)

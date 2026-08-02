@@ -1,0 +1,187 @@
+"""Route connected workflow preparation through the effective project mode."""
+
+import json
+
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.cli.build._helpers.audits import prepare_direct_build_audits
+from streambuild.cli.build._helpers.preview import build_direct_build_preview
+from streambuild.cli.build._helpers.virtual_preview import build_virtual_build_preview
+from streambuild.cli.build.constants import STREAMBUILD_TOOL_VERSION
+from streambuild.cli.build.models import (
+    DirectBuildPreviewContext,
+    DirectWorkflowPreparation,
+    VirtualBuildPreviewContext,
+    VirtualWorkflowPreparation,
+    WorkflowPreparationOptions,
+)
+from streambuild.cli.entry.exceptions import CliUserError
+from streambuild.cli.plan.main._normalize_cli_start_time import normalize_cli_start_time
+from streambuild.cli.plan.main._render_direct_plan_json import render_direct_plan_json
+from streambuild.cli.plan.main.render_direct_plan_text import render_direct_plan_text
+from streambuild.cli.plan.main.render_plan_result import render_plan_result
+from streambuild.compiler.compile.models import CompilerAdapterProfile
+from streambuild.compiler.pipeline.models import CompileAnalysis
+from streambuild.executor.backfill.main.assemble_virtual_build_workflow import (
+    assemble_virtual_build_workflow,
+)
+from streambuild.executor.backfill.models import BackfillBootstrapRequest
+from streambuild.executor.direct.main.assemble_direct_build_workflow import (
+    assemble_direct_build_workflow,
+)
+from streambuild.executor.direct.models import DirectBuildAudit, DirectBuildRequest
+from streambuild.executor.workflow.models import BuildWorkflow
+
+
+def prepare_build_workflow(
+    *,
+    analysis: CompileAnalysis,
+    options: WorkflowPreparationOptions,
+    client: AdapterConnection,
+    adapter_profile: CompilerAdapterProfile,
+) -> DirectWorkflowPreparation | VirtualWorkflowPreparation:
+    """Return one complete workflow assembled from fresh connected inspection."""
+
+    _validate_common_flags(options=options)
+    if analysis.compile_inputs.virtual_environments:
+        return prepare_virtual_build_workflow(
+            analysis=analysis,
+            options=options,
+            start_time_utc=_normalized_utc_start_time(options=options),
+            client=client,
+        )
+    _reject_virtual_environment_only_flags(options=options)
+    return prepare_direct_build_workflow(
+        analysis=analysis,
+        options=options,
+        client=client,
+        adapter_profile=adapter_profile,
+    )
+
+
+def prepare_direct_build_workflow(
+    *,
+    analysis: CompileAnalysis,
+    options: WorkflowPreparationOptions,
+    client: AdapterConnection,
+    adapter_profile: CompilerAdapterProfile,
+) -> DirectWorkflowPreparation:
+    """Inspect connected direct state and assemble the complete workflow once."""
+
+    preview: DirectBuildPreviewContext = build_direct_build_preview(
+        options=options,
+        client=client,
+        analysis=analysis,
+    )
+    audits: tuple[DirectBuildAudit, ...] = prepare_direct_build_audits(
+        preview=preview,
+        adapter_profile=adapter_profile,
+    )
+    request: DirectBuildRequest = DirectBuildRequest(
+        plan=preview.plan,
+        realized_project=preview.analysis.realized_project,
+        database=preview.database,
+        metadata_database=preview.metadata_database,
+        tool_version=STREAMBUILD_TOOL_VERSION,
+        audits=audits,
+    )
+    workflow: BuildWorkflow = assemble_direct_build_workflow(
+        request=request,
+        client=client,
+        plan_json=render_direct_plan_json(plan=preview.plan, adapter_name=preview.adapter_name),
+    )
+    return DirectWorkflowPreparation(
+        preview=preview,
+        request=request,
+        workflow=workflow,
+        plan_text=render_direct_plan_text(plan=preview.plan, adapter_name=preview.adapter_name),
+    )
+
+
+def prepare_virtual_build_workflow(
+    *,
+    analysis: CompileAnalysis,
+    options: WorkflowPreparationOptions,
+    start_time_utc: str | None,
+    client: AdapterConnection,
+) -> VirtualWorkflowPreparation:
+    """Inspect connected virtual state and assemble the complete workflow once."""
+
+    preview: VirtualBuildPreviewContext = build_virtual_build_preview(
+        options=options,
+        start_time_utc=start_time_utc,
+        client=client,
+        analysis=analysis,
+    )
+    plan_text: str = render_plan_result(
+        plan=preview.plan,
+        desired_state=preview.desired_state,
+        database=preview.database,
+        adapter_name=client.adapter_identity.name,
+        json_output=False,
+        verbose=options.verbose,
+    )
+    serialized_plan_payload: dict[str, object] = json.loads(
+        render_plan_result(
+            plan=preview.plan,
+            desired_state=preview.desired_state,
+            database=preview.database,
+            adapter_name=client.adapter_identity.name,
+            json_output=True,
+            verbose=options.verbose,
+        )
+    )
+    serialized_plan_payload["deployment_created_at"] = preview.created_at
+    request: BackfillBootstrapRequest = BackfillBootstrapRequest(
+        desired_state=preview.desired_state,
+        default_database=preview.database,
+        metadata_database=preview.metadata_database,
+        replay_lineage_mode=preview.replay_lineage_mode,
+        confirmed_plan=preview.plan,
+        deployment_id=preview.deployment_id,
+        full_refresh_keys=preview.full_refresh_keys,
+        start_time_keys=preview.start_time_keys,
+        start_time=preview.start_time,
+        created_at=preview.created_at,
+        confirmed_target_catalog=preview.target_catalog,
+        confirmed_metadata_catalog=preview.metadata_catalog,
+    )
+    workflow: BuildWorkflow = assemble_virtual_build_workflow(
+        request=request,
+        client=client,
+        plan_json=json.dumps(serialized_plan_payload, indent=2) + "\n",
+    )
+    return VirtualWorkflowPreparation(
+        preview=preview,
+        request=request,
+        workflow=workflow,
+        plan_text=plan_text,
+    )
+
+
+def _validate_common_flags(*, options: WorkflowPreparationOptions) -> None:
+    if options.full_refresh and options.start_time is not None:
+        raise CliUserError("--full-refresh cannot be combined with --start-time")
+    if (options.full_refresh or options.start_time is not None) and not options.selectors:
+        required_flag: str = "--full-refresh" if options.full_refresh else "--start-time"
+        raise CliUserError(f"{required_flag} requires at least one --select")
+
+
+def _normalized_utc_start_time(*, options: WorkflowPreparationOptions) -> str | None:
+    if options.start_time is None:
+        return None
+    return normalize_cli_start_time(options.start_time)
+
+
+def _reject_virtual_environment_only_flags(*, options: WorkflowPreparationOptions) -> None:
+    if options.deployment_id is not None:
+        raise CliUserError("--deployment-id requires virtual environments")
+    if options.full_refresh:
+        raise CliUserError(
+            "--full-refresh is a virtual-environment replay control and is not available in "
+            "direct mode. Enable settings.virtual_environments to use it."
+        )
+    if options.start_time is not None:
+        raise CliUserError(
+            "--start-time is a virtual-environment replay control and is not available in "
+            "direct mode. Enable settings.virtual_environments to use it."
+        )

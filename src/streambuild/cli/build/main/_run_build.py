@@ -6,7 +6,13 @@ from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.exceptions import AdapterError
 from streambuild.cli.build._helpers.direct_command import execute_direct_build_command
 from streambuild.cli.build._helpers.virtual_command import execute_virtual_build_command
-from streambuild.cli.build.models import BuildCommandOptions
+from streambuild.cli.build.main._prepare_build_workflow import prepare_build_workflow
+from streambuild.cli.build.models import (
+    BuildCommandOptions,
+    DirectWorkflowPreparation,
+    VirtualWorkflowPreparation,
+    WorkflowPreparationOptions,
+)
 from streambuild.cli.entry.exceptions import CliUserError
 from streambuild.compiler.compile.exceptions import TransformSqlContractError
 from streambuild.compiler.compile.models import CompilerAdapterProfile
@@ -36,13 +42,33 @@ def run_build(
             loaded_project=loaded_project,
             adapter_profile=adapter_profile,
         )
-        if analysis.compile_inputs.virtual_environments:
-            return execute_virtual_build_command(analysis=analysis, options=options, client=client)
+        preparation_options: WorkflowPreparationOptions = WorkflowPreparationOptions(
+            database=options.database,
+            metadata_database=options.metadata_database,
+            selectors=options.selectors,
+            deployment_id=options.deployment_id,
+            full_refresh=options.full_refresh,
+            start_time=options.start_time,
+            verbose=options.verbose,
+        )
+        preparation: DirectWorkflowPreparation | VirtualWorkflowPreparation = (
+            prepare_build_workflow(
+                analysis=analysis,
+                options=preparation_options,
+                client=client,
+                adapter_profile=adapter_profile,
+            )
+        )
+        if isinstance(preparation, VirtualWorkflowPreparation):
+            return execute_virtual_build_command(
+                preparation=preparation,
+                options=options,
+                client=client,
+            )
         return execute_direct_build_command(
-            analysis=analysis,
+            preparation=preparation,
             options=options,
             client=client,
-            adapter_profile=adapter_profile,
         )
     except (
         TransformSqlContractError,

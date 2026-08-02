@@ -10,7 +10,9 @@ from streambuild.compiler.compile.models import DesiredState, ObjectKey
 from streambuild.compiler.discovery.types import ReplayLineageMode
 from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.compiler.planner.models import DeploymentPlan, DirectPlan
-from streambuild.executor.backfill.models import RootBackfillReport
+from streambuild.executor.backfill.models import BackfillBootstrapRequest, RootBackfillReport
+from streambuild.executor.direct.models import DirectBuildRequest
+from streambuild.executor.workflow.models import BuildWorkflow
 
 
 @dataclass(frozen=True)
@@ -27,6 +29,19 @@ class BuildCommandOptions:
     deployment_id: str | None = None
     full_refresh: bool = False
     start_time: str | None = None
+
+
+@dataclass(frozen=True)
+class WorkflowPreparationOptions:
+    """Connected planning options shared by `stb plan` and `stb build`."""
+
+    database: str | None
+    metadata_database: str | None
+    selectors: tuple[str, ...]
+    deployment_id: str | None
+    full_refresh: bool
+    start_time: str | None
+    verbose: bool
 
 
 @dataclass(frozen=True)
@@ -58,3 +73,23 @@ class VirtualBuildPreviewContext:
     full_refresh_keys: frozenset[ObjectKey] = frozenset()
     start_time_keys: frozenset[ObjectKey] = frozenset()
     start_time: str | None = None
+
+
+@dataclass(frozen=True)
+class DirectWorkflowPreparation:
+    """One fully assembled direct workflow and its result-decoding request."""
+
+    preview: DirectBuildPreviewContext
+    request: DirectBuildRequest
+    workflow: BuildWorkflow
+    plan_text: str
+
+
+@dataclass(frozen=True)
+class VirtualWorkflowPreparation:
+    """One fully assembled virtual workflow and its result-decoding request."""
+
+    preview: VirtualBuildPreviewContext
+    request: BackfillBootstrapRequest
+    workflow: BuildWorkflow
+    plan_text: str
