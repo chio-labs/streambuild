@@ -70,9 +70,9 @@ def test_given_compatible_live_objects_when_applying_reconcile_then_persists_bas
         managed_client.close()
 
     rows: Sequence[Sequence[object]] = clickhouse_client.query(
-        "SELECT deployment_id, object_type, object_name, normalized_query FROM "
-        f"{clickhouse_database}.streambuild_object_state_snapshots "
-        "ORDER BY object_type, object_name"
+        "SELECT state_id, logical_object_type, logical_object_name, canonical_query FROM "
+        f"{clickhouse_database}._streambuild_virtual_object_state "
+        "ORDER BY logical_object_type, logical_object_name"
     ).result_rows
 
     assert tuple(tuple(row[1:]) for row in rows) == test_case.expected_rows

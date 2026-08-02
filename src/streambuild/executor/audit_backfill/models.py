@@ -130,21 +130,6 @@ class AuditBackfillResult:
 
 
 @dataclass(frozen=True)
-class DeploymentMetadataRow:
-    """Row shape for deployment metadata needed by audit flows."""
-
-    created_at: str
-    status: str
-    replay_lineage_mode: ReplayLineageMode | str
-    selected_root_keys_json: str
-    warning_codes_json: str
-    prepared_object_mappings_json: str
-
-    def __post_init__(self) -> None:
-        object.__setattr__(self, "replay_lineage_mode", ReplayLineageMode(self.replay_lineage_mode))
-
-
-@dataclass(frozen=True)
 class CountQueryRow:
     """Row shape for single-value count projections."""
 

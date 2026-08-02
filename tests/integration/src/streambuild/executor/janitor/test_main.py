@@ -36,6 +36,7 @@ from tests.integration.src.streambuild.executor.janitor.helpers import (
             description="classifies active recent old and stale deployments conservatively",
             retention_days=7,
             expected_deletable_deployment_ids=(
+                "20260409T104000Z_failed1",
                 "20260409T103000Z_stale11",
                 "20260409T100000Z_old111",
             ),
@@ -101,10 +102,12 @@ def test_given_mixed_real_deployments_when_previewing_janitor_then_it_classifies
             description="drops only old and stale physical objects while keeping metadata",
             retention_days=7,
             expected_deleted_deployment_ids=(
+                "20260409T104000Z_failed1",
                 "20260409T103000Z_stale11",
                 "20260409T100000Z_old111",
             ),
             expected_deleted_target_tables=(
+                "tbl__orders_enriched__20260409T104000Z_failed1",
                 "tbl__orders_enriched__20260409T103000Z_stale11",
                 "tbl__orders_enriched__20260409T100000Z_old111",
             ),
@@ -112,8 +115,8 @@ def test_given_mixed_real_deployments_when_previewing_janitor_then_it_classifies
                 "tbl__orders_enriched__20260409T102000Z_active1",
                 "tbl__orders_enriched__20260409T101000Z_recent1",
                 "tbl__orders_enriched",
-                "streambuild_deployments",
-                "streambuild_publish_history",
+                "_streambuild_virtual_deployments",
+                "_streambuild_virtual_publications",
             ),
             expected_deployment_row_count=4,
             expected_publish_history_row_count=3,
@@ -164,8 +167,10 @@ def test_given_real_deletable_deployments_when_applying_janitor_then_it_drops_on
     )
     metadata_row_counts: Sequence[Sequence[object]] = clickhouse_client.query(
         "SELECT "
-        f"(SELECT count() FROM {clickhouse_database}.streambuild_deployments) AS deployment_count, "
-        f"(SELECT count() FROM {clickhouse_database}.streambuild_publish_history) AS publish_count"
+        f"(SELECT count() FROM {clickhouse_database}._streambuild_virtual_deployments) "
+        "AS deployment_count, "
+        f"(SELECT count() FROM {clickhouse_database}._streambuild_virtual_publications) "
+        "AS publish_count"
     ).result_rows
 
     assert result.deleted_deployment_ids == test_case.expected_deleted_deployment_ids
@@ -175,6 +180,10 @@ def test_given_real_deletable_deployments_when_applying_janitor_then_it_drops_on
     )
     assert (
         integration_state.stale_unpublished_target_table_name
+        in test_case.expected_deleted_target_tables
+    )
+    assert (
+        integration_state.failed_incomplete_target_table_name
         in test_case.expected_deleted_target_tables
     )
     expected_deleted_target_table: str

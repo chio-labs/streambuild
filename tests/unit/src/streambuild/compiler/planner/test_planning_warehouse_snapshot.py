@@ -49,6 +49,8 @@ def test_given_warehouse_state_when_loading_snapshot_then_it_reads_each_source_o
         metadata_result=AdapterQueryResult(
             column_names=(
                 "deployment_id",
+                "observation_id",
+                "state_kind",
                 "database_name",
                 "object_type",
                 "object_name",
@@ -56,7 +58,19 @@ def test_given_warehouse_state_when_loading_snapshot_then_it_reads_each_source_o
                 "normalized_query",
                 "recorded_at",
             ),
-            rows=(("dep_a", None, "table", "tbl__orders", "fingerprint", None, "2026-07-26"),),
+            rows=(
+                (
+                    "dep_a",
+                    "observation-a",
+                    "deployment",
+                    None,
+                    "table",
+                    "tbl__orders",
+                    "fingerprint",
+                    None,
+                    "2026-07-26",
+                ),
+            ),
         ),
         virtual_environments=True,
     )

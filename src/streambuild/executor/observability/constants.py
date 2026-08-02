@@ -1,0 +1,4 @@
+"""Boundaries for persisted terminal observations."""
+
+MAX_OBSERVATION_JSON_BYTES: int = 16_384
+MAX_OBSERVATION_ERROR_LENGTH: int = 2_000

@@ -856,43 +856,34 @@ def load_virtual_manual_workflow_snapshot(
     """Load normalized unpublished virtual state from one isolated database."""
 
     deployment_rows: Sequence[Sequence[object]] = clickhouse_client.query(
-        "SELECT 'deployment', status, replay_lineage_mode, selected_root_keys_json, "
-        "warning_codes_json, prepared_object_mappings_json "
-        f"FROM {database}.streambuild_deployments FINAL "
+        "SELECT 'deployment', 'backfilling', replay_lineage_mode, '<workflow-fingerprint>', "
+        "'<boundary-time>', tool_version "
+        f"FROM {database}._streambuild_virtual_deployments "
         f"WHERE deployment_id = '{deployment_id}'"
     ).result_rows
     object_rows: Sequence[Sequence[object]] = clickhouse_client.query(
-        "SELECT 'object', object_type, object_name, normalized_fingerprint, "
-        "ifNull(normalized_query, '') "
-        f"FROM {database}.streambuild_object_state_snapshots FINAL "
-        f"WHERE deployment_id = '{deployment_id}' ORDER BY object_type, object_name"
-    ).result_rows
-    runtime_rows: Sequence[Sequence[object]] = clickhouse_client.query(
-        "SELECT 'runtime', root_object_type, root_object_name, state_kind, replay_strategy, "
-        "ifNull(active_deployment_id, ''), anchor_object_type, anchor_object_name, "
-        "ifNull(anchor_physical_name, ''), ifNull(execution_mode, ''), "
-        "ifNull(configured_backfill_mode, ''), ifNull(toString(execution_lookback_seconds), ''), "
-        "live_target_names_json "
-        f"FROM {database}.streambuild_deployment_runtime_details FINAL "
-        f"WHERE deployment_id = '{deployment_id}' ORDER BY root_object_type, root_object_name"
+        "SELECT 'object', logical_object_type, logical_object_name, object_fingerprint, "
+        "ifNull(canonical_query, ''), ifNull(physical_relation_name, ''), is_selected_root "
+        f"FROM {database}._streambuild_virtual_object_state "
+        f"WHERE deployment_id = '{deployment_id}' "
+        "ORDER BY logical_object_type, logical_object_name"
     ).result_rows
     physical_rows: Sequence[Sequence[object]] = clickhouse_client.query(
         "SELECT name, engine, create_table_query FROM system.tables "
-        f"WHERE database = '{database}' AND name NOT LIKE 'streambuild\\_%' "
+        f"WHERE database = '{database}' AND name NOT LIKE '\\_streambuild%' "
         "ORDER BY name"
     ).result_rows
     replay_rows: Sequence[Sequence[object]] = clickhouse_client.query(
         f"SELECT order_id FROM {database}.{target_table_name}__{deployment_id} ORDER BY order_id"
     ).result_rows
     watermark_rows: Sequence[Sequence[object]] = clickhouse_client.query(
-        "SELECT boundary_key, if(boundary_key = '__streambuild_boundary_time', "
-        "'<boundary-time>', cutoff_value) "
-        f"FROM {database}.streambuild_deployment_watermarks FINAL "
-        f"WHERE deployment_id = '{deployment_id}' ORDER BY boundary_key"
+        "SELECT boundary_kind, ifNull(partition_value, ''), cutoff_value "
+        f"FROM {database}._streambuild_virtual_replay_boundaries "
+        f"WHERE deployment_id = '{deployment_id}' ORDER BY boundary_kind, partition_value"
     ).result_rows
     publish_event_count: int = int(
         clickhouse_client.query(
-            f"SELECT count() FROM {database}.streambuild_publish_history FINAL "
+            f"SELECT count() FROM {database}._streambuild_virtual_publications "
             f"WHERE deployment_id = '{deployment_id}'"
         ).result_rows[0][0]
     )
@@ -901,7 +892,7 @@ def load_virtual_manual_workflow_snapshot(
         f"WHERE database = '{database}' AND name = '{target_table_name}' ORDER BY name"
     ).result_rows
     deployment_metadata: tuple[tuple[str, ...], ...] = _normalize_virtual_snapshot_rows(
-        rows=(*deployment_rows, *object_rows, *runtime_rows),
+        rows=(*deployment_rows, *object_rows),
         database=database,
         deployment_id=deployment_id,
     )

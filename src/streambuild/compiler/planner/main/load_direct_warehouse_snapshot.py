@@ -19,4 +19,5 @@ def load_direct_warehouse_snapshot(
     return DirectWarehouseSnapshot(
         catalog=client.load_catalog(database),
         ownership_records=client.load_target_ownership(metadata_database),
+        deployment_inventory=client.load_deployment_inventory(metadata_database),
     )

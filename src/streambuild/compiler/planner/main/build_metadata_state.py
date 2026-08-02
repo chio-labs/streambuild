@@ -3,7 +3,6 @@
 from streambuild.compiler.compile.models import ObjectKey
 from streambuild.compiler.planner.models import (
     DeploymentRecord,
-    DeploymentRuntimeDetailRecord,
     DeploymentWatermarkRecord,
     MetadataState,
     ObjectStateRecord,
@@ -17,7 +16,6 @@ def build_metadata_state(
     object_states: tuple[ObjectStateRecord, ...],
     deployments: tuple[DeploymentRecord, ...],
     deployment_watermarks: tuple[DeploymentWatermarkRecord, ...],
-    deployment_runtime_details: tuple[DeploymentRuntimeDetailRecord, ...],
     publish_events: tuple[PublishEventRecord, ...],
 ) -> MetadataState:
     """Build deterministically ordered metadata-state records."""
@@ -49,31 +47,6 @@ def build_metadata_state(
             ),
         )
     )
-    sorted_deployment_runtime_details: tuple[DeploymentRuntimeDetailRecord, ...] = tuple(
-        sorted(
-            (
-                DeploymentRuntimeDetailRecord(
-                    deployment_id=detail.deployment_id,
-                    root_key=detail.root_key,
-                    state_kind=detail.state_kind,
-                    replay_strategy=detail.replay_strategy,
-                    active_deployment_id=detail.active_deployment_id,
-                    anchor_key=detail.anchor_key,
-                    anchor_physical_name=detail.anchor_physical_name,
-                    execution_mode=detail.execution_mode,
-                    configured_backfill_mode=detail.configured_backfill_mode,
-                    execution_lookback_seconds=detail.execution_lookback_seconds,
-                    live_target_names=tuple(sorted(detail.live_target_names)),
-                )
-                for detail in deployment_runtime_details
-            ),
-            key=lambda detail: (
-                detail.deployment_id,
-                detail.root_key.object_type,
-                detail.root_key.name,
-            ),
-        )
-    )
     sorted_publish_events: tuple[PublishEventRecord, ...] = tuple(
         sorted(
             (
@@ -81,6 +54,8 @@ def build_metadata_state(
                     deployment_id=event.deployment_id,
                     published_at=event.published_at,
                     logical_view_names=tuple(sorted(event.logical_view_names)),
+                    database=event.database,
+                    physical_relation_names=event.physical_relation_names,
                 )
                 for event in publish_events
             ),
@@ -91,7 +66,6 @@ def build_metadata_state(
         object_states=sorted_object_states,
         deployments=sorted_deployments,
         deployment_watermarks=sorted_deployment_watermarks,
-        deployment_runtime_details=sorted_deployment_runtime_details,
         publish_events=sorted_publish_events,
     )
 
@@ -123,4 +97,7 @@ def _normalize_deployment_record(deployment: DeploymentRecord) -> DeploymentReco
         selected_root_keys=sorted_root_keys,
         warning_codes=sorted_warning_codes,
         prepared_object_mappings=sorted_prepared_object_mappings,
+        workflow_fingerprint=deployment.workflow_fingerprint,
+        boundary_time=deployment.boundary_time,
+        tool_version=deployment.tool_version,
     )

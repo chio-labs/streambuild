@@ -21,7 +21,6 @@ from streambuild.compiler.compile.models import (
 )
 from streambuild.compiler.planner.models import (
     DeploymentRecord,
-    DeploymentRuntimeDetailRecord,
     DeploymentWatermarkRecord,
     MetadataState,
     ObjectStateRecord,
@@ -205,6 +204,9 @@ def build_metadata_state() -> MetadataState:
                         logical_model_name="orders_enriched",
                     ),
                 ),
+                workflow_fingerprint="workflow-fingerprint",
+                boundary_time="2026-04-08T13:00:05Z",
+                tool_version="1.2.3",
             ),
         ),
         deployment_watermarks=(
@@ -212,23 +214,8 @@ def build_metadata_state() -> MetadataState:
                 deployment_id="20260408T130000Z_ab12cd",
                 root_key=transform_key,
                 anchor_key=root_key,
-                boundary_key="partition:0",
+                boundary_key="_replay_partition=0",
                 cutoff_value="12345",
-            ),
-        ),
-        deployment_runtime_details=(
-            DeploymentRuntimeDetailRecord(
-                deployment_id="20260408T130000Z_ab12cd",
-                root_key=transform_key,
-                state_kind="active_view_present",
-                replay_strategy="bounded_replay",
-                active_deployment_id="20260408T120000Z_zz99yy",
-                anchor_key=root_key,
-                anchor_physical_name="raw__orders__20260408T130000Z_ab12cd",
-                execution_mode="seeded_bounded_rebuild",
-                configured_backfill_mode="bounded",
-                execution_lookback_seconds=604800,
-                live_target_names=("tbl__orders_enriched",),
             ),
         ),
         publish_events=(
@@ -236,6 +223,8 @@ def build_metadata_state() -> MetadataState:
                 deployment_id="20260408T130000Z_ab12cd",
                 published_at="2026-04-08T13:30:00Z",
                 logical_view_names=("tbl__orders_enriched",),
+                database="analytics",
+                physical_relation_names=("tbl__orders_enriched__20260408T130000Z_ab12cd",),
             ),
         ),
     )

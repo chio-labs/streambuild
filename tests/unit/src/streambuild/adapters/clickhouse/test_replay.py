@@ -701,9 +701,7 @@ def test_given_aggregate_scalar_replay_when_rendering_then_anchor_is_filtered_be
         RenderDeploymentLookbackTestCase(
             description="uses deployment-wide boundary time and root-scoped replay cutoff",
             expected_boundary_lookup_fragment=(
-                "FROM metadata.streambuild_deployment_watermarks FINAL "
-                "WHERE deployment_id = 'dep-1' "
-                "AND boundary_key = '__streambuild_boundary_time'"
+                "FROM metadata._streambuild_virtual_deployments WHERE deployment_id = 'dep-1'"
             ),
             expected_root_filter_fragment="root_object_name = 'tbl__orders_enriched'",
             expected_root_filter_count=1,
