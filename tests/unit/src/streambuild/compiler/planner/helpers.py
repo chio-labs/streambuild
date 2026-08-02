@@ -20,6 +20,7 @@ from streambuild.adapter.models import (
     AdapterReadinessRequest,
     AdapterReadinessRootObservation,
     AdapterRelationCleanupRequest,
+    AdapterReplayCoverageRequest,
     AdapterStableView,
     AdapterTable,
     AdapterView,
@@ -236,6 +237,10 @@ class SnapshotRecordingConnection(AdapterConnection):
     def render_replay_from_ownership(self, request: AdapterOwnershipReplayRequest) -> str:
         del request
         return "INSERT INTO replay_target SELECT 1"
+
+    def render_replay_coverage_query(self, request: AdapterReplayCoverageRequest) -> str:
+        del request
+        return "SELECT '[]' AS value"
 
     def compare_readiness(
         self, request: AdapterReadinessRequest

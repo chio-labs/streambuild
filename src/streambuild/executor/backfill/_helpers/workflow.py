@@ -22,7 +22,7 @@ from streambuild.adapter.models import (
     CatalogRelation,
     CatalogSnapshot,
 )
-from streambuild.adapter.types import AdapterReplayBoundaryMode
+from streambuild.adapter.types import AdapterReplayBoundaryMode, AdapterReplayLowerBoundMode
 from streambuild.compiler.compile.models import (
     DesiredMaterializedView,
     DesiredState,
@@ -794,6 +794,7 @@ def _qualifying_input_assertion_sql(
             AdapterReplayBoundaryMode.TIMESTAMP: replay.columns.timestamp,
             AdapterReplayBoundaryMode.LANDED_AT: replay.columns.landed_at,
         }[replay.mode]
+        lower_clause: str = _forced_scalar_qualifying_clause(replay=replay)
         qualifying = (
             f"SELECT count() FROM {replay.database}.{replay.relations.anchor} AS source "
             f"CROSS JOIN (SELECT * FROM {request.metadata_database}."
@@ -803,6 +804,7 @@ def _qualifying_input_assertion_sql(
             f"AND watermark.root_object_name = '{_escape_literal(replay.relations.root)}' "
             f"AND watermark.boundary_key = '{boundary_key}' AND source.{boundary_column} <= "
             f"CAST(watermark.cutoff_value AS {_boundary_type_expression(replay.mode)})"
+            f"{lower_clause}"
         )
     return (
         "SELECT throwIf(total_rows > 0 AND qualifying_rows = 0, "
@@ -810,6 +812,22 @@ def _qualifying_input_assertion_sql(
         f"qualifying {_escape_literal(str(replay.mode))} cutoff') FROM (SELECT "
         f"(SELECT count() FROM {replay.database}.{replay.relations.anchor}) AS total_rows, "
         f"({qualifying}) AS qualifying_rows);"
+    )
+
+
+def _forced_scalar_qualifying_clause(*, replay: AdapterReplayRequest) -> str:
+    if replay.window.lower_bound_mode != AdapterReplayLowerBoundMode.FORCED_TIME:
+        return ""
+    if replay.window.forced_start_time is None:
+        return " AND false"
+    time_column: str = {
+        AdapterReplayBoundaryMode.CURSOR: replay.columns.timestamp,
+        AdapterReplayBoundaryMode.TIMESTAMP: replay.columns.timestamp,
+        AdapterReplayBoundaryMode.LANDED_AT: replay.columns.landed_at,
+    }[replay.mode]
+    return (
+        f" AND source.{time_column} >= "
+        f"toDateTime64('{_escape_literal(replay.window.forced_start_time)}', 3, 'UTC')"
     )
 
 

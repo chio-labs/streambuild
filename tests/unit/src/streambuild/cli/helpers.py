@@ -22,6 +22,7 @@ from streambuild.adapter.models import (
     AdapterReadinessRequest,
     AdapterReadinessRootObservation,
     AdapterRelationCleanupRequest,
+    AdapterReplayCoverageRequest,
     AdapterStableView,
     AdapterTable,
     AdapterView,
@@ -32,6 +33,7 @@ from streambuild.adapter.models import (
 )
 from streambuild.adapter.types import AdapterReplayBoundaryMode
 from streambuild.adapters.clickhouse._helpers.replay import (
+    render_clickhouse_replay_coverage_query,
     render_clickhouse_replay_from_deployment,
     render_clickhouse_replay_from_ownership,
 )
@@ -290,6 +292,9 @@ class RecordingAdapterConnection(AdapterConnection):
 
     def render_replay_from_ownership(self, request: AdapterOwnershipReplayRequest) -> str:
         return render_clickhouse_replay_from_ownership(request)
+
+    def render_replay_coverage_query(self, request: AdapterReplayCoverageRequest) -> str:
+        return render_clickhouse_replay_coverage_query(request)
 
     def render_replay_from_deployment(
         self, request: AdapterDeploymentReplayRequest

@@ -58,6 +58,7 @@ from tests.integration.src.streambuild.executor.backfill._test_types import (
     ExecuteUnseededBoundedOffsetReplayIntegrationTestCase,
     ExecuteUnseededBoundedScalarReplayIntegrationTestCase,
     ManagedSourceResources,
+    MissingCursorStartTimeIntegrationTestCase,
     MissingOffsetReplayCutoffIntegrationTestCase,
     MissingScalarReplayCutoffIntegrationTestCase,
     PersistWatermarksWithoutMetadataTableIntegrationTestCase,
@@ -1259,6 +1260,61 @@ def test_given_external_source_offset_replay_when_executing_then_it_uses_declare
         *test_case.expected_watermark_rows,
     ]
     assert shadow_rows == [(order_id,) for order_id in test_case.expected_shadow_order_ids]
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        MissingCursorStartTimeIntegrationTestCase(
+            description="rejects adopted cursor input entirely before the forced start time",
+            deployment_id="20260409T161000Z_no_cursor_frontier",
+            created_at="2026-04-09 16:10:00.123",
+            start_time="2026-04-10 16:00:00.000",
+            expected_error_fragment="has rows but no qualifying cursor cutoff",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_cursor_input_before_forced_start_when_replaying_then_population_fails(
+    test_case: MissingCursorStartTimeIntegrationTestCase,
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    clickhouse_client.command(
+        f"CREATE TABLE {clickhouse_database}.orders_existing ("
+        "order_id String, event_cursor UInt64, event_timestamp DateTime64(3)"
+        ") ENGINE = MergeTree() ORDER BY (order_id)"
+    )
+    clickhouse_client.command(
+        f"INSERT INTO {clickhouse_database}.orders_existing VALUES "
+        "('cursor-order-1', 1, toDateTime64('2026-04-09 16:00:01.000', 3)), "
+        "('cursor-order-2', 2, toDateTime64('2026-04-09 16:00:02.000', 3))"
+    )
+    managed_client: AdapterConnection = ClickHouseAdapter().connect(
+        AdapterConnectionConfig(
+            host=clickhouse_connection_settings.host,
+            port=clickhouse_connection_settings.port,
+            username=clickhouse_connection_settings.username,
+            password=clickhouse_connection_settings.password,
+            database=clickhouse_database,
+        )
+    )
+
+    try:
+        with pytest.raises(WorkflowExecutionError, match=test_case.expected_error_fragment):
+            execute_backfill(
+                request=build_external_source_cursor_replay_request(
+                    database=clickhouse_database,
+                    deployment_id=test_case.deployment_id,
+                    created_at=test_case.created_at,
+                    start_time=test_case.start_time,
+                ),
+                client=managed_client,
+            )
+    finally:
+        managed_client.close()
 
 
 @pytest.mark.integration

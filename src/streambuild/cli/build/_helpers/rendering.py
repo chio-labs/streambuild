@@ -28,6 +28,7 @@ def render_direct_build_json(
         "mode": DIRECT_MODE_LABEL,
         "adapter": adapter_name,
         "database": result.database,
+        "start_time": result.effective_start_time,
         "preserved_sources": list(result.preserved_source_relation_names),
         "created_sources": list(result.created_source_relation_names),
         "ownership": [record.relation_name for record in result.ownership_records],
@@ -66,6 +67,15 @@ def _render_header(*, result: DirectBuildResult, adapter_name: str) -> tuple[str
         cli_style().label_value(label="Adapter", value=adapter_name),
         cli_style().label_value(label="Mode", value=DIRECT_MODE_LABEL),
         cli_style().label_value(label="Database", value=result.database),
+        *(
+            (
+                cli_style().label_value(
+                    label="Effective start time", value=result.effective_start_time
+                ),
+            )
+            if result.effective_start_time is not None
+            else ()
+        ),
         cli_style().label_value(
             label="Preserved sources", value=str(len(result.preserved_source_relation_names))
         ),

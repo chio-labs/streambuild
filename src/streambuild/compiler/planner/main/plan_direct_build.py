@@ -16,6 +16,7 @@ def plan_direct_build(
     snapshot: DirectWarehouseSnapshot,
     database: str,
     selected_model_keys: frozenset[LogicalResourceKey],
+    effective_start_time: str | None = None,
 ) -> DirectPlan:
     """Plan the complete selected downstream closure without change pruning."""
 
@@ -25,4 +26,5 @@ def plan_direct_build(
         snapshot=snapshot,
         database=database,
         selected_model_keys=selected_model_keys,
+        effective_start_time=effective_start_time,
     ).build()
