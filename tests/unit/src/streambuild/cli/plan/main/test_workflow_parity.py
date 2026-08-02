@@ -23,7 +23,7 @@ from tests.unit.src.streambuild.compiler.planner.helpers import write_direct_sco
         CliDirectWorkflowParityTestCase(
             description="direct plan and build publish identical disposable workflows",
             expected_removed_step_name="9999_stale.sql",
-        )
+        ),
     ],
     ids=lambda case: case.description,
 )

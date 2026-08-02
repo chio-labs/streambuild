@@ -69,6 +69,7 @@ from tests.integration.src.streambuild.adapters.clickhouse.helpers import (
 from tests.integration.src.streambuild.cli.helpers import (
     direct_build_order_ids,
     direct_owned_relation_names,
+    direct_owned_replay_coverage_ranges,
     publish_direct_workflow,
     publish_virtual_workflow,
     run_direct_build,
@@ -200,6 +201,160 @@ def test_given_retained_kafka_messages_when_executing_direct_artifacts_then_form
     assert ownership_names == tuple(
         ("mv__orders_enriched", "tbl__orders_enriched") for _database in databases
     )
+
+
+@pytest.mark.e2e
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DirectManagedManualWorkflowE2ETestCase(
+            description="bounded direct command numbered and combined workflows match",
+            messages=(
+                ("order-1", "{}"),
+                ("order-2", "{}"),
+                ("order-3", "{}"),
+                ("order-4", "{}"),
+            ),
+            expected_order_ids=("order-2", "order-3", "order-4"),
+            expected_exit_code=0,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_bounded_direct_workflow_when_executing_artifacts_then_forms_match(
+    test_case: DirectManagedManualWorkflowE2ETestCase,
+    e2e_clickhouse_connection_settings: E2EClickHouseConnectionSettings,
+    e2e_kafka_connection_settings: E2EKafkaConnectionSettings,
+    e2e_clickhouse_client: Client,
+    e2e_clickhouse_database: str,
+    tmp_path: Path,
+) -> None:
+    numbered_database: str = f"{e2e_clickhouse_database}_bounded_steps"
+    combined_database: str = f"{e2e_clickhouse_database}_bounded_combined"
+    databases: tuple[str, ...] = (
+        e2e_clickhouse_database,
+        numbered_database,
+        combined_database,
+    )
+    topic: str = f"source.direct_bounded_manual.{e2e_clickhouse_database}"
+    write_direct_build_project(
+        project_root=tmp_path,
+        topic=topic,
+        broker_list=e2e_kafka_connection_settings.internal_bootstrap_server,
+    )
+    connection: AdapterConnection = ClickHouseAdapter().connect(
+        AdapterConnectionConfig(
+            host=e2e_clickhouse_connection_settings.host,
+            port=e2e_clickhouse_connection_settings.port,
+            username=e2e_clickhouse_connection_settings.username,
+            password=e2e_clickhouse_connection_settings.password,
+            database=e2e_clickhouse_database,
+        )
+    )
+    producer: KafkaProducer = build_kafka_producer(
+        bootstrap_server=e2e_kafka_connection_settings.bootstrap_server
+    )
+    try:
+        e2e_clickhouse_client.command(f"CREATE DATABASE {numbered_database}")
+        e2e_clickhouse_client.command(f"CREATE DATABASE {combined_database}")
+        bootstrap_exit_codes: tuple[int, ...] = tuple(
+            run_direct_build(
+                project_root=tmp_path,
+                database=database,
+                connection=connection,
+            )
+            for database in databases
+        )
+        produce_kafka_messages(
+            producer=producer,
+            topic=topic,
+            messages=test_case.messages[:2],
+        )
+        database: str
+        for database in databases:
+            wait_for_row_count(
+                clickhouse_client=e2e_clickhouse_client,
+                clickhouse_database=database,
+                table_name="tbl__orders_enriched",
+                expected_count=2,
+            )
+        requested_start_time: str = connection.capture_warehouse_timestamp().replace(" ", "T") + "Z"
+        effective_start_time: str = requested_start_time.replace("T", " ").removesuffix("Z")
+        produce_kafka_messages(
+            producer=producer,
+            topic=topic,
+            messages=test_case.messages[2:],
+        )
+        for database in databases:
+            wait_for_row_count(
+                clickhouse_client=e2e_clickhouse_client,
+                clickhouse_database=database,
+                table_name="tbl__orders_enriched",
+                expected_count=4,
+            )
+        command_exit_code: int = run_direct_build(
+            project_root=tmp_path,
+            database=e2e_clickhouse_database,
+            connection=connection,
+            selectors=("orders_enriched",),
+            start_time=requested_start_time,
+        )
+        numbered: PublishedBuildWorkflow = publish_direct_workflow(
+            project_root=tmp_path,
+            database=numbered_database,
+            connection=connection,
+            selectors=("orders_enriched",),
+            effective_start_time=effective_start_time,
+        )
+        numbered_results: tuple[tuple[int, str], ...] = tuple(
+            execute_e2e_clickhouse_client_sql(
+                settings=e2e_clickhouse_connection_settings,
+                sql=path.read_text(encoding="utf-8"),
+            )
+            for path in sorted((numbered.artifact_root / "steps").iterdir())
+        )
+        combined: PublishedBuildWorkflow = publish_direct_workflow(
+            project_root=tmp_path,
+            database=combined_database,
+            connection=connection,
+            selectors=("orders_enriched",),
+            effective_start_time=effective_start_time,
+        )
+        combined_result: tuple[int, str] = execute_e2e_clickhouse_client_sql(
+            settings=e2e_clickhouse_connection_settings,
+            sql=(combined.artifact_root / "workflow.sql").read_text(encoding="utf-8"),
+        )
+        for database in databases:
+            wait_for_row_count(
+                clickhouse_client=e2e_clickhouse_client,
+                clickhouse_database=database,
+                table_name="tbl__orders_enriched",
+                expected_count=len(test_case.expected_order_ids),
+            )
+        order_ids: tuple[tuple[str, ...], ...] = tuple(
+            direct_build_order_ids(clickhouse_client=e2e_clickhouse_client, database=database)
+            for database in databases
+        )
+        coverage_ranges: tuple[tuple[tuple[str, str, str], ...], ...] = tuple(
+            direct_owned_replay_coverage_ranges(connection=connection, database=database)
+            for database in databases
+        )
+        workflow_sql: str = (combined.artifact_root / "workflow.sql").read_text(encoding="utf-8")
+    finally:
+        producer.close()
+        e2e_clickhouse_client.command(f"DROP DATABASE IF EXISTS {numbered_database} SYNC")
+        e2e_clickhouse_client.command(f"DROP DATABASE IF EXISTS {combined_database} SYNC")
+        connection.close()
+
+    assert bootstrap_exit_codes == tuple(test_case.expected_exit_code for _database in databases)
+    assert command_exit_code == test_case.expected_exit_code
+    assert tuple(result[0] for result in numbered_results) == tuple(
+        test_case.expected_exit_code for _result in numbered_results
+    )
+    assert combined_result[0] == test_case.expected_exit_code
+    assert order_ids == tuple(test_case.expected_order_ids for _database in databases)
+    assert coverage_ranges == tuple((("_replay_partition=0", "1", "3"),) for _database in databases)
+    assert effective_start_time in workflow_sql
 
 
 @pytest.mark.e2e

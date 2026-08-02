@@ -53,6 +53,7 @@ class DirectBuildPreviewContext:
     database: str
     metadata_database: str
     adapter_name: str
+    effective_start_time: str | None = None
 
 
 @dataclass(frozen=True)

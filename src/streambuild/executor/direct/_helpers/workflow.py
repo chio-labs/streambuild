@@ -11,6 +11,7 @@ from streambuild.adapter.models import (
     AdapterOwnershipRecord,
     AdapterOwnershipReplayRequest,
     AdapterReplayCoverageRange,
+    AdapterReplayCoverageRequest,
     AdapterReplayRequest,
     CatalogRelation,
 )
@@ -83,20 +84,6 @@ def assemble_direct_build_workflow(
         catalog=snapshot.catalog,
         database=request.database,
     )
-    replay_coverage: tuple[DirectReplayCoverage, ...] = resolve_required_replay_coverage(
-        client=client,
-        plan=request.plan,
-        database=request.database,
-        existing_relation_names=snapshot.catalog.relation_names(),
-        existing_ownership=snapshot.ownership_records,
-        target_relation_name_by_model_name=target_relation_name_by_model_name(plan=request.plan),
-    )
-    ownership_records: tuple[AdapterOwnershipRecord, ...] = build_direct_ownership_records(
-        plan=request.plan,
-        database=request.database,
-        tool_version=request.tool_version,
-        replay_coverage=replay_coverage,
-    )
     population_plan: PopulationPlan = expand_population_plan(
         plan=build_direct_population_plan(
             plan=request.plan,
@@ -104,12 +91,46 @@ def assemble_direct_build_workflow(
         ),
         desired_state=request.realized_project.desired_state,
     )
-    replay_templates: tuple[tuple[ObjectKey, AdapterReplayRequest], ...] = (
+    replay_template_pairs: tuple[tuple[ObjectKey, AdapterReplayRequest], ...] = (
         build_population_replay_templates(
             plan=population_plan,
             desired_state=request.realized_project.desired_state,
             default_database=request.database,
         )
+    )
+    replay_templates: tuple[AdapterReplayRequest, ...] = tuple(
+        template for _key, template in replay_template_pairs
+    )
+    replay_by_model_name: dict[str, AdapterReplayRequest] = {
+        _model_name_for_target(request=request, target=replay.relations.target): replay
+        for replay in replay_templates
+    }
+    _assert_bounded_replay_inputs(
+        request=request,
+        snapshot=snapshot,
+        replay_by_model_name=replay_by_model_name,
+    )
+    boundary_type_by_model_name: dict[str, str | None] = {
+        model_name: _boundary_column_type(request=request, replay=replay, snapshot=snapshot)
+        for model_name, replay in replay_by_model_name.items()
+    }
+    required_replay_coverage: tuple[DirectReplayCoverage, ...]
+    claimed_replay_coverage: tuple[DirectReplayCoverage, ...]
+    required_replay_coverage, claimed_replay_coverage = resolve_required_replay_coverage(
+        client=client,
+        plan=request.plan,
+        database=request.database,
+        existing_relation_names=snapshot.catalog.relation_names(),
+        existing_ownership=snapshot.ownership_records,
+        target_relation_name_by_model_name=target_relation_name_by_model_name(plan=request.plan),
+        replay_by_model_name=replay_by_model_name,
+        boundary_type_by_model_name=boundary_type_by_model_name,
+    )
+    ownership_records: tuple[AdapterOwnershipRecord, ...] = build_direct_ownership_records(
+        plan=request.plan,
+        database=request.database,
+        tool_version=request.tool_version,
+        replay_coverage=claimed_replay_coverage,
     )
     statements: tuple[WarehouseStatement, ...] = _assemble_statements(
         request=request,
@@ -118,9 +139,9 @@ def assemble_direct_build_workflow(
         source_preparation=source_preparation,
         source_realizations=source_realizations,
         ownership_records=ownership_records,
-        replay_coverage=replay_coverage,
+        replay_coverage=required_replay_coverage,
         population_plan=population_plan,
-        replay_templates=tuple(template for _key, template in replay_templates),
+        replay_templates=replay_templates,
     )
     return BuildWorkflow(mode=WorkflowMode.DIRECT, plan_json=plan_json, statements=statements)
 
@@ -139,9 +160,11 @@ def _assemble_statements(
 ) -> tuple[WarehouseStatement, ...]:
     preflight: tuple[WarehouseStatement, ...] = _preflight_statements(
         request=request,
+        client=client,
         snapshot=snapshot,
         source_preparation=source_preparation,
         replay_coverage=replay_coverage,
+        replay_templates=replay_templates,
     )
     preparation: tuple[WarehouseStatement, ...] = _preparation_statements(
         request=request,
@@ -183,6 +206,8 @@ def _assemble_statements(
     )
     boundary: tuple[WarehouseStatement, ...] = _boundary_statements(
         request=request,
+        client=client,
+        snapshot=snapshot,
         replay_templates=replay_templates,
         start_sequence=prior_count + 1,
     )
@@ -219,9 +244,11 @@ def _assemble_statements(
 def _preflight_statements(
     *,
     request: DirectBuildRequest,
+    client: AdapterConnection,
     snapshot: DirectWarehouseSnapshot,
     source_preparation: PopulationSourcePreparation,
     replay_coverage: tuple[DirectReplayCoverage, ...],
+    replay_templates: tuple[AdapterReplayRequest, ...],
 ) -> tuple[WarehouseStatement, ...]:
     sql_statements: list[tuple[str, str]] = []
     entry: DirectPlanEntry
@@ -260,6 +287,27 @@ def _preflight_statements(
                     f"assert_retention_{_step_segment(coverage.model_name)}_"
                     f"{len(sql_statements) + 1}",
                     _retention_assertion_sql(database=request.database, replay_range=replay_range),
+                )
+            )
+    if request.effective_start_time is not None:
+        replay: AdapterReplayRequest
+        for replay in replay_templates:
+            model_name: str = _model_name_for_target(
+                request=request, target=replay.relations.target
+            )
+            coverage_request: AdapterReplayCoverageRequest = _coverage_request(
+                request=request,
+                replay=replay,
+                snapshot=snapshot,
+            )
+            sql_statements.append(
+                (
+                    f"assert_bounded_input_{_step_segment(model_name)}",
+                    _bounded_input_assertion_sql(
+                        client=client,
+                        request=coverage_request,
+                        model_name=model_name,
+                    ),
                 )
             )
     return tuple(
@@ -434,6 +482,8 @@ def _stabilization_statements(
 def _boundary_statements(
     *,
     request: DirectBuildRequest,
+    client: AdapterConnection,
+    snapshot: DirectWarehouseSnapshot,
     replay_templates: tuple[AdapterReplayRequest, ...],
     start_sequence: int,
 ) -> tuple[WarehouseStatement, ...]:
@@ -448,7 +498,13 @@ def _boundary_statements(
                 step_id=f"capture_boundary_{_step_segment(model_name)}",
                 phase=WorkflowPhase.BOUNDARY,
                 intent=StatementIntent.MUTATION,
-                sql=_capture_coverage_sql(request=request, replay=replay, model_name=model_name),
+                sql=_capture_coverage_sql(
+                    request=request,
+                    client=client,
+                    snapshot=snapshot,
+                    replay=replay,
+                    model_name=model_name,
+                ),
             )
         )
         statements.append(
@@ -486,7 +542,13 @@ def _replay_statements(
                 step_id=f"refresh_boundary_{_step_segment(model_name)}",
                 phase=WorkflowPhase.REPLAY,
                 intent=StatementIntent.MUTATION,
-                sql=_capture_coverage_sql(request=request, replay=replay, model_name=model_name),
+                sql=_capture_coverage_sql(
+                    request=request,
+                    client=client,
+                    snapshot=snapshot,
+                    replay=replay,
+                    model_name=model_name,
+                ),
             )
         )
         statements.append(
@@ -513,7 +575,13 @@ def _replay_statements(
                 step_id=f"refresh_coverage_{_step_segment(model_name)}",
                 phase=WorkflowPhase.REPLAY,
                 intent=StatementIntent.MUTATION,
-                sql=_capture_coverage_sql(request=request, replay=replay, model_name=model_name),
+                sql=_capture_coverage_sql(
+                    request=request,
+                    client=client,
+                    snapshot=snapshot,
+                    replay=replay,
+                    model_name=model_name,
+                ),
             )
         )
     return tuple(statements)
@@ -623,6 +691,43 @@ def _assert_confirmed_ownership(*, plan: DirectPlan, snapshot: DirectWarehouseSn
         )
 
 
+def _assert_bounded_replay_inputs(
+    *,
+    request: DirectBuildRequest,
+    snapshot: DirectWarehouseSnapshot,
+    replay_by_model_name: dict[str, AdapterReplayRequest],
+) -> None:
+    if request.effective_start_time is None:
+        return
+    model_name: str
+    replay: AdapterReplayRequest
+    for model_name, replay in replay_by_model_name.items():
+        relation: CatalogRelation | None = snapshot.catalog.relation(replay.relations.anchor)
+        if relation is None:
+            raise DirectBuildError(
+                f"Direct --start-time requires existing replay input "
+                f"'{replay.relations.anchor}' for model '{model_name}'; run an ordinary direct "
+                "build first to create managed sources and retained lineage."
+            )
+        time_column: str = _forced_time_column(replay=replay)
+        if time_column not in {column.name for column in relation.columns}:
+            raise DirectBuildError(
+                f"Direct --start-time cannot bound model '{model_name}' because replay input "
+                f"'{replay.relations.anchor}' does not expose time-lineage column "
+                f"'{time_column}'. Project replay timestamp or landed-at lineage through the "
+                "intermediate model before selecting this closure."
+            )
+
+
+def _forced_time_column(*, replay: AdapterReplayRequest) -> str:
+    return {
+        AdapterReplayBoundaryMode.OFFSETS: replay.columns.landed_at or replay.columns.timestamp,
+        AdapterReplayBoundaryMode.CURSOR: replay.columns.timestamp,
+        AdapterReplayBoundaryMode.TIMESTAMP: replay.columns.timestamp,
+        AdapterReplayBoundaryMode.LANDED_AT: replay.columns.landed_at,
+    }[replay.mode]
+
+
 def _ownership_assertion_sql(
     *,
     classification: TargetOwnershipClassification,
@@ -688,15 +793,18 @@ def _retention_assertion_sql(*, database: str, replay_range: AdapterReplayCovera
 
 
 def _capture_coverage_sql(
-    *, request: DirectBuildRequest, replay: AdapterReplayRequest, model_name: str
+    *,
+    request: DirectBuildRequest,
+    client: AdapterConnection,
+    snapshot: DirectWarehouseSnapshot,
+    replay: AdapterReplayRequest,
+    model_name: str,
 ) -> str:
     entry: DirectPlanEntry = next(
         entry for entry in request.plan.entries if entry.model_key.name == model_name
     )
-    coverage_query: str = (
-        _offset_coverage_query(replay=replay)
-        if replay.mode == AdapterReplayBoundaryMode.OFFSETS
-        else _scalar_coverage_query(replay=replay)
+    coverage_query: str = client.render_replay_coverage_query(
+        _coverage_request(request=request, replay=replay, snapshot=snapshot)
     )
     relations: str = ", ".join(
         f"('{_escape_literal(name)}', '{_escape_literal(str(kind))}')"
@@ -723,58 +831,38 @@ def _capture_coverage_sql(
     )
 
 
-def _offset_coverage_query(*, replay: AdapterReplayRequest) -> str:
-    timestamp_column: str = replay.columns.timestamp or ""
-    return (
-        "SELECT toJSONString(groupArray(map("
-        f"'driving_input_relation_name', '{_escape_literal(replay.relations.anchor)}', "
-        "'replay_boundary_mode', 'offsets', "
-        f"'boundary_key', concat('_replay_partition=', toString(partition_value)), "
-        f"'source_partition_column_name', '{_escape_literal(replay.columns.partition)}', "
-        f"'source_position_column_name', '{_escape_literal(replay.columns.offset)}', "
-        f"'source_timestamp_column_name', '{_escape_literal(timestamp_column)}', "
-        "'lower_value', toString(lower_value), 'upper_value', toString(upper_value)))) AS value\n"
-        "FROM (\n"
-        f"SELECT partition_value, min(offset_value) AS lower_value, "
-        "max(offset_value) AS upper_value\nFROM (\n"
-        f"SELECT {replay.columns.partition} AS partition_value, "
-        f"{replay.columns.offset} AS offset_value, {replay.columns.offset} - "
-        f"toInt64(row_number() OVER (PARTITION BY {replay.columns.partition} "
-        f"ORDER BY {replay.columns.offset})) AS sequence_group\n"
-        f"FROM (SELECT DISTINCT {replay.columns.partition}, {replay.columns.offset} "
-        f"FROM {replay.database}.{replay.relations.anchor})\n)\n"
-        "GROUP BY partition_value, sequence_group\nORDER BY partition_value, lower_value\n)"
+def _coverage_request(
+    *,
+    request: DirectBuildRequest,
+    replay: AdapterReplayRequest,
+    snapshot: DirectWarehouseSnapshot,
+) -> AdapterReplayCoverageRequest:
+    return AdapterReplayCoverageRequest(
+        replay=replay,
+        boundary_column_type=_boundary_column_type(
+            request=request,
+            replay=replay,
+            snapshot=snapshot,
+        ),
     )
 
 
-def _scalar_coverage_query(*, replay: AdapterReplayRequest) -> str:
-    position_column: str = {
-        AdapterReplayBoundaryMode.CURSOR: replay.columns.cursor,
-        AdapterReplayBoundaryMode.TIMESTAMP: replay.columns.timestamp,
-        AdapterReplayBoundaryMode.LANDED_AT: replay.columns.landed_at,
-    }[replay.mode]
-    canonical_key: str = {
-        AdapterReplayBoundaryMode.CURSOR: "_replay_cursor",
-        AdapterReplayBoundaryMode.TIMESTAMP: "_replay_timestamp",
-        AdapterReplayBoundaryMode.LANDED_AT: "_replay_landed_at",
-    }[replay.mode]
-    cutoff_expression: str = (
-        f"max({position_column})"
-        if replay.mode == AdapterReplayBoundaryMode.CURSOR
-        else "now64(3, 'UTC')"
+def _bounded_input_assertion_sql(
+    *,
+    client: AdapterConnection,
+    request: AdapterReplayCoverageRequest,
+    model_name: str,
+) -> str:
+    replay: AdapterReplayRequest = request.replay
+    message: str = _escape_literal(
+        f"Direct bounded replay for {model_name} has no qualifying input at or after the "
+        "requested start time"
     )
+    coverage_query: str = client.render_replay_coverage_query(request)
     return (
-        "SELECT toJSONString(groupArray(map("
-        f"'driving_input_relation_name', '{_escape_literal(replay.relations.anchor)}', "
-        f"'replay_boundary_mode', '{replay.mode}', 'boundary_key', '{canonical_key}', "
-        "'source_partition_column_name', '', "
-        f"'source_position_column_name', '{_escape_literal(position_column)}', "
-        f"'source_timestamp_column_name', '{_escape_literal(replay.columns.timestamp)}', "
-        "'lower_value', toString(lower_value), 'upper_value', toString(upper_value), "
-        "'replay_cutoff_value', toString(cutoff_value)))) AS value\n"
-        f"FROM (SELECT min({position_column}) AS lower_value, "
-        f"max({position_column}) AS upper_value, {cutoff_expression} AS cutoff_value "
-        f"FROM {replay.database}.{replay.relations.anchor} HAVING count() > 0)"
+        "SELECT throwIf("
+        f"(SELECT count() FROM {replay.database}.{replay.relations.anchor}) > 0 AND "
+        f"(SELECT value FROM (\n{coverage_query}\n)) = '[]', '{message}');"
     )
 
 

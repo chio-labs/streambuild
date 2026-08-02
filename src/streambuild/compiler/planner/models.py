@@ -511,3 +511,4 @@ class DirectPlan:
     teardown_operations: tuple[DirectRelationOperation, ...]
     creation_operations: tuple[DirectRelationOperation, ...]
     warnings: tuple[PlannerWarning, ...] = ()
+    effective_start_time: str | None = None

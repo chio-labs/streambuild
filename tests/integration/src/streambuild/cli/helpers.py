@@ -29,6 +29,7 @@ from streambuild.adapter.models import (
     AdapterReadinessRequest,
     AdapterReadinessRootObservation,
     AdapterRelationCleanupRequest,
+    AdapterReplayCoverageRequest,
     AdapterReplayRequest,
     AdapterStableView,
     AdapterTable,
@@ -217,6 +218,9 @@ class RecordingDelegatingConnection(AdapterConnection):
 
     def render_replay_from_ownership(self, request: AdapterOwnershipReplayRequest) -> str:
         return self._delegate.render_replay_from_ownership(request)
+
+    def render_replay_coverage_query(self, request: AdapterReplayCoverageRequest) -> str:
+        return self._delegate.render_replay_coverage_query(request)
 
     def compare_readiness(
         self, request: AdapterReadinessRequest
@@ -1022,16 +1026,23 @@ def settle_direct_scope_warehouse(
     _ = insert_ownership()
 
 
-def run_direct_plan(*, project_root: Path, database: str, connection: AdapterConnection) -> int:
+def run_direct_plan(
+    *,
+    project_root: Path,
+    database: str,
+    connection: AdapterConnection,
+    selectors: tuple[str, ...] = (),
+    start_time: str | None = None,
+) -> int:
     """Run `stb plan` in direct mode against a live warehouse connection."""
 
     return run_plan(
         options=PlanCommandOptions(
             pipelines_root=project_root / "pipelines",
             database=database,
-            selectors=(),
+            selectors=selectors,
             full_refresh=False,
-            start_time=None,
+            start_time=start_time,
             deployment_id=None,
             json_output=True,
             verbose=False,
@@ -1039,6 +1050,20 @@ def run_direct_plan(*, project_root: Path, database: str, connection: AdapterCon
         client=connection,
         loaded_project=load_project_input_for_path(path=project_root),
         adapter_profile=build_compiler_adapter_profile(ClickHouseAdapter()),
+    )
+
+
+def read_workflow_artifact(
+    *, artifact_root: Path
+) -> tuple[bytes, bytes, tuple[str, ...], tuple[bytes, ...]]:
+    """Read one complete exact workflow artifact without interpreting its contents."""
+
+    step_paths: tuple[Path, ...] = tuple(sorted((artifact_root / "steps").glob("*.sql")))
+    return (
+        (artifact_root / "plan.json").read_bytes(),
+        (artifact_root / "workflow.sql").read_bytes(),
+        tuple(path.name for path in step_paths),
+        tuple(path.read_bytes() for path in step_paths),
     )
 
 
@@ -1431,6 +1456,7 @@ def run_direct_build(
     selectors: tuple[str, ...] = (),
     json_output: bool = True,
     auto_approve: bool = True,
+    start_time: str | None = None,
 ) -> int:
     """Run `stb build` in direct mode against a live warehouse connection."""
 
@@ -1443,6 +1469,7 @@ def run_direct_build(
             json_output=json_output,
             verbose=False,
             auto_approve=auto_approve,
+            start_time=start_time,
         ),
         client=connection,
         loaded_project=load_project_input_for_path(path=project_root),
@@ -1546,7 +1573,12 @@ def execute_direct_build_directly(
 
 
 def publish_direct_workflow(
-    *, project_root: Path, database: str, connection: AdapterConnection
+    *,
+    project_root: Path,
+    database: str,
+    connection: AdapterConnection,
+    selectors: tuple[str, ...] = (),
+    effective_start_time: str | None = None,
 ) -> PublishedBuildWorkflow:
     """Assemble and publish one direct workflow without executing it."""
 
@@ -1559,14 +1591,15 @@ def publish_direct_workflow(
         options=WorkflowPreparationOptions(
             database=database,
             metadata_database=database,
-            selectors=(),
+            selectors=selectors,
             deployment_id=None,
             full_refresh=False,
-            start_time=None,
+            start_time=effective_start_time,
             verbose=False,
         ),
         client=connection,
         analysis=analysis,
+        effective_start_time=effective_start_time,
     )
     request: DirectBuildRequest = DirectBuildRequest(
         plan=preview.plan,

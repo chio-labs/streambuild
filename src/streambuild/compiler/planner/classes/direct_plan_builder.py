@@ -72,12 +72,14 @@ class DirectPlanBuilder:
         snapshot: DirectWarehouseSnapshot,
         database: str,
         selected_model_keys: frozenset[LogicalResourceKey],
+        effective_start_time: str | None = None,
     ) -> None:
         self._graph: ProjectGraph = graph
         self._realized_project: RealizedProject = realized_project
         self._snapshot: DirectWarehouseSnapshot = snapshot
         self._database: str = database
         self._selected_model_keys: frozenset[LogicalResourceKey] = selected_model_keys
+        self._effective_start_time: str | None = effective_start_time
         self._model_by_key: dict[LogicalResourceKey, CompiledModel] = {
             model.key: model for model in realized_project.project.models
         }
@@ -112,6 +114,7 @@ class DirectPlanBuilder:
         )
         return DirectPlan(
             database=self._database,
+            effective_start_time=self._effective_start_time,
             user_scope=tuple(
                 key for key in self._execution_scope if key in self._selected_model_keys
             ),

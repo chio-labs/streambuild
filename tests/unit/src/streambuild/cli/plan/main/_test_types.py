@@ -76,6 +76,7 @@ class CliPlanModeRoutingTestCase:
 @dataclass(frozen=True)
 class CliDirectPlanFlagRejectionTestCase:
     description: str
+    selectors: tuple[str, ...]
     full_refresh: bool
     start_time: str | None
     expected_error_fragment: str
