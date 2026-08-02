@@ -138,3 +138,18 @@ FUNCTION_DEFINITION_SYNTAX_KINDS: tuple[str, ...] = (
     "AsyncFunctionDef",
 )
 ADAPTER_CLASS_RECEIVER_NAMES: tuple[str, ...] = ("self", "cls")
+OBSERVABILITY_AUTHORITY_ALLOWED_PATH_PREFIXES: tuple[tuple[str, ...], ...] = (
+    ("src", "streambuild", "adapter"),
+    ("src", "streambuild", "adapters"),
+    ("src", "streambuild", "executor", "observability"),
+    ("src", "streambuild", "executor", "workflow", "main", "_execute_observation_workflow.py"),
+    ("src", "streambuild", "quality"),
+)
+QUALITY_MODULE_PREFIX: tuple[str, ...] = ("streambuild", "quality")
+OBSERVABILITY_QUERY_CALL_NAMES: frozenset[str] = frozenset({"render_latest_node_status_query"})
+OBSERVABILITY_TABLE_CONSTANT_NAMES: frozenset[str] = frozenset(
+    {"METADATA_INVOCATIONS_TABLE_NAME", "METADATA_NODE_RESULTS_TABLE_NAME"}
+)
+OBSERVABILITY_TABLE_NAMES: frozenset[str] = frozenset(
+    {"_streambuild_invocations", "_streambuild_node_results"}
+)
