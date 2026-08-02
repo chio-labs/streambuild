@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import cast
-
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.cli.build._helpers.confirmation import confirm_build
 from streambuild.cli.build.models import BuildCommandOptions, DirectWorkflowPreparation
@@ -43,11 +41,5 @@ def execute_confirmed_direct_build(
             connection=client,
         )
     except WorkflowExecutionError as error:
-        if not error.failed_step_id.startswith("audit_"):
-            raise error.cause from error
-        return build_direct_execution_result(
-            request=preparation.request,
-            execution=cast(WorkflowExecutionResult, error.partial_result),
-            failed_audit_step_id=error.failed_step_id,
-        )
+        raise error.cause from error
     return build_direct_execution_result(request=preparation.request, execution=execution)

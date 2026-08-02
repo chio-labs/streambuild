@@ -16,6 +16,7 @@ class WarehouseStatement:
     phase: WorkflowPhase
     intent: StatementIntent
     sql: str
+    continue_on_error: bool = False
 
     def __post_init__(self) -> None:
         if not self.step_id or not self.step_id.replace("_", "").isalnum():
@@ -62,6 +63,7 @@ class WorkflowStatementResult:
     step_id: str
     query_result: AdapterQueryResult | None
     mutation_result: AdapterMutationResult | None
+    error_message: str | None = None
 
 
 @dataclass(frozen=True)

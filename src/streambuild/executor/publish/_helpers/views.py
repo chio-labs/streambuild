@@ -1,6 +1,7 @@
 """Stable logical view creation helpers for publish."""
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.constants import VIRTUAL_DEPLOYMENT_STATUS_INCOMPLETE
 from streambuild.adapter.models import (
     AdapterBindingReplacementRequest,
     AdapterDeploymentInventory,
@@ -41,6 +42,10 @@ def build_publish_binding_request(
             client=client,
             default_database=default_database,
             deployment_id=deployment_id,
+        )
+    if deployment.status == VIRTUAL_DEPLOYMENT_STATUS_INCOMPLETE:
+        raise PublishExecutionError(
+            f"Deployment '{deployment_id}' is incomplete and cannot be published"
         )
     publish_mappings: tuple[AdapterPreparedObjectMapping, ...] = tuple(
         mapping

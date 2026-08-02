@@ -1,21 +1,9 @@
 """Load the deployment record audited by a backfill readiness check."""
 
-from __future__ import annotations
-
-import json
-
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.adapter.constants import (
-    METADATA_DEPLOYMENTS_TABLE_NAME,
-    METADATA_REPLAY_LINEAGE_MODE_COLUMN_NAME,
-)
-from streambuild.adapter.exceptions import AdapterRelationNotFoundError
-from streambuild.compiler.discovery.types import ReplayLineageMode
-from streambuild.executor.audit_backfill._helpers.metadata import (
-    _decode_deployment_metadata_row,
-    _object_key_from_payload,
-)
-from streambuild.executor.audit_backfill.models import DeploymentMetadataRow, LoadedAuditDeployment
+from streambuild.adapter.models import AdapterDeploymentRecord
+from streambuild.compiler.compile.models import ObjectKey
+from streambuild.executor.audit_backfill.models import LoadedAuditDeployment
 
 
 def load_audit_deployment(
@@ -26,25 +14,12 @@ def load_audit_deployment(
 ) -> LoadedAuditDeployment:
     """Load the persisted deployment metadata needed for audit."""
 
-    metadata_columns: frozenset[str] = client.metadata_columns(
-        database=metadata_database,
-        table=METADATA_DEPLOYMENTS_TABLE_NAME,
+    matching: tuple[AdapterDeploymentRecord, ...] = tuple(
+        deployment
+        for deployment in client.load_deployment_inventory(metadata_database).deployments
+        if deployment.deployment_id == deployment_id
     )
-    replay_lineage_projection: str = (
-        METADATA_REPLAY_LINEAGE_MODE_COLUMN_NAME
-        if METADATA_REPLAY_LINEAGE_MODE_COLUMN_NAME in metadata_columns
-        else (f"'{ReplayLineageMode.OFFSETS}' AS {METADATA_REPLAY_LINEAGE_MODE_COLUMN_NAME}")
-    )
-    try:
-        row: DeploymentMetadataRow | None = client.query_one(
-            statement=f"SELECT created_at, status, {replay_lineage_projection}, "
-            "selected_root_keys_json, "
-            "warning_codes_json, prepared_object_mappings_json "
-            f"FROM {metadata_database}.{METADATA_DEPLOYMENTS_TABLE_NAME} "
-            f"WHERE deployment_id = '{deployment_id}'",
-            decode=_decode_deployment_metadata_row,
-        )
-    except AdapterRelationNotFoundError:
+    if not matching:
         return LoadedAuditDeployment(
             deployment_id=deployment_id,
             created_at="",
@@ -54,34 +29,26 @@ def load_audit_deployment(
             root_keys=(),
             prepared_object_mappings=(),
         )
-    if row is None:
-        return LoadedAuditDeployment(
-            deployment_id=deployment_id,
-            created_at="",
-            status="metadata_missing",
-            replay_lineage_mode=None,
-            warning_codes=(),
-            root_keys=(),
-            prepared_object_mappings=(),
-        )
-
-    root_keys_payload: list[dict[str, object]] = json.loads(row.selected_root_keys_json)
-    warning_codes_payload: list[str] = json.loads(row.warning_codes_json)
-    prepared_mappings_payload: list[dict[str, object]] = json.loads(
-        row.prepared_object_mappings_json
-    )
+    deployment: AdapterDeploymentRecord = matching[0]
     return LoadedAuditDeployment(
         deployment_id=deployment_id,
-        created_at=row.created_at,
-        status=row.status,
-        replay_lineage_mode=row.replay_lineage_mode,
-        warning_codes=tuple(warning_codes_payload),
-        root_keys=tuple(_object_key_from_payload(payload) for payload in root_keys_payload),
+        created_at=deployment.created_at,
+        status=deployment.status,
+        replay_lineage_mode=deployment.replay_lineage_mode,
+        warning_codes=deployment.warning_codes,
+        root_keys=tuple(
+            ObjectKey(database=key.database, object_type=key.object_type, name=key.name)
+            for key in deployment.selected_root_keys
+        ),
         prepared_object_mappings=tuple(
             (
-                _object_key_from_payload(mapping_payload["logical_key"]),
-                str(mapping_payload["physical_name"]),
+                ObjectKey(
+                    database=mapping.logical_key.database,
+                    object_type=mapping.logical_key.object_type,
+                    name=mapping.logical_key.name,
+                ),
+                mapping.physical_name,
             )
-            for mapping_payload in prepared_mappings_payload
+            for mapping in deployment.prepared_object_mappings
         ),
     )

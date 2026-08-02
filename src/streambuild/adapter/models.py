@@ -445,6 +445,13 @@ class AdapterObjectStateRecord:
     normalized_fingerprint: str
     normalized_query: str | None
     recorded_at: str
+    observation_id: str = ""
+    state_kind: str = "deployment"
+    physical_database_name: str | None = None
+    physical_relation_name: str | None = None
+    logical_model_database: str | None = None
+    logical_model_name: str | None = None
+    is_selected_root: bool = False
 
 
 @dataclass(frozen=True)
@@ -458,6 +465,9 @@ class AdapterDeploymentRecord:
     selected_root_keys: tuple[AdapterMetadataObjectKey, ...]
     warning_codes: tuple[str, ...]
     prepared_object_mappings: tuple[AdapterPreparedObjectMapping, ...]
+    workflow_fingerprint: str = ""
+    boundary_time: str | None = None
+    tool_version: str = ""
 
 
 @dataclass(frozen=True)
@@ -469,23 +479,9 @@ class AdapterDeploymentWatermarkRecord:
     anchor_key: AdapterMetadataObjectKey
     boundary_key: str
     cutoff_value: str
-
-
-@dataclass(frozen=True)
-class AdapterDeploymentRuntimeDetailRecord:
-    """One adapter-neutral deployment runtime-detail record."""
-
-    deployment_id: str
-    root_key: AdapterMetadataObjectKey
-    state_kind: str
-    replay_strategy: str
-    active_deployment_id: str | None
-    anchor_key: AdapterMetadataObjectKey
-    anchor_physical_name: str | None
-    execution_mode: str | None
-    configured_backfill_mode: str | None
-    execution_lookback_seconds: int | None
-    live_target_names: tuple[str, ...]
+    lower_value: str | None = None
+    cutoff_inclusive: bool = True
+    captured_at: str = "1970-01-01 00:00:00.000"
 
 
 @dataclass(frozen=True)
@@ -495,6 +491,57 @@ class AdapterPublishEventRecord:
     deployment_id: str
     published_at: str
     logical_view_names: tuple[str, ...]
+    bindings: tuple[AdapterStableBinding, ...] = ()
+
+
+@dataclass(frozen=True)
+class AdapterInvocationRecord:
+    """One immutable terminal CLI invocation observation."""
+
+    invocation_id: str
+    project_identity: str
+    target_identity: str
+    command: str
+    mode: str | None
+    outcome: str
+    exit_code: int
+    materialized_outcome: str | None
+    deployment_id: str | None
+    workflow_id: str | None
+    selected_node_count: int
+    started_at: str
+    completed_at: str
+    duration_ms: int
+    error_message: str | None
+    summary_json: str
+    tool_version: str
+
+
+@dataclass(frozen=True)
+class AdapterNodeResultRecord:
+    """One immutable terminal audit or test result observation."""
+
+    result_id: str
+    invocation_id: str
+    node_kind: str
+    node_identity: str
+    definition_fingerprint: str
+    target_identity: str
+    status: str
+    severity: str | None
+    failure_count: int
+    completed_at: str
+    payload_json: str
+    error_message: str | None
+
+
+@dataclass(frozen=True)
+class AdapterCurrentQualityNode:
+    """One current manifest node joined to persisted terminal history."""
+
+    node_kind: str
+    node_identity: str
+    definition_fingerprint: str
 
 
 @dataclass(frozen=True)
@@ -512,8 +559,9 @@ class AdapterMetadataState:
     object_states: tuple[AdapterObjectStateRecord, ...]
     deployments: tuple[AdapterDeploymentRecord, ...]
     deployment_watermarks: tuple[AdapterDeploymentWatermarkRecord, ...]
-    deployment_runtime_details: tuple[AdapterDeploymentRuntimeDetailRecord, ...]
     publish_events: tuple[AdapterPublishEventRecord, ...]
+    invocations: tuple[AdapterInvocationRecord, ...] = ()
+    node_results: tuple[AdapterNodeResultRecord, ...] = ()
 
 
 @dataclass(frozen=True)

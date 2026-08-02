@@ -170,9 +170,9 @@ def test_given_terminal_view_when_running_vde_lifecycle_then_publish_and_cleanup
         )
         == test_case.expected_initial_mapping_types
     )
-    assert initial_watermark_count == 2
+    assert initial_watermark_count == 1
     assert settled_deployment.prepared_object_mappings == ()
-    assert settled_watermark_count == 1
+    assert settled_watermark_count == 0
     assert revised_deployment.selected_root_keys[0].object_type == "view"
     assert revised_deployment.deployment_id in janitor_result.deleted_deployment_ids
     assert revised_physical_name in janitor_result.deleted_object_names

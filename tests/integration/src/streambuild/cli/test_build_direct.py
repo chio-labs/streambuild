@@ -1,5 +1,6 @@
 import json
 import time
+from collections.abc import Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from typing import cast
@@ -293,7 +294,7 @@ def test_given_retained_landing_rows_when_building_then_history_replays_and_live
         warehouse_row_count(
             clickhouse_client=clickhouse_client,
             database=clickhouse_database,
-            statement="SELECT count() FROM {database}.streambuild_deployments",
+            statement="SELECT count() FROM {database}._streambuild_virtual_deployments",
         )
         == test_case.expected_deployment_row_count
     )
@@ -733,11 +734,10 @@ def test_given_multi_upstream_view_when_building_direct_then_it_is_queryable_and
                 "ORDER BY order_id"
             ).result_rows
         )
-        ownership_rows: tuple[tuple[object, ...], ...] = connection.query(
-            f"SELECT DISTINCT relation_name, resource_kind FROM "
-            f"{clickhouse_database}.streambuild_target_ownership "
-            "WHERE relation_name = 'customer_orders'"
-        ).rows
+        ownership_rows: tuple[tuple[object, ...], ...] = tuple(
+            (record.relation_name, record.resource_kind)
+            for record in connection.load_target_ownership(clickhouse_database)
+        )
     finally:
         connection.close()
 
@@ -867,7 +867,7 @@ def test_given_different_target_states_when_rebuilding_then_inclusive_source_con
             description="a target without its ownership record blocks the build as unmanaged",
             landing_rows=(("order-1", 0, 1), ("order-2", 0, 2)),
             rebuilt_topic="source.orders",
-            pre_rebuild_statements=("TRUNCATE TABLE {database}.streambuild_target_ownership",),
+            pre_rebuild_statements=("TRUNCATE TABLE {database}._streambuild_direct_target_events",),
             expected_exit_code=1,
             expected_error_fragment="Direct mode refuses to replace relations it does not own",
             expected_order_ids=("order-1", "order-2"),
@@ -1013,17 +1013,65 @@ def test_given_virtual_environment_target_when_building_direct_then_it_is_reject
             description="a failing audit fails the command while the built rows remain live",
             audit_sql_by_name=(
                 (
-                    "no_empty_order_ids.sql",
+                    "broken_column.sql",
+                    'AUDIT (\n  description: "warehouse errors are recorded",\n);\n\n'
+                    'SELECT missing_order_id\nFROM __ref("orders_enriched")\n',
+                ),
+                (
+                    "first_nonempty_order_ids.sql",
                     'AUDIT (\n  description: "order ids must not be empty",\n);\n\n'
                     'SELECT order_id\nFROM __ref("orders_enriched")\n'
-                    "WHERE order_id != ''\n",
+                    "WHERE order_id != '' ORDER BY order_id\n",
+                ),
+                (
+                    "second_nonempty_order_ids.sql",
+                    'AUDIT (\n  description: "all order ids fail again",\n);\n\n'
+                    'SELECT order_id\nFROM __ref("orders_enriched")\n'
+                    "WHERE order_id != '' ORDER BY order_id\n",
                 ),
             ),
-            landing_rows=(("order-1", 0, 1), ("order-2", 0, 2)),
-            late_landing_rows=(("order-3", 0, 3),),
+            landing_rows=(
+                ("order-1", 0, 1),
+                ("order-2", 0, 2),
+                ("order-3", 0, 3),
+                ("order-4", 0, 4),
+                ("order-5", 0, 5),
+                ("order-6", 0, 6),
+            ),
+            late_landing_rows=(("order-7", 0, 7),),
             expected_exit_code=1,
             expected_stdout_fragment="FAIL",
-            expected_final_order_ids=("order-1", "order-2", "order-3"),
+            expected_final_order_ids=(
+                "order-1",
+                "order-2",
+                "order-3",
+                "order-4",
+                "order-5",
+                "order-6",
+                "order-7",
+            ),
+            expected_audit_observation_rows=(
+                (
+                    "error",
+                    1,
+                    '{"sample_column_names":[],"sample_rows":[]}',
+                ),
+                (
+                    "failed",
+                    6,
+                    '{"sample_column_names":["order_id"],"sample_rows":'
+                    '[["order-1"],["order-2"],["order-3"],["order-4"],["order-5"]]}',
+                ),
+                (
+                    "failed",
+                    6,
+                    '{"sample_column_names":["order_id"],"sample_rows":'
+                    '[["order-1"],["order-2"],["order-3"],["order-4"],["order-5"]]}',
+                ),
+            ),
+            expected_final_coverage=(("_replay_partition=0", "1", "6"),),
+            expected_sample_query_fragment="AS __streambuild_audit LIMIT 5;",
+            expected_error_message_count=1,
         )
     ],
     ids=lambda case: case.description,
@@ -1070,12 +1118,48 @@ def test_given_failing_audit_when_building_then_command_fails_without_rollback(
         final_order_ids: tuple[str, ...] = direct_build_order_ids(
             clickhouse_client=clickhouse_client, database=clickhouse_database
         )
+        build_observation_rows: Sequence[Sequence[object]] = clickhouse_client.query(
+            "SELECT outcome, materialized_outcome FROM "
+            f"{clickhouse_database}._streambuild_invocations "
+            "WHERE command = 'build' ORDER BY completed_at DESC LIMIT 1"
+        ).result_rows
+        audit_observation_rows: Sequence[Sequence[object]] = clickhouse_client.query(
+            "SELECT status, failure_count, payload_json FROM "
+            f"{clickhouse_database}._streambuild_node_results "
+            "WHERE node_kind = 'audit' AND invocation_id = ("
+            "SELECT invocation_id FROM "
+            f"{clickhouse_database}._streambuild_invocations WHERE command = 'build' "
+            "ORDER BY completed_at DESC LIMIT 1) ORDER BY node_identity"
+        ).result_rows
+        audit_error_message_count: int = int(
+            clickhouse_client.query(
+                f"SELECT count() FROM {clickhouse_database}._streambuild_node_results "
+                "WHERE node_kind = 'audit' AND error_message IS NOT NULL AND invocation_id = ("
+                "SELECT invocation_id FROM "
+                f"{clickhouse_database}._streambuild_invocations WHERE command = 'build' "
+                "ORDER BY completed_at DESC LIMIT 1)"
+            ).result_rows[0][0]
+        )
+        final_coverage: tuple[tuple[str, str, str], ...] = direct_owned_replay_coverage_ranges(
+            connection=connection,
+            database=clickhouse_database,
+        )
+        workflow_sql: str = (tmp_path / "target" / "run" / "build" / "workflow.sql").read_text(
+            encoding="utf-8"
+        )
     finally:
         connection.close()
 
     assert exit_code == test_case.expected_exit_code
     assert test_case.expected_stdout_fragment in command_output
     assert final_order_ids == test_case.expected_final_order_ids
+    assert build_observation_rows == [("failed", "applied")]
+    assert tuple(audit_observation_rows) == test_case.expected_audit_observation_rows
+    assert final_coverage == test_case.expected_final_coverage
+    assert workflow_sql.count(test_case.expected_sample_query_fragment) == len(
+        test_case.audit_sql_by_name
+    )
+    assert audit_error_message_count == test_case.expected_error_message_count
 
 
 @pytest.mark.integration
@@ -1535,21 +1619,33 @@ def test_given_partial_selected_population_when_retrying_then_closure_reconstruc
             description="teardown failure is safe to retry",
             connection_factory=FailOnceDropConnection,
             expected_failure_fragment="injected failure during selected teardown",
+            expected_failed_invocation_count=1,
+            expected_failed_mode="direct",
+            expected_min_selected_node_count=1,
         ),
         CliDirectExecutionStepFailureIntegrationTestCase(
             description="view attachment failure is safe to retry",
             connection_factory=FailOnceViewRealizationConnection,
             expected_failure_fragment="injected failure during selected view attachment",
+            expected_failed_invocation_count=1,
+            expected_failed_mode="direct",
+            expected_min_selected_node_count=1,
         ),
         CliDirectExecutionStepFailureIntegrationTestCase(
             description="boundary capture failure is safe to retry",
             connection_factory=FailOnceBoundaryQueryConnection,
             expected_failure_fragment="injected failure during selected boundary capture",
+            expected_failed_invocation_count=1,
+            expected_failed_mode="direct",
+            expected_min_selected_node_count=1,
         ),
         CliDirectExecutionStepFailureIntegrationTestCase(
             description="final ownership failure is safe to retry",
             connection_factory=FailFinalOwnershipOnceConnection,
             expected_failure_fragment="injected failure during final ownership persistence",
+            expected_failed_invocation_count=1,
+            expected_failed_mode="direct",
+            expected_min_selected_node_count=1,
         ),
     ],
     ids=lambda case: case.description,
@@ -1585,6 +1681,17 @@ def test_given_selected_execution_step_failure_when_retrying_then_result_is_exac
             selectors=("beta",),
         )
         failure_error: str = capsys.readouterr().err
+        failed_invocation_count: int = int(
+            clickhouse_client.query(
+                f"SELECT count() FROM {clickhouse_database}._streambuild_invocations "
+                "WHERE command = 'build' AND outcome = 'failed'"
+            ).result_rows[0][0]
+        )
+        failed_invocation_context: Sequence[Sequence[object]] = clickhouse_client.query(
+            f"SELECT mode, selected_node_count FROM "
+            f"{clickhouse_database}._streambuild_invocations "
+            "WHERE command = 'build' AND outcome = 'failed' LIMIT 1"
+        ).result_rows
         rerun_exit_code: int = run_direct_build(
             project_root=tmp_path,
             database=clickhouse_database,
@@ -1610,6 +1717,9 @@ def test_given_selected_execution_step_failure_when_retrying_then_result_is_exac
 
     assert (initial_exit_code, failed_exit_code, rerun_exit_code) == (0, 1, 0)
     assert test_case.expected_failure_fragment in failure_error
+    assert failed_invocation_count == test_case.expected_failed_invocation_count
+    assert failed_invocation_context[0][0] == test_case.expected_failed_mode
+    assert int(failed_invocation_context[0][1]) >= test_case.expected_min_selected_node_count
     assert rerun_error == ""
     assert (beta_rows, gamma_rows) == (
         ("order-1", "order-2"),
@@ -2561,7 +2671,8 @@ def test_given_absent_managed_source_when_building_from_start_time_then_nothing_
             str(row[0])
             for row in clickhouse_client.query(
                 "SELECT name FROM system.tables "
-                f"WHERE database = '{clickhouse_database}' ORDER BY name"
+                f"WHERE database = '{clickhouse_database}' "
+                "AND name NOT LIKE '\\_streambuild%' ORDER BY name"
             ).result_rows
         )
     finally:

@@ -11,12 +11,10 @@ def build_direct_execution_result(
     *,
     request: DirectBuildRequest,
     execution: WorkflowExecutionResult,
-    failed_audit_step_id: str | None = None,
 ) -> DirectBuildExecutionResult:
     """Decode one direct build from its in-memory workflow evidence."""
 
     return _build_direct_execution_result(
         request=request,
         execution=execution,
-        failed_audit_step_id=failed_audit_step_id,
     )

@@ -184,7 +184,10 @@ def _latest_object_state_records_by_keys(
         if record.key not in keys:
             continue
         current_record: ObjectStateRecord | None = latest_records.get(record.key)
-        if current_record is None or record.recorded_at > current_record.recorded_at:
+        if current_record is None or (record.recorded_at, record.observation_id) > (
+            current_record.recorded_at,
+            current_record.observation_id,
+        ):
             latest_records[record.key] = record
     return latest_records
 

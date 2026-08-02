@@ -7,13 +7,16 @@ from streambuild.adapter.exceptions import AdapterCapabilityError
 from streambuild.adapter.models import (
     AdapterBindingReplacementRequest,
     AdapterCapabilities,
+    AdapterCurrentQualityNode,
     AdapterDeploymentInventory,
     AdapterDeploymentReplayRequest,
     AdapterIdentity,
+    AdapterInvocationRecord,
     AdapterManagedSource,
     AdapterMaterializedView,
     AdapterMetadataState,
     AdapterMutationResult,
+    AdapterNodeResultRecord,
     AdapterOwnershipRecord,
     AdapterOwnershipReplayRequest,
     AdapterQueryResult,
@@ -115,6 +118,29 @@ class AdapterConnection(ABC):
         self, *, database: str, state: AdapterMetadataState
     ) -> tuple[str, ...]:
         """Render exact SQL that persists adapter-neutral metadata."""
+
+    def render_terminal_observations(
+        self,
+        *,
+        database: str,
+        invocation: AdapterInvocationRecord,
+        node_results: tuple[AdapterNodeResultRecord, ...],
+    ) -> tuple[str, ...]:
+        """Render non-authoritative terminal observations when supported."""
+
+        return ()
+
+    def render_latest_node_status_query(
+        self,
+        *,
+        database: str,
+        project_identity: str,
+        target_identity: str,
+        nodes: tuple[AdapterCurrentQualityNode, ...],
+    ) -> str:
+        """Render the current-manifest quality status query when supported."""
+
+        return ""
 
     @abstractmethod
     def load_deployment_inventory(self, database: str) -> AdapterDeploymentInventory:

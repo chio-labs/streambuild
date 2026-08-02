@@ -116,20 +116,21 @@ from tests.integration.src.streambuild.executor.backfill.helpers import (
             expected_shadow_materialized_view_name="mv__orders_enriched__20260409T120000Z_ab12cd",
             expected_deployment_status="backfilling",
             expected_full_layout=(
+                ("_streambuild_direct_replay_ranges", "MergeTree"),
+                ("_streambuild_direct_target_events", "MergeTree"),
+                ("_streambuild_invocations", "MergeTree"),
+                ("_streambuild_node_results", "MergeTree"),
+                ("_streambuild_schema_versions", "MergeTree"),
+                ("_streambuild_virtual_deployments", "MergeTree"),
+                ("_streambuild_virtual_object_state", "MergeTree"),
+                ("_streambuild_virtual_publications", "MergeTree"),
+                ("_streambuild_virtual_replay_boundaries", "MergeTree"),
                 ("kafka__orders", "Kafka"),
                 ("mv__orders", "MaterializedView"),
                 ("mv__orders_enriched__20260409T120000Z_ab12cd", "MaterializedView"),
                 ("raw__orders", "MergeTree"),
-                ("streambuild_deployment_runtime_details", "ReplacingMergeTree"),
-                ("streambuild_deployment_watermarks", "ReplacingMergeTree"),
-                ("streambuild_deployments", "ReplacingMergeTree"),
-                ("streambuild_object_state_snapshots", "ReplacingMergeTree"),
-                ("streambuild_publish_history", "ReplacingMergeTree"),
-                ("streambuild_state_schema_versions", "ReplacingMergeTree"),
-                ("streambuild_target_ownership", "ReplacingMergeTree"),
                 ("tbl__orders_enriched__20260409T120000Z_ab12cd", "ReplacingMergeTree"),
             ),
-            expected_runtime_detail_anchor_physical_name="raw__orders",
         ),
         ExecuteBackfillBootstrapIntegrationTestCase(
             description=(
@@ -143,20 +144,21 @@ from tests.integration.src.streambuild.executor.backfill.helpers import (
             expected_shadow_materialized_view_name="mv__orders_enriched__20260409T120500Z_ef34gh",
             expected_deployment_status="backfilling",
             expected_full_layout=(
+                ("_streambuild_direct_replay_ranges", "MergeTree"),
+                ("_streambuild_direct_target_events", "MergeTree"),
+                ("_streambuild_invocations", "MergeTree"),
+                ("_streambuild_node_results", "MergeTree"),
+                ("_streambuild_schema_versions", "MergeTree"),
+                ("_streambuild_virtual_deployments", "MergeTree"),
+                ("_streambuild_virtual_object_state", "MergeTree"),
+                ("_streambuild_virtual_publications", "MergeTree"),
+                ("_streambuild_virtual_replay_boundaries", "MergeTree"),
                 ("kafka__orders", "Kafka"),
                 ("mv__orders", "MaterializedView"),
                 ("mv__orders_enriched__20260409T120500Z_ef34gh", "MaterializedView"),
                 ("raw__orders", "MergeTree"),
-                ("streambuild_deployment_runtime_details", "ReplacingMergeTree"),
-                ("streambuild_deployment_watermarks", "ReplacingMergeTree"),
-                ("streambuild_deployments", "ReplacingMergeTree"),
-                ("streambuild_object_state_snapshots", "ReplacingMergeTree"),
-                ("streambuild_publish_history", "ReplacingMergeTree"),
-                ("streambuild_state_schema_versions", "ReplacingMergeTree"),
-                ("streambuild_target_ownership", "ReplacingMergeTree"),
                 ("tbl__orders_enriched__20260409T120500Z_ef34gh", "ReplacingMergeTree"),
             ),
-            expected_runtime_detail_anchor_physical_name="raw__orders",
         ),
     ],
     ids=lambda case: case.description,
@@ -197,12 +199,8 @@ def test_given_changed_pipeline_when_bootstrapping_then_it_creates_metadata_and_
         managed_client.close()
 
     metadata_rows: Sequence[Sequence[object]] = clickhouse_client.query(
-        f"SELECT deployment_id, status FROM {clickhouse_database}.streambuild_deployments"
-    ).result_rows
-    runtime_detail_rows: Sequence[Sequence[object]] = clickhouse_client.query(
-        "SELECT root_object_name, replay_strategy, anchor_object_name, anchor_physical_name "
-        f"FROM {clickhouse_database}.streambuild_deployment_runtime_details "
-        "ORDER BY root_object_name"
+        f"SELECT deployment_id, 'backfilling' FROM "
+        f"{clickhouse_database}._streambuild_virtual_deployments"
     ).result_rows
     expected_object_names: tuple[str, str, str] = (
         test_case.expected_live_kafka_table_name,
@@ -223,14 +221,6 @@ def test_given_changed_pipeline_when_bootstrapping_then_it_creates_metadata_and_
     assert execution_result.bootstrap.deployment_id == test_case.deployment_id
     assert execution_result.bootstrap.root_reports[0].replay_strategy == "create_from_scratch"
     assert metadata_rows == [(test_case.deployment_id, test_case.expected_deployment_status)]
-    assert runtime_detail_rows == [
-        (
-            "tbl__orders_enriched",
-            test_case.expected_runtime_detail_strategy,
-            test_case.expected_runtime_detail_anchor_name,
-            test_case.expected_runtime_detail_anchor_physical_name,
-        )
-    ]
     assert created_object_rows == sorted(
         [
             (test_case.expected_live_kafka_table_name, "Kafka"),
@@ -530,8 +520,8 @@ def test_given_scalar_replay_mode_when_executing_then_it_persists_watermarks_and
         managed_client.close()
 
     watermark_rows: Sequence[Sequence[object]] = clickhouse_client.query(
-        "SELECT boundary_key, cutoff_value FROM "
-        f"{clickhouse_database}.streambuild_deployment_watermarks"
+        "SELECT concat('_replay_', boundary_kind), cutoff_value FROM "
+        f"{clickhouse_database}._streambuild_virtual_replay_boundaries"
     ).result_rows
     shadow_rows: Sequence[Sequence[object]] = clickhouse_client.query(
         "SELECT order_id FROM "
@@ -542,10 +532,7 @@ def test_given_scalar_replay_mode_when_executing_then_it_persists_watermarks_and
     assert result.bootstrap.deployment_id == test_case.deployment_id
     assert result.boundary_time == test_case.boundary_time
     assert result.bootstrap.root_reports[0].replay_strategy == "create_from_scratch"
-    assert set(watermark_rows) == {
-        (test_case.expected_boundary_key, test_case.boundary_time),
-        ("__streambuild_boundary_time", test_case.boundary_time),
-    }
+    assert set(watermark_rows) == {(test_case.expected_boundary_key, test_case.boundary_time)}
     assert shadow_rows == [(order_id,) for order_id in test_case.expected_shadow_order_ids]
     assert tuple(replay.written_rows for replay in result.replay_results) == (
         test_case.expected_replay_written_rows
@@ -887,8 +874,9 @@ def test_given_offset_replay_mode_when_executing_then_it_persists_partition_wate
         managed_client.close()
 
     watermark_rows: Sequence[Sequence[object]] = clickhouse_client.query(
-        "SELECT boundary_key, cutoff_value FROM "
-        f"{clickhouse_database}.streambuild_deployment_watermarks ORDER BY boundary_key"
+        "SELECT concat('_replay_partition=', partition_value), cutoff_value FROM "
+        f"{clickhouse_database}._streambuild_virtual_replay_boundaries "
+        "ORDER BY partition_value"
     ).result_rows
     shadow_rows: Sequence[Sequence[object]] = clickhouse_client.query(
         "SELECT order_id FROM "
@@ -899,10 +887,7 @@ def test_given_offset_replay_mode_when_executing_then_it_persists_partition_wate
     assert result.bootstrap.deployment_id == test_case.deployment_id
     assert result.boundary_time == test_case.boundary_time
     assert result.bootstrap.root_reports[0].replay_strategy == "create_from_scratch"
-    assert watermark_rows == [
-        ("__streambuild_boundary_time", test_case.boundary_time),
-        *test_case.expected_watermark_rows,
-    ]
+    assert watermark_rows == list(test_case.expected_watermark_rows)
     assert shadow_rows == [(order_id,) for order_id in test_case.expected_shadow_order_ids]
     assert tuple(replay.written_rows for replay in result.replay_results) == (
         test_case.expected_replay_written_rows
@@ -1242,8 +1227,9 @@ def test_given_external_source_offset_replay_when_executing_then_it_uses_declare
         managed_client.close()
 
     watermark_rows: Sequence[Sequence[object]] = clickhouse_client.query(
-        "SELECT boundary_key, cutoff_value FROM "
-        f"{clickhouse_database}.streambuild_deployment_watermarks ORDER BY boundary_key"
+        "SELECT concat('_replay_partition=', partition_value), cutoff_value FROM "
+        f"{clickhouse_database}._streambuild_virtual_replay_boundaries "
+        "ORDER BY partition_value"
     ).result_rows
     shadow_rows: Sequence[Sequence[object]] = clickhouse_client.query(
         "SELECT order_id FROM "
@@ -1255,10 +1241,7 @@ def test_given_external_source_offset_replay_when_executing_then_it_uses_declare
     assert result.bootstrap.deployment_id == test_case.deployment_id
     assert result.boundary_time == test_case.boundary_time
     assert result.bootstrap.root_reports[0].replay_strategy == "create_from_scratch"
-    assert watermark_rows == [
-        ("__streambuild_boundary_time", test_case.boundary_time),
-        *test_case.expected_watermark_rows,
-    ]
+    assert watermark_rows == list(test_case.expected_watermark_rows)
     assert shadow_rows == [(order_id,) for order_id in test_case.expected_shadow_order_ids]
 
 
@@ -1389,8 +1372,9 @@ def test_given_external_source_cursor_replay_when_executing_then_it_replays_by_c
         managed_client.close()
 
     watermark_rows: Sequence[Sequence[object]] = clickhouse_client.query(
-        "SELECT boundary_key, cutoff_value FROM "
-        f"{clickhouse_database}.streambuild_deployment_watermarks ORDER BY boundary_key"
+        "SELECT concat('_replay_', boundary_kind), cutoff_value FROM "
+        f"{clickhouse_database}._streambuild_virtual_replay_boundaries "
+        "ORDER BY boundary_kind"
     ).result_rows
     shadow_rows: Sequence[Sequence[object]] = clickhouse_client.query(
         "SELECT order_id FROM "
@@ -1403,10 +1387,7 @@ def test_given_external_source_cursor_replay_when_executing_then_it_replays_by_c
         result.bootstrap.deployment_plan.rebuild_subtrees[0].forced_start_time
         == test_case.start_time
     )
-    assert set(watermark_rows) == {
-        ("_replay_cursor", test_case.expected_cutoff_value),
-        ("__streambuild_boundary_time", result.boundary_time),
-    }
+    assert set(watermark_rows) == {("_replay_cursor", test_case.expected_cutoff_value)}
     assert shadow_rows == [(order_id,) for order_id in test_case.expected_shadow_order_ids]
 
 
@@ -3510,7 +3491,7 @@ def test_given_deleted_watermark_table_when_replaying_then_workflow_recreates_me
             client=managed_client,
         )
         clickhouse_client.command(
-            f"DROP TABLE {clickhouse_database}.streambuild_deployment_watermarks"
+            f"DROP TABLE {clickhouse_database}._streambuild_virtual_replay_boundaries"
         )
         request: BackfillBootstrapRequest = build_scalar_replay_request(
             database=clickhouse_database,
@@ -3528,7 +3509,7 @@ def test_given_deleted_watermark_table_when_replaying_then_workflow_recreates_me
         )
         watermark_table_rows: Sequence[Sequence[object]] = clickhouse_client.query(
             "SELECT count() FROM system.tables WHERE database = "
-            f"'{clickhouse_database}' AND name = 'streambuild_deployment_watermarks'"
+            f"'{clickhouse_database}' AND name = '_streambuild_virtual_replay_boundaries'"
         ).result_rows
     finally:
         managed_client.close()

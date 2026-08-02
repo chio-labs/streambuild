@@ -58,6 +58,7 @@ def dispatch_cli_command(
             loaded_project=invocation.loaded_project,
             adapter_profile=adapter_profile,
             target_dir=getattr(args, "target_dir", None),
+            database=invocation.database or "",
         )
     if args.command == CliCommand.BUILD:
         return handlers.run_build(

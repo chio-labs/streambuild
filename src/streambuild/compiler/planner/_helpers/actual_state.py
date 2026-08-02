@@ -1,5 +1,6 @@
 """Assemble actual objects from desired objects and inspected state."""
 
+from streambuild.adapter.constants import VIRTUAL_OBJECT_STATE_KIND_RECONCILE
 from streambuild.compiler.compile.constants import (
     MATERIALIZED_VIEW_NAME_PREFIX,
     RAW_TABLE_NAME_PREFIX,
@@ -27,7 +28,6 @@ from streambuild.compiler.planner.models import (
     RootDeploymentInspection,
 )
 from streambuild.compiler.planner.types import RootDeploymentStateKind
-from streambuild.executor.reconcile.constants import RECONCILE_DEPLOYMENT_ID_PREFIX
 
 
 def build_inspected_actual_objects(
@@ -237,7 +237,7 @@ def _latest_reconcile_query(
     )
     if latest_record is None:
         return fallback_query
-    if not latest_record.deployment_id.startswith(RECONCILE_DEPLOYMENT_ID_PREFIX):
+    if latest_record.state_kind != VIRTUAL_OBJECT_STATE_KIND_RECONCILE:
         return fallback_query
     if latest_record.normalized_query is None:
         return fallback_query

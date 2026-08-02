@@ -31,7 +31,6 @@ from tests.integration.src.streambuild.cli.helpers import (
     ensure_backfill_metadata_tables,
     execute_clickhouse_client_sql,
     load_deployment_status_rows,
-    load_runtime_execution_modes,
     load_selected_root_names,
     prepare_virtual_fan_in_source,
     publish_virtual_workflow,
@@ -102,7 +101,6 @@ from tests.integration.src.streambuild.conftest import ClickHouseConnectionSetti
             expected_error_fragments=(),
             expected_deployment_status_rows=(("backfilling",),),
             expected_selected_root_names=("tbl__orders_enriched",),
-            expected_runtime_execution_modes=(("tbl__orders_enriched", "full_rebuild"),),
             expected_absent_output_fragments=("Plan Ready",),
         ),
         CliVirtualBuildIntegrationTestCase(
@@ -186,10 +184,6 @@ from tests.integration.src.streambuild.conftest import ClickHouseConnectionSetti
             expected_error_fragments=(),
             expected_deployment_status_rows=(("backfilling",),),
             expected_selected_root_names=("tbl__orders_clean",),
-            expected_runtime_execution_modes=(
-                ("tbl__orders_clean", "full_rebuild"),
-                ("tbl__orders_enriched", "full_rebuild"),
-            ),
             expected_absent_output_fragments=("Plan Ready",),
         ),
     ],
@@ -246,9 +240,6 @@ def test_given_virtual_build_command_when_running_then_it_behaves_as_expected(
     selected_root_names: tuple[str, ...] = load_selected_root_names(
         clickhouse_client=clickhouse_client, database=clickhouse_database
     )
-    runtime_execution_modes: tuple[tuple[str, str | None], ...] = load_runtime_execution_modes(
-        clickhouse_client=clickhouse_client, database=clickhouse_database
-    )
 
     assert exit_code == test_case.expected_exit_code
     expected_output_fragment: str
@@ -259,7 +250,6 @@ def test_given_virtual_build_command_when_running_then_it_behaves_as_expected(
         assert expected_error_fragment in captured.err
     assert deployment_status_rows == test_case.expected_deployment_status_rows
     assert selected_root_names == test_case.expected_selected_root_names
-    assert runtime_execution_modes == test_case.expected_runtime_execution_modes
     absent_output_fragment: str
     for absent_output_fragment in test_case.expected_absent_output_fragments:
         assert absent_output_fragment not in captured.out

@@ -420,6 +420,16 @@ def test_given_executed_scope_when_planning_direct_then_relation_actions_are_dep
             expected_ownership=(TargetOwnership.VIRTUAL_ENVIRONMENT,),
         ),
         DirectOwnershipTestCase(
+            description="metadata-only virtual deployment blocks a missing direct target",
+            relation_names=(),
+            direct_owned_names=(),
+            virtual_environment_owned_names=(),
+            stable_binding_names=(),
+            classified_relation_names=("tbl__alpha",),
+            expected_ownership=(TargetOwnership.VIRTUAL_ENVIRONMENT,),
+            metadata_virtual_environment_names=("tbl__alpha",),
+        ),
+        DirectOwnershipTestCase(
             description="claims from both modes on one relation are conflicted",
             relation_names=("tbl__alpha",),
             direct_owned_names=("tbl__alpha",),
@@ -440,6 +450,7 @@ def test_given_durable_evidence_when_classifying_ownership_then_classification_m
         virtual_environment_owned_names=test_case.virtual_environment_owned_names,
         stable_binding_names=test_case.stable_binding_names,
         ownership_database=test_case.ownership_database,
+        metadata_virtual_environment_names=test_case.metadata_virtual_environment_names,
     )
 
     classifications: tuple[TargetOwnershipClassification, ...] = classify_relation_ownership(

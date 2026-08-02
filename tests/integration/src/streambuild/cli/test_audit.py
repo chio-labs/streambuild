@@ -1,4 +1,5 @@
 import json
+from collections.abc import Sequence
 from pathlib import Path
 from typing import cast
 
@@ -68,6 +69,9 @@ from tests.integration.src.streambuild.executor.backfill.helpers import (
                 "failing rows: 1",
                 "Result: PASS (0 errors, 1 warnings)",
             ),
+            expected_node_result_count=1,
+            expected_node_result_statuses=("warning",),
+            expected_invocation_outcome="succeeded",
         ),
         CliAuditCommandIntegrationTestCase(
             description="reports generic warning audit results against published logical tables",
@@ -84,6 +88,9 @@ from tests.integration.src.streambuild.executor.backfill.helpers import (
                 "failing rows: 1",
                 "Result: PASS (0 errors, 1 warnings)",
             ),
+            expected_node_result_count=1,
+            expected_node_result_statuses=("warning",),
+            expected_invocation_outcome="succeeded",
         ),
         CliAuditCommandIntegrationTestCase(
             description="reports multiple singular audits from one file with names",
@@ -100,6 +107,27 @@ from tests.integration.src.streambuild.executor.backfill.helpers import (
                 "failing rows: 1",
                 "Result: PASS (0 errors, 2 warnings)",
             ),
+            expected_node_result_count=2,
+            expected_node_result_statuses=("warning", "warning"),
+            expected_invocation_outcome="succeeded",
+        ),
+        CliAuditCommandIntegrationTestCase(
+            description="records one warehouse audit error and continues later audits",
+            selectors=("order_items",),
+            project_writer_name="error",
+            order_items_columns=KEYED_ORDER_ITEMS_COLUMNS,
+            order_items_order_by=KEYED_ORDER_ITEMS_ORDER_BY,
+            order_items_rows=(("ord_001", -5.0), ("ord_002", 10.0)),
+            expected_exit_code=1,
+            expected_output_fragments=(
+                "Audit Results",
+                "audits/singular/order_events/quality.sql  [broken column]",
+                "audits/singular/order_events/quality.sql  [negative line totals]",
+                "Result: FAIL (1 errors, 1 warnings)",
+            ),
+            expected_node_result_count=2,
+            expected_node_result_statuses=("error", "warning"),
+            expected_invocation_outcome="failed",
         ),
     ],
     ids=lambda case: case.description,
@@ -144,11 +172,29 @@ def test_given_audit_project_when_running_live_audit_then_it_reports_expected_re
     finally:
         managed_client.close()
     captured: CaptureResult[str] = capsys.readouterr()
+    invocation_rows: Sequence[Sequence[object]] = clickhouse_client.query(
+        f"SELECT command, outcome FROM {clickhouse_database}._streambuild_invocations"
+    ).result_rows
+    node_result_count: int = int(
+        clickhouse_client.query(
+            f"SELECT count() FROM {clickhouse_database}._streambuild_node_results"
+        ).result_rows[0][0]
+    )
+    node_result_statuses: tuple[str, ...] = tuple(
+        str(row[0])
+        for row in clickhouse_client.query(
+            f"SELECT status FROM {clickhouse_database}._streambuild_node_results "
+            "ORDER BY node_identity"
+        ).result_rows
+    )
 
     assert exit_code == test_case.expected_exit_code
     expected_output_fragment: str
     for expected_output_fragment in test_case.expected_output_fragments:
         assert expected_output_fragment in captured.out
+    assert invocation_rows == [("audit", test_case.expected_invocation_outcome)]
+    assert node_result_count == test_case.expected_node_result_count
+    assert node_result_statuses == test_case.expected_node_result_statuses
 
 
 @pytest.mark.integration

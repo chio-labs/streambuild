@@ -9,6 +9,7 @@ from clickhouse_connect.driver.client import Client
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import (
     AdapterConnectionConfig,
+    AdapterInvocationRecord,
     AdapterMaterializedView,
     AdapterOwnershipRecord,
     AdapterStableView,
@@ -113,6 +114,38 @@ def integer_rows(rows: Sequence[Sequence[object]]) -> tuple[tuple[int, ...], ...
     return tuple(converted_rows)
 
 
+def object_rows(rows: Sequence[Sequence[object]]) -> tuple[tuple[object, ...], ...]:
+    converted_rows: list[tuple[object, ...]] = []
+    row: Sequence[object]
+    for row in rows:
+        converted_rows.append(tuple(row))
+    return tuple(converted_rows)
+
+
+def build_invocation_record(
+    *, invocation_id: str, project_identity: str, target_identity: str, completed_at: str
+) -> AdapterInvocationRecord:
+    return AdapterInvocationRecord(
+        invocation_id=invocation_id,
+        project_identity=project_identity,
+        target_identity=target_identity,
+        command="audit",
+        mode=None,
+        outcome="succeeded",
+        exit_code=0,
+        materialized_outcome=None,
+        deployment_id=None,
+        workflow_id=None,
+        selected_node_count=1,
+        started_at=completed_at,
+        completed_at=completed_at,
+        duration_ms=0,
+        error_message=None,
+        summary_json="{}",
+        tool_version="1.2.3",
+    )
+
+
 def execute_rendered_statements(*, client: Client, statements: tuple[str, ...]) -> None:
     statement: str
     for statement in statements:
@@ -158,6 +191,19 @@ def ownership_summaries(
         (record.relation_name, record.logical_model_name, str(record.owning_mode))
         for record in records
     )
+
+
+def replay_coverage_summaries(
+    records: tuple[AdapterOwnershipRecord, ...],
+) -> tuple[tuple[str, tuple[tuple[str, str], ...]], ...]:
+    summaries: list[tuple[str, tuple[tuple[str, str], ...]]] = []
+    record: AdapterOwnershipRecord
+    for record in records:
+        ranges: list[tuple[str, str]] = []
+        for replay_range in record.replay_coverage:
+            ranges.append((replay_range.lower_value, replay_range.upper_value))
+        summaries.append((record.database_name, tuple(ranges)))
+    return tuple(summaries)
 
 
 def connect_clickhouse(

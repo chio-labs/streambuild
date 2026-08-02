@@ -372,10 +372,7 @@ def test_given_bounded_direct_workflow_when_executing_artifacts_then_forms_match
             ),
             messages=(("order-1", '{"order_id":"order-1"}'), ("order-2", '{"order_id":"order-2"}')),
             expected_order_ids=("order-1", "order-2"),
-            expected_watermark_rows=(
-                ("__streambuild_boundary_time", "<boundary-time>"),
-                ("_replay_partition=0", "1"),
-            ),
+            expected_watermark_rows=(("offsets", "0"),),
             expected_audit_assessment=AuditAssessment.READY,
             expected_deployment_status="backfilling",
             expected_publish_event_count=0,

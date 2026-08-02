@@ -12,13 +12,16 @@ from streambuild.adapter.exceptions import AdapterResultError
 from streambuild.adapter.models import (
     AdapterBindingReplacementRequest,
     AdapterCapabilities,
+    AdapterCurrentQualityNode,
     AdapterDeploymentInventory,
     AdapterDeploymentReplayRequest,
     AdapterIdentity,
+    AdapterInvocationRecord,
     AdapterManagedSource,
     AdapterMaterializedView,
     AdapterMetadataState,
     AdapterMutationResult,
+    AdapterNodeResultRecord,
     AdapterOwnershipRecord,
     AdapterOwnershipReplayRequest,
     AdapterQueryResult,
@@ -44,6 +47,7 @@ from streambuild.adapters.clickhouse._helpers.managed_tables import (
 )
 from streambuild.adapters.clickhouse._helpers.metadata import (
     load_clickhouse_target_ownership,
+    render_clickhouse_latest_node_status_query,
     render_clickhouse_metadata_migration_workflow,
     render_clickhouse_metadata_state,
     render_clickhouse_target_ownership,
@@ -229,6 +233,45 @@ class ClickHouseConnection(AdapterConnection):
         """Render exact ClickHouse metadata persistence SQL."""
 
         return render_clickhouse_metadata_state(database=database, state=state)
+
+    def render_terminal_observations(
+        self,
+        *,
+        database: str,
+        invocation: AdapterInvocationRecord,
+        node_results: tuple[AdapterNodeResultRecord, ...],
+    ) -> tuple[str, ...]:
+        """Render terminal UI observations without exposing them to lifecycle readers."""
+
+        state: AdapterMetadataState = AdapterMetadataState(
+            object_states=(),
+            deployments=(),
+            deployment_watermarks=(),
+            publish_events=(),
+            invocations=(invocation,),
+            node_results=node_results,
+        )
+        return (
+            *render_clickhouse_metadata_migration_workflow(database),
+            *render_clickhouse_metadata_state(database=database, state=state),
+        )
+
+    def render_latest_node_status_query(
+        self,
+        *,
+        database: str,
+        project_identity: str,
+        target_identity: str,
+        nodes: tuple[AdapterCurrentQualityNode, ...],
+    ) -> str:
+        """Render current, stale, and never-run Quality UI states."""
+
+        return render_clickhouse_latest_node_status_query(
+            database=database,
+            project_identity=project_identity,
+            target_identity=target_identity,
+            nodes=nodes,
+        )
 
     def load_deployment_inventory(self, database: str) -> AdapterDeploymentInventory:
         """Load persisted ClickHouse deployments and publish events."""

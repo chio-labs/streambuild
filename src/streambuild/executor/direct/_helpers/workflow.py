@@ -5,7 +5,10 @@ from __future__ import annotations
 import math
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.adapter.constants import METADATA_TARGET_OWNERSHIP_TABLE_NAME
+from streambuild.adapter.constants import (
+    METADATA_DIRECT_REPLAY_RANGES_TABLE_NAME,
+    METADATA_DIRECT_TARGET_EVENTS_TABLE_NAME,
+)
 from streambuild.adapter.models import (
     AdapterMaterializedView,
     AdapterOwnershipRecord,
@@ -38,7 +41,7 @@ from streambuild.compiler.planner.models import (
     TargetOwnershipClassification,
 )
 from streambuild.compiler.planner.types import DirectResourceKind, TargetOwnership
-from streambuild.executor.auditing.types import AuditSeverity
+from streambuild.executor.auditing.constants import AUDIT_SAMPLE_LIMIT
 from streambuild.executor.direct._helpers.ownership import build_direct_ownership_records
 from streambuild.executor.direct._helpers.population_plan import build_direct_population_plan
 from streambuild.executor.direct._helpers.preflight import reject_incapable_adapter
@@ -491,25 +494,21 @@ def _boundary_statements(
     replay: AdapterReplayRequest
     for replay in replay_templates:
         model_name: str = _model_name_for_target(request=request, target=replay.relations.target)
-        sequence: int = start_sequence + len(statements)
-        statements.append(
-            WarehouseStatement(
-                sequence=sequence,
-                step_id=f"capture_boundary_{_step_segment(model_name)}",
+        statements.extend(
+            _capture_coverage_statements(
+                request=request,
+                client=client,
+                snapshot=snapshot,
+                replay=replay,
+                model_name=model_name,
+                step_prefix="capture_boundary",
                 phase=WorkflowPhase.BOUNDARY,
-                intent=StatementIntent.MUTATION,
-                sql=_capture_coverage_sql(
-                    request=request,
-                    client=client,
-                    snapshot=snapshot,
-                    replay=replay,
-                    model_name=model_name,
-                ),
+                start_sequence=start_sequence + len(statements),
             )
         )
         statements.append(
             WarehouseStatement(
-                sequence=sequence + 1,
+                sequence=start_sequence + len(statements),
                 step_id=f"read_boundary_{_step_segment(model_name)}",
                 phase=WorkflowPhase.BOUNDARY,
                 intent=StatementIntent.QUERY,
@@ -536,19 +535,16 @@ def _replay_statements(
             replay=replay,
             snapshot=snapshot,
         )
-        statements.append(
-            WarehouseStatement(
-                sequence=start_sequence + len(statements),
-                step_id=f"refresh_boundary_{_step_segment(model_name)}",
+        statements.extend(
+            _capture_coverage_statements(
+                request=request,
+                client=client,
+                snapshot=snapshot,
+                replay=replay,
+                model_name=model_name,
+                step_prefix="refresh_boundary",
                 phase=WorkflowPhase.REPLAY,
-                intent=StatementIntent.MUTATION,
-                sql=_capture_coverage_sql(
-                    request=request,
-                    client=client,
-                    snapshot=snapshot,
-                    replay=replay,
-                    model_name=model_name,
-                ),
+                start_sequence=start_sequence + len(statements),
             )
         )
         statements.append(
@@ -569,19 +565,16 @@ def _replay_statements(
                 ),
             )
         )
-        statements.append(
-            WarehouseStatement(
-                sequence=start_sequence + len(statements),
-                step_id=f"refresh_coverage_{_step_segment(model_name)}",
+        statements.extend(
+            _capture_coverage_statements(
+                request=request,
+                client=client,
+                snapshot=snapshot,
+                replay=replay,
+                model_name=model_name,
+                step_prefix="refresh_coverage",
                 phase=WorkflowPhase.REPLAY,
-                intent=StatementIntent.MUTATION,
-                sql=_capture_coverage_sql(
-                    request=request,
-                    client=client,
-                    snapshot=snapshot,
-                    replay=replay,
-                    model_name=model_name,
-                ),
+                start_sequence=start_sequence + len(statements),
             )
         )
     return tuple(statements)
@@ -604,22 +597,22 @@ def _audit_statements(
                     "SELECT count() AS failing_row_count FROM (\n"
                     f"{audit.query}\n) AS __streambuild_audit;"
                 ),
+                continue_on_error=True,
             )
         )
-        if audit.severity == AuditSeverity.ERROR:
-            statements.append(
-                WarehouseStatement(
-                    sequence=start_sequence + len(statements),
-                    step_id=f"{step_prefix}_error",
-                    phase=WorkflowPhase.AUDIT,
-                    intent=StatementIntent.ASSERTION,
-                    sql=(
-                        "SELECT throwIf(count() > 0, "
-                        f"'Direct audit {_escape_literal(audit.name)} failed') FROM (\n"
-                        f"{audit.query}\n) AS __streambuild_audit;"
-                    ),
-                )
+        statements.append(
+            WarehouseStatement(
+                sequence=start_sequence + len(statements),
+                step_id=f"{step_prefix}_sample",
+                phase=WorkflowPhase.AUDIT,
+                intent=StatementIntent.QUERY,
+                sql=(
+                    "SELECT * FROM (\n"
+                    f"{audit.query}\n) AS __streambuild_audit LIMIT {AUDIT_SAMPLE_LIMIT};"
+                ),
+                continue_on_error=True,
             )
+        )
     return tuple(statements)
 
 
@@ -746,10 +739,12 @@ def _ownership_assertion_sql(
             f"(name = '{relation_name}' OR startsWith(name, '{relation_name}__'));"
         )
     return (
-        "SELECT throwIf(count() != 1 OR any(owning_mode) != 'direct', "
-        f"'{message}') FROM {metadata_database}.{METADATA_TARGET_OWNERSHIP_TABLE_NAME} FINAL "
-        f"WHERE database_name = '{_escape_literal(target_database)}' "
-        f"AND relation_name = '{relation_name}';"
+        "SELECT throwIf(count() != 1 OR any(current_state.1) = 'released', "
+        f"'{message}') FROM (SELECT argMax(tuple(event_kind, event_id), "
+        "tuple(recorded_at, event_id)) AS current_state FROM "
+        f"{metadata_database}.{METADATA_DIRECT_TARGET_EVENTS_TABLE_NAME} WHERE database_name = "
+        f"'{_escape_literal(target_database)}' AND relation_name = '{relation_name}' "
+        "GROUP BY database_name, relation_name);"
     )
 
 
@@ -792,7 +787,43 @@ def _retention_assertion_sql(*, database: str, replay_range: AdapterReplayCovera
     )
 
 
-def _capture_coverage_sql(
+def _capture_coverage_statements(
+    *,
+    request: DirectBuildRequest,
+    client: AdapterConnection,
+    snapshot: DirectWarehouseSnapshot,
+    replay: AdapterReplayRequest,
+    model_name: str,
+    step_prefix: str,
+    phase: WorkflowPhase,
+    start_sequence: int,
+) -> tuple[WarehouseStatement, ...]:
+    segment: str = _step_segment(model_name)
+    return (
+        WarehouseStatement(
+            sequence=start_sequence,
+            step_id=f"{step_prefix}_{segment}_ranges",
+            phase=phase,
+            intent=StatementIntent.MUTATION,
+            sql=_capture_replay_set_sql(
+                request=request,
+                client=client,
+                snapshot=snapshot,
+                replay=replay,
+                model_name=model_name,
+            ),
+        ),
+        WarehouseStatement(
+            sequence=start_sequence + 1,
+            step_id=f"{step_prefix}_{segment}_targets",
+            phase=phase,
+            intent=StatementIntent.MUTATION,
+            sql=_refresh_target_events_sql(request=request, model_name=model_name),
+        ),
+    )
+
+
+def _capture_replay_set_sql(
     *,
     request: DirectBuildRequest,
     client: AdapterConnection,
@@ -800,33 +831,61 @@ def _capture_coverage_sql(
     replay: AdapterReplayRequest,
     model_name: str,
 ) -> str:
-    entry: DirectPlanEntry = next(
-        entry for entry in request.plan.entries if entry.model_key.name == model_name
-    )
     coverage_query: str = client.render_replay_coverage_query(
         _coverage_request(request=request, replay=replay, snapshot=snapshot)
+    )
+    return (
+        f"INSERT INTO {request.metadata_database}.{METADATA_DIRECT_REPLAY_RANGES_TABLE_NAME} "
+        "(replay_set_id, target_database_name, logical_model_database, logical_model_name, "
+        "range_present, "
+        "driving_input_relation_name, replay_boundary_mode, partition_value, "
+        "source_partition_column_name, source_position_column_name, "
+        "source_timestamp_column_name, lower_value, upper_value, replay_cutoff_value, "
+        "captured_at)\n"
+        f"WITH coverage_payload AS (\n{coverage_query}\n),\n"
+        "captured AS (SELECT value, lower(hex(SHA256(concat("
+        f"'{_escape_literal(request.database)}', ':', '{_escape_literal(model_name)}', ':', "
+        "value)))) AS replay_set_id, now64(3, 'UTC') AS captured_at FROM coverage_payload)\n"
+        f"SELECT replay_set_id, '{_escape_literal(request.database)}', NULL, "
+        f"'{_escape_literal(model_name)}', coverage != '', "
+        "nullIf(JSONExtractString(coverage, 'driving_input_relation_name'), ''), "
+        "nullIf(JSONExtractString(coverage, 'replay_boundary_mode'), ''), "
+        "if(startsWith(JSONExtractString(coverage, 'boundary_key'), '_replay_partition='), "
+        "splitByChar('=', JSONExtractString(coverage, 'boundary_key'))[2], NULL), "
+        "nullIf(JSONExtractString(coverage, 'source_partition_column_name'), ''), "
+        "nullIf(JSONExtractString(coverage, 'source_position_column_name'), ''), "
+        "nullIf(JSONExtractString(coverage, 'source_timestamp_column_name'), ''), "
+        "nullIf(JSONExtractString(coverage, 'lower_value'), ''), "
+        "nullIf(JSONExtractString(coverage, 'upper_value'), ''), "
+        "coalesce(nullIf(JSONExtractString(coverage, 'replay_cutoff_value'), ''), "
+        "nullIf(JSONExtractString(coverage, 'upper_value'), '')), captured_at\n"
+        "FROM captured ARRAY JOIN if(value = '[]', [''], JSONExtractArrayRaw(value)) AS coverage;"
+    )
+
+
+def _refresh_target_events_sql(*, request: DirectBuildRequest, model_name: str) -> str:
+    entry: DirectPlanEntry = next(
+        entry for entry in request.plan.entries if entry.model_key.name == model_name
     )
     relations: str = ", ".join(
         f"('{_escape_literal(name)}', '{_escape_literal(str(kind))}')"
         for name, kind in zip(entry.relation_names, entry.resource_kinds, strict=True)
     )
     return (
-        f"INSERT INTO {request.metadata_database}.{METADATA_TARGET_OWNERSHIP_TABLE_NAME} "
-        "(database_name, relation_name, resource_kind, logical_model_database, "
-        "logical_model_name, owning_mode, tool_version, replay_coverage_json, created_at, "
-        "updated_at)\n"
-        f"WITH coverage_payload AS (\n{coverage_query}\n),\n"
-        "next_timestamp AS (SELECT greatest(now64(3, 'UTC'), "
-        f"coalesce(max(updated_at) + toIntervalMillisecond(1), now64(3, 'UTC'))) AS value "
-        f"FROM {request.metadata_database}.{METADATA_TARGET_OWNERSHIP_TABLE_NAME} "
-        f"WHERE database_name = '{_escape_literal(request.database)}' "
+        f"INSERT INTO {request.metadata_database}.{METADATA_DIRECT_TARGET_EVENTS_TABLE_NAME} "
+        "(event_id, workflow_id, event_kind, database_name, relation_name, resource_kind, "
+        "logical_model_database, logical_model_name, tool_version, replay_set_id, recorded_at)\n"
+        "WITH latest_set AS (SELECT argMax(tuple(replay_set_id, captured_at), "
+        "tuple(captured_at, replay_set_id)) AS current_set FROM "
+        f"{request.metadata_database}.{METADATA_DIRECT_REPLAY_RANGES_TABLE_NAME} "
+        f"WHERE target_database_name = '{_escape_literal(request.database)}' "
         f"AND logical_model_name = '{_escape_literal(model_name)}')\n"
-        f"SELECT '{_escape_literal(request.database)}', tupleElement(relation, 1), "
+        "SELECT lower(hex(SHA256(concat(current_set.1, ':', tupleElement(relation, 1), "
+        "':refreshed')))), current_set.1, 'refreshed', "
+        f"'{_escape_literal(request.database)}', tupleElement(relation, 1), "
         "tupleElement(relation, 2), NULL, "
-        f"'{_escape_literal(model_name)}', 'direct', "
-        f"'{_escape_literal(request.tool_version)}', coverage_payload.value, "
-        "next_timestamp.value, next_timestamp.value\n"
-        "FROM coverage_payload CROSS JOIN next_timestamp\n"
+        f"'{_escape_literal(model_name)}', '{_escape_literal(request.tool_version)}', "
+        "current_set.1, current_set.2 FROM latest_set\n"
         f"ARRAY JOIN [{relations}] AS relation;"
     )
 
@@ -869,25 +928,33 @@ def _bounded_input_assertion_sql(
 def _read_boundary_sql(
     *, request: DirectBuildRequest, replay: AdapterReplayRequest, model_name: str
 ) -> str:
+    boundary_key: str = (
+        "concat('_replay_partition=', partition_value)"
+        if replay.mode == AdapterReplayBoundaryMode.OFFSETS
+        else f"'{_direct_boundary_key(replay.mode)}'"
+    )
     return (
-        "WITH latest_coverage AS (SELECT argMax(replay_coverage_json, updated_at) AS value, "
-        "max(updated_at) AS boundary_time "
-        f"FROM {request.metadata_database}.{METADATA_TARGET_OWNERSHIP_TABLE_NAME} "
-        f"WHERE database_name = '{_escape_literal(request.database)}' "
-        f"AND relation_name = '{_escape_literal(replay.relations.target)}' "
-        f"AND logical_model_name = '{_escape_literal(model_name)}')\n"
+        "WITH current_target AS (SELECT argMax(tuple(replay_set_id, recorded_at), "
+        "tuple(recorded_at, event_id)) AS current_set FROM "
+        f"{request.metadata_database}.{METADATA_DIRECT_TARGET_EVENTS_TABLE_NAME} "
+        f"WHERE database_name = '{_escape_literal(request.database)}' AND relation_name = "
+        f"'{_escape_literal(replay.relations.target)}')\n"
         f"SELECT '{_escape_literal(model_name)}' AS model_name, "
-        "JSONExtractString(coverage, 'driving_input_relation_name') "
-        "AS driving_input_relation_name, "
-        "JSONExtractString(coverage, 'replay_boundary_mode') AS replay_boundary_mode, "
-        "JSONExtractString(coverage, 'boundary_key') AS boundary_key, "
-        "coalesce(nullIf(JSONExtractString(coverage, 'replay_cutoff_value'), ''), "
-        "JSONExtractString(coverage, 'upper_value')) AS cutoff_value, "
-        "toString(boundary_time, 'UTC') AS boundary_time\n"
-        "FROM latest_coverage\n"
-        "ARRAY JOIN JSONExtractArrayRaw(value) AS coverage\n"
+        f"driving_input_relation_name, replay_boundary_mode, {boundary_key} AS boundary_key, "
+        "replay_cutoff_value AS cutoff_value FROM "
+        f"{request.metadata_database}.{METADATA_DIRECT_REPLAY_RANGES_TABLE_NAME} "
+        "INNER JOIN current_target ON replay_set_id = current_target.current_set.1 "
+        f"WHERE target_database_name = '{_escape_literal(request.database)}' AND range_present "
         "ORDER BY boundary_key;"
     )
+
+
+def _direct_boundary_key(mode: AdapterReplayBoundaryMode) -> str:
+    return {
+        AdapterReplayBoundaryMode.TIMESTAMP: "_replay_timestamp",
+        AdapterReplayBoundaryMode.LANDED_AT: "_replay_landed_at",
+        AdapterReplayBoundaryMode.CURSOR: "_replay_cursor",
+    }[mode]
 
 
 def _read_final_ownership_sql(*, request: DirectBuildRequest) -> str:
@@ -896,11 +963,29 @@ def _read_final_ownership_sql(*, request: DirectBuildRequest) -> str:
         f"'{_escape_literal(relation_name)}'" for relation_name in relation_names
     )
     return (
-        "SELECT database_name, relation_name, resource_kind, logical_model_database, "
-        "logical_model_name, owning_mode, tool_version, replay_coverage_json "
-        f"FROM {request.metadata_database}.{METADATA_TARGET_OWNERSHIP_TABLE_NAME} FINAL "
-        f"WHERE database_name = '{_escape_literal(request.database)}' "
-        f"AND relation_name IN ({quoted_names}) ORDER BY relation_name;"
+        "WITH current_events AS (SELECT database_name, relation_name, "
+        "argMax(tuple(event_kind, resource_kind, logical_model_database, logical_model_name, "
+        "tool_version, replay_set_id), tuple(recorded_at, event_id)) AS current_state FROM "
+        f"{request.metadata_database}.{METADATA_DIRECT_TARGET_EVENTS_TABLE_NAME} "
+        f"WHERE database_name = '{_escape_literal(request.database)}' AND relation_name IN "
+        f"({quoted_names}) GROUP BY database_name, relation_name),\n"
+        "coverage AS (SELECT replay_set_id, concat('[', arrayStringConcat(groupUniqArrayIf("
+        "toJSONString(map('driving_input_relation_name', driving_input_relation_name, "
+        "'replay_boundary_mode', replay_boundary_mode, 'boundary_key', "
+        "if(replay_boundary_mode = 'offsets', concat('_replay_partition=', partition_value), "
+        "concat('_replay_', replay_boundary_mode)), 'source_partition_column_name', "
+        "coalesce(source_partition_column_name, ''), 'source_position_column_name', "
+        "source_position_column_name, 'source_timestamp_column_name', "
+        "coalesce(source_timestamp_column_name, ''), 'lower_value', lower_value, "
+        "'upper_value', upper_value)), range_present), ','), ']') AS replay_coverage_json "
+        f"FROM {request.metadata_database}.{METADATA_DIRECT_REPLAY_RANGES_TABLE_NAME} "
+        f"WHERE target_database_name = '{_escape_literal(request.database)}' "
+        "GROUP BY replay_set_id) SELECT database_name, relation_name, current_state.2, "
+        "current_state.3, current_state.4, 'direct', current_state.5, "
+        "coalesce(nullIf(coverage.replay_coverage_json, ''), '[]') FROM current_events "
+        "LEFT JOIN coverage "
+        "ON coverage.replay_set_id = current_state.6 WHERE current_state.1 != 'released' "
+        "ORDER BY relation_name;"
     )
 
 
