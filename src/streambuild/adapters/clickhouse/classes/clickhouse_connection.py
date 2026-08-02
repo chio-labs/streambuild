@@ -11,21 +11,20 @@ from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.exceptions import AdapterResultError
 from streambuild.adapter.models import (
     AdapterBindingReplacementRequest,
-    AdapterBindingReplacementResult,
     AdapterCapabilities,
     AdapterDeploymentInventory,
+    AdapterDeploymentReplayRequest,
     AdapterIdentity,
     AdapterManagedSource,
     AdapterMaterializedView,
     AdapterMetadataState,
+    AdapterMutationResult,
     AdapterOwnershipRecord,
+    AdapterOwnershipReplayRequest,
     AdapterQueryResult,
     AdapterReadinessRequest,
     AdapterReadinessRootObservation,
     AdapterRelationCleanupRequest,
-    AdapterRelationCleanupResult,
-    AdapterReplayRequest,
-    AdapterReplayResult,
     AdapterStableView,
     AdapterTable,
     AdapterView,
@@ -35,23 +34,29 @@ from streambuild.adapter.models import (
 from streambuild.adapters.clickhouse._helpers.errors import translate_driver_error
 from streambuild.adapters.clickhouse._helpers.inspection import load_clickhouse_catalog
 from streambuild.adapters.clickhouse._helpers.lifecycle import (
-    cleanup_clickhouse_relations,
     load_clickhouse_deployment_inventory,
-    replace_clickhouse_stable_bindings,
+    render_clickhouse_relation_cleanup,
+    render_clickhouse_stable_binding_replacement,
 )
 from streambuild.adapters.clickhouse._helpers.managed_tables import (
     build_inspected_managed_table_state,
 )
 from streambuild.adapters.clickhouse._helpers.metadata import (
     load_clickhouse_target_ownership,
-    migrate_clickhouse_metadata_state,
-    persist_clickhouse_metadata_state,
-    record_clickhouse_target_ownership,
-    remove_clickhouse_target_ownership,
+    render_clickhouse_metadata_migration_workflow,
+    render_clickhouse_metadata_state,
+    render_clickhouse_target_ownership,
+    render_clickhouse_target_ownership_removal,
 )
 from streambuild.adapters.clickhouse._helpers.readiness import compare_clickhouse_readiness
-from streambuild.adapters.clickhouse._helpers.rendering import render_clickhouse_resource
-from streambuild.adapters.clickhouse._helpers.replay import execute_clickhouse_replay
+from streambuild.adapters.clickhouse._helpers.rendering import (
+    render_clickhouse_ensure_database,
+    render_clickhouse_resource,
+)
+from streambuild.adapters.clickhouse._helpers.replay import (
+    render_clickhouse_replay_from_deployment,
+    render_clickhouse_replay_from_ownership,
+)
 from streambuild.adapters.clickhouse.constants import (
     CLICKHOUSE_ADAPTER_NAME,
     CLICKHOUSE_DIRECT_REBUILD_SUPPORTED,
@@ -126,36 +131,27 @@ class ClickHouseConnection(AdapterConnection):
 
         return load_clickhouse_target_ownership(connection=self, database=database)
 
-    def record_target_ownership(
+    def render_record_target_ownership(
         self, *, database: str, records: tuple[AdapterOwnershipRecord, ...]
-    ) -> None:
-        """Durably claim ClickHouse relations before they are created or replaced."""
+    ) -> tuple[str, ...]:
+        """Render exact ClickHouse ownership claim SQL."""
 
-        record_clickhouse_target_ownership(connection=self, database=database, records=records)
+        return render_clickhouse_target_ownership(database=database, records=records)
 
-    def remove_target_ownership(
+    def render_remove_target_ownership(
         self,
         *,
         database: str,
         target_database: str,
         relation_names: tuple[str, ...],
-    ) -> None:
-        """Remove retired ClickHouse ownership claims."""
+    ) -> tuple[str, ...]:
+        """Render exact ClickHouse ownership removal SQL."""
 
-        remove_clickhouse_target_ownership(
-            connection=self,
+        return render_clickhouse_target_ownership_removal(
             database=database,
             target_database=target_database,
             relation_names=relation_names,
         )
-
-    def command(self, statement: str) -> None:
-        """Execute a ClickHouse command statement."""
-
-        try:
-            self._raw_client.command(statement)
-        except (ClickHouseError, StreamFailureError) as error:
-            raise translate_driver_error(error) from error
 
     def query(self, statement: str) -> AdapterQueryResult:
         """Execute a ClickHouse query and normalize the returned rows."""
@@ -170,6 +166,20 @@ class ClickHouseConnection(AdapterConnection):
             rows=tuple(tuple(row) for row in result_rows),
         )
 
+    def execute_workflow_sql(self, statement: str) -> AdapterMutationResult:
+        """Execute exact workflow SQL and preserve ClickHouse mutation evidence."""
+
+        try:
+            summary: object = self._raw_client.command(statement)
+        except (ClickHouseError, StreamFailureError) as error:
+            raise translate_driver_error(error) from error
+        if (
+            not isinstance(summary, QuerySummary)
+            or CLICKHOUSE_WRITTEN_ROWS_SUMMARY_KEY not in summary.summary
+        ):
+            return AdapterMutationResult()
+        return AdapterMutationResult(written_rows=summary.written_rows)
+
     def capture_warehouse_timestamp(self) -> str:
         """Capture ClickHouse server time as an exact UTC DateTime64(3) string."""
 
@@ -180,26 +190,10 @@ class ClickHouseConnection(AdapterConnection):
             raise AdapterResultError("ClickHouse returned no warehouse timestamp")
         return str(result.rows[0][0])
 
-    def insert_rows(self, *, table: str, rows: tuple[dict[str, object], ...]) -> None:
-        """Insert row mappings into a ClickHouse table."""
+    def render_ensure_database(self, database: str) -> str:
+        """Render exact ClickHouse database creation SQL."""
 
-        if not rows:
-            return
-
-        column_names: tuple[str, ...] = tuple(rows[0].keys())
-        row_values: list[list[object]] = []
-        row: dict[str, object]
-        for row in rows:
-            row_values.append([row[column_name] for column_name in column_names])
-        try:
-            self._raw_client.insert(table=table, data=row_values, column_names=list(column_names))
-        except (ClickHouseError, StreamFailureError) as error:
-            raise translate_driver_error(error) from error
-
-    def ensure_database(self, database: str) -> None:
-        """Create a ClickHouse database when it does not already exist."""
-
-        self.command(f"CREATE DATABASE IF NOT EXISTS {database}")
+        return render_clickhouse_ensure_database(database)
 
     def render_resource(
         self,
@@ -222,64 +216,34 @@ class ClickHouseConnection(AdapterConnection):
             if_not_exists=if_not_exists,
         )
 
-    def realize_resource(
-        self,
-        *,
-        resource: (
-            AdapterManagedSource
-            | AdapterTable
-            | AdapterMaterializedView
-            | AdapterView
-            | AdapterStableView
-        ),
-        database: str,
-        if_not_exists: bool = False,
-    ) -> None:
-        """Realize one neutral resource request in ClickHouse."""
+    def render_migrate_metadata_state(self, database: str) -> tuple[str, ...]:
+        """Render the exact idempotent ClickHouse metadata migration."""
 
-        self.command(
-            self.render_resource(
-                resource=resource,
-                database=database,
-                if_not_exists=if_not_exists,
-            )
-        )
+        return render_clickhouse_metadata_migration_workflow(database)
 
-    def migrate_metadata_state(self, database: str) -> None:
-        """Apply pending additive StreamBuild metadata migrations."""
+    def render_persist_metadata_state(
+        self, *, database: str, state: AdapterMetadataState
+    ) -> tuple[str, ...]:
+        """Render exact ClickHouse metadata persistence SQL."""
 
-        migrate_clickhouse_metadata_state(connection=self, database=database)
-
-    def persist_metadata_state(self, *, database: str, state: AdapterMetadataState) -> None:
-        """Persist adapter-neutral StreamBuild metadata in ClickHouse."""
-
-        persist_clickhouse_metadata_state(connection=self, database=database, state=state)
+        return render_clickhouse_metadata_state(database=database, state=state)
 
     def load_deployment_inventory(self, database: str) -> AdapterDeploymentInventory:
         """Load persisted ClickHouse deployments and publish events."""
 
         return load_clickhouse_deployment_inventory(connection=self, database=database)
 
-    def execute_replay(self, request: AdapterReplayRequest) -> AdapterReplayResult:
-        """Seed and execute one replay request in ClickHouse."""
+    def render_replay_from_ownership(self, request: AdapterOwnershipReplayRequest) -> str:
+        """Render a fixed-cardinality replay against ownership-stored cutoffs."""
 
-        return execute_clickhouse_replay(
-            connection=self,
-            request=request,
-            execute_insert=self._execute_replay_insert,
-        )
+        return render_clickhouse_replay_from_ownership(request)
 
-    def _execute_replay_insert(self, statement: str) -> AdapterReplayResult:
-        try:
-            summary: object = self._raw_client.command(statement)
-        except (ClickHouseError, StreamFailureError) as error:
-            raise translate_driver_error(error) from error
-        if (
-            not isinstance(summary, QuerySummary)
-            or CLICKHOUSE_WRITTEN_ROWS_SUMMARY_KEY not in summary.summary
-        ):
-            return AdapterReplayResult(written_rows=None)
-        return AdapterReplayResult(written_rows=summary.written_rows)
+    def render_replay_from_deployment(
+        self, request: AdapterDeploymentReplayRequest
+    ) -> tuple[str, ...]:
+        """Render fixed-cardinality replay against deployment-stored cutoffs."""
+
+        return render_clickhouse_replay_from_deployment(request)
 
     def compare_readiness(
         self, request: AdapterReadinessRequest
@@ -288,19 +252,17 @@ class ClickHouseConnection(AdapterConnection):
 
         return compare_clickhouse_readiness(connection=self, request=request)
 
-    def replace_stable_bindings(
+    def render_replace_stable_bindings(
         self, request: AdapterBindingReplacementRequest
-    ) -> AdapterBindingReplacementResult:
-        """Replace ClickHouse stable views and report actual atomicity."""
+    ) -> tuple[str, ...]:
+        """Render exact ClickHouse stable binding SQL."""
 
-        return replace_clickhouse_stable_bindings(connection=self, request=request)
+        return render_clickhouse_stable_binding_replacement(connection=self, request=request)
 
-    def cleanup_relations(
-        self, request: AdapterRelationCleanupRequest
-    ) -> AdapterRelationCleanupResult:
-        """Drop requested ClickHouse relations synchronously."""
+    def render_cleanup_relations(self, request: AdapterRelationCleanupRequest) -> tuple[str, ...]:
+        """Render guarded exact ClickHouse relation cleanup SQL."""
 
-        return cleanup_clickhouse_relations(connection=self, request=request)
+        return render_clickhouse_relation_cleanup(connection=self, request=request)
 
     def close(self) -> None:
         """Close the underlying ClickHouse connection."""

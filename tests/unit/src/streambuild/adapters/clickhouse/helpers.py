@@ -1,6 +1,12 @@
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Iterator, Sequence
+from typing import cast
 
-from streambuild.adapter.models import AdapterQueryResult
+from streambuild.adapter.models import (
+    CatalogSnapshot,
+    InspectedManagedTableState,
+)
+from streambuild.adapters.clickhouse.classes.clickhouse_connection import ClickHouseConnection
+from streambuild.adapters.clickhouse.types import RawClickHouseClient
 from streambuild.compiler.compile.models import (
     Column,
     DesiredKafkaTable,
@@ -47,9 +53,6 @@ class StubRawClickHouseClient:
         del statement
         return self._result
 
-    def insert(self, *, table: str, data: list[list[object]], column_names: list[str]) -> None:
-        del table, data, column_names
-
     def close(self) -> None:
         self.closed = True
 
@@ -68,11 +71,32 @@ class SequencedRawClickHouseClient:
         self.statements.append(statement)
         return next(self._results)
 
-    def insert(self, *, table: str, data: list[list[object]], column_names: list[str]) -> None:
-        del table, data, column_names
-
     def close(self) -> None:
         return None
+
+
+class GuardedRenderingClickHouseConnection(ClickHouseConnection):
+    """A ClickHouse renderer with prepared read state for cleanup guards."""
+
+    def __init__(
+        self, *, catalog: CatalogSnapshot, managed_table_state: InspectedManagedTableState
+    ) -> None:
+        raw_client: StubRawClickHouseClient = StubRawClickHouseClient(
+            FakeRawClickHouseQueryResult(column_names=[], result_rows=[])
+        )
+        super().__init__(cast(RawClickHouseClient, raw_client))
+        self._catalog: CatalogSnapshot = catalog
+        self._managed_table_state: InspectedManagedTableState = managed_table_state
+        self.inspection_count: int = 0
+
+    def load_catalog(self, database: str) -> CatalogSnapshot:
+        del database
+        return self._catalog
+
+    def inspect_managed_table_state(self, database: str) -> InspectedManagedTableState:
+        del database
+        self.inspection_count += 1
+        return self._managed_table_state
 
 
 class FailingRawClickHouseClient:
@@ -89,108 +113,8 @@ class FailingRawClickHouseClient:
         del statement
         raise self._error
 
-    def insert(self, *, table: str, data: list[list[object]], column_names: list[str]) -> None:
-        del table, data, column_names
-        raise self._error
-
     def close(self) -> None:
         raise self._error
-
-
-class RecordingMetadataMigrationConnection:
-    def __init__(
-        self,
-        *,
-        query_results: tuple[AdapterQueryResult, ...],
-        command_actions: tuple[Callable[[str], None], ...],
-    ) -> None:
-        self._query_results: Iterator[AdapterQueryResult] = iter(query_results)
-        self.command_actions: Iterator[Callable[[str], None]] = iter(command_actions)
-        self.commands: list[str] = []
-        self.ensured_databases: list[str] = []
-        self.inserted_rows: list[tuple[str, tuple[dict[str, object], ...]]] = []
-
-    def ensure_database(self, database: str) -> None:
-        self.ensured_databases.append(database)
-
-    def command(self, statement: str) -> None:
-        self.commands.append(statement)
-        next(self.command_actions)(statement)
-
-    def query(self, statement: str) -> AdapterQueryResult:
-        del statement
-        return next(self._query_results)
-
-    def insert_rows(self, *, table: str, rows: tuple[dict[str, object], ...]) -> None:
-        self.inserted_rows.append((table, rows))
-
-
-def accept_migration_statement(statement: str) -> None:
-    del statement
-
-
-def reject_migration_statement(statement: str) -> None:
-    raise RuntimeError(f"interrupted while applying {statement}")
-
-
-def migration_schema_result() -> AdapterQueryResult:
-    return AdapterQueryResult(
-        rows=(
-            ("streambuild_object_state_snapshots", "deployment_id"),
-            ("streambuild_object_state_snapshots", "database_name"),
-            ("streambuild_object_state_snapshots", "object_type"),
-            ("streambuild_object_state_snapshots", "object_name"),
-            ("streambuild_object_state_snapshots", "normalized_fingerprint"),
-            ("streambuild_object_state_snapshots", "normalized_query"),
-            ("streambuild_object_state_snapshots", "recorded_at"),
-            ("streambuild_deployments", "deployment_id"),
-            ("streambuild_deployments", "created_at"),
-            ("streambuild_deployments", "status"),
-            ("streambuild_deployments", "replay_lineage_mode"),
-            ("streambuild_deployments", "selected_root_keys_json"),
-            ("streambuild_deployments", "warning_codes_json"),
-            ("streambuild_deployments", "prepared_object_mappings_json"),
-            ("streambuild_deployment_watermarks", "deployment_id"),
-            ("streambuild_deployment_watermarks", "root_database_name"),
-            ("streambuild_deployment_watermarks", "root_object_type"),
-            ("streambuild_deployment_watermarks", "root_object_name"),
-            ("streambuild_deployment_watermarks", "anchor_database_name"),
-            ("streambuild_deployment_watermarks", "anchor_object_type"),
-            ("streambuild_deployment_watermarks", "anchor_object_name"),
-            ("streambuild_deployment_watermarks", "boundary_key"),
-            ("streambuild_deployment_watermarks", "cutoff_value"),
-            ("streambuild_deployment_runtime_details", "deployment_id"),
-            ("streambuild_deployment_runtime_details", "root_database_name"),
-            ("streambuild_deployment_runtime_details", "root_object_type"),
-            ("streambuild_deployment_runtime_details", "root_object_name"),
-            ("streambuild_deployment_runtime_details", "state_kind"),
-            ("streambuild_deployment_runtime_details", "replay_strategy"),
-            ("streambuild_deployment_runtime_details", "active_deployment_id"),
-            ("streambuild_deployment_runtime_details", "anchor_database_name"),
-            ("streambuild_deployment_runtime_details", "anchor_object_type"),
-            ("streambuild_deployment_runtime_details", "anchor_object_name"),
-            ("streambuild_deployment_runtime_details", "anchor_physical_name"),
-            ("streambuild_deployment_runtime_details", "execution_mode"),
-            ("streambuild_deployment_runtime_details", "configured_backfill_mode"),
-            ("streambuild_deployment_runtime_details", "execution_lookback_seconds"),
-            ("streambuild_deployment_runtime_details", "live_target_names_json"),
-            ("streambuild_publish_history", "deployment_id"),
-            ("streambuild_publish_history", "published_at"),
-            ("streambuild_publish_history", "logical_view_names_json"),
-            ("streambuild_state_schema_versions", "version"),
-            ("streambuild_state_schema_versions", "applied_at"),
-            ("streambuild_target_ownership", "database_name"),
-            ("streambuild_target_ownership", "relation_name"),
-            ("streambuild_target_ownership", "resource_kind"),
-            ("streambuild_target_ownership", "logical_model_database"),
-            ("streambuild_target_ownership", "logical_model_name"),
-            ("streambuild_target_ownership", "owning_mode"),
-            ("streambuild_target_ownership", "tool_version"),
-            ("streambuild_target_ownership", "replay_coverage_json"),
-            ("streambuild_target_ownership", "created_at"),
-            ("streambuild_target_ownership", "updated_at"),
-        )
-    )
 
 
 def build_kafka_table(extra_settings: dict[str, str] | None = None) -> DesiredKafkaTable:

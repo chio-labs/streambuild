@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+from clickhouse_connect.driver.client import Client
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from tests.integration.src.streambuild.cli._test_types import CliDirectPlanIntegrationTestCase
@@ -36,6 +37,7 @@ def test_given_settled_direct_warehouse_when_planning_twice_then_closure_never_s
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
     clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
     clickhouse_database: str,
 ) -> None:
     write_direct_scope_project(project_root=tmp_path)
@@ -45,14 +47,20 @@ def test_given_settled_direct_warehouse_when_planning_twice_then_closure_never_s
 
     try:
         settle_direct_scope_warehouse(
-            connection=connection, database=clickhouse_database, record_ownership=False
+            connection=connection,
+            clickhouse_client=clickhouse_client,
+            database=clickhouse_database,
+            record_ownership=False,
         )
         initial_exit_code: int = run_direct_plan(
             project_root=tmp_path, database=clickhouse_database, connection=connection
         )
         initial_output: str = capsys.readouterr().out
         settle_direct_scope_warehouse(
-            connection=connection, database=clickhouse_database, record_ownership=True
+            connection=connection,
+            clickhouse_client=clickhouse_client,
+            database=clickhouse_database,
+            record_ownership=True,
         )
         first_exit_code: int = run_direct_plan(
             project_root=tmp_path, database=clickhouse_database, connection=connection

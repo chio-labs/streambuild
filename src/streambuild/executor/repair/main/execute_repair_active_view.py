@@ -1,16 +1,17 @@
 """Repair execution entrypoint."""
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.adapter.exceptions import AdapterCapabilityError, AdapterResultError
-from streambuild.adapter.models import (
-    AdapterBindingReplacementRequest,
-    AdapterBindingReplacementResult,
-    AdapterStableBinding,
-)
+from streambuild.adapter.exceptions import AdapterCapabilityError
+from streambuild.adapter.models import AdapterStableBinding
 from streambuild.compiler.planner.main.build_deployment_physical_name import (
     build_deployment_physical_name,
 )
+from streambuild.executor.repair._helpers.workflow import assemble_repair_workflow
 from streambuild.executor.repair.models import RepairActiveViewRequest, RepairActiveViewResult
+from streambuild.executor.workflow.main._execute_warehouse_workflow import (
+    execute_warehouse_workflow,
+)
+from streambuild.executor.workflow.models import WarehouseStatement
 
 
 def execute_repair_active_view(
@@ -32,11 +33,11 @@ def execute_repair_active_view(
         logical_name=request.table_name,
         physical_name=target_table_name,
     )
-    replacement_result: AdapterBindingReplacementResult = client.replace_stable_bindings(
-        AdapterBindingReplacementRequest(bindings=(binding,))
+    statements: tuple[WarehouseStatement, ...] = assemble_repair_workflow(
+        binding=binding,
+        client=client,
     )
-    if replacement_result.bindings != (binding,):
-        raise AdapterResultError("Adapter returned a binding that did not match the repair request")
+    _ = execute_warehouse_workflow(statements=statements, connection=client)
     return RepairActiveViewResult(
         table_name=request.table_name,
         target_table_name=target_table_name,

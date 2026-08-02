@@ -1,10 +1,8 @@
 """Stable logical view creation helpers for publish."""
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.adapter.exceptions import AdapterResultError
 from streambuild.adapter.models import (
     AdapterBindingReplacementRequest,
-    AdapterBindingReplacementResult,
     AdapterDeploymentInventory,
     AdapterDeploymentRecord,
     AdapterPreparedObjectMapping,
@@ -20,14 +18,14 @@ from streambuild.compiler.compile.constants import (
 from streambuild.executor.publish.exceptions import PublishExecutionError
 
 
-def publish_stable_views(
+def build_publish_binding_request(
     *,
     client: AdapterConnection,
     metadata_database: str,
     default_database: str,
     deployment_id: str,
-) -> AdapterBindingReplacementResult:
-    """Build and apply neutral stable bindings for a staged deployment."""
+) -> AdapterBindingReplacementRequest:
+    """Build validated stable bindings for a staged deployment."""
 
     inventory: AdapterDeploymentInventory = client.load_deployment_inventory(metadata_database)
     deployment: AdapterDeploymentRecord | None = next(
@@ -91,23 +89,12 @@ def publish_stable_views(
             default_database=default_database,
         ),
     )
-    return _replace_stable_bindings(client=client, request=replacement_request)
-
-
-def _replace_stable_bindings(
-    *, client: AdapterConnection, request: AdapterBindingReplacementRequest
-) -> AdapterBindingReplacementResult:
-    result: AdapterBindingReplacementResult = client.replace_stable_bindings(request)
-    if result.bindings != request.bindings:
-        raise AdapterResultError("Adapter returned bindings that did not match the publish request")
-    if result.removals != request.removals:
-        raise AdapterResultError("Adapter returned removals that did not match the publish request")
-    return result
+    return replacement_request
 
 
 def _publish_inspected_stable_views(
     *, client: AdapterConnection, default_database: str, deployment_id: str
-) -> AdapterBindingReplacementResult:
+) -> AdapterBindingReplacementRequest:
     candidates: tuple[InspectedPhysicalTableCandidate, ...] = tuple(
         candidate
         for candidate in client.inspect_managed_table_state(default_database).physical_candidates
@@ -140,18 +127,15 @@ def _publish_inspected_stable_views(
             ),
         )
     )
-    return _replace_stable_bindings(
-        client=client,
-        request=AdapterBindingReplacementRequest(
-            bindings=tuple(
-                AdapterStableBinding(
-                    database=candidate.database,
-                    logical_name=candidate.logical_name,
-                    physical_name=candidate.physical_name,
-                )
-                for candidate in ordered_candidates
+    return AdapterBindingReplacementRequest(
+        bindings=tuple(
+            AdapterStableBinding(
+                database=candidate.database,
+                logical_name=candidate.logical_name,
+                physical_name=candidate.physical_name,
             )
-        ),
+            for candidate in ordered_candidates
+        )
     )
 
 

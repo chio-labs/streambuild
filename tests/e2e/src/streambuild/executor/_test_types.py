@@ -28,6 +28,40 @@ class ManagedSourceBootstrapE2ETestCase:
 
 
 @dataclass(frozen=True)
+class DirectManagedManualWorkflowE2ETestCase:
+    description: str
+    messages: tuple[tuple[str, str], ...]
+    expected_order_ids: tuple[str, ...]
+    expected_exit_code: int
+
+
+@dataclass(frozen=True)
+class VirtualManagedManualWorkflowE2ETestCase:
+    description: str
+    deployment_ids: tuple[str, str, str]
+    messages: tuple[tuple[str, str], ...]
+    expected_order_ids: tuple[str, ...]
+    expected_watermark_rows: tuple[tuple[str, str], ...]
+    expected_audit_assessment: AuditAssessment
+    expected_deployment_status: str
+    expected_publish_event_count: int
+    expected_stable_bindings: tuple[tuple[str, str], ...]
+    expected_exit_code: int
+    expected_min_physical_relation_count: int
+
+
+class VirtualManagedManualWorkflowSnapshot(NamedTuple):
+    deployment_status: str
+    deployment_metadata: tuple[tuple[str, ...], ...]
+    physical_graph: tuple[tuple[str, ...], ...]
+    replay_order_ids: tuple[str, ...]
+    watermark_rows: tuple[tuple[str, str], ...]
+    audit_assessment: str
+    publish_event_count: int
+    stable_bindings: tuple[tuple[str, str], ...]
+
+
+@dataclass(frozen=True)
 class KafkaRecoveryWorkflowE2ETestCase:
     description: str
     deployment_id: str

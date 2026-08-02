@@ -12,21 +12,90 @@ from streambuild.adapter.models import (
     AdapterDeploymentRecord,
     AdapterOwnershipRecord,
 )
+from streambuild.adapter.types import AdapterOwningMode
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from streambuild.executor.audit_backfill.main.load_audit_deployment import load_audit_deployment
 from streambuild.executor.audit_backfill.models import LoadedAuditDeployment
 from tests.integration.src.streambuild.adapters.clickhouse._test_types import (
     LegacyMetadataMigrationIntegrationTestCase,
     MetadataMigrationIntegrationTestCase,
+    RenderMutationSqlIntegrationTestCase,
     TargetOwnershipIntegrationTestCase,
 )
 from tests.integration.src.streambuild.adapters.clickhouse.helpers import (
     connect_clickhouse,
+    execute_rendered_statements,
     integer_rows,
     ownership_summaries,
     run_metadata_migration,
 )
 from tests.integration.src.streambuild.conftest import ClickHouseConnectionSettings
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        RenderMutationSqlIntegrationTestCase(
+            description="rendered metadata and ownership SQL executes manually in order",
+            expected_version_rows=((1,),),
+            expected_records_after_insert=(("tbl__orders", "orders", "direct"),),
+            expected_records_after_removal=(),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_rendered_metadata_sql_when_executing_manually_then_mutations_are_effective(
+    test_case: RenderMutationSqlIntegrationTestCase,
+    managed_clickhouse_client: AdapterConnection,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    record: AdapterOwnershipRecord = AdapterOwnershipRecord(
+        database_name=clickhouse_database,
+        relation_name="tbl__orders",
+        resource_kind="table",
+        logical_model_name="orders",
+        owning_mode=AdapterOwningMode.DIRECT,
+        tool_version="1.2.3",
+    )
+    execute_rendered_statements(
+        client=clickhouse_client,
+        statements=managed_clickhouse_client.render_migrate_metadata_state(clickhouse_database),
+    )
+    execute_rendered_statements(
+        client=clickhouse_client,
+        statements=managed_clickhouse_client.render_migrate_metadata_state(clickhouse_database),
+    )
+    version_rows: Sequence[Sequence[object]] = clickhouse_client.query(
+        f"SELECT version FROM {clickhouse_database}.streambuild_state_schema_versions "
+        "ORDER BY version"
+    ).result_rows
+    execute_rendered_statements(
+        client=clickhouse_client,
+        statements=managed_clickhouse_client.render_record_target_ownership(
+            database=clickhouse_database,
+            records=(record,),
+        ),
+    )
+    records_after_insert: tuple[AdapterOwnershipRecord, ...] = (
+        managed_clickhouse_client.load_target_ownership(clickhouse_database)
+    )
+    execute_rendered_statements(
+        client=clickhouse_client,
+        statements=managed_clickhouse_client.render_remove_target_ownership(
+            database=clickhouse_database,
+            target_database=clickhouse_database,
+            relation_names=(record.relation_name,),
+        ),
+    )
+    records_after_removal: tuple[AdapterOwnershipRecord, ...] = (
+        managed_clickhouse_client.load_target_ownership(clickhouse_database)
+    )
+
+    assert integer_rows(version_rows) == test_case.expected_version_rows
+    assert ownership_summaries(records_after_insert) == test_case.expected_records_after_insert
+    assert ownership_summaries(records_after_removal) == test_case.expected_records_after_removal
 
 
 @pytest.mark.integration
@@ -66,8 +135,14 @@ def test_given_empty_database_when_migrating_metadata_repeatedly_then_schema_is_
     )
 
     try:
-        connection.migrate_metadata_state(clickhouse_database)
-        connection.migrate_metadata_state(clickhouse_database)
+        execute_rendered_statements(
+            client=clickhouse_client,
+            statements=connection.render_migrate_metadata_state(clickhouse_database),
+        )
+        execute_rendered_statements(
+            client=clickhouse_client,
+            statements=connection.render_migrate_metadata_state(clickhouse_database),
+        )
     finally:
         connection.close()
 
@@ -257,7 +332,10 @@ def test_given_legacy_metadata_when_migrating_then_rows_remain_readable_and_unmo
         loaded_janitor_deployments: tuple[AdapterDeploymentRecord, ...] = (
             deployment_inventory.deployments
         )
-        connection.migrate_metadata_state(clickhouse_database)
+        execute_rendered_statements(
+            client=clickhouse_client,
+            statements=connection.render_migrate_metadata_state(clickhouse_database),
+        )
     finally:
         connection.close()
 
@@ -322,6 +400,7 @@ def test_given_legacy_metadata_when_migrating_then_rows_remain_readable_and_unmo
 def test_given_recorded_target_ownership_when_loading_then_durable_claims_are_returned(
     test_case: TargetOwnershipIntegrationTestCase,
     clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
     clickhouse_database: str,
 ) -> None:
     connection: AdapterConnection = connect_clickhouse(
@@ -330,17 +409,20 @@ def test_given_recorded_target_ownership_when_loading_then_durable_claims_are_re
     )
 
     try:
-        connection.ensure_database(clickhouse_database)
         before_migration: tuple[AdapterOwnershipRecord, ...] = connection.load_target_ownership(
             clickhouse_database
         )
-        connection.migrate_metadata_state(clickhouse_database)
+        execute_rendered_statements(
+            client=clickhouse_client,
+            statements=connection.render_migrate_metadata_state(clickhouse_database),
+        )
         after_migration: tuple[AdapterOwnershipRecord, ...] = connection.load_target_ownership(
             clickhouse_database
         )
-        connection.insert_rows(
+        clickhouse_client.insert(
             table=f"{clickhouse_database}.streambuild_target_ownership",
-            rows=test_case.inserted_rows,
+            data=[list(row.values()) for row in test_case.inserted_rows],
+            column_names=list(test_case.inserted_rows[0]),
         )
         after_insert: tuple[AdapterOwnershipRecord, ...] = connection.load_target_ownership(
             clickhouse_database

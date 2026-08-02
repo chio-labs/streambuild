@@ -5,10 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from streambuild.adapter.models import CatalogSnapshot
 from streambuild.compiler.compile.models import DesiredState, ObjectKey
 from streambuild.compiler.discovery.types import ReplayLineageMode
 from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.compiler.planner.models import DeploymentPlan, DirectPlan
+from streambuild.executor.backfill.models import RootBackfillReport
 
 
 @dataclass(frozen=True)
@@ -49,6 +51,10 @@ class VirtualBuildPreviewContext:
     replay_lineage_mode: ReplayLineageMode
     deployment_id: str
     created_at: str
+    root_reports: tuple[RootBackfillReport, ...]
+    existing_relation_names: frozenset[str]
+    target_catalog: CatalogSnapshot
+    metadata_catalog: CatalogSnapshot
     full_refresh_keys: frozenset[ObjectKey] = frozenset()
     start_time_keys: frozenset[ObjectKey] = frozenset()
     start_time: str | None = None

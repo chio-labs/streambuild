@@ -7,21 +7,19 @@ from typing import cast
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import (
     AdapterBindingReplacementRequest,
-    AdapterBindingReplacementResult,
     AdapterCapabilities,
     AdapterDeploymentInventory,
     AdapterIdentity,
     AdapterManagedSource,
     AdapterMaterializedView,
     AdapterMetadataState,
+    AdapterMutationResult,
     AdapterOwnershipRecord,
+    AdapterOwnershipReplayRequest,
     AdapterQueryResult,
     AdapterReadinessRequest,
     AdapterReadinessRootObservation,
     AdapterRelationCleanupRequest,
-    AdapterRelationCleanupResult,
-    AdapterReplayRequest,
-    AdapterReplayResult,
     AdapterStableView,
     AdapterTable,
     AdapterView,
@@ -133,7 +131,6 @@ class SnapshotRecordingConnection(AdapterConnection):
         self._catalog: CatalogSnapshot = catalog
         self._metadata_result: AdapterQueryResult = metadata_result
         self._ownership_records: tuple[AdapterOwnershipRecord, ...] = ownership_records
-        self.recorded_ownership_records: tuple[AdapterOwnershipRecord, ...] = ()
         self.ownership_databases: list[str] = []
         self._capabilities: AdapterCapabilities = AdapterCapabilities(
             virtual_environments=virtual_environments,
@@ -170,41 +167,40 @@ class SnapshotRecordingConnection(AdapterConnection):
         self.ownership_databases.append(database)
         return self._ownership_records
 
-    def record_target_ownership(
+    def render_record_target_ownership(
         self, *, database: str, records: tuple[AdapterOwnershipRecord, ...]
-    ) -> None:
-        del database
-        self.recorded_ownership_records = (*self.recorded_ownership_records, *records)
+    ) -> tuple[str, ...]:
+        del database, records
+        return ()
 
-    def remove_target_ownership(
+    def render_remove_target_ownership(
         self,
         *,
         database: str,
         target_database: str,
         relation_names: tuple[str, ...],
-    ) -> None:
+    ) -> tuple[str, ...]:
         del database, target_database, relation_names
+        return ()
 
     def inspect_managed_table_state(self, database: str) -> InspectedManagedTableState:
         del database
         return InspectedManagedTableState(active_bindings=(), physical_candidates=())
-
-    def command(self, statement: str) -> None:
-        del statement
 
     def query(self, statement: str) -> AdapterQueryResult:
         del statement
         self.query_count += 1
         return self._metadata_result
 
+    def execute_workflow_sql(self, statement: str) -> AdapterMutationResult:
+        del statement
+        return AdapterMutationResult()
+
     def capture_warehouse_timestamp(self) -> str:
         return "2026-07-31 12:00:00.000"
 
-    def insert_rows(self, *, table: str, rows: tuple[dict[str, object], ...]) -> None:
-        del table, rows
-
-    def ensure_database(self, database: str) -> None:
-        del database
+    def render_ensure_database(self, database: str) -> str:
+        return f"CREATE DATABASE IF NOT EXISTS {database};"
 
     def render_resource(
         self,
@@ -223,32 +219,23 @@ class SnapshotRecordingConnection(AdapterConnection):
             if_not_exists=if_not_exists,
         )
 
-    def realize_resource(
-        self,
-        *,
-        resource: AdapterManagedSource
-        | AdapterTable
-        | AdapterMaterializedView
-        | AdapterView
-        | AdapterStableView,
-        database: str,
-        if_not_exists: bool = False,
-    ) -> None:
-        del resource, database, if_not_exists
-
-    def migrate_metadata_state(self, database: str) -> None:
+    def render_migrate_metadata_state(self, database: str) -> tuple[str, ...]:
         del database
+        return ()
 
-    def persist_metadata_state(self, *, database: str, state: AdapterMetadataState) -> None:
+    def render_persist_metadata_state(
+        self, *, database: str, state: AdapterMetadataState
+    ) -> tuple[str, ...]:
         del database, state
+        return ()
 
     def load_deployment_inventory(self, database: str) -> AdapterDeploymentInventory:
         del database
         return AdapterDeploymentInventory(deployments=(), publish_events=())
 
-    def execute_replay(self, request: AdapterReplayRequest) -> AdapterReplayResult:
+    def render_replay_from_ownership(self, request: AdapterOwnershipReplayRequest) -> str:
         del request
-        return AdapterReplayResult(written_rows=None)
+        return "INSERT INTO replay_target SELECT 1"
 
     def compare_readiness(
         self, request: AdapterReadinessRequest
@@ -256,19 +243,15 @@ class SnapshotRecordingConnection(AdapterConnection):
         del request
         return ()
 
-    def replace_stable_bindings(
+    def render_replace_stable_bindings(
         self, request: AdapterBindingReplacementRequest
-    ) -> AdapterBindingReplacementResult:
-        return AdapterBindingReplacementResult(
-            bindings=request.bindings,
-            per_relation_atomic_replace=True,
-            graph_atomic_publish=False,
-        )
+    ) -> tuple[str, ...]:
+        del request
+        return ()
 
-    def cleanup_relations(
-        self, request: AdapterRelationCleanupRequest
-    ) -> AdapterRelationCleanupResult:
-        return AdapterRelationCleanupResult(relation_names=request.relation_names)
+    def render_cleanup_relations(self, request: AdapterRelationCleanupRequest) -> tuple[str, ...]:
+        del request
+        return ()
 
     def close(self) -> None:
         return None

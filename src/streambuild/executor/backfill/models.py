@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from streambuild.adapter.models import CatalogSnapshot
 from streambuild.compiler.compile.models import DesiredState, ObjectKey
 from streambuild.compiler.discovery.types import ReplayLineageMode
 from streambuild.compiler.planner.models import DeploymentPlan
@@ -25,6 +26,8 @@ class BackfillBootstrapRequest:
     created_at: str | None = None
     boundary_time: str | None = None
     stabilization_seconds: float = 5.0
+    confirmed_target_catalog: CatalogSnapshot | None = None
+    confirmed_metadata_catalog: CatalogSnapshot | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "replay_lineage_mode", ReplayLineageMode(self.replay_lineage_mode))

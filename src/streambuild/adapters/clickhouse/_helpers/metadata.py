@@ -1,7 +1,6 @@
 """Migrate and persist StreamBuild metadata in ClickHouse."""
 
 import json
-from datetime import UTC, datetime
 from typing import cast
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
@@ -14,7 +13,7 @@ from streambuild.adapter.constants import (
     METADATA_SCHEMA_VERSIONS_TABLE_NAME,
     METADATA_TARGET_OWNERSHIP_TABLE_NAME,
 )
-from streambuild.adapter.exceptions import AdapterResultError, AdapterWarehouseError
+from streambuild.adapter.exceptions import AdapterResultError
 from streambuild.adapter.models import (
     AdapterDeploymentRecord,
     AdapterDeploymentRuntimeDetailRecord,
@@ -36,99 +35,6 @@ from streambuild.adapters.clickhouse.constants import (
 from streambuild.adapters.clickhouse.models import ClickHouseMetadataStatement
 
 _CURRENT_STATE_SCHEMA_VERSION: int = 1
-_REQUIRED_SCHEMA_COLUMNS: tuple[tuple[str, str], ...] = (
-    (METADATA_OBJECT_STATE_TABLE_NAME, "deployment_id"),
-    (METADATA_OBJECT_STATE_TABLE_NAME, "database_name"),
-    (METADATA_OBJECT_STATE_TABLE_NAME, "object_type"),
-    (METADATA_OBJECT_STATE_TABLE_NAME, "object_name"),
-    (METADATA_OBJECT_STATE_TABLE_NAME, "normalized_fingerprint"),
-    (METADATA_OBJECT_STATE_TABLE_NAME, "normalized_query"),
-    (METADATA_OBJECT_STATE_TABLE_NAME, "recorded_at"),
-    (METADATA_DEPLOYMENTS_TABLE_NAME, "deployment_id"),
-    (METADATA_DEPLOYMENTS_TABLE_NAME, "created_at"),
-    (METADATA_DEPLOYMENTS_TABLE_NAME, "status"),
-    (METADATA_DEPLOYMENTS_TABLE_NAME, "replay_lineage_mode"),
-    (METADATA_DEPLOYMENTS_TABLE_NAME, "selected_root_keys_json"),
-    (METADATA_DEPLOYMENTS_TABLE_NAME, "warning_codes_json"),
-    (METADATA_DEPLOYMENTS_TABLE_NAME, "prepared_object_mappings_json"),
-    (METADATA_DEPLOYMENT_WATERMARKS_TABLE_NAME, "deployment_id"),
-    (METADATA_DEPLOYMENT_WATERMARKS_TABLE_NAME, "root_database_name"),
-    (METADATA_DEPLOYMENT_WATERMARKS_TABLE_NAME, "root_object_type"),
-    (METADATA_DEPLOYMENT_WATERMARKS_TABLE_NAME, "root_object_name"),
-    (METADATA_DEPLOYMENT_WATERMARKS_TABLE_NAME, "anchor_database_name"),
-    (METADATA_DEPLOYMENT_WATERMARKS_TABLE_NAME, "anchor_object_type"),
-    (METADATA_DEPLOYMENT_WATERMARKS_TABLE_NAME, "anchor_object_name"),
-    (METADATA_DEPLOYMENT_WATERMARKS_TABLE_NAME, "boundary_key"),
-    (METADATA_DEPLOYMENT_WATERMARKS_TABLE_NAME, "cutoff_value"),
-    (METADATA_DEPLOYMENT_RUNTIME_DETAILS_TABLE_NAME, "deployment_id"),
-    (METADATA_DEPLOYMENT_RUNTIME_DETAILS_TABLE_NAME, "root_database_name"),
-    (METADATA_DEPLOYMENT_RUNTIME_DETAILS_TABLE_NAME, "root_object_type"),
-    (METADATA_DEPLOYMENT_RUNTIME_DETAILS_TABLE_NAME, "root_object_name"),
-    (METADATA_DEPLOYMENT_RUNTIME_DETAILS_TABLE_NAME, "state_kind"),
-    (METADATA_DEPLOYMENT_RUNTIME_DETAILS_TABLE_NAME, "replay_strategy"),
-    (METADATA_DEPLOYMENT_RUNTIME_DETAILS_TABLE_NAME, "active_deployment_id"),
-    (METADATA_DEPLOYMENT_RUNTIME_DETAILS_TABLE_NAME, "anchor_database_name"),
-    (METADATA_DEPLOYMENT_RUNTIME_DETAILS_TABLE_NAME, "anchor_object_type"),
-    (METADATA_DEPLOYMENT_RUNTIME_DETAILS_TABLE_NAME, "anchor_object_name"),
-    (METADATA_DEPLOYMENT_RUNTIME_DETAILS_TABLE_NAME, "anchor_physical_name"),
-    (METADATA_DEPLOYMENT_RUNTIME_DETAILS_TABLE_NAME, "execution_mode"),
-    (METADATA_DEPLOYMENT_RUNTIME_DETAILS_TABLE_NAME, "configured_backfill_mode"),
-    (METADATA_DEPLOYMENT_RUNTIME_DETAILS_TABLE_NAME, "execution_lookback_seconds"),
-    (METADATA_DEPLOYMENT_RUNTIME_DETAILS_TABLE_NAME, "live_target_names_json"),
-    (METADATA_PUBLISH_HISTORY_TABLE_NAME, "deployment_id"),
-    (METADATA_PUBLISH_HISTORY_TABLE_NAME, "published_at"),
-    (METADATA_PUBLISH_HISTORY_TABLE_NAME, "logical_view_names_json"),
-    (METADATA_SCHEMA_VERSIONS_TABLE_NAME, "version"),
-    (METADATA_SCHEMA_VERSIONS_TABLE_NAME, "applied_at"),
-    (METADATA_TARGET_OWNERSHIP_TABLE_NAME, "database_name"),
-    (METADATA_TARGET_OWNERSHIP_TABLE_NAME, "relation_name"),
-    (METADATA_TARGET_OWNERSHIP_TABLE_NAME, "resource_kind"),
-    (METADATA_TARGET_OWNERSHIP_TABLE_NAME, "logical_model_database"),
-    (METADATA_TARGET_OWNERSHIP_TABLE_NAME, "logical_model_name"),
-    (METADATA_TARGET_OWNERSHIP_TABLE_NAME, "owning_mode"),
-    (METADATA_TARGET_OWNERSHIP_TABLE_NAME, "tool_version"),
-    (METADATA_TARGET_OWNERSHIP_TABLE_NAME, "replay_coverage_json"),
-    (METADATA_TARGET_OWNERSHIP_TABLE_NAME, "created_at"),
-    (METADATA_TARGET_OWNERSHIP_TABLE_NAME, "updated_at"),
-)
-
-
-def migrate_clickhouse_metadata_state(*, connection: AdapterConnection, database: str) -> None:
-    """Apply pending additive ClickHouse metadata migrations."""
-
-    connection.ensure_database(database)
-    connection.command(_render_schema_versions_table(database))
-    if _CURRENT_STATE_SCHEMA_VERSION in _load_applied_versions(
-        connection=connection, database=database
-    ):
-        return
-    statement: str
-    for statement in render_clickhouse_metadata_migration_statements(database):
-        connection.command(statement)
-    _validate_schema_postconditions(connection=connection, database=database)
-    connection.insert_rows(
-        table=f"{database}.{METADATA_SCHEMA_VERSIONS_TABLE_NAME}",
-        rows=(
-            {
-                "version": _CURRENT_STATE_SCHEMA_VERSION,
-                "applied_at": _current_metadata_timestamp(),
-            },
-        ),
-    )
-
-
-def persist_clickhouse_metadata_state(
-    *,
-    connection: AdapterConnection,
-    database: str,
-    state: AdapterMetadataState,
-) -> None:
-    """Persist adapter-neutral metadata records in ClickHouse."""
-
-    statement: ClickHouseMetadataStatement
-    for statement in build_clickhouse_metadata_insert_statements(database=database, state=state):
-        if statement.rows:
-            connection.insert_rows(table=statement.table, rows=statement.rows)
 
 
 def render_clickhouse_metadata_migration_statements(database: str) -> tuple[str, ...]:
@@ -144,6 +50,27 @@ def render_clickhouse_metadata_migration_statements(database: str) -> tuple[str,
         (
             f"ALTER TABLE {database}.{METADATA_DEPLOYMENTS_TABLE_NAME} "
             "ADD COLUMN IF NOT EXISTS replay_lineage_mode String DEFAULT 'offsets' AFTER status"
+        ),
+    )
+
+
+def render_clickhouse_metadata_migration_workflow(database: str) -> tuple[str, ...]:
+    """Render the complete idempotent metadata migration as executable SQL."""
+
+    migration_statements: tuple[str, ...] = render_clickhouse_metadata_migration_statements(
+        database
+    )
+    return (
+        f"CREATE DATABASE IF NOT EXISTS {database};",
+        _terminate_sql(_render_schema_versions_table(database)),
+        *tuple(_terminate_sql(statement) for statement in migration_statements),
+        (
+            f"INSERT INTO {database}.{METADATA_SCHEMA_VERSIONS_TABLE_NAME} "
+            "(version, applied_at) "
+            f"SELECT {_CURRENT_STATE_SCHEMA_VERSION}, now64(3, 'UTC') "
+            "WHERE NOT EXISTS ("
+            f"SELECT 1 FROM {database}.{METADATA_SCHEMA_VERSIONS_TABLE_NAME} "
+            f"WHERE version = {_CURRENT_STATE_SCHEMA_VERSION});"
         ),
     )
 
@@ -205,36 +132,18 @@ def build_clickhouse_metadata_insert_statements(
     )
 
 
-def _load_applied_versions(*, connection: AdapterConnection, database: str) -> frozenset[int]:
-    result: AdapterQueryResult = connection.query(
-        f"SELECT DISTINCT version FROM {database}.{METADATA_SCHEMA_VERSIONS_TABLE_NAME}"
-    )
-    return frozenset(int(str(row[0])) for row in result.rows)
+def render_clickhouse_metadata_state(
+    *, database: str, state: AdapterMetadataState
+) -> tuple[str, ...]:
+    """Render metadata rows as exact manually executable ClickHouse inserts."""
 
-
-def _validate_schema_postconditions(*, connection: AdapterConnection, database: str) -> None:
-    required_table_names: set[str] = set()
-    required_table: str
-    required_column: str
-    for required_table, required_column in _REQUIRED_SCHEMA_COLUMNS:
-        del required_column
-        required_table_names.add(required_table)
-    table_names: str = ", ".join(f"'{table_name}'" for table_name in sorted(required_table_names))
-    result: AdapterQueryResult = connection.query(
-        "SELECT table, name FROM system.columns "
-        f"WHERE database = '{database}' AND table IN ({table_names})"
-    )
-    observed_columns: frozenset[tuple[str, str]] = frozenset(
-        (str(row[0]), str(row[1])) for row in result.rows
-    )
-    missing_columns: tuple[tuple[str, str], ...] = tuple(
-        required for required in _REQUIRED_SCHEMA_COLUMNS if required not in observed_columns
-    )
-    if missing_columns:
-        raise AdapterWarehouseError(
-            f"ClickHouse metadata migration {_CURRENT_STATE_SCHEMA_VERSION} "
-            f"did not establish required columns: {missing_columns!r}"
+    statements: tuple[ClickHouseMetadataStatement, ...] = (
+        build_clickhouse_metadata_insert_statements(
+            database=database,
+            state=state,
         )
+    )
+    return tuple(_render_insert_statement(statement) for statement in statements if statement.rows)
 
 
 def _render_schema_versions_table(database: str) -> str:
@@ -445,59 +354,83 @@ def load_clickhouse_target_ownership(
     return tuple(_ownership_record(row=row) for row in result.rows)
 
 
-def record_clickhouse_target_ownership(
-    *,
-    connection: AdapterConnection,
-    database: str,
-    records: tuple[AdapterOwnershipRecord, ...],
-) -> None:
-    """Insert or replace every requested ClickHouse ownership claim."""
+def render_clickhouse_target_ownership(
+    *, database: str, records: tuple[AdapterOwnershipRecord, ...]
+) -> tuple[str, ...]:
+    """Render deterministic ownership claims as one executable ClickHouse insert."""
 
-    recorded_at: str = _current_metadata_timestamp()
-    connection.insert_rows(
-        table=f"{database}.{METADATA_TARGET_OWNERSHIP_TABLE_NAME}",
-        rows=tuple(_ownership_row(record=record, recorded_at=recorded_at) for record in records),
+    if not records:
+        return ()
+    rendered_rows: str = ",\n".join(_render_ownership_values(record) for record in records)
+    return (
+        f"INSERT INTO {database}.{METADATA_TARGET_OWNERSHIP_TABLE_NAME} "
+        "(database_name, relation_name, resource_kind, logical_model_database, "
+        "logical_model_name, owning_mode, tool_version, replay_coverage_json, created_at, "
+        f"updated_at) VALUES\n{rendered_rows};",
     )
 
 
-def remove_clickhouse_target_ownership(
-    *,
-    connection: AdapterConnection,
-    database: str,
-    target_database: str,
-    relation_names: tuple[str, ...],
-) -> None:
-    """Delete exact retired ownership claims after replacement succeeds."""
+def render_clickhouse_target_ownership_removal(
+    *, database: str, target_database: str, relation_names: tuple[str, ...]
+) -> tuple[str, ...]:
+    """Render exact synchronous removal SQL for retired ownership claims."""
 
     if not relation_names:
-        return
-    quoted_names: str = ", ".join(f"'{name}'" for name in relation_names)
-    connection.command(
+        return ()
+    quoted_names: str = ", ".join(_render_sql_literal(name) for name in relation_names)
+    quoted_target_database: str = _render_sql_literal(target_database)
+    return (
         f"ALTER TABLE {database}.{METADATA_TARGET_OWNERSHIP_TABLE_NAME} "
-        f"DELETE WHERE database_name = '{target_database}' "
-        f"AND relation_name IN ({quoted_names}) SETTINGS mutations_sync = 2"
+        f"DELETE WHERE database_name = {quoted_target_database} "
+        f"AND relation_name IN ({quoted_names}) SETTINGS mutations_sync = 2;",
     )
 
 
-def _current_metadata_timestamp() -> str:
-    return datetime.now(tz=UTC).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+def _render_ownership_values(record: AdapterOwnershipRecord) -> str:
+    replay_coverage_json: str = json.dumps(
+        [_replay_coverage_payload(coverage) for coverage in record.replay_coverage]
+    )
+    values: tuple[object, ...] = (
+        record.database_name,
+        record.relation_name,
+        record.resource_kind,
+        record.logical_model_database,
+        record.logical_model_name,
+        str(record.owning_mode),
+        record.tool_version,
+        replay_coverage_json,
+    )
+    rendered_values: str = ", ".join(_render_sql_literal(value) for value in values)
+    return f"({rendered_values}, now64(3, 'UTC'), now64(3, 'UTC'))"
 
 
-def _ownership_row(*, record: AdapterOwnershipRecord, recorded_at: str) -> dict[str, object]:
-    return {
-        "database_name": record.database_name,
-        "relation_name": record.relation_name,
-        "resource_kind": record.resource_kind,
-        "logical_model_database": record.logical_model_database,
-        "logical_model_name": record.logical_model_name,
-        "owning_mode": str(record.owning_mode),
-        "tool_version": record.tool_version,
-        "replay_coverage_json": json.dumps(
-            [_replay_coverage_payload(coverage) for coverage in record.replay_coverage]
-        ),
-        "created_at": recorded_at,
-        "updated_at": recorded_at,
-    }
+def _render_insert_statement(statement: ClickHouseMetadataStatement) -> str:
+    rendered_rows: list[str] = []
+    row: dict[str, object]
+    for row in statement.rows:
+        rendered_values: tuple[str, ...] = tuple(
+            _render_sql_literal(value) for value in row.values()
+        )
+        rendered_rows.append(f"({', '.join(rendered_values)})")
+    joined_rows: str = ",\n".join(rendered_rows)
+    return f"{statement.sql}\n{joined_rows};"
+
+
+def _render_sql_literal(value: object) -> str:
+    if value is None:
+        return "NULL"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, int | float):
+        return str(value)
+    if isinstance(value, str):
+        escaped_value: str = value.replace("\\", "\\\\").replace("'", "\\'")
+        return f"'{escaped_value}'"
+    raise AdapterResultError(f"Cannot render ClickHouse SQL literal for {type(value).__name__}")
+
+
+def _terminate_sql(statement: str) -> str:
+    return f"{statement.rstrip().rstrip(';')};"
 
 
 def _ownership_table_exists(*, connection: AdapterConnection, database: str) -> bool:

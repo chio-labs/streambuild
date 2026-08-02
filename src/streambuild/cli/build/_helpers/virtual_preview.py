@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.models import CatalogSnapshot
 from streambuild.cli.build.models import (
     BuildCommandOptions,
     VirtualBuildPreviewContext,
@@ -79,6 +80,11 @@ def build_virtual_build_preview(
         database=resolved_database,
     )
     resolved_metadata_database: str = options.metadata_database or resolved_database
+    metadata_catalog: CatalogSnapshot = (
+        snapshot.catalog
+        if resolved_metadata_database == resolved_database
+        else client.load_catalog(resolved_metadata_database)
+    )
     selection: SelectionResolution = resolve_selection(
         realized_project=analysis.realized_project,
         graph=analysis.graph,
@@ -126,11 +132,11 @@ def build_virtual_build_preview(
         default_database=resolved_database,
         replay_lineage_mode=replay_lineage_mode,
     )
+    preview_root_reports: tuple[RootBackfillReport, ...] = build_root_backfill_reports(
+        catalog=snapshot.catalog,
+        desired_state=desired_state,
+    )
     if start_time is not None:
-        preview_root_reports: tuple[RootBackfillReport, ...] = build_root_backfill_reports(
-            catalog=snapshot.catalog,
-            desired_state=desired_state,
-        )
         invalid_root_names: tuple[str, ...] = tuple(
             report.root_key.name
             for report in preview_root_reports
@@ -150,6 +156,10 @@ def build_virtual_build_preview(
         replay_lineage_mode=replay_lineage_mode,
         deployment_id=deployment_identity.deployment_id,
         created_at=deployment_identity.created_at,
+        root_reports=preview_root_reports,
+        existing_relation_names=snapshot.catalog.relation_names(),
+        target_catalog=snapshot.catalog,
+        metadata_catalog=metadata_catalog,
         full_refresh_keys=(selection.selected_model_keys if options.full_refresh else frozenset()),
         start_time_keys=selection.selected_model_keys if start_time is not None else frozenset(),
         start_time=start_time,

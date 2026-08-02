@@ -14,6 +14,7 @@ from streambuild.compiler.discovery.models import LoadedProject
 from streambuild.compiler.pipeline.main.analyze_project import analyze_project
 from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.compiler.planner.exceptions import DirectPlanError
+from streambuild.executor.backfill.exceptions import BackfillExecutionError
 from streambuild.executor.direct.exceptions import DirectBuildError
 
 
@@ -48,6 +49,7 @@ def run_build(
         CliUserError,
         DirectPlanError,
         DirectBuildError,
+        BackfillExecutionError,
         AdapterError,
         ValueError,
     ) as error:

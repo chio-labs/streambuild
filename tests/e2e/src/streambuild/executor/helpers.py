@@ -38,6 +38,7 @@ from tests.e2e.src.streambuild.conftest import (
 from tests.e2e.src.streambuild.executor._test_types import (
     KafkaLiveShadowScenarioResult,
     KafkaLiveShadowWorkflowE2ETestCase,
+    VirtualManagedManualWorkflowSnapshot,
 )
 from tests.integration.src.streambuild.adapters.clickhouse.helpers import (
     render_create_kafka_table_ddl,
@@ -693,6 +694,20 @@ def build_near_replay_times(*, seconds_from_now: int) -> tuple[str, str]:
     return created_at, boundary_time
 
 
+def build_bounded_replay_times(*, lookback_seconds: int) -> tuple[int, int, str, str]:
+    frontier_time: datetime = datetime.now(tz=UTC)
+    historical_time: datetime = frontier_time - timedelta(seconds=lookback_seconds + 4)
+    replay_time: datetime = frontier_time + timedelta(seconds=2)
+    created_at: str = replay_time.strftime("%Y-%m-%d %H:%M:%S.123")
+    boundary_time: str = replay_time.strftime("%Y-%m-%d %H:%M:%S.000")
+    return (
+        int(historical_time.timestamp() * 1000),
+        int(frontier_time.timestamp() * 1000),
+        created_at,
+        boundary_time,
+    )
+
+
 def _with_kafka_broker_list_and_topic(
     *,
     compiled_pipeline: CompiledPipeline,
@@ -790,6 +805,7 @@ def produce_kafka_messages(
     producer: KafkaProducer,
     topic: str,
     messages: tuple[tuple[str, str], ...],
+    timestamp_ms: int | None = None,
 ) -> None:
     message_key: str
     message_value: str
@@ -798,8 +814,126 @@ def produce_kafka_messages(
             topic,
             key=message_key.encode("utf-8"),
             value=message_value.encode("utf-8"),
+            timestamp_ms=timestamp_ms,
         ).get(timeout=30)
     producer.flush()
+
+
+def execute_e2e_clickhouse_client_sql(
+    *, settings: E2EClickHouseConnectionSettings, sql: str
+) -> tuple[int, str]:
+    """Execute emitted workflow SQL through the real ClickHouse CLI."""
+
+    completed: subprocess.CompletedProcess[str] = subprocess.run(
+        (
+            "docker",
+            "exec",
+            settings.container_id,
+            "clickhouse-client",
+            "--user",
+            settings.username,
+            "--password",
+            settings.password,
+            "--multiquery",
+            "--query",
+            sql,
+        ),
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    return completed.returncode, completed.stderr
+
+
+def load_virtual_manual_workflow_snapshot(
+    *,
+    clickhouse_client: Client,
+    database: str,
+    deployment_id: str,
+    target_table_name: str,
+    audit_assessment: str,
+) -> VirtualManagedManualWorkflowSnapshot:
+    """Load normalized unpublished virtual state from one isolated database."""
+
+    deployment_rows: Sequence[Sequence[object]] = clickhouse_client.query(
+        "SELECT 'deployment', status, replay_lineage_mode, selected_root_keys_json, "
+        "warning_codes_json, prepared_object_mappings_json "
+        f"FROM {database}.streambuild_deployments FINAL "
+        f"WHERE deployment_id = '{deployment_id}'"
+    ).result_rows
+    object_rows: Sequence[Sequence[object]] = clickhouse_client.query(
+        "SELECT 'object', object_type, object_name, normalized_fingerprint, "
+        "ifNull(normalized_query, '') "
+        f"FROM {database}.streambuild_object_state_snapshots FINAL "
+        f"WHERE deployment_id = '{deployment_id}' ORDER BY object_type, object_name"
+    ).result_rows
+    runtime_rows: Sequence[Sequence[object]] = clickhouse_client.query(
+        "SELECT 'runtime', root_object_type, root_object_name, state_kind, replay_strategy, "
+        "ifNull(active_deployment_id, ''), anchor_object_type, anchor_object_name, "
+        "ifNull(anchor_physical_name, ''), ifNull(execution_mode, ''), "
+        "ifNull(configured_backfill_mode, ''), ifNull(toString(execution_lookback_seconds), ''), "
+        "live_target_names_json "
+        f"FROM {database}.streambuild_deployment_runtime_details FINAL "
+        f"WHERE deployment_id = '{deployment_id}' ORDER BY root_object_type, root_object_name"
+    ).result_rows
+    physical_rows: Sequence[Sequence[object]] = clickhouse_client.query(
+        "SELECT name, engine, create_table_query FROM system.tables "
+        f"WHERE database = '{database}' AND name NOT LIKE 'streambuild\\_%' "
+        "ORDER BY name"
+    ).result_rows
+    replay_rows: Sequence[Sequence[object]] = clickhouse_client.query(
+        f"SELECT order_id FROM {database}.{target_table_name}__{deployment_id} ORDER BY order_id"
+    ).result_rows
+    watermark_rows: Sequence[Sequence[object]] = clickhouse_client.query(
+        "SELECT boundary_key, if(boundary_key = '__streambuild_boundary_time', "
+        "'<boundary-time>', cutoff_value) "
+        f"FROM {database}.streambuild_deployment_watermarks FINAL "
+        f"WHERE deployment_id = '{deployment_id}' ORDER BY boundary_key"
+    ).result_rows
+    publish_event_count: int = int(
+        clickhouse_client.query(
+            f"SELECT count() FROM {database}.streambuild_publish_history FINAL "
+            f"WHERE deployment_id = '{deployment_id}'"
+        ).result_rows[0][0]
+    )
+    stable_rows: Sequence[Sequence[object]] = clickhouse_client.query(
+        "SELECT name, create_table_query FROM system.tables "
+        f"WHERE database = '{database}' AND name = '{target_table_name}' ORDER BY name"
+    ).result_rows
+    deployment_metadata: tuple[tuple[str, ...], ...] = _normalize_virtual_snapshot_rows(
+        rows=(*deployment_rows, *object_rows, *runtime_rows),
+        database=database,
+        deployment_id=deployment_id,
+    )
+    physical_graph: tuple[tuple[str, ...], ...] = _normalize_virtual_snapshot_rows(
+        rows=physical_rows,
+        database=database,
+        deployment_id=deployment_id,
+    )
+    return VirtualManagedManualWorkflowSnapshot(
+        deployment_status=str(deployment_rows[0][1]),
+        deployment_metadata=deployment_metadata,
+        physical_graph=physical_graph,
+        replay_order_ids=tuple(str(row[0]) for row in replay_rows),
+        watermark_rows=tuple((str(row[0]), str(row[1])) for row in watermark_rows),
+        audit_assessment=audit_assessment,
+        publish_event_count=publish_event_count,
+        stable_bindings=tuple((str(row[0]), str(row[1])) for row in stable_rows),
+    )
+
+
+def _normalize_virtual_snapshot_rows(
+    *, rows: Sequence[Sequence[object]], database: str, deployment_id: str
+) -> tuple[tuple[str, ...], ...]:
+    normalized_rows: list[tuple[str, ...]] = []
+    row: Sequence[object]
+    for row in rows:
+        normalized_row: tuple[str, ...] = tuple(
+            str(value).replace(database, "<database>").replace(deployment_id, "<deployment>")
+            for value in row
+        )
+        normalized_rows.append(normalized_row)
+    return tuple(normalized_rows)
 
 
 def wait_for_live_shadow_row_count(

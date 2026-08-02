@@ -15,8 +15,10 @@ class ExecuteReconcileTestCase:
 
 
 @dataclass(frozen=True)
-class ApplyReconcileAdapterStateTestCase:
+class ApplyReconcileWorkflowTestCase:
     description: str
-    expected_persisted_state_count: int
+    expected_migration_statement: str
     expected_object_names: tuple[str, ...]
     expected_reconcile_id_prefix: str
+    expected_table_fingerprint: str
+    expected_view_fingerprint: str

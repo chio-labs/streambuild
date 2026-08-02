@@ -7,7 +7,6 @@ from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import AdapterConnectionConfig
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from streambuild.compiler.compile.models import CompiledPipeline
-from streambuild.executor.backfill.main.execute_backfill import execute_backfill
 from streambuild.executor.backfill.models import BackfillExecutionResult
 from streambuild.executor.publish.main.execute_publish import execute_publish
 from streambuild.executor.publish.models import PublishRequest, PublishResult
@@ -23,6 +22,7 @@ from tests.integration.src.streambuild.executor.backfill.helpers import (
     build_scalar_replay_compiled_pipeline,
     build_scalar_replay_request,
     build_scalar_target_insert_select_sql,
+    execute_backfill,
     require_managed_source,
     require_model_resources,
 )

@@ -4,12 +4,10 @@ from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.exceptions import AdapterResultError
 from streambuild.adapter.models import (
     AdapterBindingReplacementRequest,
-    AdapterBindingReplacementResult,
     AdapterDeploymentInventory,
     AdapterDeploymentRecord,
     AdapterPublishEventRecord,
     AdapterRelationCleanupRequest,
-    AdapterRelationCleanupResult,
     AdapterStableBindingRemoval,
     InspectedManagedTableState,
 )
@@ -26,12 +24,17 @@ from streambuild.compiler.planner.main.is_deployment_physical_name import (
 from streambuild.compiler.planner.main.logical_name_from_physical_name import (
     logical_name_from_physical_name,
 )
+from streambuild.executor.janitor._helpers.workflow import assemble_janitor_workflow
 from streambuild.executor.janitor.models import (
     JanitorApplyResult,
     JanitorPreviewCandidate,
     JanitorPreviewResult,
     JanitorRequest,
 )
+from streambuild.executor.workflow.main._execute_warehouse_workflow import (
+    execute_warehouse_workflow,
+)
+from streambuild.executor.workflow.models import WarehouseStatement
 
 
 def execute_janitor_for_managed_table_state(
@@ -196,11 +199,9 @@ def _apply_janitor(
         inventory=inventory,
         managed_table_state=managed_table_state,
     )
-    replacement_result: AdapterBindingReplacementResult = client.replace_stable_bindings(
-        AdapterBindingReplacementRequest(bindings=(), removals=obsolete_removals)
+    binding_request: AdapterBindingReplacementRequest = AdapterBindingReplacementRequest(
+        bindings=(), removals=obsolete_removals
     )
-    if replacement_result.removals != obsolete_removals:
-        raise AdapterResultError("Adapter did not remove the requested obsolete bindings")
     deleted_deployment_ids: list[str] = []
     requested_object_names: list[str] = []
     candidate: JanitorPreviewCandidate
@@ -218,7 +219,13 @@ def _apply_janitor(
     )
     refreshed_state: InspectedManagedTableState = client.inspect_managed_table_state(database)
     refreshed_active_names: frozenset[str] = frozenset(
-        binding.physical_name for binding in refreshed_state.active_bindings
+        binding.physical_name
+        for binding in refreshed_state.active_bindings
+        if AdapterStableBindingRemoval(
+            database=binding.database,
+            logical_name=binding.logical_name,
+        )
+        not in obsolete_removals
     )
     newly_active_names: frozenset[str] = refreshed_active_names.intersection(
         cleanup_request.relation_names
@@ -227,15 +234,18 @@ def _apply_janitor(
         raise AdapterResultError(
             f"Refusing to clean relations that became active: {tuple(sorted(newly_active_names))!r}"
         )
-    cleanup_result: AdapterRelationCleanupResult = client.cleanup_relations(cleanup_request)
-    if cleanup_result.relation_names != cleanup_request.relation_names:
-        raise AdapterResultError("Adapter cleanup result did not match requested relations")
+    statements: tuple[WarehouseStatement, ...] = assemble_janitor_workflow(
+        client=client,
+        binding_request=binding_request,
+        cleanup_request=cleanup_request,
+    )
+    _ = execute_warehouse_workflow(statements=statements, connection=client)
 
     return JanitorApplyResult(
         database=database,
         retention_days=retention_days,
         deleted_deployment_ids=tuple(deleted_deployment_ids),
-        deleted_object_names=cleanup_result.relation_names,
+        deleted_object_names=cleanup_request.relation_names,
     )
 
 

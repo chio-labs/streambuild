@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import (
     AdapterManagedSource,
     AdapterMaterializedView,
@@ -10,37 +9,61 @@ from streambuild.adapter.models import (
     CatalogRelation,
     CatalogSnapshot,
 )
-from streambuild.compiler.compile.models import CompiledSource, LogicalResourceKey
+from streambuild.compiler.compile.models import (
+    CompiledSource,
+    DesiredMaterializedView,
+    LogicalResourceKey,
+)
 from streambuild.compiler.pipeline.models import RealizedProject
 from streambuild.executor.direct.exceptions import DirectBuildError
-from streambuild.executor.population.main._prepare_population_sources import (
-    prepare_population_sources,
+from streambuild.executor.population.models import (
+    PopulationRealization,
+    PopulationSourcePreparation,
 )
-from streambuild.executor.population.models import PopulationSourcePreparation
 
 _KAFKA_BROKER_LIST_SETTING: str = "kafka_broker_list"
 _KAFKA_TOPIC_LIST_SETTING: str = "kafka_topic_list"
 _KAFKA_FORMAT_SETTING: str = "kafka_format"
 
 
-def prepare_preserved_managed_sources(
+def plan_preserved_managed_sources(
     *,
-    client: AdapterConnection,
     realized_project: RealizedProject,
     catalog: CatalogSnapshot,
     database: str,
-) -> PopulationSourcePreparation:
-    """Validate preserved sources and create only absent passive resources."""
+) -> tuple[PopulationSourcePreparation, tuple[PopulationRealization, ...]]:
+    """Validate preserved sources and plan absent resources without mutation."""
 
     resources: tuple[AdapterManagedSource | AdapterTable | AdapterMaterializedView, ...] = (
         _managed_source_resources(realized_project=realized_project)
     )
     _reject_managed_source_drift(resources=resources, catalog=catalog)
-    return prepare_population_sources(
-        client=client,
-        desired_state=realized_project.desired_state,
-        default_database=database,
-        existing_relation_names=catalog.relation_names(),
+    preserved_names: list[str] = []
+    created_names: list[str] = []
+    landing_view_names: list[str] = []
+    realizations: list[PopulationRealization] = []
+    resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView
+    for resource in resources:
+        if resource.name in catalog.relation_names():
+            preserved_names.append(resource.name)
+        else:
+            created_names.append(resource.name)
+            if isinstance(resource, AdapterMaterializedView):
+                landing_view_names.append(resource.name)
+            else:
+                realizations.append(PopulationRealization(resource=resource, database=database))
+    desired_landing_views: tuple[DesiredMaterializedView, ...] = tuple(
+        desired
+        for desired in realized_project.desired_state.objects
+        if isinstance(desired, DesiredMaterializedView) and desired.name in landing_view_names
+    )
+    return (
+        PopulationSourcePreparation(
+            preserved_relation_names=tuple(preserved_names),
+            created_relation_names=tuple(created_names),
+            landing_views=desired_landing_views,
+        ),
+        tuple(realizations),
     )
 
 

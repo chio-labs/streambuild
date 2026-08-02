@@ -9,7 +9,6 @@ from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHous
 from streambuild.compiler.compile.models import CompiledPipeline, DesiredState
 from streambuild.compiler.planner.main.load_actual_state import load_actual_state
 from streambuild.compiler.planner.models import ActualMaterializedView, ActualState
-from streambuild.executor.backfill.main.execute_backfill import execute_backfill
 from streambuild.executor.publish.main.execute_publish import execute_publish
 from streambuild.executor.publish.models import PublishRequest
 from streambuild.executor.reconcile.constants import RECONCILE_DEPLOYMENT_ID_PREFIX
@@ -36,6 +35,7 @@ from tests.integration.src.streambuild.executor.backfill.helpers import (
     build_raw_orders_row,
     build_scalar_replay_compiled_pipeline,
     build_scalar_replay_request,
+    execute_backfill,
     require_managed_source,
 )
 
@@ -637,7 +637,7 @@ def test_given_latest_object_state_record_when_loading_then_only_reconcile_overr
                     "mv__orders_enriched",
                     "reconcile_fp",
                     test_case.latest_record_query,
-                    "2026-04-09 22:55:00.123",
+                    "2099-04-09 22:55:00.123",
                 )
             ],
             column_names=[

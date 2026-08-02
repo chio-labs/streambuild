@@ -1,5 +1,4 @@
 import json
-import time
 from collections.abc import Sequence
 from pathlib import Path
 from typing import cast
@@ -15,15 +14,16 @@ from streambuild.compiler.compile.models import CompiledPipeline
 from streambuild.compiler.discovery.types import ReplayLineageMode, ReplayOnChangeMode
 from streambuild.compiler.planner.types import RebuildExecutionMode
 from streambuild.executor.audit_backfill.types import AuditAssessment
-from streambuild.executor.backfill.main.execute_backfill import execute_backfill
 from streambuild.executor.backfill.models import BackfillExecutionResult
 from streambuild.executor.publish.main.execute_publish import execute_publish
 from streambuild.executor.publish.models import PublishRequest
+from streambuild.executor.workflow.models import PublishedBuildWorkflow
 from tests.e2e.src.streambuild.conftest import (
     E2EClickHouseConnectionSettings,
     E2EKafkaConnectionSettings,
 )
 from tests.e2e.src.streambuild.executor._test_types import (
+    DirectManagedManualWorkflowE2ETestCase,
     GreenfieldKafkaWorkflowE2ETestCase,
     KafkaLiveShadowScenarioResult,
     KafkaLiveShadowWorkflowE2ETestCase,
@@ -31,17 +31,21 @@ from tests.e2e.src.streambuild.executor._test_types import (
     KafkaRecoveryWorkflowE2ETestCase,
     KafkaSchemaChangeWorkflowE2ETestCase,
     ManagedSourceBootstrapE2ETestCase,
+    VirtualManagedManualWorkflowE2ETestCase,
+    VirtualManagedManualWorkflowSnapshot,
 )
 from tests.e2e.src.streambuild.executor.helpers import (
     E2E_KAFKA_LANDED_AT_PROJECT_DIR,
     E2E_KAFKA_OFFSET_PROJECT_DIR,
     E2E_KAFKA_TIMESTAMP_PROJECT_DIR,
     build_authored_greenfield_workflow_compiled_pipeline,
+    build_bounded_replay_times,
     build_future_replay_times,
     build_greenfield_workflow_request,
     build_kafka_producer,
-    build_near_replay_times,
     build_schema_change_workflow_compiled_pipeline,
+    execute_e2e_clickhouse_client_sql,
+    load_virtual_manual_workflow_snapshot,
     prepare_authored_e2e_project,
     produce_kafka_messages,
     require_managed_source,
@@ -62,6 +66,15 @@ from tests.integration.src.streambuild.adapters.clickhouse.helpers import (
     render_create_materialized_view_ddl,
     render_create_table_ddl,
 )
+from tests.integration.src.streambuild.cli.helpers import (
+    direct_build_order_ids,
+    direct_owned_relation_names,
+    publish_direct_workflow,
+    publish_virtual_workflow,
+    run_direct_build,
+    write_direct_build_project,
+)
+from tests.integration.src.streambuild.executor.backfill.helpers import execute_backfill
 
 GREENFIELD_CREATED_AT: str
 GREENFIELD_BOUNDARY_TIME: str
@@ -74,6 +87,333 @@ RECOVERY_CREATED_AT, RECOVERY_BOUNDARY_TIME = build_future_replay_times(seconds_
 OFFSET_AUDIT_CREATED_AT: str
 OFFSET_AUDIT_BOUNDARY_TIME: str
 OFFSET_AUDIT_CREATED_AT, OFFSET_AUDIT_BOUNDARY_TIME = build_future_replay_times(seconds_from_now=40)
+
+
+@pytest.mark.e2e
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DirectManagedManualWorkflowE2ETestCase(
+            description="managed direct command numbered and combined workflows match",
+            messages=(("order-1", "{}"), ("order-2", "{}")),
+            expected_order_ids=("order-1", "order-2"),
+            expected_exit_code=0,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_retained_kafka_messages_when_executing_direct_artifacts_then_forms_match(
+    test_case: DirectManagedManualWorkflowE2ETestCase,
+    e2e_clickhouse_connection_settings: E2EClickHouseConnectionSettings,
+    e2e_kafka_connection_settings: E2EKafkaConnectionSettings,
+    e2e_clickhouse_client: Client,
+    e2e_clickhouse_database: str,
+    tmp_path: Path,
+) -> None:
+    numbered_database: str = f"{e2e_clickhouse_database}_steps"
+    combined_database: str = f"{e2e_clickhouse_database}_combined"
+    databases: tuple[str, ...] = (
+        e2e_clickhouse_database,
+        numbered_database,
+        combined_database,
+    )
+    topic: str = f"source.direct_manual.{e2e_clickhouse_database}"
+    write_direct_build_project(
+        project_root=tmp_path,
+        topic=topic,
+        broker_list=e2e_kafka_connection_settings.internal_bootstrap_server,
+    )
+    connection: AdapterConnection = ClickHouseAdapter().connect(
+        AdapterConnectionConfig(
+            host=e2e_clickhouse_connection_settings.host,
+            port=e2e_clickhouse_connection_settings.port,
+            username=e2e_clickhouse_connection_settings.username,
+            password=e2e_clickhouse_connection_settings.password,
+            database=e2e_clickhouse_database,
+        )
+    )
+    producer: KafkaProducer = build_kafka_producer(
+        bootstrap_server=e2e_kafka_connection_settings.bootstrap_server
+    )
+    try:
+        e2e_clickhouse_client.command(f"CREATE DATABASE {numbered_database}")
+        e2e_clickhouse_client.command(f"CREATE DATABASE {combined_database}")
+        produce_kafka_messages(producer=producer, topic=topic, messages=test_case.messages)
+        command_exit_code: int = run_direct_build(
+            project_root=tmp_path,
+            database=e2e_clickhouse_database,
+            connection=connection,
+        )
+        numbered: PublishedBuildWorkflow = publish_direct_workflow(
+            project_root=tmp_path,
+            database=numbered_database,
+            connection=connection,
+        )
+        numbered_results: tuple[tuple[int, str], ...] = tuple(
+            execute_e2e_clickhouse_client_sql(
+                settings=e2e_clickhouse_connection_settings,
+                sql=path.read_text(encoding="utf-8"),
+            )
+            for path in sorted((numbered.artifact_root / "steps").iterdir())
+        )
+        combined: PublishedBuildWorkflow = publish_direct_workflow(
+            project_root=tmp_path,
+            database=combined_database,
+            connection=connection,
+        )
+        combined_result: tuple[int, str] = execute_e2e_clickhouse_client_sql(
+            settings=e2e_clickhouse_connection_settings,
+            sql=(combined.artifact_root / "workflow.sql").read_text(encoding="utf-8"),
+        )
+        wait_for_row_count(
+            clickhouse_client=e2e_clickhouse_client,
+            clickhouse_database=numbered_database,
+            table_name="tbl__orders_enriched",
+            expected_count=len(test_case.expected_order_ids),
+        )
+        wait_for_row_count(
+            clickhouse_client=e2e_clickhouse_client,
+            clickhouse_database=combined_database,
+            table_name="tbl__orders_enriched",
+            expected_count=len(test_case.expected_order_ids),
+        )
+        order_ids: tuple[tuple[str, ...], ...] = tuple(
+            direct_build_order_ids(clickhouse_client=e2e_clickhouse_client, database=database)
+            for database in databases
+        )
+        ownership_names: tuple[tuple[str, ...], ...] = tuple(
+            direct_owned_relation_names(connection=connection, database=database)
+            for database in databases
+        )
+    finally:
+        producer.close()
+        e2e_clickhouse_client.command(f"DROP DATABASE IF EXISTS {numbered_database} SYNC")
+        e2e_clickhouse_client.command(f"DROP DATABASE IF EXISTS {combined_database} SYNC")
+        connection.close()
+
+    assert command_exit_code == test_case.expected_exit_code
+    assert tuple(result[0] for result in numbered_results) == tuple(
+        test_case.expected_exit_code for _result in numbered_results
+    )
+    assert combined_result[0] == test_case.expected_exit_code
+    assert order_ids == tuple(test_case.expected_order_ids for _database in databases)
+    assert ownership_names == tuple(
+        ("mv__orders_enriched", "tbl__orders_enriched") for _database in databases
+    )
+
+
+@pytest.mark.e2e
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        VirtualManagedManualWorkflowE2ETestCase(
+            description=(
+                "managed virtual command numbered and combined workflows match unpublished state"
+            ),
+            deployment_ids=(
+                "20260801T120000Z_virtualcommand",
+                "20260801T120100Z_virtualsteps",
+                "20260801T120200Z_virtualcombined",
+            ),
+            messages=(("order-1", '{"order_id":"order-1"}'), ("order-2", '{"order_id":"order-2"}')),
+            expected_order_ids=("order-1", "order-2"),
+            expected_watermark_rows=(
+                ("__streambuild_boundary_time", "<boundary-time>"),
+                ("_replay_partition=0", "1"),
+            ),
+            expected_audit_assessment=AuditAssessment.READY,
+            expected_deployment_status="backfilling",
+            expected_publish_event_count=0,
+            expected_stable_bindings=(),
+            expected_exit_code=0,
+            expected_min_physical_relation_count=1,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_retained_kafka_messages_when_executing_virtual_artifacts_then_forms_match(
+    test_case: VirtualManagedManualWorkflowE2ETestCase,
+    e2e_clickhouse_connection_settings: E2EClickHouseConnectionSettings,
+    e2e_kafka_connection_settings: E2EKafkaConnectionSettings,
+    e2e_clickhouse_client: Client,
+    e2e_clickhouse_database: str,
+    tmp_path: Path,
+) -> None:
+    numbered_database: str = f"{e2e_clickhouse_database}_virtual_steps"
+    combined_database: str = f"{e2e_clickhouse_database}_virtual_combined"
+    databases: tuple[str, ...] = (
+        e2e_clickhouse_database,
+        numbered_database,
+        combined_database,
+    )
+    project_parents: tuple[Path, ...] = (
+        tmp_path / "command",
+        tmp_path / "numbered",
+        tmp_path / "combined",
+    )
+    project_parent: Path
+    for project_parent in project_parents:
+        project_parent.mkdir()
+    project_dirs: tuple[Path, ...] = tuple(
+        prepare_authored_e2e_project(
+            fixture_project_dir=E2E_KAFKA_OFFSET_PROJECT_DIR,
+            tmp_path=project_parent,
+            kafka_broker_list=e2e_kafka_connection_settings.internal_bootstrap_server,
+            topic_suffix=database,
+        )
+        for project_parent, database in zip(project_parents, databases, strict=True)
+    )
+    compiled_pipelines: tuple[CompiledPipeline, ...] = tuple(
+        build_authored_greenfield_workflow_compiled_pipeline(project_dir=project_dir)
+        for project_dir in project_dirs
+    )
+    target_table_names: tuple[str, ...] = tuple(
+        require_model_resources(compiled_pipeline).target_table_name
+        for compiled_pipeline in compiled_pipelines
+    )
+    connection: AdapterConnection = ClickHouseAdapter().connect(
+        AdapterConnectionConfig(
+            host=e2e_clickhouse_connection_settings.host,
+            port=e2e_clickhouse_connection_settings.port,
+            username=e2e_clickhouse_connection_settings.username,
+            password=e2e_clickhouse_connection_settings.password,
+            database=e2e_clickhouse_database,
+        )
+    )
+    producer: KafkaProducer = build_kafka_producer(
+        bootstrap_server=e2e_kafka_connection_settings.bootstrap_server
+    )
+    e2e_clickhouse_client.command(f"CREATE DATABASE {numbered_database}")
+    e2e_clickhouse_client.command(f"CREATE DATABASE {combined_database}")
+    compiled_pipeline: CompiledPipeline
+    database: str
+    for compiled_pipeline, database in zip(compiled_pipelines, databases, strict=True):
+        e2e_clickhouse_client.command(
+            render_create_kafka_table_ddl(
+                table=require_managed_source(compiled_pipeline).kafka_table,
+                database=database,
+            )
+        )
+        e2e_clickhouse_client.command(
+            render_create_table_ddl(
+                table=require_managed_source(compiled_pipeline).raw_table,
+                database=database,
+            )
+        )
+        e2e_clickhouse_client.command(
+            render_create_materialized_view_ddl(
+                materialized_view=require_managed_source(compiled_pipeline).materialized_view,
+                database=database,
+            )
+        )
+    try:
+        for compiled_pipeline in compiled_pipelines:
+            produce_kafka_messages(
+                producer=producer,
+                topic=require_managed_source(compiled_pipeline).kafka_table.spec.kafka.topic,
+                messages=test_case.messages,
+            )
+    finally:
+        producer.close()
+    for compiled_pipeline, database in zip(compiled_pipelines, databases, strict=True):
+        wait_for_row_count(
+            clickhouse_client=e2e_clickhouse_client,
+            clickhouse_database=database,
+            table_name=require_managed_source(compiled_pipeline).raw_table.name,
+            expected_count=len(test_case.expected_order_ids),
+        )
+    try:
+        run_streambuild_virtual_build_cli(
+            project_dir=project_dirs[0],
+            host=e2e_clickhouse_connection_settings.host,
+            port=e2e_clickhouse_connection_settings.port,
+            username=e2e_clickhouse_connection_settings.username,
+            password=e2e_clickhouse_connection_settings.password,
+            database=databases[0],
+            deployment_id=test_case.deployment_ids[0],
+        )
+        numbered: PublishedBuildWorkflow = publish_virtual_workflow(
+            project_root=project_dirs[1],
+            database=databases[1],
+            deployment_id=test_case.deployment_ids[1],
+            connection=connection,
+        )
+        numbered_results: tuple[tuple[int, str], ...] = tuple(
+            execute_e2e_clickhouse_client_sql(
+                settings=e2e_clickhouse_connection_settings,
+                sql=path.read_text(encoding="utf-8"),
+            )
+            for path in sorted((numbered.artifact_root / "steps").iterdir())
+        )
+        combined: PublishedBuildWorkflow = publish_virtual_workflow(
+            project_root=project_dirs[2],
+            database=databases[2],
+            deployment_id=test_case.deployment_ids[2],
+            connection=connection,
+        )
+        combined_result: tuple[int, str] = execute_e2e_clickhouse_client_sql(
+            settings=e2e_clickhouse_connection_settings,
+            sql=(combined.artifact_root / "workflow.sql").read_text(encoding="utf-8"),
+        )
+        audit_results: tuple[dict[str, object], ...] = tuple(
+            run_streambuild_audit_deployment_cli(
+                project_dir=project_dir,
+                host=e2e_clickhouse_connection_settings.host,
+                port=e2e_clickhouse_connection_settings.port,
+                username=e2e_clickhouse_connection_settings.username,
+                password=e2e_clickhouse_connection_settings.password,
+                database=database,
+                deployment_id=deployment_id,
+            )
+            for project_dir, database, deployment_id in zip(
+                project_dirs, databases, test_case.deployment_ids, strict=True
+            )
+        )
+        snapshots: tuple[VirtualManagedManualWorkflowSnapshot, ...] = tuple(
+            load_virtual_manual_workflow_snapshot(
+                clickhouse_client=e2e_clickhouse_client,
+                database=database,
+                deployment_id=deployment_id,
+                target_table_name=target_table_name,
+                audit_assessment=str(audit_result["assessment"]),
+            )
+            for database, deployment_id, target_table_name, audit_result in zip(
+                databases,
+                test_case.deployment_ids,
+                target_table_names,
+                audit_results,
+                strict=True,
+            )
+        )
+    finally:
+        e2e_clickhouse_client.command(f"DROP DATABASE IF EXISTS {numbered_database} SYNC")
+        e2e_clickhouse_client.command(f"DROP DATABASE IF EXISTS {combined_database} SYNC")
+        connection.close()
+
+    assert tuple(result[0] for result in numbered_results) == tuple(
+        test_case.expected_exit_code for _result in numbered_results
+    )
+    assert combined_result[0] == test_case.expected_exit_code
+    assert snapshots == tuple(snapshots[0] for _database in databases)
+    assert tuple(snapshot.deployment_status for snapshot in snapshots) == tuple(
+        test_case.expected_deployment_status for _database in databases
+    )
+    assert tuple(snapshot.replay_order_ids for snapshot in snapshots) == tuple(
+        test_case.expected_order_ids for _database in databases
+    )
+    assert tuple(snapshot.watermark_rows for snapshot in snapshots) == tuple(
+        test_case.expected_watermark_rows for _database in databases
+    )
+    assert tuple(snapshot.audit_assessment for snapshot in snapshots) == tuple(
+        test_case.expected_audit_assessment for _database in databases
+    )
+    assert tuple(snapshot.publish_event_count for snapshot in snapshots) == tuple(
+        test_case.expected_publish_event_count for _database in databases
+    )
+    assert tuple(snapshot.stable_bindings for snapshot in snapshots) == tuple(
+        test_case.expected_stable_bindings for _database in databases
+    )
+    assert len(snapshots[0].physical_graph) >= test_case.expected_min_physical_relation_count
 
 
 @pytest.mark.e2e
@@ -689,11 +1029,22 @@ def test_given_published_kafka_pipeline_when_schema_changes_then_bounded_policy_
     producer: KafkaProducer = build_kafka_producer(
         bootstrap_server=e2e_kafka_connection_settings.bootstrap_server
     )
+    historical_timestamp_ms: int
+    frontier_timestamp_ms: int
+    initial_created_at: str
+    initial_boundary_time: str
+    (
+        historical_timestamp_ms,
+        frontier_timestamp_ms,
+        initial_created_at,
+        initial_boundary_time,
+    ) = build_bounded_replay_times(lookback_seconds=test_case.lookback_seconds)
     try:
         produce_kafka_messages(
             producer=producer,
             topic=require_managed_source(initial_compiled_pipeline).kafka_table.spec.kafka.topic,
             messages=(("historical-order", json.dumps({"order_id": "historical-order"})),),
+            timestamp_ms=historical_timestamp_ms,
         )
     finally:
         producer.close()
@@ -704,10 +1055,6 @@ def test_given_published_kafka_pipeline_when_schema_changes_then_bounded_policy_
         table_name=require_managed_source(initial_compiled_pipeline).raw_table.name,
         expected_count=1,
     )
-    initial_created_at: str
-    initial_boundary_time: str
-    initial_created_at, initial_boundary_time = build_near_replay_times(seconds_from_now=2)
-
     managed_client: AdapterConnection = ClickHouseAdapter().connect(
         AdapterConnectionConfig(
             host=e2e_clickhouse_connection_settings.host,
@@ -739,13 +1086,13 @@ def test_given_published_kafka_pipeline_when_schema_changes_then_bounded_policy_
     finally:
         managed_client.close()
 
-    time.sleep(test_case.lookback_seconds + 2)
     producer = build_kafka_producer(bootstrap_server=e2e_kafka_connection_settings.bootstrap_server)
     try:
         produce_kafka_messages(
             producer=producer,
             topic=require_managed_source(initial_compiled_pipeline).kafka_table.spec.kafka.topic,
             messages=(("frontier-order", json.dumps({"order_id": "frontier-order"})),),
+            timestamp_ms=frontier_timestamp_ms,
         )
     finally:
         producer.close()
@@ -758,7 +1105,8 @@ def test_given_published_kafka_pipeline_when_schema_changes_then_bounded_policy_
     )
     changed_created_at: str
     changed_boundary_time: str
-    changed_created_at, changed_boundary_time = build_near_replay_times(seconds_from_now=2)
+    changed_created_at = initial_created_at
+    changed_boundary_time = initial_boundary_time
 
     managed_client = ClickHouseAdapter().connect(
         AdapterConnectionConfig(

@@ -2,7 +2,7 @@
 
 from dataclasses import asdict
 
-from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.models import AdapterMetadataState
 from streambuild.compiler.compile.constants import (
     DESIRED_OBJECT_TYPE_TABLE,
     RAW_TABLE_NAME_PREFIX,
@@ -34,18 +34,16 @@ from streambuild.executor.backfill.exceptions import BackfillExecutionError
 from streambuild.executor.backfill.models import RootBackfillReport
 
 
-def persist_deployment_metadata(
+def build_deployment_metadata_state(
     *,
-    client: AdapterConnection,
-    metadata_database: str,
     deployment_plan: DeploymentPlan,
     desired_objects: tuple[DesiredObject, ...],
     deployment_id: str,
     created_at: str,
     replay_lineage_mode: ReplayLineageMode,
     root_reports: tuple[RootBackfillReport, ...],
-) -> None:
-    """Persist the staged deployment boundary for bootstrap execution."""
+) -> AdapterMetadataState:
+    """Build the complete candidate metadata batch without warehouse mutation."""
 
     metadata_state: MetadataState = build_metadata_state(
         object_states=_build_object_state_records(
@@ -82,10 +80,7 @@ def persist_deployment_metadata(
         ),
         publish_events=(),
     )
-    client.persist_metadata_state(
-        database=metadata_database,
-        state=build_adapter_metadata_state(metadata_state),
-    )
+    return build_adapter_metadata_state(metadata_state)
 
 
 def _build_object_state_records(

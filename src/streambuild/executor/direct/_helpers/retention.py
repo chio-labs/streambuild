@@ -147,6 +147,8 @@ def _required_root_ranges(
         return _required_union(durable_ranges=durable_ranges, live_ranges=live_ranges)
     if live_ranges:
         return live_ranges
+    if root.driving_input_relation_name not in existing_relation_names:
+        return ()
     return _relation_ranges(
         client=client,
         model_name=root.model_key.name,
