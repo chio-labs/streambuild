@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.0](https://github.com/chio-labs/streambuild/compare/v0.4.0...v0.5.0) (2026-08-02)
+
+
+### Features
+
+* support bounded direct start times ([8468e83](https://github.com/chio-labs/streambuild/commit/8468e8312ed4761c059e480b7477d59682be1f77))
+* support bounded direct start times ([a23c85c](https://github.com/chio-labs/streambuild/commit/a23c85cc8d816a14db49970d53adaed8cd0b498d))
+
 ## [0.4.0](https://github.com/chio-labs/streambuild/compare/v0.3.0...v0.4.0) (2026-08-02)
 
 
