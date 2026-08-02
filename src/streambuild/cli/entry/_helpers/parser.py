@@ -83,6 +83,10 @@ def build_cli_parser() -> argparse.ArgumentParser:
     _add_clickhouse_args(parser=plan_parser)
     _add_select_args(plan_parser)
     plan_parser.add_argument(
+        "--deployment-id",
+        help="Use a specific virtual deployment ID for exact workflow inspection",
+    )
+    plan_parser.add_argument(
         "--full-refresh",
         action="store_true",
         help="Force a full refresh of selected models (requires --select)",

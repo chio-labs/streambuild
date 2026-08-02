@@ -94,3 +94,23 @@ class CliPlanPublicationFailureTestCase:
 class CliDirectPlanSerializationTestCase:
     description: str
     expected_payload: dict[str, object]
+
+
+@dataclass(frozen=True)
+class CliPlanDeploymentIdRejectionTestCase:
+    description: str
+    deployment_id: str
+    expected_error_fragment: str
+
+
+@dataclass(frozen=True)
+class CliDirectWorkflowParityTestCase:
+    description: str
+    expected_removed_step_name: str
+
+
+@dataclass(frozen=True)
+class CliVirtualWorkflowParityTestCase:
+    description: str
+    deployment_id: str
+    expected_removed_step_name: str

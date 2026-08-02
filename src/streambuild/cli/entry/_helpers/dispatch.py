@@ -12,6 +12,7 @@ from streambuild.cli.entry.models import (
     ResolvedCliInvocation,
 )
 from streambuild.cli.entry.types import CliCommand, CliSubcommand
+from streambuild.cli.plan.models import PlanCommandOptions
 from streambuild.compiler.compile.models import CompilerAdapterProfile
 
 
@@ -147,13 +148,16 @@ def dispatch_cli_command(
             client=client,
         )
     return handlers.run_plan(
-        pipelines_root=invocation.pipelines_root,
-        database=invocation.database,
-        selectors=tuple(getattr(args, "select", [])),
-        full_refresh=bool(getattr(args, "full_refresh", False)),
-        start_time=getattr(args, "start_time", None),
-        json_output=bool(getattr(args, "json", False)),
-        verbose=bool(getattr(args, "verbose", False)),
+        options=PlanCommandOptions(
+            pipelines_root=_require_pipelines_root(invocation),
+            database=invocation.database,
+            selectors=tuple(getattr(args, "select", [])),
+            full_refresh=bool(getattr(args, "full_refresh", False)),
+            start_time=getattr(args, "start_time", None),
+            deployment_id=getattr(args, "deployment_id", None),
+            json_output=bool(getattr(args, "json", False)),
+            verbose=bool(getattr(args, "verbose", False)),
+        ),
         client=client,
         loaded_project=invocation.loaded_project,
         adapter_profile=adapter_profile,

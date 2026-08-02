@@ -6,7 +6,11 @@ from streambuild.adapter.models import AdapterQueryResult
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from streambuild.cli.build._helpers.virtual_preview import build_virtual_build_preview
 from streambuild.cli.build.main._run_build import run_build
-from streambuild.cli.build.models import BuildCommandOptions, VirtualBuildPreviewContext
+from streambuild.cli.build.models import (
+    BuildCommandOptions,
+    VirtualBuildPreviewContext,
+    WorkflowPreparationOptions,
+)
 from streambuild.cli.entry._helpers.compiler_profile import build_compiler_adapter_profile
 from streambuild.cli.plan.main.render_plan_result import render_plan_result
 from streambuild.cli.workflow_artifacts.main._publish_build_workflow import publish_build_workflow
@@ -38,6 +42,17 @@ class _VirtualArtifactConnection(RecordingAdapterConnection):
 def run_scope_project_build(*, project_root: Path, json_output: bool, auto_approve: bool) -> int:
     """Run `stb build` against the scope project with a settled fake warehouse."""
 
+    return run_scope_project_build_with_connection(
+        project_root=project_root,
+        json_output=json_output,
+        auto_approve=auto_approve,
+        connection=build_scope_project_connection(),
+    )
+
+
+def build_scope_project_connection() -> RecordingAdapterConnection:
+    """Build the settled recording connection shared by direct command tests."""
+
     snapshot: DirectWarehouseSnapshot = build_settled_direct_snapshot()
     snapshot = replace(
         snapshot,
@@ -46,6 +61,21 @@ def run_scope_project_build(*, project_root: Path, json_output: bool, auto_appro
             relations=snapshot.catalog.relations[3:],
         ),
     )
+    return RecordingAdapterConnection(
+        relations=snapshot.catalog.relations,
+        ownership_records=snapshot.ownership_records,
+    )
+
+
+def run_scope_project_build_with_connection(
+    *,
+    project_root: Path,
+    json_output: bool,
+    auto_approve: bool,
+    connection: RecordingAdapterConnection,
+) -> int:
+    """Run a direct build with an observable recording connection."""
+
     return run_build(
         options=BuildCommandOptions(
             pipelines_root=project_root / "pipelines",
@@ -56,10 +86,7 @@ def run_scope_project_build(*, project_root: Path, json_output: bool, auto_appro
             verbose=False,
             auto_approve=auto_approve,
         ),
-        client=RecordingAdapterConnection(
-            relations=snapshot.catalog.relations,
-            ownership_records=snapshot.ownership_records,
-        ),
+        client=connection,
         loaded_project=load_project_input_for_path(path=project_root),
         adapter_profile=build_compiler_adapter_profile(ClickHouseAdapter()),
     )
@@ -76,15 +103,14 @@ def publish_scope_project_virtual_workflow(
         loaded_project=load_project_input_for_path(path=project_root),
         adapter_profile=build_compiler_adapter_profile(ClickHouseAdapter()),
     )
-    options: BuildCommandOptions = BuildCommandOptions(
-        pipelines_root=project_root / "pipelines",
+    options: WorkflowPreparationOptions = WorkflowPreparationOptions(
         database=None,
         metadata_database=None,
         selectors=(),
         deployment_id=deployment_id,
-        json_output=True,
+        full_refresh=False,
+        start_time=None,
         verbose=False,
-        auto_approve=True,
     )
     preview: VirtualBuildPreviewContext = build_virtual_build_preview(
         options=options,

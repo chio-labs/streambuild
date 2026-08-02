@@ -1,21 +1,24 @@
-"""Atomic publication of one complete disposable build workflow."""
+"""Atomic publication of one complete disposable workflow artifact."""
 
 import os
 import shutil
 import tempfile
 from pathlib import Path
 
+from streambuild.cli.workflow_artifacts.types import WorkflowArtifactOwner
 from streambuild.executor.workflow.models import BuildWorkflow, WarehouseStatement
 
 
-def publish_build_artifact(*, target_dir: Path, workflow: BuildWorkflow) -> Path:
-    """Replace the complete build artifact directory without exposing partial files."""
+def publish_workflow_artifact(
+    *, target_dir: Path, owner: WorkflowArtifactOwner, workflow: BuildWorkflow
+) -> Path:
+    """Replace one owner's complete artifact directory without exposing partial files."""
 
     run_dir: Path = target_dir / "run"
     run_dir.mkdir(parents=True, exist_ok=True)
-    staged_root: Path = Path(tempfile.mkdtemp(prefix=".build-staging-", dir=run_dir))
-    artifact_root: Path = run_dir / "build"
-    previous_root: Path = run_dir / ".build-previous"
+    staged_root: Path = Path(tempfile.mkdtemp(prefix=f".{owner}-staging-", dir=run_dir))
+    artifact_root: Path = run_dir / owner
+    previous_root: Path = run_dir / f".{owner}-previous"
     try:
         _write_staged_workflow(staged_root=staged_root, workflow=workflow)
         if previous_root.exists():

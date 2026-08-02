@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.cli.build.models import BuildCommandOptions, DirectBuildPreviewContext
+from streambuild.cli.build.models import DirectBuildPreviewContext, WorkflowPreparationOptions
 from streambuild.cli.entry.main._resolve_default_database import resolve_default_database
 from streambuild.cli.plan.main._source_validation import validate_declared_external_sources
 from streambuild.cli.selection.main._selection import resolve_selection
@@ -19,7 +19,7 @@ from streambuild.compiler.planner.models import DirectPlan, DirectWarehouseSnaps
 
 def build_direct_build_preview(
     *,
-    options: BuildCommandOptions,
+    options: WorkflowPreparationOptions,
     client: AdapterConnection,
     analysis: CompileAnalysis,
 ) -> DirectBuildPreviewContext:

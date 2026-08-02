@@ -46,11 +46,13 @@ from streambuild.cli.build.models import (
     BuildCommandOptions,
     DirectBuildPreviewContext,
     VirtualBuildPreviewContext,
+    WorkflowPreparationOptions,
 )
 from streambuild.cli.entry._helpers.compiler_profile import build_compiler_adapter_profile
 from streambuild.cli.plan.main._render_direct_plan_json import render_direct_plan_json
 from streambuild.cli.plan.main._run_plan import run_plan
 from streambuild.cli.plan.main.render_plan_result import render_plan_result
+from streambuild.cli.plan.models import PlanCommandOptions
 from streambuild.cli.workflow_artifacts.main._publish_build_workflow import publish_build_workflow
 from streambuild.compiler.discovery.main.load_project_input_for_path import (
     load_project_input_for_path,
@@ -955,7 +957,6 @@ def write_sql_test_semantics_project(
     )
 
 
-DIRECT_SCOPE_PREREQUISITE_RELATIONS: tuple[str, ...] = ("raw__orders",)
 DIRECT_SCOPE_MODEL_RELATIONS: tuple[str, ...] = (
     "tbl__alpha",
     "mv__alpha",
@@ -971,8 +972,8 @@ _OWNERSHIP_ROW_NAMES_BY_FLAG: dict[bool, tuple[str, ...]] = {
     True: DIRECT_SCOPE_MODEL_RELATIONS,
 }
 _RELATION_NAMES_BY_FLAG: dict[bool, tuple[str, ...]] = {
-    False: DIRECT_SCOPE_PREREQUISITE_RELATIONS,
-    True: (*DIRECT_SCOPE_PREREQUISITE_RELATIONS, *DIRECT_SCOPE_MODEL_RELATIONS),
+    False: (),
+    True: DIRECT_SCOPE_MODEL_RELATIONS,
 }
 
 
@@ -1025,13 +1026,16 @@ def run_direct_plan(*, project_root: Path, database: str, connection: AdapterCon
     """Run `stb plan` in direct mode against a live warehouse connection."""
 
     return run_plan(
-        pipelines_root=project_root / "pipelines",
-        database=database,
-        selectors=(),
-        full_refresh=False,
-        start_time=None,
-        json_output=True,
-        verbose=False,
+        options=PlanCommandOptions(
+            pipelines_root=project_root / "pipelines",
+            database=database,
+            selectors=(),
+            full_refresh=False,
+            start_time=None,
+            deployment_id=None,
+            json_output=True,
+            verbose=False,
+        ),
         client=connection,
         loaded_project=load_project_input_for_path(path=project_root),
         adapter_profile=build_compiler_adapter_profile(ClickHouseAdapter()),
@@ -1505,14 +1509,14 @@ def execute_direct_build_directly(
         adapter_profile=build_compiler_adapter_profile(ClickHouseAdapter()),
     )
     preview: DirectBuildPreviewContext = build_direct_build_preview(
-        options=BuildCommandOptions(
-            pipelines_root=project_root / "pipelines",
+        options=WorkflowPreparationOptions(
             database=database,
             metadata_database=database,
             selectors=selectors,
-            json_output=True,
+            deployment_id=None,
+            full_refresh=False,
+            start_time=None,
             verbose=False,
-            auto_approve=True,
         ),
         client=connection,
         analysis=analysis,
@@ -1552,14 +1556,14 @@ def publish_direct_workflow(
         adapter_profile=build_compiler_adapter_profile(ClickHouseAdapter()),
     )
     preview: DirectBuildPreviewContext = build_direct_build_preview(
-        options=BuildCommandOptions(
-            pipelines_root=project_root / "pipelines",
+        options=WorkflowPreparationOptions(
             database=database,
             metadata_database=database,
             selectors=(),
-            json_output=True,
+            deployment_id=None,
+            full_refresh=False,
+            start_time=None,
             verbose=False,
-            auto_approve=True,
         ),
         client=connection,
         analysis=analysis,
@@ -1590,15 +1594,14 @@ def publish_virtual_workflow(
         loaded_project=load_project_input_for_path(path=project_root),
         adapter_profile=build_compiler_adapter_profile(ClickHouseAdapter()),
     )
-    options: BuildCommandOptions = BuildCommandOptions(
-        pipelines_root=project_root / "pipelines",
+    options: WorkflowPreparationOptions = WorkflowPreparationOptions(
         database=database,
         metadata_database=database,
         selectors=(),
         deployment_id=deployment_id,
-        json_output=True,
+        full_refresh=False,
+        start_time=None,
         verbose=False,
-        auto_approve=True,
     )
     preview: VirtualBuildPreviewContext = build_virtual_build_preview(
         options=options,

@@ -1,18 +1,22 @@
 import json
 from pathlib import Path
-from unittest.mock import Mock
 
 import pytest
 
 from streambuild.cli.plan.constants import DIRECT_MODE_LABEL, VIRTUAL_ENVIRONMENTS_MODE_LABEL
-from streambuild.cli.workflow_artifacts.main._write_plan_artifact import write_plan_artifact
-from streambuild.cli.workflow_artifacts.types import WorkflowArtifactOwner
+from streambuild.cli.workflow_artifacts.main._publish_plan_workflow import publish_plan_workflow
+from streambuild.executor.workflow.models import BuildWorkflow
+from streambuild.executor.workflow.types import WorkflowMode
 from tests.unit.src.streambuild.cli.plan.main._test_types import (
     CliDirectPlanFlagRejectionTestCase,
+    CliPlanDeploymentIdRejectionTestCase,
     CliPlanModeRoutingTestCase,
     CliPlanPublicationFailureTestCase,
 )
-from tests.unit.src.streambuild.cli.plan.main.helpers import run_scope_project_plan
+from tests.unit.src.streambuild.cli.plan.main.helpers import (
+    fail_second_workflow_artifact_replace,
+    run_scope_project_plan,
+)
 from tests.unit.src.streambuild.compiler.planner.helpers import write_direct_scope_project
 
 
@@ -46,12 +50,27 @@ def test_given_effective_project_mode_when_planning_then_that_mode_is_used(
     write_direct_scope_project(
         project_root=tmp_path, virtual_environments=test_case.virtual_environments
     )
+    virtual_environments: bool = test_case.virtual_environments is True
+    deployment_id: str | None = {
+        False: None,
+        True: "20260802T120000Z_planmode",
+    }[virtual_environments]
 
-    text_exit_code: int = run_scope_project_plan(project_root=tmp_path, json_output=False)
+    text_exit_code: int = run_scope_project_plan(
+        project_root=tmp_path,
+        json_output=False,
+        virtual_environments=virtual_environments,
+        deployment_id=deployment_id,
+    )
     text_output: str = capsys.readouterr().out
     artifact_path: Path = tmp_path / test_case.expected_artifact_path
     text_artifact: bytes = artifact_path.read_bytes()
-    json_exit_code: int = run_scope_project_plan(project_root=tmp_path, json_output=True)
+    json_exit_code: int = run_scope_project_plan(
+        project_root=tmp_path,
+        json_output=True,
+        virtual_environments=virtual_environments,
+        deployment_id=deployment_id,
+    )
     json_output: str = capsys.readouterr().out
     payload: dict[str, object] = json.loads(json_output)
 
@@ -96,6 +115,35 @@ def test_given_direct_mode_when_planning_then_full_closure_is_reported(
         tuple(root["model_key"]["name"] for root in payload["replay_roots"])
         == test_case.expected_replay_root_models
     )
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliPlanDeploymentIdRejectionTestCase(
+            description="deployment identity is rejected in direct mode",
+            deployment_id="20260802T120000Z_directinvalid",
+            expected_error_fragment="--deployment-id requires virtual environments",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_deployment_id_in_direct_mode_when_planning_then_command_fails(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    test_case: CliPlanDeploymentIdRejectionTestCase,
+) -> None:
+    write_direct_scope_project(project_root=tmp_path)
+
+    exit_code: int = run_scope_project_plan(
+        project_root=tmp_path,
+        json_output=False,
+        deployment_id=test_case.deployment_id,
+    )
+
+    assert exit_code == 1
+    assert test_case.expected_error_fragment in capsys.readouterr().err
+    assert not (tmp_path / "target/run/plan").exists()
 
 
 @pytest.mark.parametrize(
@@ -161,16 +209,19 @@ def test_given_existing_plan_when_atomic_publication_fails_then_preserves_previo
     artifact_path: Path = tmp_path / "run/plan/plan.json"
     artifact_path.parent.mkdir(parents=True)
     artifact_path.write_bytes(test_case.previous_artifact)
-    monkeypatch.setattr(
-        "streambuild.cli.workflow_artifacts._helpers.publication.os.replace",
-        Mock(side_effect=OSError(test_case.expected_error_fragment)),
+    fail_second_workflow_artifact_replace(
+        monkeypatch=monkeypatch,
+        error_message=test_case.expected_error_fragment,
     )
 
     with pytest.raises(OSError, match=test_case.expected_error_fragment):
-        write_plan_artifact(
+        publish_plan_workflow(
             target_dir=tmp_path,
-            owner=WorkflowArtifactOwner.PLAN,
-            contents=test_case.replacement_artifact,
+            workflow=BuildWorkflow(
+                mode=WorkflowMode.DIRECT,
+                plan_json=test_case.replacement_artifact,
+                statements=(),
+            ),
         )
 
     assert artifact_path.read_bytes() == test_case.previous_artifact

@@ -17,6 +17,7 @@ from streambuild.cli.entry._helpers.entrypoint import (
 from streambuild.cli.entry._helpers.parser import build_cli_parser
 from streambuild.cli.entry.main.main import _main_with_dependencies, main
 from streambuild.cli.entry.models import CliEntrypointHandlers
+from streambuild.cli.plan.models import PlanCommandOptions
 from tests.unit.src.streambuild.cli._test_types import (
     CliAuditBackfillProjectContextTestCase,
     CliCompileArtifactsTestCase,
@@ -83,8 +84,8 @@ class FailingCommandRunner:
 
 
 class PlanCommandRunner:
-    def __call__(self, *_args: object, **kwargs: object) -> int:
-        if kwargs.get("json_output"):
+    def __call__(self, *_args: object, options: PlanCommandOptions, **_kwargs: object) -> int:
+        if options.json_output:
             print(
                 "{\n"
                 '  "steps": ['
@@ -560,7 +561,16 @@ def test_given_clickhouse_env_vars_when_running_plan_then_it_uses_env_defaults(
     )
 
     assert exit_code == test_case.expected_exit_code
-    assert test_case.expected_kwargs.items() <= runner.kwargs.items()
+    options: PlanCommandOptions = cast(PlanCommandOptions, runner.kwargs["options"])
+    actual_options: dict[str, object] = {
+        "database": options.database,
+        "selectors": options.selectors,
+        "full_refresh": options.full_refresh,
+        "start_time": options.start_time,
+        "json_output": options.json_output,
+        "verbose": options.verbose,
+    }
+    assert test_case.expected_kwargs.items() <= actual_options.items()
     assert runner.kwargs["client"] is clickhouse_client
 
 
@@ -605,15 +615,16 @@ def test_given_project_yaml_when_running_plan_then_it_uses_project_database_defa
     )
 
     assert exit_code == 0
+    options: PlanCommandOptions = cast(PlanCommandOptions, runner.kwargs["options"])
     assert {
-        "database": test_case.expected_database,
-        "selectors": (),
-        "full_refresh": False,
-        "start_time": None,
-        "json_output": False,
-        "verbose": False,
         "client": clickhouse_client,
     }.items() <= runner.kwargs.items()
+    assert options.database == test_case.expected_database
+    assert options.selectors == ()
+    assert options.full_refresh is False
+    assert options.start_time is None
+    assert options.json_output is False
+    assert options.verbose is False
 
 
 @pytest.mark.parametrize(
@@ -816,7 +827,8 @@ def test_given_json_flag_when_running_plan_then_it_passes_json_output_to_command
     )
 
     assert exit_code == test_case.expected_exit_code
-    assert runner.kwargs["json_output"] is test_case.expected_json_output
+    options: PlanCommandOptions = cast(PlanCommandOptions, runner.kwargs["options"])
+    assert options.json_output is test_case.expected_json_output
 
 
 @pytest.mark.parametrize(
@@ -834,10 +846,13 @@ def test_given_json_flag_when_running_plan_then_it_passes_json_output_to_command
                 "--select",
                 "pipeline:orders",
                 "--full-refresh",
+                "--deployment-id",
+                "20260802T120000Z_reviewed",
             ),
             expected_exit_code=0,
             expected_selectors=("orders_enriched", "pipeline:orders"),
             expected_full_refresh=True,
+            expected_deployment_id="20260802T120000Z_reviewed",
         )
     ],
     ids=lambda case: case.description,
@@ -856,8 +871,10 @@ def test_given_selectors_when_running_plan_then_it_passes_selection_kwargs_to_co
     )
 
     assert exit_code == test_case.expected_exit_code
-    assert runner.kwargs["selectors"] == test_case.expected_selectors
-    assert runner.kwargs["full_refresh"] is test_case.expected_full_refresh
+    options: PlanCommandOptions = cast(PlanCommandOptions, runner.kwargs["options"])
+    assert options.selectors == test_case.expected_selectors
+    assert options.full_refresh is test_case.expected_full_refresh
+    assert options.deployment_id == test_case.expected_deployment_id
 
 
 @pytest.mark.parametrize(
@@ -1052,6 +1069,7 @@ def test_given_json_flag_when_running_build_then_it_passes_json_output_to_comman
             expected_exit_code=0,
             expected_selectors=("orders_enriched",),
             expected_full_refresh=True,
+            expected_deployment_id=None,
         )
     ],
     ids=lambda case: case.description,
