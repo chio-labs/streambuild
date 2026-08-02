@@ -51,14 +51,14 @@ def resolve_deployment_candidate_error(
     )
     if not candidates:
         return render_no_deployment_candidates_message(
-            command_name="audit backfill",
+            command_name="audit deployment",
             database=database,
         )
     if len(candidates) == 1:
         return None
     inspected_state: InspectedManagedTableState = client.inspect_managed_table_state(database)
     return render_ambiguous_deployment_message(
-        command_name="audit backfill",
+        command_name="audit deployment",
         database=database,
         root_names=candidate_root_names(inspected_state),
         candidates=enrich_candidates(

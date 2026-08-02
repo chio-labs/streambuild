@@ -31,13 +31,6 @@ class CreateShadowObjectsOrderingTestCase:
 
 
 @dataclass(frozen=True)
-class ManagedSourceCapabilityTestCase:
-    description: str
-    expected_error_message: str
-    expected_warehouse_interaction_count: int
-
-
-@dataclass(frozen=True)
 class ReplayRequestConstructionTestCase:
     description: str
     source_ownership: str
@@ -55,17 +48,3 @@ class ReplayRequestConstructionTestCase:
     execution_mode: RebuildExecutionMode
     expected_seed_mode: AdapterReplaySeedMode
     expected_lower_bound_mode: AdapterReplayLowerBoundMode
-
-
-@dataclass(frozen=True)
-class ReplayBoundaryCapabilityTestCase:
-    description: str
-    expected_error_message: str
-    expected_warehouse_interaction_count: int
-
-
-@dataclass(frozen=True)
-class HistoryPrefixCapabilityTestCase:
-    description: str
-    expected_error_message: str
-    expected_write_count: int

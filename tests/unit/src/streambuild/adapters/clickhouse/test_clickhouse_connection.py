@@ -28,6 +28,33 @@ from tests.unit.src.streambuild.adapters.clickhouse.helpers import (
 @pytest.mark.parametrize(
     "test_case",
     [
+        ConnectionTranslationTestCase(
+            description="translates a workflow mutation relation failure",
+            driver_error=DatabaseError(
+                "Code: 60. DB::Exception: Table analytics.tbl__orders does not exist. "
+                "(UNKNOWN_TABLE)"
+            ),
+            expected_error_type=AdapterRelationNotFoundError,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_failing_driver_when_executing_workflow_sql_then_it_raises_neutral_equivalent(
+    test_case: ConnectionTranslationTestCase,
+) -> None:
+    connection: ClickHouseConnection = ClickHouseConnection(
+        cast(RawClickHouseClient, FailingRawClickHouseClient(test_case.driver_error))
+    )
+
+    with pytest.raises(AdapterWarehouseError) as error_info:
+        connection.execute_workflow_sql("DROP TABLE analytics.tbl__orders")
+
+    assert type(error_info.value) is test_case.expected_error_type
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
         ClickHousePublishCapabilitiesTestCase(
             description="reports per-relation but not graph-atomic ClickHouse publish",
             expected_stable_logical_bindings=True,
@@ -208,60 +235,6 @@ def test_given_failing_driver_when_querying_then_no_driver_exception_escapes(
 
     assert type(error_info.value) is test_case.expected_error_type
     assert not isinstance(error_info.value, DatabaseError | OperationalError)
-
-
-@pytest.mark.parametrize(
-    "test_case",
-    [
-        ConnectionTranslationTestCase(
-            description="translates a command relation failure",
-            driver_error=DatabaseError(
-                "Code: 60. DB::Exception: Table analytics.tbl__orders does not exist. "
-                "(UNKNOWN_TABLE)"
-            ),
-            expected_error_type=AdapterRelationNotFoundError,
-        )
-    ],
-    ids=lambda case: case.description,
-)
-def test_given_failing_driver_when_commanding_then_it_raises_the_neutral_equivalent(
-    test_case: ConnectionTranslationTestCase,
-) -> None:
-    connection: ClickHouseConnection = ClickHouseConnection(
-        cast(RawClickHouseClient, FailingRawClickHouseClient(test_case.driver_error))
-    )
-
-    with pytest.raises(AdapterWarehouseError) as error_info:
-        connection.command("DROP TABLE analytics.tbl__orders")
-
-    assert type(error_info.value) is test_case.expected_error_type
-
-
-@pytest.mark.parametrize(
-    "test_case",
-    [
-        ConnectionTranslationTestCase(
-            description="translates an insert relation failure",
-            driver_error=DatabaseError(
-                "Code: 60. DB::Exception: Table analytics.tbl__orders does not exist. "
-                "(UNKNOWN_TABLE)"
-            ),
-            expected_error_type=AdapterRelationNotFoundError,
-        )
-    ],
-    ids=lambda case: case.description,
-)
-def test_given_failing_driver_when_inserting_rows_then_it_raises_the_neutral_equivalent(
-    test_case: ConnectionTranslationTestCase,
-) -> None:
-    connection: ClickHouseConnection = ClickHouseConnection(
-        cast(RawClickHouseClient, FailingRawClickHouseClient(test_case.driver_error))
-    )
-
-    with pytest.raises(AdapterWarehouseError) as error_info:
-        connection.insert_rows(table="analytics.tbl__orders", rows=({"order_id": "order-1"},))
-
-    assert type(error_info.value) is test_case.expected_error_type
 
 
 @pytest.mark.parametrize(

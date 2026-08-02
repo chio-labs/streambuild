@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+from clickhouse_connect.driver.client import Client
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import CatalogSnapshot
@@ -8,6 +9,7 @@ from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHous
 from streambuild.cli.entry._helpers.compiler_profile import build_compiler_adapter_profile
 from streambuild.cli.plan.main._run_plan import run_plan
 from streambuild.cli.plan.main._warnings import add_empty_replay_source_warnings
+from streambuild.cli.plan.models import PlanCommandOptions
 from streambuild.compiler.compile.models import (
     Column,
     CompilerAdapterProfile,
@@ -215,6 +217,7 @@ FROM __ref("orders")
 def test_given_real_source_mode_when_planning_then_snapshot_validation_succeeds(
     test_case: CliPlanSnapshotIntegrationTestCase,
     clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
     clickhouse_database: str,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -230,7 +233,13 @@ def test_given_real_source_mode_when_planning_then_snapshot_validation_succeeds(
     )
     ddl_statement: str
     for ddl_statement in test_case.existing_table_ddl_statements:
-        client.command(ddl_statement.format(database=clickhouse_database))
+        clickhouse_client.command(ddl_statement.format(database=clickhouse_database))
+    relation_query: str = (
+        f"SELECT name FROM system.tables WHERE database = '{clickhouse_database}' ORDER BY name"
+    )
+    before_relation_names: tuple[str, ...] = tuple(
+        str(row[0]) for row in clickhouse_client.query(relation_query).result_rows
+    )
     loaded_project: LoadedProject | None = load_project_input_for_path(path=pipelines_root)
     adapter_profile: CompilerAdapterProfile = build_compiler_adapter_profile(ClickHouseAdapter())
     analysis: CompileAnalysis = analyze_project(
@@ -241,13 +250,16 @@ def test_given_real_source_mode_when_planning_then_snapshot_validation_succeeds(
 
     try:
         exit_code: int = run_plan(
-            pipelines_root=pipelines_root,
-            database=clickhouse_database,
-            selectors=(),
-            full_refresh=False,
-            start_time=None,
-            json_output=False,
-            verbose=False,
+            options=PlanCommandOptions(
+                pipelines_root=pipelines_root,
+                database=clickhouse_database,
+                selectors=(),
+                full_refresh=False,
+                start_time=None,
+                deployment_id=None,
+                json_output=False,
+                verbose=False,
+            ),
             client=client,
             loaded_project=loaded_project,
             adapter_profile=adapter_profile,
@@ -255,8 +267,18 @@ def test_given_real_source_mode_when_planning_then_snapshot_validation_succeeds(
     finally:
         client.close()
 
+    after_relation_names: tuple[str, ...] = tuple(
+        str(row[0]) for row in clickhouse_client.query(relation_query).result_rows
+    )
+    artifact_root: Path = pipelines_root.parent / "target/run/plan"
+    step_paths: tuple[Path, ...] = tuple(sorted((artifact_root / "steps").glob("*.sql")))
     assert exit_code == test_case.expected_exit_code
     assert test_case.expected_output_fragment in capsys.readouterr().out
+    assert before_relation_names == after_relation_names
+    assert step_paths
+    assert (artifact_root / "workflow.sql").read_bytes() == b"\n".join(
+        path.read_bytes() for path in step_paths
+    )
     assert (
         str(analysis.compiled_project.pipelines[0].effective_replay_lineage_mode)
         == test_case.expected_replay_lineage_mode
@@ -282,6 +304,7 @@ def test_given_real_source_mode_when_planning_then_snapshot_validation_succeeds(
 def test_given_active_bounded_root_when_planning_then_one_snapshot_preserves_resolution(
     test_case: CliBoundedPlanSnapshotIntegrationTestCase,
     clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
     clickhouse_database: str,
 ) -> None:
     delegate: AdapterConnection = build_managed_clickhouse_client(
@@ -289,17 +312,17 @@ def test_given_active_bounded_root_when_planning_then_one_snapshot_preserves_res
         database=clickhouse_database,
     )
     client: RecordingDelegatingConnection = RecordingDelegatingConnection(delegate)
-    client.command(
+    clickhouse_client.command(
         f"CREATE TABLE {clickhouse_database}.orders_existing "
         "(order_id String, event_timestamp DateTime64(3)) "
         "ENGINE = MergeTree ORDER BY order_id"
     )
-    client.command(
+    clickhouse_client.command(
         f"CREATE TABLE {clickhouse_database}.tbl__orders_enriched__dep_a "
         "(order_id String, _replay_timestamp DateTime64(3)) "
         "ENGINE = MergeTree ORDER BY order_id"
     )
-    client.command(
+    clickhouse_client.command(
         f"CREATE VIEW {clickhouse_database}.tbl__orders_enriched AS "
         f"SELECT * FROM {clickhouse_database}.tbl__orders_enriched__dep_a"
     )

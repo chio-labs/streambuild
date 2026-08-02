@@ -6,7 +6,7 @@ import json
 
 from streambuild.cli.plan.constants import DIRECT_MODE_LABEL
 from streambuild.cli.presentation.main._cli_style import cli_style
-from streambuild.compiler.compile.models import LogicalResourceKey
+from streambuild.compiler.compile.models import LogicalResourceKey, ObjectKey
 from streambuild.compiler.planner.models import (
     DirectPlan,
     DirectPlanEntry,
@@ -24,8 +24,8 @@ def render_direct_plan_json(*, plan: DirectPlan, adapter_name: str) -> str:
         "mode": DIRECT_MODE_LABEL,
         "adapter": adapter_name,
         "database": plan.database,
-        "user_scope": [_key_name(key) for key in plan.user_scope],
-        "execution_scope": [_key_name(key) for key in plan.execution_scope],
+        "user_scope": [_logical_key_payload(key) for key in plan.user_scope],
+        "execution_scope": [_logical_key_payload(key) for key in plan.execution_scope],
         "prerequisite_scope": [
             _prerequisite_payload(prerequisite) for prerequisite in plan.prerequisite_scope
         ],
@@ -35,7 +35,7 @@ def render_direct_plan_json(*, plan: DirectPlan, adapter_name: str) -> str:
         "creation": [_operation_payload(operation) for operation in plan.creation_operations],
         "warnings": [_warning_payload(warning) for warning in plan.warnings],
     }
-    return json.dumps(payload, indent=2)
+    return json.dumps(payload, indent=2) + "\n"
 
 
 def render_direct_plan_text(*, plan: DirectPlan, adapter_name: str) -> str:
@@ -130,9 +130,8 @@ def _or_none(*, lines: tuple[str, ...]) -> tuple[str, ...]:
 
 def _prerequisite_payload(prerequisite: DirectPrerequisite) -> dict[str, object]:
     return {
-        "name": prerequisite.key.name,
-        "resource_type": str(prerequisite.key.resource_type),
-        "relations": list(prerequisite.relation_names),
+        "key": _logical_key_payload(prerequisite.key),
+        "relation_names": list(prerequisite.relation_names),
         "present": prerequisite.present,
         "framework_managed": prerequisite.framework_managed,
     }
@@ -140,9 +139,10 @@ def _prerequisite_payload(prerequisite: DirectPrerequisite) -> dict[str, object]
 
 def _entry_payload(entry: DirectPlanEntry) -> dict[str, object]:
     return {
-        "model": entry.model_key.name,
+        "model_key": _logical_key_payload(entry.model_key),
         "reason": str(entry.reason),
-        "relations": list(entry.relation_names),
+        "relation_names": list(entry.relation_names),
+        "resource_kinds": [str(kind) for kind in entry.resource_kinds],
         "ownership": [
             {
                 "relation": classification.relation_name,
@@ -150,34 +150,60 @@ def _entry_payload(entry: DirectPlanEntry) -> dict[str, object]:
             }
             for classification in entry.ownership
         ],
-        "driving_input": (
-            None if entry.driving_input_key is None else entry.driving_input_key.name
+        "driving_input_key": (
+            None
+            if entry.driving_input_key is None
+            else _logical_key_payload(entry.driving_input_key)
         ),
-        "replay_root": entry.is_replay_root,
+        "is_replay_root": entry.is_replay_root,
     }
 
 
 def _replay_root_payload(root: DirectReplayRoot) -> dict[str, object]:
     return {
-        "model": root.model_key.name,
-        "driving_input": root.driving_input_key.name,
-        "driving_input_relation": root.driving_input_relation_name,
+        "model_key": _logical_key_payload(root.model_key),
+        "driving_input_key": _logical_key_payload(root.driving_input_key),
+        "driving_input_relation_name": root.driving_input_relation_name,
+        "driving_input_replay_columns": {
+            "partition": root.driving_input_replay_columns.partition,
+            "offset": root.driving_input_replay_columns.offset,
+            "timestamp": root.driving_input_replay_columns.timestamp,
+            "landed_at": root.driving_input_replay_columns.landed_at,
+            "cursor": root.driving_input_replay_columns.cursor,
+        },
         "replay_boundary_mode": str(root.replay_boundary_mode),
-        "propagates_to": [key.name for key in root.propagated_model_keys],
+        "propagated_model_keys": [_logical_key_payload(key) for key in root.propagated_model_keys],
+        "has_aggregate_semantics": root.has_aggregate_semantics,
     }
 
 
 def _operation_payload(operation: DirectRelationOperation) -> dict[str, object]:
     return {
-        "relation": operation.relation_name,
+        "relation_name": operation.relation_name,
         "action": str(operation.action),
-        "model": operation.model_key.name,
+        "model_key": _logical_key_payload(operation.model_key),
+        "resource_kind": str(operation.resource_kind),
     }
 
 
 def _warning_payload(warning: PlannerWarning) -> dict[str, object]:
-    return {"warning_code": warning.warning_code, "message": warning.message}
+    return {
+        "warning_code": warning.warning_code,
+        "message": warning.message,
+        "root_key": _object_key_payload(warning.root_key),
+        "target_key": (
+            None if warning.target_key is None else _object_key_payload(warning.target_key)
+        ),
+    }
 
 
 def _key_name(key: LogicalResourceKey) -> str:
     return key.name
+
+
+def _logical_key_payload(key: LogicalResourceKey) -> dict[str, str]:
+    return {"resource_type": str(key.resource_type), "name": key.name}
+
+
+def _object_key_payload(key: ObjectKey) -> dict[str, str | None]:
+    return {"database": key.database, "object_type": key.object_type, "name": key.name}

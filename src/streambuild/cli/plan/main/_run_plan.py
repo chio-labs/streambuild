@@ -1,30 +1,31 @@
 """CLI command for mode-aware execution planning."""
 
 import sys
-from pathlib import Path
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.exceptions import AdapterError
+from streambuild.cli.build.main._prepare_build_workflow import prepare_build_workflow
+from streambuild.cli.build.models import (
+    DirectWorkflowPreparation,
+    VirtualWorkflowPreparation,
+    WorkflowPreparationOptions,
+)
 from streambuild.cli.entry.exceptions import CliUserError
-from streambuild.cli.entry.main._resolve_default_database import resolve_default_database
-from streambuild.cli.plan._helpers.plan_command import execute_plan_command, validate_plan_flags
 from streambuild.cli.plan.models import PlanCommandOptions
+from streambuild.cli.workflow_artifacts.main._publish_plan_workflow import publish_plan_workflow
 from streambuild.compiler.compile.exceptions import TransformSqlContractError
 from streambuild.compiler.compile.models import CompilerAdapterProfile
 from streambuild.compiler.discovery.models import LoadedProject
 from streambuild.compiler.pipeline.main.analyze_project import analyze_project
 from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.compiler.planner.exceptions import DirectPlanError
+from streambuild.executor.backfill.exceptions import BackfillExecutionError
+from streambuild.executor.direct.exceptions import DirectBuildError
 
 
 def run_plan(
     *,
-    pipelines_root: Path,
-    database: str | None,
-    selectors: tuple[str, ...],
-    full_refresh: bool,
-    start_time: str | None,
-    json_output: bool,
-    verbose: bool,
+    options: PlanCommandOptions,
     client: AdapterConnection,
     loaded_project: LoadedProject | None,
     adapter_profile: CompilerAdapterProfile,
@@ -33,23 +34,44 @@ def run_plan(
 
     try:
         analysis: CompileAnalysis = analyze_project(
-            pipelines_root=pipelines_root,
+            pipelines_root=options.pipelines_root,
             loaded_project=loaded_project,
             adapter_profile=adapter_profile,
         )
-        options: PlanCommandOptions = PlanCommandOptions(
-            database=resolve_default_database(
-                loaded_pipelines=list(analysis.compile_inputs.pipelines), override=database
-            ),
-            selectors=selectors,
-            full_refresh=full_refresh,
-            start_time=start_time,
-            json_output=json_output,
-            verbose=verbose,
+        preparation_options: WorkflowPreparationOptions = WorkflowPreparationOptions(
+            database=options.database,
+            metadata_database=None,
+            selectors=options.selectors,
+            deployment_id=options.deployment_id,
+            full_refresh=options.full_refresh,
+            start_time=options.start_time,
+            verbose=options.verbose,
         )
-        validate_plan_flags(options=options)
-        print(execute_plan_command(analysis=analysis, options=options, client=client))
-    except (TransformSqlContractError, CliUserError, DirectPlanError, ValueError) as error:
+        preparation: DirectWorkflowPreparation | VirtualWorkflowPreparation = (
+            prepare_build_workflow(
+                analysis=analysis,
+                options=preparation_options,
+                client=client,
+                adapter_profile=adapter_profile,
+            )
+        )
+        publish_plan_workflow(
+            target_dir=options.pipelines_root.parent / "target",
+            workflow=preparation.workflow,
+        )
+        rendered_output: str = (
+            preparation.workflow.plan_json if options.json_output else preparation.plan_text + "\n"
+        )
+        print(rendered_output, end="")
+    except (
+        TransformSqlContractError,
+        CliUserError,
+        DirectPlanError,
+        DirectBuildError,
+        BackfillExecutionError,
+        AdapterError,
+        ValueError,
+    ) as error:
         print(str(error), file=sys.stderr)
         return 1
     return 0

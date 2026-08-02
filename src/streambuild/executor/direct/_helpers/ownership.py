@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import AdapterOwnershipRecord
 from streambuild.adapter.types import AdapterOwningMode
 from streambuild.compiler.planner.models import DirectPlan, DirectPlanEntry
@@ -30,73 +29,6 @@ def build_direct_ownership_records(
             )
         )
     return tuple(records)
-
-
-def record_direct_ownership(
-    *,
-    client: AdapterConnection,
-    database: str,
-    records: tuple[AdapterOwnershipRecord, ...],
-) -> None:
-    """Persist the ownership claims before the first destructive action."""
-
-    client.record_target_ownership(database=database, records=records)
-
-
-def claim_direct_ownership(
-    *,
-    client: AdapterConnection,
-    plan: DirectPlan,
-    target_database: str,
-    metadata_database: str,
-    tool_version: str,
-    replay_coverage: tuple[DirectReplayCoverage, ...],
-) -> tuple[AdapterOwnershipRecord, ...]:
-    """Build and persist pre-destructive ownership claims."""
-
-    records: tuple[AdapterOwnershipRecord, ...] = build_direct_ownership_records(
-        plan=plan,
-        database=target_database,
-        tool_version=tool_version,
-        replay_coverage=replay_coverage,
-    )
-    record_direct_ownership(client=client, database=metadata_database, records=records)
-    return records
-
-
-def remove_retired_direct_ownership(
-    *, client: AdapterConnection, database: str, plan: DirectPlan
-) -> tuple[str, ...]:
-    """Remove claims represented only by rename teardown operations."""
-
-    current_relation_names: set[str] = set()
-    entry: DirectPlanEntry
-    for entry in plan.entries:
-        current_relation_names.update(entry.relation_names)
-    retired_relation_names: tuple[str, ...] = tuple(
-        operation.relation_name
-        for operation in plan.teardown_operations
-        if operation.relation_name not in current_relation_names
-    )
-    client.remove_target_ownership(
-        database=database,
-        target_database=plan.database,
-        relation_names=retired_relation_names,
-    )
-    return retired_relation_names
-
-
-def finalize_direct_ownership(
-    *,
-    client: AdapterConnection,
-    database: str,
-    records: tuple[AdapterOwnershipRecord, ...],
-    plan: DirectPlan,
-) -> None:
-    """Persist completed claims and retire stale rename claims."""
-
-    record_direct_ownership(client=client, database=database, records=records)
-    _ = remove_retired_direct_ownership(client=client, database=database, plan=plan)
 
 
 def _entry_records(

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from streambuild.adapter.models import CatalogSnapshot
 from streambuild.compiler.compile.models import DesiredState, ObjectKey
 from streambuild.compiler.discovery.types import ReplayLineageMode
 from streambuild.compiler.planner.models import DeploymentPlan
@@ -17,6 +18,7 @@ class BackfillBootstrapRequest:
     default_database: str
     metadata_database: str
     replay_lineage_mode: ReplayLineageMode | str
+    confirmed_plan: DeploymentPlan | None = None
     deployment_id: str | None = None
     full_refresh_keys: frozenset[ObjectKey] = frozenset()
     start_time_keys: frozenset[ObjectKey] = frozenset()
@@ -24,6 +26,8 @@ class BackfillBootstrapRequest:
     created_at: str | None = None
     boundary_time: str | None = None
     stabilization_seconds: float = 5.0
+    confirmed_target_catalog: CatalogSnapshot | None = None
+    confirmed_metadata_catalog: CatalogSnapshot | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "replay_lineage_mode", ReplayLineageMode(self.replay_lineage_mode))
@@ -55,6 +59,14 @@ class BackfillExecutionResult:
     bootstrap: BackfillBootstrapResult
     boundary_time: str
     replay_results: tuple[BackfillRootReplayResult, ...]
+
+
+@dataclass(frozen=True)
+class BackfillDeploymentIdentity:
+    """Deployment identity fixed before a virtual build is confirmed."""
+
+    deployment_id: str
+    created_at: str
 
 
 @dataclass(frozen=True)

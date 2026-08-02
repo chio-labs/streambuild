@@ -1,6 +1,8 @@
 from pathlib import Path
 
 import pytest
+from _pytest.capture import CaptureResult
+from clickhouse_connect.driver.client import Client
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from tests.integration.src.streambuild.cli._test_types import CliDirectPlanIntegrationTestCase
@@ -22,20 +24,21 @@ from tests.unit.src.streambuild.compiler.planner.helpers import write_direct_sco
     "test_case",
     [
         CliDirectPlanIntegrationTestCase(
-            description="a settled warehouse still plans the identical complete closure",
+            description="an unchanged warehouse plans the identical complete direct workflow",
             expected_execution_scope=("alpha", "beta", "gamma", "delta"),
             expected_replay_root_models=("alpha",),
             expected_initial_ownership=("absent",),
-            expected_settled_ownership=("direct",),
+            expected_settled_ownership=("absent",),
         )
     ],
     ids=lambda case: case.description,
 )
-def test_given_settled_direct_warehouse_when_planning_twice_then_closure_never_shrinks(
+def test_given_unchanged_direct_warehouse_when_planning_twice_then_workflow_is_stable(
     test_case: CliDirectPlanIntegrationTestCase,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
     clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
     clickhouse_database: str,
 ) -> None:
     write_direct_scope_project(project_root=tmp_path)
@@ -45,28 +48,51 @@ def test_given_settled_direct_warehouse_when_planning_twice_then_closure_never_s
 
     try:
         settle_direct_scope_warehouse(
-            connection=connection, database=clickhouse_database, record_ownership=False
+            connection=connection,
+            clickhouse_client=clickhouse_client,
+            database=clickhouse_database,
+            record_ownership=False,
+        )
+        relation_query: str = (
+            f"SELECT name FROM system.tables WHERE database = '{clickhouse_database}' ORDER BY name"
+        )
+        before_relation_names: tuple[str, ...] = tuple(
+            str(row[0]) for row in clickhouse_client.query(relation_query).result_rows
         )
         initial_exit_code: int = run_direct_plan(
             project_root=tmp_path, database=clickhouse_database, connection=connection
         )
-        initial_output: str = capsys.readouterr().out
-        settle_direct_scope_warehouse(
-            connection=connection, database=clickhouse_database, record_ownership=True
-        )
+        initial_capture: CaptureResult[str] = capsys.readouterr()
+        initial_output: str = initial_capture.out
         first_exit_code: int = run_direct_plan(
             project_root=tmp_path, database=clickhouse_database, connection=connection
         )
-        first_output: str = capsys.readouterr().out
+        first_capture: CaptureResult[str] = capsys.readouterr()
+        first_output: str = first_capture.out
         second_exit_code: int = run_direct_plan(
             project_root=tmp_path, database=clickhouse_database, connection=connection
         )
-        second_output: str = capsys.readouterr().out
+        second_capture: CaptureResult[str] = capsys.readouterr()
+        second_output: str = second_capture.out
+        after_relation_names: tuple[str, ...] = tuple(
+            str(row[0]) for row in clickhouse_client.query(relation_query).result_rows
+        )
     finally:
         connection.close()
 
-    assert (initial_exit_code, first_exit_code, second_exit_code) == (0, 0, 0)
+    assert (initial_exit_code, first_exit_code, second_exit_code) == (0, 0, 0), (
+        initial_capture.err,
+        first_capture.err,
+        second_capture.err,
+    )
     assert first_output == second_output
+    artifact_root: Path = tmp_path / "target/run/plan"
+    step_paths: tuple[Path, ...] = tuple(sorted((artifact_root / "steps").glob("*.sql")))
+    assert before_relation_names == after_relation_names
+    assert step_paths
+    assert (artifact_root / "workflow.sql").read_bytes() == b"\n".join(
+        path.read_bytes() for path in step_paths
+    )
     assert plan_scope_names(plan_json=first_output) == test_case.expected_execution_scope
     assert plan_scope_names(plan_json=initial_output) == test_case.expected_execution_scope
     assert plan_relation_operations(plan_json=initial_output) == plan_relation_operations(

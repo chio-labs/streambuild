@@ -13,7 +13,7 @@ from tests.unit.src.streambuild.cli._test_types import CliHelpBaselineTestCase
         CliHelpBaselineTestCase(
             description="captures root help",
             argv=("--help",),
-            expected_sha256="da94d32e7a6e7c1915c2c55396275a5d28689f62f29ddee08336ea18f45acc3c",
+            expected_sha256="4b1fbfb77e62109c27816d5b1345da5eae2b6cba657bfb1541a3c26de739ee41",
         ),
         CliHelpBaselineTestCase(
             description="captures discover help",
@@ -33,27 +33,22 @@ from tests.unit.src.streambuild.cli._test_types import CliHelpBaselineTestCase
         CliHelpBaselineTestCase(
             description="captures plan help",
             argv=("plan", "--help"),
-            expected_sha256="0169a46ce89e7ab4d99c449141975ad2b70a11b9378864d54bcee65aa8bbac0c",
-        ),
-        CliHelpBaselineTestCase(
-            description="captures backfill help",
-            argv=("backfill", "--help"),
-            expected_sha256="9acc0f3cf1715a2bfd98fb685e17aa75ece62e9f46497e092f629fa6a11b4895",
+            expected_sha256="35f4b9078a532f0d6c07ebcc530272cd4aadc1c1ade48f8b345aa23ba359e08b",
         ),
         CliHelpBaselineTestCase(
             description="captures build help",
             argv=("build", "--help"),
-            expected_sha256="4eb5b528cae24b0d9b09972e9f44fc053f741e705db2fbd64396e8008a46f84f",
+            expected_sha256="346bb977ec16e317c9647fc528f514331590ff9835ae4d7f0fea558da70b7a30",
         ),
         CliHelpBaselineTestCase(
             description="captures audit help",
             argv=("audit", "--help"),
-            expected_sha256="78b4cccfe015c1584c275ecb98450586d1307cd5f8ebad75faadd85375236ed2",
+            expected_sha256="ed25ed03a8e014f19ef9d06689aa41bde5c192ce019cde0c905d2058f2c9f3b4",
         ),
         CliHelpBaselineTestCase(
-            description="captures audit backfill help",
-            argv=("audit", "backfill", "--help"),
-            expected_sha256="3b854702aafb5187ca379b970f35a05f653d37376eee5ce33ee0abc75f1357ef",
+            description="captures audit deployment help",
+            argv=("audit", "deployment", "--help"),
+            expected_sha256="22b4b1266712a31161a2938610f9619d727b8164e7573b0398891f1c8018e816",
         ),
         CliHelpBaselineTestCase(
             description="captures publish help",

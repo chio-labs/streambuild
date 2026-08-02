@@ -83,6 +83,10 @@ def build_cli_parser() -> argparse.ArgumentParser:
     _add_clickhouse_args(parser=plan_parser)
     _add_select_args(plan_parser)
     plan_parser.add_argument(
+        "--deployment-id",
+        help="Use a specific virtual deployment ID for exact workflow inspection",
+    )
+    plan_parser.add_argument(
         "--full-refresh",
         action="store_true",
         help="Force a full refresh of selected models (requires --select)",
@@ -103,7 +107,6 @@ def build_cli_parser() -> argparse.ArgumentParser:
         help="Show full schema diffs for changed models",
     )
 
-    backfill_parser: argparse.ArgumentParser = _add_backfill_parser(subparsers=subparsers)
     build_parser: argparse.ArgumentParser = _add_build_parser(subparsers=subparsers)
 
     audit_parser: argparse.ArgumentParser = subparsers.add_parser(
@@ -111,7 +114,7 @@ def build_cli_parser() -> argparse.ArgumentParser:
         help="Run SQL audits against live or staged data",
         description=(
             "Run user-defined SQL audits against published logical views, or use "
-            "`stb audit backfill` to audit a staged deployment before publishing."
+            "`stb audit deployment` to audit a staged deployment before publishing."
         ),
     )
     _add_project_dir_arg(parser=audit_parser)
@@ -125,21 +128,21 @@ def build_cli_parser() -> argparse.ArgumentParser:
     audit_subparsers: argparse._SubParsersAction[argparse.ArgumentParser] = (
         audit_parser.add_subparsers(dest="audit_command")
     )
-    audit_backfill_parser: argparse.ArgumentParser = audit_subparsers.add_parser(
-        "backfill",
-        help="Audit a staged backfill deployment",
+    audit_deployment_parser: argparse.ArgumentParser = audit_subparsers.add_parser(
+        "deployment",
+        help="Audit a staged deployment",
         description=(
-            "Compare staged shadow tables against active tables to verify the backfill "
+            "Compare staged shadow tables against active tables to verify the build "
             "produced correct results. If --deployment-id is omitted, lists available deployments."
         ),
     )
-    _add_project_dir_arg(parser=audit_backfill_parser, suppress_default=True)
-    _add_clickhouse_args(parser=audit_backfill_parser, suppress_default=True)
-    audit_backfill_parser.add_argument(
+    _add_project_dir_arg(parser=audit_deployment_parser, suppress_default=True)
+    _add_clickhouse_args(parser=audit_deployment_parser, suppress_default=True)
+    audit_deployment_parser.add_argument(
         "--deployment-id",
         help="Deployment to audit (omit to list available deployments)",
     )
-    audit_backfill_parser.add_argument(
+    audit_deployment_parser.add_argument(
         "--json",
         action="store_true",
         default=argparse.SUPPRESS,
@@ -260,10 +263,9 @@ def build_cli_parser() -> argparse.ArgumentParser:
         compile_parser=compile_parser,
         test_parser=test_parser,
         plan_parser=plan_parser,
-        backfill_parser=backfill_parser,
         build_parser=build_parser,
         audit_parser=audit_parser,
-        audit_backfill_parser=audit_backfill_parser,
+        audit_deployment_parser=audit_deployment_parser,
         reconcile_parser=reconcile_parser,
     )
     for lifecycle_parser in (
@@ -276,67 +278,33 @@ def build_cli_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _add_backfill_parser(
-    *, subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]"
-) -> argparse.ArgumentParser:
-    backfill_parser: argparse.ArgumentParser = subparsers.add_parser(
-        "backfill",
-        help="Create shadow tables and replay historical data",
-        description=(
-            "Run a plan, create shadow tables, and replay historical data into them. "
-            "Shows the plan and asks for confirmation before making changes."
-        ),
-    )
-    _add_project_dir_arg(parser=backfill_parser)
-    _add_clickhouse_args(parser=backfill_parser)
-    _add_select_args(backfill_parser)
-    backfill_parser.add_argument(
-        "--deployment-id",
-        help="Use a specific deployment ID (auto-generated if omitted)",
-    )
-    backfill_parser.add_argument(
-        "--full-refresh",
-        action="store_true",
-        help="Force a full refresh of selected models (requires --select)",
-    )
-    backfill_parser.add_argument(
-        "--start-time",
-        help="Replay from a specific time, e.g. '2026-04-17T18:00:00' (requires --select)",
-    )
-    backfill_parser.add_argument(
-        "--json",
-        action="store_true",
-        help="Output as JSON",
-    )
-    backfill_parser.add_argument(
-        "-v",
-        "--verbose",
-        action="store_true",
-        help="Show full schema diffs for changed models",
-    )
-    backfill_parser.add_argument(
-        "--auto-approve",
-        action="store_true",
-        help="Skip the confirmation prompt",
-    )
-    return backfill_parser
-
-
 def _add_build_parser(
     *, subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]"
 ) -> argparse.ArgumentParser:
     build_parser: argparse.ArgumentParser = subparsers.add_parser(
         "build",
-        help="Rebuild selected models directly in direct mode",
+        help="Build selected models in the effective project mode",
         description=(
-            "Preserve managed sources, rebuild the selected downstream closure at its ordinary "
-            "names, and replay preserved history. Shows the plan and asks for confirmation "
-            "before making changes."
+            "Build the selected downstream closure directly or as an isolated virtual deployment. "
+            "Shows the connected plan and asks for confirmation before making changes."
         ),
     )
     _add_project_dir_arg(parser=build_parser)
     _add_clickhouse_args(parser=build_parser)
     _add_select_args(build_parser)
+    build_parser.add_argument(
+        "--deployment-id",
+        help="Use a specific virtual deployment ID (auto-generated if omitted)",
+    )
+    build_parser.add_argument(
+        "--full-refresh",
+        action="store_true",
+        help="Force a full refresh of selected virtual-environment models (requires --select)",
+    )
+    build_parser.add_argument(
+        "--start-time",
+        help="Replay selected virtual-environment models from a time (requires --select)",
+    )
     build_parser.add_argument(
         "--json",
         action="store_true",
@@ -397,10 +365,9 @@ def _add_compilation_config_args_to_commands(
     compile_parser: argparse.ArgumentParser,
     test_parser: argparse.ArgumentParser,
     plan_parser: argparse.ArgumentParser,
-    backfill_parser: argparse.ArgumentParser,
     build_parser: argparse.ArgumentParser,
     audit_parser: argparse.ArgumentParser,
-    audit_backfill_parser: argparse.ArgumentParser,
+    audit_deployment_parser: argparse.ArgumentParser,
     reconcile_parser: argparse.ArgumentParser,
 ) -> None:
     command_parser: argparse.ArgumentParser
@@ -409,13 +376,12 @@ def _add_compilation_config_args_to_commands(
         compile_parser,
         test_parser,
         plan_parser,
-        backfill_parser,
         build_parser,
         audit_parser,
         reconcile_parser,
     ):
         _add_compilation_config_args(parser=command_parser)
-    _add_compilation_config_args(parser=audit_backfill_parser, suppress_defaults=True)
+    _add_compilation_config_args(parser=audit_deployment_parser, suppress_defaults=True)
 
 
 def _add_clickhouse_args(

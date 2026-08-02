@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+import os
+from collections.abc import Callable, Iterator
+from dataclasses import replace
 from pathlib import Path
 from typing import cast
+
+import pytest
 
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from streambuild.cli.entry._helpers.compiler_profile import build_compiler_adapter_profile
 from streambuild.cli.plan.main._run_plan import run_plan
+from streambuild.cli.plan.models import PlanCommandOptions
 from streambuild.compiler.compile.main._compile_pipeline import compile_pipeline
 from streambuild.compiler.compile.models import (
     CompiledPipeline,
@@ -111,22 +117,77 @@ def run_scope_project_plan(
     selectors: tuple[str, ...] = (),
     full_refresh: bool = False,
     start_time: str | None = None,
+    virtual_environments: bool = False,
+    deployment_id: str | None = None,
 ) -> int:
     """Run `stb plan` against the direct scope project with a settled warehouse."""
 
     snapshot: DirectWarehouseSnapshot = build_settled_direct_snapshot()
+    snapshot = replace(
+        snapshot,
+        catalog=replace(
+            snapshot.catalog,
+            relations=snapshot.catalog.relations[3:],
+        ),
+    )
     return run_plan(
-        pipelines_root=project_root / "pipelines",
-        database=None,
-        selectors=selectors,
-        full_refresh=full_refresh,
-        start_time=start_time,
-        json_output=json_output,
-        verbose=False,
+        options=PlanCommandOptions(
+            pipelines_root=project_root / "pipelines",
+            database=None,
+            selectors=selectors,
+            full_refresh=full_refresh,
+            start_time=start_time,
+            deployment_id=deployment_id,
+            json_output=json_output,
+            verbose=False,
+        ),
         client=RecordingAdapterConnection(
-            relations=snapshot.catalog.relations,
-            ownership_records=snapshot.ownership_records,
+            relations={
+                False: snapshot.catalog.relations,
+                True: (),
+            }[virtual_environments],
+            ownership_records={
+                False: snapshot.ownership_records,
+                True: (),
+            }[virtual_environments],
         ),
         loaded_project=load_project_input_for_path(path=project_root),
         adapter_profile=build_compiler_adapter_profile(ClickHouseAdapter()),
+    )
+
+
+def read_workflow_artifact(
+    *, artifact_root: Path
+) -> tuple[bytes, bytes, tuple[str, ...], tuple[bytes, ...]]:
+    """Read one complete workflow artifact without interpreting its contents."""
+
+    step_paths: tuple[Path, ...] = tuple(sorted((artifact_root / "steps").glob("*.sql")))
+    return (
+        (artifact_root / "plan.json").read_bytes(),
+        (artifact_root / "workflow.sql").read_bytes(),
+        tuple(path.name for path in step_paths),
+        tuple(path.read_bytes() for path in step_paths),
+    )
+
+
+def fail_second_workflow_artifact_replace(
+    *, monkeypatch: pytest.MonkeyPatch, error_message: str
+) -> None:
+    """Fail staged publication after the previous complete artifact has moved."""
+
+    original_replace: Callable[[Path, Path], None] = os.replace
+
+    def fail_replace(_source: Path, _target: Path) -> None:
+        raise OSError(error_message)
+
+    replacements: Iterator[Callable[[Path, Path], None]] = iter(
+        (original_replace, fail_replace, original_replace)
+    )
+
+    def staged_replace(source: Path, target: Path) -> None:
+        next(replacements)(source, target)
+
+    monkeypatch.setattr(
+        "streambuild.cli.workflow_artifacts._helpers.build_publication.os.replace",
+        staged_replace,
     )

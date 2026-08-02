@@ -1,28 +1,22 @@
-"""Metadata persistence for publish execution."""
+"""Metadata state assembly for publish execution."""
 
-from datetime import UTC, datetime
-
-from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.models import AdapterMetadataState
 from streambuild.compiler.planner.main.build_adapter_metadata_state import (
     build_adapter_metadata_state,
 )
 from streambuild.compiler.planner.main.build_metadata_state import build_metadata_state
 from streambuild.compiler.planner.models import MetadataState, PublishEventRecord
-from streambuild.executor.backfill.main._ensure_metadata_tables import ensure_metadata_tables
 from streambuild.executor.publish.models import PublishedView
 
 
-def persist_publish_event(
+def build_publish_metadata_state(
     *,
-    client: AdapterConnection,
-    metadata_database: str,
     deployment_id: str,
+    published_at: str,
     published_views: tuple[PublishedView, ...],
-) -> None:
-    """Persist one publish history event for a deployment."""
+) -> AdapterMetadataState:
+    """Build one publish history metadata batch for a deployment."""
 
-    ensure_metadata_tables(client=client, metadata_database=metadata_database)
-    published_at: str = datetime.now(tz=UTC).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
     metadata_state: MetadataState = build_metadata_state(
         object_states=(),
         deployments=(),
@@ -36,7 +30,4 @@ def persist_publish_event(
             ),
         ),
     )
-    client.persist_metadata_state(
-        database=metadata_database,
-        state=build_adapter_metadata_state(metadata_state),
-    )
+    return build_adapter_metadata_state(metadata_state)

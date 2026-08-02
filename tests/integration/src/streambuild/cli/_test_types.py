@@ -18,7 +18,7 @@ class CliManagedSourceResources(NamedTuple):
 
 
 @dataclass(frozen=True)
-class CliBackfillIntegrationTestCase:
+class CliVirtualBuildIntegrationTestCase:
     description: str
     pipelines_root: Path
     selectors: tuple[str, ...]
@@ -35,6 +35,26 @@ class CliBackfillIntegrationTestCase:
     expected_selected_root_names: tuple[str, ...] = ()
     expected_runtime_execution_modes: tuple[tuple[str, str | None], ...] = ()
     expected_absent_output_fragments: tuple[str, ...] = ()
+    deployment_id: str | None = None
+
+
+@dataclass(frozen=True)
+class CliVirtualManualFanInIntegrationTestCase:
+    description: str
+    deployment_ids: tuple[str, str, str]
+    expected_exit_code: int
+    expected_delta_rows: tuple[tuple[str, str], ...]
+    expected_watermark_rows: tuple[tuple[str, str, str], ...]
+
+
+@dataclass(frozen=True)
+class CliVirtualConfirmationRaceIntegrationTestCase:
+    description: str
+    deployment_id: str
+    expected_exit_code: int
+    expected_error_fragment: str
+    expected_metadata_row_count: int
+    expected_absent_error_fragment: str
 
 
 @dataclass(frozen=True)
@@ -122,6 +142,15 @@ class CliDirectBuildIntegrationTestCase:
     expected_stable_view_count: int
     expected_replay_coverage_ranges: tuple[tuple[str, str, str], ...]
     expected_warehouse_written_rows: tuple[int | None, ...]
+
+
+@dataclass(frozen=True)
+class CliDirectManualWorkflowIntegrationTestCase:
+    description: str
+    expected_exit_code: int
+    expected_order_ids: tuple[str, ...]
+    expected_owned_relations: tuple[str, ...]
+    expected_replay_coverage_ranges: tuple[tuple[str, str, str], ...]
 
 
 @dataclass(frozen=True)

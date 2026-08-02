@@ -10,12 +10,14 @@ import pytest
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.exceptions import AdapterAuthenticationError
 from streambuild.adapter.models import AdapterConnectionConfig
+from streambuild.cli.build.models import BuildCommandOptions
 from streambuild.cli.entry._helpers.entrypoint import (
     resolve_adapter_connection_config,
 )
 from streambuild.cli.entry._helpers.parser import build_cli_parser
 from streambuild.cli.entry.main.main import _main_with_dependencies, main
 from streambuild.cli.entry.models import CliEntrypointHandlers
+from streambuild.cli.plan.models import PlanCommandOptions
 from tests.unit.src.streambuild.cli._test_types import (
     CliAuditBackfillProjectContextTestCase,
     CliCompileArtifactsTestCase,
@@ -82,8 +84,8 @@ class FailingCommandRunner:
 
 
 class PlanCommandRunner:
-    def __call__(self, *_args: object, **kwargs: object) -> int:
-        if kwargs.get("json_output"):
+    def __call__(self, *_args: object, options: PlanCommandOptions, **_kwargs: object) -> int:
+        if options.json_output:
             print(
                 "{\n"
                 '  "steps": ['
@@ -125,10 +127,10 @@ class PlanCommandRunner:
             expected_output_fragments=("orders",),
         ),
         CliMainJsonTestCase(
-            description="prints backfill payload as json",
+            description="prints virtual build payload as json",
             argv=(
                 "stb",
-                "backfill",
+                "build",
                 "--project-dir",
                 "tests/fixtures/basic_project",
                 "--host",
@@ -147,7 +149,7 @@ class PlanCommandRunner:
                 '"deployment_id": "20260410T000000Z_ab12cd"',
                 '"replay_strategy": "create_from_scratch"',
             ),
-            handler_name="run_backfill",
+            handler_name="run_build",
             handler_output="{\n"
             '  "deployment_id": "20260410T000000Z_ab12cd",\n'
             '  "boundary_time": "2026-04-10 00:00:00.000",\n'
@@ -156,11 +158,11 @@ class PlanCommandRunner:
             "}",
         ),
         CliMainJsonTestCase(
-            description="prints audit backfill payload as json",
+            description="prints deployment audit payload as json",
             argv=(
                 "stb",
                 "audit",
-                "backfill",
+                "deployment",
                 "--project-dir",
                 "tests/fixtures/basic_project",
                 "--host",
@@ -348,11 +350,11 @@ def test_given_cli_args_when_running_main_then_it_prints_expected_json(
     "test_case",
     [
         CliAuditBackfillProjectContextTestCase(
-            description="resolves project context for audit backfill",
+            description="resolves project context for deployment audit",
             argv=(
                 "stb",
                 "audit",
-                "backfill",
+                "deployment",
                 "--project-dir",
                 "tests/fixtures/basic_project",
                 "--host",
@@ -559,7 +561,16 @@ def test_given_clickhouse_env_vars_when_running_plan_then_it_uses_env_defaults(
     )
 
     assert exit_code == test_case.expected_exit_code
-    assert test_case.expected_kwargs.items() <= runner.kwargs.items()
+    options: PlanCommandOptions = cast(PlanCommandOptions, runner.kwargs["options"])
+    actual_options: dict[str, object] = {
+        "database": options.database,
+        "selectors": options.selectors,
+        "full_refresh": options.full_refresh,
+        "start_time": options.start_time,
+        "json_output": options.json_output,
+        "verbose": options.verbose,
+    }
+    assert test_case.expected_kwargs.items() <= actual_options.items()
     assert runner.kwargs["client"] is clickhouse_client
 
 
@@ -604,23 +615,24 @@ def test_given_project_yaml_when_running_plan_then_it_uses_project_database_defa
     )
 
     assert exit_code == 0
+    options: PlanCommandOptions = cast(PlanCommandOptions, runner.kwargs["options"])
     assert {
-        "database": test_case.expected_database,
-        "selectors": (),
-        "full_refresh": False,
-        "start_time": None,
-        "json_output": False,
-        "verbose": False,
         "client": clickhouse_client,
     }.items() <= runner.kwargs.items()
+    assert options.database == test_case.expected_database
+    assert options.selectors == ()
+    assert options.full_refresh is False
+    assert options.start_time is None
+    assert options.json_output is False
+    assert options.verbose is False
 
 
 @pytest.mark.parametrize(
     "test_case",
     [
         CliProjectDefaultsTestCase(
-            description="uses project yaml database default for audit backfill",
-            command_name="audit backfill",
+            description="uses project database default for deployment audit",
+            command_name="audit deployment",
             expected_database="analytics",
         ),
         CliProjectDefaultsTestCase(
@@ -678,8 +690,8 @@ def test_given_project_yaml_when_running_runtime_command_then_it_uses_project_de
     "test_case",
     [
         CliProjectDefaultsTestCase(
-            description="uses --project-dir for audit backfill",
-            command_name="audit backfill",
+            description="uses --project-dir for deployment audit",
+            command_name="audit deployment",
             expected_database="analytics",
         ),
         CliProjectDefaultsTestCase(
@@ -815,7 +827,8 @@ def test_given_json_flag_when_running_plan_then_it_passes_json_output_to_command
     )
 
     assert exit_code == test_case.expected_exit_code
-    assert runner.kwargs["json_output"] is test_case.expected_json_output
+    options: PlanCommandOptions = cast(PlanCommandOptions, runner.kwargs["options"])
+    assert options.json_output is test_case.expected_json_output
 
 
 @pytest.mark.parametrize(
@@ -833,10 +846,13 @@ def test_given_json_flag_when_running_plan_then_it_passes_json_output_to_command
                 "--select",
                 "pipeline:orders",
                 "--full-refresh",
+                "--deployment-id",
+                "20260802T120000Z_reviewed",
             ),
             expected_exit_code=0,
             expected_selectors=("orders_enriched", "pipeline:orders"),
             expected_full_refresh=True,
+            expected_deployment_id="20260802T120000Z_reviewed",
         )
     ],
     ids=lambda case: case.description,
@@ -855,8 +871,10 @@ def test_given_selectors_when_running_plan_then_it_passes_selection_kwargs_to_co
     )
 
     assert exit_code == test_case.expected_exit_code
-    assert runner.kwargs["selectors"] == test_case.expected_selectors
-    assert runner.kwargs["full_refresh"] is test_case.expected_full_refresh
+    options: PlanCommandOptions = cast(PlanCommandOptions, runner.kwargs["options"])
+    assert options.selectors == test_case.expected_selectors
+    assert options.full_refresh is test_case.expected_full_refresh
+    assert options.deployment_id == test_case.expected_deployment_id
 
 
 @pytest.mark.parametrize(
@@ -991,10 +1009,10 @@ def test_given_expected_command_errors_when_running_entrypoint_then_it_prints_cl
     "test_case",
     [
         CliMainJsonFlagTestCase(
-            description="passes json flag through to backfill command",
+            description="passes json flag through to build command",
             argv=(
                 "stb",
-                "backfill",
+                "build",
                 "--project-dir",
                 "tests/fixtures/basic_project",
                 "--host",
@@ -1015,11 +1033,11 @@ def test_given_expected_command_errors_when_running_entrypoint_then_it_prints_cl
     ],
     ids=lambda case: case.description,
 )
-def test_given_json_flag_when_running_backfill_then_it_passes_json_output_to_command(
+def test_given_json_flag_when_running_build_then_it_passes_json_output_to_command(
     test_case: CliMainJsonFlagTestCase,
 ) -> None:
     runner: RecordingCommandRunner = RecordingCommandRunner()
-    handlers: CliEntrypointHandlers = handlers_with_overrides(run_backfill=runner)
+    handlers: CliEntrypointHandlers = handlers_with_overrides(run_build=runner)
     clickhouse_client: AdapterConnection = cast(AdapterConnection, FakeCliClickHouseClient())
 
     exit_code: int = _main_with_dependencies(
@@ -1029,17 +1047,18 @@ def test_given_json_flag_when_running_backfill_then_it_passes_json_output_to_com
     )
 
     assert exit_code == test_case.expected_exit_code
-    assert runner.kwargs["json_output"] is test_case.expected_json_output
+    options: BuildCommandOptions = cast(BuildCommandOptions, runner.kwargs["options"])
+    assert options.json_output is test_case.expected_json_output
 
 
 @pytest.mark.parametrize(
     "test_case",
     [
         CliSelectorForwardingTestCase(
-            description="passes selectors and full refresh through to backfill command",
+            description="passes selectors and full refresh through to build command",
             argv=(
                 "stb",
-                "backfill",
+                "build",
                 "--project-dir",
                 "tests/fixtures/basic_project",
                 "--select",
@@ -1050,15 +1069,16 @@ def test_given_json_flag_when_running_backfill_then_it_passes_json_output_to_com
             expected_exit_code=0,
             expected_selectors=("orders_enriched",),
             expected_full_refresh=True,
+            expected_deployment_id=None,
         )
     ],
     ids=lambda case: case.description,
 )
-def test_given_selectors_when_running_backfill_then_it_passes_selection_kwargs_to_command(
+def test_given_selectors_when_running_build_then_it_passes_selection_kwargs_to_command(
     test_case: CliSelectorForwardingTestCase,
 ) -> None:
     runner: RecordingCommandRunner = RecordingCommandRunner()
-    handlers: CliEntrypointHandlers = handlers_with_overrides(run_backfill=runner)
+    handlers: CliEntrypointHandlers = handlers_with_overrides(run_build=runner)
     clickhouse_client: AdapterConnection = cast(AdapterConnection, FakeCliClickHouseClient())
 
     exit_code: int = _main_with_dependencies(
@@ -1068,8 +1088,9 @@ def test_given_selectors_when_running_backfill_then_it_passes_selection_kwargs_t
     )
 
     assert exit_code == test_case.expected_exit_code
-    assert runner.kwargs["selectors"] == test_case.expected_selectors
-    assert runner.kwargs["full_refresh"] is test_case.expected_full_refresh
+    options: BuildCommandOptions = cast(BuildCommandOptions, runner.kwargs["options"])
+    assert options.selectors == test_case.expected_selectors
+    assert options.full_refresh is test_case.expected_full_refresh
 
 
 @pytest.mark.parametrize(
@@ -1138,13 +1159,6 @@ def test_given_reconcile_flags_when_running_reconcile_then_it_passes_kwargs_to_c
                 "target_out/compiled/resources/sources/orders/kafka__orders.sql",
                 "target_out/compiled/resources/sources/orders/raw__orders.sql",
                 "target_out/compiled/resources/sources/orders/mv__orders.sql",
-                "target_out/compiled/workflows/orders/steps/0001_kafka_table.sql",
-                "target_out/compiled/workflows/orders/steps/0002_raw_table.sql",
-                "target_out/compiled/workflows/orders/steps/0003_landing_mv.sql",
-                "target_out/compiled/workflows/orders/steps/0010_orders_enriched.table.sql",
-                "target_out/compiled/workflows/orders/steps/0011_orders_enriched.mv.sql",
-                "target_out/compiled/workflows/orders/workflow.sql",
-                "target_out/compiled/workflows/orders/workflow.json",
             ),
             expected_target_dir_name="target_out",
         ),
@@ -1200,7 +1214,7 @@ def test_given_compile_when_running_then_it_writes_target_artifacts(
     "test_case",
     [
         CliNestedAuditOptionsTestCase(
-            description="preserves shared audit options authored before backfill",
+            description="preserves shared audit options authored before deployment",
             argv=(
                 "audit",
                 "--project-dir",
@@ -1220,7 +1234,7 @@ def test_given_compile_when_running_then_it_writes_target_artifacts(
                 "parent-target",
                 "--vars",
                 '{"scope": "parent"}',
-                "backfill",
+                "deployment",
             ),
             expected_project_dir="parent-project",
             expected_host="parent-host",
@@ -1233,10 +1247,10 @@ def test_given_compile_when_running_then_it_writes_target_artifacts(
             expected_vars={"scope": "parent"},
         ),
         CliNestedAuditOptionsTestCase(
-            description="accepts shared audit options authored after backfill",
+            description="accepts shared audit options authored after deployment",
             argv=(
                 "audit",
-                "backfill",
+                "deployment",
                 "--project-dir",
                 "child-project",
                 "--host",
@@ -1285,7 +1299,7 @@ def test_given_compile_when_running_then_it_writes_target_artifacts(
                 "parent-target",
                 "--vars",
                 '{"scope": "parent"}',
-                "backfill",
+                "deployment",
                 "--project-dir",
                 "child-project",
                 "--host",

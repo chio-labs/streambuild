@@ -1,4 +1,5 @@
 import pytest
+from clickhouse_connect.driver.client import Client
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import CatalogRelation, CatalogSnapshot
@@ -27,16 +28,18 @@ from tests.integration.src.streambuild.adapters.clickhouse._test_types import (
 def test_given_real_clickhouse_when_using_client_then_it_executes_expected_operations(
     test_case: ClickHouseClientIntegrationTestCase,
     managed_clickhouse_client: AdapterConnection,
+    clickhouse_client: Client,
     clickhouse_database: str,
 ) -> None:
-    managed_clickhouse_client.command(
+    clickhouse_client.command(
         f"CREATE TABLE {clickhouse_database}.deployments (deployment_id String, status String) "
         "ENGINE = MergeTree ORDER BY deployment_id"
     )
 
-    managed_clickhouse_client.insert_rows(
+    clickhouse_client.insert(
         table=f"{clickhouse_database}.deployments",
-        rows=test_case.inserted_rows,
+        data=[list(row.values()) for row in test_case.inserted_rows],
+        column_names=list(test_case.inserted_rows[0]),
     )
 
     result_rows: tuple[tuple[object, ...], ...] = managed_clickhouse_client.query(
@@ -92,26 +95,27 @@ def test_given_real_clickhouse_when_capturing_warehouse_time_then_returns_utc_mi
 def test_given_real_relations_when_loading_catalog_then_it_returns_complete_snapshot(
     test_case: ClickHouseCatalogIntegrationTestCase,
     managed_clickhouse_client: AdapterConnection,
+    clickhouse_client: Client,
     clickhouse_database: str,
 ) -> None:
-    managed_clickhouse_client.command(
+    clickhouse_client.command(
         f"CREATE TABLE {clickhouse_database}.tbl__orders__dep_a "
         "(order_id String, updated_at DateTime64(3) DEFAULT now64(3)) "
         "ENGINE = ReplacingMergeTree(updated_at) "
         "PARTITION BY toYYYYMM(updated_at) ORDER BY (order_id, updated_at) "
         "TTL toDateTime(updated_at) + INTERVAL 30 DAY SETTINGS index_granularity = 8192"
     )
-    managed_clickhouse_client.command(
+    clickhouse_client.command(
         f"CREATE VIEW {clickhouse_database}.tbl__orders AS "
         f"SELECT * FROM {clickhouse_database}.tbl__orders__dep_a"
     )
-    managed_clickhouse_client.command(
+    clickhouse_client.command(
         f"CREATE TABLE {clickhouse_database}.kafka__orders (payload String) "
         "ENGINE = Kafka SETTINGS kafka_broker_list = 'redpanda:9092', "
         "kafka_topic_list = 'orders', kafka_group_name = 'streambuild', "
         "kafka_format = 'JSONEachRow'"
     )
-    managed_clickhouse_client.command(
+    clickhouse_client.command(
         f"CREATE MATERIALIZED VIEW {clickhouse_database}.mv__orders "
         f"TO {clickhouse_database}.tbl__orders__dep_a AS "
         f"SELECT payload AS order_id, now64(3) AS updated_at "

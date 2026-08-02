@@ -3,15 +3,12 @@
 from __future__ import annotations
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.cli.build.models import BuildCommandOptions, BuildPreviewContext
-from streambuild.cli.entry.exceptions import CliUserError
+from streambuild.cli.build.models import DirectBuildPreviewContext, WorkflowPreparationOptions
 from streambuild.cli.entry.main._resolve_default_database import resolve_default_database
 from streambuild.cli.plan.main._source_validation import validate_declared_external_sources
 from streambuild.cli.selection.main._selection import resolve_selection
 from streambuild.cli.selection.models import SelectionResolution
-from streambuild.compiler.compile.models import CompilerAdapterProfile, LogicalResourceKey
-from streambuild.compiler.discovery.models import LoadedProject
-from streambuild.compiler.pipeline.main.analyze_project import analyze_project
+from streambuild.compiler.compile.models import LogicalResourceKey
 from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.compiler.planner.main.load_direct_warehouse_snapshot import (
     load_direct_warehouse_snapshot,
@@ -22,19 +19,11 @@ from streambuild.compiler.planner.models import DirectPlan, DirectWarehouseSnaps
 
 def build_direct_build_preview(
     *,
-    options: BuildCommandOptions,
+    options: WorkflowPreparationOptions,
     client: AdapterConnection,
-    loaded_project: LoadedProject | None,
-    adapter_profile: CompilerAdapterProfile,
-) -> BuildPreviewContext:
-    """Compile, resolve the effective mode, and plan the selected closure once."""
-
-    analysis: CompileAnalysis = analyze_project(
-        pipelines_root=options.pipelines_root,
-        loaded_project=loaded_project,
-        adapter_profile=adapter_profile,
-    )
-    _reject_virtual_environment_project(analysis=analysis)
+    analysis: CompileAnalysis,
+) -> DirectBuildPreviewContext:
+    """Plan the selected direct closure from one shared compile analysis."""
     database: str = resolve_default_database(
         loaded_pipelines=list(analysis.compile_inputs.pipelines),
         override=options.database,
@@ -63,18 +52,10 @@ def build_direct_build_preview(
         database=database,
         selected_model_keys=selected_model_keys,
     )
-    return BuildPreviewContext(
+    return DirectBuildPreviewContext(
         analysis=analysis,
         plan=plan,
         database=database,
         metadata_database=metadata_database,
         adapter_name=client.adapter_identity.name,
     )
-
-
-def _reject_virtual_environment_project(*, analysis: CompileAnalysis) -> None:
-    if analysis.compile_inputs.virtual_environments:
-        raise CliUserError(
-            "stb build is a direct-mode command and this project enables "
-            "settings.virtual_environments. Use stb backfill and stb publish instead."
-        )

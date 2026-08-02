@@ -19,7 +19,7 @@ def render_ambiguous_deployment_message(
         sorted(candidates, key=lambda candidate: candidate.deployment_id, reverse=True)
     )
     lines: list[str] = [
-        cli_style().title(f"{command_name.title()} deployment selection is ambiguous"),
+        cli_style().title(f"{command_name.title()} selection is ambiguous"),
         cli_style().label_value(label="Database", value=database),
         "",
     ]

@@ -18,7 +18,6 @@ from streambuild.compiler.discovery.main.load_project_input_for_path import (
 from streambuild.compiler.planner.main.build_deployment_physical_name import (
     build_deployment_physical_name,
 )
-from streambuild.executor.backfill.main.execute_backfill import execute_backfill
 from streambuild.executor.backfill.models import BackfillExecutionResult
 from tests.integration.src.streambuild.adapters.clickhouse.helpers import (
     render_create_kafka_table_ddl,
@@ -45,6 +44,7 @@ from tests.integration.src.streambuild.executor.backfill.helpers import (
     build_raw_orders_row,
     build_scalar_replay_compiled_pipeline,
     build_scalar_replay_request,
+    execute_backfill,
     require_managed_source,
 )
 
@@ -156,7 +156,7 @@ def test_given_audit_project_when_running_live_audit_then_it_reports_expected_re
     "test_case",
     [
         CliAuditBackfillCommandIntegrationTestCase(
-            description="runs project sql quality checks during audit backfill",
+            description="runs project sql quality checks during deployment audit",
             expected_exit_code=0,
             expected_quality_check_count=1,
             expected_assessment="not_ready",

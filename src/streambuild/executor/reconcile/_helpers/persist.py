@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict
 
-from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.models import AdapterMetadataState
 from streambuild.compiler.compile.models import DesiredMaterializedView, DesiredTable, DesiredView
 from streambuild.compiler.planner.main.build_adapter_metadata_state import (
     build_adapter_metadata_state,
@@ -13,13 +13,12 @@ from streambuild.compiler.planner.main.build_normalized_fingerprint import (
     build_normalized_fingerprint,
 )
 from streambuild.compiler.planner.models import MetadataState, ObjectStateRecord
-from streambuild.executor.reconcile.models import ReconcilePreview, ReconcileResult
+from streambuild.executor.reconcile.models import ReconcilePreview
 
 
-def apply_reconcile(*, client: AdapterConnection, preview: ReconcilePreview) -> ReconcileResult:
-    """Persist reconciled object-state records."""
+def build_reconcile_metadata_state(preview: ReconcilePreview) -> AdapterMetadataState:
+    """Build reconciled object-state metadata for persistence."""
 
-    ensure_metadata_tables(client=client, metadata_database=preview.database)
     state: MetadataState = MetadataState(
         object_states=preview.eligible_records,
         deployments=(),
@@ -27,16 +26,7 @@ def apply_reconcile(*, client: AdapterConnection, preview: ReconcilePreview) -> 
         deployment_runtime_details=(),
         publish_events=(),
     )
-    client.persist_metadata_state(
-        database=preview.database,
-        state=build_adapter_metadata_state(state),
-    )
-    return ReconcileResult(
-        database=preview.database,
-        reconcile_id=preview.reconcile_id,
-        reconciled_records=preview.eligible_records,
-        rejected_targets=preview.rejected_targets,
-    )
+    return build_adapter_metadata_state(state)
 
 
 def build_object_state_record(
@@ -57,7 +47,3 @@ def build_object_state_record(
         normalized_query=normalized_query,
         recorded_at=recorded_at,
     )
-
-
-def ensure_metadata_tables(*, client: AdapterConnection, metadata_database: str) -> None:
-    client.migrate_metadata_state(metadata_database)
