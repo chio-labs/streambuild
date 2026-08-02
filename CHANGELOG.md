@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.4.0](https://github.com/chio-labs/streambuild/compare/v0.3.0...v0.4.0) (2026-08-02)
+
+
+### Features
+
+* enforce executable build workflows ([179a2c7](https://github.com/chio-labs/streambuild/commit/179a2c76f15425980fc7312f4d4f2761f3bd8159))
+* expose exact plan workflows ([1d8df01](https://github.com/chio-labs/streambuild/commit/1d8df011238cc220a0fe795ac5774b78aa62411c))
+* persist connected plan artifacts ([7ac3f8a](https://github.com/chio-labs/streambuild/commit/7ac3f8aa462eb2a1723001ccdbe5c0805efa20cb))
+* unify mode-aware builds ([2b6434f](https://github.com/chio-labs/streambuild/commit/2b6434f44c57a66c2c73b8052cab12ae994a7f78))
+
 ## [0.3.0](https://github.com/chio-labs/streambuild/compare/v0.2.0...v0.3.0) (2026-08-01)
 
 
