@@ -246,27 +246,10 @@ class AdapterBindingReplacementRequest:
 
 
 @dataclass(frozen=True)
-class AdapterBindingReplacementResult:
-    """Applied stable bindings and the adapter's atomicity guarantees."""
-
-    bindings: tuple[AdapterStableBinding, ...]
-    per_relation_atomic_replace: bool
-    graph_atomic_publish: bool
-    removals: tuple[AdapterStableBindingRemoval, ...] = ()
-
-
-@dataclass(frozen=True)
 class AdapterRelationCleanupRequest:
     """Physical relations to remove from one database."""
 
     database: str
-    relation_names: tuple[str, ...]
-
-
-@dataclass(frozen=True)
-class AdapterRelationCleanupResult:
-    """Physical relations removed by one cleanup operation."""
-
     relation_names: tuple[str, ...]
 
 
@@ -405,10 +388,26 @@ class AdapterReplayRequest:
 
 
 @dataclass(frozen=True)
-class AdapterReplayResult:
-    """Warehouse-reported outcome for one replay command sequence."""
+class AdapterOwnershipReplayRequest:
+    """A replay whose dynamic upper boundary is stored in direct ownership metadata."""
 
-    written_rows: int | None
+    replay: AdapterReplayRequest
+    metadata_database: str
+    logical_model_name: str
+    boundary_column_type: str | None
+
+
+@dataclass(frozen=True)
+class AdapterDeploymentReplayRequest:
+    """A replay whose dynamic boundaries live in deployment watermark metadata."""
+
+    replay: AdapterReplayRequest
+    metadata_database: str
+    deployment_id: str
+    boundary_column_type: str | None
+    active_relation_name: str
+    active_column_names: tuple[str, ...]
+    anchor_column_names: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -625,3 +624,10 @@ class AdapterQueryResult:
                 return ()
             raise AdapterResultError("Query result does not include column names")
         return tuple(dict(zip(self.column_names, row, strict=True)) for row in self.rows)
+
+
+@dataclass(frozen=True)
+class AdapterMutationResult:
+    """Warehouse-reported evidence for one executed mutation statement."""
+
+    written_rows: int | None = None

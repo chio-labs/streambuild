@@ -3,6 +3,7 @@ from textwrap import dedent
 import pytest
 
 from streambuild.adapter.models import (
+    AdapterDeploymentReplayRequest,
     AdapterPhysicalRelationMapping,
     AdapterReplayBoundary,
     AdapterReplayColumns,
@@ -18,6 +19,7 @@ from streambuild.adapter.types import (
 from streambuild.adapters.clickhouse._helpers.replay import (
     _render_offset_replay,
     _render_scalar_replay,
+    render_clickhouse_replay_from_deployment,
 )
 from streambuild.adapters.clickhouse.models import ClickHouseReplayOffsetFrontier
 from streambuild.compiler.planner.main.build_adapter_replay_query import (
@@ -26,6 +28,7 @@ from streambuild.compiler.planner.main.build_adapter_replay_query import (
 from tests.unit.src.streambuild.adapters.clickhouse._test_types import (
     RenderAggregateOffsetPhysicalBoundaryTestCase,
     RenderAggregateScalarPhysicalBoundaryTestCase,
+    RenderDeploymentLookbackTestCase,
     RenderOffsetReplayStatementTestCase,
     RenderScalarReplayBoundaryTestCase,
 )
@@ -690,3 +693,80 @@ def test_given_aggregate_scalar_replay_when_rendering_then_anchor_is_filtered_be
     assert test_case.expected_upper_fragment in normalized_statement
     assert test_case.expected_outer_where_fragment in normalized_statement
     assert test_case.expected_absent_fragment not in normalized_statement
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        RenderDeploymentLookbackTestCase(
+            description="uses deployment-wide boundary time and root-scoped replay cutoff",
+            expected_boundary_lookup_fragment=(
+                "FROM metadata.streambuild_deployment_watermarks FINAL "
+                "WHERE deployment_id = 'dep-1' "
+                "AND boundary_key = '__streambuild_boundary_time'"
+            ),
+            expected_root_filter_fragment="root_object_name = 'tbl__orders_enriched'",
+            expected_root_filter_count=1,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_deployment_lookback_when_rendering_then_boundary_time_is_deployment_wide(
+    test_case: RenderDeploymentLookbackTestCase,
+) -> None:
+    replay: AdapterReplayRequest = AdapterReplayRequest(
+        mode=AdapterReplayBoundaryMode.OFFSETS,
+        database="orders_demo",
+        relations=AdapterReplayRelations(
+            root="tbl__orders_enriched",
+            source="raw__orders",
+            anchor="raw__orders",
+            target="tbl__orders_enriched__dep",
+        ),
+        replay_query=build_adapter_replay_query(
+            query="SELECT order_id, _replay_partition, _replay_offset FROM raw__orders",
+            source_relation_name="raw__orders",
+            database="orders_demo",
+            physical_relation_mappings=(
+                AdapterPhysicalRelationMapping(
+                    logical_name="raw__orders",
+                    physical_name="raw__orders",
+                ),
+            ),
+        ),
+        boundaries=(),
+        columns=AdapterReplayColumns(
+            partition="_replay_partition",
+            offset="_replay_offset",
+            timestamp="_replay_timestamp",
+            landed_at="_replay_landed_at",
+            cursor="_replay_cursor",
+        ),
+        window=AdapterReplayWindow(
+            lower_bound_mode=AdapterReplayLowerBoundMode.LOOKBACK,
+            lower_bound_inclusive=True,
+            boundary_time="2026-04-08 13:00:00.000",
+            forced_start_time=None,
+            lookback_seconds=8,
+        ),
+        seed_mode=AdapterReplaySeedMode.NONE,
+        target_column_names=("order_id", "_replay_partition", "_replay_offset"),
+    )
+    rendered_statements: tuple[str, ...] = render_clickhouse_replay_from_deployment(
+        AdapterDeploymentReplayRequest(
+            replay=replay,
+            metadata_database="metadata",
+            deployment_id="dep-1",
+            boundary_column_type=None,
+            active_relation_name="tbl__orders_enriched",
+            active_column_names=replay.target_column_names,
+            anchor_column_names=replay.target_column_names,
+        )
+    )
+    normalized_statement: str = normalize_clickhouse_sql(rendered_statements[0])
+
+    assert test_case.expected_boundary_lookup_fragment in normalized_statement
+    assert (
+        normalized_statement.count(test_case.expected_root_filter_fragment)
+        == test_case.expected_root_filter_count
+    )

@@ -23,7 +23,6 @@ from tests.unit.src.streambuild.executor.backfill._helpers._test_types import (
     ReplayRequestConstructionTestCase,
 )
 from tests.unit.src.streambuild.executor.backfill._helpers.helpers import (
-    RecordingReplayConnection,
     capture_replay_requests,
 )
 
@@ -207,10 +206,7 @@ def test_given_replay_mode_when_building_request_then_boundaries_and_relations_a
             cutoff_value=test_case.cutoff_value,
         ),
     )
-    connection: RecordingReplayConnection = RecordingReplayConnection()
-
     requests: tuple[AdapterReplayRequest, ...] = capture_replay_requests(
-        connection=connection,
         mode=test_case.replay_mode,
         deployment_plan=deployment_plan,
         desired_state=desired_state,

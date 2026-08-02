@@ -3,17 +3,16 @@ from typing import cast
 import pytest
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.adapter.models import AdapterMetadataState
 from streambuild.compiler.compile.models import DesiredState
-from streambuild.compiler.planner.models import ActualState
+from streambuild.compiler.planner.models import ActualState, ObjectStateRecord
 from streambuild.executor.reconcile.main.execute_reconcile import execute_reconcile
 from streambuild.executor.reconcile.models import ReconcilePreview, ReconcileResult
-from tests.unit.src.streambuild.cli.helpers import RecordingAdapterConnection
 from tests.unit.src.streambuild.executor.reconcile._test_types import (
-    ApplyReconcileAdapterStateTestCase,
+    ApplyReconcileWorkflowTestCase,
     ExecuteReconcileTestCase,
 )
 from tests.unit.src.streambuild.executor.reconcile.helpers import (
+    ReconcileWorkflowAdapterConnection,
     build_matching_reconcile_states,
     build_structurally_mismatched_reconcile_states,
 )
@@ -76,22 +75,31 @@ def test_given_desired_and_actual_states_when_reconciling_then_classifies_target
 @pytest.mark.parametrize(
     "test_case",
     [
-        ApplyReconcileAdapterStateTestCase(
-            description="persists the generated reconcile identity through adapter state",
-            expected_persisted_state_count=1,
+        ApplyReconcileWorkflowTestCase(
+            description="executes metadata migration and exact reconcile persistence SQL",
+            expected_migration_statement="CREATE DATABASE IF NOT EXISTS metadata;",
             expected_object_names=("tbl__orders", "mv__orders"),
             expected_reconcile_id_prefix="reconcile_",
+            expected_table_fingerprint=(
+                '{"columns": [{"default": null, "name": "order_id", "type": "String"}], '
+                '"storage": {"engine": "MergeTree()", "order_by": ["order_id"], '
+                '"partition_by": null, "settings": null, "ttl": null}}'
+            ),
+            expected_view_fingerprint=(
+                '{"database_template": null, "query": "SELECT order_id FROM raw__orders", '
+                '"source_table_name": "raw__orders", "target_table_name": "tbl__orders"}'
+            ),
         )
     ],
     ids=lambda case: case.description,
 )
-def test_given_matching_state_when_applying_reconcile_then_adapter_persists_same_snapshot_id(
-    test_case: ApplyReconcileAdapterStateTestCase,
+def test_given_matching_state_when_applying_reconcile_then_exact_workflow_sql_reaches_gateway(
+    test_case: ApplyReconcileWorkflowTestCase,
 ) -> None:
     desired_state: DesiredState
     actual_state: ActualState
     desired_state, actual_state = build_matching_reconcile_states()
-    connection: RecordingAdapterConnection = RecordingAdapterConnection()
+    connection: ReconcileWorkflowAdapterConnection = ReconcileWorkflowAdapterConnection()
 
     result: ReconcileResult = cast(
         ReconcileResult,
@@ -104,13 +112,27 @@ def test_given_matching_state_when_applying_reconcile_then_adapter_persists_same
             apply=True,
         ),
     )
-    persisted_state: AdapterMetadataState = connection.persisted_metadata_states[0]
+    table_record: ObjectStateRecord = result.reconciled_records[0]
+    view_record: ObjectStateRecord = result.reconciled_records[1]
+    expected_persistence_statement: str = (
+        "INSERT INTO metadata.streambuild_object_state_snapshots "
+        "(deployment_id, database_name, object_type, object_name, normalized_fingerprint, "
+        "normalized_query, recorded_at) VALUES\n"
+        f"('{result.reconcile_id}', NULL, 'table', 'tbl__orders', "
+        f"'{test_case.expected_table_fingerprint}', NULL, '{table_record.recorded_at}'),\n"
+        f"('{result.reconcile_id}', NULL, 'materialized_view', 'mv__orders', "
+        f"'{test_case.expected_view_fingerprint}', 'SELECT order_id FROM raw__orders', "
+        f"'{view_record.recorded_at}');"
+    )
 
-    assert len(connection.persisted_metadata_states) == test_case.expected_persisted_state_count
-    assert tuple(record.key.name for record in persisted_state.object_states) == (
+    assert connection.statements == [
+        test_case.expected_migration_statement,
+        expected_persistence_statement,
+    ]
+    assert tuple(record.key.name for record in result.reconciled_records) == (
         test_case.expected_object_names
     )
-    assert tuple(record.deployment_id for record in persisted_state.object_states) == (
+    assert tuple(record.deployment_id for record in result.reconciled_records) == (
         result.reconcile_id,
         result.reconcile_id,
     )

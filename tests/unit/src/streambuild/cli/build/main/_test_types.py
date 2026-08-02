@@ -20,3 +20,12 @@ class CliBuildArtifactTestCase:
     expected_mode: str
     expected_adapter: str
     expected_artifact_path: str
+
+
+@dataclass(frozen=True)
+class CliVirtualBuildArtifactTestCase:
+    description: str
+    deployment_id: str
+    expected_created_at: str
+    expected_mode: str
+    expected_exit_code: int

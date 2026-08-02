@@ -1,6 +1,5 @@
 """Realize one population plan through explicit physical mappings."""
 
-from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import (
     AdapterManagedSource,
     AdapterMaterializedView,
@@ -19,17 +18,13 @@ from streambuild.compiler.compile.models import (
 from streambuild.compiler.planner.main.build_shadow_adapter_resource import (
     build_shadow_adapter_resource,
 )
-from streambuild.executor.population.models import PopulationPlan
+from streambuild.executor.population.models import PopulationPlan, PopulationRealization
 
 
-def realize_population_objects(
-    *,
-    client: AdapterConnection,
-    plan: PopulationPlan,
-    desired_state: DesiredState,
-    default_database: str,
-) -> tuple[str, ...]:
-    """Realize all mapped tables and views once in dependency order."""
+def plan_population_objects(
+    *, plan: PopulationPlan, desired_state: DesiredState, default_database: str
+) -> tuple[PopulationRealization, ...]:
+    """Plan all mapped tables and views once in dependency order without mutation."""
 
     object_by_key: dict[
         ObjectKey, DesiredKafkaTable | DesiredTable | DesiredMaterializedView | DesiredView
@@ -37,7 +32,7 @@ def realize_population_objects(
     physical_name_by_key: dict[ObjectKey, str] = {
         prepared.logical_key: prepared.physical_name for prepared in plan.objects
     }
-    created_names: list[str] = []
+    realizations: list[PopulationRealization] = []
     target_key: ObjectKey
     for target_key in _ordered_creation_keys(
         desired_state=desired_state,
@@ -59,12 +54,13 @@ def realize_population_objects(
             physical_name=physical_name_by_key[target_key],
             physical_name_by_key=physical_name_by_key,
         )
-        client.realize_resource(
-            resource=resource,
-            database=desired_object.key.database or default_database,
+        realizations.append(
+            PopulationRealization(
+                resource=resource,
+                database=desired_object.key.database or default_database,
+            )
         )
-        created_names.append(resource.name)
-    return tuple(created_names)
+    return tuple(realizations)
 
 
 def _ordered_creation_keys(

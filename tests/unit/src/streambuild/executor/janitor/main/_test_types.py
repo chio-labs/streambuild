@@ -17,16 +17,8 @@ class JanitorAdapterCleanupTestCase:
     request: JanitorRequest
     expected_cleanup_request: AdapterRelationCleanupRequest
     expected_binding_request: AdapterBindingReplacementRequest
+    expected_statements: tuple[str, ...]
     expected_result: JanitorApplyResult
-
-
-@dataclass(frozen=True)
-class JanitorCleanupResultTestCase:
-    description: str
-    inventory: AdapterDeploymentInventory
-    request: JanitorRequest
-    returned_relation_names: tuple[str, ...]
-    expected_error_fragment: str
 
 
 @dataclass(frozen=True)
@@ -57,4 +49,5 @@ class JanitorRollbackSafetyTestCase:
     expected_preview_states: tuple[tuple[str, bool, str], ...]
     expected_cleanup_request: AdapterRelationCleanupRequest
     expected_binding_request: AdapterBindingReplacementRequest
+    expected_statements: tuple[str, ...]
     expected_result: JanitorApplyResult

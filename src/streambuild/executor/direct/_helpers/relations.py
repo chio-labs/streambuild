@@ -1,24 +1,7 @@
 """Dependency-safe teardown and creation of directly named direct relations."""
 
-from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.compiler.planner.models import DirectPlan, DirectPlanEntry, DirectRelationOperation
+from streambuild.compiler.planner.models import DirectPlan, DirectPlanEntry
 from streambuild.compiler.planner.types import DirectResourceKind
-
-
-def drop_planned_relations(
-    *, client: AdapterConnection, plan: DirectPlan, database: str
-) -> tuple[str, ...]:
-    """Drop every planned relation in the plan's reverse dependency order."""
-
-    dropped: list[str] = []
-    operation: DirectRelationOperation
-    for operation in plan.teardown_operations:
-        relation_type: str = (
-            "VIEW" if operation.resource_kind == DirectResourceKind.VIEW else "TABLE"
-        )
-        client.command(f"DROP {relation_type} IF EXISTS {database}.{operation.relation_name} SYNC")
-        dropped.append(operation.relation_name)
-    return tuple(dropped)
 
 
 def target_relation_name_by_model_name(*, plan: DirectPlan) -> dict[str, str]:

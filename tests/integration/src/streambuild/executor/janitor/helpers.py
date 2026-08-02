@@ -9,7 +9,6 @@ from clickhouse_connect.driver.client import Client
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.compiler.compile.models import CompiledPipeline
-from streambuild.executor.backfill.main.execute_backfill import execute_backfill
 from streambuild.executor.janitor.models import JanitorPreviewCandidate
 from streambuild.executor.publish.main.execute_publish import execute_publish
 from streambuild.executor.publish.models import PublishRequest
@@ -22,6 +21,7 @@ from tests.integration.src.streambuild.executor.backfill.helpers import (
     build_raw_orders_row,
     build_scalar_replay_compiled_pipeline,
     build_scalar_replay_request,
+    execute_backfill,
     require_managed_source,
 )
 

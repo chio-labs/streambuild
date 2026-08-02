@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+from clickhouse_connect.driver.client import Client
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import CatalogSnapshot
@@ -215,6 +216,7 @@ FROM __ref("orders")
 def test_given_real_source_mode_when_planning_then_snapshot_validation_succeeds(
     test_case: CliPlanSnapshotIntegrationTestCase,
     clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
     clickhouse_database: str,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -230,7 +232,7 @@ def test_given_real_source_mode_when_planning_then_snapshot_validation_succeeds(
     )
     ddl_statement: str
     for ddl_statement in test_case.existing_table_ddl_statements:
-        client.command(ddl_statement.format(database=clickhouse_database))
+        clickhouse_client.command(ddl_statement.format(database=clickhouse_database))
     loaded_project: LoadedProject | None = load_project_input_for_path(path=pipelines_root)
     adapter_profile: CompilerAdapterProfile = build_compiler_adapter_profile(ClickHouseAdapter())
     analysis: CompileAnalysis = analyze_project(
@@ -282,6 +284,7 @@ def test_given_real_source_mode_when_planning_then_snapshot_validation_succeeds(
 def test_given_active_bounded_root_when_planning_then_one_snapshot_preserves_resolution(
     test_case: CliBoundedPlanSnapshotIntegrationTestCase,
     clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
     clickhouse_database: str,
 ) -> None:
     delegate: AdapterConnection = build_managed_clickhouse_client(
@@ -289,17 +292,17 @@ def test_given_active_bounded_root_when_planning_then_one_snapshot_preserves_res
         database=clickhouse_database,
     )
     client: RecordingDelegatingConnection = RecordingDelegatingConnection(delegate)
-    client.command(
+    clickhouse_client.command(
         f"CREATE TABLE {clickhouse_database}.orders_existing "
         "(order_id String, event_timestamp DateTime64(3)) "
         "ENGINE = MergeTree ORDER BY order_id"
     )
-    client.command(
+    clickhouse_client.command(
         f"CREATE TABLE {clickhouse_database}.tbl__orders_enriched__dep_a "
         "(order_id String, _replay_timestamp DateTime64(3)) "
         "ENGINE = MergeTree ORDER BY order_id"
     )
-    client.command(
+    clickhouse_client.command(
         f"CREATE VIEW {clickhouse_database}.tbl__orders_enriched AS "
         f"SELECT * FROM {clickhouse_database}.tbl__orders_enriched__dep_a"
     )

@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 from clickhouse_connect.driver.client import Client
 
+from streambuild.adapter.constants import DEPLOYMENT_BOUNDARY_TIME_KEY
 from streambuild.compiler.compile.models import CompiledPipeline
 from streambuild.compiler.discovery.types import ReplayLineageMode
 from streambuild.executor.audit_backfill.types import AuditAssessment
@@ -154,6 +155,7 @@ def test_given_external_offset_source_pipeline_when_running_then_it_publishes_of
     watermark_rows: Sequence[Sequence[object]] = isolated_e2e_clickhouse_client.query(
         "SELECT boundary_key, cutoff_value FROM "
         f"{isolated_e2e_clickhouse_database}.streambuild_deployment_watermarks "
+        f"WHERE boundary_key != '{DEPLOYMENT_BOUNDARY_TIME_KEY}' "
         "ORDER BY boundary_key"
     ).result_rows
     run_streambuild_publish_cli(

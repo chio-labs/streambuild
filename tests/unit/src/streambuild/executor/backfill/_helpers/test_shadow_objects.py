@@ -1,21 +1,15 @@
-from typing import cast
-
 import pytest
 
-from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.adapter.models import (
-    AdapterManagedSource,
-    AdapterMaterializedView,
-    AdapterStableView,
-    AdapterTable,
-    AdapterView,
-)
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from streambuild.compiler.compile.models import DesiredState
 from streambuild.compiler.planner.main.plan_deployment import plan_deployment
 from streambuild.compiler.planner.models import ActualState, DeploymentPlan
-from streambuild.executor.population._helpers.relations import realize_population_objects
-from streambuild.executor.population.models import PopulationObject, PopulationPlan
+from streambuild.executor.population._helpers.relations import plan_population_objects
+from streambuild.executor.population.models import (
+    PopulationObject,
+    PopulationPlan,
+    PopulationRealization,
+)
 from tests.unit.src.streambuild.compiler.planner.helpers import (
     build_single_transform_desired_state,
 )
@@ -50,46 +44,6 @@ from tests.unit.src.streambuild.executor.backfill._helpers._test_types import (
 def test_given_reference_ref_when_creating_shadow_objects_then_it_creates_dependency_tables_first(
     test_case: CreateShadowObjectsOrderingTestCase,
 ) -> None:
-    class RecordingClient:
-        def __init__(self) -> None:
-            self.commands: list[str] = []
-            self.resources: list[
-                AdapterManagedSource
-                | AdapterTable
-                | AdapterMaterializedView
-                | AdapterView
-                | AdapterStableView
-            ] = []
-
-        def query(self, _statement: str) -> object:
-            class QueryResult:
-                rows: tuple[tuple[object, ...], ...] = ()
-
-            return QueryResult()
-
-        def command(self, statement: str) -> None:
-            self.commands.append(statement)
-
-        def realize_resource(
-            self,
-            *,
-            resource: AdapterManagedSource
-            | AdapterTable
-            | AdapterMaterializedView
-            | AdapterStableView,
-            database: str,
-            if_not_exists: bool = False,
-        ) -> None:
-            self.resources.append(resource)
-            adapter: ClickHouseAdapter = ClickHouseAdapter()
-            self.command(
-                adapter.render_resource(
-                    resource=resource,
-                    database=database,
-                    if_not_exists=if_not_exists,
-                )
-            )
-
     desired_state: DesiredState = build_single_transform_desired_state(
         query=(
             "SELECT CAST(o.order_id AS UInt64) AS order_id, "
@@ -117,8 +71,6 @@ def test_given_reference_ref_when_creating_shadow_objects_then_it_creates_depend
         render_resource=ClickHouseAdapter().render_resource,
         deployment_id="dep_ref",
     )
-    client: RecordingClient = RecordingClient()
-
     population_plan: PopulationPlan = PopulationPlan(
         execution_id="dep_ref",
         roots=(),
@@ -127,15 +79,18 @@ def test_given_reference_ref_when_creating_shadow_objects_then_it_creates_depend
             for prepared in deployment_plan.prepared_shadow_objects
         ),
     )
-    _ = realize_population_objects(
-        client=cast(AdapterConnection, client),
+    realizations: tuple[PopulationRealization, ...] = plan_population_objects(
         plan=population_plan,
         desired_state=desired_state,
         default_database="analytics",
     )
 
-    rendered_commands: str = "\n".join(client.commands)
-    rewritten_resources: str = "\n".join(str(resource) for resource in client.resources)
+    adapter: ClickHouseAdapter = ClickHouseAdapter()
+    rendered_commands: str = "\n".join(
+        adapter.render_resource(resource=item.resource, database=item.database)
+        for item in realizations
+    )
+    rewritten_resources: str = "\n".join(str(item.resource) for item in realizations)
     preceding_index: int = rendered_commands.index(test_case.expected_preceding_fragment)
     following_index: int = rendered_commands.index(test_case.expected_following_fragment)
 

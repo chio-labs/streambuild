@@ -29,6 +29,7 @@ class ClickHouseConnectionSettings:
     port: int
     username: str
     password: str
+    container_id: str
 
 
 @pytest.fixture(scope="session")
@@ -115,4 +116,5 @@ def start_clickhouse_container() -> Iterator[ClickHouseConnectionSettings]:
             port=port,
             username=CLICKHOUSE_USERNAME,
             password=CLICKHOUSE_PASSWORD,
+            container_id=container.get_wrapped_container().id,
         )

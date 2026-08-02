@@ -1,7 +1,7 @@
 """Execute one confirmed direct-mode build command."""
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.cli.build._helpers.audits import run_direct_build_audits
+from streambuild.cli.build._helpers.audits import prepare_direct_build_audits
 from streambuild.cli.build._helpers.execution import execute_confirmed_direct_build
 from streambuild.cli.build._helpers.preview import build_direct_build_preview
 from streambuild.cli.build._helpers.rendering import (
@@ -14,7 +14,11 @@ from streambuild.cli.plan.main.render_direct_plan_text import render_direct_plan
 from streambuild.compiler.compile.models import CompilerAdapterProfile
 from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.executor.auditing.models import SqlAuditRunResult
-from streambuild.executor.direct.models import DirectBuildResult
+from streambuild.executor.direct.models import (
+    DirectBuildAudit,
+    DirectBuildExecutionResult,
+    DirectBuildResult,
+)
 
 
 def execute_direct_build_command(
@@ -32,23 +36,28 @@ def execute_direct_build_command(
         client=client,
         analysis=analysis,
     )
-    result: DirectBuildResult | None = execute_confirmed_direct_build(
+    audits: tuple[DirectBuildAudit, ...] = prepare_direct_build_audits(
+        preview=preview,
+        adapter_profile=adapter_profile,
+    )
+    execution: DirectBuildExecutionResult | None = execute_confirmed_direct_build(
         preview=preview,
         options=options,
         client=client,
         plan_text=render_direct_plan_text(plan=preview.plan, adapter_name=preview.adapter_name),
+        audits=audits,
     )
-    if result is None:
+    if execution is None:
         return 1
-    audit_result: SqlAuditRunResult = run_direct_build_audits(
-        preview=preview,
-        client=client,
-        adapter_profile=adapter_profile,
-    )
     print(
-        _rendered_result(options=options, preview=preview, result=result, audit_result=audit_result)
+        _rendered_result(
+            options=options,
+            preview=preview,
+            result=execution.build_result,
+            audit_result=execution.audit_result,
+        )
     )
-    return 1 if audit_result.error_failure_count else 0
+    return 1 if execution.audit_result.error_failure_count else 0
 
 
 def _reject_virtual_build_options(*, options: BuildCommandOptions) -> None:
