@@ -5,6 +5,9 @@ from __future__ import annotations
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.cli.build.models import DirectBuildPreviewContext, WorkflowPreparationOptions
 from streambuild.cli.entry.main._resolve_default_database import resolve_default_database
+from streambuild.cli.plan.main._convert_utc_timestamp_for_clickhouse import (
+    convert_utc_timestamp_for_clickhouse,
+)
 from streambuild.cli.plan.main._source_validation import validate_declared_external_sources
 from streambuild.cli.selection.main._selection import resolve_selection
 from streambuild.cli.selection.models import SelectionResolution
@@ -22,6 +25,7 @@ def build_direct_build_preview(
     options: WorkflowPreparationOptions,
     client: AdapterConnection,
     analysis: CompileAnalysis,
+    effective_start_time: str | None = None,
 ) -> DirectBuildPreviewContext:
     """Plan the selected direct closure from one shared compile analysis."""
     database: str = resolve_default_database(
@@ -31,6 +35,14 @@ def build_direct_build_preview(
     metadata_database: str = options.metadata_database or database
     snapshot: DirectWarehouseSnapshot = load_direct_warehouse_snapshot(
         client=client, database=database, metadata_database=metadata_database
+    )
+    start_time: str | None = (
+        convert_utc_timestamp_for_clickhouse(
+            timezone_name=snapshot.catalog.warehouse_timezone,
+            utc_timestamp=effective_start_time,
+        )
+        if effective_start_time is not None
+        else None
     )
     validate_declared_external_sources(
         catalog=snapshot.catalog,
@@ -51,6 +63,7 @@ def build_direct_build_preview(
         snapshot=snapshot,
         database=database,
         selected_model_keys=selected_model_keys,
+        effective_start_time=start_time,
     )
     return DirectBuildPreviewContext(
         analysis=analysis,
@@ -58,4 +71,5 @@ def build_direct_build_preview(
         database=database,
         metadata_database=metadata_database,
         adapter_name=client.adapter_identity.name,
+        effective_start_time=start_time,
     )

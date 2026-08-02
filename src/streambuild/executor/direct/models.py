@@ -28,6 +28,12 @@ class DirectBuildRequest:
     boundary_time: str | None = None
     audits: tuple[DirectBuildAudit, ...] = ()
 
+    @property
+    def effective_start_time(self) -> str | None:
+        """Return the normalized lower bound carried by the confirmed plan."""
+
+        return self.plan.effective_start_time
+
 
 @dataclass(frozen=True)
 class DirectBuildAudit:
@@ -86,6 +92,7 @@ class DirectBuildResult:
     boundary_time: str
     boundaries: tuple[DirectReplayBoundary, ...]
     replay_results: tuple[DirectRootReplayResult, ...]
+    effective_start_time: str | None = None
 
 
 @dataclass(frozen=True)

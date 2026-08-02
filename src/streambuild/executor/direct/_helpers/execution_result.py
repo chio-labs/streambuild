@@ -61,6 +61,7 @@ def build_direct_execution_result(
             boundary_time=_boundary_time(request=request, boundaries=boundaries),
             boundaries=boundaries,
             replay_results=_replay_results(request=request, execution=execution),
+            effective_start_time=request.effective_start_time,
         ),
         audit_result=_audit_result(
             request=request,

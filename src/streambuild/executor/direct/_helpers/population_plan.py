@@ -38,6 +38,7 @@ def build_direct_population_plan(
                 realized_project=realized_project,
                 desired_state=desired_state,
                 desired_key_by_name=desired_key_by_name,
+                forced_start_time=plan.effective_start_time,
             )
             for root in plan.replay_roots
         ),
@@ -53,6 +54,7 @@ def _population_root(
     realized_project: RealizedProject,
     desired_state: DesiredState,
     desired_key_by_name: dict[str, ObjectKey],
+    forced_start_time: str | None,
 ) -> PopulationRoot:
     root_relation_name: str = _table_relation_name(
         key=root.model_key, realized_project=realized_project
@@ -71,6 +73,7 @@ def _population_root(
             desired_key_by_name=desired_key_by_name,
         ),
         replay_lineage_mode=root.replay_boundary_mode,
+        forced_start_time=forced_start_time,
     )
 
 

@@ -24,6 +24,7 @@ def render_direct_plan_json(*, plan: DirectPlan, adapter_name: str) -> str:
         "mode": DIRECT_MODE_LABEL,
         "adapter": adapter_name,
         "database": plan.database,
+        "start_time": plan.effective_start_time,
         "user_scope": [_logical_key_payload(key) for key in plan.user_scope],
         "execution_scope": [_logical_key_payload(key) for key in plan.execution_scope],
         "prerequisite_scope": [
@@ -59,6 +60,15 @@ def _render_header(*, plan: DirectPlan, adapter_name: str) -> tuple[str, ...]:
         cli_style().label_value(label="Adapter", value=adapter_name),
         cli_style().label_value(label="Mode", value=DIRECT_MODE_LABEL),
         cli_style().label_value(label="Database", value=plan.database),
+        *(
+            (
+                cli_style().label_value(
+                    label="Effective start time", value=plan.effective_start_time
+                ),
+            )
+            if plan.effective_start_time is not None
+            else ()
+        ),
         cli_style().label_value(label="Models to rebuild", value=str(len(plan.execution_scope))),
         cli_style().label_value(label="Replay roots", value=str(len(plan.replay_roots))),
         "",

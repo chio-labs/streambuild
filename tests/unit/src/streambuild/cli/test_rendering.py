@@ -1227,6 +1227,8 @@ def test_given_virtual_build_result_when_rendering_text_then_it_returns_operator
                 "order_totals  warehouse-written rows: unavailable",
                 '"warehouse_written_rows": 7',
                 '"warehouse_written_rows": null',
+                "Effective start time: 2026-08-02 09:00:00.000",
+                '"start_time": "2026-08-02 09:00:00.000"',
             ),
         )
     ],
@@ -1248,6 +1250,7 @@ def test_given_direct_replay_results_when_rendering_then_text_and_json_report_wa
             DirectRootReplayResult(model_name="orders_enriched", written_rows=7),
             DirectRootReplayResult(model_name="order_totals", written_rows=None),
         ),
+        effective_start_time="2026-08-02 09:00:00.000",
     )
     audit_result: SqlAuditRunResult = SqlAuditRunResult(audit_results=())
     rendered_text: str = render_direct_build_text(

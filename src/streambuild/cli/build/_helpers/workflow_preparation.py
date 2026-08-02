@@ -42,19 +42,21 @@ def prepare_build_workflow(
     """Return one complete workflow assembled from fresh connected inspection."""
 
     _validate_common_flags(options=options)
+    start_time_utc: str | None = _normalized_utc_start_time(options=options)
     if analysis.compile_inputs.virtual_environments:
         return prepare_virtual_build_workflow(
             analysis=analysis,
             options=options,
-            start_time_utc=_normalized_utc_start_time(options=options),
+            start_time_utc=start_time_utc,
             client=client,
         )
-    _reject_virtual_environment_only_flags(options=options)
+    _reject_direct_unsupported_flags(options=options)
     return prepare_direct_build_workflow(
         analysis=analysis,
         options=options,
         client=client,
         adapter_profile=adapter_profile,
+        effective_start_time=start_time_utc,
     )
 
 
@@ -64,6 +66,7 @@ def prepare_direct_build_workflow(
     options: WorkflowPreparationOptions,
     client: AdapterConnection,
     adapter_profile: CompilerAdapterProfile,
+    effective_start_time: str | None,
 ) -> DirectWorkflowPreparation:
     """Inspect connected direct state and assemble the complete workflow once."""
 
@@ -71,6 +74,7 @@ def prepare_direct_build_workflow(
         options=options,
         client=client,
         analysis=analysis,
+        effective_start_time=effective_start_time,
     )
     audits: tuple[DirectBuildAudit, ...] = prepare_direct_build_audits(
         preview=preview,
@@ -172,16 +176,11 @@ def _normalized_utc_start_time(*, options: WorkflowPreparationOptions) -> str | 
     return normalize_cli_start_time(options.start_time)
 
 
-def _reject_virtual_environment_only_flags(*, options: WorkflowPreparationOptions) -> None:
+def _reject_direct_unsupported_flags(*, options: WorkflowPreparationOptions) -> None:
     if options.deployment_id is not None:
         raise CliUserError("--deployment-id requires virtual environments")
     if options.full_refresh:
         raise CliUserError(
             "--full-refresh is a virtual-environment replay control and is not available in "
-            "direct mode. Enable settings.virtual_environments to use it."
-        )
-    if options.start_time is not None:
-        raise CliUserError(
-            "--start-time is a virtual-environment replay control and is not available in "
             "direct mode. Enable settings.virtual_environments to use it."
         )

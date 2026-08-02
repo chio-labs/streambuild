@@ -1,9 +1,11 @@
 import json
+import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from typing import cast
 
 import pytest
+from _pytest.capture import CaptureResult
 from clickhouse_connect.driver.client import Client
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
@@ -14,6 +16,7 @@ from streambuild.executor.workflow.models import PublishedBuildWorkflow
 from tests.integration.src.streambuild.cli._test_types import (
     CliDirectAdoptedSourceFailureIntegrationTestCase,
     CliDirectAdoptedSourceIntegrationTestCase,
+    CliDirectAdoptedStartTimeIntegrationTestCase,
     CliDirectAggregateBuildIntegrationTestCase,
     CliDirectBuildAuditIntegrationTestCase,
     CliDirectBuildBoundaryIntegrationTestCase,
@@ -22,13 +25,16 @@ from tests.integration.src.streambuild.cli._test_types import (
     CliDirectBuildPartialFailureIntegrationTestCase,
     CliDirectBuildRerunIntegrationTestCase,
     CliDirectExecutionStepFailureIntegrationTestCase,
+    CliDirectFutureSourceStartTimeIntegrationTestCase,
     CliDirectLandedAtClockIntegrationTestCase,
+    CliDirectLandedAtStartTimeIntegrationTestCase,
     CliDirectManualWorkflowIntegrationTestCase,
     CliDirectRelationRenameIntegrationTestCase,
     CliDirectSelectedAuditIntegrationTestCase,
     CliDirectSelectedBuildIntegrationTestCase,
     CliDirectSelectedFailureIntegrationTestCase,
     CliDirectSelectionMatrixIntegrationTestCase,
+    CliDirectStartTimeIntegrationTestCase,
     CliDirectViewBuildIntegrationTestCase,
     CliReciprocalOwnershipIntegrationTestCase,
 )
@@ -56,7 +62,9 @@ from tests.integration.src.streambuild.cli.helpers import (
     insert_landing_rows,
     insert_landing_rows_after_delay,
     publish_direct_workflow,
+    read_workflow_artifact,
     run_direct_build,
+    run_direct_plan,
     run_virtual_environment_build,
     stringify_warehouse_rows,
     warehouse_row_count,
@@ -300,6 +308,103 @@ def test_given_retained_landing_rows_when_building_then_history_replays_and_live
         )
         == test_case.expected_stable_view_count
     )
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliDirectAdoptedStartTimeIntegrationTestCase(
+            description=f"{case.expected_replay_mode} adopted replay is bounded without seeding",
+            source_yml=case.source_yml,
+            model_sql=case.model_sql,
+            source_columns_sql=case.source_columns_sql,
+            values_sql=f"{case.initial_values_sql}, {case.live_values_sql}",
+            expected_order_ids=("order-2", "order-3"),
+            expected_coverage=expected_coverage,
+        )
+        for case, expected_coverage in zip(
+            _ADOPTED_SOURCE_TEST_CASES,
+            (
+                (("_replay_partition=0", "2", "3"),),
+                (
+                    (
+                        "_replay_timestamp",
+                        "2026-07-28 00:00:02.000",
+                        "2026-07-28 00:00:03.000",
+                    ),
+                ),
+                (("_replay_cursor", "2", "3"),),
+            ),
+            strict=True,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_adopted_source_when_building_from_start_time_then_each_mode_is_bounded(
+    test_case: CliDirectAdoptedStartTimeIntegrationTestCase,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    write_direct_adopted_source_project(
+        project_root=tmp_path,
+        source_yml=test_case.source_yml,
+        model_sql=test_case.model_sql,
+    )
+    connection: AdapterConnection = build_managed_clickhouse_client(
+        clickhouse_connection_settings, database=clickhouse_database
+    )
+
+    try:
+        clickhouse_client.command(
+            f"CREATE TABLE {clickhouse_database}.orders_existing "
+            f"({test_case.source_columns_sql}) ENGINE = MergeTree() ORDER BY order_id"
+        )
+        clickhouse_client.command(
+            f"INSERT INTO {clickhouse_database}.orders_existing VALUES {test_case.values_sql}"
+        )
+        source_ddl_before: str = str(
+            clickhouse_client.query(
+                f"SHOW CREATE TABLE {clickhouse_database}.orders_existing"
+            ).result_rows[0][0]
+        )
+        exit_code: int = run_direct_build(
+            project_root=tmp_path,
+            database=clickhouse_database,
+            connection=connection,
+            selectors=("orders_enriched",),
+            start_time="2026-07-28T00:00:02Z",
+        )
+        build_error: str = capsys.readouterr().err
+        source_ddl_after: str = str(
+            clickhouse_client.query(
+                f"SHOW CREATE TABLE {clickhouse_database}.orders_existing"
+            ).result_rows[0][0]
+        )
+        source_row_count: int = int(
+            clickhouse_client.query(
+                f"SELECT count() FROM {clickhouse_database}.orders_existing"
+            ).result_rows[0][0]
+        )
+        target_rows: tuple[str, ...] = direct_build_order_ids(
+            clickhouse_client=clickhouse_client,
+            database=clickhouse_database,
+        )
+        coverage_ranges: tuple[tuple[str, str, str], ...] = direct_owned_replay_coverage_ranges(
+            connection=connection,
+            database=clickhouse_database,
+        )
+    finally:
+        connection.close()
+
+    assert (exit_code, build_error) == (0, "")
+    assert source_ddl_after == source_ddl_before
+    assert source_row_count == 3
+    assert target_rows == test_case.expected_order_ids
+    assert coverage_ranges == test_case.expected_coverage
 
 
 @pytest.mark.integration
@@ -1932,6 +2037,758 @@ def test_given_invalid_adopted_source_when_building_then_it_rejects_before_destr
     assert connection.command_statements == []
     assert connection.realized_relation_names == []
     assert connection.replay_targets == []
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliDirectStartTimeIntegrationTestCase(
+            description="offset replay keeps the inclusive frontier and supersedes prior coverage",
+            selectors=("orders_enriched",),
+            expected_source_rows=(
+                ("order-1", 1),
+                ("order-2", 2),
+                ("order-3", 3),
+                ("order-4", 4),
+            ),
+            expected_target_rows=("order-2", "order-3", "order-4"),
+            expected_coverage=(("_replay_partition=0", "2", "4"),),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_direct_offset_when_building_from_start_time_then_replay_is_unseeded_and_bounded(
+    test_case: CliDirectStartTimeIntegrationTestCase,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    write_direct_build_project(project_root=tmp_path)
+    connection: AdapterConnection = build_managed_clickhouse_client(
+        clickhouse_connection_settings, database=clickhouse_database
+    )
+
+    try:
+        initial_exit_code: int = run_direct_build(
+            project_root=tmp_path,
+            database=clickhouse_database,
+            connection=connection,
+        )
+        _ = capsys.readouterr()
+        insert_landing_rows(
+            clickhouse_client=clickhouse_client,
+            database=clickhouse_database,
+            rows=(("order-1", 0, 1), ("order-2", 0, 2)),
+        )
+        requested_start_time: str = connection.capture_warehouse_timestamp().replace(" ", "T") + "Z"
+        effective_start_time: str = requested_start_time.replace("T", " ").removesuffix("Z")
+        insert_landing_rows(
+            clickhouse_client=clickhouse_client,
+            database=clickhouse_database,
+            rows=(("order-3", 0, 3), ("order-4", 0, 4)),
+        )
+        source_ddl_before: str = str(
+            clickhouse_client.query(
+                f"SHOW CREATE TABLE {clickhouse_database}.raw__orders"
+            ).result_rows[0][0]
+        )
+        plan_exit_code: int = run_direct_plan(
+            project_root=tmp_path,
+            database=clickhouse_database,
+            connection=connection,
+            selectors=test_case.selectors,
+            start_time=requested_start_time,
+        )
+        plan_capture: CaptureResult[str] = capsys.readouterr()
+        plan_artifact: tuple[bytes, bytes, tuple[str, ...], tuple[bytes, ...]] = (
+            read_workflow_artifact(artifact_root=tmp_path / "target/run/plan")
+        )
+        pipeline_plan_exit_code: int = run_direct_plan(
+            project_root=tmp_path,
+            database=clickhouse_database,
+            connection=connection,
+            selectors=("pipeline:orders",),
+            start_time=requested_start_time,
+        )
+        pipeline_plan_capture: CaptureResult[str] = capsys.readouterr()
+        pipeline_plan_artifact: tuple[bytes, bytes, tuple[str, ...], tuple[bytes, ...]] = (
+            read_workflow_artifact(artifact_root=tmp_path / "target/run/plan")
+        )
+        bounded_exit_code: int = run_direct_build(
+            project_root=tmp_path,
+            database=clickhouse_database,
+            connection=connection,
+            selectors=test_case.selectors,
+            start_time=requested_start_time,
+        )
+        bounded_error: str = capsys.readouterr().err
+        source_ddl_after: str = str(
+            clickhouse_client.query(
+                f"SHOW CREATE TABLE {clickhouse_database}.raw__orders"
+            ).result_rows[0][0]
+        )
+        source_rows: tuple[tuple[str, int], ...] = tuple(
+            (str(row[0]), int(row[1]))
+            for row in clickhouse_client.query(
+                f"SELECT kafka_key, kafka_offset FROM {clickhouse_database}.raw__orders "
+                "ORDER BY kafka_offset"
+            ).result_rows
+        )
+        bounded_rows: tuple[str, ...] = direct_build_order_ids(
+            clickhouse_client=clickhouse_client,
+            database=clickhouse_database,
+        )
+        coverage_ranges: tuple[tuple[str, str, str], ...] = direct_owned_replay_coverage_ranges(
+            connection=connection,
+            database=clickhouse_database,
+        )
+        plan_payload: dict[str, object] = json.loads(
+            (tmp_path / "target/run/build/plan.json").read_text(encoding="utf-8")
+        )
+        workflow_sql: str = (tmp_path / "target/run/build/workflow.sql").read_text(encoding="utf-8")
+        build_artifact: tuple[bytes, bytes, tuple[str, ...], tuple[bytes, ...]] = (
+            read_workflow_artifact(artifact_root=tmp_path / "target/run/build")
+        )
+    finally:
+        connection.close()
+
+    assert (initial_exit_code, plan_exit_code, plan_capture.err) == (0, 0, "")
+    assert (pipeline_plan_exit_code, pipeline_plan_capture.err) == (0, "")
+    assert plan_capture.out.encode("utf-8") == plan_artifact[0]
+    assert pipeline_plan_capture.out == plan_capture.out
+    assert pipeline_plan_artifact == plan_artifact
+    assert plan_artifact == build_artifact
+    assert bounded_exit_code == 0, bounded_error
+    assert source_ddl_after == source_ddl_before
+    assert source_rows == test_case.expected_source_rows
+    assert bounded_rows == test_case.expected_target_rows
+    assert coverage_ranges == test_case.expected_coverage
+    assert plan_payload["start_time"] == effective_start_time
+    assert effective_start_time in workflow_sql
+    assert "INSERT INTO" in workflow_sql
+    assert "active_start_offsets" in workflow_sql
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliDirectLandedAtStartTimeIntegrationTestCase(
+            description="landed-at replay uses the inclusive physical source clock",
+            expected_target_rows=("order-3", "order-4"),
+            expected_boundary_keys=("_replay_landed_at",),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_landed_at_source_when_building_from_start_time_then_rows_are_bounded(
+    test_case: CliDirectLandedAtStartTimeIntegrationTestCase,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    write_direct_build_project(project_root=tmp_path, replay_boundary_mode="landed_at")
+    connection: AdapterConnection = build_managed_clickhouse_client(
+        clickhouse_connection_settings, database=clickhouse_database
+    )
+
+    try:
+        initial_exit_code: int = run_direct_build(
+            project_root=tmp_path,
+            database=clickhouse_database,
+            connection=connection,
+        )
+        _ = capsys.readouterr()
+        insert_landing_rows(
+            clickhouse_client=clickhouse_client,
+            database=clickhouse_database,
+            rows=(("order-1", 0, 1), ("order-2", 0, 2)),
+        )
+        future_start_time: str = str(
+            clickhouse_client.query(
+                "SELECT toString(now64(3, 'UTC') + toIntervalMillisecond(200))"
+            ).result_rows[0][0]
+        )
+        time.sleep(0.3)
+        insert_landing_rows(
+            clickhouse_client=clickhouse_client,
+            database=clickhouse_database,
+            rows=(("order-3", 0, 3), ("order-4", 0, 4)),
+        )
+        bounded_exit_code: int = run_direct_build(
+            project_root=tmp_path,
+            database=clickhouse_database,
+            connection=connection,
+            selectors=("orders_enriched",),
+            start_time=future_start_time.replace(" ", "T") + "Z",
+        )
+        bounded_error: str = capsys.readouterr().err
+        target_rows: tuple[str, ...] = direct_build_order_ids(
+            clickhouse_client=clickhouse_client,
+            database=clickhouse_database,
+        )
+        coverage_ranges: tuple[tuple[str, str, str], ...] = direct_owned_replay_coverage_ranges(
+            connection=connection,
+            database=clickhouse_database,
+        )
+    finally:
+        connection.close()
+
+    assert (initial_exit_code, bounded_exit_code, bounded_error) == (0, 0, "")
+    assert target_rows == test_case.expected_target_rows
+    assert tuple(replay_range[0] for replay_range in coverage_ranges) == (
+        test_case.expected_boundary_keys
+    )
+    assert len(coverage_ranges) == 1
+    assert coverage_ranges[0][1] <= coverage_ranges[0][2]
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliDirectStartTimeIntegrationTestCase(
+            description="aggregate replay filters the physical source before grouping",
+            selectors=("orders_enriched",),
+            expected_source_rows=(
+                ("order-1", 1),
+                ("order-2", 2),
+                ("order-3", 3),
+                ("order-4", 4),
+            ),
+            expected_target_rows=("order-2", "order-3", "order-4"),
+            expected_coverage=(("_replay_partition=0", "2", "4"),),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_aggregate_model_when_building_from_start_time_then_input_is_bounded(
+    test_case: CliDirectStartTimeIntegrationTestCase,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    write_direct_build_project(project_root=tmp_path)
+    (tmp_path / "pipelines/orders/orders_enriched.sql").write_text(
+        'MODEL (order_by ["order_id"]);\n'
+        "SELECT kafka_key::String AS order_id, count()::UInt64 AS order_count "
+        'FROM __source("orders") GROUP BY kafka_key\n',
+        encoding="utf-8",
+    )
+    connection: AdapterConnection = build_managed_clickhouse_client(
+        clickhouse_connection_settings, database=clickhouse_database
+    )
+
+    try:
+        initial_exit_code: int = run_direct_build(
+            project_root=tmp_path,
+            database=clickhouse_database,
+            connection=connection,
+        )
+        _ = capsys.readouterr()
+        insert_landing_rows(
+            clickhouse_client=clickhouse_client,
+            database=clickhouse_database,
+            rows=(("order-1", 0, 1), ("order-2", 0, 2)),
+        )
+        requested_start_time: str = connection.capture_warehouse_timestamp().replace(" ", "T") + "Z"
+        insert_landing_rows(
+            clickhouse_client=clickhouse_client,
+            database=clickhouse_database,
+            rows=(("order-3", 0, 3), ("order-4", 0, 4)),
+        )
+        bounded_exit_code: int = run_direct_build(
+            project_root=tmp_path,
+            database=clickhouse_database,
+            connection=connection,
+            selectors=test_case.selectors,
+            start_time=requested_start_time,
+        )
+        bounded_error: str = capsys.readouterr().err
+        target_rows: tuple[str, ...] = direct_build_order_ids(
+            clickhouse_client=clickhouse_client,
+            database=clickhouse_database,
+        )
+        coverage_ranges: tuple[tuple[str, str, str], ...] = direct_owned_replay_coverage_ranges(
+            connection=connection,
+            database=clickhouse_database,
+        )
+    finally:
+        connection.close()
+
+    assert (initial_exit_code, bounded_exit_code, bounded_error) == (0, 0, "")
+    assert target_rows == test_case.expected_target_rows
+    assert coverage_ranges == test_case.expected_coverage
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliDirectStartTimeIntegrationTestCase(
+            description="a missing interior offset fails before target teardown",
+            selectors=("orders_enriched",),
+            expected_source_rows=(("order-1", 1), ("order-2", 2), ("order-4", 4)),
+            expected_target_rows=("order-1", "order-2", "order-3", "order-4"),
+            expected_coverage=(("_replay_partition=0", "1", "4"),),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_bounded_prior_range_with_gap_when_building_then_preflight_preserves_target(
+    test_case: CliDirectStartTimeIntegrationTestCase,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    write_direct_build_project(project_root=tmp_path)
+    connection: AdapterConnection = build_managed_clickhouse_client(
+        clickhouse_connection_settings, database=clickhouse_database
+    )
+
+    try:
+        greenfield_exit_code: int = run_direct_build(
+            project_root=tmp_path,
+            database=clickhouse_database,
+            connection=connection,
+        )
+        _ = capsys.readouterr()
+        insert_landing_rows(
+            clickhouse_client=clickhouse_client,
+            database=clickhouse_database,
+            rows=(("order-1", 0, 1), ("order-2", 0, 2)),
+        )
+        requested_start_time: str = connection.capture_warehouse_timestamp().replace(" ", "T") + "Z"
+        insert_landing_rows(
+            clickhouse_client=clickhouse_client,
+            database=clickhouse_database,
+            rows=(("order-3", 0, 3),),
+        )
+        insert_landing_rows(
+            clickhouse_client=clickhouse_client,
+            database=clickhouse_database,
+            rows=(("order-4", 0, 4),),
+        )
+        settled_exit_code: int = run_direct_build(
+            project_root=tmp_path,
+            database=clickhouse_database,
+            connection=connection,
+        )
+        _ = capsys.readouterr()
+        target_ddl_before: str = str(
+            clickhouse_client.query(
+                f"SHOW CREATE TABLE {clickhouse_database}.tbl__orders_enriched"
+            ).result_rows[0][0]
+        )
+        clickhouse_client.command(
+            f"ALTER TABLE {clickhouse_database}.raw__orders DELETE WHERE _replay_offset = 3 "
+            "SETTINGS mutations_sync = 2"
+        )
+        bounded_exit_code: int = run_direct_build(
+            project_root=tmp_path,
+            database=clickhouse_database,
+            connection=connection,
+            selectors=test_case.selectors,
+            start_time=requested_start_time,
+        )
+        bounded_error: str = capsys.readouterr().err
+        target_ddl_after: str = str(
+            clickhouse_client.query(
+                f"SHOW CREATE TABLE {clickhouse_database}.tbl__orders_enriched"
+            ).result_rows[0][0]
+        )
+        source_rows: tuple[tuple[str, int], ...] = tuple(
+            (str(row[0]), int(row[1]))
+            for row in clickhouse_client.query(
+                f"SELECT kafka_key, kafka_offset FROM {clickhouse_database}.raw__orders "
+                "ORDER BY kafka_offset"
+            ).result_rows
+        )
+        target_rows: tuple[str, ...] = direct_build_order_ids(
+            clickhouse_client=clickhouse_client,
+            database=clickhouse_database,
+        )
+        coverage_ranges: tuple[tuple[str, str, str], ...] = direct_owned_replay_coverage_ranges(
+            connection=connection,
+            database=clickhouse_database,
+        )
+    finally:
+        connection.close()
+
+    assert (greenfield_exit_code, settled_exit_code, bounded_exit_code) == (0, 0, 1)
+    assert "no longer covers the required replay range" in bounded_error
+    assert target_ddl_after == target_ddl_before
+    assert source_rows == test_case.expected_source_rows
+    assert target_rows == test_case.expected_target_rows
+    assert coverage_ranges == test_case.expected_coverage
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliDirectFutureSourceStartTimeIntegrationTestCase(
+            description="future-dated rows beyond the captured cutoff fail before teardown",
+            source_yml=_ADOPTED_SOURCE_TEST_CASES[1].source_yml,
+            model_sql=_ADOPTED_SOURCE_TEST_CASES[1].model_sql,
+            source_columns_sql=_ADOPTED_SOURCE_TEST_CASES[1].source_columns_sql,
+            insert_sql=("SELECT 'order-future', now64(3, 'UTC') + toIntervalDay(1)"),
+            start_time_sql="SELECT toString(now64(3, 'UTC'))",
+            expected_target_count=0,
+        ),
+        CliDirectFutureSourceStartTimeIntegrationTestCase(
+            description="cursor replay with no time-qualified frontier fails before teardown",
+            source_yml=_ADOPTED_SOURCE_TEST_CASES[2].source_yml,
+            model_sql=_ADOPTED_SOURCE_TEST_CASES[2].model_sql,
+            source_columns_sql=_ADOPTED_SOURCE_TEST_CASES[2].source_columns_sql,
+            insert_sql="SELECT 'order-past', toUInt64(1), now64(3, 'UTC')",
+            start_time_sql=("SELECT toString(now64(3, 'UTC') + toIntervalDay(1))"),
+            expected_target_count=0,
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_source_without_qualified_bounded_input_when_building_then_preflight_fails(
+    test_case: CliDirectFutureSourceStartTimeIntegrationTestCase,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    write_direct_adopted_source_project(
+        project_root=tmp_path,
+        source_yml=test_case.source_yml,
+        model_sql=test_case.model_sql,
+    )
+    connection: AdapterConnection = build_managed_clickhouse_client(
+        clickhouse_connection_settings, database=clickhouse_database
+    )
+
+    try:
+        clickhouse_client.command(
+            f"CREATE TABLE {clickhouse_database}.orders_existing "
+            f"({test_case.source_columns_sql}) ENGINE = MergeTree() ORDER BY order_id"
+        )
+        clickhouse_client.command(
+            f"INSERT INTO {clickhouse_database}.orders_existing {test_case.insert_sql}"
+        )
+        requested_start_time: str = (
+            str(clickhouse_client.query(test_case.start_time_sql).result_rows[0][0]).replace(
+                " ", "T"
+            )
+            + "Z"
+        )
+        source_ddl_before: str = str(
+            clickhouse_client.query(
+                f"SHOW CREATE TABLE {clickhouse_database}.orders_existing"
+            ).result_rows[0][0]
+        )
+        exit_code: int = run_direct_build(
+            project_root=tmp_path,
+            database=clickhouse_database,
+            connection=connection,
+            selectors=("orders_enriched",),
+            start_time=requested_start_time,
+        )
+        build_error: str = capsys.readouterr().err
+        source_ddl_after: str = str(
+            clickhouse_client.query(
+                f"SHOW CREATE TABLE {clickhouse_database}.orders_existing"
+            ).result_rows[0][0]
+        )
+        target_count: int = int(
+            clickhouse_client.query(
+                "SELECT count() FROM system.tables "
+                f"WHERE database = '{clickhouse_database}' AND name = 'tbl__orders_enriched'"
+            ).result_rows[0][0]
+        )
+    finally:
+        connection.close()
+
+    assert exit_code == 1
+    assert "has no qualifying input at or after the requested start time" in build_error
+    assert source_ddl_after == source_ddl_before
+    assert target_count == test_case.expected_target_count
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliDirectStartTimeIntegrationTestCase(
+            description="bounded greenfield build rejects an absent managed replay input",
+            selectors=("orders_enriched",),
+            expected_source_rows=(),
+            expected_target_rows=(),
+            expected_coverage=(),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_absent_managed_source_when_building_from_start_time_then_nothing_is_created(
+    test_case: CliDirectStartTimeIntegrationTestCase,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    write_direct_build_project(project_root=tmp_path)
+    connection: AdapterConnection = build_managed_clickhouse_client(
+        clickhouse_connection_settings, database=clickhouse_database
+    )
+
+    try:
+        exit_code: int = run_direct_build(
+            project_root=tmp_path,
+            database=clickhouse_database,
+            connection=connection,
+            selectors=test_case.selectors,
+            start_time="2026-01-01T00:00:00Z",
+        )
+        build_error: str = capsys.readouterr().err
+        created_names: tuple[str, ...] = tuple(
+            str(row[0])
+            for row in clickhouse_client.query(
+                "SELECT name FROM system.tables "
+                f"WHERE database = '{clickhouse_database}' ORDER BY name"
+            ).result_rows
+        )
+    finally:
+        connection.close()
+
+    assert exit_code == 1
+    assert "requires existing replay input 'raw__orders'" in build_error
+    assert created_names == test_case.expected_target_rows
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliDirectStartTimeIntegrationTestCase(
+            description="bounded downstream root rejects missing intermediate time lineage",
+            selectors=("alpha",),
+            expected_source_rows=(),
+            expected_target_rows=("order-1", "order-2"),
+            expected_coverage=(),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_intermediate_without_time_lineage_when_building_then_target_is_preserved(
+    test_case: CliDirectStartTimeIntegrationTestCase,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    write_direct_selected_graph_project(project_root=tmp_path)
+    connection: AdapterConnection = build_managed_clickhouse_client(
+        clickhouse_connection_settings, database=clickhouse_database
+    )
+
+    try:
+        initial_exit_code: int = run_direct_build(
+            project_root=tmp_path,
+            database=clickhouse_database,
+            connection=connection,
+        )
+        _ = capsys.readouterr()
+        insert_landing_rows(
+            clickhouse_client=clickhouse_client,
+            database=clickhouse_database,
+            rows=(("order-1", 0, 1), ("order-2", 0, 2)),
+        )
+        requested_start_time: str = connection.capture_warehouse_timestamp().replace(" ", "T") + "Z"
+        target_ddl_before: str = str(
+            clickhouse_client.query(
+                f"SHOW CREATE TABLE {clickhouse_database}.tbl__alpha"
+            ).result_rows[0][0]
+        )
+        bounded_exit_code: int = run_direct_build(
+            project_root=tmp_path,
+            database=clickhouse_database,
+            connection=connection,
+            selectors=test_case.selectors,
+            start_time=requested_start_time,
+        )
+        build_error: str = capsys.readouterr().err
+        target_ddl_after: str = str(
+            clickhouse_client.query(
+                f"SHOW CREATE TABLE {clickhouse_database}.tbl__alpha"
+            ).result_rows[0][0]
+        )
+        target_rows: tuple[str, ...] = direct_graph_order_ids(
+            clickhouse_client=clickhouse_client,
+            database=clickhouse_database,
+            model_name="alpha",
+        )
+    finally:
+        connection.close()
+
+    assert (initial_exit_code, bounded_exit_code) == (0, 1)
+    assert "does not expose time-lineage column '_replay_landed_at'" in build_error
+    assert target_ddl_after == target_ddl_before
+    assert target_rows == test_case.expected_target_rows
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliDirectStartTimeIntegrationTestCase(
+            description="bounded retries narrow and widen before ordinary replay restores history",
+            selectors=("orders_enriched",),
+            expected_source_rows=(
+                ("order-1", 1),
+                ("order-2", 2),
+                ("order-3", 3),
+                ("order-4", 4),
+            ),
+            expected_target_rows=("order-1", "order-2", "order-3", "order-4"),
+            expected_coverage=(("_replay_partition=0", "1", "4"),),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_bounded_failure_when_retrying_then_coverage_survives_narrows_and_widens(
+    test_case: CliDirectStartTimeIntegrationTestCase,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    write_direct_build_project(project_root=tmp_path)
+    delegate: AdapterConnection = build_managed_clickhouse_client(
+        clickhouse_connection_settings, database=clickhouse_database
+    )
+
+    try:
+        greenfield_exit_code: int = run_direct_build(
+            project_root=tmp_path,
+            database=clickhouse_database,
+            connection=delegate,
+        )
+        _ = capsys.readouterr()
+        insert_landing_rows(
+            clickhouse_client=clickhouse_client,
+            database=clickhouse_database,
+            rows=(("order-1", 0, 1), ("order-2", 0, 2)),
+        )
+        start_at_two: str = delegate.capture_warehouse_timestamp().replace(" ", "T") + "Z"
+        insert_landing_rows(
+            clickhouse_client=clickhouse_client,
+            database=clickhouse_database,
+            rows=(("order-3", 0, 3),),
+        )
+        start_at_three: str = delegate.capture_warehouse_timestamp().replace(" ", "T") + "Z"
+        insert_landing_rows(
+            clickhouse_client=clickhouse_client,
+            database=clickhouse_database,
+            rows=(("order-4", 0, 4),),
+        )
+        settled_exit_code: int = run_direct_build(
+            project_root=tmp_path,
+            database=clickhouse_database,
+            connection=delegate,
+        )
+        _ = capsys.readouterr()
+        connection: FailOnceDropConnection = FailOnceDropConnection(delegate)
+        failed_exit_code: int = run_direct_build(
+            project_root=tmp_path,
+            database=clickhouse_database,
+            connection=connection,
+            selectors=test_case.selectors,
+            start_time=start_at_two,
+        )
+        failed_error: str = capsys.readouterr().err
+        failure_coverage: tuple[tuple[str, str, str], ...] = direct_owned_replay_coverage_ranges(
+            connection=connection,
+            database=clickhouse_database,
+        )
+        retry_exit_code: int = run_direct_build(
+            project_root=tmp_path,
+            database=clickhouse_database,
+            connection=connection,
+            selectors=test_case.selectors,
+            start_time=start_at_two,
+        )
+        retry_error: str = capsys.readouterr().err
+        later_exit_code: int = run_direct_build(
+            project_root=tmp_path,
+            database=clickhouse_database,
+            connection=connection,
+            selectors=test_case.selectors,
+            start_time=start_at_three,
+        )
+        later_error: str = capsys.readouterr().err
+        later_rows: tuple[str, ...] = direct_build_order_ids(
+            clickhouse_client=clickhouse_client,
+            database=clickhouse_database,
+        )
+        later_coverage: tuple[tuple[str, str, str], ...] = direct_owned_replay_coverage_ranges(
+            connection=connection,
+            database=clickhouse_database,
+        )
+        earlier_exit_code: int = run_direct_build(
+            project_root=tmp_path,
+            database=clickhouse_database,
+            connection=connection,
+            selectors=test_case.selectors,
+            start_time=start_at_two,
+        )
+        earlier_error: str = capsys.readouterr().err
+        earlier_rows: tuple[str, ...] = direct_build_order_ids(
+            clickhouse_client=clickhouse_client,
+            database=clickhouse_database,
+        )
+        earlier_coverage: tuple[tuple[str, str, str], ...] = direct_owned_replay_coverage_ranges(
+            connection=connection,
+            database=clickhouse_database,
+        )
+        ordinary_exit_code: int = run_direct_build(
+            project_root=tmp_path,
+            database=clickhouse_database,
+            connection=connection,
+            selectors=test_case.selectors,
+        )
+        ordinary_error: str = capsys.readouterr().err
+        final_rows: tuple[str, ...] = direct_build_order_ids(
+            clickhouse_client=clickhouse_client,
+            database=clickhouse_database,
+        )
+        final_coverage: tuple[tuple[str, str, str], ...] = direct_owned_replay_coverage_ranges(
+            connection=connection,
+            database=clickhouse_database,
+        )
+    finally:
+        delegate.close()
+
+    assert (greenfield_exit_code, settled_exit_code, failed_exit_code) == (0, 0, 1)
+    assert "injected failure during selected teardown" in failed_error
+    assert failure_coverage == (("_replay_partition=0", "2", "4"),)
+    assert (retry_exit_code, retry_error, later_exit_code, later_error) == (0, "", 0, "")
+    assert later_rows == ("order-3", "order-4")
+    assert later_coverage == (("_replay_partition=0", "3", "4"),)
+    assert (earlier_exit_code, earlier_error) == (0, "")
+    assert earlier_rows == ("order-2", "order-3", "order-4")
+    assert earlier_coverage == (("_replay_partition=0", "2", "4"),)
+    assert (ordinary_exit_code, ordinary_error) == (0, "")
+    assert final_rows == test_case.expected_target_rows
+    assert final_coverage == test_case.expected_coverage
 
 
 @pytest.mark.integration

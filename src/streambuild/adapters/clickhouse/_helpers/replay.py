@@ -8,6 +8,7 @@ from streambuild.adapter.models import (
     AdapterDeploymentReplayRequest,
     AdapterOwnershipReplayRequest,
     AdapterReplayBoundary,
+    AdapterReplayCoverageRequest,
     AdapterReplayRequest,
 )
 from streambuild.adapter.types import (
@@ -38,6 +39,14 @@ def render_clickhouse_replay_from_ownership(request: AdapterOwnershipReplayReque
     if replay.mode == AdapterReplayBoundaryMode.OFFSETS:
         return _render_metadata_offset_replay(request)
     return _render_metadata_scalar_replay(request)
+
+
+def render_clickhouse_replay_coverage_query(request: AdapterReplayCoverageRequest) -> str:
+    """Render ownership-compatible coverage for the rows selected by one replay window."""
+
+    if request.replay.mode == AdapterReplayBoundaryMode.OFFSETS:
+        return _offset_coverage_query(request.replay)
+    return _scalar_coverage_query(request)
 
 
 def render_clickhouse_replay_from_deployment(
@@ -220,17 +229,39 @@ def _deployment_offset_cutoff_cte(request: AdapterDeploymentReplayRequest) -> st
 
 def _deployment_offset_lower_cte(request: AdapterDeploymentReplayRequest) -> str | None:
     replay: AdapterReplayRequest = request.replay
+    lookback_time_expression: str | None = (
+        _deployment_lookback_time_expression(request)
+        if replay.window.lower_bound_mode == AdapterReplayLowerBoundMode.LOOKBACK
+        else None
+    )
+    return _replay_offset_lower_cte(
+        replay=replay,
+        active_relation_name=request.active_relation_name,
+        lookback_time_expression=lookback_time_expression,
+    )
+
+
+def _replay_offset_lower_cte(
+    *,
+    replay: AdapterReplayRequest,
+    active_relation_name: str | None,
+    lookback_time_expression: str | None,
+) -> str | None:
     mode: AdapterReplayLowerBoundMode = replay.window.lower_bound_mode
     if mode == AdapterReplayLowerBoundMode.NONE:
         return None
     if mode == AdapterReplayLowerBoundMode.ACTIVE_FRONTIER:
+        active_name: str = _required_active_relation_name(active_relation_name=active_relation_name)
         return (
             f"SELECT {_CANONICAL_REPLAY_PARTITION}, "
             f"max({_CANONICAL_REPLAY_OFFSET}) AS start_offset "
-            f"FROM {replay.database}.{request.active_relation_name} "
+            f"FROM {replay.database}.{active_name} "
             f"GROUP BY {_CANONICAL_REPLAY_PARTITION}"
         )
-    lower_time: str = _deployment_lower_time_expression(request)
+    lower_time: str = _replay_lower_time_expression(
+        replay=replay,
+        lookback_time_expression=lookback_time_expression,
+    )
     time_column: str = replay.columns.landed_at or replay.columns.timestamp
     return (
         f"SELECT {replay.columns.partition} AS {_CANONICAL_REPLAY_PARTITION}, "
@@ -258,30 +289,65 @@ def _deployment_scalar_lower_expression(
     *, request: AdapterDeploymentReplayRequest, column_type: str
 ) -> str | None:
     replay: AdapterReplayRequest = request.replay
+    lookback_time_expression: str | None = (
+        _deployment_lookback_time_expression(request)
+        if replay.window.lower_bound_mode == AdapterReplayLowerBoundMode.LOOKBACK
+        else None
+    )
+    return _replay_scalar_lower_expression(
+        replay=replay,
+        column_type=column_type,
+        active_relation_name=request.active_relation_name,
+        lookback_time_expression=lookback_time_expression,
+        upper_expression="(SELECT cutoff_value FROM replay_cutoff)",
+    )
+
+
+def _replay_scalar_lower_expression(
+    *,
+    replay: AdapterReplayRequest,
+    column_type: str,
+    active_relation_name: str | None,
+    lookback_time_expression: str | None,
+    upper_expression: str,
+) -> str | None:
     mode: AdapterReplayLowerBoundMode = replay.window.lower_bound_mode
     if mode == AdapterReplayLowerBoundMode.NONE:
         return None
     if mode == AdapterReplayLowerBoundMode.ACTIVE_FRONTIER:
+        active_name: str = _required_active_relation_name(active_relation_name=active_relation_name)
         return (
             f"(SELECT max({_canonical_boundary_column(replay.mode)}) "
-            f"FROM {replay.database}.{request.active_relation_name})"
+            f"FROM {replay.database}.{active_name})"
         )
-    lower_time: str = _deployment_lower_time_expression(request)
+    lower_time: str = _replay_lower_time_expression(
+        replay=replay,
+        lookback_time_expression=lookback_time_expression,
+    )
     if replay.mode != AdapterReplayBoundaryMode.CURSOR:
         return f"CAST({lower_time} AS {column_type})"
     return (
-        f"(SELECT min({replay.columns.cursor}) FROM {replay.database}.{replay.relations.anchor} "
+        f"(SELECT minOrNull({replay.columns.cursor}) "
+        f"FROM {replay.database}.{replay.relations.anchor} "
         f"WHERE {replay.columns.timestamp} >= {lower_time} "
-        f"AND {replay.columns.cursor} <= (SELECT cutoff_value FROM replay_cutoff))"
+        f"AND {replay.columns.cursor} <= {upper_expression})"
     )
 
 
-def _deployment_lower_time_expression(request: AdapterDeploymentReplayRequest) -> str:
-    replay: AdapterReplayRequest = request.replay
+def _replay_lower_time_expression(
+    *, replay: AdapterReplayRequest, lookback_time_expression: str | None
+) -> str:
     if replay.window.lower_bound_mode == AdapterReplayLowerBoundMode.FORCED_TIME:
         if replay.window.forced_start_time is None:
-            raise AdapterReplayError("Forced deployment replay requires a start time")
+            raise AdapterReplayError("Forced replay requires a start time")
         return f"toDateTime64('{_escape_literal(replay.window.forced_start_time)}', 3, 'UTC')"
+    if lookback_time_expression is None:
+        raise AdapterReplayError("Lookback replay requires a lower-time expression")
+    return lookback_time_expression
+
+
+def _deployment_lookback_time_expression(request: AdapterDeploymentReplayRequest) -> str:
+    replay: AdapterReplayRequest = request.replay
     if replay.window.lookback_seconds is None:
         raise AdapterReplayError("Lookback deployment replay requires a duration")
     return (
@@ -291,6 +357,12 @@ def _deployment_lower_time_expression(request: AdapterDeploymentReplayRequest) -
         f"WHERE deployment_id = '{_escape_literal(request.deployment_id)}' "
         f"AND boundary_key = '{DEPLOYMENT_BOUNDARY_TIME_KEY}')"
     )
+
+
+def _required_active_relation_name(*, active_relation_name: str | None) -> str:
+    if active_relation_name is None:
+        raise AdapterReplayError("Active-frontier replay requires an active relation")
+    return active_relation_name
 
 
 def _dynamic_scalar_predicate(
@@ -303,7 +375,16 @@ def _dynamic_scalar_predicate(
     upper: str = f"{column_name} <= {upper_expression}"
     if lower_expression is None:
         return upper
-    return f"{column_name} {'>=' if inclusive else '>'} {lower_expression} AND {upper}"
+    lower: str = _scalar_lower_predicate(
+        column_name=column_name,
+        lower_expression=lower_expression,
+        inclusive=inclusive,
+    )
+    return f"{lower} AND {upper}"
+
+
+def _scalar_lower_predicate(*, column_name: str, lower_expression: str, inclusive: bool) -> str:
+    return f"{column_name} {'>=' if inclusive else '>'} {lower_expression}"
 
 
 def _required_deployment_boundary_type(request: AdapterDeploymentReplayRequest) -> str:
@@ -321,12 +402,35 @@ def _render_metadata_offset_replay(request: AdapterOwnershipReplayRequest) -> st
         "max(toInt64(JSONExtractString(coverage, 'upper_value'))) AS cutoff_offset\n"
         f"FROM ownership_coverage\nGROUP BY {_CANONICAL_REPLAY_PARTITION}"
     )
+    lower_cte: str | None = _replay_offset_lower_cte(
+        replay=replay,
+        active_relation_name=None,
+        lookback_time_expression=None,
+    )
     if replay.replay_query.aggregate_semantics:
+        lower_join: str = _offset_lower_bound_join(
+            source_alias="anchor",
+            partition_column=replay.columns.partition,
+            has_lower_bound=lower_cte is not None,
+        )
+        lower_clause: str = _offset_lower_bound_clause(
+            source_alias="anchor",
+            offset_column=replay.columns.offset,
+            has_lower_bound=lower_cte is not None,
+            inclusive=replay.window.lower_bound_inclusive,
+        )
         source_sql: str = (
             f"SELECT anchor.*\nFROM {replay.database}.{replay.relations.anchor} AS anchor\n"
             "INNER JOIN cutoff_offsets\n"
             f"ON anchor.{replay.columns.partition} = cutoff_offsets.{_CANONICAL_REPLAY_PARTITION}\n"
-            f"WHERE anchor.{replay.columns.offset} <= cutoff_offsets.cutoff_offset"
+            f"{lower_join}"
+            f"WHERE anchor.{replay.columns.offset} <= cutoff_offsets.cutoff_offset\n"
+            f"{lower_clause}"
+        ).rstrip()
+        named_queries: tuple[SqlNamedQuery, ...] = (
+            SqlNamedQuery(name="ownership_coverage", query=coverage_cte),
+            SqlNamedQuery(name="cutoff_offsets", query=cutoff_cte),
+            *((SqlNamedQuery(name="active_start_offsets", query=lower_cte),) if lower_cte else ()),
         )
         rewritten_query: str = _rewrite_replay_query(
             sql=replay.replay_query.query,
@@ -336,10 +440,7 @@ def _render_metadata_offset_replay(request: AdapterOwnershipReplayRequest) -> st
                     target_relation=f"({source_sql})",
                 ),
             ),
-            prepend_ctes=(
-                SqlNamedQuery(name="ownership_coverage", query=coverage_cte),
-                SqlNamedQuery(name="cutoff_offsets", query=cutoff_cte),
-            ),
+            prepend_ctes=named_queries,
         ).query
         return _build_replay_insert(request=replay, query=rewritten_query)
     replay_query: str = _rewrite_replay_query(
@@ -351,15 +452,32 @@ def _render_metadata_offset_replay(request: AdapterOwnershipReplayRequest) -> st
             ),
         ),
     ).query
+    lower_cte_sql: str = (
+        f",\nactive_start_offsets AS (\n{lower_cte}\n)\n" if lower_cte is not None else "\n"
+    )
+    lower_join = _offset_lower_bound_join(
+        source_alias="replay_source",
+        partition_column=_CANONICAL_REPLAY_PARTITION,
+        has_lower_bound=lower_cte is not None,
+    )
+    lower_clause = _offset_lower_bound_clause(
+        source_alias="replay_source",
+        offset_column=_CANONICAL_REPLAY_OFFSET,
+        has_lower_bound=lower_cte is not None,
+        inclusive=replay.window.lower_bound_inclusive,
+    )
     wrapped_query: str = (
         f"WITH ownership_coverage AS (\n{coverage_cte}\n),\n"
-        f"cutoff_offsets AS (\n{cutoff_cte}\n)\n"
+        f"cutoff_offsets AS (\n{cutoff_cte}\n)"
+        f"{lower_cte_sql}"
         "SELECT replay_source.*\n"
         f"FROM (\n{replay_query}\n) AS replay_source\n"
         "INNER JOIN cutoff_offsets\n"
         f"ON replay_source.{_CANONICAL_REPLAY_PARTITION} = "
         f"cutoff_offsets.{_CANONICAL_REPLAY_PARTITION}\n"
-        f"WHERE replay_source.{_CANONICAL_REPLAY_OFFSET} <= cutoff_offsets.cutoff_offset"
+        f"{lower_join}"
+        f"WHERE replay_source.{_CANONICAL_REPLAY_OFFSET} <= cutoff_offsets.cutoff_offset\n"
+        f"{lower_clause}"
     )
     return _build_replay_insert(
         request=replay,
@@ -378,11 +496,25 @@ def _render_metadata_scalar_replay(request: AdapterOwnershipReplayRequest) -> st
         f"{column_type})) AS cutoff_value FROM ownership_coverage"
     )
     physical_column: str = _physical_boundary_column(replay)
+    upper_expression: str = "(SELECT cutoff_value FROM replay_cutoff)"
+    lower_expression: str | None = _replay_scalar_lower_expression(
+        replay=replay,
+        column_type=column_type,
+        active_relation_name=None,
+        lookback_time_expression=None,
+        upper_expression=upper_expression,
+    )
     if replay.replay_query.aggregate_semantics:
+        physical_predicate: str = _dynamic_scalar_predicate(
+            column_name=f"anchor.{physical_column}",
+            upper_expression="replay_cutoff.cutoff_value",
+            lower_expression=lower_expression,
+            inclusive=replay.window.lower_bound_inclusive,
+        )
         source_sql: str = (
             f"SELECT anchor.*\nFROM {replay.database}.{replay.relations.anchor} AS anchor\n"
             "CROSS JOIN replay_cutoff\n"
-            f"WHERE anchor.{physical_column} <= replay_cutoff.cutoff_value"
+            f"WHERE {physical_predicate}"
         )
         rewritten_query: str = _rewrite_replay_query(
             sql=replay.replay_query.query,
@@ -406,8 +538,11 @@ def _render_metadata_scalar_replay(request: AdapterOwnershipReplayRequest) -> st
                 target_relation=f"{replay.database}.{replay.relations.anchor}",
             ),
         ),
-        predicate=(
-            f"{_canonical_boundary_column(replay.mode)} <= (SELECT cutoff_value FROM replay_cutoff)"
+        predicate=_dynamic_scalar_predicate(
+            column_name=_canonical_boundary_column(replay.mode),
+            upper_expression=upper_expression,
+            lower_expression=lower_expression,
+            inclusive=replay.window.lower_bound_inclusive,
         ),
         prepend_ctes=(
             SqlNamedQuery(name="ownership_coverage", query=coverage_cte),
@@ -427,6 +562,157 @@ def _ownership_coverage_cte(request: AdapterOwnershipReplayRequest) -> str:
         f"AND relation_name = '{_escape_literal(replay.relations.target)}' "
         f"AND logical_model_name = '{_escape_literal(request.logical_model_name)}'"
     )
+
+
+def _offset_coverage_query(replay: AdapterReplayRequest) -> str:
+    timestamp_column: str = replay.columns.timestamp or ""
+    lower_cte: str | None = _replay_offset_lower_cte(
+        replay=replay,
+        active_relation_name=None,
+        lookback_time_expression=None,
+    )
+    if lower_cte is None:
+        return _full_offset_coverage_query(replay=replay, timestamp_column=timestamp_column)
+    lower_join: str = _offset_lower_bound_join(
+        source_alias="anchor",
+        partition_column=replay.columns.partition,
+        has_lower_bound=lower_cte is not None,
+        lower_alias="coverage_start_offsets",
+    )
+    lower_clause: str = _offset_lower_bound_clause(
+        source_alias="anchor",
+        offset_column=replay.columns.offset,
+        has_lower_bound=lower_cte is not None,
+        inclusive=replay.window.lower_bound_inclusive,
+        lower_alias="coverage_start_offsets",
+    )
+    lower_prefix: str = (
+        f"WITH active_start_offsets AS (\n{lower_cte}\n)\n" if lower_cte is not None else ""
+    )
+    return (
+        f"{lower_prefix}"
+        "SELECT toJSONString(groupArray(map("
+        f"'driving_input_relation_name', '{_escape_literal(replay.relations.anchor)}', "
+        "'replay_boundary_mode', 'offsets', "
+        "'boundary_key', concat('_replay_partition=', toString(partition_value)), "
+        f"'source_partition_column_name', '{_escape_literal(replay.columns.partition)}', "
+        f"'source_position_column_name', '{_escape_literal(replay.columns.offset)}', "
+        f"'source_timestamp_column_name', '{_escape_literal(timestamp_column)}', "
+        "'lower_value', toString(lower_value), 'upper_value', toString(upper_value)))) AS value\n"
+        "FROM (\n"
+        f"SELECT partition_value, min(offset_value) AS lower_value, "
+        "max(offset_value) AS upper_value\nFROM (\n"
+        f"SELECT {replay.columns.partition} AS partition_value, "
+        f"{replay.columns.offset} AS offset_value, {replay.columns.offset} - "
+        f"toInt64(row_number() OVER (PARTITION BY {replay.columns.partition} "
+        f"ORDER BY {replay.columns.offset})) AS sequence_group\n"
+        f"FROM (SELECT DISTINCT anchor.{replay.columns.partition} AS {replay.columns.partition}, "
+        f"anchor.{replay.columns.offset} AS {replay.columns.offset} "
+        f"FROM {replay.database}.{replay.relations.anchor} AS anchor\n"
+        f"{lower_join}"
+        f"WHERE true\n{lower_clause})\n)\n"
+        "GROUP BY partition_value, sequence_group\nORDER BY partition_value, lower_value\n)"
+    )
+
+
+def _full_offset_coverage_query(*, replay: AdapterReplayRequest, timestamp_column: str) -> str:
+    return (
+        "SELECT toJSONString(groupArray(map("
+        f"'driving_input_relation_name', '{_escape_literal(replay.relations.anchor)}', "
+        "'replay_boundary_mode', 'offsets', "
+        "'boundary_key', concat('_replay_partition=', toString(partition_value)), "
+        f"'source_partition_column_name', '{_escape_literal(replay.columns.partition)}', "
+        f"'source_position_column_name', '{_escape_literal(replay.columns.offset)}', "
+        f"'source_timestamp_column_name', '{_escape_literal(timestamp_column)}', "
+        "'lower_value', toString(lower_value), 'upper_value', toString(upper_value)))) AS value\n"
+        "FROM (\n"
+        f"SELECT partition_value, min(offset_value) AS lower_value, "
+        "max(offset_value) AS upper_value\nFROM (\n"
+        f"SELECT {replay.columns.partition} AS partition_value, "
+        f"{replay.columns.offset} AS offset_value, {replay.columns.offset} - "
+        f"toInt64(row_number() OVER (PARTITION BY {replay.columns.partition} "
+        f"ORDER BY {replay.columns.offset})) AS sequence_group\n"
+        f"FROM (SELECT DISTINCT {replay.columns.partition}, {replay.columns.offset} "
+        f"FROM {replay.database}.{replay.relations.anchor})\n)\n"
+        "GROUP BY partition_value, sequence_group\nORDER BY partition_value, lower_value\n)"
+    )
+
+
+def _scalar_coverage_query(request: AdapterReplayCoverageRequest) -> str:
+    replay: AdapterReplayRequest = request.replay
+    position_column: str = _physical_boundary_column(replay)
+    canonical_key: str = _canonical_boundary_column(replay.mode)
+    if replay.window.lower_bound_mode == AdapterReplayLowerBoundMode.NONE:
+        return _full_scalar_coverage_query(
+            replay=replay,
+            position_column=position_column,
+            canonical_key=canonical_key,
+        )
+    upper_expression: str = "(SELECT cutoff_value FROM replay_cutoff)"
+    lower_expression: str | None = _replay_scalar_lower_expression(
+        replay=replay,
+        column_type=_required_coverage_boundary_type(request),
+        active_relation_name=None,
+        lookback_time_expression=None,
+        upper_expression=upper_expression,
+    )
+    coverage_predicate: str = _dynamic_scalar_predicate(
+        column_name=position_column,
+        upper_expression=upper_expression,
+        lower_expression=lower_expression,
+        inclusive=replay.window.lower_bound_inclusive,
+    )
+    cutoff_query: str = (
+        f"SELECT max({position_column}) AS cutoff_value "
+        f"FROM {replay.database}.{replay.relations.anchor}"
+        if replay.mode == AdapterReplayBoundaryMode.CURSOR
+        else "SELECT now64(3, 'UTC') AS cutoff_value"
+    )
+    cutoff_prefix: str = f"WITH replay_cutoff AS ({cutoff_query})\n"
+    return (
+        f"{cutoff_prefix}"
+        "SELECT toJSONString(groupArray(map("
+        f"'driving_input_relation_name', '{_escape_literal(replay.relations.anchor)}', "
+        f"'replay_boundary_mode', '{replay.mode}', 'boundary_key', '{canonical_key}', "
+        "'source_partition_column_name', '', "
+        f"'source_position_column_name', '{_escape_literal(position_column)}', "
+        f"'source_timestamp_column_name', '{_escape_literal(replay.columns.timestamp)}', "
+        "'lower_value', toString(lower_value), 'upper_value', toString(upper_value), "
+        "'replay_cutoff_value', toString(cutoff_value)))) AS value\n"
+        f"FROM (SELECT min({position_column}) AS lower_value, "
+        f"max({position_column}) AS upper_value, {upper_expression} AS cutoff_value "
+        f"FROM {replay.database}.{replay.relations.anchor} WHERE {coverage_predicate} "
+        "HAVING count() > 0)"
+    )
+
+
+def _full_scalar_coverage_query(
+    *, replay: AdapterReplayRequest, position_column: str, canonical_key: str
+) -> str:
+    cutoff_expression: str = (
+        f"max({position_column})"
+        if replay.mode == AdapterReplayBoundaryMode.CURSOR
+        else "now64(3, 'UTC')"
+    )
+    return (
+        "SELECT toJSONString(groupArray(map("
+        f"'driving_input_relation_name', '{_escape_literal(replay.relations.anchor)}', "
+        f"'replay_boundary_mode', '{replay.mode}', 'boundary_key', '{canonical_key}', "
+        "'source_partition_column_name', '', "
+        f"'source_position_column_name', '{_escape_literal(position_column)}', "
+        f"'source_timestamp_column_name', '{_escape_literal(replay.columns.timestamp)}', "
+        "'lower_value', toString(lower_value), 'upper_value', toString(upper_value), "
+        "'replay_cutoff_value', toString(cutoff_value)))) AS value\n"
+        f"FROM (SELECT min({position_column}) AS lower_value, "
+        f"max({position_column}) AS upper_value, {cutoff_expression} AS cutoff_value "
+        f"FROM {replay.database}.{replay.relations.anchor} HAVING count() > 0)"
+    )
+
+
+def _required_coverage_boundary_type(request: AdapterReplayCoverageRequest) -> str:
+    if request.boundary_column_type is None:
+        raise AdapterReplayError("Scalar replay coverage requires a resolved boundary type")
+    return request.boundary_column_type
 
 
 def _canonical_boundary_column(mode: AdapterReplayBoundaryMode) -> str:
@@ -703,26 +989,40 @@ def _lower_offset_frontier_cte(
 
 
 def _offset_lower_bound_join(
-    *, source_alias: str, partition_column: str, has_lower_bound: bool
+    *,
+    source_alias: str,
+    partition_column: str,
+    has_lower_bound: bool,
+    lower_alias: str | None = None,
 ) -> str:
     if not has_lower_bound:
         return ""
+    lower_relation: str = (
+        "active_start_offsets" if lower_alias is None else f"active_start_offsets AS {lower_alias}"
+    )
+    lower_reference: str = lower_alias or "active_start_offsets"
     return (
-        "LEFT JOIN active_start_offsets\n"
+        f"LEFT JOIN {lower_relation}\n"
         f"ON {source_alias}.{partition_column} = "
-        f"active_start_offsets.{_CANONICAL_REPLAY_PARTITION}\n"
+        f"{lower_reference}.{_CANONICAL_REPLAY_PARTITION}\n"
     )
 
 
 def _offset_lower_bound_clause(
-    *, source_alias: str, offset_column: str, has_lower_bound: bool, inclusive: bool
+    *,
+    source_alias: str,
+    offset_column: str,
+    has_lower_bound: bool,
+    inclusive: bool,
+    lower_alias: str | None = None,
 ) -> str:
     if not has_lower_bound:
         return ""
+    lower_reference: str = lower_alias or "active_start_offsets"
     return (
-        "  AND (active_start_offsets.start_offset IS NULL "
+        f"  AND ({lower_reference}.start_offset IS NULL "
         f"OR {source_alias}.{offset_column} "
-        f"{'>=' if inclusive else '>'} active_start_offsets.start_offset)\n"
+        f"{'>=' if inclusive else '>'} {lower_reference}.start_offset)\n"
     )
 
 
