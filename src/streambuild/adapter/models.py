@@ -388,6 +388,14 @@ class AdapterReplayRequest:
 
 
 @dataclass(frozen=True)
+class AdapterReplayCoverageRequest:
+    """A request for the retained physical ranges selected by one replay window."""
+
+    replay: AdapterReplayRequest
+    boundary_column_type: str | None
+
+
+@dataclass(frozen=True)
 class AdapterOwnershipReplayRequest:
     """A replay whose dynamic upper boundary is stored in direct ownership metadata."""
 

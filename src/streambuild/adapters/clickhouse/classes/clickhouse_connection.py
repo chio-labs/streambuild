@@ -25,6 +25,7 @@ from streambuild.adapter.models import (
     AdapterReadinessRequest,
     AdapterReadinessRootObservation,
     AdapterRelationCleanupRequest,
+    AdapterReplayCoverageRequest,
     AdapterStableView,
     AdapterTable,
     AdapterView,
@@ -54,6 +55,7 @@ from streambuild.adapters.clickhouse._helpers.rendering import (
     render_clickhouse_resource,
 )
 from streambuild.adapters.clickhouse._helpers.replay import (
+    render_clickhouse_replay_coverage_query,
     render_clickhouse_replay_from_deployment,
     render_clickhouse_replay_from_ownership,
 )
@@ -237,6 +239,11 @@ class ClickHouseConnection(AdapterConnection):
         """Render a fixed-cardinality replay against ownership-stored cutoffs."""
 
         return render_clickhouse_replay_from_ownership(request)
+
+    def render_replay_coverage_query(self, request: AdapterReplayCoverageRequest) -> str:
+        """Render retained coverage selected by the replay window."""
+
+        return render_clickhouse_replay_coverage_query(request)
 
     def render_replay_from_deployment(
         self, request: AdapterDeploymentReplayRequest

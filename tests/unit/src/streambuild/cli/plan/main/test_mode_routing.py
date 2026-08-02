@@ -151,22 +151,32 @@ def test_given_deployment_id_in_direct_mode_when_planning_then_command_fails(
     [
         CliDirectPlanFlagRejectionTestCase(
             description="--full-refresh is rejected in direct mode",
+            selectors=("alpha",),
             full_refresh=True,
             start_time=None,
             expected_error_fragment="--full-refresh is a virtual-environment replay control",
             expected_preserved_artifact=b'{"previous":"plan"}\n',
         ),
         CliDirectPlanFlagRejectionTestCase(
-            description="--start-time is rejected in direct mode",
+            description="--start-time without selection is rejected before inspection",
+            selectors=(),
             full_refresh=False,
             start_time="2026-01-01",
-            expected_error_fragment="--start-time is a virtual-environment replay control",
+            expected_error_fragment="--start-time requires at least one --select",
+            expected_preserved_artifact=b'{"previous":"plan"}\n',
+        ),
+        CliDirectPlanFlagRejectionTestCase(
+            description="--start-time and --full-refresh remain mutually exclusive",
+            selectors=("alpha",),
+            full_refresh=True,
+            start_time="2026-01-01",
+            expected_error_fragment="--full-refresh cannot be combined with --start-time",
             expected_preserved_artifact=b'{"previous":"plan"}\n',
         ),
     ],
     ids=lambda case: case.description,
 )
-def test_given_replay_control_flag_in_direct_mode_when_planning_then_command_fails(
+def test_given_full_refresh_in_direct_mode_when_planning_then_command_fails(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
     test_case: CliDirectPlanFlagRejectionTestCase,
@@ -179,7 +189,7 @@ def test_given_replay_control_flag_in_direct_mode_when_planning_then_command_fai
     exit_code: int = run_scope_project_plan(
         project_root=tmp_path,
         json_output=False,
-        selectors=("alpha",),
+        selectors=test_case.selectors,
         full_refresh=test_case.full_refresh,
         start_time=test_case.start_time,
     )

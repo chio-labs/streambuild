@@ -145,6 +145,22 @@ class CliDirectBuildIntegrationTestCase:
 
 
 @dataclass(frozen=True)
+class CliDirectStartTimeIntegrationTestCase:
+    description: str
+    selectors: tuple[str, ...]
+    expected_source_rows: tuple[tuple[str, int], ...]
+    expected_target_rows: tuple[str, ...]
+    expected_coverage: tuple[tuple[str, str, str], ...]
+
+
+@dataclass(frozen=True)
+class CliDirectLandedAtStartTimeIntegrationTestCase:
+    description: str
+    expected_target_rows: tuple[str, ...]
+    expected_boundary_keys: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class CliDirectManualWorkflowIntegrationTestCase:
     description: str
     expected_exit_code: int
@@ -312,6 +328,28 @@ class CliDirectAdoptedSourceIntegrationTestCase:
     expected_order_ids: tuple[str, ...]
     expected_replay_mode: str
     expected_replay_columns: tuple[str, str, str, str, str]
+
+
+@dataclass(frozen=True)
+class CliDirectAdoptedStartTimeIntegrationTestCase:
+    description: str
+    source_yml: str
+    model_sql: str
+    source_columns_sql: str
+    values_sql: str
+    expected_order_ids: tuple[str, ...]
+    expected_coverage: tuple[tuple[str, str, str], ...]
+
+
+@dataclass(frozen=True)
+class CliDirectFutureSourceStartTimeIntegrationTestCase:
+    description: str
+    source_yml: str
+    model_sql: str
+    source_columns_sql: str
+    insert_sql: str
+    start_time_sql: str
+    expected_target_count: int
 
 
 @dataclass(frozen=True)

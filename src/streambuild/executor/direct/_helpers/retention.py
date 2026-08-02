@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+import json
+from dataclasses import replace
+from typing import cast
+
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import (
     AdapterOwnershipRecord,
     AdapterQueryResult,
     AdapterReplayColumns,
     AdapterReplayCoverageRange,
+    AdapterReplayCoverageRequest,
+    AdapterReplayRequest,
 )
 from streambuild.adapter.types import AdapterReplayBoundaryMode
 from streambuild.compiler.compile.constants import (
@@ -39,28 +45,147 @@ def resolve_required_replay_coverage(
     existing_relation_names: frozenset[str],
     existing_ownership: tuple[AdapterOwnershipRecord, ...],
     target_relation_name_by_model_name: dict[str, str],
-) -> tuple[DirectReplayCoverage, ...]:
+    replay_by_model_name: dict[str, AdapterReplayRequest],
+    boundary_type_by_model_name: dict[str, str | None],
+) -> tuple[tuple[DirectReplayCoverage, ...], tuple[DirectReplayCoverage, ...]]:
     """Resolve the live or durable lineage ranges that a rerun must preserve."""
 
-    resolved: list[DirectReplayCoverage] = []
+    required: list[DirectReplayCoverage] = []
+    claimed: list[DirectReplayCoverage] = []
     root: DirectReplayRoot
     for root in plan.replay_roots:
-        resolved.append(
+        prior_ranges: tuple[AdapterReplayCoverageRange, ...] = _required_root_ranges(
+            client=client,
+            root=root,
+            database=database,
+            existing_relation_names=existing_relation_names,
+            existing_ownership=existing_ownership,
+            target_relation_name=target_relation_name_by_model_name[root.model_key.name],
+            has_aggregate_semantics=root.has_aggregate_semantics,
+        )
+        bounded_ranges: tuple[AdapterReplayCoverageRange, ...] = (
+            _bounded_root_ranges(
+                client=client,
+                replay=replay_by_model_name[root.model_key.name],
+                boundary_column_type=boundary_type_by_model_name[root.model_key.name],
+            )
+            if plan.effective_start_time is not None
+            else prior_ranges
+        )
+        required.append(
             DirectReplayCoverage(
                 model_name=root.model_key.name,
                 driving_input_replay_columns=root.driving_input_replay_columns,
-                ranges=_required_root_ranges(
-                    client=client,
-                    root=root,
-                    database=database,
-                    existing_relation_names=existing_relation_names,
-                    existing_ownership=existing_ownership,
-                    target_relation_name=target_relation_name_by_model_name[root.model_key.name],
-                    has_aggregate_semantics=root.has_aggregate_semantics,
+                ranges=(
+                    _clip_ranges_to_bounded_window(
+                        required_ranges=prior_ranges,
+                        bounded_ranges=bounded_ranges,
+                    )
+                    if plan.effective_start_time is not None
+                    else prior_ranges
                 ),
             )
         )
-    return tuple(resolved)
+        claimed.append(
+            DirectReplayCoverage(
+                model_name=root.model_key.name,
+                driving_input_replay_columns=root.driving_input_replay_columns,
+                ranges=bounded_ranges,
+            )
+        )
+    return tuple(required), tuple(claimed)
+
+
+def _bounded_root_ranges(
+    *,
+    client: AdapterConnection,
+    replay: AdapterReplayRequest,
+    boundary_column_type: str | None,
+) -> tuple[AdapterReplayCoverageRange, ...]:
+    result: AdapterQueryResult = client.query(
+        client.render_replay_coverage_query(
+            AdapterReplayCoverageRequest(
+                replay=replay,
+                boundary_column_type=boundary_column_type,
+            )
+        )
+    )
+    if not result.rows:
+        return ()
+    payloads: list[dict[str, object]] = cast(
+        list[dict[str, object]], json.loads(str(result.rows[0][0]))
+    )
+    return tuple(
+        AdapterReplayCoverageRange(
+            driving_input_relation_name=str(payload["driving_input_relation_name"]),
+            replay_boundary_mode=str(payload["replay_boundary_mode"]),
+            boundary_key=str(payload["boundary_key"]),
+            source_partition_column_name=(str(payload["source_partition_column_name"]) or None),
+            source_position_column_name=str(payload["source_position_column_name"]),
+            source_timestamp_column_name=(str(payload["source_timestamp_column_name"]) or None),
+            lower_value=str(payload["lower_value"]),
+            upper_value=str(payload["upper_value"]),
+        )
+        for payload in payloads
+    )
+
+
+def _clip_ranges_to_bounded_window(
+    *,
+    required_ranges: tuple[AdapterReplayCoverageRange, ...],
+    bounded_ranges: tuple[AdapterReplayCoverageRange, ...],
+) -> tuple[AdapterReplayCoverageRange, ...]:
+    clipped_ranges: list[AdapterReplayCoverageRange] = []
+    required: AdapterReplayCoverageRange
+    for required in required_ranges:
+        clipped: AdapterReplayCoverageRange | None = _clip_range(
+            required=required,
+            bounded=_ranges_for_key(
+                ranges=bounded_ranges,
+                boundary_key=required.boundary_key,
+            ),
+        )
+        if clipped is not None:
+            clipped_ranges.append(clipped)
+    return tuple(clipped_ranges)
+
+
+def _clip_range(
+    *,
+    required: AdapterReplayCoverageRange,
+    bounded: tuple[AdapterReplayCoverageRange, ...],
+) -> AdapterReplayCoverageRange | None:
+    if not bounded:
+        return None
+    mode: AdapterReplayBoundaryMode = AdapterReplayBoundaryMode(required.replay_boundary_mode)
+    lower_value: str
+    upper_value: str
+    valid: bool
+    if mode in {AdapterReplayBoundaryMode.OFFSETS, AdapterReplayBoundaryMode.CURSOR}:
+        numeric_lower: int = max(
+            int(required.lower_value),
+            min(int(replay_range.lower_value) for replay_range in bounded),
+        )
+        numeric_upper: int = min(
+            int(required.upper_value),
+            max(int(replay_range.upper_value) for replay_range in bounded),
+        )
+        lower_value = str(numeric_lower)
+        upper_value = str(numeric_upper)
+        valid = numeric_lower <= numeric_upper
+    else:
+        lower_value = max(
+            required.lower_value,
+            min(replay_range.lower_value for replay_range in bounded),
+        )
+        upper_value = min(
+            required.upper_value,
+            max(replay_range.upper_value for replay_range in bounded),
+        )
+        valid = lower_value <= upper_value
+    if not valid:
+        return None
+    return replace(required, lower_value=lower_value, upper_value=upper_value)
 
 
 def assert_preserved_history_covers_ranges(
@@ -82,35 +207,6 @@ def assert_preserved_history_covers_ranges(
             "the aged-out history, or remove the target and its direct ownership claim "
             "explicitly to accept a shorter rebuild."
         )
-
-
-def capture_completed_replay_coverage(
-    *,
-    client: AdapterConnection,
-    plan: DirectPlan,
-    database: str,
-    completed_model_names: frozenset[str],
-) -> tuple[DirectReplayCoverage, ...]:
-    """Capture the retained input ranges protected after a completed direct replay."""
-
-    return tuple(
-        DirectReplayCoverage(
-            model_name=root.model_key.name,
-            driving_input_replay_columns=root.driving_input_replay_columns,
-            ranges=_relation_ranges(
-                client=client,
-                model_name=root.model_key.name,
-                driving_input_relation_name=root.driving_input_relation_name,
-                replay_boundary_mode=ReplayLineageMode(root.replay_boundary_mode),
-                database=database,
-                relation_name=root.driving_input_relation_name,
-                query_columns=root.driving_input_replay_columns,
-                source_columns=root.driving_input_replay_columns,
-            ),
-        )
-        for root in plan.replay_roots
-        if root.model_key.name in completed_model_names
-    )
 
 
 def _required_root_ranges(

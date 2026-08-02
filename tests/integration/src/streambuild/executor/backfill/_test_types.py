@@ -91,6 +91,15 @@ class MissingScalarReplayCutoffIntegrationTestCase:
 
 
 @dataclass(frozen=True)
+class MissingCursorStartTimeIntegrationTestCase:
+    description: str
+    deployment_id: str
+    created_at: str
+    start_time: str
+    expected_error_fragment: str
+
+
+@dataclass(frozen=True)
 class ExecuteExternalSourceOffsetReplayIntegrationTestCase:
     description: str
     deployment_id: str

@@ -20,6 +20,7 @@ from streambuild.adapter.models import (
     AdapterReadinessRequest,
     AdapterReadinessRootObservation,
     AdapterRelationCleanupRequest,
+    AdapterReplayCoverageRequest,
     AdapterStableView,
     AdapterTable,
     AdapterView,
@@ -122,6 +123,10 @@ class AdapterConnection(ABC):
     @abstractmethod
     def render_replay_from_ownership(self, request: AdapterOwnershipReplayRequest) -> str:
         """Render one replay that reads its boundary from durable ownership metadata."""
+
+    @abstractmethod
+    def render_replay_coverage_query(self, request: AdapterReplayCoverageRequest) -> str:
+        """Render one query returning replay-window coverage as ownership JSON."""
 
     def render_replay_from_deployment(
         self, request: AdapterDeploymentReplayRequest
