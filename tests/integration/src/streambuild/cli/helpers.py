@@ -1,10 +1,12 @@
 import json
+import subprocess
 import time
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from textwrap import dedent
 from typing import cast
 
+import clickhouse_connect
 from clickhouse_connect.driver.client import Client
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
@@ -12,7 +14,6 @@ from streambuild.adapter.constants import METADATA_DEPLOYMENT_WATERMARKS_TABLE_N
 from streambuild.adapter.exceptions import AdapterWarehouseError
 from streambuild.adapter.models import (
     AdapterBindingReplacementRequest,
-    AdapterBindingReplacementResult,
     AdapterCapabilities,
     AdapterConnectionConfig,
     AdapterDeploymentInventory,
@@ -21,14 +22,14 @@ from streambuild.adapter.models import (
     AdapterManagedSource,
     AdapterMaterializedView,
     AdapterMetadataState,
+    AdapterMutationResult,
     AdapterOwnershipRecord,
+    AdapterOwnershipReplayRequest,
     AdapterQueryResult,
     AdapterReadinessRequest,
     AdapterReadinessRootObservation,
     AdapterRelationCleanupRequest,
-    AdapterRelationCleanupResult,
     AdapterReplayRequest,
-    AdapterReplayResult,
     AdapterStableView,
     AdapterTable,
     AdapterView,
@@ -37,27 +38,67 @@ from streambuild.adapter.models import (
 )
 from streambuild.adapters.clickhouse._helpers.inspection import load_clickhouse_catalog
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
-from streambuild.cli.backfill.main._run_backfill import run_backfill
-from streambuild.cli.backfill.models import BackfillCommandOptions
 from streambuild.cli.build._helpers.preview import build_direct_build_preview
+from streambuild.cli.build._helpers.virtual_preview import build_virtual_build_preview
 from streambuild.cli.build.constants import STREAMBUILD_TOOL_VERSION
 from streambuild.cli.build.main._run_build import run_build
-from streambuild.cli.build.models import BuildCommandOptions, BuildPreviewContext
+from streambuild.cli.build.models import (
+    BuildCommandOptions,
+    DirectBuildPreviewContext,
+    VirtualBuildPreviewContext,
+    WorkflowPreparationOptions,
+)
 from streambuild.cli.entry._helpers.compiler_profile import build_compiler_adapter_profile
+from streambuild.cli.plan.main._render_direct_plan_json import render_direct_plan_json
 from streambuild.cli.plan.main._run_plan import run_plan
+from streambuild.cli.plan.main.render_plan_result import render_plan_result
+from streambuild.cli.plan.models import PlanCommandOptions
+from streambuild.cli.workflow_artifacts.main._publish_build_workflow import publish_build_workflow
 from streambuild.compiler.discovery.main.load_project_input_for_path import (
     load_project_input_for_path,
 )
-from streambuild.executor.backfill.main._ensure_metadata_tables import ensure_metadata_tables
-from streambuild.executor.direct.main.execute_direct_build import execute_direct_build
+from streambuild.compiler.pipeline.main.analyze_project import analyze_project
+from streambuild.compiler.pipeline.models import CompileAnalysis
+from streambuild.executor.backfill.main.assemble_virtual_build_workflow import (
+    assemble_virtual_build_workflow,
+)
+from streambuild.executor.backfill.models import BackfillBootstrapRequest
+from streambuild.executor.direct.main.assemble_direct_build_workflow import (
+    assemble_direct_build_workflow,
+)
+from streambuild.executor.direct.main.build_direct_execution_result import (
+    build_direct_execution_result,
+)
 from streambuild.executor.direct.models import (
     DirectBuildRequest,
     DirectBuildResult,
+)
+from streambuild.executor.workflow.main.execute_build_workflow import execute_build_workflow
+from streambuild.executor.workflow.models import (
+    BuildWorkflow,
+    PublishedBuildWorkflow,
+    WorkflowExecutionResult,
 )
 from tests.integration.src.streambuild.conftest import ClickHouseConnectionSettings
 
 BACKFILL_PIPELINES_ROOT: Path = Path("tests/fixtures/basic_project/pipelines")
 SELECTOR_PIPELINES_ROOT: Path = Path("tests/fixtures/selector_project/pipelines")
+
+
+def _is_model_realization_sql(statement: str) -> bool:
+    return (
+        statement.startswith("CREATE MATERIALIZED VIEW ")
+        or statement.startswith("CREATE VIEW ")
+        or (statement.startswith("CREATE TABLE ") and " IF NOT EXISTS " not in statement)
+    )
+
+
+def _is_replay_sql(statement: str) -> bool:
+    return "ownership_coverage AS" in statement
+
+
+def _is_coverage_capture_sql(statement: str) -> bool:
+    return "WITH coverage_payload AS" in statement
 
 
 def write_managed_source_project(
@@ -115,39 +156,36 @@ class RecordingDelegatingConnection(AdapterConnection):
     def load_target_ownership(self, database: str) -> tuple[AdapterOwnershipRecord, ...]:
         return self._delegate.load_target_ownership(database)
 
-    def record_target_ownership(
+    def render_record_target_ownership(
         self, *, database: str, records: tuple[AdapterOwnershipRecord, ...]
-    ) -> None:
-        self._delegate.record_target_ownership(database=database, records=records)
+    ) -> tuple[str, ...]:
+        return self._delegate.render_record_target_ownership(database=database, records=records)
 
-    def remove_target_ownership(
+    def render_remove_target_ownership(
         self,
         *,
         database: str,
         target_database: str,
         relation_names: tuple[str, ...],
-    ) -> None:
-        self._delegate.remove_target_ownership(
+    ) -> tuple[str, ...]:
+        return self._delegate.render_remove_target_ownership(
             database=database,
             target_database=target_database,
             relation_names=relation_names,
         )
 
-    def command(self, statement: str) -> None:
-        self._delegate.command(statement)
-
     def query(self, statement: str) -> AdapterQueryResult:
         self.query_statements.append(statement)
         return self._delegate.query(statement)
 
+    def execute_workflow_sql(self, statement: str) -> AdapterMutationResult:
+        return self._delegate.execute_workflow_sql(statement)
+
     def capture_warehouse_timestamp(self) -> str:
         return self._delegate.capture_warehouse_timestamp()
 
-    def insert_rows(self, *, table: str, rows: tuple[dict[str, object], ...]) -> None:
-        self._delegate.insert_rows(table=table, rows=rows)
-
-    def ensure_database(self, database: str) -> None:
-        self._delegate.ensure_database(database)
+    def render_ensure_database(self, database: str) -> str:
+        return self._delegate.render_ensure_database(database)
 
     def render_resource(
         self,
@@ -166,49 +204,32 @@ class RecordingDelegatingConnection(AdapterConnection):
             if_not_exists=if_not_exists,
         )
 
-    def realize_resource(
-        self,
-        *,
-        resource: AdapterManagedSource
-        | AdapterTable
-        | AdapterMaterializedView
-        | AdapterView
-        | AdapterStableView,
-        database: str,
-        if_not_exists: bool = False,
-    ) -> None:
-        self._delegate.realize_resource(
-            resource=resource,
-            database=database,
-            if_not_exists=if_not_exists,
-        )
+    def render_migrate_metadata_state(self, database: str) -> tuple[str, ...]:
+        return self._delegate.render_migrate_metadata_state(database)
 
-    def migrate_metadata_state(self, database: str) -> None:
-        self._delegate.migrate_metadata_state(database)
-
-    def persist_metadata_state(self, *, database: str, state: AdapterMetadataState) -> None:
-        self._delegate.persist_metadata_state(database=database, state=state)
+    def render_persist_metadata_state(
+        self, *, database: str, state: AdapterMetadataState
+    ) -> tuple[str, ...]:
+        return self._delegate.render_persist_metadata_state(database=database, state=state)
 
     def load_deployment_inventory(self, database: str) -> AdapterDeploymentInventory:
         return self._delegate.load_deployment_inventory(database)
 
-    def execute_replay(self, request: AdapterReplayRequest) -> AdapterReplayResult:
-        return self._delegate.execute_replay(request)
+    def render_replay_from_ownership(self, request: AdapterOwnershipReplayRequest) -> str:
+        return self._delegate.render_replay_from_ownership(request)
 
     def compare_readiness(
         self, request: AdapterReadinessRequest
     ) -> tuple[AdapterReadinessRootObservation, ...]:
         return self._delegate.compare_readiness(request)
 
-    def replace_stable_bindings(
+    def render_replace_stable_bindings(
         self, request: AdapterBindingReplacementRequest
-    ) -> AdapterBindingReplacementResult:
-        return self._delegate.replace_stable_bindings(request)
+    ) -> tuple[str, ...]:
+        return self._delegate.render_replace_stable_bindings(request)
 
-    def cleanup_relations(
-        self, request: AdapterRelationCleanupRequest
-    ) -> AdapterRelationCleanupResult:
-        return self._delegate.cleanup_relations(request)
+    def render_cleanup_relations(self, request: AdapterRelationCleanupRequest) -> tuple[str, ...]:
+        return self._delegate.render_cleanup_relations(request)
 
     def close(self) -> None:
         self._delegate.close()
@@ -217,56 +238,36 @@ class RecordingDelegatingConnection(AdapterConnection):
 class FailOnceRealizationConnection(RecordingDelegatingConnection):
     def __init__(self, delegate: AdapterConnection) -> None:
         super().__init__(delegate)
-        self._realization_actions: Iterator[Callable[..., None]] = iter(
-            (
-                self._reject_realization,
-                self._delegate.realize_resource,
-                self._delegate.realize_resource,
-            )
-        )
+        self._failed: bool = False
 
-    def realize_resource(
-        self,
-        *,
-        resource: AdapterManagedSource
-        | AdapterTable
-        | AdapterMaterializedView
-        | AdapterView
-        | AdapterStableView,
-        database: str,
-        if_not_exists: bool = False,
-    ) -> None:
-        next(self._realization_actions)(
-            resource=resource, database=database, if_not_exists=if_not_exists
-        )
+    def execute_workflow_sql(self, statement: str) -> AdapterMutationResult:
+        action: Callable[[str], AdapterMutationResult] = {
+            True: self._reject_realization,
+            False: super().execute_workflow_sql,
+        }[not self._failed and _is_model_realization_sql(statement)]
+        return action(statement)
 
-    def _reject_realization(
-        self,
-        *,
-        resource: AdapterManagedSource
-        | AdapterTable
-        | AdapterMaterializedView
-        | AdapterView
-        | AdapterStableView,
-        database: str,
-        if_not_exists: bool = False,
-    ) -> None:
-        del resource, database, if_not_exists
+    def _reject_realization(self, statement: str) -> AdapterMutationResult:
+        del statement
+        self._failed = True
         raise AdapterWarehouseError("injected failure after direct teardown")
 
 
 class FailOnceReplayConnection(RecordingDelegatingConnection):
     def __init__(self, delegate: AdapterConnection) -> None:
         super().__init__(delegate)
-        self._replay_actions: Iterator[Callable[[AdapterReplayRequest], AdapterReplayResult]] = (
-            iter((self._reject_replay, self._delegate.execute_replay))
-        )
+        self._failed: bool = False
 
-    def execute_replay(self, request: AdapterReplayRequest) -> AdapterReplayResult:
-        return next(self._replay_actions)(request)
+    def execute_workflow_sql(self, statement: str) -> AdapterMutationResult:
+        action: Callable[[str], AdapterMutationResult] = {
+            True: self._reject_replay,
+            False: super().execute_workflow_sql,
+        }[not self._failed and _is_replay_sql(statement)]
+        return action(statement)
 
-    def _reject_replay(self, request: AdapterReplayRequest) -> AdapterReplayResult:
-        del request
+    def _reject_replay(self, statement: str) -> AdapterMutationResult:
+        del statement
+        self._failed = True
         raise AdapterWarehouseError("injected failure after direct relations became live")
 
 
@@ -274,144 +275,102 @@ class FailSecondReplayOnceConnection(RecordingDelegatingConnection):
     def __init__(self, delegate: AdapterConnection) -> None:
         super().__init__(delegate)
         self.replay_targets: list[str] = []
-        self._replay_actions: Iterator[Callable[[AdapterReplayRequest], AdapterReplayResult]] = (
-            iter(
-                (
-                    self._delegate.execute_replay,
-                    self._reject_replay,
-                    self._delegate.execute_replay,
-                    self._delegate.execute_replay,
-                    self._delegate.execute_replay,
-                )
-            )
-        )
+        self._replay_count: int = 0
+        self._failed: bool = False
 
-    def execute_replay(self, request: AdapterReplayRequest) -> AdapterReplayResult:
-        self.replay_targets.append(request.relations.target)
-        return next(self._replay_actions)(request)
+    def render_replay_from_ownership(self, request: AdapterOwnershipReplayRequest) -> str:
+        self.replay_targets.append(request.replay.relations.target)
+        return super().render_replay_from_ownership(request)
 
-    def _reject_replay(self, request: AdapterReplayRequest) -> AdapterReplayResult:
-        del request
+    def execute_workflow_sql(self, statement: str) -> AdapterMutationResult:
+        self._replay_count += int(_is_replay_sql(statement))
+        action: Callable[[str], AdapterMutationResult] = {
+            True: self._reject_replay,
+            False: super().execute_workflow_sql,
+        }[not self._failed and self._replay_count == 2 and _is_replay_sql(statement)]
+        return action(statement)
+
+    def _reject_replay(self, statement: str) -> AdapterMutationResult:
+        del statement
+        self._failed = True
         raise AdapterWarehouseError("injected failure during second population segment")
 
 
 class FailOnceDropConnection(RecordingDelegatingConnection):
     def __init__(self, delegate: AdapterConnection) -> None:
         super().__init__(delegate)
-        self._command_actions: Iterator[Callable[[str], None]] = iter(
-            (
-                self._reject_command,
-                self._delegate.command,
-                self._delegate.command,
-                self._delegate.command,
-                self._delegate.command,
-                self._delegate.command,
-                self._delegate.command,
-            )
-        )
+        self._failed: bool = False
 
-    def command(self, statement: str) -> None:
-        next(self._command_actions)(statement)
+    def execute_workflow_sql(self, statement: str) -> AdapterMutationResult:
+        action: Callable[[str], AdapterMutationResult] = {
+            True: self._reject_drop,
+            False: super().execute_workflow_sql,
+        }[not self._failed and statement.startswith("DROP ")]
+        return action(statement)
 
-    def _reject_command(self, statement: str) -> None:
+    def _reject_drop(self, statement: str) -> AdapterMutationResult:
         del statement
+        self._failed = True
         raise AdapterWarehouseError("injected failure during selected teardown")
 
 
 class FailOnceViewRealizationConnection(RecordingDelegatingConnection):
     def __init__(self, delegate: AdapterConnection) -> None:
         super().__init__(delegate)
-        self._realization_actions: Iterator[Callable[..., None]] = iter(
-            (
-                self._delegate.realize_resource,
-                self._delegate.realize_resource,
-                self._delegate.realize_resource,
-                self._reject_realization,
-                self._delegate.realize_resource,
-                self._delegate.realize_resource,
-                self._delegate.realize_resource,
-                self._delegate.realize_resource,
-                self._delegate.realize_resource,
-                self._delegate.realize_resource,
-            )
-        )
+        self._failed: bool = False
 
-    def realize_resource(
-        self,
-        *,
-        resource: AdapterManagedSource
-        | AdapterTable
-        | AdapterMaterializedView
-        | AdapterView
-        | AdapterStableView,
-        database: str,
-        if_not_exists: bool = False,
-    ) -> None:
-        next(self._realization_actions)(
-            resource=resource, database=database, if_not_exists=if_not_exists
-        )
+    def execute_workflow_sql(self, statement: str) -> AdapterMutationResult:
+        action: Callable[[str], AdapterMutationResult] = {
+            True: self._reject_view,
+            False: super().execute_workflow_sql,
+        }[not self._failed and statement.startswith("CREATE MATERIALIZED VIEW ")]
+        return action(statement)
 
-    def _reject_realization(
-        self,
-        *,
-        resource: AdapterManagedSource
-        | AdapterTable
-        | AdapterMaterializedView
-        | AdapterView
-        | AdapterStableView,
-        database: str,
-        if_not_exists: bool = False,
-    ) -> None:
-        del resource, database, if_not_exists
+    def _reject_view(self, statement: str) -> AdapterMutationResult:
+        del statement
+        self._failed = True
         raise AdapterWarehouseError("injected failure during selected view attachment")
 
 
 class FailOnceBoundaryQueryConnection(RecordingDelegatingConnection):
     def __init__(self, delegate: AdapterConnection) -> None:
         super().__init__(delegate)
-        self._query_actions: Iterator[Callable[[str], AdapterQueryResult]] = iter(
-            (
-                self._delegate.query,
-                self._delegate.query,
-                self._delegate.query,
-                self._delegate.query,
-                self._reject_query,
-                *([self._delegate.query] * 16),
-            )
-        )
+        self._failed: bool = False
 
-    def load_catalog(self, database: str) -> CatalogSnapshot:
-        return self._delegate.load_catalog(database)
+    def execute_workflow_sql(self, statement: str) -> AdapterMutationResult:
+        action: Callable[[str], AdapterMutationResult] = {
+            True: self._reject_boundary,
+            False: super().execute_workflow_sql,
+        }[not self._failed and _is_coverage_capture_sql(statement)]
+        return action(statement)
 
-    def query(self, statement: str) -> AdapterQueryResult:
-        return next(self._query_actions)(statement)
-
-    def _reject_query(self, statement: str) -> AdapterQueryResult:
+    def _reject_boundary(self, statement: str) -> AdapterMutationResult:
         del statement
+        self._failed = True
         raise AdapterWarehouseError("injected failure during selected boundary capture")
 
 
 class FailFinalOwnershipOnceConnection(RecordingDelegatingConnection):
     def __init__(self, delegate: AdapterConnection) -> None:
         super().__init__(delegate)
-        self._ownership_actions: Iterator[Callable[..., None]] = iter(
-            (
-                self._delegate.record_target_ownership,
-                self._reject_ownership,
-                self._delegate.record_target_ownership,
-                self._delegate.record_target_ownership,
-            )
-        )
+        self._coverage_capture_count: int = 0
+        self._failed: bool = False
 
-    def record_target_ownership(
-        self, *, database: str, records: tuple[AdapterOwnershipRecord, ...]
-    ) -> None:
-        next(self._ownership_actions)(database=database, records=records)
+    def execute_workflow_sql(self, statement: str) -> AdapterMutationResult:
+        self._coverage_capture_count += int(_is_coverage_capture_sql(statement))
+        action: Callable[[str], AdapterMutationResult] = {
+            True: self._reject_final_ownership,
+            False: super().execute_workflow_sql,
+        }[
+            not self._failed
+            and self._coverage_capture_count == 4
+            and _is_coverage_capture_sql(statement)
+        ]
+        return action(statement)
 
-    def _reject_ownership(
-        self, *, database: str, records: tuple[AdapterOwnershipRecord, ...]
-    ) -> None:
-        del database, records
+    def _reject_final_ownership(self, statement: str) -> AdapterMutationResult:
+        del statement
+        self._failed = True
         raise AdapterWarehouseError("injected failure during final ownership persistence")
 
 
@@ -423,11 +382,7 @@ class DirectActionRecordingConnection(RecordingDelegatingConnection):
         self.replay_targets: list[str] = []
         self.replay_requests: list[AdapterReplayRequest] = []
 
-    def command(self, statement: str) -> None:
-        self.command_statements.append(statement)
-        super().command(statement)
-
-    def realize_resource(
+    def render_resource(
         self,
         *,
         resource: AdapterManagedSource
@@ -437,44 +392,56 @@ class DirectActionRecordingConnection(RecordingDelegatingConnection):
         | AdapterStableView,
         database: str,
         if_not_exists: bool = False,
-    ) -> None:
+    ) -> str:
         self.realized_relation_names.append(resource.name)
-        super().realize_resource(resource=resource, database=database, if_not_exists=if_not_exists)
+        return super().render_resource(
+            resource=resource,
+            database=database,
+            if_not_exists=if_not_exists,
+        )
 
-    def execute_replay(self, request: AdapterReplayRequest) -> AdapterReplayResult:
-        self.replay_targets.append(request.relations.target)
-        self.replay_requests.append(request)
-        return super().execute_replay(request)
+    def render_replay_from_ownership(self, request: AdapterOwnershipReplayRequest) -> str:
+        self.replay_targets.append(request.replay.relations.target)
+        self.replay_requests.append(request.replay)
+        return super().render_replay_from_ownership(request)
+
+    def execute_workflow_sql(self, statement: str) -> AdapterMutationResult:
+        self.command_statements.extend(
+            (statement.removesuffix(";"),) * int(statement.startswith("DROP "))
+        )
+        return super().execute_workflow_sql(statement)
 
 
 class AdoptedLiveInsertConnection(DirectActionRecordingConnection):
-    def __init__(self, delegate: AdapterConnection, *, database: str, values_sql: str) -> None:
+    def __init__(
+        self,
+        delegate: AdapterConnection,
+        *,
+        clickhouse_client: Client,
+        database: str,
+        values_sql: str,
+    ) -> None:
         super().__init__(delegate)
+        self._clickhouse_client: Client = clickhouse_client
         self._database: str = database
         self._values_sql: str = values_sql
-        self._post_realization_actions: Iterator[Callable[[], None]] = iter(
-            (self._do_nothing, self._insert_live_rows)
-        )
+        self._realization_count: int = 0
 
-    def realize_resource(
-        self,
-        *,
-        resource: AdapterManagedSource
-        | AdapterTable
-        | AdapterMaterializedView
-        | AdapterView
-        | AdapterStableView,
-        database: str,
-        if_not_exists: bool = False,
-    ) -> None:
-        super().realize_resource(resource=resource, database=database, if_not_exists=if_not_exists)
-        next(self._post_realization_actions)()
+    def execute_workflow_sql(self, statement: str) -> AdapterMutationResult:
+        result: AdapterMutationResult = super().execute_workflow_sql(statement)
+        self._realization_count += int(_is_model_realization_sql(statement))
+        action: Callable[[], None] = {
+            True: self._insert_live_rows,
+            False: self._do_nothing,
+        }[self._realization_count == 2 and _is_model_realization_sql(statement)]
+        action()
+        return result
 
     def _do_nothing(self) -> None:
         return None
 
     def _insert_live_rows(self) -> None:
-        self._delegate.command(
+        self._clickhouse_client.command(
             f"INSERT INTO {self._database}.orders_existing VALUES {self._values_sql}"
         )
 
@@ -484,36 +451,32 @@ class ManagedLiveInsertConnection(DirectActionRecordingConnection):
         self,
         delegate: AdapterConnection,
         *,
+        clickhouse_client: Client,
         database: str,
         rows: tuple[tuple[str, int, int], ...],
     ) -> None:
         super().__init__(delegate)
+        self._clickhouse_client: Client = clickhouse_client
         self._database: str = database
         self._rows: tuple[tuple[str, int, int], ...] = rows
-        self._post_realization_actions: Iterator[Callable[[], None]] = iter(
-            (self._do_nothing, self._insert_live_rows)
-        )
+        self._realization_count: int = 0
 
-    def realize_resource(
-        self,
-        *,
-        resource: AdapterManagedSource
-        | AdapterTable
-        | AdapterMaterializedView
-        | AdapterView
-        | AdapterStableView,
-        database: str,
-        if_not_exists: bool = False,
-    ) -> None:
-        super().realize_resource(resource=resource, database=database, if_not_exists=if_not_exists)
-        next(self._post_realization_actions)()
+    def execute_workflow_sql(self, statement: str) -> AdapterMutationResult:
+        result: AdapterMutationResult = super().execute_workflow_sql(statement)
+        self._realization_count += int(_is_model_realization_sql(statement))
+        action: Callable[[], None] = {
+            True: self._insert_live_rows,
+            False: self._do_nothing,
+        }[self._realization_count == 2 and _is_model_realization_sql(statement)]
+        action()
+        return result
 
     def _do_nothing(self) -> None:
         return None
 
     def _insert_live_rows(self) -> None:
         insert_landing_rows(
-            connection=self._delegate,
+            clickhouse_client=self._clickhouse_client,
             database=self._database,
             rows=self._rows,
         )
@@ -770,10 +733,14 @@ def build_order_items_ddl(*, database: str, columns: str, order_by: str) -> str:
     )
 
 
-def ensure_backfill_metadata_tables(*, managed_client: AdapterConnection, database: str) -> None:
+def ensure_backfill_metadata_tables(
+    *, managed_client: AdapterConnection, clickhouse_client: Client, database: str
+) -> None:
     """Create the metadata tables so absent rows mean no deployment was recorded."""
 
-    ensure_metadata_tables(client=managed_client, metadata_database=database)
+    statement: str
+    for statement in managed_client.render_migrate_metadata_state(database):
+        _ = clickhouse_client.command(statement)
 
 
 def load_deployment_status_rows(
@@ -990,7 +957,6 @@ def write_sql_test_semantics_project(
     )
 
 
-DIRECT_SCOPE_PREREQUISITE_RELATIONS: tuple[str, ...] = ("raw__orders",)
 DIRECT_SCOPE_MODEL_RELATIONS: tuple[str, ...] = (
     "tbl__alpha",
     "mv__alpha",
@@ -1006,21 +972,26 @@ _OWNERSHIP_ROW_NAMES_BY_FLAG: dict[bool, tuple[str, ...]] = {
     True: DIRECT_SCOPE_MODEL_RELATIONS,
 }
 _RELATION_NAMES_BY_FLAG: dict[bool, tuple[str, ...]] = {
-    False: DIRECT_SCOPE_PREREQUISITE_RELATIONS,
-    True: (*DIRECT_SCOPE_PREREQUISITE_RELATIONS, *DIRECT_SCOPE_MODEL_RELATIONS),
+    False: (),
+    True: DIRECT_SCOPE_MODEL_RELATIONS,
 }
 
 
 def settle_direct_scope_warehouse(
-    *, connection: AdapterConnection, database: str, record_ownership: bool
+    *,
+    connection: AdapterConnection,
+    clickhouse_client: Client,
+    database: str,
+    record_ownership: bool,
 ) -> None:
     """Create the scope project's warehouse relations and optional direct ownership rows."""
 
-    connection.ensure_database(database)
-    connection.migrate_metadata_state(database)
+    statement: str
+    for statement in connection.render_migrate_metadata_state(database):
+        _ = clickhouse_client.command(statement)
     relation_name: str
     for relation_name in _RELATION_NAMES_BY_FLAG[record_ownership]:
-        connection.command(
+        clickhouse_client.command(
             f"CREATE TABLE IF NOT EXISTS {database}.{relation_name} "
             "(order_id UInt64) ENGINE = MergeTree ORDER BY order_id"
         )
@@ -1040,23 +1011,31 @@ def settle_direct_scope_warehouse(
         )
         for relation_name in ownership_relation_names
     )
-    connection.insert_rows(
-        table=f"{database}.streambuild_target_ownership",
-        rows=ownership_rows,
-    )
+    insert_ownership: Callable[[], object] = {
+        False: lambda: None,
+        True: lambda: clickhouse_client.insert(
+            table=f"{database}.streambuild_target_ownership",
+            data=[list(row.values()) for row in ownership_rows],
+            column_names=list(ownership_rows[0]),
+        ),
+    }[record_ownership]
+    _ = insert_ownership()
 
 
 def run_direct_plan(*, project_root: Path, database: str, connection: AdapterConnection) -> int:
     """Run `stb plan` in direct mode against a live warehouse connection."""
 
     return run_plan(
-        pipelines_root=project_root / "pipelines",
-        database=database,
-        selectors=(),
-        full_refresh=False,
-        start_time=None,
-        json_output=True,
-        verbose=False,
+        options=PlanCommandOptions(
+            pipelines_root=project_root / "pipelines",
+            database=database,
+            selectors=(),
+            full_refresh=False,
+            start_time=None,
+            deployment_id=None,
+            json_output=True,
+            verbose=False,
+        ),
         client=connection,
         loaded_project=load_project_input_for_path(path=project_root),
         adapter_profile=build_compiler_adapter_profile(ClickHouseAdapter()),
@@ -1067,7 +1046,8 @@ def plan_scope_names(*, plan_json: str) -> tuple[str, ...]:
     """Return the execution scope model names reported by one direct plan."""
 
     payload: dict[str, object] = json.loads(plan_json)
-    return tuple(cast(list[str], payload["execution_scope"]))
+    scope: list[dict[str, str]] = cast(list[dict[str, str]], payload["execution_scope"])
+    return tuple(key["name"] for key in scope)
 
 
 def plan_replay_root_models(*, plan_json: str) -> tuple[str, ...]:
@@ -1075,7 +1055,7 @@ def plan_replay_root_models(*, plan_json: str) -> tuple[str, ...]:
 
     payload: dict[str, object] = json.loads(plan_json)
     roots: list[dict[str, object]] = cast(list[dict[str, object]], payload["replay_roots"])
-    return tuple(str(root["model"]) for root in roots)
+    return tuple(cast(dict[str, str], root["model_key"])["name"] for root in roots)
 
 
 def plan_relation_operations(*, plan_json: str) -> tuple[tuple[str, str], ...]:
@@ -1086,7 +1066,9 @@ def plan_relation_operations(*, plan_json: str) -> tuple[tuple[str, str], ...]:
         *cast(list[dict[str, object]], payload["teardown"]),
         *cast(list[dict[str, object]], payload["creation"]),
     ]
-    return tuple((str(operation["action"]), str(operation["relation"])) for operation in operations)
+    return tuple(
+        (str(operation["action"]), str(operation["relation_name"])) for operation in operations
+    )
 
 
 def plan_ownership_labels(*, plan_json: str) -> tuple[str, ...]:
@@ -1236,6 +1218,41 @@ def write_direct_selected_graph_project(*, project_root: Path) -> None:
     for model_name, model_sql in _DIRECT_SELECTED_GRAPH_SQL_BY_NAME:
         (pipeline_root / f"{model_name}.sql").write_text(
             f'MODEL (order_by ["order_id"]);\n{model_sql}\n', encoding="utf-8"
+        )
+
+
+def write_virtual_fan_in_project(*, project_root: Path) -> None:
+    """Write a virtual fan-in graph driven by one adopted replay source."""
+
+    pipeline_root: Path = project_root / "pipelines" / "orders"
+    source_root: Path = project_root / "sources"
+    pipeline_root.mkdir(parents=True, exist_ok=True)
+    source_root.mkdir(parents=True, exist_ok=True)
+    (project_root / "streambuild_project.toml").write_text(
+        'name = "virtual_fan_in"\ndefault_target = "test"\n\n'
+        "[settings]\nvirtual_environments = true\n\n"
+        '[targets.test]\ndatabase = "analytics"\n',
+        encoding="utf-8",
+    )
+    (source_root / "orders.yml").write_text(
+        "sources:\n"
+        "  - kind: stream_table\n"
+        "    name: orders\n"
+        "    table_name: fan_in_orders_input\n"
+        "    replay_boundary:\n"
+        "      mode: offsets\n"
+        "      columns:\n"
+        "        _replay_partition: event_partition\n"
+        "        _replay_offset: event_offset\n"
+        "        _replay_timestamp: event_timestamp\n",
+        encoding="utf-8",
+    )
+    model_name: str
+    model_sql: str
+    for model_name, model_sql in _DIRECT_SELECTED_GRAPH_SQL_BY_NAME:
+        authored_sql: str = model_sql.replace("kafka_key", "order_id")
+        (pipeline_root / f"{model_name}.sql").write_text(
+            f'MODEL (order_by ["order_id"]);\n{authored_sql}\n', encoding="utf-8"
         )
 
 
@@ -1435,7 +1452,7 @@ def run_direct_build(
 
 def insert_landing_rows(
     *,
-    connection: AdapterConnection,
+    clickhouse_client: Client,
     database: str,
     rows: tuple[tuple[str, int, int], ...],
 ) -> None:
@@ -1446,7 +1463,7 @@ def insert_landing_rows(
         f"{partition_value}, {offset_value}, now64(3), '', now64(3), now64(3))"
         for order_key, partition_value, offset_value in rows
     )
-    connection.command(
+    clickhouse_client.command(
         f"INSERT INTO {database}.{DIRECT_BUILD_LANDING_TABLE_NAME} "
         "(kafka_key, kafka_value, kafka_topic, kafka_partition, kafka_offset, kafka_timestamp, "
         "_replay_partition, _replay_offset, _replay_timestamp, kafka_headers, kafka_landed_at, "
@@ -1464,13 +1481,16 @@ def insert_landing_rows_after_delay(
     """Land rows on an independent connection while a build is stabilizing."""
 
     time.sleep(delay_seconds)
-    connection: AdapterConnection = build_managed_clickhouse_client(
-        connection_settings, database=database
+    clickhouse_client: Client = clickhouse_connect.get_client(
+        host=connection_settings.host,
+        port=connection_settings.port,
+        username=connection_settings.username,
+        password=connection_settings.password,
     )
     try:
-        insert_landing_rows(connection=connection, database=database, rows=rows)
+        insert_landing_rows(clickhouse_client=clickhouse_client, database=database, rows=rows)
     finally:
-        connection.close()
+        clickhouse_client.close()
 
 
 def execute_direct_build_directly(
@@ -1483,36 +1503,174 @@ def execute_direct_build_directly(
 ) -> DirectBuildResult:
     """Plan and execute one direct build with an explicit stabilization window."""
 
-    preview: BuildPreviewContext = build_direct_build_preview(
-        options=BuildCommandOptions(
-            pipelines_root=project_root / "pipelines",
-            database=database,
-            metadata_database=database,
-            selectors=selectors,
-            json_output=True,
-            verbose=False,
-            auto_approve=True,
-        ),
-        client=connection,
+    analysis: CompileAnalysis = analyze_project(
+        pipelines_root=project_root / "pipelines",
         loaded_project=load_project_input_for_path(path=project_root),
         adapter_profile=build_compiler_adapter_profile(ClickHouseAdapter()),
     )
-    return execute_direct_build(
-        request=DirectBuildRequest(
-            plan=preview.plan,
-            realized_project=preview.analysis.realized_project,
-            database=preview.database,
-            metadata_database=preview.metadata_database,
-            tool_version=STREAMBUILD_TOOL_VERSION,
-            stabilization_seconds=stabilization_seconds,
+    preview: DirectBuildPreviewContext = build_direct_build_preview(
+        options=WorkflowPreparationOptions(
+            database=database,
+            metadata_database=database,
+            selectors=selectors,
+            deployment_id=None,
+            full_refresh=False,
+            start_time=None,
+            verbose=False,
         ),
         client=connection,
+        analysis=analysis,
     )
+    request: DirectBuildRequest = DirectBuildRequest(
+        plan=preview.plan,
+        realized_project=preview.analysis.realized_project,
+        database=preview.database,
+        metadata_database=preview.metadata_database,
+        tool_version=STREAMBUILD_TOOL_VERSION,
+        stabilization_seconds=stabilization_seconds,
+    )
+    workflow: BuildWorkflow = assemble_direct_build_workflow(
+        request=request,
+        client=connection,
+        plan_json=render_direct_plan_json(plan=preview.plan, adapter_name=preview.adapter_name),
+    )
+    published: PublishedBuildWorkflow = publish_build_workflow(
+        target_dir=project_root / "target",
+        workflow=workflow,
+    )
+    execution: WorkflowExecutionResult = execute_build_workflow(
+        published_workflow=published,
+        connection=connection,
+    )
+    return build_direct_execution_result(request=request, execution=execution).build_result
+
+
+def publish_direct_workflow(
+    *, project_root: Path, database: str, connection: AdapterConnection
+) -> PublishedBuildWorkflow:
+    """Assemble and publish one direct workflow without executing it."""
+
+    analysis: CompileAnalysis = analyze_project(
+        pipelines_root=project_root / "pipelines",
+        loaded_project=load_project_input_for_path(path=project_root),
+        adapter_profile=build_compiler_adapter_profile(ClickHouseAdapter()),
+    )
+    preview: DirectBuildPreviewContext = build_direct_build_preview(
+        options=WorkflowPreparationOptions(
+            database=database,
+            metadata_database=database,
+            selectors=(),
+            deployment_id=None,
+            full_refresh=False,
+            start_time=None,
+            verbose=False,
+        ),
+        client=connection,
+        analysis=analysis,
+    )
+    request: DirectBuildRequest = DirectBuildRequest(
+        plan=preview.plan,
+        realized_project=preview.analysis.realized_project,
+        database=preview.database,
+        metadata_database=preview.metadata_database,
+        tool_version=STREAMBUILD_TOOL_VERSION,
+        stabilization_seconds=0,
+    )
+    workflow: BuildWorkflow = assemble_direct_build_workflow(
+        request=request,
+        client=connection,
+        plan_json=render_direct_plan_json(plan=preview.plan, adapter_name=preview.adapter_name),
+    )
+    return publish_build_workflow(target_dir=project_root / "target", workflow=workflow)
+
+
+def publish_virtual_workflow(
+    *, project_root: Path, database: str, deployment_id: str, connection: AdapterConnection
+) -> PublishedBuildWorkflow:
+    """Assemble and publish one fixed-identity virtual workflow without executing it."""
+
+    analysis: CompileAnalysis = analyze_project(
+        pipelines_root=project_root / "pipelines",
+        loaded_project=load_project_input_for_path(path=project_root),
+        adapter_profile=build_compiler_adapter_profile(ClickHouseAdapter()),
+    )
+    options: WorkflowPreparationOptions = WorkflowPreparationOptions(
+        database=database,
+        metadata_database=database,
+        selectors=(),
+        deployment_id=deployment_id,
+        full_refresh=False,
+        start_time=None,
+        verbose=False,
+    )
+    preview: VirtualBuildPreviewContext = build_virtual_build_preview(
+        options=options,
+        start_time_utc=None,
+        client=connection,
+        analysis=analysis,
+    )
+    plan_payload: dict[str, object] = json.loads(
+        render_plan_result(
+            plan=preview.plan,
+            desired_state=preview.desired_state,
+            database=preview.database,
+            adapter_name=connection.adapter_identity.name,
+            json_output=True,
+            verbose=False,
+        )
+    )
+    plan_payload["deployment_created_at"] = preview.created_at
+    request: BackfillBootstrapRequest = BackfillBootstrapRequest(
+        desired_state=preview.desired_state,
+        default_database=preview.database,
+        metadata_database=preview.metadata_database,
+        replay_lineage_mode=preview.replay_lineage_mode,
+        confirmed_plan=preview.plan,
+        deployment_id=preview.deployment_id,
+        full_refresh_keys=preview.full_refresh_keys,
+        start_time_keys=preview.start_time_keys,
+        start_time=preview.start_time,
+        created_at=preview.created_at,
+        confirmed_target_catalog=preview.target_catalog,
+        confirmed_metadata_catalog=preview.metadata_catalog,
+    )
+    workflow: BuildWorkflow = assemble_virtual_build_workflow(
+        request=request,
+        client=connection,
+        plan_json=json.dumps(plan_payload, indent=2),
+    )
+    return publish_build_workflow(target_dir=project_root / "target", workflow=workflow)
+
+
+def execute_clickhouse_client_sql(
+    *, settings: ClickHouseConnectionSettings, sql: str
+) -> tuple[int, str]:
+    """Execute emitted SQL through the container's manual multiquery client."""
+
+    completed: subprocess.CompletedProcess[str] = subprocess.run(
+        (
+            "docker",
+            "exec",
+            settings.container_id,
+            "clickhouse-client",
+            "--user",
+            settings.username,
+            "--password",
+            settings.password,
+            "--multiquery",
+            "--query",
+            sql,
+        ),
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    return completed.returncode, completed.stderr
 
 
 def execute_warehouse_statements(
     *,
-    connection: AdapterConnection,
+    clickhouse_client: Client,
     database: str,
     statements: tuple[str, ...],
 ) -> None:
@@ -1520,24 +1678,25 @@ def execute_warehouse_statements(
 
     statement: str
     for statement in statements:
-        connection.command(statement.format(database=database))
+        clickhouse_client.command(statement.format(database=database))
 
 
-def run_virtual_environment_backfill(
+def run_virtual_environment_build(
     *,
     project_root: Path,
     database: str,
     connection: AdapterConnection,
+    deployment_id: str | None = None,
 ) -> int:
-    """Run `stb backfill` against a warehouse that direct mode may already own."""
+    """Run `stb build` in virtual mode against a live warehouse connection."""
 
-    return run_backfill(
-        options=BackfillCommandOptions(
+    return run_build(
+        options=BuildCommandOptions(
             pipelines_root=project_root / "pipelines",
             database=database,
             metadata_database=database,
             selectors=(),
-            deployment_id=None,
+            deployment_id=deployment_id,
             full_refresh=False,
             start_time=None,
             json_output=True,
@@ -1551,16 +1710,24 @@ def run_virtual_environment_backfill(
 
 
 def run_new_virtual_environment_deployment(
-    *, project_root: Path, database: str, connection: AdapterConnection
+    *,
+    project_root: Path,
+    database: str,
+    connection: AdapterConnection,
+    clickhouse_client: Client,
 ) -> AdapterDeploymentRecord:
     """Run backfill and return the deployment newly persisted by that invocation."""
 
-    ensure_metadata_tables(client=connection, metadata_database=database)
+    ensure_backfill_metadata_tables(
+        managed_client=connection,
+        clickhouse_client=clickhouse_client,
+        database=database,
+    )
     previous_inventory: AdapterDeploymentInventory = connection.load_deployment_inventory(database)
     previous_ids: frozenset[str] = frozenset(
         deployment.deployment_id for deployment in previous_inventory.deployments
     )
-    exit_code: int = run_virtual_environment_backfill(
+    exit_code: int = run_virtual_environment_build(
         project_root=project_root,
         database=database,
         connection=connection,
@@ -1588,28 +1755,26 @@ def virtual_environment_view_rows(
     )
 
 
-def prepare_virtual_environment_view_sources(
-    *, connection: AdapterConnection, database: str
-) -> None:
+def prepare_virtual_environment_view_sources(*, clickhouse_client: Client, database: str) -> None:
     """Create and seed the adopted inputs used by VDE terminal-view scenarios."""
 
-    connection.command(
+    clickhouse_client.command(
         f"CREATE TABLE {database}.vde_orders_input "
         "(order_id String, customer_id UInt64, event_partition Int32, "
         "event_offset Int64, event_timestamp DateTime64(3)) "
         "ENGINE = MergeTree ORDER BY order_id"
     )
-    connection.command(
+    clickhouse_client.command(
         f"CREATE TABLE {database}.vde_customers_input "
         "(customer_id UInt64, customer_name String, event_timestamp DateTime64(3)) "
         "ENGINE = MergeTree ORDER BY customer_id"
     )
-    connection.command(
+    clickhouse_client.command(
         f"INSERT INTO {database}.vde_orders_input VALUES "
         "('order-1', 1, 0, 1, '2026-07-31 00:00:01.000'), "
         "('order-2', 2, 0, 2, '2026-07-31 00:00:02.000')"
     )
-    connection.command(
+    clickhouse_client.command(
         f"INSERT INTO {database}.vde_customers_input VALUES "
         "(1, 'Ada', '2026-07-31 00:00:01.000'), "
         "(2, 'Grace', '2026-07-31 00:00:02.000')"
@@ -1710,3 +1875,79 @@ def stringify_warehouse_rows(*, rows: Sequence[Sequence[object]]) -> tuple[tuple
     for row in rows:
         converted.append(tuple(map(str, row)))
     return tuple(converted)
+
+
+def prepare_virtual_fan_in_source(*, clickhouse_client: Client, database: str) -> None:
+    """Create and seed the adopted source for one virtual fan-in execution form."""
+
+    clickhouse_client.command(
+        f"CREATE TABLE {database}.fan_in_orders_input "
+        "(order_id String, event_partition Int32, event_offset Int64, "
+        "event_timestamp DateTime64(3)) ENGINE = MergeTree ORDER BY order_id"
+    )
+    clickhouse_client.command(
+        f"INSERT INTO {database}.fan_in_orders_input VALUES "
+        "('order-1', 0, 1, '2026-08-01 00:00:01.000'), "
+        "('order-2', 0, 2, '2026-08-01 00:00:02.000')"
+    )
+
+
+def virtual_fan_in_delta_rows(
+    *, clickhouse_client: Client, database: str, deployment_id: str
+) -> tuple[tuple[str, str], ...]:
+    """Return deterministic fan-in candidate rows."""
+
+    rows: Sequence[Sequence[object]] = clickhouse_client.query(
+        f"SELECT order_id, gamma_marker FROM {database}.tbl__delta__{deployment_id} "
+        "ORDER BY order_id"
+    ).result_rows
+    return tuple((str(row[0]), str(row[1])) for row in rows)
+
+
+def virtual_deployment_watermark_rows(
+    *, clickhouse_client: Client, database: str, deployment_id: str
+) -> tuple[tuple[str, str, str], ...]:
+    """Return replay-root watermarks without the shared boundary-time row."""
+
+    rows: Sequence[Sequence[object]] = clickhouse_client.query(
+        "SELECT root_object_name, boundary_key, cutoff_value "
+        f"FROM {database}.streambuild_deployment_watermarks FINAL "
+        f"WHERE deployment_id = '{deployment_id}' "
+        "AND boundary_key != '__streambuild_boundary_time' "
+        "ORDER BY root_object_name, boundary_key"
+    ).result_rows
+    return tuple((str(row[0]), str(row[1]), str(row[2])) for row in rows)
+
+
+def confirm_with_conflicting_candidate(
+    prompt: str, *, clickhouse_client: Client, database: str, relation_name: str
+) -> str:
+    """Create a post-preview candidate conflict while accepting confirmation."""
+
+    del prompt
+    clickhouse_client.command(
+        f"CREATE TABLE {database}.{relation_name} "
+        "(order_id String) ENGINE = MergeTree ORDER BY order_id"
+    )
+    return "y"
+
+
+def virtual_deployment_metadata_row_count(
+    *, clickhouse_client: Client, database: str, deployment_id: str
+) -> int:
+    """Count all lifecycle metadata rows written for one virtual deployment."""
+
+    rows: Sequence[Sequence[object]] = clickhouse_client.query(
+        "SELECT sum(row_count) FROM ("
+        f"SELECT count() AS row_count FROM {database}.streambuild_deployments "
+        f"WHERE deployment_id = '{deployment_id}' UNION ALL "
+        f"SELECT count() AS row_count FROM {database}.streambuild_object_state_snapshots "
+        f"WHERE deployment_id = '{deployment_id}' UNION ALL "
+        f"SELECT count() AS row_count FROM {database}.streambuild_deployment_runtime_details "
+        f"WHERE deployment_id = '{deployment_id}' UNION ALL "
+        f"SELECT count() AS row_count FROM {database}.streambuild_deployment_watermarks "
+        f"WHERE deployment_id = '{deployment_id}' UNION ALL "
+        f"SELECT count() AS row_count FROM {database}.streambuild_publish_history "
+        f"WHERE deployment_id = '{deployment_id}')"
+    ).result_rows
+    return int(str(rows[0][0]))

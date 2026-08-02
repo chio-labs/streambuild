@@ -58,6 +58,7 @@ class E2EClickHouseConnectionSettings:
     port: int
     username: str
     password: str
+    container_id: str
 
 
 @dataclass(frozen=True)
@@ -140,6 +141,7 @@ def e2e_clickhouse_connection_settings(
                 port=port,
                 username=CLICKHOUSE_USERNAME,
                 password=CLICKHOUSE_PASSWORD,
+                container_id=container.get_wrapped_container().id,
             )
     except DockerException as error:
         pytest.skip(f"Docker is not available for ClickHouse E2E tests: {error}")
@@ -169,6 +171,7 @@ def isolated_e2e_clickhouse_connection_settings(
                 port=port,
                 username=CLICKHOUSE_USERNAME,
                 password=CLICKHOUSE_PASSWORD,
+                container_id=container.get_wrapped_container().id,
             )
     except DockerException as error:
         pytest.skip(f"Docker is not available for ClickHouse E2E tests: {error}")

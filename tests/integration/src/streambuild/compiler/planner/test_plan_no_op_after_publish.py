@@ -17,7 +17,6 @@ from streambuild.compiler.planner.constants import (
 from streambuild.compiler.planner.main.load_actual_state import load_actual_state
 from streambuild.compiler.planner.main.plan_deployment import plan_deployment
 from streambuild.compiler.planner.models import ActualState, DeploymentPlan, PlannedObjectChange
-from streambuild.executor.backfill.main.execute_backfill import execute_backfill
 from streambuild.executor.backfill.models import BackfillExecutionResult
 from streambuild.executor.publish.main.execute_publish import execute_publish
 from streambuild.executor.publish.models import PublishRequest, PublishResult
@@ -44,6 +43,7 @@ from tests.integration.src.streambuild.executor.backfill.helpers import (
     build_raw_orders_row,
     build_scalar_replay_compiled_pipeline,
     build_scalar_replay_request,
+    execute_backfill,
     require_managed_source,
 )
 

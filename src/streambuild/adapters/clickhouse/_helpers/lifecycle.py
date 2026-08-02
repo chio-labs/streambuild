@@ -14,14 +14,12 @@ from streambuild.adapter.constants import (
 from streambuild.adapter.exceptions import AdapterRelationNotFoundError, AdapterResultError
 from streambuild.adapter.models import (
     AdapterBindingReplacementRequest,
-    AdapterBindingReplacementResult,
     AdapterDeploymentInventory,
     AdapterDeploymentRecord,
     AdapterMetadataObjectKey,
     AdapterPreparedObjectMapping,
     AdapterPublishEventRecord,
     AdapterRelationCleanupRequest,
-    AdapterRelationCleanupResult,
     AdapterStableBinding,
     AdapterStableBindingRemoval,
     AdapterStableView,
@@ -79,13 +77,14 @@ def _load_deployment_rows(
         return ()
 
 
-def cleanup_clickhouse_relations(
+def render_clickhouse_relation_cleanup(
     *, connection: AdapterConnection, request: AdapterRelationCleanupRequest
-) -> AdapterRelationCleanupResult:
-    """Drop every requested ClickHouse relation synchronously."""
+) -> tuple[str, ...]:
+    """Render synchronous drops after guarding every relation against active use."""
 
-    relation_name: str
     catalog: CatalogSnapshot = connection.load_catalog(request.database)
+    statements: list[str] = []
+    relation_name: str
     for relation_name in request.relation_names:
         current_state: InspectedManagedTableState = connection.inspect_managed_table_state(
             request.database
@@ -103,35 +102,36 @@ def cleanup_clickhouse_relations(
             if relation is not None and relation.engine == CLICKHOUSE_VIEW_ENGINE
             else "TABLE"
         )
-        connection.command(
-            f"DROP {relation_kind} IF EXISTS {request.database}.{relation_name} SYNC"
+        statements.append(
+            f"DROP {relation_kind} IF EXISTS {request.database}.{relation_name} SYNC;"
         )
-    return AdapterRelationCleanupResult(relation_names=request.relation_names)
+    return tuple(statements)
 
 
-def replace_clickhouse_stable_bindings(
+def render_clickhouse_stable_binding_replacement(
     *, connection: AdapterConnection, request: AdapterBindingReplacementRequest
-) -> AdapterBindingReplacementResult:
-    """Replace each requested ClickHouse view and report actual atomicity."""
+) -> tuple[str, ...]:
+    """Render exact ClickHouse stable-binding replacements and removals."""
 
+    statements: list[str] = []
     binding: AdapterStableBinding
     for binding in request.bindings:
-        connection.realize_resource(
+        rendered_binding: str = connection.render_resource(
             database=binding.database,
             resource=AdapterStableView(
                 name=binding.logical_name,
                 target_relation_name=binding.physical_name,
             ),
         )
+        statements.append(_terminate_sql(rendered_binding))
     removal: AdapterStableBindingRemoval
     for removal in request.removals:
-        connection.command(f"DROP VIEW IF EXISTS {removal.database}.{removal.logical_name} SYNC")
-    return AdapterBindingReplacementResult(
-        bindings=request.bindings,
-        per_relation_atomic_replace=connection.capabilities.per_relation_atomic_replace,
-        graph_atomic_publish=connection.capabilities.graph_atomic_publish,
-        removals=request.removals,
-    )
+        statements.append(f"DROP VIEW IF EXISTS {removal.database}.{removal.logical_name} SYNC;")
+    return tuple(statements)
+
+
+def _terminate_sql(statement: str) -> str:
+    return f"{statement.rstrip().rstrip(';')};"
 
 
 def _load_publish_rows(

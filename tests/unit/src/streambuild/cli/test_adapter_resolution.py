@@ -240,25 +240,11 @@ def test_given_cli_connection_options_when_rendering_then_credentials_are_not_ex
     "test_case",
     [
         CliModeGateErrorTestCase(
-            description="rejects direct build when virtual environments are enabled",
-            argv=("stb", "build"),
-            project_file_contents=_VIRTUAL_ENVIRONMENT_PROJECT_CONFIG,
-            expected_error_fragment=(
-                "stb build is unavailable while virtual environments are enabled"
-            ),
-        ),
-        CliModeGateErrorTestCase(
-            description="rejects backfill when virtual environments are omitted",
-            argv=("stb", "backfill"),
-            project_file_contents=_DIRECT_PROJECT_CONFIG,
-            expected_error_fragment="stb backfill requires virtual environments to be enabled",
-        ),
-        CliModeGateErrorTestCase(
-            description="rejects audit backfill when virtual environments are omitted",
-            argv=("stb", "audit", "backfill"),
+            description="rejects deployment audit when virtual environments are omitted",
+            argv=("stb", "audit", "deployment"),
             project_file_contents=_DIRECT_PROJECT_CONFIG,
             expected_error_fragment=(
-                "stb audit backfill requires virtual environments to be enabled"
+                "stb audit deployment requires virtual environments to be enabled"
             ),
         ),
         CliModeGateErrorTestCase(
@@ -337,10 +323,10 @@ def test_given_mode_specific_command_when_mode_conflicts_then_it_fails_before_co
     [
         CliModeOverrideTestCase(
             description="local override enables virtual environment lifecycle",
-            argv=("stb", "backfill"),
+            argv=("stb", "build"),
             project_file_contents=_DIRECT_PROJECT_CONFIG,
             local_file_contents="[settings]\nvirtual_environments = true\n",
-            expected_handler_name="run_backfill",
+            expected_handler_name="run_build",
             expected_exit_code=0,
             expected_handler_call_count=1,
         ),

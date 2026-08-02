@@ -24,7 +24,7 @@ from streambuild.cli.audit_backfill.main.render_ambiguous_deployment_message imp
 from streambuild.cli.audit_backfill.main.render_audit_backfill_result import (
     render_audit_backfill_result,
 )
-from streambuild.cli.backfill.main.render_backfill_result import render_backfill_result
+from streambuild.cli.build.main.render_virtual_build_result import render_virtual_build_result
 from streambuild.cli.plan.main.render_direct_plan_text import render_direct_plan_text
 from streambuild.cli.plan.main.render_plan_result import render_plan_result
 from streambuild.cli.publish.main.render_publish_result import render_publish_result
@@ -82,7 +82,7 @@ def render_direct_plan_preview(request: PreviewRequest) -> str:
 def render_backfill_preview(request: PreviewRequest) -> str:
     """Render the backfill preview scenario."""
 
-    return render_backfill_result(
+    return render_virtual_build_result(
         result=build_backfill_preview(),
         database=request.database,
         json_output=request.json_output,
@@ -123,7 +123,7 @@ def render_audit_ambiguous_preview(request: PreviewRequest) -> str:
     """Render the audit ambiguous preview scenario."""
 
     return render_ambiguous_deployment_message(
-        command_name="audit backfill",
+        command_name="audit deployment",
         database=request.database,
         root_names=("tbl__orders_enriched",),
         candidates=build_ambiguity_candidates(),

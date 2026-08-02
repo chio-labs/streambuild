@@ -3,23 +3,23 @@
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Mapping
 
+from streambuild.adapter.exceptions import AdapterCapabilityError
 from streambuild.adapter.models import (
     AdapterBindingReplacementRequest,
-    AdapterBindingReplacementResult,
     AdapterCapabilities,
     AdapterDeploymentInventory,
+    AdapterDeploymentReplayRequest,
     AdapterIdentity,
     AdapterManagedSource,
     AdapterMaterializedView,
     AdapterMetadataState,
+    AdapterMutationResult,
     AdapterOwnershipRecord,
+    AdapterOwnershipReplayRequest,
     AdapterQueryResult,
     AdapterReadinessRequest,
     AdapterReadinessRootObservation,
     AdapterRelationCleanupRequest,
-    AdapterRelationCleanupResult,
-    AdapterReplayRequest,
-    AdapterReplayResult,
     AdapterStableView,
     AdapterTable,
     AdapterView,
@@ -58,40 +58,36 @@ class AdapterConnection(ABC):
         """Load every durable StreamBuild ownership record for one database."""
 
     @abstractmethod
-    def record_target_ownership(
+    def render_record_target_ownership(
         self, *, database: str, records: tuple[AdapterOwnershipRecord, ...]
-    ) -> None:
-        """Durably claim every requested relation before it is created or replaced."""
+    ) -> tuple[str, ...]:
+        """Render exact SQL that durably claims the requested relations."""
 
     @abstractmethod
-    def remove_target_ownership(
+    def render_remove_target_ownership(
         self,
         *,
         database: str,
         target_database: str,
         relation_names: tuple[str, ...],
-    ) -> None:
-        """Remove durable claims for relations retired after a successful rename."""
-
-    @abstractmethod
-    def command(self, statement: str) -> None:
-        """Execute a statement that returns no result rows."""
+    ) -> tuple[str, ...]:
+        """Render exact SQL that removes retired relation claims."""
 
     @abstractmethod
     def query(self, statement: str) -> AdapterQueryResult:
         """Execute a query and return its normalized result."""
 
     @abstractmethod
+    def execute_workflow_sql(self, statement: str) -> AdapterMutationResult:
+        """Execute exact workflow mutation SQL and return warehouse evidence."""
+
+    @abstractmethod
     def capture_warehouse_timestamp(self) -> str:
         """Capture the active warehouse server's UTC millisecond timestamp."""
 
     @abstractmethod
-    def insert_rows(self, *, table: str, rows: tuple[dict[str, object], ...]) -> None:
-        """Insert row mappings into a warehouse table."""
-
-    @abstractmethod
-    def ensure_database(self, database: str) -> None:
-        """Create a database when it does not already exist."""
+    def render_ensure_database(self, database: str) -> str:
+        """Render exact SQL that creates a database when needed."""
 
     @abstractmethod
     def render_resource(
@@ -110,36 +106,32 @@ class AdapterConnection(ABC):
         """Render one neutral resource request into adapter SQL."""
 
     @abstractmethod
-    def realize_resource(
-        self,
-        *,
-        resource: (
-            AdapterManagedSource
-            | AdapterTable
-            | AdapterMaterializedView
-            | AdapterView
-            | AdapterStableView
-        ),
-        database: str,
-        if_not_exists: bool = False,
-    ) -> None:
-        """Realize one neutral resource request in the warehouse."""
+    def render_migrate_metadata_state(self, database: str) -> tuple[str, ...]:
+        """Render exact SQL for the current additive metadata migration."""
 
     @abstractmethod
-    def migrate_metadata_state(self, database: str) -> None:
-        """Apply pending additive framework metadata migrations."""
-
-    @abstractmethod
-    def persist_metadata_state(self, *, database: str, state: AdapterMetadataState) -> None:
-        """Persist one batch of adapter-neutral framework metadata."""
+    def render_persist_metadata_state(
+        self, *, database: str, state: AdapterMetadataState
+    ) -> tuple[str, ...]:
+        """Render exact SQL that persists adapter-neutral metadata."""
 
     @abstractmethod
     def load_deployment_inventory(self, database: str) -> AdapterDeploymentInventory:
         """Load persisted deployments and publish events for lifecycle cleanup."""
 
     @abstractmethod
-    def execute_replay(self, request: AdapterReplayRequest) -> AdapterReplayResult:
-        """Seed and replay one root and return the warehouse-reported outcome."""
+    def render_replay_from_ownership(self, request: AdapterOwnershipReplayRequest) -> str:
+        """Render one replay that reads its boundary from durable ownership metadata."""
+
+    def render_replay_from_deployment(
+        self, request: AdapterDeploymentReplayRequest
+    ) -> tuple[str, ...]:
+        """Render fixed-cardinality seed and replay SQL from deployment metadata."""
+
+        del request
+        raise AdapterCapabilityError(
+            f"Adapter '{self.adapter_identity.name}' cannot render deployment replay SQL"
+        )
 
     @abstractmethod
     def compare_readiness(
@@ -148,16 +140,14 @@ class AdapterConnection(ABC):
         """Compare live and staged relations for publish readiness."""
 
     @abstractmethod
-    def replace_stable_bindings(
+    def render_replace_stable_bindings(
         self, request: AdapterBindingReplacementRequest
-    ) -> AdapterBindingReplacementResult:
-        """Replace stable logical bindings and report actual atomicity."""
+    ) -> tuple[str, ...]:
+        """Render exact SQL that replaces and removes stable logical bindings."""
 
     @abstractmethod
-    def cleanup_relations(
-        self, request: AdapterRelationCleanupRequest
-    ) -> AdapterRelationCleanupResult:
-        """Remove requested physical relations and report the completed cleanup."""
+    def render_cleanup_relations(self, request: AdapterRelationCleanupRequest) -> tuple[str, ...]:
+        """Render guarded SQL that removes requested physical relations."""
 
     @abstractmethod
     def close(self) -> None:

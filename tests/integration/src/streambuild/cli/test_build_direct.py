@@ -10,6 +10,7 @@ from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import AdapterReplayRequest, CatalogRelation
 from streambuild.compiler.discovery.exceptions import PipelineDiscoveryError
 from streambuild.executor.direct.models import DirectBuildResult, DirectReplayBoundary
+from streambuild.executor.workflow.models import PublishedBuildWorkflow
 from tests.integration.src.streambuild.cli._test_types import (
     CliDirectAdoptedSourceFailureIntegrationTestCase,
     CliDirectAdoptedSourceIntegrationTestCase,
@@ -22,6 +23,7 @@ from tests.integration.src.streambuild.cli._test_types import (
     CliDirectBuildRerunIntegrationTestCase,
     CliDirectExecutionStepFailureIntegrationTestCase,
     CliDirectLandedAtClockIntegrationTestCase,
+    CliDirectManualWorkflowIntegrationTestCase,
     CliDirectRelationRenameIntegrationTestCase,
     CliDirectSelectedAuditIntegrationTestCase,
     CliDirectSelectedBuildIntegrationTestCase,
@@ -48,12 +50,14 @@ from tests.integration.src.streambuild.cli.helpers import (
     direct_owned_relation_names,
     direct_owned_replay_coverage_ranges,
     direct_relation_order_ids,
+    execute_clickhouse_client_sql,
     execute_direct_build_directly,
     execute_warehouse_statements,
     insert_landing_rows,
     insert_landing_rows_after_delay,
+    publish_direct_workflow,
     run_direct_build,
-    run_virtual_environment_backfill,
+    run_virtual_environment_build,
     stringify_warehouse_rows,
     warehouse_row_count,
     write_direct_adopted_source_project,
@@ -237,7 +241,9 @@ def test_given_retained_landing_rows_when_building_then_history_replays_and_live
         )
         _ = capsys.readouterr()
         insert_landing_rows(
-            connection=connection, database=clickhouse_database, rows=test_case.landing_rows
+            clickhouse_client=clickhouse_client,
+            database=clickhouse_database,
+            rows=test_case.landing_rows,
         )
         second_exit_code: int = run_direct_build(
             project_root=tmp_path, database=clickhouse_database, connection=connection
@@ -251,7 +257,9 @@ def test_given_retained_landing_rows_when_building_then_history_replays_and_live
             clickhouse_client=clickhouse_client, database=clickhouse_database
         )
         insert_landing_rows(
-            connection=connection, database=clickhouse_database, rows=test_case.late_landing_rows
+            clickhouse_client=clickhouse_client,
+            database=clickhouse_database,
+            rows=test_case.late_landing_rows,
         )
         final_order_ids: tuple[str, ...] = direct_build_order_ids(
             clickhouse_client=clickhouse_client, database=clickhouse_database
@@ -298,6 +306,117 @@ def test_given_retained_landing_rows_when_building_then_history_replays_and_live
 @pytest.mark.parametrize(
     "test_case",
     [
+        CliDirectManualWorkflowIntegrationTestCase(
+            description="command numbered steps and combined workflow converge identically",
+            expected_exit_code=0,
+            expected_order_ids=("order-1", "order-2"),
+            expected_owned_relations=("mv__orders_enriched", "tbl__orders_enriched"),
+            expected_replay_coverage_ranges=(("_replay_partition=0", "1", "2"),),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_published_direct_workflows_when_executing_manually_then_they_match_command(
+    test_case: CliDirectManualWorkflowIntegrationTestCase,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    numbered_database: str = f"{clickhouse_database}_steps"
+    combined_database: str = f"{clickhouse_database}_combined"
+    databases: tuple[str, ...] = (clickhouse_database, numbered_database, combined_database)
+    write_direct_adopted_source_project(
+        project_root=tmp_path,
+        source_yml=_ADOPTED_SOURCE_TEST_CASES[0].source_yml,
+        model_sql=_ADOPTED_SOURCE_TEST_CASES[0].model_sql,
+    )
+    connection: AdapterConnection = build_managed_clickhouse_client(
+        clickhouse_connection_settings,
+        database=clickhouse_database,
+    )
+    try:
+        clickhouse_client.command(f"CREATE DATABASE {numbered_database}")
+        clickhouse_client.command(f"CREATE DATABASE {combined_database}")
+        database: str
+        for database in databases:
+            clickhouse_client.command(
+                f"CREATE TABLE {database}.orders_existing "
+                "(order_id String, event_partition Int32, event_offset Int64, "
+                "event_timestamp DateTime64(3)) ENGINE = MergeTree ORDER BY order_id"
+            )
+            clickhouse_client.command(
+                f"INSERT INTO {database}.orders_existing VALUES "
+                "('order-1', 0, 1, '2026-07-28 00:00:01.000'), "
+                "('order-2', 0, 2, '2026-07-28 00:00:02.000')"
+            )
+        command_exit_code: int = run_direct_build(
+            project_root=tmp_path,
+            database=clickhouse_database,
+            connection=connection,
+        )
+        _ = capsys.readouterr()
+        numbered: PublishedBuildWorkflow = publish_direct_workflow(
+            project_root=tmp_path,
+            database=numbered_database,
+            connection=connection,
+        )
+        step_sql: tuple[str, ...] = tuple(
+            path.read_text(encoding="utf-8")
+            for path in sorted((numbered.artifact_root / "steps").iterdir())
+        )
+        step_results: tuple[tuple[int, str], ...] = tuple(
+            execute_clickhouse_client_sql(settings=clickhouse_connection_settings, sql=sql)
+            for sql in step_sql
+        )
+        combined: PublishedBuildWorkflow = publish_direct_workflow(
+            project_root=tmp_path,
+            database=combined_database,
+            connection=connection,
+        )
+        combined_sql: str = (combined.artifact_root / "workflow.sql").read_text(encoding="utf-8")
+        combined_result: tuple[int, str] = execute_clickhouse_client_sql(
+            settings=clickhouse_connection_settings,
+            sql=combined_sql,
+        )
+        order_ids: tuple[tuple[str, ...], ...] = tuple(
+            direct_build_order_ids(clickhouse_client=clickhouse_client, database=database)
+            for database in databases
+        )
+        ownership_names: tuple[tuple[str, ...], ...] = tuple(
+            direct_owned_relation_names(connection=connection, database=database)
+            for database in databases
+        )
+        coverage_ranges: tuple[tuple[tuple[str, str, str], ...], ...] = tuple(
+            direct_owned_replay_coverage_ranges(connection=connection, database=database)
+            for database in databases
+        )
+    finally:
+        clickhouse_client.command(f"DROP DATABASE IF EXISTS {numbered_database} SYNC")
+        clickhouse_client.command(f"DROP DATABASE IF EXISTS {combined_database} SYNC")
+        connection.close()
+
+    assert command_exit_code == test_case.expected_exit_code
+    assert tuple(result[0] for result in step_results) == tuple(
+        test_case.expected_exit_code for _result in step_results
+    )
+    assert combined_result[0] == test_case.expected_exit_code
+    assert combined_sql == "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in sorted((combined.artifact_root / "steps").iterdir())
+    )
+    assert order_ids == tuple(test_case.expected_order_ids for _database in databases)
+    assert ownership_names == tuple(test_case.expected_owned_relations for _database in databases)
+    assert coverage_ranges == tuple(
+        test_case.expected_replay_coverage_ranges for _database in databases
+    )
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
         CliDirectLandedAtClockIntegrationTestCase(
             description="replays server-stamped landed-at rows with an implicit warehouse cutoff",
             landing_rows=(("landed-1", 0, 1), ("landed-2", 0, 2)),
@@ -326,7 +445,7 @@ def test_given_server_stamped_landed_at_rows_when_direct_building_then_client_cl
         )
         _ = capsys.readouterr()
         insert_landing_rows(
-            connection=connection,
+            clickhouse_client=clickhouse_client,
             database=clickhouse_database,
             rows=test_case.landing_rows,
         )
@@ -394,7 +513,7 @@ def test_given_direct_owned_model_when_relation_name_changes_then_old_relation_i
             selectors=(),
         )
         insert_landing_rows(
-            connection=connection,
+            clickhouse_client=clickhouse_client,
             database=clickhouse_database,
             rows=(("order-1", 0, 1), ("order-2", 0, 2)),
         )
@@ -470,21 +589,21 @@ def test_given_multi_upstream_view_when_building_direct_then_it_is_queryable_and
     )
 
     try:
-        connection.command(
+        clickhouse_client.command(
             f"CREATE TABLE {clickhouse_database}.direct_orders_input "
             "(order_id String, customer_id UInt64, event_timestamp DateTime64(3)) "
             "ENGINE = MergeTree ORDER BY order_id"
         )
-        connection.command(
+        clickhouse_client.command(
             f"CREATE TABLE {clickhouse_database}.direct_customers_input "
             "(customer_id UInt64, customer_name String, event_timestamp DateTime64(3)) "
             "ENGINE = MergeTree ORDER BY customer_id"
         )
-        connection.command(
+        clickhouse_client.command(
             f"INSERT INTO {clickhouse_database}.direct_orders_input VALUES "
             "('order-1', 1, now64(3)), ('order-2', 2, now64(3))"
         )
-        connection.command(
+        clickhouse_client.command(
             f"INSERT INTO {clickhouse_database}.direct_customers_input VALUES "
             "(1, 'Ada', now64(3)), (2, 'Grace', now64(3))"
         )
@@ -553,6 +672,7 @@ def test_given_different_target_states_when_rebuilding_then_inclusive_source_con
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
     clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
     clickhouse_database: str,
 ) -> None:
     write_direct_build_project(project_root=tmp_path)
@@ -566,10 +686,12 @@ def test_given_different_target_states_when_rebuilding_then_inclusive_source_con
         )
         _ = capsys.readouterr()
         insert_landing_rows(
-            connection=connection, database=clickhouse_database, rows=test_case.landing_rows
+            clickhouse_client=clickhouse_client,
+            database=clickhouse_database,
+            rows=test_case.landing_rows,
         )
         execute_warehouse_statements(
-            connection=connection,
+            clickhouse_client=clickhouse_client,
             database=clickhouse_database,
             statements=test_case.pre_capture_statements,
         )
@@ -667,10 +789,12 @@ def test_given_unsafe_warehouse_state_when_building_then_it_blocks_before_teardo
         )
         _ = capsys.readouterr()
         insert_landing_rows(
-            connection=connection, database=clickhouse_database, rows=test_case.landing_rows
+            clickhouse_client=clickhouse_client,
+            database=clickhouse_database,
+            rows=test_case.landing_rows,
         )
         execute_warehouse_statements(
-            connection=connection,
+            clickhouse_client=clickhouse_client,
             database=clickhouse_database,
             statements=test_case.pre_rebuild_statements,
         )
@@ -695,7 +819,7 @@ def test_given_unsafe_warehouse_state_when_building_then_it_blocks_before_teardo
     "test_case",
     [
         CliReciprocalOwnershipIntegrationTestCase(
-            description="virtual-environment backfill refuses a direct-owned target",
+            description="virtual build refuses a direct-owned target",
             expected_exit_code=1,
             expected_error_fragment=(
                 "Virtual environments refuse to take over relations owned by direct mode"
@@ -704,7 +828,7 @@ def test_given_unsafe_warehouse_state_when_building_then_it_blocks_before_teardo
     ],
     ids=lambda case: case.description,
 )
-def test_given_direct_owned_targets_when_backfilling_then_virtual_environments_are_rejected(
+def test_given_direct_owned_targets_when_building_virtual_then_virtual_environments_are_rejected(
     test_case: CliReciprocalOwnershipIntegrationTestCase,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -721,16 +845,17 @@ def test_given_direct_owned_targets_when_backfilling_then_virtual_environments_a
             project_root=tmp_path, database=clickhouse_database, connection=connection
         )
         _ = capsys.readouterr()
-        backfill_exit_code: int = run_virtual_environment_backfill(
+        write_direct_build_project(project_root=tmp_path, virtual_environments=True)
+        virtual_build_exit_code: int = run_virtual_environment_build(
             project_root=tmp_path, database=clickhouse_database, connection=connection
         )
-        backfill_error: str = capsys.readouterr().err
+        virtual_build_error: str = capsys.readouterr().err
     finally:
         connection.close()
 
     assert build_exit_code == 0
-    assert backfill_exit_code == test_case.expected_exit_code
-    assert test_case.expected_error_fragment in backfill_error
+    assert virtual_build_exit_code == test_case.expected_exit_code
+    assert test_case.expected_error_fragment in virtual_build_error
 
 
 @pytest.mark.integration
@@ -758,7 +883,7 @@ def test_given_virtual_environment_target_when_building_direct_then_it_is_reject
     )
 
     try:
-        backfill_exit_code: int = run_virtual_environment_backfill(
+        virtual_build_exit_code: int = run_virtual_environment_build(
             project_root=tmp_path, database=clickhouse_database, connection=connection
         )
         _ = capsys.readouterr()
@@ -770,7 +895,7 @@ def test_given_virtual_environment_target_when_building_direct_then_it_is_reject
     finally:
         connection.close()
 
-    assert backfill_exit_code == 0
+    assert virtual_build_exit_code == 0
     assert build_exit_code == test_case.expected_exit_code
     assert test_case.expected_error_fragment in build_error
 
@@ -817,9 +942,11 @@ def test_given_failing_audit_when_building_then_command_fails_without_rollback(
         )
         _ = capsys.readouterr()
         insert_landing_rows(
-            connection=connection, database=clickhouse_database, rows=test_case.landing_rows
+            clickhouse_client=clickhouse_client,
+            database=clickhouse_database,
+            rows=test_case.landing_rows,
         )
-        connection.command(f"TRUNCATE TABLE {clickhouse_database}.tbl__orders_enriched")
+        clickhouse_client.command(f"TRUNCATE TABLE {clickhouse_database}.tbl__orders_enriched")
         write_direct_build_project(
             project_root=tmp_path, audit_sql_by_name=test_case.audit_sql_by_name
         )
@@ -831,7 +958,7 @@ def test_given_failing_audit_when_building_then_command_fails_without_rollback(
         )
         command_output: str = capsys.readouterr().out
         insert_landing_rows(
-            connection=connection,
+            clickhouse_client=clickhouse_client,
             database=clickhouse_database,
             rows=test_case.late_landing_rows,
         )
@@ -884,7 +1011,9 @@ def test_given_creation_failure_when_rerunning_then_the_closure_completes(
         )
         _ = capsys.readouterr()
         insert_landing_rows(
-            connection=delegate, database=clickhouse_database, rows=test_case.landing_rows
+            clickhouse_client=clickhouse_client,
+            database=clickhouse_database,
+            rows=test_case.landing_rows,
         )
         connection: AdapterConnection = FailOnceRealizationConnection(delegate)
         failed_exit_code: int = run_direct_build(
@@ -899,7 +1028,7 @@ def test_given_creation_failure_when_rerunning_then_the_closure_completes(
                 "AND name = 'tbl__orders_enriched'"
             ),
         )
-        connection.command(
+        clickhouse_client.command(
             f"ALTER TABLE {clickhouse_database}.raw__orders DELETE WHERE _replay_offset <= 1 "
             "SETTINGS mutations_sync = 2"
         )
@@ -908,7 +1037,7 @@ def test_given_creation_failure_when_rerunning_then_the_closure_completes(
         )
         retention_error: str = capsys.readouterr().err
         insert_landing_rows(
-            connection=connection,
+            clickhouse_client=clickhouse_client,
             database=clickhouse_database,
             rows=test_case.restored_landing_rows,
         )
@@ -917,7 +1046,7 @@ def test_given_creation_failure_when_rerunning_then_the_closure_completes(
         )
         _ = capsys.readouterr()
         insert_landing_rows(
-            connection=connection,
+            clickhouse_client=clickhouse_client,
             database=clickhouse_database,
             rows=test_case.late_landing_rows,
         )
@@ -970,7 +1099,9 @@ def test_given_partial_target_after_failure_when_rerunning_then_durable_coverage
         )
         _ = capsys.readouterr()
         insert_landing_rows(
-            connection=delegate, database=clickhouse_database, rows=test_case.landing_rows
+            clickhouse_client=clickhouse_client,
+            database=clickhouse_database,
+            rows=test_case.landing_rows,
         )
         connection: AdapterConnection = FailOnceReplayConnection(delegate)
         failed_exit_code: int = run_direct_build(
@@ -978,11 +1109,11 @@ def test_given_partial_target_after_failure_when_rerunning_then_durable_coverage
         )
         _ = capsys.readouterr()
         insert_landing_rows(
-            connection=connection,
+            clickhouse_client=clickhouse_client,
             database=clickhouse_database,
             rows=test_case.partial_landing_rows,
         )
-        connection.command(
+        clickhouse_client.command(
             f"ALTER TABLE {clickhouse_database}.raw__orders DELETE WHERE _replay_offset <= 1 "
             "SETTINGS mutations_sync = 2"
         )
@@ -1057,7 +1188,9 @@ def test_given_settled_graph_when_building_selected_model_then_closure_rebuilds_
         )
         _ = capsys.readouterr()
         insert_landing_rows(
-            connection=delegate, database=clickhouse_database, rows=test_case.landing_rows
+            clickhouse_client=clickhouse_client,
+            database=clickhouse_database,
+            rows=test_case.landing_rows,
         )
         prerequisite_before: tuple[str, ...] = direct_graph_order_ids(
             clickhouse_client=clickhouse_client,
@@ -1170,6 +1303,7 @@ def test_given_aggregate_root_when_building_selected_model_then_it_uses_shared_r
         _ = capsys.readouterr()
         connection: ManagedLiveInsertConnection = ManagedLiveInsertConnection(
             delegate,
+            clickhouse_client=clickhouse_client,
             database=clickhouse_database,
             rows=test_case.landing_rows,
         )
@@ -1242,7 +1376,9 @@ def test_given_partial_selected_population_when_retrying_then_closure_reconstruc
         )
         _ = capsys.readouterr()
         insert_landing_rows(
-            connection=delegate, database=clickhouse_database, rows=test_case.landing_rows
+            clickhouse_client=clickhouse_client,
+            database=clickhouse_database,
+            rows=test_case.landing_rows,
         )
         connection: FailSecondReplayOnceConnection = FailSecondReplayOnceConnection(delegate)
         failed_exit_code: int = run_direct_build(
@@ -1332,7 +1468,7 @@ def test_given_selected_execution_step_failure_when_retrying_then_result_is_exac
         )
         _ = capsys.readouterr()
         insert_landing_rows(
-            connection=delegate,
+            clickhouse_client=clickhouse_client,
             database=clickhouse_database,
             rows=(("order-1", 0, 1), ("order-2", 0, 2)),
         )
@@ -1449,7 +1585,7 @@ def test_given_selection_matrix_when_building_then_exact_closure_is_reconstructe
         )
         _ = capsys.readouterr()
         insert_landing_rows(
-            connection=delegate,
+            clickhouse_client=clickhouse_client,
             database=clickhouse_database,
             rows=(("order-1", 0, 1), ("order-2", 0, 2)),
         )
@@ -1535,6 +1671,7 @@ def test_given_selected_build_audits_when_building_then_only_covered_audits_run(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
     clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
     clickhouse_database: str,
 ) -> None:
     write_direct_selected_graph_project(project_root=tmp_path)
@@ -1548,7 +1685,7 @@ def test_given_selected_build_audits_when_building_then_only_covered_audits_run(
         )
         _ = capsys.readouterr()
         insert_landing_rows(
-            connection=delegate,
+            clickhouse_client=clickhouse_client,
             database=clickhouse_database,
             rows=(("order-1", 0, 1),),
         )
@@ -1616,11 +1753,11 @@ def test_given_adopted_source_when_building_direct_then_source_is_preserved_and_
     )
 
     try:
-        delegate.command(
+        clickhouse_client.command(
             f"CREATE TABLE {clickhouse_database}.orders_existing "
             f"({test_case.source_columns_sql}) ENGINE = MergeTree() ORDER BY order_id"
         )
-        delegate.command(
+        clickhouse_client.command(
             f"INSERT INTO {clickhouse_database}.orders_existing VALUES "
             f"{test_case.initial_values_sql}"
         )
@@ -1631,6 +1768,7 @@ def test_given_adopted_source_when_building_direct_then_source_is_preserved_and_
         )
         connection: AdoptedLiveInsertConnection = AdoptedLiveInsertConnection(
             delegate,
+            clickhouse_client=clickhouse_client,
             database=clickhouse_database,
             values_sql=test_case.live_values_sql,
         )
@@ -1764,7 +1902,7 @@ def test_given_invalid_adopted_source_when_building_then_it_rejects_before_destr
     )
 
     try:
-        delegate.command(
+        clickhouse_client.command(
             f"CREATE TABLE {clickhouse_database}.{test_case.source_table_name} "
             f"({test_case.source_columns_sql}) ENGINE = MergeTree() ORDER BY order_id"
         )
@@ -1852,7 +1990,7 @@ def test_given_conflicting_adopted_mappings_when_loading_build_then_discovery_re
     )
 
     try:
-        delegate.command(
+        clickhouse_client.command(
             f"CREATE TABLE {clickhouse_database}.{test_case.source_table_name} "
             f"({test_case.source_columns_sql}) ENGINE = MergeTree() ORDER BY order_id"
         )

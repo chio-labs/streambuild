@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 from clickhouse_connect.driver.client import Client
 
+from streambuild.adapter.constants import DEPLOYMENT_BOUNDARY_TIME_KEY
 from streambuild.compiler.compile.models import CompiledPipeline
 from streambuild.compiler.discovery.types import ReplayLineageMode
 from streambuild.executor.audit_backfill.types import AuditAssessment
@@ -17,10 +18,10 @@ from tests.e2e.src.streambuild.executor.helpers import (
     build_authored_greenfield_workflow_compiled_pipeline,
     prepare_external_source_e2e_project,
     prepare_external_source_offset_e2e_project,
-    run_streambuild_audit_backfill_cli,
-    run_streambuild_backfill_cli,
+    run_streambuild_audit_deployment_cli,
     run_streambuild_build_cli,
     run_streambuild_publish_cli,
+    run_streambuild_virtual_build_cli,
 )
 
 
@@ -61,7 +62,7 @@ def test_given_external_source_pipeline_when_running_then_it_publishes_expected_
         column_names=["order_id", "event_timestamp"],
     )
 
-    run_streambuild_backfill_cli(
+    run_streambuild_virtual_build_cli(
         project_dir=project_dir,
         host=isolated_e2e_clickhouse_connection_settings.host,
         port=isolated_e2e_clickhouse_connection_settings.port,
@@ -70,7 +71,7 @@ def test_given_external_source_pipeline_when_running_then_it_publishes_expected_
         database=isolated_e2e_clickhouse_database,
         deployment_id=test_case.deployment_id,
     )
-    audit_result: dict[str, object] = run_streambuild_audit_backfill_cli(
+    audit_result: dict[str, object] = run_streambuild_audit_deployment_cli(
         project_dir=project_dir,
         host=isolated_e2e_clickhouse_connection_settings.host,
         port=isolated_e2e_clickhouse_connection_settings.port,
@@ -142,7 +143,7 @@ def test_given_external_offset_source_pipeline_when_running_then_it_publishes_of
         column_names=["order_id", "event_partition", "event_offset", "event_timestamp"],
     )
 
-    run_streambuild_backfill_cli(
+    run_streambuild_virtual_build_cli(
         project_dir=project_dir,
         host=isolated_e2e_clickhouse_connection_settings.host,
         port=isolated_e2e_clickhouse_connection_settings.port,
@@ -154,6 +155,7 @@ def test_given_external_offset_source_pipeline_when_running_then_it_publishes_of
     watermark_rows: Sequence[Sequence[object]] = isolated_e2e_clickhouse_client.query(
         "SELECT boundary_key, cutoff_value FROM "
         f"{isolated_e2e_clickhouse_database}.streambuild_deployment_watermarks "
+        f"WHERE boundary_key != '{DEPLOYMENT_BOUNDARY_TIME_KEY}' "
         "ORDER BY boundary_key"
     ).result_rows
     run_streambuild_publish_cli(

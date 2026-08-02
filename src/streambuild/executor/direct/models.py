@@ -12,6 +12,7 @@ from streambuild.adapter.models import (
 from streambuild.compiler.discovery.types import ReplayLineageMode
 from streambuild.compiler.pipeline.models import RealizedProject
 from streambuild.compiler.planner.models import DirectPlan
+from streambuild.executor.auditing.models import SqlAuditRunResult
 
 
 @dataclass(frozen=True)
@@ -25,6 +26,17 @@ class DirectBuildRequest:
     tool_version: str
     stabilization_seconds: float = 5.0
     boundary_time: str | None = None
+    audits: tuple[DirectBuildAudit, ...] = ()
+
+
+@dataclass(frozen=True)
+class DirectBuildAudit:
+    """One selected direct audit with refs resolved before workflow assembly."""
+
+    name: str
+    query: str
+    severity: str
+    description: str | None
 
 
 @dataclass(frozen=True)
@@ -74,3 +86,11 @@ class DirectBuildResult:
     boundary_time: str
     boundaries: tuple[DirectReplayBoundary, ...]
     replay_results: tuple[DirectRootReplayResult, ...]
+
+
+@dataclass(frozen=True)
+class DirectBuildExecutionResult:
+    """Direct build and audit evidence decoded from one workflow execution."""
+
+    build_result: DirectBuildResult
+    audit_result: SqlAuditRunResult

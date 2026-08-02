@@ -2,15 +2,19 @@ import pytest
 
 from streambuild.adapter.exceptions import AdapterResultError
 from streambuild.adapter.models import (
+    AdapterIdentity,
     AdapterRelationCleanupRequest,
+    CatalogIdentity,
+    CatalogSnapshot,
     InspectedActiveTableBinding,
     InspectedManagedTableState,
 )
-from streambuild.adapters.clickhouse._helpers.lifecycle import cleanup_clickhouse_relations
 from tests.unit.src.streambuild.adapters.clickhouse._test_types import (
     ClickHouseCleanupProtectionTestCase,
 )
-from tests.unit.src.streambuild.cli.helpers import RecordingAdapterConnection
+from tests.unit.src.streambuild.adapters.clickhouse.helpers import (
+    GuardedRenderingClickHouseConnection,
+)
 
 
 @pytest.mark.parametrize(
@@ -27,7 +31,15 @@ from tests.unit.src.streambuild.cli.helpers import RecordingAdapterConnection
 def test_given_active_relation_when_cleaning_clickhouse_then_it_fails_before_drop(
     test_case: ClickHouseCleanupProtectionTestCase,
 ) -> None:
-    connection: RecordingAdapterConnection = RecordingAdapterConnection(
+    connection: GuardedRenderingClickHouseConnection = GuardedRenderingClickHouseConnection(
+        catalog=CatalogSnapshot(
+            identity=CatalogIdentity(
+                adapter=AdapterIdentity(name="clickhouse"),
+                database="analytics",
+            ),
+            warehouse_timezone="UTC",
+            relations=(),
+        ),
         managed_table_state=InspectedManagedTableState(
             active_bindings=(
                 InspectedActiveTableBinding(
@@ -37,16 +49,15 @@ def test_given_active_relation_when_cleaning_clickhouse_then_it_fails_before_dro
                 ),
             ),
             physical_candidates=(),
-        )
+        ),
     )
 
     with pytest.raises(AdapterResultError, match=test_case.expected_error_fragment):
-        cleanup_clickhouse_relations(
-            connection=connection,
-            request=AdapterRelationCleanupRequest(
+        connection.render_cleanup_relations(
+            AdapterRelationCleanupRequest(
                 database="analytics",
                 relation_names=(test_case.active_relation_name,),
-            ),
+            )
         )
 
-    assert connection.statements == []
+    assert connection.inspection_count == 1

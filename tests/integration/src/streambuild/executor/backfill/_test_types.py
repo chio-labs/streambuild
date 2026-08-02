@@ -249,7 +249,7 @@ class BackfillAfterDeletedStagedTableIntegrationTestCase:
     deployment_id: str
     created_at: str
     boundary_time: str
-    expected_error_fragment: str
+    expected_recreated_relation_name: str
 
 
 @dataclass(frozen=True)
@@ -258,7 +258,7 @@ class PersistWatermarksWithoutMetadataTableIntegrationTestCase:
     deployment_id: str
     created_at: str
     boundary_time: str
-    expected_error_fragment: str
+    expected_watermark_table_count: int
 
 
 @dataclass(frozen=True)

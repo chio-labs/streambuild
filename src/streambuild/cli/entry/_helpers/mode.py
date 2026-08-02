@@ -43,13 +43,13 @@ def _is_virtual_environment_only(*, args: argparse.Namespace) -> bool:
     command: CliCommand = CliCommand(args.command)
     return command in VIRTUAL_ENVIRONMENT_ONLY_COMMANDS or (
         command == CliCommand.AUDIT
-        and getattr(args, "audit_command", None) == CliSubcommand.BACKFILL
+        and getattr(args, "audit_command", None) == CliSubcommand.DEPLOYMENT
     )
 
 
 def _command_display(*, args: argparse.Namespace) -> str:
     if args.command == CliCommand.AUDIT:
-        return "audit backfill"
+        return "audit deployment"
     if args.command == CliCommand.REPAIR:
         return "repair active-view"
     return str(args.command)

@@ -85,7 +85,7 @@ def run_audit_backfill(
         )
     except AdapterWarehouseError as error:
         rendered_error: str | None = render_expected_warehouse_error(
-            command_name="audit backfill",
+            command_name="audit deployment",
             database=database,
             error=error,
         )

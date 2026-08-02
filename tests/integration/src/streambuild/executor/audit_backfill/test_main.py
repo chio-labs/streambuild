@@ -12,7 +12,6 @@ from streambuild.executor.audit_backfill.models import (
     RootAuditResult,
 )
 from streambuild.executor.audit_backfill.types import AuditAssessment
-from streambuild.executor.backfill.main.execute_backfill import execute_backfill
 from tests.integration.src.streambuild.adapters.clickhouse.helpers import (
     render_create_kafka_table_ddl,
     render_create_materialized_view_ddl,
@@ -43,6 +42,7 @@ from tests.integration.src.streambuild.executor.backfill.helpers import (
     build_scalar_replay_request,
     build_scalar_target_insert_select_sql,
     build_target_insert_select_sql,
+    execute_backfill,
     require_managed_source,
     require_model_resources,
 )

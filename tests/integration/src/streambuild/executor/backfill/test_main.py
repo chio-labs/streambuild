@@ -16,23 +16,18 @@ from streambuild.compiler.planner.constants import (
 )
 from streambuild.compiler.planner.models import (
     DeploymentPlan,
-    DeploymentWatermarkRecord,
     RebuildSubtree,
 )
 from streambuild.compiler.planner.types import RebuildExecutionMode
-from streambuild.executor.backfill.main.execute_backfill import (
-    execute_backfill,
-    execute_backfill_bootstrap,
-)
 from streambuild.executor.backfill.models import (
     BackfillBootstrapRequest,
     BackfillBootstrapResult,
     BackfillExecutionResult,
     RootBackfillReport,
 )
-from streambuild.executor.population.exceptions import PopulationExecutionError
 from streambuild.executor.publish.main.execute_publish import execute_publish
 from streambuild.executor.publish.models import PublishRequest
+from streambuild.executor.workflow.exceptions import WorkflowExecutionError
 from tests.integration.src.streambuild.adapters.clickhouse.helpers import (
     render_create_kafka_table_ddl,
     render_create_materialized_view_ddl,
@@ -96,14 +91,11 @@ from tests.integration.src.streambuild.executor.backfill.helpers import (
     build_reference_join_replay_request,
     build_scalar_replay_compiled_pipeline,
     build_scalar_replay_request,
-    execute_offset_replay,
-    execute_scalar_replay,
-    persist_deployment_watermarks,
+    execute_backfill,
+    execute_backfill_bootstrap,
     prepare_live_landing_objects,
     require_managed_source,
     require_model_resources,
-    resolve_offset_watermarks,
-    resolve_scalar_watermarks,
     run_bounded_preservation_matrix_scenario,
     run_start_time_replay_scenario,
 )
@@ -549,7 +541,10 @@ def test_given_scalar_replay_mode_when_executing_then_it_persists_watermarks_and
     assert result.bootstrap.deployment_id == test_case.deployment_id
     assert result.boundary_time == test_case.boundary_time
     assert result.bootstrap.root_reports[0].replay_strategy == "create_from_scratch"
-    assert watermark_rows == [(test_case.expected_boundary_key, test_case.boundary_time)]
+    assert set(watermark_rows) == {
+        (test_case.expected_boundary_key, test_case.boundary_time),
+        ("__streambuild_boundary_time", test_case.boundary_time),
+    }
     assert shadow_rows == [(order_id,) for order_id in test_case.expected_shadow_order_ids]
     assert tuple(replay.written_rows for replay in result.replay_results) == (
         test_case.expected_replay_written_rows
@@ -628,7 +623,7 @@ def test_given_nonempty_offset_input_without_cutoff_when_replaying_then_populati
     )
 
     try:
-        with pytest.raises(PopulationExecutionError, match=test_case.expected_error_fragment):
+        with pytest.raises(WorkflowExecutionError, match=test_case.expected_error_fragment):
             execute_backfill(
                 request=build_offset_replay_request(
                     database=clickhouse_database,
@@ -732,7 +727,7 @@ def test_given_nonempty_scalar_input_without_cutoff_when_replaying_then_populati
     )
 
     try:
-        with pytest.raises(PopulationExecutionError, match=test_case.expected_error_fragment):
+        with pytest.raises(WorkflowExecutionError, match=test_case.expected_error_fragment):
             execute_backfill(
                 request=build_scalar_replay_request(
                     database=clickhouse_database,
@@ -810,7 +805,7 @@ def test_given_nonempty_scalar_input_without_cutoff_when_replaying_then_populati
             live_raw_rows=(),
             expected_watermark_rows=(),
             expected_shadow_order_ids=(),
-            expected_replay_written_rows=(),
+            expected_replay_written_rows=(0,),
         ),
     ],
     ids=lambda case: case.description,
@@ -903,7 +898,10 @@ def test_given_offset_replay_mode_when_executing_then_it_persists_partition_wate
     assert result.bootstrap.deployment_id == test_case.deployment_id
     assert result.boundary_time == test_case.boundary_time
     assert result.bootstrap.root_reports[0].replay_strategy == "create_from_scratch"
-    assert watermark_rows == list(test_case.expected_watermark_rows)
+    assert watermark_rows == [
+        ("__streambuild_boundary_time", test_case.boundary_time),
+        *test_case.expected_watermark_rows,
+    ]
     assert shadow_rows == [(order_id,) for order_id in test_case.expected_shadow_order_ids]
     assert tuple(replay.written_rows for replay in result.replay_results) == (
         test_case.expected_replay_written_rows
@@ -1256,7 +1254,10 @@ def test_given_external_source_offset_replay_when_executing_then_it_uses_declare
     assert result.bootstrap.deployment_id == test_case.deployment_id
     assert result.boundary_time == test_case.boundary_time
     assert result.bootstrap.root_reports[0].replay_strategy == "create_from_scratch"
-    assert watermark_rows == list(test_case.expected_watermark_rows)
+    assert watermark_rows == [
+        ("__streambuild_boundary_time", test_case.boundary_time),
+        *test_case.expected_watermark_rows,
+    ]
     assert shadow_rows == [(order_id,) for order_id in test_case.expected_shadow_order_ids]
 
 
@@ -1346,7 +1347,10 @@ def test_given_external_source_cursor_replay_when_executing_then_it_replays_by_c
         result.bootstrap.deployment_plan.rebuild_subtrees[0].forced_start_time
         == test_case.start_time
     )
-    assert watermark_rows == [("_replay_cursor", test_case.expected_cutoff_value)]
+    assert set(watermark_rows) == {
+        ("_replay_cursor", test_case.expected_cutoff_value),
+        ("__streambuild_boundary_time", result.boundary_time),
+    }
     assert shadow_rows == [(order_id,) for order_id in test_case.expected_shadow_order_ids]
 
 
@@ -1993,31 +1997,28 @@ def test_given_unseeded_bounded_aggregate_offset_replay_when_executing_then_it_r
                     subtree,
                     execution_mode=REBUILD_EXECUTION_MODE_UNSEEDED_BOUNDED,
                     configured_backfill_mode="bounded",
-                    execution_lookback_seconds=1,
+                    forced_start_time=(
+                        datetime.strptime(test_case.changed_boundary_time, "%Y-%m-%d %H:%M:%S.%f")
+                        - timedelta(milliseconds=test_case.lower_bound_offset_millis)
+                    ).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
+                    execution_lookback_seconds=None,
                 )
                 for subtree in bootstrap_result.deployment_plan.rebuild_subtrees
             ),
         )
-        deployment_watermarks: tuple[DeploymentWatermarkRecord, ...] = resolve_offset_watermarks(
+        _ = execute_backfill(
+            request=BackfillBootstrapRequest(
+                desired_state=changed_desired_state,
+                default_database=clickhouse_database,
+                metadata_database=clickhouse_database,
+                replay_lineage_mode="offsets",
+                confirmed_plan=unseeded_plan,
+                deployment_id=test_case.changed_deployment_id,
+                created_at=test_case.created_at,
+                boundary_time=test_case.changed_boundary_time,
+                stabilization_seconds=0.0,
+            ),
             client=managed_client,
-            deployment_id=test_case.changed_deployment_id,
-            deployment_plan=unseeded_plan,
-            desired_state=changed_desired_state,
-            default_database=clickhouse_database,
-            boundary_time=test_case.changed_boundary_time,
-        )
-        persist_deployment_watermarks(
-            client=managed_client,
-            metadata_database=clickhouse_database,
-            deployment_watermarks=deployment_watermarks,
-        )
-        execute_offset_replay(
-            client=managed_client,
-            deployment_plan=unseeded_plan,
-            desired_state=changed_desired_state,
-            default_database=clickhouse_database,
-            deployment_watermarks=deployment_watermarks,
-            boundary_time=test_case.changed_boundary_time,
         )
         clickhouse_client.insert(
             table=f"{clickhouse_database}.{require_managed_source(compiled_pipeline).raw_table.name}",
@@ -2397,26 +2398,19 @@ def test_given_unseeded_bounded_scalar_replay_when_executing_then_it_replays_onl
                 for subtree in bootstrap_result.deployment_plan.rebuild_subtrees
             ),
         )
-        deployment_watermarks: tuple[DeploymentWatermarkRecord, ...] = resolve_scalar_watermarks(
-            deployment_id=test_case.changed_deployment_id,
-            deployment_plan=unseeded_plan,
-            desired_state=changed_desired_state,
-            replay_lineage_mode="timestamp",
-            boundary_time=test_case.changed_boundary_time,
-        )
-        persist_deployment_watermarks(
+        _ = execute_backfill(
+            request=BackfillBootstrapRequest(
+                desired_state=changed_desired_state,
+                default_database=clickhouse_database,
+                metadata_database=clickhouse_database,
+                replay_lineage_mode="timestamp",
+                confirmed_plan=unseeded_plan,
+                deployment_id=test_case.changed_deployment_id,
+                created_at=test_case.created_at,
+                boundary_time=test_case.changed_boundary_time,
+                stabilization_seconds=0.0,
+            ),
             client=managed_client,
-            metadata_database=clickhouse_database,
-            deployment_watermarks=deployment_watermarks,
-        )
-        execute_scalar_replay(
-            client=managed_client,
-            deployment_plan=unseeded_plan,
-            desired_state=changed_desired_state,
-            default_database=clickhouse_database,
-            replay_lineage_mode="timestamp",
-            deployment_watermarks=deployment_watermarks,
-            boundary_time=test_case.changed_boundary_time,
         )
         clickhouse_client.insert(
             table=f"{clickhouse_database}.{require_managed_source(compiled_pipeline).raw_table.name}",
@@ -2577,26 +2571,19 @@ def test_given_unseeded_bounded_offset_replay_when_executing_then_it_replays_onl
                 for subtree in bootstrap_result.deployment_plan.rebuild_subtrees
             ),
         )
-        deployment_watermarks: tuple[DeploymentWatermarkRecord, ...] = resolve_offset_watermarks(
+        _ = execute_backfill(
+            request=BackfillBootstrapRequest(
+                desired_state=changed_desired_state,
+                default_database=clickhouse_database,
+                metadata_database=clickhouse_database,
+                replay_lineage_mode="offsets",
+                confirmed_plan=unseeded_plan,
+                deployment_id=test_case.changed_deployment_id,
+                created_at=test_case.created_at,
+                boundary_time=test_case.changed_boundary_time,
+                stabilization_seconds=0.0,
+            ),
             client=managed_client,
-            deployment_id=test_case.changed_deployment_id,
-            deployment_plan=unseeded_plan,
-            desired_state=changed_desired_state,
-            default_database=clickhouse_database,
-            boundary_time=test_case.changed_boundary_time,
-        )
-        persist_deployment_watermarks(
-            client=managed_client,
-            metadata_database=clickhouse_database,
-            deployment_watermarks=deployment_watermarks,
-        )
-        execute_offset_replay(
-            client=managed_client,
-            deployment_plan=unseeded_plan,
-            desired_state=changed_desired_state,
-            default_database=clickhouse_database,
-            deployment_watermarks=deployment_watermarks,
-            boundary_time=test_case.changed_boundary_time,
         )
         clickhouse_client.insert(
             table=f"{clickhouse_database}.{require_managed_source(compiled_pipeline).raw_table.name}",
@@ -3304,16 +3291,16 @@ def test_given_mixed_root_state_when_backfilling_then_it_reports_per_root_strate
     "test_case",
     [
         BackfillAfterDeletedStagedTableIntegrationTestCase(
-            description="fails predictably when rerunning after only the staged table was deleted",
+            description="recreates a deleted staged table when rerunning the unpublished candidate",
             deployment_id="20260409T231000Z_ab12cd",
             created_at="2026-04-09 23:10:00.123",
             boundary_time="2026-04-09 23:10:00.000",
-            expected_error_fragment="already exists",
+            expected_recreated_relation_name=("tbl__orders_enriched__20260409T231000Z_ab12cd"),
         )
     ],
     ids=lambda case: case.description,
 )
-def test_given_deleted_staged_table_after_bootstrap_when_rerunning_then_backfill_fails(
+def test_given_deleted_staged_table_after_bootstrap_when_rerunning_then_candidate_is_recreated(
     test_case: BackfillAfterDeletedStagedTableIntegrationTestCase,
     clickhouse_connection_settings: ClickHouseConnectionSettings,
     clickhouse_client: Client,
@@ -3383,19 +3370,28 @@ def test_given_deleted_staged_table_after_bootstrap_when_rerunning_then_backfill
         clickhouse_client.command(
             f"DROP TABLE {clickhouse_database}.tbl__orders_enriched__{test_case.deployment_id}"
         )
-        with pytest.raises(Exception, match=test_case.expected_error_fragment):
-            execute_backfill(
-                request=build_scalar_replay_request(
-                    database=clickhouse_database,
-                    deployment_id=test_case.deployment_id,
-                    created_at=test_case.created_at,
-                    boundary_time=test_case.boundary_time,
-                    replay_lineage_mode="timestamp",
-                ),
-                client=managed_client,
-            )
+        _ = execute_backfill(
+            request=build_scalar_replay_request(
+                database=clickhouse_database,
+                deployment_id=test_case.deployment_id,
+                created_at=test_case.created_at,
+                boundary_time=test_case.boundary_time,
+                replay_lineage_mode="timestamp",
+            ),
+            client=managed_client,
+        )
+        recreated_rows: tuple[tuple[object, ...], ...] = tuple(
+            tuple(row)
+            for row in clickhouse_client.query(
+                "SELECT name FROM system.tables "
+                f"WHERE database = '{clickhouse_database}' "
+                f"AND name = '{test_case.expected_recreated_relation_name}'"
+            ).result_rows
+        )
     finally:
         managed_client.close()
+
+    assert recreated_rows == ((test_case.expected_recreated_relation_name,),)
 
 
 @pytest.mark.integration
@@ -3403,16 +3399,16 @@ def test_given_deleted_staged_table_after_bootstrap_when_rerunning_then_backfill
     "test_case",
     [
         PersistWatermarksWithoutMetadataTableIntegrationTestCase(
-            description="fails when the watermark metadata table is deleted before persistence",
+            description="recreates a deleted watermark metadata table before persistence",
             deployment_id="20260409T232000Z_ab12cd",
             created_at="2026-04-09 23:20:00.123",
             boundary_time="2026-04-09 23:20:00.000",
-            expected_error_fragment="streambuild_deployment_watermarks",
+            expected_watermark_table_count=1,
         )
     ],
     ids=lambda case: case.description,
 )
-def test_given_deleted_watermark_table_when_persisting_backfill_watermarks_then_it_fails_explicitly(
+def test_given_deleted_watermark_table_when_replaying_then_workflow_recreates_metadata(
     test_case: PersistWatermarksWithoutMetadataTableIntegrationTestCase,
     clickhouse_connection_settings: ClickHouseConnectionSettings,
     clickhouse_client: Client,
@@ -3460,24 +3456,25 @@ def test_given_deleted_watermark_table_when_persisting_backfill_watermarks_then_
         clickhouse_client.command(
             f"DROP TABLE {clickhouse_database}.streambuild_deployment_watermarks"
         )
-        deployment_watermarks: tuple[DeploymentWatermarkRecord, ...] = resolve_scalar_watermarks(
+        request: BackfillBootstrapRequest = build_scalar_replay_request(
+            database=clickhouse_database,
             deployment_id=test_case.deployment_id,
-            deployment_plan=bootstrap_result.deployment_plan,
-            desired_state=build_scalar_replay_request(
-                database=clickhouse_database,
-                deployment_id=test_case.deployment_id,
-                created_at=test_case.created_at,
-                boundary_time=test_case.boundary_time,
-                replay_lineage_mode="timestamp",
-            ).desired_state,
-            replay_lineage_mode="timestamp",
+            created_at=test_case.created_at,
             boundary_time=test_case.boundary_time,
+            replay_lineage_mode="timestamp",
         )
-        with pytest.raises(Exception, match=test_case.expected_error_fragment):
-            persist_deployment_watermarks(
-                client=managed_client,
-                metadata_database=clickhouse_database,
-                deployment_watermarks=deployment_watermarks,
-            )
+        _ = execute_backfill(
+            request=replace(
+                request,
+                confirmed_plan=bootstrap_result.deployment_plan,
+            ),
+            client=managed_client,
+        )
+        watermark_table_rows: Sequence[Sequence[object]] = clickhouse_client.query(
+            "SELECT count() FROM system.tables WHERE database = "
+            f"'{clickhouse_database}' AND name = 'streambuild_deployment_watermarks'"
+        ).result_rows
     finally:
         managed_client.close()
+
+    assert int(str(watermark_table_rows[0][0])) == test_case.expected_watermark_table_count

@@ -2,46 +2,52 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.cli.build.constants import STREAMBUILD_TOOL_VERSION
-from streambuild.cli.build.models import BuildCommandOptions, BuildPreviewContext
-from streambuild.cli.entry.constants import AFFIRMATIVE_RESPONSES
-from streambuild.executor.direct.main.execute_direct_build import execute_direct_build
-from streambuild.executor.direct.models import DirectBuildRequest, DirectBuildResult
+from streambuild.cli.build._helpers.confirmation import confirm_build
+from streambuild.cli.build.models import BuildCommandOptions, DirectWorkflowPreparation
+from streambuild.cli.workflow_artifacts.main._publish_build_workflow import publish_build_workflow
+from streambuild.executor.direct.main.build_direct_execution_result import (
+    build_direct_execution_result,
+)
+from streambuild.executor.direct.models import (
+    DirectBuildExecutionResult,
+)
+from streambuild.executor.workflow.exceptions import WorkflowExecutionError
+from streambuild.executor.workflow.main.execute_build_workflow import execute_build_workflow
+from streambuild.executor.workflow.models import (
+    PublishedBuildWorkflow,
+    WorkflowExecutionResult,
+)
 
 
 def execute_confirmed_direct_build(
     *,
-    preview: BuildPreviewContext,
+    preparation: DirectWorkflowPreparation,
     options: BuildCommandOptions,
     client: AdapterConnection,
-    plan_text: str,
-) -> DirectBuildResult | None:
+) -> DirectBuildExecutionResult | None:
     """Show the destructive plan, require confirmation, then build."""
 
-    _announce_plan(options=options, plan_text=plan_text)
-    if not _approved(options=options):
+    if not confirm_build(options=options, plan_text=preparation.plan_text):
         print("Build cancelled.")
         return None
-    return execute_direct_build(
-        request=DirectBuildRequest(
-            plan=preview.plan,
-            realized_project=preview.analysis.realized_project,
-            database=preview.database,
-            metadata_database=preview.metadata_database,
-            tool_version=STREAMBUILD_TOOL_VERSION,
-        ),
-        client=client,
+    published_workflow: PublishedBuildWorkflow = publish_build_workflow(
+        target_dir=options.pipelines_root.parent / "target",
+        workflow=preparation.workflow,
     )
-
-
-def _announce_plan(*, options: BuildCommandOptions, plan_text: str) -> None:
-    if options.json_output:
-        return
-    print(plan_text)
-
-
-def _approved(*, options: BuildCommandOptions) -> bool:
-    if options.auto_approve:
-        return True
-    return input("Proceed with build? [y/N] ").strip().lower() in AFFIRMATIVE_RESPONSES
+    try:
+        execution: WorkflowExecutionResult = execute_build_workflow(
+            published_workflow=published_workflow,
+            connection=client,
+        )
+    except WorkflowExecutionError as error:
+        if not error.failed_step_id.startswith("audit_"):
+            raise error.cause from error
+        return build_direct_execution_result(
+            request=preparation.request,
+            execution=cast(WorkflowExecutionResult, error.partial_result),
+            failed_audit_step_id=error.failed_step_id,
+        )
+    return build_direct_execution_result(request=preparation.request, execution=execution)

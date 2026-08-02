@@ -56,7 +56,7 @@ def test_given_terminal_view_when_running_vde_lifecycle_then_publish_and_cleanup
 
     try:
         prepare_virtual_environment_view_sources(
-            connection=connection,
+            clickhouse_client=clickhouse_client,
             database=clickhouse_database,
         )
 
@@ -64,6 +64,7 @@ def test_given_terminal_view_when_running_vde_lifecycle_then_publish_and_cleanup
             project_root=tmp_path,
             database=clickhouse_database,
             connection=connection,
+            clickhouse_client=clickhouse_client,
         )
         execute_publish(
             request=PublishRequest(
@@ -86,6 +87,7 @@ def test_given_terminal_view_when_running_vde_lifecycle_then_publish_and_cleanup
             project_root=tmp_path,
             database=clickhouse_database,
             connection=connection,
+            clickhouse_client=clickhouse_client,
         )
         settled_watermark_count: int = deployment_watermark_count(
             connection=connection,
@@ -101,6 +103,7 @@ def test_given_terminal_view_when_running_vde_lifecycle_then_publish_and_cleanup
             project_root=tmp_path,
             database=clickhouse_database,
             connection=connection,
+            clickhouse_client=clickhouse_client,
         )
         execute_publish(
             request=PublishRequest(
@@ -122,6 +125,7 @@ def test_given_terminal_view_when_running_vde_lifecycle_then_publish_and_cleanup
             project_root=tmp_path,
             database=clickhouse_database,
             connection=connection,
+            clickhouse_client=clickhouse_client,
         )
         execute_publish(
             request=PublishRequest(
@@ -166,9 +170,9 @@ def test_given_terminal_view_when_running_vde_lifecycle_then_publish_and_cleanup
         )
         == test_case.expected_initial_mapping_types
     )
-    assert initial_watermark_count == 1
+    assert initial_watermark_count == 2
     assert settled_deployment.prepared_object_mappings == ()
-    assert settled_watermark_count == 0
+    assert settled_watermark_count == 1
     assert revised_deployment.selected_root_keys[0].object_type == "view"
     assert revised_deployment.deployment_id in janitor_result.deleted_deployment_ids
     assert revised_physical_name in janitor_result.deleted_object_names
@@ -210,13 +214,14 @@ def test_given_published_vde_models_when_relation_names_change_then_aliases_are_
 
     try:
         prepare_virtual_environment_view_sources(
-            connection=connection,
+            clickhouse_client=clickhouse_client,
             database=clickhouse_database,
         )
         initial_deployment: AdapterDeploymentRecord = run_new_virtual_environment_deployment(
             project_root=tmp_path,
             database=clickhouse_database,
             connection=connection,
+            clickhouse_client=clickhouse_client,
         )
         execute_publish(
             request=PublishRequest(
@@ -239,6 +244,7 @@ def test_given_published_vde_models_when_relation_names_change_then_aliases_are_
             project_root=tmp_path,
             database=clickhouse_database,
             connection=connection,
+            clickhouse_client=clickhouse_client,
         )
         execute_publish(
             request=PublishRequest(

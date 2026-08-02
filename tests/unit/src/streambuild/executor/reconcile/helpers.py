@@ -1,3 +1,5 @@
+from streambuild.adapter.models import AdapterMetadataState
+from streambuild.adapters.clickhouse._helpers.metadata import render_clickhouse_metadata_state
 from streambuild.compiler.compile.models import (
     Column,
     DesiredMaterializedView,
@@ -13,6 +15,17 @@ from streambuild.compiler.planner.models import (
     ActualState,
     ActualTable,
 )
+from tests.unit.src.streambuild.cli.helpers import RecordingAdapterConnection
+
+
+class ReconcileWorkflowAdapterConnection(RecordingAdapterConnection):
+    def render_migrate_metadata_state(self, database: str) -> tuple[str, ...]:
+        return (f"CREATE DATABASE IF NOT EXISTS {database};",)
+
+    def render_persist_metadata_state(
+        self, *, database: str, state: AdapterMetadataState
+    ) -> tuple[str, ...]:
+        return render_clickhouse_metadata_state(database=database, state=state)
 
 
 def build_matching_reconcile_states() -> tuple[DesiredState, ActualState]:

@@ -3,6 +3,9 @@ from collections.abc import Sequence
 from pathlib import Path
 from threading import Barrier
 
+import clickhouse_connect
+from clickhouse_connect.driver.client import Client
+
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import (
     AdapterConnectionConfig,
@@ -110,6 +113,12 @@ def integer_rows(rows: Sequence[Sequence[object]]) -> tuple[tuple[int, ...], ...
     return tuple(converted_rows)
 
 
+def execute_rendered_statements(*, client: Client, statements: tuple[str, ...]) -> None:
+    statement: str
+    for statement in statements:
+        _ = client.command(statement)
+
+
 def run_metadata_migration(
     *,
     connection_settings: ClickHouseConnectionSettings,
@@ -125,11 +134,21 @@ def run_metadata_migration(
             database=database,
         )
     )
+    raw_client: Client = clickhouse_connect.get_client(
+        host=connection_settings.host,
+        port=connection_settings.port,
+        username=connection_settings.username,
+        password=connection_settings.password,
+    )
     _ = start_barrier.wait()
     try:
-        connection.migrate_metadata_state(database)
+        execute_rendered_statements(
+            client=raw_client,
+            statements=connection.render_migrate_metadata_state(database),
+        )
     finally:
         connection.close()
+        raw_client.close()
 
 
 def ownership_summaries(

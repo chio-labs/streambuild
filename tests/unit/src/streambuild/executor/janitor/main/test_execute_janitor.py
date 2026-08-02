@@ -24,15 +24,13 @@ from streambuild.executor.janitor.models import (
 from tests.unit.src.streambuild.cli.helpers import RecordingAdapterConnection
 from tests.unit.src.streambuild.executor.janitor.main._test_types import (
     JanitorAdapterCleanupTestCase,
-    JanitorCleanupResultTestCase,
     JanitorConcurrentActivationTestCase,
     JanitorRollbackSafetyTestCase,
     JanitorUnsafeMappingTestCase,
 )
 from tests.unit.src.streambuild.executor.janitor.main.helpers import (
-    BindingRemovalRecordingAdapterConnection,
+    JanitorWorkflowRecordingAdapterConnection,
     SequencedManagedStateAdapterConnection,
-    WrongCleanupAdapterConnection,
 )
 
 
@@ -105,6 +103,10 @@ from tests.unit.src.streambuild.executor.janitor.main.helpers import (
                 relation_names=("tbl__orders_enriched__20260727T110000Z_stale1",),
             ),
             expected_binding_request=AdapterBindingReplacementRequest(bindings=()),
+            expected_statements=(
+                "DROP TABLE IF EXISTS "
+                "analytics.tbl__orders_enriched__20260727T110000Z_stale1 SYNC;",
+            ),
             expected_result=JanitorApplyResult(
                 database="analytics",
                 retention_days=7,
@@ -202,6 +204,10 @@ from tests.unit.src.streambuild.executor.janitor.main.helpers import (
                     ),
                 ),
             ),
+            expected_statements=(
+                "DROP VIEW IF EXISTS analytics.orders_legacy SYNC;",
+                "DROP TABLE IF EXISTS analytics.orders_legacy__20260727T110000Z_stale1 SYNC;",
+            ),
             expected_result=JanitorApplyResult(
                 database="analytics",
                 retention_days=0,
@@ -215,9 +221,11 @@ from tests.unit.src.streambuild.executor.janitor.main.helpers import (
 def test_given_active_and_stale_deployments_when_applying_janitor_then_adapter_cleans_only_stale(
     test_case: JanitorAdapterCleanupTestCase,
 ) -> None:
-    connection: BindingRemovalRecordingAdapterConnection = BindingRemovalRecordingAdapterConnection(
-        managed_table_state=test_case.managed_table_state,
-        deployment_inventory=test_case.inventory,
+    connection: JanitorWorkflowRecordingAdapterConnection = (
+        JanitorWorkflowRecordingAdapterConnection(
+            managed_table_state=test_case.managed_table_state,
+            deployment_inventory=test_case.inventory,
+        )
     )
 
     result: JanitorApplyResult = cast(
@@ -230,7 +238,7 @@ def test_given_active_and_stale_deployments_when_applying_janitor_then_adapter_c
 
     assert connection.cleanup_requests == [test_case.expected_cleanup_request]
     assert connection.binding_requests == [test_case.expected_binding_request]
-    assert connection.statements == []
+    assert tuple(connection.statements) == test_case.expected_statements
     assert result == test_case.expected_result
 
 
@@ -332,6 +340,9 @@ def test_given_active_and_stale_deployments_when_applying_janitor_then_adapter_c
                 relation_names=("orders__20260727T120000Z_newer1",),
             ),
             expected_binding_request=AdapterBindingReplacementRequest(bindings=()),
+            expected_statements=(
+                "DROP TABLE IF EXISTS analytics.orders__20260727T120000Z_newer1 SYNC;",
+            ),
             expected_result=JanitorApplyResult(
                 database="analytics",
                 retention_days=0,
@@ -349,8 +360,8 @@ def test_given_newer_then_older_publish_when_running_janitor_then_rollback_targe
         managed_table_state=test_case.managed_table_state,
         deployment_inventory=test_case.inventory,
     )
-    apply_connection: BindingRemovalRecordingAdapterConnection = (
-        BindingRemovalRecordingAdapterConnection(
+    apply_connection: JanitorWorkflowRecordingAdapterConnection = (
+        JanitorWorkflowRecordingAdapterConnection(
             managed_table_state=test_case.managed_table_state,
             deployment_inventory=test_case.inventory,
         )
@@ -374,62 +385,8 @@ def test_given_newer_then_older_publish_when_running_janitor_then_rollback_targe
     )
     assert apply_connection.cleanup_requests == [test_case.expected_cleanup_request]
     assert apply_connection.binding_requests == [test_case.expected_binding_request]
+    assert tuple(apply_connection.statements) == test_case.expected_statements
     assert apply_result == test_case.expected_result
-
-
-@pytest.mark.parametrize(
-    "test_case",
-    [
-        JanitorCleanupResultTestCase(
-            description="rejects cleanup result that omits requested stale relation",
-            inventory=AdapterDeploymentInventory(
-                deployments=(
-                    AdapterDeploymentRecord(
-                        deployment_id="20260727T110000Z_stale1",
-                        created_at="2020-01-01 00:00:00.000",
-                        status="backfilling",
-                        replay_lineage_mode="offsets",
-                        selected_root_keys=(),
-                        warning_codes=(),
-                        prepared_object_mappings=(
-                            AdapterPreparedObjectMapping(
-                                logical_key=AdapterMetadataObjectKey(
-                                    database=None,
-                                    object_type="table",
-                                    name="tbl__orders_enriched",
-                                ),
-                                physical_name=("tbl__orders_enriched__20260727T110000Z_stale1"),
-                                logical_model_name="orders_enriched",
-                            ),
-                        ),
-                    ),
-                ),
-                publish_events=(),
-            ),
-            request=JanitorRequest(
-                database="analytics",
-                metadata_database="metadata",
-                retention_days=7,
-                apply=True,
-            ),
-            returned_relation_names=(),
-            expected_error_fragment=("Adapter cleanup result did not match requested relations"),
-        )
-    ],
-    ids=lambda case: case.description,
-)
-def test_given_adapter_omits_cleanup_result_when_applying_janitor_then_it_rejects_success(
-    test_case: JanitorCleanupResultTestCase,
-) -> None:
-    connection: WrongCleanupAdapterConnection = WrongCleanupAdapterConnection(
-        deployment_inventory=test_case.inventory,
-        returned_relation_names=test_case.returned_relation_names,
-    )
-
-    with pytest.raises(AdapterResultError, match=test_case.expected_error_fragment):
-        execute_janitor(request=test_case.request, client=connection)
-
-    assert len(connection.cleanup_requests) == 1
 
 
 @pytest.mark.parametrize(
@@ -555,3 +512,5 @@ def test_given_target_becomes_active_when_applying_janitor_then_cleanup_aborts(
         execute_janitor(request=test_case.request, client=connection)
 
     assert connection.cleanup_requests == []
+    assert connection.binding_requests == []
+    assert connection.statements == []

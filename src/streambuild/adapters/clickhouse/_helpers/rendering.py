@@ -14,6 +14,12 @@ from streambuild.adapter.models import (
 )
 
 
+def render_clickhouse_ensure_database(database: str) -> str:
+    """Render one manually executable ClickHouse database creation statement."""
+
+    return f"CREATE DATABASE IF NOT EXISTS {database};"
+
+
 def render_clickhouse_resource(
     *,
     resource: (
@@ -39,11 +45,13 @@ def render_clickhouse_resource(
             if_not_exists=if_not_exists,
         )
     if isinstance(resource, AdapterTable):
-        return _render_table(resource=resource, database=database)
+        return _render_table(resource=resource, database=database, if_not_exists=if_not_exists)
     if isinstance(resource, AdapterMaterializedView):
-        return _render_materialized_view(resource=resource, database=database)
+        return _render_materialized_view(
+            resource=resource, database=database, if_not_exists=if_not_exists
+        )
     if isinstance(resource, AdapterView):
-        return _render_view(resource=resource, database=database)
+        return _render_view(resource=resource, database=database, if_not_exists=if_not_exists)
     return _render_stable_view(resource=resource, database=database)
 
 
@@ -92,12 +100,12 @@ def _render_managed_source(
     )
 
 
-def _render_table(*, resource: AdapterTable, database: str) -> str:
+def _render_table(*, resource: AdapterTable, database: str, if_not_exists: bool) -> str:
     column_definitions: str = ",\n    ".join(
         _render_column_definition(column) for column in resource.columns
     )
     ddl: str = (
-        f"CREATE TABLE {database}.{resource.name} (\n"
+        f"CREATE TABLE {'IF NOT EXISTS ' if if_not_exists else ''}{database}.{resource.name} (\n"
         f"    {column_definitions}\n"
         f") ENGINE = {resource.engine}\n"
         f"ORDER BY ({', '.join(resource.order_by)})"
@@ -114,24 +122,30 @@ def _render_table(*, resource: AdapterTable, database: str) -> str:
     return ddl
 
 
-def _render_materialized_view(*, resource: AdapterMaterializedView, database: str) -> str:
+def _render_materialized_view(
+    *, resource: AdapterMaterializedView, database: str, if_not_exists: bool
+) -> str:
     rendered_query: str = resource.database_template.replace(
         f"{ADAPTER_DATABASE_PLACEHOLDER}.",
         f"{database}.",
     )
     return (
-        f"CREATE MATERIALIZED VIEW {database}.{resource.name}\n"
+        f"CREATE MATERIALIZED VIEW {'IF NOT EXISTS ' if if_not_exists else ''}"
+        f"{database}.{resource.name}\n"
         f"TO {database}.{resource.target_relation_name} AS\n"
         f"{rendered_query}"
     )
 
 
-def _render_view(*, resource: AdapterView, database: str) -> str:
+def _render_view(*, resource: AdapterView, database: str, if_not_exists: bool) -> str:
     rendered_query: str = resource.database_template.replace(
         f"{ADAPTER_DATABASE_PLACEHOLDER}.",
         f"{database}.",
     )
-    return f"CREATE VIEW {database}.{resource.name} AS\n{rendered_query}"
+    return (
+        f"CREATE VIEW {'IF NOT EXISTS ' if if_not_exists else ''}{database}.{resource.name} AS\n"
+        f"{rendered_query}"
+    )
 
 
 def _render_stable_view(*, resource: AdapterStableView, database: str) -> str:

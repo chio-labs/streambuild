@@ -122,21 +122,6 @@ class MetadataStateInsertStatementTestCase:
 
 
 @dataclass(frozen=True)
-class MetadataMigrationIdempotenceTestCase:
-    description: str
-    expected_version_insert_count: int
-    expected_database_ensure_count: int
-    expected_schema_version_ddl_fragment: str
-
-
-@dataclass(frozen=True)
-class MetadataMigrationInterruptionTestCase:
-    description: str
-    expected_version_inserts_before_recovery: int
-    expected_version_inserts_after_recovery: int
-
-
-@dataclass(frozen=True)
 class RenderOffsetReplayStatementTestCase:
     description: str
     source_table_name: str
@@ -187,6 +172,14 @@ class RenderAggregateScalarPhysicalBoundaryTestCase:
 
 
 @dataclass(frozen=True)
+class RenderDeploymentLookbackTestCase:
+    description: str
+    expected_boundary_lookup_fragment: str
+    expected_root_filter_fragment: str
+    expected_root_filter_count: int
+
+
+@dataclass(frozen=True)
 class ClickHouseConnectionConfigErrorTestCase:
     description: str
     values: tuple[tuple[str, object], ...]
@@ -217,3 +210,27 @@ class ClickHouseModelRealizationTestCase:
     expected_relation_name: str
     expected_resource_names: tuple[str, ...]
     expected_source_relation_name: str
+
+
+@dataclass(frozen=True)
+class RenderMetadataMutationSqlTestCase:
+    description: str
+    expected_database_sql: str
+    expected_migration_statement_count: int
+    expected_migration_last_sql: str
+    expected_persistence_first_sql: str
+
+
+@dataclass(frozen=True)
+class RenderOwnershipMutationSqlTestCase:
+    description: str
+    expected_record_sql: str
+    expected_removal_sql: str
+
+
+@dataclass(frozen=True)
+class RenderLifecycleMutationSqlTestCase:
+    description: str
+    expected_binding_sql: tuple[str, ...]
+    expected_cleanup_sql: tuple[str, ...]
+    expected_inspection_count: int
