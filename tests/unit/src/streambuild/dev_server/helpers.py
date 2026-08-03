@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import (
+    AdapterCapabilities,
     AdapterDeploymentInventory,
     AdapterIdentity,
     AdapterMutationResult,
@@ -153,8 +154,18 @@ class FakeAdapterConnection(AdapterConnection):
         raise NotImplementedError
 
     @property
-    def capabilities(self) -> object:
-        raise NotImplementedError
+    def capabilities(self) -> AdapterCapabilities:
+        return AdapterCapabilities(
+            virtual_environments=False,
+            managed_source_kinds=frozenset({"kafka"}),
+            replay_boundary_modes=frozenset(),
+            history_prefix_seed=False,
+            stable_logical_bindings=False,
+            per_relation_atomic_replace=False,
+            graph_atomic_publish=False,
+            set_difference_comparison=True,
+            direct_rebuild=True,
+        )
 
     def capture_warehouse_timestamp(self) -> str:
         return self._warehouse_timestamp
@@ -175,7 +186,7 @@ class FakeAdapterConnection(AdapterConnection):
         return self._catalog
 
     def load_deployment_inventory(self, database: str) -> AdapterDeploymentInventory:
-        raise NotImplementedError
+        return AdapterDeploymentInventory(deployments=(), publish_events=())
 
     def load_target_ownership(self, database: str) -> tuple[AdapterOwnershipRecord, ...]:
         return self._ownership
@@ -317,6 +328,10 @@ def build_fake_state_connection() -> FakeAdapterConnection:
             rows=((0, 91822, _STATE_NEWEST_EVENT),),
             column_names=("partition", "max_offset", "newest"),
         ),
+        (
+            "SELECT count() AS present FROM system.tables "
+            "WHERE database = 'analytics' AND name = '_streambuild_invocations'"
+        ): AdapterQueryResult(rows=((0,),), column_names=("present",)),
     }
     return FakeAdapterConnection(
         catalog=catalog,
@@ -324,3 +339,10 @@ def build_fake_state_connection() -> FakeAdapterConnection:
         results_by_query=results,
         warehouse_timestamp=_STATE_WAREHOUSE_NOW,
     )
+
+
+class FakeEmptyResultConnection(FakeAdapterConnection):
+    """Returns a zero count for every query; audits therefore pass."""
+
+    def query(self, statement: str) -> AdapterQueryResult:
+        return AdapterQueryResult(rows=((0,),), column_names=("value",))

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from pydantic import BaseModel
+
 from streambuild.compiler.pipeline.models import CompilationTimings, CompileAnalysis
 from streambuild.dev_server.types import CompileStateKind
 
@@ -30,3 +32,10 @@ class CompileOutcome:
     analysis: CompileAnalysis | None = None
     timings: CompilationTimings | None = None
     error: CompileErrorInfo | None = None
+
+
+class ChecksRunRequest(BaseModel):
+    """POST /api/checks/run body."""
+
+    kind: str
+    name: str

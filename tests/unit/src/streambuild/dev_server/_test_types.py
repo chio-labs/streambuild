@@ -47,3 +47,21 @@ class StateFieldTestCase:
     expected_source_rows_per_second: float
     expected_partition_max_offset: int
     expected_bucket_count: int
+
+
+@dataclass(frozen=True)
+class PlanEndpointTestCase:
+    description: str
+    selectors: tuple[str, ...]
+    expected_status: int
+    expected_entry_names: tuple[str, ...]
+    expected_command: str
+
+
+@dataclass(frozen=True)
+class ChecksRunTestCase:
+    description: str
+    kind: str
+    name: str
+    expected_status: int
+    expected_passed: bool
