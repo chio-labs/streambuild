@@ -12,6 +12,7 @@ SENSITIVE_SOURCE_SETTING_FRAGMENTS: tuple[str, ...] = (
     "secret",
     "token",
 )
+STATIC_ASSETS_DIRECTORY_NAME: str = "static"
 THROUGHPUT_WINDOW_LADDER: tuple[tuple[int, int], ...] = (
     (3600, 60),
     (86400, 1800),

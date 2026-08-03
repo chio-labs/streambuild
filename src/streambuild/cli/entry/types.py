@@ -7,6 +7,7 @@ class CliCommand(StrEnum):
     """One top-level `stb` subcommand as argparse reports it."""
 
     DISCOVER = "discover"
+    DEV = "dev"
     COMPILE = "compile"
     TEST = "test"
     PLAN = "plan"

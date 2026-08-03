@@ -5,6 +5,7 @@ from pathlib import Path
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.cli.build.models import BuildCommandOptions
+from streambuild.cli.dev.models import DevCommandOptions
 from streambuild.cli.entry._helpers.compiler_profile import build_compiler_adapter_profile
 from streambuild.cli.entry.exceptions import CliUserError
 from streambuild.cli.entry.models import (
@@ -14,6 +15,7 @@ from streambuild.cli.entry.models import (
 from streambuild.cli.entry.types import CliCommand, CliSubcommand
 from streambuild.cli.plan.models import PlanCommandOptions
 from streambuild.compiler.compile.models import CompilerAdapterProfile
+from streambuild.dev_server.constants import DEFAULT_DEV_SERVER_HOST, DEFAULT_DEV_SERVER_PORT
 
 
 def dispatch_cli_command(
@@ -47,6 +49,18 @@ def dispatch_cli_command(
     client: AdapterConnection = _resolve_connection(
         adapter_connection=adapter_connection,
     )
+    if args.command == CliCommand.DEV:
+        return handlers.run_dev(
+            options=DevCommandOptions(
+                pipelines_root=_require_pipelines_root(invocation),
+                database=invocation.database,
+                host=str(getattr(args, "ui_host", DEFAULT_DEV_SERVER_HOST)),
+                port=int(getattr(args, "ui_port", DEFAULT_DEV_SERVER_PORT)),
+            ),
+            client=client,
+            loaded_project=invocation.loaded_project,
+            adapter_profile=adapter_profile,
+        )
     if args.command == CliCommand.TEST:
         return handlers.run_test(
             pipelines_root=invocation.pipelines_root,

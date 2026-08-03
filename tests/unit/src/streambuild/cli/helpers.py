@@ -44,6 +44,7 @@ from streambuild.cli.audit.main._run_audit import run_audit
 from streambuild.cli.audit_backfill.main._run_audit_backfill import run_audit_backfill
 from streambuild.cli.build.main._run_build import run_build
 from streambuild.cli.compile.main._run_compile import run_compile
+from streambuild.cli.dev.main._run_dev import run_dev
 from streambuild.cli.discover.main._run_discover import run_discover
 from streambuild.cli.doctor.main._run_doctor import run_doctor
 from streambuild.cli.entry.models import CliEntrypointHandlers
@@ -370,6 +371,7 @@ def handlers_with_overrides(**overrides: object) -> CliEntrypointHandlers:
             run_janitor=run_janitor,
             run_doctor=run_doctor,
             run_repair_active_view=run_repair_active_view,
+            run_dev=run_dev,
         ),
         **overrides,
     )

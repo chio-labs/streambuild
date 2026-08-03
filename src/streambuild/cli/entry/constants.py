@@ -8,6 +8,7 @@ ACTIVE_VIEW_SUBCOMMAND: str = CliSubcommand.ACTIVE_VIEW
 
 COMMANDS_REQUIRING_PIPELINES_ROOT: frozenset[CliCommand] = frozenset(
     {
+        CliCommand.DEV,
         CliCommand.DISCOVER,
         CliCommand.COMPILE,
         CliCommand.TEST,

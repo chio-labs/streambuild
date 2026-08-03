@@ -3,6 +3,11 @@ import json
 from pathlib import Path
 from typing import Any
 
+from streambuild.dev_server.constants import (
+    DEFAULT_DEV_SERVER_HOST,
+    DEFAULT_DEV_SERVER_PORT,
+)
+
 
 def build_cli_parser() -> argparse.ArgumentParser:
     parser: argparse.ArgumentParser = argparse.ArgumentParser(
@@ -70,6 +75,8 @@ def build_cli_parser() -> argparse.ArgumentParser:
         type=Path,
         help="Replace the project-level target/ artifact root",
     )
+
+    _add_dev_parser(subparsers=subparsers)
 
     plan_parser: argparse.ArgumentParser = subparsers.add_parser(
         "plan",
@@ -382,6 +389,31 @@ def _add_compilation_config_args_to_commands(
     ):
         _add_compilation_config_args(parser=command_parser)
     _add_compilation_config_args(parser=audit_deployment_parser, suppress_defaults=True)
+
+
+def _add_dev_parser(*, subparsers: argparse._SubParsersAction) -> None:
+    dev_parser: argparse.ArgumentParser = subparsers.add_parser(
+        "dev",
+        help="Serve the local read-only web UI for this project",
+        description=(
+            "Compile the project, then serve the StreamBuild UI and its JSON API "
+            "until interrupted. Read-only: nothing is ever executed against the "
+            "warehouse beyond queries."
+        ),
+    )
+    _add_project_dir_arg(parser=dev_parser)
+    _add_clickhouse_args(parser=dev_parser)
+    dev_parser.add_argument(
+        "--ui-host",
+        default=DEFAULT_DEV_SERVER_HOST,
+        help="Interface the dev server binds (default 127.0.0.1)",
+    )
+    dev_parser.add_argument(
+        "--ui-port",
+        type=int,
+        default=DEFAULT_DEV_SERVER_PORT,
+        help="Port the dev server binds (default 8000)",
+    )
 
 
 def _add_clickhouse_args(
