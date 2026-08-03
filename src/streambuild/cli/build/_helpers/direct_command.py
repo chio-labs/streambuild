@@ -1,6 +1,12 @@
 """Execute one confirmed direct-mode build command."""
 
+import sys
+from pathlib import Path
+
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.exceptions import AdapterError
+from streambuild.adapter.models import AdapterInvocationRecord, AdapterNodeResultRecord
+from streambuild.cli.build._helpers.audits import select_direct_build_audits
 from streambuild.cli.build._helpers.execution import execute_confirmed_direct_build
 from streambuild.cli.build._helpers.rendering import (
     render_direct_build_json,
@@ -11,11 +17,26 @@ from streambuild.cli.build.models import (
     DirectBuildPreviewContext,
     DirectWorkflowPreparation,
 )
-from streambuild.executor.auditing.models import SqlAuditRunResult
+from streambuild.compiler.audit_discovery.models import LoadedSqlAudit
+from streambuild.executor.auditing.models import SqlAuditResult, SqlAuditRunResult
+from streambuild.executor.auditing.types import AuditSeverity
 from streambuild.executor.direct.models import (
     DirectBuildExecutionResult,
     DirectBuildResult,
 )
+from streambuild.executor.observability.main.build_invocation_record import (
+    build_invocation_record,
+)
+from streambuild.executor.observability.main.build_node_result_record import (
+    build_node_result_record,
+)
+from streambuild.executor.observability.main.build_quality_node_identity import (
+    build_quality_node_identity,
+)
+from streambuild.executor.observability.main.persist_terminal_observations import (
+    persist_terminal_observations,
+)
+from streambuild.executor.observability.models import TerminalInvocation
 
 
 def execute_direct_build_command(
@@ -23,15 +44,52 @@ def execute_direct_build_command(
     preparation: DirectWorkflowPreparation,
     options: BuildCommandOptions,
     client: AdapterConnection,
+    started: tuple[str, str, int],
 ) -> int:
     """Confirm, execute, and audit one prepared direct build."""
 
-    execution: DirectBuildExecutionResult | None = execute_confirmed_direct_build(
-        preparation=preparation,
-        options=options,
-        client=client,
-    )
+    try:
+        execution: DirectBuildExecutionResult | None = execute_confirmed_direct_build(
+            preparation=preparation,
+            options=options,
+            client=client,
+        )
+    except AdapterError as error:
+        print(str(error), file=sys.stderr)
+        failed_invocation: AdapterInvocationRecord = _build_invocation(
+            started=started,
+            preparation=preparation,
+            options=options,
+            exit_code=1,
+            outcome="failed",
+            materialized_outcome=None,
+            audit_result=None,
+            error_message=str(error),
+        )
+        persist_terminal_observations(
+            client=client,
+            database=preparation.preview.metadata_database,
+            invocation=failed_invocation,
+            node_results=(),
+        )
+        return 1
     if execution is None:
+        invocation: AdapterInvocationRecord = _build_invocation(
+            started=started,
+            preparation=preparation,
+            options=options,
+            exit_code=1,
+            outcome="cancelled",
+            materialized_outcome=None,
+            audit_result=None,
+            error_message=None,
+        )
+        persist_terminal_observations(
+            client=client,
+            database=preparation.preview.metadata_database,
+            invocation=invocation,
+            node_results=(),
+        )
         return 1
     print(
         _rendered_result(
@@ -41,7 +99,117 @@ def execute_direct_build_command(
             audit_result=execution.audit_result,
         )
     )
-    return 1 if execution.audit_result.error_failure_count else 0
+    exit_code: int = 1 if execution.audit_result.error_failure_count else 0
+    invocation = _build_invocation(
+        started=started,
+        preparation=preparation,
+        options=options,
+        exit_code=exit_code,
+        outcome="failed" if exit_code else "succeeded",
+        materialized_outcome="applied",
+        audit_result=execution.audit_result,
+        error_message=None,
+    )
+    selected_audits: tuple[LoadedSqlAudit, ...] = select_direct_build_audits(
+        audits=preparation.preview.analysis.compiled_project.audits,
+        execution_model_names=frozenset(
+            key.name for key in preparation.preview.plan.execution_scope
+        ),
+        full_build=not preparation.preview.plan.user_scope,
+    )
+    node_results: tuple[AdapterNodeResultRecord, ...] = _direct_audit_node_results(
+        invocation=invocation,
+        audits=selected_audits,
+        audit_result=execution.audit_result,
+        project_dir=options.pipelines_root.parent,
+    )
+    persist_terminal_observations(
+        client=client,
+        database=preparation.preview.metadata_database,
+        invocation=invocation,
+        node_results=node_results,
+    )
+    return exit_code
+
+
+def _direct_audit_node_results(
+    *,
+    invocation: AdapterInvocationRecord,
+    audits: tuple[LoadedSqlAudit, ...],
+    audit_result: SqlAuditRunResult,
+    project_dir: Path,
+) -> tuple[AdapterNodeResultRecord, ...]:
+    records: list[AdapterNodeResultRecord] = []
+    audit: LoadedSqlAudit
+    result: SqlAuditResult
+    for audit, result in zip(audits, audit_result.audit_results, strict=True):
+        status: str = (
+            "error"
+            if result.error_message is not None
+            else (
+                "passed"
+                if result.passed
+                else ("warning" if result.severity == AuditSeverity.WARNING else "failed")
+            )
+        )
+        records.append(
+            build_node_result_record(
+                invocation=invocation,
+                node_kind="audit",
+                node_identity=build_quality_node_identity(
+                    project_dir=project_dir,
+                    file_path=audit.file_path,
+                    node_index=audit.audit_index,
+                ),
+                definition=audit.query,
+                status=status,
+                severity=result.severity,
+                failure_count=result.failing_row_count,
+                payload={
+                    "sample_column_names": list(result.sample_column_names),
+                    "sample_rows": [list(row) for row in result.sample_rows[:5]],
+                },
+                error_message=result.error_message,
+            )
+        )
+    return tuple(records)
+
+
+def _build_invocation(
+    *,
+    started: tuple[str, str, int],
+    preparation: DirectWorkflowPreparation,
+    options: BuildCommandOptions,
+    exit_code: int,
+    outcome: str,
+    materialized_outcome: str | None,
+    audit_result: SqlAuditRunResult | None,
+    error_message: str | None,
+) -> AdapterInvocationRecord:
+    return build_invocation_record(
+        started=started,
+        terminal=TerminalInvocation(
+            project_dir=options.pipelines_root.parent,
+            target_identity=preparation.preview.database,
+            command="build",
+            mode="direct",
+            outcome=outcome,
+            exit_code=exit_code,
+            materialized_outcome=materialized_outcome,
+            deployment_id=None,
+            workflow_id=None,
+            selected_node_count=len(preparation.preview.plan.execution_scope),
+            error_message=error_message,
+            summary={
+                "audit_error_failure_count": (
+                    audit_result.error_failure_count if audit_result is not None else 0
+                ),
+                "audit_warning_failure_count": (
+                    audit_result.warning_failure_count if audit_result is not None else 0
+                ),
+            },
+        ),
+    )
 
 
 def _rendered_result(

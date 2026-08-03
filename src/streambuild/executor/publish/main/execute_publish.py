@@ -42,6 +42,7 @@ def execute_publish(*, request: PublishRequest, client: AdapterConnection) -> Pu
         deployment_id=resolved_deployment_id,
         published_at=published_at,
         published_views=published_views,
+        database=request.default_database,
     )
     statements: tuple[WarehouseStatement, ...] = assemble_publish_workflow(
         client=client,

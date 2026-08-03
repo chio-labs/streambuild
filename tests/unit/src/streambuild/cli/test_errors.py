@@ -62,7 +62,7 @@ from tests.unit.src.streambuild.cli._test_types import (
             description="renders missing metadata table message",
             error=AdapterRelationNotFoundError(
                 "Code: 60. DB::Exception: Unknown table expression identifier "
-                "streambuild_deployments. (UNKNOWN_TABLE)"
+                "_streambuild_virtual_deployments. (UNKNOWN_TABLE)"
             ),
             expected_fragments=(
                 "Publish could not start",

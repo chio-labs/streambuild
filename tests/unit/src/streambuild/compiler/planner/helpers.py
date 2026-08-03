@@ -9,13 +9,16 @@ from streambuild.adapter.models import (
     AdapterBindingReplacementRequest,
     AdapterCapabilities,
     AdapterDeploymentInventory,
+    AdapterDeploymentRecord,
     AdapterIdentity,
     AdapterManagedSource,
     AdapterMaterializedView,
+    AdapterMetadataObjectKey,
     AdapterMetadataState,
     AdapterMutationResult,
     AdapterOwnershipRecord,
     AdapterOwnershipReplayRequest,
+    AdapterPreparedObjectMapping,
     AdapterQueryResult,
     AdapterReadinessRequest,
     AdapterReadinessRootObservation,
@@ -96,7 +99,6 @@ from streambuild.compiler.planner.models import (
     ActualStateInspection,
     ActualTable,
     DeploymentRecord,
-    DeploymentRuntimeDetailRecord,
     DeploymentWatermarkRecord,
     DirectPlan,
     DirectRelationOperation,
@@ -307,7 +309,6 @@ def build_metadata_records() -> tuple[
     tuple[ObjectStateRecord, ...],
     tuple[DeploymentRecord, ...],
     tuple[DeploymentWatermarkRecord, ...],
-    tuple[DeploymentRuntimeDetailRecord, ...],
     tuple[PublishEventRecord, ...],
 ]:
     root_key: ObjectKey = ObjectKey(
@@ -386,21 +387,6 @@ def build_metadata_records() -> tuple[
             cutoff_value="12345",
         ),
     )
-    runtime_details: tuple[DeploymentRuntimeDetailRecord, ...] = (
-        DeploymentRuntimeDetailRecord(
-            deployment_id="20260408T130000Z_cd34ef",
-            root_key=transform_key,
-            state_kind="active_view_present",
-            replay_strategy="bounded_replay",
-            active_deployment_id="20260408T120000Z_ab12cd",
-            anchor_key=root_key,
-            anchor_physical_name="raw__orders__20260408T130000Z_ab12cd",
-            execution_mode="seeded_bounded_rebuild",
-            configured_backfill_mode="bounded",
-            execution_lookback_seconds=604800,
-            live_target_names=("tbl__orders_enriched",),
-        ),
-    )
     publish_events: tuple[PublishEventRecord, ...] = (
         PublishEventRecord(
             deployment_id="20260408T120000Z_ab12cd",
@@ -408,7 +394,7 @@ def build_metadata_records() -> tuple[
             logical_view_names=("tbl__orders_enriched",),
         ),
     )
-    return object_states, deployments, watermarks, runtime_details, publish_events
+    return object_states, deployments, watermarks, publish_events
 
 
 def build_example_desired_state() -> DesiredState:
@@ -747,6 +733,7 @@ def build_direct_snapshot(
     direct_owned_names: tuple[str, ...] = (),
     virtual_environment_owned_names: tuple[str, ...] = (),
     stable_binding_names: tuple[str, ...] = (),
+    metadata_virtual_environment_names: tuple[str, ...] = (),
     ownership_database: str = "analytics",
 ) -> DirectWarehouseSnapshot:
     """Build one immutable direct snapshot from explicit relation and ownership facts."""
@@ -782,6 +769,31 @@ def build_direct_snapshot(
                 mode=AdapterOwningMode.VIRTUAL_ENVIRONMENT,
                 database=ownership_database,
             ),
+        ),
+        deployment_inventory=AdapterDeploymentInventory(
+            deployments=(
+                AdapterDeploymentRecord(
+                    deployment_id="20260802T120000Z_metadata",
+                    created_at="2026-08-02 12:00:00.000",
+                    status="staged",
+                    replay_lineage_mode="offsets",
+                    selected_root_keys=(),
+                    warning_codes=(),
+                    prepared_object_mappings=tuple(
+                        AdapterPreparedObjectMapping(
+                            logical_key=AdapterMetadataObjectKey(
+                                database="analytics",
+                                object_type="table",
+                                name=name,
+                            ),
+                            physical_name=f"{name}__20260802T120000Z_metadata",
+                            logical_model_name=name,
+                        )
+                        for name in metadata_virtual_environment_names
+                    ),
+                ),
+            ),
+            publish_events=(),
         ),
     )
 

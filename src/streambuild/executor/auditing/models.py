@@ -21,6 +21,7 @@ class SqlAuditResult:
     sample_rows: tuple[tuple[object, ...], ...]
     description: str | None = None
     name: str | None = None
+    error_message: str | None = None
 
 
 @dataclass(frozen=True)

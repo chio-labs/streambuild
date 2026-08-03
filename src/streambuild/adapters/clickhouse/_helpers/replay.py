@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-from streambuild.adapter.constants import DEPLOYMENT_BOUNDARY_TIME_KEY
+from streambuild.adapter.constants import (
+    METADATA_DEPLOYMENT_WATERMARKS_TABLE_NAME,
+    METADATA_DEPLOYMENTS_TABLE_NAME,
+    METADATA_DIRECT_REPLAY_RANGES_TABLE_NAME,
+    METADATA_DIRECT_TARGET_EVENTS_TABLE_NAME,
+)
 from streambuild.adapter.exceptions import AdapterReplayError
 from streambuild.adapter.models import (
     AdapterDeploymentReplayRequest,
@@ -216,13 +221,13 @@ def _deployment_offset_source_sql(
 def _deployment_offset_cutoff_cte(request: AdapterDeploymentReplayRequest) -> str:
     replay: AdapterReplayRequest = request.replay
     return (
-        "SELECT toInt64(splitByChar('=', boundary_key)[2]) AS "
+        "SELECT toInt64(partition_value) AS "
         f"{_CANONICAL_REPLAY_PARTITION}, max(toInt64(cutoff_value)) AS cutoff_offset, "
         "true AS cutoff_inclusive\n"
-        f"FROM {request.metadata_database}.streambuild_deployment_watermarks FINAL\n"
+        f"FROM {request.metadata_database}.{METADATA_DEPLOYMENT_WATERMARKS_TABLE_NAME}\n"
         f"WHERE deployment_id = '{_escape_literal(request.deployment_id)}' "
         f"AND root_object_name = '{_escape_literal(replay.relations.root)}' "
-        f"AND boundary_key != '{DEPLOYMENT_BOUNDARY_TIME_KEY}'\n"
+        "AND boundary_kind = 'offsets'\n"
         f"GROUP BY {_CANONICAL_REPLAY_PARTITION}"
     )
 
@@ -275,13 +280,12 @@ def _deployment_scalar_cutoff_cte(
     *, request: AdapterDeploymentReplayRequest, column_type: str
 ) -> str:
     replay: AdapterReplayRequest = request.replay
-    boundary_key: str = _canonical_boundary_column(replay.mode)
     return (
         f"SELECT max(CAST(cutoff_value AS {column_type})) AS cutoff_value "
-        f"FROM {request.metadata_database}.streambuild_deployment_watermarks FINAL "
+        f"FROM {request.metadata_database}.{METADATA_DEPLOYMENT_WATERMARKS_TABLE_NAME} "
         f"WHERE deployment_id = '{_escape_literal(request.deployment_id)}' "
         f"AND root_object_name = '{_escape_literal(replay.relations.root)}' "
-        f"AND boundary_key = '{boundary_key}'"
+        f"AND boundary_kind = '{_escape_literal(str(replay.mode))}'"
     )
 
 
@@ -351,11 +355,10 @@ def _deployment_lookback_time_expression(request: AdapterDeploymentReplayRequest
     if replay.window.lookback_seconds is None:
         raise AdapterReplayError("Lookback deployment replay requires a duration")
     return (
-        "(SELECT toDateTime64(cutoff_value, 3, 'UTC') - "
+        "(SELECT any(boundary_time) - "
         f"toIntervalSecond({replay.window.lookback_seconds}) "
-        f"FROM {request.metadata_database}.streambuild_deployment_watermarks FINAL "
-        f"WHERE deployment_id = '{_escape_literal(request.deployment_id)}' "
-        f"AND boundary_key = '{DEPLOYMENT_BOUNDARY_TIME_KEY}')"
+        f"FROM {request.metadata_database}.{METADATA_DEPLOYMENTS_TABLE_NAME} "
+        f"WHERE deployment_id = '{_escape_literal(request.deployment_id)}')"
     )
 
 
@@ -555,12 +558,26 @@ def _render_metadata_scalar_replay(request: AdapterOwnershipReplayRequest) -> st
 def _ownership_coverage_cte(request: AdapterOwnershipReplayRequest) -> str:
     replay: AdapterReplayRequest = request.replay
     return (
-        "SELECT arrayJoin(JSONExtractArrayRaw(argMax(replay_coverage_json, updated_at))) "
-        "AS coverage\n"
-        f"FROM {request.metadata_database}.streambuild_target_ownership\n"
-        f"WHERE database_name = '{_escape_literal(replay.database)}' "
-        f"AND relation_name = '{_escape_literal(replay.relations.target)}' "
-        f"AND logical_model_name = '{_escape_literal(request.logical_model_name)}'"
+        "WITH current_target AS (SELECT argMax(tuple(event_kind, replay_set_id), "
+        "tuple(recorded_at, event_id)) AS current_state FROM "
+        f"{request.metadata_database}.{METADATA_DIRECT_TARGET_EVENTS_TABLE_NAME} "
+        f"WHERE database_name = '{_escape_literal(replay.database)}' AND relation_name = "
+        f"'{_escape_literal(replay.relations.target)}')\n"
+        "SELECT DISTINCT toJSONString(map('driving_input_relation_name', "
+        "driving_input_relation_name, "
+        "'replay_boundary_mode', replay_boundary_mode, 'boundary_key', "
+        "if(replay_boundary_mode = 'offsets', concat('_replay_partition=', partition_value), "
+        "concat('_replay_', replay_boundary_mode)), 'source_partition_column_name', "
+        "coalesce(source_partition_column_name, ''), 'source_position_column_name', "
+        "source_position_column_name, 'source_timestamp_column_name', "
+        "coalesce(source_timestamp_column_name, ''), 'lower_value', lower_value, "
+        "'upper_value', upper_value, 'replay_cutoff_value', replay_cutoff_value)) AS coverage\n"
+        f"FROM {request.metadata_database}.{METADATA_DIRECT_REPLAY_RANGES_TABLE_NAME} "
+        "CROSS JOIN current_target WHERE replay_set_id = current_target.current_state.2 "
+        f"AND target_database_name = '{_escape_literal(replay.database)}' "
+        "AND range_present AND logical_model_name = "
+        f"'{_escape_literal(request.logical_model_name)}' "
+        "AND current_target.current_state.1 != 'released'"
     )
 
 

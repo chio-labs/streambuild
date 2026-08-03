@@ -33,7 +33,6 @@ class CliVirtualBuildIntegrationTestCase:
     expected_error_fragments: tuple[str, ...]
     expected_deployment_status_rows: tuple[tuple[str, ...], ...]
     expected_selected_root_names: tuple[str, ...] = ()
-    expected_runtime_execution_modes: tuple[tuple[str, str | None], ...] = ()
     expected_absent_output_fragments: tuple[str, ...] = ()
     deployment_id: str | None = None
 
@@ -66,6 +65,8 @@ class CliTestCommandIntegrationTestCase:
     extra_sql_test_files: tuple[tuple[str, str], ...]
     expected_exit_code: int
     expected_output_fragments: tuple[str, ...]
+    expected_node_result_count: int
+    expected_invocation_outcome: str
 
 
 @dataclass(frozen=True)
@@ -78,6 +79,9 @@ class CliAuditCommandIntegrationTestCase:
     order_items_rows: tuple[tuple[str | None, float], ...]
     expected_exit_code: int
     expected_output_fragments: tuple[str, ...]
+    expected_node_result_count: int
+    expected_node_result_statuses: tuple[str, ...]
+    expected_invocation_outcome: str
 
 
 @dataclass(frozen=True)
@@ -232,6 +236,10 @@ class CliDirectBuildAuditIntegrationTestCase:
     expected_exit_code: int
     expected_stdout_fragment: str
     expected_final_order_ids: tuple[str, ...]
+    expected_audit_observation_rows: tuple[tuple[str, int, str], ...]
+    expected_final_coverage: tuple[tuple[str, str, str], ...]
+    expected_sample_query_fragment: str
+    expected_error_message_count: int
 
 
 @dataclass(frozen=True)
@@ -297,6 +305,9 @@ class CliDirectExecutionStepFailureIntegrationTestCase:
     description: str
     connection_factory: Callable[[AdapterConnection], AdapterConnection]
     expected_failure_fragment: str
+    expected_failed_invocation_count: int
+    expected_failed_mode: str
+    expected_min_selected_node_count: int
 
 
 @dataclass(frozen=True)

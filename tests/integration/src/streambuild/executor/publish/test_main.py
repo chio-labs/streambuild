@@ -52,17 +52,19 @@ from tests.integration.src.streambuild.executor.publish.helpers import (
             expected_target_table_name="tbl__orders_enriched__20260409T180000Z_ab12cd",
             expected_published_order_ids=("historical-order", "live-order"),
             expected_full_layout=(
+                ("_streambuild_direct_replay_ranges", "MergeTree"),
+                ("_streambuild_direct_target_events", "MergeTree"),
+                ("_streambuild_invocations", "MergeTree"),
+                ("_streambuild_node_results", "MergeTree"),
+                ("_streambuild_schema_versions", "MergeTree"),
+                ("_streambuild_virtual_deployments", "MergeTree"),
+                ("_streambuild_virtual_object_state", "MergeTree"),
+                ("_streambuild_virtual_publications", "MergeTree"),
+                ("_streambuild_virtual_replay_boundaries", "MergeTree"),
                 ("kafka__orders", "Kafka"),
                 ("mv__orders", "MaterializedView"),
                 ("mv__orders_enriched__20260409T180000Z_ab12cd", "MaterializedView"),
                 ("raw__orders", "MergeTree"),
-                ("streambuild_deployment_runtime_details", "ReplacingMergeTree"),
-                ("streambuild_deployment_watermarks", "ReplacingMergeTree"),
-                ("streambuild_deployments", "ReplacingMergeTree"),
-                ("streambuild_object_state_snapshots", "ReplacingMergeTree"),
-                ("streambuild_publish_history", "ReplacingMergeTree"),
-                ("streambuild_state_schema_versions", "ReplacingMergeTree"),
-                ("streambuild_target_ownership", "ReplacingMergeTree"),
                 ("tbl__orders_enriched", "View"),
                 ("tbl__orders_enriched__20260409T180000Z_ab12cd", "MergeTree"),
             ),
@@ -181,8 +183,9 @@ def test_given_greenfield_staged_deployment_when_publishing_then_it_creates_stab
         f"WHERE database = '{clickhouse_database}' ORDER BY name"
     ).result_rows
     publish_history_rows: Sequence[Sequence[object]] = clickhouse_client.query(
-        "SELECT deployment_id, logical_view_names_json FROM "
-        f"{clickhouse_database}.streambuild_publish_history "
+        "SELECT deployment_id, toJSONString(groupArray(logical_view_name)) FROM "
+        f"{clickhouse_database}._streambuild_virtual_publications "
+        "GROUP BY deployment_id, publication_id, published_at "
         "ORDER BY deployment_id, published_at"
     ).result_rows
 
@@ -389,13 +392,13 @@ def test_given_deleted_publish_metadata_when_publishing_then_it_uses_live_clickh
             client=managed_client,
         )
         clickhouse_client.command(
-            f"DROP TABLE IF EXISTS {clickhouse_database}.streambuild_deployment_watermarks"
+            f"DROP TABLE IF EXISTS {clickhouse_database}._streambuild_virtual_replay_boundaries"
         )
         clickhouse_client.command(
-            f"DROP TABLE IF EXISTS {clickhouse_database}.streambuild_deployments"
+            f"DROP TABLE IF EXISTS {clickhouse_database}._streambuild_virtual_deployments"
         )
         clickhouse_client.command(
-            f"DROP TABLE IF EXISTS {clickhouse_database}.streambuild_object_state_snapshots"
+            f"DROP TABLE IF EXISTS {clickhouse_database}._streambuild_virtual_object_state"
         )
         result: PublishResult = execute_publish(
             request=PublishRequest(

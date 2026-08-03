@@ -244,11 +244,12 @@ def test_given_conflicting_metadata_when_loading_actual_state_then_live_view_bin
         )
         clickhouse_client.command(
             "INSERT INTO "
-            f"{clickhouse_database}.streambuild_deployments "
-            "(deployment_id, created_at, status, replay_lineage_mode, selected_root_keys_json, "
-            "warning_codes_json, prepared_object_mappings_json) VALUES "
-            "('20260409T233500Z_wrong00', CAST('2026-04-09 23:35:00.123' AS DateTime64(3)), "
-            "'published', '_replay_timestamp', '[]', '[]', '[]')"
+            f"{clickhouse_database}._streambuild_virtual_deployments "
+            "(deployment_id, workflow_fingerprint, replay_lineage_mode, boundary_time, "
+            "created_at, tool_version) VALUES "
+            "('20260409T233500Z_wrong00', 'wrong', '_replay_timestamp', "
+            "CAST('2026-04-09 23:35:00.000' AS DateTime64(3)), "
+            "CAST('2026-04-09 23:35:00.123' AS DateTime64(3)), 'integration')"
         )
         actual_state: ActualState = load_actual_state(
             client=managed_client,
@@ -394,9 +395,9 @@ def test_given_mixed_root_clickhouse_state_when_loading_then_it_preserves_per_ro
         LoadActualStateWithoutMetadataIntegrationTestCase(
             description="loads active state after deleting all metadata tables",
             dropped_metadata_tables=(
-                "streambuild_object_state_snapshots",
-                "streambuild_deployments",
-                "streambuild_deployment_watermarks",
+                "_streambuild_virtual_object_state",
+                "_streambuild_virtual_deployments",
+                "_streambuild_virtual_replay_boundaries",
             ),
             expected_actual_object_names=(
                 "kafka__orders",
@@ -408,7 +409,7 @@ def test_given_mixed_root_clickhouse_state_when_loading_then_it_preserves_per_ro
         ),
         LoadActualStateWithoutMetadataIntegrationTestCase(
             description="loads active state after deleting object state metadata only",
-            dropped_metadata_tables=("streambuild_object_state_snapshots",),
+            dropped_metadata_tables=("_streambuild_virtual_object_state",),
             expected_actual_object_names=(
                 "kafka__orders",
                 "mv__orders",
@@ -533,9 +534,8 @@ ACTIVE_BASELINE_QUERY: str = (
     [
         LoadActualStateWithLatestObjectStateIntegrationTestCase(
             description="reconcile object-state overrides active deployment query baseline",
-            latest_record_deployment_id=(
-                f"{RECONCILE_DEPLOYMENT_ID_PREFIX}20260409T225500Z_ab12cd"
-            ),
+            latest_record_deployment_id="manual_reconcile_observation",
+            latest_record_state_kind="reconcile",
             latest_record_query=RECONCILE_OVERRIDE_QUERY,
             expected_materialized_view_query=RECONCILE_OVERRIDE_QUERY,
         ),
@@ -544,7 +544,10 @@ ACTIVE_BASELINE_QUERY: str = (
                 "non-reconcile latest object-state does not override active deployment query "
                 "baseline"
             ),
-            latest_record_deployment_id="20260409T225500Z_newdep0",
+            latest_record_deployment_id=(
+                f"{RECONCILE_DEPLOYMENT_ID_PREFIX}20260409T225500Z_newdep0"
+            ),
+            latest_record_state_kind="deployment",
             latest_record_query=RECONCILE_OVERRIDE_QUERY,
             expected_materialized_view_query=ACTIVE_BASELINE_QUERY,
         ),
@@ -628,26 +631,42 @@ def test_given_latest_object_state_record_when_loading_then_only_reconcile_overr
             client=managed_client,
         )
         clickhouse_client.insert(
-            table=f"{clickhouse_database}.streambuild_object_state_snapshots",
+            table=f"{clickhouse_database}._streambuild_virtual_object_state",
             data=[
                 (
                     test_case.latest_record_deployment_id,
+                    "observation-latest",
+                    test_case.latest_record_state_kind,
+                    None,
                     None,
                     "materialized_view",
                     "mv__orders_enriched",
+                    None,
+                    "mv__orders_enriched",
+                    None,
+                    "orders_enriched",
+                    False,
                     "reconcile_fp",
                     test_case.latest_record_query,
                     "2099-04-09 22:55:00.123",
                 )
             ],
             column_names=[
+                "state_id",
+                "observation_id",
+                "state_kind",
                 "deployment_id",
-                "database_name",
-                "object_type",
-                "object_name",
-                "normalized_fingerprint",
-                "normalized_query",
-                "recorded_at",
+                "logical_database_name",
+                "logical_object_type",
+                "logical_object_name",
+                "physical_database_name",
+                "physical_relation_name",
+                "logical_model_database",
+                "logical_model_name",
+                "is_selected_root",
+                "object_fingerprint",
+                "canonical_query",
+                "observed_at",
             ],
         )
         actual_state: ActualState = load_actual_state(

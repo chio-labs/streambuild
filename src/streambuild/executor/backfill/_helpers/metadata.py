@@ -2,11 +2,8 @@
 
 from dataclasses import asdict
 
+from streambuild.adapter.constants import VIRTUAL_OBJECT_STATE_KIND_DEPLOYMENT
 from streambuild.adapter.models import AdapterMetadataState
-from streambuild.compiler.compile.constants import (
-    DESIRED_OBJECT_TYPE_TABLE,
-    RAW_TABLE_NAME_PREFIX,
-)
 from streambuild.compiler.compile.models import DesiredMaterializedView, DesiredView, ObjectKey
 from streambuild.compiler.discovery.types import ReplayLineageMode
 from streambuild.compiler.planner.main.build_adapter_metadata_state import (
@@ -19,19 +16,12 @@ from streambuild.compiler.planner.main.build_normalized_fingerprint import (
 from streambuild.compiler.planner.models import (
     DeploymentPlan,
     DeploymentRecord,
-    DeploymentRuntimeDetailRecord,
     MetadataState,
     ObjectStateRecord,
     PreparedObjectMapping,
-    RebuildSubtree,
 )
 from streambuild.compiler.planner.types import DesiredObject
-from streambuild.executor.backfill._helpers.reporting import (
-    filter_root_backfill_reports_for_deployment,
-)
 from streambuild.executor.backfill.constants import DEPLOYMENT_STATUS_BACKFILLING
-from streambuild.executor.backfill.exceptions import BackfillExecutionError
-from streambuild.executor.backfill.models import RootBackfillReport
 
 
 def build_deployment_metadata_state(
@@ -41,7 +31,8 @@ def build_deployment_metadata_state(
     deployment_id: str,
     created_at: str,
     replay_lineage_mode: ReplayLineageMode,
-    root_reports: tuple[RootBackfillReport, ...],
+    workflow_fingerprint: str,
+    tool_version: str,
 ) -> AdapterMetadataState:
     """Build the complete candidate metadata batch without warehouse mutation."""
 
@@ -69,15 +60,11 @@ def build_deployment_metadata_state(
                     )
                     for prepared_object in deployment_plan.prepared_shadow_objects
                 ),
+                workflow_fingerprint=workflow_fingerprint,
+                tool_version=tool_version,
             ),
         ),
         deployment_watermarks=(),
-        deployment_runtime_details=_build_deployment_runtime_detail_records(
-            deployment_plan=deployment_plan,
-            deployment_id=deployment_id,
-            root_reports=root_reports,
-            desired_objects=desired_objects,
-        ),
         publish_events=(),
     )
     return build_adapter_metadata_state(metadata_state)
@@ -106,120 +93,8 @@ def _build_object_state_records(
                 normalized_fingerprint=build_normalized_fingerprint(asdict(desired_object.spec)),
                 normalized_query=normalized_query,
                 recorded_at=recorded_at,
+                state_kind=VIRTUAL_OBJECT_STATE_KIND_DEPLOYMENT,
             )
         )
 
     return tuple(records)
-
-
-def _build_deployment_runtime_detail_records(
-    *,
-    deployment_plan: DeploymentPlan,
-    deployment_id: str,
-    root_reports: tuple[RootBackfillReport, ...],
-    desired_objects: tuple[DesiredObject, ...],
-) -> tuple[DeploymentRuntimeDetailRecord, ...]:
-    deployment_root_reports: tuple[RootBackfillReport, ...] = (
-        filter_root_backfill_reports_for_deployment(
-            root_reports=root_reports, deployment_plan=deployment_plan
-        )
-    )
-    root_materialized_view_by_target_name: dict[str, DesiredMaterializedView] = {
-        object_.target_table_name: object_
-        for object_ in desired_objects
-        if isinstance(object_, DesiredMaterializedView)
-    }
-    active_deployment_id_by_root_key: dict[ObjectKey, str | None] = {
-        root_report.root_key: root_report.active_deployment_id
-        for root_report in deployment_root_reports
-    }
-    prepared_physical_name_by_key: dict[ObjectKey, str] = {
-        prepared_object.logical_key: prepared_object.physical_name
-        for prepared_object in deployment_plan.prepared_shadow_objects
-    }
-    records: list[DeploymentRuntimeDetailRecord] = []
-    root_report: RootBackfillReport
-    for root_report in deployment_root_reports:
-        subtree: RebuildSubtree | None = _runtime_detail_subtree_for_live_target(
-            rebuild_subtrees=deployment_plan.rebuild_subtrees,
-            live_target_key=root_report.root_key,
-        )
-        if subtree is None:
-            root_materialized_view: DesiredMaterializedView | None = (
-                root_materialized_view_by_target_name.get(root_report.root_key.name)
-            )
-            if root_materialized_view is None:
-                raise BackfillExecutionError(
-                    "Could not resolve deployment runtime detail root "
-                    f"'{root_report.root_key.name}' to a selected materialized view target"
-                )
-            anchor_key: ObjectKey = ObjectKey(
-                database=None,
-                object_type=DESIRED_OBJECT_TYPE_TABLE,
-                name=root_materialized_view.source_table_name,
-            )
-            live_target_names: tuple[str, ...] = (root_report.root_key.name,)
-            execution_mode: str | None = None
-            configured_backfill_mode: str | None = None
-            execution_lookback_seconds: int | None = None
-        else:
-            anchor_key = subtree.upstream_boundary_key
-            live_target_names = tuple(
-                sorted(
-                    {
-                        key.name
-                        for key in subtree.affected_keys
-                        if key.object_type == DESIRED_OBJECT_TYPE_TABLE
-                        and not key.name.startswith(RAW_TABLE_NAME_PREFIX)
-                    }
-                )
-            )
-            execution_mode = subtree.execution_mode
-            configured_backfill_mode = subtree.configured_backfill_mode
-            execution_lookback_seconds = subtree.execution_lookback_seconds
-        records.append(
-            DeploymentRuntimeDetailRecord(
-                deployment_id=deployment_id,
-                root_key=root_report.root_key,
-                state_kind=root_report.state_kind,
-                replay_strategy=root_report.replay_strategy,
-                active_deployment_id=active_deployment_id_by_root_key[root_report.root_key],
-                anchor_key=anchor_key,
-                anchor_physical_name=_runtime_detail_anchor_physical_name(
-                    anchor_key=anchor_key,
-                    prepared_physical_name_by_key=prepared_physical_name_by_key,
-                ),
-                execution_mode=execution_mode,
-                configured_backfill_mode=configured_backfill_mode,
-                execution_lookback_seconds=execution_lookback_seconds,
-                live_target_names=live_target_names,
-            )
-        )
-    return tuple(records)
-
-
-def _runtime_detail_subtree_for_live_target(
-    *,
-    rebuild_subtrees: tuple[RebuildSubtree, ...],
-    live_target_key: ObjectKey,
-) -> RebuildSubtree | None:
-    subtree: RebuildSubtree
-    for subtree in rebuild_subtrees:
-        if live_target_key in subtree.affected_keys:
-            return subtree
-    return None
-
-
-def _runtime_detail_anchor_physical_name(
-    *,
-    anchor_key: ObjectKey,
-    prepared_physical_name_by_key: dict[ObjectKey, str],
-) -> str | None:
-    physical_name: str | None = prepared_physical_name_by_key.get(anchor_key)
-    if physical_name is not None:
-        return physical_name
-    if anchor_key.object_type == DESIRED_OBJECT_TYPE_TABLE and anchor_key.name.startswith(
-        RAW_TABLE_NAME_PREFIX
-    ):
-        return anchor_key.name
-    return None

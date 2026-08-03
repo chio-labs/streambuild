@@ -524,13 +524,13 @@ def test_given_deleted_audit_metadata_when_auditing_then_it_uses_live_clickhouse
             client=managed_client,
         )
         clickhouse_client.command(
-            f"DROP TABLE IF EXISTS {clickhouse_database}.streambuild_deployment_watermarks"
+            f"DROP TABLE IF EXISTS {clickhouse_database}._streambuild_virtual_replay_boundaries"
         )
         clickhouse_client.command(
-            f"DROP TABLE IF EXISTS {clickhouse_database}.streambuild_deployments"
+            f"DROP TABLE IF EXISTS {clickhouse_database}._streambuild_virtual_deployments"
         )
         clickhouse_client.command(
-            f"DROP TABLE IF EXISTS {clickhouse_database}.streambuild_object_state_snapshots"
+            f"DROP TABLE IF EXISTS {clickhouse_database}._streambuild_virtual_object_state"
         )
         audit_result: AuditBackfillResult = execute_audit_backfill(
             request=AuditBackfillRequest(

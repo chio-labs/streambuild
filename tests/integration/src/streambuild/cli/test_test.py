@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
@@ -45,6 +46,8 @@ from tests.unit.src.streambuild.compiler.test_discovery.helpers import (
                 "tests/order_events/test_line_total.sql",
                 "Results: 1 passed, 0 failed",
             ),
+            expected_node_result_count=1,
+            expected_invocation_outcome="succeeded",
         ),
         CliTestCommandIntegrationTestCase(
             description="runs multiple sql tests from one file",
@@ -59,6 +62,8 @@ from tests.unit.src.streambuild.compiler.test_discovery.helpers import (
                 "tests/order_events/test_line_total.sql  [line total remains stable on repeat]",
                 "Results: 2 passed, 0 failed",
             ),
+            expected_node_result_count=2,
+            expected_invocation_outcome="succeeded",
         ),
         CliTestCommandIntegrationTestCase(
             description="renders grouped missing and unexpected rows for failures",
@@ -78,6 +83,8 @@ from tests.unit.src.streambuild.compiler.test_discovery.helpers import (
                 "Failed:",
                 "stb test tests/order_events/test_line_total.sql",
             ),
+            expected_node_result_count=1,
+            expected_invocation_outcome="failed",
         ),
         CliTestCommandIntegrationTestCase(
             description="renders grouped failures for multiple expected targets in one test",
@@ -93,6 +100,8 @@ from tests.unit.src.streambuild.compiler.test_discovery.helpers import (
                 "target: daily_revenue",
                 "stb test tests/order_events/test_line_total.sql",
             ),
+            expected_node_result_count=1,
+            expected_invocation_outcome="failed",
         ),
     ],
     ids=lambda case: case.description,
@@ -162,13 +171,24 @@ def test_given_sql_native_test_project_when_running_test_command_then_it_reports
             client=managed_client,
             loaded_project=load_project_input_for_path(path=tmp_path),
             adapter_profile=build_compiler_adapter_profile(ClickHouseAdapter()),
+            database=clickhouse_database,
         )
     finally:
         managed_client.close()
     captured: CaptureResult[str] = capsys.readouterr()
+    invocation_rows: Sequence[Sequence[object]] = clickhouse_client.query(
+        f"SELECT command, outcome FROM {clickhouse_database}._streambuild_invocations"
+    ).result_rows
+    node_result_count: int = int(
+        clickhouse_client.query(
+            f"SELECT count() FROM {clickhouse_database}._streambuild_node_results"
+        ).result_rows[0][0]
+    )
 
     assert clickhouse_client.query("SELECT 1").result_rows == [(1,)]
     assert exit_code == test_case.expected_exit_code
     expected_output_fragment: str
     for expected_output_fragment in test_case.expected_output_fragments:
         assert expected_output_fragment in captured.out
+    assert invocation_rows == [("test", test_case.expected_invocation_outcome)]
+    assert node_result_count == test_case.expected_node_result_count

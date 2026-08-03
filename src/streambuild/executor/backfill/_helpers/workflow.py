@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-import json
 import math
+from hashlib import sha256
+from importlib.metadata import version
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.constants import (
-    DEPLOYMENT_BOUNDARY_TIME_KEY,
     METADATA_DEPLOYMENT_WATERMARKS_TABLE_NAME,
     METADATA_DEPLOYMENTS_TABLE_NAME,
+    METADATA_DIRECT_TARGET_EVENTS_TABLE_NAME,
     METADATA_PUBLISH_HISTORY_TABLE_NAME,
-    METADATA_TARGET_OWNERSHIP_TABLE_NAME,
 )
 from streambuild.adapter.models import (
     AdapterDeploymentRecord,
@@ -35,10 +35,7 @@ from streambuild.compiler.planner.main.build_adapter_resource import build_adapt
 from streambuild.compiler.planner.models import DeploymentPlan
 from streambuild.executor.backfill._helpers.metadata import build_deployment_metadata_state
 from streambuild.executor.backfill.exceptions import BackfillExecutionError
-from streambuild.executor.backfill.main.build_root_backfill_reports import (
-    build_root_backfill_reports,
-)
-from streambuild.executor.backfill.models import BackfillBootstrapRequest, RootBackfillReport
+from streambuild.executor.backfill.models import BackfillBootstrapRequest
 from streambuild.executor.population.main._build_population_replay_templates import (
     build_population_replay_templates,
 )
@@ -71,10 +68,6 @@ def assemble_virtual_build_workflow(
         catalog=request.confirmed_metadata_catalog,
         catalog_name="metadata",
     )
-    root_reports: tuple[RootBackfillReport, ...] = build_root_backfill_reports(
-        catalog=target_catalog,
-        desired_state=request.desired_state,
-    )
     source_preparation: PopulationSourcePreparation
     source_realizations: tuple[PopulationRealization, ...]
     source_preparation, source_realizations = plan_population_sources(
@@ -103,7 +96,8 @@ def assemble_virtual_build_workflow(
         deployment_id=deployment_id,
         created_at=_created_at(request),
         replay_lineage_mode=ReplayLineageMode(request.replay_lineage_mode),
-        root_reports=root_reports,
+        workflow_fingerprint=sha256(plan_json.encode()).hexdigest(),
+        tool_version=version("streambuild"),
     )
     statements: tuple[WarehouseStatement, ...] = _assemble_statements(
         request=request,
@@ -181,6 +175,7 @@ def _assemble_statements(
     )
     boundary: tuple[WarehouseStatement, ...] = _boundary_statements(
         request=request,
+        deployment=metadata_state.deployments[0],
         start_sequence=prior_count + 1,
     )
     replay: tuple[WarehouseStatement, ...] = _replay_statements(
@@ -221,7 +216,7 @@ def _preflight_statements(
             "assert_virtual_ownership",
             _ownership_assertion_sql(
                 request=request,
-                ownership_table_exists=METADATA_TARGET_OWNERSHIP_TABLE_NAME in metadata_names,
+                ownership_table_exists=METADATA_DIRECT_TARGET_EVENTS_TABLE_NAME in metadata_names,
             ),
         ),
         (
@@ -397,6 +392,7 @@ def _stabilization_statements(
 def _boundary_statements(
     *,
     request: BackfillBootstrapRequest,
+    deployment: AdapterDeploymentRecord,
     start_sequence: int,
 ) -> tuple[WarehouseStatement, ...]:
     return (
@@ -405,7 +401,7 @@ def _boundary_statements(
             step_id="capture_boundary_time",
             phase=WorkflowPhase.BOUNDARY,
             intent=StatementIntent.MUTATION,
-            sql=_boundary_time_capture_sql(request=request),
+            sql=_boundary_time_capture_sql(request=request, deployment=deployment),
         ),
     )
 
@@ -585,15 +581,17 @@ def _ownership_assertion_sql(
             "SELECT throwIf(count() != 0, 'Direct ownership metadata appeared after virtual "
             "confirmation') FROM system.tables "
             f"WHERE database = '{_escape_literal(request.metadata_database)}' "
-            f"AND name = '{METADATA_TARGET_OWNERSHIP_TABLE_NAME}'"
+            f"AND name = '{METADATA_DIRECT_TARGET_EVENTS_TABLE_NAME}'"
         )
     quoted_names: str = ", ".join(f"'{_escape_literal(name)}'" for name in relation_names)
     return (
-        "SELECT throwIf(countIf(owning_mode = 'direct') > 0, "
-        "'Virtual build conflicts with direct-owned targets') "
-        f"FROM {request.metadata_database}.{METADATA_TARGET_OWNERSHIP_TABLE_NAME} FINAL "
-        f"WHERE database_name = '{_escape_literal(request.default_database)}' "
-        f"AND relation_name IN ({quoted_names})"
+        "SELECT throwIf(countIf(current_state.1 != 'released') > 0, "
+        "'Virtual build conflicts with direct-owned targets') FROM (SELECT database_name, "
+        "relation_name, argMax(tuple(event_kind, event_id), tuple(recorded_at, event_id)) "
+        f"AS current_state FROM {request.metadata_database}."
+        f"{METADATA_DIRECT_TARGET_EVENTS_TABLE_NAME} WHERE database_name = "
+        f"'{_escape_literal(request.default_database)}' AND relation_name IN ({quoted_names}) "
+        "GROUP BY database_name, relation_name)"
     )
 
 
@@ -611,37 +609,14 @@ def _candidate_assertion_sql(
             f"AND name = '{METADATA_DEPLOYMENTS_TABLE_NAME}'"
         )
     deployment: AdapterDeploymentRecord = metadata_state.deployments[0]
-    selected_json: str = json.dumps(
-        [
-            {"database": key.database, "object_type": key.object_type, "name": key.name}
-            for key in deployment.selected_root_keys
-        ]
-    )
-    warning_json: str = json.dumps(list(deployment.warning_codes))
-    mappings_json: str = json.dumps(
-        [
-            {
-                "logical_key": {
-                    "database": mapping.logical_key.database,
-                    "object_type": mapping.logical_key.object_type,
-                    "name": mapping.logical_key.name,
-                },
-                "physical_name": mapping.physical_name,
-                "logical_model_name": mapping.logical_model_name,
-            }
-            for mapping in deployment.prepared_object_mappings
-        ]
-    )
     return (
         "SELECT throwIf(count() > 0 AND (count() != 1 OR "
         f"any(created_at) != toDateTime64('{_escape_literal(deployment.created_at)}', 3, 'UTC') OR "
-        f"any(status) != '{_escape_literal(deployment.status)}' OR "
         f"any(replay_lineage_mode) != '{_escape_literal(deployment.replay_lineage_mode)}' OR "
-        f"any(selected_root_keys_json) != '{_escape_literal(selected_json)}' OR "
-        f"any(warning_codes_json) != '{_escape_literal(warning_json)}' OR "
-        f"any(prepared_object_mappings_json) != '{_escape_literal(mappings_json)}'), "
+        f"any(workflow_fingerprint) != '{_escape_literal(deployment.workflow_fingerprint)}' OR "
+        f"any(tool_version) != '{_escape_literal(deployment.tool_version)}'), "
         "'Candidate deployment conflicts with the confirmed workflow') "
-        f"FROM {request.metadata_database}.{METADATA_DEPLOYMENTS_TABLE_NAME} FINAL "
+        f"FROM {request.metadata_database}.{METADATA_DEPLOYMENTS_TABLE_NAME} "
         f"WHERE deployment_id = '{_escape_literal(deployment.deployment_id)}'"
     )
 
@@ -681,25 +656,26 @@ def _relation_assertion_sql(
     )
 
 
-def _boundary_time_capture_sql(*, request: BackfillBootstrapRequest) -> str:
+def _boundary_time_capture_sql(
+    *, request: BackfillBootstrapRequest, deployment: AdapterDeploymentRecord
+) -> str:
     boundary_expression: str = (
         f"toDateTime64('{_escape_literal(request.boundary_time)}', 3, 'UTC')"
         if request.boundary_time is not None
         else "now64(3, 'UTC')"
     )
     return (
-        f"INSERT INTO {request.metadata_database}.{METADATA_DEPLOYMENT_WATERMARKS_TABLE_NAME} "
-        "(deployment_id, root_database_name, root_object_type, root_object_name, "
-        "anchor_database_name, anchor_object_type, anchor_object_name, boundary_key, "
-        "cutoff_value)\n"
-        f"SELECT '{_escape_literal(_confirmed_deployment_id(request))}', "
-        "NULL, 'table', '', NULL, 'table', '', "
-        f"'{DEPLOYMENT_BOUNDARY_TIME_KEY}', toString({boundary_expression}, 'UTC')\n"
+        f"INSERT INTO {request.metadata_database}.{METADATA_DEPLOYMENTS_TABLE_NAME} "
+        "(deployment_id, workflow_fingerprint, replay_lineage_mode, boundary_time, created_at, "
+        "tool_version)\n"
+        f"SELECT '{_escape_literal(deployment.deployment_id)}', "
+        f"'{_escape_literal(deployment.workflow_fingerprint)}', "
+        f"'{_escape_literal(str(deployment.replay_lineage_mode))}', {boundary_expression}, "
+        f"toDateTime64('{_escape_literal(deployment.created_at)}', 3, 'UTC'), "
+        f"'{_escape_literal(deployment.tool_version)}'\n"
         "WHERE NOT EXISTS (SELECT 1 FROM "
-        f"{request.metadata_database}.{METADATA_DEPLOYMENT_WATERMARKS_TABLE_NAME} FINAL "
-        f"WHERE deployment_id = '{_escape_literal(_confirmed_deployment_id(request))}' "
-        f"AND boundary_key = '{DEPLOYMENT_BOUNDARY_TIME_KEY}' "
-        "AND cutoff_value != '');"
+        f"{request.metadata_database}.{METADATA_DEPLOYMENTS_TABLE_NAME} "
+        f"WHERE deployment_id = '{_escape_literal(deployment.deployment_id)}');"
     )
 
 
@@ -723,28 +699,27 @@ def _offset_watermark_capture_sql(
     return (
         f"INSERT INTO {request.metadata_database}.{METADATA_DEPLOYMENT_WATERMARKS_TABLE_NAME} "
         "(deployment_id, root_database_name, root_object_type, root_object_name, "
-        "anchor_database_name, anchor_object_type, anchor_object_name, boundary_key, "
-        "cutoff_value)\n"
+        "anchor_database_name, anchor_object_type, anchor_object_name, boundary_kind, value_kind, "
+        "partition_value, lower_value, cutoff_value, cutoff_inclusive, captured_at)\n"
         f"SELECT '{_escape_literal(_confirmed_deployment_id(request))}', "
         f"{_nullable_literal(replay.database)}, 'table', "
         f"'{_escape_literal(replay.relations.root)}', {_nullable_literal(replay.database)}, "
-        f"'table', '{_escape_literal(replay.relations.anchor)}', "
-        f"concat('_replay_partition=', toString({replay.columns.partition})), "
-        f"toString(max({replay.columns.offset}))\n"
+        f"'table', '{_escape_literal(replay.relations.anchor)}', 'offsets', 'integer', "
+        f"toString({replay.columns.partition}), NULL, toString(max({replay.columns.offset})), "
+        "true, now64(3, 'UTC')\n"
         f"FROM {replay.database}.{replay.relations.anchor}{boundary_predicate}\n"
         f"GROUP BY {replay.columns.partition}\n"
         "HAVING NOT EXISTS (SELECT 1 FROM "
-        f"{request.metadata_database}.{METADATA_DEPLOYMENT_WATERMARKS_TABLE_NAME} FINAL "
+        f"{request.metadata_database}.{METADATA_DEPLOYMENT_WATERMARKS_TABLE_NAME} "
         f"WHERE deployment_id = '{_escape_literal(_confirmed_deployment_id(request))}' "
         f"AND root_object_name = '{_escape_literal(replay.relations.root)}' "
-        "AND startsWith(boundary_key, '_replay_partition='));"
+        "AND boundary_kind = 'offsets');"
     )
 
 
 def _scalar_watermark_capture_sql(
     *, request: BackfillBootstrapRequest, root: PopulationRoot, replay: AdapterReplayRequest
 ) -> str:
-    boundary_key: str = _canonical_boundary_key(replay.mode)
     cutoff_expression: str = (
         f"toString(max({replay.columns.cursor}))"
         if replay.mode == AdapterReplayBoundaryMode.CURSOR
@@ -753,21 +728,23 @@ def _scalar_watermark_capture_sql(
     return (
         f"INSERT INTO {request.metadata_database}.{METADATA_DEPLOYMENT_WATERMARKS_TABLE_NAME} "
         "(deployment_id, root_database_name, root_object_type, root_object_name, "
-        "anchor_database_name, anchor_object_type, anchor_object_name, boundary_key, "
-        "cutoff_value)\n"
+        "anchor_database_name, anchor_object_type, anchor_object_name, boundary_kind, value_kind, "
+        "partition_value, lower_value, cutoff_value, cutoff_inclusive, captured_at)\n"
         f"SELECT '{_escape_literal(_confirmed_deployment_id(request))}', "
         f"{_nullable_literal(replay.database)}, 'table', "
         f"'{_escape_literal(replay.relations.root)}', "
         f"{_nullable_literal(root.upstream_boundary_key.database)}, "
         f"'{_escape_literal(str(root.upstream_boundary_key.object_type))}', "
         f"'{_escape_literal(root.upstream_boundary_key.name)}', "
-        f"'{boundary_key}', {cutoff_expression}\n"
+        f"'{_escape_literal(str(replay.mode))}', "
+        f"'{_boundary_value_kind(replay.mode)}', NULL, NULL, {cutoff_expression}, true, "
+        "now64(3, 'UTC')\n"
         f"FROM {replay.database}.{replay.relations.anchor}\n"
         "HAVING count() > 0 AND NOT EXISTS (SELECT 1 FROM "
-        f"{request.metadata_database}.{METADATA_DEPLOYMENT_WATERMARKS_TABLE_NAME} FINAL "
+        f"{request.metadata_database}.{METADATA_DEPLOYMENT_WATERMARKS_TABLE_NAME} "
         f"WHERE deployment_id = '{_escape_literal(_confirmed_deployment_id(request))}' "
         f"AND root_object_name = '{_escape_literal(replay.relations.root)}' "
-        f"AND boundary_key = '{boundary_key}');"
+        f"AND boundary_kind = '{_escape_literal(str(replay.mode))}');"
     )
 
 
@@ -779,16 +756,15 @@ def _qualifying_input_assertion_sql(
             "SELECT count() FROM "
             f"{replay.database}.{replay.relations.anchor} AS source INNER JOIN "
             f"(SELECT * FROM {request.metadata_database}."
-            f"{METADATA_DEPLOYMENT_WATERMARKS_TABLE_NAME} FINAL) AS watermark "
+            f"{METADATA_DEPLOYMENT_WATERMARKS_TABLE_NAME}) AS watermark "
             "ON watermark.deployment_id = "
             f"'{_escape_literal(_confirmed_deployment_id(request))}' "
             f"AND watermark.root_object_name = '{_escape_literal(replay.relations.root)}' "
-            "AND watermark.boundary_key = concat('_replay_partition=', "
-            f"toString(source.{replay.columns.partition})) WHERE "
+            "AND watermark.boundary_kind = 'offsets' AND watermark.partition_value = "
+            f"toString(source.{replay.columns.partition}) WHERE "
             f"source.{replay.columns.offset} <= toInt64(watermark.cutoff_value)"
         )
     else:
-        boundary_key: str = _canonical_boundary_key(replay.mode)
         boundary_column: str = {
             AdapterReplayBoundaryMode.CURSOR: replay.columns.cursor,
             AdapterReplayBoundaryMode.TIMESTAMP: replay.columns.timestamp,
@@ -798,11 +774,12 @@ def _qualifying_input_assertion_sql(
         qualifying = (
             f"SELECT count() FROM {replay.database}.{replay.relations.anchor} AS source "
             f"CROSS JOIN (SELECT * FROM {request.metadata_database}."
-            f"{METADATA_DEPLOYMENT_WATERMARKS_TABLE_NAME} FINAL) AS watermark "
+            f"{METADATA_DEPLOYMENT_WATERMARKS_TABLE_NAME}) AS watermark "
             "WHERE watermark.deployment_id = "
             f"'{_escape_literal(_confirmed_deployment_id(request))}' "
             f"AND watermark.root_object_name = '{_escape_literal(replay.relations.root)}' "
-            f"AND watermark.boundary_key = '{boundary_key}' AND source.{boundary_column} <= "
+            f"AND watermark.boundary_kind = '{_escape_literal(str(replay.mode))}' "
+            f"AND source.{boundary_column} <= "
             f"CAST(watermark.cutoff_value AS {_boundary_type_expression(replay.mode)})"
             f"{lower_clause}"
         )
@@ -833,10 +810,9 @@ def _forced_scalar_qualifying_clause(*, replay: AdapterReplayRequest) -> str:
 
 def _read_boundary_time_sql(*, request: BackfillBootstrapRequest) -> str:
     return (
-        "SELECT any(cutoff_value) AS boundary_time "
-        f"FROM {request.metadata_database}.{METADATA_DEPLOYMENT_WATERMARKS_TABLE_NAME} FINAL "
-        f"WHERE deployment_id = '{_escape_literal(_confirmed_deployment_id(request))}' "
-        f"AND boundary_key = '{DEPLOYMENT_BOUNDARY_TIME_KEY}';"
+        "SELECT toString(any(boundary_time), 'UTC') AS boundary_time "
+        f"FROM {request.metadata_database}.{METADATA_DEPLOYMENTS_TABLE_NAME} "
+        f"WHERE deployment_id = '{_escape_literal(_confirmed_deployment_id(request))}';"
     )
 
 
@@ -844,10 +820,9 @@ def _boundary_time_subquery(
     *, request: BackfillBootstrapRequest, replay: AdapterReplayRequest
 ) -> str:
     return (
-        "(SELECT toDateTime64(cutoff_value, 3, 'UTC') FROM "
-        f"{request.metadata_database}.{METADATA_DEPLOYMENT_WATERMARKS_TABLE_NAME} FINAL "
-        f"WHERE deployment_id = '{_escape_literal(_confirmed_deployment_id(request))}' "
-        f"AND boundary_key = '{DEPLOYMENT_BOUNDARY_TIME_KEY}')"
+        "(SELECT any(boundary_time) FROM "
+        f"{request.metadata_database}.{METADATA_DEPLOYMENTS_TABLE_NAME} "
+        f"WHERE deployment_id = '{_escape_literal(_confirmed_deployment_id(request))}')"
     )
 
 
@@ -973,12 +948,8 @@ def _prepared_relation_names(request: BackfillBootstrapRequest) -> tuple[str, ..
     )
 
 
-def _canonical_boundary_key(mode: AdapterReplayBoundaryMode) -> str:
-    return {
-        AdapterReplayBoundaryMode.CURSOR: "_replay_cursor",
-        AdapterReplayBoundaryMode.TIMESTAMP: "_replay_timestamp",
-        AdapterReplayBoundaryMode.LANDED_AT: "_replay_landed_at",
-    }[mode]
+def _boundary_value_kind(mode: AdapterReplayBoundaryMode) -> str:
+    return "integer" if mode == AdapterReplayBoundaryMode.CURSOR else "timestamp"
 
 
 def _boundary_type_expression(mode: AdapterReplayBoundaryMode) -> str:

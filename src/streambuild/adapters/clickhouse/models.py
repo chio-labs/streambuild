@@ -51,20 +51,34 @@ class ClickHouseDeploymentInventoryRow:
 
     deployment_id: str
     created_at: str
-    status: str
     replay_lineage_mode: str
-    selected_root_keys_json: str
-    warning_codes_json: str
-    prepared_object_mappings_json: str
+    header_present: bool = True
+
+
+@dataclass(frozen=True)
+class ClickHouseObjectStateInventoryRow:
+    """One structured deployment object-state row used by lifecycle commands."""
+
+    deployment_id: str
+    database_name: str | None
+    object_type: str
+    object_name: str
+    physical_name: str | None
+    logical_model_name: str | None
+    is_selected_root: bool
+    observed_at: str
 
 
 @dataclass(frozen=True)
 class ClickHousePublishEventInventoryRow:
     """One persisted publish event used by lifecycle cleanup."""
 
+    publication_id: str
     deployment_id: str
     published_at: str
-    logical_view_names_json: str
+    database_name: str
+    logical_view_name: str
+    physical_relation_name: str
 
 
 @dataclass(frozen=True)

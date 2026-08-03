@@ -12,10 +12,12 @@ from streambuild.adapter.models import (
     AdapterDeploymentInventory,
     AdapterDeploymentReplayRequest,
     AdapterIdentity,
+    AdapterInvocationRecord,
     AdapterManagedSource,
     AdapterMaterializedView,
     AdapterMetadataState,
     AdapterMutationResult,
+    AdapterNodeResultRecord,
     AdapterOwnershipRecord,
     AdapterOwnershipReplayRequest,
     AdapterQueryResult,
@@ -173,6 +175,8 @@ class RecordingAdapterConnection(AdapterConnection):
         readiness_observations: tuple[AdapterReadinessRootObservation, ...] = (),
         deployment_inventory: AdapterDeploymentInventory = _EMPTY_DEPLOYMENT_INVENTORY,
         ownership_records: tuple[AdapterOwnershipRecord, ...] = (),
+        observation_statements: tuple[str, ...] = (),
+        required_artifact_path: Path | None = None,
     ) -> None:
         self.statements: list[str] = []
         self.catalog_databases: list[str] = []
@@ -198,7 +202,12 @@ class RecordingAdapterConnection(AdapterConnection):
         )
         self._deployment_inventory: AdapterDeploymentInventory = deployment_inventory
         self._ownership_records: tuple[AdapterOwnershipRecord, ...] = ownership_records
+        self._observation_statements: tuple[str, ...] = observation_statements
+        self._required_artifact_path: Path | None = required_artifact_path
+        self.artifact_seen_before_execution: bool = False
         self.workflow_mutation_statements: list[str] = []
+        self.invocation_observations: list[AdapterInvocationRecord] = []
+        self.node_result_observations: list[AdapterNodeResultRecord] = []
 
     @property
     def adapter_identity(self) -> AdapterIdentity:
@@ -249,9 +258,24 @@ class RecordingAdapterConnection(AdapterConnection):
         return AdapterQueryResult(rows=())
 
     def execute_workflow_sql(self, statement: str) -> AdapterMutationResult:
+        self.artifact_seen_before_execution = bool(
+            self._required_artifact_path is not None and self._required_artifact_path.exists()
+        )
         self.statements.append(statement)
         self.workflow_mutation_statements.append(statement)
         return AdapterMutationResult()
+
+    def render_terminal_observations(
+        self,
+        *,
+        database: str,
+        invocation: AdapterInvocationRecord,
+        node_results: tuple[AdapterNodeResultRecord, ...],
+    ) -> tuple[str, ...]:
+        del database
+        self.invocation_observations.append(invocation)
+        self.node_result_observations.extend(node_results)
+        return self._observation_statements
 
     def capture_warehouse_timestamp(self) -> str:
         return "2026-07-31 12:00:00.000"

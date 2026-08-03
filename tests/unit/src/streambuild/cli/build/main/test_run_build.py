@@ -34,6 +34,7 @@ from tests.unit.src.streambuild.compiler.planner.helpers import write_direct_sco
             expected_exit_code=1,
             expected_stderr_fragment="--json requires --auto-approve for build",
             expected_stdout_fragment="",
+            expected_invocation_outcome="failed",
         ),
         CliBuildGateTestCase(
             description="a declined confirmation cancels before any warehouse write",
@@ -44,6 +45,7 @@ from tests.unit.src.streambuild.compiler.planner.helpers import write_direct_sco
             expected_exit_code=1,
             expected_stderr_fragment="",
             expected_stdout_fragment="Build cancelled.",
+            expected_invocation_outcome="cancelled",
         ),
     ],
     ids=lambda case: case.description,
@@ -73,6 +75,7 @@ def test_given_build_command_gates_when_running_then_it_refuses_before_writing(
     assert test_case.expected_stdout_fragment in captured.out
     assert not (tmp_path / "target/run/build/plan.json").exists()
     assert connection.workflow_mutation_statements == []
+    assert connection.invocation_observations[0].outcome == test_case.expected_invocation_outcome
 
 
 @pytest.mark.parametrize(

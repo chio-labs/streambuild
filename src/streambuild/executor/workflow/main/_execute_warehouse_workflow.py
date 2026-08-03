@@ -28,16 +28,27 @@ def execute_warehouse_workflow(
             else:
                 query_result = connection.query(statement.sql)
         except AdapterError as error:
-            raise WorkflowExecutionError(
-                failed_step_id=statement.step_id,
-                partial_result=WorkflowExecutionResult(statement_results=tuple(results)),
-                cause=error,
-            ) from error
+            if not statement.continue_on_error:
+                raise WorkflowExecutionError(
+                    failed_step_id=statement.step_id,
+                    partial_result=WorkflowExecutionResult(statement_results=tuple(results)),
+                    cause=error,
+                ) from error
+            results.append(
+                WorkflowStatementResult(
+                    step_id=statement.step_id,
+                    query_result=None,
+                    mutation_result=None,
+                    error_message=str(error),
+                )
+            )
+            continue
         results.append(
             WorkflowStatementResult(
                 step_id=statement.step_id,
                 query_result=query_result,
                 mutation_result=mutation_result,
+                error_message=None,
             )
         )
     return WorkflowExecutionResult(statement_results=tuple(results))

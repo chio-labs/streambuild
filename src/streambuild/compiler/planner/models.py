@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 from streambuild.adapter.models import (
+    AdapterDeploymentInventory,
     AdapterOwnershipRecord,
     AdapterReplayColumns,
     CatalogSnapshot,
@@ -183,6 +184,8 @@ class ObjectStateMetadataRow:
     normalized_fingerprint: str
     normalized_query: str | None
     recorded_at: str
+    observation_id: str
+    state_kind: str
 
 
 @dataclass(frozen=True)
@@ -350,6 +353,8 @@ class ObjectStateRecord:
     normalized_fingerprint: str
     normalized_query: str | None
     recorded_at: str
+    observation_id: str = ""
+    state_kind: str = "deployment"
 
 
 @dataclass(frozen=True)
@@ -363,6 +368,9 @@ class DeploymentRecord:
     selected_root_keys: tuple[ObjectKey, ...]
     warning_codes: tuple[str, ...]
     prepared_object_mappings: tuple[PreparedObjectMapping, ...]
+    workflow_fingerprint: str = ""
+    boundary_time: str | None = None
+    tool_version: str = ""
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "replay_lineage_mode", ReplayLineageMode(self.replay_lineage_mode))
@@ -380,29 +388,14 @@ class DeploymentWatermarkRecord:
 
 
 @dataclass(frozen=True)
-class DeploymentRuntimeDetailRecord:
-    """Stored per-root runtime decision metadata for a deployment."""
-
-    deployment_id: str
-    root_key: ObjectKey
-    state_kind: str
-    replay_strategy: str
-    active_deployment_id: str | None
-    anchor_key: ObjectKey
-    anchor_physical_name: str | None
-    execution_mode: str | None
-    configured_backfill_mode: str | None
-    execution_lookback_seconds: int | None
-    live_target_names: tuple[str, ...]
-
-
-@dataclass(frozen=True)
 class PublishEventRecord:
     """Stored publish/activation history for one deployment."""
 
     deployment_id: str
     published_at: str
     logical_view_names: tuple[str, ...]
+    database: str = ""
+    physical_relation_names: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -412,7 +405,6 @@ class MetadataState:
     object_states: tuple[ObjectStateRecord, ...]
     deployments: tuple[DeploymentRecord, ...]
     deployment_watermarks: tuple[DeploymentWatermarkRecord, ...]
-    deployment_runtime_details: tuple[DeploymentRuntimeDetailRecord, ...]
     publish_events: tuple[PublishEventRecord, ...]
 
 
@@ -422,6 +414,7 @@ class DirectWarehouseSnapshot:
 
     catalog: CatalogSnapshot
     ownership_records: tuple[AdapterOwnershipRecord, ...]
+    deployment_inventory: AdapterDeploymentInventory
 
 
 @dataclass(frozen=True)
