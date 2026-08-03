@@ -65,3 +65,16 @@ class ChecksRunTestCase:
     name: str
     expected_status: int
     expected_passed: bool
+
+
+@dataclass(frozen=True)
+class StaticAssetsPresenceTestCase:
+    description: str
+    expected_present: bool
+
+
+@dataclass(frozen=True)
+class SpaFallbackTestCase:
+    description: str
+    request_path: str
+    expected_body_fragment: str

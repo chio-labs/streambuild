@@ -19,6 +19,12 @@ def static_assets_root() -> Path:
     return Path(__file__).resolve().parent.parent / STATIC_ASSETS_DIRECTORY_NAME
 
 
+def static_assets_present(*, assets_root: Path) -> bool:
+    """Report whether a built UI exists at the packaged assets root."""
+
+    return (assets_root / _INDEX_FILE_NAME).is_file()
+
+
 def register_static_assets(*, app: FastAPI, assets_root: Path) -> FastAPI:
     """Mount built UI assets and route every non-API path to the SPA shell."""
 

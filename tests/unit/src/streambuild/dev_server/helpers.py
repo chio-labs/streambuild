@@ -1,6 +1,7 @@
 from collections.abc import Callable
 from pathlib import Path
 
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
@@ -31,6 +32,7 @@ from streambuild.dev_server._helpers.state_queries import (
     build_relation_stats_query,
     build_throughput_query,
 )
+from streambuild.dev_server._helpers.static_assets import register_static_assets
 from streambuild.dev_server.classes.dev_server_state import DevServerState
 from streambuild.dev_server.main._create_dev_app import create_dev_app
 from tests.unit.src.streambuild.compiler.discovery._helpers.load.helpers import (
@@ -113,6 +115,23 @@ def build_test_client(*, project_dir: Path) -> TestClient:
         run_compile=build_compile_callable(project_dir=project_dir)
     )
     return TestClient(create_dev_app(state=state))
+
+
+_STATIC_INDEX_CONTENTS: str = "<html>stb-dev-shell</html>"
+_STATIC_APP_SCRIPT_CONTENTS: str = "console.log('stb-app-script');"
+_STATIC_ROBOTS_CONTENTS: str = "User-agent: *"
+
+
+def write_static_assets_build(*, assets_root: Path) -> None:
+    (assets_root / "_app").mkdir(parents=True)
+    (assets_root / "index.html").write_text(_STATIC_INDEX_CONTENTS)
+    (assets_root / "_app" / "app.js").write_text(_STATIC_APP_SCRIPT_CONTENTS)
+    (assets_root / "robots.txt").write_text(_STATIC_ROBOTS_CONTENTS)
+
+
+def build_static_test_client(*, assets_root: Path) -> TestClient:
+    app: FastAPI = register_static_assets(app=FastAPI(), assets_root=assets_root)
+    return TestClient(app)
 
 
 def named_payload_item(items: list, name: str) -> dict:
