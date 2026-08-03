@@ -261,6 +261,7 @@ class TransformStep:
     engine: str
     order_by: Sequence[str]
     relation_name: str | None = None
+    description: str | None = None
     query: str | None = None
     sql_file: str | None = None
     partition_by: str | None = None
@@ -298,6 +299,7 @@ class ViewStep:
     query: str | None = None
     sql_file: str | None = None
     relation_name: str | None = None
+    description: str | None = None
     source_file_path: Path | None = None
     source_line: int = 1
     source_column: int = 1

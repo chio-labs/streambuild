@@ -13,6 +13,7 @@ MODEL_HEADER_PATTERN: re.Pattern[str] = re.compile(
 ALLOWED_MODEL_KEYS: frozenset[str] = frozenset(
     {
         "kind",
+        "description",
         "relation_name",
         "engine",
         "order_by",
