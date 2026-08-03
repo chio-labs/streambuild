@@ -21,3 +21,11 @@ class ReplayAnchorReason(StrEnum):
     NEVER = "never"
     LINEAGE_LOSS = "lineage_loss"
     VIEW = "view"
+
+
+class Freshness(StrEnum):
+    """Derived source or model freshness against its authored policy."""
+
+    FRESH = "fresh"
+    LAGGING = "lagging"
+    STALLED = "stalled"
