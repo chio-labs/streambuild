@@ -96,12 +96,13 @@ def render_generic_sql_audits(
     definitions: tuple[LoadedGenericSqlAuditDefinition, ...],
     instances: tuple[LoadedGenericSqlAuditInstance, ...],
 ) -> tuple[LoadedSqlAudit, ...]:
-    """Render concrete SQL audits from generic definitions and header-bound instances."""
+    """Render concrete audits with per-file sequential indices for distinct node identities."""
 
     definitions_by_name: dict[str, LoadedGenericSqlAuditDefinition] = {
         definition.name: definition for definition in definitions
     }
     rendered_audits: list[LoadedSqlAudit] = []
+    audit_index_by_file: dict[Path, int] = {}
     instance: LoadedGenericSqlAuditInstance
     for instance in instances:
         definition: LoadedGenericSqlAuditDefinition | None = definitions_by_name.get(
@@ -130,6 +131,7 @@ def render_generic_sql_audits(
                 raise SqlAuditParseError(
                     f"Rendered generic SQL audit '{instance.name}' may only use __ref(...)"
                 )
+        audit_index_by_file[instance.file_path] = audit_index_by_file.get(instance.file_path, 0) + 1
         rendered_audits.append(
             LoadedSqlAudit(
                 file_path=instance.file_path,
@@ -138,6 +140,7 @@ def render_generic_sql_audits(
                 severity=instance.severity,
                 description=instance.description,
                 name=instance.name,
+                audit_index=audit_index_by_file[instance.file_path],
                 generic_definition_name=instance.definition_name,
             )
         )

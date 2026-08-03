@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import FastAPI, HTTPException, Query
@@ -15,7 +16,11 @@ from streambuild.compiler.planner.main.load_direct_warehouse_snapshot import (
 )
 from streambuild.compiler.planner.main.plan_direct_build import plan_direct_build
 from streambuild.compiler.planner.models import DirectPlan, DirectWarehouseSnapshot
-from streambuild.dev_server._helpers.checks_execution import run_one_audit, run_one_test
+from streambuild.dev_server._helpers.checks_execution import (
+    build_checks_status_payload,
+    run_one_audit,
+    run_one_test,
+)
 from streambuild.dev_server._helpers.compile_runner import build_status_payload
 from streambuild.dev_server._helpers.definitions_payload import build_definitions_payload
 from streambuild.dev_server._helpers.plan_payload import (
@@ -41,6 +46,7 @@ def register_api_routes(
     state: DevServerState,
     connection: AdapterConnection | None,
     database: str | None,
+    project_dir: Path,
 ) -> FastAPI:
     """Attach every /api route; handlers close over the shared server state."""
 
@@ -145,9 +151,35 @@ def register_api_routes(
         except AdapterError as error:
             raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
 
+    app.get("/api/status")(read_status)
+    app.get("/api/state")(read_state)
+    app.get("/api/plan")(read_plan)
+    app.post("/api/reload")(reload_project)
+    app.get("/api/definitions")(read_definitions)
+    return _register_quality_routes(
+        app=app,
+        state=state,
+        database=database,
+        project_dir=project_dir,
+        required_connection=_required_connection,
+        servable_analysis=_servable_analysis,
+    )
+
+
+def _register_quality_routes(
+    *,
+    app: FastAPI,
+    state: DevServerState,
+    database: str | None,
+    project_dir: Path,
+    required_connection: Callable[[], AdapterConnection],
+    servable_analysis: Callable[[], CompileAnalysis],
+) -> FastAPI:
+    """Attach the checks and run-history routes."""
+
     def run_check(request: ChecksRunRequest) -> dict[str, object]:
-        client: AdapterConnection = _required_connection()
-        analysis: CompileAnalysis = _servable_analysis()
+        client: AdapterConnection = required_connection()
+        analysis: CompileAnalysis = servable_analysis()
         runners: dict[str, Callable[..., dict[str, object]]] = {
             "audit": run_one_audit,
             "test": run_one_test,
@@ -160,25 +192,41 @@ def register_api_routes(
             )
         try:
             with state.query_lock:
-                return runner(analysis=analysis, connection=client, name=request.name)
+                return runner(
+                    analysis=analysis,
+                    connection=client,
+                    name=request.name,
+                    project_dir=project_dir,
+                    database=database or "",
+                )
         except DevServerError as error:
             raise HTTPException(status_code=_HTTP_BAD_REQUEST, detail=str(error)) from error
         except AdapterError as error:
             raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
 
+    def read_checks_status() -> list[dict[str, object]]:
+        client: AdapterConnection = required_connection()
+        analysis: CompileAnalysis = servable_analysis()
+        try:
+            with state.query_lock:
+                return build_checks_status_payload(
+                    analysis=analysis,
+                    connection=client,
+                    database=database or "",
+                    project_dir=project_dir,
+                )
+        except AdapterError as error:
+            raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
+
     def read_run_history() -> list[dict[str, object]]:
-        client: AdapterConnection = _required_connection()
+        client: AdapterConnection = required_connection()
         try:
             with state.query_lock:
                 return read_runs(connection=client, database=database or "")
         except AdapterError as error:
             raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
 
-    app.get("/api/status")(read_status)
-    app.get("/api/state")(read_state)
-    app.get("/api/plan")(read_plan)
     app.post("/api/checks/run")(run_check)
+    app.get("/api/checks/status")(read_checks_status)
     app.get("/api/runs")(read_run_history)
-    app.post("/api/reload")(reload_project)
-    app.get("/api/definitions")(read_definitions)
     return app

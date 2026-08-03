@@ -116,7 +116,7 @@ def build_test_client(*, project_dir: Path) -> TestClient:
     state: DevServerState = DevServerState(
         run_compile=build_compile_callable(project_dir=project_dir)
     )
-    return TestClient(create_dev_app(state=state))
+    return TestClient(create_dev_app(state=state, project_dir=project_dir))
 
 
 _STATIC_INDEX_CONTENTS: str = "<html>stb-dev-shell</html>"
@@ -280,7 +280,11 @@ def build_state_test_client(*, project_dir: Path) -> TestClient:
         run_compile=build_compile_callable(project_dir=project_dir)
     )
     connection: FakeAdapterConnection = build_fake_state_connection()
-    return TestClient(create_dev_app(state=state, connection=connection, database="analytics"))
+    return TestClient(
+        create_dev_app(
+            state=state, connection=connection, database="analytics", project_dir=project_dir
+        )
+    )
 
 
 def build_fake_state_connection() -> FakeAdapterConnection:
@@ -371,6 +375,34 @@ def build_fake_state_connection() -> FakeAdapterConnection:
             time_column="_replay_landed_at",
             start_time=None,
         ): AdapterQueryResult(rows=((1000,),), column_names=("rows",)),
+        # The neutral base connection renders the latest-node-status query as ""
+        # (unsupported); the fake answers it with one recorded audit outcome.
+        "": AdapterQueryResult(
+            rows=(
+                (
+                    "audit",
+                    "pipelines/order_events/orders_clean.sql:1",
+                    "fingerprint",
+                    "passed",
+                    "error",
+                    0,
+                    "2026-08-03 09:00:00.000",
+                    '{"sample_column_names": ["order_id"], "sample_rows": []}',
+                    None,
+                ),
+            ),
+            column_names=(
+                "node_kind",
+                "node_identity",
+                "definition_fingerprint",
+                "current_status",
+                "severity",
+                "failure_count",
+                "completed_at",
+                "payload_json",
+                "error_message",
+            ),
+        ),
     }
     return FakeAdapterConnection(
         catalog=catalog,

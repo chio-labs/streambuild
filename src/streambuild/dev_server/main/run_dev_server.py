@@ -26,6 +26,7 @@ def run_dev_server(
     run_compile: Callable[[], CompileAnalysis],
     connection: AdapterConnection | None,
     database: str | None,
+    project_dir: Path,
     host: str,
     port: int,
 ) -> int:
@@ -41,7 +42,9 @@ def run_dev_server(
         return 1
     state: DevServerState = DevServerState(run_compile=run_compile)
     outcome: CompileOutcome = state.current()
-    app: FastAPI = create_dev_app(state=state, connection=connection, database=database)
+    app: FastAPI = create_dev_app(
+        state=state, connection=connection, database=database, project_dir=project_dir
+    )
     app = register_static_assets(app=app, assets_root=assets_root)
     print(f"StreamBuild dev server: http://{host}:{port} (compile: {outcome.state})")
     uvicorn.run(app, host=host, port=port, log_level="warning")

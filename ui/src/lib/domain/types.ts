@@ -248,6 +248,8 @@ export type AuditResult = {
 	sampleColumns: string[];
 	sampleRows: CellValue[][];
 	checkedAt: string;
+	/** True when the definition changed after this outcome was recorded. */
+	stale?: boolean;
 };
 
 export type Audit = {
@@ -279,6 +281,8 @@ export type SqlTestResult = {
 	targets: SqlTestTargetResult[];
 	checkedAt: string;
 	errorMessage: string | null;
+	/** True when the definition changed after this outcome was recorded. */
+	stale?: boolean;
 };
 
 export type SqlTest = {

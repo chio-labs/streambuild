@@ -7,6 +7,7 @@ from streambuild.dev_server.classes.dev_server_state import DevServerState
 from streambuild.dev_server.main._create_dev_app import create_dev_app
 from tests.unit.src.streambuild.dev_server._test_types import (
     ChecksRunTestCase,
+    ChecksStatusTestCase,
     PlanEndpointTestCase,
 )
 from tests.unit.src.streambuild.dev_server.helpers import (
@@ -110,7 +111,9 @@ def test_given_check_request_when_running_then_returns_expected_result(
         warehouse_timestamp="2026-08-03 12:00:00.000",
     )
     client: TestClient = TestClient(
-        create_dev_app(state=state, connection=connection, database="analytics")
+        create_dev_app(
+            state=state, connection=connection, database="analytics", project_dir=tmp_path
+        )
     )
 
     response: object = client.post(
@@ -119,3 +122,33 @@ def test_given_check_request_when_running_then_returns_expected_result(
 
     assert response.status_code == test_case.expected_status
     assert response.json().get("passed", False) is test_case.expected_passed
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ChecksStatusTestCase(
+            description="maps recorded node history back to audit names",
+            expected_name="orders_clean.order_id.not_null.1",
+            expected_status="passed",
+            expected_failure_count=0,
+            expected_completed_at="2026-08-03 09:00:00.000",
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_recorded_history_when_reading_checks_status_then_maps_names(
+    test_case: ChecksStatusTestCase,
+    tmp_path: Path,
+) -> None:
+    write_dev_server_project(project_dir=tmp_path)
+    client: TestClient = build_state_test_client(project_dir=tmp_path)
+
+    payload: list = client.get("/api/checks/status").json()
+
+    status: dict = payload[0]
+    assert status["name"] == test_case.expected_name
+    assert status["status"] == test_case.expected_status
+    assert status["failureCount"] == test_case.expected_failure_count
+    assert status["completedAt"] == test_case.expected_completed_at
+    assert status["payload"]["sample_column_names"] == ["order_id"]

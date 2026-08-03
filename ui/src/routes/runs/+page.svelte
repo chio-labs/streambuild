@@ -120,13 +120,16 @@
 				</p>
 			</div>
 		{:else}
+			<!-- Column set follows Dagster's runs table (ID+tags / target / status /
+			     created / duration), except the selection column is named Command:
+			     "target" already means the dev/prod profile in StreamBuild. -->
 			<table class="sb-list w-full text-left">
 				<thead>
 					<tr>
-						<th class="px-[18px] py-2 font-normal">Run ID</th>
-						<th class="px-3 py-2 font-normal">Created</th>
-						<th class="px-3 py-2 font-normal">Target</th>
+						<th class="px-[18px] py-2 font-normal">ID</th>
+						<th class="px-3 py-2 font-normal">Command</th>
 						<th class="px-3 py-2 font-normal">Status</th>
+						<th class="px-3 py-2 font-normal">Created at</th>
 						<th class="px-3 py-2 pr-[18px] text-right font-normal">Duration</th>
 					</tr>
 				</thead>
@@ -134,24 +137,18 @@
 					{#each visibleRuns as run (run.invocationId)}
 						{@const chip = statusChip(run.outcome)}
 						<tr>
-							<td class="px-[18px] py-2.5">
+							<td class="px-[18px] py-2.5 align-top">
 								<span class="code text-primary text-[12px]" title={run.invocationId}
 									>{run.invocationId.slice(0, 8)}</span
 								>
-							</td>
-							<td class="px-3">
-								<div class="text-[12px]">{formatTimestamp(run.startedAt)}</div>
-								<div class="text-[var(--sb-text-faint)] font-mono text-[10.5px]">
-									{formatAgo(run.startedAt, project.capturedAt)}
-								</div>
-							</td>
-							<td class="px-3">
-								<div class="code text-[12px]">stb {run.command}</div>
 								<div class="flex items-center gap-1.5 pt-1">
 									<span class="sb-tag code">{run.mode}</span>
 									<span class="sb-tag code">{run.selectedNodeCount} nodes</span>
 									<span class="sb-tag code">v{run.toolVersion}</span>
 								</div>
+							</td>
+							<td class="px-3 align-top">
+								<div class="code pt-0.5 text-[12px]">stb {run.command}</div>
 								{#if run.errorMessage}
 									<div
 										class="max-w-[480px] truncate pt-1 font-mono text-[10.5px]"
@@ -162,7 +159,7 @@
 									</div>
 								{/if}
 							</td>
-							<td class="px-3">
+							<td class="px-3 align-top">
 								<span
 									class="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-mono text-[10.5px]"
 									style:border-color={chip.border}
@@ -172,7 +169,14 @@
 									{chip.label}
 								</span>
 							</td>
-							<td class="text-muted-foreground code px-3 pr-[18px] text-right text-[11.5px]"
+							<td class="px-3 align-top">
+								<div class="text-[12px]">{formatTimestamp(run.startedAt)}</div>
+								<div class="text-[var(--sb-text-faint)] font-mono text-[10.5px]">
+									{formatAgo(run.startedAt, project.capturedAt)}
+								</div>
+							</td>
+							<td
+								class="text-muted-foreground code px-3 pr-[18px] pt-3 text-right align-top text-[11.5px]"
 								>{formatDuration(run.durationMs / 1000)}</td
 							>
 						</tr>

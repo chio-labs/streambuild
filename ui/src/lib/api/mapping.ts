@@ -9,6 +9,7 @@
 import type {
 	AnchorState,
 	Audit,
+	CellValue,
 	Column,
 	Model,
 	ModelStatus,
@@ -20,6 +21,7 @@ import type {
 	Source,
 	SqlTest
 } from '$lib/domain/types';
+import type { CheckStatusRecord } from '$lib/api';
 
 type Payload = Record<string, unknown>;
 
@@ -316,4 +318,73 @@ function ageSeconds(newest: string, capturedAt: string): number | null {
 	const nowMs = Date.parse(capturedAt.replace(' ', 'T') + 'Z');
 	if (Number.isNaN(newestMs) || Number.isNaN(nowMs)) return null;
 	return Math.round((nowMs - newestMs) / 100) / 10;
+}
+
+/**
+ * Fold recorded outcomes from `_streambuild_node_results` into the project.
+ * CLI runs and UI runs share that history, so a refresh no longer forgets what
+ * passed. Never overwrites a FRESHER in-session run.
+ */
+export function applyRecordedCheckStatuses(
+	project: Project,
+	statuses: CheckStatusRecord[]
+): void {
+	for (const record of statuses) {
+		if (record.status === 'never_run' || record.completedAt === null) continue;
+		if (record.kind === 'audit') applyAuditStatus(project, record);
+		else applyTestStatus(project, record);
+	}
+}
+
+function recordedIso(completedAt: string): string {
+	return `${completedAt.replace(' ', 'T')}Z`;
+}
+
+function recordedPassed(record: CheckStatusRecord): boolean {
+	if (record.status === 'passed') return true;
+	// A stale row keeps the outcome but loses the status label — infer it.
+	return record.status === 'stale' && record.failureCount === 0 && record.errorMessage === null;
+}
+
+function isNewerThanExisting(checkedAt: string | undefined, record: CheckStatusRecord): boolean {
+	if (checkedAt === undefined) return true;
+	return Date.parse(recordedIso(record.completedAt ?? '')) > Date.parse(checkedAt);
+}
+
+function applyAuditStatus(project: Project, record: CheckStatusRecord): void {
+	const audit = project.audits.find((item) => item.name === record.name);
+	if (!audit || !isNewerThanExisting(audit.result?.checkedAt, record)) return;
+	const payload = record.payload ?? {};
+	audit.result = {
+		passed: recordedPassed(record),
+		failingRowCount: record.failureCount,
+		sampleColumns: (payload.sample_column_names as string[]) ?? [],
+		sampleRows: (payload.sample_rows as CellValue[][]) ?? [],
+		checkedAt: recordedIso(record.completedAt ?? ''),
+		stale: record.status === 'stale'
+	};
+}
+
+function applyTestStatus(project: Project, record: CheckStatusRecord): void {
+	const test = project.tests.find((item) => item.name === record.name);
+	if (!test || !isNewerThanExisting(test.result?.checkedAt, record)) return;
+	const payload = record.payload ?? {};
+	const targets = ((payload.targets as Payload[]) ?? []).map((target) => ({
+		targetModelName: String(target.target_model_name ?? target.name ?? ''),
+		passed: Boolean(
+			target.passed ??
+				(((target.missing_rows as unknown[]) ?? []).length === 0 &&
+					((target.unexpected_rows as unknown[]) ?? []).length === 0)
+		),
+		columns: (target.columns as string[]) ?? [],
+		missingRows: (target.missing_rows as CellValue[][]) ?? [],
+		unexpectedRows: (target.unexpected_rows as CellValue[][]) ?? []
+	}));
+	test.result = {
+		passed: recordedPassed(record),
+		targets,
+		checkedAt: recordedIso(record.completedAt ?? ''),
+		errorMessage: record.errorMessage,
+		stale: record.status === 'stale'
+	};
 }

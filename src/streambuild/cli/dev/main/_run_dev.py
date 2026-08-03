@@ -41,6 +41,7 @@ def run_dev(
         run_compile=run_compile,
         connection=client,
         database=options.database,
+        project_dir=project_dir,
         host=options.host,
         port=options.port,
     )

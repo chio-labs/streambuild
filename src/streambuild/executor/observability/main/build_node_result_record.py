@@ -4,6 +4,9 @@ from hashlib import sha256
 
 from streambuild.adapter.models import AdapterInvocationRecord, AdapterNodeResultRecord
 from streambuild.executor.observability._helpers.payload import bounded_json, concise_error
+from streambuild.executor.observability.main.build_definition_fingerprint import (
+    build_definition_fingerprint,
+)
 
 
 def build_node_result_record(
@@ -20,10 +23,9 @@ def build_node_result_record(
 ) -> AdapterNodeResultRecord:
     """Build one immutable bounded audit or test result row."""
 
-    fingerprint_definition: str = (
-        definition if severity is None else f"{definition}\nseverity={severity}"
+    definition_fingerprint: str = build_definition_fingerprint(
+        definition=definition, severity=severity
     )
-    definition_fingerprint: str = sha256(fingerprint_definition.encode()).hexdigest()
     result_id: str = sha256(
         f"{invocation.invocation_id}:{node_kind}:{node_identity}:{definition_fingerprint}".encode()
     ).hexdigest()
