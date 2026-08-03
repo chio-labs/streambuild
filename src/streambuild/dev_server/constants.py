@@ -12,3 +12,8 @@ SENSITIVE_SOURCE_SETTING_FRAGMENTS: tuple[str, ...] = (
     "secret",
     "token",
 )
+THROUGHPUT_WINDOW_LADDER: tuple[tuple[int, int], ...] = (
+    (3600, 60),
+    (86400, 1800),
+    (604800, 10800),
+)

@@ -3,6 +3,19 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.models import (
+    AdapterDeploymentInventory,
+    AdapterIdentity,
+    AdapterMutationResult,
+    AdapterOwnershipRecord,
+    AdapterQueryResult,
+    CatalogColumn,
+    CatalogIdentity,
+    CatalogRelation,
+    CatalogSnapshot,
+    InspectedManagedTableState,
+)
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from streambuild.cli.entry._helpers.compiler_profile import build_compiler_adapter_profile
 from streambuild.compiler.discovery.main.load_project_input_for_path import (
@@ -10,6 +23,13 @@ from streambuild.compiler.discovery.main.load_project_input_for_path import (
 )
 from streambuild.compiler.pipeline.main.analyze_project import analyze_project
 from streambuild.compiler.pipeline.models import CompileAnalysis
+from streambuild.dev_server._helpers.state_queries import (
+    build_extents_query,
+    build_partitions_query,
+    build_parts_query,
+    build_relation_stats_query,
+    build_throughput_query,
+)
 from streambuild.dev_server.classes.dev_server_state import DevServerState
 from streambuild.dev_server.main._create_dev_app import create_dev_app
 from tests.unit.src.streambuild.compiler.discovery._helpers.load.helpers import (
@@ -42,8 +62,23 @@ WHERE @column IS NULL
 """
 
 
+_ORDERS_SOURCE_WITH_FRESHNESS: str = """
+sources:
+  - name: orders
+    kind: kafka
+    broker_list: kafka:9092
+    topic: source.orders
+    replay_boundary:
+      mode: offsets
+    freshness:
+      warn_after: 1h
+      error_after: 4h
+"""
+
+
 def write_dev_server_project(*, project_dir: Path) -> None:
     write_project_configuration_and_source(project_dir=project_dir)
+    write_pipeline_file(project_dir / "sources" / "orders.yml", _ORDERS_SOURCE_WITH_FRESHNESS)
     write_pipeline_file(
         project_dir / "pipelines" / "order_events" / "orders_clean.sql",
         _ORDERS_CLEAN_MODEL,
@@ -95,3 +130,197 @@ def maybe_break_project_compile(*, project_dir: Path, break_compile: bool) -> No
 
 def _skip_break(*, project_dir: Path) -> None:
     return None
+
+
+class FakeAdapterConnection(AdapterConnection):
+    """Exact-match canned warehouse: every expected query string maps to a result."""
+
+    def __init__(
+        self,
+        *,
+        catalog: CatalogSnapshot,
+        ownership: tuple[AdapterOwnershipRecord, ...],
+        results_by_query: dict[str, AdapterQueryResult],
+        warehouse_timestamp: str,
+    ) -> None:
+        self._catalog = catalog
+        self._ownership = ownership
+        self._results_by_query = results_by_query
+        self._warehouse_timestamp = warehouse_timestamp
+
+    @property
+    def adapter_identity(self) -> object:
+        raise NotImplementedError
+
+    @property
+    def capabilities(self) -> object:
+        raise NotImplementedError
+
+    def capture_warehouse_timestamp(self) -> str:
+        return self._warehouse_timestamp
+
+    def close(self) -> None:
+        return None
+
+    def compare_readiness(self, request: object) -> tuple:
+        raise NotImplementedError
+
+    def execute_workflow_sql(self, statement: str) -> AdapterMutationResult:
+        raise NotImplementedError
+
+    def inspect_managed_table_state(self, database: str) -> InspectedManagedTableState:
+        raise NotImplementedError
+
+    def load_catalog(self, database: str) -> CatalogSnapshot:
+        return self._catalog
+
+    def load_deployment_inventory(self, database: str) -> AdapterDeploymentInventory:
+        raise NotImplementedError
+
+    def load_target_ownership(self, database: str) -> tuple[AdapterOwnershipRecord, ...]:
+        return self._ownership
+
+    def metadata_columns(self, *, database: str, table: str) -> frozenset[str]:
+        raise NotImplementedError
+
+    def query(self, statement: str) -> AdapterQueryResult:
+        return self._results_by_query[statement]
+
+    def render_cleanup_relations(self, request: object) -> tuple[str, ...]:
+        raise NotImplementedError
+
+    def render_ensure_database(self, database: str) -> str:
+        raise NotImplementedError
+
+    def render_migrate_metadata_state(self, database: str) -> tuple[str, ...]:
+        raise NotImplementedError
+
+    def render_persist_metadata_state(self, *, database: str, state: object) -> tuple[str, ...]:
+        raise NotImplementedError
+
+    def render_record_target_ownership(
+        self, *, database: str, records: tuple[AdapterOwnershipRecord, ...]
+    ) -> tuple[str, ...]:
+        raise NotImplementedError
+
+    def render_remove_target_ownership(
+        self, *, database: str, target_database: str, relation_names: tuple[str, ...]
+    ) -> tuple[str, ...]:
+        raise NotImplementedError
+
+    def render_replace_stable_bindings(self, request: object) -> tuple[str, ...]:
+        raise NotImplementedError
+
+    def render_replay_coverage_query(self, request: object) -> str:
+        raise NotImplementedError
+
+    def render_replay_from_ownership(self, request: object) -> str:
+        raise NotImplementedError
+
+    def render_resource(
+        self, *, resource: object, database: str, if_not_exists: bool = False
+    ) -> str:
+        raise NotImplementedError
+
+
+_STATE_WAREHOUSE_NOW: str = "2026-08-03 12:00:00.000"
+_STATE_NEWEST_EVENT: str = "2026-08-03 11:59:58.000"
+_STATE_OLDEST_EVENT: str = "2026-08-01 00:00:00.000"
+_STATE_MODEL_NEWEST: str = "2026-08-03 10:00:00.000"
+
+_RAW_COLUMNS: tuple[CatalogColumn, ...] = (
+    CatalogColumn(name="kafka_value", type="String"),
+    CatalogColumn(name="_replay_partition", type="Int32"),
+    CatalogColumn(name="_replay_offset", type="Int64"),
+    CatalogColumn(name="_replay_landed_at", type="DateTime64(3)"),
+)
+
+_MODEL_LIVE_COLUMNS: tuple[CatalogColumn, ...] = (
+    CatalogColumn(name="order_id", type="String"),
+    CatalogColumn(name="_replay_partition", type="Int64"),
+    CatalogColumn(name="_replay_offset", type="Int64"),
+    CatalogColumn(name="_replay_landed_at", type="DateTime64(3)"),
+)
+
+
+def build_state_test_client(*, project_dir: Path) -> TestClient:
+    state: DevServerState = DevServerState(
+        run_compile=build_compile_callable(project_dir=project_dir)
+    )
+    connection: FakeAdapterConnection = build_fake_state_connection()
+    return TestClient(create_dev_app(state=state, connection=connection, database="analytics"))
+
+
+def build_fake_state_connection() -> FakeAdapterConnection:
+    catalog: CatalogSnapshot = CatalogSnapshot(
+        identity=CatalogIdentity(adapter=AdapterIdentity(name="clickhouse"), database="analytics"),
+        warehouse_timezone="UTC",
+        relations=(
+            CatalogRelation(
+                name="raw__orders",
+                engine="MergeTree",
+                columns=_RAW_COLUMNS,
+                order_by=("_replay_partition", "_replay_offset"),
+            ),
+            CatalogRelation(
+                name="tbl__orders_clean",
+                engine="ReplacingMergeTree",
+                columns=_MODEL_LIVE_COLUMNS,
+                order_by=("order_id", "_replay_partition", "_replay_offset"),
+            ),
+        ),
+    )
+    ownership: tuple[AdapterOwnershipRecord, ...] = (
+        AdapterOwnershipRecord(
+            database_name="analytics",
+            relation_name="tbl__orders_clean",
+            resource_kind="table",
+            logical_model_name="orders_clean",
+            owning_mode="direct",
+            tool_version="0",
+        ),
+    )
+    lineage_relations: tuple[str, ...] = ("raw__orders", "tbl__orders_clean")
+    results: dict[str, AdapterQueryResult] = {
+        build_relation_stats_query(database="analytics"): AdapterQueryResult(
+            rows=(
+                ("raw__orders", 1000, 4096),
+                ("tbl__orders_clean", 900, 2048),
+            ),
+            column_names=("name", "total_rows", "total_bytes"),
+        ),
+        build_parts_query(database="analytics"): AdapterQueryResult(
+            rows=(("raw__orders", 3), ("tbl__orders_clean", 2)),
+            column_names=("table", "parts"),
+        ),
+        build_extents_query(
+            database="analytics", relation_names=lineage_relations
+        ): AdapterQueryResult(
+            rows=(
+                ("raw__orders", _STATE_OLDEST_EVENT, _STATE_NEWEST_EVENT, 1000),
+                ("tbl__orders_clean", _STATE_OLDEST_EVENT, _STATE_MODEL_NEWEST, 900),
+            ),
+            column_names=("relation", "oldest", "newest", "rows"),
+        ),
+        build_throughput_query(
+            database="analytics",
+            relation_name="raw__orders",
+            window_seconds=3600,
+            bucket_seconds=60,
+        ): AdapterQueryResult(
+            rows=((1754218740, 120), (1754218800, 180)),
+            column_names=("bucket", "rows"),
+        ),
+        build_partitions_query(
+            database="analytics", relation_name="raw__orders"
+        ): AdapterQueryResult(
+            rows=((0, 91822, _STATE_NEWEST_EVENT),),
+            column_names=("partition", "max_offset", "newest"),
+        ),
+    }
+    return FakeAdapterConnection(
+        catalog=catalog,
+        ownership=ownership,
+        results_by_query=results,
+        warehouse_timestamp=_STATE_WAREHOUSE_NOW,
+    )
