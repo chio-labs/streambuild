@@ -12,10 +12,11 @@ from streambuild.compiler.discovery._helpers.interpolation import (
     interpolate_config_value,
     resolve_variable_values,
 )
-from streambuild.compiler.discovery.exceptions import ProjectConfigError
+from streambuild.compiler.discovery.exceptions import PipelineDiscoveryError, ProjectConfigError
 from streambuild.compiler.discovery.models import (
     EffectiveProjectConfiguration,
     LoadedProjectConfiguration,
+    SourceFreshnessPolicy,
 )
 from tests.unit.src.streambuild.compiler.discovery._test_types import (
     EffectiveProjectConfigurationTestCase,
@@ -27,6 +28,8 @@ from tests.unit.src.streambuild.compiler.discovery._test_types import (
     MissingProjectConfigurationTestCase,
     MixedProjectConfigurationTestCase,
     ProjectConfigurationErrorTestCase,
+    ProjectFreshnessDefaultTestCase,
+    ProjectFreshnessErrorTestCase,
     UnknownTargetTestCase,
 )
 from tests.unit.src.streambuild.compiler.discovery.helpers import (
@@ -34,6 +37,20 @@ from tests.unit.src.streambuild.compiler.discovery.helpers import (
     write_local_toml,
     write_project_toml,
 )
+
+_FRESHNESS_PROJECT_TOML_TEMPLATE: str = """
+name = "analytics"
+default_target = "dev"
+
+[connection]
+host = "project-host"
+port = 8123
+
+{defaults_toml}
+
+[targets.dev]
+database = "dev_database"
+"""
 
 
 @pytest.mark.parametrize(
@@ -519,3 +536,77 @@ def test_given_invalid_interpolation_when_resolving_then_it_reports_field_contex
             environment=environment,
             field_path="streambuild_project.toml test.value",
         )
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ProjectFreshnessDefaultTestCase(
+            description="parses a project default freshness policy",
+            defaults_toml='[defaults.freshness]\nwarn_after = "15m"\nerror_after = "1h"',
+            expected_freshness=SourceFreshnessPolicy(warn_after="15m", error_after="1h"),
+        ),
+        ProjectFreshnessDefaultTestCase(
+            description="parses a warn-only project default freshness policy",
+            defaults_toml='[defaults.freshness]\nwarn_after = "12h"',
+            expected_freshness=SourceFreshnessPolicy(warn_after="12h"),
+        ),
+        ProjectFreshnessDefaultTestCase(
+            description="defaults an absent freshness policy to none",
+            defaults_toml='[defaults]\nmanaged_source_ttl = "_replay_landed_at + INTERVAL 1 DAY"',
+            expected_freshness=None,
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_defaults_freshness_when_loading_then_returns_expected_policy(
+    test_case: ProjectFreshnessDefaultTestCase,
+    tmp_path: Path,
+) -> None:
+    write_project_toml(
+        project_dir=tmp_path,
+        contents=_FRESHNESS_PROJECT_TOML_TEMPLATE.format(defaults_toml=test_case.defaults_toml),
+    )
+
+    loaded: LoadedProjectConfiguration = load_project_configuration(project_dir=tmp_path)
+
+    assert loaded.project.defaults.freshness == test_case.expected_freshness
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ProjectFreshnessErrorTestCase(
+            description="rejects a malformed freshness duration",
+            defaults_toml='[defaults.freshness]\nwarn_after = "soon"',
+            expected_error_fragment="must be a duration like",
+        ),
+        ProjectFreshnessErrorTestCase(
+            description="rejects warn_after exceeding error_after",
+            defaults_toml='[defaults.freshness]\nwarn_after = "2h"\nerror_after = "1h"',
+            expected_error_fragment="warn_after must not exceed error_after",
+        ),
+        ProjectFreshnessErrorTestCase(
+            description="rejects an empty freshness mapping",
+            defaults_toml="[defaults.freshness]",
+            expected_error_fragment="must set at least one of warn_after or error_after",
+        ),
+        ProjectFreshnessErrorTestCase(
+            description="rejects unknown freshness keys",
+            defaults_toml='[defaults.freshness]\ncheck_every = "5m"',
+            expected_error_fragment="unknown keys: check_every",
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_invalid_defaults_freshness_when_loading_then_it_raises_specific_error(
+    test_case: ProjectFreshnessErrorTestCase,
+    tmp_path: Path,
+) -> None:
+    write_project_toml(
+        project_dir=tmp_path,
+        contents=_FRESHNESS_PROJECT_TOML_TEMPLATE.format(defaults_toml=test_case.defaults_toml),
+    )
+
+    with pytest.raises(PipelineDiscoveryError, match=test_case.expected_error_fragment):
+        load_project_configuration(project_dir=tmp_path)

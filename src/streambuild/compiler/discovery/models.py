@@ -107,12 +107,21 @@ class ReplayOnChangePolicy:
 
 
 @dataclass(frozen=True)
+class SourceFreshnessPolicy:
+    """Authored freshness thresholds as `<int><s|m|h|d>` durations."""
+
+    warn_after: str | None = None
+    error_after: str | None = None
+
+
+@dataclass(frozen=True)
 class ProjectDefaults:
     """Committed project-wide authored defaults."""
 
     managed_source_ttl: str | None = None
     replay_on_change: ReplayOnChangePolicy | None = None
     bounded_replay_fallback: BoundedReplayFallback | None = None
+    freshness: SourceFreshnessPolicy | None = None
 
 
 @dataclass(frozen=True)
@@ -215,6 +224,7 @@ class KafkaLandingStep:
     name: str
     kafka: KafkaSettings
     replay_boundary: ReplayBoundary | None = None
+    freshness: SourceFreshnessPolicy | None = None
 
 
 @dataclass(frozen=True)
@@ -247,6 +257,7 @@ class ExternalTableSourceStep:
     kind: SourceKind | str
     table_name: str
     replay_boundary: ReplayBoundary
+    freshness: SourceFreshnessPolicy | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "kind", SourceKind(self.kind))
