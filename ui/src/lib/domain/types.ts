@@ -53,8 +53,6 @@ export type ManagedRelationKind = 'kafka_engine' | 'landing_mv' | 'landing_table
 export type ManagedRelation = {
 	kind: ManagedRelationKind;
 	name: string;
-	engine: string;
-	note: string;
 };
 
 export type PartitionState = {
@@ -89,8 +87,6 @@ export type Source = {
 	ttl: string | null;
 	/** Parsed from `ttl` for arithmetic. null = infinite retention = lossless rebuilds. */
 	retentionDays: number | null;
-	/** True when `ttl` came from `[defaults].managed_source_ttl` rather than the source. */
-	ttlFromProjectDefault: boolean;
 	brokerList: string | null;
 	topic: string | null;
 	consumerGroup: string | null;
@@ -292,14 +288,10 @@ export type Project = {
 	target: string;
 	database: string;
 	adapter: string;
-	/** Always false here — this UI is direct-mode only. */
-	virtualEnvironments: boolean;
 	connection: { host: string; port: number; username: string; secure: boolean };
 	vars: Record<string, string | number | boolean>;
 	naming: { tablePrefix: string; viewPrefix: string };
 	defaults: { managedSourceTtl: string | null };
-	toolVersion: string;
-	warehouseTimezone: string;
 	/** Server clock at snapshot time — everything relative is computed from this. */
 	capturedAt: string;
 	sources: Source[];

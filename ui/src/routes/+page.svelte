@@ -1,6 +1,5 @@
 <script lang="ts">
 	import GitCompareIcon from '@lucide/svelte/icons/git-compare';
-	import TriangleAlertIcon from '@lucide/svelte/icons/triangle-alert';
 	import AppTopbar from '$lib/components/app-topbar.svelte';
 	import Sparkline from '$lib/components/sparkline.svelte';
 	import StatusPill from '$lib/components/status-pill.svelte';
@@ -331,7 +330,7 @@
 		<div
 			class="text-[var(--sb-text-faint)] flex flex-wrap items-center gap-x-5 gap-y-1 border-t border-border pt-3 font-mono text-[10.5px]"
 		>
-			<span>snapshot {formatTimestamp(project.capturedAt)} {project.warehouseTimezone}</span>
+			<span>snapshot {formatTimestamp(project.capturedAt)}</span>
 			<span>target {project.target} · database {project.database}</span>
 			<span>adapter {project.adapter}</span>
 			<span>direct mode</span>

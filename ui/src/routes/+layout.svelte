@@ -14,6 +14,9 @@
 
 <svelte:head>
 	<link rel="icon" href="/favicon.png" />
+	{#if app.phase !== 'ready'}
+		<title>StreamBuild</title>
+	{/if}
 </svelte:head>
 
 {#if app.phase === 'ready'}

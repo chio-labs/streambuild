@@ -4,6 +4,7 @@
 	import EyeIcon from '@lucide/svelte/icons/eye';
 	import { theme, toggleTheme } from '$lib/theme.svelte';
 	import { getProject, CAN_EXECUTE_BUILD } from '$lib/api';
+	import { app } from '$lib/api/store.svelte';
 	import { formatClock } from '$lib/domain/format';
 	import type { Project } from '$lib/domain/types';
 
@@ -20,8 +21,14 @@
 	// The warehouse read is a SNAPSHOT, so state when it was taken rather than
 	// implying a live feed. An absolute clock is also honest about the fact that
 	// the plan a user copies may already be stale by the time they run it.
-	const snapshotClock: string = formatClock(project.capturedAt);
+	// $derived so the 30s poll moves the clock instead of freezing it at mount.
+	const snapshotClock = $derived(formatClock(project.capturedAt));
+	const connected = $derived(app.status?.warehouseConnected ?? false);
 </script>
+
+<svelte:head>
+	<title>{title} · StreamBuild</title>
+</svelte:head>
 
 <div class="flex h-[54px] shrink-0 items-center gap-3.5 border-b border-border px-[18px]">
 	<h1 class="font-display text-[16px] font-semibold">{title}</h1>
@@ -40,9 +47,14 @@
 		<span
 			class="text-muted-foreground flex items-center gap-[7px] font-mono text-[11px] tracking-wide"
 		>
-			<span class="conn-tick bg-[var(--sb-secondary)] relative h-[7px] w-[7px] rounded-[2px]"></span>
-			<b class="text-[var(--sb-secondary)] font-medium">connected</b> · snapshot {snapshotClock}
-			{project.warehouseTimezone}
+			{#if connected}
+				<span class="conn-tick bg-[var(--sb-secondary)] relative h-[7px] w-[7px] rounded-[2px]"
+				></span>
+				<b class="text-[var(--sb-secondary)] font-medium">connected</b> · snapshot {snapshotClock}
+			{:else}
+				<span class="relative h-[7px] w-[7px] rounded-[2px] bg-[var(--sb-error)]"></span>
+				<b class="font-medium" style:color="var(--sb-error)">no warehouse</b>
+			{/if}
 		</span>
 		{#if children}{@render children()}{/if}
 		<button
