@@ -56,6 +56,7 @@ from tests.integration.src.streambuild.executor.publish.helpers import (
                 ("_streambuild_direct_target_events", "MergeTree"),
                 ("_streambuild_invocations", "MergeTree"),
                 ("_streambuild_node_results", "MergeTree"),
+                ("_streambuild_run_events", "MergeTree"),
                 ("_streambuild_schema_versions", "MergeTree"),
                 ("_streambuild_virtual_deployments", "MergeTree"),
                 ("_streambuild_virtual_object_state", "MergeTree"),
