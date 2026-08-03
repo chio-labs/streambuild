@@ -18,7 +18,11 @@ from streambuild.compiler.planner.models import DirectPlan, DirectWarehouseSnaps
 from streambuild.dev_server._helpers.checks_execution import run_one_audit, run_one_test
 from streambuild.dev_server._helpers.compile_runner import build_status_payload
 from streambuild.dev_server._helpers.definitions_payload import build_definitions_payload
-from streambuild.dev_server._helpers.plan_payload import build_plan_payload, expand_selectors
+from streambuild.dev_server._helpers.plan_payload import (
+    build_plan_payload,
+    count_replay_rows,
+    expand_selectors,
+)
 from streambuild.dev_server._helpers.runs_query import read_runs
 from streambuild.dev_server._helpers.state_payload import build_state_payload
 from streambuild.dev_server.classes.dev_server_state import DevServerState
@@ -117,23 +121,29 @@ def register_api_routes(
                     database=database or "",
                     metadata_database=database or "",
                 )
-            plan: DirectPlan = plan_direct_build(
-                graph=analysis.graph,
-                realized_project=analysis.realized_project,
-                snapshot=snapshot,
-                database=database or "",
-                selected_model_keys=selected,
-                effective_start_time=start,
-            )
+                plan: DirectPlan = plan_direct_build(
+                    graph=analysis.graph,
+                    realized_project=analysis.realized_project,
+                    snapshot=snapshot,
+                    database=database or "",
+                    selected_model_keys=selected,
+                    effective_start_time=start,
+                )
+                return build_plan_payload(
+                    plan=plan,
+                    analysis=analysis,
+                    selectors=tuple(select or ()),
+                    start_time=start,
+                    planned_at=planned_at,
+                    replay_row_counts=count_replay_rows(
+                        connection=client,
+                        database=database or "",
+                        plan=plan,
+                        start_time=start,
+                    ),
+                )
         except AdapterError as error:
             raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
-        return build_plan_payload(
-            plan=plan,
-            analysis=analysis,
-            selectors=tuple(select or ()),
-            start_time=start,
-            planned_at=planned_at,
-        )
 
     def run_check(request: ChecksRunRequest) -> dict[str, object]:
         client: AdapterConnection = _required_connection()

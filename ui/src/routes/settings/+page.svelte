@@ -3,6 +3,7 @@
 	import AppTopbar from '$lib/components/app-topbar.svelte';
 	import FactRow from '$lib/components/fact-row.svelte';
 	import { getProject, CAN_EXECUTE_BUILD } from '$lib/api';
+	import { app } from '$lib/api/store.svelte';
 	import type { Project } from '$lib/domain/types';
 
 	const project: Project = getProject();
@@ -33,6 +34,9 @@
 			<FactRow label="Default target" value={project.target} mono />
 			<FactRow label="Database" value={project.database} mono />
 			<FactRow label="Adapter" value={project.adapter} mono />
+			{#if app.status?.toolVersion}
+				<FactRow label="StreamBuild version" value={app.status.toolVersion} mono />
+			{/if}
 		</div>
 
 		<div>

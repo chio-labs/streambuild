@@ -20,6 +20,8 @@ export type CompileError = {
 
 export type ServerStatus = {
 	state: 'ok' | 'failing';
+	/** Installed streambuild package version, straight from the server. */
+	toolVersion: string;
 	versionKey: string;
 	compiledAt: string;
 	timings: Record<string, number> | null;
@@ -152,6 +154,7 @@ function applyStatusPayload(payload: Record<string, unknown>): void {
 	const warehouse = (payload.warehouse ?? {}) as Record<string, unknown>;
 	app.status = {
 		state: compile.state === 'ok' ? 'ok' : 'failing',
+		toolVersion: String(payload.toolVersion ?? ''),
 		versionKey: String(compile.versionKey ?? ''),
 		compiledAt: String(compile.compiledAt ?? ''),
 		timings: (compile.timings as Record<string, number> | null) ?? null,

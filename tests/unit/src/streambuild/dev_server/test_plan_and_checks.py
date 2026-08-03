@@ -27,6 +27,7 @@ from tests.unit.src.streambuild.dev_server.helpers import (
             expected_status=200,
             expected_entry_names=("orders_clean",),
             expected_command="stb build --select orders_clean",
+            expected_replay_root_rows=(1000,),
         ),
         PlanEndpointTestCase(
             description="expands a pipeline selector to its models",
@@ -34,6 +35,7 @@ from tests.unit.src.streambuild.dev_server.helpers import (
             expected_status=200,
             expected_entry_names=("orders_clean",),
             expected_command="stb build --select pipeline:order_events",
+            expected_replay_root_rows=(1000,),
         ),
         PlanEndpointTestCase(
             description="rejects an unknown selector with a clear message",
@@ -41,6 +43,7 @@ from tests.unit.src.streambuild.dev_server.helpers import (
             expected_status=400,
             expected_entry_names=(),
             expected_command="",
+            expected_replay_root_rows=(),
         ),
     ],
     ids=lambda case: case.description,
@@ -61,6 +64,10 @@ def test_given_selectors_when_planning_then_returns_expected_plan(
     )
     assert payload_entries == test_case.expected_entry_names
     assert response.json().get("command", "") == test_case.expected_command
+    replay_root_rows: tuple = tuple(
+        root["rowsToReplay"] for root in response.json().get("replayRoots", ())
+    )
+    assert replay_root_rows == test_case.expected_replay_root_rows
 
 
 @pytest.mark.parametrize(

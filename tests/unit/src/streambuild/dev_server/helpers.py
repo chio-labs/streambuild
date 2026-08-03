@@ -25,6 +25,7 @@ from streambuild.compiler.discovery.main.load_project_input_for_path import (
 )
 from streambuild.compiler.pipeline.main.analyze_project import analyze_project
 from streambuild.compiler.pipeline.models import CompileAnalysis
+from streambuild.dev_server._helpers.plan_payload import build_replay_count_query
 from streambuild.dev_server._helpers.state_queries import (
     build_extents_query,
     build_partitions_query,
@@ -351,6 +352,12 @@ def build_fake_state_connection() -> FakeAdapterConnection:
             "SELECT count() AS present FROM system.tables "
             "WHERE database = 'analytics' AND name = '_streambuild_invocations'"
         ): AdapterQueryResult(rows=((0,),), column_names=("present",)),
+        build_replay_count_query(
+            database="analytics",
+            relation_name="raw__orders",
+            time_column="_replay_landed_at",
+            start_time=None,
+        ): AdapterQueryResult(rows=((1000,),), column_names=("rows",)),
     }
     return FakeAdapterConnection(
         catalog=catalog,

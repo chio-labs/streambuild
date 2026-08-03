@@ -56,6 +56,7 @@ class PlanEndpointTestCase:
     expected_status: int
     expected_entry_names: tuple[str, ...]
     expected_command: str
+    expected_replay_root_rows: tuple[int | None, ...]
 
 
 @dataclass(frozen=True)
@@ -78,3 +79,17 @@ class SpaFallbackTestCase:
     description: str
     request_path: str
     expected_body_fragment: str
+
+
+@dataclass(frozen=True)
+class ReplayCountQueryTestCase:
+    description: str
+    start_time: str | None
+    expected_query: str
+
+
+@dataclass(frozen=True)
+class ReplayTimeColumnTestCase:
+    description: str
+    boundary_mode: str
+    expected_column: str

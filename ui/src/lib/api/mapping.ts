@@ -90,7 +90,8 @@ function sourceFromServer(source: Payload, live: Payload, state: Payload): Sourc
 		relationName: source.relationName as string,
 		managedRelations: ((source.managedRelations ?? []) as Payload[]).map((relation) => ({
 			kind: relation.kind as Source['managedRelations'][number]['kind'],
-			name: relation.name as string
+			name: relation.name as string,
+			ddl: (relation.ddl as string | null) ?? null
 		})),
 		ttl: (source.ttl as string | null) ?? null,
 		retentionDays: retentionDaysFromTtl((source.ttl as string | null) ?? null),
@@ -102,6 +103,7 @@ function sourceFromServer(source: Payload, live: Payload, state: Payload): Sourc
 		columnMapping: (source.columnMapping as Source['columnMapping']) ?? null,
 		live: {
 			rowsPerSecond: (live.rowsPerSecond as number) ?? 0,
+			freshness: (live.freshness as Source['live']['freshness']) ?? null,
 			lagSeconds: (live.lagSeconds as number | null) ?? null,
 			newestEventAt: (live.newestEventAt as string) ?? '',
 			oldestEventAt: (live.oldestEventAt as string) ?? '',
@@ -109,7 +111,8 @@ function sourceFromServer(source: Payload, live: Payload, state: Payload): Sourc
 			partitions: ((live.partitions ?? []) as Payload[]).map((partition) =>
 				partitionFromServer(partition, capturedAt)
 			),
-			throughput: buckets
+			throughput: buckets,
+			throughputWindowSeconds: (throughput?.windowSeconds as number | null) ?? null
 		}
 	};
 }
@@ -187,6 +190,7 @@ function modelFromServer(model: Payload, live: Payload): Model {
 			oldestRowAt: (live.oldestRowAt as string | null) ?? null,
 			lagSeconds: (live.lagSeconds as number | null) ?? null,
 			inSyncWithCompiled: !drift,
+			driftReasons: (live.driftReasons as string[]) ?? [],
 			ownership: ((live.ownership as string) ?? 'absent') as Model['live']['ownership'],
 			recordedCoverage: null
 		},
@@ -267,7 +271,8 @@ export function planFromServer(payload: Payload, adapter: string): Plan {
 			boundaryMode: root.boundaryMode as Plan['replayRoots'][number]['boundaryMode'],
 			replayColumns: {},
 			propagatedModelNames: (root.propagatedModelNames as string[]) ?? [],
-			hasAggregateSemantics: Boolean(root.hasAggregateSemantics)
+			hasAggregateSemantics: Boolean(root.hasAggregateSemantics),
+			rowsToReplay: (root.rowsToReplay as number | null) ?? null
 		})),
 		warnings: ((payload.warnings as Payload[]) ?? []).map((warning) => ({
 			code: (warning.code as string) ?? '',
@@ -275,7 +280,6 @@ export function planFromServer(payload: Payload, adapter: string): Plan {
 			relatedModel: null
 		})),
 		replayWindow: (payload.replayWindow as Plan['replayWindow']) ?? { mode: 'full' },
-		estimate: null,
 		plannedAt: (payload.plannedAt as string) ?? '',
 		command: (payload.command as string) ?? 'stb build'
 	};

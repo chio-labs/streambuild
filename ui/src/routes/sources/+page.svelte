@@ -6,6 +6,11 @@
 	import type { Project } from '$lib/domain/types';
 
 	const project: Project = getProject();
+
+	const throughputWindow = $derived(
+		project.sources.find((source) => source.live.throughputWindowSeconds !== null)?.live
+			.throughputWindowSeconds ?? null
+	);
 </script>
 
 <AppTopbar title="Sources" />
@@ -18,7 +23,12 @@
 				<th class="px-3 py-2 font-normal">Kind</th>
 				<th class="px-3 py-2 font-normal">Origin</th>
 				<th class="px-3 py-2 font-normal">Boundary</th>
-				<th class="px-3 py-2 font-normal">Throughput</th>
+				<th class="px-3 py-2 font-normal"
+					>Throughput{#if throughputWindow}
+						<span class="text-[var(--sb-text-faint)] normal-case"
+							>(last {formatDuration(throughputWindow)})</span
+						>{/if}</th
+				>
 				<th class="px-3 py-2 font-normal">Lag</th>
 				<th class="px-3 py-2 font-normal">Retained</th>
 				<th class="px-3 py-2 pr-[18px] font-normal">Reconstruction horizon</th>

@@ -1,5 +1,6 @@
 import argparse
 import json
+from importlib.metadata import version
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +14,11 @@ def build_cli_parser() -> argparse.ArgumentParser:
     parser: argparse.ArgumentParser = argparse.ArgumentParser(
         prog="stb",
         description="Declarative, versioned streaming data pipelines for ClickHouse.",
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"stb {version('streambuild')}",
     )
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser] = parser.add_subparsers(
         dest="command", required=True

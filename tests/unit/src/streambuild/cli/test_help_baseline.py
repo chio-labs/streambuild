@@ -13,7 +13,7 @@ from tests.unit.src.streambuild.cli._test_types import CliHelpBaselineTestCase
         CliHelpBaselineTestCase(
             description="captures root help",
             argv=("--help",),
-            expected_sha256="58a67c91ad40a19e0e66b14d71277e5e6e0d3f7be6808373153ccb57fe0a3968",
+            expected_sha256="c688d156aaed17cbf55dbf26b217eee84a9f6b681273137c714c2474e6b21abd",
         ),
         CliHelpBaselineTestCase(
             description="captures discover help",
