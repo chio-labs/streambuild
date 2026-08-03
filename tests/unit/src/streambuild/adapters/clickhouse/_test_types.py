@@ -52,6 +52,22 @@ class ClickHouseCleanupProtectionTestCase:
 
 
 @dataclass(frozen=True)
+class TerminalObservationInsertTestCase:
+    description: str
+    expected_invocation_id: str
+    expected_result_id: str
+
+
+@dataclass(frozen=True)
+class LatestNodeStatusQueryTestCase:
+    description: str
+    expected_current_status_fragment: str
+    expected_node_values_fragment: str
+    expected_target_fragment: str
+    expected_project_fragment: str
+
+
+@dataclass(frozen=True)
 class BuildInspectedManagedTableStateTestCase:
     description: str
     active_binding_rows: tuple[tuple[str, str], ...]
@@ -224,7 +240,7 @@ class RenderMetadataMutationSqlTestCase:
 @dataclass(frozen=True)
 class RenderOwnershipMutationSqlTestCase:
     description: str
-    expected_record_sql: str
+    expected_record_sql: tuple[str, ...]
     expected_removal_sql: str
 
 

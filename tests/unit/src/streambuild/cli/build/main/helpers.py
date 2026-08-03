@@ -35,7 +35,7 @@ class _VirtualArtifactConnection(RecordingAdapterConnection):
         rows: tuple[tuple[str, ...], ...] = {
             False: (),
             True: (("2026-08-01 12:00:01.000",),),
-        }[statement.startswith("SELECT any(cutoff_value) AS boundary_time ")]
+        }[statement.startswith("SELECT toString(any(boundary_time), 'UTC') AS boundary_time ")]
         return AdapterQueryResult(rows=rows)
 
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.exceptions import AdapterError
 from streambuild.adapter.models import AdapterQueryResult
 from streambuild.compiler.audit_discovery.models import LoadedSqlAudit
 from streambuild.compiler.compile.main.replace_refs import replace_refs
@@ -51,15 +52,31 @@ def _execute_single_sql_audit(
         resolver=dict(resolver),
         rewriter=reference_rewriter,
     )
-    failing_row_count: int = _query_failing_row_count(query=resolved_query, client=client)
+    failing_row_count = 0
     sample_column_names: tuple[str, ...] = ()
     sample_rows: tuple[tuple[object, ...], ...] = ()
-    if failing_row_count:
-        sample_result: AdapterQueryResult = client.query(
-            f"SELECT * FROM ({resolved_query}) AS __streambuild_audit LIMIT {AUDIT_SAMPLE_LIMIT}"
+    try:
+        failing_row_count = _query_failing_row_count(query=resolved_query, client=client)
+        if failing_row_count:
+            sample_result: AdapterQueryResult = client.query(
+                f"SELECT * FROM ({resolved_query}) AS __streambuild_audit "
+                f"LIMIT {AUDIT_SAMPLE_LIMIT}"
+            )
+            sample_column_names = sample_result.column_names
+            sample_rows = sample_result.rows
+    except AdapterError as error:
+        return SqlAuditResult(
+            file_path=loaded_audit.file_path,
+            referenced_model_names=loaded_audit.referenced_model_names,
+            severity=loaded_audit.severity,
+            passed=False,
+            failing_row_count=max(failing_row_count, 1),
+            sample_column_names=sample_column_names,
+            sample_rows=sample_rows,
+            description=loaded_audit.description,
+            name=loaded_audit.name,
+            error_message=str(error),
         )
-        sample_column_names = sample_result.column_names
-        sample_rows = sample_result.rows
     return SqlAuditResult(
         file_path=loaded_audit.file_path,
         referenced_model_names=loaded_audit.referenced_model_names,
@@ -70,6 +87,7 @@ def _execute_single_sql_audit(
         sample_rows=sample_rows,
         description=loaded_audit.description,
         name=loaded_audit.name,
+        error_message=None,
     )
 
 

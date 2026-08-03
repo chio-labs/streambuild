@@ -82,5 +82,6 @@ class LoadActualStateWithConflictingMetadataIntegrationTestCase:
 class LoadActualStateWithLatestObjectStateIntegrationTestCase:
     description: str
     latest_record_deployment_id: str
+    latest_record_state_kind: str
     latest_record_query: str
     expected_materialized_view_query: str

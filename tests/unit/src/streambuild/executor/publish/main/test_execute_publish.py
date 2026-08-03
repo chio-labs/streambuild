@@ -104,10 +104,13 @@ from tests.unit.src.streambuild.executor.publish.main.helpers import (
                 "SELECT * FROM analytics.tbl__orders_enriched__20260726T190000Z_ab12cd;",
                 "DROP VIEW IF EXISTS analytics.tbl__orders_legacy SYNC;",
                 "CREATE DATABASE IF NOT EXISTS metadata;",
-                "INSERT INTO metadata.streambuild_publish_history "
-                "(deployment_id, published_at, logical_view_names_json) VALUES\n"
-                "('20260726T190000Z_ab12cd', '2026-07-31 12:00:00.000', "
-                "'[\"tbl__orders_enriched\"]');",
+                "INSERT INTO metadata._streambuild_virtual_publications "
+                "(publication_id, deployment_id, logical_database_name, logical_view_name, "
+                "physical_database_name, physical_relation_name, published_at) VALUES\n"
+                "('c3b90a45d6bb36a296f251990fa00f8184dd0bad6d9a8a64e5f205b8609b4d4e', "
+                "'20260726T190000Z_ab12cd', 'analytics', 'tbl__orders_enriched', "
+                "'analytics', 'tbl__orders_enriched__20260726T190000Z_ab12cd', "
+                "'2026-07-31 12:00:00.000');",
             ),
             expected_result=PublishResult(
                 deployment_id="20260726T190000Z_ab12cd",

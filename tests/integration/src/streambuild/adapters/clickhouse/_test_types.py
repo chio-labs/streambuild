@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 
+from streambuild.adapter.models import AdapterOwnershipRecord
+
 
 @dataclass(frozen=True)
 class ClickHouseClientIntegrationTestCase:
@@ -46,19 +48,9 @@ class MetadataMigrationIntegrationTestCase:
 
 
 @dataclass(frozen=True)
-class LegacyMetadataMigrationIntegrationTestCase:
-    description: str
-    runtime_details_setup_sql: str
-    expected_deployment_row: tuple[str, str, str, str]
-    expected_object_state_count: int
-    expected_version_rows: tuple[tuple[int], ...]
-    expected_legacy_deployment_count: int
-
-
-@dataclass(frozen=True)
 class TargetOwnershipIntegrationTestCase:
     description: str
-    inserted_rows: tuple[dict[str, object], ...]
+    inserted_records: tuple[AdapterOwnershipRecord, ...]
     expected_records_before_migration: tuple[tuple[str, str, str], ...]
     expected_records_after_migration: tuple[tuple[str, str, str], ...]
     expected_records_after_insert: tuple[tuple[str, str, str], ...]
@@ -70,3 +62,17 @@ class RenderMutationSqlIntegrationTestCase:
     expected_version_rows: tuple[tuple[int], ...]
     expected_records_after_insert: tuple[tuple[str, str, str], ...]
     expected_records_after_removal: tuple[tuple[str, str, str], ...]
+
+
+@dataclass(frozen=True)
+class LatestNodeStatusIntegrationTestCase:
+    description: str
+    expected_status_rows: tuple[tuple[str, str], ...]
+
+
+@dataclass(frozen=True)
+class DirectReplayIsolationIntegrationTestCase:
+    description: str
+    expected_replay_set_count: int
+    expected_range_rows: tuple[tuple[str, int, str | None, str | None], ...]
+    expected_loaded_coverage: tuple[tuple[str, tuple[tuple[str, str], ...]], ...]

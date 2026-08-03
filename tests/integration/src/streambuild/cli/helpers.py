@@ -19,10 +19,12 @@ from streambuild.adapter.models import (
     AdapterDeploymentInventory,
     AdapterDeploymentRecord,
     AdapterIdentity,
+    AdapterInvocationRecord,
     AdapterManagedSource,
     AdapterMaterializedView,
     AdapterMetadataState,
     AdapterMutationResult,
+    AdapterNodeResultRecord,
     AdapterOwnershipRecord,
     AdapterOwnershipReplayRequest,
     AdapterQueryResult,
@@ -37,6 +39,7 @@ from streambuild.adapter.models import (
     CatalogSnapshot,
     InspectedManagedTableState,
 )
+from streambuild.adapter.types import AdapterOwningMode
 from streambuild.adapters.clickhouse._helpers.inspection import load_clickhouse_catalog
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from streambuild.cli.build._helpers.preview import build_direct_build_preview
@@ -181,6 +184,19 @@ class RecordingDelegatingConnection(AdapterConnection):
 
     def execute_workflow_sql(self, statement: str) -> AdapterMutationResult:
         return self._delegate.execute_workflow_sql(statement)
+
+    def render_terminal_observations(
+        self,
+        *,
+        database: str,
+        invocation: AdapterInvocationRecord,
+        node_results: tuple[AdapterNodeResultRecord, ...],
+    ) -> tuple[str, ...]:
+        return self._delegate.render_terminal_observations(
+            database=database,
+            invocation=invocation,
+            node_results=node_results,
+        )
 
     def capture_warehouse_timestamp(self) -> str:
         return self._delegate.capture_warehouse_timestamp()
@@ -502,20 +518,6 @@ def build_managed_clickhouse_client(
     )
 
 
-def build_deployment_status_query(database: str) -> str:
-    return (
-        "SELECT name FROM system.tables "
-        f"WHERE database = '{database}' AND name = 'streambuild_deployments'"
-    )
-
-
-def build_runtime_details_table_query(database: str) -> str:
-    return (
-        "SELECT name FROM system.tables "
-        f"WHERE database = '{database}' AND name = 'streambuild_deployment_runtime_details'"
-    )
-
-
 def write_source_mode_plan_project(
     *, project_dir: Path, source_contents: str, model_contents: str
 ) -> Path:
@@ -710,10 +712,37 @@ def write_multi_audit_project_files(project_dir: Path) -> None:
     )
 
 
+def write_error_audit_project_files(project_dir: Path) -> None:
+    from tests.unit.src.streambuild.compiler.audit_discovery.helpers import write_sql_audit_file
+
+    write_multi_audit_project_files(project_dir)
+    write_sql_audit_file(
+        project_dir / "audits" / "singular" / "order_events" / "quality.sql",
+        """
+        AUDIT (
+          name: "broken column",
+        );
+
+        SELECT missing_order_id
+        FROM __ref("order_items");
+
+        AUDIT (
+          name: "negative line totals",
+          severity: "warning",
+        );
+
+        SELECT order_id, line_total
+        FROM __ref("order_items")
+        WHERE line_total < 0
+        """,
+    )
+
+
 AUDIT_PROJECT_WRITER_BY_NAME: Mapping[str, Callable[[Path], None]] = {
     "singular": write_audit_project_files,
     "generic": write_generic_audit_project_files,
     "multi": write_multi_audit_project_files,
+    "error": write_error_audit_project_files,
 }
 
 NULLABLE_ORDER_ITEMS_COLUMNS: str = "order_id Nullable(String), line_total Nullable(Float64)"
@@ -752,7 +781,10 @@ def load_deployment_status_rows(
 ) -> tuple[tuple[str, ...], ...]:
     """Load recorded deployment statuses in deployment order."""
 
-    query: str = f"SELECT status FROM {database}.streambuild_deployments ORDER BY deployment_id"
+    query: str = (
+        f"SELECT 'backfilling' FROM {database}._streambuild_virtual_deployments "
+        "ORDER BY deployment_id"
+    )
     return tuple(_stringify_row(row) for row in clickhouse_client.query(query).result_rows)
 
 
@@ -764,25 +796,11 @@ def load_selected_root_names(*, clickhouse_client: Client, database: str) -> tup
     """Load the selected root names recorded against every deployment."""
 
     query: str = (
-        "SELECT JSONExtractString(root_key, 'name') FROM "
-        f"{database}.streambuild_deployments "
-        "ARRAY JOIN JSONExtractArrayRaw(selected_root_keys_json) AS root_key "
-        "ORDER BY JSONExtractString(root_key, 'name')"
+        "SELECT logical_object_name FROM "
+        f"{database}._streambuild_virtual_object_state "
+        "WHERE state_kind = 'deployment' AND is_selected_root ORDER BY logical_object_name"
     )
     return tuple(str(row[0]) for row in clickhouse_client.query(query).result_rows)
-
-
-def load_runtime_execution_modes(
-    *, clickhouse_client: Client, database: str
-) -> tuple[tuple[str, str | None], ...]:
-    """Load the recorded execution mode per root object."""
-
-    query: str = (
-        "SELECT root_object_name, execution_mode "
-        f"FROM {database}.streambuild_deployment_runtime_details "
-        "ORDER BY root_object_name"
-    )
-    return tuple((str(row[0]), row[1]) for row in clickhouse_client.query(query).result_rows)
 
 
 SINGLE_EXPECTED_SQL_TEST: str = """
@@ -1000,30 +1018,21 @@ def settle_direct_scope_warehouse(
             "(order_id UInt64) ENGINE = MergeTree ORDER BY order_id"
         )
     ownership_relation_names: tuple[str, ...] = _OWNERSHIP_ROW_NAMES_BY_FLAG[record_ownership]
-    ownership_rows: tuple[dict[str, object], ...] = tuple(
-        cast(
-            dict[str, object],
-            {
-                "database_name": database,
-                "relation_name": relation_name,
-                "resource_kind": "table",
-                "logical_model_database": "",
-                "logical_model_name": relation_name.split("__")[-1],
-                "owning_mode": "direct",
-                "tool_version": "integration",
-            },
+    ownership_records: tuple[AdapterOwnershipRecord, ...] = tuple(
+        AdapterOwnershipRecord(
+            database_name=database,
+            relation_name=relation_name,
+            resource_kind="table",
+            logical_model_name=relation_name.split("__")[-1],
+            owning_mode=AdapterOwningMode.DIRECT,
+            tool_version="integration",
         )
         for relation_name in ownership_relation_names
     )
-    insert_ownership: Callable[[], object] = {
-        False: lambda: None,
-        True: lambda: clickhouse_client.insert(
-            table=f"{database}.streambuild_target_ownership",
-            data=[list(row.values()) for row in ownership_rows],
-            column_names=list(ownership_rows[0]),
-        ),
-    }[record_ownership]
-    _ = insert_ownership()
+    for statement in connection.render_record_target_ownership(
+        database=database, records=ownership_records
+    ):
+        _ = clickhouse_client.command(statement)
 
 
 def run_direct_plan(
@@ -1943,11 +1952,12 @@ def virtual_deployment_watermark_rows(
     """Return replay-root watermarks without the shared boundary-time row."""
 
     rows: Sequence[Sequence[object]] = clickhouse_client.query(
-        "SELECT root_object_name, boundary_key, cutoff_value "
-        f"FROM {database}.streambuild_deployment_watermarks FINAL "
+        "SELECT root_object_name, if(boundary_kind = 'offsets', "
+        "concat('_replay_partition=', partition_value), concat('_replay_', boundary_kind)), "
+        "cutoff_value "
+        f"FROM {database}._streambuild_virtual_replay_boundaries "
         f"WHERE deployment_id = '{deployment_id}' "
-        "AND boundary_key != '__streambuild_boundary_time' "
-        "ORDER BY root_object_name, boundary_key"
+        "ORDER BY root_object_name, boundary_kind, partition_value"
     ).result_rows
     return tuple((str(row[0]), str(row[1]), str(row[2])) for row in rows)
 
@@ -1972,15 +1982,13 @@ def virtual_deployment_metadata_row_count(
 
     rows: Sequence[Sequence[object]] = clickhouse_client.query(
         "SELECT sum(row_count) FROM ("
-        f"SELECT count() AS row_count FROM {database}.streambuild_deployments "
+        f"SELECT count() AS row_count FROM {database}._streambuild_virtual_deployments "
         f"WHERE deployment_id = '{deployment_id}' UNION ALL "
-        f"SELECT count() AS row_count FROM {database}.streambuild_object_state_snapshots "
+        f"SELECT count() AS row_count FROM {database}._streambuild_virtual_object_state "
         f"WHERE deployment_id = '{deployment_id}' UNION ALL "
-        f"SELECT count() AS row_count FROM {database}.streambuild_deployment_runtime_details "
+        f"SELECT count() AS row_count FROM {database}._streambuild_virtual_replay_boundaries "
         f"WHERE deployment_id = '{deployment_id}' UNION ALL "
-        f"SELECT count() AS row_count FROM {database}.streambuild_deployment_watermarks "
-        f"WHERE deployment_id = '{deployment_id}' UNION ALL "
-        f"SELECT count() AS row_count FROM {database}.streambuild_publish_history "
+        f"SELECT count() AS row_count FROM {database}._streambuild_virtual_publications "
         f"WHERE deployment_id = '{deployment_id}')"
     ).result_rows
     return int(str(rows[0][0]))

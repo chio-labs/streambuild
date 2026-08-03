@@ -28,7 +28,6 @@ def build_direct_execution_result(
     *,
     request: DirectBuildRequest,
     execution: WorkflowExecutionResult,
-    failed_audit_step_id: str | None = None,
 ) -> DirectBuildExecutionResult:
     """Decode direct lifecycle evidence without reading target artifacts or warehouse state."""
 
@@ -66,7 +65,6 @@ def build_direct_execution_result(
         audit_result=_audit_result(
             request=request,
             results_by_step_id=results_by_step_id,
-            failed_audit_step_id=failed_audit_step_id,
         ),
     )
 
@@ -156,32 +154,39 @@ def _audit_result(
     *,
     request: DirectBuildRequest,
     results_by_step_id: dict[str, WorkflowStatementResult],
-    failed_audit_step_id: str | None,
 ) -> SqlAuditRunResult:
     audit_results: list[SqlAuditResult] = []
     for audit_index, audit in enumerate(request.audits, start=1):
         prefix: str = f"audit_{audit_index}_{_step_segment(audit.name)}"
-        count_result: WorkflowStatementResult | None = results_by_step_id.get(f"{prefix}_count")
-        count: int = _audit_count(count_result)
-        failed: bool = failed_audit_step_id == f"{prefix}_error" or count > 0
+        count_result: WorkflowStatementResult = results_by_step_id[f"{prefix}_count"]
+        sample_result: WorkflowStatementResult = results_by_step_id[f"{prefix}_sample"]
+        error_message: str | None = count_result.error_message or sample_result.error_message
+        count: int = 1 if count_result.error_message is not None else _audit_count(count_result)
+        sample_column_names: tuple[str, ...] = (
+            () if sample_result.query_result is None else sample_result.query_result.column_names
+        )
+        sample_rows: tuple[tuple[object, ...], ...] = (
+            () if sample_result.query_result is None else sample_result.query_result.rows
+        )
         audit_results.append(
             SqlAuditResult(
                 file_path=Path(audit.name),
                 referenced_model_names=(),
                 severity=audit.severity,
-                passed=not failed,
+                passed=error_message is None and count == 0,
                 failing_row_count=count,
-                sample_column_names=(),
-                sample_rows=(),
+                sample_column_names=sample_column_names,
+                sample_rows=sample_rows,
                 description=audit.description,
                 name=audit.name,
+                error_message=error_message,
             )
         )
     return SqlAuditRunResult(audit_results=tuple(audit_results))
 
 
-def _audit_count(result: WorkflowStatementResult | None) -> int:
-    if result is None or result.query_result is None or not result.query_result.rows:
+def _audit_count(result: WorkflowStatementResult) -> int:
+    if result.query_result is None or not result.query_result.rows:
         return 0
     return int(str(result.query_result.rows[0][0]))
 

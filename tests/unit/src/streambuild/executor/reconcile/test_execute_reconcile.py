@@ -1,3 +1,5 @@
+import json
+from hashlib import sha256
 from typing import cast
 
 import pytest
@@ -114,13 +116,56 @@ def test_given_matching_state_when_applying_reconcile_then_exact_workflow_sql_re
     )
     table_record: ObjectStateRecord = result.reconciled_records[0]
     view_record: ObjectStateRecord = result.reconciled_records[1]
+    table_observation_id: str = sha256(
+        json.dumps(
+            {
+                "state_id": result.reconcile_id,
+                "state_kind": "reconcile",
+                "logical_database_name": None,
+                "logical_object_type": "table",
+                "logical_object_name": "tbl__orders",
+                "physical_database_name": None,
+                "physical_relation_name": "tbl__orders",
+                "object_fingerprint": test_case.expected_table_fingerprint,
+                "canonical_query": None,
+                "observed_at": table_record.recorded_at,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+    ).hexdigest()
+    view_observation_id: str = sha256(
+        json.dumps(
+            {
+                "state_id": result.reconcile_id,
+                "state_kind": "reconcile",
+                "logical_database_name": None,
+                "logical_object_type": "materialized_view",
+                "logical_object_name": "mv__orders",
+                "physical_database_name": None,
+                "physical_relation_name": "mv__orders",
+                "object_fingerprint": test_case.expected_view_fingerprint,
+                "canonical_query": "SELECT order_id FROM raw__orders",
+                "observed_at": view_record.recorded_at,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+    ).hexdigest()
     expected_persistence_statement: str = (
-        "INSERT INTO metadata.streambuild_object_state_snapshots "
-        "(deployment_id, database_name, object_type, object_name, normalized_fingerprint, "
-        "normalized_query, recorded_at) VALUES\n"
-        f"('{result.reconcile_id}', NULL, 'table', 'tbl__orders', "
+        "INSERT INTO metadata._streambuild_virtual_object_state "
+        "(state_id, observation_id, state_kind, deployment_id, logical_database_name, "
+        "logical_object_type, "
+        "logical_object_name, physical_database_name, physical_relation_name, "
+        "logical_model_database, logical_model_name, is_selected_root, object_fingerprint, "
+        "canonical_query, observed_at) VALUES\n"
+        f"('{result.reconcile_id}', '{table_observation_id}', 'reconcile', NULL, NULL, "
+        "'table', 'tbl__orders', NULL, "
+        f"'tbl__orders', NULL, 'tbl__orders', false, "
         f"'{test_case.expected_table_fingerprint}', NULL, '{table_record.recorded_at}'),\n"
-        f"('{result.reconcile_id}', NULL, 'materialized_view', 'mv__orders', "
+        f"('{result.reconcile_id}', '{view_observation_id}', 'reconcile', NULL, NULL, "
+        "'materialized_view', "
+        f"'mv__orders', NULL, 'mv__orders', NULL, 'mv__orders', false, "
         f"'{test_case.expected_view_fingerprint}', 'SELECT order_id FROM raw__orders', "
         f"'{view_record.recorded_at}');"
     )

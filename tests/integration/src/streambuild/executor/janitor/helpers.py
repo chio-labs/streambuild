@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -32,10 +31,12 @@ class JanitorIntegrationState:
     recent_published_deployment_id: str
     old_published_deployment_id: str
     stale_unpublished_deployment_id: str
+    failed_incomplete_deployment_id: str
     active_target_table_name: str
     recent_published_target_table_name: str
     old_published_target_table_name: str
     stale_unpublished_target_table_name: str
+    failed_incomplete_target_table_name: str
 
 
 def build_janitor_integration_state(
@@ -95,6 +96,7 @@ def build_janitor_integration_state(
     recent_published_deployment_id: str = "20260409T101000Z_recent1"
     active_deployment_id: str = "20260409T102000Z_active1"
     stale_unpublished_deployment_id: str = "20260409T103000Z_stale11"
+    failed_incomplete_deployment_id: str = "20260409T104000Z_failed1"
 
     _execute_real_backfill(
         managed_client=managed_client,
@@ -121,6 +123,25 @@ def build_janitor_integration_state(
         managed_client=managed_client,
         database=database,
         deployment_id=active_deployment_id,
+    )
+    failed_incomplete_target_table_name: str = (
+        f"tbl__orders_enriched__{failed_incomplete_deployment_id}"
+    )
+    clickhouse_client.command(
+        f"CREATE TABLE {database}.{failed_incomplete_target_table_name} "
+        "(order_id String) ENGINE = MergeTree ORDER BY order_id"
+    )
+    clickhouse_client.command(
+        f"INSERT INTO {database}._streambuild_virtual_object_state "
+        "(state_id, observation_id, state_kind, deployment_id, logical_database_name, "
+        "logical_object_type, logical_object_name, physical_database_name, "
+        "physical_relation_name, logical_model_database, logical_model_name, is_selected_root, "
+        "object_fingerprint, canonical_query, observed_at) VALUES ("
+        f"'{failed_incomplete_deployment_id}', 'failed-observation', 'deployment', "
+        f"'{failed_incomplete_deployment_id}', '{database}', 'table', "
+        f"'tbl__orders_enriched', '{database}', '{failed_incomplete_target_table_name}', NULL, "
+        "'orders_enriched', true, 'failed-fingerprint', NULL, "
+        "toDateTime64('2026-04-09 10:40:00.123', 3, 'UTC'))"
     )
     _execute_real_backfill(
         managed_client=managed_client,
@@ -173,6 +194,7 @@ def build_janitor_integration_state(
         recent_published_deployment_id=recent_published_deployment_id,
         old_published_deployment_id=old_published_deployment_id,
         stale_unpublished_deployment_id=stale_unpublished_deployment_id,
+        failed_incomplete_deployment_id=failed_incomplete_deployment_id,
         active_target_table_name=f"tbl__orders_enriched__{active_deployment_id}",
         recent_published_target_table_name=(
             f"tbl__orders_enriched__{recent_published_deployment_id}"
@@ -181,6 +203,7 @@ def build_janitor_integration_state(
         stale_unpublished_target_table_name=(
             f"tbl__orders_enriched__{stale_unpublished_deployment_id}"
         ),
+        failed_incomplete_target_table_name=failed_incomplete_target_table_name,
     )
 
 
@@ -226,18 +249,37 @@ def _rewrite_publish_history(
     database: str,
     publish_rows: tuple[tuple[str, str, tuple[str, ...]], ...],
 ) -> None:
-    clickhouse_client.command(f"TRUNCATE TABLE {database}.streambuild_publish_history")
-    clickhouse_client.insert(
-        table=f"{database}.streambuild_publish_history",
-        data=[
-            (
-                deployment_id,
-                published_at,
-                json.dumps(list(logical_view_names)),
+    clickhouse_client.command(f"TRUNCATE TABLE {database}._streambuild_virtual_publications")
+    rows: list[tuple[str, str, str, str, str, str, str]] = []
+    deployment_id: str
+    published_at: str
+    logical_view_names: tuple[str, ...]
+    for deployment_id, published_at, logical_view_names in publish_rows:
+        logical_view_name: str
+        for logical_view_name in logical_view_names:
+            rows.append(
+                (
+                    f"{deployment_id}:{published_at}",
+                    deployment_id,
+                    database,
+                    logical_view_name,
+                    database,
+                    f"{logical_view_name}__{deployment_id}",
+                    published_at,
+                )
             )
-            for deployment_id, published_at, logical_view_names in publish_rows
+    clickhouse_client.insert(
+        table=f"{database}._streambuild_virtual_publications",
+        data=rows,
+        column_names=[
+            "publication_id",
+            "deployment_id",
+            "logical_database_name",
+            "logical_view_name",
+            "physical_database_name",
+            "physical_relation_name",
+            "published_at",
         ],
-        column_names=["deployment_id", "published_at", "logical_view_names_json"],
     )
 
 

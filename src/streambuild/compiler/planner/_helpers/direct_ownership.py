@@ -87,4 +87,13 @@ def _virtual_environment_names(*, snapshot: DirectWarehouseSnapshot) -> frozense
             names.add(relation.name)
         if is_deployment_physical_name(relation.name):
             names.add(logical_name_from_physical_name(relation.name))
+    target_database: str = snapshot.catalog.identity.database
+    for deployment in snapshot.deployment_inventory.deployments:
+        for mapping in deployment.prepared_object_mappings:
+            if mapping.logical_key.database in {None, target_database}:
+                names.add(mapping.logical_key.name)
+    for publish_event in snapshot.deployment_inventory.publish_events:
+        for binding in publish_event.bindings:
+            if binding.database == target_database:
+                names.add(binding.logical_name)
     return frozenset(names)

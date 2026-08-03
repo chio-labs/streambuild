@@ -11,6 +11,7 @@ class CliBuildGateTestCase:
     expected_exit_code: int
     expected_stderr_fragment: str
     expected_stdout_fragment: str
+    expected_invocation_outcome: str
 
 
 @dataclass(frozen=True)

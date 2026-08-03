@@ -222,7 +222,6 @@ class BuildMetadataStateTestCase:
     expected_first_deployment_warning_codes: tuple[str, ...]
     expected_first_deployment_mapping_names: tuple[str, ...]
     expected_watermark_boundary_keys: tuple[str, ...]
-    expected_runtime_detail_target_names: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -283,6 +282,7 @@ class DirectOwnershipTestCase:
     classified_relation_names: tuple[str, ...]
     expected_ownership: tuple[TargetOwnership, ...]
     ownership_database: str = "analytics"
+    metadata_virtual_environment_names: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

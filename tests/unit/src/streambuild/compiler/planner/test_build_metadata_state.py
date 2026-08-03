@@ -22,7 +22,6 @@ from tests.unit.src.streambuild.compiler.planner.helpers import build_metadata_r
             expected_first_deployment_warning_codes=(),
             expected_first_deployment_mapping_names=(),
             expected_watermark_boundary_keys=("partition:0", "partition:1"),
-            expected_runtime_detail_target_names=("tbl__orders_enriched",),
         )
     ],
     ids=lambda case: case.description,
@@ -34,7 +33,6 @@ def test_given_unsorted_metadata_records_when_building_then_it_returns_normalize
         object_states,
         deployments,
         deployment_watermarks,
-        deployment_runtime_details,
         publish_events,
     ) = build_metadata_records()
 
@@ -42,7 +40,6 @@ def test_given_unsorted_metadata_records_when_building_then_it_returns_normalize
         object_states=object_states,
         deployments=deployments,
         deployment_watermarks=deployment_watermarks,
-        deployment_runtime_details=deployment_runtime_details,
         publish_events=publish_events,
     )
     first_deployment: DeploymentRecord = metadata_state.deployments[0]
@@ -73,10 +70,6 @@ def test_given_unsorted_metadata_records_when_building_then_it_returns_normalize
     assert (
         tuple(watermark.boundary_key for watermark in metadata_state.deployment_watermarks)
         == test_case.expected_watermark_boundary_keys
-    )
-    assert (
-        metadata_state.deployment_runtime_details[0].live_target_names
-        == test_case.expected_runtime_detail_target_names
     )
     assert second_deployment.warning_codes == ("a_warning", "z_warning")
     assert tuple(
