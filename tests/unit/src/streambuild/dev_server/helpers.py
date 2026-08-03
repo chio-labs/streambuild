@@ -12,6 +12,7 @@ from streambuild.adapter.models import (
     AdapterMutationResult,
     AdapterOwnershipRecord,
     AdapterQueryResult,
+    AdapterReplayCoverageRange,
     CatalogColumn,
     CatalogIdentity,
     CatalogRelation,
@@ -309,6 +310,18 @@ def build_fake_state_connection() -> FakeAdapterConnection:
             logical_model_name="orders_clean",
             owning_mode="direct",
             tool_version="0",
+            replay_coverage=(
+                AdapterReplayCoverageRange(
+                    driving_input_relation_name="raw__orders",
+                    replay_boundary_mode="landed_at",
+                    boundary_key="raw__orders",
+                    source_partition_column_name=None,
+                    source_position_column_name="_replay_offset",
+                    source_timestamp_column_name="_replay_landed_at",
+                    lower_value=_STATE_OLDEST_EVENT,
+                    upper_value=_STATE_MODEL_NEWEST,
+                ),
+            ),
         ),
     )
     lineage_relations: tuple[str, ...] = ("raw__orders", "tbl__orders_clean")

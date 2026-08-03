@@ -90,10 +90,23 @@
 	 * replay is BOUNDED, and that an aggregate may not honour the bound at all —
 	 * so only those two facts are annotated.
 	 */
+	/** Prerequisites the warehouse does not actually hold — the plan would fail. */
+	const missingNames = $derived(
+		new Set<string>(
+			plan.prerequisites
+				.filter((prerequisite) => !prerequisite.present)
+				.map((prerequisite) => prerequisite.name)
+		)
+	);
+
 	const notes = $derived.by(() => {
 		const map = new Map<string, { text: string; tone: 'info' | 'warn' }>();
 		const bounded: boolean = plan.replayWindow.mode === 'from';
 		for (const node of graph.nodes) {
+			if (missingNames.has(node.logicalName)) {
+				map.set(node.id, { text: 'missing — not in warehouse', tone: 'warn' });
+				continue;
+			}
 			if (!inScope.has(node.logicalName)) continue;
 			const root = plan.replayRoots.find((item) => item.modelName === node.logicalName);
 			const aggregate: boolean = modelByName(project, node.logicalName)?.isAggregate ?? false;

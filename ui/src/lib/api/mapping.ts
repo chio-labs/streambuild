@@ -68,7 +68,7 @@ export function projectFromServer(definitions: Payload, state: Payload): Project
 			name: macro.name as string,
 			file: macro.file as string,
 			signature: signatureFromSource(macro.source as string, macro.name as string),
-			description: null
+			description: (macro.description as string | null) ?? null
 		}))
 	};
 }
@@ -192,7 +192,7 @@ function modelFromServer(model: Payload, live: Payload): Model {
 			inSyncWithCompiled: !drift,
 			driftReasons: (live.driftReasons as string[]) ?? [],
 			ownership: ((live.ownership as string) ?? 'absent') as Model['live']['ownership'],
-			recordedCoverage: null
+			recordedCoverage: (live.recordedCoverage as Model['live']['recordedCoverage']) ?? null
 		},
 		status: statusFromState(freshness, drift)
 	};
@@ -215,16 +215,15 @@ function columnFromServer(column: Payload): Column {
 }
 
 function auditFromServer(audit: Payload): Audit {
-	const file = (audit.file as string) ?? '';
-	const generic = !file.includes('audits/');
+	const genericName = (audit.genericName as string | null) ?? null;
 	return {
 		name: audit.name as string,
-		file,
+		file: (audit.file as string) ?? '',
 		severity: (audit.severity as Audit['severity']) ?? 'error',
 		description: (audit.description as string | null) ?? null,
 		referencedModels: (audit.referencedModels as string[]) ?? [],
-		generic,
-		genericName: null,
+		generic: genericName !== null,
+		genericName,
 		sql: (audit.sql as string) ?? '',
 		result: null
 	};
@@ -269,7 +268,7 @@ export function planFromServer(payload: Payload, adapter: string): Plan {
 			drivingInputName: (root.drivingInputName as string) ?? '',
 			drivingInputRelationName: (root.drivingInputRelationName as string) ?? '',
 			boundaryMode: root.boundaryMode as Plan['replayRoots'][number]['boundaryMode'],
-			replayColumns: {},
+			replayColumns: (root.replayColumns as Plan['replayRoots'][number]['replayColumns']) ?? {},
 			propagatedModelNames: (root.propagatedModelNames as string[]) ?? [],
 			hasAggregateSemantics: Boolean(root.hasAggregateSemantics),
 			rowsToReplay: (root.rowsToReplay as number | null) ?? null

@@ -30,14 +30,6 @@ export function getProject(): Project {
  */
 export const CAN_EXECUTE_BUILD: boolean = false;
 
-/** Freshness of the warehouse read, shown in the topbar. */
-export function getSyncState(): { connected: boolean; syncedAt: string } {
-	return {
-		connected: app.status?.warehouseConnected ?? false,
-		syncedAt: app.project?.capturedAt ?? ''
-	};
-}
-
 /** Fetch a server-side plan for the given selectors and optional start time. */
 export async function fetchPlan(selectors: string[], startTime: string | null): Promise<Plan> {
 	const params = new URLSearchParams();

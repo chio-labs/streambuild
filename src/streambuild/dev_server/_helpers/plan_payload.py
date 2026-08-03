@@ -169,6 +169,13 @@ def _replay_root_payload(
         "drivingInputName": item.driving_input_key.name,
         "drivingInputRelationName": item.driving_input_relation_name,
         "boundaryMode": str(item.replay_boundary_mode),
+        "replayColumns": {
+            "partition": item.driving_input_replay_columns.partition,
+            "offset": item.driving_input_replay_columns.offset,
+            "timestamp": item.driving_input_replay_columns.timestamp,
+            "landed_at": item.driving_input_replay_columns.landed_at,
+            "cursor": item.driving_input_replay_columns.cursor,
+        },
         "propagatedModelNames": [key.name for key in item.propagated_model_keys],
         "hasAggregateSemantics": item.has_aggregate_semantics,
         "rowsToReplay": rows_to_replay,

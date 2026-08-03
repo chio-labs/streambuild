@@ -13,7 +13,7 @@
 	import ReplayWindowControl from '$lib/components/plan/replay-window.svelte';
 	import { getProject, fetchPlan, fetchRuns, CAN_EXECUTE_BUILD, type RunRecord } from '$lib/api';
 	import { parseSelector, rootSourcesFor, selectorToken } from '$lib/domain/derive';
-	import { formatAgo, formatClock, formatDuration } from '$lib/domain/format';
+	import { formatAgo, formatClock, formatCompact, formatDuration } from '$lib/domain/format';
 	import {
 		OWNERSHIP_LABEL,
 		type Plan,
@@ -105,6 +105,19 @@
 			.finally(() => {
 				planLoading = false;
 			});
+	}
+
+	/** The physical column(s) the replay window bounds on, by boundary mode. */
+	function boundaryColumns(root: Plan['replayRoots'][number]): string | null {
+		const columns = root.replayColumns;
+		if (root.boundaryMode === 'offsets') {
+			const pair: string = [columns.partition, columns.offset].filter(Boolean).join(' / ');
+			return pair || null;
+		}
+		if (root.boundaryMode === 'timestamp' || root.boundaryMode === 'cursor') {
+			return columns.timestamp ?? null;
+		}
+		return columns.landed_at ?? null;
 	}
 
 	/** Re-run the same selection against a fresh warehouse snapshot. */
@@ -437,6 +450,36 @@
 				{rowsToReplay}
 				onchange={setReplayWindow}
 			/>
+
+			<!-- replay roots: where the rebuild reads from and what bounds it -->
+			{#if plan?.replayRoots.length}
+				<div class="rounded-[4px] border border-border p-3">
+					<div
+						class="text-[var(--sb-text-faint)] pb-1.5 font-mono text-[10px] uppercase tracking-[0.14em]"
+					>
+						Replay roots
+					</div>
+					{#each plan.replayRoots as root (root.modelName)}
+						<div class="border-b border-[var(--border-subtle)] py-1.5 last:border-b-0">
+							<div class="code text-[11px]">{root.modelName}</div>
+							<div class="text-[var(--sb-text-faint)] pt-0.5 font-mono text-[10px] leading-relaxed">
+								reads {root.drivingInputRelationName} · {root.boundaryMode}
+								{#if boundaryColumns(root)}
+									on <span class="code">{boundaryColumns(root)}</span>
+								{/if}
+								{#if root.rowsToReplay !== null}
+									· {formatCompact(root.rowsToReplay)} rows
+								{/if}
+							</div>
+							{#if root.hasAggregateSemantics}
+								<div class="pt-0.5 font-mono text-[10px]" style:color="var(--sb-warning)">
+									aggregate — a start time may not bound it
+								</div>
+							{/if}
+						</div>
+					{/each}
+				</div>
+			{/if}
 
 			<!-- planner warnings straight from the server plan -->
 			{#if plan?.warnings.length}

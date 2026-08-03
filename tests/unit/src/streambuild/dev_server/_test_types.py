@@ -26,8 +26,10 @@ class DefinitionsFieldTestCase:
     expected_anchor: str
     expected_audit_name: str
     expected_audit_file_suffix: str
+    expected_audit_generic_name: str
     expected_driving_input: str
     expected_source_kind: str
+    expected_managed_ddl_fragment: str
 
 
 @dataclass(frozen=True)
@@ -47,6 +49,7 @@ class StateFieldTestCase:
     expected_source_rows_per_second: float
     expected_partition_max_offset: int
     expected_bucket_count: int
+    expected_recorded_coverage: dict[str, str]
 
 
 @dataclass(frozen=True)
