@@ -7,6 +7,7 @@ import tomllib
 from pathlib import Path
 from typing import cast
 
+from streambuild.compiler.discovery._helpers.source_registry import parse_freshness_policy
 from streambuild.compiler.discovery.constants import (
     DEFAULT_ADAPTER_NAME,
     DEFAULTS_KEYS,
@@ -408,6 +409,11 @@ def _parse_project_defaults(*, payload: object, file_path: Path) -> ProjectDefau
         bounded_replay_fallback=_parse_bounded_replay_fallback(
             value=mapping.get("bounded_replay_fallback"),
             label="defaults.bounded_replay_fallback",
+            file_path=file_path,
+        ),
+        freshness=parse_freshness_policy(
+            payload=mapping.get("freshness"),
+            label="defaults.freshness",
             file_path=file_path,
         ),
     )

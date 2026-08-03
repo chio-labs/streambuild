@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from pathlib import Path
 from typing import cast
@@ -11,9 +12,12 @@ from yaml import YAMLError
 
 from streambuild.compiler.discovery._helpers.interpolation import interpolate_config_value
 from streambuild.compiler.discovery.constants import (
+    FRESHNESS_DURATION_PATTERN,
+    FRESHNESS_KEYS,
     INTERPOLATION_TOKEN_START,
     REPLAY_BOUNDARY_COLUMN_KEYS,
     REPLAY_BOUNDARY_KEYS,
+    SECONDS_BY_DURATION_UNIT,
     SOURCE_FILE_KEYS,
     SOURCE_KEYS,
 )
@@ -26,6 +30,7 @@ from streambuild.compiler.discovery.models import (
     KafkaSettings,
     ReplayBoundary,
     ReplayBoundaryColumns,
+    SourceFreshnessPolicy,
 )
 from streambuild.compiler.discovery.types import ReplayBoundaryMode, SourceKind
 
@@ -36,6 +41,7 @@ def discover_source_registry(
     variables: Mapping[str, object],
     environment: Mapping[str, str],
     default_managed_source_ttl: str | None = None,
+    default_freshness: SourceFreshnessPolicy | None = None,
 ) -> tuple[DiscoveredSourceFile, ...]:
     """Load direct sources/*.yml files once in stable order and validate uniqueness."""
 
@@ -49,12 +55,76 @@ def discover_source_registry(
             variables=variables,
             environment=environment,
             default_managed_source_ttl=default_managed_source_ttl,
+            default_freshness=default_freshness,
         )
         for file_path in sorted(sources_root.glob("*.yml"))
     )
     _validate_unique_source_names(discovered_files)
     _validate_consistent_adopted_table_mappings(discovered_files)
     return discovered_files
+
+
+def parse_freshness_policy(
+    *,
+    payload: object,
+    label: str,
+    file_path: Path,
+) -> SourceFreshnessPolicy | None:
+    """Parse one optional freshness mapping of duration-literal thresholds."""
+
+    if payload is None:
+        return None
+    if not isinstance(payload, dict) or not all(isinstance(key, str) for key in payload):
+        raise PipelineDiscoveryError(f"'{file_path}' {label} must be a mapping when set")
+    mapping: dict[str, object] = cast("dict[str, object]", payload)
+    unknown_keys: tuple[str, ...] = tuple(sorted(set(mapping) - FRESHNESS_KEYS))
+    if unknown_keys:
+        raise PipelineDiscoveryError(
+            f"'{file_path}' {label} has unknown keys: {', '.join(unknown_keys)}"
+        )
+    warn_after: str | None = _optional_duration(
+        payload=mapping, key="warn_after", label=label, file_path=file_path
+    )
+    error_after: str | None = _optional_duration(
+        payload=mapping, key="error_after", label=label, file_path=file_path
+    )
+    if warn_after is None and error_after is None:
+        raise PipelineDiscoveryError(
+            f"'{file_path}' {label} must set at least one of warn_after or error_after"
+        )
+    if (
+        warn_after is not None
+        and error_after is not None
+        and _duration_seconds(warn_after) > _duration_seconds(error_after)
+    ):
+        raise PipelineDiscoveryError(
+            f"'{file_path}' {label}.warn_after must not exceed error_after"
+        )
+    return SourceFreshnessPolicy(warn_after=warn_after, error_after=error_after)
+
+
+def _optional_duration(
+    *,
+    payload: dict[str, object],
+    key: str,
+    label: str,
+    file_path: Path,
+) -> str | None:
+    value: object = payload.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, str) or FRESHNESS_DURATION_PATTERN.fullmatch(value) is None:
+        raise PipelineDiscoveryError(
+            f"'{file_path}' {label}.{key} must be a duration like '15m', '2h', or '1d'"
+        )
+    return value
+
+
+def _duration_seconds(value: str) -> int:
+    match: re.Match[str] | None = FRESHNESS_DURATION_PATTERN.fullmatch(value)
+    if match is None:
+        raise PipelineDiscoveryError(f"invalid freshness duration literal '{value}'")
+    return int(match.group(1)) * SECONDS_BY_DURATION_UNIT[match.group(2)]
 
 
 def source_registry_by_name(
@@ -96,6 +166,7 @@ def _load_source_file(
     variables: Mapping[str, object],
     environment: Mapping[str, str],
     default_managed_source_ttl: str | None,
+    default_freshness: SourceFreshnessPolicy | None,
 ) -> DiscoveredSourceFile:
     contents: str = file_path.read_text(encoding="utf-8")
     source_file: DiscoveredProjectFile = DiscoveredProjectFile(
@@ -110,6 +181,7 @@ def _load_source_file(
             variables=variables,
             environment=environment,
             default_managed_source_ttl=default_managed_source_ttl,
+            default_freshness=default_freshness,
         ),
     )
 
@@ -120,6 +192,7 @@ def _parse_source_file(
     variables: Mapping[str, object],
     environment: Mapping[str, str],
     default_managed_source_ttl: str | None,
+    default_freshness: SourceFreshnessPolicy | None,
 ) -> tuple[KafkaLandingStep | ExternalTableSourceStep, ...]:
     try:
         raw_payload: object = yaml.safe_load(source_file.contents)
@@ -151,6 +224,7 @@ def _parse_source_file(
             variables=variables,
             environment=environment,
             default_managed_source_ttl=default_managed_source_ttl,
+            default_freshness=default_freshness,
         )
         for index, raw_source in enumerate(raw_sources)
     )
@@ -164,6 +238,7 @@ def _parse_source(
     variables: Mapping[str, object],
     environment: Mapping[str, str],
     default_managed_source_ttl: str | None,
+    default_freshness: SourceFreshnessPolicy | None,
 ) -> KafkaLandingStep | ExternalTableSourceStep:
     label: str = f"sources[{index}]"
     mapping: dict[str, object] = _mapping(
@@ -194,6 +269,14 @@ def _parse_source(
         raise PipelineDiscoveryError(
             f"Source file '{file_path}' {label}.kind must be 'kafka' or 'stream_table'"
         ) from error
+    freshness: SourceFreshnessPolicy | None = (
+        parse_freshness_policy(
+            payload=mapping.get("freshness"),
+            label=f"{label}.freshness",
+            file_path=file_path,
+        )
+        or default_freshness
+    )
     if kind == SourceKind.KAFKA:
         return _parse_managed_kafka_source(
             mapping=mapping,
@@ -203,6 +286,7 @@ def _parse_source(
             variables=variables,
             environment=environment,
             default_managed_source_ttl=default_managed_source_ttl,
+            freshness=freshness,
         )
     return _parse_adopted_source(
         mapping=mapping,
@@ -211,6 +295,7 @@ def _parse_source(
         file_path=file_path,
         variables=variables,
         environment=environment,
+        freshness=freshness,
     )
 
 
@@ -223,6 +308,7 @@ def _parse_managed_kafka_source(
     variables: Mapping[str, object],
     environment: Mapping[str, str],
     default_managed_source_ttl: str | None,
+    freshness: SourceFreshnessPolicy | None,
 ) -> KafkaLandingStep:
     if mapping.get("table_name") is not None:
         raise PipelineDiscoveryError(
@@ -307,6 +393,7 @@ def _parse_managed_kafka_source(
             settings=settings or None,
         ),
         replay_boundary=replay_boundary,
+        freshness=freshness,
     )
 
 
@@ -318,6 +405,7 @@ def _parse_adopted_source(
     file_path: Path,
     variables: Mapping[str, object],
     environment: Mapping[str, str],
+    freshness: SourceFreshnessPolicy | None,
 ) -> ExternalTableSourceStep:
     managed_fields: tuple[str, ...] = tuple(
         field
@@ -352,6 +440,7 @@ def _parse_adopted_source(
             environment=environment,
         ),
         replay_boundary=replay_boundary,
+        freshness=freshness,
     )
 
 
