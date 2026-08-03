@@ -37,6 +37,10 @@ dev = [
   "ty>=0.0.1a19",
 ]
 
+[tool.hatch.build]
+# Built dev UI is gitignored but must ship in distributions (`make ui-build`).
+artifacts = ["src/streambuild/dev_server/static/**"]
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/streambuild", "scripts"]
 
