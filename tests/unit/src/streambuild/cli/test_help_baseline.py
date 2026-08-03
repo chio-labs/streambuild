@@ -38,7 +38,7 @@ from tests.unit.src.streambuild.cli._test_types import CliHelpBaselineTestCase
         CliHelpBaselineTestCase(
             description="captures build help",
             argv=("build", "--help"),
-            expected_sha256="346bb977ec16e317c9647fc528f514331590ff9835ae4d7f0fea558da70b7a30",
+            expected_sha256="7956a1dc824961643a23c598a177a20427a9a8bf2ddac8ca4e7f5832059439ee",
         ),
         CliHelpBaselineTestCase(
             description="captures audit help",

@@ -11,6 +11,7 @@ METADATA_DIRECT_TARGET_EVENTS_TABLE_NAME: str = "_streambuild_direct_target_even
 METADATA_DIRECT_REPLAY_RANGES_TABLE_NAME: str = "_streambuild_direct_replay_ranges"
 METADATA_INVOCATIONS_TABLE_NAME: str = "_streambuild_invocations"
 METADATA_NODE_RESULTS_TABLE_NAME: str = "_streambuild_node_results"
+METADATA_RUN_EVENTS_TABLE_NAME: str = "_streambuild_run_events"
 VIRTUAL_OBJECT_STATE_KIND_DEPLOYMENT: str = "deployment"
 VIRTUAL_OBJECT_STATE_KIND_RECONCILE: str = "reconcile"
 VIRTUAL_DEPLOYMENT_STATUS_INCOMPLETE: str = "incomplete"

@@ -53,6 +53,15 @@ def run_build(
                 error_message="--json requires --auto-approve for build",
             )
             return 1
+        if options.events_output and not options.auto_approve:
+            print("--events requires --auto-approve for build", file=sys.stderr)
+            _persist_failed_build(
+                started=started,
+                options=options,
+                client=client,
+                error_message="--events requires --auto-approve for build",
+            )
+            return 1
         analysis: CompileAnalysis = analyze_project(
             pipelines_root=options.pipelines_root,
             loaded_project=loaded_project,

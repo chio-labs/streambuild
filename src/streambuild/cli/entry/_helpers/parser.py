@@ -324,6 +324,11 @@ def _add_build_parser(
         help="Output as JSON",
     )
     build_parser.add_argument(
+        "--events",
+        action="store_true",
+        help="Stream JSONL progress events to stdout (requires --auto-approve)",
+    )
+    build_parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",

@@ -536,6 +536,19 @@ class AdapterNodeResultRecord:
 
 
 @dataclass(frozen=True)
+class AdapterRunEventRecord:
+    """One step-granular workflow event streamed while a run executes."""
+
+    invocation_id: str
+    sequence: int
+    emitted_at: str
+    event_kind: str
+    step_id: str | None
+    phase: str | None
+    payload_json: str
+
+
+@dataclass(frozen=True)
 class AdapterCurrentQualityNode:
     """One current manifest node joined to persisted terminal history."""
 
