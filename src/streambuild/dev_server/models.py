@@ -39,3 +39,10 @@ class ChecksRunRequest(BaseModel):
 
     kind: str
     name: str
+
+
+class BuildRunRequest(BaseModel):
+    """POST /api/build body."""
+
+    selectors: list[str] = []
+    startTime: str | None = None  # noqa: N815 - wire format is camelCase

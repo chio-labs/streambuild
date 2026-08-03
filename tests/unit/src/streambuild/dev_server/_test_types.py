@@ -72,6 +72,14 @@ class ChecksStatusTestCase:
 
 
 @dataclass(frozen=True)
+class RunEventsFeedTestCase:
+    description: str
+    invocation_id: str
+    expected_event_kinds: tuple[str, ...]
+    expected_written_rows: int
+
+
+@dataclass(frozen=True)
 class ChecksRunTestCase:
     description: str
     kind: str

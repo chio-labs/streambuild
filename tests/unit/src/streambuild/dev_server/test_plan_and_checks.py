@@ -9,6 +9,7 @@ from tests.unit.src.streambuild.dev_server._test_types import (
     ChecksRunTestCase,
     ChecksStatusTestCase,
     PlanEndpointTestCase,
+    RunEventsFeedTestCase,
 )
 from tests.unit.src.streambuild.dev_server.helpers import (
     FakeEmptyResultConnection,
@@ -152,3 +153,29 @@ def test_given_recorded_history_when_reading_checks_status_then_maps_names(
     assert status["failureCount"] == test_case.expected_failure_count
     assert status["completedAt"] == test_case.expected_completed_at
     assert status["payload"]["sample_column_names"] == ["order_id"]
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        RunEventsFeedTestCase(
+            description="serves one recorded run timeline with parsed payloads",
+            invocation_id="inv-42",
+            expected_event_kinds=("run_started", "statement_completed"),
+            expected_written_rows=42,
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_recorded_run_when_reading_events_then_returns_ordered_timeline(
+    test_case: RunEventsFeedTestCase,
+    tmp_path: Path,
+) -> None:
+    write_dev_server_project(project_dir=tmp_path)
+    client: TestClient = build_state_test_client(project_dir=tmp_path)
+
+    payload: list = client.get(f"/api/runs/{test_case.invocation_id}/events").json()
+
+    assert tuple(event["event"] for event in payload) == test_case.expected_event_kinds
+    assert payload[1]["writtenRows"] == test_case.expected_written_rows
+    assert payload[1]["stepId"] == "replay_orders"

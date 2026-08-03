@@ -28,11 +28,17 @@ from streambuild.dev_server._helpers.plan_payload import (
     count_replay_rows,
     expand_selectors,
 )
-from streambuild.dev_server._helpers.runs_query import read_runs
+from streambuild.dev_server._helpers.runs_query import read_run_events, read_runs
 from streambuild.dev_server._helpers.state_payload import build_state_payload
+from streambuild.dev_server.classes.build_process import BuildProcessManager
 from streambuild.dev_server.classes.dev_server_state import DevServerState
-from streambuild.dev_server.exceptions import DevServerError, ProjectNotCompiledError
-from streambuild.dev_server.models import ChecksRunRequest, CompileOutcome
+from streambuild.dev_server.exceptions import (
+    BuildInProgressError,
+    BuildStartError,
+    DevServerError,
+    ProjectNotCompiledError,
+)
+from streambuild.dev_server.models import BuildRunRequest, ChecksRunRequest, CompileOutcome
 
 _HTTP_BAD_REQUEST: int = 400
 _HTTP_CONFLICT: int = 409
@@ -47,6 +53,7 @@ def register_api_routes(
     connection: AdapterConnection | None,
     database: str | None,
     project_dir: Path,
+    builds: BuildProcessManager,
 ) -> FastAPI:
     """Attach every /api route; handlers close over the shared server state."""
 
@@ -161,6 +168,7 @@ def register_api_routes(
         state=state,
         database=database,
         project_dir=project_dir,
+        builds=builds,
         required_connection=_required_connection,
         servable_analysis=_servable_analysis,
     )
@@ -172,10 +180,11 @@ def _register_quality_routes(
     state: DevServerState,
     database: str | None,
     project_dir: Path,
+    builds: BuildProcessManager,
     required_connection: Callable[[], AdapterConnection],
     servable_analysis: Callable[[], CompileAnalysis],
 ) -> FastAPI:
-    """Attach the checks and run-history routes."""
+    """Attach the checks, run-history, and build routes."""
 
     def run_check(request: ChecksRunRequest) -> dict[str, object]:
         client: AdapterConnection = required_connection()
@@ -226,7 +235,46 @@ def _register_quality_routes(
         except AdapterError as error:
             raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
 
+    def read_one_run_events(invocation_id: str) -> list[dict[str, object]]:
+        client: AdapterConnection = required_connection()
+        try:
+            with state.query_lock:
+                return read_run_events(
+                    connection=client, database=database or "", invocation_id=invocation_id
+                )
+        except AdapterError as error:
+            raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
+
     app.post("/api/checks/run")(run_check)
     app.get("/api/checks/status")(read_checks_status)
     app.get("/api/runs")(read_run_history)
+    app.get("/api/runs/{invocation_id}/events")(read_one_run_events)
+    return _register_build_routes(app=app, builds=builds, project_dir=project_dir)
+
+
+def _register_build_routes(
+    *,
+    app: FastAPI,
+    builds: BuildProcessManager,
+    project_dir: Path,
+) -> FastAPI:
+    """Attach the execute and live-feed routes."""
+
+    def start_build(request: BuildRunRequest) -> dict[str, object]:
+        try:
+            return builds.start(
+                project_dir=project_dir,
+                selectors=tuple(request.selectors),
+                start_time=request.startTime,
+            )
+        except BuildInProgressError as error:
+            raise HTTPException(status_code=_HTTP_CONFLICT, detail=str(error)) from error
+        except BuildStartError as error:
+            raise HTTPException(status_code=_HTTP_BAD_REQUEST, detail=str(error)) from error
+
+    def read_build_feed(*, after: Annotated[int, Query(ge=0)] = 0) -> dict[str, object]:
+        return builds.feed(after=after)
+
+    app.post("/api/build")(start_build)
+    app.get("/api/build/current")(read_build_feed)
     return app
