@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { replaceState } from '$app/navigation';
+	import { goto } from '$app/navigation';
 	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
 	import ReplaceIcon from '@lucide/svelte/icons/replace';
 	import NetworkIcon from '@lucide/svelte/icons/network';
@@ -36,17 +36,17 @@
 	const models = $derived(modelsInPipeline(project, pipelineName));
 
 	// URL-addressable like every other view toggle, so a specific reading of a
-	// pipeline is shareable.
-	let view = $state<'tree' | 'graph'>(
+	// pipeline is shareable. Derived from the URL and navigated with `goto` —
+	// shallow `replaceState` never updates `page.url` (see Plan page note).
+	const view = $derived<'tree' | 'graph'>(
 		page.url.searchParams.get('view') === 'graph' ? 'graph' : 'tree'
 	);
 
 	function setView(next: 'tree' | 'graph'): void {
-		view = next;
 		const url = new URL(page.url);
 		if (next === 'tree') url.searchParams.delete('view');
 		else url.searchParams.set('view', next);
-		replaceState(url, {});
+		void goto(url, { replaceState: true, noScroll: true, keepFocus: true });
 	}
 
 	/** Side references break the tree, so they are listed separately rather than faked into it. */

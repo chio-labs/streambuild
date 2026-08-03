@@ -33,8 +33,6 @@
 			<FactRow label="Default target" value={project.target} mono />
 			<FactRow label="Database" value={project.database} mono />
 			<FactRow label="Adapter" value={project.adapter} mono />
-			<FactRow label="StreamBuild version" value={project.toolVersion} mono />
-			<FactRow label="Warehouse timezone" value={project.warehouseTimezone} mono />
 		</div>
 
 		<div>
@@ -43,12 +41,6 @@
 			>
 				Mode
 			</div>
-			<FactRow
-				label="virtual_environments"
-				value={String(project.virtualEnvironments)}
-				mono
-				tone="faint"
-			/>
 			<FactRow label="Effective mode" value="direct" mono />
 		</div>
 

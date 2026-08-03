@@ -287,11 +287,13 @@
 						<div class="flex items-center gap-2.5 border-b border-[var(--border-subtle)] py-1.5">
 							<span
 								class="h-1.5 w-1.5 shrink-0 rounded-[2px]"
-								style:background={audit.result?.passed
-									? 'var(--sb-success)'
-									: audit.severity === 'warning'
-										? 'var(--sb-warning)'
-										: 'var(--sb-error)'}
+								style:background={!audit.result
+									? 'var(--border)'
+									: audit.result.passed
+										? 'var(--sb-success)'
+										: audit.severity === 'warning'
+											? 'var(--sb-warning)'
+											: 'var(--sb-error)'}
 							></span>
 							<span class="truncate font-mono text-[11.5px]">{audit.name}</span>
 							<span class="text-muted-foreground ml-auto shrink-0 font-mono text-[10.5px]">
@@ -314,7 +316,11 @@
 						<div class="flex items-center gap-2.5 border-b border-[var(--border-subtle)] py-1.5">
 							<span
 								class="h-1.5 w-1.5 shrink-0 rounded-[2px]"
-								style:background={test.result?.passed ? 'var(--sb-success)' : 'var(--sb-error)'}
+								style:background={!test.result
+									? 'var(--border)'
+									: test.result.passed
+										? 'var(--sb-success)'
+										: 'var(--sb-error)'}
 							></span>
 							<span class="truncate text-[11.5px]">{test.name}</span>
 						</div>

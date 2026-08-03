@@ -5,11 +5,9 @@
 	import FactRow from '$lib/components/fact-row.svelte';
 	import Sparkline from '$lib/components/sparkline.svelte';
 	import SpanTrack from '$lib/components/span-track.svelte';
-	import SqlBlock from '$lib/components/sql-block.svelte';
-	import type { SqlArtifact } from '$lib/components/sql-block.svelte';
+
 	import { getProject } from '$lib/api';
 	import { reconstructionCoverage, sourceByName } from '$lib/domain/derive';
-	import * as SQL from '$lib/domain/sql';
 	import {
 		formatCompact,
 		formatDaySpan,
@@ -18,7 +16,18 @@
 		formatRate,
 		formatTimestamp
 	} from '$lib/domain/format';
-	import { REPLAY_COLUMN_BY_ROLE, type Project, type ReplayRole } from '$lib/domain/types';
+	import {
+		REPLAY_COLUMN_BY_ROLE,
+		type ManagedRelationKind,
+		type Project,
+		type ReplayRole
+	} from '$lib/domain/types';
+
+	const MANAGED_RELATION_LABEL: Record<ManagedRelationKind, string> = {
+		kafka_engine: 'Kafka engine',
+		landing_mv: 'landing MV',
+		landing_table: 'landing table'
+	};
 
 	const project: Project = getProject();
 	const sourceName = $derived(page.params.name ?? '');
@@ -38,14 +47,6 @@
 		return new Date(Math.min(...candidates)).toISOString();
 	});
 
-	const artifacts = $derived.by((): SqlArtifact[] => {
-		if (!source || source.kind !== 'kafka') return [];
-		return [
-			{ label: 'Kafka engine', code: SQL.KAFKA_ENGINE_DDL },
-			{ label: 'Landing table', code: SQL.LANDING_TABLE_DDL },
-			{ label: 'Landing MV', code: SQL.LANDING_MV_DDL }
-		];
-	});
 
 	// ── partition scaling ────────────────────────────────────────────────────
 	const LAG_WARN_SECONDS: number = 30;
@@ -156,11 +157,6 @@
 							>
 							<code class="text-muted-foreground font-mono text-[11.5px]">{source.ttl}</code>
 						</div>
-						{#if source.ttlFromProjectDefault}
-							<div class="text-[var(--sb-text-faint)] pt-1.5 font-mono text-[10.5px]">
-								inherited from [defaults].managed_source_ttl
-							</div>
-						{/if}
 					{/if}
 				</div>
 
@@ -395,17 +391,6 @@
 					</div>
 				{/if}
 
-				<!-- managed object DDL -->
-				{#if artifacts.length}
-					<div>
-						<div
-							class="text-[var(--sb-text-faint)] pb-2 font-mono text-[10px] uppercase tracking-[0.14em]"
-						>
-							Managed objects
-						</div>
-						<SqlBlock {artifacts} maxHeight="300px" />
-					</div>
-				{/if}
 			</div>
 
 			<!-- right rail -->
@@ -462,7 +447,7 @@
 							<div class="border-b border-[var(--border-subtle)] py-2">
 								<div class="code text-[11.5px]">{relation.name}</div>
 								<div class="text-[var(--sb-text-faint)] pt-0.5 font-mono text-[10px]">
-									{relation.engine} · {relation.note}
+									{MANAGED_RELATION_LABEL[relation.kind]}
 								</div>
 							</div>
 						{/each}

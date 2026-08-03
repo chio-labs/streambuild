@@ -60,9 +60,6 @@
 		     wordmark inverts. -->
 		<img src="/logo-on-dark.png" alt="StreamBuild" class="logo-dark h-[24px] w-auto" />
 		<img src="/logo-on-light.png" alt="StreamBuild" class="logo-light h-[24px] w-auto" />
-		<span class="text-[var(--sb-text-faint)] ml-auto font-mono text-[10px] tracking-wide"
-			>v{project.toolVersion}</span
-		>
 	</div>
 
 	<div
@@ -116,17 +113,6 @@
 		{/each}
 	</nav>
 
-	<div class="mt-2 border-t border-[var(--sidebar-border)] pt-2.5">
-		<div
-			class="text-[var(--sidebar-foreground)] flex items-center gap-2 px-2.5 py-1.5 text-[12.5px]"
-		>
-			<span
-				class="bg-primary grid h-[22px] w-[22px] place-items-center rounded-[3px] text-[10px] font-semibold text-white"
-				>KL</span
-			>
-			kevin · maintainer
-		</div>
-	</div>
 </aside>
 
 <style>

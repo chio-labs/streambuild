@@ -186,14 +186,20 @@ export function buildPhysicalGraph(project: Project): Graph {
 	const readRelationId = new Map<string, string>();
 
 	for (const source of project.sources) {
-		if (source.kind === 'kafka') {
-			const kafkaId = `rel:${source.managedRelations[0].name}`;
-			const mvId = `rel:${source.managedRelations[1].name}`;
-			const rawId = `rel:${source.managedRelations[2].name}`;
+		// Resolved by KIND, never by array position: the server serializes managed
+		// relations in realization order (kafka engine, landing table, landing MV),
+		// which is not the mock-era ordering this code once assumed.
+		const kafkaRelation = source.managedRelations.find((r) => r.kind === 'kafka_engine');
+		const mvRelation = source.managedRelations.find((r) => r.kind === 'landing_mv');
+		const rawRelation = source.managedRelations.find((r) => r.kind === 'landing_table');
+		if (source.kind === 'kafka' && kafkaRelation && mvRelation && rawRelation) {
+			const kafkaId = `rel:${kafkaRelation.name}`;
+			const mvId = `rel:${mvRelation.name}`;
+			const rawId = `rel:${rawRelation.name}`;
 
 			nodes.push({
 				id: kafkaId,
-				label: source.managedRelations[0].name,
+				label: kafkaRelation.name,
 				logicalName: source.name,
 				logicalType: 'source',
 				physicalType: 'kafka_engine',
@@ -210,7 +216,7 @@ export function buildPhysicalGraph(project: Project): Graph {
 			});
 			nodes.push({
 				id: mvId,
-				label: source.managedRelations[1].name,
+				label: mvRelation.name,
 				logicalName: source.name,
 				logicalType: 'source',
 				physicalType: 'landing_mv',
@@ -227,7 +233,7 @@ export function buildPhysicalGraph(project: Project): Graph {
 			});
 			nodes.push({
 				id: rawId,
-				label: source.managedRelations[2].name,
+				label: rawRelation.name,
 				logicalName: source.name,
 				logicalType: 'source',
 				physicalType: 'landing_table',
@@ -548,270 +554,6 @@ export function topologicalModelOrder(project: Project, names: Set<string>): str
 
 	for (const name of names) visit(name);
 	return ordered;
-}
-
-// ─── plan ────────────────────────────────────────────────────────────────────
-
-/** Rough replay throughput used for the estimate. Honest about being an estimate. */
-const REPLAY_ROWS_PER_SECOND = 185_000;
-
-export function buildPlan(
-	project: Project,
-	selectors: Selector[],
-	replayWindow: ReplayWindow
-): Plan {
-	const closure: Closure = resolveClosure(project, selectors);
-	const ordered: string[] = topologicalModelOrder(project, closure.all);
-
-	const entries: PlanEntry[] = ordered.map((name) => {
-		const model: Model = modelByName(project, name) as Model;
-		const relationNames: string[] = model.mvRelationName
-			? [model.relationName, model.mvRelationName]
-			: [model.relationName];
-		return {
-			modelName: model.name,
-			pipeline: model.pipeline,
-			reason: closure.reasonByModel.get(name) ?? 'all_models',
-			relationNames,
-			resourceKinds:
-				model.kind === 'view' ? ['view'] : ['table', 'materialized_view'],
-			ownership: relationNames.map((relation) => ({
-				relation,
-				ownership: model.live.ownership
-			})),
-			drivingInput: model.drivingInput,
-			isReplayRoot: isReplayRoot(project, model, closure)
-		};
-	});
-
-	const teardown: PlanAction[] = [];
-	for (const name of [...ordered].reverse()) {
-		const model: Model = modelByName(project, name) as Model;
-		if (model.kind === 'view') {
-			teardown.push({
-				relationName: model.relationName,
-				action: 'drop',
-				modelName: model.name,
-				resourceKind: 'view'
-			});
-			continue;
-		}
-		// MVs come down before the tables they write into.
-		teardown.push({
-			relationName: model.mvRelationName as string,
-			action: 'drop',
-			modelName: model.name,
-			resourceKind: 'materialized_view'
-		});
-		teardown.push({
-			relationName: model.relationName,
-			action: 'drop',
-			modelName: model.name,
-			resourceKind: 'table'
-		});
-	}
-
-	const creation: PlanAction[] = [];
-	for (const name of ordered) {
-		const model: Model = modelByName(project, name) as Model;
-		if (model.kind === 'view') {
-			creation.push({
-				relationName: model.relationName,
-				action: 'create',
-				modelName: model.name,
-				resourceKind: 'view'
-			});
-			continue;
-		}
-		// Table first, then the MV that writes into it.
-		creation.push({
-			relationName: model.relationName,
-			action: 'create',
-			modelName: model.name,
-			resourceKind: 'table'
-		});
-		creation.push({
-			relationName: model.mvRelationName as string,
-			action: 'create',
-			modelName: model.name,
-			resourceKind: 'materialized_view'
-		});
-	}
-
-	const replayRoots: PlanReplayRoot[] = entries
-		.filter((entry) => entry.isReplayRoot)
-		.map((entry) => {
-			const model: Model = modelByName(project, entry.modelName) as Model;
-			const directSource: Source | undefined = model.drivingInput
-				? sourceByName(project, model.drivingInput)
-				: undefined;
-			const upstreamModel: Model | undefined = model.drivingInput
-				? modelByName(project, model.drivingInput)
-				: undefined;
-			// Boundary semantics always come from the pipeline's ultimate source,
-			// even when the immediate driving input is a model outside the closure.
-			const rootSource: Source | undefined = directSource ?? rootSourceFor(project, model);
-			return {
-				modelName: model.name,
-				drivingInputName: model.drivingInput ?? '',
-				drivingInputRelationName:
-					directSource?.relationName ?? upstreamModel?.relationName ?? '',
-				boundaryMode: rootSource?.boundaryMode ?? 'offsets',
-				replayColumns: rootSource?.columnMapping ?? {
-					partition: '_replay_partition',
-					offset: '_replay_offset',
-					timestamp: '_replay_timestamp'
-				},
-				propagatedModelNames: descendantsWithin(project, model.name, closure.all),
-				hasAggregateSemantics: model.isAggregate
-			};
-		});
-
-	const prerequisites: PlanPrerequisite[] = [];
-	for (const source of project.sources) {
-		const usedByClosure: boolean = project.models.some(
-			(model) =>
-				closure.all.has(model.name) &&
-				model.refs.some((ref) => ref.isSource && ref.name === source.name)
-		);
-		if (!usedByClosure) continue;
-		prerequisites.push({
-			name: source.name,
-			type: 'source',
-			relationNames:
-				source.kind === 'kafka'
-					? source.managedRelations.map((relation) => relation.name)
-					: [source.relationName],
-			present: true,
-			frameworkManaged: source.kind === 'kafka'
-		});
-	}
-	// Models referenced from inside the closure but not rebuilt by it.
-	for (const model of project.models) {
-		if (!closure.all.has(model.name)) continue;
-		for (const ref of model.refs) {
-			if (ref.isSource || closure.all.has(ref.name)) continue;
-			const upstream: Model | undefined = modelByName(project, ref.name);
-			if (!upstream) continue;
-			if (prerequisites.some((item) => item.name === upstream.name)) continue;
-			prerequisites.push({
-				name: upstream.name,
-				type: 'model',
-				relationNames: [upstream.relationName],
-				present: true,
-				frameworkManaged: upstream.live.ownership === 'direct'
-			});
-		}
-	}
-
-	const warnings: PlanWarning[] = [];
-	for (const name of ordered) {
-		const model: Model = modelByName(project, name) as Model;
-		if (model.anchor === 'mutable_ref') {
-			warnings.push({
-				code: 'replay_overlap',
-				message: `${model.name} has a mutable side reference; it cannot be a replay anchor and its historical values may differ from processing-time state.`,
-				relatedModel: model.name
-			});
-		}
-		if (model.live.ownership === 'unmanaged') {
-			warnings.push({
-				code: 'unmanaged_relation',
-				message: `${model.relationName} is not recorded in streambuild_target_ownership. A build will drop an object StreamBuild does not own.`,
-				relatedModel: model.name
-			});
-		}
-		if (model.live.ownership === 'conflicted') {
-			warnings.push({
-				code: 'conflicted_ownership',
-				message: `${model.relationName} is owned by another mode. Direct and virtual-environment layouts must not share a target.`,
-				relatedModel: model.name
-			});
-		}
-	}
-
-	return {
-		adapter: project.adapter,
-		database: project.database,
-		userScope: selectors,
-		entries,
-		prerequisites,
-		teardown,
-		creation,
-		replayRoots,
-		warnings,
-		replayWindow,
-		estimate: estimateReplay(project, closure, replayWindow),
-		plannedAt: project.capturedAt,
-		command: buildCommand(selectors, replayWindow)
-	};
-}
-
-function isReplayRoot(project: Project, model: Model, closure: Closure): boolean {
-	if (model.kind === 'view') return false;
-	if (!model.drivingInput) return false;
-	const drivingIsSource: boolean = sourceByName(project, model.drivingInput) !== undefined;
-	if (drivingIsSource) return true;
-	// A model whose driving input sits outside the rebuild closure roots a replay.
-	return !closure.all.has(model.drivingInput);
-}
-
-function descendantsWithin(project: Project, name: string, within: Set<string>): string[] {
-	const downstream: Map<string, string[]> = downstreamMap(project);
-	const found = new Set<string>();
-	const stack: string[] = [name];
-	while (stack.length) {
-		const current: string = stack.pop() as string;
-		for (const child of downstream.get(current) ?? []) {
-			if (!within.has(child) || found.has(child)) continue;
-			found.add(child);
-			stack.push(child);
-		}
-	}
-	return [...found];
-}
-
-function estimateReplay(
-	project: Project,
-	closure: Closure,
-	replayWindow: ReplayWindow
-): { rows: number; seconds: number } | null {
-	const rootSources: Source[] = project.sources.filter((source) =>
-		project.models.some(
-			(model) =>
-				closure.all.has(model.name) &&
-				model.refs.some((ref) => ref.isSource && ref.name === source.name)
-		)
-	);
-	if (rootSources.length === 0) return null;
-
-	let rows = 0;
-	for (const source of rootSources) {
-		if (replayWindow.mode === 'full') {
-			rows += source.live.rows;
-			continue;
-		}
-		const totalSpan: number = Math.max(
-			secondsBetween(source.live.oldestEventAt, source.live.newestEventAt),
-			1
-		);
-		const window: number = Math.max(
-			secondsBetween(replayWindow.startTime, source.live.newestEventAt),
-			0
-		);
-		rows += Math.round(source.live.rows * Math.min(window / totalSpan, 1));
-	}
-
-	return { rows, seconds: Math.max(rows / REPLAY_ROWS_PER_SECOND, 1) };
-}
-
-function buildCommand(selectors: Selector[], replayWindow: ReplayWindow): string {
-	const parts: string[] = ['stb build'];
-	for (const selector of selectors) parts.push(`--select ${selectorToken(selector)}`);
-	if (replayWindow.mode === 'from') {
-		parts.push(`--start-time ${replayWindow.startTime.slice(0, 19)}Z`);
-	}
-	return parts.join(' ');
 }
 
 // ─── reconstruction ──────────────────────────────────────────────────────────

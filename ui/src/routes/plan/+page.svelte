@@ -92,13 +92,7 @@
 	let planLoading = $state<boolean>(false);
 	let planRequestKey = $state<string>('');
 
-	$effect(() => {
-		const tokens: string[] = selectors.map(selectorToken);
-		const start: string | null =
-			replayWindow.mode === 'from' ? `${replayWindow.startTime.slice(0, 19)}Z` : null;
-		const key: string = `${tokens.join(',')}|${start ?? ''}`;
-		if (key === planRequestKey) return;
-		planRequestKey = key;
+	function requestPlan(tokens: string[], start: string | null): void {
 		planLoading = true;
 		fetchPlan(tokens, start)
 			.then((next) => {
@@ -111,6 +105,24 @@
 			.finally(() => {
 				planLoading = false;
 			});
+	}
+
+	/** Re-run the same selection against a fresh warehouse snapshot. */
+	function replan(): void {
+		const tokens: string[] = selectors.map(selectorToken);
+		const start: string | null =
+			replayWindow.mode === 'from' ? `${replayWindow.startTime.slice(0, 19)}Z` : null;
+		requestPlan(tokens, start);
+	}
+
+	$effect(() => {
+		const tokens: string[] = selectors.map(selectorToken);
+		const start: string | null =
+			replayWindow.mode === 'from' ? `${replayWindow.startTime.slice(0, 19)}Z` : null;
+		const key: string = `${tokens.join(',')}|${start ?? ''}`;
+		if (key === planRequestKey) return;
+		planRequestKey = key;
+		requestPlan(tokens, start);
 	});
 
 	const planEntries = $derived(plan?.entries ?? []);
@@ -400,6 +412,29 @@
 				onchange={setReplayWindow}
 			/>
 
+			<!-- planner warnings straight from the server plan -->
+			{#if plan?.warnings.length}
+				<div
+					class="rounded-[4px] border p-3"
+					style:border-color="color-mix(in srgb, var(--sb-warning) 45%, var(--border))"
+				>
+					<div
+						class="pb-1.5 font-mono text-[10px] uppercase tracking-[0.14em]"
+						style:color="var(--sb-warning)"
+					>
+						Planner warnings
+					</div>
+					{#each plan.warnings as warning, index (index)}
+						<div class="border-b border-[var(--border-subtle)] py-1.5 last:border-b-0">
+							{#if warning.relatedModel}
+								<div class="code text-[11px]">{warning.relatedModel}</div>
+							{/if}
+							<div class="pt-0.5 font-mono text-[10.5px] leading-relaxed">{warning.message}</div>
+						</div>
+					{/each}
+				</div>
+			{/if}
+
 			<!-- ownership hazards get their own loud block -->
 			{#if riskyOwnership.length}
 				<div
@@ -439,10 +474,12 @@
 				{/if}
 			</div>
 			<button
-				class="text-muted-foreground hover:text-foreground flex shrink-0 items-center gap-1.5 rounded-[4px] border border-border px-2 py-1 font-mono text-[10.5px]"
+				class="text-muted-foreground hover:text-foreground flex shrink-0 items-center gap-1.5 rounded-[4px] border border-border px-2 py-1 font-mono text-[10.5px] disabled:opacity-60"
 				title="The warehouse may have moved since this snapshot"
+				disabled={planLoading}
+				onclick={replan}
 			>
-				<RotateIcon size={11} /> Re-plan
+				<RotateIcon size={11} /> {planLoading ? 'planning…' : 'Re-plan'}
 			</button>
 			<code
 				class="bg-[var(--sb-inset)] ml-auto min-w-0 flex-1 truncate rounded-[4px] border border-border px-2.5 py-1.5 font-mono text-[11.5px]"

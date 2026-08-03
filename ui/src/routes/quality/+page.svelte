@@ -24,16 +24,18 @@
 	let expandedAudit = $state<string | null>(null);
 	let expandedTest = $state<string | null>(null);
 
+	// A check that has never run is neither passing nor failing — it only shows
+	// under "All". Fabricating an outcome for it was worse than useless.
 	function auditVisible(audit: Audit): boolean {
 		if (filter === 'all') return true;
-		const passed: boolean = audit.result?.passed ?? true;
-		return filter === 'passing' ? passed : !passed;
+		if (!audit.result) return false;
+		return filter === 'passing' ? audit.result.passed : !audit.result.passed;
 	}
 
 	function testVisible(test: SqlTest): boolean {
 		if (filter === 'all') return true;
-		const passed: boolean = test.result?.passed ?? true;
-		return filter === 'passing' ? passed : !passed;
+		if (!test.result) return false;
+		return filter === 'passing' ? test.result.passed : !test.result.passed;
 	}
 
 	function cell(value: CellValue): string {
@@ -47,6 +49,8 @@
 
 	let runningCheck = $state<string | null>(null);
 	let runError = $state<string | null>(null);
+	let runningAll = $state<'audits' | 'tests' | null>(null);
+	let runAllProgress = $state<number>(0);
 
 	async function executeAudit(name: string): Promise<void> {
 		runningCheck = name;
@@ -60,7 +64,7 @@
 					failingRowCount: outcome.failingRowCount ?? 0,
 					sampleColumns: outcome.sampleColumns ?? [],
 					sampleRows: outcome.sampleRows ?? [],
-					checkedAt: project.capturedAt
+					checkedAt: new Date().toISOString()
 				};
 			}
 		} catch (error) {
@@ -83,7 +87,7 @@
 					columns: [],
 					missingRows: target?.missingRows ?? [],
 					unexpectedRows: target?.unexpectedRows ?? [],
-					checkedAt: project.capturedAt,
+					checkedAt: new Date().toISOString(),
 					errorMessage: outcome.errorMessage ?? null
 				};
 			}
@@ -93,18 +97,48 @@
 			runningCheck = null;
 		}
 	}
+
+	// Sequential on purpose: each check is one warehouse query, and hammering a
+	// dev ClickHouse with 19 concurrent scans helps nobody.
+	async function executeAllAudits(): Promise<void> {
+		runningAll = 'audits';
+		runAllProgress = 0;
+		for (const audit of project.audits) {
+			await executeAudit(audit.name);
+			runAllProgress += 1;
+		}
+		runningAll = null;
+	}
+
+	async function executeAllTests(): Promise<void> {
+		runningAll = 'tests';
+		runAllProgress = 0;
+		for (const test of project.tests) {
+			await executeTest(test.name);
+			runAllProgress += 1;
+		}
+		runningAll = null;
+	}
 </script>
 
 <AppTopbar title="Quality">
 	<button
-		class="text-muted-foreground hover:text-foreground flex items-center gap-1.5 rounded-[4px] border border-border px-2.5 py-1.5 font-mono text-[11px]"
+		class="text-muted-foreground hover:text-foreground flex items-center gap-1.5 rounded-[4px] border border-border px-2.5 py-1.5 font-mono text-[11px] disabled:opacity-60"
+		disabled={runningAll !== null || runningCheck !== null}
+		onclick={() => void executeAllAudits()}
 	>
-		<PlayIcon size={11} /> Run audits
+		<PlayIcon size={11} />
+		{runningAll === 'audits'
+			? `running ${runAllProgress + 1}/${project.audits.length}…`
+			: 'Run audits'}
 	</button>
 	<button
-		class="text-muted-foreground hover:text-foreground flex items-center gap-1.5 rounded-[4px] border border-border px-2.5 py-1.5 font-mono text-[11px]"
+		class="text-muted-foreground hover:text-foreground flex items-center gap-1.5 rounded-[4px] border border-border px-2.5 py-1.5 font-mono text-[11px] disabled:opacity-60"
+		disabled={runningAll !== null || runningCheck !== null}
+		onclick={() => void executeAllTests()}
 	>
-		<PlayIcon size={11} /> Run tests
+		<PlayIcon size={11} />
+		{runningAll === 'tests' ? `running ${runAllProgress + 1}/${project.tests.length}…` : 'Run tests'}
 	</button>
 </AppTopbar>
 
@@ -154,11 +188,13 @@
 							>
 							<span
 								class="h-1.5 w-1.5 shrink-0 rounded-[2px]"
-								style:background={audit.result?.passed
-									? 'var(--sb-success)'
-									: audit.severity === 'warning'
-										? 'var(--sb-warning)'
-										: 'var(--sb-error)'}
+								style:background={!audit.result
+									? 'var(--border)'
+									: audit.result.passed
+										? 'var(--sb-success)'
+										: audit.severity === 'warning'
+											? 'var(--sb-warning)'
+											: 'var(--sb-error)'}
 							></span>
 							<span class="code min-w-0 flex-1 truncate text-[12px]">{audit.name}</span>
 							<span class="w-[70px] shrink-0 font-mono text-[10.5px]">
@@ -182,7 +218,9 @@
 								{/each}
 							</span>
 							<span class="w-[92px] shrink-0 text-right font-mono text-[11px]">
-								{#if failing && audit.result}
+								{#if !audit.result}
+									<span class="text-[var(--sb-text-faint)]">not run</span>
+								{:else if failing}
 									<span style:color={audit.severity === 'warning' ? 'var(--sb-warning)' : 'var(--sb-error)'}
 										>{formatInteger(audit.result.failingRowCount)} rows</span
 									>
@@ -288,7 +326,11 @@
 							>
 							<span
 								class="h-1.5 w-1.5 shrink-0 rounded-[2px]"
-								style:background={test.result?.passed ? 'var(--sb-success)' : 'var(--sb-error)'}
+								style:background={!test.result
+									? 'var(--border)'
+									: test.result.passed
+										? 'var(--sb-success)'
+										: 'var(--sb-error)'}
 							></span>
 							<span class="min-w-0 flex-1 truncate text-[12px]">{test.name}</span>
 							<span class="w-[200px] shrink-0 truncate font-mono text-[11px]">
@@ -299,7 +341,9 @@
 								{/each}
 							</span>
 							<span class="w-[70px] shrink-0 text-right font-mono text-[11px]">
-								{#if test.result?.passed}
+								{#if !test.result}
+									<span class="text-[var(--sb-text-faint)]">not run</span>
+								{:else if test.result.passed}
 									<span style:color="var(--sb-success)">pass</span>
 								{:else}
 									<span style:color="var(--sb-error)">fail</span>

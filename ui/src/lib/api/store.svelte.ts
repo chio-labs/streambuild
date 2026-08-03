@@ -133,6 +133,17 @@ function mergeProject(definitions: Record<string, unknown>, state: Record<string
 		app.project = next;
 		return;
 	}
+	// Check results are produced client-side (POST /api/checks/run) and the
+	// server payloads never carry them — carry them over by name or every poll
+	// would silently wipe outcomes the user just produced.
+	for (const audit of next.audits) {
+		const previous = app.project.audits.find((item) => item.name === audit.name);
+		if (previous?.result) audit.result = previous.result;
+	}
+	for (const test of next.tests) {
+		const previous = app.project.tests.find((item) => item.name === test.name);
+		if (previous?.result) test.result = previous.result;
+	}
 	Object.assign(app.project, next);
 }
 

@@ -44,7 +44,6 @@ export function projectFromServer(definitions: Payload, state: Payload): Project
 		target: (header.target as string) ?? '',
 		database: (header.database as string) ?? '',
 		adapter: (header.adapter as string) ?? 'clickhouse',
-		virtualEnvironments: false,
 		connection: {
 			host: String(connection.host ?? ''),
 			port: Number(connection.port ?? 0),
@@ -57,8 +56,6 @@ export function projectFromServer(definitions: Payload, state: Payload): Project
 			viewPrefix: (naming.viewPrefix as string) ?? 'view__'
 		},
 		defaults: { managedSourceTtl: (defaults.managedSourceTtl as string | null) ?? null },
-		toolVersion: 'dev',
-		warehouseTimezone: 'UTC',
 		capturedAt: (state.capturedAt as string) ?? new Date().toISOString(),
 		sources: (definitions.sources as Payload[]).map((source) =>
 			sourceFromServer(source, stateFor(state, 'sources', source.name as string), state)
@@ -93,13 +90,10 @@ function sourceFromServer(source: Payload, live: Payload, state: Payload): Sourc
 		relationName: source.relationName as string,
 		managedRelations: ((source.managedRelations ?? []) as Payload[]).map((relation) => ({
 			kind: relation.kind as Source['managedRelations'][number]['kind'],
-			name: relation.name as string,
-			engine: '',
-			note: ''
+			name: relation.name as string
 		})),
 		ttl: (source.ttl as string | null) ?? null,
 		retentionDays: retentionDaysFromTtl((source.ttl as string | null) ?? null),
-		ttlFromProjectDefault: false,
 		brokerList: (kafka?.brokerList as string) ?? null,
 		topic: (kafka?.topic as string) ?? null,
 		consumerGroup: (kafka?.consumerGroup as string) ?? null,

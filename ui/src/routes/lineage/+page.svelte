@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { replaceState } from '$app/navigation';
+	import { goto } from '$app/navigation';
 	import MaximizeIcon from '@lucide/svelte/icons/maximize';
 	import RotateIcon from '@lucide/svelte/icons/rotate-ccw';
 	import AppTopbar from '$lib/components/app-topbar.svelte';
@@ -19,12 +19,21 @@
 
 	// Mode lives in the URL so a physical view is shareable — same principle as
 	// selection on the Plan page: every surface is just a link constructor.
-	let mode = $state<GraphMode>(page.url.searchParams.get('mode') === 'physical' ? 'physical' : 'logical');
+	const mode = $derived<GraphMode>(
+		page.url.searchParams.get('mode') === 'physical' ? 'physical' : 'logical'
+	);
 	let inspectorWidth = $state<number>(460);
 
 	// Filters live in the URL, so a filtered lineage view is shareable and other
 	// pages can deep-link into one (e.g. /lineage?pipeline=order_events).
-	function filtersFromUrl(): GraphFilterState {
+	//
+	// The URL is the ONLY source of truth — same lesson as the Plan page. A local
+	// mirror synced back by a guarded $effect cannot work: `replaceState` from
+	// $app/navigation is shallow routing and never updates `page.url`, so the
+	// guard always compared against a stale search string and reset the filters
+	// right after every change. Deriving from `page.url` and navigating with
+	// `goto` removes the mirror, the guard, and the race together.
+	const filters = $derived.by((): GraphFilterState => {
 		const params = page.url.searchParams;
 		return {
 			search: params.get('q') ?? '',
@@ -33,20 +42,9 @@
 			statuses: new Set(params.getAll('status') as ModelStatus[]),
 			anchorsOnly: params.get('anchors') === '1'
 		};
-	}
-
-	let filters = $state<GraphFilterState>(filtersFromUrl());
-	let appliedFilterUrl = $state<string>(page.url.search);
-
-	$effect(() => {
-		const key: string = page.url.search;
-		if (key === appliedFilterUrl) return;
-		appliedFilterUrl = key;
-		filters = filtersFromUrl();
 	});
 
 	function setFilters(next: GraphFilterState): void {
-		filters = next;
 		const url = new URL(page.url);
 		for (const key of ['q', 'pipeline', 'kind', 'status', 'anchors']) url.searchParams.delete(key);
 		if (next.search.trim()) url.searchParams.set('q', next.search.trim());
@@ -54,8 +52,7 @@
 		for (const value of next.kinds) url.searchParams.append('kind', value);
 		for (const value of next.statuses) url.searchParams.append('status', value);
 		if (next.anchorsOnly) url.searchParams.set('anchors', '1');
-		appliedFilterUrl = url.search;
-		replaceState(url, {});
+		void goto(url, { replaceState: true, noScroll: true, keepFocus: true });
 	}
 
 	const fullGraph = $derived<Graph>(
@@ -106,15 +103,15 @@
 
 	let selectedId = $state<string | null>(null);
 	let fitView = $state<(() => void) | undefined>();
-	const groupParam: string | null = page.url.searchParams.get('group');
 	// Lanes is the default: it fits the viewport ~30% larger than boxes on the
 	// same graph, and its bounding box stays near viewport aspect because lane
 	// width is pinned to the deepest chain while pipeline count grows downward.
 	// Boxes pad every group and then pack them side by side, so they sprawl
 	// horizontally along the axis there is least room on.
-	let groupMode = $state<'none' | 'boxes' | 'lanes'>(
-		groupParam === 'boxes' ? 'boxes' : groupParam === 'none' ? 'none' : 'lanes'
-	);
+	const groupMode = $derived.by((): 'none' | 'boxes' | 'lanes' => {
+		const groupParam: string | null = page.url.searchParams.get('group');
+		return groupParam === 'boxes' ? 'boxes' : groupParam === 'none' ? 'none' : 'lanes';
+	});
 	let cyclicPairs = $state<[string, string][]>([]);
 	let canvas = $state<{ relayout: () => void } | undefined>();
 
@@ -129,19 +126,17 @@
 	}
 
 	function setGroupMode(next: 'none' | 'boxes' | 'lanes'): void {
-		groupMode = next;
 		const url = new URL(page.url);
 		if (next === 'lanes') url.searchParams.delete('group');
 		else url.searchParams.set('group', next);
-		replaceState(url, {});
+		void goto(url, { replaceState: true, noScroll: true, keepFocus: true });
 	}
 
 	function setMode(next: GraphMode): void {
-		mode = next;
 		const url = new URL(page.url);
 		if (next === 'logical') url.searchParams.delete('mode');
 		else url.searchParams.set('mode', next);
-		replaceState(url, {});
+		void goto(url, { replaceState: true, noScroll: true, keepFocus: true });
 	}
 
 	// ── inspector resize ──────────────────────────────────────────────────────
