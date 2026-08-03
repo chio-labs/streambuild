@@ -6,6 +6,7 @@ import datetime
 import time
 from collections.abc import Callable
 from dataclasses import asdict
+from importlib.metadata import version
 
 from streambuild.compiler.pipeline.models import CompilationTimings, CompileAnalysis
 from streambuild.dev_server.models import CompileErrorInfo, CompileOutcome
@@ -72,6 +73,7 @@ def build_status_payload(
     """Build the cheap polled status payload."""
 
     return {
+        "toolVersion": version("streambuild"),
         "compile": {
             "state": str(outcome.state),
             "versionKey": outcome.version_key,

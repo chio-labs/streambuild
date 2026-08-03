@@ -27,6 +27,8 @@
 
 	// Overview must survive a project with 20+ sources, so the list is sorted
 	// worst-lag-first and capped — you scan for what is NOT moving.
+	// Partition ticks keep a fixed 30s visual threshold (within-source skew);
+	// source-level status comes from the server-evaluated freshness policy.
 	const LAG_WARN_SECONDS: number = 30;
 	const SOURCE_VISIBLE_LIMIT: number = 6;
 	const PARTITION_TICK_LIMIT: number = 12;
@@ -45,7 +47,7 @@
 	);
 	const laggingSources = $derived(
 		project.sources.filter(
-			(source) => source.live.lagSeconds !== null && source.live.lagSeconds > LAG_WARN_SECONDS
+			(source) => source.live.freshness === 'lagging' || source.live.freshness === 'stalled'
 		)
 	);
 
@@ -127,9 +129,11 @@
 
 						<div
 							class="w-[76px] shrink-0 text-right font-mono text-[12px]"
-							style:color={source.live.lagSeconds !== null && source.live.lagSeconds > LAG_WARN_SECONDS
-								? 'var(--sb-warning)'
-								: 'var(--muted-foreground)'}
+							style:color={source.live.freshness === 'stalled'
+								? 'var(--sb-error)'
+								: source.live.freshness === 'lagging'
+									? 'var(--sb-warning)'
+									: 'var(--muted-foreground)'}
 						>
 							{source.live.lagSeconds === null ? '—' : formatDuration(source.live.lagSeconds)}
 						</div>

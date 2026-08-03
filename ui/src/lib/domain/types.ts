@@ -53,6 +53,8 @@ export type ManagedRelationKind = 'kafka_engine' | 'landing_mv' | 'landing_table
 export type ManagedRelation = {
 	kind: ManagedRelationKind;
 	name: string;
+	/** Rendered DDL for this managed object, straight from the compiler. */
+	ddl: string | null;
 };
 
 export type PartitionState = {
@@ -64,6 +66,11 @@ export type PartitionState = {
 
 export type SourceLiveState = {
 	rowsPerSecond: number;
+	/**
+	 * Server-evaluated against the source's configured freshness policy
+	 * (warn_after / error_after). null when no policy is configured.
+	 */
+	freshness: 'fresh' | 'lagging' | 'stalled' | null;
 	/** null for adopted sources with no offset lineage to compare against. */
 	lagSeconds: number | null;
 	newestEventAt: string;
@@ -73,6 +80,8 @@ export type SourceLiveState = {
 	partitions: PartitionState[];
 	/** Recent throughput buckets, newest last. Drives the sparkline. */
 	throughput: number[];
+	/** The window the throughput buckets cover, from the server query. */
+	throughputWindowSeconds: number | null;
 };
 
 export type Source = {
@@ -182,6 +191,8 @@ export type ModelLiveState = {
 	lagSeconds: number | null;
 	/** Live DDL matches compiled DDL. False = drift. */
 	inSyncWithCompiled: boolean;
+	/** Server-reported reasons the live warehouse diverges from compiled state. */
+	driftReasons: string[];
 	ownership: OwnershipState;
 	/** From `streambuild_target_ownership.replay_coverage_json`. */
 	recordedCoverage: { from: string; to: string } | null;
@@ -254,11 +265,18 @@ export type Audit = {
 };
 
 /** Results are a two-sided bag diff, which renders as expected-vs-actual. */
-export type SqlTestResult = {
+export type SqlTestTargetResult = {
+	targetModelName: string;
 	passed: boolean;
 	columns: string[];
 	missingRows: CellValue[][];
 	unexpectedRows: CellValue[][];
+};
+
+export type SqlTestResult = {
+	passed: boolean;
+	/** One diff per compared target — multi-target tests produce several. */
+	targets: SqlTestTargetResult[];
 	checkedAt: string;
 	errorMessage: string | null;
 };
@@ -387,6 +405,12 @@ export type PlanReplayRoot = {
 	replayColumns: Partial<Record<ReplayRole, string>>;
 	propagatedModelNames: string[];
 	hasAggregateSemantics: boolean;
+	/**
+	 * Rows the replay of this root will read, counted against the landing table
+	 * with the same predicate the build uses. A count, not an estimate. null when
+	 * the anchor table does not exist yet.
+	 */
+	rowsToReplay: number | null;
 };
 
 export type PlanWarning = {
@@ -420,8 +444,6 @@ export type Plan = {
 	replayRoots: PlanReplayRoot[];
 	warnings: PlanWarning[];
 	replayWindow: ReplayWindow;
-	/** Estimated rows and seconds for the chosen replay window. */
-	estimate: { rows: number; seconds: number } | null;
 	plannedAt: string;
 	command: string;
 };

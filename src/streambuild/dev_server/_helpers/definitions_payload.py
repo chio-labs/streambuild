@@ -125,11 +125,14 @@ def _freshness_payload(policy: SourceFreshnessPolicy | None) -> dict[str, object
 def _source_payload(*, analysis: CompileAnalysis, source: CompiledSource) -> dict[str, object]:
     step: KafkaLandingStep | ExternalTableSourceStep = source.source
     relation_name: str = analysis.realized_project.relation_name_by_logical_key[source.key]
+    database: str = _render_database(analysis)
     managed: list[dict[str, object]] = []
     kafka: dict[str, object] | None = None
     resource: object
     for resource in analysis.realized_project.resources_by_logical_key.get(source.key, ()):
-        managed.append(_managed_relation_payload(resource))
+        managed.append(
+            _managed_relation_payload(analysis=analysis, resource=resource, database=database)
+        )
         if isinstance(resource, AdapterManagedSource):
             kafka = {
                 "brokerList": redacted_broker_list(resource.broker_list),
@@ -152,7 +155,9 @@ def _source_payload(*, analysis: CompileAnalysis, source: CompiledSource) -> dic
     }
 
 
-def _managed_relation_payload(resource: object) -> dict[str, object]:
+def _managed_relation_payload(
+    *, analysis: CompileAnalysis, resource: object, database: str
+) -> dict[str, object]:
     kind_by_type: dict[type, str] = {
         AdapterManagedSource: "kafka_engine",
         AdapterTable: "landing_table",
@@ -161,7 +166,16 @@ def _managed_relation_payload(resource: object) -> dict[str, object]:
     return {
         "kind": kind_by_type.get(type(resource), "unknown"),
         "name": getattr(resource, "name", ""),
+        "ddl": _managed_relation_ddl(analysis=analysis, resource=resource, database=database),
     }
+
+
+def _managed_relation_ddl(
+    *, analysis: CompileAnalysis, resource: object, database: str
+) -> str | None:
+    if not isinstance(resource, AdapterManagedSource | AdapterTable | AdapterMaterializedView):
+        return None
+    return analysis.adapter_profile.render_resource(resource=resource, database=database)
 
 
 def _boundary_columns_payload(boundary: object) -> dict[str, str] | None:

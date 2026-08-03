@@ -4,7 +4,6 @@
 		clamp,
 		formatCompact,
 		formatDaySpan,
-		formatDuration,
 		formatTimestamp,
 		fromDateTimeLocal,
 		toDateTimeLocal
@@ -16,10 +15,15 @@
 		/** Sources that root the current rebuild closure. */
 		sources: Source[];
 		window: ReplayWindow;
-		estimate: { rows: number; seconds: number } | null;
+		/**
+		 * Rows the replay will read, counted server-side at plan time with the same
+		 * predicate the build uses. A fact, not an estimate — which is why there is
+		 * deliberately no seconds figure next to it.
+		 */
+		rowsToReplay: number | null;
 		onchange: (next: ReplayWindow) => void;
 	};
-	let { project, sources, window: replayWindow, estimate, onchange }: Props = $props();
+	let { project, sources, window: replayWindow, rowsToReplay, onchange }: Props = $props();
 
 	// --start-time is the WORST flag to type and the BEST to render: its valid range
 	// is fully bounded by data we already hold. Typed into a shell it fails at build
@@ -232,15 +236,14 @@
 				</p>
 			{/if}
 
-			{#if estimate}
+			{#if rowsToReplay !== null}
 				<div
 					class="flex flex-wrap items-baseline gap-x-4 gap-y-1 border-t border-[var(--border-subtle)] pt-2.5 font-mono text-[11px]"
 				>
 					<span class="text-muted-foreground"
-						>≈ {formatCompact(estimate.rows)} rows of {formatCompact(totalRetainedRows)} retained</span
+						>{formatCompact(rowsToReplay)} rows of {formatCompact(totalRetainedRows)} retained</span
 					>
-					<span class="text-muted-foreground">≈ {formatDuration(estimate.seconds)} to replay</span>
-					<span class="text-[var(--sb-text-faint)] ml-auto">estimated</span>
+					<span class="text-[var(--sb-text-faint)] ml-auto">counted at plan time</span>
 				</div>
 				{#if replayWindow.mode === 'from'}
 					<p class="text-[var(--sb-text-faint)] text-[11px]">

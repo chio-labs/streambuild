@@ -5,7 +5,8 @@
 	import FactRow from '$lib/components/fact-row.svelte';
 	import Sparkline from '$lib/components/sparkline.svelte';
 	import SpanTrack from '$lib/components/span-track.svelte';
-
+	import SqlBlock from '$lib/components/sql-block.svelte';
+	import type { SqlArtifact } from '$lib/components/sql-block.svelte';
 	import { getProject } from '$lib/api';
 	import { reconstructionCoverage, sourceByName } from '$lib/domain/derive';
 	import {
@@ -29,9 +30,24 @@
 		landing_table: 'landing table'
 	};
 
+	const MANAGED_RELATION_ORDER: ManagedRelationKind[] = [
+		'kafka_engine',
+		'landing_table',
+		'landing_mv'
+	];
+
 	const project: Project = getProject();
 	const sourceName = $derived(page.params.name ?? '');
 	const source = $derived(sourceByName(project, sourceName));
+
+	const managedArtifacts = $derived.by((): SqlArtifact[] => {
+		const relations = source?.managedRelations ?? [];
+		return MANAGED_RELATION_ORDER.flatMap((kind) =>
+			relations
+				.filter((relation) => relation.kind === kind && relation.ddl !== null)
+				.map((relation) => ({ label: MANAGED_RELATION_LABEL[kind], code: relation.ddl }))
+		);
+	});
 
 	const coverage = $derived(
 		reconstructionCoverage(project).filter((row) => row.sourceName === sourceName)
@@ -391,6 +407,17 @@
 					</div>
 				{/if}
 
+				<!-- managed object DDL, rendered by the compiler and served per relation -->
+				{#if managedArtifacts.length}
+					<div>
+						<div
+							class="text-[var(--sb-text-faint)] pb-2 font-mono text-[10px] uppercase tracking-[0.14em]"
+						>
+							Managed objects
+						</div>
+						<SqlBlock artifacts={managedArtifacts} maxHeight="300px" />
+					</div>
+				{/if}
 			</div>
 
 			<!-- right rail -->
@@ -402,6 +429,11 @@
 						Live
 					</div>
 					<div class="pb-2"><Sparkline values={source.live.throughput} width={280} height={34} /></div>
+					{#if source.live.throughputWindowSeconds}
+						<div class="text-[var(--sb-text-faint)] pb-2 font-mono text-[10px]">
+							last {formatDuration(source.live.throughputWindowSeconds)}
+						</div>
+					{/if}
 					<FactRow label="Rate" value={formatRate(source.live.rowsPerSecond)} />
 					<FactRow
 						label="Lag"

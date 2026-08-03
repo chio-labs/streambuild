@@ -244,6 +244,14 @@
 						value={model.live.inSyncWithCompiled ? 'in sync' : 'drift'}
 						tone={model.live.inSyncWithCompiled ? 'success' : 'warning'}
 					/>
+					{#each model.live.driftReasons as reason (reason)}
+						<div
+							class="border-b border-[var(--border-subtle)] py-1.5 font-mono text-[10.5px] leading-relaxed"
+							style:color="var(--sb-warning)"
+						>
+							{reason}
+						</div>
+					{/each}
 					<FactRow
 						label="Ownership"
 						value={OWNERSHIP_LABEL[model.live.ownership]}

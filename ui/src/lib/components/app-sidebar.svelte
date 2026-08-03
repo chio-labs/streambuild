@@ -7,10 +7,12 @@
 	import RadioIcon from '@lucide/svelte/icons/radio';
 	import ReplaceIcon from '@lucide/svelte/icons/replace';
 	import ShieldCheckIcon from '@lucide/svelte/icons/shield-check';
+	import HistoryIcon from '@lucide/svelte/icons/history';
 	import ServerIcon from '@lucide/svelte/icons/server';
 	import SettingsIcon from '@lucide/svelte/icons/settings';
 	import type { Icon as IconType } from '@lucide/svelte';
 	import { getProject } from '$lib/api';
+	import { app } from '$lib/api/store.svelte';
 	import type { Project } from '$lib/domain/types';
 
 	type NavItem = { label: string; href: string; icon: typeof IconType };
@@ -18,8 +20,8 @@
 
 	const project: Project = getProject();
 
-	// Two sections only. `main`'s Operate group (Runs / Jobs / Triggers) has no
-	// StreamBuild counterpart: there is no scheduler and no run history.
+	// Two sections only. There is no scheduler — Runs is recorded CLI invocation
+	// history from `_streambuild_invocations`, not orchestration.
 	const groups: NavGroup[] = [
 		{
 			section: 'Flow',
@@ -35,7 +37,8 @@
 			section: 'Change',
 			items: [
 				{ label: 'Plan', href: '/plan', icon: ReplaceIcon },
-				{ label: 'Quality', href: '/quality', icon: ShieldCheckIcon }
+				{ label: 'Quality', href: '/quality', icon: ShieldCheckIcon },
+				{ label: 'Runs', href: '/runs', icon: HistoryIcon }
 			]
 		}
 	];
@@ -60,6 +63,11 @@
 		     wordmark inverts. -->
 		<img src="/logo-on-dark.png" alt="StreamBuild" class="logo-dark h-[24px] w-auto" />
 		<img src="/logo-on-light.png" alt="StreamBuild" class="logo-light h-[24px] w-auto" />
+		{#if app.status?.toolVersion}
+			<span class="text-[var(--sb-text-faint)] ml-auto font-mono text-[10px] tracking-wide"
+				>v{app.status.toolVersion}</span
+			>
+		{/if}
 	</div>
 
 	<div

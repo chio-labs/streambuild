@@ -75,6 +75,7 @@ def _target_payload(target: SqlTestTargetExecutionResult) -> dict[str, object]:
     return {
         "targetModelName": target.target_model_name,
         "passed": target.passed,
+        "columns": list(target.column_names),
         "missingRows": [list(row) for row in target.missing_rows],
         "unexpectedRows": [list(row) for row in target.unexpected_rows],
     }

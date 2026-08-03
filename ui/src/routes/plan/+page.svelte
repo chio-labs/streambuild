@@ -11,9 +11,9 @@
 	import SelectionCombobox from '$lib/components/plan/selection-combobox.svelte';
 	import PlanGraph from '$lib/components/plan/plan-graph.svelte';
 	import ReplayWindowControl from '$lib/components/plan/replay-window.svelte';
-	import { getProject, fetchPlan, CAN_EXECUTE_BUILD } from '$lib/api';
+	import { getProject, fetchPlan, fetchRuns, CAN_EXECUTE_BUILD, type RunRecord } from '$lib/api';
 	import { parseSelector, rootSourcesFor, selectorToken } from '$lib/domain/derive';
-	import { formatClock } from '$lib/domain/format';
+	import { formatAgo, formatClock, formatDuration } from '$lib/domain/format';
 	import {
 		OWNERSHIP_LABEL,
 		type Plan,
@@ -126,6 +126,32 @@
 	});
 
 	const planEntries = $derived(plan?.entries ?? []);
+
+	/**
+	 * Total rows the replay will read — summed over the roots the server counted.
+	 * null until at least one root has a count (fresh project, no anchor tables).
+	 */
+	const rowsToReplay = $derived.by((): number | null => {
+		const counted: number[] = (plan?.replayRoots ?? [])
+			.map((root) => root.rowsToReplay)
+			.filter((rows): rows is number => rows !== null);
+		if (counted.length === 0) return null;
+		return counted.reduce((total, rows) => total + rows, 0);
+	});
+
+	// The last RECORDED build from _streambuild_invocations — a fact to calibrate
+	// expectations against, deliberately not extrapolated into a prediction.
+	let lastBuild = $state<RunRecord | null>(null);
+	$effect(() => {
+		fetchRuns()
+			.then((runs) => {
+				lastBuild =
+					runs.find((run) => run.command === 'build' && run.outcome === 'succeeded') ?? null;
+			})
+			.catch(() => {
+				lastBuild = null;
+			});
+	});
 
 	/** Sources rooting the closure — bounds the replay-window control. */
 	const rootSources = $derived<Source[]>(
@@ -408,7 +434,7 @@
 				{project}
 				sources={rootSources}
 				window={replayWindow}
-				estimate={plan?.estimate ?? null}
+				{rowsToReplay}
 				onchange={setReplayWindow}
 			/>
 
@@ -471,6 +497,13 @@
 					Ready to run
 				{:else}
 					Read-only · planned against the {formatClock(plan?.plannedAt ?? '')} snapshot
+				{/if}
+				{#if lastBuild}
+					· last build {formatDuration(lastBuild.durationMs / 1000)}
+					({lastBuild.selectedNodeCount} nodes, {formatAgo(
+						lastBuild.startedAt,
+						project.capturedAt
+					)})
 				{/if}
 			</div>
 			<button

@@ -80,13 +80,16 @@
 		try {
 			const outcome = await runCheck('test', name);
 			const test = project.tests.find((item) => item.name === name);
-			const target = outcome.targets?.[0];
 			if (test) {
 				test.result = {
 					passed: outcome.passed,
-					columns: [],
-					missingRows: target?.missingRows ?? [],
-					unexpectedRows: target?.unexpectedRows ?? [],
+					targets: (outcome.targets ?? []).map((target) => ({
+						targetModelName: target.targetModelName,
+						passed: target.passed,
+						columns: target.columns ?? [],
+						missingRows: target.missingRows ?? [],
+						unexpectedRows: target.unexpectedRows ?? []
+					})),
 					checkedAt: new Date().toISOString(),
 					errorMessage: outcome.errorMessage ?? null
 				};
@@ -366,80 +369,92 @@
 									</button>
 								</div>
 								{#if test.result && !test.result.passed}
-									<!-- Expected vs actual, side by side — the shape the result model
-									     already has, and strictly better than the ANSI table. -->
-									<div class="grid grid-cols-2 gap-3">
+									{#if test.result.errorMessage}
+										<p class="font-mono text-[11px]" style:color="var(--sb-error)">
+											{test.result.errorMessage}
+										</p>
+									{/if}
+									<!-- Expected vs actual per compared target, side by side — the
+									     shape the result model already has. -->
+									{#each test.result.targets.filter((target) => !target.passed) as target (target.targetModelName)}
 										<div>
-											<div class="pb-1.5 font-mono text-[10px] uppercase tracking-[0.14em]" style:color="var(--sb-warning)">
-												Missing — expected, not produced
-											</div>
-											{#if test.result.missingRows.length === 0}
-												<p class="text-muted-foreground text-[11.5px]">none</p>
-											{:else}
-												<div class="overflow-x-auto rounded-[3px] border border-border">
-													<table class="w-full text-left">
-														<thead>
-															<tr class="bg-[var(--sb-surface-low)]">
-																{#each test.result.columns as column (column)}
-																	<th
-																		class="text-[var(--sb-text-faint)] border-b border-border px-2.5 py-1.5 font-mono text-[10px] font-normal"
-																		>{column}</th
-																	>
-																{/each}
-															</tr>
-														</thead>
-														<tbody>
-															{#each test.result.missingRows as row, rowIndex (rowIndex)}
-																<tr>
-																	{#each row as value, colIndex (colIndex)}
-																		<td
-																			class="border-b border-[var(--border-subtle)] px-2.5 py-1.5 font-mono text-[11px]"
-																			>{cell(value)}</td
-																		>
-																	{/each}
-																</tr>
-															{/each}
-														</tbody>
-													</table>
-												</div>
+											{#if test.result.targets.length > 1}
+												<div class="code pb-1.5 text-[11px]">{target.targetModelName}</div>
 											{/if}
-										</div>
-										<div>
-											<div class="pb-1.5 font-mono text-[10px] uppercase tracking-[0.14em]" style:color="var(--sb-error)">
-												Unexpected — produced, not expected
-											</div>
-											{#if test.result.unexpectedRows.length === 0}
-												<p class="text-muted-foreground text-[11.5px]">none</p>
-											{:else}
-												<div class="overflow-x-auto rounded-[3px] border border-border">
-													<table class="w-full text-left">
-														<thead>
-															<tr class="bg-[var(--sb-surface-low)]">
-																{#each test.result.columns as column (column)}
-																	<th
-																		class="text-[var(--sb-text-faint)] border-b border-border px-2.5 py-1.5 font-mono text-[10px] font-normal"
-																		>{column}</th
-																	>
-																{/each}
-															</tr>
-														</thead>
-														<tbody>
-															{#each test.result.unexpectedRows as row, rowIndex (rowIndex)}
-																<tr>
-																	{#each row as value, colIndex (colIndex)}
-																		<td
-																			class="border-b border-[var(--border-subtle)] px-2.5 py-1.5 font-mono text-[11px]"
-																			style:color="var(--sb-mono-err)">{cell(value)}</td
-																		>
+											<div class="grid grid-cols-2 gap-3">
+												<div>
+													<div class="pb-1.5 font-mono text-[10px] uppercase tracking-[0.14em]" style:color="var(--sb-warning)">
+														Missing — expected, not produced
+													</div>
+													{#if target.missingRows.length === 0}
+														<p class="text-muted-foreground text-[11.5px]">none</p>
+													{:else}
+														<div class="overflow-x-auto rounded-[3px] border border-border">
+															<table class="w-full text-left">
+																<thead>
+																	<tr class="bg-[var(--sb-surface-low)]">
+																		{#each target.columns as column (column)}
+																			<th
+																				class="text-[var(--sb-text-faint)] border-b border-border px-2.5 py-1.5 font-mono text-[10px] font-normal"
+																				>{column}</th
+																			>
+																		{/each}
+																	</tr>
+																</thead>
+																<tbody>
+																	{#each target.missingRows as row, rowIndex (rowIndex)}
+																		<tr>
+																			{#each row as value, colIndex (colIndex)}
+																				<td
+																					class="border-b border-[var(--border-subtle)] px-2.5 py-1.5 font-mono text-[11px]"
+																					>{cell(value)}</td
+																				>
+																			{/each}
+																		</tr>
 																	{/each}
-																</tr>
-															{/each}
-														</tbody>
-													</table>
+																</tbody>
+															</table>
+														</div>
+													{/if}
 												</div>
-											{/if}
+												<div>
+													<div class="pb-1.5 font-mono text-[10px] uppercase tracking-[0.14em]" style:color="var(--sb-error)">
+														Unexpected — produced, not expected
+													</div>
+													{#if target.unexpectedRows.length === 0}
+														<p class="text-muted-foreground text-[11.5px]">none</p>
+													{:else}
+														<div class="overflow-x-auto rounded-[3px] border border-border">
+															<table class="w-full text-left">
+																<thead>
+																	<tr class="bg-[var(--sb-surface-low)]">
+																		{#each target.columns as column (column)}
+																			<th
+																				class="text-[var(--sb-text-faint)] border-b border-border px-2.5 py-1.5 font-mono text-[10px] font-normal"
+																				>{column}</th
+																			>
+																		{/each}
+																	</tr>
+																</thead>
+																<tbody>
+																	{#each target.unexpectedRows as row, rowIndex (rowIndex)}
+																		<tr>
+																			{#each row as value, colIndex (colIndex)}
+																				<td
+																					class="border-b border-[var(--border-subtle)] px-2.5 py-1.5 font-mono text-[11px]"
+																					style:color="var(--sb-mono-err)">{cell(value)}</td
+																				>
+																			{/each}
+																		</tr>
+																	{/each}
+																</tbody>
+															</table>
+														</div>
+													{/if}
+												</div>
+											</div>
 										</div>
-									</div>
+									{/each}
 								{/if}
 
 								<SqlBlock

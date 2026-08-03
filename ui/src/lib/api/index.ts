@@ -51,6 +51,30 @@ export async function fetchPlan(selectors: string[], startTime: string | null): 
 	return planFromServer(await response.json(), getProject().adapter);
 }
 
+export type RunRecord = {
+	invocationId: string;
+	command: string;
+	mode: string;
+	outcome: string;
+	exitCode: number;
+	startedAt: string;
+	completedAt: string;
+	durationMs: number;
+	selectedNodeCount: number;
+	errorMessage: string | null;
+	toolVersion: string;
+};
+
+/** Recorded invocation history from `_streambuild_invocations`, newest first. */
+export async function fetchRuns(): Promise<RunRecord[]> {
+	const response = await fetch('/api/runs');
+	if (!response.ok) {
+		const detail = ((await response.json()) as { detail?: string }).detail;
+		throw new Error(detail ?? `runs request failed (${response.status})`);
+	}
+	return (await response.json()) as RunRecord[];
+}
+
 export type CheckRunResult = {
 	passed: boolean;
 	failingRowCount?: number;
@@ -60,6 +84,7 @@ export type CheckRunResult = {
 	targets?: {
 		targetModelName: string;
 		passed: boolean;
+		columns?: string[];
 		missingRows: (string | number | null)[][];
 		unexpectedRows: (string | number | null)[][];
 	}[];
