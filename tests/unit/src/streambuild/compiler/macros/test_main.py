@@ -10,6 +10,7 @@ from tests.unit.src.streambuild.compiler.macros._test_types import (
     ExpandProjectSqlMacrosCollisionTestCase,
     ExpandProjectSqlMacrosErrorTestCase,
     ExpandProjectSqlMacrosTestCase,
+    MacroDescriptionTestCase,
     MacroExecutionDiagnosticTestCase,
     MacroImportDiagnosticTestCase,
     MacroRegistrationTestCase,
@@ -704,3 +705,43 @@ def test_given_mixed_module_objects_when_loading_then_only_direct_public_functio
     assert registry.macros["alpha_macro"].relative_path == Path(test_case.expected_relative_path)
     assert registry.macros["alpha_macro"].file_path == alpha_path
     assert test_case.expected_source_fragment in registry.macros["alpha_macro"].source
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        MacroDescriptionTestCase(
+            description="a documented macro carries its docstring first paragraph",
+            macro_file_contents="""
+        def documented_macro() -> str:
+            \"\"\"Render the replay lineage columns.
+
+            Extended details that should not be part of the description.
+            \"\"\"
+            return "1"
+        """,
+            macro_name="documented_macro",
+            expected_description="Render the replay lineage columns.",
+        ),
+        MacroDescriptionTestCase(
+            description="an undocumented macro has no description",
+            macro_file_contents="""
+        def bare_macro() -> str:
+            return "1"
+        """,
+            macro_name="bare_macro",
+            expected_description=None,
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_macro_docstring_when_loading_then_description_is_first_paragraph(
+    test_case: MacroDescriptionTestCase, tmp_path: Path
+) -> None:
+    write_macro_file(tmp_path, "documented.py", test_case.macro_file_contents)
+
+    registry: MacroRegistry
+    _context: MacroContext
+    registry, _context = build_test_macro_runtime(tmp_path)
+
+    assert registry.macros[test_case.macro_name].description == test_case.expected_description

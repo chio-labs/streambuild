@@ -21,6 +21,7 @@ class LoadedMacro:
     source: str
     definition_line: int
     function: MacroFunction
+    description: str | None = None
 
 
 @dataclass(frozen=True, repr=False)

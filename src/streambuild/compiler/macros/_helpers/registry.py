@@ -99,9 +99,20 @@ def _load_public_macros_from_module(
                 source=macro_file.contents,
                 definition_line=definition_line_by_name[name],
                 function=function,
+                description=_macro_description(function),
             )
         )
     return tuple(loaded_macros)
+
+
+def _macro_description(function: object) -> str | None:
+    """The macro's docstring first paragraph; authors document macros in place."""
+
+    docstring: str | None = inspect.getdoc(function)
+    if docstring is None:
+        return None
+    first_paragraph: str = docstring.split("\n\n")[0].strip()
+    return first_paragraph or None
 
 
 def _macro_module_name(macro_file: DiscoveredProjectFile) -> str:

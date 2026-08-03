@@ -353,6 +353,7 @@ def _audit_payload(audit: LoadedSqlAudit) -> dict[str, object]:
         "file": str(audit.file_path),
         "severity": audit.severity,
         "description": audit.description,
+        "genericName": audit.generic_definition_name,
         "referencedModels": list(audit.referenced_model_names),
         "sql": audit.query,
     }
@@ -370,5 +371,12 @@ def _test_payload(test_case: SqlTestCase) -> dict[str, object]:
 def _macro_payloads(analysis: CompileAnalysis) -> list[dict[str, object]]:
     payloads: list[dict[str, object]] = []
     for name, macro in sorted(analysis.compiled_project.macro_registry.macros.items()):
-        payloads.append({"name": name, "file": str(macro.relative_path), "source": macro.source})
+        payloads.append(
+            {
+                "name": name,
+                "file": str(macro.relative_path),
+                "source": macro.source,
+                "description": macro.description,
+            }
+        )
     return payloads

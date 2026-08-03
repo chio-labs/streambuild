@@ -22,8 +22,10 @@ from tests.unit.src.streambuild.dev_server.helpers import (
             expected_anchor="eligible",
             expected_audit_name="orders_clean.order_id.not_null.1",
             expected_audit_file_suffix="orders_clean.sql",
+            expected_audit_generic_name="not_null",
             expected_driving_input="orders",
             expected_source_kind="kafka",
+            expected_managed_ddl_fragment="CREATE",
         ),
     ],
     ids=lambda case: case.description,
@@ -48,6 +50,11 @@ def test_given_compiled_project_when_reading_definitions_then_serializes_expecte
     assert model["sql"]["ddl"]["table"]
     audit: dict = named_payload_item(payload["audits"], test_case.expected_audit_name)
     assert audit["file"].endswith(test_case.expected_audit_file_suffix)
+    assert audit["genericName"] == test_case.expected_audit_generic_name
     source: dict = named_payload_item(payload["sources"], "orders")
     assert source["kind"] == test_case.expected_source_kind
+    assert all(
+        test_case.expected_managed_ddl_fragment in relation["ddl"]
+        for relation in source["managedRelations"]
+    )
     assert payload["project"]["database"] == "analytics"

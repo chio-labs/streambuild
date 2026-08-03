@@ -2,9 +2,10 @@
 	import SunIcon from '@lucide/svelte/icons/sun';
 	import MoonIcon from '@lucide/svelte/icons/moon';
 	import EyeIcon from '@lucide/svelte/icons/eye';
+	import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
 	import { theme, toggleTheme } from '$lib/theme.svelte';
 	import { getProject, CAN_EXECUTE_BUILD } from '$lib/api';
-	import { app } from '$lib/api/store.svelte';
+	import { app, refreshLiveState } from '$lib/api/store.svelte';
 	import { formatClock } from '$lib/domain/format';
 	import type { Project } from '$lib/domain/types';
 
@@ -24,6 +25,19 @@
 	// $derived so the 30s poll moves the clock instead of freezing it at mount.
 	const snapshotClock = $derived(formatClock(project.capturedAt));
 	const connected = $derived(app.status?.warehouseConnected ?? false);
+
+	// Polling runs every 30s; this forces a snapshot NOW — same fetch path, so
+	// everything on screen updates together.
+	let refreshing = $state<boolean>(false);
+
+	async function forceRefresh(): Promise<void> {
+		refreshing = true;
+		try {
+			await refreshLiveState();
+		} finally {
+			refreshing = false;
+		}
+	}
 </script>
 
 <svelte:head>
@@ -56,6 +70,15 @@
 				<b class="font-medium" style:color="var(--sb-error)">no warehouse</b>
 			{/if}
 		</span>
+		<button
+			class="text-muted-foreground hover:text-foreground hover:bg-[var(--sb-hover)] grid h-7 w-7 place-items-center rounded-[4px] border border-border disabled:opacity-60"
+			aria-label="Refresh snapshot"
+			title="Refresh the warehouse snapshot now"
+			disabled={refreshing}
+			onclick={() => void forceRefresh()}
+		>
+			<span class:animate-spin={refreshing}><RefreshCwIcon size={13} /></span>
+		</button>
 		{#if children}{@render children()}{/if}
 		<button
 			class="text-muted-foreground hover:text-foreground hover:bg-[var(--sb-hover)] grid h-7 w-7 place-items-center rounded-[4px] border border-border"

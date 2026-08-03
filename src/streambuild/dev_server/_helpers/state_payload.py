@@ -7,11 +7,12 @@ import datetime
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import (
     AdapterOwnershipRecord,
+    AdapterReplayCoverageRange,
     AdapterTable,
     CatalogRelation,
     CatalogSnapshot,
 )
-from streambuild.adapter.types import AdapterOwningMode
+from streambuild.adapter.types import AdapterOwningMode, AdapterReplayBoundaryMode
 from streambuild.compiler.compile.models import (
     CompiledModel,
     CompiledTableModel,
@@ -124,6 +125,9 @@ def _model_states(
     ownership_by_relation: dict[str, AdapterOwningMode] = {
         record.relation_name: AdapterOwningMode(record.owning_mode) for record in ownership
     }
+    record_by_relation: dict[str, AdapterOwnershipRecord] = {
+        record.relation_name: record for record in ownership
+    }
     policy_by_model: dict[str, SourceFreshnessPolicy | None] = _policies_by_model(analysis)
     states: dict[str, dict[str, object]] = {}
     for model in analysis.compiled_project.models:
@@ -154,6 +158,7 @@ def _model_states(
                 ownership_by_relation=ownership_by_relation,
                 catalog=catalog,
             ),
+            "recordedCoverage": _recorded_coverage(record_by_relation.get(relation_name)),
         }
     return states
 
@@ -340,6 +345,25 @@ def _compiled_table(*, analysis: CompileAnalysis, model: CompiledModel) -> Adapt
 
 def _normalized_engine(engine: str) -> str:
     return engine.replace("()", "").strip()
+
+
+def _recorded_coverage(record: AdapterOwnershipRecord | None) -> dict[str, str] | None:
+    """The recorded replay window, from timestamp-valued coverage ranges only."""
+
+    if record is None:
+        return None
+    timestamped: list[AdapterReplayCoverageRange] = [
+        item
+        for item in record.replay_coverage
+        if item.replay_boundary_mode
+        in (AdapterReplayBoundaryMode.TIMESTAMP, AdapterReplayBoundaryMode.LANDED_AT)
+    ]
+    if not timestamped:
+        return None
+    return {
+        "from": min(item.lower_value for item in timestamped),
+        "to": max(item.upper_value for item in timestamped),
+    }
 
 
 def _ownership_label(

@@ -138,6 +138,7 @@ def render_generic_sql_audits(
                 severity=instance.severity,
                 description=instance.description,
                 name=instance.name,
+                generic_definition_name=instance.definition_name,
             )
         )
     return tuple(rendered_audits)
