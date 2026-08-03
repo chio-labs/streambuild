@@ -63,6 +63,15 @@ class PlanEndpointTestCase:
 
 
 @dataclass(frozen=True)
+class ChecksStatusTestCase:
+    description: str
+    expected_name: str
+    expected_status: str
+    expected_failure_count: int
+    expected_completed_at: str
+
+
+@dataclass(frozen=True)
 class ChecksRunTestCase:
     description: str
     kind: str

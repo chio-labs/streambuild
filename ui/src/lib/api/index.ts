@@ -67,6 +67,27 @@ export async function fetchRuns(): Promise<RunRecord[]> {
 	return (await response.json()) as RunRecord[];
 }
 
+export type CheckStatusRecord = {
+	kind: 'audit' | 'test';
+	name: string;
+	status: 'passed' | 'warning' | 'failed' | 'error' | 'stale' | 'never_run';
+	severity: string | null;
+	failureCount: number;
+	completedAt: string | null;
+	payload: Record<string, unknown> | null;
+	errorMessage: string | null;
+};
+
+/** Last-known audit/test outcomes recorded in `_streambuild_node_results`. */
+export async function fetchChecksStatus(): Promise<CheckStatusRecord[]> {
+	const response = await fetch('/api/checks/status');
+	if (!response.ok) {
+		const detail = ((await response.json()) as { detail?: string }).detail;
+		throw new Error(detail ?? `checks status request failed (${response.status})`);
+	}
+	return (await response.json()) as CheckStatusRecord[];
+}
+
 export type CheckRunResult = {
 	passed: boolean;
 	failingRowCount?: number;

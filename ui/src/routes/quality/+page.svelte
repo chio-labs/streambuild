@@ -230,6 +230,11 @@
 								{:else}
 									<span style:color="var(--sb-success)">pass</span>
 								{/if}
+								{#if audit.result?.stale}
+									<span class="text-[var(--sb-text-faint)]" title="Definition changed since this run"
+										>· stale</span
+									>
+								{/if}
 							</span>
 							<span class="text-[var(--sb-text-faint)] w-[74px] shrink-0 text-right font-mono text-[10.5px]"
 								>{formatAgo(audit.result?.checkedAt ?? null, project.capturedAt)}</span
@@ -343,13 +348,18 @@
 									>{#if index < test.targets.length - 1}, {/if}
 								{/each}
 							</span>
-							<span class="w-[70px] shrink-0 text-right font-mono text-[11px]">
+							<span class="w-[90px] shrink-0 text-right font-mono text-[11px]">
 								{#if !test.result}
 									<span class="text-[var(--sb-text-faint)]">not run</span>
 								{:else if test.result.passed}
 									<span style:color="var(--sb-success)">pass</span>
 								{:else}
 									<span style:color="var(--sb-error)">fail</span>
+								{/if}
+								{#if test.result?.stale}
+									<span class="text-[var(--sb-text-faint)]" title="Definition changed since this run"
+										>· stale</span
+									>
 								{/if}
 							</span>
 							<span class="text-[var(--sb-text-faint)] w-[74px] shrink-0 text-right font-mono text-[10.5px]"

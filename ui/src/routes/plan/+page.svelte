@@ -22,6 +22,9 @@
 		type Selector,
 		type Source
 	} from '$lib/domain/types';
+	import type { PlanPageData } from './+page';
+
+	let { data }: { data: PlanPageData } = $props();
 
 	const project: Project = getProject();
 
@@ -87,10 +90,13 @@
 	// a live warehouse snapshot. Refetched whenever the URL-held selection or
 	// replay window changes; the previous plan stays visible while the next one
 	// is in flight so the page never blanks between keystrokes.
-	let plan = $state<Plan | null>(null);
+	// svelte-ignore state_referenced_locally -- deliberate: seeded from the route
+	// load; later navigations are adopted inside the effect below.
+	let plan = $state<Plan | null>(data.initialPlan);
 	let planError = $state<string | null>(null);
 	let planLoading = $state<boolean>(false);
-	let planRequestKey = $state<string>('');
+	// svelte-ignore state_referenced_locally -- same seeding as `plan`.
+	let planRequestKey = $state<string>(data.initialKey ?? '');
 
 	function requestPlan(tokens: string[], start: string | null): void {
 		planLoading = true;
@@ -135,6 +141,13 @@
 		const key: string = `${tokens.join(',')}|${start ?? ''}`;
 		if (key === planRequestKey) return;
 		planRequestKey = key;
+		// In-page navigations refetch through the route load; adopt its result
+		// instead of firing a second identical request.
+		if (data.initialKey === key && data.initialPlan !== null) {
+			plan = data.initialPlan;
+			planError = null;
+			return;
+		}
 		requestPlan(tokens, start);
 	});
 

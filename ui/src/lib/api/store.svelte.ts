@@ -8,7 +8,8 @@
  * live across refreshes.
  */
 
-import { projectFromServer } from '$lib/api/mapping';
+import { applyRecordedCheckStatuses, projectFromServer } from '$lib/api/mapping';
+import { fetchChecksStatus } from '$lib/api';
 import type { Project } from '$lib/domain/types';
 
 export type CompileError = {
@@ -91,8 +92,19 @@ export async function refreshLiveState(): Promise<void> {
 		if (!stateResponse.ok) return;
 		const definitionsResponse = await fetch('/api/definitions');
 		mergeProject(await definitionsResponse.json(), await stateResponse.json());
+		await refreshRecordedChecks();
 	} catch {
 		// A missed poll is not an outage; the topbar keeps the last capturedAt.
+	}
+}
+
+/** Recorded audit/test history is warehouse state too — best-effort like a poll. */
+async function refreshRecordedChecks(): Promise<void> {
+	if (app.project === null) return;
+	try {
+		applyRecordedCheckStatuses(app.project, await fetchChecksStatus());
+	} catch {
+		// No warehouse (or no history yet) simply leaves checks as not-run.
 	}
 }
 
@@ -121,6 +133,7 @@ async function refreshDefinitionsAndState(): Promise<void> {
 		const definitions = await definitionsResponse.json();
 		const state = stateResponse.ok ? await stateResponse.json() : {};
 		mergeProject(definitions, state);
+		await refreshRecordedChecks();
 		app.phase = 'ready';
 		app.fetchError = null;
 	} catch (error) {
