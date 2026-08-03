@@ -25,10 +25,76 @@ export function getProject(): Project {
 }
 
 /**
- * Whether this UI is allowed to mutate the warehouse. False in tier 1: the Plan
- * page previews and hands off a command instead of executing it.
+ * Whether this UI is allowed to mutate the warehouse. True since the execute
+ * tier: the Plan page and lineage run panel POST /api/build, which runs the
+ * exact `stb build` command shown, as a subprocess.
  */
-export const CAN_EXECUTE_BUILD: boolean = false;
+export const CAN_EXECUTE_BUILD: boolean = true;
+
+export type BuildStartResult = {
+	invocationId: string;
+	command: string;
+	status: string;
+};
+
+/** Start one build; rejects with the server detail when one is already running. */
+export async function startBuild(
+	selectors: string[],
+	startTime: string | null
+): Promise<BuildStartResult> {
+	const response = await fetch('/api/build', {
+		method: 'POST',
+		headers: { 'content-type': 'application/json' },
+		body: JSON.stringify({ selectors, startTime })
+	});
+	if (!response.ok) {
+		const detail = ((await response.json()) as { detail?: string }).detail;
+		throw new Error(detail ?? `build start failed (${response.status})`);
+	}
+	return (await response.json()) as BuildStartResult;
+}
+
+export type RunEvent = {
+	sequence: number;
+	emittedAt: string;
+	event: string;
+	stepId: string | null;
+	phase: string | null;
+	// run_started / statement / terminal payload fields, flattened server-side.
+	command?: string;
+	totalStatements?: number;
+	selectedNodeCount?: number;
+	statementSequence?: number;
+	intent?: string;
+	elapsedMs?: number;
+	writtenRows?: number | null;
+	errorMessage?: string | null;
+	outcome?: string;
+	exitCode?: number;
+};
+
+export type BuildFeed = {
+	running: boolean;
+	invocationId: string | null;
+	command: string;
+	exitCode: number | null;
+	events: RunEvent[];
+	stderr: string;
+};
+
+/** Cursor read of the live build feed. */
+export async function fetchBuildFeed(after: number): Promise<BuildFeed> {
+	const response = await fetch(`/api/build/current?after=${after}`);
+	if (!response.ok) throw new Error(`build feed failed (${response.status})`);
+	return (await response.json()) as BuildFeed;
+}
+
+/** The durable step timeline of one recorded run. */
+export async function fetchRunEvents(invocationId: string): Promise<RunEvent[]> {
+	const response = await fetch(`/api/runs/${encodeURIComponent(invocationId)}/events`);
+	if (!response.ok) throw new Error(`run events failed (${response.status})`);
+	return (await response.json()) as RunEvent[];
+}
 
 /** Fetch a server-side plan for the given selectors and optional start time. */
 export async function fetchPlan(selectors: string[], startTime: string | null): Promise<Plan> {

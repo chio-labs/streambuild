@@ -138,8 +138,10 @@
 						{@const chip = statusChip(run.outcome)}
 						<tr>
 							<td class="px-[18px] py-2.5 align-top">
-								<span class="code text-primary text-[12px]" title={run.invocationId}
-									>{run.invocationId.slice(0, 8)}</span
+								<a
+									href="/runs/{run.invocationId}"
+									class="code text-primary text-[12px] hover:underline"
+									title={run.invocationId}>{run.invocationId.slice(0, 8)}</a
 								>
 								<div class="flex items-center gap-1.5 pt-1">
 									<span class="sb-tag code">{run.mode}</span>

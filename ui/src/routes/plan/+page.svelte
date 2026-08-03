@@ -2,6 +2,7 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import CopyIcon from '@lucide/svelte/icons/copy';
+	import PlayIcon from '@lucide/svelte/icons/play';
 	import CheckIcon from '@lucide/svelte/icons/check';
 	import RotateIcon from '@lucide/svelte/icons/rotate-ccw';
 	import TriangleAlertIcon from '@lucide/svelte/icons/triangle-alert';
@@ -11,7 +12,7 @@
 	import SelectionCombobox from '$lib/components/plan/selection-combobox.svelte';
 	import PlanGraph from '$lib/components/plan/plan-graph.svelte';
 	import ReplayWindowControl from '$lib/components/plan/replay-window.svelte';
-	import { getProject, fetchPlan, fetchRuns, CAN_EXECUTE_BUILD, type RunRecord } from '$lib/api';
+	import { getProject, fetchPlan, fetchRuns, startBuild, type RunRecord } from '$lib/api';
 	import { parseSelector, rootSourcesFor, selectorToken } from '$lib/domain/derive';
 	import { formatAgo, formatClock, formatCompact, formatDuration } from '$lib/domain/format';
 	import {
@@ -124,6 +125,26 @@
 			return columns.timestamp ?? null;
 		}
 		return columns.landed_at ?? null;
+	}
+
+	let executing = $state<boolean>(false);
+	let executeError = $state<string | null>(null);
+
+	/** POST the exact planned command and follow the run live. */
+	async function execute(): Promise<void> {
+		executing = true;
+		executeError = null;
+		try {
+			const tokens: string[] = selectors.map(selectorToken);
+			const start: string | null =
+				replayWindow.mode === 'from' ? `${replayWindow.startTime.slice(0, 19)}Z` : null;
+			const startResult = await startBuild(tokens, start);
+			await goto(`/runs/${startResult.invocationId}?live=1`);
+		} catch (error) {
+			executeError = error instanceof Error ? error.message : String(error);
+		} finally {
+			executing = false;
+		}
 	}
 
 	/** Re-run the same selection against a fresh warehouse snapshot. */
@@ -549,11 +570,7 @@
 	<div class="bg-[var(--sb-surface-low)] shrink-0 border-t border-border px-[18px] py-3">
 		<div class="flex items-center gap-3">
 			<div class="text-muted-foreground shrink-0 font-mono text-[10.5px]">
-				{#if CAN_EXECUTE_BUILD}
-					Ready to run
-				{:else}
-					Read-only · planned against the {formatClock(plan?.plannedAt ?? '')} snapshot
-				{/if}
+				Planned against the {formatClock(plan?.plannedAt ?? '')} snapshot
 				{#if lastBuild}
 					· last build {formatDuration(lastBuild.durationMs / 1000)}
 					({lastBuild.selectedNodeCount} nodes, {formatAgo(
@@ -586,6 +603,17 @@
 					<CopyIcon size={12} /> copy
 				{/if}
 			</button>
+			<button
+				class="bg-primary flex shrink-0 items-center gap-1.5 rounded-[4px] px-3 py-1.5 font-mono text-[11px] font-medium text-white disabled:opacity-60"
+				title="Runs the exact command shown, as a subprocess"
+				disabled={executing || plan === null}
+				onclick={() => void execute()}
+			>
+				<PlayIcon size={12} /> {executing ? 'starting…' : 'Execute'}
+			</button>
 		</div>
+		{#if executeError}
+			<div class="pt-2 font-mono text-[11px]" style:color="var(--sb-error)">{executeError}</div>
+		{/if}
 	</div>
 </div>

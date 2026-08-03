@@ -2,6 +2,7 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import MaximizeIcon from '@lucide/svelte/icons/maximize';
+	import PlayIcon from '@lucide/svelte/icons/play';
 	import RotateIcon from '@lucide/svelte/icons/rotate-ccw';
 	import AppTopbar from '$lib/components/app-topbar.svelte';
 	import NodeFieldsPopover from '$lib/components/lineage/node-fields-popover.svelte';
@@ -10,6 +11,7 @@
 	import GraphInspector from '$lib/components/graph/graph-inspector.svelte';
 	import LineageCanvas from '$lib/components/lineage/lineage-canvas.svelte';
 	import EdgeLegend from '$lib/components/lineage/edge-legend.svelte';
+	import RunPanel from '$lib/components/run-panel.svelte';
 	import { getProject } from '$lib/api';
 	import { buildLogicalGraph, buildPhysicalGraph, modelByName } from '$lib/domain/derive';
 	import { nodeFields } from '$lib/lineage/node-fields.svelte';
@@ -103,6 +105,14 @@
 
 	let selectedId = $state<string | null>(null);
 	let fitView = $state<(() => void) | undefined>();
+	let runOpen = $state<boolean>(false);
+
+	/** The graph selection seeds the run panel's --select flags (models only). */
+	const runSelection = $derived.by((): string[] => {
+		const node = selectedId ? graph.nodes.find((item) => item.id === selectedId) : undefined;
+		if (node === undefined || node.logicalType === 'source') return [];
+		return [node.logicalName];
+	});
 	// Lanes is the default: it fits the viewport ~30% larger than boxes on the
 	// same graph, and its bounding box stays near viewport aspect because lane
 	// width is pinned to the deepest chain while pipeline count grows downward.
@@ -237,6 +247,12 @@
 			>
 				<MaximizeIcon size={13} />
 			</button>
+			<button
+				class="bg-primary flex items-center gap-1.5 rounded-[4px] px-3 py-1.5 font-mono text-[11px] font-medium text-white"
+				onclick={() => (runOpen = true)}
+			>
+				<PlayIcon size={12} /> Execute
+			</button>
 		</div>
 	</div>
 
@@ -315,3 +331,5 @@
 		{/if}
 	</div>
 </div>
+
+<RunPanel bind:open={runOpen} selection={runSelection} />
