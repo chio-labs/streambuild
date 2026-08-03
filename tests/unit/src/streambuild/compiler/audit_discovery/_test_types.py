@@ -33,7 +33,7 @@ class DiscoverGenericSqlAuditsTestCase:
     description: str
     definition_name: str
     definition_file_contents: str
-    schema_file_contents: str
+    model_file_contents: str
     expected_name: str
     expected_query_fragments: tuple[str, ...]
     expected_referenced_model_names: tuple[str, ...]

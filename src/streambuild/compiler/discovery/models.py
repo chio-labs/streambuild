@@ -264,6 +264,15 @@ class ExternalTableSourceStep:
 
 
 @dataclass(frozen=True)
+class ModelColumnSpec:
+    """An authored MODEL(...) column declaration."""
+
+    name: str
+    description: str | None = None
+    audits: tuple[object, ...] = ()
+
+
+@dataclass(frozen=True)
 class TransformStep:
     """A transform from one logical upstream node into a managed table."""
 
@@ -273,6 +282,8 @@ class TransformStep:
     order_by: Sequence[str]
     relation_name: str | None = None
     description: str | None = None
+    columns: tuple[ModelColumnSpec, ...] = ()
+    audits: tuple[object, ...] = ()
     query: str | None = None
     sql_file: str | None = None
     partition_by: str | None = None
@@ -311,6 +322,8 @@ class ViewStep:
     sql_file: str | None = None
     relation_name: str | None = None
     description: str | None = None
+    columns: tuple[ModelColumnSpec, ...] = ()
+    audits: tuple[object, ...] = ()
     source_file_path: Path | None = None
     source_line: int = 1
     source_column: int = 1
@@ -407,5 +420,4 @@ class DiscoveredProjectInputs:
     model_files: tuple[DiscoveredProjectFile, ...]
     test_files: tuple[DiscoveredProjectFile, ...]
     audit_files: tuple[DiscoveredProjectFile, ...]
-    audit_schema_files: tuple[DiscoveredProjectFile, ...]
     macro_files: tuple[DiscoveredProjectFile, ...]

@@ -158,7 +158,7 @@ def test_given_complete_project_when_analyzing_then_polyglot_calls_remain_bounde
             expected_adapter_name="clickhouse",
             expected_dialect="clickhouse",
             expected_default_database="analytics",
-            expected_source_file_count=9,
+            expected_source_file_count=8,
             expected_phase_call_count=1,
             expected_test_case_count=1,
             expected_assembly_realization_order=(
@@ -290,7 +290,6 @@ def test_given_project_sources_when_analyzing_then_builds_one_stable_offline_res
                 *analysis.discovered_inputs.model_files,
                 *analysis.discovered_inputs.test_files,
                 *analysis.discovered_inputs.audit_files,
-                *analysis.discovered_inputs.audit_schema_files,
                 *analysis.discovered_inputs.macro_files,
             )
         )
@@ -776,7 +775,6 @@ def test_given_private_macro_modules_when_analyzing_then_only_public_modules_are
                 "audits/quality/alpha_audit.sql",
                 "macros/formatting.py",
                 "pipelines/alpha/alpha_model.sql",
-                "pipelines/alpha/schema.yml",
                 "pipelines/zeta/zeta_model.sql",
                 "sources/alpha_source.yml",
                 "sources/zeta_source.yml",

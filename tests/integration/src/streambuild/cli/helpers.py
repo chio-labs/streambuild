@@ -620,7 +620,6 @@ def write_backfill_audit_project_files(project_dir: Path) -> None:
 
 def write_generic_audit_project_files(project_dir: Path) -> None:
     from tests.unit.src.streambuild.compiler.audit_discovery.helpers import (
-        write_schema_yaml_file,
         write_sql_audit_file,
     )
     from tests.unit.src.streambuild.compiler.discovery._helpers.load.helpers import (
@@ -632,7 +631,12 @@ def write_generic_audit_project_files(project_dir: Path) -> None:
         project_dir / "pipelines" / "order_events" / "order_items.sql",
         """
         MODEL (
-          order_by ["order_id"]
+          order_by ["order_id"],
+          columns (
+            order_id (
+              audits [not_null (name "order items order id not null", severity warning)],
+            ),
+          ),
         );
 
         SELECT
@@ -649,19 +653,6 @@ def write_generic_audit_project_files(project_dir: Path) -> None:
         SELECT @column
         FROM __ref("@model")
         WHERE @column IS NULL
-        """,
-    )
-    write_schema_yaml_file(
-        project_dir / "pipelines" / "order_events" / "schema.yml",
-        """
-        models:
-          - name: order_items
-            columns:
-              - name: order_id
-                audits:
-                  - not_null:
-                      name: order items order id not null
-                      severity: warning
         """,
     )
 
