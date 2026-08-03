@@ -184,7 +184,9 @@
 			compactNodes ? 'compact' : 'full',
 			mutedIds?.size ?? 0,
 			emphasisIds?.size ?? 0,
-			notes?.size ?? 0,
+			// Content, not size: a note flipping from 'rebuilding…' to '554k rows'
+			// must re-render even though the map cardinality is unchanged.
+			[...(notes ?? new Map())].map(([id, note]) => `${id}=${note.text}`).join('|'),
 			graph.nodes.length,
 			graph.edges.length,
 			graph.nodes.map((node) => node.id).join('|').length,
