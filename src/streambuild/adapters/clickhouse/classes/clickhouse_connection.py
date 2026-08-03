@@ -29,6 +29,7 @@ from streambuild.adapter.models import (
     AdapterReadinessRootObservation,
     AdapterRelationCleanupRequest,
     AdapterReplayCoverageRequest,
+    AdapterRunEventRecord,
     AdapterStableView,
     AdapterTable,
     AdapterView,
@@ -50,6 +51,7 @@ from streambuild.adapters.clickhouse._helpers.metadata import (
     render_clickhouse_latest_node_status_query,
     render_clickhouse_metadata_migration_workflow,
     render_clickhouse_metadata_state,
+    render_clickhouse_run_event_inserts,
     render_clickhouse_target_ownership,
     render_clickhouse_target_ownership_removal,
 )
@@ -271,6 +273,19 @@ class ClickHouseConnection(AdapterConnection):
             project_identity=project_identity,
             target_identity=target_identity,
             nodes=nodes,
+        )
+
+    def render_run_events(
+        self,
+        *,
+        database: str,
+        events: tuple[AdapterRunEventRecord, ...],
+        include_migration: bool = False,
+    ) -> tuple[str, ...]:
+        """Render incremental run-event inserts for the live run timeline."""
+
+        return render_clickhouse_run_event_inserts(
+            database=database, events=events, include_migration=include_migration
         )
 
     def load_deployment_inventory(self, database: str) -> AdapterDeploymentInventory:

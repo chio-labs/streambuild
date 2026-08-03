@@ -14,6 +14,7 @@ from streambuild.adapter.constants import (
     METADATA_NODE_RESULTS_TABLE_NAME,
     METADATA_OBJECT_STATE_TABLE_NAME,
     METADATA_PUBLISH_HISTORY_TABLE_NAME,
+    METADATA_RUN_EVENTS_TABLE_NAME,
     METADATA_SCHEMA_VERSIONS_TABLE_NAME,
     REPLAY_VALUE_KIND_INTEGER,
     REPLAY_VALUE_KIND_TIMESTAMP,
@@ -32,6 +33,7 @@ from streambuild.adapter.models import (
     AdapterPublishEventRecord,
     AdapterQueryResult,
     AdapterReplayCoverageRange,
+    AdapterRunEventRecord,
 )
 from streambuild.adapter.types import AdapterReplayBoundaryMode
 from streambuild.adapters.clickhouse.constants import (
@@ -58,6 +60,7 @@ def render_clickhouse_metadata_migration_statements(database: str) -> tuple[str,
         _render_direct_target_events_table(database),
         _render_invocations_table(database),
         _render_node_results_table(database),
+        _render_run_events_table(database),
     )
 
 
@@ -340,6 +343,58 @@ def _render_node_results_table(database: str) -> str:
         ") ENGINE = MergeTree\n"
         "ORDER BY (node_kind, node_identity, completed_at, result_id)"
     )
+
+
+def _render_run_events_table(database: str) -> str:
+    return (
+        f"CREATE TABLE IF NOT EXISTS {database}.{METADATA_RUN_EVENTS_TABLE_NAME} (\n"
+        "    invocation_id String,\n"
+        "    sequence UInt64,\n"
+        "    emitted_at DateTime64(3, 'UTC'),\n"
+        "    event_kind LowCardinality(String),\n"
+        "    step_id Nullable(String),\n"
+        "    phase Nullable(String),\n"
+        "    payload_json String\n"
+        ") ENGINE = MergeTree\n"
+        "ORDER BY (invocation_id, sequence)"
+    )
+
+
+def render_clickhouse_run_event_inserts(
+    *,
+    database: str,
+    events: tuple[AdapterRunEventRecord, ...],
+    include_migration: bool = False,
+) -> tuple[str, ...]:
+    """Render incremental run-event inserts, optionally preceded by the migration."""
+
+    if not events:
+        return ()
+    statement: ClickHouseMetadataStatement = ClickHouseMetadataStatement(
+        table=f"{database}.{METADATA_RUN_EVENTS_TABLE_NAME}",
+        sql=(
+            f"INSERT INTO {database}.{METADATA_RUN_EVENTS_TABLE_NAME} "
+            "(invocation_id, sequence, emitted_at, event_kind, step_id, phase, "
+            "payload_json) VALUES"
+        ),
+        rows=tuple(_run_event_row(record) for record in events),
+    )
+    inserts: tuple[str, ...] = (_render_insert_statement(statement),)
+    if not include_migration:
+        return inserts
+    return (*render_clickhouse_metadata_migration_workflow(database), *inserts)
+
+
+def _run_event_row(record: AdapterRunEventRecord) -> dict[str, object]:
+    return {
+        "invocation_id": record.invocation_id,
+        "sequence": record.sequence,
+        "emitted_at": record.emitted_at,
+        "event_kind": record.event_kind,
+        "step_id": record.step_id,
+        "phase": record.phase,
+        "payload_json": record.payload_json,
+    }
 
 
 def _object_state_row(record: AdapterObjectStateRecord) -> dict[str, object]:

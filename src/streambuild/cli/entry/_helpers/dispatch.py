@@ -87,6 +87,7 @@ def dispatch_cli_command(
                 json_output=bool(getattr(args, "json", False)),
                 verbose=bool(getattr(args, "verbose", False)),
                 auto_approve=bool(getattr(args, "auto_approve", False)),
+                events_output=bool(getattr(args, "events", False)),
             ),
             client=client,
             loaded_project=invocation.loaded_project,

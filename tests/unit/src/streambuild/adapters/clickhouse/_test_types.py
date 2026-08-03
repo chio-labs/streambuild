@@ -68,6 +68,15 @@ class LatestNodeStatusQueryTestCase:
 
 
 @dataclass(frozen=True)
+class RunEventInsertsTestCase:
+    description: str
+    include_migration: bool
+    expected_statement_count: int
+    expected_insert_fragment: str
+    expected_values_fragment: str
+
+
+@dataclass(frozen=True)
 class BuildInspectedManagedTableStateTestCase:
     description: str
     active_binding_rows: tuple[tuple[str, str], ...]

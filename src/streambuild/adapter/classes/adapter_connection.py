@@ -24,6 +24,7 @@ from streambuild.adapter.models import (
     AdapterReadinessRootObservation,
     AdapterRelationCleanupRequest,
     AdapterReplayCoverageRequest,
+    AdapterRunEventRecord,
     AdapterStableView,
     AdapterTable,
     AdapterView,
@@ -141,6 +142,17 @@ class AdapterConnection(ABC):
         """Render the current-manifest quality status query when supported."""
 
         return ""
+
+    def render_run_events(
+        self,
+        *,
+        database: str,
+        events: tuple[AdapterRunEventRecord, ...],
+        include_migration: bool = False,
+    ) -> tuple[str, ...]:
+        """Render incremental run-event inserts when supported."""
+
+        return ()
 
     @abstractmethod
     def load_deployment_inventory(self, database: str) -> AdapterDeploymentInventory:

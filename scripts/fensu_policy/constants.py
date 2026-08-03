@@ -125,6 +125,7 @@ BUILD_WORKFLOW_EXECUTION_FUNCTION: str = "execute_build_workflow"
 BUILD_WORKFLOW_EXECUTION_PARAMETERS: tuple[str, ...] = (
     "published_workflow",
     "connection",
+    "emitter",
 )
 PUBLISHED_WORKFLOW_CONSTRUCTOR_NAME: str = "PublishedBuildWorkflow"
 WORKFLOW_STATEMENT_CONSTRUCTOR_NAME: str = "WarehouseStatement"
@@ -150,8 +151,12 @@ OBSERVABILITY_AUTHORITY_ALLOWED_PATH_PREFIXES: tuple[tuple[str, ...], ...] = (
 QUALITY_MODULE_PREFIX: tuple[str, ...] = ("streambuild", "quality")
 OBSERVABILITY_QUERY_CALL_NAMES: frozenset[str] = frozenset({"render_latest_node_status_query"})
 OBSERVABILITY_TABLE_CONSTANT_NAMES: frozenset[str] = frozenset(
-    {"METADATA_INVOCATIONS_TABLE_NAME", "METADATA_NODE_RESULTS_TABLE_NAME"}
+    {
+        "METADATA_INVOCATIONS_TABLE_NAME",
+        "METADATA_NODE_RESULTS_TABLE_NAME",
+        "METADATA_RUN_EVENTS_TABLE_NAME",
+    }
 )
 OBSERVABILITY_TABLE_NAMES: frozenset[str] = frozenset(
-    {"_streambuild_invocations", "_streambuild_node_results"}
+    {"_streambuild_invocations", "_streambuild_node_results", "_streambuild_run_events"}
 )
