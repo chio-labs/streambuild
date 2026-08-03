@@ -369,6 +369,35 @@ def build_fake_state_connection() -> FakeAdapterConnection:
             "SELECT count() AS present FROM system.tables "
             "WHERE database = 'analytics' AND name = '_streambuild_invocations'"
         ): AdapterQueryResult(rows=((0,),), column_names=("present",)),
+        (
+            "SELECT count() AS present FROM system.tables "
+            "WHERE database = 'analytics' AND name = '_streambuild_run_events'"
+        ): AdapterQueryResult(rows=((1,),), column_names=("present",)),
+        (
+            "SELECT sequence, toString(emitted_at) AS emitted_at, event_kind, step_id, phase, "
+            "payload_json FROM `analytics`.`_streambuild_run_events` "
+            "WHERE invocation_id = 'inv-42' ORDER BY sequence"
+        ): AdapterQueryResult(
+            rows=(
+                (1, "2026-08-03 12:00:00.000", "run_started", None, None, '{"command": "build"}'),
+                (
+                    2,
+                    "2026-08-03 12:00:01.000",
+                    "statement_completed",
+                    "replay_orders",
+                    "replay",
+                    '{"writtenRows": 42}',
+                ),
+            ),
+            column_names=(
+                "sequence",
+                "emitted_at",
+                "event_kind",
+                "step_id",
+                "phase",
+                "payload_json",
+            ),
+        ),
         build_replay_count_query(
             database="analytics",
             relation_name="raw__orders",
