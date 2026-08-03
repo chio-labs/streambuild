@@ -14,6 +14,8 @@ ALLOWED_MODEL_KEYS: frozenset[str] = frozenset(
     {
         "kind",
         "description",
+        "columns",
+        "audits",
         "relation_name",
         "engine",
         "order_by",
@@ -106,6 +108,7 @@ REPLAY_BOUNDARY_COLUMN_KEYS: frozenset[str] = frozenset(
     }
 )
 FRESHNESS_KEYS: frozenset[str] = frozenset({"warn_after", "error_after"})
+MODEL_COLUMN_KEYS: frozenset[str] = frozenset({"description", "audits"})
 FRESHNESS_DURATION_PATTERN: re.Pattern[str] = re.compile(r"(\d+)([dhms])")
 SECONDS_BY_DURATION_UNIT: dict[str, int] = {
     "d": 24 * 60 * 60,

@@ -1,6 +1,16 @@
 MODEL (
   order_by ["order_id", "event_at", "_replay_partition", "_replay_offset"],
   partition_by "toYYYYMM(event_at)",
+  columns (
+    order_id (audits [not_null]),
+    line_total (audits [not_null (severity warning)]),
+  ),
+  audits [
+    expression_is_true (
+      name "line total non negative when present",
+      expression "line_total >= 0 OR line_total IS NULL",
+    ),
+  ],
 );
 
 SELECT
