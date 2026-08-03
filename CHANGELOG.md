@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.0](https://github.com/chio-labs/streambuild/compare/v0.5.0...v0.6.0) (2026-08-03)
+
+
+### Features
+
+* add append-only metadata history ([7a2807c](https://github.com/chio-labs/streambuild/commit/7a2807c27c4860b59fba909be3fbd13585d7d632))
+* enforce observability non-authority ([ae32f2f](https://github.com/chio-labs/streambuild/commit/ae32f2f03be627ac872f4bf7fb17313eeafa8051))
+
 ## [0.5.0](https://github.com/chio-labs/streambuild/compare/v0.4.0...v0.5.0) (2026-08-02)
 
 
