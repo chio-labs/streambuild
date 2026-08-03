@@ -16,11 +16,11 @@ from streambuild.compiler.planner.main.load_direct_warehouse_snapshot import (
 from streambuild.compiler.planner.main.plan_direct_build import plan_direct_build
 from streambuild.compiler.planner.models import DirectPlan, DirectWarehouseSnapshot
 from streambuild.dev_server._helpers.checks_execution import run_one_audit, run_one_test
+from streambuild.dev_server._helpers.compile_runner import build_status_payload
 from streambuild.dev_server._helpers.definitions_payload import build_definitions_payload
 from streambuild.dev_server._helpers.plan_payload import build_plan_payload, expand_selectors
 from streambuild.dev_server._helpers.runs_query import read_runs
 from streambuild.dev_server._helpers.state_payload import build_state_payload
-from streambuild.dev_server._helpers.status_payload import build_status_payload
 from streambuild.dev_server.classes.dev_server_state import DevServerState
 from streambuild.dev_server.exceptions import DevServerError, ProjectNotCompiledError
 from streambuild.dev_server.models import ChecksRunRequest, CompileOutcome

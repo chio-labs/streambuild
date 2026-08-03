@@ -25,6 +25,7 @@ class CliEntrypointHandlers:
     run_janitor: Callable[..., int]
     run_doctor: Callable[..., int]
     run_repair_active_view: Callable[..., int]
+    run_dev: Callable[..., int]
 
 
 @dataclass(frozen=True, repr=False)
