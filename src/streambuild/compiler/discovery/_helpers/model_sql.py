@@ -90,6 +90,11 @@ def _load_transform_from_sql_contents(
         key="relation_name",
         file_path=file_path,
     )
+    description: str | None = _optional_string(
+        header_values=header_values,
+        key="description",
+        file_path=file_path,
+    )
     if model_kind == ModelKind.VIEW:
         _validate_view_header(header_values=header_values, file_path=file_path)
         _validate_view_refs(
@@ -102,6 +107,7 @@ def _load_transform_from_sql_contents(
             name=file_path.stem,
             query=query,
             relation_name=relation_name,
+            description=description,
             source_file_path=file_path,
             source_line=query_line,
             source_column=query_column,
@@ -117,6 +123,7 @@ def _load_transform_from_sql_contents(
         engine=_sql_model_engine(header_values=header_values, file_path=file_path),
         order_by=_sql_model_order_by(header_values=header_values, file_path=file_path),
         relation_name=relation_name,
+        description=description,
         partition_by=_optional_string(
             header_values=header_values, key="partition_by", file_path=file_path
         ),
