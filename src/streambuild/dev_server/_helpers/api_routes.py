@@ -10,12 +10,12 @@ from fastapi import FastAPI, HTTPException, Query
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.exceptions import AdapterError
+from streambuild.cli.build.main.build_direct_build_preview import build_direct_build_preview
+from streambuild.cli.build.models import DirectBuildPreviewContext, WorkflowPreparationOptions
+from streambuild.cli.entry.exceptions import CliUserError
+from streambuild.cli.plan.main.normalize_cli_start_time import normalize_cli_start_time
 from streambuild.compiler.pipeline.models import CompileAnalysis
-from streambuild.compiler.planner.main.load_direct_warehouse_snapshot import (
-    load_direct_warehouse_snapshot,
-)
-from streambuild.compiler.planner.main.plan_direct_build import plan_direct_build
-from streambuild.compiler.planner.models import DirectPlan, DirectWarehouseSnapshot
+from streambuild.compiler.planner.exceptions import DirectPlanError
 from streambuild.dev_server._helpers.checks_execution import (
     build_checks_status_payload,
     run_one_audit,
@@ -26,11 +26,10 @@ from streambuild.dev_server._helpers.definitions_payload import build_definition
 from streambuild.dev_server._helpers.plan_payload import (
     build_plan_payload,
     count_replay_rows,
-    expand_selectors,
 )
 from streambuild.dev_server._helpers.runs_query import read_run_events, read_runs
 from streambuild.dev_server._helpers.state_payload import build_state_payload
-from streambuild.dev_server.classes.build_process import BuildProcessManager
+from streambuild.dev_server.classes.build_process import BuildProcessManager, build_invocation
 from streambuild.dev_server.classes.dev_server_state import DevServerState
 from streambuild.dev_server.exceptions import (
     BuildInProgressError,
@@ -38,7 +37,12 @@ from streambuild.dev_server.exceptions import (
     DevServerError,
     ProjectNotCompiledError,
 )
-from streambuild.dev_server.models import BuildRunRequest, ChecksRunRequest, CompileOutcome
+from streambuild.dev_server.models import (
+    BuildRunRequest,
+    ChecksRunRequest,
+    CompileOutcome,
+    DevExecutionContext,
+)
 from streambuild.dev_server.types import ActivityTone, DevServerReporter
 
 _HTTP_BAD_REQUEST: int = 400
@@ -56,6 +60,7 @@ def register_api_routes(
     project_dir: Path,
     builds: BuildProcessManager,
     reporter: DevServerReporter,
+    execution_context: DevExecutionContext | None = None,
 ) -> FastAPI:
     """Attach every /api route; handlers close over the shared server state."""
 
@@ -126,38 +131,48 @@ def register_api_routes(
         client: AdapterConnection = _required_connection()
         analysis: CompileAnalysis = _servable_analysis()
         try:
-            selected: frozenset = expand_selectors(analysis=analysis, selectors=tuple(select or ()))
-        except DevServerError as error:
-            raise HTTPException(status_code=_HTTP_BAD_REQUEST, detail=str(error)) from error
-        try:
+            if start is not None and not select:
+                raise CliUserError("--start-time requires at least one --select")
+            normalized_start: str | None = (
+                None if start is None else normalize_cli_start_time(start)
+            )
             with state.query_lock:
                 planned_at: str = client.capture_warehouse_timestamp()
-                snapshot: DirectWarehouseSnapshot = load_direct_warehouse_snapshot(
+                preview: DirectBuildPreviewContext = build_direct_build_preview(
+                    options=WorkflowPreparationOptions(
+                        database=database,
+                        metadata_database=database,
+                        selectors=tuple(select or ()),
+                        deployment_id=None,
+                        full_refresh=False,
+                        start_time=start,
+                        verbose=False,
+                    ),
                     client=client,
-                    database=database or "",
-                    metadata_database=database or "",
-                )
-                plan: DirectPlan = plan_direct_build(
-                    graph=analysis.graph,
-                    realized_project=analysis.realized_project,
-                    snapshot=snapshot,
-                    database=database or "",
-                    selected_model_keys=selected,
-                    effective_start_time=start,
-                )
-                return build_plan_payload(
-                    plan=plan,
                     analysis=analysis,
+                    effective_start_time=normalized_start,
+                )
+                _, command = build_invocation(
                     selectors=tuple(select or ()),
                     start_time=start,
+                    execution_context=execution_context,
+                )
+                return build_plan_payload(
+                    plan=preview.plan,
+                    analysis=analysis,
+                    selectors=tuple(select or ()),
+                    start_time=normalized_start,
                     planned_at=planned_at,
+                    command=command,
                     replay_row_counts=count_replay_rows(
                         connection=client,
-                        database=database or "",
-                        plan=plan,
-                        start_time=start,
+                        database=preview.database,
+                        plan=preview.plan,
+                        start_time=normalized_start,
                     ),
                 )
+        except (CliUserError, DirectPlanError, ValueError) as error:
+            raise HTTPException(status_code=_HTTP_BAD_REQUEST, detail=str(error)) from error
         except AdapterError as error:
             raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
 

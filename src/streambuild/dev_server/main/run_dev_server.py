@@ -18,7 +18,7 @@ from streambuild.dev_server._helpers.static_assets import (
 )
 from streambuild.dev_server.classes.dev_server_state import DevServerState
 from streambuild.dev_server.main._create_dev_app import create_dev_app
-from streambuild.dev_server.models import CompileOutcome
+from streambuild.dev_server.models import CompileOutcome, DevExecutionContext
 from streambuild.dev_server.types import DevServerReporter
 
 
@@ -31,6 +31,7 @@ def run_dev_server(
     host: str,
     port: int,
     reporter: DevServerReporter,
+    execution_context: DevExecutionContext | None = None,
 ) -> int:
     """Compile once, serve the API and packaged UI, and block until shutdown."""
 
@@ -50,6 +51,7 @@ def run_dev_server(
         database=database,
         project_dir=project_dir,
         reporter=reporter,
+        execution_context=execution_context,
     )
     app = register_static_assets(app=app, assets_root=assets_root)
     reporter.report_startup(
