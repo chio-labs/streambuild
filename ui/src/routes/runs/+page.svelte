@@ -6,21 +6,29 @@
 
 	const project: Project = getProject();
 
-	// Recorded CLI invocation history from `_streambuild_invocations` — facts
-	// about what already ran, not a scheduler. Loaded once per visit; a run
-	// happens out-of-band in a shell, so there is nothing to poll for here.
+	// Recorded CLI invocation history from `_streambuild_invocations`. Runs
+	// happen out-of-band in a shell, so poll while the page is visible — a
+	// build finished in another terminal should appear without re-navigating.
 	let runs = $state<RunRecord[] | null>(null);
 	let loadError = $state<string | null>(null);
 
+	const POLL_MS = 10_000;
+
+	async function refresh(): Promise<void> {
+		try {
+			runs = await fetchRuns();
+			loadError = null;
+		} catch (error) {
+			loadError = (error as Error).message;
+		}
+	}
+
 	$effect(() => {
-		fetchRuns()
-			.then((records) => {
-				runs = records;
-				loadError = null;
-			})
-			.catch((error: Error) => {
-				loadError = error.message;
-			});
+		refresh();
+		const timer = setInterval(() => {
+			if (!document.hidden) refresh();
+		}, POLL_MS);
+		return () => clearInterval(timer);
 	});
 
 	// Dagster-style status tabs: the one filter everyone reaches for first.

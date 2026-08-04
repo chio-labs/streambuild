@@ -15,6 +15,14 @@ class CliBuildGateTestCase:
 
 
 @dataclass(frozen=True)
+class CliBuildInterruptTestCase:
+    description: str
+    expected_exit_code: int
+    expected_invocation_outcome: str
+    expected_stderr_fragment: str
+
+
+@dataclass(frozen=True)
 class CliBuildArtifactTestCase:
     description: str
     expected_exit_code: int
