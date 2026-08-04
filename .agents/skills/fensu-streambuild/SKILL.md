@@ -4,7 +4,7 @@ description: "Use when modifying the streambuild project governed by fensu.toml.
 ---
 
 <!-- generated-by: fensu skills -->
-<!-- fensu-skill-owner: {"content_fingerprint":"505d4e24e9f6152787941b367ee9706269c500ccd025b1c2e4c740b09412d0b4","identity":"fensu-streambuild","input_fingerprint":"b9dc6d37e8839d41f1f2267ff7149ca209568b83580ea9cdb9af2c909d47e3f7","owner":"c8ca2b2833426e659f1f9431f5534ee7e891ee25b62edf3194bd00c83975d53e","schema":1} -->
+<!-- fensu-skill-owner: {"content_fingerprint":"4ecad8a0c3233e47db4cfab226ca2b24626ef989940c91be58d42fdfe7046e91","identity":"fensu-streambuild","input_fingerprint":"7cdb0d2ba7ef71e8846e21ba490c108741d7419e4d7f535c969b7212d22af789","owner":"31d665ee1808640fc2f4bf5779a1d9849030b806dc96d48ff385f469025f0cc5","schema":2} -->
 
 # Fensu
 
@@ -144,7 +144,7 @@ Every leaf domain or subdomain must contain a direct `main/` boundary with at le
 
 Do not add placeholder `main/` packages. If a package owns only passive models, types, constants, exceptions, or classes, move them into the closest domain or subdomain whose `main/` behavior owns and uses them.
 
-Generic package names are banned, including `base`, `common`, `lib`, `misc`, `shared`, `util`, and `utils`. Name the business domain or technical capability owner instead.
+Generic package names are banned: `base`, `common`, `helpers`, `lib`, `misc`, `shared`, `util`, `utils`. Name the business domain or technical capability owner instead.
 
 ### Role Containers
 
@@ -474,7 +474,7 @@ Approved custom rules receive `ctx: RuleContext`. Import authoring APIs only fro
 - `ctx.relations`: `parent(handle)`, `children(handle)`, and `ancestors(handle)`.
 - `ctx.project`: dependency-recording cross-file and filesystem queries. Use `analysis(requester=ctx.path, path=path)`, `dataclasses(requester=ctx.path, path=path)`, `directory_entries(requester=ctx.path, path=path)`, `entrypoint_modules(requester=ctx.path)`, `module_function(requester=ctx.path, module_name=name, function_name=name)`, `python_anchor(requester=ctx.path, path=path)`, `exists(requester=ctx.path, path=path)`, `is_dir(requester=ctx.path, path=path)`, `is_file(requester=ctx.path, path=path)`, and `glob(requester=ctx.path, path=path, pattern=pattern, recursive=False)`. Inspect recorded observations with `dependencies()` or `dependencies_for(requester=ctx.path)`.
 
-Position and ownership helpers: `ctx.path`, `ctx.repo_root`, `ctx.source`, `relative_parts()`, `repo_relative_parts()`, `scope_root()`, `scope_roots(scope)`, `module_parts()`, `scope()`, `role_of()`, `in_role(role)`, `is_entry_module()`, `is_main_module()`, `domain()`, and `subdomain()`. `role_of()` describes the current file here; use project facts rather than assuming arbitrary paths share its position.
+Position and ownership helpers: `ctx.path`, `ctx.repo_root`, `ctx.source`, `relative_parts()`, `repo_relative_parts()`, `scope_root()`, `scope_roots(scope), test_scopes()`, `module_parts()`, `scope()`, `role_of()`, `in_role(role)`, `is_entry_module()`, `is_main_module()`, `domain()`, and `subdomain()`. `role_of()` describes the current file here; use project facts rather than assuming arbitrary paths share its position.
 
 AST helpers: `nodes(node_type)`, `call_name(node)`, `base_name(node)`, `top_level_functions(module)`, `non_docstring_body(module)`, `distinct_callees(fn)`, `assigned_locals(fn)`, `complex_comprehensions()`, `parameter_names(fn)`, and `inside_loop(node)`.
 
@@ -637,7 +637,11 @@ Family: `hygiene`
 
 standalone comments are not allowed; prefer clear names or docs/tests
 
-Remediation: Replace the comment with clearer names or move lasting explanation into documentation or tests.
+Remediation: Replace the comment with clearer names or move lasting explanation into documentation or tests. Tooling directives beginning with these prefixes are allowed: #!, # -*-, # coding:, # noqa, # type:, # pyright:, # pylint:, # pragma:.
+
+Constraints:
+
+- Allowed standalone comment prefixes: `#!`, `# -*-`, `# coding:`, `# noqa`, `# type:`, `# pyright:`, `# pylint:`, `# pragma:`
 
 ### FFH003: no-raw-builtin-raise
 
@@ -767,6 +771,10 @@ runtime code must not import from tooling modules
 
 Remediation: Move reusable logic into the runtime package or keep the dependency inside tooling.
 
+Effective configuration:
+
+- `tooling`: `scripts`
+
 ### FFN001: validator-must-not-return
 
 Family: `naming`
@@ -774,6 +782,11 @@ Family: `naming`
 functions under no-return naming contracts must not return values
 
 Remediation: Remove the meaningful return and raise on invalid input, or rename a value-producing function as a query such as is_valid or get_validation_result.
+
+Naming contracts:
+
+- `enforce_*`: `no-return`
+- `validate_*`: `no-return`
 
 ### FFN002: predicate-must-return-bool
 
@@ -783,6 +796,13 @@ predicate names must declare an ordinary boolean result
 
 Remediation: Return bool (or TypeGuard/TypeIs), or rename the function to describe the value it returns, such as read_status or current_status.
 
+Naming contracts:
+
+- `can_*`: `returns-bool`
+- `has_*`: `returns-bool`
+- `is_*`: `returns-bool`
+- `supports_*`: `returns-bool`
+
 ### FFN003: value-name-must-return-value
 
 Family: `naming`
@@ -791,13 +811,23 @@ value-producing names must not declare a no-value result
 
 Remediation: Return the queried or converted value, or rename the function to describe its side effect, such as initialize_cache or export_json.
 
+Naming contracts:
+
+- `as_*`: `returns-value`
+- `get_*`: `returns-value`
+- `to_*`: `returns-value`
+
 ### FFN004: iterator-name-must-produce-iterator
 
 Family: `naming`
 
 iterator names must produce an iterator or generator
 
-Remediation: Return an iterator or generator, or rename an eager collection function with a name such as collect_items.
+Remediation: Return an iterator, generator, async iterator, or async generator; otherwise rename an eager collection function with a name such as collect_items.
+
+Naming contracts:
+
+- `iter_*`: `returns-iterator`
 
 ### FFR001: models-only-models
 
@@ -805,7 +835,7 @@ Family: `roles`
 
 models role files may contain only structured runtime models
 
-Remediation: Move functions and non-model declarations to their owning role module.
+Remediation: Keep imports and public structured models only. Accepted models are dataclasses and Pydantic BaseModel subclasses; move functions and other declarations to their owning role module.
 
 ### FFR002: types-only-types
 
@@ -869,7 +899,11 @@ Family: `roles`
 
 generic filenames hide module ownership
 
-Remediation: Rename the module after the domain concept or operation it owns.
+Remediation: Rename the module after the domain concept or operation it owns. Forbidden module filenames: misc.py.
+
+Constraints:
+
+- Forbidden module filenames: `misc.py`
 
 ### FFR202: helpers-module-name
 
@@ -893,7 +927,11 @@ Family: `roles`
 
 runtime package directories must identify an owner
 
-Remediation: Rename the package after the business domain or technical capability it owns.
+Remediation: Rename the package after the business domain or technical capability it owns. Forbidden package names: base, common, helpers, lib, misc, shared, util, utils. This rule owns generic bucket names; container-layout rules do not emit a duplicate fault.
+
+Constraints:
+
+- Forbidden package names: `base`, `common`, `helpers`, `lib`, `misc`, `shared`, `util`, `utils`
 
 ### FFR205: helpers-classes-file-private
 
@@ -909,7 +947,16 @@ Family: `roles`
 
 _helpers/ packages must use bounded flat-or-grouped containers
 
-Remediation: Keep _helpers/ flat or group every module into bounded shallow buckets; do not mix modules and Python-containing buckets in one container.
+Remediation: Keep _helpers/ flat or group every module into bounded shallow buckets; do not mix direct Python modules and Python-containing buckets in one container. Only direct .py files other than __init__.py count toward the module limit; empty and asset-only directories do not count as buckets. Runtime role names are not valid buckets. Container depth and entry-module shape are evaluated independently.
+
+Constraints:
+
+- Forbidden role bucket names: `main`, `_helpers`, `helpers`, `classes`, `models`, `types`, `constants`, `exceptions`
+
+Thresholds:
+
+- `max_helpers_container_modules`: `10` (base value; role or path overrides may apply)
+- `max_role_depth`: `1` (base value; role or path overrides may apply)
 
 ### FFR302: main-package-layout
 
@@ -917,7 +964,16 @@ Family: `roles`
 
 main/ packages must use bounded flat-or-grouped orchestration containers
 
-Remediation: Keep main/ flat or group every entry into bounded shallow buckets; do not mix modules and Python-containing buckets in one container.
+Remediation: Keep main/ flat or group every entry into bounded shallow buckets; do not mix direct Python modules and Python-containing buckets in one container. Only direct .py files other than __init__.py count toward the module limit; empty and asset-only directories do not count as buckets. Runtime role names are not valid buckets. Container depth and entry-module shape are evaluated independently.
+
+Constraints:
+
+- Forbidden role bucket names: `main`, `_helpers`, `helpers`, `classes`, `models`, `types`, `constants`, `exceptions`
+
+Thresholds:
+
+- `max_main_container_modules`: `20` (base value; role or path overrides may apply)
+- `max_role_depth`: `1` (base value; role or path overrides may apply)
 
 ### FFR303: helpers-reserved-role-filenames
 
@@ -927,6 +983,10 @@ _helpers/ packages must not contain reserved role filenames
 
 Remediation: Rename the helper module after its specific operation, or move role-owned declarations to the corresponding sibling models, types, constants, or exceptions role.
 
+Constraints:
+
+- Reserved role filenames: `models.py`, `types.py`, `constants.py`, `exceptions.py`
+
 ### FFR304: nested-direct-modules
 
 Family: `roles`
@@ -935,6 +995,11 @@ nested runtime packages may contain only role-oriented direct modules
 
 Remediation: Move additional implementation modules under the package's _helpers/ boundary.
 
+Constraints:
+
+- Recognized runtime role directories: `main`, `_helpers`, `classes`, `models`, `types`, `constants`, `exceptions`
+- Recognized runtime role filenames: `main.py`, `helpers.py`, `classes.py`, `models.py`, `types.py`, `constants.py`, `exceptions.py`
+
 ### FFR305: nested-direct-subpackages
 
 Family: `roles`
@@ -942,6 +1007,10 @@ Family: `roles`
 nested runtime packages must use explicit role boundaries
 
 Remediation: Move feature subpackages under _helpers/ or use a supported role such as main/ or classes/.
+
+Constraints:
+
+- Recognized runtime role directories: `main`, `_helpers`, `classes`, `models`, `types`, `constants`, `exceptions`
 
 ### FFR306: top-level-domain-shape
 
@@ -959,13 +1028,21 @@ top-level domains must not contain ad hoc direct modules
 
 Remediation: Move the module under a direct role boundary or into an owning named subdomain.
 
+Constraints:
+
+- Recognized runtime role filenames: `main.py`, `helpers.py`, `classes.py`, `models.py`, `types.py`, `constants.py`, `exceptions.py`
+
 ### FFR308: shared-domain-prefix
 
 Family: `roles`
 
 sibling domains must not encode one parent domain through a shared name prefix
 
-Remediation: Create one parent domain from the shared prefix and move each remaining suffix beneath it as a named subdomain.
+Remediation: Create one parent domain from the shared prefix and move each remaining suffix beneath it as a named subdomain. Setting min_shared_domain_prefix_packages to 0 disables this rule.
+
+Thresholds:
+
+- `min_shared_domain_prefix_packages`: `2` (base value; role or path overrides may apply)
 
 ### FFR309: leaf-main-boundary
 
@@ -973,7 +1050,7 @@ Family: `roles`
 
 leaf runtime domains and subdomains must expose meaningful behavior through main/
 
-Remediation: Add a focused main/ entry module only when the leaf owns behavior; otherwise move passive declarations into the closest domain or subdomain whose main/ behavior owns and uses them.
+Remediation: Every leaf requires a direct main/ boundary with at least one non-__init__.py Python entry; branch-domain parents are exempt. Add a focused entry only when the leaf owns behavior; otherwise move passive declarations into the closest behavioral owner.
 
 ### FFR401: entry-module-shape
 
@@ -981,7 +1058,12 @@ Family: `roles`
 
 main/ entry modules must expose one focused public function
 
-Remediation: Keep only imports, one public entry function, and at most two small private glue functions; move phase logic to _helpers/.
+Remediation: Every non-__init__.py module whose first structural role is main is an entry, including grouped main modules. Keep only imports, one public entry function, and at most two small private glue functions; move phase logic to _helpers/. A main bucket below another role is not an entry boundary.
+
+Fixed limits:
+
+- Maximum private glue functions: `2`
+- Required public entry functions: `1`
 
 ### FFR402: init-module-empty
 
@@ -1055,6 +1137,10 @@ source files must stay below the configured line limit
 
 Remediation: Split the file by a cohesive role or concern instead of extracting arbitrary numbered fragments.
 
+Thresholds:
+
+- `max_file_lines`: `2000` (base value; role or path overrides may apply)
+
 ### FFR701: tooling-entrypoint-shape
 
 Family: `roles`
@@ -1062,6 +1148,15 @@ Family: `roles`
 direct scripts must remain focused command adapters
 
 Remediation: Keep one public main(), optional private _parse_args() and _build_parser(), and move implementation into a scripts/<tool>/main/ entry.
+
+Constraints:
+
+- Allowed direct-script command functions: `main`, `_parse_args`, `_build_parser`
+- Allowed direct-script top-level statement kinds: `import statement`, `command function`, `nonexecuting import guard`
+
+Fixed limits:
+
+- Required public main functions: `1`
 
 ### FFR702: tooling-entrypoint-delegation
 
@@ -1071,6 +1166,10 @@ direct scripts must delegate to an imported main/ entrypoint
 
 Remediation: Import a typed entry function from a runtime or scripts/<tool>/main/ module and return its result from main().
 
+Constraints:
+
+- Allowed direct-script main() call targets: `_parse_args`, `imported main/ entry function`
+
 ### FFR703: tooling-entrypoint-line-count
 
 Family: `roles`
@@ -1078,6 +1177,10 @@ Family: `roles`
 direct scripts must stay below the configured line limit
 
 Remediation: Move command implementation into a named tooling or runtime package.
+
+Thresholds:
+
+- `max_script_entrypoint_lines`: `80` (base value; role or path overrides may apply)
 
 ### FFR704: rules-role-content
 
@@ -1095,6 +1198,11 @@ tool packages must organize implementation through explicit roles
 
 Remediation: Use main/, _helpers/, classes/, rules/, models.py, types.py, constants.py, or exceptions.py directly beneath scripts/<tool>/.
 
+Constraints:
+
+- Allowed tooling role directories: `main`, `_helpers`, `classes`, `rules`
+- Allowed tooling role files: `models.py`, `types.py`, `constants.py`, `exceptions.py`
+
 ### FFR706: descriptive-rule-module-names
 
 Family: `roles`
@@ -1109,7 +1217,11 @@ Family: `roles`
 
 configured custom rules must have statically declared public-harness cases
 
-Remediation: Add statically visible RuleCase construction passed to evaluate_rule for each custom rule. When FFT413 is active, parametrize with a local _test_types.py dataclass and convert it to RuleCase inside the test.
+Remediation: Add statically visible RuleCase construction passed to evaluate_rule for each custom rule. When FFT413 is active, parametrize with a local _test_types.py dataclass and convert it to RuleCase inside the test. Setting min_custom_rule_test_cases to 0 disables this rule.
+
+Thresholds:
+
+- `min_custom_rule_test_cases`: `1` (base value; role or path overrides may apply)
 
 ### FFS001: too-many-statements
 
@@ -1119,6 +1231,10 @@ main functions must stay phase-shaped and below the statement limit
 
 Remediation: Extract cohesive phases into helpers that return explicit result models.
 
+Thresholds:
+
+- `max_statements`: `40` (base value; role or path overrides may apply)
+
 ### FFS002: too-many-distinct-calls
 
 Family: `shape`
@@ -1126,6 +1242,10 @@ Family: `shape`
 main functions must not coordinate too many distinct callees
 
 Remediation: Group related work into named phase helpers and keep main/ as a short ordered flow.
+
+Thresholds:
+
+- `max_distinct_calls`: `20` (base value; role or path overrides may apply)
 
 ### FFS003: too-many-locals
 
@@ -1135,6 +1255,10 @@ main functions must not juggle too many local variables
 
 Remediation: Let each extracted phase own its intermediates and return one structured result.
 
+Thresholds:
+
+- `max_locals`: `20` (base value; role or path overrides may apply)
+
 ### FFS010: max-arguments
 
 Family: `shape`
@@ -1143,13 +1267,21 @@ functions must stay below the configured argument limit
 
 Remediation: Reduce the function's responsibility or group cohesive inputs into a typed model.
 
+Thresholds:
+
+- `max_arguments`: `10` (base value; role or path overrides may apply)
+
 ### FFS011: max-statements-global
 
 Family: `shape`
 
 functions must stay below the global statement limit
 
-Remediation: Split the function at a meaningful phase boundary with explicit inputs and outputs.
+Remediation: Split the function at a meaningful phase boundary with explicit inputs and outputs. Top-level main functions are governed by FFS001 instead.
+
+Thresholds:
+
+- `max_statements_global`: `70` (base value; role or path overrides may apply)
 
 ### FFS101: meaningful-project-result-discarded
 
@@ -1173,7 +1305,11 @@ Family: `shape`
 
 functions beyond the parameter threshold must be entirely keyword-only
 
-Remediation: Insert * before the first non-receiver parameter so every call argument names its meaning.
+Remediation: Insert * before the first non-receiver parameter so every call argument names its meaning. Dunder methods are exempt.
+
+Thresholds:
+
+- `max_positional_args`: `1` (base value; role or path overrides may apply)
 
 ### FFS130: no-outer-state-mutation
 
@@ -1207,6 +1343,11 @@ tests must live under a configured test root and supported scope
 
 Remediation: Move the test beneath a configured test root and one of the configured test_scopes.
 
+Effective configuration:
+
+- `test_scopes`: `unit`, `integration`, `e2e`
+- `tests`: `tests`
+
 ### FFT002: test-scope
 
 Family: `tests`
@@ -1214,6 +1355,11 @@ Family: `tests`
 test scope must be one of the configured test scopes
 
 Remediation: Move the test beneath a configured test root and one of the configured test_scopes.
+
+Effective configuration:
+
+- `test_scopes`: `unit`, `integration`, `e2e`
+- `tests`: `tests`
 
 ### FFT003: test-mirrored-root
 
@@ -1223,6 +1369,11 @@ test directories must mirror a configured runtime or tooling root
 
 Remediation: Mirror the complete configured source or tooling path beneath the test scope.
 
+Effective configuration:
+
+- `roots`: `src/streambuild`
+- `tooling`: `scripts`
+
 ### FFT004: src-mirror-depth
 
 Family: `tests`
@@ -1230,6 +1381,10 @@ Family: `tests`
 runtime tests must include an area beneath the configured source root
 
 Remediation: Move the test beneath the package and source area it exercises.
+
+Effective configuration:
+
+- `roots`: `src/streambuild`
 
 ### FFT005: src-package-exists
 
@@ -1239,6 +1394,10 @@ runtime tests must mirror a configured source package
 
 Remediation: Correct the mirrored package name or move the test to the package it exercises.
 
+Effective configuration:
+
+- `roots`: `src/streambuild`
+
 ### FFT006: src-area-exists
 
 Family: `tests`
@@ -1246,6 +1405,10 @@ Family: `tests`
 runtime tests must mirror an existing source package area
 
 Remediation: Correct the mirrored area path so it matches the runtime module location.
+
+Effective configuration:
+
+- `roots`: `src/streambuild`
 
 ### FFT007: scripts-mirror-depth
 
@@ -1255,6 +1418,10 @@ tooling tests must include an area beneath the configured tooling root
 
 Remediation: Move the test beneath the configured tooling area it exercises.
 
+Effective configuration:
+
+- `tooling`: `scripts`
+
 ### FFT008: scripts-area-exists
 
 Family: `tests`
@@ -1262,6 +1429,10 @@ Family: `tests`
 tooling tests must mirror an existing configured tooling area
 
 Remediation: Correct the mirrored area path so it matches the tooling location.
+
+Effective configuration:
+
+- `tooling`: `scripts`
 
 ### FFT101: init-module-empty
 
@@ -1350,6 +1521,10 @@ Family: `tests`
 test modules must use a test_ filename
 
 Remediation: Rename the module to test_<behavior>.py.
+
+Constraints:
+
+- Test support filenames excluded from test-module rules: `__init__.py`, `conftest.py`, `helpers.py`, `_test_helpers.py`, `_test_types.py`
 
 ### FFT302: test-function-name
 
