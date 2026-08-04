@@ -5,7 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.cli.dev.classes.dev_terminal_reporter import DevTerminalReporter
 from streambuild.cli.dev.models import DevCommandOptions
+from streambuild.cli.presentation.main._cli_style import cli_style
 from streambuild.compiler.compile.models import CompilerAdapterProfile
 from streambuild.compiler.discovery.main.load_project_input_for_path import (
     load_project_input_for_path,
@@ -44,4 +46,5 @@ def run_dev(
         project_dir=project_dir,
         host=options.host,
         port=options.port,
+        reporter=DevTerminalReporter(style=cli_style()),
     )

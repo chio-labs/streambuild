@@ -7,11 +7,14 @@ import shlex
 import subprocess
 import sys
 import threading
+import time
 from pathlib import Path
 
 from streambuild.dev_server.exceptions import BuildInProgressError, BuildStartError
+from streambuild.dev_server.types import ActivityTone, DevServerReporter
 
 _RUN_STARTED_KIND: str = "run_started"
+_STATEMENT_COMPLETED_KIND: str = "statement_completed"
 _START_TIMEOUT_SECONDS: float = 180.0
 _STDERR_TAIL_LINES: int = 50
 
@@ -19,7 +22,8 @@ _STDERR_TAIL_LINES: int = 50
 class BuildProcessManager:
     """Owns at most one running `stb build` subprocess and its live event feed."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, reporter: DevServerReporter) -> None:
+        self._reporter: DevServerReporter = reporter
         self._lock: threading.Lock = threading.Lock()
         self._process: subprocess.Popen[str] | None = None
         self._events: list[dict[str, object]] = []
@@ -27,6 +31,7 @@ class BuildProcessManager:
         self._invocation_id: str | None = None
         self._exit_code: int | None = None
         self._command: str = ""
+        self._started_monotonic: float = 0.0
         self._started_event: threading.Event = threading.Event()
 
     def start(
@@ -47,6 +52,7 @@ class BuildProcessManager:
             self._invocation_id = None
             self._exit_code = None
             self._command = shlex.join(argv[1:])
+            self._started_monotonic = time.monotonic()
             self._started_event = threading.Event()
             self._process = subprocess.Popen(
                 argv,
@@ -63,6 +69,11 @@ class BuildProcessManager:
         with self._lock:
             if self._invocation_id is None:
                 raise BuildStartError(self._start_failure_message())
+            command: str = self._command
+        self._reporter.report_activity(
+            category="build", status="started", tone=ActivityTone.NEUTRAL, detail=command
+        )
+        with self._lock:
             return {
                 "invocationId": self._invocation_id,
                 "command": self._command,
@@ -99,7 +110,14 @@ class BuildProcessManager:
         exit_code: int = process.wait()
         with self._lock:
             self._exit_code = exit_code
+            elapsed_seconds: float = time.monotonic() - self._started_monotonic
+            statement_count: int = sum(
+                1 for item in self._events if item.get("event") == _STATEMENT_COMPLETED_KIND
+            )
         self._started_event.set()
+        self._report_finished(
+            exit_code=exit_code, elapsed_seconds=elapsed_seconds, statement_count=statement_count
+        )
 
     def _consume_stderr(self, process: subprocess.Popen[str]) -> None:
         if process.stderr is None:
@@ -108,6 +126,20 @@ class BuildProcessManager:
             with self._lock:
                 self._stderr_tail.append(line.rstrip("\n"))
                 del self._stderr_tail[:-_STDERR_TAIL_LINES]
+
+    def _report_finished(
+        self, *, exit_code: int, elapsed_seconds: float, statement_count: int
+    ) -> None:
+        succeeded: bool = exit_code == 0
+        detail: str = f"{statement_count} statements in {elapsed_seconds:.1f}s"
+        if not succeeded:
+            detail = f"exit {exit_code} after {elapsed_seconds:.1f}s"
+        self._reporter.report_activity(
+            category="build",
+            status="succeeded" if succeeded else "failed",
+            tone=ActivityTone.GOOD if succeeded else ActivityTone.BAD,
+            detail=detail,
+        )
 
     def _start_failure_message(self) -> str:
         detail: str = "\n".join(self._stderr_tail).strip()
