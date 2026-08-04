@@ -2,7 +2,7 @@ import json
 from dataclasses import replace
 from pathlib import Path
 
-from streambuild.adapter.models import AdapterQueryResult
+from streambuild.adapter.models import AdapterMutationResult, AdapterQueryResult
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from streambuild.cli.build._helpers.virtual_preview import build_virtual_build_preview
 from streambuild.cli.build.main._run_build import run_build
@@ -50,20 +50,41 @@ def run_scope_project_build(*, project_root: Path, json_output: bool, auto_appro
     )
 
 
+class InterruptedBuildConnection(RecordingAdapterConnection):
+    """A connection whose first workflow statement raises like a Ctrl+C."""
+
+    def execute_workflow_sql(self, statement: str) -> AdapterMutationResult:
+        raise KeyboardInterrupt
+
+
 def build_scope_project_connection() -> RecordingAdapterConnection:
     """Build the settled recording connection shared by direct command tests."""
 
+    snapshot: DirectWarehouseSnapshot = _settled_scope_snapshot()
+    return RecordingAdapterConnection(
+        relations=snapshot.catalog.relations,
+        ownership_records=snapshot.ownership_records,
+    )
+
+
+def build_interrupted_scope_project_connection() -> InterruptedBuildConnection:
+    """Build the settled connection variant that interrupts workflow execution."""
+
+    snapshot: DirectWarehouseSnapshot = _settled_scope_snapshot()
+    return InterruptedBuildConnection(
+        relations=snapshot.catalog.relations,
+        ownership_records=snapshot.ownership_records,
+    )
+
+
+def _settled_scope_snapshot() -> DirectWarehouseSnapshot:
     snapshot: DirectWarehouseSnapshot = build_settled_direct_snapshot()
-    snapshot = replace(
+    return replace(
         snapshot,
         catalog=replace(
             snapshot.catalog,
             relations=snapshot.catalog.relations[3:],
         ),
-    )
-    return RecordingAdapterConnection(
-        relations=snapshot.catalog.relations,
-        ownership_records=snapshot.ownership_records,
     )
 
 

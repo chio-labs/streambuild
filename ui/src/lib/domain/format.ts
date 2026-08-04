@@ -63,8 +63,20 @@ export function formatDaySpan(days: number): string {
 	return formatDuration(days * 86400);
 }
 
+/**
+ * Every timestamp in the system is UTC, but warehouse strings arrive zone-less
+ * ('2026-08-04 12:34:56.789'). Bare `new Date()` reads those as browser-local
+ * time, shifting comparisons by the UTC offset — which made fresh check
+ * results render as 'in the future'. Normalize before parsing.
+ */
+export function parseUtc(instant: string): Date {
+	const isoShaped = instant.includes('T') ? instant : instant.replace(' ', 'T');
+	const zoned = /(?:[Zz]|[+-]\d\d:?\d\d)$/.test(isoShaped) ? isoShaped : `${isoShaped}Z`;
+	return new Date(zoned);
+}
+
 export function millisBetween(from: string, to: string): number {
-	return new Date(to).getTime() - new Date(from).getTime();
+	return parseUtc(to).getTime() - parseUtc(from).getTime();
 }
 
 export function secondsBetween(from: string, to: string): number {
@@ -87,23 +99,23 @@ export function formatAgo(instant: string | null, reference: string): string {
 /** Wall-clock time only — for dense tables where the date is implied. */
 export function formatClock(instant: string | null): string {
 	if (!instant) return '—';
-	return new Date(instant).toISOString().slice(11, 19);
+	return parseUtc(instant).toISOString().slice(11, 19);
 }
 
 /** `2026-08-02 12:04:31` — no timezone suffix; the warehouse timezone is stated once. */
 export function formatTimestamp(instant: string | null): string {
 	if (!instant) return '—';
-	return new Date(instant).toISOString().slice(0, 19).replace('T', ' ');
+	return parseUtc(instant).toISOString().slice(0, 19).replace('T', ' ');
 }
 
 export function formatDate(instant: string | null): string {
 	if (!instant) return '—';
-	return new Date(instant).toISOString().slice(0, 10);
+	return parseUtc(instant).toISOString().slice(0, 10);
 }
 
 /** `2026-08-02T12:04` — the value shape an `<input type="datetime-local">` wants. */
 export function toDateTimeLocal(instant: string): string {
-	return new Date(instant).toISOString().slice(0, 16);
+	return parseUtc(instant).toISOString().slice(0, 16);
 }
 
 export function fromDateTimeLocal(value: string): string {

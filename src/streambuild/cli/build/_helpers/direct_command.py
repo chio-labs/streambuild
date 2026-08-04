@@ -39,6 +39,8 @@ from streambuild.executor.observability.main.persist_terminal_observations impor
 )
 from streambuild.executor.observability.models import TerminalInvocation
 
+_SIGINT_EXIT_CODE: int = 130
+
 
 def execute_direct_build_command(
     *,
@@ -89,6 +91,27 @@ def execute_direct_build_command(
             node_results=(),
         )
         return 1
+    except KeyboardInterrupt:
+        print("build interrupted; recorded as cancelled", file=sys.stderr)
+        if sink is not None:
+            sink.run_completed(outcome="cancelled", exit_code=_SIGINT_EXIT_CODE, error_message=None)
+        interrupted_invocation: AdapterInvocationRecord = _build_invocation(
+            started=started,
+            preparation=preparation,
+            options=options,
+            exit_code=_SIGINT_EXIT_CODE,
+            outcome="cancelled",
+            materialized_outcome=None,
+            audit_result=None,
+            error_message=None,
+        )
+        persist_terminal_observations(
+            client=client,
+            database=preparation.preview.metadata_database,
+            invocation=interrupted_invocation,
+            node_results=(),
+        )
+        return _SIGINT_EXIT_CODE
     if execution is None:
         if sink is not None:
             sink.run_completed(outcome="cancelled", exit_code=1, error_message=None)
