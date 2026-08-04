@@ -5,6 +5,7 @@ from collections.abc import Mapping
 from streambuild.cli.entry.types import CliCommand, CliSubcommand
 
 ACTIVE_VIEW_SUBCOMMAND: str = CliSubcommand.ACTIVE_VIEW
+DEV_CLI_VARIABLES_ENV_VAR: str = "STREAMBUILD_INTERNAL_CLI_VARS"
 
 COMMANDS_REQUIRING_PIPELINES_ROOT: frozenset[CliCommand] = frozenset(
     {

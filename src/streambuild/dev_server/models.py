@@ -2,12 +2,27 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 from pydantic import BaseModel
 
 from streambuild.compiler.pipeline.models import CompilationTimings, CompileAnalysis
 from streambuild.dev_server.types import CompileStateKind
+
+
+@dataclass(frozen=True, repr=False)
+class DevExecutionContext:
+    """Resolved invocation values retained across dev reloads, previews, and builds."""
+
+    database: str | None = None
+    selected_target: str | None = None
+    cli_variables: tuple[tuple[str, object], ...] = ()
+    environment: Mapping[str, str] | None = None
+    connection_host: str | None = None
+    connection_port: int | None = None
+    connection_username: str | None = None
+    connection_password: str | None = None
 
 
 @dataclass(frozen=True)

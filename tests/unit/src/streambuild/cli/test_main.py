@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Callable
 from pathlib import Path
 from shutil import copytree
 from typing import cast
@@ -11,16 +12,25 @@ from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.exceptions import AdapterAuthenticationError
 from streambuild.adapter.models import AdapterConnectionConfig
 from streambuild.cli.build.models import BuildCommandOptions
+from streambuild.cli.dev.main._run_dev import run_dev
+from streambuild.cli.dev.models import DevCommandOptions
 from streambuild.cli.entry._helpers.entrypoint import (
     resolve_adapter_connection_config,
 )
+from streambuild.cli.entry._helpers.invocation import _resolved_cli_variables
 from streambuild.cli.entry._helpers.parser import build_cli_parser
+from streambuild.cli.entry.constants import DEV_CLI_VARIABLES_ENV_VAR
 from streambuild.cli.entry.main.main import _main_with_dependencies, main
 from streambuild.cli.entry.models import CliEntrypointHandlers
 from streambuild.cli.plan.models import PlanCommandOptions
+from streambuild.compiler.compile.models import CompilerAdapterProfile
+from streambuild.compiler.discovery.models import LoadedProject
+from streambuild.compiler.pipeline.models import CompileAnalysis
+from streambuild.dev_server.models import DevExecutionContext
 from tests.unit.src.streambuild.cli._test_types import (
     CliAuditBackfillProjectContextTestCase,
     CliCompileArtifactsTestCase,
+    CliDevRefactorTestCase,
     CliJanitorApplyFlagTestCase,
     CliMainEnvResolutionTestCase,
     CliMainErrorTestCase,
@@ -41,6 +51,7 @@ from tests.unit.src.streambuild.cli.helpers import (
     handlers_with_overrides,
     normalize_json_output,
     write_cli_compilation_project,
+    write_cli_target_project,
 )
 
 
@@ -344,6 +355,156 @@ def test_given_cli_args_when_running_main_then_it_prints_expected_json(
     assert exit_code == test_case.expected_exit_code
     for expected_fragment in test_case.expected_output_fragments:
         assert expected_fragment in normalized_output
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliDevRefactorTestCase(
+            description="dev parser retains target and variable overrides",
+            expected_value=("local", {"region": "eu", "batch_size": 50}),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_dev_compilation_overrides_when_parsing_then_they_are_retained(
+    test_case: CliDevRefactorTestCase,
+) -> None:
+    parser: argparse.ArgumentParser = build_cli_parser()
+
+    args: argparse.Namespace = parser.parse_args(
+        ["dev", "--target", "local", "--vars", '{"region":"eu","batch_size":50}']
+    )
+
+    assert (args.target, args.vars) == test_case.expected_value
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliDevRefactorTestCase(
+            description="child CLI values override inherited dev variables",
+            expected_value={"warehouse_password": "secret", "batch_size": 100},
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_internal_dev_variables_when_resolving_child_then_cli_values_override_them(
+    test_case: CliDevRefactorTestCase,
+) -> None:
+    args: argparse.Namespace = argparse.Namespace(vars={"batch_size": 100})
+
+    variables: dict[str, object] = _resolved_cli_variables(
+        args=args,
+        environment={DEV_CLI_VARIABLES_ENV_VAR: '{"warehouse_password":"secret","batch_size":50}'},
+    )
+
+    assert variables == test_case.expected_value
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliDevRefactorTestCase(
+            description="effective project target is pinned for dev",
+            expected_value=("private", "private_database"),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_project_default_target_when_starting_dev_then_effective_target_is_pinned(
+    test_case: CliDevRefactorTestCase,
+    tmp_path: Path,
+) -> None:
+    project_dir: Path = tmp_path / "project"
+    write_cli_target_project(project_root=project_dir, local_contents='target = "private"')
+    captured: dict[str, object] = {}
+
+    def capture_dev_options(*, options: DevCommandOptions, **_kwargs: object) -> int:
+        captured["options"] = options
+        return 0
+
+    exit_code: int = _main_with_dependencies(
+        argv=("stb", "dev", "--project-dir", str(project_dir)),
+        handlers=handlers_with_overrides(run_dev=capture_dev_options),
+        adapter_connection=cast(AdapterConnection, FakeCliClickHouseClient()),
+    )
+
+    options: DevCommandOptions = cast(DevCommandOptions, captured["options"])
+    assert exit_code == 0
+    assert (options.selected_target, options.database) == test_case.expected_value
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliDevRefactorTestCase(
+            description="dev reload reuses resolved compilation context",
+            expected_value={
+                "selected_target": "local",
+                "cli_variables": {"region": "eu"},
+            },
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_resolved_dev_context_when_reloading_then_compilation_reuses_it(
+    test_case: CliDevRefactorTestCase,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    captured: dict[str, object] = {}
+    loaded_project: LoadedProject = cast(LoadedProject, object())
+    analysis: CompileAnalysis = cast(CompileAnalysis, object())
+
+    def fake_load_project_input_for_path(**kwargs: object) -> LoadedProject:
+        captured["load"] = kwargs
+        return loaded_project
+
+    def fake_analyze_project(**_kwargs: object) -> CompileAnalysis:
+        return analysis
+
+    def fake_run_dev_server(**kwargs: object) -> int:
+        captured["context"] = kwargs["execution_context"]
+        assert cast(Callable[[], CompileAnalysis], kwargs["run_compile"])() is analysis
+        return 0
+
+    monkeypatch.setattr(
+        "streambuild.cli.dev.main._run_dev.load_project_input_for_path",
+        fake_load_project_input_for_path,
+    )
+    monkeypatch.setattr("streambuild.cli.dev.main._run_dev.analyze_project", fake_analyze_project)
+    monkeypatch.setattr("streambuild.cli.dev.main._run_dev.run_dev_server", fake_run_dev_server)
+    environment: dict[str, str] = {"STREAMBUILD_ENV": "dev"}
+
+    exit_code: int = run_dev(
+        options=DevCommandOptions(
+            pipelines_root=tmp_path / "pipelines",
+            database="analytics",
+            host="127.0.0.1",
+            port=8000,
+            selected_target="local",
+            cli_variables=(("region", "eu"),),
+            environment=environment,
+        ),
+        client=None,
+        loaded_project=loaded_project,
+        adapter_profile=cast(CompilerAdapterProfile, object()),
+    )
+
+    assert exit_code == 0
+    load_context: dict[str, object] = cast(dict[str, object], captured["load"])
+    assert {
+        "selected_target": load_context["selected_target"],
+        "cli_variables": load_context["cli_variables"],
+    } == test_case.expected_value
+    assert load_context["path"] == tmp_path
+    assert load_context["environment"] is environment
+    context: DevExecutionContext = cast(DevExecutionContext, captured["context"])
+    assert context.database == "analytics"
+    assert context.selected_target == "local"
+    assert context.cli_variables == (("region", "eu"),)
+    assert context.environment is environment
 
 
 @pytest.mark.parametrize(

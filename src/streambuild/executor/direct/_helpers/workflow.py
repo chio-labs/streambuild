@@ -382,15 +382,6 @@ def _boundary_statements(
                 start_sequence=start_sequence + len(statements),
             )
         )
-        statements.append(
-            WarehouseStatement(
-                sequence=start_sequence + len(statements),
-                step_id=f"read_boundary_{_step_segment(model_name)}",
-                phase=WorkflowPhase.BOUNDARY,
-                intent=StatementIntent.QUERY,
-                sql=_read_boundary_sql(request=request, replay=replay, model_name=model_name),
-            )
-        )
     return tuple(statements)
 
 
@@ -421,6 +412,15 @@ def _replay_statements(
                 step_prefix="refresh_boundary",
                 phase=WorkflowPhase.REPLAY,
                 start_sequence=start_sequence + len(statements),
+            )
+        )
+        statements.append(
+            WarehouseStatement(
+                sequence=start_sequence + len(statements),
+                step_id=f"read_boundary_{_step_segment(model_name)}",
+                phase=WorkflowPhase.REPLAY,
+                intent=StatementIntent.QUERY,
+                sql=_read_boundary_sql(request=request, replay=replay, model_name=model_name),
             )
         )
         statements.append(
@@ -730,7 +730,7 @@ def _read_boundary_sql(
         f"{request.metadata_database}.{METADATA_DIRECT_TARGET_EVENTS_TABLE_NAME} "
         f"WHERE database_name = '{_escape_literal(request.database)}' AND relation_name = "
         f"'{_escape_literal(replay.relations.target)}')\n"
-        f"SELECT '{_escape_literal(model_name)}' AS model_name, "
+        f"SELECT DISTINCT '{_escape_literal(model_name)}' AS model_name, "
         f"driving_input_relation_name, replay_boundary_mode, {boundary_key} AS boundary_key, "
         "replay_cutoff_value AS cutoff_value FROM "
         f"{request.metadata_database}.{METADATA_DIRECT_REPLAY_RANGES_TABLE_NAME} "

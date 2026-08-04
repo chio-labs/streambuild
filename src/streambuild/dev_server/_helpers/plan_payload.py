@@ -5,8 +5,6 @@ from __future__ import annotations
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.exceptions import AdapterError
 from streambuild.adapter.models import AdapterReplayColumns
-from streambuild.compiler.compile.models import LogicalResourceKey
-from streambuild.compiler.compile.types import LogicalResourceType
 from streambuild.compiler.discovery.types import ReplayLineageMode
 from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.compiler.planner.models import (
@@ -16,59 +14,10 @@ from streambuild.compiler.planner.models import (
     DirectRelationOperation,
     DirectReplayRoot,
 )
-from streambuild.dev_server.exceptions import DevServerError
 
-_PIPELINE_SELECTOR_PREFIX: str = "pipeline:"
 _TIMESTAMP_DRIVEN_MODES: frozenset[ReplayLineageMode] = frozenset(
     {ReplayLineageMode.TIMESTAMP, ReplayLineageMode.CURSOR}
 )
-
-
-def expand_selectors(
-    *,
-    analysis: CompileAnalysis,
-    selectors: tuple[str, ...],
-) -> frozenset[LogicalResourceKey]:
-    """Expand bare model names and pipeline:<name> selectors into model keys."""
-
-    model_names: frozenset[str] = frozenset(
-        model.key.name for model in analysis.compiled_project.models
-    )
-    pipelines_by_name: dict[str, tuple[str, ...]] = {}
-    for pipeline in analysis.compiled_project.pipelines:
-        pipelines_by_name[pipeline.pipeline.name] = tuple(
-            model.key.name for model in pipeline.models
-        )
-    selected: set[str] = set()
-    selector: str
-    for selector in selectors:
-        selected.update(
-            _expand_one_selector(
-                selector=selector,
-                model_names=model_names,
-                pipelines_by_name=pipelines_by_name,
-            )
-        )
-    return frozenset(
-        LogicalResourceKey(resource_type=LogicalResourceType.MODEL, name=name) for name in selected
-    )
-
-
-def _expand_one_selector(
-    *,
-    selector: str,
-    model_names: frozenset[str],
-    pipelines_by_name: dict[str, tuple[str, ...]],
-) -> tuple[str, ...]:
-    if selector.startswith(_PIPELINE_SELECTOR_PREFIX):
-        pipeline_name: str = selector[len(_PIPELINE_SELECTOR_PREFIX) :]
-        members: tuple[str, ...] | None = pipelines_by_name.get(pipeline_name)
-        if members is None:
-            raise DevServerError(f"Unknown pipeline selector '{selector}'")
-        return members
-    if selector not in model_names:
-        raise DevServerError(f"Unknown selector '{selector}'; use a model name or pipeline:<name>")
-    return (selector,)
 
 
 def build_plan_payload(
@@ -79,6 +28,7 @@ def build_plan_payload(
     start_time: str | None,
     planned_at: str,
     replay_row_counts: dict[str, int | None],
+    command: str,
 ) -> dict[str, object]:
     """Serialize one DirectPlan into the UI plan shape."""
 
@@ -108,18 +58,8 @@ def build_plan_payload(
             {"mode": "full"} if start_time is None else {"mode": "from", "startTime": start_time}
         ),
         "plannedAt": planned_at,
-        "command": _command_string(selectors=selectors, start_time=start_time),
+        "command": command,
     }
-
-
-def _command_string(*, selectors: tuple[str, ...], start_time: str | None) -> str:
-    parts: list[str] = ["stb build"]
-    selector: str
-    for selector in selectors:
-        parts.append(f"--select {selector}")
-    if start_time is not None:
-        parts.append(f"--start-time {start_time}")
-    return " ".join(parts)
 
 
 def _entry_payload(

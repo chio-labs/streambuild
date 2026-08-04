@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shlex
 import subprocess
 import sys
@@ -10,7 +11,9 @@ import threading
 import time
 from pathlib import Path
 
+from streambuild.cli.entry.constants import DEV_CLI_VARIABLES_ENV_VAR
 from streambuild.dev_server.exceptions import BuildInProgressError, BuildStartError
+from streambuild.dev_server.models import DevExecutionContext
 from streambuild.dev_server.types import ActivityTone, DevServerReporter
 
 _RUN_STARTED_KIND: str = "run_started"
@@ -22,7 +25,9 @@ _STDERR_TAIL_LINES: int = 50
 class BuildProcessManager:
     """Owns at most one running `stb build` subprocess and its live event feed."""
 
-    def __init__(self, *, reporter: DevServerReporter) -> None:
+    def __init__(
+        self, *, reporter: DevServerReporter, execution_context: DevExecutionContext | None = None
+    ) -> None:
         self._reporter: DevServerReporter = reporter
         self._lock: threading.Lock = threading.Lock()
         self._process: subprocess.Popen[str] | None = None
@@ -33,6 +38,7 @@ class BuildProcessManager:
         self._command: str = ""
         self._started_monotonic: float = 0.0
         self._started_event: threading.Event = threading.Event()
+        self._execution_context = execution_context
 
     def start(
         self,
@@ -43,7 +49,11 @@ class BuildProcessManager:
     ) -> dict[str, object]:
         """Spawn one build and block until its run_started event or early death."""
 
-        argv: list[str] = _build_argv(selectors=selectors, start_time=start_time)
+        argv, command = build_invocation(
+            selectors=selectors,
+            start_time=start_time,
+            execution_context=self._execution_context,
+        )
         with self._lock:
             if self._process is not None and self._process.poll() is None:
                 raise BuildInProgressError("a build is already running")
@@ -51,7 +61,7 @@ class BuildProcessManager:
             self._stderr_tail = []
             self._invocation_id = None
             self._exit_code = None
-            self._command = shlex.join(argv[1:])
+            self._command = command
             self._started_monotonic = time.monotonic()
             self._started_event = threading.Event()
             self._process = subprocess.Popen(
@@ -60,6 +70,7 @@ class BuildProcessManager:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
+                env=_build_environment(execution_context=self._execution_context),
             )
             process: subprocess.Popen[str] = self._process
         threading.Thread(target=self._consume_stdout, args=(process,), daemon=True).start()
@@ -147,15 +158,53 @@ class BuildProcessManager:
         return f"{exit_note}: {detail}" if detail else exit_note
 
 
-def _build_argv(*, selectors: tuple[str, ...], start_time: str | None) -> list[str]:
+def build_invocation(
+    *,
+    selectors: tuple[str, ...],
+    start_time: str | None,
+    execution_context: DevExecutionContext | None,
+) -> tuple[list[str], str]:
+    """Build the executable argv and safe user-facing command from one source."""
     stb_path: Path = Path(sys.executable).parent / "stb"
     argv: list[str] = [str(stb_path), "build"]
+    if execution_context is not None:
+        if execution_context.selected_target is not None:
+            argv.extend(("--target", execution_context.selected_target))
+        if execution_context.database is not None:
+            argv.extend(("--database", execution_context.database))
     for selector in selectors:
         argv.extend(("--select", selector))
     if start_time is not None:
         argv.extend(("--start-time", start_time))
+    display: str = shlex.join(["stb", *argv[1:]])
     argv.extend(("--auto-approve", "--events"))
-    return argv
+    return argv, display
+
+
+def _build_environment(*, execution_context: DevExecutionContext | None) -> dict[str, str]:
+    environment: dict[str, str] = dict(
+        os.environ
+        if execution_context is None or execution_context.environment is None
+        else execution_context.environment
+    )
+    if execution_context is None:
+        return environment
+    if execution_context.cli_variables:
+        environment[DEV_CLI_VARIABLES_ENV_VAR] = json.dumps(
+            dict(execution_context.cli_variables),
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+    overrides: tuple[tuple[str, object | None], ...] = (
+        ("STREAMBUILD_CLICKHOUSE_HOST", execution_context.connection_host),
+        ("STREAMBUILD_CLICKHOUSE_PORT", execution_context.connection_port),
+        ("STREAMBUILD_CLICKHOUSE_USERNAME", execution_context.connection_username),
+        ("STREAMBUILD_CLICKHOUSE_PASSWORD", execution_context.connection_password),
+    )
+    for name, value in overrides:
+        if value is not None:
+            environment[name] = str(value)
+    return environment
 
 
 def _parsed_event(line: str) -> dict[str, object] | None:
