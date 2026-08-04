@@ -75,16 +75,6 @@ class RootDeploymentStateKind(StrEnum):
     INVALID_ACTIVE_VIEW = "invalid_active_view"
 
 
-class TargetOwnership(StrEnum):
-    """How durable evidence says one warehouse relation is owned."""
-
-    ABSENT = "absent"
-    UNMANAGED = "unmanaged"
-    DIRECT = "direct"
-    VIRTUAL_ENVIRONMENT = "virtual_environment"
-    CONFLICTED = "conflicted"
-
-
 class DirectPlanReason(StrEnum):
     """Why one logical model is in the direct execution scope."""
 

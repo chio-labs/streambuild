@@ -155,13 +155,14 @@ Notes:
 StreamBuild keeps append-only metadata in the target database. Authoritative lifecycle state uses
 `_streambuild_schema_versions`, `_streambuild_virtual_deployments`,
 `_streambuild_virtual_object_state`, `_streambuild_virtual_replay_boundaries`,
-`_streambuild_virtual_publications`, `_streambuild_direct_target_events`, and
-`_streambuild_direct_replay_ranges`. Current ownership and lifecycle state are deterministic
-projections over immutable rows; ordinary operation does not update or delete metadata.
+`_streambuild_virtual_publications`, `_streambuild_direct_replay_checkpoints`,
+`_streambuild_direct_replay_ranges`, and `_streambuild_direct_fingerprints`. Direct mode treats
+project declarations as authoritative; fingerprints are successful-build evidence, not write
+authorization. Ordinary operation does not update or delete metadata.
 
 `_streambuild_invocations` and `_streambuild_node_results` hold bounded terminal history for build,
 audit, and test UI views. These tables are observational only and never influence planning, replay,
-ownership, publication, repair, reconcile, or cleanup decisions.
+publication, repair, reconcile, or cleanup decisions.
 
 Mutating commands are single-writer operations per target database. Do not run concurrent direct
 builds, publishes, repairs, reconciles, or cleanup operations against the same target. Independent

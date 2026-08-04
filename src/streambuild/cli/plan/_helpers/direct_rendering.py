@@ -153,13 +153,6 @@ def _entry_payload(entry: DirectPlanEntry) -> dict[str, object]:
         "reason": str(entry.reason),
         "relation_names": list(entry.relation_names),
         "resource_kinds": [str(kind) for kind in entry.resource_kinds],
-        "ownership": [
-            {
-                "relation": classification.relation_name,
-                "ownership": str(classification.ownership),
-            }
-            for classification in entry.ownership
-        ],
         "driving_input_key": (
             None
             if entry.driving_input_key is None

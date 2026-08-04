@@ -1,7 +1,5 @@
 from dataclasses import dataclass
 
-from streambuild.adapter.models import AdapterOwnershipRecord
-
 
 @dataclass(frozen=True)
 class ClickHouseClientIntegrationTestCase:
@@ -48,31 +46,6 @@ class MetadataMigrationIntegrationTestCase:
 
 
 @dataclass(frozen=True)
-class TargetOwnershipIntegrationTestCase:
-    description: str
-    inserted_records: tuple[AdapterOwnershipRecord, ...]
-    expected_records_before_migration: tuple[tuple[str, str, str], ...]
-    expected_records_after_migration: tuple[tuple[str, str, str], ...]
-    expected_records_after_insert: tuple[tuple[str, str, str], ...]
-
-
-@dataclass(frozen=True)
-class RenderMutationSqlIntegrationTestCase:
-    description: str
-    expected_version_rows: tuple[tuple[int], ...]
-    expected_records_after_insert: tuple[tuple[str, str, str], ...]
-    expected_records_after_removal: tuple[tuple[str, str, str], ...]
-
-
-@dataclass(frozen=True)
 class LatestNodeStatusIntegrationTestCase:
     description: str
     expected_status_rows: tuple[tuple[str, str], ...]
-
-
-@dataclass(frozen=True)
-class DirectReplayIsolationIntegrationTestCase:
-    description: str
-    expected_replay_set_count: int
-    expected_range_rows: tuple[tuple[str, int, str | None, str | None], ...]
-    expected_loaded_coverage: tuple[tuple[str, tuple[tuple[str, str], ...]], ...]

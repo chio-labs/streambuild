@@ -110,7 +110,10 @@ from tests.unit.src.streambuild.adapters.clickhouse.helpers import build_metadat
             statement_index=4,
             expected_sql=(
                 "CREATE TABLE IF NOT EXISTS metadata._streambuild_direct_replay_ranges (\n"
+                "    capture_id String,\n"
                 "    replay_set_id String,\n"
+                "    workflow_id String,\n"
+                "    checkpoint_sequence UInt8,\n"
                 "    target_database_name String,\n"
                 "    logical_model_database Nullable(String),\n"
                 "    logical_model_name String,\n"
@@ -124,34 +127,46 @@ from tests.unit.src.streambuild.adapters.clickhouse.helpers import build_metadat
                 "    lower_value Nullable(String),\n"
                 "    upper_value Nullable(String),\n"
                 "    replay_cutoff_value Nullable(String),\n"
-                "    captured_at DateTime64(3, 'UTC')\n"
+                "    captured_at DateTime64(9, 'UTC')\n"
                 ") ENGINE = MergeTree\n"
-                "ORDER BY (replay_set_id, range_present)"
+                "ORDER BY (capture_id, replay_set_id, range_present)"
             ),
         ),
         RenderMetadataStateDdlTestCase(
-            description="renders direct target events metadata table ddl",
+            description="renders direct replay checkpoints metadata table ddl",
             statement_index=5,
             expected_sql=(
-                "CREATE TABLE IF NOT EXISTS metadata._streambuild_direct_target_events (\n"
-                "    event_id String,\n"
+                "CREATE TABLE IF NOT EXISTS metadata._streambuild_direct_replay_checkpoints (\n"
+                "    checkpoint_id String,\n"
                 "    workflow_id String,\n"
-                "    event_kind LowCardinality(String),\n"
-                "    database_name String,\n"
-                "    relation_name String,\n"
-                "    resource_kind String,\n"
-                "    logical_model_database Nullable(String),\n"
+                "    target_database_name String,\n"
                 "    logical_model_name String,\n"
-                "    tool_version String,\n"
-                "    replay_set_id Nullable(String),\n"
-                "    recorded_at DateTime64(3, 'UTC')\n"
+                "    capture_id String,\n"
+                "    replay_set_id String,\n"
+                "    checkpoint_sequence UInt8,\n"
+                "    recorded_at DateTime64(9, 'UTC')\n"
                 ") ENGINE = MergeTree\n"
-                "ORDER BY (database_name, relation_name, recorded_at, event_id)"
+                "ORDER BY (checkpoint_id, checkpoint_sequence, recorded_at, capture_id)"
+            ),
+        ),
+        RenderMetadataStateDdlTestCase(
+            description="renders successful direct fingerprints metadata table ddl",
+            statement_index=6,
+            expected_sql=(
+                "CREATE TABLE IF NOT EXISTS metadata._streambuild_direct_fingerprints (\n"
+                "    fingerprint_id String, logical_model_identity String, physical_database "
+                "String,\n"
+                "    physical_relation String, resource_kind String, definition_sql String,\n"
+                "    definition_hash String, rendered_definition_hash String,\n"
+                "    schema_fingerprint String, workflow_id String, tool_version String,\n"
+                "    succeeded_at DateTime64(3, 'UTC')\n"
+                ") ENGINE = MergeTree ORDER BY (logical_model_identity, succeeded_at, "
+                "fingerprint_id)"
             ),
         ),
         RenderMetadataStateDdlTestCase(
             description="renders invocation history table ddl",
-            statement_index=6,
+            statement_index=7,
             expected_sql=(
                 "CREATE TABLE IF NOT EXISTS metadata._streambuild_invocations (\n"
                 "    invocation_id String,\n"
@@ -177,7 +192,7 @@ from tests.unit.src.streambuild.adapters.clickhouse.helpers import build_metadat
         ),
         RenderMetadataStateDdlTestCase(
             description="renders node result history table ddl",
-            statement_index=7,
+            statement_index=8,
             expected_sql=(
                 "CREATE TABLE IF NOT EXISTS metadata._streambuild_node_results (\n"
                 "    result_id String,\n"

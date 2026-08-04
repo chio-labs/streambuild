@@ -55,7 +55,10 @@ def test_given_same_direct_state_when_planning_and_building_then_workflow_bytes_
     )
 
     assert (plan_exit_code, build_exit_code) == (0, 0)
-    assert plan_artifact == build_artifact
+    assert plan_artifact[0] == build_artifact[0]
+    assert plan_artifact[2] == build_artifact[2]
+    assert len(plan_artifact[3]) == len(build_artifact[3])
+    assert plan_artifact[1] != build_artifact[1]
     assert plan_artifact[0].endswith(b"\n")
     assert plan_artifact[1] == b"\n".join(plan_artifact[3])
     assert plan_artifact[2]

@@ -1,14 +1,8 @@
 from pathlib import Path
 
-from streambuild.adapter.models import (
-    AdapterMutationResult,
-    AdapterOwnershipRecord,
-    AdapterQueryResult,
-)
+from streambuild.adapter.models import AdapterMutationResult, AdapterQueryResult
 from streambuild.adapters.clickhouse._helpers.metadata import (
     render_clickhouse_metadata_migration_workflow,
-    render_clickhouse_target_ownership,
-    render_clickhouse_target_ownership_removal,
 )
 from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.compiler.planner.models import DirectPlan, DirectWarehouseSnapshot
@@ -25,10 +19,7 @@ from tests.unit.src.streambuild.compiler.planner.helpers import (
 class RecordingDirectBuildConnection(RecordingAdapterConnection):
     def __init__(self) -> None:
         snapshot: DirectWarehouseSnapshot = _direct_prerequisite_snapshot()
-        super().__init__(
-            relations=snapshot.catalog.relations,
-            ownership_records=snapshot.ownership_records,
-        )
+        super().__init__(relations=snapshot.catalog.relations)
         self.workflow_mutation_statements: list[str] = []
 
     def query(self, statement: str) -> AdapterQueryResult:
@@ -41,24 +32,6 @@ class RecordingDirectBuildConnection(RecordingAdapterConnection):
 
     def render_migrate_metadata_state(self, database: str) -> tuple[str, ...]:
         return render_clickhouse_metadata_migration_workflow(database)
-
-    def render_record_target_ownership(
-        self, *, database: str, records: tuple[AdapterOwnershipRecord, ...]
-    ) -> tuple[str, ...]:
-        return render_clickhouse_target_ownership(database=database, records=records)
-
-    def render_remove_target_ownership(
-        self,
-        *,
-        database: str,
-        target_database: str,
-        relation_names: tuple[str, ...],
-    ) -> tuple[str, ...]:
-        return render_clickhouse_target_ownership_removal(
-            database=database,
-            target_database=target_database,
-            relation_names=relation_names,
-        )
 
 
 def build_direct_execution_request(
@@ -84,5 +57,4 @@ def build_direct_execution_request(
 def _direct_prerequisite_snapshot() -> DirectWarehouseSnapshot:
     return build_direct_snapshot(
         relation_names=("tbl__alpha", "mv__alpha"),
-        direct_owned_names=("tbl__alpha", "mv__alpha"),
     )

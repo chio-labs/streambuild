@@ -21,9 +21,6 @@ from streambuild.compiler.compile.models import DesiredState
 from streambuild.compiler.discovery.models import LoadedPipeline
 from streambuild.compiler.discovery.types import ReplayLineageMode
 from streambuild.compiler.pipeline.models import CompileAnalysis
-from streambuild.compiler.planner.main.assert_no_direct_owned_targets import (
-    assert_no_direct_owned_targets,
-)
 from streambuild.compiler.planner.main.load_actual_state_from_snapshot import (
     load_actual_state_from_snapshot,
 )
@@ -94,12 +91,6 @@ def build_virtual_build_preview(
         selection.replay_lineage_mode or ReplayLineageMode.OFFSETS
     )
     desired_state: DesiredState = selection.desired_state
-    assert_no_direct_owned_targets(
-        client=client,
-        metadata_database=resolved_metadata_database,
-        target_database=resolved_database,
-        relation_names=tuple(object_.name for object_ in desired_state.objects),
-    )
     actual_state: ActualState = load_actual_state_from_snapshot(
         snapshot=snapshot,
         desired_state=desired_state,

@@ -4,12 +4,10 @@ from __future__ import annotations
 
 from streambuild.adapter.models import (
     AdapterMaterializedView,
-    AdapterOwnershipRecord,
     AdapterReplayColumns,
     AdapterTable,
     AdapterView,
 )
-from streambuild.adapter.types import AdapterOwningMode
 from streambuild.compiler.compile.constants import (
     REPLAY_CURSOR_COLUMN_NAME,
     REPLAY_LANDED_AT_COLUMN_NAME,
@@ -31,7 +29,6 @@ from streambuild.compiler.graph.main.collect_reachable_keys import collect_reach
 from streambuild.compiler.graph.models import DependencyEdge, ProjectGraph
 from streambuild.compiler.graph.types import DependencyEdgeType, GraphTraversalDirection
 from streambuild.compiler.pipeline.models import RealizedProject
-from streambuild.compiler.planner._helpers.direct_ownership import classify_relation_ownership
 from streambuild.compiler.planner.exceptions import DirectPlanError
 from streambuild.compiler.planner.models import (
     DirectPlan,
@@ -46,12 +43,8 @@ from streambuild.compiler.planner.types import (
     DirectPlanReason,
     DirectRelationAction,
     DirectResourceKind,
-    TargetOwnership,
 )
 
-_BLOCKING_OWNERSHIP: frozenset[TargetOwnership] = frozenset(
-    {TargetOwnership.UNMANAGED, TargetOwnership.VIRTUAL_ENVIRONMENT, TargetOwnership.CONFLICTED}
-)
 _CANONICAL_REPLAY_COLUMNS: AdapterReplayColumns = AdapterReplayColumns(
     partition=REPLAY_PARTITION_COLUMN_NAME,
     offset=REPLAY_OFFSET_COLUMN_NAME,
@@ -62,7 +55,7 @@ _CANONICAL_REPLAY_COLUMNS: AdapterReplayColumns = AdapterReplayColumns(
 
 
 class DirectPlanBuilder:
-    """Resolve scope, ownership, replay roots, and relation actions for one plan."""
+    """Resolve scope, replay roots, and relation actions for one plan."""
 
     def __init__(
         self,
@@ -108,10 +101,6 @@ class DirectPlanBuilder:
         prerequisites: tuple[DirectPrerequisite, ...] = self._build_prerequisites()
         self._reject_missing_prerequisites(prerequisites=prerequisites)
         entries: tuple[DirectPlanEntry, ...] = self._build_entries()
-        self._reject_blocked_ownership(entries=entries)
-        stale_teardown_operations: tuple[DirectRelationOperation, ...] = (
-            self._stale_teardown_operations(entries=entries)
-        )
         return DirectPlan(
             database=self._database,
             effective_start_time=self._effective_start_time,
@@ -122,10 +111,7 @@ class DirectPlanBuilder:
             prerequisite_scope=prerequisites,
             entries=entries,
             replay_roots=self._build_replay_roots(),
-            teardown_operations=_teardown_operations(
-                entries=entries,
-                stale_operations=stale_teardown_operations,
-            ),
+            teardown_operations=_teardown_operations(entries=entries),
             creation_operations=_creation_operations(entries=entries),
             warnings=self._build_warnings(entries=entries),
         )
@@ -169,9 +155,6 @@ class DirectPlanBuilder:
             reason=self._plan_reason(model_key=model_key),
             relation_names=relation_names,
             resource_kinds=tuple(kind for _name, kind in relations),
-            ownership=classify_relation_ownership(
-                snapshot=self._snapshot, relation_names=relation_names
-            ),
             driving_input_key=driving_parent_key,
             is_replay_root=(
                 isinstance(model, CompiledTableModel)
@@ -384,64 +367,9 @@ class DirectPlanBuilder:
                 f"{', '.join(missing_names)}"
             )
 
-    def _reject_blocked_ownership(self, *, entries: tuple[DirectPlanEntry, ...]) -> None:
-        blocked: list[str] = []
-        entry: DirectPlanEntry
-        for entry in entries:
-            blocked.extend(_blocked_ownership_details(entry=entry))
-        if blocked:
-            raise DirectPlanError(
-                f"Direct mode refuses to replace relations it does not own: {'; '.join(blocked)}"
-            )
-
-    def _stale_teardown_operations(
-        self, *, entries: tuple[DirectPlanEntry, ...]
-    ) -> tuple[DirectRelationOperation, ...]:
-        entry_by_model_name: dict[str, DirectPlanEntry] = {
-            entry.model_key.name: entry for entry in entries
-        }
-        current_relation_names: frozenset[str] = _entry_relation_names(entries=entries)
-        operations: list[DirectRelationOperation] = []
-        record: AdapterOwnershipRecord
-        for record in self._snapshot.ownership_records:
-            entry: DirectPlanEntry | None = entry_by_model_name.get(record.logical_model_name)
-            if (
-                entry is None
-                or record.database_name != self._database
-                or record.owning_mode != AdapterOwningMode.DIRECT
-                or record.relation_name in current_relation_names
-            ):
-                continue
-            operations.append(
-                DirectRelationOperation(
-                    relation_name=record.relation_name,
-                    action=DirectRelationAction.DROP,
-                    model_key=entry.model_key,
-                    resource_kind=record.resource_kind,
-                )
-            )
-        return tuple(operations)
-
-
-def _blocked_ownership_details(*, entry: DirectPlanEntry) -> tuple[str, ...]:
-    return tuple(
-        f"{classification.relation_name} is {classification.ownership}"
-        for classification in entry.ownership
-        if classification.ownership in _BLOCKING_OWNERSHIP
-    )
-
-
-def _entry_relation_names(*, entries: tuple[DirectPlanEntry, ...]) -> frozenset[str]:
-    relation_names: set[str] = set()
-    for entry in entries:
-        relation_names.update(entry.relation_names)
-    return frozenset(relation_names)
-
 
 def _teardown_operations(
-    *,
-    entries: tuple[DirectPlanEntry, ...],
-    stale_operations: tuple[DirectRelationOperation, ...] = (),
+    *, entries: tuple[DirectPlanEntry, ...]
 ) -> tuple[DirectRelationOperation, ...]:
     reversed_entries: tuple[DirectPlanEntry, ...] = tuple(reversed(entries))
     operations: list[DirectRelationOperation] = []
@@ -457,9 +385,6 @@ def _teardown_operations(
                 action=DirectRelationAction.DROP,
                 resource_kind=resource_kind,
             )
-        )
-        operations.extend(
-            operation for operation in stale_operations if operation.resource_kind == resource_kind
         )
     return tuple(operations)
 

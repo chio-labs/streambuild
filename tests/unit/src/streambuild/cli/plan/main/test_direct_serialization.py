@@ -12,7 +12,6 @@ from streambuild.compiler.planner.models import (
     DirectRelationOperation,
     DirectReplayRoot,
     PlannerWarning,
-    TargetOwnershipClassification,
 )
 from tests.unit.src.streambuild.cli.plan.main._test_types import (
     CliDirectPlanSerializationTestCase,
@@ -48,10 +47,6 @@ from tests.unit.src.streambuild.cli.plan.main._test_types import (
                         "reason": "selected",
                         "relation_names": ["tbl__orders_enriched", "mv__orders_enriched"],
                         "resource_kinds": ["table", "materialized_view"],
-                        "ownership": [
-                            {"relation": "tbl__orders_enriched", "ownership": "direct"},
-                            {"relation": "mv__orders_enriched", "ownership": "direct"},
-                        ],
                         "driving_input_key": {"resource_type": "source", "name": "orders"},
                         "is_replay_root": True,
                     }
@@ -147,10 +142,6 @@ def test_given_direct_plan_when_serializing_then_preserves_complete_nested_ident
                 reason="selected",
                 relation_names=("tbl__orders_enriched", "mv__orders_enriched"),
                 resource_kinds=("table", "materialized_view"),
-                ownership=(
-                    TargetOwnershipClassification("tbl__orders_enriched", "direct"),
-                    TargetOwnershipClassification("mv__orders_enriched", "direct"),
-                ),
                 driving_input_key=source_key,
                 is_replay_root=True,
             ),
