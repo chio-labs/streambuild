@@ -73,10 +73,6 @@ def _entry_payload(
         "reason": str(entry.reason),
         "relationNames": list(entry.relation_names),
         "resourceKinds": [str(kind) for kind in entry.resource_kinds],
-        "ownership": [
-            {"relation": item.relation_name, "ownership": str(item.ownership)}
-            for item in entry.ownership
-        ],
         "drivingInput": None if entry.driving_input_key is None else entry.driving_input_key.name,
         "isReplayRoot": entry.is_replay_root,
     }

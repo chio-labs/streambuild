@@ -63,7 +63,6 @@ def build_scope_project_connection() -> RecordingAdapterConnection:
     snapshot: DirectWarehouseSnapshot = _settled_scope_snapshot()
     return RecordingAdapterConnection(
         relations=snapshot.catalog.relations,
-        ownership_records=snapshot.ownership_records,
     )
 
 
@@ -73,7 +72,6 @@ def build_interrupted_scope_project_connection() -> InterruptedBuildConnection:
     snapshot: DirectWarehouseSnapshot = _settled_scope_snapshot()
     return InterruptedBuildConnection(
         relations=snapshot.catalog.relations,
-        ownership_records=snapshot.ownership_records,
     )
 
 

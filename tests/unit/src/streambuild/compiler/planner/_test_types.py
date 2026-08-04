@@ -19,7 +19,6 @@ from streambuild.compiler.planner.types import (
     RebuildStrategy,
     TableSchemaChangeKind,
     TableSchemaSeedCompatibility,
-    TargetOwnership,
 )
 
 
@@ -37,7 +36,6 @@ class PlanningSnapshotAssemblyTestCase:
     description: str
     expected_catalog_load_count: int
     expected_query_count: int
-    expected_ownership_databases: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -273,37 +271,18 @@ class DirectViewPlanTestCase:
 
 
 @dataclass(frozen=True)
-class DirectOwnershipTestCase:
-    description: str
-    relation_names: tuple[str, ...]
-    direct_owned_names: tuple[str, ...]
-    virtual_environment_owned_names: tuple[str, ...]
-    stable_binding_names: tuple[str, ...]
-    classified_relation_names: tuple[str, ...]
-    expected_ownership: tuple[TargetOwnership, ...]
-    ownership_database: str = "analytics"
-    metadata_virtual_environment_names: tuple[str, ...] = ()
-
-
-@dataclass(frozen=True)
 class DirectPlanRejectionTestCase:
     description: str
     selected_model_names: tuple[str, ...]
     present_relation_names: tuple[str, ...]
-    direct_owned_names: tuple[str, ...]
-    virtual_environment_owned_names: tuple[str, ...]
     stable_binding_names: tuple[str, ...]
     expected_error_fragment: str
 
 
 @dataclass(frozen=True)
-class DirectRenameTeardownTestCase:
+class DirectUndeclaredRelationTestCase:
     description: str
-    selected_model_names: tuple[str, ...]
-    stale_relation_name: str
-    stale_logical_model_name: str
-    owning_mode: str
-    expected_stale_teardown: bool
+    expected_preserved_relation_name: str
 
 
 @dataclass(frozen=True)

@@ -6,13 +6,10 @@ import datetime
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import (
-    AdapterOwnershipRecord,
-    AdapterReplayCoverageRange,
     AdapterTable,
     CatalogRelation,
     CatalogSnapshot,
 )
-from streambuild.adapter.types import AdapterOwningMode, AdapterReplayBoundaryMode
 from streambuild.compiler.compile.models import (
     CompiledModel,
     CompiledTableModel,
@@ -43,7 +40,6 @@ def build_state_payload(
 
     captured_at: str = connection.capture_warehouse_timestamp()
     catalog: CatalogSnapshot = connection.load_catalog(database)
-    ownership: tuple[AdapterOwnershipRecord, ...] = connection.load_target_ownership(database)
     stats: dict[str, dict[str, int]] = _relation_stats(connection=connection, database=database)
     lineage_relations: tuple[str, ...] = _lineage_relation_names(catalog)
     extents: dict[str, dict[str, object]] = _extents(
@@ -54,7 +50,6 @@ def build_state_payload(
         "models": _model_states(
             analysis=analysis,
             catalog=catalog,
-            ownership=ownership,
             stats=stats,
             extents=extents,
             captured_at=captured_at,
@@ -117,17 +112,10 @@ def _model_states(
     *,
     analysis: CompileAnalysis,
     catalog: CatalogSnapshot,
-    ownership: tuple[AdapterOwnershipRecord, ...],
     stats: dict[str, dict[str, int]],
     extents: dict[str, dict[str, object]],
     captured_at: str,
 ) -> dict[str, dict[str, object]]:
-    ownership_by_relation: dict[str, AdapterOwningMode] = {
-        record.relation_name: AdapterOwningMode(record.owning_mode) for record in ownership
-    }
-    record_by_relation: dict[str, AdapterOwnershipRecord] = {
-        record.relation_name: record for record in ownership
-    }
     policy_by_model: dict[str, SourceFreshnessPolicy | None] = _policies_by_model(analysis)
     states: dict[str, dict[str, object]] = {}
     for model in analysis.compiled_project.models:
@@ -153,12 +141,6 @@ def _model_states(
             ),
             "drift": bool(drift_reasons),
             "driftReasons": list(drift_reasons),
-            "ownership": _ownership_label(
-                relation_name=relation_name,
-                ownership_by_relation=ownership_by_relation,
-                catalog=catalog,
-            ),
-            "recordedCoverage": _recorded_coverage(record_by_relation.get(relation_name)),
         }
     return states
 
@@ -345,41 +327,6 @@ def _compiled_table(*, analysis: CompileAnalysis, model: CompiledModel) -> Adapt
 
 def _normalized_engine(engine: str) -> str:
     return engine.replace("()", "").strip()
-
-
-def _recorded_coverage(record: AdapterOwnershipRecord | None) -> dict[str, str] | None:
-    """The recorded replay window, from timestamp-valued coverage ranges only."""
-
-    if record is None:
-        return None
-    timestamped: list[AdapterReplayCoverageRange] = [
-        item
-        for item in record.replay_coverage
-        if item.replay_boundary_mode
-        in (AdapterReplayBoundaryMode.TIMESTAMP, AdapterReplayBoundaryMode.LANDED_AT)
-    ]
-    if not timestamped:
-        return None
-    return {
-        "from": min(item.lower_value for item in timestamped),
-        "to": max(item.upper_value for item in timestamped),
-    }
-
-
-def _ownership_label(
-    *,
-    relation_name: str,
-    ownership_by_relation: dict[str, AdapterOwningMode],
-    catalog: CatalogSnapshot,
-) -> str:
-    mode: AdapterOwningMode | None = ownership_by_relation.get(relation_name)
-    if mode == AdapterOwningMode.DIRECT:
-        return "direct"
-    if mode is not None:
-        return "virtual_environment"
-    if relation_name in catalog.relation_names():
-        return "unmanaged"
-    return "absent"
 
 
 def _freshness(

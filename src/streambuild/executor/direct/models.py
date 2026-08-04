@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from uuid import uuid4
 
-from streambuild.adapter.models import AdapterOwnershipRecord
 from streambuild.compiler.discovery.types import ReplayLineageMode
 from streambuild.compiler.pipeline.models import RealizedProject
 from streambuild.compiler.planner.models import DirectPlan
@@ -20,6 +20,7 @@ class DirectBuildRequest:
     database: str
     metadata_database: str
     tool_version: str
+    workflow_id: str = field(default_factory=lambda: str(uuid4()))
     stabilization_seconds: float = 5.0
     boundary_time: str | None = None
     audits: tuple[DirectBuildAudit, ...] = ()
@@ -71,7 +72,6 @@ class DirectBuildResult:
     """Everything one direct build durably changed, in execution order."""
 
     database: str
-    ownership_records: tuple[AdapterOwnershipRecord, ...]
     preserved_source_relation_names: tuple[str, ...]
     created_source_relation_names: tuple[str, ...]
     dropped_relation_names: tuple[str, ...]

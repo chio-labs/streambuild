@@ -277,7 +277,6 @@ def test_given_check_request_when_running_then_returns_expected_result(
     state: DevServerState = DevServerState(run_compile=build_compile_callable(project_dir=tmp_path))
     connection: FakeEmptyResultConnection = FakeEmptyResultConnection(
         catalog=build_fake_state_connection()._catalog,
-        ownership=(),
         results_by_query={},
         warehouse_timestamp="2026-08-03 12:00:00.000",
     )

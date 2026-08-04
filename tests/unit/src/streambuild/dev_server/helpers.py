@@ -10,9 +10,7 @@ from streambuild.adapter.models import (
     AdapterDeploymentInventory,
     AdapterIdentity,
     AdapterMutationResult,
-    AdapterOwnershipRecord,
     AdapterQueryResult,
-    AdapterReplayCoverageRange,
     CatalogColumn,
     CatalogIdentity,
     CatalogRelation,
@@ -161,12 +159,10 @@ class FakeAdapterConnection(AdapterConnection):
         self,
         *,
         catalog: CatalogSnapshot,
-        ownership: tuple[AdapterOwnershipRecord, ...],
         results_by_query: dict[str, AdapterQueryResult],
         warehouse_timestamp: str,
     ) -> None:
         self._catalog = catalog
-        self._ownership = ownership
         self._results_by_query = results_by_query
         self._warehouse_timestamp = warehouse_timestamp
 
@@ -209,9 +205,6 @@ class FakeAdapterConnection(AdapterConnection):
     def load_deployment_inventory(self, database: str) -> AdapterDeploymentInventory:
         return AdapterDeploymentInventory(deployments=(), publish_events=())
 
-    def load_target_ownership(self, database: str) -> tuple[AdapterOwnershipRecord, ...]:
-        return self._ownership
-
     def metadata_columns(self, *, database: str, table: str) -> frozenset[str]:
         raise NotImplementedError
 
@@ -230,23 +223,13 @@ class FakeAdapterConnection(AdapterConnection):
     def render_persist_metadata_state(self, *, database: str, state: object) -> tuple[str, ...]:
         raise NotImplementedError
 
-    def render_record_target_ownership(
-        self, *, database: str, records: tuple[AdapterOwnershipRecord, ...]
-    ) -> tuple[str, ...]:
-        raise NotImplementedError
-
-    def render_remove_target_ownership(
-        self, *, database: str, target_database: str, relation_names: tuple[str, ...]
-    ) -> tuple[str, ...]:
-        raise NotImplementedError
-
     def render_replace_stable_bindings(self, request: object) -> tuple[str, ...]:
         raise NotImplementedError
 
     def render_replay_coverage_query(self, request: object) -> str:
         raise NotImplementedError
 
-    def render_replay_from_ownership(self, request: object) -> str:
+    def render_replay_from_checkpoint(self, request: object) -> str:
         raise NotImplementedError
 
     def render_resource(
@@ -303,28 +286,6 @@ def build_fake_state_connection() -> FakeAdapterConnection:
                 engine="ReplacingMergeTree",
                 columns=_MODEL_LIVE_COLUMNS,
                 order_by=("order_id", "_replay_partition", "_replay_offset"),
-            ),
-        ),
-    )
-    ownership: tuple[AdapterOwnershipRecord, ...] = (
-        AdapterOwnershipRecord(
-            database_name="analytics",
-            relation_name="tbl__orders_clean",
-            resource_kind="table",
-            logical_model_name="orders_clean",
-            owning_mode="direct",
-            tool_version="0",
-            replay_coverage=(
-                AdapterReplayCoverageRange(
-                    driving_input_relation_name="raw__orders",
-                    replay_boundary_mode="landed_at",
-                    boundary_key="raw__orders",
-                    source_partition_column_name=None,
-                    source_position_column_name="_replay_offset",
-                    source_timestamp_column_name="_replay_landed_at",
-                    lower_value=_STATE_OLDEST_EVENT,
-                    upper_value=_STATE_MODEL_NEWEST,
-                ),
             ),
         ),
     )
@@ -435,7 +396,6 @@ def build_fake_state_connection() -> FakeAdapterConnection:
     }
     return FakeAdapterConnection(
         catalog=catalog,
-        ownership=ownership,
         results_by_query=results,
         warehouse_timestamp=_STATE_WAREHOUSE_NOW,
     )

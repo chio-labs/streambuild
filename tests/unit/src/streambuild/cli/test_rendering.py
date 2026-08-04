@@ -1240,7 +1240,6 @@ def test_given_direct_replay_results_when_rendering_then_text_and_json_report_wa
 ) -> None:
     result: DirectBuildResult = DirectBuildResult(
         database="analytics",
-        ownership_records=(),
         preserved_source_relation_names=(),
         created_source_relation_names=(),
         dropped_relation_names=(),

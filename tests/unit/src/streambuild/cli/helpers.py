@@ -8,6 +8,7 @@ from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import (
     AdapterBindingReplacementRequest,
     AdapterCapabilities,
+    AdapterCheckpointReplayRequest,
     AdapterConnectionConfig,
     AdapterDeploymentInventory,
     AdapterDeploymentReplayRequest,
@@ -18,8 +19,6 @@ from streambuild.adapter.models import (
     AdapterMetadataState,
     AdapterMutationResult,
     AdapterNodeResultRecord,
-    AdapterOwnershipRecord,
-    AdapterOwnershipReplayRequest,
     AdapterQueryResult,
     AdapterReadinessRequest,
     AdapterReadinessRootObservation,
@@ -36,8 +35,8 @@ from streambuild.adapter.models import (
 from streambuild.adapter.types import AdapterReplayBoundaryMode
 from streambuild.adapters.clickhouse._helpers.replay import (
     render_clickhouse_replay_coverage_query,
+    render_clickhouse_replay_from_checkpoint,
     render_clickhouse_replay_from_deployment,
-    render_clickhouse_replay_from_ownership,
 )
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from streambuild.cli.audit.main._run_audit import run_audit
@@ -175,7 +174,6 @@ class RecordingAdapterConnection(AdapterConnection):
         managed_table_state: InspectedManagedTableState = _EMPTY_MANAGED_TABLE_STATE,
         readiness_observations: tuple[AdapterReadinessRootObservation, ...] = (),
         deployment_inventory: AdapterDeploymentInventory = _EMPTY_DEPLOYMENT_INVENTORY,
-        ownership_records: tuple[AdapterOwnershipRecord, ...] = (),
         observation_statements: tuple[str, ...] = (),
         required_artifact_path: Path | None = None,
     ) -> None:
@@ -202,7 +200,6 @@ class RecordingAdapterConnection(AdapterConnection):
             readiness_observations
         )
         self._deployment_inventory: AdapterDeploymentInventory = deployment_inventory
-        self._ownership_records: tuple[AdapterOwnershipRecord, ...] = ownership_records
         self._observation_statements: tuple[str, ...] = observation_statements
         self._required_artifact_path: Path | None = required_artifact_path
         self.artifact_seen_before_execution: bool = False
@@ -233,26 +230,6 @@ class RecordingAdapterConnection(AdapterConnection):
     def inspect_managed_table_state(self, database: str) -> InspectedManagedTableState:
         del database
         return self._managed_table_state
-
-    def load_target_ownership(self, database: str) -> tuple[AdapterOwnershipRecord, ...]:
-        del database
-        return self._ownership_records
-
-    def render_record_target_ownership(
-        self, *, database: str, records: tuple[AdapterOwnershipRecord, ...]
-    ) -> tuple[str, ...]:
-        del database, records
-        return ()
-
-    def render_remove_target_ownership(
-        self,
-        *,
-        database: str,
-        target_database: str,
-        relation_names: tuple[str, ...],
-    ) -> tuple[str, ...]:
-        del database, target_database, relation_names
-        return ()
 
     def query(self, statement: str) -> AdapterQueryResult:
         self.statements.append(statement)
@@ -315,8 +292,8 @@ class RecordingAdapterConnection(AdapterConnection):
         del database
         return self._deployment_inventory
 
-    def render_replay_from_ownership(self, request: AdapterOwnershipReplayRequest) -> str:
-        return render_clickhouse_replay_from_ownership(request)
+    def render_replay_from_checkpoint(self, request: AdapterCheckpointReplayRequest) -> str:
+        return render_clickhouse_replay_from_checkpoint(request)
 
     def render_replay_coverage_query(self, request: AdapterReplayCoverageRequest) -> str:
         return render_clickhouse_replay_coverage_query(request)

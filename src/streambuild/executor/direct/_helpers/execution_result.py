@@ -2,18 +2,11 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
-from typing import cast
 
-from streambuild.adapter.models import (
-    AdapterOwnershipRecord,
-    AdapterReplayCoverageRange,
-)
 from streambuild.adapter.types import AdapterReplayBoundaryMode
 from streambuild.compiler.compile.models import CompiledSource
 from streambuild.executor.auditing.models import SqlAuditResult, SqlAuditRunResult
-from streambuild.executor.direct._helpers.ownership import build_direct_ownership_records
 from streambuild.executor.direct.models import (
     DirectBuildExecutionResult,
     DirectBuildRequest,
@@ -35,14 +28,9 @@ def build_direct_execution_result(
         result.step_id: result for result in execution.statement_results
     }
     boundaries: tuple[DirectReplayBoundary, ...] = _boundaries(execution=execution)
-    ownership_records: tuple[AdapterOwnershipRecord, ...] = _ownership_records(
-        request=request,
-        result=results_by_step_id.get("read_final_ownership"),
-    )
     return DirectBuildExecutionResult(
         build_result=DirectBuildResult(
             database=request.database,
-            ownership_records=ownership_records,
             preserved_source_relation_names=_preserved_source_names(
                 request=request,
                 results_by_step_id=results_by_step_id,
@@ -88,44 +76,6 @@ def _boundaries(*, execution: WorkflowExecutionResult) -> tuple[DirectReplayBoun
                 )
             )
     return tuple(boundaries)
-
-
-def _ownership_records(
-    *, request: DirectBuildRequest, result: WorkflowStatementResult | None
-) -> tuple[AdapterOwnershipRecord, ...]:
-    if result is None or result.query_result is None:
-        return build_direct_ownership_records(
-            plan=request.plan,
-            database=request.database,
-            tool_version=request.tool_version,
-        )
-    return tuple(_ownership_record(row) for row in result.query_result.rows)
-
-
-def _ownership_record(row: tuple[object, ...]) -> AdapterOwnershipRecord:
-    payloads: list[dict[str, object]] = cast(list[dict[str, object]], json.loads(str(row[7])))
-    return AdapterOwnershipRecord(
-        database_name=str(row[0]),
-        relation_name=str(row[1]),
-        resource_kind=str(row[2]),
-        logical_model_database=None if row[3] is None else str(row[3]),
-        logical_model_name=str(row[4]),
-        owning_mode=str(row[5]),
-        tool_version=str(row[6]),
-        replay_coverage=tuple(
-            AdapterReplayCoverageRange(
-                driving_input_relation_name=str(payload["driving_input_relation_name"]),
-                replay_boundary_mode=str(payload["replay_boundary_mode"]),
-                boundary_key=str(payload["boundary_key"]),
-                source_partition_column_name=(str(payload["source_partition_column_name"]) or None),
-                source_position_column_name=str(payload["source_position_column_name"]),
-                source_timestamp_column_name=(str(payload["source_timestamp_column_name"]) or None),
-                lower_value=str(payload["lower_value"]),
-                upper_value=str(payload["upper_value"]),
-            )
-            for payload in payloads
-        ),
-    )
 
 
 def _replay_results(

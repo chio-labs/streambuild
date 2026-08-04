@@ -50,12 +50,10 @@ class StateFieldTestCase:
     expected_source_freshness: str
     expected_model_freshness: str
     expected_model_lag_seconds: float
-    expected_model_ownership: str
     expected_drift_reasons: tuple[str, ...]
     expected_source_rows_per_second: float
     expected_partition_max_offset: int
     expected_bucket_count: int
-    expected_recorded_coverage: dict[str, str]
 
 
 @dataclass(frozen=True)

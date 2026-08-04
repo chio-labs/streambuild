@@ -17,7 +17,6 @@ class WorkflowMode(StrEnum):
 class WorkflowPhase(StrEnum):
     PREFLIGHT = "preflight"
     PREPARATION = "preparation"
-    OWNERSHIP = "ownership"
     TEARDOWN = "teardown"
     REALIZATION = "realization"
     STABILIZATION = "stabilization"

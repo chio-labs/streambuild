@@ -116,8 +116,9 @@ from tests.integration.src.streambuild.executor.backfill.helpers import (
             expected_shadow_materialized_view_name="mv__orders_enriched__20260409T120000Z_ab12cd",
             expected_deployment_status="backfilling",
             expected_full_layout=(
+                ("_streambuild_direct_fingerprints", "MergeTree"),
+                ("_streambuild_direct_replay_checkpoints", "MergeTree"),
                 ("_streambuild_direct_replay_ranges", "MergeTree"),
-                ("_streambuild_direct_target_events", "MergeTree"),
                 ("_streambuild_invocations", "MergeTree"),
                 ("_streambuild_node_results", "MergeTree"),
                 ("_streambuild_run_events", "MergeTree"),
@@ -145,8 +146,9 @@ from tests.integration.src.streambuild.executor.backfill.helpers import (
             expected_shadow_materialized_view_name="mv__orders_enriched__20260409T120500Z_ef34gh",
             expected_deployment_status="backfilling",
             expected_full_layout=(
+                ("_streambuild_direct_fingerprints", "MergeTree"),
+                ("_streambuild_direct_replay_checkpoints", "MergeTree"),
                 ("_streambuild_direct_replay_ranges", "MergeTree"),
-                ("_streambuild_direct_target_events", "MergeTree"),
                 ("_streambuild_invocations", "MergeTree"),
                 ("_streambuild_node_results", "MergeTree"),
                 ("_streambuild_run_events", "MergeTree"),

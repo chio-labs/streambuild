@@ -146,10 +146,6 @@ def run_scope_project_plan(
                 False: snapshot.catalog.relations,
                 True: (),
             }[virtual_environments],
-            ownership_records={
-                False: snapshot.ownership_records,
-                True: (),
-            }[virtual_environments],
         ),
         loaded_project=load_project_input_for_path(path=project_root),
         adapter_profile=build_compiler_adapter_profile(ClickHouseAdapter()),

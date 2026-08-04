@@ -8,17 +8,13 @@ from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import (
     AdapterBindingReplacementRequest,
     AdapterCapabilities,
+    AdapterCheckpointReplayRequest,
     AdapterDeploymentInventory,
-    AdapterDeploymentRecord,
     AdapterIdentity,
     AdapterManagedSource,
     AdapterMaterializedView,
-    AdapterMetadataObjectKey,
     AdapterMetadataState,
     AdapterMutationResult,
-    AdapterOwnershipRecord,
-    AdapterOwnershipReplayRequest,
-    AdapterPreparedObjectMapping,
     AdapterQueryResult,
     AdapterReadinessRequest,
     AdapterReadinessRootObservation,
@@ -33,7 +29,7 @@ from streambuild.adapter.models import (
     CatalogSnapshot,
     InspectedManagedTableState,
 )
-from streambuild.adapter.types import AdapterOwningMode, AdapterReplayBoundaryMode
+from streambuild.adapter.types import AdapterReplayBoundaryMode
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from streambuild.cli.entry._helpers.compiler_profile import build_compiler_adapter_profile
 from streambuild.compiler.compile.constants import (
@@ -129,12 +125,9 @@ class SnapshotRecordingConnection(AdapterConnection):
         metadata_result: AdapterQueryResult,
         virtual_environments: bool,
         direct_rebuild: bool = True,
-        ownership_records: tuple[AdapterOwnershipRecord, ...] = (),
     ) -> None:
         self._catalog: CatalogSnapshot = catalog
         self._metadata_result: AdapterQueryResult = metadata_result
-        self._ownership_records: tuple[AdapterOwnershipRecord, ...] = ownership_records
-        self.ownership_databases: list[str] = []
         self._capabilities: AdapterCapabilities = AdapterCapabilities(
             virtual_environments=virtual_environments,
             managed_source_kinds=frozenset({"kafka"}),
@@ -165,26 +158,6 @@ class SnapshotRecordingConnection(AdapterConnection):
     def metadata_columns(self, *, database: str, table: str) -> frozenset[str]:
         del database, table
         return frozenset()
-
-    def load_target_ownership(self, database: str) -> tuple[AdapterOwnershipRecord, ...]:
-        self.ownership_databases.append(database)
-        return self._ownership_records
-
-    def render_record_target_ownership(
-        self, *, database: str, records: tuple[AdapterOwnershipRecord, ...]
-    ) -> tuple[str, ...]:
-        del database, records
-        return ()
-
-    def render_remove_target_ownership(
-        self,
-        *,
-        database: str,
-        target_database: str,
-        relation_names: tuple[str, ...],
-    ) -> tuple[str, ...]:
-        del database, target_database, relation_names
-        return ()
 
     def inspect_managed_table_state(self, database: str) -> InspectedManagedTableState:
         del database
@@ -236,7 +209,7 @@ class SnapshotRecordingConnection(AdapterConnection):
         del database
         return AdapterDeploymentInventory(deployments=(), publish_events=())
 
-    def render_replay_from_ownership(self, request: AdapterOwnershipReplayRequest) -> str:
+    def render_replay_from_checkpoint(self, request: AdapterCheckpointReplayRequest) -> str:
         del request
         return "INSERT INTO replay_target SELECT 1"
 
@@ -730,13 +703,9 @@ def direct_model_keys(
 def build_direct_snapshot(
     *,
     relation_names: tuple[str, ...] = (),
-    direct_owned_names: tuple[str, ...] = (),
-    virtual_environment_owned_names: tuple[str, ...] = (),
     stable_binding_names: tuple[str, ...] = (),
-    metadata_virtual_environment_names: tuple[str, ...] = (),
-    ownership_database: str = "analytics",
 ) -> DirectWarehouseSnapshot:
-    """Build one immutable direct snapshot from explicit relation and ownership facts."""
+    """Build one immutable direct snapshot from explicit catalog and deployment facts."""
 
     stable_binding_by_name: dict[str, str | None] = {
         relation_name: f"{relation_name}__binding" for relation_name in stable_binding_names
@@ -758,59 +727,6 @@ def build_direct_snapshot(
                 for relation_name in relation_names
             ),
         ),
-        ownership_records=(
-            *_ownership_records(
-                relation_names=direct_owned_names,
-                mode=AdapterOwningMode.DIRECT,
-                database=ownership_database,
-            ),
-            *_ownership_records(
-                relation_names=virtual_environment_owned_names,
-                mode=AdapterOwningMode.VIRTUAL_ENVIRONMENT,
-                database=ownership_database,
-            ),
-        ),
-        deployment_inventory=AdapterDeploymentInventory(
-            deployments=(
-                AdapterDeploymentRecord(
-                    deployment_id="20260802T120000Z_metadata",
-                    created_at="2026-08-02 12:00:00.000",
-                    status="staged",
-                    replay_lineage_mode="offsets",
-                    selected_root_keys=(),
-                    warning_codes=(),
-                    prepared_object_mappings=tuple(
-                        AdapterPreparedObjectMapping(
-                            logical_key=AdapterMetadataObjectKey(
-                                database="analytics",
-                                object_type="table",
-                                name=name,
-                            ),
-                            physical_name=f"{name}__20260802T120000Z_metadata",
-                            logical_model_name=name,
-                        )
-                        for name in metadata_virtual_environment_names
-                    ),
-                ),
-            ),
-            publish_events=(),
-        ),
-    )
-
-
-def _ownership_records(
-    *, relation_names: tuple[str, ...], mode: AdapterOwningMode, database: str
-) -> tuple[AdapterOwnershipRecord, ...]:
-    return tuple(
-        AdapterOwnershipRecord(
-            database_name=database,
-            relation_name=relation_name,
-            resource_kind="table",
-            logical_model_name=relation_name.split("__")[-1],
-            owning_mode=mode,
-            tool_version="test",
-        )
-        for relation_name in relation_names
     )
 
 
@@ -866,12 +782,11 @@ def build_settled_direct_snapshot() -> DirectWarehouseSnapshot:
     )
     return build_direct_snapshot(
         relation_names=(*DIRECT_SCOPE_SOURCE_RELATION_NAMES, *model_relation_names),
-        direct_owned_names=model_relation_names,
     )
 
 
 def direct_scope_relation_names(*, model_names: tuple[str, ...]) -> tuple[str, ...]:
-    """Return the table and view relation names owned by the named models."""
+    """Return the table and view relation names declared by the named models."""
 
     return tuple(
         chain.from_iterable(

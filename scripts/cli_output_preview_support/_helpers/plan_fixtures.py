@@ -33,13 +33,11 @@ from streambuild.compiler.planner.models import (
     PlannerWarning,
     PreparedShadowObject,
     RebuildSubtree,
-    TargetOwnershipClassification,
 )
 from streambuild.compiler.planner.types import (
     DirectPlanReason,
     DirectRelationAction,
     DirectResourceKind,
-    TargetOwnership,
 )
 
 
@@ -508,16 +506,6 @@ def build_direct_plan_preview() -> DirectPlan:
                 resource_kinds=(
                     DirectResourceKind.TABLE,
                     DirectResourceKind.MATERIALIZED_VIEW,
-                ),
-                ownership=(
-                    TargetOwnershipClassification(
-                        relation_name="tbl__orders_enriched",
-                        ownership=TargetOwnership.DIRECT,
-                    ),
-                    TargetOwnershipClassification(
-                        relation_name="mv__orders_enriched",
-                        ownership=TargetOwnership.DIRECT,
-                    ),
                 ),
                 driving_input_key=orders_key,
                 is_replay_root=True,

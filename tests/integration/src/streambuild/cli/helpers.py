@@ -15,6 +15,7 @@ from streambuild.adapter.exceptions import AdapterWarehouseError
 from streambuild.adapter.models import (
     AdapterBindingReplacementRequest,
     AdapterCapabilities,
+    AdapterCheckpointReplayRequest,
     AdapterConnectionConfig,
     AdapterDeploymentInventory,
     AdapterDeploymentRecord,
@@ -25,8 +26,6 @@ from streambuild.adapter.models import (
     AdapterMetadataState,
     AdapterMutationResult,
     AdapterNodeResultRecord,
-    AdapterOwnershipRecord,
-    AdapterOwnershipReplayRequest,
     AdapterQueryResult,
     AdapterReadinessRequest,
     AdapterReadinessRootObservation,
@@ -39,7 +38,6 @@ from streambuild.adapter.models import (
     CatalogSnapshot,
     InspectedManagedTableState,
 )
-from streambuild.adapter.types import AdapterOwningMode
 from streambuild.adapters.clickhouse._helpers.inspection import load_clickhouse_catalog
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from streambuild.cli.build._helpers.preview import build_direct_build_preview
@@ -98,7 +96,7 @@ def _is_model_realization_sql(statement: str) -> bool:
 
 
 def _is_replay_sql(statement: str) -> bool:
-    return "ownership_coverage AS" in statement
+    return "checkpoint_coverage AS" in statement
 
 
 def _is_coverage_capture_sql(statement: str) -> bool:
@@ -157,27 +155,6 @@ class RecordingDelegatingConnection(AdapterConnection):
     def inspect_managed_table_state(self, database: str) -> InspectedManagedTableState:
         return self._delegate.inspect_managed_table_state(database)
 
-    def load_target_ownership(self, database: str) -> tuple[AdapterOwnershipRecord, ...]:
-        return self._delegate.load_target_ownership(database)
-
-    def render_record_target_ownership(
-        self, *, database: str, records: tuple[AdapterOwnershipRecord, ...]
-    ) -> tuple[str, ...]:
-        return self._delegate.render_record_target_ownership(database=database, records=records)
-
-    def render_remove_target_ownership(
-        self,
-        *,
-        database: str,
-        target_database: str,
-        relation_names: tuple[str, ...],
-    ) -> tuple[str, ...]:
-        return self._delegate.render_remove_target_ownership(
-            database=database,
-            target_database=target_database,
-            relation_names=relation_names,
-        )
-
     def query(self, statement: str) -> AdapterQueryResult:
         self.query_statements.append(statement)
         return self._delegate.query(statement)
@@ -232,8 +209,8 @@ class RecordingDelegatingConnection(AdapterConnection):
     def load_deployment_inventory(self, database: str) -> AdapterDeploymentInventory:
         return self._delegate.load_deployment_inventory(database)
 
-    def render_replay_from_ownership(self, request: AdapterOwnershipReplayRequest) -> str:
-        return self._delegate.render_replay_from_ownership(request)
+    def render_replay_from_checkpoint(self, request: AdapterCheckpointReplayRequest) -> str:
+        return self._delegate.render_replay_from_checkpoint(request)
 
     def render_replay_coverage_query(self, request: AdapterReplayCoverageRequest) -> str:
         return self._delegate.render_replay_coverage_query(request)
@@ -280,9 +257,9 @@ class FailSecondReplayOnceConnection(RecordingDelegatingConnection):
         self._replay_count: int = 0
         self._failed: bool = False
 
-    def render_replay_from_ownership(self, request: AdapterOwnershipReplayRequest) -> str:
+    def render_replay_from_checkpoint(self, request: AdapterCheckpointReplayRequest) -> str:
         self.replay_targets.append(request.replay.relations.target)
-        return super().render_replay_from_ownership(request)
+        return super().render_replay_from_checkpoint(request)
 
     def execute_workflow_sql(self, statement: str) -> AdapterMutationResult:
         self._replay_count += int(_is_replay_sql(statement))
@@ -352,7 +329,7 @@ class FailOnceBoundaryQueryConnection(RecordingDelegatingConnection):
         raise AdapterWarehouseError("injected failure during selected boundary capture")
 
 
-class FailFinalOwnershipOnceConnection(RecordingDelegatingConnection):
+class FailFinalCheckpointOnceConnection(RecordingDelegatingConnection):
     def __init__(self, delegate: AdapterConnection) -> None:
         super().__init__(delegate)
         self._coverage_capture_count: int = 0
@@ -361,7 +338,7 @@ class FailFinalOwnershipOnceConnection(RecordingDelegatingConnection):
     def execute_workflow_sql(self, statement: str) -> AdapterMutationResult:
         self._coverage_capture_count += int(_is_coverage_capture_sql(statement))
         action: Callable[[str], AdapterMutationResult] = {
-            True: self._reject_final_ownership,
+            True: self._reject_final_checkpoint,
             False: super().execute_workflow_sql,
         }[
             not self._failed
@@ -370,10 +347,10 @@ class FailFinalOwnershipOnceConnection(RecordingDelegatingConnection):
         ]
         return action(statement)
 
-    def _reject_final_ownership(self, statement: str) -> AdapterMutationResult:
+    def _reject_final_checkpoint(self, statement: str) -> AdapterMutationResult:
         del statement
         self._failed = True
-        raise AdapterWarehouseError("injected failure during final ownership persistence")
+        raise AdapterWarehouseError("injected failure during final checkpoint persistence")
 
 
 class DirectActionRecordingConnection(RecordingDelegatingConnection):
@@ -402,10 +379,10 @@ class DirectActionRecordingConnection(RecordingDelegatingConnection):
             if_not_exists=if_not_exists,
         )
 
-    def render_replay_from_ownership(self, request: AdapterOwnershipReplayRequest) -> str:
+    def render_replay_from_checkpoint(self, request: AdapterCheckpointReplayRequest) -> str:
         self.replay_targets.append(request.replay.relations.target)
         self.replay_requests.append(request.replay)
-        return super().render_replay_from_ownership(request)
+        return super().render_replay_from_checkpoint(request)
 
     def execute_workflow_sql(self, statement: str) -> AdapterMutationResult:
         self.command_statements.extend(
@@ -962,10 +939,6 @@ DIRECT_SCOPE_MODEL_RELATIONS: tuple[str, ...] = (
     "tbl__delta",
     "mv__delta",
 )
-_OWNERSHIP_ROW_NAMES_BY_FLAG: dict[bool, tuple[str, ...]] = {
-    False: (),
-    True: DIRECT_SCOPE_MODEL_RELATIONS,
-}
 _RELATION_NAMES_BY_FLAG: dict[bool, tuple[str, ...]] = {
     False: (),
     True: DIRECT_SCOPE_MODEL_RELATIONS,
@@ -977,35 +950,19 @@ def settle_direct_scope_warehouse(
     connection: AdapterConnection,
     clickhouse_client: Client,
     database: str,
-    record_ownership: bool,
+    create_relations: bool,
 ) -> None:
-    """Create the scope project's warehouse relations and optional direct ownership rows."""
+    """Create the scope project's warehouse relations when requested."""
 
     statement: str
     for statement in connection.render_migrate_metadata_state(database):
         _ = clickhouse_client.command(statement)
     relation_name: str
-    for relation_name in _RELATION_NAMES_BY_FLAG[record_ownership]:
+    for relation_name in _RELATION_NAMES_BY_FLAG[create_relations]:
         clickhouse_client.command(
             f"CREATE TABLE IF NOT EXISTS {database}.{relation_name} "
             "(order_id UInt64) ENGINE = MergeTree ORDER BY order_id"
         )
-    ownership_relation_names: tuple[str, ...] = _OWNERSHIP_ROW_NAMES_BY_FLAG[record_ownership]
-    ownership_records: tuple[AdapterOwnershipRecord, ...] = tuple(
-        AdapterOwnershipRecord(
-            database_name=database,
-            relation_name=relation_name,
-            resource_kind="table",
-            logical_model_name=relation_name.split("__")[-1],
-            owning_mode=AdapterOwningMode.DIRECT,
-            tool_version="integration",
-        )
-        for relation_name in ownership_relation_names
-    )
-    for statement in connection.render_record_target_ownership(
-        database=database, records=ownership_records
-    ):
-        _ = clickhouse_client.command(statement)
 
 
 def run_direct_plan(
@@ -1076,19 +1033,6 @@ def plan_relation_operations(*, plan_json: str) -> tuple[tuple[str, str], ...]:
     return tuple(
         (str(operation["action"]), str(operation["relation_name"])) for operation in operations
     )
-
-
-def plan_ownership_labels(*, plan_json: str) -> tuple[str, ...]:
-    """Return the distinct ownership labels reported across every plan entry."""
-
-    payload: dict[str, object] = json.loads(plan_json)
-    entries: list[dict[str, object]] = cast(list[dict[str, object]], payload["entries"])
-    labels: set[str] = set()
-    entry: dict[str, object]
-    for entry in entries:
-        classifications: list[dict[str, str]] = cast(list[dict[str, str]], entry["ownership"])
-        labels.update(classification["ownership"] for classification in classifications)
-    return tuple(sorted(labels))
 
 
 DIRECT_BUILD_MODEL_SQL: str = (
@@ -1826,27 +1770,38 @@ def warehouse_row_count(*, clickhouse_client: Client, database: str, statement: 
     return int(clickhouse_client.query(statement.format(database=database)).result_rows[0][0])
 
 
-def direct_owned_relation_names(*, connection: AdapterConnection, database: str) -> tuple[str, ...]:
-    """Return every relation name durably claimed in the ownership table."""
+def direct_fingerprinted_relation_names(
+    *, clickhouse_client: Client, database: str
+) -> tuple[str, ...]:
+    """Return the physical relations recorded by successful Direct fingerprints."""
 
-    return tuple(
-        sorted(record.relation_name for record in connection.load_target_ownership(database))
-    )
+    rows: Sequence[Sequence[object]] = clickhouse_client.query(
+        f"SELECT DISTINCT physical_relation FROM {database}._streambuild_direct_fingerprints "
+        "ORDER BY physical_relation"
+    ).result_rows
+    return tuple(str(row[0]) for row in rows)
 
 
-def direct_owned_replay_coverage_ranges(
-    *, connection: AdapterConnection, database: str
+def direct_replay_checkpoint_ranges(
+    *, clickhouse_client: Client, database: str
 ) -> tuple[tuple[str, str, str], ...]:
-    """Return the table claim's persisted replay intervals in deterministic order."""
+    """Return replay intervals for the latest Direct checkpoint."""
 
-    record_by_name: dict[str, AdapterOwnershipRecord] = {
-        record.relation_name: record for record in connection.load_target_ownership(database)
-    }
-    record: AdapterOwnershipRecord = record_by_name[DIRECT_BUILD_TARGET_TABLE_NAME]
-    return tuple(
-        (coverage.boundary_key, coverage.lower_value, coverage.upper_value)
-        for coverage in record.replay_coverage
-    )
+    rows: Sequence[Sequence[object]] = clickhouse_client.query(
+        "SELECT DISTINCT if(replay_boundary_mode = 'offsets', "
+        "concat('_replay_partition=', partition_value), "
+        "concat('_replay_', replay_boundary_mode)) AS boundary_key, "
+        "lower_value, upper_value FROM ("
+        f"SELECT argMax(tuple(replay_set_id, capture_id), tuple(recorded_at, capture_id)) "
+        "AS current_set FROM "
+        f"{database}._streambuild_direct_replay_checkpoints "
+        "WHERE logical_model_name = 'orders_enriched' AND checkpoint_sequence = 3) AS checkpoint "
+        f"INNER JOIN {database}._streambuild_direct_replay_ranges AS ranges "
+        "ON ranges.replay_set_id = checkpoint.current_set.1 "
+        "AND ranges.capture_id = checkpoint.current_set.2 WHERE range_present "
+        "ORDER BY boundary_key, lower_value, upper_value"
+    ).result_rows
+    return tuple((str(row[0]), str(row[1]), str(row[2])) for row in rows)
 
 
 def direct_graph_order_ids(

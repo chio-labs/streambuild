@@ -68,8 +68,8 @@ from tests.integration.src.streambuild.adapters.clickhouse.helpers import (
 )
 from tests.integration.src.streambuild.cli.helpers import (
     direct_build_order_ids,
-    direct_owned_relation_names,
-    direct_owned_replay_coverage_ranges,
+    direct_fingerprinted_relation_names,
+    direct_replay_checkpoint_ranges,
     publish_direct_workflow,
     publish_virtual_workflow,
     run_direct_build,
@@ -182,8 +182,10 @@ def test_given_retained_kafka_messages_when_executing_direct_artifacts_then_form
             direct_build_order_ids(clickhouse_client=e2e_clickhouse_client, database=database)
             for database in databases
         )
-        ownership_names: tuple[tuple[str, ...], ...] = tuple(
-            direct_owned_relation_names(connection=connection, database=database)
+        fingerprinted_names: tuple[tuple[str, ...], ...] = tuple(
+            direct_fingerprinted_relation_names(
+                clickhouse_client=e2e_clickhouse_client, database=database
+            )
             for database in databases
         )
     finally:
@@ -198,7 +200,7 @@ def test_given_retained_kafka_messages_when_executing_direct_artifacts_then_form
     )
     assert combined_result[0] == test_case.expected_exit_code
     assert order_ids == tuple(test_case.expected_order_ids for _database in databases)
-    assert ownership_names == tuple(
+    assert fingerprinted_names == tuple(
         ("mv__orders_enriched", "tbl__orders_enriched") for _database in databases
     )
 
@@ -336,7 +338,9 @@ def test_given_bounded_direct_workflow_when_executing_artifacts_then_forms_match
             for database in databases
         )
         coverage_ranges: tuple[tuple[tuple[str, str, str], ...], ...] = tuple(
-            direct_owned_replay_coverage_ranges(connection=connection, database=database)
+            direct_replay_checkpoint_ranges(
+                clickhouse_client=e2e_clickhouse_client, database=database
+            )
             for database in databases
         )
         workflow_sql: str = (combined.artifact_root / "workflow.sql").read_text(encoding="utf-8")

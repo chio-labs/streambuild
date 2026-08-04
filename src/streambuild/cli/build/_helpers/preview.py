@@ -34,7 +34,7 @@ def build_direct_build_preview(
     )
     metadata_database: str = options.metadata_database or database
     snapshot: DirectWarehouseSnapshot = load_direct_warehouse_snapshot(
-        client=client, database=database, metadata_database=metadata_database
+        client=client, database=database
     )
     start_time: str | None = (
         convert_utc_timestamp_for_clickhouse(
