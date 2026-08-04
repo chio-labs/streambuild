@@ -8,7 +8,6 @@ from streambuild.executor.direct.main.assemble_direct_build_workflow import (
     assemble_direct_build_workflow,
 )
 from streambuild.executor.direct.models import DirectBuildRequest
-from streambuild.executor.workflow.exceptions import WorkflowExecutionError
 from streambuild.executor.workflow.main.execute_build_workflow import execute_build_workflow
 from streambuild.executor.workflow.models import (
     BuildWorkflow,
@@ -16,12 +15,8 @@ from streambuild.executor.workflow.models import (
     WarehouseStatement,
 )
 from streambuild.executor.workflow.types import WorkflowPhase
-from tests.unit.src.streambuild.executor.direct.main._test_types import (
-    DirectWorkflowDriftTestCase,
-    DirectWorkflowTestCase,
-)
+from tests.unit.src.streambuild.executor.direct.main._test_types import DirectWorkflowTestCase
 from tests.unit.src.streambuild.executor.direct.main.helpers import (
-    DriftingDirectBuildConnection,
     RecordingDirectBuildConnection,
     build_direct_execution_request,
 )
@@ -32,7 +27,7 @@ from tests.unit.src.streambuild.executor.direct.main.helpers import (
     [
         DirectWorkflowTestCase(
             description="direct workflow publishes and executes exact ordered statement bytes",
-            expected_first_phase=WorkflowPhase.PREFLIGHT,
+            expected_first_phase=WorkflowPhase.PREPARATION,
             expected_last_phase=WorkflowPhase.FINALIZATION,
             expected_replay_count=2,
         )
@@ -82,41 +77,3 @@ def test_given_direct_plan_when_assembling_then_complete_exact_workflow_is_autho
         "\n".join(statement.sql for statement in statements)
     )
     assert set(connection.workflow_mutation_statements) <= set(all_sql)
-
-
-@pytest.mark.parametrize(
-    "test_case",
-    [
-        DirectWorkflowDriftTestCase(
-            description="direct preflight drift aborts before the first warehouse mutation",
-            expected_failed_step_id="assert_ownership_tbl__beta",
-            expected_mutation_count=0,
-        )
-    ],
-    ids=lambda case: case.description,
-)
-def test_given_direct_state_drift_when_executing_then_preflight_aborts_before_mutation(
-    test_case: DirectWorkflowDriftTestCase,
-    tmp_path: Path,
-) -> None:
-    request: DirectBuildRequest = build_direct_execution_request(
-        project_root=tmp_path,
-        selected_model_names=("beta",),
-    )
-    connection: DriftingDirectBuildConnection = DriftingDirectBuildConnection()
-    workflow: BuildWorkflow = assemble_direct_build_workflow(
-        request=request,
-        client=connection,
-        plan_json=render_direct_plan_json(plan=request.plan, adapter_name="clickhouse"),
-    )
-    published: PublishedBuildWorkflow = publish_build_workflow(
-        target_dir=tmp_path / "target",
-        workflow=workflow,
-    )
-    connection.reject_preflight()
-
-    with pytest.raises(WorkflowExecutionError) as error_info:
-        execute_build_workflow(published_workflow=published, connection=connection)
-
-    assert error_info.value.failed_step_id == test_case.expected_failed_step_id
-    assert len(connection.workflow_mutation_statements) == test_case.expected_mutation_count

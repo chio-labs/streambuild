@@ -273,24 +273,6 @@ class FailOnceRealizationConnection(RecordingDelegatingConnection):
         raise AdapterWarehouseError("injected failure after direct teardown")
 
 
-class FailOnceReplayConnection(RecordingDelegatingConnection):
-    def __init__(self, delegate: AdapterConnection) -> None:
-        super().__init__(delegate)
-        self._failed: bool = False
-
-    def execute_workflow_sql(self, statement: str) -> AdapterMutationResult:
-        action: Callable[[str], AdapterMutationResult] = {
-            True: self._reject_replay,
-            False: super().execute_workflow_sql,
-        }[not self._failed and _is_replay_sql(statement)]
-        return action(statement)
-
-    def _reject_replay(self, statement: str) -> AdapterMutationResult:
-        del statement
-        self._failed = True
-        raise AdapterWarehouseError("injected failure after direct relations became live")
-
-
 class FailSecondReplayOnceConnection(RecordingDelegatingConnection):
     def __init__(self, delegate: AdapterConnection) -> None:
         super().__init__(delegate)

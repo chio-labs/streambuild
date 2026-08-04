@@ -1,7 +1,5 @@
-from collections.abc import Callable
 from pathlib import Path
 
-from streambuild.adapter.exceptions import AdapterWarehouseError
 from streambuild.adapter.models import (
     AdapterMutationResult,
     AdapterOwnershipRecord,
@@ -61,22 +59,6 @@ class RecordingDirectBuildConnection(RecordingAdapterConnection):
             target_database=target_database,
             relation_names=relation_names,
         )
-
-
-class DriftingDirectBuildConnection(RecordingDirectBuildConnection):
-    def __init__(self) -> None:
-        super().__init__()
-        self._query_action: Callable[[str], AdapterQueryResult] = super().query
-
-    def reject_preflight(self) -> None:
-        self._query_action = self._raise_drift
-
-    def query(self, statement: str) -> AdapterQueryResult:
-        return self._query_action(statement)
-
-    @staticmethod
-    def _raise_drift(_statement: str) -> AdapterQueryResult:
-        raise AdapterWarehouseError("warehouse changed after workflow preparation")
 
 
 def build_direct_execution_request(
