@@ -247,13 +247,6 @@ class RenderMetadataMutationSqlTestCase:
 
 
 @dataclass(frozen=True)
-class RenderOwnershipMutationSqlTestCase:
-    description: str
-    expected_record_sql: tuple[str, ...]
-    expected_removal_sql: str
-
-
-@dataclass(frozen=True)
 class RenderLifecycleMutationSqlTestCase:
     description: str
     expected_binding_sql: tuple[str, ...]

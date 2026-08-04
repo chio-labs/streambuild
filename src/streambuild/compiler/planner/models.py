@@ -6,8 +6,6 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 from streambuild.adapter.models import (
-    AdapterDeploymentInventory,
-    AdapterOwnershipRecord,
     AdapterReplayColumns,
     CatalogSnapshot,
 )
@@ -37,7 +35,6 @@ from streambuild.compiler.planner.types import (
     RebuildStrategy,
     TableSchemaChangeKind,
     TableSchemaSeedCompatibility,
-    TargetOwnership,
 )
 
 
@@ -410,22 +407,9 @@ class MetadataState:
 
 @dataclass(frozen=True)
 class DirectWarehouseSnapshot:
-    """Immutable live catalog and durable ownership captured for one direct plan."""
+    """Immutable live catalog captured for one Direct plan."""
 
     catalog: CatalogSnapshot
-    ownership_records: tuple[AdapterOwnershipRecord, ...]
-    deployment_inventory: AdapterDeploymentInventory
-
-
-@dataclass(frozen=True)
-class TargetOwnershipClassification:
-    """One relation and the ownership the warehouse proves for it."""
-
-    relation_name: str
-    ownership: TargetOwnership | str
-
-    def __post_init__(self) -> None:
-        object.__setattr__(self, "ownership", TargetOwnership(self.ownership))
 
 
 @dataclass(frozen=True)
@@ -436,7 +420,6 @@ class DirectPlanEntry:
     reason: DirectPlanReason | str
     relation_names: tuple[str, ...]
     resource_kinds: tuple[DirectResourceKind | str, ...]
-    ownership: tuple[TargetOwnershipClassification, ...]
     driving_input_key: LogicalResourceKey | None
     is_replay_root: bool
 

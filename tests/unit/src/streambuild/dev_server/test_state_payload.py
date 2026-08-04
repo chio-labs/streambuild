@@ -18,15 +18,10 @@ from tests.unit.src.streambuild.dev_server.helpers import (
             expected_source_freshness="fresh",
             expected_model_freshness="lagging",
             expected_model_lag_seconds=7200.0,
-            expected_model_ownership="direct",
             expected_drift_reasons=("columns", "engine"),
             expected_source_rows_per_second=0.083,
             expected_partition_max_offset=91822,
             expected_bucket_count=60,
-            expected_recorded_coverage={
-                "from": "2026-08-01 00:00:00.000",
-                "to": "2026-08-03 10:00:00.000",
-            },
         ),
     ],
     ids=lambda case: case.description,
@@ -43,10 +38,8 @@ def test_given_warehouse_reads_when_reading_state_then_assembles_expected_overla
     model: dict = payload["models"]["orders_clean"]
     assert model["freshness"] == test_case.expected_model_freshness
     assert model["lagSeconds"] == test_case.expected_model_lag_seconds
-    assert model["ownership"] == test_case.expected_model_ownership
     assert tuple(sorted(model["driftReasons"])) == test_case.expected_drift_reasons
     assert model["drift"] is True
-    assert model["recordedCoverage"] == test_case.expected_recorded_coverage
     source: dict = payload["sources"]["orders"]
     assert source["freshness"] == test_case.expected_source_freshness
     assert source["rowsPerSecond"] == test_case.expected_source_rows_per_second

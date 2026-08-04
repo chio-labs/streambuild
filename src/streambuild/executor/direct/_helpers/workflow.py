@@ -3,16 +3,17 @@
 from __future__ import annotations
 
 import math
+from hashlib import sha256
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.constants import (
+    METADATA_DIRECT_FINGERPRINTS_TABLE_NAME,
+    METADATA_DIRECT_REPLAY_CHECKPOINTS_TABLE_NAME,
     METADATA_DIRECT_REPLAY_RANGES_TABLE_NAME,
-    METADATA_DIRECT_TARGET_EVENTS_TABLE_NAME,
 )
 from streambuild.adapter.models import (
+    AdapterCheckpointReplayRequest,
     AdapterMaterializedView,
-    AdapterOwnershipRecord,
-    AdapterOwnershipReplayRequest,
     AdapterReplayCoverageRequest,
     AdapterReplayRequest,
     CatalogRelation,
@@ -26,22 +27,17 @@ from streambuild.compiler.compile.models import (
     ObjectKey,
 )
 from streambuild.compiler.planner.main.build_adapter_resource import build_adapter_resource
-from streambuild.compiler.planner.main.classify_direct_ownership import (
-    classify_direct_ownership,
-)
 from streambuild.compiler.planner.main.load_direct_warehouse_snapshot import (
     load_direct_warehouse_snapshot,
 )
 from streambuild.compiler.planner.models import (
-    DirectPlan,
     DirectPlanEntry,
     DirectRelationOperation,
     DirectWarehouseSnapshot,
-    TargetOwnershipClassification,
 )
 from streambuild.compiler.planner.types import DirectResourceKind
 from streambuild.executor.auditing.constants import AUDIT_SAMPLE_LIMIT
-from streambuild.executor.direct._helpers.ownership import build_direct_ownership_records
+from streambuild.executor.auditing.types import AuditSeverity
 from streambuild.executor.direct._helpers.population_plan import build_direct_population_plan
 from streambuild.executor.direct._helpers.preflight import reject_incapable_adapter
 from streambuild.executor.direct._helpers.sources import plan_preserved_managed_sources
@@ -70,9 +66,7 @@ def assemble_direct_build_workflow(
     snapshot: DirectWarehouseSnapshot = load_direct_warehouse_snapshot(
         client=client,
         database=request.database,
-        metadata_database=request.metadata_database,
     )
-    _assert_confirmed_ownership(plan=request.plan, snapshot=snapshot)
     source_preparation: PopulationSourcePreparation
     source_realizations: tuple[PopulationRealization, ...]
     source_preparation, source_realizations = plan_preserved_managed_sources(
@@ -86,6 +80,11 @@ def assemble_direct_build_workflow(
             realized_project=request.realized_project,
         ),
         desired_state=request.realized_project.desired_state,
+    )
+    realizations: tuple[PopulationRealization, ...] = plan_population_objects(
+        plan=population_plan,
+        desired_state=request.realized_project.desired_state,
+        default_database=request.database,
     )
     replay_template_pairs: tuple[tuple[ObjectKey, AdapterReplayRequest], ...] = (
         build_population_replay_templates(
@@ -106,19 +105,13 @@ def assemble_direct_build_workflow(
         snapshot=snapshot,
         replay_by_model_name=replay_by_model_name,
     )
-    ownership_records: tuple[AdapterOwnershipRecord, ...] = build_direct_ownership_records(
-        plan=request.plan,
-        database=request.database,
-        tool_version=request.tool_version,
-    )
     statements: tuple[WarehouseStatement, ...] = _assemble_statements(
         request=request,
         client=client,
         snapshot=snapshot,
         source_preparation=source_preparation,
         source_realizations=source_realizations,
-        ownership_records=ownership_records,
-        population_plan=population_plan,
+        realizations=realizations,
         replay_templates=replay_templates,
     )
     return BuildWorkflow(mode=WorkflowMode.DIRECT, plan_json=plan_json, statements=statements)
@@ -131,39 +124,44 @@ def _assemble_statements(
     snapshot: DirectWarehouseSnapshot,
     source_preparation: PopulationSourcePreparation,
     source_realizations: tuple[PopulationRealization, ...],
-    ownership_records: tuple[AdapterOwnershipRecord, ...],
-    population_plan: PopulationPlan,
+    realizations: tuple[PopulationRealization, ...],
     replay_templates: tuple[AdapterReplayRequest, ...],
 ) -> tuple[WarehouseStatement, ...]:
+    rendered_realizations: tuple[tuple[PopulationRealization, str], ...] = tuple(
+        (
+            realization,
+            _terminate_sql(
+                client.render_resource(
+                    resource=realization.resource,
+                    database=realization.database,
+                )
+            ),
+        )
+        for realization in realizations
+    )
     preparation: tuple[WarehouseStatement, ...] = _preparation_statements(
         request=request,
         client=client,
         source_realizations=source_realizations,
         start_sequence=1,
     )
-    ownership: tuple[WarehouseStatement, ...] = _initial_ownership_statements(
-        request=request,
-        client=client,
-        records=ownership_records,
-        start_sequence=len(preparation) + 1,
-    )
     teardown: tuple[WarehouseStatement, ...] = _teardown_statements(
         request=request,
-        start_sequence=len(preparation) + len(ownership) + 1,
+        start_sequence=len(preparation) + 1,
     )
     realization: tuple[WarehouseStatement, ...] = _realization_statements(
         request=request,
         client=client,
-        population_plan=population_plan,
+        rendered_realizations=rendered_realizations,
         source_preparation=source_preparation,
-        start_sequence=len(preparation) + len(ownership) + len(teardown) + 1,
+        start_sequence=len(preparation) + len(teardown) + 1,
     )
     stabilization: tuple[WarehouseStatement, ...] = _stabilization_statements(
         seconds=request.stabilization_seconds,
-        start_sequence=(len(preparation) + len(ownership) + len(teardown) + len(realization) + 1),
+        start_sequence=(len(preparation) + len(teardown) + len(realization) + 1),
     )
     prior_count: int = sum(
-        len(phase) for phase in (preparation, ownership, teardown, realization, stabilization)
+        len(phase) for phase in (preparation, teardown, realization, stabilization)
     )
     boundary: tuple[WarehouseStatement, ...] = _boundary_statements(
         request=request,
@@ -183,21 +181,20 @@ def _assemble_statements(
         audits=request.audits,
         start_sequence=prior_count + len(boundary) + len(replay) + 1,
     )
-    finalization: tuple[WarehouseStatement, ...] = _finalization_statements(
+    fingerprints: tuple[WarehouseStatement, ...] = _fingerprint_statements(
         request=request,
-        client=client,
+        rendered_realizations=rendered_realizations,
         start_sequence=prior_count + len(boundary) + len(replay) + len(audit) + 1,
     )
     return (
         *preparation,
-        *ownership,
         *teardown,
         *realization,
         *stabilization,
         *boundary,
         *replay,
         *audit,
-        *finalization,
+        *fingerprints,
     )
 
 
@@ -238,30 +235,6 @@ def _preparation_statements(
     )
 
 
-def _initial_ownership_statements(
-    *,
-    request: DirectBuildRequest,
-    client: AdapterConnection,
-    records: tuple[AdapterOwnershipRecord, ...],
-    start_sequence: int,
-) -> tuple[WarehouseStatement, ...]:
-    rendered: tuple[tuple[str, str], ...] = tuple(
-        (f"claim_ownership_{index}", sql)
-        for index, sql in enumerate(
-            client.render_record_target_ownership(
-                database=request.metadata_database,
-                records=records,
-            ),
-            start=1,
-        )
-    )
-    return _mutation_statements(
-        rendered=rendered,
-        phase=WorkflowPhase.OWNERSHIP,
-        start_sequence=start_sequence,
-    )
-
-
 def _teardown_statements(
     *, request: DirectBuildRequest, start_sequence: int
 ) -> tuple[WarehouseStatement, ...]:
@@ -289,27 +262,18 @@ def _realization_statements(
     *,
     request: DirectBuildRequest,
     client: AdapterConnection,
-    population_plan: PopulationPlan,
+    rendered_realizations: tuple[tuple[PopulationRealization, str], ...],
     source_preparation: PopulationSourcePreparation,
     start_sequence: int,
 ) -> tuple[WarehouseStatement, ...]:
-    realizations: tuple[PopulationRealization, ...] = plan_population_objects(
-        plan=population_plan,
-        desired_state=request.realized_project.desired_state,
-        default_database=request.database,
-    )
     rendered: list[tuple[str, str]] = []
     realization: PopulationRealization
-    for realization in realizations:
+    definition_sql: str
+    for realization, definition_sql in rendered_realizations:
         rendered.append(
             (
                 f"realize_{_step_segment(realization.resource.name)}",
-                _terminate_sql(
-                    client.render_resource(
-                        resource=realization.resource,
-                        database=realization.database,
-                    )
-                ),
+                definition_sql,
             )
         )
     landing_view: DesiredMaterializedView
@@ -430,10 +394,11 @@ def _replay_statements(
                 phase=WorkflowPhase.REPLAY,
                 intent=StatementIntent.MUTATION,
                 sql=_terminate_sql(
-                    client.render_replay_from_ownership(
-                        AdapterOwnershipReplayRequest(
+                    client.render_replay_from_checkpoint(
+                        AdapterCheckpointReplayRequest(
                             replay=replay,
                             metadata_database=request.metadata_database,
+                            checkpoint_id=_checkpoint_id(request=request, model_name=model_name),
                             logical_model_name=model_name,
                             boundary_column_type=boundary_column_type,
                         )
@@ -492,35 +457,96 @@ def _audit_statements(
     return tuple(statements)
 
 
-def _finalization_statements(
-    *, request: DirectBuildRequest, client: AdapterConnection, start_sequence: int
+def _fingerprint_statements(
+    *,
+    request: DirectBuildRequest,
+    rendered_realizations: tuple[tuple[PopulationRealization, str], ...],
+    start_sequence: int,
 ) -> tuple[WarehouseStatement, ...]:
-    statements: list[WarehouseStatement] = [
-        WarehouseStatement(
-            sequence=start_sequence,
-            step_id="read_final_ownership",
-            phase=WorkflowPhase.FINALIZATION,
-            intent=StatementIntent.QUERY,
-            sql=_read_final_ownership_sql(request=request),
-        )
-    ]
-    retired_names: tuple[str, ...] = _retired_relation_names(request=request)
-    removal_sql: str
-    for removal_sql in client.render_remove_target_ownership(
-        database=request.metadata_database,
-        target_database=request.database,
-        relation_names=retired_names,
-    ):
-        statements.append(
-            WarehouseStatement(
-                sequence=start_sequence + len(statements),
-                step_id="remove_retired_ownership",
-                phase=WorkflowPhase.FINALIZATION,
-                intent=StatementIntent.MUTATION,
-                sql=removal_sql,
+    statements: list[WarehouseStatement] = []
+    for entry in request.plan.entries:
+        for relation_name, resource_kind in zip(
+            entry.relation_names, entry.resource_kinds, strict=True
+        ):
+            rendered_definition: str = next(
+                definition
+                for realization, definition in rendered_realizations
+                if realization.database == request.database
+                and realization.resource.name == relation_name
             )
-        )
+            rendered_definition_hash: str = sha256(rendered_definition.encode()).hexdigest()
+            logical_identity: str = f"{request.database}.{entry.model_key.name}"
+            audit_gate: str = " AND ".join(
+                f"NOT EXISTS (\n{audit.query}\n)"
+                for audit in request.audits
+                if audit.severity == AuditSeverity.ERROR
+            )
+            statements.append(
+                WarehouseStatement(
+                    sequence=start_sequence + len(statements),
+                    step_id=f"record_direct_fingerprint_{_step_segment(relation_name)}",
+                    phase=WorkflowPhase.FINALIZATION,
+                    intent=StatementIntent.MUTATION,
+                    sql=_fingerprint_insert_sql(
+                        request=request,
+                        logical_identity=logical_identity,
+                        relation_name=relation_name,
+                        resource_kind=str(resource_kind),
+                        rendered_definition_hash=rendered_definition_hash,
+                        audit_gate=audit_gate,
+                    ),
+                )
+            )
     return tuple(statements)
+
+
+def _fingerprint_insert_sql(
+    *,
+    request: DirectBuildRequest,
+    logical_identity: str,
+    relation_name: str,
+    resource_kind: str,
+    rendered_definition_hash: str,
+    audit_gate: str,
+) -> str:
+    values: tuple[str, ...] = (
+        logical_identity,
+        request.database,
+        relation_name,
+        resource_kind,
+        rendered_definition_hash,
+        request.workflow_id,
+        request.tool_version,
+    )
+    fingerprint_parts: str = ", ".join(
+        (
+            *(f"'{_escape_literal(value)}'" for value in values[:4]),
+            "create_table_query",
+            f"'{_escape_literal(rendered_definition_hash)}'",
+            "schema_fingerprint",
+            *(f"'{_escape_literal(value)}'" for value in values[5:]),
+        )
+    )
+    where_gate: str = "" if not audit_gate else f" AND {audit_gate}"
+    return (
+        f"INSERT INTO {request.metadata_database}.{METADATA_DIRECT_FINGERPRINTS_TABLE_NAME} "
+        "(fingerprint_id, logical_model_identity, physical_database, physical_relation, "
+        "resource_kind, definition_sql, definition_hash, rendered_definition_hash, "
+        "schema_fingerprint, workflow_id, tool_version, succeeded_at)\n"
+        "WITH (SELECT lower(hex(SHA256(toJSONString(arraySort(groupArray(tuple("
+        "position, name, type, default_kind, default_expression))))))) FROM system.columns "
+        f"WHERE database = '{_escape_literal(request.database)}' "
+        f"AND table = '{_escape_literal(relation_name)}') AS schema_fingerprint\n"
+        f"SELECT lower(hex(SHA256(concat({fingerprint_parts})))), "
+        f"'{_escape_literal(logical_identity)}', '{_escape_literal(request.database)}', "
+        f"'{_escape_literal(relation_name)}', '{_escape_literal(resource_kind)}', "
+        "create_table_query, lower(hex(SHA256(create_table_query))), "
+        f"'{_escape_literal(rendered_definition_hash)}', schema_fingerprint, "
+        f"'{_escape_literal(request.workflow_id)}', '{_escape_literal(request.tool_version)}', "
+        "now64(3, 'UTC') FROM system.tables "
+        f"WHERE database = '{_escape_literal(request.database)}' "
+        f"AND name = '{_escape_literal(relation_name)}'{where_gate};"
+    )
 
 
 def _mutation_statements(
@@ -539,25 +565,6 @@ def _mutation_statements(
         )
         for index, (step_id, sql) in enumerate(rendered)
     )
-
-
-def _assert_confirmed_ownership(*, plan: DirectPlan, snapshot: DirectWarehouseSnapshot) -> None:
-    expected: tuple[TargetOwnershipClassification, ...] = _ownership_classifications(plan=plan)
-    current: tuple[TargetOwnershipClassification, ...] = classify_direct_ownership(
-        snapshot=snapshot,
-        relation_names=tuple(classification.relation_name for classification in expected),
-    )
-    changed: tuple[str, ...] = tuple(
-        f"{expected_value.relation_name}: expected {expected_value.ownership}, "
-        f"current {current_value.ownership}"
-        for expected_value, current_value in zip(expected, current, strict=True)
-        if expected_value.ownership != current_value.ownership
-    )
-    if changed:
-        raise DirectBuildError(
-            "Direct ownership changed after confirmation: "
-            f"{'; '.join(changed)}. Rerun stb plan or stb build."
-        )
 
 
 def _assert_bounded_replay_inputs(
@@ -609,6 +616,11 @@ def _capture_coverage_statements(
     start_sequence: int,
 ) -> tuple[WarehouseStatement, ...]:
     segment: str = _step_segment(model_name)
+    checkpoint_sequence: int = {
+        "capture_boundary": 1,
+        "refresh_boundary": 2,
+        "refresh_coverage": 3,
+    }[step_prefix]
     return (
         WarehouseStatement(
             sequence=start_sequence,
@@ -621,14 +633,19 @@ def _capture_coverage_statements(
                 snapshot=snapshot,
                 replay=replay,
                 model_name=model_name,
+                checkpoint_sequence=checkpoint_sequence,
             ),
         ),
         WarehouseStatement(
             sequence=start_sequence + 1,
-            step_id=f"{step_prefix}_{segment}_targets",
+            step_id=f"{step_prefix}_{segment}_checkpoint",
             phase=phase,
             intent=StatementIntent.MUTATION,
-            sql=_refresh_target_events_sql(request=request, model_name=model_name),
+            sql=_refresh_checkpoint_sql(
+                request=request,
+                model_name=model_name,
+                checkpoint_sequence=checkpoint_sequence,
+            ),
         ),
     )
 
@@ -640,23 +657,31 @@ def _capture_replay_set_sql(
     snapshot: DirectWarehouseSnapshot,
     replay: AdapterReplayRequest,
     model_name: str,
+    checkpoint_sequence: int,
 ) -> str:
     coverage_query: str = client.render_replay_coverage_query(
         _coverage_request(request=request, replay=replay, snapshot=snapshot)
     )
     return (
         f"INSERT INTO {request.metadata_database}.{METADATA_DIRECT_REPLAY_RANGES_TABLE_NAME} "
-        "(replay_set_id, target_database_name, logical_model_database, logical_model_name, "
+        "(capture_id, replay_set_id, workflow_id, checkpoint_sequence, "
+        "target_database_name, logical_model_database, logical_model_name, "
         "range_present, "
         "driving_input_relation_name, replay_boundary_mode, partition_value, "
         "source_partition_column_name, source_position_column_name, "
         "source_timestamp_column_name, lower_value, upper_value, replay_cutoff_value, "
         "captured_at)\n"
         f"WITH coverage_payload AS (\n{coverage_query}\n),\n"
+        "captured_payload AS (SELECT value, now64(9, 'UTC') AS captured_at "
+        "FROM coverage_payload),\n"
         "captured AS (SELECT value, lower(hex(SHA256(concat("
         f"'{_escape_literal(request.database)}', ':', '{_escape_literal(model_name)}', ':', "
-        "value)))) AS replay_set_id, now64(3, 'UTC') AS captured_at FROM coverage_payload)\n"
-        f"SELECT replay_set_id, '{_escape_literal(request.database)}', NULL, "
+        "value)))) AS replay_set_id, lower(hex(SHA256(concat("
+        f"'{_escape_literal(request.workflow_id)}', ':', "
+        f"'{checkpoint_sequence}', ':', toString(captured_at), ':', value)))) AS capture_id, "
+        "captured_at FROM captured_payload)\n"
+        f"SELECT capture_id, replay_set_id, '{_escape_literal(request.workflow_id)}', "
+        f"{checkpoint_sequence}, '{_escape_literal(request.database)}', NULL, "
         f"'{_escape_literal(model_name)}', coverage != '', "
         "nullIf(JSONExtractString(coverage, 'driving_input_relation_name'), ''), "
         "nullIf(JSONExtractString(coverage, 'replay_boundary_mode'), ''), "
@@ -673,30 +698,25 @@ def _capture_replay_set_sql(
     )
 
 
-def _refresh_target_events_sql(*, request: DirectBuildRequest, model_name: str) -> str:
-    entry: DirectPlanEntry = next(
-        entry for entry in request.plan.entries if entry.model_key.name == model_name
-    )
-    relations: str = ", ".join(
-        f"('{_escape_literal(name)}', '{_escape_literal(str(kind))}')"
-        for name, kind in zip(entry.relation_names, entry.resource_kinds, strict=True)
-    )
+def _refresh_checkpoint_sql(
+    *, request: DirectBuildRequest, model_name: str, checkpoint_sequence: int
+) -> str:
     return (
-        f"INSERT INTO {request.metadata_database}.{METADATA_DIRECT_TARGET_EVENTS_TABLE_NAME} "
-        "(event_id, workflow_id, event_kind, database_name, relation_name, resource_kind, "
-        "logical_model_database, logical_model_name, tool_version, replay_set_id, recorded_at)\n"
-        "WITH latest_set AS (SELECT argMax(tuple(replay_set_id, captured_at), "
-        "tuple(captured_at, replay_set_id)) AS current_set FROM "
+        f"INSERT INTO {request.metadata_database}.{METADATA_DIRECT_REPLAY_CHECKPOINTS_TABLE_NAME} "
+        "(checkpoint_id, workflow_id, target_database_name, logical_model_name, "
+        "capture_id, replay_set_id, checkpoint_sequence, recorded_at)\n"
+        "WITH latest_set AS (SELECT argMax(tuple(replay_set_id, captured_at, capture_id), "
+        "tuple(captured_at, capture_id)) AS current_set FROM "
         f"{request.metadata_database}.{METADATA_DIRECT_REPLAY_RANGES_TABLE_NAME} "
         f"WHERE target_database_name = '{_escape_literal(request.database)}' "
-        f"AND logical_model_name = '{_escape_literal(model_name)}')\n"
-        "SELECT lower(hex(SHA256(concat(current_set.1, ':', tupleElement(relation, 1), "
-        "':refreshed')))), current_set.1, 'refreshed', "
-        f"'{_escape_literal(request.database)}', tupleElement(relation, 1), "
-        "tupleElement(relation, 2), NULL, "
-        f"'{_escape_literal(model_name)}', '{_escape_literal(request.tool_version)}', "
-        "current_set.1, current_set.2 FROM latest_set\n"
-        f"ARRAY JOIN [{relations}] AS relation;"
+        f"AND logical_model_name = '{_escape_literal(model_name)}' "
+        f"AND workflow_id = '{_escape_literal(request.workflow_id)}' "
+        f"AND checkpoint_sequence = {checkpoint_sequence})\n"
+        f"SELECT '{_escape_literal(_checkpoint_id(request=request, model_name=model_name))}', "
+        f"'{_escape_literal(request.workflow_id)}', '{_escape_literal(request.database)}', "
+        f"'{_escape_literal(model_name)}', current_set.3, current_set.1, "
+        f"{checkpoint_sequence}, current_set.2 "
+        "FROM latest_set;"
     )
 
 
@@ -725,16 +745,17 @@ def _read_boundary_sql(
         else f"'{_direct_boundary_key(replay.mode)}'"
     )
     return (
-        "WITH current_target AS (SELECT argMax(tuple(replay_set_id, recorded_at), "
-        "tuple(recorded_at, event_id)) AS current_set FROM "
-        f"{request.metadata_database}.{METADATA_DIRECT_TARGET_EVENTS_TABLE_NAME} "
-        f"WHERE database_name = '{_escape_literal(request.database)}' AND relation_name = "
-        f"'{_escape_literal(replay.relations.target)}')\n"
+        "WITH current_checkpoint AS (SELECT argMax(tuple(replay_set_id, capture_id), "
+        "tuple(recorded_at, capture_id)) AS current_set FROM "
+        f"{request.metadata_database}.{METADATA_DIRECT_REPLAY_CHECKPOINTS_TABLE_NAME} "
+        f"WHERE checkpoint_id = '{_checkpoint_id(request=request, model_name=model_name)}' "
+        "AND checkpoint_sequence = 2)\n"
         f"SELECT DISTINCT '{_escape_literal(model_name)}' AS model_name, "
         f"driving_input_relation_name, replay_boundary_mode, {boundary_key} AS boundary_key, "
         "replay_cutoff_value AS cutoff_value FROM "
         f"{request.metadata_database}.{METADATA_DIRECT_REPLAY_RANGES_TABLE_NAME} "
-        "INNER JOIN current_target ON replay_set_id = current_target.current_set.1 "
+        "INNER JOIN current_checkpoint ON replay_set_id = current_checkpoint.current_set.1 "
+        "AND capture_id = current_checkpoint.current_set.2 "
         f"WHERE target_database_name = '{_escape_literal(request.database)}' AND range_present "
         "ORDER BY boundary_key;"
     )
@@ -748,36 +769,8 @@ def _direct_boundary_key(mode: AdapterReplayBoundaryMode) -> str:
     }[mode]
 
 
-def _read_final_ownership_sql(*, request: DirectBuildRequest) -> str:
-    relation_names: tuple[str, ...] = _entry_relation_names(request=request)
-    quoted_names: str = ", ".join(
-        f"'{_escape_literal(relation_name)}'" for relation_name in relation_names
-    )
-    return (
-        "WITH current_events AS (SELECT database_name, relation_name, "
-        "argMax(tuple(event_kind, resource_kind, logical_model_database, logical_model_name, "
-        "tool_version, replay_set_id), tuple(recorded_at, event_id)) AS current_state FROM "
-        f"{request.metadata_database}.{METADATA_DIRECT_TARGET_EVENTS_TABLE_NAME} "
-        f"WHERE database_name = '{_escape_literal(request.database)}' AND relation_name IN "
-        f"({quoted_names}) GROUP BY database_name, relation_name),\n"
-        "coverage AS (SELECT replay_set_id, concat('[', arrayStringConcat(groupUniqArrayIf("
-        "toJSONString(map('driving_input_relation_name', driving_input_relation_name, "
-        "'replay_boundary_mode', replay_boundary_mode, 'boundary_key', "
-        "if(replay_boundary_mode = 'offsets', concat('_replay_partition=', partition_value), "
-        "concat('_replay_', replay_boundary_mode)), 'source_partition_column_name', "
-        "coalesce(source_partition_column_name, ''), 'source_position_column_name', "
-        "source_position_column_name, 'source_timestamp_column_name', "
-        "coalesce(source_timestamp_column_name, ''), 'lower_value', lower_value, "
-        "'upper_value', upper_value)), range_present), ','), ']') AS replay_coverage_json "
-        f"FROM {request.metadata_database}.{METADATA_DIRECT_REPLAY_RANGES_TABLE_NAME} "
-        f"WHERE target_database_name = '{_escape_literal(request.database)}' "
-        "GROUP BY replay_set_id) SELECT database_name, relation_name, current_state.2, "
-        "current_state.3, current_state.4, 'direct', current_state.5, "
-        "coalesce(nullIf(coverage.replay_coverage_json, ''), '[]') FROM current_events "
-        "LEFT JOIN coverage "
-        "ON coverage.replay_set_id = current_state.6 WHERE current_state.1 != 'released' "
-        "ORDER BY relation_name;"
-    )
+def _checkpoint_id(*, request: DirectBuildRequest, model_name: str) -> str:
+    return f"{request.workflow_id}:{model_name}"
 
 
 def _boundary_column_type(
@@ -830,14 +823,6 @@ def _escape_literal(value: str) -> str:
 
 def _step_segment(value: str) -> str:
     return "".join(character if character.isalnum() else "_" for character in value)
-
-
-def _ownership_classifications(*, plan: DirectPlan) -> tuple[TargetOwnershipClassification, ...]:
-    classifications: list[TargetOwnershipClassification] = []
-    entry: DirectPlanEntry
-    for entry in plan.entries:
-        classifications.extend(entry.ownership)
-    return tuple(classifications)
 
 
 def _entry_relation_names(*, request: DirectBuildRequest) -> tuple[str, ...]:

@@ -1,15 +1,17 @@
 """Migrate and persist StreamBuild metadata in ClickHouse."""
 
+from __future__ import annotations
+
 import json
 from hashlib import sha256
 from typing import cast
 
-from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.constants import (
     METADATA_DEPLOYMENT_WATERMARKS_TABLE_NAME,
     METADATA_DEPLOYMENTS_TABLE_NAME,
+    METADATA_DIRECT_FINGERPRINTS_TABLE_NAME,
+    METADATA_DIRECT_REPLAY_CHECKPOINTS_TABLE_NAME,
     METADATA_DIRECT_REPLAY_RANGES_TABLE_NAME,
-    METADATA_DIRECT_TARGET_EVENTS_TABLE_NAME,
     METADATA_INVOCATIONS_TABLE_NAME,
     METADATA_NODE_RESULTS_TABLE_NAME,
     METADATA_OBJECT_STATE_TABLE_NAME,
@@ -29,19 +31,10 @@ from streambuild.adapter.models import (
     AdapterMetadataState,
     AdapterNodeResultRecord,
     AdapterObjectStateRecord,
-    AdapterOwnershipRecord,
     AdapterPublishEventRecord,
-    AdapterQueryResult,
-    AdapterReplayCoverageRange,
     AdapterRunEventRecord,
 )
 from streambuild.adapter.types import AdapterReplayBoundaryMode
-from streambuild.adapters.clickhouse.constants import (
-    EMPTY_DEFAULT_EXPRESSIONS,
-    OWNERSHIP_EVENT_ROW_LENGTH,
-    OWNERSHIP_RANGE_ROW_LENGTH,
-    OWNERSHIP_TABLE_EXISTS_QUERY,
-)
 from streambuild.adapters.clickhouse.models import ClickHouseMetadataStatement
 
 _CURRENT_STATE_SCHEMA_VERSION: int = 1
@@ -57,7 +50,8 @@ def render_clickhouse_metadata_migration_statements(database: str) -> tuple[str,
         _render_deployment_watermarks_table(database),
         _render_publish_history_table(database),
         _render_direct_replay_ranges_table(database),
-        _render_direct_target_events_table(database),
+        _render_direct_replay_checkpoints_table(database),
+        _render_direct_fingerprints_table(database),
         _render_invocations_table(database),
         _render_node_results_table(database),
         _render_run_events_table(database),
@@ -261,7 +255,10 @@ def _render_publish_history_table(database: str) -> str:
 def _render_direct_replay_ranges_table(database: str) -> str:
     return (
         f"CREATE TABLE IF NOT EXISTS {database}.{METADATA_DIRECT_REPLAY_RANGES_TABLE_NAME} (\n"
+        "    capture_id String,\n"
         "    replay_set_id String,\n"
+        "    workflow_id String,\n"
+        "    checkpoint_sequence UInt8,\n"
         "    target_database_name String,\n"
         "    logical_model_database Nullable(String),\n"
         "    logical_model_name String,\n"
@@ -275,28 +272,37 @@ def _render_direct_replay_ranges_table(database: str) -> str:
         "    lower_value Nullable(String),\n"
         "    upper_value Nullable(String),\n"
         "    replay_cutoff_value Nullable(String),\n"
-        "    captured_at DateTime64(3, 'UTC')\n"
+        "    captured_at DateTime64(9, 'UTC')\n"
         ") ENGINE = MergeTree\n"
-        "ORDER BY (replay_set_id, range_present)"
+        "ORDER BY (capture_id, replay_set_id, range_present)"
     )
 
 
-def _render_direct_target_events_table(database: str) -> str:
+def _render_direct_replay_checkpoints_table(database: str) -> str:
     return (
-        f"CREATE TABLE IF NOT EXISTS {database}.{METADATA_DIRECT_TARGET_EVENTS_TABLE_NAME} (\n"
-        "    event_id String,\n"
+        f"CREATE TABLE IF NOT EXISTS {database}.{METADATA_DIRECT_REPLAY_CHECKPOINTS_TABLE_NAME} (\n"
+        "    checkpoint_id String,\n"
         "    workflow_id String,\n"
-        "    event_kind LowCardinality(String),\n"
-        "    database_name String,\n"
-        "    relation_name String,\n"
-        "    resource_kind String,\n"
-        "    logical_model_database Nullable(String),\n"
+        "    target_database_name String,\n"
         "    logical_model_name String,\n"
-        "    tool_version String,\n"
-        "    replay_set_id Nullable(String),\n"
-        "    recorded_at DateTime64(3, 'UTC')\n"
+        "    capture_id String,\n"
+        "    replay_set_id String,\n"
+        "    checkpoint_sequence UInt8,\n"
+        "    recorded_at DateTime64(9, 'UTC')\n"
         ") ENGINE = MergeTree\n"
-        "ORDER BY (database_name, relation_name, recorded_at, event_id)"
+        "ORDER BY (checkpoint_id, checkpoint_sequence, recorded_at, capture_id)"
+    )
+
+
+def _render_direct_fingerprints_table(database: str) -> str:
+    return (
+        f"CREATE TABLE IF NOT EXISTS {database}.{METADATA_DIRECT_FINGERPRINTS_TABLE_NAME} (\n"
+        "    fingerprint_id String, logical_model_identity String, physical_database String,\n"
+        "    physical_relation String, resource_kind String, definition_sql String,\n"
+        "    definition_hash String, rendered_definition_hash String,\n"
+        "    schema_fingerprint String, workflow_id String, tool_version String,\n"
+        "    succeeded_at DateTime64(3, 'UTC')\n"
+        ") ENGINE = MergeTree ORDER BY (logical_model_identity, succeeded_at, fingerprint_id)"
     )
 
 
@@ -639,139 +645,6 @@ def _manifest_nodes_sql(nodes: tuple[AdapterCurrentQualityNode, ...]) -> str:
     )
 
 
-def load_clickhouse_target_ownership(
-    *, connection: AdapterConnection, database: str
-) -> tuple[AdapterOwnershipRecord, ...]:
-    """Return every ownership record recorded for one ClickHouse database."""
-
-    if not _direct_target_events_table_exists(connection=connection, database=database):
-        return ()
-    event_result: AdapterQueryResult = connection.query(
-        "SELECT database_name, relation_name, current_state.2 AS event_kind, "
-        "current_state.3 AS resource_kind, current_state.4 AS logical_model_database, "
-        "current_state.5 AS logical_model_name, current_state.6 AS tool_version, "
-        "current_state.7 AS replay_set_id FROM (SELECT database_name, relation_name, "
-        "argMax(tuple(event_id, event_kind, resource_kind, logical_model_database, "
-        "logical_model_name, tool_version, replay_set_id), tuple(recorded_at, event_id)) "
-        f"AS current_state FROM {database}.{METADATA_DIRECT_TARGET_EVENTS_TABLE_NAME} "
-        "GROUP BY database_name, relation_name) WHERE current_state.2 != 'released' "
-        "ORDER BY database_name, relation_name"
-    )
-    replay_set_ids: tuple[str, ...] = tuple(
-        sorted({str(row[7]) for row in event_result.rows if row[7] is not None})
-    )
-    coverage_by_replay_set: dict[str, tuple[AdapterReplayCoverageRange, ...]] = (
-        _load_direct_replay_ranges(
-            connection=connection,
-            database=database,
-            replay_set_ids=replay_set_ids,
-        )
-    )
-    return tuple(
-        _ownership_record(row=row, coverage_by_replay_set=coverage_by_replay_set)
-        for row in event_result.rows
-    )
-
-
-def render_clickhouse_target_ownership(
-    *, database: str, records: tuple[AdapterOwnershipRecord, ...]
-) -> tuple[str, ...]:
-    """Render deterministic ownership claims as one executable ClickHouse insert."""
-
-    if not records:
-        return ()
-    replay_set_id_by_model: dict[tuple[str, str | None, str], str] = {
-        (record.database_name, record.logical_model_database, record.logical_model_name): (
-            _direct_replay_set_id(record)
-        )
-        for record in records
-    }
-    range_rows: tuple[str, ...] = _direct_replay_range_values(
-        records=records,
-        replay_set_id_by_model=replay_set_id_by_model,
-    )
-    workflow_id: str = _direct_ownership_workflow_id(records=records)
-    event_rows: str = ",\n".join(
-        _render_direct_target_event_values(
-            record=record,
-            workflow_id=workflow_id,
-            replay_set_id=replay_set_id_by_model[
-                (record.database_name, record.logical_model_database, record.logical_model_name)
-            ],
-        )
-        for record in records
-    )
-    statements: list[str] = []
-    if range_rows:
-        joined_range_rows: str = ",\n".join(range_rows)
-        statements.append(
-            f"INSERT INTO {database}.{METADATA_DIRECT_REPLAY_RANGES_TABLE_NAME} "
-            "(replay_set_id, target_database_name, logical_model_database, logical_model_name, "
-            "range_present, driving_input_relation_name, replay_boundary_mode, partition_value, "
-            "source_partition_column_name, source_position_column_name, "
-            "source_timestamp_column_name, lower_value, upper_value, replay_cutoff_value, "
-            "captured_at) VALUES\n"
-            f"{joined_range_rows};"
-        )
-    statements.append(
-        f"INSERT INTO {database}.{METADATA_DIRECT_TARGET_EVENTS_TABLE_NAME} "
-        "(event_id, workflow_id, event_kind, database_name, relation_name, resource_kind, "
-        "logical_model_database, logical_model_name, tool_version, replay_set_id, recorded_at) "
-        f"VALUES\n{event_rows};"
-    )
-    return tuple(statements)
-
-
-def render_clickhouse_target_ownership_removal(
-    *, database: str, target_database: str, relation_names: tuple[str, ...]
-) -> tuple[str, ...]:
-    """Render append-only release events for retired ownership claims."""
-
-    if not relation_names:
-        return ()
-    quoted_names: str = ", ".join(_render_sql_literal(name) for name in relation_names)
-    quoted_target_database: str = _render_sql_literal(target_database)
-    workflow_id: str = sha256(
-        f"release:{target_database}:{','.join(sorted(relation_names))}".encode()
-    ).hexdigest()
-    return (
-        f"INSERT INTO {database}.{METADATA_DIRECT_TARGET_EVENTS_TABLE_NAME} "
-        "(event_id, workflow_id, event_kind, database_name, relation_name, resource_kind, "
-        "logical_model_database, logical_model_name, tool_version, replay_set_id, recorded_at) "
-        "SELECT hex(SHA256(concat('release:', current_state.1))), "
-        f"'{workflow_id}', 'released', database_name, relation_name, current_state.3, "
-        "current_state.4, current_state.5, current_state.6, NULL, now64(3, 'UTC') FROM ("
-        "SELECT database_name, relation_name, argMax(tuple(event_id, event_kind, resource_kind, "
-        "logical_model_database, logical_model_name, tool_version), "
-        "tuple(recorded_at, event_id)) AS current_state "
-        f"FROM {database}.{METADATA_DIRECT_TARGET_EVENTS_TABLE_NAME} "
-        f"WHERE database_name = {quoted_target_database} AND relation_name IN ({quoted_names}) "
-        "GROUP BY database_name, relation_name) WHERE current_state.2 != 'released';",
-    )
-
-
-def _render_direct_target_event_values(
-    *, record: AdapterOwnershipRecord, workflow_id: str, replay_set_id: str | None
-) -> str:
-    event_id: str = sha256(
-        f"{workflow_id}:{record.database_name}:{record.relation_name}:claimed".encode()
-    ).hexdigest()
-    values: tuple[object, ...] = (
-        event_id,
-        workflow_id,
-        "claimed",
-        record.database_name,
-        record.relation_name,
-        record.resource_kind,
-        record.logical_model_database,
-        record.logical_model_name,
-        record.tool_version,
-        replay_set_id,
-    )
-    rendered_values: str = ", ".join(_render_sql_literal(value) for value in values)
-    return f"({rendered_values}, now64(3, 'UTC'))"
-
-
 def _render_insert_statement(statement: ClickHouseMetadataStatement) -> str:
     rendered_rows: list[str] = []
     row: dict[str, object]
@@ -799,195 +672,3 @@ def _render_sql_literal(value: object) -> str:
 
 def _terminate_sql(statement: str) -> str:
     return f"{statement.rstrip().rstrip(';')};"
-
-
-def _direct_target_events_table_exists(*, connection: AdapterConnection, database: str) -> bool:
-    result: AdapterQueryResult = connection.query(
-        OWNERSHIP_TABLE_EXISTS_QUERY.format(
-            database=database, table=METADATA_DIRECT_TARGET_EVENTS_TABLE_NAME
-        )
-    )
-    return bool(result.rows)
-
-
-def _ownership_record(
-    *,
-    row: tuple[object, ...],
-    coverage_by_replay_set: dict[str, tuple[AdapterReplayCoverageRange, ...]],
-) -> AdapterOwnershipRecord:
-    if len(row) != OWNERSHIP_EVENT_ROW_LENGTH:
-        raise AdapterResultError(
-            f"ClickHouse ownership row had {len(row)} columns where "
-            f"{OWNERSHIP_EVENT_ROW_LENGTH} were required"
-        )
-    replay_set_id: str | None = _optional_text(row[7])
-    return AdapterOwnershipRecord(
-        database_name=str(row[0]),
-        relation_name=str(row[1]),
-        resource_kind=str(row[3]),
-        logical_model_database=_optional_text(row[4]),
-        logical_model_name=str(row[5]),
-        owning_mode="direct",
-        tool_version=str(row[6]),
-        replay_coverage=(
-            () if replay_set_id is None else coverage_by_replay_set.get(replay_set_id, ())
-        ),
-    )
-
-
-def _load_direct_replay_ranges(
-    *,
-    connection: AdapterConnection,
-    database: str,
-    replay_set_ids: tuple[str, ...],
-) -> dict[str, tuple[AdapterReplayCoverageRange, ...]]:
-    if not replay_set_ids:
-        return {}
-    quoted_ids: str = ", ".join(_render_sql_literal(value) for value in replay_set_ids)
-    result: AdapterQueryResult = connection.query(
-        "SELECT DISTINCT replay_set_id, range_present, driving_input_relation_name, "
-        "replay_boundary_mode, "
-        "partition_value, source_partition_column_name, source_position_column_name, "
-        "source_timestamp_column_name, lower_value, upper_value, replay_cutoff_value "
-        f"FROM {database}.{METADATA_DIRECT_REPLAY_RANGES_TABLE_NAME} "
-        f"WHERE replay_set_id IN ({quoted_ids}) ORDER BY replay_set_id, replay_boundary_mode, "
-        "partition_value, lower_value, upper_value"
-    )
-    grouped: dict[str, list[AdapterReplayCoverageRange]] = {}
-    row: tuple[object, ...]
-    for row in result.rows:
-        if len(row) != OWNERSHIP_RANGE_ROW_LENGTH:
-            raise AdapterResultError(
-                f"ClickHouse replay range row had {len(row)} columns where "
-                f"{OWNERSHIP_RANGE_ROW_LENGTH} were required"
-            )
-        replay_set_id: str = str(row[0])
-        if not bool(row[1]):
-            grouped.setdefault(replay_set_id, [])
-            continue
-        mode: str = str(row[3])
-        grouped.setdefault(replay_set_id, []).append(
-            AdapterReplayCoverageRange(
-                driving_input_relation_name=str(row[2]),
-                replay_boundary_mode=mode,
-                boundary_key=_direct_boundary_key(
-                    mode=mode, partition_value=_optional_text(row[4])
-                ),
-                source_partition_column_name=_optional_text(row[5]),
-                source_position_column_name=str(row[6]),
-                source_timestamp_column_name=_optional_text(row[7]),
-                lower_value=str(row[8]),
-                upper_value=str(row[9]),
-            )
-        )
-    return {key: tuple(value) for key, value in grouped.items()}
-
-
-def _direct_replay_set_id(record: AdapterOwnershipRecord) -> str:
-    payload: dict[str, object] = {
-        "database_name": record.database_name,
-        "logical_model_database": record.logical_model_database,
-        "logical_model_name": record.logical_model_name,
-        "ranges": [_replay_coverage_payload(value) for value in record.replay_coverage],
-    }
-    return sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
-
-
-def _direct_ownership_workflow_id(*, records: tuple[AdapterOwnershipRecord, ...]) -> str:
-    payload: list[dict[str, object]] = [
-        {
-            "database_name": record.database_name,
-            "relation_name": record.relation_name,
-            "resource_kind": record.resource_kind,
-            "logical_model_database": record.logical_model_database,
-            "logical_model_name": record.logical_model_name,
-            "tool_version": record.tool_version,
-            "replay_set_id": _direct_replay_set_id(record),
-        }
-        for record in records
-    ]
-    return sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
-
-
-def _direct_replay_range_values(
-    *,
-    records: tuple[AdapterOwnershipRecord, ...],
-    replay_set_id_by_model: dict[tuple[str, str | None, str], str],
-) -> tuple[str, ...]:
-    rendered: list[str] = []
-    seen_replay_sets: set[str] = set()
-    record: AdapterOwnershipRecord
-    for record in records:
-        replay_set_id: str = replay_set_id_by_model[
-            (record.database_name, record.logical_model_database, record.logical_model_name)
-        ]
-        if replay_set_id in seen_replay_sets:
-            continue
-        seen_replay_sets.add(replay_set_id)
-        coverage_rows: tuple[AdapterReplayCoverageRange | None, ...] = (
-            tuple(record.replay_coverage) if record.replay_coverage else (None,)
-        )
-        coverage: AdapterReplayCoverageRange | None
-        for coverage in coverage_rows:
-            values: tuple[object, ...] = (
-                replay_set_id,
-                record.database_name,
-                record.logical_model_database,
-                record.logical_model_name,
-                coverage is not None,
-                None if coverage is None else coverage.driving_input_relation_name,
-                None if coverage is None else str(coverage.replay_boundary_mode),
-                None if coverage is None else _direct_partition_value(coverage),
-                None if coverage is None else coverage.source_partition_column_name,
-                None if coverage is None else coverage.source_position_column_name,
-                None if coverage is None else coverage.source_timestamp_column_name,
-                None if coverage is None else coverage.lower_value,
-                None if coverage is None else coverage.upper_value,
-                None if coverage is None else coverage.upper_value,
-            )
-            literals: str = ", ".join(_render_sql_literal(value) for value in values)
-            rendered.append(f"({literals}, now64(3, 'UTC'))")
-    return tuple(rendered)
-
-
-def _replay_coverage_payload(coverage: AdapterReplayCoverageRange) -> dict[str, str]:
-    return {
-        "driving_input_relation_name": coverage.driving_input_relation_name,
-        "replay_boundary_mode": str(coverage.replay_boundary_mode),
-        "boundary_key": coverage.boundary_key,
-        "source_partition_column_name": coverage.source_partition_column_name or "",
-        "source_position_column_name": coverage.source_position_column_name,
-        "source_timestamp_column_name": coverage.source_timestamp_column_name or "",
-        "lower_value": coverage.lower_value,
-        "upper_value": coverage.upper_value,
-    }
-
-
-def _direct_partition_value(coverage: AdapterReplayCoverageRange) -> str | None:
-    if coverage.replay_boundary_mode != AdapterReplayBoundaryMode.OFFSETS:
-        return None
-    boundary_parts: tuple[str, ...] = tuple(coverage.boundary_key.split("=", 1))
-    if len(boundary_parts) != _BOUNDARY_PART_COUNT or not boundary_parts[1]:
-        raise AdapterResultError(
-            f"Offset replay boundary '{coverage.boundary_key}' has no partition value"
-        )
-    return boundary_parts[1]
-
-
-def _direct_boundary_key(*, mode: str, partition_value: str | None) -> str:
-    replay_mode: AdapterReplayBoundaryMode = AdapterReplayBoundaryMode(mode)
-    if replay_mode == AdapterReplayBoundaryMode.OFFSETS:
-        if partition_value is None:
-            raise AdapterResultError("Offset replay range has no partition value")
-        return f"_replay_partition={partition_value}"
-    return {
-        AdapterReplayBoundaryMode.TIMESTAMP: "_replay_timestamp",
-        AdapterReplayBoundaryMode.LANDED_AT: "_replay_landed_at",
-        AdapterReplayBoundaryMode.CURSOR: "_replay_cursor",
-    }[replay_mode]
-
-
-def _optional_text(value: object) -> str | None:
-    if value in EMPTY_DEFAULT_EXPRESSIONS:
-        return None
-    return str(value)

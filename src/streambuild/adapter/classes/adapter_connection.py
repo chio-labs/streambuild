@@ -7,6 +7,7 @@ from streambuild.adapter.exceptions import AdapterCapabilityError
 from streambuild.adapter.models import (
     AdapterBindingReplacementRequest,
     AdapterCapabilities,
+    AdapterCheckpointReplayRequest,
     AdapterCurrentQualityNode,
     AdapterDeploymentInventory,
     AdapterDeploymentReplayRequest,
@@ -17,8 +18,6 @@ from streambuild.adapter.models import (
     AdapterMetadataState,
     AdapterMutationResult,
     AdapterNodeResultRecord,
-    AdapterOwnershipRecord,
-    AdapterOwnershipReplayRequest,
     AdapterQueryResult,
     AdapterReadinessRequest,
     AdapterReadinessRootObservation,
@@ -57,26 +56,6 @@ class AdapterConnection(ABC):
     @abstractmethod
     def inspect_managed_table_state(self, database: str) -> InspectedManagedTableState:
         """Inspect stable bindings and deployment-specific physical relations."""
-
-    @abstractmethod
-    def load_target_ownership(self, database: str) -> tuple[AdapterOwnershipRecord, ...]:
-        """Load every durable StreamBuild ownership record for one database."""
-
-    @abstractmethod
-    def render_record_target_ownership(
-        self, *, database: str, records: tuple[AdapterOwnershipRecord, ...]
-    ) -> tuple[str, ...]:
-        """Render exact SQL that durably claims the requested relations."""
-
-    @abstractmethod
-    def render_remove_target_ownership(
-        self,
-        *,
-        database: str,
-        target_database: str,
-        relation_names: tuple[str, ...],
-    ) -> tuple[str, ...]:
-        """Render exact SQL that removes retired relation claims."""
 
     @abstractmethod
     def query(self, statement: str) -> AdapterQueryResult:
@@ -159,12 +138,12 @@ class AdapterConnection(ABC):
         """Load persisted deployments and publish events for lifecycle cleanup."""
 
     @abstractmethod
-    def render_replay_from_ownership(self, request: AdapterOwnershipReplayRequest) -> str:
-        """Render one replay that reads its boundary from durable ownership metadata."""
+    def render_replay_from_checkpoint(self, request: AdapterCheckpointReplayRequest) -> str:
+        """Render one replay that reads its boundary from a durable checkpoint."""
 
     @abstractmethod
     def render_replay_coverage_query(self, request: AdapterReplayCoverageRequest) -> str:
-        """Render one query returning replay-window coverage as ownership JSON."""
+        """Render one query returning replay-window checkpoint coverage as JSON."""
 
     def render_replay_from_deployment(
         self, request: AdapterDeploymentReplayRequest

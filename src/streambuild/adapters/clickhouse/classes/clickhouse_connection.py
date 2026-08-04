@@ -12,6 +12,7 @@ from streambuild.adapter.exceptions import AdapterResultError
 from streambuild.adapter.models import (
     AdapterBindingReplacementRequest,
     AdapterCapabilities,
+    AdapterCheckpointReplayRequest,
     AdapterCurrentQualityNode,
     AdapterDeploymentInventory,
     AdapterDeploymentReplayRequest,
@@ -22,8 +23,6 @@ from streambuild.adapter.models import (
     AdapterMetadataState,
     AdapterMutationResult,
     AdapterNodeResultRecord,
-    AdapterOwnershipRecord,
-    AdapterOwnershipReplayRequest,
     AdapterQueryResult,
     AdapterReadinessRequest,
     AdapterReadinessRootObservation,
@@ -47,13 +46,10 @@ from streambuild.adapters.clickhouse._helpers.managed_tables import (
     build_inspected_managed_table_state,
 )
 from streambuild.adapters.clickhouse._helpers.metadata import (
-    load_clickhouse_target_ownership,
     render_clickhouse_latest_node_status_query,
     render_clickhouse_metadata_migration_workflow,
     render_clickhouse_metadata_state,
     render_clickhouse_run_event_inserts,
-    render_clickhouse_target_ownership,
-    render_clickhouse_target_ownership_removal,
 )
 from streambuild.adapters.clickhouse._helpers.readiness import compare_clickhouse_readiness
 from streambuild.adapters.clickhouse._helpers.rendering import (
@@ -62,8 +58,8 @@ from streambuild.adapters.clickhouse._helpers.rendering import (
 )
 from streambuild.adapters.clickhouse._helpers.replay import (
     render_clickhouse_replay_coverage_query,
+    render_clickhouse_replay_from_checkpoint,
     render_clickhouse_replay_from_deployment,
-    render_clickhouse_replay_from_ownership,
 )
 from streambuild.adapters.clickhouse.constants import (
     CLICKHOUSE_ADAPTER_NAME,
@@ -133,33 +129,6 @@ class ClickHouseConnection(AdapterConnection):
         """Inspect ClickHouse stable bindings and deployment-specific tables."""
 
         return build_inspected_managed_table_state(client=self, database=database)
-
-    def load_target_ownership(self, database: str) -> tuple[AdapterOwnershipRecord, ...]:
-        """Load durable StreamBuild ownership records for a ClickHouse database."""
-
-        return load_clickhouse_target_ownership(connection=self, database=database)
-
-    def render_record_target_ownership(
-        self, *, database: str, records: tuple[AdapterOwnershipRecord, ...]
-    ) -> tuple[str, ...]:
-        """Render exact ClickHouse ownership claim SQL."""
-
-        return render_clickhouse_target_ownership(database=database, records=records)
-
-    def render_remove_target_ownership(
-        self,
-        *,
-        database: str,
-        target_database: str,
-        relation_names: tuple[str, ...],
-    ) -> tuple[str, ...]:
-        """Render exact ClickHouse ownership removal SQL."""
-
-        return render_clickhouse_target_ownership_removal(
-            database=database,
-            target_database=target_database,
-            relation_names=relation_names,
-        )
 
     def query(self, statement: str) -> AdapterQueryResult:
         """Execute a ClickHouse query and normalize the returned rows."""
@@ -293,10 +262,10 @@ class ClickHouseConnection(AdapterConnection):
 
         return load_clickhouse_deployment_inventory(connection=self, database=database)
 
-    def render_replay_from_ownership(self, request: AdapterOwnershipReplayRequest) -> str:
-        """Render a fixed-cardinality replay against ownership-stored cutoffs."""
+    def render_replay_from_checkpoint(self, request: AdapterCheckpointReplayRequest) -> str:
+        """Render a fixed-cardinality replay against checkpoint-stored cutoffs."""
 
-        return render_clickhouse_replay_from_ownership(request)
+        return render_clickhouse_replay_from_checkpoint(request)
 
     def render_replay_coverage_query(self, request: AdapterReplayCoverageRequest) -> str:
         """Render retained coverage selected by the replay window."""

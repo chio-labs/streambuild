@@ -85,7 +85,7 @@ def test_given_direct_plan_when_assembling_then_complete_exact_workflow_is_autho
     )
     expected_boundary_windows: tuple[tuple[str, ...], ...] = tuple(
         (
-            f"refresh_boundary_{model_segment}_targets",
+            f"refresh_boundary_{model_segment}_checkpoint",
             f"read_boundary_{model_segment}",
             f"replay_{model_segment}",
         )

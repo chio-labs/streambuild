@@ -102,8 +102,6 @@ WORKFLOW_ASSEMBLER_PATHS: tuple[tuple[str, ...], ...] = (
     ("src", "streambuild", "executor", "observability", "_helpers", "workflow.py"),
 )
 RETIRED_ADAPTER_MUTATION_METHODS: tuple[str, ...] = (
-    "record_target_ownership",
-    "remove_target_ownership",
     "command",
     "insert_rows",
     "ensure_database",

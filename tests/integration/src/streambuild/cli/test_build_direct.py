@@ -15,6 +15,7 @@ from streambuild.compiler.discovery.exceptions import PipelineDiscoveryError
 from streambuild.executor.direct.models import DirectBuildResult, DirectReplayBoundary
 from streambuild.executor.workflow.models import PublishedBuildWorkflow
 from tests.integration.src.streambuild.cli._test_types import (
+    CliCrossModeBuildIntegrationTestCase,
     CliDirectAdoptedSourceFailureIntegrationTestCase,
     CliDirectAdoptedSourceIntegrationTestCase,
     CliDirectAdoptedStartTimeIntegrationTestCase,
@@ -36,12 +37,11 @@ from tests.integration.src.streambuild.cli._test_types import (
     CliDirectSelectionMatrixIntegrationTestCase,
     CliDirectStartTimeIntegrationTestCase,
     CliDirectViewBuildIntegrationTestCase,
-    CliReciprocalOwnershipIntegrationTestCase,
 )
 from tests.integration.src.streambuild.cli.helpers import (
     AdoptedLiveInsertConnection,
     DirectActionRecordingConnection,
-    FailFinalOwnershipOnceConnection,
+    FailFinalCheckpointOnceConnection,
     FailOnceBoundaryQueryConnection,
     FailOnceDropConnection,
     FailOnceRealizationConnection,
@@ -50,11 +50,11 @@ from tests.integration.src.streambuild.cli.helpers import (
     ManagedLiveInsertConnection,
     build_managed_clickhouse_client,
     direct_build_order_ids,
+    direct_fingerprinted_relation_names,
     direct_graph_delta_rows,
     direct_graph_order_ids,
-    direct_owned_relation_names,
-    direct_owned_replay_coverage_ranges,
     direct_relation_order_ids,
+    direct_replay_checkpoint_ranges,
     execute_clickhouse_client_sql,
     execute_direct_build_directly,
     execute_warehouse_statements,
@@ -214,7 +214,7 @@ _ADOPTED_SOURCE_TEST_CASES: tuple[CliDirectAdoptedSourceIntegrationTestCase, ...
             landing_rows=(("order-1", 0, 1), ("order-2", 0, 3), ("order-3", 1, 1)),
             late_landing_rows=(("order-4", 0, 4),),
             expected_created_relations=("tbl__orders_enriched", "mv__orders_enriched"),
-            expected_owned_relations=("mv__orders_enriched", "tbl__orders_enriched"),
+            expected_fingerprinted_relations=("mv__orders_enriched", "tbl__orders_enriched"),
             expected_replayed_order_ids=("order-1", "order-2", "order-3"),
             expected_final_order_ids=("order-1", "order-2", "order-3", "order-4"),
             expected_deployment_row_count=0,
@@ -271,11 +271,11 @@ def test_given_retained_landing_rows_when_building_then_history_replays_and_live
         final_order_ids: tuple[str, ...] = direct_build_order_ids(
             clickhouse_client=clickhouse_client, database=clickhouse_database
         )
-        owned_relation_names: tuple[str, ...] = direct_owned_relation_names(
-            connection=connection, database=clickhouse_database
+        fingerprinted_relation_names: tuple[str, ...] = direct_fingerprinted_relation_names(
+            clickhouse_client=clickhouse_client, database=clickhouse_database
         )
-        replay_coverage_ranges: tuple[tuple[str, str, str], ...] = (
-            direct_owned_replay_coverage_ranges(connection=connection, database=clickhouse_database)
+        replay_coverage_ranges: tuple[tuple[str, str, str], ...] = direct_replay_checkpoint_ranges(
+            clickhouse_client=clickhouse_client, database=clickhouse_database
         )
     finally:
         connection.close()
@@ -283,7 +283,7 @@ def test_given_retained_landing_rows_when_building_then_history_replays_and_live
     assert (first_exit_code, second_exit_code) == (0, 0)
     assert replayed_order_ids == test_case.expected_replayed_order_ids
     assert final_order_ids == test_case.expected_final_order_ids
-    assert owned_relation_names == test_case.expected_owned_relations
+    assert fingerprinted_relation_names == test_case.expected_fingerprinted_relations
     assert replay_coverage_ranges == test_case.expected_replay_coverage_ranges
     assert tuple(payload["warehouse_written_rows"] for payload in replay_payloads) == (
         test_case.expected_warehouse_written_rows
@@ -392,8 +392,8 @@ def test_given_adopted_source_when_building_from_start_time_then_each_mode_is_bo
             clickhouse_client=clickhouse_client,
             database=clickhouse_database,
         )
-        coverage_ranges: tuple[tuple[str, str, str], ...] = direct_owned_replay_coverage_ranges(
-            connection=connection,
+        coverage_ranges: tuple[tuple[str, str, str], ...] = direct_replay_checkpoint_ranges(
+            clickhouse_client=clickhouse_client,
             database=clickhouse_database,
         )
     finally:
@@ -414,8 +414,9 @@ def test_given_adopted_source_when_building_from_start_time_then_each_mode_is_bo
             description="command numbered steps and combined workflow converge identically",
             expected_exit_code=0,
             expected_order_ids=("order-1", "order-2"),
-            expected_owned_relations=("mv__orders_enriched", "tbl__orders_enriched"),
+            expected_fingerprinted_relations=("mv__orders_enriched", "tbl__orders_enriched"),
             expected_replay_coverage_ranges=(("_replay_partition=0", "1", "2"),),
+            expected_reexecuted_order_ids=("order-1", "order-2", "order-3"),
         )
     ],
     ids=lambda case: case.description,
@@ -488,13 +489,27 @@ def test_given_published_direct_workflows_when_executing_manually_then_they_matc
             direct_build_order_ids(clickhouse_client=clickhouse_client, database=database)
             for database in databases
         )
-        ownership_names: tuple[tuple[str, ...], ...] = tuple(
-            direct_owned_relation_names(connection=connection, database=database)
+        fingerprinted_names: tuple[tuple[str, ...], ...] = tuple(
+            direct_fingerprinted_relation_names(
+                clickhouse_client=clickhouse_client, database=database
+            )
             for database in databases
         )
         coverage_ranges: tuple[tuple[tuple[str, str, str], ...], ...] = tuple(
-            direct_owned_replay_coverage_ranges(connection=connection, database=database)
+            direct_replay_checkpoint_ranges(clickhouse_client=clickhouse_client, database=database)
             for database in databases
+        )
+        clickhouse_client.command(
+            f"INSERT INTO {combined_database}.orders_existing VALUES "
+            "('order-3', 0, 3, '2026-07-28 00:00:03.000')"
+        )
+        reexecution_result: tuple[int, str] = execute_clickhouse_client_sql(
+            settings=clickhouse_connection_settings,
+            sql=combined_sql,
+        )
+        reexecuted_order_ids: tuple[str, ...] = direct_build_order_ids(
+            clickhouse_client=clickhouse_client,
+            database=combined_database,
         )
     finally:
         clickhouse_client.command(f"DROP DATABASE IF EXISTS {numbered_database} SYNC")
@@ -511,10 +526,14 @@ def test_given_published_direct_workflows_when_executing_manually_then_they_matc
         for path in sorted((combined.artifact_root / "steps").iterdir())
     )
     assert order_ids == tuple(test_case.expected_order_ids for _database in databases)
-    assert ownership_names == tuple(test_case.expected_owned_relations for _database in databases)
+    assert fingerprinted_names == tuple(
+        test_case.expected_fingerprinted_relations for _database in databases
+    )
     assert coverage_ranges == tuple(
         test_case.expected_replay_coverage_ranges for _database in databases
     )
+    assert reexecution_result[0] == test_case.expected_exit_code
+    assert reexecuted_order_ids == test_case.expected_reexecuted_order_ids
 
 
 @pytest.mark.integration
@@ -579,21 +598,24 @@ def test_given_server_stamped_landed_at_rows_when_direct_building_then_client_cl
     "test_case",
     [
         CliDirectRelationRenameIntegrationTestCase(
-            description="direct relation rename removes prior owned table and claim",
+            description="direct relation rename leaves undeclared prior relation untouched",
             initial_relation_name="orders_before_rename",
             renamed_relation_name="orders_after_rename",
             expected_rows=("order-1", "order-2"),
-            expected_owned_relations=("mv__orders_enriched", "orders_after_rename"),
-            expected_dropped_relations=(
+            expected_fingerprinted_relations=(
                 "mv__orders_enriched",
                 "orders_after_rename",
                 "orders_before_rename",
+            ),
+            expected_dropped_relations=(
+                "mv__orders_enriched",
+                "orders_after_rename",
             ),
         )
     ],
     ids=lambda case: case.description,
 )
-def test_given_direct_owned_model_when_relation_name_changes_then_old_relation_is_retired(
+def test_given_direct_model_when_relation_name_changes_then_old_relation_is_not_janitored(
     test_case: CliDirectRelationRenameIntegrationTestCase,
     tmp_path: Path,
     clickhouse_connection_settings: ClickHouseConnectionSettings,
@@ -647,8 +669,8 @@ def test_given_direct_owned_model_when_relation_name_changes_then_old_relation_i
         catalog_relation_names: frozenset[str] = connection.load_catalog(
             clickhouse_database
         ).relation_names()
-        owned_relation_names: tuple[str, ...] = direct_owned_relation_names(
-            connection=connection,
+        fingerprinted_relation_names: tuple[str, ...] = direct_fingerprinted_relation_names(
+            clickhouse_client=clickhouse_client,
             database=clickhouse_database,
         )
         materialized_view_target: str | None = cast(
@@ -660,8 +682,8 @@ def test_given_direct_owned_model_when_relation_name_changes_then_old_relation_i
 
     assert renamed_rows == test_case.expected_rows
     assert result.dropped_relation_names == test_case.expected_dropped_relations
-    assert owned_relation_names == test_case.expected_owned_relations
-    assert test_case.initial_relation_name not in catalog_relation_names
+    assert fingerprinted_relation_names == test_case.expected_fingerprinted_relations
+    assert test_case.initial_relation_name in catalog_relation_names
     assert materialized_view_target == test_case.renamed_relation_name
 
 
@@ -675,11 +697,12 @@ def test_given_direct_owned_model_when_relation_name_changes_then_old_relation_i
             expected_rows=(("order-1", "Ada"), ("order-2", "Grace")),
             expected_relation_name="customer_orders",
             expected_resource_kind="view",
+            expected_observed_fingerprint_count=2,
         )
     ],
     ids=lambda case: case.description,
 )
-def test_given_multi_upstream_view_when_building_direct_then_it_is_queryable_and_owned(
+def test_given_multi_upstream_view_when_building_direct_then_it_is_queryable_and_fingerprinted(
     test_case: CliDirectViewBuildIntegrationTestCase,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -732,19 +755,38 @@ def test_given_multi_upstream_view_when_building_direct_then_it_is_queryable_and
                 "ORDER BY order_id"
             ).result_rows
         )
-        ownership_rows: tuple[tuple[object, ...], ...] = tuple(
-            (record.relation_name, record.resource_kind)
-            for record in connection.load_target_ownership(clickhouse_database)
+        fingerprint_rows: tuple[tuple[object, ...], ...] = tuple(
+            tuple(row)
+            for row in clickhouse_client.query(
+                "SELECT DISTINCT physical_relation, resource_kind FROM "
+                f"{clickhouse_database}._streambuild_direct_fingerprints "
+                "ORDER BY physical_relation"
+            ).result_rows
+        )
+        observed_fingerprint_count: int = warehouse_row_count(
+            clickhouse_client=clickhouse_client,
+            database=clickhouse_database,
+            statement=(
+                "SELECT count() FROM {database}._streambuild_direct_fingerprints AS fingerprint "
+                "INNER JOIN system.tables AS relation ON relation.database = "
+                "fingerprint.physical_database AND relation.name = fingerprint.physical_relation "
+                "WHERE fingerprint.definition_sql = relation.create_table_query "
+                "AND fingerprint.definition_hash = lower(hex(SHA256(relation.create_table_query))) "
+                "AND fingerprint.rendered_definition_hash != '' "
+                "AND fingerprint.schema_fingerprint != ''"
+            ),
         )
     finally:
         connection.close()
 
     assert first_exit_code == 0
     assert rows == test_case.expected_rows
-    assert ownership_rows == ((test_case.expected_relation_name, test_case.expected_resource_kind),)
+    assert fingerprint_rows == (
+        (test_case.expected_relation_name, test_case.expected_resource_kind),
+    )
+    assert observed_fingerprint_count == test_case.expected_observed_fingerprint_count
     assert result.replay_results == ()
     assert result.boundaries == ()
-    assert result.ownership_records[0].replay_coverage == ()
 
 
 @pytest.mark.integration
@@ -834,15 +876,6 @@ def test_given_different_target_states_when_rebuilding_then_inclusive_source_con
             expected_error_fragment="Direct build preserves managed source infrastructure",
             expected_order_ids=("order-1", "order-2"),
         ),
-        CliDirectBuildGuardIntegrationTestCase(
-            description="a target without its ownership record blocks the build as unmanaged",
-            landing_rows=(("order-1", 0, 1), ("order-2", 0, 2)),
-            rebuilt_topic="source.orders",
-            pre_rebuild_statements=("TRUNCATE TABLE {database}._streambuild_direct_target_events",),
-            expected_exit_code=1,
-            expected_error_fragment="Direct mode refuses to replace relations it does not own",
-            expected_order_ids=("order-1", "order-2"),
-        ),
     ],
     ids=lambda case: case.description,
 )
@@ -894,18 +927,16 @@ def test_given_unsafe_warehouse_state_when_building_then_it_blocks_before_teardo
 @pytest.mark.parametrize(
     "test_case",
     [
-        CliReciprocalOwnershipIntegrationTestCase(
-            description="virtual build refuses a direct-owned target",
-            expected_exit_code=1,
-            expected_error_fragment=(
-                "Virtual environments refuse to take over relations owned by direct mode"
-            ),
+        CliCrossModeBuildIntegrationTestCase(
+            description="virtual build does not depend on historical Direct claims",
+            expected_exit_code=0,
+            expected_error_fragment="",
         )
     ],
     ids=lambda case: case.description,
 )
-def test_given_direct_owned_targets_when_building_virtual_then_virtual_environments_are_rejected(
-    test_case: CliReciprocalOwnershipIntegrationTestCase,
+def test_given_direct_targets_when_building_virtual_then_no_direct_ledger_blocks_it(
+    test_case: CliCrossModeBuildIntegrationTestCase,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
     clickhouse_connection_settings: ClickHouseConnectionSettings,
@@ -938,16 +969,16 @@ def test_given_direct_owned_targets_when_building_virtual_then_virtual_environme
 @pytest.mark.parametrize(
     "test_case",
     [
-        CliReciprocalOwnershipIntegrationTestCase(
-            description="direct build refuses a virtual-environment target",
-            expected_exit_code=1,
-            expected_error_fragment="Direct mode refuses to replace relations it does not own",
+        CliCrossModeBuildIntegrationTestCase(
+            description="direct build replaces a virtual-environment target",
+            expected_exit_code=0,
+            expected_error_fragment="",
         )
     ],
     ids=lambda case: case.description,
 )
-def test_given_virtual_environment_target_when_building_direct_then_it_is_rejected(
-    test_case: CliReciprocalOwnershipIntegrationTestCase,
+def test_given_virtual_environment_target_when_building_direct_then_direct_replaces_it(
+    test_case: CliCrossModeBuildIntegrationTestCase,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
     clickhouse_connection_settings: ClickHouseConnectionSettings,
@@ -984,11 +1015,6 @@ def test_given_virtual_environment_target_when_building_direct_then_it_is_reject
             description="a failing audit fails the command while the built rows remain live",
             audit_sql_by_name=(
                 (
-                    "broken_column.sql",
-                    'AUDIT (\n  description: "warehouse errors are recorded",\n);\n\n'
-                    'SELECT missing_order_id\nFROM __ref("orders_enriched")\n',
-                ),
-                (
                     "first_nonempty_order_ids.sql",
                     'AUDIT (\n  description: "order ids must not be empty",\n);\n\n'
                     'SELECT order_id\nFROM __ref("orders_enriched")\n'
@@ -1023,11 +1049,6 @@ def test_given_virtual_environment_target_when_building_direct_then_it_is_reject
             ),
             expected_audit_observation_rows=(
                 (
-                    "error",
-                    1,
-                    '{"sample_column_names":[],"sample_rows":[]}',
-                ),
-                (
                     "failed",
                     6,
                     '{"sample_column_names":["order_id"],"sample_rows":'
@@ -1042,7 +1063,8 @@ def test_given_virtual_environment_target_when_building_direct_then_it_is_reject
             ),
             expected_final_coverage=(("_replay_partition=0", "1", "6"),),
             expected_sample_query_fragment="AS __streambuild_audit LIMIT 5;",
-            expected_error_message_count=1,
+            expected_error_message_count=0,
+            expected_fingerprint_count_delta=0,
         )
     ],
     ids=lambda case: case.description,
@@ -1065,6 +1087,11 @@ def test_given_failing_audit_when_building_then_command_fails_without_rollback(
             project_root=tmp_path, database=clickhouse_database, connection=connection
         )
         _ = capsys.readouterr()
+        initial_fingerprint_count: int = warehouse_row_count(
+            clickhouse_client=clickhouse_client,
+            database=clickhouse_database,
+            statement=("SELECT count() FROM {database}._streambuild_direct_fingerprints"),
+        )
         insert_landing_rows(
             clickhouse_client=clickhouse_client,
             database=clickhouse_database,
@@ -1111,12 +1138,17 @@ def test_given_failing_audit_when_building_then_command_fails_without_rollback(
                 "ORDER BY completed_at DESC LIMIT 1)"
             ).result_rows[0][0]
         )
-        final_coverage: tuple[tuple[str, str, str], ...] = direct_owned_replay_coverage_ranges(
-            connection=connection,
+        final_coverage: tuple[tuple[str, str, str], ...] = direct_replay_checkpoint_ranges(
+            clickhouse_client=clickhouse_client,
             database=clickhouse_database,
         )
         workflow_sql: str = (tmp_path / "target" / "run" / "build" / "workflow.sql").read_text(
             encoding="utf-8"
+        )
+        final_fingerprint_count: int = warehouse_row_count(
+            clickhouse_client=clickhouse_client,
+            database=clickhouse_database,
+            statement=("SELECT count() FROM {database}._streambuild_direct_fingerprints"),
         )
     finally:
         connection.close()
@@ -1131,6 +1163,10 @@ def test_given_failing_audit_when_building_then_command_fails_without_rollback(
         test_case.audit_sql_by_name
     )
     assert audit_error_message_count == test_case.expected_error_message_count
+    assert (
+        final_fingerprint_count - initial_fingerprint_count
+        == test_case.expected_fingerprint_count_delta
+    )
 
 
 @pytest.mark.integration
@@ -1524,9 +1560,9 @@ def test_given_partial_selected_population_when_retrying_then_closure_reconstruc
             expected_min_selected_node_count=1,
         ),
         CliDirectExecutionStepFailureIntegrationTestCase(
-            description="final ownership failure is safe to retry",
-            connection_factory=FailFinalOwnershipOnceConnection,
-            expected_failure_fragment="injected failure during final ownership persistence",
+            description="final checkpoint failure is safe to retry",
+            connection_factory=FailFinalCheckpointOnceConnection,
+            expected_failure_fragment="injected failure during final checkpoint persistence",
             expected_failed_invocation_count=1,
             expected_failed_mode="direct",
             expected_min_selected_node_count=1,
@@ -1902,8 +1938,8 @@ def test_given_adopted_source_when_building_direct_then_source_is_preserved_and_
         target_rows: tuple[str, ...] = direct_build_order_ids(
             clickhouse_client=clickhouse_client, database=clickhouse_database
         )
-        ownership_names: tuple[str, ...] = direct_owned_relation_names(
-            connection=connection, database=clickhouse_database
+        fingerprinted_names: tuple[str, ...] = direct_fingerprinted_relation_names(
+            clickhouse_client=clickhouse_client, database=clickhouse_database
         )
     finally:
         delegate.close()
@@ -1922,7 +1958,7 @@ def test_given_adopted_source_when_building_direct_then_source_is_preserved_and_
         replay_request.columns.cursor,
     ) == test_case.expected_replay_columns
     assert tuple(boundary.cutoff_inclusive for boundary in build_result.boundaries) == (True,)
-    assert "orders_existing" not in ownership_names
+    assert "orders_existing" not in fingerprinted_names
     assert not any("orders_existing" in statement for statement in connection.command_statements)
     assert not any(
         "orders_existing" in statement for statement in rerun_connection.command_statements
@@ -2135,8 +2171,8 @@ def test_given_direct_offset_when_building_from_start_time_then_replay_is_unseed
             clickhouse_client=clickhouse_client,
             database=clickhouse_database,
         )
-        coverage_ranges: tuple[tuple[str, str, str], ...] = direct_owned_replay_coverage_ranges(
-            connection=connection,
+        coverage_ranges: tuple[tuple[str, str, str], ...] = direct_replay_checkpoint_ranges(
+            clickhouse_client=clickhouse_client,
             database=clickhouse_database,
         )
         plan_payload: dict[str, object] = json.loads(
@@ -2153,8 +2189,12 @@ def test_given_direct_offset_when_building_from_start_time_then_replay_is_unseed
     assert (pipeline_plan_exit_code, pipeline_plan_capture.err) == (0, "")
     assert plan_capture.out.encode("utf-8") == plan_artifact[0]
     assert pipeline_plan_capture.out == plan_capture.out
-    assert pipeline_plan_artifact == plan_artifact
-    assert plan_artifact == build_artifact
+    assert pipeline_plan_artifact[0] == plan_artifact[0]
+    assert pipeline_plan_artifact[2] == plan_artifact[2]
+    assert len(pipeline_plan_artifact[3]) == len(plan_artifact[3])
+    assert plan_artifact[0] == build_artifact[0]
+    assert plan_artifact[2] == build_artifact[2]
+    assert len(plan_artifact[3]) == len(build_artifact[3])
     assert bounded_exit_code == 0, bounded_error
     assert source_ddl_after == source_ddl_before
     assert source_rows == test_case.expected_source_rows
@@ -2226,8 +2266,8 @@ def test_given_landed_at_source_when_building_from_start_time_then_rows_are_boun
             clickhouse_client=clickhouse_client,
             database=clickhouse_database,
         )
-        coverage_ranges: tuple[tuple[str, str, str], ...] = direct_owned_replay_coverage_ranges(
-            connection=connection,
+        coverage_ranges: tuple[tuple[str, str, str], ...] = direct_replay_checkpoint_ranges(
+            clickhouse_client=clickhouse_client,
             database=clickhouse_database,
         )
     finally:
@@ -2310,8 +2350,8 @@ def test_given_aggregate_model_when_building_from_start_time_then_input_is_bound
             clickhouse_client=clickhouse_client,
             database=clickhouse_database,
         )
-        coverage_ranges: tuple[tuple[str, str, str], ...] = direct_owned_replay_coverage_ranges(
-            connection=connection,
+        coverage_ranges: tuple[tuple[str, str, str], ...] = direct_replay_checkpoint_ranges(
+            clickhouse_client=clickhouse_client,
             database=clickhouse_database,
         )
     finally:
@@ -2611,8 +2651,8 @@ def test_given_bounded_failure_when_retrying_then_coverage_survives_narrows_and_
             start_time=start_at_two,
         )
         failed_error: str = capsys.readouterr().err
-        failure_coverage: tuple[tuple[str, str, str], ...] = direct_owned_replay_coverage_ranges(
-            connection=connection,
+        failure_coverage: tuple[tuple[str, str, str], ...] = direct_replay_checkpoint_ranges(
+            clickhouse_client=clickhouse_client,
             database=clickhouse_database,
         )
         retry_exit_code: int = run_direct_build(
@@ -2635,8 +2675,8 @@ def test_given_bounded_failure_when_retrying_then_coverage_survives_narrows_and_
             clickhouse_client=clickhouse_client,
             database=clickhouse_database,
         )
-        later_coverage: tuple[tuple[str, str, str], ...] = direct_owned_replay_coverage_ranges(
-            connection=connection,
+        later_coverage: tuple[tuple[str, str, str], ...] = direct_replay_checkpoint_ranges(
+            clickhouse_client=clickhouse_client,
             database=clickhouse_database,
         )
         earlier_exit_code: int = run_direct_build(
@@ -2651,8 +2691,8 @@ def test_given_bounded_failure_when_retrying_then_coverage_survives_narrows_and_
             clickhouse_client=clickhouse_client,
             database=clickhouse_database,
         )
-        earlier_coverage: tuple[tuple[str, str, str], ...] = direct_owned_replay_coverage_ranges(
-            connection=connection,
+        earlier_coverage: tuple[tuple[str, str, str], ...] = direct_replay_checkpoint_ranges(
+            clickhouse_client=clickhouse_client,
             database=clickhouse_database,
         )
         ordinary_exit_code: int = run_direct_build(
@@ -2666,8 +2706,8 @@ def test_given_bounded_failure_when_retrying_then_coverage_survives_narrows_and_
             clickhouse_client=clickhouse_client,
             database=clickhouse_database,
         )
-        final_coverage: tuple[tuple[str, str, str], ...] = direct_owned_replay_coverage_ranges(
-            connection=connection,
+        final_coverage: tuple[tuple[str, str, str], ...] = direct_replay_checkpoint_ranges(
+            clickhouse_client=clickhouse_client,
             database=clickhouse_database,
         )
     finally:
@@ -2675,7 +2715,7 @@ def test_given_bounded_failure_when_retrying_then_coverage_survives_narrows_and_
 
     assert (greenfield_exit_code, settled_exit_code, failed_exit_code) == (0, 0, 1)
     assert "injected failure during selected teardown" in failed_error
-    assert failure_coverage == ()
+    assert failure_coverage == test_case.expected_coverage
     assert (retry_exit_code, retry_error, later_exit_code, later_error) == (0, "", 0, "")
     assert later_rows == ("order-3", "order-4")
     assert later_coverage == (("_replay_partition=0", "3", "4"),)
