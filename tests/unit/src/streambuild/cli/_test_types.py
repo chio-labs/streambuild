@@ -5,6 +5,12 @@ from streambuild.adapter.models import CatalogRelation
 
 
 @dataclass(frozen=True)
+class CliDevRefactorTestCase:
+    description: str
+    expected_value: object
+
+
+@dataclass(frozen=True)
 class CliMainTestCase:
     description: str
     argv: tuple[str, ...]

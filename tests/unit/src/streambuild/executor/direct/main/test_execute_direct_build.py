@@ -30,6 +30,7 @@ from tests.unit.src.streambuild.executor.direct.main.helpers import (
             expected_first_phase=WorkflowPhase.PREPARATION,
             expected_last_phase=WorkflowPhase.FINALIZATION,
             expected_replay_count=2,
+            expected_boundary_model_segments=("beta", "delta"),
         )
     ],
     ids=lambda case: case.description,
@@ -72,6 +73,25 @@ def test_given_direct_plan_when_assembling_then_complete_exact_workflow_is_autho
     assert sum(statement.step_id.startswith("replay_") for statement in statements) == (
         test_case.expected_replay_count
     )
+    step_ids: tuple[str, ...] = tuple(statement.step_id for statement in statements)
+    boundary_windows: tuple[tuple[str, ...], ...] = tuple(
+        step_ids[
+            step_ids.index(f"read_boundary_{model_segment}") - 1 : step_ids.index(
+                f"read_boundary_{model_segment}"
+            )
+            + 2
+        ]
+        for model_segment in test_case.expected_boundary_model_segments
+    )
+    expected_boundary_windows: tuple[tuple[str, ...], ...] = tuple(
+        (
+            f"refresh_boundary_{model_segment}_targets",
+            f"read_boundary_{model_segment}",
+            f"replay_{model_segment}",
+        )
+        for model_segment in test_case.expected_boundary_model_segments
+    )
+    assert boundary_windows == expected_boundary_windows
     assert step_bytes == tuple(statement.sql for statement in statements)
     assert (published.artifact_root / "workflow.sql").read_text(encoding="utf-8") == (
         "\n".join(statement.sql for statement in statements)

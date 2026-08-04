@@ -405,14 +405,15 @@ def _add_compilation_config_args_to_commands(
 def _add_dev_parser(*, subparsers: argparse._SubParsersAction) -> None:
     dev_parser: argparse.ArgumentParser = subparsers.add_parser(
         "dev",
-        help="Serve the local read-only web UI for this project",
+        help="Serve the local web UI for this project",
         description=(
             "Compile the project, then serve the StreamBuild UI and its JSON API "
-            "until interrupted. Read-only: nothing is ever executed against the "
-            "warehouse beyond queries."
+            "until interrupted. Builds requested in the UI execute through the same "
+            "resolved project context as the dev command."
         ),
     )
     _add_project_dir_arg(parser=dev_parser)
+    _add_compilation_config_args(parser=dev_parser)
     _add_clickhouse_args(parser=dev_parser)
     dev_parser.add_argument(
         "--ui-host",

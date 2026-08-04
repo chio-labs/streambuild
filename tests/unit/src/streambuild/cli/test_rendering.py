@@ -1115,6 +1115,7 @@ def test_given_forced_color_when_rendering_plan_then_it_includes_ansi_styles(
     test_case: CliRenderingTestCase,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.delenv("NO_COLOR", raising=False)
     monkeypatch.setenv("FORCE_COLOR", "1")
 
     rendered: str = render_plan_result(
@@ -1288,6 +1289,7 @@ def test_given_forced_color_when_rendering_audit_then_it_colors_root_names(
     test_case: CliRenderingTestCase,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.delenv("NO_COLOR", raising=False)
     monkeypatch.setenv("FORCE_COLOR", "1")
 
     rendered: str = render_audit_backfill_result(

@@ -5,6 +5,10 @@ class DevServerError(RuntimeError):
     """Raised when the dev server cannot satisfy a request."""
 
 
+class DevConfigurationError(DevServerError):
+    """Raised when retained dev server configuration is internally inconsistent."""
+
+
 class ProjectNotCompiledError(DevServerError):
     """Raised when a request needs definitions but the project compile is failing."""
 

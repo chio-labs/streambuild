@@ -50,12 +50,25 @@ def dispatch_cli_command(
         adapter_connection=adapter_connection,
     )
     if args.command == CliCommand.DEV:
+        effective_target: str | None = (
+            None
+            if invocation.loaded_project is None
+            or invocation.loaded_project.effective_configuration is None
+            else invocation.loaded_project.effective_configuration.target_name
+        )
         return handlers.run_dev(
             options=DevCommandOptions(
                 pipelines_root=_require_pipelines_root(invocation),
                 database=invocation.database,
                 host=str(getattr(args, "ui_host", DEFAULT_DEV_SERVER_HOST)),
                 port=int(getattr(args, "ui_port", DEFAULT_DEV_SERVER_PORT)),
+                selected_target=effective_target or getattr(args, "target", None),
+                cli_variables=tuple(getattr(args, "vars", {}).items()),
+                environment=invocation.connection.environment,
+                connection_host=invocation.connection.host,
+                connection_port=invocation.connection.port,
+                connection_username=invocation.connection.username,
+                connection_password=invocation.connection.password,
             ),
             client=client,
             loaded_project=invocation.loaded_project,

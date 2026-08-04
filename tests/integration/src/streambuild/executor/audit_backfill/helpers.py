@@ -154,8 +154,8 @@ def prepare_audit_resolution_scenario(
                 kafka_key="historical-order",
                 _replay_partition=0,
                 _replay_offset=1,
-                _replay_timestamp="2026-04-09 20:59:59.000",
-                _replay_landed_at="2026-04-09 20:59:59.000",
+                _replay_timestamp="2026-04-09 19:59:59.000",
+                _replay_landed_at="2026-04-09 19:59:59.000",
             )
         ],
         column_names=[

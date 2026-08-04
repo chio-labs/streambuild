@@ -171,8 +171,8 @@ class FakeAdapterConnection(AdapterConnection):
         self._warehouse_timestamp = warehouse_timestamp
 
     @property
-    def adapter_identity(self) -> object:
-        raise NotImplementedError
+    def adapter_identity(self) -> AdapterIdentity:
+        return AdapterIdentity(name="clickhouse")
 
     @property
     def capabilities(self) -> AdapterCapabilities:

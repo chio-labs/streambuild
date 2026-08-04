@@ -2,6 +2,12 @@ from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
+class DevRefactorTestCase:
+    description: str
+    expected_value: object
+
+
+@dataclass(frozen=True)
 class CompileOutcomeTestCase:
     description: str
     break_compile: bool

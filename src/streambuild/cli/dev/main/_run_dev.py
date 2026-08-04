@@ -16,6 +16,7 @@ from streambuild.compiler.discovery.models import LoadedProject
 from streambuild.compiler.pipeline.main.analyze_project import analyze_project
 from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.dev_server.main.run_dev_server import run_dev_server
+from streambuild.dev_server.models import DevExecutionContext
 
 
 def run_dev(
@@ -28,10 +29,27 @@ def run_dev(
     """Serve the dev UI and API over this project until interrupted."""
 
     project_dir: Path = options.pipelines_root.parent
+    execution_context: DevExecutionContext = DevExecutionContext(
+        database=options.database,
+        selected_target=options.selected_target,
+        cli_variables=options.cli_variables,
+        environment=options.environment,
+        connection_host=options.connection_host,
+        connection_port=options.connection_port,
+        connection_username=options.connection_username,
+        connection_password=options.connection_password,
+    )
 
     def run_compile() -> CompileAnalysis:
         reloaded: LoadedProject | None = (
-            load_project_input_for_path(path=project_dir) if loaded_project is not None else None
+            load_project_input_for_path(
+                path=project_dir,
+                selected_target=execution_context.selected_target,
+                cli_variables=dict(execution_context.cli_variables),
+                environment=execution_context.environment,
+            )
+            if loaded_project is not None
+            else None
         )
         return analyze_project(
             pipelines_root=options.pipelines_root,
@@ -47,4 +65,5 @@ def run_dev(
         host=options.host,
         port=options.port,
         reporter=DevTerminalReporter(style=cli_style()),
+        execution_context=execution_context,
     )
