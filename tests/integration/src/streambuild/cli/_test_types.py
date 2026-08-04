@@ -246,25 +246,11 @@ class CliDirectBuildAuditIntegrationTestCase:
 class CliDirectBuildRerunIntegrationTestCase:
     description: str
     landing_rows: tuple[tuple[str, int, int], ...]
-    restored_landing_rows: tuple[tuple[str, int, int], ...]
     late_landing_rows: tuple[tuple[str, int, int], ...]
     expected_failed_exit_code: int
     expected_incomplete_target_count: int
-    expected_retention_exit_code: int
-    expected_retention_error_fragment: str
     expected_rerun_exit_code: int
     expected_final_order_ids: tuple[str, ...]
-
-
-@dataclass(frozen=True)
-class CliDirectBuildPartialFailureIntegrationTestCase:
-    description: str
-    landing_rows: tuple[tuple[str, int, int], ...]
-    partial_landing_rows: tuple[tuple[str, int, int], ...]
-    expected_failed_exit_code: int
-    expected_retention_exit_code: int
-    expected_retention_error_fragment: str
-    expected_partial_order_ids: tuple[str, ...]
 
 
 @dataclass(frozen=True)

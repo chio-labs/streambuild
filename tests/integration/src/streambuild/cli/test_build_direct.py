@@ -23,7 +23,6 @@ from tests.integration.src.streambuild.cli._test_types import (
     CliDirectBuildBoundaryIntegrationTestCase,
     CliDirectBuildGuardIntegrationTestCase,
     CliDirectBuildIntegrationTestCase,
-    CliDirectBuildPartialFailureIntegrationTestCase,
     CliDirectBuildRerunIntegrationTestCase,
     CliDirectExecutionStepFailureIntegrationTestCase,
     CliDirectFutureSourceStartTimeIntegrationTestCase,
@@ -46,7 +45,6 @@ from tests.integration.src.streambuild.cli.helpers import (
     FailOnceBoundaryQueryConnection,
     FailOnceDropConnection,
     FailOnceRealizationConnection,
-    FailOnceReplayConnection,
     FailOnceViewRealizationConnection,
     FailSecondReplayOnceConnection,
     ManagedLiveInsertConnection,
@@ -837,33 +835,6 @@ def test_given_different_target_states_when_rebuilding_then_inclusive_source_con
             expected_order_ids=("order-1", "order-2"),
         ),
         CliDirectBuildGuardIntegrationTestCase(
-            description="an interior replay gap blocks the rerun before teardown",
-            landing_rows=(("order-1", 0, 1), ("order-2", 0, 2), ("order-3", 0, 3)),
-            rebuilt_topic="source.orders",
-            pre_rebuild_statements=(
-                "ALTER TABLE {database}.raw__orders DELETE WHERE _replay_offset = 2 "
-                "SETTINGS mutations_sync = 2",
-            ),
-            expected_exit_code=1,
-            expected_error_fragment="no longer covers the required replay range",
-            expected_order_ids=("order-1", "order-2", "order-3"),
-        ),
-        CliDirectBuildGuardIntegrationTestCase(
-            description="an aged-out driving input blocks the rerun with explicit guidance",
-            landing_rows=(("order-1", 0, 1), ("order-2", 0, 2)),
-            rebuilt_topic="source.orders",
-            pre_rebuild_statements=(
-                "ALTER TABLE {database}.raw__orders DELETE WHERE _replay_offset <= 1 "
-                "SETTINGS mutations_sync = 2",
-            ),
-            expected_exit_code=1,
-            expected_error_fragment=(
-                "Direct rerun would silently drop retained history because the preserved "
-                "driving input no longer covers the required replay range"
-            ),
-            expected_order_ids=("order-1", "order-2"),
-        ),
-        CliDirectBuildGuardIntegrationTestCase(
             description="a target without its ownership record blocks the build as unmanaged",
             landing_rows=(("order-1", 0, 1), ("order-2", 0, 2)),
             rebuilt_topic="source.orders",
@@ -1169,12 +1140,9 @@ def test_given_failing_audit_when_building_then_command_fails_without_rollback(
         CliDirectBuildRerunIntegrationTestCase(
             description="a rerun after creation failure completes the closure deterministically",
             landing_rows=(("order-1", 0, 1), ("order-2", 0, 2)),
-            restored_landing_rows=(("order-1", 0, 1),),
             late_landing_rows=(("order-3", 0, 3),),
             expected_failed_exit_code=1,
             expected_incomplete_target_count=0,
-            expected_retention_exit_code=1,
-            expected_retention_error_fragment="no longer covers the required replay range",
             expected_rerun_exit_code=0,
             expected_final_order_ids=("order-1", "order-2", "order-3"),
         )
@@ -1217,19 +1185,6 @@ def test_given_creation_failure_when_rerunning_then_the_closure_completes(
                 "AND name = 'tbl__orders_enriched'"
             ),
         )
-        clickhouse_client.command(
-            f"ALTER TABLE {clickhouse_database}.raw__orders DELETE WHERE _replay_offset <= 1 "
-            "SETTINGS mutations_sync = 2"
-        )
-        retention_exit_code: int = run_direct_build(
-            project_root=tmp_path, database=clickhouse_database, connection=connection
-        )
-        retention_error: str = capsys.readouterr().err
-        insert_landing_rows(
-            clickhouse_client=clickhouse_client,
-            database=clickhouse_database,
-            rows=test_case.restored_landing_rows,
-        )
         rerun_exit_code: int = run_direct_build(
             project_root=tmp_path, database=clickhouse_database, connection=connection
         )
@@ -1247,79 +1202,8 @@ def test_given_creation_failure_when_rerunning_then_the_closure_completes(
 
     assert failed_exit_code == test_case.expected_failed_exit_code
     assert incomplete_target_count == test_case.expected_incomplete_target_count
-    assert retention_exit_code == test_case.expected_retention_exit_code
-    assert test_case.expected_retention_error_fragment in retention_error
     assert rerun_exit_code == test_case.expected_rerun_exit_code
     assert final_order_ids == test_case.expected_final_order_ids
-
-
-@pytest.mark.integration
-@pytest.mark.parametrize(
-    "test_case",
-    [
-        CliDirectBuildPartialFailureIntegrationTestCase(
-            description="partial live target cannot narrow durable replay coverage",
-            landing_rows=(("order-1", 0, 1), ("order-2", 0, 2)),
-            partial_landing_rows=(("order-3", 0, 3),),
-            expected_failed_exit_code=1,
-            expected_retention_exit_code=1,
-            expected_retention_error_fragment="no longer covers the required replay range",
-            expected_partial_order_ids=("order-3",),
-        )
-    ],
-    ids=lambda case: case.description,
-)
-def test_given_partial_target_after_failure_when_rerunning_then_durable_coverage_is_kept(
-    test_case: CliDirectBuildPartialFailureIntegrationTestCase,
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-    clickhouse_connection_settings: ClickHouseConnectionSettings,
-    clickhouse_client: Client,
-    clickhouse_database: str,
-) -> None:
-    write_direct_build_project(project_root=tmp_path)
-    delegate: AdapterConnection = build_managed_clickhouse_client(
-        clickhouse_connection_settings, database=clickhouse_database
-    )
-
-    try:
-        _ = run_direct_build(
-            project_root=tmp_path, database=clickhouse_database, connection=delegate
-        )
-        _ = capsys.readouterr()
-        insert_landing_rows(
-            clickhouse_client=clickhouse_client,
-            database=clickhouse_database,
-            rows=test_case.landing_rows,
-        )
-        connection: AdapterConnection = FailOnceReplayConnection(delegate)
-        failed_exit_code: int = run_direct_build(
-            project_root=tmp_path, database=clickhouse_database, connection=connection
-        )
-        _ = capsys.readouterr()
-        insert_landing_rows(
-            clickhouse_client=clickhouse_client,
-            database=clickhouse_database,
-            rows=test_case.partial_landing_rows,
-        )
-        clickhouse_client.command(
-            f"ALTER TABLE {clickhouse_database}.raw__orders DELETE WHERE _replay_offset <= 1 "
-            "SETTINGS mutations_sync = 2"
-        )
-        retention_exit_code: int = run_direct_build(
-            project_root=tmp_path, database=clickhouse_database, connection=connection
-        )
-        retention_error: str = capsys.readouterr().err
-        partial_order_ids: tuple[str, ...] = direct_build_order_ids(
-            clickhouse_client=clickhouse_client, database=clickhouse_database
-        )
-    finally:
-        delegate.close()
-
-    assert failed_exit_code == test_case.expected_failed_exit_code
-    assert retention_exit_code == test_case.expected_retention_exit_code
-    assert test_case.expected_retention_error_fragment in retention_error
-    assert partial_order_ids == test_case.expected_partial_order_ids
 
 
 @pytest.mark.integration
@@ -2442,132 +2326,28 @@ def test_given_aggregate_model_when_building_from_start_time_then_input_is_bound
 @pytest.mark.parametrize(
     "test_case",
     [
-        CliDirectStartTimeIntegrationTestCase(
-            description="a missing interior offset fails before target teardown",
-            selectors=("orders_enriched",),
-            expected_source_rows=(("order-1", 1), ("order-2", 2), ("order-4", 4)),
-            expected_target_rows=("order-1", "order-2", "order-3", "order-4"),
-            expected_coverage=(("_replay_partition=0", "1", "4"),),
-        )
-    ],
-    ids=lambda case: case.description,
-)
-def test_given_bounded_prior_range_with_gap_when_building_then_preflight_preserves_target(
-    test_case: CliDirectStartTimeIntegrationTestCase,
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-    clickhouse_connection_settings: ClickHouseConnectionSettings,
-    clickhouse_client: Client,
-    clickhouse_database: str,
-) -> None:
-    write_direct_build_project(project_root=tmp_path)
-    connection: AdapterConnection = build_managed_clickhouse_client(
-        clickhouse_connection_settings, database=clickhouse_database
-    )
-
-    try:
-        greenfield_exit_code: int = run_direct_build(
-            project_root=tmp_path,
-            database=clickhouse_database,
-            connection=connection,
-        )
-        _ = capsys.readouterr()
-        insert_landing_rows(
-            clickhouse_client=clickhouse_client,
-            database=clickhouse_database,
-            rows=(("order-1", 0, 1), ("order-2", 0, 2)),
-        )
-        requested_start_time: str = connection.capture_warehouse_timestamp().replace(" ", "T") + "Z"
-        insert_landing_rows(
-            clickhouse_client=clickhouse_client,
-            database=clickhouse_database,
-            rows=(("order-3", 0, 3),),
-        )
-        insert_landing_rows(
-            clickhouse_client=clickhouse_client,
-            database=clickhouse_database,
-            rows=(("order-4", 0, 4),),
-        )
-        settled_exit_code: int = run_direct_build(
-            project_root=tmp_path,
-            database=clickhouse_database,
-            connection=connection,
-        )
-        _ = capsys.readouterr()
-        target_ddl_before: str = str(
-            clickhouse_client.query(
-                f"SHOW CREATE TABLE {clickhouse_database}.tbl__orders_enriched"
-            ).result_rows[0][0]
-        )
-        clickhouse_client.command(
-            f"ALTER TABLE {clickhouse_database}.raw__orders DELETE WHERE _replay_offset = 3 "
-            "SETTINGS mutations_sync = 2"
-        )
-        bounded_exit_code: int = run_direct_build(
-            project_root=tmp_path,
-            database=clickhouse_database,
-            connection=connection,
-            selectors=test_case.selectors,
-            start_time=requested_start_time,
-        )
-        bounded_error: str = capsys.readouterr().err
-        target_ddl_after: str = str(
-            clickhouse_client.query(
-                f"SHOW CREATE TABLE {clickhouse_database}.tbl__orders_enriched"
-            ).result_rows[0][0]
-        )
-        source_rows: tuple[tuple[str, int], ...] = tuple(
-            (str(row[0]), int(row[1]))
-            for row in clickhouse_client.query(
-                f"SELECT kafka_key, kafka_offset FROM {clickhouse_database}.raw__orders "
-                "ORDER BY kafka_offset"
-            ).result_rows
-        )
-        target_rows: tuple[str, ...] = direct_build_order_ids(
-            clickhouse_client=clickhouse_client,
-            database=clickhouse_database,
-        )
-        coverage_ranges: tuple[tuple[str, str, str], ...] = direct_owned_replay_coverage_ranges(
-            connection=connection,
-            database=clickhouse_database,
-        )
-    finally:
-        connection.close()
-
-    assert (greenfield_exit_code, settled_exit_code, bounded_exit_code) == (0, 0, 1)
-    assert "no longer covers the required replay range" in bounded_error
-    assert target_ddl_after == target_ddl_before
-    assert source_rows == test_case.expected_source_rows
-    assert target_rows == test_case.expected_target_rows
-    assert coverage_ranges == test_case.expected_coverage
-
-
-@pytest.mark.integration
-@pytest.mark.parametrize(
-    "test_case",
-    [
         CliDirectFutureSourceStartTimeIntegrationTestCase(
-            description="future-dated rows beyond the captured cutoff fail before teardown",
+            description="future-dated rows beyond the captured cutoff rebuild an empty target",
             source_yml=_ADOPTED_SOURCE_TEST_CASES[1].source_yml,
             model_sql=_ADOPTED_SOURCE_TEST_CASES[1].model_sql,
             source_columns_sql=_ADOPTED_SOURCE_TEST_CASES[1].source_columns_sql,
             insert_sql=("SELECT 'order-future', now64(3, 'UTC') + toIntervalDay(1)"),
             start_time_sql="SELECT toString(now64(3, 'UTC'))",
-            expected_target_count=0,
+            expected_target_count=1,
         ),
         CliDirectFutureSourceStartTimeIntegrationTestCase(
-            description="cursor replay with no time-qualified frontier fails before teardown",
+            description="cursor replay with no time-qualified frontier rebuilds an empty target",
             source_yml=_ADOPTED_SOURCE_TEST_CASES[2].source_yml,
             model_sql=_ADOPTED_SOURCE_TEST_CASES[2].model_sql,
             source_columns_sql=_ADOPTED_SOURCE_TEST_CASES[2].source_columns_sql,
             insert_sql="SELECT 'order-past', toUInt64(1), now64(3, 'UTC')",
             start_time_sql=("SELECT toString(now64(3, 'UTC') + toIntervalDay(1))"),
-            expected_target_count=0,
+            expected_target_count=1,
         ),
     ],
     ids=lambda case: case.description,
 )
-def test_given_source_without_qualified_bounded_input_when_building_then_preflight_fails(
+def test_given_source_without_qualified_bounded_input_when_building_then_target_rebuilds_empty(
     test_case: CliDirectFutureSourceStartTimeIntegrationTestCase,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -2622,13 +2402,18 @@ def test_given_source_without_qualified_bounded_input_when_building_then_preflig
                 f"WHERE database = '{clickhouse_database}' AND name = 'tbl__orders_enriched'"
             ).result_rows[0][0]
         )
+        target_row_count: int = int(
+            clickhouse_client.query(
+                f"SELECT count() FROM {clickhouse_database}.tbl__orders_enriched"
+            ).result_rows[0][0]
+        )
     finally:
         connection.close()
 
-    assert exit_code == 1
-    assert "has no qualifying input at or after the requested start time" in build_error
+    assert (exit_code, build_error) == (0, "")
     assert source_ddl_after == source_ddl_before
     assert target_count == test_case.expected_target_count
+    assert target_row_count == 0
 
 
 @pytest.mark.integration
@@ -2890,7 +2675,7 @@ def test_given_bounded_failure_when_retrying_then_coverage_survives_narrows_and_
 
     assert (greenfield_exit_code, settled_exit_code, failed_exit_code) == (0, 0, 1)
     assert "injected failure during selected teardown" in failed_error
-    assert failure_coverage == (("_replay_partition=0", "2", "4"),)
+    assert failure_coverage == ()
     assert (retry_exit_code, retry_error, later_exit_code, later_error) == (0, "", 0, "")
     assert later_rows == ("order-3", "order-4")
     assert later_coverage == (("_replay_partition=0", "3", "4"),)

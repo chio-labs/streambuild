@@ -98,7 +98,6 @@ def _ownership_records(
             plan=request.plan,
             database=request.database,
             tool_version=request.tool_version,
-            replay_coverage=(),
         )
     return tuple(_ownership_record(row) for row in result.query_result.rows)
 

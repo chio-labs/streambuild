@@ -13,7 +13,6 @@ from streambuild.adapter.models import (
     AdapterMaterializedView,
     AdapterOwnershipRecord,
     AdapterOwnershipReplayRequest,
-    AdapterReplayCoverageRange,
     AdapterReplayCoverageRequest,
     AdapterReplayRequest,
     CatalogRelation,
@@ -40,20 +39,14 @@ from streambuild.compiler.planner.models import (
     DirectWarehouseSnapshot,
     TargetOwnershipClassification,
 )
-from streambuild.compiler.planner.types import DirectResourceKind, TargetOwnership
+from streambuild.compiler.planner.types import DirectResourceKind
 from streambuild.executor.auditing.constants import AUDIT_SAMPLE_LIMIT
 from streambuild.executor.direct._helpers.ownership import build_direct_ownership_records
 from streambuild.executor.direct._helpers.population_plan import build_direct_population_plan
 from streambuild.executor.direct._helpers.preflight import reject_incapable_adapter
-from streambuild.executor.direct._helpers.relations import target_relation_name_by_model_name
-from streambuild.executor.direct._helpers.retention import resolve_required_replay_coverage
 from streambuild.executor.direct._helpers.sources import plan_preserved_managed_sources
 from streambuild.executor.direct.exceptions import DirectBuildError
-from streambuild.executor.direct.models import (
-    DirectBuildAudit,
-    DirectBuildRequest,
-    DirectReplayCoverage,
-)
+from streambuild.executor.direct.models import DirectBuildAudit, DirectBuildRequest
 from streambuild.executor.population.main._build_population_replay_templates import (
     build_population_replay_templates,
 )
@@ -113,27 +106,10 @@ def assemble_direct_build_workflow(
         snapshot=snapshot,
         replay_by_model_name=replay_by_model_name,
     )
-    boundary_type_by_model_name: dict[str, str | None] = {
-        model_name: _boundary_column_type(request=request, replay=replay, snapshot=snapshot)
-        for model_name, replay in replay_by_model_name.items()
-    }
-    required_replay_coverage: tuple[DirectReplayCoverage, ...]
-    claimed_replay_coverage: tuple[DirectReplayCoverage, ...]
-    required_replay_coverage, claimed_replay_coverage = resolve_required_replay_coverage(
-        client=client,
-        plan=request.plan,
-        database=request.database,
-        existing_relation_names=snapshot.catalog.relation_names(),
-        existing_ownership=snapshot.ownership_records,
-        target_relation_name_by_model_name=target_relation_name_by_model_name(plan=request.plan),
-        replay_by_model_name=replay_by_model_name,
-        boundary_type_by_model_name=boundary_type_by_model_name,
-    )
     ownership_records: tuple[AdapterOwnershipRecord, ...] = build_direct_ownership_records(
         plan=request.plan,
         database=request.database,
         tool_version=request.tool_version,
-        replay_coverage=claimed_replay_coverage,
     )
     statements: tuple[WarehouseStatement, ...] = _assemble_statements(
         request=request,
@@ -142,7 +118,6 @@ def assemble_direct_build_workflow(
         source_preparation=source_preparation,
         source_realizations=source_realizations,
         ownership_records=ownership_records,
-        replay_coverage=required_replay_coverage,
         population_plan=population_plan,
         replay_templates=replay_templates,
     )
@@ -157,55 +132,38 @@ def _assemble_statements(
     source_preparation: PopulationSourcePreparation,
     source_realizations: tuple[PopulationRealization, ...],
     ownership_records: tuple[AdapterOwnershipRecord, ...],
-    replay_coverage: tuple[DirectReplayCoverage, ...],
     population_plan: PopulationPlan,
     replay_templates: tuple[AdapterReplayRequest, ...],
 ) -> tuple[WarehouseStatement, ...]:
-    preflight: tuple[WarehouseStatement, ...] = _preflight_statements(
-        request=request,
-        client=client,
-        snapshot=snapshot,
-        source_preparation=source_preparation,
-        replay_coverage=replay_coverage,
-        replay_templates=replay_templates,
-    )
     preparation: tuple[WarehouseStatement, ...] = _preparation_statements(
         request=request,
         client=client,
         source_realizations=source_realizations,
-        start_sequence=len(preflight) + 1,
+        start_sequence=1,
     )
     ownership: tuple[WarehouseStatement, ...] = _initial_ownership_statements(
         request=request,
         client=client,
         records=ownership_records,
-        start_sequence=len(preflight) + len(preparation) + 1,
+        start_sequence=len(preparation) + 1,
     )
     teardown: tuple[WarehouseStatement, ...] = _teardown_statements(
         request=request,
-        start_sequence=len(preflight) + len(preparation) + len(ownership) + 1,
+        start_sequence=len(preparation) + len(ownership) + 1,
     )
     realization: tuple[WarehouseStatement, ...] = _realization_statements(
         request=request,
         client=client,
         population_plan=population_plan,
         source_preparation=source_preparation,
-        start_sequence=len(preflight) + len(preparation) + len(ownership) + len(teardown) + 1,
+        start_sequence=len(preparation) + len(ownership) + len(teardown) + 1,
     )
     stabilization: tuple[WarehouseStatement, ...] = _stabilization_statements(
         seconds=request.stabilization_seconds,
-        start_sequence=(
-            len(preflight)
-            + len(preparation)
-            + len(ownership)
-            + len(teardown)
-            + len(realization)
-            + 1
-        ),
+        start_sequence=(len(preparation) + len(ownership) + len(teardown) + len(realization) + 1),
     )
     prior_count: int = sum(
-        len(phase)
-        for phase in (preflight, preparation, ownership, teardown, realization, stabilization)
+        len(phase) for phase in (preparation, ownership, teardown, realization, stabilization)
     )
     boundary: tuple[WarehouseStatement, ...] = _boundary_statements(
         request=request,
@@ -231,7 +189,6 @@ def _assemble_statements(
         start_sequence=prior_count + len(boundary) + len(replay) + len(audit) + 1,
     )
     return (
-        *preflight,
         *preparation,
         *ownership,
         *teardown,
@@ -241,87 +198,6 @@ def _assemble_statements(
         *replay,
         *audit,
         *finalization,
-    )
-
-
-def _preflight_statements(
-    *,
-    request: DirectBuildRequest,
-    client: AdapterConnection,
-    snapshot: DirectWarehouseSnapshot,
-    source_preparation: PopulationSourcePreparation,
-    replay_coverage: tuple[DirectReplayCoverage, ...],
-    replay_templates: tuple[AdapterReplayRequest, ...],
-) -> tuple[WarehouseStatement, ...]:
-    sql_statements: list[tuple[str, str]] = []
-    entry: DirectPlanEntry
-    for entry in request.plan.entries:
-        classification: TargetOwnershipClassification
-        for classification in entry.ownership:
-            sql_statements.append(
-                (
-                    f"assert_ownership_{_step_segment(classification.relation_name)}",
-                    _ownership_assertion_sql(
-                        classification=classification,
-                        target_database=request.database,
-                        metadata_database=request.metadata_database,
-                    ),
-                )
-            )
-    source_name: str
-    for source_name in source_preparation.preserved_relation_names:
-        relation: CatalogRelation = _required_relation(snapshot=snapshot, relation_name=source_name)
-        sql_statements.append(
-            (
-                f"assert_source_{_step_segment(source_name)}",
-                _source_assertion_sql(
-                    database=request.database,
-                    relation_name=source_name,
-                    definition_sql=relation.definition_sql or "",
-                ),
-            )
-        )
-    coverage: DirectReplayCoverage
-    replay_range: AdapterReplayCoverageRange
-    for coverage in replay_coverage:
-        for replay_range in coverage.ranges:
-            sql_statements.append(
-                (
-                    f"assert_retention_{_step_segment(coverage.model_name)}_"
-                    f"{len(sql_statements) + 1}",
-                    _retention_assertion_sql(database=request.database, replay_range=replay_range),
-                )
-            )
-    if request.effective_start_time is not None:
-        replay: AdapterReplayRequest
-        for replay in replay_templates:
-            model_name: str = _model_name_for_target(
-                request=request, target=replay.relations.target
-            )
-            coverage_request: AdapterReplayCoverageRequest = _coverage_request(
-                request=request,
-                replay=replay,
-                snapshot=snapshot,
-            )
-            sql_statements.append(
-                (
-                    f"assert_bounded_input_{_step_segment(model_name)}",
-                    _bounded_input_assertion_sql(
-                        client=client,
-                        request=coverage_request,
-                        model_name=model_name,
-                    ),
-                )
-            )
-    return tuple(
-        WarehouseStatement(
-            sequence=index,
-            step_id=step_id,
-            phase=WorkflowPhase.PREFLIGHT,
-            intent=StatementIntent.ASSERTION,
-            sql=sql,
-        )
-        for index, (step_id, sql) in enumerate(sql_statements, start=1)
     )
 
 
@@ -721,72 +597,6 @@ def _forced_time_column(*, replay: AdapterReplayRequest) -> str:
     }[replay.mode]
 
 
-def _ownership_assertion_sql(
-    *,
-    classification: TargetOwnershipClassification,
-    target_database: str,
-    metadata_database: str,
-) -> str:
-    relation_name: str = _escape_literal(classification.relation_name)
-    message: str = _escape_literal(
-        f"Direct ownership changed for {classification.relation_name}; rerun stb plan or stb build"
-    )
-    if classification.ownership == TargetOwnership.ABSENT:
-        return (
-            "SELECT throwIf(count() > 0, "
-            f"'{message}') FROM system.tables WHERE database = "
-            f"'{_escape_literal(target_database)}' AND "
-            f"(name = '{relation_name}' OR startsWith(name, '{relation_name}__'));"
-        )
-    return (
-        "SELECT throwIf(count() != 1 OR any(current_state.1) = 'released', "
-        f"'{message}') FROM (SELECT argMax(tuple(event_kind, event_id), "
-        "tuple(recorded_at, event_id)) AS current_state FROM "
-        f"{metadata_database}.{METADATA_DIRECT_TARGET_EVENTS_TABLE_NAME} WHERE database_name = "
-        f"'{_escape_literal(target_database)}' AND relation_name = '{relation_name}' "
-        "GROUP BY database_name, relation_name);"
-    )
-
-
-def _source_assertion_sql(*, database: str, relation_name: str, definition_sql: str) -> str:
-    message: str = _escape_literal(f"Preserved source {relation_name} changed after confirmation")
-    return (
-        "SELECT throwIf(count() != 1 OR any(create_table_query) != "
-        f"'{_escape_literal(definition_sql)}', '{message}') FROM system.tables "
-        f"WHERE database = '{_escape_literal(database)}' "
-        f"AND name = '{_escape_literal(relation_name)}';"
-    )
-
-
-def _retention_assertion_sql(*, database: str, replay_range: AdapterReplayCoverageRange) -> str:
-    source: str = replay_range.driving_input_relation_name
-    message: str = _escape_literal(
-        "Direct rerun would silently drop retained history because the preserved driving input "
-        "no longer covers the required replay range: "
-        f"{source} requires {replay_range.boundary_key} "
-        f"{replay_range.lower_value}..{replay_range.upper_value}"
-    )
-    if replay_range.replay_boundary_mode == AdapterReplayBoundaryMode.OFFSETS:
-        partition: str = replay_range.boundary_key.split("=", 1)[1]
-        expected_count: int = int(replay_range.upper_value) - int(replay_range.lower_value) + 1
-        return (
-            f"SELECT throwIf(countDistinct({replay_range.source_position_column_name}) != "
-            f"{expected_count}, '{message}') FROM {database}.{source} "
-            f"WHERE toString({replay_range.source_partition_column_name}) = "
-            f"'{_escape_literal(partition)}' AND {replay_range.source_position_column_name} "
-            f"BETWEEN {replay_range.lower_value} AND {replay_range.upper_value};"
-        )
-    return (
-        "SELECT throwIf(count() = 0 OR "
-        f"min({replay_range.source_position_column_name}) > "
-        f"{_typed_replay_value(replay_range=replay_range, value=replay_range.lower_value)} OR "
-        f"max({replay_range.source_position_column_name}) < "
-        f"{_typed_replay_value(replay_range=replay_range, value=replay_range.upper_value)}, "
-        f"'{message}') "
-        f"FROM {database}.{source};"
-    )
-
-
 def _capture_coverage_statements(
     *,
     request: DirectBuildRequest,
@@ -906,25 +716,6 @@ def _coverage_request(
     )
 
 
-def _bounded_input_assertion_sql(
-    *,
-    client: AdapterConnection,
-    request: AdapterReplayCoverageRequest,
-    model_name: str,
-) -> str:
-    replay: AdapterReplayRequest = request.replay
-    message: str = _escape_literal(
-        f"Direct bounded replay for {model_name} has no qualifying input at or after the "
-        "requested start time"
-    )
-    coverage_query: str = client.render_replay_coverage_query(request)
-    return (
-        "SELECT throwIf("
-        f"(SELECT count() FROM {replay.database}.{replay.relations.anchor}) > 0 AND "
-        f"(SELECT value FROM (\n{coverage_query}\n)) = '[]', '{message}');"
-    )
-
-
 def _read_boundary_sql(
     *, request: DirectBuildRequest, replay: AdapterReplayRequest, model_name: str
 ) -> str:
@@ -1029,13 +820,6 @@ def _retired_relation_names(*, request: DirectBuildRequest) -> tuple[str, ...]:
     )
 
 
-def _required_relation(*, snapshot: DirectWarehouseSnapshot, relation_name: str) -> CatalogRelation:
-    relation: CatalogRelation | None = snapshot.catalog.relation(relation_name)
-    if relation is None:
-        raise DirectBuildError(f"Preserved source '{relation_name}' disappeared during assembly")
-    return relation
-
-
 def _terminate_sql(sql: str) -> str:
     return f"{sql.rstrip().rstrip(';')};"
 
@@ -1046,13 +830,6 @@ def _escape_literal(value: str) -> str:
 
 def _step_segment(value: str) -> str:
     return "".join(character if character.isalnum() else "_" for character in value)
-
-
-def _typed_replay_value(*, replay_range: AdapterReplayCoverageRange, value: str) -> str:
-    escaped_value: str = _escape_literal(value)
-    if replay_range.replay_boundary_mode == AdapterReplayBoundaryMode.CURSOR:
-        return f"toInt64('{escaped_value}')"
-    return f"toDateTime64('{escaped_value}', 3, 'UTC')"
 
 
 def _ownership_classifications(*, plan: DirectPlan) -> tuple[TargetOwnershipClassification, ...]:
