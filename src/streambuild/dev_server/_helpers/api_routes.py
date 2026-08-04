@@ -39,6 +39,7 @@ from streambuild.dev_server.exceptions import (
     ProjectNotCompiledError,
 )
 from streambuild.dev_server.models import BuildRunRequest, ChecksRunRequest, CompileOutcome
+from streambuild.dev_server.types import ActivityTone, DevServerReporter
 
 _HTTP_BAD_REQUEST: int = 400
 _HTTP_CONFLICT: int = 409
@@ -54,6 +55,7 @@ def register_api_routes(
     database: str | None,
     project_dir: Path,
     builds: BuildProcessManager,
+    reporter: DevServerReporter,
 ) -> FastAPI:
     """Attach every /api route; handlers close over the shared server state."""
 
@@ -68,6 +70,7 @@ def register_api_routes(
 
     def reload_project() -> dict[str, object]:
         outcome: CompileOutcome = state.reload()
+        reporter.report_reload(outcome=outcome)
         return build_status_payload(
             outcome=outcome,
             warehouse_connected=connection is not None,
@@ -169,6 +172,7 @@ def register_api_routes(
         database=database,
         project_dir=project_dir,
         builds=builds,
+        reporter=reporter,
         required_connection=_required_connection,
         servable_analysis=_servable_analysis,
     )
@@ -181,6 +185,7 @@ def _register_quality_routes(
     database: str | None,
     project_dir: Path,
     builds: BuildProcessManager,
+    reporter: DevServerReporter,
     required_connection: Callable[[], AdapterConnection],
     servable_analysis: Callable[[], CompileAnalysis],
 ) -> FastAPI:
@@ -201,7 +206,7 @@ def _register_quality_routes(
             )
         try:
             with state.query_lock:
-                return runner(
+                payload: dict[str, object] = runner(
                     analysis=analysis,
                     connection=client,
                     name=request.name,
@@ -212,6 +217,14 @@ def _register_quality_routes(
             raise HTTPException(status_code=_HTTP_BAD_REQUEST, detail=str(error)) from error
         except AdapterError as error:
             raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
+        passed: bool = bool(payload.get("passed"))
+        reporter.report_activity(
+            category=request.kind,
+            status="pass" if passed else "fail",
+            tone=ActivityTone.GOOD if passed else ActivityTone.BAD,
+            detail=request.name,
+        )
+        return payload
 
     def read_checks_status() -> list[dict[str, object]]:
         client: AdapterConnection = required_connection()

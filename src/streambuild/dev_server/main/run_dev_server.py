@@ -19,6 +19,7 @@ from streambuild.dev_server._helpers.static_assets import (
 from streambuild.dev_server.classes.dev_server_state import DevServerState
 from streambuild.dev_server.main._create_dev_app import create_dev_app
 from streambuild.dev_server.models import CompileOutcome
+from streambuild.dev_server.types import DevServerReporter
 
 
 def run_dev_server(
@@ -29,6 +30,7 @@ def run_dev_server(
     project_dir: Path,
     host: str,
     port: int,
+    reporter: DevServerReporter,
 ) -> int:
     """Compile once, serve the API and packaged UI, and block until shutdown."""
 
@@ -43,9 +45,16 @@ def run_dev_server(
     state: DevServerState = DevServerState(run_compile=run_compile)
     outcome: CompileOutcome = state.current()
     app: FastAPI = create_dev_app(
-        state=state, connection=connection, database=database, project_dir=project_dir
+        state=state,
+        connection=connection,
+        database=database,
+        project_dir=project_dir,
+        reporter=reporter,
     )
     app = register_static_assets(app=app, assets_root=assets_root)
-    print(f"StreamBuild dev server: http://{host}:{port} (compile: {outcome.state})")
+    reporter.report_startup(
+        outcome=outcome, project_dir=project_dir, database=database, host=host, port=port
+    )
     uvicorn.run(app, host=host, port=port, log_level="warning")
+    reporter.report_shutdown()
     return 0
