@@ -40,16 +40,18 @@ from streambuild.adapters.clickhouse._helpers.replay import (
 )
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from streambuild.cli.audit.main._run_audit import run_audit
-from streambuild.cli.audit_backfill.main._run_audit_backfill import run_audit_backfill
 from streambuild.cli.build.main._run_build import run_build
 from streambuild.cli.compile.main._run_compile import run_compile
+from streambuild.cli.deployment.main._run_deployment_list import run_deployment_list
+from streambuild.cli.deployment.main._run_deployment_show import run_deployment_show
 from streambuild.cli.dev.main._run_dev import run_dev
 from streambuild.cli.discover.main._run_discover import run_discover
 from streambuild.cli.doctor.main._run_doctor import run_doctor
 from streambuild.cli.entry.models import CliEntrypointHandlers
 from streambuild.cli.janitor.main._run_janitor import run_janitor
 from streambuild.cli.plan.main._run_plan import run_plan
-from streambuild.cli.publish.main._run_publish import run_publish
+from streambuild.cli.promotion.main._run_deployment_promotion import run_deployment_promotion
+from streambuild.cli.readiness.main._run_deployment_audit import run_deployment_audit
 from streambuild.cli.reconcile.main._run_reconcile import run_reconcile
 from streambuild.cli.repair_active_view.main._run_repair_active_view import run_repair_active_view
 from streambuild.cli.test.main._run_test import run_test
@@ -342,8 +344,10 @@ def handlers_with_overrides(**overrides: object) -> CliEntrypointHandlers:
             run_audit=run_audit,
             run_plan=run_plan,
             run_build=run_build,
-            run_audit_backfill=run_audit_backfill,
-            run_publish=run_publish,
+            run_deployment_list=run_deployment_list,
+            run_deployment_show=run_deployment_show,
+            run_deployment_audit=run_deployment_audit,
+            run_deployment_promote=run_deployment_promotion,
             run_reconcile=run_reconcile,
             run_janitor=run_janitor,
             run_doctor=run_doctor,
@@ -355,14 +359,14 @@ def handlers_with_overrides(**overrides: object) -> CliEntrypointHandlers:
 
 
 CLI_COMMAND_HANDLER_NAMES: dict[str, str] = {
-    "audit deployment": "run_audit_backfill",
-    "publish": "run_publish",
+    "deployment audit": "run_deployment_audit",
+    "deployment promote": "run_deployment_promote",
     "doctor": "run_doctor",
 }
 
 CLI_COMMAND_ARGV: dict[str, tuple[str, ...]] = {
-    "audit deployment": ("stb", "audit", "deployment"),
-    "publish": ("stb", "publish"),
+    "deployment audit": ("stb", "deployment", "audit", "deployment-id"),
+    "deployment promote": ("stb", "deployment", "promote", "deployment-id"),
     "doctor": ("stb", "doctor"),
 }
 

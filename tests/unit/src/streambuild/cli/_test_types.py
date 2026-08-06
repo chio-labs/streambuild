@@ -202,6 +202,13 @@ class CliNestedAuditOptionsTestCase:
 
 
 @dataclass(frozen=True)
+class CliRequiredDeploymentIdTestCase:
+    description: str
+    argv: tuple[str, ...]
+    expected_exit_code: int
+
+
+@dataclass(frozen=True)
 class CliTargetSelectionTestCase:
     description: str
     argv_suffix: tuple[str, ...]

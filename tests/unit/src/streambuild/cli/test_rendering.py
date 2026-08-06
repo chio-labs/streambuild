@@ -2,19 +2,19 @@ import json
 
 import pytest
 
-from streambuild.cli.audit_backfill.main.render_ambiguous_deployment_message import (
-    render_ambiguous_deployment_message,
-)
-from streambuild.cli.audit_backfill.main.render_audit_backfill_result import (
-    render_audit_backfill_result,
-)
 from streambuild.cli.build._helpers.rendering import (
     render_direct_build_json,
     render_direct_build_text,
 )
 from streambuild.cli.build.main.render_virtual_build_result import render_virtual_build_result
 from streambuild.cli.plan.main.render_plan_result import render_plan_result
-from streambuild.cli.publish.main.render_publish_result import render_publish_result
+from streambuild.cli.promotion.main.render_promotion_result import render_promotion_result
+from streambuild.cli.readiness.main.render_ambiguous_deployment_message import (
+    render_ambiguous_deployment_message,
+)
+from streambuild.cli.readiness.main.render_deployment_audit_result import (
+    render_deployment_audit_result,
+)
 from streambuild.compiler.compile.models import (
     Column,
     DesiredMaterializedView,
@@ -45,13 +45,6 @@ from streambuild.compiler.planner.models import (
     PreparedShadowObject,
     RebuildSubtree,
 )
-from streambuild.executor.audit_backfill.models import (
-    AuditBackfillResult,
-    AuditDeploymentCandidate,
-    OffsetCatchupSummary,
-    RootAuditResult,
-    ScalarCatchupSummary,
-)
 from streambuild.executor.auditing.models import SqlAuditRunResult
 from streambuild.executor.backfill.models import (
     BackfillBootstrapResult,
@@ -60,7 +53,14 @@ from streambuild.executor.backfill.models import (
     RootBackfillReport,
 )
 from streambuild.executor.direct.models import DirectBuildResult, DirectRootReplayResult
-from streambuild.executor.publish.models import PublishedView, PublishResult
+from streambuild.executor.promotion.models import PublishedView, PublishResult
+from streambuild.executor.readiness.models import (
+    AuditDeploymentCandidate,
+    DeploymentAuditResult,
+    OffsetCatchupSummary,
+    RootAuditResult,
+    ScalarCatchupSummary,
+)
 from tests.integration.src.streambuild.executor.backfill.helpers import (
     build_scalar_replay_compiled_pipeline,
 )
@@ -505,8 +505,8 @@ def test_given_overlapping_subtrees_when_rendering_compact_plan_then_it_deduplic
 def test_given_non_ready_audit_result_when_rendering_text_then_it_avoids_publish_recommendation(
     test_case: CliRenderingTestCase,
 ) -> None:
-    rendered: str = render_audit_backfill_result(
-        result=AuditBackfillResult(
+    rendered: str = render_deployment_audit_result(
+        result=DeploymentAuditResult(
             deployment_id="20260410T000000Z_cd34ef",
             deployment_status="backfilling",
             assessment="caution",
@@ -539,7 +539,7 @@ def test_given_non_ready_audit_result_when_rendering_text_then_it_avoids_publish
 
     for expected_fragment in test_case.expected_fragments:
         assert expected_fragment in rendered
-    assert "stb publish --deployment-id" not in rendered
+    assert "stb deployment promote" not in rendered
 
 
 @pytest.mark.parametrize(
@@ -564,8 +564,8 @@ def test_given_non_ready_audit_result_when_rendering_text_then_it_avoids_publish
 def test_given_active_caution_audit_result_when_rendering_text_then_it_shows_relevant_context(
     test_case: CliRenderingTestCase,
 ) -> None:
-    rendered: str = render_audit_backfill_result(
-        result=AuditBackfillResult(
+    rendered: str = render_deployment_audit_result(
+        result=DeploymentAuditResult(
             deployment_id="20260414T190649Z_36b35f",
             deployment_status="backfilling",
             assessment="caution",
@@ -618,7 +618,7 @@ def test_given_active_caution_audit_result_when_rendering_text_then_it_shows_rel
 
     for expected_fragment in test_case.expected_fragments:
         assert expected_fragment in rendered
-    assert "stb publish --deployment-id" not in rendered
+    assert "stb deployment promote" not in rendered
 
 
 @pytest.mark.parametrize(
@@ -1163,7 +1163,7 @@ def test_given_forced_color_when_rendering_plan_then_it_includes_ansi_styles(
                 "strategy: create_from_scratch",
                 "warehouse-written rows: 12",
                 '"warehouse_written_rows": 12',
-                "stb audit deployment --deployment-id 20260410T000000Z_ab12cd",
+                "stb deployment audit 20260410T000000Z_ab12cd",
             ),
         )
     ],
@@ -1291,8 +1291,8 @@ def test_given_forced_color_when_rendering_audit_then_it_colors_root_names(
     monkeypatch.delenv("NO_COLOR", raising=False)
     monkeypatch.setenv("FORCE_COLOR", "1")
 
-    rendered: str = render_audit_backfill_result(
-        result=AuditBackfillResult(
+    rendered: str = render_deployment_audit_result(
+        result=DeploymentAuditResult(
             deployment_id="20260414T190649Z_36b35f",
             deployment_status="backfilling",
             assessment="caution",
@@ -1362,7 +1362,7 @@ def test_given_forced_color_when_rendering_audit_then_it_colors_root_names(
                 "staged rows: 42",
                 "active rows: n/a",
                 "Next",
-                "stb publish --deployment-id 20260410T000000Z_ab12cd",
+                "stb deployment promote 20260410T000000Z_ab12cd",
             ),
         )
     ],
@@ -1371,8 +1371,8 @@ def test_given_forced_color_when_rendering_audit_then_it_colors_root_names(
 def test_given_audit_result_when_rendering_text_then_it_returns_operator_summary(
     test_case: CliRenderingTestCase,
 ) -> None:
-    rendered: str = render_audit_backfill_result(
-        result=AuditBackfillResult(
+    rendered: str = render_deployment_audit_result(
+        result=DeploymentAuditResult(
             deployment_id="20260410T000000Z_ab12cd",
             deployment_status="backfilling",
             assessment="ready",
@@ -1410,27 +1410,27 @@ def test_given_audit_result_when_rendering_text_then_it_returns_operator_summary
     "test_case",
     [
         CliRenderingTestCase(
-            description="renders human-readable publish summary",
+            description="renders human-readable promotion summary",
             expected_fragments=(
-                "Publish Complete",
+                "Promotion Complete",
                 "Database: analytics",
                 "Deployment: 20260410T000000Z_ab12cd",
                 "- tbl__orders_enriched -> tbl__orders_enriched__20260410T000000Z_ab12cd",
                 "Atomicity",
                 "- Each logical binding replacement: atomic",
-                "- Entire deployment publish: not atomic",
+                "- Entire deployment promotion: not atomic",
                 "- Bindings are replaced one relation at a time",
                 "Next",
-                "post-publish check",
+                "post-promotion check",
             ),
         )
     ],
     ids=lambda case: case.description,
 )
-def test_given_publish_result_when_rendering_text_then_it_returns_operator_summary(
+def test_given_promotion_result_when_rendering_text_then_it_returns_operator_summary(
     test_case: CliRenderingTestCase,
 ) -> None:
-    rendered: str = render_publish_result(
+    rendered: str = render_promotion_result(
         result=PublishResult(
             deployment_id="20260410T000000Z_ab12cd",
             published_views=(
@@ -1468,7 +1468,7 @@ def test_given_publish_result_when_rendering_text_then_it_returns_operator_summa
 def test_given_publish_result_when_rendering_json_then_atomicity_is_machine_readable(
     test_case: CliPublishAtomicityRenderingTestCase,
 ) -> None:
-    rendered: str = render_publish_result(
+    rendered: str = render_promotion_result(
         result=PublishResult(
             deployment_id="20260410T000000Z_ab12cd",
             published_views=(
@@ -1494,7 +1494,7 @@ def test_given_publish_result_when_rendering_json_then_atomicity_is_machine_read
         CliRenderingTestCase(
             description="renders ambiguity guidance with roots and next command",
             expected_fragments=(
-                "Audit Deployment selection is ambiguous",
+                "Deployment Audit selection is ambiguous",
                 "Affected roots",
                 "- tbl__orders_enriched",
                 "Candidate deployments",
@@ -1503,7 +1503,7 @@ def test_given_publish_result_when_rendering_json_then_atomicity_is_machine_read
                 "status: backfilling",
                 "roots: tbl__orders_enriched",
                 "Recommended",
-                "- stb audit deployment --deployment-id 20260410T000000Z_cd34ef",
+                "- stb deployment audit 20260410T000000Z_cd34ef",
             ),
         )
     ],
@@ -1513,7 +1513,7 @@ def test_given_ambiguous_candidates_when_rendering_message_then_it_returns_guida
     test_case: CliRenderingTestCase,
 ) -> None:
     rendered: str = render_ambiguous_deployment_message(
-        command_name="audit deployment",
+        command_name="deployment audit",
         database="analytics",
         root_names=("tbl__orders_enriched",),
         candidates=(

@@ -22,9 +22,10 @@ Current implemented workflow:
 
 - `stb plan`
 - `stb build`
-- `stb backfill`
-- `stb audit backfill`
-- `stb publish`
+- `stb deployment list`
+- `stb deployment show <deployment-id>`
+- `stb deployment audit <deployment-id>`
+- `stb deployment promote <deployment-id>`
 - `stb doctor`
 - `stb repair active-view`
 - `stb reconcile`
@@ -34,9 +35,10 @@ Current implemented workflow:
 Current rollout model:
 
 - `plan` is read-only
-- `backfill` starts a real staged deployment
-- `audit backfill` inspects staged readiness
-- `publish` switches stable logical views to staged physical tables
+- virtual `build` starts a real staged deployment
+- `deployment audit` inspects staged readiness
+- `deployment promote` switches stable logical views to staged physical tables
+- `janitor` remains the top-level retention and cleanup command
 
 ## Installation
 
@@ -335,9 +337,10 @@ From a project directory:
 ```bash
 uv run stb plan
 uv run stb build
-uv run stb backfill
-uv run stb audit backfill
-uv run stb publish
+uv run stb deployment list
+uv run stb deployment show <deployment-id>
+uv run stb deployment audit <deployment-id>
+uv run stb deployment promote <deployment-id>
 uv run stb doctor
 uv run stb repair active-view --table tbl__orders
 uv run stb reconcile

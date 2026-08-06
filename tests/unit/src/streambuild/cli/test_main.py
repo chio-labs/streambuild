@@ -41,6 +41,7 @@ from tests.unit.src.streambuild.cli._test_types import (
     CliProjectConnectionResolutionTestCase,
     CliProjectDefaultsTestCase,
     CliReconcileForwardingTestCase,
+    CliRequiredDeploymentIdTestCase,
     CliSelectorForwardingTestCase,
 )
 from tests.unit.src.streambuild.cli.helpers import (
@@ -169,11 +170,47 @@ class PlanCommandRunner:
             "}",
         ),
         CliMainJsonTestCase(
+            description="prints deployment list payload as json",
+            argv=(
+                "stb",
+                "deployment",
+                "list",
+                "--project-dir",
+                "tests/fixtures/basic_project",
+                "--database",
+                "analytics",
+                "--json",
+            ),
+            expected_exit_code=0,
+            expected_output_fragments=('"deployments": []',),
+            handler_name="run_deployment_list",
+            handler_output='{"database": "analytics", "deployments": []}',
+        ),
+        CliMainJsonTestCase(
+            description="prints deployment show payload as json",
+            argv=(
+                "stb",
+                "deployment",
+                "show",
+                "20260410T000000Z_ab12cd",
+                "--project-dir",
+                "tests/fixtures/basic_project",
+                "--database",
+                "analytics",
+                "--json",
+            ),
+            expected_exit_code=0,
+            expected_output_fragments=('"deployment_id": "20260410T000000Z_ab12cd"',),
+            handler_name="run_deployment_show",
+            handler_output='{"deployment_id": "20260410T000000Z_ab12cd"}',
+        ),
+        CliMainJsonTestCase(
             description="prints deployment audit payload as json",
             argv=(
                 "stb",
-                "audit",
                 "deployment",
+                "audit",
+                "20260410T000000Z_ab12cd",
                 "--project-dir",
                 "tests/fixtures/basic_project",
                 "--host",
@@ -193,7 +230,7 @@ class PlanCommandRunner:
                 '"assessment": "ready"',
                 '"name": "tbl__orders_enriched"',
             ),
-            handler_name="run_audit_backfill",
+            handler_name="run_deployment_audit",
             handler_output="{\n"
             '  "deployment_id": "20260410T000000Z_ab12cd",\n'
             '  "deployment_status": "backfilling",\n'
@@ -237,7 +274,9 @@ class PlanCommandRunner:
             description="prints publish payload as json",
             argv=(
                 "stb",
-                "publish",
+                "deployment",
+                "promote",
+                "20260410T000000Z_ab12cd",
                 "--project-dir",
                 "tests/fixtures/basic_project",
                 "--host",
@@ -257,7 +296,7 @@ class PlanCommandRunner:
                 '"view_name": "tbl__orders_enriched"',
                 '"target_table_name": "tbl__orders_enriched__20260410T000000Z_ab12cd"',
             ),
-            handler_name="run_publish",
+            handler_name="run_deployment_promote",
             handler_output="{\n"
             '  "deployment_id": "20260410T000000Z_ab12cd",\n'
             '  "published_views": [{"view_name": "tbl__orders_enriched", '
@@ -514,8 +553,9 @@ def test_given_resolved_dev_context_when_reloading_then_compilation_reuses_it(
             description="resolves project context for deployment audit",
             argv=(
                 "stb",
-                "audit",
                 "deployment",
+                "audit",
+                "20260410T000000Z_ab12cd",
                 "--project-dir",
                 "tests/fixtures/basic_project",
                 "--host",
@@ -543,7 +583,7 @@ def test_given_audit_backfill_cli_args_when_running_main_then_it_forwards_projec
 
     exit_code: int = _main_with_dependencies(
         argv=test_case.argv,
-        handlers=handlers_with_overrides(run_audit_backfill=command_runner),
+        handlers=handlers_with_overrides(run_deployment_audit=command_runner),
         adapter_connection=cast(AdapterConnection, FakeCliClickHouseClient()),
     )
 
@@ -793,12 +833,12 @@ def test_given_project_yaml_when_running_plan_then_it_uses_project_database_defa
     [
         CliProjectDefaultsTestCase(
             description="uses project database default for deployment audit",
-            command_name="audit deployment",
+            command_name="deployment audit",
             expected_database="analytics",
         ),
         CliProjectDefaultsTestCase(
             description="uses project yaml database default for publish",
-            command_name="publish",
+            command_name="deployment promote",
             expected_database="analytics",
         ),
         CliProjectDefaultsTestCase(
@@ -852,12 +892,12 @@ def test_given_project_yaml_when_running_runtime_command_then_it_uses_project_de
     [
         CliProjectDefaultsTestCase(
             description="uses --project-dir for deployment audit",
-            command_name="audit deployment",
+            command_name="deployment audit",
             expected_database="analytics",
         ),
         CliProjectDefaultsTestCase(
             description="uses --project-dir for publish",
-            command_name="publish",
+            command_name="deployment promote",
             expected_database="analytics",
         ),
         CliProjectDefaultsTestCase(
@@ -1091,7 +1131,9 @@ def test_given_apply_flag_when_running_janitor_then_it_passes_apply_to_command(
             description="prints command value errors without a traceback",
             argv=(
                 "stb",
-                "publish",
+                "deployment",
+                "promote",
+                "dep_missing",
                 "--project-dir",
                 "tests/fixtures/basic_project",
                 "--host",
@@ -1142,7 +1184,7 @@ def test_given_expected_command_errors_when_running_entrypoint_then_it_prints_cl
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     handlers: CliEntrypointHandlers = handlers_with_overrides(
-        run_publish=FailingCommandRunner(
+        run_deployment_promote=FailingCommandRunner(
             ValueError("Deployment 'dep_missing' has no staged physical tables to publish")
         ),
         run_doctor=FailingCommandRunner(
@@ -1375,43 +1417,11 @@ def test_given_compile_when_running_then_it_writes_target_artifacts(
     "test_case",
     [
         CliNestedAuditOptionsTestCase(
-            description="preserves shared audit options authored before deployment",
+            description="accepts deployment audit connection and project options",
             argv=(
-                "audit",
-                "--project-dir",
-                "parent-project",
-                "--host",
-                "parent-host",
-                "--port",
-                "8124",
-                "--username",
-                "parent-user",
-                "--password",
-                "parent-secret",
-                "--database",
-                "parent-db",
-                "--json",
-                "--target",
-                "parent-target",
-                "--vars",
-                '{"scope": "parent"}',
                 "deployment",
-            ),
-            expected_project_dir="parent-project",
-            expected_host="parent-host",
-            expected_port=8124,
-            expected_username="parent-user",
-            expected_password="parent-secret",
-            expected_database="parent-db",
-            expected_json=True,
-            expected_target="parent-target",
-            expected_vars={"scope": "parent"},
-        ),
-        CliNestedAuditOptionsTestCase(
-            description="accepts shared audit options authored after deployment",
-            argv=(
                 "audit",
-                "deployment",
+                "deployment-id",
                 "--project-dir",
                 "child-project",
                 "--host",
@@ -1439,60 +1449,11 @@ def test_given_compile_when_running_then_it_writes_target_artifacts(
             expected_json=True,
             expected_target="child-target",
             expected_vars={"scope": "child"},
-        ),
-        CliNestedAuditOptionsTestCase(
-            description="child audit options override explicitly authored parent values",
-            argv=(
-                "audit",
-                "--project-dir",
-                "parent-project",
-                "--host",
-                "parent-host",
-                "--port",
-                "8124",
-                "--username",
-                "parent-user",
-                "--password",
-                "parent-secret",
-                "--database",
-                "parent-db",
-                "--target",
-                "parent-target",
-                "--vars",
-                '{"scope": "parent"}',
-                "deployment",
-                "--project-dir",
-                "child-project",
-                "--host",
-                "child-host",
-                "--port",
-                "9000",
-                "--username",
-                "child-user",
-                "--password",
-                "child-secret",
-                "--database",
-                "child-db",
-                "--json",
-                "--target",
-                "child-target",
-                "--vars",
-                '{"scope": "child"}',
-            ),
-            expected_project_dir="child-project",
-            expected_host="child-host",
-            expected_port=9000,
-            expected_username="child-user",
-            expected_password="child-secret",
-            expected_database="child-db",
-            expected_json=True,
-            expected_target="child-target",
-            expected_vars={"scope": "child"},
-        ),
+        )
     ],
     ids=lambda case: case.description,
 )
-def test_given_nested_audit_options_when_parsing_then_parent_and_child_order_is_stable(
+def test_given_deployment_audit_options_when_parsing_then_values_are_preserved(
     test_case: CliNestedAuditOptionsTestCase,
 ) -> None:
     args: argparse.Namespace = build_cli_parser().parse_args(list(test_case.argv))
@@ -1506,3 +1467,33 @@ def test_given_nested_audit_options_when_parsing_then_parent_and_child_order_is_
     assert args.json is test_case.expected_json
     assert args.target == test_case.expected_target
     assert args.vars == test_case.expected_vars
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    (
+        CliRequiredDeploymentIdTestCase(
+            description="deployment show requires an identifier",
+            argv=("deployment", "show"),
+            expected_exit_code=2,
+        ),
+        CliRequiredDeploymentIdTestCase(
+            description="deployment audit requires an identifier",
+            argv=("deployment", "audit"),
+            expected_exit_code=2,
+        ),
+        CliRequiredDeploymentIdTestCase(
+            description="deployment promote requires an identifier",
+            argv=("deployment", "promote"),
+            expected_exit_code=2,
+        ),
+    ),
+    ids=lambda case: case.description,
+)
+def test_given_deployment_command_without_id_when_parsing_then_it_is_rejected(
+    test_case: CliRequiredDeploymentIdTestCase,
+) -> None:
+    with pytest.raises(SystemExit) as raised:
+        build_cli_parser().parse_args(list(test_case.argv))
+
+    assert raised.value.code == test_case.expected_exit_code

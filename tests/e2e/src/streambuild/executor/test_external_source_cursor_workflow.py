@@ -8,7 +8,7 @@ from tests.e2e.src.streambuild.conftest import E2EClickHouseConnectionSettings
 from tests.e2e.src.streambuild.executor._test_types import ExternalSourceCursorWorkflowE2ETestCase
 from tests.e2e.src.streambuild.executor.helpers import (
     prepare_external_source_cursor_e2e_project,
-    run_streambuild_publish_cli,
+    run_streambuild_deployment_promote_cli,
     run_streambuild_virtual_build_cli,
 )
 
@@ -59,7 +59,7 @@ def test_given_external_cursor_source_pipeline_when_running_then_it_publishes_ex
         database=isolated_e2e_clickhouse_database,
         deployment_id=test_case.deployment_id,
     )
-    run_streambuild_publish_cli(
+    run_streambuild_deployment_promote_cli(
         project_dir=project_dir,
         host=isolated_e2e_clickhouse_connection_settings.host,
         port=isolated_e2e_clickhouse_connection_settings.port,

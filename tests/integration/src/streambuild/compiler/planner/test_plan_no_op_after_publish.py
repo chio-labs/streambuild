@@ -18,8 +18,8 @@ from streambuild.compiler.planner.main.load_actual_state import load_actual_stat
 from streambuild.compiler.planner.main.plan_deployment import plan_deployment
 from streambuild.compiler.planner.models import ActualState, DeploymentPlan, PlannedObjectChange
 from streambuild.executor.backfill.models import BackfillExecutionResult
-from streambuild.executor.publish.main.execute_publish import execute_publish
-from streambuild.executor.publish.models import PublishRequest, PublishResult
+from streambuild.executor.promotion.main.execute_deployment_promotion import execute_publish
+from streambuild.executor.promotion.models import PublishRequest, PublishResult
 from tests.integration.src.streambuild.adapters.clickhouse.helpers import (
     render_create_kafka_table_ddl,
     render_create_materialized_view_ddl,

@@ -13,10 +13,10 @@ from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHous
 from streambuild.compiler.compile.models import CompiledPipeline
 from streambuild.compiler.discovery.types import ReplayLineageMode, ReplayOnChangeMode
 from streambuild.compiler.planner.types import RebuildExecutionMode
-from streambuild.executor.audit_backfill.types import AuditAssessment
 from streambuild.executor.backfill.models import BackfillExecutionResult
-from streambuild.executor.publish.main.execute_publish import execute_publish
-from streambuild.executor.publish.models import PublishRequest
+from streambuild.executor.promotion.main.execute_deployment_promotion import execute_publish
+from streambuild.executor.promotion.models import PublishRequest
+from streambuild.executor.readiness.types import AuditAssessment
 from streambuild.executor.workflow.models import PublishedBuildWorkflow
 from tests.e2e.src.streambuild.conftest import (
     E2EClickHouseConnectionSettings,
@@ -51,9 +51,9 @@ from tests.e2e.src.streambuild.executor.helpers import (
     require_managed_source,
     require_model_resources,
     run_kafka_live_shadow_scenario,
-    run_streambuild_audit_deployment_cli,
+    run_streambuild_deployment_audit_cli,
+    run_streambuild_deployment_promote_cli,
     run_streambuild_doctor_cli,
-    run_streambuild_publish_cli,
     run_streambuild_repair_active_view_cli,
     run_streambuild_virtual_build_cli,
     wait_for_row_count,
@@ -512,7 +512,7 @@ def test_given_retained_kafka_messages_when_executing_virtual_artifacts_then_for
             sql=(combined.artifact_root / "workflow.sql").read_text(encoding="utf-8"),
         )
         audit_results: tuple[dict[str, object], ...] = tuple(
-            run_streambuild_audit_deployment_cli(
+            run_streambuild_deployment_audit_cli(
                 project_dir=project_dir,
                 host=e2e_clickhouse_connection_settings.host,
                 port=e2e_clickhouse_connection_settings.port,
@@ -667,7 +667,7 @@ def test_given_kafka_backed_greenfield_pipeline_when_running_then_it_publishes_e
         database=e2e_clickhouse_database,
         deployment_id=test_case.deployment_id,
     )
-    audit_result: dict[str, object] = run_streambuild_audit_deployment_cli(
+    audit_result: dict[str, object] = run_streambuild_deployment_audit_cli(
         project_dir=project_dir,
         host=e2e_clickhouse_connection_settings.host,
         port=e2e_clickhouse_connection_settings.port,
@@ -676,7 +676,7 @@ def test_given_kafka_backed_greenfield_pipeline_when_running_then_it_publishes_e
         database=e2e_clickhouse_database,
         deployment_id=test_case.deployment_id,
     )
-    run_streambuild_publish_cli(
+    run_streambuild_deployment_promote_cli(
         project_dir=project_dir,
         host=e2e_clickhouse_connection_settings.host,
         port=e2e_clickhouse_connection_settings.port,
@@ -855,7 +855,7 @@ def test_given_kafka_backed_published_deployment_when_view_is_deleted_then_repai
         database=e2e_clickhouse_database,
         deployment_id=test_case.deployment_id,
     )
-    run_streambuild_publish_cli(
+    run_streambuild_deployment_promote_cli(
         project_dir=project_dir,
         host=e2e_clickhouse_connection_settings.host,
         port=e2e_clickhouse_connection_settings.port,
@@ -1057,7 +1057,7 @@ def test_given_offset_mode_staged_kafka_deployment_when_new_rows_arrive_then_aud
         expected_count=len(test_case.initial_order_ids) + len(test_case.live_order_ids),
     )
 
-    audit_result: dict[str, object] = run_streambuild_audit_deployment_cli(
+    audit_result: dict[str, object] = run_streambuild_deployment_audit_cli(
         project_dir=project_dir,
         host=e2e_clickhouse_connection_settings.host,
         port=e2e_clickhouse_connection_settings.port,

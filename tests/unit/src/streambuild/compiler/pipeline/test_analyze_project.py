@@ -586,12 +586,12 @@ def test_given_direct_mode_policy_when_analyzing_then_it_rejects_vde_only_settin
             description="routes exactly nine command paths through one compilation service",
             expected_entrypoint_paths=(
                 "src/streambuild/cli/audit/main/_run_audit.py",
-                "src/streambuild/cli/audit_backfill/main/_run_audit_backfill.py",
                 "src/streambuild/cli/build/main/_run_build.py",
                 "src/streambuild/cli/compile/main/_run_compile.py",
                 "src/streambuild/cli/dev/main/_run_dev.py",
                 "src/streambuild/cli/discover/main/_run_discover.py",
                 "src/streambuild/cli/plan/main/_run_plan.py",
+                "src/streambuild/cli/readiness/main/_run_deployment_audit.py",
                 "src/streambuild/cli/reconcile/main/_run_reconcile.py",
                 "src/streambuild/cli/test/main/_run_test.py",
             ),

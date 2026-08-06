@@ -91,8 +91,8 @@ from streambuild.executor.backfill.models import (
     BackfillExecutionResult,
     RootBackfillReport,
 )
-from streambuild.executor.publish.main.execute_publish import execute_publish
-from streambuild.executor.publish.models import PublishRequest
+from streambuild.executor.promotion.main.execute_deployment_promotion import execute_publish
+from streambuild.executor.promotion.models import PublishRequest
 from streambuild.executor.workflow.main.execute_build_workflow import execute_build_workflow
 from streambuild.executor.workflow.models import (
     BuildWorkflow,

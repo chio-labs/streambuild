@@ -12,8 +12,8 @@ class CliCommand(StrEnum):
     TEST = "test"
     PLAN = "plan"
     BUILD = "build"
+    DEPLOYMENT = "deployment"
     AUDIT = "audit"
-    PUBLISH = "publish"
     RECONCILE = "reconcile"
     JANITOR = "janitor"
     DOCTOR = "doctor"
@@ -23,5 +23,8 @@ class CliCommand(StrEnum):
 class CliSubcommand(StrEnum):
     """One nested `stb <command> <subcommand>` selector."""
 
-    DEPLOYMENT = "deployment"
     ACTIVE_VIEW = "active-view"
+    LIST = "list"
+    SHOW = "show"
+    AUDIT = "audit"
+    PROMOTE = "promote"

@@ -106,9 +106,25 @@ def dispatch_cli_command(
             loaded_project=invocation.loaded_project,
             adapter_profile=adapter_profile,
         )
-    if args.command == CliCommand.AUDIT:
-        if getattr(args, "audit_command", None) == CliSubcommand.DEPLOYMENT:
-            return handlers.run_audit_backfill(
+    if args.command == CliCommand.DEPLOYMENT:
+        deployment_command: str = str(args.deployment_command)
+        if deployment_command == CliSubcommand.LIST:
+            return handlers.run_deployment_list(
+                database=invocation.database,
+                metadata_database=getattr(args, "metadata_database", None),
+                json_output=bool(getattr(args, "json", False)),
+                client=client,
+            )
+        if deployment_command == CliSubcommand.SHOW:
+            return handlers.run_deployment_show(
+                deployment_id=args.deployment_id,
+                database=invocation.database,
+                metadata_database=getattr(args, "metadata_database", None),
+                json_output=bool(getattr(args, "json", False)),
+                client=client,
+            )
+        if deployment_command == CliSubcommand.AUDIT:
+            return handlers.run_deployment_audit(
                 pipelines_root=invocation.pipelines_root,
                 project_dir=(
                     invocation.project_dir
@@ -121,12 +137,20 @@ def dispatch_cli_command(
                 ),
                 database=invocation.database,
                 metadata_database=getattr(args, "metadata_database", None),
-                deployment_id=getattr(args, "deployment_id", None),
+                deployment_id=args.deployment_id,
                 json_output=bool(getattr(args, "json", False)),
                 client=client,
                 loaded_project=invocation.loaded_project,
                 adapter_profile=adapter_profile,
             )
+        return handlers.run_deployment_promote(
+            database=invocation.database,
+            metadata_database=getattr(args, "metadata_database", None),
+            deployment_id=args.deployment_id,
+            json_output=bool(getattr(args, "json", False)),
+            client=client,
+        )
+    if args.command == CliCommand.AUDIT:
         if invocation.pipelines_root is None:
             raise CliUserError("Audit command requires a resolved pipelines root")
         return handlers.run_audit(
@@ -138,14 +162,6 @@ def dispatch_cli_command(
             client=client,
             loaded_project=invocation.loaded_project,
             adapter_profile=adapter_profile,
-        )
-    if args.command == CliCommand.PUBLISH:
-        return handlers.run_publish(
-            database=invocation.database,
-            metadata_database=getattr(args, "metadata_database", None),
-            deployment_id=getattr(args, "deployment_id", None),
-            json_output=bool(getattr(args, "json", False)),
-            client=client,
         )
     if args.command == CliCommand.RECONCILE:
         return handlers.run_reconcile(
