@@ -23,6 +23,13 @@ CLICKHOUSE_PASSWORD: str = "streambuild"
 CONTAINER_STARTUP_TIMEOUT_SECONDS: int = 90
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _use_utc_process_timezone() -> None:
+    """Keep naive ClickHouse test timestamps independent of the host timezone."""
+    os.environ["TZ"] = "UTC"
+    time.tzset()
+
+
 @dataclass(frozen=True)
 class ClickHouseConnectionSettings:
     host: str
