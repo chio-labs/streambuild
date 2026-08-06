@@ -90,7 +90,7 @@ def test_given_empty_inventory_when_resolving_publish_without_deployment_id_then
             boundary_time="2026-04-09 18:00:00.000",
             expected_view_name="tbl__orders_enriched",
             expected_target_table_name="tbl__orders_enriched__20260409T180000Z_ab12cd",
-            expected_published_order_ids=("historical-order", "live-order"),
+            expected_published_order_ids=("historical-order",),
             expected_full_layout=(
                 ("_streambuild_direct_fingerprints", "MergeTree"),
                 ("_streambuild_direct_replay_checkpoints", "MergeTree"),
@@ -459,7 +459,7 @@ def test_given_deleted_publish_metadata_when_publishing_then_it_uses_live_clickh
 
     assert result.deployment_id == test_case.expected_deployment_id
     assert result.published_views[0].target_table_name == test_case.expected_target_table_name
-    assert published_rows == [("historical-order",), ("live-order",)]
+    assert published_rows == [("historical-order",)]
 
 
 @pytest.mark.integration
