@@ -10,7 +10,7 @@ from _pytest.capture import CaptureResult
 from clickhouse_connect.driver.client import Client
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.adapter.models import AdapterReplayRequest, CatalogRelation
+from streambuild.adapter.models import AdapterReplayRequest, CatalogRelation, CatalogSnapshot
 from streambuild.compiler.discovery.exceptions import PipelineDiscoveryError
 from streambuild.executor.direct.models import DirectBuildResult, DirectReplayBoundary
 from streambuild.executor.workflow.models import PublishedBuildWorkflow
@@ -36,6 +36,7 @@ from tests.integration.src.streambuild.cli._test_types import (
     CliDirectSelectedFailureIntegrationTestCase,
     CliDirectSelectionMatrixIntegrationTestCase,
     CliDirectStartTimeIntegrationTestCase,
+    CliDirectTimezoneStartTimeIntegrationTestCase,
     CliDirectViewBuildIntegrationTestCase,
 )
 from tests.integration.src.streambuild.cli.helpers import (
@@ -2204,6 +2205,104 @@ def test_given_direct_offset_when_building_from_start_time_then_replay_is_unseed
     assert effective_start_time in workflow_sql
     assert "INSERT INTO" in workflow_sql
     assert "active_start_offsets" in workflow_sql
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliDirectTimezoneStartTimeIntegrationTestCase(
+            description="preserves a winter utc instant for a New York warehouse",
+            cli_start_time="2026-01-15T12:00:00Z",
+            expected_warehouse_timezone="America/New_York",
+            expected_effective_start_time="2026-01-15 12:00:00.000",
+            expected_sql_fragment="toDateTime64('2026-01-15 12:00:00.000', 3, 'UTC')",
+            unexpected_local_sql_fragment="toDateTime64('2026-01-15 07:00:00.000', 3, 'UTC')",
+        ),
+        CliDirectTimezoneStartTimeIntegrationTestCase(
+            description="preserves a summer utc instant for a New York warehouse",
+            cli_start_time="2026-07-15T12:00:00Z",
+            expected_warehouse_timezone="America/New_York",
+            expected_effective_start_time="2026-07-15 12:00:00.000",
+            expected_sql_fragment="toDateTime64('2026-07-15 12:00:00.000', 3, 'UTC')",
+            unexpected_local_sql_fragment="toDateTime64('2026-07-15 08:00:00.000', 3, 'UTC')",
+        ),
+        CliDirectTimezoneStartTimeIntegrationTestCase(
+            description="preserves the instant before spring daylight transition",
+            cli_start_time="2026-03-08T06:59:59Z",
+            expected_warehouse_timezone="America/New_York",
+            expected_effective_start_time="2026-03-08 06:59:59.000",
+            expected_sql_fragment="toDateTime64('2026-03-08 06:59:59.000', 3, 'UTC')",
+            unexpected_local_sql_fragment="toDateTime64('2026-03-08 01:59:59.000', 3, 'UTC')",
+        ),
+        CliDirectTimezoneStartTimeIntegrationTestCase(
+            description="preserves the instant after spring daylight transition",
+            cli_start_time="2026-03-08T07:00:00Z",
+            expected_warehouse_timezone="America/New_York",
+            expected_effective_start_time="2026-03-08 07:00:00.000",
+            expected_sql_fragment="toDateTime64('2026-03-08 07:00:00.000', 3, 'UTC')",
+            unexpected_local_sql_fragment="toDateTime64('2026-03-08 03:00:00.000', 3, 'UTC')",
+        ),
+        CliDirectTimezoneStartTimeIntegrationTestCase(
+            description="preserves the first repeated fall hour instant",
+            cli_start_time="2026-11-01T05:30:00Z",
+            expected_warehouse_timezone="America/New_York",
+            expected_effective_start_time="2026-11-01 05:30:00.000",
+            expected_sql_fragment="toDateTime64('2026-11-01 05:30:00.000', 3, 'UTC')",
+            unexpected_local_sql_fragment="toDateTime64('2026-11-01 01:30:00.000', 3, 'UTC')",
+        ),
+        CliDirectTimezoneStartTimeIntegrationTestCase(
+            description="preserves the second repeated fall hour instant",
+            cli_start_time="2026-11-01T06:30:00Z",
+            expected_warehouse_timezone="America/New_York",
+            expected_effective_start_time="2026-11-01 06:30:00.000",
+            expected_sql_fragment="toDateTime64('2026-11-01 06:30:00.000', 3, 'UTC')",
+            unexpected_local_sql_fragment="toDateTime64('2026-11-01 01:30:00.000', 3, 'UTC')",
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_non_utc_warehouse_when_planning_start_time_then_utc_instant_is_preserved(
+    test_case: CliDirectTimezoneStartTimeIntegrationTestCase,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    new_york_clickhouse_connection_settings: ClickHouseConnectionSettings,
+    new_york_clickhouse_database: str,
+) -> None:
+    write_direct_build_project(project_root=tmp_path)
+    connection: AdapterConnection = build_managed_clickhouse_client(
+        new_york_clickhouse_connection_settings,
+        database=new_york_clickhouse_database,
+    )
+
+    try:
+        initial_exit_code: int = run_direct_build(
+            project_root=tmp_path,
+            database=new_york_clickhouse_database,
+            connection=connection,
+        )
+        _ = capsys.readouterr()
+        catalog: CatalogSnapshot = connection.load_catalog(new_york_clickhouse_database)
+        plan_exit_code: int = run_direct_plan(
+            project_root=tmp_path,
+            database=new_york_clickhouse_database,
+            connection=connection,
+            selectors=("orders_enriched",),
+            start_time=test_case.cli_start_time,
+        )
+        plan_error: str = capsys.readouterr().err
+        plan_payload: dict[str, object] = json.loads(
+            (tmp_path / "target/run/plan/plan.json").read_text(encoding="utf-8")
+        )
+        workflow_sql: str = (tmp_path / "target/run/plan/workflow.sql").read_text(encoding="utf-8")
+    finally:
+        connection.close()
+
+    assert (initial_exit_code, plan_exit_code, plan_error) == (0, 0, "")
+    assert catalog.warehouse_timezone == test_case.expected_warehouse_timezone
+    assert plan_payload["start_time"] == test_case.expected_effective_start_time
+    assert test_case.expected_sql_fragment in workflow_sql
+    assert test_case.unexpected_local_sql_fragment not in workflow_sql
 
 
 @pytest.mark.integration

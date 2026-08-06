@@ -156,6 +156,16 @@ class CliDirectStartTimeIntegrationTestCase:
 
 
 @dataclass(frozen=True)
+class CliDirectTimezoneStartTimeIntegrationTestCase:
+    description: str
+    cli_start_time: str
+    expected_warehouse_timezone: str
+    expected_effective_start_time: str
+    expected_sql_fragment: str
+    unexpected_local_sql_fragment: str
+
+
+@dataclass(frozen=True)
 class CliDirectLandedAtStartTimeIntegrationTestCase:
     description: str
     expected_target_rows: tuple[str, ...]
