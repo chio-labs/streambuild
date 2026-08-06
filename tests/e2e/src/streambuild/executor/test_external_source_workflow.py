@@ -6,7 +6,7 @@ from clickhouse_connect.driver.client import Client
 
 from streambuild.compiler.compile.models import CompiledPipeline
 from streambuild.compiler.discovery.types import ReplayLineageMode
-from streambuild.executor.audit_backfill.types import AuditAssessment
+from streambuild.executor.readiness.types import AuditAssessment
 from tests.e2e.src.streambuild.conftest import E2EClickHouseConnectionSettings
 from tests.e2e.src.streambuild.executor._test_types import (
     DirectExternalSourceBuildE2ETestCase,
@@ -17,9 +17,9 @@ from tests.e2e.src.streambuild.executor.helpers import (
     build_authored_greenfield_workflow_compiled_pipeline,
     prepare_external_source_e2e_project,
     prepare_external_source_offset_e2e_project,
-    run_streambuild_audit_deployment_cli,
     run_streambuild_build_cli,
-    run_streambuild_publish_cli,
+    run_streambuild_deployment_audit_cli,
+    run_streambuild_deployment_promote_cli,
     run_streambuild_virtual_build_cli,
 )
 
@@ -70,7 +70,7 @@ def test_given_external_source_pipeline_when_running_then_it_publishes_expected_
         database=isolated_e2e_clickhouse_database,
         deployment_id=test_case.deployment_id,
     )
-    audit_result: dict[str, object] = run_streambuild_audit_deployment_cli(
+    audit_result: dict[str, object] = run_streambuild_deployment_audit_cli(
         project_dir=project_dir,
         host=isolated_e2e_clickhouse_connection_settings.host,
         port=isolated_e2e_clickhouse_connection_settings.port,
@@ -79,7 +79,7 @@ def test_given_external_source_pipeline_when_running_then_it_publishes_expected_
         database=isolated_e2e_clickhouse_database,
         deployment_id=test_case.deployment_id,
     )
-    run_streambuild_publish_cli(
+    run_streambuild_deployment_promote_cli(
         project_dir=project_dir,
         host=isolated_e2e_clickhouse_connection_settings.host,
         port=isolated_e2e_clickhouse_connection_settings.port,
@@ -156,7 +156,7 @@ def test_given_external_offset_source_pipeline_when_running_then_it_publishes_of
         f"{isolated_e2e_clickhouse_database}._streambuild_virtual_replay_boundaries "
         "WHERE boundary_kind = 'offsets' ORDER BY partition_value"
     ).result_rows
-    run_streambuild_publish_cli(
+    run_streambuild_deployment_promote_cli(
         project_dir=project_dir,
         host=isolated_e2e_clickhouse_connection_settings.host,
         port=isolated_e2e_clickhouse_connection_settings.port,

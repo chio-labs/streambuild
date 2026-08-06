@@ -18,16 +18,16 @@ from scripts.cli_output_preview_support._helpers.result_fixtures import (
 )
 from scripts.cli_output_preview_support.models import PreviewRequest
 from streambuild.adapters.clickhouse.constants import CLICKHOUSE_ADAPTER_NAME
-from streambuild.cli.audit_backfill.main.render_ambiguous_deployment_message import (
-    render_ambiguous_deployment_message,
-)
-from streambuild.cli.audit_backfill.main.render_audit_backfill_result import (
-    render_audit_backfill_result,
-)
 from streambuild.cli.build.main.render_virtual_build_result import render_virtual_build_result
 from streambuild.cli.plan.main.render_direct_plan_text import render_direct_plan_text
 from streambuild.cli.plan.main.render_plan_result import render_plan_result
-from streambuild.cli.publish.main.render_publish_result import render_publish_result
+from streambuild.cli.promotion.main.render_promotion_result import render_promotion_result
+from streambuild.cli.readiness.main.render_ambiguous_deployment_message import (
+    render_ambiguous_deployment_message,
+)
+from streambuild.cli.readiness.main.render_deployment_audit_result import (
+    render_deployment_audit_result,
+)
 
 
 def render_plan_preview(request: PreviewRequest) -> str:
@@ -92,7 +92,7 @@ def render_backfill_preview(request: PreviewRequest) -> str:
 def render_audit_preview(request: PreviewRequest) -> str:
     """Render the audit preview scenario."""
 
-    return render_audit_backfill_result(
+    return render_deployment_audit_result(
         result=build_audit_preview(),
         database=request.database,
         json_output=request.json_output,
@@ -102,7 +102,7 @@ def render_audit_preview(request: PreviewRequest) -> str:
 def render_audit_caution_preview(request: PreviewRequest) -> str:
     """Render the audit caution preview scenario."""
 
-    return render_audit_backfill_result(
+    return render_deployment_audit_result(
         result=build_audit_caution_preview(),
         database=request.database,
         json_output=request.json_output,
@@ -112,7 +112,7 @@ def render_audit_caution_preview(request: PreviewRequest) -> str:
 def render_publish_preview(request: PreviewRequest) -> str:
     """Render the publish preview scenario."""
 
-    return render_publish_result(
+    return render_promotion_result(
         result=build_publish_preview(),
         database=request.database,
         json_output=request.json_output,
@@ -123,7 +123,7 @@ def render_audit_ambiguous_preview(request: PreviewRequest) -> str:
     """Render the audit ambiguous preview scenario."""
 
     return render_ambiguous_deployment_message(
-        command_name="audit deployment",
+        command_name="deployment audit",
         database=request.database,
         root_names=("tbl__orders_enriched",),
         candidates=build_ambiguity_candidates(),

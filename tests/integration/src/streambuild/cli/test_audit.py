@@ -10,8 +10,8 @@ from clickhouse_connect.driver.client import Client
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from streambuild.cli.audit.main._run_audit import run_audit
-from streambuild.cli.audit_backfill.main._run_audit_backfill import run_audit_backfill
 from streambuild.cli.entry._helpers.compiler_profile import build_compiler_adapter_profile
+from streambuild.cli.readiness.main._run_deployment_audit import run_deployment_audit
 from streambuild.compiler.compile.models import CompiledPipeline
 from streambuild.compiler.discovery.main.load_project_input_for_path import (
     load_project_input_for_path,
@@ -287,7 +287,7 @@ def test_given_audit_project_when_running_audit_backfill_then_it_includes_qualit
             f"ALTER TABLE {clickhouse_database}.{staged_table_name} "
             "UPDATE _replay_timestamp = toDateTime64('2026-04-19 23:59:59.000', 3) WHERE 1"
         )
-        exit_code: int = run_audit_backfill(
+        exit_code: int = run_deployment_audit(
             pipelines_root=tmp_path / "pipelines",
             project_dir=tmp_path,
             database=clickhouse_database,

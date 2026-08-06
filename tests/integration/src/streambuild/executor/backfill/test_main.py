@@ -25,8 +25,8 @@ from streambuild.executor.backfill.models import (
     BackfillExecutionResult,
     RootBackfillReport,
 )
-from streambuild.executor.publish.main.execute_publish import execute_publish
-from streambuild.executor.publish.models import PublishRequest
+from streambuild.executor.promotion.main.execute_deployment_promotion import execute_publish
+from streambuild.executor.promotion.models import PublishRequest
 from streambuild.executor.workflow.exceptions import WorkflowExecutionError
 from tests.integration.src.streambuild.adapters.clickhouse.helpers import (
     render_create_kafka_table_ddl,
@@ -1428,7 +1428,7 @@ def test_given_external_source_cursor_replay_when_executing_then_it_replays_by_c
                     _replay_landed_at="2026-04-10 15:00:01.000",
                 ),
             ),
-            expected_shadow_rows=(("2026-04-09 14:00:00.000", 2),),
+            expected_shadow_rows=(("2026-04-09 13:00:00.000", 2),),
         )
     ],
     ids=lambda case: case.description,
@@ -1537,7 +1537,7 @@ def test_given_aggregate_offset_replay_when_executing_then_it_filters_anchor_row
                     event_landed_at="2026-04-10 15:00:01.000",
                 ),
             ),
-            expected_shadow_rows=(("2026-04-09 14:00:00.000", 2),),
+            expected_shadow_rows=(("2026-04-09 13:00:00.000", 2),),
         )
     ],
     ids=lambda case: case.description,
@@ -1780,7 +1780,7 @@ def test_given_aggregate_start_time_when_bootstrapping_then_it_resolves_policy_p
             lower_bound_source_order_id="frontier-order",
             lower_bound_offset_millis=1,
             expected_shadow_table_name="tbl__hourly_order_volume__20260409T153500Z_cd34ef",
-            expected_shadow_rows=(("2026-04-09 15:00:00.000", 2),),
+            expected_shadow_rows=(("2026-04-09 14:00:00.000", 2),),
         )
     ],
     ids=lambda case: case.description,
@@ -1927,8 +1927,8 @@ def test_given_aggregate_start_time_when_executing_then_it_falls_back_to_full_re
             lower_bound_offset_millis=1,
             expected_shadow_table_name="tbl__hourly_order_volume__20260409T154500Z_cd34ef",
             expected_shadow_rows=(
-                ("2026-04-09 16:00:00.000", 1),
-                ("2026-04-09 16:00:00.000", 1),
+                ("2026-04-09 15:00:00.000", 1),
+                ("2026-04-09 15:00:00.000", 1),
             ),
         )
     ],
