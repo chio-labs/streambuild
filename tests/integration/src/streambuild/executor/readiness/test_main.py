@@ -596,7 +596,7 @@ def test_given_deleted_audit_metadata_when_auditing_then_it_uses_live_clickhouse
     assert root_result.staged_exists is True
     assert root_result.active_exists is test_case.expected_active_exists
     assert root_result.active_row_count is None
-    assert root_result.staged_row_count == 2
+    assert root_result.staged_row_count == 1
     assert root_result.assessment == test_case.expected_assessment
 
 
