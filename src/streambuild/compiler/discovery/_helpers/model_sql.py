@@ -13,6 +13,7 @@ from streambuild.compiler.discovery.constants import (
     ALLOWED_MODEL_KEYS,
     DEFAULT_SQL_MODEL_ENGINE,
     DEFAULT_SQL_MODEL_ORDER_BY,
+    MODEL_COLUMN_KEYS,
     MODEL_HEADER_PATTERN,
     SCHEMA_CHANGE_RULE_KEYS,
     SECONDS_BY_DURATION_UNIT,
@@ -20,6 +21,7 @@ from streambuild.compiler.discovery.constants import (
 )
 from streambuild.compiler.discovery.exceptions import ModelHeaderSyntaxError, PipelineDiscoveryError
 from streambuild.compiler.discovery.models import (
+    ModelColumnSpec,
     ReplayOnChangePolicy,
     ReplayOnChangeRule,
     TransformStep,
@@ -90,6 +92,20 @@ def _load_transform_from_sql_contents(
         key="relation_name",
         file_path=file_path,
     )
+    description: str | None = _optional_string(
+        header_values=header_values,
+        key="description",
+        file_path=file_path,
+    )
+    columns: tuple[ModelColumnSpec, ...] = _optional_model_columns(
+        header_values=header_values,
+        file_path=file_path,
+    )
+    audits: tuple[object, ...] = _optional_model_audits(
+        payload=header_values.get("audits"),
+        label="audits",
+        file_path=file_path,
+    )
     if model_kind == ModelKind.VIEW:
         _validate_view_header(header_values=header_values, file_path=file_path)
         _validate_view_refs(
@@ -102,6 +118,9 @@ def _load_transform_from_sql_contents(
             name=file_path.stem,
             query=query,
             relation_name=relation_name,
+            description=description,
+            columns=columns,
+            audits=audits,
             source_file_path=file_path,
             source_line=query_line,
             source_column=query_column,
@@ -117,6 +136,9 @@ def _load_transform_from_sql_contents(
         engine=_sql_model_engine(header_values=header_values, file_path=file_path),
         order_by=_sql_model_order_by(header_values=header_values, file_path=file_path),
         relation_name=relation_name,
+        description=description,
+        columns=columns,
+        audits=audits,
         partition_by=_optional_string(
             header_values=header_values, key="partition_by", file_path=file_path
         ),
@@ -356,6 +378,70 @@ def _sql_model_order_by(*, header_values: dict[str, Any], file_path: Path) -> li
     if value is None:
         return list(DEFAULT_SQL_MODEL_ORDER_BY)
     return _require_string_list(header_values=header_values, key="order_by", file_path=file_path)
+
+
+def _optional_model_audits(
+    *,
+    payload: object,
+    label: str,
+    file_path: Path,
+) -> tuple[object, ...]:
+    if payload is None:
+        return ()
+    if not isinstance(payload, list):
+        raise PipelineDiscoveryError(
+            f"MODEL(...) in '{file_path}' must define '{label}' as a bracketed list when set"
+        )
+    return tuple(payload)
+
+
+def _optional_model_columns(
+    *,
+    header_values: dict[str, Any],
+    file_path: Path,
+) -> tuple[ModelColumnSpec, ...]:
+    value: Any = header_values.get("columns")
+    if value is None:
+        return ()
+    if not isinstance(value, dict):
+        raise PipelineDiscoveryError(
+            f"MODEL(...) in '{file_path}' must define 'columns' as a parenthesized mapping"
+        )
+    specs: list[ModelColumnSpec] = []
+    column_name: str
+    raw_spec: Any
+    for column_name, raw_spec in value.items():
+        if not isinstance(raw_spec, dict):
+            raise PipelineDiscoveryError(
+                f"MODEL(...) in '{file_path}' column '{column_name}' must use a "
+                "parenthesized mapping"
+            )
+        unknown_keys: tuple[str, ...] = tuple(sorted(set(raw_spec) - MODEL_COLUMN_KEYS))
+        if unknown_keys:
+            raise PipelineDiscoveryError(
+                f"MODEL(...) in '{file_path}' column '{column_name}' has unknown keys: "
+                f"{', '.join(unknown_keys)}"
+            )
+        column_description: Any = raw_spec.get("description")
+        if column_description is not None and (
+            not isinstance(column_description, str) or not column_description
+        ):
+            raise PipelineDiscoveryError(
+                f"MODEL(...) in '{file_path}' column '{column_name}' must define "
+                "'description' as a string when set"
+            )
+        specs.append(
+            ModelColumnSpec(
+                name=column_name,
+                description=column_description,
+                audits=_optional_model_audits(
+                    payload=raw_spec.get("audits"),
+                    label=f"columns.{column_name}.audits",
+                    file_path=file_path,
+                ),
+            )
+        )
+    return tuple(specs)
 
 
 def _optional_string(*, header_values: dict[str, Any], key: str, file_path: Path) -> str | None:

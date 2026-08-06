@@ -43,6 +43,20 @@ verify:
 	uv run pytest tests/e2e -q -m performance -k 10000 -n 4
 
 
+ui-install:
+	cd ui && npm ci
+
+
+ui-build:
+	cd ui && npm run build
+	rm -rf src/streambuild/dev_server/static
+	cp -r ui/build src/streambuild/dev_server/static
+
+
+ui-dev:
+	cd ui && npm run dev
+
+
 check-ci:
 	uv run ruff format --check .
 	uv run ruff check .

@@ -76,13 +76,6 @@ def write_compilation_project(project_dir: Path) -> None:
         """,
     )
     _write(
-        project_dir / "pipelines" / "alpha" / "schema.yml",
-        """
-        models:
-          - name: alpha_model
-        """,
-    )
-    _write(
         project_dir / "macros" / "formatting.py",
         """
         def identity_sql(value: str) -> str:

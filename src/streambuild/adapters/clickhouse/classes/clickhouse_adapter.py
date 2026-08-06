@@ -167,6 +167,8 @@ class ClickHouseAdapter(Adapter):
         return render_clickhouse_set_difference_comparison(request=request)
 
     def _open_raw_client(self, config: AdapterConnectionConfig) -> RawClickHouseClient:
+        """Open a session-less driver client; session ids only cause SESSION_IS_LOCKED here."""
+
         if config.database is None:
             return cast(
                 RawClickHouseClient,
@@ -175,6 +177,7 @@ class ClickHouseAdapter(Adapter):
                     port=config.port,
                     username=config.username,
                     password=config.password,
+                    autogenerate_session_id=False,
                 ),
             )
         return cast(
@@ -185,5 +188,6 @@ class ClickHouseAdapter(Adapter):
                 username=config.username,
                 password=config.password,
                 database=config.database,
+                autogenerate_session_id=False,
             ),
         )

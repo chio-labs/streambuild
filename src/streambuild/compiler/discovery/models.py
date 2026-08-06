@@ -107,12 +107,21 @@ class ReplayOnChangePolicy:
 
 
 @dataclass(frozen=True)
+class SourceFreshnessPolicy:
+    """Authored freshness thresholds as `<int><s|m|h|d>` durations."""
+
+    warn_after: str | None = None
+    error_after: str | None = None
+
+
+@dataclass(frozen=True)
 class ProjectDefaults:
     """Committed project-wide authored defaults."""
 
     managed_source_ttl: str | None = None
     replay_on_change: ReplayOnChangePolicy | None = None
     bounded_replay_fallback: BoundedReplayFallback | None = None
+    freshness: SourceFreshnessPolicy | None = None
 
 
 @dataclass(frozen=True)
@@ -215,6 +224,7 @@ class KafkaLandingStep:
     name: str
     kafka: KafkaSettings
     replay_boundary: ReplayBoundary | None = None
+    freshness: SourceFreshnessPolicy | None = None
 
 
 @dataclass(frozen=True)
@@ -247,9 +257,19 @@ class ExternalTableSourceStep:
     kind: SourceKind | str
     table_name: str
     replay_boundary: ReplayBoundary
+    freshness: SourceFreshnessPolicy | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "kind", SourceKind(self.kind))
+
+
+@dataclass(frozen=True)
+class ModelColumnSpec:
+    """An authored MODEL(...) column declaration."""
+
+    name: str
+    description: str | None = None
+    audits: tuple[object, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -261,6 +281,9 @@ class TransformStep:
     engine: str
     order_by: Sequence[str]
     relation_name: str | None = None
+    description: str | None = None
+    columns: tuple[ModelColumnSpec, ...] = ()
+    audits: tuple[object, ...] = ()
     query: str | None = None
     sql_file: str | None = None
     partition_by: str | None = None
@@ -298,6 +321,9 @@ class ViewStep:
     query: str | None = None
     sql_file: str | None = None
     relation_name: str | None = None
+    description: str | None = None
+    columns: tuple[ModelColumnSpec, ...] = ()
+    audits: tuple[object, ...] = ()
     source_file_path: Path | None = None
     source_line: int = 1
     source_column: int = 1
@@ -394,5 +420,4 @@ class DiscoveredProjectInputs:
     model_files: tuple[DiscoveredProjectFile, ...]
     test_files: tuple[DiscoveredProjectFile, ...]
     audit_files: tuple[DiscoveredProjectFile, ...]
-    audit_schema_files: tuple[DiscoveredProjectFile, ...]
     macro_files: tuple[DiscoveredProjectFile, ...]

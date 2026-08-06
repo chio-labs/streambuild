@@ -219,7 +219,7 @@ def run_kafka_live_shadow_scenario(
         f"SELECT order_id FROM {clickhouse_database}.{staged_table_name} ORDER BY order_id"
     ).result_rows
 
-    run_streambuild_publish_cli(
+    run_streambuild_deployment_promote_cli(
         project_dir=project_dir,
         host=clickhouse_connection_settings.host,
         port=clickhouse_connection_settings.port,
@@ -432,7 +432,7 @@ def run_streambuild_build_cli(
     )
 
 
-def run_streambuild_audit_deployment_cli(
+def run_streambuild_deployment_audit_cli(
     *,
     project_dir: Path,
     host: str,
@@ -444,8 +444,9 @@ def run_streambuild_audit_deployment_cli(
 ) -> dict[str, object]:
     return _run_streambuild_cli_json(
         command=(
-            "audit",
             "deployment",
+            "audit",
+            deployment_id,
             "--project-dir",
             str(project_dir),
             "--host",
@@ -458,14 +459,12 @@ def run_streambuild_audit_deployment_cli(
             password,
             "--database",
             database,
-            "--deployment-id",
-            deployment_id,
             "--json",
         )
     )
 
 
-def run_streambuild_publish_cli(
+def run_streambuild_deployment_promote_cli(
     *,
     project_dir: Path,
     host: str,
@@ -477,7 +476,9 @@ def run_streambuild_publish_cli(
 ) -> None:
     _run_streambuild_cli(
         command=(
-            "publish",
+            "deployment",
+            "promote",
+            deployment_id,
             "--project-dir",
             str(project_dir),
             "--host",
@@ -490,8 +491,6 @@ def run_streambuild_publish_cli(
             password,
             "--database",
             database,
-            "--deployment-id",
-            deployment_id,
         )
     )
 

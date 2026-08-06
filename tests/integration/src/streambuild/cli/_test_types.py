@@ -129,8 +129,6 @@ class CliDirectPlanIntegrationTestCase:
     description: str
     expected_execution_scope: tuple[str, ...]
     expected_replay_root_models: tuple[str, ...]
-    expected_initial_ownership: tuple[str, ...]
-    expected_settled_ownership: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -139,7 +137,7 @@ class CliDirectBuildIntegrationTestCase:
     landing_rows: tuple[tuple[str, int, int], ...]
     late_landing_rows: tuple[tuple[str, int, int], ...]
     expected_created_relations: tuple[str, ...]
-    expected_owned_relations: tuple[str, ...]
+    expected_fingerprinted_relations: tuple[str, ...]
     expected_replayed_order_ids: tuple[str, ...]
     expected_final_order_ids: tuple[str, ...]
     expected_deployment_row_count: int
@@ -158,6 +156,16 @@ class CliDirectStartTimeIntegrationTestCase:
 
 
 @dataclass(frozen=True)
+class CliDirectTimezoneStartTimeIntegrationTestCase:
+    description: str
+    cli_start_time: str
+    expected_warehouse_timezone: str
+    expected_effective_start_time: str
+    expected_sql_fragment: str
+    unexpected_local_sql_fragment: str
+
+
+@dataclass(frozen=True)
 class CliDirectLandedAtStartTimeIntegrationTestCase:
     description: str
     expected_target_rows: tuple[str, ...]
@@ -169,8 +177,9 @@ class CliDirectManualWorkflowIntegrationTestCase:
     description: str
     expected_exit_code: int
     expected_order_ids: tuple[str, ...]
-    expected_owned_relations: tuple[str, ...]
+    expected_fingerprinted_relations: tuple[str, ...]
     expected_replay_coverage_ranges: tuple[tuple[str, str, str], ...]
+    expected_reexecuted_order_ids: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -188,6 +197,7 @@ class CliDirectViewBuildIntegrationTestCase:
     expected_rows: tuple[tuple[str, str], ...]
     expected_relation_name: str
     expected_resource_kind: str
+    expected_observed_fingerprint_count: int
 
 
 @dataclass(frozen=True)
@@ -221,7 +231,7 @@ class CliDirectBuildGuardIntegrationTestCase:
 
 
 @dataclass(frozen=True)
-class CliReciprocalOwnershipIntegrationTestCase:
+class CliCrossModeBuildIntegrationTestCase:
     description: str
     expected_exit_code: int
     expected_error_fragment: str
@@ -240,31 +250,18 @@ class CliDirectBuildAuditIntegrationTestCase:
     expected_final_coverage: tuple[tuple[str, str, str], ...]
     expected_sample_query_fragment: str
     expected_error_message_count: int
+    expected_fingerprint_count_delta: int
 
 
 @dataclass(frozen=True)
 class CliDirectBuildRerunIntegrationTestCase:
     description: str
     landing_rows: tuple[tuple[str, int, int], ...]
-    restored_landing_rows: tuple[tuple[str, int, int], ...]
     late_landing_rows: tuple[tuple[str, int, int], ...]
     expected_failed_exit_code: int
     expected_incomplete_target_count: int
-    expected_retention_exit_code: int
-    expected_retention_error_fragment: str
     expected_rerun_exit_code: int
     expected_final_order_ids: tuple[str, ...]
-
-
-@dataclass(frozen=True)
-class CliDirectBuildPartialFailureIntegrationTestCase:
-    description: str
-    landing_rows: tuple[tuple[str, int, int], ...]
-    partial_landing_rows: tuple[tuple[str, int, int], ...]
-    expected_failed_exit_code: int
-    expected_retention_exit_code: int
-    expected_retention_error_fragment: str
-    expected_partial_order_ids: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -388,7 +385,7 @@ class CliDirectRelationRenameIntegrationTestCase:
     initial_relation_name: str
     renamed_relation_name: str
     expected_rows: tuple[str, ...]
-    expected_owned_relations: tuple[str, ...]
+    expected_fingerprinted_relations: tuple[str, ...]
     expected_dropped_relations: tuple[str, ...]
 
 

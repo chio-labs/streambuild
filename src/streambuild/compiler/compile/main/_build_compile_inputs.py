@@ -2,6 +2,9 @@
 
 from pathlib import Path
 
+from streambuild.compiler.audit_discovery.main._build_model_audit_instances import (
+    build_model_audit_instances,
+)
 from streambuild.compiler.audit_discovery.main._discover_sql_audits import discover_sql_audits
 from streambuild.compiler.audit_discovery.models import LoadedSqlAudit
 from streambuild.compiler.compile.models import (
@@ -23,6 +26,8 @@ from streambuild.compiler.discovery.models import (
     KafkaLandingStep,
     LoadedPipeline,
     Project,
+    TransformStep,
+    ViewStep,
 )
 from streambuild.compiler.macros.main._build_macro_context import build_macro_context
 from streambuild.compiler.macros.main._load_macro_registry import load_macro_registry
@@ -92,7 +97,6 @@ def build_compile_inputs(
         for source_file in (
             *discovered_inputs.test_files,
             *discovered_inputs.audit_files,
-            *discovered_inputs.audit_schema_files,
         )
     }
     tests: tuple[LoadedSqlTest, ...] = tuple(
@@ -103,12 +107,16 @@ def build_compile_inputs(
             macro_context=macro_context,
         )
     )
+    model_steps: list[TransformStep | ViewStep] = []
+    for loaded_pipeline in pipelines:
+        model_steps.extend(loaded_pipeline.pipeline.transforms)
     audits: tuple[LoadedSqlAudit, ...] = tuple(
         discover_sql_audits(
             root=discovered_inputs.project_dir / "audits",
             contents_by_path=contents_by_path,
             macro_registry=macro_registry,
             macro_context=macro_context,
+            generic_audit_instances=build_model_audit_instances(models=tuple(model_steps)),
         )
     )
     validate_attached_project_inputs(

@@ -8,8 +8,8 @@ from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import AdapterDeploymentRecord
 from streambuild.executor.janitor.main.execute_janitor import execute_janitor
 from streambuild.executor.janitor.models import JanitorApplyResult, JanitorRequest
-from streambuild.executor.publish.main.execute_publish import execute_publish
-from streambuild.executor.publish.models import PublishRequest
+from streambuild.executor.promotion.main.execute_deployment_promotion import execute_publish
+from streambuild.executor.promotion.models import PublishRequest
 from tests.integration.src.streambuild.cli._test_types import (
     CliVirtualEnvironmentRenameIntegrationTestCase,
     CliVirtualEnvironmentViewIntegrationTestCase,

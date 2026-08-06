@@ -60,7 +60,7 @@ from tests.unit.scripts.fensu_policy.rules._test_types import CustomRuleTestCase
         ),
         CustomRuleTestCase(
             description="rejects raw observability table names in publish decisions",
-            path="src/streambuild/executor/publish/_helpers/resolution.py",
+            path="src/streambuild/executor/promotion/_helpers/resolution.py",
             source='QUERY = "SELECT * FROM _streambuild_node_results"\n',
             expected_fault_count=1,
         ),

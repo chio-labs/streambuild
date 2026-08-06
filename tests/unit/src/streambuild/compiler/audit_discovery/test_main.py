@@ -2,8 +2,13 @@ from pathlib import Path
 
 import pytest
 
+from streambuild.compiler.audit_discovery.main._build_model_audit_instances import (
+    build_model_audit_instances,
+)
 from streambuild.compiler.audit_discovery.main._discover_sql_audits import discover_sql_audits
 from streambuild.compiler.audit_discovery.models import LoadedSqlAudit
+from streambuild.compiler.discovery._helpers.model_sql import load_transform_from_sql_file
+from streambuild.compiler.discovery.models import TransformStep, ViewStep
 from streambuild.compiler.macros.models import MacroContext, MacroRegistry
 from tests.unit.src.streambuild.compiler.audit_discovery._test_types import (
     DiscoverGenericSqlAuditsErrorTestCase,
@@ -13,7 +18,7 @@ from tests.unit.src.streambuild.compiler.audit_discovery._test_types import (
     DiscoverSqlAuditsWithMacrosTestCase,
 )
 from tests.unit.src.streambuild.compiler.audit_discovery.helpers import (
-    write_schema_yaml_file,
+    write_model_sql_file,
     write_sql_audit_file,
 )
 from tests.unit.src.streambuild.compiler.macros.helpers import (
@@ -255,15 +260,15 @@ def test_given_sql_audit_macros_when_discovering_then_it_expands_audit_body(
             FROM __ref("@model")
             WHERE @column IS NULL
             """,
-            schema_file_contents="""
-            models:
-              - name: order_items
-                columns:
-                  - name: order_id
-                    audits:
-                      - not_null:
-                          name: order items order id not null
-                          severity: warning
+            model_file_contents="""
+            MODEL (
+              columns (
+                order_id (
+                  audits [not_null (name "order items order id not null", severity warning)],
+                ),
+              ),
+            );
+            SELECT order_id FROM __source("order_events")
             """,
             expected_name="order items order id not null",
             expected_query_fragments=('FROM __ref("order_items")',),
@@ -279,17 +284,17 @@ def test_given_sql_audit_macros_when_discovering_then_it_expands_audit_body(
             FROM __ref("@model")
             WHERE @column NOT IN (@'values')
             """,
-            schema_file_contents="""
-            models:
-              - name: order_items
-                columns:
-                  - name: category
-                    audits:
-                      - accepted_values:
-                          name: accepted categories
-                          values:
-                            - "O'Reilly"
-                            - "cafe雪"
+            model_file_contents="""
+            MODEL (
+              columns (
+                category (
+                  audits [
+                    accepted_values (name "accepted categories", values ["O'Reilly", "cafe雪"]),
+                  ],
+                ),
+              ),
+            );
+            SELECT category FROM __source("order_events")
             """,
             expected_name="accepted categories",
             expected_query_fragments=(
@@ -312,12 +317,14 @@ def test_given_generic_sql_audits_when_discovering_then_it_renders_concrete_audi
         audits_root / "generic" / f"{test_case.definition_name}.sql",
         test_case.definition_file_contents,
     )
-    write_schema_yaml_file(
-        tmp_path / "pipelines" / "order_events" / "schema.yml",
-        test_case.schema_file_contents,
-    )
+    model_path: Path = pipeline_dir / "order_items.sql"
+    write_model_sql_file(model_path, test_case.model_file_contents)
+    model: TransformStep | ViewStep = load_transform_from_sql_file(file_path=model_path)
 
-    loaded_audits: list[LoadedSqlAudit] = discover_sql_audits(root=audits_root)
+    loaded_audits: list[LoadedSqlAudit] = discover_sql_audits(
+        root=audits_root,
+        generic_audit_instances=build_model_audit_instances(models=(model,)),
+    )
 
     assert loaded_audits[0].name == test_case.expected_name
     assert all(

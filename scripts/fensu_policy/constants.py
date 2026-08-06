@@ -95,15 +95,13 @@ WORKFLOW_ASSEMBLER_PATHS: tuple[tuple[str, ...], ...] = (
     ("src", "streambuild", "executor", "direct", "_helpers", "workflow.py"),
     ("src", "streambuild", "executor", "backfill", "_helpers", "workflow.py"),
     ("src", "streambuild", "executor", "population", "_helpers", "workflow.py"),
-    ("src", "streambuild", "executor", "publish", "_helpers", "workflow.py"),
+    ("src", "streambuild", "executor", "promotion", "_helpers", "workflow.py"),
     ("src", "streambuild", "executor", "repair", "_helpers", "workflow.py"),
     ("src", "streambuild", "executor", "janitor", "_helpers", "workflow.py"),
     ("src", "streambuild", "executor", "reconcile", "_helpers", "workflow.py"),
     ("src", "streambuild", "executor", "observability", "_helpers", "workflow.py"),
 )
 RETIRED_ADAPTER_MUTATION_METHODS: tuple[str, ...] = (
-    "record_target_ownership",
-    "remove_target_ownership",
     "command",
     "insert_rows",
     "ensure_database",
@@ -125,6 +123,7 @@ BUILD_WORKFLOW_EXECUTION_FUNCTION: str = "execute_build_workflow"
 BUILD_WORKFLOW_EXECUTION_PARAMETERS: tuple[str, ...] = (
     "published_workflow",
     "connection",
+    "emitter",
 )
 PUBLISHED_WORKFLOW_CONSTRUCTOR_NAME: str = "PublishedBuildWorkflow"
 WORKFLOW_STATEMENT_CONSTRUCTOR_NAME: str = "WarehouseStatement"
@@ -144,12 +143,18 @@ OBSERVABILITY_AUTHORITY_ALLOWED_PATH_PREFIXES: tuple[tuple[str, ...], ...] = (
     ("src", "streambuild", "executor", "observability"),
     ("src", "streambuild", "executor", "workflow", "main", "_execute_observation_workflow.py"),
     ("src", "streambuild", "quality"),
+    ("src", "streambuild", "dev_server", "_helpers", "runs_query.py"),
+    ("src", "streambuild", "dev_server", "_helpers", "checks_execution.py"),
 )
 QUALITY_MODULE_PREFIX: tuple[str, ...] = ("streambuild", "quality")
 OBSERVABILITY_QUERY_CALL_NAMES: frozenset[str] = frozenset({"render_latest_node_status_query"})
 OBSERVABILITY_TABLE_CONSTANT_NAMES: frozenset[str] = frozenset(
-    {"METADATA_INVOCATIONS_TABLE_NAME", "METADATA_NODE_RESULTS_TABLE_NAME"}
+    {
+        "METADATA_INVOCATIONS_TABLE_NAME",
+        "METADATA_NODE_RESULTS_TABLE_NAME",
+        "METADATA_RUN_EVENTS_TABLE_NAME",
+    }
 )
 OBSERVABILITY_TABLE_NAMES: frozenset[str] = frozenset(
-    {"_streambuild_invocations", "_streambuild_node_results"}
+    {"_streambuild_invocations", "_streambuild_node_results", "_streambuild_run_events"}
 )
