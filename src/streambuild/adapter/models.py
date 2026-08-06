@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from streambuild.adapter.constants import REDACTED_SECRET_PLACEHOLDER
 from streambuild.adapter.exceptions import AdapterResultError
 from streambuild.adapter.types import (
-    AdapterOwningMode,
     AdapterReplayBoundaryMode,
     AdapterReplayLowerBoundMode,
     AdapterReplaySeedMode,
@@ -54,23 +53,6 @@ class AdapterReplayCoverageRange:
         object.__setattr__(
             self, "replay_boundary_mode", AdapterReplayBoundaryMode(self.replay_boundary_mode)
         )
-
-
-@dataclass(frozen=True)
-class AdapterOwnershipRecord:
-    """One durable claim that StreamBuild manages a specific warehouse relation."""
-
-    database_name: str
-    relation_name: str
-    resource_kind: str
-    logical_model_name: str
-    owning_mode: AdapterOwningMode | str
-    tool_version: str
-    logical_model_database: str | None = None
-    replay_coverage: tuple[AdapterReplayCoverageRange, ...] = ()
-
-    def __post_init__(self) -> None:
-        object.__setattr__(self, "owning_mode", AdapterOwningMode(self.owning_mode))
 
 
 @dataclass(frozen=True)
@@ -396,13 +378,15 @@ class AdapterReplayCoverageRequest:
 
 
 @dataclass(frozen=True)
-class AdapterOwnershipReplayRequest:
-    """A replay whose dynamic upper boundary is stored in direct ownership metadata."""
+class AdapterCheckpointReplayRequest:
+    """A replay whose dynamic upper boundary is stored in a direct checkpoint."""
 
     replay: AdapterReplayRequest
     metadata_database: str
+    checkpoint_id: str
     logical_model_name: str
     boundary_column_type: str | None
+    checkpoint_sequence: int = 2
 
 
 @dataclass(frozen=True)
@@ -533,6 +517,19 @@ class AdapterNodeResultRecord:
     completed_at: str
     payload_json: str
     error_message: str | None
+
+
+@dataclass(frozen=True)
+class AdapterRunEventRecord:
+    """One step-granular workflow event streamed while a run executes."""
+
+    invocation_id: str
+    sequence: int
+    emitted_at: str
+    event_kind: str
+    step_id: str | None
+    phase: str | None
+    payload_json: str
 
 
 @dataclass(frozen=True)

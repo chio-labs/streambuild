@@ -8,6 +8,7 @@ from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import (
     AdapterBindingReplacementRequest,
     AdapterCapabilities,
+    AdapterCheckpointReplayRequest,
     AdapterConnectionConfig,
     AdapterDeploymentInventory,
     AdapterDeploymentReplayRequest,
@@ -18,8 +19,6 @@ from streambuild.adapter.models import (
     AdapterMetadataState,
     AdapterMutationResult,
     AdapterNodeResultRecord,
-    AdapterOwnershipRecord,
-    AdapterOwnershipReplayRequest,
     AdapterQueryResult,
     AdapterReadinessRequest,
     AdapterReadinessRootObservation,
@@ -36,20 +35,23 @@ from streambuild.adapter.models import (
 from streambuild.adapter.types import AdapterReplayBoundaryMode
 from streambuild.adapters.clickhouse._helpers.replay import (
     render_clickhouse_replay_coverage_query,
+    render_clickhouse_replay_from_checkpoint,
     render_clickhouse_replay_from_deployment,
-    render_clickhouse_replay_from_ownership,
 )
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from streambuild.cli.audit.main._run_audit import run_audit
-from streambuild.cli.audit_backfill.main._run_audit_backfill import run_audit_backfill
 from streambuild.cli.build.main._run_build import run_build
 from streambuild.cli.compile.main._run_compile import run_compile
+from streambuild.cli.deployment.main._run_deployment_list import run_deployment_list
+from streambuild.cli.deployment.main._run_deployment_show import run_deployment_show
+from streambuild.cli.dev.main._run_dev import run_dev
 from streambuild.cli.discover.main._run_discover import run_discover
 from streambuild.cli.doctor.main._run_doctor import run_doctor
 from streambuild.cli.entry.models import CliEntrypointHandlers
 from streambuild.cli.janitor.main._run_janitor import run_janitor
 from streambuild.cli.plan.main._run_plan import run_plan
-from streambuild.cli.publish.main._run_publish import run_publish
+from streambuild.cli.promotion.main._run_deployment_promotion import run_deployment_promotion
+from streambuild.cli.readiness.main._run_deployment_audit import run_deployment_audit
 from streambuild.cli.reconcile.main._run_reconcile import run_reconcile
 from streambuild.cli.repair_active_view.main._run_repair_active_view import run_repair_active_view
 from streambuild.cli.test.main._run_test import run_test
@@ -174,7 +176,6 @@ class RecordingAdapterConnection(AdapterConnection):
         managed_table_state: InspectedManagedTableState = _EMPTY_MANAGED_TABLE_STATE,
         readiness_observations: tuple[AdapterReadinessRootObservation, ...] = (),
         deployment_inventory: AdapterDeploymentInventory = _EMPTY_DEPLOYMENT_INVENTORY,
-        ownership_records: tuple[AdapterOwnershipRecord, ...] = (),
         observation_statements: tuple[str, ...] = (),
         required_artifact_path: Path | None = None,
     ) -> None:
@@ -201,7 +202,6 @@ class RecordingAdapterConnection(AdapterConnection):
             readiness_observations
         )
         self._deployment_inventory: AdapterDeploymentInventory = deployment_inventory
-        self._ownership_records: tuple[AdapterOwnershipRecord, ...] = ownership_records
         self._observation_statements: tuple[str, ...] = observation_statements
         self._required_artifact_path: Path | None = required_artifact_path
         self.artifact_seen_before_execution: bool = False
@@ -232,26 +232,6 @@ class RecordingAdapterConnection(AdapterConnection):
     def inspect_managed_table_state(self, database: str) -> InspectedManagedTableState:
         del database
         return self._managed_table_state
-
-    def load_target_ownership(self, database: str) -> tuple[AdapterOwnershipRecord, ...]:
-        del database
-        return self._ownership_records
-
-    def render_record_target_ownership(
-        self, *, database: str, records: tuple[AdapterOwnershipRecord, ...]
-    ) -> tuple[str, ...]:
-        del database, records
-        return ()
-
-    def render_remove_target_ownership(
-        self,
-        *,
-        database: str,
-        target_database: str,
-        relation_names: tuple[str, ...],
-    ) -> tuple[str, ...]:
-        del database, target_database, relation_names
-        return ()
 
     def query(self, statement: str) -> AdapterQueryResult:
         self.statements.append(statement)
@@ -314,8 +294,8 @@ class RecordingAdapterConnection(AdapterConnection):
         del database
         return self._deployment_inventory
 
-    def render_replay_from_ownership(self, request: AdapterOwnershipReplayRequest) -> str:
-        return render_clickhouse_replay_from_ownership(request)
+    def render_replay_from_checkpoint(self, request: AdapterCheckpointReplayRequest) -> str:
+        return render_clickhouse_replay_from_checkpoint(request)
 
     def render_replay_coverage_query(self, request: AdapterReplayCoverageRequest) -> str:
         return render_clickhouse_replay_coverage_query(request)
@@ -364,26 +344,29 @@ def handlers_with_overrides(**overrides: object) -> CliEntrypointHandlers:
             run_audit=run_audit,
             run_plan=run_plan,
             run_build=run_build,
-            run_audit_backfill=run_audit_backfill,
-            run_publish=run_publish,
+            run_deployment_list=run_deployment_list,
+            run_deployment_show=run_deployment_show,
+            run_deployment_audit=run_deployment_audit,
+            run_deployment_promote=run_deployment_promotion,
             run_reconcile=run_reconcile,
             run_janitor=run_janitor,
             run_doctor=run_doctor,
             run_repair_active_view=run_repair_active_view,
+            run_dev=run_dev,
         ),
         **overrides,
     )
 
 
 CLI_COMMAND_HANDLER_NAMES: dict[str, str] = {
-    "audit deployment": "run_audit_backfill",
-    "publish": "run_publish",
+    "deployment audit": "run_deployment_audit",
+    "deployment promote": "run_deployment_promote",
     "doctor": "run_doctor",
 }
 
 CLI_COMMAND_ARGV: dict[str, tuple[str, ...]] = {
-    "audit deployment": ("stb", "audit", "deployment"),
-    "publish": ("stb", "publish"),
+    "deployment audit": ("stb", "deployment", "audit", "deployment-id"),
+    "deployment promote": ("stb", "deployment", "promote", "deployment-id"),
     "doctor": ("stb", "doctor"),
 }
 

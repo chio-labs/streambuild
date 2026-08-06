@@ -1,12 +1,10 @@
-"""Helpers for generic SQL audit definitions and schema-attached instances."""
+"""Helpers for generic SQL audit definitions and model-header instances."""
 
 from __future__ import annotations
 
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, cast
-
-import yaml
 
 from streambuild.compiler.audit_discovery._helpers.parsing import (
     parse_generic_sql_audit_definition,
@@ -20,6 +18,7 @@ from streambuild.compiler.audit_discovery.models import (
 )
 from streambuild.compiler.compile.main._extract_refs import extract_refs
 from streambuild.compiler.compile.models import ParsedRef
+from streambuild.compiler.discovery.models import ModelColumnSpec, TransformStep, ViewStep
 from streambuild.compiler.discovery.types import SqlRelationType
 from streambuild.compiler.macros.models import MacroContext, MacroRegistry
 from streambuild.compiler.sql_analysis.main._render_string_literal import render_string_literal
@@ -57,25 +56,38 @@ def discover_generic_sql_audit_definitions(
     return tuple(definitions)
 
 
-def discover_schema_bound_generic_sql_audit_instances(
+def build_model_header_generic_sql_audit_instances(
     *,
-    project_root: Path,
-    contents_by_path: Mapping[Path, str] | None = None,
+    models: tuple[TransformStep | ViewStep, ...],
 ) -> tuple[LoadedGenericSqlAuditInstance, ...]:
-    """Load generic SQL audit instances from `pipelines/**/schema.yml`."""
+    """Build generic audit instances declared in MODEL(...) headers."""
 
-    pipelines_root: Path = project_root / "pipelines"
-    if not pipelines_root.exists():
-        return ()
     instances: list[LoadedGenericSqlAuditInstance] = []
-    schema_file_path: Path
-    for schema_file_path in sorted(pipelines_root.rglob("schema.yml")):
+    model: TransformStep | ViewStep
+    for model in models:
+        file_path: Path = (
+            model.source_file_path
+            if model.source_file_path is not None
+            else Path(f"{model.name}.sql")
+        )
         instances.extend(
-            _load_schema_file_generic_sql_audit_instances(
-                file_path=schema_file_path,
-                contents=None if contents_by_path is None else contents_by_path[schema_file_path],
+            _build_generic_sql_audit_instances(
+                file_path=file_path,
+                raw_audits=list(model.audits),
+                implicit_arguments={"model": model.name},
+                default_name_prefix=model.name,
             )
         )
+        column: ModelColumnSpec
+        for column in model.columns:
+            instances.extend(
+                _build_generic_sql_audit_instances(
+                    file_path=file_path,
+                    raw_audits=list(column.audits),
+                    implicit_arguments={"model": model.name, "column": column.name},
+                    default_name_prefix=f"{model.name}.{column.name}",
+                )
+            )
     return tuple(instances)
 
 
@@ -84,12 +96,13 @@ def render_generic_sql_audits(
     definitions: tuple[LoadedGenericSqlAuditDefinition, ...],
     instances: tuple[LoadedGenericSqlAuditInstance, ...],
 ) -> tuple[LoadedSqlAudit, ...]:
-    """Render concrete SQL audits from generic definitions and schema-bound instances."""
+    """Render concrete audits with per-file sequential indices for distinct node identities."""
 
     definitions_by_name: dict[str, LoadedGenericSqlAuditDefinition] = {
         definition.name: definition for definition in definitions
     }
     rendered_audits: list[LoadedSqlAudit] = []
+    audit_index_by_file: dict[Path, int] = {}
     instance: LoadedGenericSqlAuditInstance
     for instance in instances:
         definition: LoadedGenericSqlAuditDefinition | None = definitions_by_name.get(
@@ -118,6 +131,7 @@ def render_generic_sql_audits(
                 raise SqlAuditParseError(
                     f"Rendered generic SQL audit '{instance.name}' may only use __ref(...)"
                 )
+        audit_index_by_file[instance.file_path] = audit_index_by_file.get(instance.file_path, 0) + 1
         rendered_audits.append(
             LoadedSqlAudit(
                 file_path=instance.file_path,
@@ -126,89 +140,11 @@ def render_generic_sql_audits(
                 severity=instance.severity,
                 description=instance.description,
                 name=instance.name,
+                audit_index=audit_index_by_file[instance.file_path],
+                generic_definition_name=instance.definition_name,
             )
         )
     return tuple(rendered_audits)
-
-
-def _load_schema_file_generic_sql_audit_instances(
-    *,
-    file_path: Path,
-    contents: str | None = None,
-) -> list[LoadedGenericSqlAuditInstance]:
-    source_contents: str = file_path.read_text(encoding="utf-8") if contents is None else contents
-    raw_values: Any = yaml.safe_load(source_contents)
-    if raw_values is None:
-        return []
-    if not isinstance(raw_values, dict) or not all(isinstance(key, str) for key in raw_values):
-        raise SqlAuditParseError(f"Schema file '{file_path}' must define a top-level mapping")
-    model_entries: Any = raw_values.get("models")
-    if model_entries is None:
-        return []
-    if not isinstance(model_entries, list):
-        raise SqlAuditParseError(f"Schema file '{file_path}' must define models as a list")
-    instances: list[LoadedGenericSqlAuditInstance] = []
-    raw_model_entry: object
-    for raw_model_entry in model_entries:
-        instances.extend(
-            _load_model_generic_sql_audit_instances(
-                file_path=file_path, raw_model_entry=raw_model_entry
-            )
-        )
-    return instances
-
-
-def _load_model_generic_sql_audit_instances(
-    *,
-    file_path: Path,
-    raw_model_entry: object,
-) -> list[LoadedGenericSqlAuditInstance]:
-    if not isinstance(raw_model_entry, dict) or not all(
-        isinstance(key, str) for key in raw_model_entry
-    ):
-        raise SqlAuditParseError(f"Schema file '{file_path}' must use mapping items under models")
-    typed_model_entry: dict[str, Any] = cast(dict[str, Any], raw_model_entry)
-    model_name: Any = typed_model_entry.get("name")
-    if not isinstance(model_name, str) or not model_name:
-        raise SqlAuditParseError(f"Schema file '{file_path}' must define model name as a string")
-    instances: list[LoadedGenericSqlAuditInstance] = []
-    model_audits: Any = typed_model_entry.get("audits", [])
-    instances.extend(
-        _build_generic_sql_audit_instances(
-            file_path=file_path,
-            raw_audits=model_audits,
-            implicit_arguments={"model": model_name},
-            default_name_prefix=model_name,
-        )
-    )
-    raw_columns: Any = typed_model_entry.get("columns", [])
-    if raw_columns in (None, []):
-        return instances
-    if not isinstance(raw_columns, list):
-        raise SqlAuditParseError(f"Schema file '{file_path}' must define columns as a list")
-    raw_column_entry: object
-    for raw_column_entry in raw_columns:
-        if not isinstance(raw_column_entry, dict) or not all(
-            isinstance(key, str) for key in raw_column_entry
-        ):
-            raise SqlAuditParseError(
-                f"Schema file '{file_path}' must use mapping items under columns"
-            )
-        typed_column_entry: dict[str, Any] = raw_column_entry
-        column_name: Any = typed_column_entry.get("name")
-        if not isinstance(column_name, str) or not column_name:
-            raise SqlAuditParseError(
-                f"Schema file '{file_path}' must define column name as a string"
-            )
-        instances.extend(
-            _build_generic_sql_audit_instances(
-                file_path=file_path,
-                raw_audits=typed_column_entry.get("audits", []),
-                implicit_arguments={"model": model_name, "column": column_name},
-                default_name_prefix=f"{model_name}.{column_name}",
-            )
-        )
-    return instances
 
 
 def _build_generic_sql_audit_instances(
@@ -221,7 +157,7 @@ def _build_generic_sql_audit_instances(
     if raw_audits in (None, []):
         return []
     if not isinstance(raw_audits, list):
-        raise SqlAuditParseError(f"Schema file '{file_path}' must define audits as a list")
+        raise SqlAuditParseError(f"Model '{file_path}' must define audits as a list")
     instances: list[LoadedGenericSqlAuditInstance] = []
     audit_index: int
     raw_audit_entry: object
@@ -236,7 +172,7 @@ def _build_generic_sql_audit_instances(
             typed_audit_entry: dict[str, Any] = cast(dict[str, Any], raw_audit_entry)
             if len(typed_audit_entry) != 1:
                 raise SqlAuditParseError(
-                    f"Schema file '{file_path}' audit items must be a string or single-key mapping"
+                    f"Model '{file_path}' audit items must be a string or single-key mapping"
                 )
             definition_name, raw_arguments = next(iter(typed_audit_entry.items()))
             if raw_arguments is None:
@@ -245,18 +181,18 @@ def _build_generic_sql_audit_instances(
                 isinstance(key, str) for key in raw_arguments
             ):
                 raise SqlAuditParseError(
-                    f"Schema file '{file_path}' audit '{definition_name}' must define "
+                    f"Model '{file_path}' audit '{definition_name}' must define "
                     "arguments as a mapping"
                 )
             else:
                 explicit_arguments = {key: value for key, value in raw_arguments.items()}
         else:
             raise SqlAuditParseError(
-                f"Schema file '{file_path}' audit items must be a string or single-key mapping"
+                f"Model '{file_path}' audit items must be a string or single-key mapping"
             )
         if not definition_name:
             raise SqlAuditParseError(
-                f"Schema file '{file_path}' must use non-empty audit names under audits"
+                f"Model '{file_path}' must use non-empty audit names under audits"
             )
         merged_arguments: dict[str, object] = _merge_implicit_and_explicit_arguments(
             file_path=file_path,
@@ -315,8 +251,8 @@ def _merge_implicit_and_explicit_arguments(
             and implicit_arguments[argument_name] != argument_value
         ):
             raise SqlAuditParseError(
-                f"Schema file '{file_path}' audit '{definition_name}' must not override implicit "
-                f"{argument_name} from schema context"
+                f"Model '{file_path}' audit '{definition_name}' must not override implicit "
+                f"{argument_name} from its header context"
             )
         merged_arguments[argument_name] = argument_value
     return merged_arguments
@@ -335,7 +271,7 @@ def _pop_audit_string_argument(
     value: object = remaining_arguments.pop(key, default_value)
     if not isinstance(value, str) or value not in allowed_values:
         raise SqlAuditParseError(
-            f"Schema file '{file_path}' audit '{definition_name}' must define {key} as one of: "
+            f"Model '{file_path}' audit '{definition_name}' must define {key} as one of: "
             f"{', '.join(sorted(allowed_values))}"
         )
     return value, remaining_arguments
@@ -354,8 +290,7 @@ def _pop_optional_audit_string_argument(
         return None, remaining_arguments
     if not isinstance(value, str) or not value.strip():
         raise SqlAuditParseError(
-            f"Schema file '{file_path}' audit '{definition_name}' must define {key} "
-            "as a non-empty string"
+            f"Model '{file_path}' audit '{definition_name}' must define {key} as a non-empty string"
         )
     return value.strip(), remaining_arguments
 
@@ -376,7 +311,7 @@ def _render_generic_sql_audit_query(
     )
     if missing_parameter_names:
         raise SqlAuditParseError(
-            f"Schema file '{file_path}' is missing arguments for generic audit "
+            f"Model '{file_path}' is missing arguments for generic audit "
             f"'{definition.name}': "
             f"{', '.join(missing_parameter_names)}"
         )
@@ -389,7 +324,7 @@ def _render_generic_sql_audit_query(
     )
     if unknown_parameter_names:
         raise SqlAuditParseError(
-            f"Schema file '{file_path}' has unsupported arguments for generic audit "
+            f"Model '{file_path}' has unsupported arguments for generic audit "
             f"'{definition.name}': "
             f"{', '.join(unknown_parameter_names)}"
         )

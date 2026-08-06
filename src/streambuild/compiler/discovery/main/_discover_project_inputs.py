@@ -38,10 +38,6 @@ def discover_project_inputs(
         file_paths=tuple((project_dir / "audits").rglob("*.sql")),
         project_dir=project_dir,
     )
-    audit_schema_files: tuple[DiscoveredProjectFile, ...] = read_discovered_files(
-        file_paths=tuple(pipelines_root.rglob("schema.yml")),
-        project_dir=project_dir,
-    )
     macro_files: tuple[DiscoveredProjectFile, ...] = read_discovered_files(
         file_paths=tuple(
             path
@@ -61,7 +57,6 @@ def discover_project_inputs(
         model_files=model_files,
         test_files=test_files,
         audit_files=audit_files,
-        audit_schema_files=audit_schema_files,
         macro_files=macro_files,
     )
 

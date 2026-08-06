@@ -9,10 +9,4 @@ class DirectWorkflowTestCase:
     expected_first_phase: WorkflowPhase
     expected_last_phase: WorkflowPhase
     expected_replay_count: int
-
-
-@dataclass(frozen=True)
-class DirectWorkflowDriftTestCase:
-    description: str
-    expected_failed_step_id: str
-    expected_mutation_count: int
+    expected_boundary_model_segments: tuple[str, ...]

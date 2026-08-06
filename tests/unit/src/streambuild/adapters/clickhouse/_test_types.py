@@ -68,6 +68,15 @@ class LatestNodeStatusQueryTestCase:
 
 
 @dataclass(frozen=True)
+class RunEventInsertsTestCase:
+    description: str
+    include_migration: bool
+    expected_statement_count: int
+    expected_insert_fragment: str
+    expected_values_fragment: str
+
+
+@dataclass(frozen=True)
 class BuildInspectedManagedTableStateTestCase:
     description: str
     active_binding_rows: tuple[tuple[str, str], ...]
@@ -235,13 +244,6 @@ class RenderMetadataMutationSqlTestCase:
     expected_migration_statement_count: int
     expected_migration_last_sql: str
     expected_persistence_first_sql: str
-
-
-@dataclass(frozen=True)
-class RenderOwnershipMutationSqlTestCase:
-    description: str
-    expected_record_sql: tuple[str, ...]
-    expected_removal_sql: str
 
 
 @dataclass(frozen=True)

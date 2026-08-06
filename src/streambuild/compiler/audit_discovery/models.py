@@ -17,6 +17,7 @@ class LoadedSqlAudit:
     description: str | None = None
     name: str | None = None
     audit_index: int = 1
+    generic_definition_name: str | None = None
 
 
 @dataclass(frozen=True)

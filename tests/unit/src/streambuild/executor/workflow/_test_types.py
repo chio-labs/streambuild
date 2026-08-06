@@ -16,3 +16,9 @@ class WorkflowExecutionTestCase:
     expected_statements: tuple[str, ...]
     expected_query_result_count: int
     expected_mutation_result_count: int
+
+
+@dataclass(frozen=True)
+class WorkflowEmitterTestCase:
+    description: str
+    expected_calls: tuple[str, ...]

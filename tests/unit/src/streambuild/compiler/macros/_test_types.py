@@ -63,3 +63,11 @@ class MacroRegistrationTestCase:
     expected_macro_names: tuple[str, ...]
     expected_relative_path: str
     expected_source_fragment: str
+
+
+@dataclass(frozen=True)
+class MacroDescriptionTestCase:
+    description: str
+    macro_file_contents: str
+    macro_name: str
+    expected_description: str | None

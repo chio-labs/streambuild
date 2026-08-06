@@ -11,7 +11,3 @@ class ActualStateError(ValueError):
 
 class DirectPlanError(ValueError):
     """Raised when a direct-mode plan cannot be built safely."""
-
-
-class TargetOwnershipConflictError(ValueError):
-    """Raised when one mode would take over relations another mode already owns."""

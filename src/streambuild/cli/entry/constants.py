@@ -5,14 +5,17 @@ from collections.abc import Mapping
 from streambuild.cli.entry.types import CliCommand, CliSubcommand
 
 ACTIVE_VIEW_SUBCOMMAND: str = CliSubcommand.ACTIVE_VIEW
+DEV_CLI_VARIABLES_ENV_VAR: str = "STREAMBUILD_INTERNAL_CLI_VARS"
 
 COMMANDS_REQUIRING_PIPELINES_ROOT: frozenset[CliCommand] = frozenset(
     {
+        CliCommand.DEV,
         CliCommand.DISCOVER,
         CliCommand.COMPILE,
         CliCommand.TEST,
         CliCommand.PLAN,
         CliCommand.BUILD,
+        CliCommand.DEPLOYMENT,
         CliCommand.RECONCILE,
         CliCommand.AUDIT,
     }
@@ -23,7 +26,7 @@ COMMANDS_WITHOUT_ADAPTER_CONNECTION: frozenset[CliCommand] = frozenset(
 DIRECT_ONLY_COMMANDS: frozenset[CliCommand] = frozenset()
 VIRTUAL_ENVIRONMENT_ONLY_COMMANDS: frozenset[CliCommand] = frozenset(
     {
-        CliCommand.PUBLISH,
+        CliCommand.DEPLOYMENT,
         CliCommand.RECONCILE,
         CliCommand.JANITOR,
         CliCommand.DOCTOR,

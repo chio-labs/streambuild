@@ -3,12 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from streambuild.adapter.models import (
-    AdapterOwnershipRecord,
-    AdapterReplayColumns,
-    CatalogRelation,
-)
-from streambuild.adapter.types import AdapterOwningMode
+from streambuild.adapter.models import AdapterReplayColumns, CatalogRelation
 from streambuild.compiler.compile.models import (
     DesiredState,
     ExternalSourceReplayConfig,
@@ -17,25 +12,21 @@ from streambuild.compiler.compile.models import (
 from streambuild.compiler.compile.types import DesiredObjectType
 from streambuild.compiler.discovery.types import ReplayBoundaryMode, SourceKind
 from streambuild.compiler.pipeline.models import CompileAnalysis, RealizedProject
-from streambuild.compiler.planner._helpers.direct_ownership import classify_relation_ownership
 from streambuild.compiler.planner.exceptions import DirectPlanError
 from streambuild.compiler.planner.models import (
     DirectPlan,
     DirectWarehouseSnapshot,
-    TargetOwnershipClassification,
 )
 from streambuild.compiler.planner.types import (
     DirectPlanReason,
     DirectResourceKind,
-    TargetOwnership,
 )
 from tests.unit.src.streambuild.compiler.planner._test_types import (
     DirectModelInputReplayColumnsTestCase,
     DirectMutableWarningTestCase,
-    DirectOwnershipTestCase,
     DirectPlanRejectionTestCase,
-    DirectRenameTeardownTestCase,
     DirectScopeTestCase,
+    DirectUndeclaredRelationTestCase,
     DirectViewPlanTestCase,
 )
 from tests.unit.src.streambuild.compiler.planner.helpers import (
@@ -160,36 +151,16 @@ def test_given_selection_when_planning_direct_then_scope_and_replay_roots_match(
 @pytest.mark.parametrize(
     "test_case",
     [
-        DirectRenameTeardownTestCase(
-            description="tears down prior direct-owned relation for executed logical model",
-            selected_model_names=("alpha",),
-            stale_relation_name="legacy_alpha",
-            stale_logical_model_name="alpha",
-            owning_mode="direct",
-            expected_stale_teardown=True,
-        ),
-        DirectRenameTeardownTestCase(
-            description="does not tear down relation owned by model outside execution scope",
-            selected_model_names=("gamma",),
-            stale_relation_name="legacy_beta",
-            stale_logical_model_name="beta",
-            owning_mode="direct",
-            expected_stale_teardown=False,
-        ),
-        DirectRenameTeardownTestCase(
-            description="does not tear down virtual-environment relation for matching model",
-            selected_model_names=("alpha",),
-            stale_relation_name="legacy_alpha",
-            stale_logical_model_name="alpha",
-            owning_mode="virtual_environment",
-            expected_stale_teardown=False,
-        ),
+        DirectUndeclaredRelationTestCase(
+            description="an undeclared prior relation is outside the normal build scope",
+            expected_preserved_relation_name="legacy_alpha",
+        )
     ],
     ids=lambda case: case.description,
 )
-def test_given_prior_relation_when_planning_direct_then_only_owned_model_rename_is_torn_down(
+def test_given_undeclared_prior_relation_when_planning_direct_then_normal_build_does_not_drop_it(
     direct_scope_analysis: CompileAnalysis,
-    test_case: DirectRenameTeardownTestCase,
+    test_case: DirectUndeclaredRelationTestCase,
 ) -> None:
     base_snapshot: DirectWarehouseSnapshot = build_settled_direct_snapshot()
     snapshot: DirectWarehouseSnapshot = replace(
@@ -199,21 +170,10 @@ def test_given_prior_relation_when_planning_direct_then_only_owned_model_rename_
             relations=(
                 *base_snapshot.catalog.relations,
                 CatalogRelation(
-                    name=test_case.stale_relation_name,
+                    name=test_case.expected_preserved_relation_name,
                     engine="View",
                     columns=(),
                 ),
-            ),
-        ),
-        ownership_records=(
-            *base_snapshot.ownership_records,
-            AdapterOwnershipRecord(
-                database_name="analytics",
-                relation_name=test_case.stale_relation_name,
-                resource_kind=DirectResourceKind.VIEW,
-                logical_model_name=test_case.stale_logical_model_name,
-                owning_mode=AdapterOwningMode(test_case.owning_mode),
-                tool_version="test",
             ),
         ),
     )
@@ -221,13 +181,13 @@ def test_given_prior_relation_when_planning_direct_then_only_owned_model_rename_
     plan: DirectPlan = plan_direct_scope(
         analysis=direct_scope_analysis,
         snapshot=snapshot,
-        selected_model_names=test_case.selected_model_names,
+        selected_model_names=("alpha",),
     )
 
     teardown_names: tuple[str, ...] = tuple(
         operation.relation_name for operation in plan.teardown_operations
     )
-    assert (test_case.stale_relation_name in teardown_names) is test_case.expected_stale_teardown
+    assert test_case.expected_preserved_relation_name not in teardown_names
 
 
 @pytest.mark.parametrize(
@@ -364,165 +324,23 @@ def test_given_executed_scope_when_planning_direct_then_relation_actions_are_dep
 @pytest.mark.parametrize(
     "test_case",
     [
-        DirectOwnershipTestCase(
-            description="a relation absent from the warehouse is unclaimed",
-            relation_names=(),
-            direct_owned_names=(),
-            virtual_environment_owned_names=(),
-            stable_binding_names=(),
-            classified_relation_names=("tbl__alpha",),
-            expected_ownership=(TargetOwnership.ABSENT,),
-        ),
-        DirectOwnershipTestCase(
-            description="a relation with a durable direct claim is direct owned",
-            relation_names=("tbl__alpha",),
-            direct_owned_names=("tbl__alpha",),
-            virtual_environment_owned_names=(),
-            stable_binding_names=(),
-            classified_relation_names=("tbl__alpha",),
-            expected_ownership=(TargetOwnership.DIRECT,),
-        ),
-        DirectOwnershipTestCase(
-            description="a relation present without any durable claim is unmanaged",
-            relation_names=("tbl__alpha",),
-            direct_owned_names=(),
-            virtual_environment_owned_names=(),
-            stable_binding_names=(),
-            classified_relation_names=("tbl__alpha",),
-            expected_ownership=(TargetOwnership.UNMANAGED,),
-        ),
-        DirectOwnershipTestCase(
-            description="a claim for the same relation in another database is ignored",
-            relation_names=("tbl__alpha",),
-            direct_owned_names=("tbl__alpha",),
-            virtual_environment_owned_names=(),
-            stable_binding_names=(),
-            classified_relation_names=("tbl__alpha",),
-            expected_ownership=(TargetOwnership.UNMANAGED,),
-            ownership_database="other_database",
-        ),
-        DirectOwnershipTestCase(
-            description="a relation with a virtual-environment claim is virtual-environment owned",
-            relation_names=("tbl__alpha",),
-            direct_owned_names=(),
-            virtual_environment_owned_names=("tbl__alpha",),
-            stable_binding_names=(),
-            classified_relation_names=("tbl__alpha",),
-            expected_ownership=(TargetOwnership.VIRTUAL_ENVIRONMENT,),
-        ),
-        DirectOwnershipTestCase(
-            description="a stable logical binding is virtual-environment owned without a record",
-            relation_names=("tbl__alpha",),
-            direct_owned_names=(),
-            virtual_environment_owned_names=(),
-            stable_binding_names=("tbl__alpha",),
-            classified_relation_names=("tbl__alpha",),
-            expected_ownership=(TargetOwnership.VIRTUAL_ENVIRONMENT,),
-        ),
-        DirectOwnershipTestCase(
-            description="metadata-only virtual deployment blocks a missing direct target",
-            relation_names=(),
-            direct_owned_names=(),
-            virtual_environment_owned_names=(),
-            stable_binding_names=(),
-            classified_relation_names=("tbl__alpha",),
-            expected_ownership=(TargetOwnership.VIRTUAL_ENVIRONMENT,),
-            metadata_virtual_environment_names=("tbl__alpha",),
-        ),
-        DirectOwnershipTestCase(
-            description="claims from both modes on one relation are conflicted",
-            relation_names=("tbl__alpha",),
-            direct_owned_names=("tbl__alpha",),
-            virtual_environment_owned_names=("tbl__alpha",),
-            stable_binding_names=(),
-            classified_relation_names=("tbl__alpha",),
-            expected_ownership=(TargetOwnership.CONFLICTED,),
-        ),
-    ],
-    ids=lambda case: case.description,
-)
-def test_given_durable_evidence_when_classifying_ownership_then_classification_matches(
-    test_case: DirectOwnershipTestCase,
-) -> None:
-    snapshot: DirectWarehouseSnapshot = build_direct_snapshot(
-        relation_names=test_case.relation_names,
-        direct_owned_names=test_case.direct_owned_names,
-        virtual_environment_owned_names=test_case.virtual_environment_owned_names,
-        stable_binding_names=test_case.stable_binding_names,
-        ownership_database=test_case.ownership_database,
-        metadata_virtual_environment_names=test_case.metadata_virtual_environment_names,
-    )
-
-    classifications: tuple[TargetOwnershipClassification, ...] = classify_relation_ownership(
-        snapshot=snapshot, relation_names=test_case.classified_relation_names
-    )
-
-    assert (
-        tuple(classification.ownership for classification in classifications)
-        == test_case.expected_ownership
-    )
-
-
-@pytest.mark.parametrize(
-    "test_case",
-    [
         DirectPlanRejectionTestCase(
             description="a missing preserved prerequisite blocks the plan",
             selected_model_names=("beta",),
             present_relation_names=("raw__orders",),
-            direct_owned_names=(),
-            virtual_environment_owned_names=(),
             stable_binding_names=(),
             expected_error_fragment=(
                 "Direct plan requires preserved upstream relations that do not exist: tbl__alpha"
             ),
         ),
-        DirectPlanRejectionTestCase(
-            description="a target claimed by virtual environments blocks the plan",
-            selected_model_names=("delta",),
-            present_relation_names=("raw__orders", "tbl__alpha", "tbl__gamma", "tbl__delta"),
-            direct_owned_names=(),
-            virtual_environment_owned_names=("tbl__delta",),
-            stable_binding_names=(),
-            expected_error_fragment="tbl__delta is virtual_environment",
-        ),
-        DirectPlanRejectionTestCase(
-            description="a stable logical binding on a target blocks the plan",
-            selected_model_names=("delta",),
-            present_relation_names=("raw__orders", "tbl__alpha", "tbl__gamma", "tbl__delta"),
-            direct_owned_names=(),
-            virtual_environment_owned_names=(),
-            stable_binding_names=("tbl__delta",),
-            expected_error_fragment="tbl__delta is virtual_environment",
-        ),
-        DirectPlanRejectionTestCase(
-            description="an unmanaged same-named relation blocks the plan",
-            selected_model_names=("delta",),
-            present_relation_names=("raw__orders", "tbl__alpha", "tbl__gamma", "tbl__delta"),
-            direct_owned_names=(),
-            virtual_environment_owned_names=(),
-            stable_binding_names=(),
-            expected_error_fragment="tbl__delta is unmanaged",
-        ),
-        DirectPlanRejectionTestCase(
-            description="conflicting durable claims on a target block the plan",
-            selected_model_names=("delta",),
-            present_relation_names=("raw__orders", "tbl__alpha", "tbl__gamma", "tbl__delta"),
-            direct_owned_names=("tbl__delta",),
-            virtual_environment_owned_names=("tbl__delta",),
-            stable_binding_names=(),
-            expected_error_fragment="tbl__delta is conflicted",
-        ),
     ],
     ids=lambda case: case.description,
 )
-def test_given_unsafe_warehouse_state_when_planning_direct_then_planning_is_rejected(
+def test_given_missing_prerequisite_when_planning_direct_then_planning_is_rejected(
     direct_scope_analysis: CompileAnalysis, test_case: DirectPlanRejectionTestCase
 ) -> None:
     snapshot: DirectWarehouseSnapshot = build_direct_snapshot(
         relation_names=test_case.present_relation_names,
-        direct_owned_names=test_case.direct_owned_names,
-        virtual_environment_owned_names=test_case.virtual_environment_owned_names,
         stable_binding_names=test_case.stable_binding_names,
     )
 

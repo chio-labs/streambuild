@@ -2,7 +2,7 @@ name = "orders_demo"
 default_target = "demo"
 
 [settings]
-virtual_environments = true
+virtual_environments = false
 
 [connection]
 host = "localhost"

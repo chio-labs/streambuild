@@ -29,6 +29,7 @@ class BuildCommandOptions:
     deployment_id: str | None = None
     full_refresh: bool = False
     start_time: str | None = None
+    events_output: bool = False
 
 
 @dataclass(frozen=True)

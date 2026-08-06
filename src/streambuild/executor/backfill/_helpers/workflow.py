@@ -10,7 +10,6 @@ from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.constants import (
     METADATA_DEPLOYMENT_WATERMARKS_TABLE_NAME,
     METADATA_DEPLOYMENTS_TABLE_NAME,
-    METADATA_DIRECT_TARGET_EVENTS_TABLE_NAME,
     METADATA_PUBLISH_HISTORY_TABLE_NAME,
 )
 from streambuild.adapter.models import (
@@ -118,13 +117,12 @@ def assemble_virtual_build_workflow(
 
 
 def build_virtual_bootstrap_workflow(*, workflow: BuildWorkflow) -> BuildWorkflow:
-    """Return the preflight, preparation, and ownership prefix used by bootstrap tests."""
+    """Return the preflight and preparation prefix used by bootstrap tests."""
 
     statements: tuple[WarehouseStatement, ...] = tuple(
         statement
         for statement in workflow.statements
-        if statement.phase
-        in {WorkflowPhase.PREFLIGHT, WorkflowPhase.PREPARATION, WorkflowPhase.OWNERSHIP}
+        if statement.phase in {WorkflowPhase.PREFLIGHT, WorkflowPhase.PREPARATION}
     )
     return BuildWorkflow(mode=workflow.mode, plan_json=workflow.plan_json, statements=statements)
 
@@ -212,13 +210,6 @@ def _preflight_statements(
 ) -> tuple[WarehouseStatement, ...]:
     metadata_names: frozenset[str] = metadata_catalog.relation_names()
     rendered: list[tuple[str, str]] = [
-        (
-            "assert_virtual_ownership",
-            _ownership_assertion_sql(
-                request=request,
-                ownership_table_exists=METADATA_DIRECT_TARGET_EVENTS_TABLE_NAME in metadata_names,
-            ),
-        ),
         (
             "assert_candidate_metadata",
             _candidate_assertion_sql(
@@ -314,7 +305,7 @@ def _metadata_statements(
     )
     return _mutation_statements(
         rendered=rendered,
-        phase=WorkflowPhase.OWNERSHIP,
+        phase=WorkflowPhase.PREPARATION,
         start_sequence=start_sequence,
     )
 
@@ -567,31 +558,6 @@ def _population_plan(
             )
             for prepared in deployment_plan.prepared_shadow_objects
         ),
-    )
-
-
-def _ownership_assertion_sql(
-    *, request: BackfillBootstrapRequest, ownership_table_exists: bool
-) -> str:
-    relation_names: tuple[str, ...] = tuple(
-        object_.name for object_ in request.desired_state.objects
-    )
-    if not ownership_table_exists:
-        return (
-            "SELECT throwIf(count() != 0, 'Direct ownership metadata appeared after virtual "
-            "confirmation') FROM system.tables "
-            f"WHERE database = '{_escape_literal(request.metadata_database)}' "
-            f"AND name = '{METADATA_DIRECT_TARGET_EVENTS_TABLE_NAME}'"
-        )
-    quoted_names: str = ", ".join(f"'{_escape_literal(name)}'" for name in relation_names)
-    return (
-        "SELECT throwIf(countIf(current_state.1 != 'released') > 0, "
-        "'Virtual build conflicts with direct-owned targets') FROM (SELECT database_name, "
-        "relation_name, argMax(tuple(event_kind, event_id), tuple(recorded_at, event_id)) "
-        f"AS current_state FROM {request.metadata_database}."
-        f"{METADATA_DIRECT_TARGET_EVENTS_TABLE_NAME} WHERE database_name = "
-        f"'{_escape_literal(request.default_database)}' AND relation_name IN ({quoted_names}) "
-        "GROUP BY database_name, relation_name)"
     )
 
 

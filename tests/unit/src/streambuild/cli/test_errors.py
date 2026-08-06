@@ -14,7 +14,7 @@ from streambuild.adapter.exceptions import (
 )
 from streambuild.adapter.models import InspectedManagedTableState
 from streambuild.cli.entry.main._errors import render_expected_warehouse_error
-from streambuild.cli.publish.main._run_publish import run_publish
+from streambuild.cli.promotion.main._run_deployment_promotion import run_deployment_promotion
 from tests.unit.src.streambuild.cli._test_types import (
     CliCommandErrorTestCase,
     CliExpectedErrorRenderingTestCase,
@@ -105,13 +105,13 @@ def test_given_expected_warehouse_error_when_rendering_then_it_returns_operator_
     "test_case",
     [
         CliCommandErrorTestCase(
-            description="publish handles missing database cleanly",
+            description="promotion handles missing database cleanly",
             error_message=(
                 "Code: 81. DB::Exception: Database flights_demo does not exist. (UNKNOWN_DATABASE)"
             ),
             expected_exit_code=1,
             expected_error_fragments=(
-                "Publish could not start",
+                "Deployment Promote could not start",
                 "Database: flights_demo",
                 "run stb build first",
             ),
@@ -119,7 +119,7 @@ def test_given_expected_warehouse_error_when_rendering_then_it_returns_operator_
     ],
     ids=lambda case: case.description,
 )
-def test_given_missing_database_when_running_publish_then_it_prints_friendly_error(
+def test_given_missing_database_when_promoting_then_it_prints_friendly_error(
     test_case: CliCommandErrorTestCase,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -152,7 +152,7 @@ def test_given_missing_database_when_running_publish_then_it_prints_friendly_err
         def close(self) -> None:
             return None
 
-    exit_code: int = run_publish(
+    exit_code: int = run_deployment_promotion(
         database="flights_demo",
         metadata_database=None,
         deployment_id=None,

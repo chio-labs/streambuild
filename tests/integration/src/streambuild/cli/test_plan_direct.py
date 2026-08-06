@@ -8,7 +8,6 @@ from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from tests.integration.src.streambuild.cli._test_types import CliDirectPlanIntegrationTestCase
 from tests.integration.src.streambuild.cli.helpers import (
     build_managed_clickhouse_client,
-    plan_ownership_labels,
     plan_relation_operations,
     plan_replay_root_models,
     plan_scope_names,
@@ -27,8 +26,6 @@ from tests.unit.src.streambuild.compiler.planner.helpers import write_direct_sco
             description="an unchanged warehouse plans the identical complete direct workflow",
             expected_execution_scope=("alpha", "beta", "gamma", "delta"),
             expected_replay_root_models=("alpha",),
-            expected_initial_ownership=("absent",),
-            expected_settled_ownership=("absent",),
         )
     ],
     ids=lambda case: case.description,
@@ -51,7 +48,7 @@ def test_given_unchanged_direct_warehouse_when_planning_twice_then_workflow_is_s
             connection=connection,
             clickhouse_client=clickhouse_client,
             database=clickhouse_database,
-            record_ownership=False,
+            create_relations=False,
         )
         relation_query: str = (
             f"SELECT name FROM system.tables WHERE database = '{clickhouse_database}' ORDER BY name"
@@ -99,5 +96,3 @@ def test_given_unchanged_direct_warehouse_when_planning_twice_then_workflow_is_s
         plan_json=first_output
     )
     assert plan_replay_root_models(plan_json=first_output) == test_case.expected_replay_root_models
-    assert plan_ownership_labels(plan_json=initial_output) == test_case.expected_initial_ownership
-    assert plan_ownership_labels(plan_json=first_output) == test_case.expected_settled_ownership

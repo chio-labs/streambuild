@@ -3,12 +3,8 @@ from __future__ import annotations
 import pytest
 
 from streambuild.cli.entry.exceptions import CliUserError
-from streambuild.cli.plan.main._convert_utc_timestamp_for_clickhouse import (
-    convert_utc_timestamp_for_clickhouse,
-)
 from streambuild.cli.plan.main._normalize_cli_start_time import normalize_cli_start_time
 from tests.unit.src.streambuild.cli.plan.main._test_types import (
-    CliStartTimeConversionTestCase,
     CliStartTimeNormalizationErrorTestCase,
     CliStartTimeNormalizationTestCase,
 )
@@ -31,6 +27,16 @@ from tests.unit.src.streambuild.cli.plan.main._test_types import (
             description="normalizes fractional utc datetime with z suffix",
             raw_value="2026-04-01T12:30:45.123Z",
             expected_normalized_value="2026-04-01 12:30:45.123",
+        ),
+        CliStartTimeNormalizationTestCase(
+            description="preserves first repeated-hour utc instant",
+            raw_value="2026-11-01T05:30:00Z",
+            expected_normalized_value="2026-11-01 05:30:00.000",
+        ),
+        CliStartTimeNormalizationTestCase(
+            description="preserves second repeated-hour utc instant",
+            raw_value="2026-11-01T06:30:00Z",
+            expected_normalized_value="2026-11-01 06:30:00.000",
         ),
     ],
     ids=lambda case: case.description,
@@ -59,26 +65,3 @@ def test_given_invalid_cli_start_time_when_normalizing_then_it_raises_clear_erro
 ) -> None:
     with pytest.raises(CliUserError, match=test_case.expected_error_fragment):
         normalize_cli_start_time(test_case.raw_value)
-
-
-@pytest.mark.parametrize(
-    "test_case",
-    [
-        CliStartTimeConversionTestCase(
-            description="converts utc timestamp into clickhouse server timezone",
-            timezone_name="Europe/London",
-            utc_timestamp="2026-04-01 12:30:45.000",
-            expected_converted_value="2026-04-01 13:30:45.000",
-        )
-    ],
-    ids=lambda case: case.description,
-)
-def test_given_clickhouse_timezone_when_converting_then_it_returns_server_basis_timestamp(
-    test_case: CliStartTimeConversionTestCase,
-) -> None:
-    converted_value: str = convert_utc_timestamp_for_clickhouse(
-        timezone_name=test_case.timezone_name,
-        utc_timestamp=test_case.utc_timestamp,
-    )
-
-    assert converted_value == test_case.expected_converted_value

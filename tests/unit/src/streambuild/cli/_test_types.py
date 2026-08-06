@@ -5,6 +5,12 @@ from streambuild.adapter.models import CatalogRelation
 
 
 @dataclass(frozen=True)
+class CliDevRefactorTestCase:
+    description: str
+    expected_value: object
+
+
+@dataclass(frozen=True)
 class CliMainTestCase:
     description: str
     argv: tuple[str, ...]
@@ -193,6 +199,13 @@ class CliNestedAuditOptionsTestCase:
     expected_json: bool
     expected_target: str
     expected_vars: dict[str, object]
+
+
+@dataclass(frozen=True)
+class CliRequiredDeploymentIdTestCase:
+    description: str
+    argv: tuple[str, ...]
+    expected_exit_code: int
 
 
 @dataclass(frozen=True)

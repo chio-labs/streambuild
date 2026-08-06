@@ -38,3 +38,10 @@ class LoadModelKindTestCase:
     expected_step_type: type[object]
     expected_relation_name: str | None
     expected_has_engine: bool
+
+
+@dataclass(frozen=True)
+class LoadModelDescriptionTestCase:
+    description: str
+    contents: str
+    expected_description: str | None

@@ -1,13 +1,24 @@
 import argparse
 import json
+from importlib.metadata import version
 from pathlib import Path
 from typing import Any
+
+from streambuild.dev_server.constants import (
+    DEFAULT_DEV_SERVER_HOST,
+    DEFAULT_DEV_SERVER_PORT,
+)
 
 
 def build_cli_parser() -> argparse.ArgumentParser:
     parser: argparse.ArgumentParser = argparse.ArgumentParser(
         prog="stb",
         description="Declarative, versioned streaming data pipelines for ClickHouse.",
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"stb {version('streambuild')}",
     )
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser] = parser.add_subparsers(
         dest="command", required=True
@@ -71,6 +82,8 @@ def build_cli_parser() -> argparse.ArgumentParser:
         help="Replace the project-level target/ artifact root",
     )
 
+    _add_dev_parser(subparsers=subparsers)
+
     plan_parser: argparse.ArgumentParser = subparsers.add_parser(
         "plan",
         help="Preview what would change without making any modifications",
@@ -109,13 +122,12 @@ def build_cli_parser() -> argparse.ArgumentParser:
 
     build_parser: argparse.ArgumentParser = _add_build_parser(subparsers=subparsers)
 
+    _add_deployment_parser(subparsers=subparsers)
+
     audit_parser: argparse.ArgumentParser = subparsers.add_parser(
         "audit",
-        help="Run SQL audits against live or staged data",
-        description=(
-            "Run user-defined SQL audits against published logical views, or use "
-            "`stb audit deployment` to audit a staged deployment before publishing."
-        ),
+        help="Run SQL audits against live data",
+        description="Run user-defined SQL audits against published logical views.",
     )
     _add_project_dir_arg(parser=audit_parser)
     _add_clickhouse_args(parser=audit_parser)
@@ -125,51 +137,6 @@ def build_cli_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Output as JSON",
     )
-    audit_subparsers: argparse._SubParsersAction[argparse.ArgumentParser] = (
-        audit_parser.add_subparsers(dest="audit_command")
-    )
-    audit_deployment_parser: argparse.ArgumentParser = audit_subparsers.add_parser(
-        "deployment",
-        help="Audit a staged deployment",
-        description=(
-            "Compare staged shadow tables against active tables to verify the build "
-            "produced correct results. If --deployment-id is omitted, lists available deployments."
-        ),
-    )
-    _add_project_dir_arg(parser=audit_deployment_parser, suppress_default=True)
-    _add_clickhouse_args(parser=audit_deployment_parser, suppress_default=True)
-    audit_deployment_parser.add_argument(
-        "--deployment-id",
-        help="Deployment to audit (omit to list available deployments)",
-    )
-    audit_deployment_parser.add_argument(
-        "--json",
-        action="store_true",
-        default=argparse.SUPPRESS,
-        help="Output as JSON",
-    )
-
-    publish_parser: argparse.ArgumentParser = subparsers.add_parser(
-        "publish",
-        help="Replace stable views with staged table bindings",
-        description=(
-            "Publish a deployment by replacing logical view bindings one relation at a time "
-            "and reporting adapter atomicity. If --deployment-id is omitted, lists available "
-            "deployments."
-        ),
-    )
-    _add_project_dir_arg(parser=publish_parser)
-    _add_clickhouse_args(parser=publish_parser)
-    publish_parser.add_argument(
-        "--deployment-id",
-        help="Deployment to publish (omit to list available deployments)",
-    )
-    publish_parser.add_argument(
-        "--json",
-        action="store_true",
-        help="Output as JSON",
-    )
-
     reconcile_parser: argparse.ArgumentParser = subparsers.add_parser(
         "reconcile",
         help="Reconcile live metadata baseline",
@@ -265,11 +232,9 @@ def build_cli_parser() -> argparse.ArgumentParser:
         plan_parser=plan_parser,
         build_parser=build_parser,
         audit_parser=audit_parser,
-        audit_deployment_parser=audit_deployment_parser,
         reconcile_parser=reconcile_parser,
     )
     for lifecycle_parser in (
-        publish_parser,
         janitor_parser,
         doctor_parser,
         repair_active_view_parser,
@@ -311,6 +276,11 @@ def _add_build_parser(
         help="Output as JSON",
     )
     build_parser.add_argument(
+        "--events",
+        action="store_true",
+        help="Stream JSONL progress events to stdout (requires --auto-approve)",
+    )
+    build_parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
@@ -322,6 +292,49 @@ def _add_build_parser(
         help="Skip the confirmation prompt",
     )
     return build_parser
+
+
+def _add_deployment_parser(
+    *, subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]"
+) -> None:
+    deployment_parser: argparse.ArgumentParser = subparsers.add_parser(
+        "deployment",
+        help="Inspect and operate on virtual deployments",
+        description="List, inspect, audit, or promote virtual deployments.",
+    )
+    deployment_subparsers: argparse._SubParsersAction[argparse.ArgumentParser] = (
+        deployment_parser.add_subparsers(dest="deployment_command", required=True)
+    )
+    deployment_list_parser: argparse.ArgumentParser = deployment_subparsers.add_parser(
+        "list",
+        help="List virtual deployments",
+        description="List deployments from authoritative lifecycle and catalog evidence.",
+    )
+    deployment_show_parser: argparse.ArgumentParser = deployment_subparsers.add_parser(
+        "show",
+        help="Show one virtual deployment",
+        description="Show authoritative lifecycle and catalog evidence for one deployment.",
+    )
+    deployment_show_parser.add_argument("deployment_id", help="Deployment identifier to inspect")
+    deployment_audit_parser: argparse.ArgumentParser = deployment_subparsers.add_parser(
+        "audit", help="Audit a staged deployment"
+    )
+    deployment_audit_parser.add_argument("deployment_id", help="Deployment identifier to audit")
+    deployment_promote_parser: argparse.ArgumentParser = deployment_subparsers.add_parser(
+        "promote", help="Promote a staged deployment to active"
+    )
+    deployment_promote_parser.add_argument("deployment_id", help="Deployment identifier to promote")
+    deployment_command_parser: argparse.ArgumentParser
+    for deployment_command_parser in (
+        deployment_list_parser,
+        deployment_show_parser,
+        deployment_audit_parser,
+        deployment_promote_parser,
+    ):
+        _add_project_dir_arg(parser=deployment_command_parser)
+        _add_clickhouse_args(parser=deployment_command_parser)
+        deployment_command_parser.add_argument("--json", action="store_true", help="Output as JSON")
+        _add_compilation_config_args(parser=deployment_command_parser)
 
 
 def _add_project_dir_arg(
@@ -367,7 +380,6 @@ def _add_compilation_config_args_to_commands(
     plan_parser: argparse.ArgumentParser,
     build_parser: argparse.ArgumentParser,
     audit_parser: argparse.ArgumentParser,
-    audit_deployment_parser: argparse.ArgumentParser,
     reconcile_parser: argparse.ArgumentParser,
 ) -> None:
     command_parser: argparse.ArgumentParser
@@ -381,7 +393,32 @@ def _add_compilation_config_args_to_commands(
         reconcile_parser,
     ):
         _add_compilation_config_args(parser=command_parser)
-    _add_compilation_config_args(parser=audit_deployment_parser, suppress_defaults=True)
+
+
+def _add_dev_parser(*, subparsers: argparse._SubParsersAction) -> None:
+    dev_parser: argparse.ArgumentParser = subparsers.add_parser(
+        "dev",
+        help="Serve the local web UI for this project",
+        description=(
+            "Compile the project, then serve the StreamBuild UI and its JSON API "
+            "until interrupted. Builds requested in the UI execute through the same "
+            "resolved project context as the dev command."
+        ),
+    )
+    _add_project_dir_arg(parser=dev_parser)
+    _add_compilation_config_args(parser=dev_parser)
+    _add_clickhouse_args(parser=dev_parser)
+    dev_parser.add_argument(
+        "--ui-host",
+        default=DEFAULT_DEV_SERVER_HOST,
+        help="Interface the dev server binds (default 127.0.0.1)",
+    )
+    dev_parser.add_argument(
+        "--ui-port",
+        type=int,
+        default=DEFAULT_DEV_SERVER_PORT,
+        help="Port the dev server binds (default 8000)",
+    )
 
 
 def _add_clickhouse_args(

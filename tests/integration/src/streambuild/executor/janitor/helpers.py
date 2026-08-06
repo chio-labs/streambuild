@@ -9,8 +9,8 @@ from clickhouse_connect.driver.client import Client
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.compiler.compile.models import CompiledPipeline
 from streambuild.executor.janitor.models import JanitorPreviewCandidate
-from streambuild.executor.publish.main.execute_publish import execute_publish
-from streambuild.executor.publish.models import PublishRequest
+from streambuild.executor.promotion.main.execute_deployment_promotion import execute_publish
+from streambuild.executor.promotion.models import PublishRequest
 from tests.integration.src.streambuild.adapters.clickhouse.helpers import (
     render_create_kafka_table_ddl,
     render_create_materialized_view_ddl,
