@@ -1,0 +1,120 @@
+<script lang="ts">
+	import SunIcon from '@lucide/svelte/icons/sun';
+	import MoonIcon from '@lucide/svelte/icons/moon';
+	import EyeIcon from '@lucide/svelte/icons/eye';
+	import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
+	import { theme, toggleTheme } from '$lib/theme.svelte';
+	import { getProject, CAN_EXECUTE_BUILD } from '$lib/api';
+	import { app, refreshLiveState } from '$lib/api/store.svelte';
+	import { formatClock } from '$lib/domain/format';
+	import type { Project } from '$lib/domain/types';
+
+	type Props = {
+		title: string;
+		/** Overrides the default `<project> / <target>` context. */
+		breadcrumb?: string;
+		children?: import('svelte').Snippet;
+	};
+	let { title, breadcrumb, children }: Props = $props();
+
+	const project: Project = getProject();
+	const context = $derived(breadcrumb ?? `${project.name} / ${project.target}`);
+	// The warehouse read is a SNAPSHOT, so state when it was taken rather than
+	// implying a live feed. An absolute clock is also honest about the fact that
+	// the plan a user copies may already be stale by the time they run it.
+	// $derived so the 30s poll moves the clock instead of freezing it at mount.
+	const snapshotClock = $derived(formatClock(project.capturedAt));
+	const connected = $derived(app.status?.warehouseConnected ?? false);
+
+	// Polling runs every 30s; this forces a snapshot NOW — same fetch path, so
+	// everything on screen updates together.
+	let refreshing = $state<boolean>(false);
+
+	async function forceRefresh(): Promise<void> {
+		refreshing = true;
+		try {
+			await refreshLiveState();
+		} finally {
+			refreshing = false;
+		}
+	}
+</script>
+
+<svelte:head>
+	<title>{title} · StreamBuild</title>
+</svelte:head>
+
+<div class="flex h-[54px] shrink-0 items-center gap-3.5 border-b border-border px-[18px]">
+	<h1 class="font-display text-[16px] font-semibold">{title}</h1>
+	<span class="text-[var(--sb-text-faint)] font-mono text-[12px]">{context}</span>
+	<div class="ml-auto flex items-center gap-2.5">
+		{#if !CAN_EXECUTE_BUILD}
+			<!-- Tier 1 is read-only. State it once, globally, rather than disabling
+			     buttons page by page and leaving people guessing why. -->
+			<span
+				class="text-muted-foreground flex items-center gap-1.5 rounded-[4px] border border-border px-2 py-1 font-mono text-[10.5px]"
+				title="This UI holds a read-only warehouse connection. Rebuilds are previewed and handed off as a command."
+			>
+				<EyeIcon size={11} /> read-only
+			</span>
+		{/if}
+		<span
+			class="text-muted-foreground flex items-center gap-[7px] font-mono text-[11px] tracking-wide"
+		>
+			{#if connected}
+				<span class="conn-tick bg-[var(--sb-secondary)] relative h-[7px] w-[7px] rounded-[2px]"
+				></span>
+				<b class="text-[var(--sb-secondary)] font-medium">connected</b> · snapshot {snapshotClock}
+			{:else}
+				<span class="relative h-[7px] w-[7px] rounded-[2px] bg-[var(--sb-error)]"></span>
+				<b class="font-medium" style:color="var(--sb-error)">no warehouse</b>
+			{/if}
+		</span>
+		<button
+			class="text-muted-foreground hover:text-foreground hover:bg-[var(--sb-hover)] grid h-7 w-7 place-items-center rounded-[4px] border border-border disabled:opacity-60"
+			aria-label="Refresh snapshot"
+			title="Refresh the warehouse snapshot now"
+			disabled={refreshing}
+			onclick={() => void forceRefresh()}
+		>
+			<span class:animate-spin={refreshing}><RefreshCwIcon size={13} /></span>
+		</button>
+		{#if children}{@render children()}{/if}
+		<button
+			class="text-muted-foreground hover:text-foreground hover:bg-[var(--sb-hover)] grid h-7 w-7 place-items-center rounded-[4px] border border-border"
+			aria-label="Toggle theme"
+			onclick={toggleTheme}
+		>
+			{#if theme.value === 'dark'}
+				<SunIcon size={14} />
+			{:else}
+				<MoonIcon size={14} />
+			{/if}
+		</button>
+	</div>
+</div>
+
+<style>
+	.conn-tick::after {
+		content: '';
+		position: absolute;
+		inset: -3px;
+		border-radius: 3px;
+		border: 1px solid var(--sb-secondary);
+		opacity: 0.5;
+		animation: connpulse 2.4s ease-out infinite;
+	}
+	@keyframes connpulse {
+		0% {
+			transform: scale(0.8);
+			opacity: 0.6;
+		}
+		70% {
+			transform: scale(1.5);
+			opacity: 0;
+		}
+		100% {
+			opacity: 0;
+		}
+	}
+</style>

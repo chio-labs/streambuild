@@ -5,13 +5,13 @@ from __future__ import annotations
 from streambuild.adapter.constants import (
     METADATA_DEPLOYMENT_WATERMARKS_TABLE_NAME,
     METADATA_DEPLOYMENTS_TABLE_NAME,
+    METADATA_DIRECT_REPLAY_CHECKPOINTS_TABLE_NAME,
     METADATA_DIRECT_REPLAY_RANGES_TABLE_NAME,
-    METADATA_DIRECT_TARGET_EVENTS_TABLE_NAME,
 )
 from streambuild.adapter.exceptions import AdapterReplayError
 from streambuild.adapter.models import (
+    AdapterCheckpointReplayRequest,
     AdapterDeploymentReplayRequest,
-    AdapterOwnershipReplayRequest,
     AdapterReplayBoundary,
     AdapterReplayCoverageRequest,
     AdapterReplayRequest,
@@ -37,7 +37,7 @@ _CANONICAL_REPLAY_PARTITION: str = "_replay_partition"
 _CANONICAL_REPLAY_OFFSET: str = "_replay_offset"
 
 
-def render_clickhouse_replay_from_ownership(request: AdapterOwnershipReplayRequest) -> str:
+def render_clickhouse_replay_from_checkpoint(request: AdapterCheckpointReplayRequest) -> str:
     """Render one full replay whose inclusive cutoff is read inside ClickHouse."""
 
     replay: AdapterReplayRequest = request.replay
@@ -47,7 +47,7 @@ def render_clickhouse_replay_from_ownership(request: AdapterOwnershipReplayReque
 
 
 def render_clickhouse_replay_coverage_query(request: AdapterReplayCoverageRequest) -> str:
-    """Render ownership-compatible coverage for the rows selected by one replay window."""
+    """Render checkpoint coverage for the rows selected by one replay window."""
 
     if request.replay.mode == AdapterReplayBoundaryMode.OFFSETS:
         return _offset_coverage_query(request.replay)
@@ -396,14 +396,14 @@ def _required_deployment_boundary_type(request: AdapterDeploymentReplayRequest) 
     return request.boundary_column_type
 
 
-def _render_metadata_offset_replay(request: AdapterOwnershipReplayRequest) -> str:
+def _render_metadata_offset_replay(request: AdapterCheckpointReplayRequest) -> str:
     replay: AdapterReplayRequest = request.replay
-    coverage_cte: str = _ownership_coverage_cte(request)
+    coverage_cte: str = _checkpoint_coverage_cte(request)
     cutoff_cte: str = (
         "SELECT toInt64(splitByChar('=', JSONExtractString(coverage, 'boundary_key'))[2]) "
         f"AS {_CANONICAL_REPLAY_PARTITION}, "
         "max(toInt64(JSONExtractString(coverage, 'upper_value'))) AS cutoff_offset\n"
-        f"FROM ownership_coverage\nGROUP BY {_CANONICAL_REPLAY_PARTITION}"
+        f"FROM checkpoint_coverage\nGROUP BY {_CANONICAL_REPLAY_PARTITION}"
     )
     lower_cte: str | None = _replay_offset_lower_cte(
         replay=replay,
@@ -431,7 +431,7 @@ def _render_metadata_offset_replay(request: AdapterOwnershipReplayRequest) -> st
             f"{lower_clause}"
         ).rstrip()
         named_queries: tuple[SqlNamedQuery, ...] = (
-            SqlNamedQuery(name="ownership_coverage", query=coverage_cte),
+            SqlNamedQuery(name="checkpoint_coverage", query=coverage_cte),
             SqlNamedQuery(name="cutoff_offsets", query=cutoff_cte),
             *((SqlNamedQuery(name="active_start_offsets", query=lower_cte),) if lower_cte else ()),
         )
@@ -470,7 +470,7 @@ def _render_metadata_offset_replay(request: AdapterOwnershipReplayRequest) -> st
         inclusive=replay.window.lower_bound_inclusive,
     )
     wrapped_query: str = (
-        f"WITH ownership_coverage AS (\n{coverage_cte}\n),\n"
+        f"WITH checkpoint_coverage AS (\n{coverage_cte}\n),\n"
         f"cutoff_offsets AS (\n{cutoff_cte}\n)"
         f"{lower_cte_sql}"
         "SELECT replay_source.*\n"
@@ -488,15 +488,17 @@ def _render_metadata_offset_replay(request: AdapterOwnershipReplayRequest) -> st
     )
 
 
-def _render_metadata_scalar_replay(request: AdapterOwnershipReplayRequest) -> str:
+def _render_metadata_scalar_replay(request: AdapterCheckpointReplayRequest) -> str:
     replay: AdapterReplayRequest = request.replay
     column_type: str | None = request.boundary_column_type
     if column_type is None:
-        raise AdapterReplayError("Scalar ownership replay requires a resolved boundary column type")
-    coverage_cte: str = _ownership_coverage_cte(request)
+        raise AdapterReplayError(
+            "Scalar checkpoint replay requires a resolved boundary column type"
+        )
+    coverage_cte: str = _checkpoint_coverage_cte(request)
     cutoff_cte: str = (
         "SELECT max(CAST(JSONExtractString(coverage, 'replay_cutoff_value') AS "
-        f"{column_type})) AS cutoff_value FROM ownership_coverage"
+        f"{column_type})) AS cutoff_value FROM checkpoint_coverage"
     )
     physical_column: str = _physical_boundary_column(replay)
     upper_expression: str = "(SELECT cutoff_value FROM replay_cutoff)"
@@ -528,7 +530,7 @@ def _render_metadata_scalar_replay(request: AdapterOwnershipReplayRequest) -> st
                 ),
             ),
             prepend_ctes=(
-                SqlNamedQuery(name="ownership_coverage", query=coverage_cte),
+                SqlNamedQuery(name="checkpoint_coverage", query=coverage_cte),
                 SqlNamedQuery(name="replay_cutoff", query=cutoff_cte),
             ),
         ).query
@@ -548,21 +550,22 @@ def _render_metadata_scalar_replay(request: AdapterOwnershipReplayRequest) -> st
             inclusive=replay.window.lower_bound_inclusive,
         ),
         prepend_ctes=(
-            SqlNamedQuery(name="ownership_coverage", query=coverage_cte),
+            SqlNamedQuery(name="checkpoint_coverage", query=coverage_cte),
             SqlNamedQuery(name="replay_cutoff", query=cutoff_cte),
         ),
     ).query
     return _build_replay_insert(request=replay, query=replay_query)
 
 
-def _ownership_coverage_cte(request: AdapterOwnershipReplayRequest) -> str:
+def _checkpoint_coverage_cte(request: AdapterCheckpointReplayRequest) -> str:
     replay: AdapterReplayRequest = request.replay
     return (
-        "WITH current_target AS (SELECT argMax(tuple(event_kind, replay_set_id), "
-        "tuple(recorded_at, event_id)) AS current_state FROM "
-        f"{request.metadata_database}.{METADATA_DIRECT_TARGET_EVENTS_TABLE_NAME} "
-        f"WHERE database_name = '{_escape_literal(replay.database)}' AND relation_name = "
-        f"'{_escape_literal(replay.relations.target)}')\n"
+        "WITH current_checkpoint AS (SELECT argMax(tuple(replay_set_id, capture_id), "
+        "tuple(recorded_at, capture_id)) AS current_set "
+        "FROM "
+        f"{request.metadata_database}.{METADATA_DIRECT_REPLAY_CHECKPOINTS_TABLE_NAME} "
+        f"WHERE checkpoint_id = '{_escape_literal(request.checkpoint_id)}' "
+        f"AND checkpoint_sequence = {request.checkpoint_sequence})\n"
         "SELECT DISTINCT toJSONString(map('driving_input_relation_name', "
         "driving_input_relation_name, "
         "'replay_boundary_mode', replay_boundary_mode, 'boundary_key', "
@@ -573,11 +576,12 @@ def _ownership_coverage_cte(request: AdapterOwnershipReplayRequest) -> str:
         "coalesce(source_timestamp_column_name, ''), 'lower_value', lower_value, "
         "'upper_value', upper_value, 'replay_cutoff_value', replay_cutoff_value)) AS coverage\n"
         f"FROM {request.metadata_database}.{METADATA_DIRECT_REPLAY_RANGES_TABLE_NAME} "
-        "CROSS JOIN current_target WHERE replay_set_id = current_target.current_state.2 "
+        "CROSS JOIN current_checkpoint "
+        "WHERE replay_set_id = current_checkpoint.current_set.1 "
+        "AND capture_id = current_checkpoint.current_set.2 "
         f"AND target_database_name = '{_escape_literal(replay.database)}' "
         "AND range_present AND logical_model_name = "
-        f"'{_escape_literal(request.logical_model_name)}' "
-        "AND current_target.current_state.1 != 'released'"
+        f"'{_escape_literal(request.logical_model_name)}'"
     )
 
 

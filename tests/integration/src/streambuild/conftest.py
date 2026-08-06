@@ -21,6 +21,14 @@ os.environ.setdefault("TESTCONTAINERS_RYUK_DISABLED", "true")
 CLICKHOUSE_USERNAME: str = "streambuild"
 CLICKHOUSE_PASSWORD: str = "streambuild"
 CONTAINER_STARTUP_TIMEOUT_SECONDS: int = 90
+NEW_YORK_TIMEZONE: str = "America/New_York"
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _use_utc_process_timezone() -> None:
+    """Keep naive ClickHouse test timestamps independent of the host timezone."""
+    os.environ["TZ"] = "UTC"
+    time.tzset()
 
 
 @dataclass(frozen=True)
@@ -35,7 +43,7 @@ class ClickHouseConnectionSettings:
 @pytest.fixture(scope="session")
 def clickhouse_connection_settings() -> Iterator[ClickHouseConnectionSettings]:
     try:
-        with start_clickhouse_container() as settings:
+        with start_clickhouse_container(timezone_name="UTC") as settings:
             yield settings
     except DockerException as error:
         pytest.skip(f"Docker is not available for ClickHouse integration tests: {error}")
@@ -65,6 +73,41 @@ def clickhouse_database(clickhouse_client: Client) -> Iterator[str]:
         yield database_name
     finally:
         clickhouse_client.command(f"DROP DATABASE IF EXISTS {database_name} SYNC")
+
+
+@pytest.fixture(scope="session")
+def new_york_clickhouse_connection_settings() -> Iterator[ClickHouseConnectionSettings]:
+    try:
+        with start_clickhouse_container(timezone_name=NEW_YORK_TIMEZONE) as settings:
+            yield settings
+    except DockerException as error:
+        pytest.skip(f"Docker is not available for ClickHouse integration tests: {error}")
+
+
+@pytest.fixture(scope="session")
+def new_york_clickhouse_client(
+    new_york_clickhouse_connection_settings: ClickHouseConnectionSettings,
+) -> Iterator[Client]:
+    client: Client = clickhouse_connect.get_client(
+        host=new_york_clickhouse_connection_settings.host,
+        port=new_york_clickhouse_connection_settings.port,
+        username=new_york_clickhouse_connection_settings.username,
+        password=new_york_clickhouse_connection_settings.password,
+    )
+    try:
+        yield client
+    finally:
+        client.close()
+
+
+@pytest.fixture
+def new_york_clickhouse_database(new_york_clickhouse_client: Client) -> Iterator[str]:
+    database_name: str = f"streambuild_timezone_test_{uuid.uuid4().hex[:12]}"
+    new_york_clickhouse_client.command(f"CREATE DATABASE {database_name}")
+    try:
+        yield database_name
+    finally:
+        new_york_clickhouse_client.command(f"DROP DATABASE IF EXISTS {database_name} SYNC")
 
 
 def _reserve_host_port() -> int:
@@ -100,12 +143,13 @@ def _wait_for_clickhouse_client(host: str, port: int) -> Client:
 
 
 @contextmanager
-def start_clickhouse_container() -> Iterator[ClickHouseConnectionSettings]:
+def start_clickhouse_container(*, timezone_name: str) -> Iterator[ClickHouseConnectionSettings]:
     host_port: int = _reserve_host_port()
     container: DockerContainer = DockerContainer("clickhouse/clickhouse-server:24.8")
     container.with_bind_ports(8123, host_port)
     container.with_env("CLICKHOUSE_USER", CLICKHOUSE_USERNAME)
     container.with_env("CLICKHOUSE_PASSWORD", CLICKHOUSE_PASSWORD)
+    container.with_env("TZ", timezone_name)
     with container:
         host: str = container.get_container_host_ip()
         port: int = int(container.get_exposed_port(8123))

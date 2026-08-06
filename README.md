@@ -22,9 +22,10 @@ Current implemented workflow:
 
 - `stb plan`
 - `stb build`
-- `stb backfill`
-- `stb audit backfill`
-- `stb publish`
+- `stb deployment list`
+- `stb deployment show <deployment-id>`
+- `stb deployment audit <deployment-id>`
+- `stb deployment promote <deployment-id>`
 - `stb doctor`
 - `stb repair active-view`
 - `stb reconcile`
@@ -34,9 +35,10 @@ Current implemented workflow:
 Current rollout model:
 
 - `plan` is read-only
-- `backfill` starts a real staged deployment
-- `audit backfill` inspects staged readiness
-- `publish` switches stable logical views to staged physical tables
+- virtual `build` starts a real staged deployment
+- `deployment audit` inspects staged readiness
+- `deployment promote` switches stable logical views to staged physical tables
+- `janitor` remains the top-level retention and cleanup command
 
 ## Installation
 
@@ -155,13 +157,14 @@ Notes:
 StreamBuild keeps append-only metadata in the target database. Authoritative lifecycle state uses
 `_streambuild_schema_versions`, `_streambuild_virtual_deployments`,
 `_streambuild_virtual_object_state`, `_streambuild_virtual_replay_boundaries`,
-`_streambuild_virtual_publications`, `_streambuild_direct_target_events`, and
-`_streambuild_direct_replay_ranges`. Current ownership and lifecycle state are deterministic
-projections over immutable rows; ordinary operation does not update or delete metadata.
+`_streambuild_virtual_publications`, `_streambuild_direct_replay_checkpoints`,
+`_streambuild_direct_replay_ranges`, and `_streambuild_direct_fingerprints`. Direct mode treats
+project declarations as authoritative; fingerprints are successful-build evidence, not write
+authorization. Ordinary operation does not update or delete metadata.
 
 `_streambuild_invocations` and `_streambuild_node_results` hold bounded terminal history for build,
 audit, and test UI views. These tables are observational only and never influence planning, replay,
-ownership, publication, repair, reconcile, or cleanup decisions.
+publication, repair, reconcile, or cleanup decisions.
 
 Mutating commands are single-writer operations per target database. Do not run concurrent direct
 builds, publishes, repairs, reconciles, or cleanup operations against the same target. Independent
@@ -334,9 +337,10 @@ From a project directory:
 ```bash
 uv run stb plan
 uv run stb build
-uv run stb backfill
-uv run stb audit backfill
-uv run stb publish
+uv run stb deployment list
+uv run stb deployment show <deployment-id>
+uv run stb deployment audit <deployment-id>
+uv run stb deployment promote <deployment-id>
 uv run stb doctor
 uv run stb repair active-view --table tbl__orders
 uv run stb reconcile

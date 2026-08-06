@@ -11,7 +11,6 @@ from streambuild.adapter.models import (
     AdapterConnectionConfig,
     AdapterInvocationRecord,
     AdapterMaterializedView,
-    AdapterOwnershipRecord,
     AdapterStableView,
     AdapterTable,
 )
@@ -182,28 +181,6 @@ def run_metadata_migration(
     finally:
         connection.close()
         raw_client.close()
-
-
-def ownership_summaries(
-    records: tuple[AdapterOwnershipRecord, ...],
-) -> tuple[tuple[str, str, str], ...]:
-    return tuple(
-        (record.relation_name, record.logical_model_name, str(record.owning_mode))
-        for record in records
-    )
-
-
-def replay_coverage_summaries(
-    records: tuple[AdapterOwnershipRecord, ...],
-) -> tuple[tuple[str, tuple[tuple[str, str], ...]], ...]:
-    summaries: list[tuple[str, tuple[tuple[str, str], ...]]] = []
-    record: AdapterOwnershipRecord
-    for record in records:
-        ranges: list[tuple[str, str]] = []
-        for replay_range in record.replay_coverage:
-            ranges.append((replay_range.lower_value, replay_range.upper_value))
-        summaries.append((record.database_name, tuple(ranges)))
-    return tuple(summaries)
 
 
 def connect_clickhouse(

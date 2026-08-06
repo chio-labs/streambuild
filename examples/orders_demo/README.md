@@ -58,22 +58,29 @@ Plan:
 uv run stb plan --project-dir examples/orders_demo
 ```
 
-Backfill:
+Build:
 
 ```bash
-uv run stb backfill --project-dir examples/orders_demo
+uv run stb build --project-dir examples/orders_demo
 ```
 
-Audit:
+List and inspect deployments:
 
 ```bash
-uv run stb audit backfill --project-dir examples/orders_demo
+uv run stb deployment list --project-dir examples/orders_demo
+uv run stb deployment show <deployment-id> --project-dir examples/orders_demo
 ```
 
-Publish:
+Audit a staged deployment:
 
 ```bash
-uv run stb publish --project-dir examples/orders_demo
+uv run stb deployment audit <deployment-id> --project-dir examples/orders_demo
+```
+
+Promote:
+
+```bash
+uv run stb deployment promote <deployment-id> --project-dir examples/orders_demo
 ```
 
 ## Producer Config

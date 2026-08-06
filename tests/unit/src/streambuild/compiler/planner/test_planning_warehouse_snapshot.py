@@ -1,13 +1,7 @@
 import pytest
 
 from streambuild.adapter.exceptions import AdapterCapabilityError
-from streambuild.adapter.models import (
-    AdapterOwnershipRecord,
-    AdapterQueryResult,
-    CatalogRelation,
-    CatalogSnapshot,
-)
-from streambuild.adapter.types import AdapterOwningMode
+from streambuild.adapter.models import AdapterQueryResult, CatalogRelation, CatalogSnapshot
 from streambuild.compiler.planner.main.load_direct_warehouse_snapshot import (
     load_direct_warehouse_snapshot,
 )
@@ -35,7 +29,6 @@ from tests.unit.src.streambuild.compiler.planner.helpers import (
             description="captures the catalog and metadata exactly once",
             expected_catalog_load_count=1,
             expected_query_count=1,
-            expected_ownership_databases=(),
         )
     ],
     ids=lambda case: case.description,
@@ -88,7 +81,6 @@ def test_given_warehouse_state_when_loading_snapshot_then_it_reads_each_source_o
     assert snapshot.object_state_records[0].key.name == "tbl__orders"
     assert connection.catalog_load_count == test_case.expected_catalog_load_count
     assert connection.query_count == test_case.expected_query_count
-    assert tuple(connection.ownership_databases) == test_case.expected_ownership_databases
 
 
 @pytest.mark.parametrize(
@@ -126,10 +118,9 @@ def test_given_missing_capability_when_loading_snapshot_then_it_rejects_before_r
     "test_case",
     [
         PlanningSnapshotAssemblyTestCase(
-            description="reads the catalog and durable ownership exactly once each",
+            description="reads the direct catalog exactly once",
             expected_catalog_load_count=1,
             expected_query_count=0,
-            expected_ownership_databases=("metadata",),
         )
     ],
     ids=lambda case: case.description,
@@ -142,29 +133,16 @@ def test_given_capable_adapter_when_loading_direct_snapshot_then_it_reads_each_s
         catalog=catalog,
         metadata_result=AdapterQueryResult(rows=()),
         virtual_environments=False,
-        ownership_records=(
-            AdapterOwnershipRecord(
-                database_name="analytics",
-                relation_name="tbl__orders",
-                resource_kind="table",
-                logical_model_name="orders",
-                owning_mode=AdapterOwningMode.DIRECT,
-                tool_version="test",
-            ),
-        ),
     )
 
     snapshot: DirectWarehouseSnapshot = load_direct_warehouse_snapshot(
         client=connection,
         database="analytics",
-        metadata_database="metadata",
     )
 
     assert snapshot.catalog is catalog
-    assert snapshot.ownership_records[0].relation_name == "tbl__orders"
     assert connection.catalog_load_count == test_case.expected_catalog_load_count
     assert connection.query_count == test_case.expected_query_count
-    assert tuple(connection.ownership_databases) == test_case.expected_ownership_databases
 
 
 @pytest.mark.parametrize(
@@ -190,9 +168,7 @@ def test_given_incapable_adapter_when_loading_direct_snapshot_then_it_rejects_be
     )
 
     with pytest.raises(AdapterCapabilityError, match=test_case.expected_error_message):
-        load_direct_warehouse_snapshot(
-            client=connection, database="analytics", metadata_database="metadata"
-        )
+        load_direct_warehouse_snapshot(client=connection, database="analytics")
 
     assert connection.catalog_load_count == test_case.expected_catalog_load_count
     assert connection.query_count == test_case.expected_query_count

@@ -9,8 +9,8 @@ from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHous
 from streambuild.compiler.compile.models import CompiledPipeline, DesiredState
 from streambuild.compiler.planner.main.load_actual_state import load_actual_state
 from streambuild.compiler.planner.models import ActualMaterializedView, ActualState
-from streambuild.executor.publish.main.execute_publish import execute_publish
-from streambuild.executor.publish.models import PublishRequest
+from streambuild.executor.promotion.main.execute_deployment_promotion import execute_publish
+from streambuild.executor.promotion.models import PublishRequest
 from streambuild.executor.reconcile.constants import RECONCILE_DEPLOYMENT_ID_PREFIX
 from tests.integration.src.streambuild.adapters.clickhouse.helpers import (
     render_create_kafka_table_ddl,

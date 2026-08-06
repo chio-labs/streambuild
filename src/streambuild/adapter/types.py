@@ -22,13 +22,6 @@ if TYPE_CHECKING:
     )
 
 
-class AdapterOwningMode(StrEnum):
-    """The StreamBuild execution mode that owns one managed relation."""
-
-    DIRECT = "direct"
-    VIRTUAL_ENVIRONMENT = "virtual_environment"
-
-
 class AdapterReplayBoundaryMode(StrEnum):
     """A replay boundary strategy implemented by an adapter."""
 

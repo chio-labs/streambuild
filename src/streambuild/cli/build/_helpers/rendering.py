@@ -31,7 +31,6 @@ def render_direct_build_json(
         "start_time": result.effective_start_time,
         "preserved_sources": list(result.preserved_source_relation_names),
         "created_sources": list(result.created_source_relation_names),
-        "ownership": [record.relation_name for record in result.ownership_records],
         "dropped": list(result.dropped_relation_names),
         "created": list(result.created_relation_names),
         "boundary_time": result.boundary_time,

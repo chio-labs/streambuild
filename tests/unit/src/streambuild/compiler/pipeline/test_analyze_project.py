@@ -158,7 +158,7 @@ def test_given_complete_project_when_analyzing_then_polyglot_calls_remain_bounde
             expected_adapter_name="clickhouse",
             expected_dialect="clickhouse",
             expected_default_database="analytics",
-            expected_source_file_count=9,
+            expected_source_file_count=8,
             expected_phase_call_count=1,
             expected_test_case_count=1,
             expected_assembly_realization_order=(
@@ -290,7 +290,6 @@ def test_given_project_sources_when_analyzing_then_builds_one_stable_offline_res
                 *analysis.discovered_inputs.model_files,
                 *analysis.discovered_inputs.test_files,
                 *analysis.discovered_inputs.audit_files,
-                *analysis.discovered_inputs.audit_schema_files,
                 *analysis.discovered_inputs.macro_files,
             )
         )
@@ -584,18 +583,19 @@ def test_given_direct_mode_policy_when_analyzing_then_it_rejects_vde_only_settin
     "test_case",
     [
         CompilationEntrypointsTestCase(
-            description="routes exactly eight command paths through one compilation service",
+            description="routes exactly nine command paths through one compilation service",
             expected_entrypoint_paths=(
                 "src/streambuild/cli/audit/main/_run_audit.py",
-                "src/streambuild/cli/audit_backfill/main/_run_audit_backfill.py",
                 "src/streambuild/cli/build/main/_run_build.py",
                 "src/streambuild/cli/compile/main/_run_compile.py",
+                "src/streambuild/cli/dev/main/_run_dev.py",
                 "src/streambuild/cli/discover/main/_run_discover.py",
                 "src/streambuild/cli/plan/main/_run_plan.py",
+                "src/streambuild/cli/readiness/main/_run_deployment_audit.py",
                 "src/streambuild/cli/reconcile/main/_run_reconcile.py",
                 "src/streambuild/cli/test/main/_run_test.py",
             ),
-            expected_entrypoint_count=8,
+            expected_entrypoint_count=9,
             expected_assembly_call_count=1,
             expected_realization_call_count=1,
             expected_consumer_rebuild_count=0,
@@ -776,7 +776,6 @@ def test_given_private_macro_modules_when_analyzing_then_only_public_modules_are
                 "audits/quality/alpha_audit.sql",
                 "macros/formatting.py",
                 "pipelines/alpha/alpha_model.sql",
-                "pipelines/alpha/schema.yml",
                 "pipelines/zeta/zeta_model.sql",
                 "sources/alpha_source.yml",
                 "sources/zeta_source.yml",

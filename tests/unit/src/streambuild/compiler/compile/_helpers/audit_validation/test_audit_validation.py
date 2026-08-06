@@ -10,7 +10,7 @@ from tests.unit.src.streambuild.compiler.compile._helpers.audit_validation._test
 from tests.unit.src.streambuild.compiler.compile._helpers.audit_validation.helpers import (
     AUDIT_FILE_PATH,
     GENERIC_DEFINITION_FILE_PATH,
-    SCHEMA_FILE_PATH,
+    ORDER_ITEMS_MODEL_FILE_PATH,
     validate_project_sql_audits,
 )
 
@@ -47,14 +47,19 @@ from tests.unit.src.streambuild.compiler.compile._helpers.audit_validation.helpe
         """,
                 ),
                 (
-                    SCHEMA_FILE_PATH,
+                    ORDER_ITEMS_MODEL_FILE_PATH,
                     """
-        models:
-          - name: order_items
-            audits:
-              - not_null:
-                  other_model: missing_model
-                  name: missing model generic audit
+        MODEL (
+          order_by ["order_id"],
+          audits [
+            not_null (other_model missing_model, name "missing model generic audit"),
+          ],
+        );
+
+        SELECT
+          CAST(order_id AS String) AS order_id,
+          CAST(1 AS Nullable(Float64)) AS line_total
+        FROM __ref("orders_clean")
         """,
                 ),
             ),
@@ -103,15 +108,19 @@ def test_given_invalid_sql_audits_when_validating_then_it_raises_clear_errors(
         """,
                 ),
                 (
-                    SCHEMA_FILE_PATH,
+                    ORDER_ITEMS_MODEL_FILE_PATH,
                     """
-        models:
-          - name: order_items
-            columns:
-              - name: order_id
-                audits:
-                  - not_null:
-                      name: generic order id audit
+        MODEL (
+          order_by ["order_id"],
+          columns (
+            order_id (audits [not_null (name "generic order id audit")]),
+          ),
+        );
+
+        SELECT
+          CAST(order_id AS String) AS order_id,
+          CAST(1 AS Nullable(Float64)) AS line_total
+        FROM __ref("orders_clean")
         """,
                 ),
             ),

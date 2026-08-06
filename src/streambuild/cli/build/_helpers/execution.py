@@ -18,6 +18,7 @@ from streambuild.executor.workflow.models import (
     PublishedBuildWorkflow,
     WorkflowExecutionResult,
 )
+from streambuild.executor.workflow.types import WorkflowEventEmitter
 
 
 def execute_confirmed_direct_build(
@@ -25,6 +26,7 @@ def execute_confirmed_direct_build(
     preparation: DirectWorkflowPreparation,
     options: BuildCommandOptions,
     client: AdapterConnection,
+    emitter: WorkflowEventEmitter | None = None,
 ) -> DirectBuildExecutionResult | None:
     """Show the destructive plan, require confirmation, then build."""
 
@@ -39,6 +41,7 @@ def execute_confirmed_direct_build(
         execution: WorkflowExecutionResult = execute_build_workflow(
             published_workflow=published_workflow,
             connection=client,
+            emitter=emitter,
         )
     except WorkflowExecutionError as error:
         raise error.cause from error

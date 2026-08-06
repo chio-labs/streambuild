@@ -1,0 +1,542 @@
+@import 'tailwindcss';
+@import "tw-animate-css";
+@import "shadcn-svelte/tailwind.css";
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/space-grotesk";
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/500.css";
+
+@custom-variant dark (&:is(.dark *));
+@plugin '@tailwindcss/typography';
+
+/* SQLBuild Hub light theme — cool off-white canvas, white lifted panels, blue accent.
+   Status colors are deeper/more saturated than the dark set so they sit on white
+   without vibrating or washing out. */
+:root {
+	--radius: 0.25rem;
+
+	--background: #f6f7f9;
+	--foreground: #14161a;
+	--card: #ffffff;
+	--card-foreground: #14161a;
+	--popover: #ffffff;
+	--popover-foreground: #14161a;
+	--primary: #1a73e8;
+	--primary-foreground: #ffffff;
+	--secondary: #eef0f3;
+	--secondary-foreground: #14161a;
+	--muted: #eef0f3;
+	--muted-foreground: #5b616e;
+	--accent: #eef0f3;
+	--accent-foreground: #14161a;
+	--destructive: #dc2626;
+	--border: rgba(20, 24, 34, 0.10);
+	--input: rgba(20, 24, 34, 0.14);
+	--ring: #1a73e8;
+	--chart-1: #1a73e8;
+	--chart-2: #0d9488;
+	--chart-3: #7c3aed;
+	--chart-4: #b45309;
+	--chart-5: #0a8f4f;
+	--sidebar: #f0f2f5;
+	--sidebar-foreground: #5b616e;
+	--sidebar-primary: #1a73e8;
+	--sidebar-primary-foreground: #ffffff;
+	--sidebar-accent: rgba(26, 115, 232, 0.10);
+	--sidebar-accent-foreground: #14161a;
+	--sidebar-border: rgba(20, 24, 34, 0.09);
+	--sidebar-ring: #1a73e8;
+
+	/* SQLBuild semantic + structural tokens (light) */
+	--sb-success: #0a8f4f;
+	--sb-warning: #b45309;
+	--sb-error: #dc2626;
+	--sb-running: #1a73e8;
+	--sb-stale: #7c3aed;
+	--sb-secondary: #0d9488;
+	/* Raised from #9aa0ab (2.45:1 — failed AA badly). Hierarchy below the AA floor
+	   is carried by size/case/tracking, not by contrast. */
+	--sb-text-faint: #6b7079;
+	--sb-surface-low: #f0f2f5;
+	--sb-surface-high: #ffffff;
+	--sb-inset: #eef0f3;
+	--sb-hover: #f0f2f5;
+	--sb-layer-source: #9aa0ab;
+	--sb-layer-staging: #0d9488;
+	--sb-layer-intermediate: #b45309;
+	--sb-layer-marts: #1a73e8;
+	--sb-elev: 0 1px 2px rgba(20,24,34,0.06), 0 2px 8px rgba(20,24,34,0.05), 0 0 0 1px rgba(20,24,34,0.04);
+	/* graph node elevation — far softer on white than the dark set */
+	--sb-tree-guide: rgba(20, 24, 34, 0.26);
+	/* Pipeline group boxes. The body wash must DARKEN so the cards inside lift off
+	   it — lightening flattens them against their own container. Dagster uses
+	   rgba(13,17,33,0.40) here for the same reason. */
+	--sb-group-border: rgba(20, 24, 34, 0.20);
+	--sb-group-border-strong: rgba(20, 24, 34, 0.30);
+	--sb-group-fill: rgba(20, 24, 34, 0.045);
+	--sb-group-header: #ffffff;
+	--sb-lane-fill: rgba(20, 24, 34, 0.035);
+	--sb-group-fill-strong: rgba(20, 24, 34, 0.08);
+	--sb-node-shadow: 0 1px 2px rgba(20, 24, 34, 0.07), 0 3px 10px rgba(20, 24, 34, 0.07);
+	--sb-node-shadow-selected: 0 0 0 2px var(--sidebar-accent), 0 4px 16px rgba(20, 24, 34, 0.14);
+
+	/* structural border + graph tokens (light) */
+	--border-subtle: rgba(20, 24, 34, 0.07);
+	--border-strong: rgba(20, 24, 34, 0.20);
+	--sb-edge: rgba(20, 24, 34, 0.22);
+	--sb-edge-dim: rgba(20, 24, 34, 0.08);
+	--sb-grid: rgba(20, 24, 34, 0.07);
+	--sb-mono: #3a3f4a;
+	--sb-mono-err: #b3261e;
+
+	/* SQL syntax tokens (light) */
+	--syn-keyword: #1a56c4;
+	--syn-string: #0a7a3f;
+	--syn-number: #9a6700;
+	--syn-comment: #8a909c;
+	--syn-function: #7c3aed;
+	--syn-operator: #3a3f4a;
+	--syn-punct: #5b616e;
+}
+
+/* SQLBuild Hub premium-dark theme (near-black canvas, lifted panels, blue accent).
+   shadcn variables mapped to the SQLBuild design tokens. */
+.dark {
+	--background: #08090b;
+	--foreground: #eaecef;
+	--card: #16181c;
+	--card-foreground: #eaecef;
+	--popover: #16181c;
+	--popover-foreground: #eaecef;
+	--primary: #2e90ff;
+	--primary-foreground: #ffffff;
+	--secondary: #212329;
+	--secondary-foreground: #eaecef;
+	--muted: #17191e;
+	--muted-foreground: #8b8f9b;
+	--accent: #212329;
+	--accent-foreground: #eaecef;
+	--destructive: #f47089;
+	--border: rgba(150, 155, 170, 0.18);
+	--input: rgba(150, 155, 170, 0.22);
+	--ring: #2e90ff;
+	--chart-1: #2e90ff;
+	--chart-2: #4dd6c4;
+	--chart-3: #a78bfa;
+	--chart-4: #f0c267;
+	--chart-5: #54cf8e;
+	--sidebar: #0b0c0f;
+	--sidebar-foreground: #8b8f9b;
+	--sidebar-primary: #2e90ff;
+	--sidebar-primary-foreground: #ffffff;
+	--sidebar-accent: rgba(46, 144, 255, 0.13);
+	--sidebar-accent-foreground: #eaecef;
+	--sidebar-border: rgba(150, 155, 170, 0.16);
+	--sidebar-ring: #2e90ff;
+
+	/* SQLBuild semantic + structural tokens (used by custom widgets) */
+	--sb-success: #54cf8e;
+	--sb-warning: #f0c267;
+	--sb-error: #f47089;
+	--sb-running: #56a8ff;
+	--sb-stale: #a78bfa;
+	--sb-secondary: #4dd6c4;
+	/* Raised from #5c606b (3.17:1 on bg, 2.83:1 on card — both failed AA). */
+	--sb-text-faint: #7e838f;
+	--sb-surface-low: #0b0c0f;
+	--sb-surface-high: #2a2d34;
+	--sb-inset: #000000;
+	--sb-hover: #212329;
+	--sb-layer-source: #59627a;
+	--sb-layer-staging: #4dd6c4;
+	--sb-layer-intermediate: #f0c267;
+	--sb-layer-marts: #2e90ff;
+	--sb-elev: 0 6px 22px rgba(0,0,0,0.6), 0 0 0 1px rgba(150,155,170,0.05), inset 0 1px 0 rgba(255,255,255,0.04);
+	--sb-tree-guide: rgba(150, 155, 170, 0.36);
+	--sb-group-border: rgba(150, 155, 170, 0.26);
+	--sb-group-border-strong: rgba(150, 155, 170, 0.42);
+	/* transparent: #08090b cannot meaningfully darken further */
+	--sb-group-fill: transparent;
+	--sb-group-header: #16181c;
+	--sb-lane-fill: rgba(150, 155, 170, 0.04);
+	--sb-group-fill-strong: rgba(150, 155, 170, 0.12);
+	--sb-node-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
+	--sb-node-shadow-selected: 0 0 0 2px var(--sidebar-accent), 0 10px 28px rgba(0, 0, 0, 0.55);
+
+	/* structural border + graph tokens (dark) */
+	--border-subtle: rgba(150, 155, 170, 0.10);
+	--border-strong: rgba(150, 155, 170, 0.34);
+	--sb-edge: rgba(150, 155, 170, 0.30);
+	--sb-edge-dim: rgba(150, 155, 170, 0.10);
+	--sb-grid: rgba(150, 155, 170, 0.10);
+	--sb-mono: #aeb3bd;
+	--sb-mono-err: #d6a6ae;
+
+	/* SQL syntax tokens (dark) */
+	--syn-keyword: #5aa9e6;
+	--syn-string: #79c98a;
+	--syn-number: #e3b341;
+	--syn-comment: #5c606b;
+	--syn-function: #c79bf0;
+	--syn-operator: #aeb3bd;
+	--syn-punct: #8b8f9b;
+}
+
+@theme inline {
+	--font-sans: 'Inter Variable', sans-serif;
+	--font-display: 'Space Grotesk Variable', 'Inter Variable', sans-serif;
+	--font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+	--color-sidebar-ring: var(--sidebar-ring);
+	--color-sidebar-border: var(--sidebar-border);
+	--color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+	--color-sidebar-accent: var(--sidebar-accent);
+	--color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+	--color-sidebar-primary: var(--sidebar-primary);
+	--color-sidebar-foreground: var(--sidebar-foreground);
+	--color-sidebar: var(--sidebar);
+	--color-chart-5: var(--chart-5);
+	--color-chart-4: var(--chart-4);
+	--color-chart-3: var(--chart-3);
+	--color-chart-2: var(--chart-2);
+	--color-chart-1: var(--chart-1);
+	--color-ring: var(--ring);
+	--color-input: var(--input);
+	--color-border: var(--border);
+	--color-destructive: var(--destructive);
+	--color-accent-foreground: var(--accent-foreground);
+	--color-accent: var(--accent);
+	--color-muted-foreground: var(--muted-foreground);
+	--color-muted: var(--muted);
+	--color-secondary-foreground: var(--secondary-foreground);
+	--color-secondary: var(--secondary);
+	--color-primary-foreground: var(--primary-foreground);
+	--color-primary: var(--primary);
+	--color-popover-foreground: var(--popover-foreground);
+	--color-popover: var(--popover);
+	--color-card-foreground: var(--card-foreground);
+	--color-card: var(--card);
+	--color-foreground: var(--foreground);
+	--color-background: var(--background);
+	--radius-sm: calc(var(--radius) * 0.6);
+	--radius-md: calc(var(--radius) * 0.8);
+	--radius-lg: var(--radius);
+	--radius-xl: calc(var(--radius) * 1.4);
+	--radius-2xl: calc(var(--radius) * 1.8);
+	--radius-3xl: calc(var(--radius) * 2.2);
+	--radius-4xl: calc(var(--radius) * 2.6);
+}
+
+@layer base {
+	* {
+		@apply border-border outline-ring/50;
+	}
+	body {
+		@apply bg-background text-foreground;
+	}
+	html {
+		@apply font-sans;
+	}
+}
+
+/* Shared list-table treatment (Jobs/Runs/Triggers/Checks/Providers/Catalog).
+   Legibility model borrowed from Dagster: proportional sans body text (mono only
+   for genuinely code-y values via .code), taller rows, brighter primary text,
+   clear row dividers, lifted sticky header. No zebra needed. */
+.sb-list {
+	font-family: var(--font-sans);
+	/* separate borders so per-cell column separators render reliably
+	   (border-collapse suppresses border-right in favour of row borders) */
+	border-collapse: separate !important;
+	border-spacing: 0;
+}
+.sb-list thead th {
+	background: var(--sb-surface-low) !important;
+	border-bottom: 1px solid var(--border) !important;
+}
+.sb-list tbody tr {
+	border-bottom: 1px solid var(--border) !important;
+}
+.sb-list tbody td {
+	border-bottom: 1px solid var(--border);
+}
+.sb-list tbody tr:hover {
+	background: var(--sb-hover) !important;
+}
+/* body cells: sans + a bit more height + readable contrast */
+.sb-list tbody td {
+	padding-top: 0.7rem !important;
+	padding-bottom: 0.7rem !important;
+	font-family: var(--font-sans);
+}
+/* keep monospace only where explicitly code-y */
+.sb-list .code,
+.sb-list code {
+	font-family: var(--font-mono);
+}
+/* table pill (Dagster-style): wrap discrete values so cells read as objects */
+.sb-tag {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	background: var(--secondary);
+	border: 1px solid var(--border);
+	border-radius: 5px;
+	padding: 2px 7px;
+	font-size: 11px;
+	line-height: 1.4;
+	color: var(--foreground);
+	white-space: nowrap;
+}
+.sb-tag .sb-tag-ico {
+	color: var(--sb-text-faint);
+}
+/* styled checkbox (replaces the chunky native accent-color box) */
+.sb-check {
+	appearance: none;
+	-webkit-appearance: none;
+	width: 14px;
+	height: 14px;
+	border: 1.5px solid var(--border-strong);
+	border-radius: 4px;
+	background: transparent;
+	cursor: pointer;
+	position: relative;
+	vertical-align: middle;
+	transition:
+		background 0.12s,
+		border-color 0.12s;
+}
+.sb-check:hover {
+	border-color: var(--muted-foreground);
+}
+.sb-check:checked {
+	background: var(--primary);
+	border-color: var(--primary);
+}
+.sb-check:checked::after {
+	content: '';
+	position: absolute;
+	left: 4px;
+	top: 1px;
+	width: 4px;
+	height: 8px;
+	border: solid #fff;
+	border-width: 0 2px 2px 0;
+	transform: rotate(45deg);
+}
+/* paused/disabled row: dim the row content (toggle keeps its own colour) */
+.sb-row-off td {
+	opacity: 0.6;
+}
+/* vertical column separators to guide the eye across wide rows; last column none */
+.sb-list th,
+.sb-list td {
+	border-right: 1px solid var(--border-subtle);
+}
+.sb-list th:last-child,
+.sb-list td:last-child {
+	border-right: none;
+}
+
+/* Prism token theme — mapped to SQLBuild syntax tokens (works light + dark) */
+.token.comment,
+.token.prolog,
+.token.doctype,
+.token.cdata {
+	color: var(--syn-comment);
+	font-style: italic;
+}
+.token.keyword {
+	color: var(--syn-keyword);
+}
+.token.string,
+.token.char,
+.token.attr-value {
+	color: var(--syn-string);
+}
+.token.number,
+.token.boolean {
+	color: var(--syn-number);
+}
+.token.function,
+.token.sb-ref {
+	color: var(--syn-function);
+}
+.token.operator,
+.token.entity,
+.token.url {
+	color: var(--syn-operator);
+}
+.token.punctuation {
+	color: var(--syn-punct);
+}
+.token.sb-config {
+	color: var(--syn-keyword);
+	font-weight: 500;
+}
+/* Normalized replay columns are framework plumbing, not authored columns —
+   dimmed + italic so they read as structural rather than semantic. */
+.token.sb-replay {
+	color: var(--syn-comment);
+	font-style: italic;
+}
+
+/* ── graph edges ───────────────────────────────────────────────────────────
+   Edge type carries meaning in StreamBuild, so it gets real visual weight:
+     driving_input      the single streaming spine — heavy, animated when flowing
+     reference          an ordinary side dependency — thin
+     mutable_reference  emits a replay warning and disqualifies the anchor — amber
+*/
+/*
+ * A driving edge that is not currently flowing — the model is stalled, or the
+ * source is idle.
+ *
+ * It keeps the dash and the weight, and gives up only the hue and the
+ * animation. Edge TYPE lives on the dash pattern and stroke width; flow STATE
+ * lives on colour and motion. Dropping the dash here would put both on one
+ * channel and make a stalled spine read as an ordinary reference edge, which is
+ * the exact opposite of what it means.
+ */
+.sb-edge-driving path.svelte-flow__edge-path {
+	stroke: var(--sb-edge);
+	stroke-width: 2.25px;
+	stroke-dasharray: 5 4;
+}
+.sb-edge-driving-flowing path.svelte-flow__edge-path {
+	stroke: var(--sb-secondary);
+	stroke-width: 2.25px;
+	stroke-dasharray: 5 4;
+	animation: sbflow 0.9s linear infinite;
+}
+.sb-edge-reference path.svelte-flow__edge-path {
+	stroke: var(--sb-edge-dim);
+	stroke-width: 1.25px;
+}
+/*
+ * A read by a terminal view. StreamBuild types these `reference` like any side
+ * lookup, because a view has no driving input to contrast them with — but a
+ * view's refs are not incidental, they ARE the view. Full weight so it does not
+ * read as barely attached; solid, because the dash is reserved for driving.
+ */
+.sb-edge-view-read path.svelte-flow__edge-path {
+	stroke: var(--sb-edge);
+	stroke-width: 1.9px;
+}
+.sb-edge-mutable path.svelte-flow__edge-path {
+	stroke: var(--sb-warning);
+	stroke-width: 1.5px;
+	stroke-dasharray: 3 3;
+	opacity: 0.85;
+}
+.sb-edge-dimmed path.svelte-flow__edge-path {
+	stroke: var(--sb-edge-dim) !important;
+	stroke-width: 1px !important;
+	animation: none !important;
+}
+/* Cross-box edge running against the group ranking. Direction is correct; the
+   dashes and lower opacity mark it as the exception rather than a tangle. */
+.sb-edge-back path.svelte-flow__edge-path {
+	stroke-dasharray: 2 5 !important;
+	opacity: 0.75;
+	animation: none !important;
+}
+
+@keyframes sbflow {
+	to {
+		stroke-dashoffset: -18;
+	}
+}
+
+.svelte-flow__node-group {
+	/* Svelte Flow ships its own group fill/border; ours lives in the component. */
+	background: transparent !important;
+	border: none !important;
+	pointer-events: none;
+}
+
+/* Svelte Flow chrome, themed to the design system. Without this the controls
+   render as an unreadable collapsed strip against the dark canvas. */
+.svelte-flow__controls {
+	box-shadow: none !important;
+	gap: 3px;
+	display: flex;
+	flex-direction: column;
+}
+.svelte-flow__controls-button {
+	width: 26px !important;
+	height: 26px !important;
+	background: var(--card) !important;
+	border: 1px solid var(--border) !important;
+	border-radius: 4px !important;
+	fill: var(--muted-foreground) !important;
+	padding: 6px !important;
+}
+.svelte-flow__controls-button:hover {
+	background: var(--sb-hover) !important;
+	fill: var(--foreground) !important;
+}
+.svelte-flow__attribution {
+	display: none;
+}
+.svelte-flow__handle {
+	opacity: 0.55;
+}
+
+/* ── measurement tracks ───────────────────────────────────────────────────
+   Shared by the source retention bar, reconstruction coverage and the Plan
+   replay-window control, so the same geometry reads the same everywhere. */
+.sb-track {
+	position: relative;
+	height: 20px;
+	border-radius: 3px;
+	background: var(--sb-inset);
+	border: 1px solid var(--border-subtle);
+	overflow: hidden;
+}
+.sb-track-fill {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+}
+.sb-track-hatch {
+	background-image: repeating-linear-gradient(
+		45deg,
+		var(--sb-edge-dim) 0,
+		var(--sb-edge-dim) 2px,
+		transparent 2px,
+		transparent 5px
+	);
+}
+
+/* Tree connector guides for the pipeline stream tree. Deliberately stronger than
+   --border: at 10% alpha on white the nesting was invisible. */
+.sb-tree-guide {
+	position: relative;
+	display: inline-block;
+	width: 24px;
+	flex-shrink: 0;
+	align-self: stretch;
+}
+.sb-tree-guide::before {
+	content: '';
+	position: absolute;
+	left: 10px;
+	top: 0;
+	bottom: 0;
+	border-left: 1.5px solid var(--sb-tree-guide);
+}
+.sb-tree-guide-last::before {
+	bottom: 50%;
+}
+.sb-tree-guide-elbow::after {
+	content: '';
+	position: absolute;
+	left: 10px;
+	top: 50%;
+	width: 13px;
+	border-top: 1.5px solid var(--sb-tree-guide);
+	border-bottom-left-radius: 3px;
+}
+.sb-tree-guide-empty::before {
+	border-left: none;
+}

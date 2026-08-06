@@ -2,6 +2,16 @@ MODEL (
   engine "SummingMergeTree()",
   order_by ["event_day", "category", "region"],
   partition_by "toYYYYMM(event_day)",
+  columns (
+    event_day (audits [not_null]),
+    category (audits [not_null]),
+  ),
+  audits [
+    expression_is_true (
+      name "order count is positive",
+      expression "order_event_count > 0",
+    ),
+  ],
 );
 
 SELECT

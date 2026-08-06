@@ -10,9 +10,11 @@ from streambuild.compiler.discovery.models import (
     ExternalTableSourceStep,
     KafkaLandingStep,
     ReplayBoundary,
+    SourceFreshnessPolicy,
 )
 from tests.unit.src.streambuild.compiler.discovery._test_types import (
     SourceBoundaryModeTestCase,
+    SourceFreshnessTestCase,
     SourceRegistryErrorTestCase,
     SourceRegistryTestCase,
 )
@@ -20,6 +22,43 @@ from tests.unit.src.streambuild.compiler.discovery.helpers import (
     flatten_source_registry,
     write_source_yml,
 )
+
+_KAFKA_SOURCE_WITH_FRESHNESS: str = """
+sources:
+  - name: orders
+    kind: kafka
+    broker_list: broker:9092
+    topic: orders.live
+    replay_boundary:
+      mode: offsets
+    freshness:
+      warn_after: 15m
+      error_after: 1h
+"""
+
+_KAFKA_SOURCE_WITHOUT_FRESHNESS: str = """
+sources:
+  - name: orders
+    kind: kafka
+    broker_list: broker:9092
+    topic: orders.live
+    replay_boundary:
+      mode: offsets
+"""
+
+_ADOPTED_SOURCE_WITH_FRESHNESS: str = """
+sources:
+  - name: orders
+    kind: stream_table
+    table_name: raw_orders
+    replay_boundary:
+      mode: cursor
+      columns:
+        _replay_cursor: event_cursor
+        _replay_timestamp: event_timestamp
+    freshness:
+      error_after: 2d
+"""
 
 
 @pytest.mark.parametrize(
@@ -416,3 +455,56 @@ def test_given_invalid_source_registry_when_discovering_then_rejects_with_paths(
 
     with pytest.raises(PipelineDiscoveryError, match=test_case.expected_error_fragment):
         discover_source_registry(project_dir=tmp_path, variables={}, environment={})
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        SourceFreshnessTestCase(
+            description="parses a managed source freshness policy",
+            source_yaml=_KAFKA_SOURCE_WITH_FRESHNESS,
+            default_freshness=None,
+            expected_freshness=SourceFreshnessPolicy(warn_after="15m", error_after="1h"),
+        ),
+        SourceFreshnessTestCase(
+            description="parses an adopted source freshness policy",
+            source_yaml=_ADOPTED_SOURCE_WITH_FRESHNESS,
+            default_freshness=None,
+            expected_freshness=SourceFreshnessPolicy(error_after="2d"),
+        ),
+        SourceFreshnessTestCase(
+            description="falls back to the project default freshness policy",
+            source_yaml=_KAFKA_SOURCE_WITHOUT_FRESHNESS,
+            default_freshness=SourceFreshnessPolicy(warn_after="30m"),
+            expected_freshness=SourceFreshnessPolicy(warn_after="30m"),
+        ),
+        SourceFreshnessTestCase(
+            description="prefers the source policy over the project default",
+            source_yaml=_KAFKA_SOURCE_WITH_FRESHNESS,
+            default_freshness=SourceFreshnessPolicy(warn_after="30m"),
+            expected_freshness=SourceFreshnessPolicy(warn_after="15m", error_after="1h"),
+        ),
+        SourceFreshnessTestCase(
+            description="defaults an absent freshness policy to none",
+            source_yaml=_KAFKA_SOURCE_WITHOUT_FRESHNESS,
+            default_freshness=None,
+            expected_freshness=None,
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_freshness_config_when_discovering_then_returns_expected_policy(
+    test_case: SourceFreshnessTestCase,
+    tmp_path: Path,
+) -> None:
+    write_source_yml(project_dir=tmp_path, relative_path="a.yml", contents=test_case.source_yaml)
+
+    registry: tuple[DiscoveredSourceFile, ...] = discover_source_registry(
+        project_dir=tmp_path,
+        variables={},
+        environment={},
+        default_freshness=test_case.default_freshness,
+    )
+
+    source: KafkaLandingStep | ExternalTableSourceStep = flatten_source_registry(registry)[0]
+    assert source.freshness == test_case.expected_freshness

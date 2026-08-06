@@ -7,7 +7,7 @@ from streambuild.cli.entry.constants import AFFIRMATIVE_RESPONSES
 def confirm_build(*, options: BuildCommandOptions, plan_text: str) -> bool:
     """Render the connected plan and apply the common build confirmation policy."""
 
-    if not options.json_output:
+    if not options.json_output and not options.events_output:
         print(plan_text)
     if options.auto_approve:
         return True

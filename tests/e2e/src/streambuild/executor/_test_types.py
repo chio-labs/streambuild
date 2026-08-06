@@ -4,7 +4,7 @@ from typing import NamedTuple
 
 from streambuild.compiler.discovery.types import ReplayLineageMode
 from streambuild.compiler.planner.types import RebuildExecutionMode
-from streambuild.executor.audit_backfill.types import AuditAssessment
+from streambuild.executor.readiness.types import AuditAssessment
 
 
 @dataclass(frozen=True)

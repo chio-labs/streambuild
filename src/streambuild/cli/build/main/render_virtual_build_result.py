@@ -74,8 +74,8 @@ def render_virtual_build_result(
         [
             "",
             cli_style().section("Next"),
-            f"- stb audit deployment --deployment-id {result.bootstrap.deployment_id}",
-            f"- stb publish --deployment-id {result.bootstrap.deployment_id}",
+            f"- stb deployment audit {result.bootstrap.deployment_id}",
+            f"- stb deployment promote {result.bootstrap.deployment_id}",
         ]
     )
     return "\n".join(lines)

@@ -12,6 +12,7 @@ from streambuild.compiler.discovery.models import TransformStep, ViewStep
 from streambuild.compiler.macros.models import MacroContext, MacroRegistry
 from tests.unit.src.streambuild.compiler.discovery._helpers._test_types import (
     InferTransformSourceErrorTestCase,
+    LoadModelDescriptionTestCase,
     LoadModelKindTestCase,
     LoadTransformFromSqlFileTestCase,
     ParseModelSqlHeaderErrorTestCase,
@@ -346,3 +347,61 @@ def test_given_sql_model_macros_when_loading_then_it_expands_query_body(
 
     assert transform.query is not None
     assert test_case.expected_query_fragment in transform.query
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        LoadModelDescriptionTestCase(
+            description="loads a table model description from the header",
+            contents=(
+                'MODEL (description "Order fact table."); '
+                'SELECT 1::UInt8 AS value FROM __source("orders")'
+            ),
+            expected_description="Order fact table.",
+        ),
+        LoadModelDescriptionTestCase(
+            description="loads a view model description from the header",
+            contents='MODEL (kind view, description "Terminal rollup."); SELECT 1::UInt8 AS value',
+            expected_description="Terminal rollup.",
+        ),
+        LoadModelDescriptionTestCase(
+            description="defaults an absent description to none",
+            contents='MODEL (); SELECT 1::UInt8 AS value FROM __source("orders")',
+            expected_description=None,
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_model_header_when_loading_sql_then_returns_expected_description(
+    test_case: LoadModelDescriptionTestCase,
+    tmp_path: Path,
+) -> None:
+    model_path: Path = tmp_path / "model.sql"
+    model_path.write_text(test_case.contents, encoding="utf-8")
+
+    model: TransformStep | ViewStep = load_transform_from_sql_file(file_path=model_path)
+
+    assert model.description == test_case.expected_description
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ParseModelSqlHeaderErrorTestCase(
+            description="rejects a non-string description",
+            contents='MODEL (description 7); SELECT 1::UInt8 AS value FROM __source("orders")',
+            expected_error_fragment="must define 'description' as a string when set",
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_invalid_description_when_loading_sql_then_it_raises_specific_error(
+    test_case: ParseModelSqlHeaderErrorTestCase,
+    tmp_path: Path,
+) -> None:
+    model_path: Path = tmp_path / "model.sql"
+    model_path.write_text(test_case.contents, encoding="utf-8")
+
+    with pytest.raises(ValueError, match=test_case.expected_error_fragment):
+        load_transform_from_sql_file(file_path=model_path)

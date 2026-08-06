@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from pathlib import Path
 
+from streambuild.compiler.discovery.models import SourceFreshnessPolicy
+
 
 @dataclass(frozen=True)
 class DiscoverPipelinesTestCase:
@@ -146,3 +148,25 @@ class SourceBoundaryModeTestCase:
     expected_mode: str
     expected_columns: tuple[str | None, str | None, str | None, str | None, str | None]
     variables: tuple[tuple[str, object], ...] = ()
+
+
+@dataclass(frozen=True)
+class SourceFreshnessTestCase:
+    description: str
+    source_yaml: str
+    default_freshness: SourceFreshnessPolicy | None
+    expected_freshness: SourceFreshnessPolicy | None
+
+
+@dataclass(frozen=True)
+class ProjectFreshnessDefaultTestCase:
+    description: str
+    defaults_toml: str
+    expected_freshness: SourceFreshnessPolicy | None
+
+
+@dataclass(frozen=True)
+class ProjectFreshnessErrorTestCase:
+    description: str
+    defaults_toml: str
+    expected_error_fragment: str

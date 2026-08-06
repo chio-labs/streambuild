@@ -289,9 +289,13 @@ def test_given_module_when_checking_mutation_gateway_then_only_owner_may_call_it
                     AdapterConnection as Connection,
                 )
                 from streambuild.executor.workflow.models import PublishedBuildWorkflow as Published
+                from streambuild.executor.workflow.types import WorkflowEventEmitter
 
                 def execute_build_workflow(
-                    *, published_workflow: Published, connection: Connection
+                    *,
+                    published_workflow: Published,
+                    connection: Connection,
+                    emitter: WorkflowEventEmitter | None = None,
                 ) -> None:
                     pass
                 """

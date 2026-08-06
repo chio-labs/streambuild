@@ -241,17 +241,19 @@ def test_given_cli_connection_options_when_rendering_then_credentials_are_not_ex
     [
         CliModeGateErrorTestCase(
             description="rejects deployment audit when virtual environments are omitted",
-            argv=("stb", "audit", "deployment"),
+            argv=("stb", "deployment", "audit", "deployment-id"),
             project_file_contents=_DIRECT_PROJECT_CONFIG,
             expected_error_fragment=(
-                "stb audit deployment requires virtual environments to be enabled"
+                "stb deployment audit requires virtual environments to be enabled"
             ),
         ),
         CliModeGateErrorTestCase(
-            description="rejects publish when virtual environments are omitted",
-            argv=("stb", "publish"),
+            description="rejects deployment promotion when virtual environments are omitted",
+            argv=("stb", "deployment", "promote", "deployment-id"),
             project_file_contents=_DIRECT_PROJECT_CONFIG,
-            expected_error_fragment="stb publish requires virtual environments to be enabled",
+            expected_error_fragment=(
+                "stb deployment promote requires virtual environments to be enabled"
+            ),
         ),
         CliModeGateErrorTestCase(
             description="rejects reconcile when virtual environments are omitted",

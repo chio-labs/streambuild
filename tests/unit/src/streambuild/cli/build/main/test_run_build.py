@@ -9,9 +9,12 @@ from streambuild.executor.workflow.models import PublishedBuildWorkflow
 from tests.unit.src.streambuild.cli.build.main._test_types import (
     CliBuildArtifactTestCase,
     CliBuildGateTestCase,
+    CliBuildInterruptTestCase,
     CliVirtualBuildArtifactTestCase,
 )
 from tests.unit.src.streambuild.cli.build.main.helpers import (
+    InterruptedBuildConnection,
+    build_interrupted_scope_project_connection,
     build_scope_project_connection,
     publish_scope_project_virtual_workflow,
     run_scope_project_build,
@@ -75,6 +78,39 @@ def test_given_build_command_gates_when_running_then_it_refuses_before_writing(
     assert test_case.expected_stdout_fragment in captured.out
     assert not (tmp_path / "target/run/build/plan.json").exists()
     assert connection.workflow_mutation_statements == []
+    assert connection.invocation_observations[0].outcome == test_case.expected_invocation_outcome
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliBuildInterruptTestCase(
+            description="a Ctrl+C during execution persists a cancelled invocation",
+            expected_exit_code=130,
+            expected_invocation_outcome="cancelled",
+            expected_stderr_fragment="build interrupted; recorded as cancelled",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_interrupted_execution_when_building_then_cancelled_invocation_is_recorded(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    test_case: CliBuildInterruptTestCase,
+) -> None:
+    write_direct_scope_project(project_root=tmp_path)
+    connection: InterruptedBuildConnection = build_interrupted_scope_project_connection()
+
+    exit_code: int = run_scope_project_build_with_connection(
+        project_root=tmp_path,
+        json_output=False,
+        auto_approve=True,
+        connection=connection,
+    )
+
+    captured: CaptureResult[str] = capsys.readouterr()
+    assert exit_code == test_case.expected_exit_code
+    assert test_case.expected_stderr_fragment in captured.err
     assert connection.invocation_observations[0].outcome == test_case.expected_invocation_outcome
 
 
