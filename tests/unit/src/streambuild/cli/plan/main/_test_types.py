@@ -39,14 +39,6 @@ class CliStartTimeNormalizationErrorTestCase:
 
 
 @dataclass(frozen=True)
-class CliStartTimeConversionTestCase:
-    description: str
-    timezone_name: str
-    utc_timestamp: str
-    expected_converted_value: str
-
-
-@dataclass(frozen=True)
 class CliReplaySourceWarningTestCase:
     description: str
     replay_source_row_count: int

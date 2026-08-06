@@ -8,9 +8,6 @@ from streambuild.cli.build.models import (
 )
 from streambuild.cli.entry.exceptions import CliUserError
 from streambuild.cli.entry.main._resolve_default_database import resolve_default_database
-from streambuild.cli.plan.main._convert_utc_timestamp_for_clickhouse import (
-    convert_utc_timestamp_for_clickhouse,
-)
 from streambuild.cli.plan.main._source_validation import (
     validate_declared_external_sources,
 )
@@ -61,14 +58,7 @@ def build_virtual_build_preview(
         client=client,
         database=resolved_database,
     )
-    start_time: str | None = (
-        convert_utc_timestamp_for_clickhouse(
-            timezone_name=snapshot.catalog.warehouse_timezone,
-            utc_timestamp=start_time_utc,
-        )
-        if start_time_utc is not None
-        else None
-    )
+    start_time: str | None = start_time_utc
     validate_declared_external_sources(
         catalog=snapshot.catalog,
         external_source_replay_configs=(
