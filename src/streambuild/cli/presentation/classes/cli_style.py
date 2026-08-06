@@ -11,7 +11,7 @@ from streambuild.cli.presentation.constants import (
     ANSI_YELLOW,
 )
 from streambuild.cli.presentation.models import CliTheme, TextStyle
-from streambuild.executor.audit_backfill.types import AuditAssessment
+from streambuild.executor.readiness.types import AuditAssessment
 
 default_cli_theme: CliTheme = CliTheme(
     title=TextStyle(ANSI_BOLD + ANSI_BLUE),

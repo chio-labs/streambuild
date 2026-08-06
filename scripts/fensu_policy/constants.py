@@ -95,7 +95,7 @@ WORKFLOW_ASSEMBLER_PATHS: tuple[tuple[str, ...], ...] = (
     ("src", "streambuild", "executor", "direct", "_helpers", "workflow.py"),
     ("src", "streambuild", "executor", "backfill", "_helpers", "workflow.py"),
     ("src", "streambuild", "executor", "population", "_helpers", "workflow.py"),
-    ("src", "streambuild", "executor", "publish", "_helpers", "workflow.py"),
+    ("src", "streambuild", "executor", "promotion", "_helpers", "workflow.py"),
     ("src", "streambuild", "executor", "repair", "_helpers", "workflow.py"),
     ("src", "streambuild", "executor", "janitor", "_helpers", "workflow.py"),
     ("src", "streambuild", "executor", "reconcile", "_helpers", "workflow.py"),

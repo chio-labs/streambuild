@@ -8,7 +8,7 @@ from streambuild.cli.entry.constants import (
 )
 from streambuild.cli.entry.exceptions import CliUserError
 from streambuild.cli.entry.models import ResolvedCliInvocation
-from streambuild.cli.entry.types import CliCommand, CliSubcommand
+from streambuild.cli.entry.types import CliCommand
 from streambuild.compiler.discovery.models import LoadedProject
 
 
@@ -41,15 +41,12 @@ def _virtual_environments_enabled(loaded_project: LoadedProject | None) -> bool:
 
 def _is_virtual_environment_only(*, args: argparse.Namespace) -> bool:
     command: CliCommand = CliCommand(args.command)
-    return command in VIRTUAL_ENVIRONMENT_ONLY_COMMANDS or (
-        command == CliCommand.AUDIT
-        and getattr(args, "audit_command", None) == CliSubcommand.DEPLOYMENT
-    )
+    return command in VIRTUAL_ENVIRONMENT_ONLY_COMMANDS
 
 
 def _command_display(*, args: argparse.Namespace) -> str:
-    if args.command == CliCommand.AUDIT:
-        return "audit deployment"
+    if args.command == CliCommand.DEPLOYMENT:
+        return f"deployment {args.deployment_command}"
     if args.command == CliCommand.REPAIR:
         return "repair active-view"
     return str(args.command)

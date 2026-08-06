@@ -6,18 +6,18 @@ from scripts.cli_output_preview_support._helpers.plan_fixtures import (
     build_plan_preview,
 )
 from streambuild.compiler.compile.models import ObjectKey
-from streambuild.executor.audit_backfill.models import (
-    AuditBackfillResult,
-    AuditDeploymentCandidate,
-    RootAuditResult,
-)
 from streambuild.executor.backfill.models import (
     BackfillBootstrapResult,
     BackfillExecutionResult,
     BackfillRootReplayResult,
     RootBackfillReport,
 )
-from streambuild.executor.publish.models import PublishedView, PublishResult
+from streambuild.executor.promotion.models import PublishedView, PublishResult
+from streambuild.executor.readiness.models import (
+    AuditDeploymentCandidate,
+    DeploymentAuditResult,
+    RootAuditResult,
+)
 
 
 def build_backfill_preview() -> BackfillExecutionResult:
@@ -46,8 +46,8 @@ def build_backfill_preview() -> BackfillExecutionResult:
     )
 
 
-def build_audit_preview() -> AuditBackfillResult:
-    return AuditBackfillResult(
+def build_audit_preview() -> DeploymentAuditResult:
+    return DeploymentAuditResult(
         deployment_id="20260410T120000Z_ab12cd",
         deployment_status="backfilling",
         assessment="ready",
@@ -89,8 +89,8 @@ def build_publish_preview() -> PublishResult:
     )
 
 
-def build_audit_caution_preview() -> AuditBackfillResult:
-    return AuditBackfillResult(
+def build_audit_caution_preview() -> DeploymentAuditResult:
+    return DeploymentAuditResult(
         deployment_id="20260410T120500Z_cd34ef",
         deployment_status="backfilling",
         assessment="caution",
