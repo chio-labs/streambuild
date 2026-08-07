@@ -68,3 +68,4 @@ select = ["B", "E", "F", "I", "UP"]
 
 [tool.uv]
 package = true
+required-version = ">=0.12.3,<0.13"
