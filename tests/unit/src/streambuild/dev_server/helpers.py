@@ -332,13 +332,26 @@ def build_fake_state_connection() -> FakeAdapterConnection:
             "WHERE database = 'analytics' AND name = '_streambuild_run_events'"
         ): AdapterQueryResult(rows=((1,),), column_names=("present",)),
         (
-            "SELECT sequence, toString(emitted_at) AS emitted_at, event_kind, step_id, phase, "
-            "payload_json FROM `analytics`.`_streambuild_run_events` "
-            "WHERE invocation_id = 'inv-42' ORDER BY sequence"
+            "SELECT invocation_id, sequence, toString(emitted_at) AS emitted_at, event_kind, "
+            "step_id, phase, payload_json FROM (SELECT invocation_id, sequence, "
+            "toString(emitted_at) AS emitted_at, event_kind, step_id, phase, payload_json, "
+            "row_number() OVER (PARTITION BY invocation_id ORDER BY sequence DESC) AS recency "
+            "FROM `analytics`.`_streambuild_run_events` WHERE invocation_id = 'inv-42') "
+            "WHERE recency <= 400 OR event_kind = 'run_started' "
+            "ORDER BY invocation_id, sequence"
         ): AdapterQueryResult(
             rows=(
-                (1, "2026-08-03 12:00:00.000", "run_started", None, None, '{"command": "build"}'),
                 (
+                    "inv-42",
+                    1,
+                    "2026-08-03 12:00:00.000",
+                    "run_started",
+                    None,
+                    None,
+                    '{"command": "build"}',
+                ),
+                (
+                    "inv-42",
                     2,
                     "2026-08-03 12:00:01.000",
                     "statement_completed",
@@ -348,6 +361,42 @@ def build_fake_state_connection() -> FakeAdapterConnection:
                 ),
             ),
             column_names=(
+                "invocation_id",
+                "sequence",
+                "emitted_at",
+                "event_kind",
+                "step_id",
+                "phase",
+                "payload_json",
+            ),
+        ),
+        (
+            "SELECT invocation_id, sequence, toString(emitted_at) AS emitted_at, event_kind, "
+            "step_id, phase, payload_json FROM `analytics`.`_streambuild_run_events` "
+            "WHERE invocation_id = 'inv-42' ORDER BY invocation_id, sequence LIMIT 500"
+        ): AdapterQueryResult(
+            rows=(
+                (
+                    "inv-42",
+                    1,
+                    "2026-08-03 12:00:00.000",
+                    "run_started",
+                    None,
+                    None,
+                    '{"command": "build"}',
+                ),
+                (
+                    "inv-42",
+                    2,
+                    "2026-08-03 12:00:01.000",
+                    "statement_completed",
+                    "replay_orders",
+                    "replay",
+                    '{"writtenRows": 42}',
+                ),
+            ),
+            column_names=(
+                "invocation_id",
                 "sequence",
                 "emitted_at",
                 "event_kind",

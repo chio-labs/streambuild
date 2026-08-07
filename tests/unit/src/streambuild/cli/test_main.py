@@ -5,11 +5,12 @@ from collections.abc import Callable
 from pathlib import Path
 from shutil import copytree
 from typing import cast
+from unittest.mock import MagicMock
 
 import pytest
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.adapter.exceptions import AdapterAuthenticationError
+from streambuild.adapter.exceptions import AdapterAuthenticationError, AdapterTimeoutError
 from streambuild.adapter.models import AdapterConnectionConfig
 from streambuild.cli.build.models import BuildCommandOptions
 from streambuild.cli.dev.main._run_dev import run_dev
@@ -21,7 +22,7 @@ from streambuild.cli.entry._helpers.invocation import _resolved_cli_variables
 from streambuild.cli.entry._helpers.parser import build_cli_parser
 from streambuild.cli.entry.constants import DEV_CLI_VARIABLES_ENV_VAR
 from streambuild.cli.entry.main.main import _main_with_dependencies, main
-from streambuild.cli.entry.models import CliEntrypointHandlers
+from streambuild.cli.entry.models import CliEntrypointHandlers, ResolvedInvocationConnection
 from streambuild.cli.plan.models import PlanCommandOptions
 from streambuild.compiler.compile.models import CompilerAdapterProfile
 from streambuild.compiler.discovery.models import LoadedProject
@@ -29,6 +30,8 @@ from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.dev_server.models import DevExecutionContext
 from tests.unit.src.streambuild.cli._test_types import (
     CliAuditBackfillProjectContextTestCase,
+    CliBuildObservationConnectionTestCase,
+    CliBuildObservationFailureTestCase,
     CliCompileArtifactsTestCase,
     CliDevRefactorTestCase,
     CliJanitorApplyFlagTestCase,
@@ -387,6 +390,7 @@ def test_given_cli_args_when_running_main_then_it_prints_expected_json(
         argv=test_case.argv,
         handlers=handlers,
         adapter_connection=clickhouse_client,
+        observation_adapter_connection=cast(AdapterConnection, FakeCliClickHouseClient()),
     )
     captured_output: str = capsys.readouterr().out
     normalized_output: str = normalize_json_output(captured_output)
@@ -713,6 +717,7 @@ def test_given_cli_args_when_running_plan_then_it_prints_expected_output(
         argv=test_case.argv,
         handlers=handlers,
         adapter_connection=clickhouse_client,
+        observation_adapter_connection=cast(AdapterConnection, FakeCliClickHouseClient()),
     )
     captured_output: str = capsys.readouterr().out
     normalized_output: str = OUTPUT_NORMALIZERS[test_case.expects_json_output](captured_output)
@@ -759,6 +764,7 @@ def test_given_clickhouse_env_vars_when_running_plan_then_it_uses_env_defaults(
         environment=test_case.env_vars,
         handlers=handlers,
         adapter_connection=clickhouse_client,
+        observation_adapter_connection=cast(AdapterConnection, FakeCliClickHouseClient()),
     )
 
     assert exit_code == test_case.expected_exit_code
@@ -1247,11 +1253,128 @@ def test_given_json_flag_when_running_build_then_it_passes_json_output_to_comman
         argv=test_case.argv,
         handlers=handlers,
         adapter_connection=clickhouse_client,
+        observation_adapter_connection=cast(AdapterConnection, FakeCliClickHouseClient()),
     )
 
     assert exit_code == test_case.expected_exit_code
     options: BuildCommandOptions = cast(BuildCommandOptions, runner.kwargs["options"])
     assert options.json_output is test_case.expected_json_output
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliBuildObservationConnectionTestCase(
+            description="build observations use a separately resolved connection",
+            argv=(
+                "stb",
+                "build",
+                "--project-dir",
+                "tests/fixtures/basic_project",
+                "--host",
+                "localhost",
+                "--port",
+                "8123",
+                "--username",
+                "streambuild",
+                "--password",
+                "streambuild",
+                "--database",
+                "analytics",
+            ),
+            expected_exit_code=0,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_build_connection_when_dispatching_then_observations_use_second_connection(
+    test_case: CliBuildObservationConnectionTestCase,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner: RecordingCommandRunner = RecordingCommandRunner()
+    execution_connection: AdapterConnection = cast(AdapterConnection, FakeCliClickHouseClient())
+    observation_connection: AdapterConnection = cast(AdapterConnection, FakeCliClickHouseClient())
+    connection_resolver: MagicMock = MagicMock(
+        side_effect=(
+            ResolvedInvocationConnection(
+                connection=execution_connection, close_after_command=False
+            ),
+            ResolvedInvocationConnection(
+                connection=observation_connection, close_after_command=False
+            ),
+        )
+    )
+    monkeypatch.setattr(
+        "streambuild.cli.entry.main.main.resolve_invocation_connection",
+        connection_resolver,
+    )
+
+    exit_code: int = _main_with_dependencies(
+        argv=test_case.argv,
+        handlers=handlers_with_overrides(run_build=runner),
+    )
+
+    assert exit_code == test_case.expected_exit_code
+    assert runner.kwargs["client"] is execution_connection
+    assert runner.kwargs["observation_client"] is observation_connection
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliBuildObservationFailureTestCase(
+            description="build stops before dispatch when observation connection is unavailable",
+            argv=(
+                "stb",
+                "build",
+                "--project-dir",
+                "tests/fixtures/basic_project",
+                "--host",
+                "localhost",
+                "--port",
+                "8123",
+                "--username",
+                "streambuild",
+                "--password",
+                "streambuild",
+                "--database",
+                "analytics",
+            ),
+            expected_exit_code=1,
+            connection_error="observation connection unavailable",
+            expected_error_fragment="ClickHouse operation timed out",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_observation_connection_failure_when_building_then_dispatch_is_refused(
+    test_case: CliBuildObservationFailureTestCase,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    runner: RecordingCommandRunner = RecordingCommandRunner()
+    execution_connection: AdapterConnection = cast(AdapterConnection, FakeCliClickHouseClient())
+    connection_resolver: MagicMock = MagicMock(
+        side_effect=(
+            ResolvedInvocationConnection(
+                connection=execution_connection, close_after_command=False
+            ),
+            AdapterTimeoutError(test_case.connection_error),
+        )
+    )
+    monkeypatch.setattr(
+        "streambuild.cli.entry.main.main.resolve_invocation_connection",
+        connection_resolver,
+    )
+
+    exit_code: int = _main_with_dependencies(
+        argv=test_case.argv,
+        handlers=handlers_with_overrides(run_build=runner),
+    )
+
+    assert exit_code == test_case.expected_exit_code
+    assert test_case.expected_error_fragment in capsys.readouterr().err
+    assert runner.kwargs == {}
 
 
 @pytest.mark.parametrize(
@@ -1288,6 +1411,7 @@ def test_given_selectors_when_running_build_then_it_passes_selection_kwargs_to_c
         argv=test_case.argv,
         handlers=handlers,
         adapter_connection=clickhouse_client,
+        observation_adapter_connection=cast(AdapterConnection, FakeCliClickHouseClient()),
     )
 
     assert exit_code == test_case.expected_exit_code

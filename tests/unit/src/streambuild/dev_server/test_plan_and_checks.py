@@ -343,8 +343,9 @@ def test_given_recorded_run_when_reading_events_then_returns_ordered_timeline(
     write_dev_server_project(project_dir=tmp_path)
     client: TestClient = build_state_test_client(project_dir=tmp_path)
 
-    payload: list = client.get(f"/api/runs/{test_case.invocation_id}/events").json()
+    payload: dict[str, object] = client.get(f"/api/runs/{test_case.invocation_id}/events").json()
+    events: list[dict[str, object]] = payload["events"]
 
-    assert tuple(event["event"] for event in payload) == test_case.expected_event_kinds
-    assert payload[1]["writtenRows"] == test_case.expected_written_rows
-    assert payload[1]["stepId"] == "replay_orders"
+    assert tuple(event["event"] for event in events) == test_case.expected_event_kinds
+    assert events[1]["writtenRows"] == test_case.expected_written_rows
+    assert events[1]["stepId"] == "replay_orders"

@@ -1446,6 +1446,7 @@ def run_direct_build(
             start_time=start_time,
         ),
         client=connection,
+        observation_client=connection,
         loaded_project=load_project_input_for_path(path=project_root),
         adapter_profile=build_compiler_adapter_profile(ClickHouseAdapter()),
     )
@@ -1742,6 +1743,7 @@ def run_virtual_environment_build(
             auto_approve=True,
         ),
         client=connection,
+        observation_client=connection,
         loaded_project=load_project_input_for_path(path=project_root),
         adapter_profile=build_compiler_adapter_profile(ClickHouseAdapter()),
     )

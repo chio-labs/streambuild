@@ -60,10 +60,10 @@ def test_given_current_manifest_nodes_when_rendering_status_query_then_all_ui_st
             expected_statement_count=1,
             expected_insert_fragment=(
                 "INSERT INTO metadata._streambuild_run_events "
-                "(invocation_id, sequence, emitted_at, event_kind, step_id, phase, payload_json)"
+                "(invocation_id, sequence, event_kind, step_id, phase, payload_json)"
             ),
             expected_values_fragment=(
-                "('inv-1', 3, '2026-08-03 12:00:00.000', 'statement_completed', "
+                "('inv-1', 3, 'statement_completed', "
                 "'replay_orders', 'replay', '{\"writtenRows\": 42}')"
             ),
         ),
@@ -72,7 +72,7 @@ def test_given_current_manifest_nodes_when_rendering_status_query_then_all_ui_st
             include_migration=True,
             expected_statement_count=12,
             expected_insert_fragment="CREATE DATABASE IF NOT EXISTS metadata;",
-            expected_values_fragment="_streambuild_run_events",
+            expected_values_fragment=("emitted_at DateTime64(3, 'UTC') DEFAULT now64(3, 'UTC')"),
         ),
     ],
     ids=lambda case: case.description,
@@ -86,7 +86,6 @@ def test_given_run_event_when_rendering_inserts_then_sql_is_exact(
             AdapterRunEventRecord(
                 invocation_id="inv-1",
                 sequence=3,
-                emitted_at="2026-08-03 12:00:00.000",
                 event_kind="statement_completed",
                 step_id="replay_orders",
                 phase="replay",

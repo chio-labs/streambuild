@@ -40,7 +40,6 @@ def execute_confirmed_direct_build(
     """Show the destructive plan, require confirmation, then build."""
 
     if not confirm_build(options=options, plan_text=preparation.plan_text):
-        print("Build cancelled.")
         return None
     try:
         runtime_execution: DirectRuntimeExecution = execute_direct_build_workflow(
@@ -147,4 +146,7 @@ def _applied_model_names(
 
 def _print_optional_warning(warning: str | None) -> None:
     if warning is not None:
-        print(warning, file=sys.stderr)
+        try:
+            print(warning, file=sys.stderr)
+        except Exception:
+            return

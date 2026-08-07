@@ -47,33 +47,32 @@ def execute_direct_build_command(
     preparation: DirectWorkflowPreparation,
     options: BuildCommandOptions,
     client: AdapterConnection,
+    observation_client: AdapterConnection,
     started: tuple[str, str, int],
 ) -> int:
     """Confirm, execute, and audit one prepared direct build."""
 
-    sink: RunEventSink | None = _build_event_sink(
+    sink: RunEventSink = _build_event_sink(
         options=options,
-        client=client,
+        client=observation_client,
         preparation=preparation,
         invocation_id=started[0],
     )
-    if sink is not None:
-        sink.run_started(
-            command="build",
-            total_statements=len(preparation.workflow.statements),
-            selected_node_count=len(preparation.preview.plan.execution_scope),
-        )
     try:
+        if sink is not None:
+            sink.run_started(
+                command="build",
+                mode="direct",
+                total_statements=len(preparation.workflow.statements),
+                selected_node_count=len(preparation.preview.plan.execution_scope),
+            )
         execution: DirectBuildExecutionResult | None = execute_confirmed_direct_build(
             preparation=preparation,
             options=options,
             client=client,
             emitter=sink,
         )
-    except AdapterError as error:
-        print(str(error), file=sys.stderr)
-        if sink is not None:
-            sink.run_completed(outcome="failed", exit_code=1, error_message=str(error))
+    except (AdapterError, OSError) as error:
         failed_invocation: AdapterInvocationRecord = _build_invocation(
             started=started,
             preparation=preparation,
@@ -90,11 +89,11 @@ def execute_direct_build_command(
             invocation=failed_invocation,
             node_results=(),
         )
+        if sink is not None:
+            sink.run_completed(outcome="failed", exit_code=1, error_message=str(error))
+        print(str(error), file=sys.stderr)
         return 1
     except KeyboardInterrupt:
-        print("build interrupted; recorded as cancelled", file=sys.stderr)
-        if sink is not None:
-            sink.run_completed(outcome="cancelled", exit_code=_SIGINT_EXIT_CODE, error_message=None)
         interrupted_invocation: AdapterInvocationRecord = _build_invocation(
             started=started,
             preparation=preparation,
@@ -111,10 +110,14 @@ def execute_direct_build_command(
             invocation=interrupted_invocation,
             node_results=(),
         )
+        if sink is not None:
+            sink.run_completed(outcome="cancelled", exit_code=_SIGINT_EXIT_CODE, error_message=None)
+        try:
+            print("build interrupted; recorded as cancelled", file=sys.stderr)
+        except Exception:
+            pass
         return _SIGINT_EXIT_CODE
     if execution is None:
-        if sink is not None:
-            sink.run_completed(outcome="cancelled", exit_code=1, error_message=None)
         invocation: AdapterInvocationRecord = _build_invocation(
             started=started,
             preparation=preparation,
@@ -131,23 +134,11 @@ def execute_direct_build_command(
             invocation=invocation,
             node_results=(),
         )
+        if sink is not None:
+            sink.run_completed(outcome="cancelled", exit_code=1, error_message=None)
+        print("Build cancelled.")
         return 1
-    if not options.events_output:
-        print(
-            _rendered_result(
-                options=options,
-                preview=preparation.preview,
-                result=execution.build_result,
-                audit_result=execution.audit_result,
-            )
-        )
     exit_code: int = 1 if execution.audit_result.error_failure_count else 0
-    if sink is not None:
-        sink.run_completed(
-            outcome="failed" if exit_code else "succeeded",
-            exit_code=exit_code,
-            error_message=None,
-        )
     invocation = _build_invocation(
         started=started,
         preparation=preparation,
@@ -177,6 +168,21 @@ def execute_direct_build_command(
         invocation=invocation,
         node_results=node_results,
     )
+    if sink is not None:
+        sink.run_completed(
+            outcome="failed" if exit_code else "succeeded",
+            exit_code=exit_code,
+            error_message=None,
+        )
+    if not options.events_output:
+        print(
+            _rendered_result(
+                options=options,
+                preview=preparation.preview,
+                result=execution.build_result,
+                audit_result=execution.audit_result,
+            )
+        )
     return exit_code
 
 
@@ -194,7 +200,10 @@ def _persist_terminal_observations(
         node_results=node_results,
     )
     if warning is not None:
-        print(warning, file=sys.stderr)
+        try:
+            print(warning, file=sys.stderr)
+        except Exception:
+            return
 
 
 def _build_event_sink(
@@ -203,14 +212,12 @@ def _build_event_sink(
     client: AdapterConnection,
     preparation: DirectWorkflowPreparation,
     invocation_id: str,
-) -> RunEventSink | None:
-    if not options.events_output:
-        return None
+) -> RunEventSink:
     return RunEventSink(
         connection=client,
         database=preparation.preview.metadata_database,
         invocation_id=invocation_id,
-        jsonl_stream=sys.stdout,
+        jsonl_stream=sys.stdout if options.events_output else None,
     )
 
 

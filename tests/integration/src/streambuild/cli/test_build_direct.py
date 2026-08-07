@@ -784,10 +784,10 @@ def test_given_multi_upstream_view_when_building_direct_then_it_is_queryable_and
     "test_case",
     [
         CliDirectOptionalMetadataIntegrationTestCase(
-            description="denied optional metadata does not block direct replay",
-            expected_exit_code=0,
+            description="denied observability metadata blocks before direct replay",
+            expected_exit_code=1,
             expected_order_ids=("order-1", "order-2"),
-            expected_warning_fragment="Direct SQL baseline was not recorded",
+            expected_warning_fragment="injected denied direct metadata write",
             expected_absent_sql_fragments=(
                 "_streambuild_direct_replay_checkpoints",
                 "_streambuild_direct_replay_ranges",
@@ -796,7 +796,7 @@ def test_given_multi_upstream_view_when_building_direct_then_it_is_queryable_and
     ],
     ids=lambda case: case.description,
 )
-def test_given_denied_optional_metadata_when_building_direct_then_materialization_succeeds(
+def test_given_denied_observability_metadata_when_building_direct_then_replay_is_refused(
     test_case: CliDirectOptionalMetadataIntegrationTestCase,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],

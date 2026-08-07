@@ -63,6 +63,22 @@ class CliMainJsonFlagTestCase:
 
 
 @dataclass(frozen=True)
+class CliBuildObservationConnectionTestCase:
+    description: str
+    argv: tuple[str, ...]
+    expected_exit_code: int
+
+
+@dataclass(frozen=True)
+class CliBuildObservationFailureTestCase:
+    description: str
+    argv: tuple[str, ...]
+    expected_exit_code: int
+    connection_error: str
+    expected_error_fragment: str
+
+
+@dataclass(frozen=True)
 class CliSelectorForwardingTestCase:
     description: str
     argv: tuple[str, ...]

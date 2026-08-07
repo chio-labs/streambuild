@@ -443,7 +443,7 @@ def _render_run_events_table(database: str) -> str:
         f"CREATE TABLE IF NOT EXISTS {database}.{METADATA_RUN_EVENTS_TABLE_NAME} (\n"
         "    invocation_id String,\n"
         "    sequence UInt64,\n"
-        "    emitted_at DateTime64(3, 'UTC'),\n"
+        "    emitted_at DateTime64(3, 'UTC') DEFAULT now64(3, 'UTC'),\n"
         "    event_kind LowCardinality(String),\n"
         "    step_id Nullable(String),\n"
         "    phase Nullable(String),\n"
@@ -467,7 +467,7 @@ def render_clickhouse_run_event_inserts(
         table=f"{database}.{METADATA_RUN_EVENTS_TABLE_NAME}",
         sql=(
             f"INSERT INTO {database}.{METADATA_RUN_EVENTS_TABLE_NAME} "
-            "(invocation_id, sequence, emitted_at, event_kind, step_id, phase, "
+            "(invocation_id, sequence, event_kind, step_id, phase, "
             "payload_json) VALUES"
         ),
         rows=tuple(_run_event_row(record) for record in events),
@@ -482,7 +482,6 @@ def _run_event_row(record: AdapterRunEventRecord) -> dict[str, object]:
     return {
         "invocation_id": record.invocation_id,
         "sequence": record.sequence,
-        "emitted_at": record.emitted_at,
         "event_kind": record.event_kind,
         "step_id": record.step_id,
         "phase": record.phase,

@@ -15,6 +15,7 @@ from streambuild.cli.build.models import (
     WorkflowPreparationOptions,
 )
 from streambuild.cli.entry.exceptions import CliUserError
+from streambuild.cli.entry.main._resolve_default_database import resolve_default_database
 from streambuild.compiler.compile.exceptions import TransformSqlContractError
 from streambuild.compiler.compile.models import CompilerAdapterProfile
 from streambuild.compiler.discovery.models import LoadedProject
@@ -26,46 +27,61 @@ from streambuild.executor.direct.exceptions import DirectBuildError
 from streambuild.executor.observability.main.build_invocation_record import (
     build_invocation_record,
 )
+from streambuild.executor.observability.main.initialize_observability import (
+    initialize_observability,
+)
 from streambuild.executor.observability.main.persist_terminal_observations import (
     persist_terminal_observations,
 )
 from streambuild.executor.observability.main.start_invocation import start_invocation
 from streambuild.executor.observability.models import TerminalInvocation
+from streambuild.executor.workflow.exceptions import WorkflowExecutionError
 
 
 def run_build(
     *,
     options: BuildCommandOptions,
     client: AdapterConnection,
+    observation_client: AdapterConnection,
     loaded_project: LoadedProject | None,
     adapter_profile: CompilerAdapterProfile,
 ) -> int:
     """Plan and execute one build through the effective project mode."""
 
     started: tuple[str, str, int] = start_invocation()
+    resolved_database: str = options.database or ""
     try:
         if options.json_output and not options.auto_approve:
-            print("--json requires --auto-approve for build", file=sys.stderr)
             _persist_failed_build(
                 started=started,
                 options=options,
                 client=client,
                 error_message="--json requires --auto-approve for build",
             )
+            print("--json requires --auto-approve for build", file=sys.stderr)
             return 1
         if options.events_output and not options.auto_approve:
-            print("--events requires --auto-approve for build", file=sys.stderr)
             _persist_failed_build(
                 started=started,
                 options=options,
                 client=client,
                 error_message="--events requires --auto-approve for build",
             )
+            print("--events requires --auto-approve for build", file=sys.stderr)
             return 1
         analysis: CompileAnalysis = analyze_project(
             pipelines_root=options.pipelines_root,
             loaded_project=loaded_project,
             adapter_profile=adapter_profile,
+        )
+        database: str = resolve_default_database(
+            loaded_pipelines=list(analysis.compile_inputs.pipelines),
+            override=options.database,
+        )
+        resolved_database = database
+        initialize_observability(
+            connection=observation_client,
+            database=options.metadata_database or database,
         )
         preparation_options: WorkflowPreparationOptions = WorkflowPreparationOptions(
             database=options.database,
@@ -89,12 +105,14 @@ def run_build(
                 preparation=preparation,
                 options=options,
                 client=client,
+                observation_client=observation_client,
                 started=started,
             )
         return execute_direct_build_command(
             preparation=preparation,
             options=options,
             client=client,
+            observation_client=observation_client,
             started=started,
         )
     except (
@@ -103,17 +121,32 @@ def run_build(
         DirectPlanError,
         DirectBuildError,
         BackfillExecutionError,
+        WorkflowExecutionError,
         AdapterError,
+        OSError,
         ValueError,
     ) as error:
-        print(str(error), file=sys.stderr)
         _persist_failed_build(
             started=started,
             options=options,
             client=client,
             error_message=str(error),
+            database=resolved_database,
         )
+        print(str(error), file=sys.stderr)
         return 1
+    except KeyboardInterrupt:
+        _persist_cancelled_build(
+            started=started,
+            options=options,
+            client=client,
+            database=resolved_database,
+        )
+        try:
+            print("build interrupted; recorded as cancelled", file=sys.stderr)
+        except Exception:
+            pass
+        return 130
 
 
 def _persist_failed_build(
@@ -122,13 +155,14 @@ def _persist_failed_build(
     options: BuildCommandOptions,
     client: AdapterConnection,
     error_message: str,
+    database: str | None = None,
 ) -> None:
-    database: str = options.metadata_database or options.database or ""
+    target_database: str = options.metadata_database or database or options.database or ""
     invocation: AdapterInvocationRecord = build_invocation_record(
         started=started,
         terminal=TerminalInvocation(
             project_dir=options.pipelines_root.parent,
-            target_identity=options.database or "",
+            target_identity=database or options.database or "",
             command="build",
             mode=None,
             outcome="failed",
@@ -143,7 +177,40 @@ def _persist_failed_build(
     )
     _ = persist_terminal_observations(
         client=client,
-        database=database,
+        database=target_database,
+        invocation=invocation,
+        node_results=(),
+    )
+
+
+def _persist_cancelled_build(
+    *,
+    started: tuple[str, str, int],
+    options: BuildCommandOptions,
+    client: AdapterConnection,
+    database: str,
+) -> None:
+    target_database: str = options.metadata_database or database
+    invocation: AdapterInvocationRecord = build_invocation_record(
+        started=started,
+        terminal=TerminalInvocation(
+            project_dir=options.pipelines_root.parent,
+            target_identity=database,
+            command="build",
+            mode=None,
+            outcome="cancelled",
+            exit_code=130,
+            materialized_outcome=None,
+            deployment_id=options.deployment_id,
+            workflow_id=None,
+            selected_node_count=0,
+            error_message=None,
+            summary={},
+        ),
+    )
+    _ = persist_terminal_observations(
+        client=client,
+        database=target_database,
         invocation=invocation,
         node_results=(),
     )
