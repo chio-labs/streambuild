@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/chio-labs/streambuild/compare/v0.7.0...v0.8.0) (2026-08-07)
+
+
+### Features
+
+* add durable UI run execution model ([3146296](https://github.com/chio-labs/streambuild/commit/314629699e3be601ffcc0702914f93bd1c4ed304))
+
 ## [0.7.0](https://github.com/chio-labs/streambuild/compare/v0.6.0...v0.7.0) (2026-08-07)
 
 
