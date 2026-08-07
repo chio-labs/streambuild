@@ -93,8 +93,6 @@ def test_given_empty_inventory_when_resolving_publish_without_deployment_id_then
             expected_published_order_ids=("historical-order",),
             expected_full_layout=(
                 ("_streambuild_direct_fingerprints", "MergeTree"),
-                ("_streambuild_direct_replay_checkpoints", "MergeTree"),
-                ("_streambuild_direct_replay_ranges", "MergeTree"),
                 ("_streambuild_invocations", "MergeTree"),
                 ("_streambuild_node_results", "MergeTree"),
                 ("_streambuild_run_events", "MergeTree"),

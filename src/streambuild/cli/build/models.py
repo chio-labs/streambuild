@@ -9,9 +9,9 @@ from streambuild.adapter.models import CatalogSnapshot
 from streambuild.compiler.compile.models import DesiredState, ObjectKey
 from streambuild.compiler.discovery.types import ReplayLineageMode
 from streambuild.compiler.pipeline.models import CompileAnalysis
-from streambuild.compiler.planner.models import DeploymentPlan, DirectPlan
+from streambuild.compiler.planner.models import DeploymentPlan, DirectPlan, DirectWarehouseSnapshot
 from streambuild.executor.backfill.models import BackfillBootstrapRequest, RootBackfillReport
-from streambuild.executor.direct.models import DirectBuildRequest
+from streambuild.executor.direct.models import DirectBuildRequest, DirectBuildWorkflow
 from streambuild.executor.workflow.models import BuildWorkflow
 
 
@@ -51,6 +51,7 @@ class DirectBuildPreviewContext:
 
     analysis: CompileAnalysis
     plan: DirectPlan
+    warehouse_snapshot: DirectWarehouseSnapshot
     database: str
     metadata_database: str
     adapter_name: str
@@ -83,7 +84,7 @@ class DirectWorkflowPreparation:
 
     preview: DirectBuildPreviewContext
     request: DirectBuildRequest
-    workflow: BuildWorkflow
+    workflow: DirectBuildWorkflow
     plan_text: str
 
 

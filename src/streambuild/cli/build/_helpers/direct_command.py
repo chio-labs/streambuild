@@ -84,7 +84,7 @@ def execute_direct_build_command(
             audit_result=None,
             error_message=str(error),
         )
-        persist_terminal_observations(
+        _persist_terminal_observations(
             client=client,
             database=preparation.preview.metadata_database,
             invocation=failed_invocation,
@@ -105,7 +105,7 @@ def execute_direct_build_command(
             audit_result=None,
             error_message=None,
         )
-        persist_terminal_observations(
+        _persist_terminal_observations(
             client=client,
             database=preparation.preview.metadata_database,
             invocation=interrupted_invocation,
@@ -125,7 +125,7 @@ def execute_direct_build_command(
             audit_result=None,
             error_message=None,
         )
-        persist_terminal_observations(
+        _persist_terminal_observations(
             client=client,
             database=preparation.preview.metadata_database,
             invocation=invocation,
@@ -171,13 +171,30 @@ def execute_direct_build_command(
         audit_result=execution.audit_result,
         project_dir=options.pipelines_root.parent,
     )
-    persist_terminal_observations(
+    _persist_terminal_observations(
         client=client,
         database=preparation.preview.metadata_database,
         invocation=invocation,
         node_results=node_results,
     )
     return exit_code
+
+
+def _persist_terminal_observations(
+    *,
+    client: AdapterConnection,
+    database: str,
+    invocation: AdapterInvocationRecord,
+    node_results: tuple[AdapterNodeResultRecord, ...],
+) -> None:
+    warning: str | None = persist_terminal_observations(
+        client=client,
+        database=database,
+        invocation=invocation,
+        node_results=node_results,
+    )
+    if warning is not None:
+        print(warning, file=sys.stderr)
 
 
 def _build_event_sink(

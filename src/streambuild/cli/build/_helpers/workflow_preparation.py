@@ -28,7 +28,11 @@ from streambuild.executor.backfill.models import BackfillBootstrapRequest
 from streambuild.executor.direct.main.assemble_direct_build_workflow import (
     assemble_direct_build_workflow,
 )
-from streambuild.executor.direct.models import DirectBuildAudit, DirectBuildRequest
+from streambuild.executor.direct.models import (
+    DirectBuildAudit,
+    DirectBuildRequest,
+    DirectBuildWorkflow,
+)
 from streambuild.executor.workflow.models import BuildWorkflow
 
 
@@ -88,16 +92,21 @@ def prepare_direct_build_workflow(
         tool_version=STREAMBUILD_TOOL_VERSION,
         audits=audits,
     )
-    workflow: BuildWorkflow = assemble_direct_build_workflow(
+    workflow: DirectBuildWorkflow = assemble_direct_build_workflow(
         request=request,
         client=client,
+        snapshot=preview.warehouse_snapshot,
         plan_json=render_direct_plan_json(plan=preview.plan, adapter_name=preview.adapter_name),
     )
     return DirectWorkflowPreparation(
         preview=preview,
         request=request,
         workflow=workflow,
-        plan_text=render_direct_plan_text(plan=preview.plan, adapter_name=preview.adapter_name),
+        plan_text=render_direct_plan_text(
+            plan=preview.plan,
+            adapter_name=preview.adapter_name,
+            verbose=options.verbose,
+        ),
     )
 
 

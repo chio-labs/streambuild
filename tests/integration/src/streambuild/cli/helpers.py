@@ -11,14 +11,16 @@ from clickhouse_connect.driver.client import Client
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.constants import METADATA_DEPLOYMENT_WATERMARKS_TABLE_NAME
-from streambuild.adapter.exceptions import AdapterWarehouseError
+from streambuild.adapter.exceptions import AdapterAuthenticationError, AdapterWarehouseError
 from streambuild.adapter.models import (
     AdapterBindingReplacementRequest,
     AdapterCapabilities,
-    AdapterCheckpointReplayRequest,
+    AdapterCapturedReplayRequest,
     AdapterConnectionConfig,
     AdapterDeploymentInventory,
     AdapterDeploymentRecord,
+    AdapterDirectFingerprintRecord,
+    AdapterDirectFingerprintSnapshot,
     AdapterIdentity,
     AdapterInvocationRecord,
     AdapterManagedSource,
@@ -40,6 +42,7 @@ from streambuild.adapter.models import (
 )
 from streambuild.adapters.clickhouse._helpers.inspection import load_clickhouse_catalog
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
+from streambuild.cli.build._helpers.execution_artifacts import render_direct_execution_json
 from streambuild.cli.build._helpers.preview import build_direct_build_preview
 from streambuild.cli.build._helpers.virtual_preview import build_virtual_build_preview
 from streambuild.cli.build.constants import STREAMBUILD_TOOL_VERSION
@@ -71,15 +74,21 @@ from streambuild.executor.direct.main.assemble_direct_build_workflow import (
 from streambuild.executor.direct.main.build_direct_execution_result import (
     build_direct_execution_result,
 )
+from streambuild.executor.direct.main.execute_direct_build_workflow import (
+    execute_direct_build_workflow,
+)
+from streambuild.executor.direct.main.persist_direct_fingerprints import (
+    persist_direct_fingerprints,
+)
 from streambuild.executor.direct.models import (
     DirectBuildRequest,
     DirectBuildResult,
+    DirectBuildWorkflow,
+    DirectRuntimeExecution,
 )
-from streambuild.executor.workflow.main.execute_build_workflow import execute_build_workflow
 from streambuild.executor.workflow.models import (
     BuildWorkflow,
     PublishedBuildWorkflow,
-    WorkflowExecutionResult,
 )
 from tests.integration.src.streambuild.conftest import ClickHouseConnectionSettings
 
@@ -96,11 +105,11 @@ def _is_model_realization_sql(statement: str) -> bool:
 
 
 def _is_replay_sql(statement: str) -> bool:
-    return "checkpoint_coverage AS" in statement
+    return "cutoff_offsets AS" in statement
 
 
 def _is_coverage_capture_sql(statement: str) -> bool:
-    return "WITH coverage_payload AS" in statement
+    return "AS driving_input_relation_name" in statement
 
 
 def write_managed_source_project(
@@ -209,11 +218,30 @@ class RecordingDelegatingConnection(AdapterConnection):
     def load_deployment_inventory(self, database: str) -> AdapterDeploymentInventory:
         return self._delegate.load_deployment_inventory(database)
 
-    def render_replay_from_checkpoint(self, request: AdapterCheckpointReplayRequest) -> str:
-        return self._delegate.render_replay_from_checkpoint(request)
+    def load_direct_fingerprints(
+        self, *, database: str, logical_model_identities: tuple[str, ...]
+    ) -> AdapterDirectFingerprintSnapshot:
+        return self._delegate.load_direct_fingerprints(
+            database=database,
+            logical_model_identities=logical_model_identities,
+        )
+
+    def render_direct_fingerprint_observations(
+        self,
+        *,
+        database: str,
+        fingerprints: tuple[AdapterDirectFingerprintRecord, ...],
+    ) -> tuple[str, ...]:
+        return self._delegate.render_direct_fingerprint_observations(
+            database=database,
+            fingerprints=fingerprints,
+        )
 
     def render_replay_coverage_query(self, request: AdapterReplayCoverageRequest) -> str:
         return self._delegate.render_replay_coverage_query(request)
+
+    def render_replay_from_capture(self, request: AdapterCapturedReplayRequest) -> str:
+        return self._delegate.render_replay_from_capture(request)
 
     def compare_readiness(
         self, request: AdapterReadinessRequest
@@ -257,9 +285,9 @@ class FailSecondReplayOnceConnection(RecordingDelegatingConnection):
         self._replay_count: int = 0
         self._failed: bool = False
 
-    def render_replay_from_checkpoint(self, request: AdapterCheckpointReplayRequest) -> str:
+    def render_replay_from_capture(self, request: AdapterCapturedReplayRequest) -> str:
         self.replay_targets.append(request.replay.relations.target)
-        return super().render_replay_from_checkpoint(request)
+        return super().render_replay_from_capture(request)
 
     def execute_workflow_sql(self, statement: str) -> AdapterMutationResult:
         self._replay_count += int(_is_replay_sql(statement))
@@ -316,41 +344,55 @@ class FailOnceBoundaryQueryConnection(RecordingDelegatingConnection):
         super().__init__(delegate)
         self._failed: bool = False
 
-    def execute_workflow_sql(self, statement: str) -> AdapterMutationResult:
-        action: Callable[[str], AdapterMutationResult] = {
+    def query(self, statement: str) -> AdapterQueryResult:
+        action: Callable[[str], AdapterQueryResult] = {
             True: self._reject_boundary,
-            False: super().execute_workflow_sql,
+            False: super().query,
         }[not self._failed and _is_coverage_capture_sql(statement)]
         return action(statement)
 
-    def _reject_boundary(self, statement: str) -> AdapterMutationResult:
+    def _reject_boundary(self, statement: str) -> AdapterQueryResult:
         del statement
         self._failed = True
         raise AdapterWarehouseError("injected failure during selected boundary capture")
 
 
-class FailFinalCheckpointOnceConnection(RecordingDelegatingConnection):
-    def __init__(self, delegate: AdapterConnection) -> None:
+class DeniedDirectMetadataConnection(RecordingDelegatingConnection):
+    def __init__(self, delegate: AdapterConnection, *, denied_database: str) -> None:
         super().__init__(delegate)
-        self._coverage_capture_count: int = 0
-        self._failed: bool = False
+        self._denied_database: str = denied_database
+
+    def metadata_columns(self, *, database: str, table: str) -> frozenset[str]:
+        action: Callable[..., frozenset[str]] = {
+            True: self._reject_metadata_columns,
+            False: super().metadata_columns,
+        }[database == self._denied_database]
+        return action(database=database, table=table)
+
+    def load_direct_fingerprints(
+        self, *, database: str, logical_model_identities: tuple[str, ...]
+    ) -> AdapterDirectFingerprintSnapshot:
+        del database, logical_model_identities
+        return AdapterDirectFingerprintSnapshot(
+            status="unavailable",
+            baselines=(),
+            warning="injected denied direct metadata read",
+        )
 
     def execute_workflow_sql(self, statement: str) -> AdapterMutationResult:
-        self._coverage_capture_count += int(_is_coverage_capture_sql(statement))
         action: Callable[[str], AdapterMutationResult] = {
-            True: self._reject_final_checkpoint,
+            True: self._reject_metadata_write,
             False: super().execute_workflow_sql,
-        }[
-            not self._failed
-            and self._coverage_capture_count == 4
-            and _is_coverage_capture_sql(statement)
-        ]
+        }[self._denied_database in statement]
         return action(statement)
 
-    def _reject_final_checkpoint(self, statement: str) -> AdapterMutationResult:
+    def _reject_metadata_columns(self, *, database: str, table: str) -> frozenset[str]:
+        del database, table
+        raise AdapterAuthenticationError("injected denied direct metadata read")
+
+    def _reject_metadata_write(self, statement: str) -> AdapterMutationResult:
         del statement
-        self._failed = True
-        raise AdapterWarehouseError("injected failure during final checkpoint persistence")
+        raise AdapterAuthenticationError("injected denied direct metadata write")
 
 
 class DirectActionRecordingConnection(RecordingDelegatingConnection):
@@ -379,10 +421,10 @@ class DirectActionRecordingConnection(RecordingDelegatingConnection):
             if_not_exists=if_not_exists,
         )
 
-    def render_replay_from_checkpoint(self, request: AdapterCheckpointReplayRequest) -> str:
+    def render_replay_from_capture(self, request: AdapterCapturedReplayRequest) -> str:
         self.replay_targets.append(request.replay.relations.target)
         self.replay_requests.append(request.replay)
-        return super().render_replay_from_checkpoint(request)
+        return super().render_replay_from_capture(request)
 
     def execute_workflow_sql(self, statement: str) -> AdapterMutationResult:
         self.command_statements.extend(
@@ -993,14 +1035,19 @@ def run_direct_plan(
 
 
 def read_workflow_artifact(
-    *, artifact_root: Path
+    *, artifact_root: Path, is_template: bool = False
 ) -> tuple[bytes, bytes, tuple[str, ...], tuple[bytes, ...]]:
     """Read one complete exact workflow artifact without interpreting its contents."""
 
-    step_paths: tuple[Path, ...] = tuple(sorted((artifact_root / "steps").glob("*.sql")))
+    step_pattern: str = {False: "*.sql", True: "*.sql.template"}[is_template]
+    workflow_name: str = {
+        False: "workflow.sql",
+        True: "workflow.template.sql",
+    }[is_template]
+    step_paths: tuple[Path, ...] = tuple(sorted((artifact_root / "steps").glob(step_pattern)))
     return (
         (artifact_root / "plan.json").read_bytes(),
-        (artifact_root / "workflow.sql").read_bytes(),
+        (artifact_root / workflow_name).read_bytes(),
         tuple(path.name for path in step_paths),
         tuple(path.read_bytes() for path in step_paths),
     )
@@ -1383,6 +1430,7 @@ def run_direct_build(
     json_output: bool = True,
     auto_approve: bool = True,
     start_time: str | None = None,
+    metadata_database: str | None = None,
 ) -> int:
     """Run `stb build` in direct mode against a live warehouse connection."""
 
@@ -1390,7 +1438,7 @@ def run_direct_build(
         options=BuildCommandOptions(
             pipelines_root=project_root / "pipelines",
             database=database,
-            metadata_database=database,
+            metadata_database=metadata_database or database,
             selectors=selectors,
             json_output=json_output,
             verbose=False,
@@ -1482,20 +1530,34 @@ def execute_direct_build_directly(
         tool_version=STREAMBUILD_TOOL_VERSION,
         stabilization_seconds=stabilization_seconds,
     )
-    workflow: BuildWorkflow = assemble_direct_build_workflow(
+    workflow: DirectBuildWorkflow = assemble_direct_build_workflow(
         request=request,
         client=connection,
+        snapshot=preview.warehouse_snapshot,
         plan_json=render_direct_plan_json(plan=preview.plan, adapter_name=preview.adapter_name),
     )
-    published: PublishedBuildWorkflow = publish_build_workflow(
-        target_dir=project_root / "target",
+    runtime_execution: DirectRuntimeExecution = execute_direct_build_workflow(
         workflow=workflow,
-    )
-    execution: WorkflowExecutionResult = execute_build_workflow(
-        published_workflow=published,
         connection=connection,
     )
-    return build_direct_execution_result(request=request, execution=execution).build_result
+    _ = publish_build_workflow(
+        target_dir=project_root / "target",
+        workflow=runtime_execution.workflow,
+        execution_json=render_direct_execution_json(
+            request=request,
+            status="succeeded",
+            captures=runtime_execution.captures,
+            execution=runtime_execution.execution,
+            failed_step_id=None,
+            error_message=None,
+        ),
+    )
+    _ = persist_direct_fingerprints(request=request, connection=connection)
+    return build_direct_execution_result(
+        request=request,
+        execution=runtime_execution.execution,
+        captures=runtime_execution.captures,
+    ).build_result
 
 
 def publish_direct_workflow(
@@ -1505,6 +1567,7 @@ def publish_direct_workflow(
     connection: AdapterConnection,
     selectors: tuple[str, ...] = (),
     effective_start_time: str | None = None,
+    stabilization_seconds: float = 0,
 ) -> PublishedBuildWorkflow:
     """Assemble and publish one direct workflow without executing it."""
 
@@ -1533,14 +1596,30 @@ def publish_direct_workflow(
         database=preview.database,
         metadata_database=preview.metadata_database,
         tool_version=STREAMBUILD_TOOL_VERSION,
-        stabilization_seconds=0,
+        stabilization_seconds=stabilization_seconds,
     )
-    workflow: BuildWorkflow = assemble_direct_build_workflow(
+    workflow: DirectBuildWorkflow = assemble_direct_build_workflow(
         request=request,
         client=connection,
+        snapshot=preview.warehouse_snapshot,
         plan_json=render_direct_plan_json(plan=preview.plan, adapter_name=preview.adapter_name),
     )
-    return publish_build_workflow(target_dir=project_root / "target", workflow=workflow)
+    runtime_execution: DirectRuntimeExecution = execute_direct_build_workflow(
+        workflow=workflow,
+        connection=connection,
+    )
+    return publish_build_workflow(
+        target_dir=project_root / "target",
+        workflow=runtime_execution.workflow,
+        execution_json=render_direct_execution_json(
+            request=request,
+            status="succeeded",
+            captures=runtime_execution.captures,
+            execution=runtime_execution.execution,
+            failed_step_id=None,
+            error_message=None,
+        ),
+    )
 
 
 def publish_virtual_workflow(
@@ -1773,35 +1852,41 @@ def warehouse_row_count(*, clickhouse_client: Client, database: str, statement: 
 def direct_fingerprinted_relation_names(
     *, clickhouse_client: Client, database: str
 ) -> tuple[str, ...]:
-    """Return the physical relations recorded by successful Direct fingerprints."""
+    """Return logical models recorded by successful direct fingerprints."""
 
     rows: Sequence[Sequence[object]] = clickhouse_client.query(
-        f"SELECT DISTINCT physical_relation FROM {database}._streambuild_direct_fingerprints "
-        "ORDER BY physical_relation"
+        f"SELECT DISTINCT logical_model_identity FROM {database}._streambuild_direct_fingerprints "
+        "ORDER BY logical_model_identity"
     ).result_rows
-    return tuple(str(row[0]) for row in rows)
+    return tuple(str(row[0]).partition(".")[2] for row in rows)
 
 
-def direct_replay_checkpoint_ranges(
-    *, clickhouse_client: Client, database: str
-) -> tuple[tuple[str, str, str], ...]:
-    """Return replay intervals for the latest Direct checkpoint."""
+def direct_replay_artifact_ranges(*, project_root: Path) -> tuple[tuple[str, str, str], ...]:
+    """Return replay intervals from the latest exact direct execution artifact."""
 
-    rows: Sequence[Sequence[object]] = clickhouse_client.query(
-        "SELECT DISTINCT if(replay_boundary_mode = 'offsets', "
-        "concat('_replay_partition=', partition_value), "
-        "concat('_replay_', replay_boundary_mode)) AS boundary_key, "
-        "lower_value, upper_value FROM ("
-        f"SELECT argMax(tuple(replay_set_id, capture_id), tuple(recorded_at, capture_id)) "
-        "AS current_set FROM "
-        f"{database}._streambuild_direct_replay_checkpoints "
-        "WHERE logical_model_name = 'orders_enriched' AND checkpoint_sequence = 3) AS checkpoint "
-        f"INNER JOIN {database}._streambuild_direct_replay_ranges AS ranges "
-        "ON ranges.replay_set_id = checkpoint.current_set.1 "
-        "AND ranges.capture_id = checkpoint.current_set.2 WHERE range_present "
-        "ORDER BY boundary_key, lower_value, upper_value"
-    ).result_rows
-    return tuple((str(row[0]), str(row[1]), str(row[2])) for row in rows)
+    payload: dict[str, object] = json.loads(
+        (project_root / "target/run/build/execution.json").read_text(encoding="utf-8")
+    )
+    captures: list[dict[str, object]] = cast(list[dict[str, object]], payload["captured_roots"])
+    ranges: list[tuple[str, str, str]] = []
+    capture: dict[str, object]
+    for capture in captures:
+        capture_ranges: list[dict[str, object]] = cast(list[dict[str, object]], capture["ranges"])
+        replay_range: dict[str, object]
+        for replay_range in capture_ranges:
+            partition: object = replay_range["partition"]
+            boundary_key: str = {
+                True: f"_replay_partition={partition}",
+                False: f"_replay_{capture['boundary_mode']}",
+            }[partition is not None]
+            ranges.append(
+                (
+                    boundary_key,
+                    str(replay_range["lower"]),
+                    str(replay_range["upper"]),
+                )
+            )
+    return tuple(sorted(ranges))
 
 
 def direct_graph_order_ids(

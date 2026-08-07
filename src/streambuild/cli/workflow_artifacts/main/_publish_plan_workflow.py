@@ -7,11 +7,14 @@ from streambuild.cli.workflow_artifacts.types import WorkflowArtifactOwner
 from streambuild.executor.workflow.models import BuildWorkflow
 
 
-def publish_plan_workflow(*, target_dir: Path, workflow: BuildWorkflow) -> None:
+def publish_plan_workflow(
+    *, target_dir: Path, workflow: BuildWorkflow, is_template: bool = False
+) -> None:
     """Publish exact plan workflow bytes without granting execution capability."""
 
     _ = publish_workflow_artifact(
         target_dir=target_dir,
         owner=WorkflowArtifactOwner.PLAN,
         workflow=workflow,
+        is_template=is_template,
     )

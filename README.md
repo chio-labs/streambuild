@@ -154,13 +154,15 @@ Notes:
 
 ### Warehouse Metadata
 
-StreamBuild keeps append-only metadata in the target database. Authoritative lifecycle state uses
-`_streambuild_schema_versions`, `_streambuild_virtual_deployments`,
-`_streambuild_virtual_object_state`, `_streambuild_virtual_replay_boundaries`,
-`_streambuild_virtual_publications`, `_streambuild_direct_replay_checkpoints`,
-`_streambuild_direct_replay_ranges`, and `_streambuild_direct_fingerprints`. Direct mode treats
-project declarations as authoritative; fingerprints are successful-build evidence, not write
-authorization. Ordinary operation does not update or delete metadata.
+StreamBuild keeps append-only metadata in the target database. Authoritative virtual-environment
+lifecycle state uses `_streambuild_schema_versions`, `_streambuild_virtual_deployments`,
+`_streambuild_virtual_object_state`, `_streambuild_virtual_replay_boundaries`, and
+`_streambuild_virtual_publications`.
+
+Direct mode treats project declarations, the live catalog, and live source/target data as
+authoritative. It captures replay boundaries in process memory rather than checkpoint tables.
+`_streambuild_direct_fingerprints` contains optional successful-build SQL baselines for plan diffs;
+missing or inaccessible direct fingerprint metadata does not block materialization.
 
 `_streambuild_invocations` and `_streambuild_node_results` hold bounded terminal history for build,
 audit, and test UI views. These tables are observational only and never influence planning, replay,
@@ -372,7 +374,15 @@ target/
     audits/
     tests/
   run/
-    plan/plan.json
+    plan/
+      plan.json
+      workflow.template.sql
+      steps/*.sql.template
+    build/
+      plan.json
+      execution.json
+      workflow.sql
+      steps/*.sql
     tests/
 ```
 
@@ -390,9 +400,14 @@ The compile manifest includes:
 - every emitted static artifact path
 - logical DAG identity
 
-`stb plan` atomically replaces `target/run/plan/plan.json` with the complete deterministic
-connected plan. JSON stdout is byte-identical to this disposable visibility artifact. StreamBuild
-never reads it as warehouse state, and deleting `target/` does not affect subsequent commands.
+For direct mode, `stb plan` publishes deterministic workflow templates because live replay cutoffs do
+not exist yet. `stb build` publishes the exact attempted SQL plus `execution.json`, including terminal
+status, captures, completed steps, and failure evidence. Re-executing a build workflow reuses those
+exact captured boundaries rather than recapturing newer source rows.
+
+`stb plan` atomically replaces `target/run/plan/plan.json` with the complete connected plan. JSON
+stdout is byte-identical to this disposable visibility artifact. StreamBuild never reads
+`target/run/` as warehouse state, and deleting `target/` does not affect subsequent commands.
 
 ## Example
 

@@ -8,10 +8,11 @@ from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import (
     AdapterBindingReplacementRequest,
     AdapterCapabilities,
-    AdapterCheckpointReplayRequest,
+    AdapterCapturedReplayRequest,
     AdapterConnectionConfig,
     AdapterDeploymentInventory,
     AdapterDeploymentReplayRequest,
+    AdapterDirectFingerprintSnapshot,
     AdapterIdentity,
     AdapterInvocationRecord,
     AdapterManagedSource,
@@ -35,7 +36,7 @@ from streambuild.adapter.models import (
 from streambuild.adapter.types import AdapterReplayBoundaryMode
 from streambuild.adapters.clickhouse._helpers.replay import (
     render_clickhouse_replay_coverage_query,
-    render_clickhouse_replay_from_checkpoint,
+    render_clickhouse_replay_from_capture,
     render_clickhouse_replay_from_deployment,
 )
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
@@ -294,11 +295,17 @@ class RecordingAdapterConnection(AdapterConnection):
         del database
         return self._deployment_inventory
 
-    def render_replay_from_checkpoint(self, request: AdapterCheckpointReplayRequest) -> str:
-        return render_clickhouse_replay_from_checkpoint(request)
+    def load_direct_fingerprints(
+        self, *, database: str, logical_model_identities: tuple[str, ...]
+    ) -> AdapterDirectFingerprintSnapshot:
+        del database, logical_model_identities
+        return AdapterDirectFingerprintSnapshot(status="absent", baselines=())
 
     def render_replay_coverage_query(self, request: AdapterReplayCoverageRequest) -> str:
         return render_clickhouse_replay_coverage_query(request)
+
+    def render_replay_from_capture(self, request: AdapterCapturedReplayRequest) -> str:
+        return render_clickhouse_replay_from_capture(request)
 
     def render_replay_from_deployment(
         self, request: AdapterDeploymentReplayRequest

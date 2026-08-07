@@ -27,13 +27,13 @@ from tests.unit.src.streambuild.compiler.planner.helpers import write_direct_sco
             description="an omitted virtual_environments setting plans in direct mode",
             virtual_environments=None,
             expected_mode=DIRECT_MODE_LABEL,
-            expected_title="Direct Plan",
+            expected_title="Direct plan",
         ),
         CliPlanModeRoutingTestCase(
             description="a disabled virtual_environments setting plans in direct mode",
             virtual_environments=False,
             expected_mode=DIRECT_MODE_LABEL,
-            expected_title="Direct Plan",
+            expected_title="Direct plan",
         ),
         CliPlanModeRoutingTestCase(
             description="an enabled virtual_environments setting preserves deployment planning",

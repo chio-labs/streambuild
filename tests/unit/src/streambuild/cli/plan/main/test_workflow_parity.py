@@ -21,7 +21,7 @@ from tests.unit.src.streambuild.compiler.planner.helpers import write_direct_sco
     "test_case",
     [
         CliDirectWorkflowParityTestCase(
-            description="direct plan and build publish identical disposable workflows",
+            description="direct plan template and realized build retain semantic parity",
             expected_removed_step_name="9999_stale.sql",
         ),
     ],
@@ -43,7 +43,8 @@ def test_given_same_direct_state_when_planning_and_building_then_workflow_bytes_
 
     plan_exit_code: int = run_scope_project_plan(project_root=tmp_path, json_output=True)
     plan_artifact: tuple[bytes, bytes, tuple[str, ...], tuple[bytes, ...]] = read_workflow_artifact(
-        artifact_root=tmp_path / "target/run/plan"
+        artifact_root=tmp_path / "target/run/plan",
+        is_template=True,
     )
     build_exit_code: int = run_scope_project_build(
         project_root=tmp_path,
@@ -56,7 +57,7 @@ def test_given_same_direct_state_when_planning_and_building_then_workflow_bytes_
 
     assert (plan_exit_code, build_exit_code) == (0, 0)
     assert plan_artifact[0] == build_artifact[0]
-    assert plan_artifact[2] == build_artifact[2]
+    assert tuple(name.removesuffix(".template") for name in plan_artifact[2]) == build_artifact[2]
     assert len(plan_artifact[3]) == len(build_artifact[3])
     assert plan_artifact[1] != build_artifact[1]
     assert plan_artifact[0].endswith(b"\n")

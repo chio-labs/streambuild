@@ -70,7 +70,7 @@ def test_given_current_manifest_nodes_when_rendering_status_query_then_all_ui_st
         RunEventInsertsTestCase(
             description="prepends the idempotent migration for the first event",
             include_migration=True,
-            expected_statement_count=14,
+            expected_statement_count=12,
             expected_insert_fragment="CREATE DATABASE IF NOT EXISTS metadata;",
             expected_values_fragment="_streambuild_run_events",
         ),

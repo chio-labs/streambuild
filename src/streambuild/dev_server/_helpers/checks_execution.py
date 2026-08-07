@@ -263,7 +263,7 @@ def _persist_audit_observation(
         ),
     )
     status: str = _audit_status(result)
-    persist_terminal_observations(
+    _ = persist_terminal_observations(
         client=connection,
         database=database,
         invocation=invocation,
@@ -320,7 +320,7 @@ def _persist_test_observation(
         ),
     )
     status: str = _test_status(result)
-    persist_terminal_observations(
+    _ = persist_terminal_observations(
         client=connection,
         database=database,
         invocation=invocation,

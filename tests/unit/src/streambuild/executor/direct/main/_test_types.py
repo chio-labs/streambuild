@@ -10,3 +10,22 @@ class DirectWorkflowTestCase:
     expected_last_phase: WorkflowPhase
     expected_replay_count: int
     expected_boundary_model_segments: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class DirectDistinctCaptureTestCase:
+    description: str
+    expected_capture_models: tuple[str, ...]
+    expected_replay_sql_fragments: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class DirectCaptureValidationTestCase:
+    description: str
+    expected_error_fragment: str
+
+
+@dataclass(frozen=True)
+class DirectFingerprintPersistenceTestCase:
+    description: str
+    expected_warning_fragment: str

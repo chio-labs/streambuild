@@ -12,10 +12,12 @@ from streambuild.adapter.exceptions import AdapterResultError
 from streambuild.adapter.models import (
     AdapterBindingReplacementRequest,
     AdapterCapabilities,
-    AdapterCheckpointReplayRequest,
+    AdapterCapturedReplayRequest,
     AdapterCurrentQualityNode,
     AdapterDeploymentInventory,
     AdapterDeploymentReplayRequest,
+    AdapterDirectFingerprintRecord,
+    AdapterDirectFingerprintSnapshot,
     AdapterIdentity,
     AdapterInvocationRecord,
     AdapterManagedSource,
@@ -46,6 +48,8 @@ from streambuild.adapters.clickhouse._helpers.managed_tables import (
     build_inspected_managed_table_state,
 )
 from streambuild.adapters.clickhouse._helpers.metadata import (
+    load_clickhouse_direct_fingerprints,
+    render_clickhouse_direct_fingerprint_observations,
     render_clickhouse_latest_node_status_query,
     render_clickhouse_metadata_migration_workflow,
     render_clickhouse_metadata_state,
@@ -58,7 +62,7 @@ from streambuild.adapters.clickhouse._helpers.rendering import (
 )
 from streambuild.adapters.clickhouse._helpers.replay import (
     render_clickhouse_replay_coverage_query,
-    render_clickhouse_replay_from_checkpoint,
+    render_clickhouse_replay_from_capture,
     render_clickhouse_replay_from_deployment,
 )
 from streambuild.adapters.clickhouse.constants import (
@@ -257,20 +261,44 @@ class ClickHouseConnection(AdapterConnection):
             database=database, events=events, include_migration=include_migration
         )
 
+    def load_direct_fingerprints(
+        self, *, database: str, logical_model_identities: tuple[str, ...]
+    ) -> AdapterDirectFingerprintSnapshot:
+        """Load optional logical SQL baselines from ClickHouse metadata."""
+
+        return load_clickhouse_direct_fingerprints(
+            connection=self,
+            database=database,
+            logical_model_identities=logical_model_identities,
+        )
+
+    def render_direct_fingerprint_observations(
+        self,
+        *,
+        database: str,
+        fingerprints: tuple[AdapterDirectFingerprintRecord, ...],
+    ) -> tuple[str, ...]:
+        """Render terminal best-effort logical direct SQL baselines."""
+
+        return render_clickhouse_direct_fingerprint_observations(
+            database=database,
+            fingerprints=fingerprints,
+        )
+
     def load_deployment_inventory(self, database: str) -> AdapterDeploymentInventory:
         """Load persisted ClickHouse deployments and publish events."""
 
         return load_clickhouse_deployment_inventory(connection=self, database=database)
 
-    def render_replay_from_checkpoint(self, request: AdapterCheckpointReplayRequest) -> str:
-        """Render a fixed-cardinality replay against checkpoint-stored cutoffs."""
-
-        return render_clickhouse_replay_from_checkpoint(request)
-
     def render_replay_coverage_query(self, request: AdapterReplayCoverageRequest) -> str:
         """Render retained coverage selected by the replay window."""
 
         return render_clickhouse_replay_coverage_query(request)
+
+    def render_replay_from_capture(self, request: AdapterCapturedReplayRequest) -> str:
+        """Render replay SQL from boundaries captured by this process."""
+
+        return render_clickhouse_replay_from_capture(request)
 
     def render_replay_from_deployment(
         self, request: AdapterDeploymentReplayRequest

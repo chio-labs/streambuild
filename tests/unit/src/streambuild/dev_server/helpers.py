@@ -229,9 +229,6 @@ class FakeAdapterConnection(AdapterConnection):
     def render_replay_coverage_query(self, request: object) -> str:
         raise NotImplementedError
 
-    def render_replay_from_checkpoint(self, request: object) -> str:
-        raise NotImplementedError
-
     def render_resource(
         self, *, resource: object, database: str, if_not_exists: bool = False
     ) -> str:

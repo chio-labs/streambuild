@@ -12,6 +12,7 @@ from streambuild.executor.direct.models import (
     DirectBuildRequest,
     DirectBuildResult,
     DirectReplayBoundary,
+    DirectReplayCapture,
     DirectRootReplayResult,
 )
 from streambuild.executor.workflow.models import WorkflowExecutionResult, WorkflowStatementResult
@@ -21,13 +22,14 @@ def build_direct_execution_result(
     *,
     request: DirectBuildRequest,
     execution: WorkflowExecutionResult,
+    captures: tuple[DirectReplayCapture, ...],
 ) -> DirectBuildExecutionResult:
     """Decode direct lifecycle evidence without reading target artifacts or warehouse state."""
 
     results_by_step_id: dict[str, WorkflowStatementResult] = {
         result.step_id: result for result in execution.statement_results
     }
-    boundaries: tuple[DirectReplayBoundary, ...] = _boundaries(execution=execution)
+    boundaries: tuple[DirectReplayBoundary, ...] = _boundaries(captures=captures)
     return DirectBuildExecutionResult(
         build_result=DirectBuildResult(
             database=request.database,
@@ -57,22 +59,24 @@ def build_direct_execution_result(
     )
 
 
-def _boundaries(*, execution: WorkflowExecutionResult) -> tuple[DirectReplayBoundary, ...]:
+def _boundaries(*, captures: tuple[DirectReplayCapture, ...]) -> tuple[DirectReplayBoundary, ...]:
     boundaries: list[DirectReplayBoundary] = []
-    result: WorkflowStatementResult
-    for result in execution.statement_results:
-        if not result.step_id.startswith("read_boundary_") or result.query_result is None:
-            continue
-        row: tuple[object, ...]
-        for row in result.query_result.rows:
+    capture: DirectReplayCapture
+    for capture in captures:
+        for replay_range in capture.ranges:
+            boundary_key: str = (
+                f"_replay_partition={replay_range.partition_value}"
+                if replay_range.partition_value is not None
+                else f"_replay_{capture.boundary_mode}"
+            )
             boundaries.append(
                 DirectReplayBoundary(
-                    model_name=str(row[0]),
-                    driving_input_relation_name=str(row[1]),
-                    replay_boundary_mode=str(row[2]),
-                    boundary_key=str(row[3]),
-                    cutoff_value=str(row[4]),
-                    cutoff_inclusive=True,
+                    model_name=capture.logical_model_name,
+                    driving_input_relation_name=capture.driving_input_relation_name,
+                    replay_boundary_mode=capture.boundary_mode,
+                    boundary_key=boundary_key,
+                    cutoff_value=replay_range.replay_cutoff_value,
+                    cutoff_inclusive=replay_range.cutoff_inclusive,
                 )
             )
     return tuple(boundaries)

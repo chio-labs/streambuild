@@ -72,10 +72,10 @@ def render_type_change_plan_preview(request: PreviewRequest) -> str:
 def render_direct_plan_preview(request: PreviewRequest) -> str:
     """Render the direct plan preview scenario."""
 
-    del request
     return render_direct_plan_text(
         plan=build_direct_plan_preview(),
         adapter_name=CLICKHOUSE_ADAPTER_NAME,
+        verbose=request.verbose,
     )
 
 

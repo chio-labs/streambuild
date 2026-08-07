@@ -8,7 +8,11 @@ from streambuild.cli.plan._helpers.direct_rendering import (
 from streambuild.compiler.planner.models import DirectPlan
 
 
-def render_direct_plan_text(*, plan: DirectPlan, adapter_name: str) -> str:
+def render_direct_plan_text(*, plan: DirectPlan, adapter_name: str, verbose: bool = False) -> str:
     """Render one direct plan as operator-facing text."""
 
-    return render_direct_plan_text_impl(plan=plan, adapter_name=adapter_name)
+    return render_direct_plan_text_impl(
+        plan=plan,
+        adapter_name=adapter_name,
+        verbose=verbose,
+    )

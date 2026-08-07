@@ -83,6 +83,15 @@ class DirectPlanReason(StrEnum):
     ALL_MODELS = "all_models"
 
 
+class DirectSqlBaselineStatus(StrEnum):
+    """Relationship between current logical SQL and its optional applied baseline."""
+
+    FIRST_BASELINE = "first_baseline"
+    QUERY_CHANGED = "query_changed"
+    NO_QUERY_CHANGE = "no_query_change"
+    BASELINE_UNAVAILABLE = "baseline_unavailable"
+
+
 class DirectRelationAction(StrEnum):
     """One destructive or constructive relation action in a direct plan."""
 
