@@ -5,13 +5,17 @@ from __future__ import annotations
 import json
 import os
 import shlex
+import signal
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from pathlib import Path
+from typing import IO
 
 from streambuild.cli.entry.constants import DEV_CLI_VARIABLES_ENV_VAR
+from streambuild.dev_server.constants import CANCEL_GRACE_SECONDS, TERMINATE_GRACE_SECONDS
 from streambuild.dev_server.exceptions import BuildInProgressError, BuildStartError
 from streambuild.dev_server.models import DevExecutionContext
 from streambuild.dev_server.types import ActivityTone, DevServerReporter
@@ -31,13 +35,15 @@ class BuildProcessManager:
         self._reporter: DevServerReporter = reporter
         self._lock: threading.Lock = threading.Lock()
         self._process: subprocess.Popen[str] | None = None
-        self._events: list[dict[str, object]] = []
-        self._stderr_tail: list[str] = []
+        self._statement_count: int = 0
+        self._stderr_path: Path | None = None
         self._invocation_id: str | None = None
         self._exit_code: int | None = None
         self._command: str = ""
         self._started_monotonic: float = 0.0
         self._started_event: threading.Event = threading.Event()
+        self._cancelling_invocation_id: str | None = None
+        self._force_available: bool = False
         self._execution_context = execution_context
 
     def start(
@@ -57,24 +63,30 @@ class BuildProcessManager:
         with self._lock:
             if self._process is not None and self._process.poll() is None:
                 raise BuildInProgressError("a build is already running")
-            self._events = []
-            self._stderr_tail = []
+            self._statement_count = 0
+            self._remove_stderr_file()
             self._invocation_id = None
+            self._cancelling_invocation_id = None
+            self._force_available = False
             self._exit_code = None
             self._command = command
             self._started_monotonic = time.monotonic()
             self._started_event = threading.Event()
+            stderr_file: IO[str] = tempfile.NamedTemporaryFile(
+                mode="w+", prefix="streambuild-run-", suffix=".stderr", delete=False
+            )
+            self._stderr_path = Path(stderr_file.name)
             self._process = subprocess.Popen(
                 argv,
                 cwd=project_dir,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stderr=stderr_file,
                 text=True,
                 env=_build_environment(execution_context=self._execution_context),
             )
+            stderr_file.close()
             process: subprocess.Popen[str] = self._process
         threading.Thread(target=self._consume_stdout, args=(process,), daemon=True).start()
-        threading.Thread(target=self._consume_stderr, args=(process,), daemon=True).start()
         if not self._started_event.wait(timeout=_START_TIMEOUT_SECONDS):
             raise BuildStartError("timed out waiting for the build's run_started event")
         with self._lock:
@@ -94,6 +106,7 @@ class BuildProcessManager:
     def feed(self, *, after: int) -> dict[str, object]:
         """A cursor read of the live feed: events past `after`, plus run state."""
 
+        del after
         with self._lock:
             running: bool = self._process is not None and self._process.poll() is None
             return {
@@ -101,9 +114,45 @@ class BuildProcessManager:
                 "invocationId": self._invocation_id,
                 "command": self._command,
                 "exitCode": self._exit_code,
-                "events": list(self._events[after:]),
-                "stderr": "\n".join(self._stderr_tail),
+                "events": [],
+                "stderr": self._read_stderr_tail(),
+                "forceAvailable": self._force_available,
             }
+
+    def cancel(self, *, invocation_id: str) -> dict[str, object]:
+        """Request graceful cancellation of the server-owned child."""
+
+        with self._lock:
+            if self._cancelling_invocation_id == invocation_id:
+                return {
+                    "status": "cancelling",
+                    "forceAvailable": self._force_available,
+                }
+            process: subprocess.Popen[str] = self._owned_process_locked(invocation_id=invocation_id)
+            self._cancelling_invocation_id = invocation_id
+        process.send_signal(signal.SIGINT)
+        try:
+            exit_code: int = process.wait(timeout=CANCEL_GRACE_SECONDS)
+        except subprocess.TimeoutExpired:
+            process.terminate()
+            try:
+                exit_code = process.wait(timeout=TERMINATE_GRACE_SECONDS)
+            except subprocess.TimeoutExpired:
+                with self._lock:
+                    self._force_available = True
+                return {"status": "cancelling", "forceAvailable": True}
+        with self._lock:
+            self._force_available = False
+        return {"status": "cancelled", "exitCode": exit_code, "forceAvailable": False}
+
+    def kill(self, *, invocation_id: str) -> dict[str, object]:
+        """Force-kill the server-owned child without fabricating terminal facts."""
+
+        process: subprocess.Popen[str] = self._owned_process(invocation_id=invocation_id)
+        process.kill()
+        with self._lock:
+            self._force_available = False
+        return {"status": "killed"}
 
     def _consume_stdout(self, process: subprocess.Popen[str]) -> None:
         if process.stdout is None:
@@ -113,30 +162,55 @@ class BuildProcessManager:
             if event is None:
                 continue
             with self._lock:
-                self._events.append(event)
                 if event.get("event") == _RUN_STARTED_KIND:
                     self._invocation_id = str(event.get("invocationId"))
+                if event.get("event") == _STATEMENT_COMPLETED_KIND:
+                    self._statement_count += 1
             if event.get("event") == _RUN_STARTED_KIND:
                 self._started_event.set()
         exit_code: int = process.wait()
         with self._lock:
             self._exit_code = exit_code
+            self._force_available = False
             elapsed_seconds: float = time.monotonic() - self._started_monotonic
-            statement_count: int = sum(
-                1 for item in self._events if item.get("event") == _STATEMENT_COMPLETED_KIND
-            )
+            statement_count: int = self._statement_count
         self._started_event.set()
         self._report_finished(
             exit_code=exit_code, elapsed_seconds=elapsed_seconds, statement_count=statement_count
         )
 
-    def _consume_stderr(self, process: subprocess.Popen[str]) -> None:
-        if process.stderr is None:
-            return
-        for line in process.stderr:
-            with self._lock:
-                self._stderr_tail.append(line.rstrip("\n"))
-                del self._stderr_tail[:-_STDERR_TAIL_LINES]
+    def _read_stderr_tail(self) -> str:
+        path: Path | None = self._stderr_path
+        if path is None or not path.exists():
+            return ""
+        return "\n".join(
+            path.read_text(encoding="utf-8", errors="replace").splitlines()[-_STDERR_TAIL_LINES:]
+        )
+
+    def _remove_stderr_file(self) -> None:
+        path: Path | None = self._stderr_path
+        if path is not None:
+            path.unlink(missing_ok=True)
+        self._stderr_path = None
+
+    def _owned_process(self, *, invocation_id: str) -> subprocess.Popen[str]:
+        with self._lock:
+            return self._owned_process_locked(invocation_id=invocation_id)
+
+    def _owned_process_locked(self, *, invocation_id: str) -> subprocess.Popen[str]:
+        process: subprocess.Popen[str] | None = self._process
+        if self._invocation_id != invocation_id or process is None or process.poll() is not None:
+            raise BuildInProgressError(
+                "this server does not own that running process; "
+                "it cannot deliver a cancellation signal"
+            )
+        return process
+
+    def close(self) -> None:
+        """Release server-owned temporary evidence without signalling the child."""
+
+        with self._lock:
+            self._remove_stderr_file()
 
     def _report_finished(
         self, *, exit_code: int, elapsed_seconds: float, statement_count: int
@@ -153,7 +227,7 @@ class BuildProcessManager:
         )
 
     def _start_failure_message(self) -> str:
-        detail: str = "\n".join(self._stderr_tail).strip()
+        detail: str = self._read_stderr_tail().strip()
         exit_note: str = f"build exited with code {self._exit_code} before starting"
         return f"{exit_note}: {detail}" if detail else exit_note
 

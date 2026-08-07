@@ -1,10 +1,12 @@
 import io
 import json
+import time
 
 import pytest
 
 from streambuild.executor.observability.classes.run_event_sink import RunEventSink
 from tests.unit.src.streambuild.executor.observability.classes._test_types import (
+    RunEventHeartbeatTestCase,
     RunEventSinkTestCase,
 )
 from tests.unit.src.streambuild.executor.observability.classes.helpers import (
@@ -47,7 +49,7 @@ def test_given_one_run_when_emitting_then_streams_jsonl_and_persists_rows(
         jsonl_stream=stream,
     )
 
-    sink.run_started(command="build", total_statements=1, selected_node_count=1)
+    sink.run_started(command="build", mode="direct", total_statements=1, selected_node_count=1)
     sink.statement_started(build_replay_statement())
     sink.statement_completed(
         statement=build_replay_statement(), error_message=None, written_rows=42, elapsed_ms=5
@@ -61,3 +63,38 @@ def test_given_one_run_when_emitting_then_streams_jsonl_and_persists_rows(
     assert lines[1]["stepId"] == "replay_orders"
     assert all(line["invocationId"] == "inv-1" for line in lines)
     assert tuple(connection.statements) == test_case.expected_persisted_markers
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        RunEventHeartbeatTestCase(
+            description="heartbeat continues while no workflow statement completes",
+            expected_event_kind="run_heartbeat",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_long_statement_when_sink_is_active_then_timer_emits_heartbeats(
+    test_case: RunEventHeartbeatTestCase,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "streambuild.executor.observability.classes.run_event_sink.HEARTBEAT_INTERVAL_SECONDS",
+        0.01,
+    )
+    connection: RunEventRecordingConnection = RunEventRecordingConnection()
+    stream: io.StringIO = io.StringIO()
+    sink: RunEventSink = RunEventSink(
+        connection=connection,
+        database="analytics",
+        invocation_id="inv-heartbeat",
+        jsonl_stream=stream,
+    )
+
+    sink.run_started(command="build", mode="direct", total_statements=1, selected_node_count=1)
+    time.sleep(0.03)
+    sink.run_completed(outcome="succeeded", exit_code=0, error_message=None)
+
+    lines: list[dict] = [json.loads(line) for line in stream.getvalue().splitlines()]
+    assert test_case.expected_event_kind in tuple(line["event"] for line in lines)

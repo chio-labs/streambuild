@@ -227,6 +227,7 @@ def test_given_virtual_build_command_when_running_then_it_behaves_as_expected(
                 auto_approve=test_case.auto_approve,
             ),
             client=managed_client,
+            observation_client=managed_client,
             loaded_project=load_project_input_for_path(path=project_root),
             adapter_profile=build_compiler_adapter_profile(ClickHouseAdapter()),
         )
@@ -435,6 +436,7 @@ def test_given_candidate_relation_created_during_confirmation_when_building_then
                 auto_approve=False,
             ),
             client=connection,
+            observation_client=connection,
             loaded_project=load_project_input_for_path(path=project_root),
             adapter_profile=build_compiler_adapter_profile(ClickHouseAdapter()),
         )

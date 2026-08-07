@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import argparse
+import signal
 import sys
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
+from types import FrameType
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.exceptions import AdapterError, AdapterWarehouseError
@@ -13,7 +15,10 @@ from streambuild.cli.entry._helpers.adapter_connection import (
     resolve_invocation_connection,
 )
 from streambuild.cli.entry._helpers.dispatch import dispatch_cli_command
-from streambuild.cli.entry._helpers.entrypoint import argv_for_parse_args
+from streambuild.cli.entry._helpers.entrypoint import (
+    argv_for_parse_args,
+    raise_keyboard_interrupt_from_signal,
+)
 from streambuild.cli.entry._helpers.invocation import resolve_cli_invocation
 from streambuild.cli.entry._helpers.mode import validate_cli_command_mode
 from streambuild.cli.entry._helpers.parser import build_cli_parser
@@ -70,7 +75,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         run_dev=run_dev,
         run_repair_active_view=run_repair_active_view,
     )
-    return _main_with_dependencies(argv=argv, handlers=handlers)
+    previous_sigterm_handler: Callable[[int, FrameType | None], object] | int | None = (
+        signal.getsignal(signal.SIGTERM)
+    )
+    signal.signal(signal.SIGTERM, raise_keyboard_interrupt_from_signal)
+    try:
+        return _main_with_dependencies(argv=argv, handlers=handlers)
+    finally:
+        signal.signal(signal.SIGTERM, previous_sigterm_handler)
 
 
 def _main_with_dependencies(
@@ -80,6 +92,7 @@ def _main_with_dependencies(
     environment: Mapping[str, str] | None = None,
     working_directory: Path | None = None,
     adapter_connection: AdapterConnection | None = None,
+    observation_adapter_connection: AdapterConnection | None = None,
 ) -> int:
     parser: argparse.ArgumentParser = build_cli_parser()
     args: argparse.Namespace = parser.parse_args(argv_for_parse_args(argv))
@@ -96,13 +109,34 @@ def _main_with_dependencies(
             invocation=invocation,
             provided_connection=adapter_connection,
         )
+        observation_connection: ResolvedInvocationConnection | None = None
         try:
+            if adapter_connection is None and args.command == CliCommand.BUILD:
+                observation_connection = resolve_invocation_connection(
+                    invocation=invocation, provided_connection=None
+                )
+            if adapter_connection is not None and args.command == CliCommand.BUILD:
+                if observation_adapter_connection is None:
+                    raise CliUserError("Build requires a dedicated observation connection")
+                observation_connection = ResolvedInvocationConnection(
+                    connection=observation_adapter_connection,
+                    close_after_command=False,
+                )
             return dispatch_cli_command(
                 invocation=invocation,
                 handlers=handlers,
                 adapter_connection=resolved_connection.connection,
+                observation_connection=(
+                    None if observation_connection is None else observation_connection.connection
+                ),
             )
         finally:
+            if (
+                observation_connection is not None
+                and observation_connection.close_after_command
+                and observation_connection.connection is not None
+            ):
+                observation_connection.connection.close()
             if (
                 resolved_connection.close_after_command
                 and resolved_connection.connection is not None
