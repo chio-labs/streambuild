@@ -3,12 +3,18 @@
 from __future__ import annotations
 
 import datetime
+import json
+from hashlib import sha256
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import (
-    AdapterTable,
-    CatalogRelation,
+    AdapterDirectFingerprintRecord,
+    AdapterDirectFingerprintSnapshot,
     CatalogSnapshot,
+)
+from streambuild.adapter.types import AdapterOptionalStateStatus
+from streambuild.compiler.compile.main.build_model_storage_identity import (
+    build_model_storage_identity,
 )
 from streambuild.compiler.compile.models import (
     CompiledModel,
@@ -45,11 +51,16 @@ def build_state_payload(
     extents: dict[str, dict[str, object]] = _extents(
         connection=connection, database=database, relation_names=lineage_relations
     )
+    baselines: dict[str, AdapterDirectFingerprintRecord] = _fingerprint_baselines(
+        analysis=analysis,
+        connection=connection,
+        database=database,
+    )
     return {
         "capturedAt": captured_at,
         "models": _model_states(
             analysis=analysis,
-            catalog=catalog,
+            baselines=baselines,
             stats=stats,
             extents=extents,
             captured_at=captured_at,
@@ -111,7 +122,7 @@ def _extents(
 def _model_states(
     *,
     analysis: CompileAnalysis,
-    catalog: CatalogSnapshot,
+    baselines: dict[str, AdapterDirectFingerprintRecord],
     stats: dict[str, dict[str, int]],
     extents: dict[str, dict[str, object]],
     captured_at: str,
@@ -124,7 +135,8 @@ def _model_states(
         extent: dict[str, object] = extents.get(relation_name, {})
         newest: str | None = _optional_str(extent.get("newest"))
         drift_reasons: tuple[str, ...] = _drift_reasons(
-            analysis=analysis, model=model, catalog=catalog, relation_name=relation_name
+            model=model,
+            baseline=baselines.get(model.key.name),
         )
         states[model.key.name] = {
             "relationName": relation_name,
@@ -285,48 +297,51 @@ def _partitions(
 
 def _drift_reasons(
     *,
-    analysis: CompileAnalysis,
     model: CompiledModel,
-    catalog: CatalogSnapshot,
-    relation_name: str,
+    baseline: AdapterDirectFingerprintRecord | None,
 ) -> tuple[str, ...]:
-    if not isinstance(model, CompiledTableModel):
-        return ()
-    live: CatalogRelation | None = catalog.relation(relation_name)
-    if live is None:
-        return ()
-    compiled_table: AdapterTable | None = _compiled_table(analysis=analysis, model=model)
-    if compiled_table is None:
+    """Compare compiled identity against the last applied direct baseline."""
+
+    if not isinstance(model, CompiledTableModel) or baseline is None:
         return ()
     reasons: list[str] = []
-    if _normalized_engine(live.engine) != _normalized_engine(compiled_table.engine):
-        reasons.append("engine")
-    if tuple(live.order_by) != tuple(compiled_table.order_by):
-        reasons.append("order_by")
-    if live.partition_by != compiled_table.partition_by:
-        reasons.append("partition_by")
-    if live.ttl != compiled_table.ttl:
-        reasons.append("ttl")
-    live_columns: tuple[tuple[str, str], ...] = tuple(
-        (column.name, column.type) for column in live.columns
-    )
-    compiled_columns: tuple[tuple[str, str], ...] = tuple(
-        (column.name, column.type) for column in compiled_table.columns
-    )
-    if live_columns != compiled_columns:
-        reasons.append("columns")
+    if sha256(model.query.encode()).hexdigest() != baseline.definition_hash:
+        reasons.append("query")
+    baseline_storage: object = _baseline_storage(baseline)
+    if baseline_storage != build_model_storage_identity(model):
+        reasons.append("storage")
     return tuple(reasons)
 
 
-def _compiled_table(*, analysis: CompileAnalysis, model: CompiledModel) -> AdapterTable | None:
-    for resource in analysis.realized_project.resources_by_logical_key.get(model.key, ()):
-        if isinstance(resource, AdapterTable):
-            return resource
-    return None
+def _fingerprint_baselines(
+    *,
+    analysis: CompileAnalysis,
+    connection: AdapterConnection,
+    database: str,
+) -> dict[str, AdapterDirectFingerprintRecord]:
+    identities: tuple[str, ...] = tuple(
+        f"{database}.{model.key.name}" for model in analysis.compiled_project.models
+    )
+    snapshot: AdapterDirectFingerprintSnapshot = connection.load_direct_fingerprints(
+        database=database,
+        logical_model_identities=identities,
+    )
+    if snapshot.status != AdapterOptionalStateStatus.AVAILABLE:
+        return {}
+    prefix: str = f"{database}."
+    return {
+        record.logical_model_identity.removeprefix(prefix): record for record in snapshot.baselines
+    }
 
 
-def _normalized_engine(engine: str) -> str:
-    return engine.replace("()", "").strip()
+def _baseline_storage(baseline: AdapterDirectFingerprintRecord) -> object:
+    try:
+        metadata: object = json.loads(baseline.identity_metadata)
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(metadata, dict):
+        return None
+    return metadata.get("storage")
 
 
 def _freshness(
