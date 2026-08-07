@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.9.0](https://github.com/chio-labs/streambuild/compare/v0.8.0...v0.9.0) (2026-08-07)
+
+
+### Features
+
+* improve CLI plan and error presentation ([74d1b62](https://github.com/chio-labs/streambuild/commit/74d1b6265c5eaf0dbe23f562e204c1679d7aa952))
+* improve CLI plan and error presentation ([863c744](https://github.com/chio-labs/streambuild/commit/863c744b420c8392f27da57e3a4828a9539798e8))
+
+
+### Bug Fixes
+
+* package dev UI assets in distributions ([1cb9a84](https://github.com/chio-labs/streambuild/commit/1cb9a84576f6633edcd21a513334b619ef8a651a))
+* package dev UI assets in distributions ([96b2976](https://github.com/chio-labs/streambuild/commit/96b2976a3f29ce111267ca568076fdca1f191bbd))
+
 ## [0.8.0](https://github.com/chio-labs/streambuild/compare/v0.7.0...v0.8.0) (2026-08-07)
 
 
