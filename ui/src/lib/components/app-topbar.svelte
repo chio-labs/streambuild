@@ -44,9 +44,9 @@
 	<title>{title} · StreamBuild</title>
 </svelte:head>
 
-<div class="flex h-[54px] shrink-0 items-center gap-3.5 border-b border-border px-[18px]">
+<div class="flex h-[54px] shrink-0 items-center gap-2 border-b border-border px-3 sm:gap-3.5 sm:px-[18px]">
 	<h1 class="font-display text-[16px] font-semibold">{title}</h1>
-	<span class="text-[var(--sb-text-faint)] font-mono text-[12px]">{context}</span>
+	<span class="text-[var(--sb-text-faint)] hidden truncate font-mono text-[12px] md:inline">{context}</span>
 	<div class="ml-auto flex items-center gap-2.5">
 		{#if !CAN_EXECUTE_BUILD}
 			<!-- Tier 1 is read-only. State it once, globally, rather than disabling
@@ -59,7 +59,7 @@
 			</span>
 		{/if}
 		<span
-			class="text-muted-foreground flex items-center gap-[7px] font-mono text-[11px] tracking-wide"
+			class="text-muted-foreground hidden items-center gap-[7px] font-mono text-[11px] tracking-wide sm:flex"
 		>
 			{#if connected}
 				<span class="conn-tick bg-[var(--sb-secondary)] relative h-[7px] w-[7px] rounded-[2px]"

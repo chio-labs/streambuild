@@ -17,6 +17,47 @@ import { app } from '$lib/api/store.svelte';
 import { planFromServer } from '$lib/api/mapping';
 import type { Plan, Project } from '$lib/domain/types';
 
+export class ApiError extends Error {
+	constructor(
+		message: string,
+		readonly status: number
+	) {
+		super(message);
+		this.name = 'ApiError';
+	}
+}
+
+/** Parse a successful JSON response or preserve useful text from any error body. */
+export async function readApiResponse<T>(response: Response, operation: string): Promise<T> {
+	if (!response.ok) throw await responseError(response, operation);
+	try {
+		return (await response.json()) as T;
+	} catch {
+		throw new ApiError(`${operation} returned an invalid JSON response`, response.status);
+	}
+}
+
+async function responseError(response: Response, operation: string): Promise<ApiError> {
+	let body = '';
+	try {
+		body = (await response.text()).trim();
+	} catch {
+		// A status-bearing fallback is still more useful than a body parsing error.
+	}
+	let detail: string | null = body || null;
+	if (body) {
+		try {
+			const payload = JSON.parse(body) as { detail?: unknown };
+			if (typeof payload.detail === 'string' && payload.detail.trim()) {
+				detail = payload.detail.trim();
+			}
+		} catch {
+			// Plain-text proxy and framework errors are already suitable messages.
+		}
+	}
+	return new ApiError(detail ?? `${operation} failed (${response.status})`, response.status);
+}
+
 export function getProject(): Project {
 	if (app.project === null) {
 		throw new Error('getProject() called before the app finished loading');
@@ -47,11 +88,7 @@ export async function startBuild(
 		headers: { 'content-type': 'application/json' },
 		body: JSON.stringify({ selectors, startTime })
 	});
-	if (!response.ok) {
-		const detail = ((await response.json()) as { detail?: string }).detail;
-		throw new Error(detail ?? `build start failed (${response.status})`);
-	}
-	return (await response.json()) as BuildStartResult;
+	return readApiResponse<BuildStartResult>(response, 'build start');
 }
 
 export type RunEvent = {
@@ -82,6 +119,7 @@ export type RunStatus =
 	| 'presumed_failed';
 
 export type RunEventFeed = {
+	found: boolean;
 	events: RunEvent[];
 	hasMore: boolean;
 	status: RunStatus | null;
@@ -102,8 +140,7 @@ export type BuildFeed = {
 /** Cursor read of the live build feed. */
 export async function fetchBuildFeed(after: number): Promise<BuildFeed> {
 	const response = await fetch(`/api/build/current?after=${after}`);
-	if (!response.ok) throw new Error(`build feed failed (${response.status})`);
-	return (await response.json()) as BuildFeed;
+	return readApiResponse<BuildFeed>(response, 'build feed');
 }
 
 /** The durable step timeline of one recorded run. */
@@ -111,8 +148,7 @@ export async function fetchRunEvents(invocationId: string, after = 0): Promise<R
 	const response = await fetch(
 		`/api/runs/${encodeURIComponent(invocationId)}/events?after=${after}`
 	);
-	if (!response.ok) throw new Error(`run events failed (${response.status})`);
-	return (await response.json()) as RunEventFeed;
+	return readApiResponse<RunEventFeed>(response, 'run events');
 }
 
 export async function cancelBuild(invocationId: string): Promise<Record<string, unknown>> {
@@ -129,9 +165,7 @@ async function signalBuild(path: string, invocationId: string): Promise<Record<s
 		headers: { 'content-type': 'application/json' },
 		body: JSON.stringify({ invocationId })
 	});
-	const payload = (await response.json()) as Record<string, unknown> & { detail?: string };
-	if (!response.ok) throw new Error(payload.detail ?? `build signal failed (${response.status})`);
-	return payload;
+	return readApiResponse<Record<string, unknown>>(response, 'build signal');
 }
 
 /** Fetch a server-side plan for the given selectors and optional start time. */
@@ -140,11 +174,8 @@ export async function fetchPlan(selectors: string[], startTime: string | null): 
 	for (const selector of selectors) params.append('select', selector);
 	if (startTime !== null) params.set('start', startTime);
 	const response = await fetch(`/api/plan?${params}`);
-	if (!response.ok) {
-		const detail = ((await response.json()) as { detail?: string }).detail;
-		throw new Error(detail ?? `plan request failed (${response.status})`);
-	}
-	return planFromServer(await response.json(), getProject().adapter);
+	const payload = await readApiResponse<Record<string, unknown>>(response, 'plan request');
+	return planFromServer(payload, getProject().adapter);
 }
 
 export type RunRecord = {
@@ -168,11 +199,7 @@ export type RunRecord = {
 /** Recorded invocation history from `_streambuild_invocations`, newest first. */
 export async function fetchRuns(): Promise<RunRecord[]> {
 	const response = await fetch('/api/runs');
-	if (!response.ok) {
-		const detail = ((await response.json()) as { detail?: string }).detail;
-		throw new Error(detail ?? `runs request failed (${response.status})`);
-	}
-	return (await response.json()) as RunRecord[];
+	return readApiResponse<RunRecord[]>(response, 'runs request');
 }
 
 export type CheckStatusRecord = {
@@ -189,11 +216,7 @@ export type CheckStatusRecord = {
 /** Last-known audit/test outcomes recorded in `_streambuild_node_results`. */
 export async function fetchChecksStatus(): Promise<CheckStatusRecord[]> {
 	const response = await fetch('/api/checks/status');
-	if (!response.ok) {
-		const detail = ((await response.json()) as { detail?: string }).detail;
-		throw new Error(detail ?? `checks status request failed (${response.status})`);
-	}
-	return (await response.json()) as CheckStatusRecord[];
+	return readApiResponse<CheckStatusRecord[]>(response, 'checks status request');
 }
 
 export type CheckRunResult = {
@@ -218,9 +241,5 @@ export async function runCheck(kind: 'audit' | 'test', name: string): Promise<Ch
 		headers: { 'content-type': 'application/json' },
 		body: JSON.stringify({ kind, name })
 	});
-	if (!response.ok) {
-		const detail = ((await response.json()) as { detail?: string }).detail;
-		throw new Error(detail ?? `check run failed (${response.status})`);
-	}
-	return (await response.json()) as CheckRunResult;
+	return readApiResponse<CheckRunResult>(response, 'check run');
 }
