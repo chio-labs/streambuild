@@ -13,6 +13,7 @@ from streambuild.compiler.planner.models import (
     DirectPrerequisite,
     DirectRelationOperation,
     DirectReplayRoot,
+    DirectSqlChange,
 )
 
 _TIMESTAMP_DRIVEN_MODES: frozenset[ReplayLineageMode] = frozenset(
@@ -75,6 +76,17 @@ def _entry_payload(
         "resourceKinds": [str(kind) for kind in entry.resource_kinds],
         "drivingInput": None if entry.driving_input_key is None else entry.driving_input_key.name,
         "isReplayRoot": entry.is_replay_root,
+        "sqlChange": _sql_change_payload(entry.sql_change),
+    }
+
+
+def _sql_change_payload(sql_change: DirectSqlChange | None) -> dict[str, object] | None:
+    if sql_change is None:
+        return None
+    return {
+        "status": str(sql_change.status),
+        "unifiedDiff": sql_change.unified_diff,
+        "warning": sql_change.warning,
     }
 
 

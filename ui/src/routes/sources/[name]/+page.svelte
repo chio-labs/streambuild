@@ -15,7 +15,8 @@
 		formatDuration,
 		formatInteger,
 		formatRate,
-		formatTimestamp
+		formatTimestamp,
+		parseUtc
 	} from '$lib/domain/format';
 	import {
 		REPLAY_COLUMN_BY_ROLE,
@@ -56,10 +57,15 @@
 
 	/** Oldest instant across the source and every dependent model, so all tracks share one domain. */
 	const domainFrom = $derived.by((): string => {
-		const candidates: number[] = [new Date(source?.live.oldestEventAt ?? project.capturedAt).getTime()];
-		for (const row of coverage) {
-			if (row.heldFrom) candidates.push(new Date(row.heldFrom).getTime());
-		}
+		const instants: (string | null)[] = [
+			source?.live.oldestEventAt || null,
+			...coverage.map((row) => row.heldFrom)
+		];
+		const candidates: number[] = instants
+			.filter((instant): instant is string => Boolean(instant))
+			.map((instant) => parseUtc(instant).getTime())
+			.filter((milliseconds) => Number.isFinite(milliseconds));
+		if (candidates.length === 0) return project.capturedAt;
 		return new Date(Math.min(...candidates)).toISOString();
 	});
 
