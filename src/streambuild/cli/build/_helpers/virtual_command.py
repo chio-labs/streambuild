@@ -5,6 +5,7 @@ import sys
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import AdapterInvocationRecord
 from streambuild.cli.build._helpers.confirmation import confirm_build
+from streambuild.cli.build._helpers.rendering import render_interrupted_build_message
 from streambuild.cli.build.main.render_virtual_build_result import render_virtual_build_result
 from streambuild.cli.build.models import BuildCommandOptions, VirtualWorkflowPreparation
 from streambuild.cli.workflow_artifacts.main._publish_build_workflow import publish_build_workflow
@@ -192,7 +193,7 @@ def _cancel_virtual_build(
     if sink is not None:
         sink.run_completed(outcome="cancelled", exit_code=_SIGINT_EXIT_CODE, error_message=None)
     try:
-        print("build interrupted; recorded as cancelled", file=sys.stderr)
+        print(render_interrupted_build_message(), file=sys.stderr)
     except Exception:
         pass
     return _SIGINT_EXIT_CODE

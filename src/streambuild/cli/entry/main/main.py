@@ -22,6 +22,7 @@ from streambuild.cli.entry._helpers.entrypoint import (
 from streambuild.cli.entry._helpers.invocation import resolve_cli_invocation
 from streambuild.cli.entry._helpers.mode import validate_cli_command_mode
 from streambuild.cli.entry._helpers.parser import build_cli_parser
+from streambuild.cli.entry._helpers.user_error_rendering import render_cli_user_error
 from streambuild.cli.entry.constants import DISPLAY_NAME_BY_COMMAND
 from streambuild.cli.entry.exceptions import CliUserError
 from streambuild.cli.entry.main._errors import render_expected_warehouse_error
@@ -143,7 +144,7 @@ def _main_with_dependencies(
             ):
                 resolved_connection.connection.close()
     except CliUserError as error:
-        print(str(error), file=sys.stderr)
+        print(render_cli_user_error(error), file=sys.stderr)
         return 1
     except (TransformSqlContractError, ValueError) as error:
         print(render_error(error), file=sys.stderr)
