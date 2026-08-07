@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.9.1](https://github.com/chio-labs/streambuild/compare/v0.9.0...v0.9.1) (2026-08-07)
+
+
+### Bug Fixes
+
+* align dev UI with persisted model state ([c534296](https://github.com/chio-labs/streambuild/commit/c5342965109b673f583e7a1ee1bba9e5efcf080d))
+* pin development Python to 3.12 ([1b83a6e](https://github.com/chio-labs/streambuild/commit/1b83a6e57b713fc589604372068bb72f91842541))
+* refresh lockfile project version ([0cb2b24](https://github.com/chio-labs/streambuild/commit/0cb2b24ba5e068744bbcc96f62e1bdec6ba8f2ce))
+
 ## [0.9.0](https://github.com/chio-labs/streambuild/compare/v0.8.0...v0.9.0) (2026-08-07)
 
 
