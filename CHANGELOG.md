@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.9.3](https://github.com/chio-labs/streambuild/compare/v0.9.2...v0.9.3) (2026-08-07)
+
+
+### Bug Fixes
+
+* keep release lockfile synchronized ([ac15b72](https://github.com/chio-labs/streambuild/commit/ac15b721cc476918052eeb73b3be0c835214601d))
+* keep release lockfile synchronized ([981f165](https://github.com/chio-labs/streambuild/commit/981f165c0d3ec40804776b9c71627acfa48aa346))
+
 ## [0.9.2](https://github.com/chio-labs/streambuild/compare/v0.9.1...v0.9.2) (2026-08-07)
 
 
