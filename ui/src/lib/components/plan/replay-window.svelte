@@ -271,7 +271,7 @@
 
 			{#if replayWindow.mode === 'from'}
 				<!-- slider + calendar, mutually bound; both clamped to the retention window -->
-				<div class="flex items-center gap-3">
+				<div class="flex flex-col gap-3 sm:flex-row sm:items-center">
 					<input
 						type="range"
 						min="0"
@@ -286,7 +286,7 @@
 						value={toDateTimeLocal(startTime)}
 						min={toDateTimeLocal(boundFrom)}
 						max={toDateTimeLocal(boundTo)}
-						class="bg-[var(--sb-inset)] rounded-[4px] border border-border px-2 py-1 font-mono text-[11px] outline-none focus:border-[var(--primary)]"
+						class="bg-[var(--sb-inset)] w-full rounded-[4px] border border-border px-2 py-1 font-mono text-[11px] outline-none focus:border-[var(--primary)] sm:w-auto"
 						onchange={(event) => setFromCalendar(event.currentTarget.value)}
 					/>
 				</div>
