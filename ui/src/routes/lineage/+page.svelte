@@ -187,7 +187,7 @@
 
 <div class="flex min-h-0 flex-1 flex-col">
 	<!-- toolbar -->
-	<div class="flex shrink-0 items-center gap-2.5 border-b border-border px-[18px] py-2.5">
+	<div class="flex shrink-0 flex-wrap items-center gap-2.5 border-b border-border px-3 py-2.5 sm:px-[18px]">
 		<!-- The flagship control. Logical is the authored graph; Physical is what
 		     actually exists in ClickHouse and is what you debug. -->
 		<div class="flex overflow-hidden rounded-[4px] border border-border">
@@ -210,7 +210,7 @@
 			</button>
 		</div>
 
-		<span class="text-[var(--sb-text-faint)] max-w-[380px] font-mono text-[10.5px] leading-snug">
+		<span class="text-[var(--sb-text-faint)] hidden max-w-[380px] font-mono text-[10.5px] leading-snug xl:inline">
 			{#if mode === 'logical'}
 				authored sources, models and typed reference edges
 			{:else}
@@ -218,8 +218,8 @@
 			{/if}
 		</span>
 
-		<div class="ml-auto flex items-center gap-2.5">
-			<EdgeLegend />
+		<div class="flex w-full flex-wrap items-center gap-2.5 sm:w-auto xl:ml-auto">
+			<div class="hidden xl:block"><EdgeLegend /></div>
 			<div class="flex overflow-hidden rounded-[4px] border border-border">
 				{#each [['none', 'Flat'], ['boxes', 'Boxes'], ['lanes', 'Lanes']] as [value, label] (value)}
 					<button
@@ -257,7 +257,7 @@
 	</div>
 
 	<!-- filters -->
-	<div class="flex shrink-0 items-center gap-2 border-b border-border px-[18px] py-2">
+	<div class="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2 sm:px-[18px]">
 		<GraphFilters
 			{project}
 			{filters}
@@ -269,7 +269,7 @@
 
 	<!-- status strip -->
 	<div
-		class="text-muted-foreground flex shrink-0 items-center gap-4 border-b border-border px-[18px] py-1.5 font-mono text-[10.5px]"
+		class="text-muted-foreground flex shrink-0 items-center gap-4 overflow-x-auto whitespace-nowrap border-b border-border px-3 py-1.5 font-mono text-[10.5px] sm:px-[18px]"
 	>
 		<span>{graph.nodes.length} nodes · {graph.edges.length} edges</span>
 		<span class="flex items-center gap-1.5"
@@ -300,9 +300,9 @@
 		{/if}
 	</div>
 
-	<div class="flex min-h-0 flex-1">
+	<div class="flex min-h-0 flex-1 flex-col overflow-y-auto md:flex-row md:overflow-hidden">
 		<!-- canvas -->
-		<div class="min-w-0 flex-1">
+		<div class="min-h-[360px] min-w-0 flex-1">
 			<LineageCanvas
 				bind:this={canvas}
 				{project}
@@ -318,14 +318,17 @@
 		{#if selectedNode}
 			<!-- drag handle -->
 			<div
-				class="hover:bg-primary w-[3px] shrink-0 cursor-col-resize bg-[var(--border-subtle)] transition-colors"
+				class="hover:bg-primary hidden w-[3px] shrink-0 cursor-col-resize bg-[var(--border-subtle)] transition-colors md:block"
 				role="separator"
 				aria-orientation="vertical"
 				onpointerdown={startResize}
 				onpointermove={onResize}
 				onpointerup={endResize}
 			></div>
-			<div class="shrink-0 overflow-y-auto border-l border-border" style:width="{inspectorWidth}px">
+			<div
+				class="lineage-inspector max-h-[45vh] w-full shrink-0 overflow-y-auto border-t border-border md:max-h-none md:border-l md:border-t-0"
+				style="--inspector-width: {inspectorWidth}px"
+			>
 				<GraphInspector node={selectedNode} {mode} onclose={() => (selectedId = null)} />
 			</div>
 		{/if}
@@ -333,3 +336,11 @@
 </div>
 
 <RunPanel bind:open={runOpen} selection={runSelection} />
+
+<style>
+	@media (min-width: 768px) {
+		.lineage-inspector {
+			width: var(--inspector-width);
+		}
+	}
+</style>

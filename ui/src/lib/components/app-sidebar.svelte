@@ -55,39 +55,42 @@
 </script>
 
 <aside
-	class="bg-sidebar flex h-screen w-56 shrink-0 flex-col border-r border-[var(--sidebar-border)] px-2.5 py-3.5"
+	class="bg-sidebar flex h-screen w-14 shrink-0 flex-col border-r border-[var(--sidebar-border)] px-1 py-3 md:w-56 md:px-2.5 md:py-3.5"
 >
-	<div class="flex items-center gap-2 px-2 pb-4">
+	<div class="flex items-center justify-center gap-2 px-1 pb-3 md:justify-start md:px-2 md:pb-4">
 		<!-- Official StreamBuild wordmark from the docs repo. Two files rather than
 		     one recoloured asset, because the mark's yellow stays constant while the
 		     wordmark inverts. -->
-		<img src="/logo-on-dark.png" alt="StreamBuild" class="logo-dark h-[24px] w-auto" />
-		<img src="/logo-on-light.png" alt="StreamBuild" class="logo-light h-[24px] w-auto" />
+		<span class="font-display text-[13px] font-bold md:hidden">SB</span>
+		<span class="hidden md:contents">
+			<img src="/logo-on-dark.png" alt="StreamBuild" class="logo-dark h-[24px] w-auto" />
+			<img src="/logo-on-light.png" alt="StreamBuild" class="logo-light h-[24px] w-auto" />
+		</span>
 		{#if app.status?.toolVersion}
-			<span class="text-[var(--sb-text-faint)] ml-auto font-mono text-[10px] tracking-wide"
+			<span class="text-[var(--sb-text-faint)] ml-auto hidden font-mono text-[10px] tracking-wide md:inline"
 				>v{app.status.toolVersion}</span
 			>
 		{/if}
 	</div>
 
 	<div
-		class="text-[var(--sb-text-faint)] px-2.5 pb-1.5 pt-2 font-mono text-[10px] uppercase tracking-[0.16em]"
+		class="text-[var(--sb-text-faint)] hidden px-2.5 pb-1.5 pt-2 font-mono text-[10px] uppercase tracking-[0.16em] md:block"
 	>
 		Project
 	</div>
-	<div class="mx-1 mb-1 flex items-center gap-2.5 px-2.5 py-1.5 text-[13px] font-medium">
+	<div class="mx-1 mb-1 hidden items-center gap-2.5 px-2.5 py-1.5 text-[13px] font-medium md:flex">
 		<span class="bg-[var(--sb-secondary)] h-1.5 w-1.5 rounded-[2px]"></span>
 		{project.name}
 	</div>
 	<!-- Mode is config-based and single-valued, so it is a label and never a switcher. -->
-	<div class="text-[var(--sb-text-faint)] mx-1 mb-3 px-2.5 font-mono text-[10px]">
+	<div class="text-[var(--sb-text-faint)] mx-1 mb-3 hidden px-2.5 font-mono text-[10px] md:block">
 		direct mode · {project.adapter}
 	</div>
 
 	<nav class="flex flex-1 flex-col gap-px">
 		{#each groups as group (group.section)}
 			<div
-				class="text-[var(--sb-text-faint)] px-3 pb-1 pt-3.5 font-mono text-[10px] uppercase tracking-[0.16em]"
+				class="text-[var(--sb-text-faint)] hidden px-3 pb-1 pt-3.5 font-mono text-[10px] uppercase tracking-[0.16em] md:block"
 			>
 				{group.section}
 			</div>
@@ -95,14 +98,15 @@
 				{@const Glyph = item.icon}
 				<a
 					href={item.href}
-					class="relative flex items-center gap-2.5 rounded-md px-3 py-2 text-[13px] {isActive(
+					title={item.label}
+					class="relative flex items-center justify-center gap-2.5 rounded-md px-2 py-2 text-[13px] md:justify-start md:px-3 {isActive(
 						item.href
 					)
 						? 'bg-[var(--sidebar-accent)] text-foreground before:absolute before:-left-2.5 before:top-1.5 before:bottom-1.5 before:w-[3px] before:rounded-r before:bg-primary before:content-[\'\']'
 						: 'text-[var(--sidebar-foreground)] hover:bg-[var(--sb-hover)] hover:text-foreground'}"
 				>
 					<span class="grid w-4 place-items-center opacity-80"><Glyph size={14} /></span>
-					{item.label}
+					<span class="hidden md:inline">{item.label}</span>
 				</a>
 			{/each}
 		{/each}
@@ -111,12 +115,13 @@
 
 		{#each footerItems as item (item.href)}
 			{@const Glyph = item.icon}
-			<a
-				href={item.href}
-				class="text-[var(--sidebar-foreground)] hover:bg-[var(--sb-hover)] hover:text-foreground flex items-center gap-2.5 rounded-md px-3 py-2 text-[13px]"
+		<a
+			href={item.href}
+			title={item.label}
+			class="text-[var(--sidebar-foreground)] hover:bg-[var(--sb-hover)] hover:text-foreground flex items-center justify-center gap-2.5 rounded-md px-2 py-2 text-[13px] md:justify-start md:px-3"
 			>
 				<span class="grid w-4 place-items-center opacity-80"><Glyph size={14} /></span>
-				{item.label}
+			<span class="hidden md:inline">{item.label}</span>
 			</a>
 		{/each}
 	</nav>
