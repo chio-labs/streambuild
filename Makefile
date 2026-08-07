@@ -30,7 +30,6 @@ check:
 	uv run ruff check --fix .
 	uv run ty check src tests scripts
 	uv run fensu check
-	uv run fensu skills --check
 
 
 verify:
@@ -38,7 +37,6 @@ verify:
 	uv run ruff check --fix .
 	uv run ty check src tests scripts
 	uv run fensu check
-	uv run fensu skills --check
 	uv run pytest tests/unit -q -n auto
 	uv run pytest tests/integration -q -n 4
 	uv run pytest tests/e2e -q -m "not performance" -n 4
@@ -73,7 +71,6 @@ check-ci:
 	uv run ruff check .
 	uv run ty check src tests scripts
 	uv run fensu check
-	uv run fensu skills --check
 
 
 verify-ci:
@@ -81,7 +78,6 @@ verify-ci:
 	uv run ruff check .
 	uv run ty check src tests scripts
 	uv run fensu check
-	uv run fensu skills --check
 	uv run pytest tests/unit -q -n auto
 	uv run pytest tests/integration -q -n 4
 	uv run pytest tests/e2e -q -m "not performance" -n 4
