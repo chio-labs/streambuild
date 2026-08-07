@@ -35,6 +35,7 @@
 	let record = $state<RunRecord | null>(null);
 	let commandLine = $state<string>('build');
 	let loadError = $state<string | null>(null);
+	let notFound = $state<boolean>(false);
 
 	const POLL_MS: number = 1200;
 
@@ -45,6 +46,7 @@
 		stderr = '';
 		owned = false;
 		ownedRunning = false;
+		notFound = false;
 		let cancelled: boolean = false;
 		let timer: ReturnType<typeof setTimeout> | null = null;
 		let cursor: number = 0;
@@ -73,6 +75,13 @@
 				}
 				const loadedRecord = await loadRunRecord();
 				if (cancelled) return;
+				if (!feed.found && !owned && loadedRecord === null) {
+					notFound = true;
+					running = false;
+					loadError = null;
+					return;
+				}
+				notFound = false;
 				record = loadedRecord;
 				if (record !== null) {
 					exitCode = record.exitCode;
@@ -250,6 +259,19 @@
 <AppTopbar title="Run" breadcrumb={`${project.name} / runs / ${invocationId.slice(0, 8)}`} />
 
 <div class="flex min-h-0 flex-1 flex-col overflow-y-auto">
+	{#if notFound}
+		<div class="grid min-h-[320px] flex-1 place-items-center p-[18px]">
+			<div class="max-w-md rounded-[4px] border border-border p-5 text-center">
+				<div class="font-display text-[16px] font-semibold">Run not found</div>
+				<p class="text-muted-foreground pt-2 font-mono text-[11.5px]">
+					No durable run or active local process matches <code class="code">{invocationId}</code>.
+				</p>
+				<a href="/runs" class="text-primary mt-3 inline-block font-mono text-[11px] hover:underline">
+					Back to runs
+				</a>
+			</div>
+		</div>
+	{:else}
 	<!-- header -->
 	<div class="flex shrink-0 flex-wrap items-center gap-3 border-b border-border px-[18px] py-3">
 		<a href="/runs" class="text-muted-foreground hover:text-foreground flex items-center gap-1.5 font-mono text-[11px]">
@@ -399,5 +421,6 @@
 				{/each}
 			</div>
 		</div>
+	{/if}
 	{/if}
 </div>

@@ -6,6 +6,7 @@ from streambuild.adapter.models import AdapterQueryResult
 from streambuild.dev_server._helpers.runs_query import derive_run_status, read_run_events
 from streambuild.dev_server.types import RunPresentationStatus
 from tests.unit.src.streambuild.dev_server._test_types import (
+    MissingRunDetailTestCase,
     RunDetailHistoryTestCase,
     RunStatusDerivationTestCase,
 )
@@ -78,6 +79,7 @@ def test_given_run_facts_when_deriving_status_then_fact_and_liveness_contract_is
             description="terminal detail remains available outside the run-list window",
             invocation_id="old-invocation",
             expected_status="succeeded",
+            expected_found=True,
         )
     ],
     ids=lambda case: case.description,
@@ -146,3 +148,46 @@ def test_given_old_terminal_run_when_reading_detail_then_status_is_not_limited_b
     )
 
     assert payload["status"] == test_case.expected_status
+    assert payload["found"] is test_case.expected_found
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        MissingRunDetailTestCase(
+            description="unknown invocation is explicitly absent",
+            invocation_id="missing-invocation",
+            expected_status=None,
+            expected_found=False,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_unknown_run_when_reading_detail_then_absence_is_explicit(
+    test_case: MissingRunDetailTestCase,
+) -> None:
+    invocation_table_query: str = (
+        "SELECT count() AS present FROM system.tables "
+        "WHERE database = 'analytics' AND name = '_streambuild_invocations'"
+    )
+    event_table_query: str = (
+        "SELECT count() AS present FROM system.tables "
+        "WHERE database = 'analytics' AND name = '_streambuild_run_events'"
+    )
+    connection: FakeAdapterConnection = FakeAdapterConnection(
+        catalog=build_fake_state_connection()._catalog,
+        warehouse_timestamp="2026-08-07 12:00:00.000",
+        results_by_query={
+            invocation_table_query: AdapterQueryResult(rows=((0,),), column_names=("present",)),
+            event_table_query: AdapterQueryResult(rows=((0,),), column_names=("present",)),
+        },
+    )
+
+    payload: dict[str, object] = read_run_events(
+        connection=connection,
+        database="analytics",
+        invocation_id=test_case.invocation_id,
+    )
+
+    assert payload["status"] == test_case.expected_status
+    assert payload["found"] is test_case.expected_found
