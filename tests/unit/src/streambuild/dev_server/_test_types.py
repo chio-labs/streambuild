@@ -141,3 +141,12 @@ class RunDetailHistoryTestCase:
     description: str
     invocation_id: str
     expected_status: str
+    expected_found: bool
+
+
+@dataclass(frozen=True)
+class MissingRunDetailTestCase:
+    description: str
+    invocation_id: str
+    expected_status: None
+    expected_found: bool
