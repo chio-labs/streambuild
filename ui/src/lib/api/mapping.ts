@@ -16,6 +16,7 @@ import type {
 	PartitionState,
 	Pipeline,
 	Plan,
+	PlanSqlChangeStatus,
 	Project,
 	ReplayRole,
 	Source,
@@ -254,7 +255,8 @@ export function planFromServer(payload: Payload, adapter: string): Plan {
 			resourceKinds: (entry.resourceKinds as Plan['entries'][number]['resourceKinds']) ?? [],
 			ownership: (entry.ownership as Plan['entries'][number]['ownership']) ?? [],
 			drivingInput: (entry.drivingInput as string | null) ?? null,
-			isReplayRoot: Boolean(entry.isReplayRoot)
+			isReplayRoot: Boolean(entry.isReplayRoot),
+			sqlChange: sqlChangeFromServer((entry.sqlChange as Payload | null) ?? null)
 		})),
 		prerequisites: ((payload.prerequisites as Payload[]) ?? []).map((item) => ({
 			name: item.name as string,
@@ -283,6 +285,17 @@ export function planFromServer(payload: Payload, adapter: string): Plan {
 		replayWindow: (payload.replayWindow as Plan['replayWindow']) ?? { mode: 'full' },
 		plannedAt: (payload.plannedAt as string) ?? '',
 		command: (payload.command as string) ?? 'stb build'
+	};
+}
+
+function sqlChangeFromServer(
+	item: Payload | null
+): Plan['entries'][number]['sqlChange'] {
+	if (item === null) return null;
+	return {
+		status: item.status as PlanSqlChangeStatus,
+		unifiedDiff: (item.unifiedDiff as string | null) ?? null,
+		warning: (item.warning as string | null) ?? null
 	};
 }
 

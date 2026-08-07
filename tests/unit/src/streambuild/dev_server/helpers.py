@@ -8,6 +8,7 @@ from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import (
     AdapterCapabilities,
     AdapterDeploymentInventory,
+    AdapterDirectFingerprintSnapshot,
     AdapterIdentity,
     AdapterMutationResult,
     AdapterQueryResult,
@@ -77,6 +78,12 @@ sources:
       warn_after: 1h
       error_after: 4h
 """
+
+_UNAVAILABLE_FINGERPRINTS: AdapterDirectFingerprintSnapshot = AdapterDirectFingerprintSnapshot(
+    status="unavailable",
+    baselines=(),
+    warning="Direct SQL baselines unavailable in the test adapter",
+)
 
 
 def write_dev_server_project(*, project_dir: Path) -> None:
@@ -161,10 +168,12 @@ class FakeAdapterConnection(AdapterConnection):
         catalog: CatalogSnapshot,
         results_by_query: dict[str, AdapterQueryResult],
         warehouse_timestamp: str,
+        fingerprints: AdapterDirectFingerprintSnapshot = _UNAVAILABLE_FINGERPRINTS,
     ) -> None:
         self._catalog = catalog
         self._results_by_query = results_by_query
         self._warehouse_timestamp = warehouse_timestamp
+        self._fingerprints = fingerprints
 
     @property
     def adapter_identity(self) -> AdapterIdentity:
@@ -204,6 +213,12 @@ class FakeAdapterConnection(AdapterConnection):
 
     def load_deployment_inventory(self, database: str) -> AdapterDeploymentInventory:
         return AdapterDeploymentInventory(deployments=(), publish_events=())
+
+    def load_direct_fingerprints(
+        self, *, database: str, logical_model_identities: tuple[str, ...]
+    ) -> AdapterDirectFingerprintSnapshot:
+        del database, logical_model_identities
+        return self._fingerprints
 
     def metadata_columns(self, *, database: str, table: str) -> frozenset[str]:
         raise NotImplementedError
@@ -267,7 +282,9 @@ def build_state_test_client(*, project_dir: Path) -> TestClient:
     )
 
 
-def build_fake_state_connection() -> FakeAdapterConnection:
+def build_fake_state_connection(
+    *, fingerprints: AdapterDirectFingerprintSnapshot = _UNAVAILABLE_FINGERPRINTS
+) -> FakeAdapterConnection:
     catalog: CatalogSnapshot = CatalogSnapshot(
         identity=CatalogIdentity(adapter=AdapterIdentity(name="clickhouse"), database="analytics"),
         warehouse_timezone="UTC",
@@ -444,6 +461,7 @@ def build_fake_state_connection() -> FakeAdapterConnection:
         catalog=catalog,
         results_by_query=results,
         warehouse_timestamp=_STATE_WAREHOUSE_NOW,
+        fingerprints=fingerprints,
     )
 
 

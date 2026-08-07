@@ -212,7 +212,7 @@
 				<span
 					class="inline-flex items-center gap-1 font-mono text-[10px]"
 					style:color="var(--sb-stale)"
-					title="Live DDL differs from compiled DDL"
+					title="Definition changed since the last applied build"
 				>
 					<GitCompareIcon size={10} /> drift
 				</span>
