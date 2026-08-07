@@ -50,9 +50,11 @@ def render_direct_plan_text(*, plan: DirectPlan, adapter_name: str, verbose: boo
     if verbose:
         lines.append(cli_style().label_value(label="Adapter", value=adapter_name))
         lines.append("")
+    lines.extend(_render_rebuild_paths(plan=plan))
+    lines.extend((cli_style().section("Model decisions"), ""))
     entry: DirectPlanEntry
     for entry in plan.entries:
-        lines.extend(_render_model_decision(plan=plan, entry=entry, verbose=verbose))
+        lines.extend(_render_model_decision(entry=entry, verbose=verbose))
     if plan.effective_start_time is not None:
         lines.append(cli_style().label_value(label="Start time", value=plan.effective_start_time))
     warning: PlannerWarning
@@ -62,23 +64,49 @@ def render_direct_plan_text(*, plan: DirectPlan, adapter_name: str, verbose: boo
     return "\n".join(lines)
 
 
-def _render_model_decision(
-    *, plan: DirectPlan, entry: DirectPlanEntry, verbose: bool
-) -> tuple[str, ...]:
+def _render_rebuild_paths(*, plan: DirectPlan) -> tuple[str, ...]:
+    lines: list[str] = [cli_style().section("Rebuild paths"), ""]
+    covered_model_keys: set[LogicalResourceKey] = set()
+    roots_by_source: dict[tuple[str, str], list[DirectReplayRoot]] = {}
+    replay_root: DirectReplayRoot
+    for replay_root in plan.replay_roots:
+        source_identity: tuple[str, str] = (
+            replay_root.driving_input_relation_name,
+            str(replay_root.replay_boundary_mode),
+        )
+        roots_by_source.setdefault(source_identity, []).append(replay_root)
+    source_identity: tuple[str, str]
+    replay_roots: list[DirectReplayRoot]
+    for source_index, (source_identity, replay_roots) in enumerate(roots_by_source.items()):
+        if source_index:
+            lines.append("")
+        lines.append(f"[replay source] {source_identity[0]} [{source_identity[1]}]")
+        for root_index, replay_root in enumerate(replay_roots):
+            root_is_last: bool = root_index == len(replay_roots) - 1
+            root_branch: str = "└──" if root_is_last else "├──"
+            lines.append(f"{root_branch} [replay root] {_key_name(replay_root.model_key)}")
+            propagated_keys: tuple[LogicalResourceKey, ...] = tuple(
+                key for key in replay_root.propagated_model_keys if key != replay_root.model_key
+            )
+            child_prefix: str = "    " if root_is_last else "│   "
+            for child_index, model_key in enumerate(propagated_keys):
+                child_branch: str = "└──" if child_index == len(propagated_keys) - 1 else "├──"
+                lines.append(f"{child_prefix}{child_branch} [rebuild] {_key_name(model_key)}")
+            covered_model_keys.update(replay_root.propagated_model_keys)
+    entry: DirectPlanEntry
+    for entry in plan.entries:
+        if entry.model_key not in covered_model_keys:
+            lines.append(f"[rebuild] {_key_name(entry.model_key)}")
+    lines.append("")
+    return tuple(lines)
+
+
+def _render_model_decision(*, entry: DirectPlanEntry, verbose: bool) -> tuple[str, ...]:
     lines: list[str] = [cli_style().object_name(text=_key_name(entry.model_key))]
     if entry.sql_change is not None:
         lines.extend(_render_sql_change(sql_change=entry.sql_change, verbose=verbose))
     lines.append(f"  {cli_style().label('reason')}  {entry.reason}")
     lines.append(f"  {cli_style().label('rebuild')}  {', '.join(entry.relation_names)}")
-    replay_root: DirectReplayRoot | None = next(
-        (root for root in plan.replay_roots if root.model_key == entry.model_key),
-        None,
-    )
-    if replay_root is not None:
-        lines.append(
-            f"  {cli_style().label('replay')}   {replay_root.driving_input_relation_name} "
-            f"[{replay_root.replay_boundary_mode}]"
-        )
     lines.append("")
     return tuple(lines)
 
