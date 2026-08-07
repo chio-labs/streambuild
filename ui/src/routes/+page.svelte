@@ -181,7 +181,7 @@
 					</div>
 				{/each}
 
-				{#if hiddenSourceCount > 0}
+				{#if sortedSources.length > SOURCE_VISIBLE_LIMIT}
 					<button
 						class="text-muted-foreground hover:text-foreground hover:bg-[var(--sb-hover)] w-full px-3.5 py-2 text-left font-mono text-[11px]"
 						onclick={() => (showAllSources = !showAllSources)}
