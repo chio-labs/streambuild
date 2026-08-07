@@ -1,10 +1,16 @@
+import json
 from pathlib import Path
 
 import pytest
 
 from streambuild.adapter.exceptions import AdapterResultError
+from streambuild.adapter.models import AdapterDirectFingerprintRecord
 from streambuild.cli.plan.main._render_direct_plan_json import render_direct_plan_json
 from streambuild.cli.workflow_artifacts.main._publish_build_workflow import publish_build_workflow
+from streambuild.compiler.compile.main.build_model_storage_identity import (
+    build_model_storage_identity,
+)
+from streambuild.compiler.compile.models import CompiledModel
 from streambuild.executor.direct.exceptions import DirectWorkflowExecutionError
 from streambuild.executor.direct.main.assemble_direct_build_workflow import (
     assemble_direct_build_workflow,
@@ -29,6 +35,7 @@ from streambuild.executor.workflow.types import WorkflowPhase
 from tests.unit.src.streambuild.executor.direct.main._test_types import (
     DirectCaptureValidationTestCase,
     DirectDistinctCaptureTestCase,
+    DirectFingerprintMetadataTestCase,
     DirectFingerprintPersistenceTestCase,
     DirectWorkflowTestCase,
 )
@@ -38,6 +45,7 @@ from tests.unit.src.streambuild.executor.direct.main.helpers import (
     InvalidOffsetCaptureDirectBuildConnection,
     MismatchedCaptureDirectBuildConnection,
     RecordingDirectBuildConnection,
+    RecordingFingerprintConnection,
     build_direct_execution_request,
     build_direct_execution_snapshot,
 )
@@ -258,3 +266,41 @@ def test_given_denied_fingerprint_rendering_when_persisting_then_warning_is_retu
 
     assert warning is not None
     assert test_case.expected_warning_fragment in warning
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DirectFingerprintMetadataTestCase(
+            description="records MODEL storage in the direct baseline",
+            model_name="beta",
+            expected_storage_key="storage",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_table_model_when_persisting_fingerprint_then_storage_identity_is_recorded(
+    test_case: DirectFingerprintMetadataTestCase,
+    tmp_path: Path,
+) -> None:
+    request: DirectBuildRequest = build_direct_execution_request(
+        project_root=tmp_path,
+        selected_model_names=(test_case.model_name,),
+    )
+    connection: RecordingFingerprintConnection = RecordingFingerprintConnection()
+
+    warning: str | None = persist_direct_fingerprints(request=request, connection=connection)
+
+    fingerprint_by_identity: dict[str, AdapterDirectFingerprintRecord] = {
+        record.logical_model_identity: record for record in connection.fingerprints
+    }
+    model_by_name: dict[str, CompiledModel] = {
+        model.key.name: model for model in request.realized_project.project.models
+    }
+    metadata: dict = json.loads(
+        fingerprint_by_identity[f"analytics.{test_case.model_name}"].identity_metadata
+    )
+    assert warning is None
+    assert metadata[test_case.expected_storage_key] == build_model_storage_identity(
+        model_by_name[test_case.model_name]
+    )

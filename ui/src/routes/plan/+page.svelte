@@ -18,6 +18,7 @@
 	import {
 		OWNERSHIP_LABEL,
 		type Plan,
+		type PlanSqlChangeStatus,
 		type Project,
 		type ReplayWindow,
 		type Selector,
@@ -28,6 +29,18 @@
 	let { data }: { data: PlanPageData } = $props();
 
 	const project: Project = getProject();
+	const SQL_CHANGE_LABEL: Record<PlanSqlChangeStatus, string> = {
+		first_baseline: 'first build',
+		query_changed: 'SQL changed',
+		no_query_change: 'no SQL change',
+		baseline_unavailable: 'baseline unavailable'
+	};
+	const SQL_CHANGE_COLOUR: Record<PlanSqlChangeStatus, string> = {
+		first_baseline: 'var(--primary)',
+		query_changed: 'var(--sb-warning)',
+		no_query_change: 'var(--sb-text-faint)',
+		baseline_unavailable: 'var(--sb-warning)'
+	};
 
 	// Selection lives in the URL, so every other surface (Graph, Pipelines,
 	// Catalog) is just a link constructor and a plan is shareable.
@@ -408,6 +421,53 @@
 							{selectedCount} selected · {downstreamCount} downstream of selection
 						{/if}
 					</div>
+				</div>
+			</div>
+
+			<div>
+				<div
+					class="text-[var(--sb-text-faint)] pb-2 font-mono text-[10px] uppercase tracking-[0.14em]"
+				>
+					Model SQL baselines
+				</div>
+				<div class="overflow-hidden rounded-[4px] border border-border">
+					{#each planEntries as entry (entry.modelName)}
+						<div class="border-b border-[var(--border-subtle)] px-2.5 py-2 last:border-b-0">
+							<div class="flex items-center gap-2.5">
+								<span class="code truncate text-[11px]">{entry.modelName}</span>
+								<span class="text-[var(--sb-text-faint)] font-mono text-[10px]">
+									{entry.reason === 'downstream_of_selected' ? 'downstream' : entry.reason}
+								</span>
+								{#if entry.sqlChange}
+									<span
+										class="ml-auto shrink-0 font-mono text-[10px]"
+										style:color={SQL_CHANGE_COLOUR[entry.sqlChange.status]}
+									>
+										{SQL_CHANGE_LABEL[entry.sqlChange.status]}
+									</span>
+								{:else}
+									<span class="text-[var(--sb-text-faint)] ml-auto font-mono text-[10px]">
+										not compared
+									</span>
+								{/if}
+							</div>
+							{#if entry.sqlChange?.warning}
+								<div class="pt-1 font-mono text-[10px]" style:color="var(--sb-warning)">
+									{entry.sqlChange.warning}
+								</div>
+							{/if}
+							{#if entry.sqlChange?.unifiedDiff}
+								<details class="pt-1">
+									<summary class="text-muted-foreground cursor-pointer font-mono text-[10px]">
+										view SQL diff
+									</summary>
+									<pre
+										class="bg-[var(--sb-inset)] mt-1 max-h-56 overflow-auto rounded-[3px] p-2 font-mono text-[10px] leading-relaxed"
+									>{entry.sqlChange.unifiedDiff}</pre>
+								</details>
+							{/if}
+						</div>
+					{/each}
 				</div>
 			</div>
 
