@@ -72,7 +72,7 @@
 					<GitCompareIcon size={14} color="var(--sb-stale)" class="shrink-0" />
 					<span class="text-[12.5px]">
 						<strong class="font-medium">{drifted.length}</strong>
-						{drifted.length === 1 ? 'model differs' : 'models differ'} from compiled code
+						{drifted.length === 1 ? 'model changed' : 'models changed'} since the last applied build
 					</span>
 					<span class="text-muted-foreground font-mono text-[11px]">
 						{drifted.map((model) => model.name).join(' · ')}
@@ -248,7 +248,7 @@
 									<span class="w-[84px] shrink-0"><StatusPill status={model.status} /></span>
 									<span class="text-muted-foreground font-mono text-[11px]">
 										{#if model.status === 'drift'}
-											live DDL differs from compiled
+											definition changed since last build
 										{:else}
 											last row {formatAgo(model.live.newestRowAt, project.capturedAt)}
 										{/if}

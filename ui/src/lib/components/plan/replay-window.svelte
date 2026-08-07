@@ -6,6 +6,7 @@
 		formatDaySpan,
 		formatTimestamp,
 		fromDateTimeLocal,
+		parseUtc,
 		toDateTimeLocal
 	} from '$lib/domain/format';
 	import type { Project, ReplayWindow, Source } from '$lib/domain/types';
@@ -41,23 +42,28 @@
 	 * stop you asking for history the other sources still hold.
 	 */
 	const boundFrom = $derived.by((): string => {
-		if (sources.length === 0) return project.capturedAt;
-		return new Date(
-			Math.min(...sources.map((source) => new Date(source.live.oldestEventAt).getTime()))
-		).toISOString();
+		const candidates: number[] = sources
+			.map((source) => source.live.oldestEventAt)
+			.filter((instant): instant is string => Boolean(instant))
+			.map((instant) => parseUtc(instant).getTime())
+			.filter((milliseconds) => Number.isFinite(milliseconds));
+		if (candidates.length === 0) return project.capturedAt;
+		return new Date(Math.min(...candidates)).toISOString();
 	});
+	const startTime = $derived(replayWindow.mode === 'from' ? replayWindow.startTime : boundFrom);
 
 	/** Sources that cannot reach back as far as the chosen cutoff. */
-	const shortSources = $derived(
-		sources.filter(
-			(source) => new Date(source.live.oldestEventAt).getTime() > new Date(startTime).getTime()
-		)
-	);
+	const shortSources = $derived.by((): Source[] => {
+		const startMilliseconds: number = parseUtc(startTime).getTime();
+		return sources.filter((source) => {
+			if (!source.live.oldestEventAt) return false;
+			const oldestMilliseconds: number = parseUtc(source.live.oldestEventAt).getTime();
+			return Number.isFinite(oldestMilliseconds) && oldestMilliseconds > startMilliseconds;
+		});
+	});
 
 	const boundTo = $derived(project.capturedAt);
 	const totalMs = $derived(Math.max(new Date(boundTo).getTime() - new Date(boundFrom).getTime(), 1));
-
-	const startTime = $derived(replayWindow.mode === 'from' ? replayWindow.startTime : boundFrom);
 
 	/** Slider position as a 0–1000 integer over the retention window. */
 	const sliderValue = $derived(

@@ -5,7 +5,7 @@
 	let { status, compact = false }: Props = $props();
 
 	// Freshness owns the alert hues. `drift` is purple because it is a
-	// code-vs-warehouse mismatch, not a data problem — a different class of thing.
+	// code-vs-baseline mismatch, not a data problem — a different class of thing.
 	const config: Record<ModelStatus, { label: string; colour: string; title: string }> = {
 		fresh: {
 			label: 'fresh',
@@ -25,7 +25,7 @@
 		drift: {
 			label: 'drift',
 			colour: 'var(--sb-stale)',
-			title: 'Live DDL differs from compiled DDL — a rebuild is needed'
+			title: 'Definition changed since the last applied build — a rebuild is needed'
 		},
 		source: { label: 'source', colour: 'var(--sb-text-faint)', title: 'Stream source' }
 	};

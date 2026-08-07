@@ -29,3 +29,10 @@ class DirectCaptureValidationTestCase:
 class DirectFingerprintPersistenceTestCase:
     description: str
     expected_warning_fragment: str
+
+
+@dataclass(frozen=True)
+class DirectFingerprintMetadataTestCase:
+    description: str
+    model_name: str
+    expected_storage_key: str
