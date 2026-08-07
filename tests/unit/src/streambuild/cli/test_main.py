@@ -46,6 +46,7 @@ from tests.unit.src.streambuild.cli._test_types import (
     CliReconcileForwardingTestCase,
     CliRequiredDeploymentIdTestCase,
     CliSelectorForwardingTestCase,
+    CliUserErrorPresentationTestCase,
 )
 from tests.unit.src.streambuild.cli.helpers import (
     CLI_COMMAND_ARGV,
@@ -398,6 +399,42 @@ def test_given_cli_args_when_running_main_then_it_prints_expected_json(
     assert exit_code == test_case.expected_exit_code
     for expected_fragment in test_case.expected_output_fragments:
         assert expected_fragment in normalized_output
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliUserErrorPresentationTestCase(
+            description="missing project renders a styled error and corrective hint",
+            expected_error_fragments=(
+                "\033[31m\033[1mError\033[0m",
+                "No StreamBuild project found from the current directory.",
+                "\033[33mHint\033[0m: Run this command inside a project or pass --project-dir.",
+            ),
+            expected_exit_code=1,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_missing_project_when_running_dev_then_error_and_hint_are_styled(
+    test_case: CliUserErrorPresentationTestCase,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("FORCE_COLOR", "1")
+
+    exit_code: int = _main_with_dependencies(
+        argv=("stb", "dev"),
+        handlers=handlers_with_overrides(),
+        environment={},
+        working_directory=tmp_path,
+    )
+
+    captured_error: str = capsys.readouterr().err
+    assert exit_code == test_case.expected_exit_code
+    for expected_fragment in test_case.expected_error_fragments:
+        assert expected_fragment in captured_error
 
 
 @pytest.mark.parametrize(

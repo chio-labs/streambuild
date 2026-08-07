@@ -6,6 +6,7 @@ from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.exceptions import AdapterError
 from streambuild.adapter.models import AdapterInvocationRecord
 from streambuild.cli.build._helpers.direct_command import execute_direct_build_command
+from streambuild.cli.build._helpers.rendering import render_interrupted_build_message
 from streambuild.cli.build._helpers.virtual_command import execute_virtual_build_command
 from streambuild.cli.build.main._prepare_build_workflow import prepare_build_workflow
 from streambuild.cli.build.models import (
@@ -143,7 +144,7 @@ def run_build(
             database=resolved_database,
         )
         try:
-            print("build interrupted; recorded as cancelled", file=sys.stderr)
+            print(render_interrupted_build_message(), file=sys.stderr)
         except Exception:
             pass
         return 130

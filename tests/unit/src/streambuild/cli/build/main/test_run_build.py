@@ -88,7 +88,7 @@ def test_given_build_command_gates_when_running_then_it_refuses_before_writing(
             description="a Ctrl+C during execution persists a cancelled invocation",
             expected_exit_code=130,
             expected_invocation_outcome="cancelled",
-            expected_stderr_fragment="build interrupted; recorded as cancelled",
+            expected_stderr_fragment="Cancelled  Build interrupted and recorded as cancelled.",
             expected_execution_status="cancelled",
         )
     ],

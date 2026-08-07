@@ -131,8 +131,8 @@ def resolve_pipelines_root(
             break
         current_directory = current_directory.parent
     raise CliUserError(
-        "No StreamBuild project found from the current directory. "
-        "Run this command inside a project or pass --project-dir."
+        "No StreamBuild project found from the current directory.",
+        hint="Run this command inside a project or pass --project-dir.",
     )
 
 
