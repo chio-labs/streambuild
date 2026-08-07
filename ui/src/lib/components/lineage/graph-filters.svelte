@@ -83,7 +83,7 @@
 </script>
 
 <div class="flex flex-wrap items-center gap-2">
-	<div class="relative">
+	<div class="relative w-full sm:w-auto">
 		<SearchIcon
 			size={12}
 			class="text-[var(--sb-text-faint)] pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2"
@@ -91,7 +91,7 @@
 		<input
 			value={filters.search}
 			placeholder="Search name or relation…"
-			class="bg-[var(--sb-inset)] w-[210px] rounded-[4px] border border-border py-1.5 pl-7 pr-2.5 font-mono text-[11px] outline-none focus:border-[var(--primary)]"
+			class="bg-[var(--sb-inset)] w-full rounded-[4px] border border-border py-1.5 pl-7 pr-2.5 font-mono text-[11px] outline-none focus:border-[var(--primary)] sm:w-[210px]"
 			oninput={(event) => onchange({ ...filters, search: event.currentTarget.value })}
 		/>
 	</div>

@@ -132,7 +132,7 @@
 		onclick={close}
 	></button>
 	<div
-		class="bg-background fixed inset-x-0 bottom-0 z-50 max-h-[70vh] rounded-t-[10px] border-t border-border shadow-2xl"
+		class="bg-background fixed inset-x-0 bottom-0 z-50 max-h-[85vh] overflow-y-auto rounded-t-[10px] border-t border-border shadow-2xl lg:max-h-[70vh]"
 	>
 		<div class="flex items-center gap-3 border-b border-border px-[18px] py-3">
 			<span class="font-display text-[14px] font-semibold">Run</span>
@@ -149,7 +149,7 @@
 			</button>
 		</div>
 
-		<div class="grid gap-4 px-[18px] py-4" style:grid-template-columns="1fr 340px">
+		<div class="grid grid-cols-1 gap-4 px-3 py-4 sm:px-[18px] lg:grid-cols-[1fr_340px]">
 			<div>
 				<div
 					class="text-[var(--sb-text-faint)] pb-1.5 font-mono text-[10px] uppercase tracking-[0.14em]"
@@ -202,7 +202,7 @@
 		</div>
 
 		<div class="border-t border-border px-[18px] py-3">
-			<div class="flex items-center gap-2">
+			<div class="flex flex-wrap items-center gap-2">
 				<span class="text-[var(--sb-text-faint)] shrink-0 font-mono text-[13px]">$</span>
 				<input
 					bind:value={cmd}
@@ -211,7 +211,7 @@
 						if (event.key === 'Enter' && parsed.error === null && !executing) void run();
 					}}
 					spellcheck="false"
-					class="bg-[var(--sb-inset)] min-w-0 flex-1 rounded-[4px] border border-border px-2.5 py-2 font-mono text-[12px] outline-none focus:border-[var(--primary)]"
+					class="bg-[var(--sb-inset)] min-w-0 basis-full rounded-[4px] border border-border px-2.5 py-2 font-mono text-[12px] outline-none focus:border-[var(--primary)] sm:flex-1 sm:basis-auto"
 					placeholder="stb build --select orders --auto-approve"
 				/>
 				<button

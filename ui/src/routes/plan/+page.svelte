@@ -328,7 +328,7 @@
 				>
 					<TerminalIcon size={11} /> Preview a command
 				</Popover.Trigger>
-				<Popover.Content class="w-[440px] p-3" align="end">
+				<Popover.Content class="w-[min(440px,calc(100vw-2rem))] p-3" align="end">
 					<div
 						class="text-[var(--sb-text-faint)] pb-1.5 font-mono text-[10px] uppercase tracking-[0.14em]"
 					>
@@ -386,9 +386,9 @@
 	{/if}
 
 	<!-- ── scope ───────────────────────────────────────────────────────────── -->
-	<div class="grid gap-5 px-[18px] py-4" style:grid-template-columns="minmax(0,1fr) 380px">
+	<div class="grid grid-cols-1 gap-5 px-3 py-4 sm:px-[18px] xl:grid-cols-[minmax(0,1fr)_380px]">
 		<div class="flex min-w-0 flex-col gap-5">
-			<div class="grid grid-cols-2 gap-4">
+			<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
 				<div class="rounded-[4px] border border-border p-3">
 					<div
 						class="text-[var(--sb-text-faint)] pb-1.5 font-mono text-[10px] uppercase tracking-[0.14em]"
@@ -500,7 +500,7 @@
 			</div>
 
 			<!-- teardown / creation -->
-			<div class="grid grid-cols-2 gap-4">
+			<div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
 				<div>
 					<div
 						class="text-[var(--sb-text-faint)] flex items-baseline gap-2 pb-2 font-mono text-[10px] uppercase tracking-[0.14em]"
@@ -643,7 +643,7 @@
 
 	<!-- ── hand-off ────────────────────────────────────────────────────────── -->
 	<div class="bg-[var(--sb-surface-low)] shrink-0 border-t border-border px-[18px] py-3">
-		<div class="flex items-center gap-3">
+		<div class="flex flex-wrap items-center gap-3">
 			<div class="text-muted-foreground shrink-0 font-mono text-[10.5px]">
 				Planned against the {formatClock(plan?.plannedAt ?? '')} snapshot
 				{#if lastBuild}
@@ -663,7 +663,7 @@
 				<RotateIcon size={11} /> {planLoading ? 'planning…' : 'Re-plan'}
 			</button>
 			<code
-				class="bg-[var(--sb-inset)] ml-auto min-w-0 flex-1 truncate rounded-[4px] border border-border px-2.5 py-1.5 font-mono text-[11.5px]"
+				class="bg-[var(--sb-inset)] order-last min-w-0 basis-full truncate rounded-[4px] border border-border px-2.5 py-1.5 font-mono text-[11.5px] lg:order-none lg:ml-auto lg:flex-1 lg:basis-auto"
 				>$ {plan?.command ?? 'stb build'}</code
 			>
 			<button
