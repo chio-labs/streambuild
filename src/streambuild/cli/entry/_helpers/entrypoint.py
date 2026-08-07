@@ -14,6 +14,12 @@ from streambuild.compiler.discovery.main.load_project_input_for_path import (
 from streambuild.compiler.discovery.models import EffectiveProjectConfiguration, LoadedProject
 
 
+def raise_keyboard_interrupt_from_signal(*_signal_args: object) -> None:
+    """Map a process-manager termination signal onto the CLI cancellation path."""
+
+    raise KeyboardInterrupt
+
+
 def argv_for_parse_args(argv: Sequence[str] | None) -> list[str] | None:
     if argv is None:
         return None

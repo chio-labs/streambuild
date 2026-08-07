@@ -369,6 +369,7 @@ def test_given_local_mode_override_when_running_specific_command_then_effective_
         environment={},
         working_directory=project_dir,
         adapter_connection=cast(AdapterConnection, FakeCliClickHouseClient()),
+        observation_adapter_connection=cast(AdapterConnection, FakeCliClickHouseClient()),
     )
 
     assert exit_code == test_case.expected_exit_code

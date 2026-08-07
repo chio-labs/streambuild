@@ -1,6 +1,6 @@
 <script lang="ts">
 	import AppTopbar from '$lib/components/app-topbar.svelte';
-	import { getProject, fetchRuns, type RunRecord } from '$lib/api';
+	import { cancelBuild, fetchBuildFeed, getProject, fetchRuns, type RunRecord } from '$lib/api';
 	import { formatAgo, formatDuration, formatTimestamp } from '$lib/domain/format';
 	import type { Project } from '$lib/domain/types';
 
@@ -11,15 +11,33 @@
 	// build finished in another terminal should appear without re-navigating.
 	let runs = $state<RunRecord[] | null>(null);
 	let loadError = $state<string | null>(null);
+	let ownedInvocationId = $state<string | null>(null);
+	let cancellingInvocationId = $state<string | null>(null);
 
 	const POLL_MS = 10_000;
 
 	async function refresh(): Promise<void> {
 		try {
-			runs = await fetchRuns();
+			const [recordedRuns, ownership] = await Promise.all([fetchRuns(), fetchBuildFeed(0)]);
+			runs = recordedRuns;
+			ownedInvocationId = ownership.running ? ownership.invocationId : null;
 			loadError = null;
 		} catch (error) {
 			loadError = (error as Error).message;
+		}
+	}
+
+	async function cancelOwned(invocationId: string): Promise<void> {
+		if (!window.confirm('Cancel this build? A direct closure may be partially rebuilt; rerunning is safe.')) return;
+		if (cancellingInvocationId !== null) return;
+		cancellingInvocationId = invocationId;
+		try {
+			await cancelBuild(invocationId);
+			await refresh();
+		} catch (error) {
+			loadError = error instanceof Error ? error.message : String(error);
+		} finally {
+			cancellingInvocationId = null;
 		}
 	}
 
@@ -35,14 +53,16 @@
 	type StatusFilter = 'all' | 'succeeded' | 'failed';
 	let statusFilter = $state<StatusFilter>('all');
 
-	const succeededCount = $derived((runs ?? []).filter((run) => run.outcome === 'succeeded').length);
-	const failedCount = $derived((runs ?? []).filter((run) => run.outcome !== 'succeeded').length);
+	const succeededCount = $derived((runs ?? []).filter((run) => run.status === 'succeeded').length);
+	const failedCount = $derived(
+		(runs ?? []).filter((run) => run.status === 'failed' || run.status === 'presumed_failed').length
+	);
 
 	const visibleRuns = $derived(
 		(runs ?? []).filter((run) => {
 			if (statusFilter === 'all') return true;
-			if (statusFilter === 'succeeded') return run.outcome === 'succeeded';
-			return run.outcome !== 'succeeded';
+			if (statusFilter === 'succeeded') return run.status === 'succeeded';
+			return run.status === 'failed' || run.status === 'presumed_failed';
 		})
 	);
 
@@ -64,6 +84,15 @@
 				text: 'var(--sb-error)',
 				border: 'color-mix(in srgb, var(--sb-error) 40%, var(--border))'
 			};
+		}
+		if (outcome === 'running') {
+			return { label: 'Running', dot: 'var(--sb-secondary)', text: 'var(--sb-secondary)', border: 'var(--border)' };
+		}
+		if (outcome === 'unresponsive') {
+			return { label: 'Unresponsive', dot: 'var(--sb-warning)', text: 'var(--sb-warning)', border: 'var(--border)' };
+		}
+		if (outcome === 'presumed_failed') {
+			return { label: 'Presumed failed', dot: 'var(--sb-warning)', text: 'var(--sb-warning)', border: 'var(--border)' };
 		}
 		return {
 			label: outcome,
@@ -143,7 +172,7 @@
 				</thead>
 				<tbody>
 					{#each visibleRuns as run (run.invocationId)}
-						{@const chip = statusChip(run.outcome)}
+						{@const chip = statusChip(run.status)}
 						<tr>
 							<td class="px-[18px] py-2.5 align-top">
 								<a
@@ -178,6 +207,17 @@
 									<span class="h-1.5 w-1.5 rounded-full" style:background={chip.dot}></span>
 									{chip.label}
 								</span>
+								{#if run.status === 'unresponsive' || run.status === 'presumed_failed'}
+									<div class="text-[var(--sb-text-faint)] pt-1 font-mono text-[10px]">
+										no signal for {run.lastSignalAgeSeconds}s · last activity {run.lastActivity ?? 'unknown'}
+									</div>
+									{#if run.status === 'presumed_failed'}
+										<div class="text-[var(--sb-text-faint)] pt-1 text-[10px]">The process may have been killed. Rerunning is safe.</div>
+									{/if}
+								{/if}
+								{#if ownedInvocationId === run.invocationId && run.status === 'running'}
+									<button class="mt-1 font-mono text-[10px] underline disabled:opacity-50" style:color="var(--sb-warning)" disabled={cancellingInvocationId !== null} onclick={() => void cancelOwned(run.invocationId)}>{cancellingInvocationId === run.invocationId ? 'Cancelling...' : 'Cancel'}</button>
+								{/if}
 							</td>
 							<td class="px-3 align-top">
 								<div class="text-[12px]">{formatTimestamp(run.startedAt)}</div>

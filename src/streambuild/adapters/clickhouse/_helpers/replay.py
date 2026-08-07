@@ -5,15 +5,14 @@ from __future__ import annotations
 from streambuild.adapter.constants import (
     METADATA_DEPLOYMENT_WATERMARKS_TABLE_NAME,
     METADATA_DEPLOYMENTS_TABLE_NAME,
-    METADATA_DIRECT_REPLAY_CHECKPOINTS_TABLE_NAME,
-    METADATA_DIRECT_REPLAY_RANGES_TABLE_NAME,
 )
 from streambuild.adapter.exceptions import AdapterReplayError
 from streambuild.adapter.models import (
-    AdapterCheckpointReplayRequest,
+    AdapterCapturedReplayRequest,
     AdapterDeploymentReplayRequest,
     AdapterReplayBoundary,
     AdapterReplayCoverageRequest,
+    AdapterReplayLowerBound,
     AdapterReplayRequest,
 )
 from streambuild.adapter.types import (
@@ -37,21 +36,45 @@ _CANONICAL_REPLAY_PARTITION: str = "_replay_partition"
 _CANONICAL_REPLAY_OFFSET: str = "_replay_offset"
 
 
-def render_clickhouse_replay_from_checkpoint(request: AdapterCheckpointReplayRequest) -> str:
-    """Render one full replay whose inclusive cutoff is read inside ClickHouse."""
-
-    replay: AdapterReplayRequest = request.replay
-    if replay.mode == AdapterReplayBoundaryMode.OFFSETS:
-        return _render_metadata_offset_replay(request)
-    return _render_metadata_scalar_replay(request)
-
-
 def render_clickhouse_replay_coverage_query(request: AdapterReplayCoverageRequest) -> str:
     """Render checkpoint coverage for the rows selected by one replay window."""
 
     if request.replay.mode == AdapterReplayBoundaryMode.OFFSETS:
         return _offset_coverage_query(request.replay)
     return _scalar_coverage_query(request)
+
+
+def render_clickhouse_replay_from_capture(request: AdapterCapturedReplayRequest) -> str:
+    """Render one direct replay from process-owned typed boundaries."""
+
+    replay: AdapterReplayRequest = request.replay
+    if replay.mode == AdapterReplayBoundaryMode.OFFSETS:
+        lower_bound_rows: tuple[ClickHouseReplayOffsetFrontier, ...] = tuple(
+            ClickHouseReplayOffsetFrontier(
+                partition=int(_required_partition_value(lower_bound)),
+                cutoff_offset=lower_bound.value,
+            )
+            for lower_bound in request.lower_bounds
+        )
+        return _render_offset_replay(request=replay, lower_bound_rows=lower_bound_rows)
+    boundary: AdapterReplayBoundary = (
+        replay.boundaries[0]
+        if replay.boundaries
+        else AdapterReplayBoundary(
+            boundary_key=_canonical_boundary_column(replay.mode),
+            cutoff_value="",
+            cutoff_inclusive=True,
+        )
+    )
+    if request.boundary_column_type is None:
+        raise AdapterReplayError("Scalar captured replay requires a resolved boundary column type")
+    lower_bound_value: str | None = request.lower_bounds[0].value if request.lower_bounds else None
+    return _render_scalar_replay(
+        request=replay,
+        boundary=boundary,
+        boundary_column_type=request.boundary_column_type,
+        lower_bound_value=lower_bound_value,
+    )
 
 
 def render_clickhouse_replay_from_deployment(
@@ -396,195 +419,6 @@ def _required_deployment_boundary_type(request: AdapterDeploymentReplayRequest) 
     return request.boundary_column_type
 
 
-def _render_metadata_offset_replay(request: AdapterCheckpointReplayRequest) -> str:
-    replay: AdapterReplayRequest = request.replay
-    coverage_cte: str = _checkpoint_coverage_cte(request)
-    cutoff_cte: str = (
-        "SELECT toInt64(splitByChar('=', JSONExtractString(coverage, 'boundary_key'))[2]) "
-        f"AS {_CANONICAL_REPLAY_PARTITION}, "
-        "max(toInt64(JSONExtractString(coverage, 'upper_value'))) AS cutoff_offset\n"
-        f"FROM checkpoint_coverage\nGROUP BY {_CANONICAL_REPLAY_PARTITION}"
-    )
-    lower_cte: str | None = _replay_offset_lower_cte(
-        replay=replay,
-        active_relation_name=None,
-        lookback_time_expression=None,
-    )
-    if replay.replay_query.aggregate_semantics:
-        lower_join: str = _offset_lower_bound_join(
-            source_alias="anchor",
-            partition_column=replay.columns.partition,
-            has_lower_bound=lower_cte is not None,
-        )
-        lower_clause: str = _offset_lower_bound_clause(
-            source_alias="anchor",
-            offset_column=replay.columns.offset,
-            has_lower_bound=lower_cte is not None,
-            inclusive=replay.window.lower_bound_inclusive,
-        )
-        source_sql: str = (
-            f"SELECT anchor.*\nFROM {replay.database}.{replay.relations.anchor} AS anchor\n"
-            "INNER JOIN cutoff_offsets\n"
-            f"ON anchor.{replay.columns.partition} = cutoff_offsets.{_CANONICAL_REPLAY_PARTITION}\n"
-            f"{lower_join}"
-            f"WHERE anchor.{replay.columns.offset} <= cutoff_offsets.cutoff_offset\n"
-            f"{lower_clause}"
-        ).rstrip()
-        named_queries: tuple[SqlNamedQuery, ...] = (
-            SqlNamedQuery(name="checkpoint_coverage", query=coverage_cte),
-            SqlNamedQuery(name="cutoff_offsets", query=cutoff_cte),
-            *((SqlNamedQuery(name="active_start_offsets", query=lower_cte),) if lower_cte else ()),
-        )
-        rewritten_query: str = _rewrite_replay_query(
-            sql=replay.replay_query.query,
-            relation_rewrites=(
-                SqlRelationRewrite(
-                    source_name=replay.relations.source,
-                    target_relation=f"({source_sql})",
-                ),
-            ),
-            prepend_ctes=named_queries,
-        ).query
-        return _build_replay_insert(request=replay, query=rewritten_query)
-    replay_query: str = _rewrite_replay_query(
-        sql=replay.replay_query.query,
-        relation_rewrites=(
-            SqlRelationRewrite(
-                source_name=replay.relations.source,
-                target_relation=f"{replay.database}.{replay.relations.anchor}",
-            ),
-        ),
-    ).query
-    lower_cte_sql: str = (
-        f",\nactive_start_offsets AS (\n{lower_cte}\n)\n" if lower_cte is not None else "\n"
-    )
-    lower_join = _offset_lower_bound_join(
-        source_alias="replay_source",
-        partition_column=_CANONICAL_REPLAY_PARTITION,
-        has_lower_bound=lower_cte is not None,
-    )
-    lower_clause = _offset_lower_bound_clause(
-        source_alias="replay_source",
-        offset_column=_CANONICAL_REPLAY_OFFSET,
-        has_lower_bound=lower_cte is not None,
-        inclusive=replay.window.lower_bound_inclusive,
-    )
-    wrapped_query: str = (
-        f"WITH checkpoint_coverage AS (\n{coverage_cte}\n),\n"
-        f"cutoff_offsets AS (\n{cutoff_cte}\n)"
-        f"{lower_cte_sql}"
-        "SELECT replay_source.*\n"
-        f"FROM (\n{replay_query}\n) AS replay_source\n"
-        "INNER JOIN cutoff_offsets\n"
-        f"ON replay_source.{_CANONICAL_REPLAY_PARTITION} = "
-        f"cutoff_offsets.{_CANONICAL_REPLAY_PARTITION}\n"
-        f"{lower_join}"
-        f"WHERE replay_source.{_CANONICAL_REPLAY_OFFSET} <= cutoff_offsets.cutoff_offset\n"
-        f"{lower_clause}"
-    )
-    return _build_replay_insert(
-        request=replay,
-        query=_rewrite_replay_query(sql=wrapped_query).query,
-    )
-
-
-def _render_metadata_scalar_replay(request: AdapterCheckpointReplayRequest) -> str:
-    replay: AdapterReplayRequest = request.replay
-    column_type: str | None = request.boundary_column_type
-    if column_type is None:
-        raise AdapterReplayError(
-            "Scalar checkpoint replay requires a resolved boundary column type"
-        )
-    coverage_cte: str = _checkpoint_coverage_cte(request)
-    cutoff_cte: str = (
-        "SELECT max(CAST(JSONExtractString(coverage, 'replay_cutoff_value') AS "
-        f"{column_type})) AS cutoff_value FROM checkpoint_coverage"
-    )
-    physical_column: str = _physical_boundary_column(replay)
-    upper_expression: str = "(SELECT cutoff_value FROM replay_cutoff)"
-    lower_expression: str | None = _replay_scalar_lower_expression(
-        replay=replay,
-        column_type=column_type,
-        active_relation_name=None,
-        lookback_time_expression=None,
-        upper_expression=upper_expression,
-    )
-    if replay.replay_query.aggregate_semantics:
-        physical_predicate: str = _dynamic_scalar_predicate(
-            column_name=f"anchor.{physical_column}",
-            upper_expression="replay_cutoff.cutoff_value",
-            lower_expression=lower_expression,
-            inclusive=replay.window.lower_bound_inclusive,
-        )
-        source_sql: str = (
-            f"SELECT anchor.*\nFROM {replay.database}.{replay.relations.anchor} AS anchor\n"
-            "CROSS JOIN replay_cutoff\n"
-            f"WHERE {physical_predicate}"
-        )
-        rewritten_query: str = _rewrite_replay_query(
-            sql=replay.replay_query.query,
-            relation_rewrites=(
-                SqlRelationRewrite(
-                    source_name=replay.relations.source,
-                    target_relation=f"({source_sql})",
-                ),
-            ),
-            prepend_ctes=(
-                SqlNamedQuery(name="checkpoint_coverage", query=coverage_cte),
-                SqlNamedQuery(name="replay_cutoff", query=cutoff_cte),
-            ),
-        ).query
-        return _build_replay_insert(request=replay, query=rewritten_query)
-    replay_query: str = _rewrite_replay_query(
-        sql=replay.replay_query.query,
-        relation_rewrites=(
-            SqlRelationRewrite(
-                source_name=replay.relations.source,
-                target_relation=f"{replay.database}.{replay.relations.anchor}",
-            ),
-        ),
-        predicate=_dynamic_scalar_predicate(
-            column_name=_canonical_boundary_column(replay.mode),
-            upper_expression=upper_expression,
-            lower_expression=lower_expression,
-            inclusive=replay.window.lower_bound_inclusive,
-        ),
-        prepend_ctes=(
-            SqlNamedQuery(name="checkpoint_coverage", query=coverage_cte),
-            SqlNamedQuery(name="replay_cutoff", query=cutoff_cte),
-        ),
-    ).query
-    return _build_replay_insert(request=replay, query=replay_query)
-
-
-def _checkpoint_coverage_cte(request: AdapterCheckpointReplayRequest) -> str:
-    replay: AdapterReplayRequest = request.replay
-    return (
-        "WITH current_checkpoint AS (SELECT argMax(tuple(replay_set_id, capture_id), "
-        "tuple(recorded_at, capture_id)) AS current_set "
-        "FROM "
-        f"{request.metadata_database}.{METADATA_DIRECT_REPLAY_CHECKPOINTS_TABLE_NAME} "
-        f"WHERE checkpoint_id = '{_escape_literal(request.checkpoint_id)}' "
-        f"AND checkpoint_sequence = {request.checkpoint_sequence})\n"
-        "SELECT DISTINCT toJSONString(map('driving_input_relation_name', "
-        "driving_input_relation_name, "
-        "'replay_boundary_mode', replay_boundary_mode, 'boundary_key', "
-        "if(replay_boundary_mode = 'offsets', concat('_replay_partition=', partition_value), "
-        "concat('_replay_', replay_boundary_mode)), 'source_partition_column_name', "
-        "coalesce(source_partition_column_name, ''), 'source_position_column_name', "
-        "source_position_column_name, 'source_timestamp_column_name', "
-        "coalesce(source_timestamp_column_name, ''), 'lower_value', lower_value, "
-        "'upper_value', upper_value, 'replay_cutoff_value', replay_cutoff_value)) AS coverage\n"
-        f"FROM {request.metadata_database}.{METADATA_DIRECT_REPLAY_RANGES_TABLE_NAME} "
-        "CROSS JOIN current_checkpoint "
-        "WHERE replay_set_id = current_checkpoint.current_set.1 "
-        "AND capture_id = current_checkpoint.current_set.2 "
-        f"AND target_database_name = '{_escape_literal(replay.database)}' "
-        "AND range_present AND logical_model_name = "
-        f"'{_escape_literal(request.logical_model_name)}'"
-    )
-
-
 def _offset_coverage_query(replay: AdapterReplayRequest) -> str:
     timestamp_column: str = replay.columns.timestamp or ""
     lower_cte: str | None = _replay_offset_lower_cte(
@@ -612,14 +446,16 @@ def _offset_coverage_query(replay: AdapterReplayRequest) -> str:
     )
     return (
         f"{lower_prefix}"
-        "SELECT toJSONString(groupArray(map("
-        f"'driving_input_relation_name', '{_escape_literal(replay.relations.anchor)}', "
-        "'replay_boundary_mode', 'offsets', "
-        "'boundary_key', concat('_replay_partition=', toString(partition_value)), "
-        f"'source_partition_column_name', '{_escape_literal(replay.columns.partition)}', "
-        f"'source_position_column_name', '{_escape_literal(replay.columns.offset)}', "
-        f"'source_timestamp_column_name', '{_escape_literal(timestamp_column)}', "
-        "'lower_value', toString(lower_value), 'upper_value', toString(upper_value)))) AS value\n"
+        f"SELECT '{_escape_literal(replay.relations.anchor)}' AS driving_input_relation_name, "
+        "'offsets' AS replay_boundary_mode, "
+        "concat('_replay_partition=', toString(partition_value)) AS boundary_key, "
+        "toString(partition_value) AS partition_value, "
+        f"'{_escape_literal(replay.columns.partition)}' AS source_partition_column_name, "
+        f"'{_escape_literal(replay.columns.offset)}' AS source_position_column_name, "
+        f"'{_escape_literal(timestamp_column)}' AS source_timestamp_column_name, "
+        "toString(lower_value) AS lower_value, toString(upper_value) AS upper_value, "
+        "toString(upper_value) AS replay_cutoff_value, true AS cutoff_inclusive, "
+        "now64(9, 'UTC') AS captured_at\n"
         "FROM (\n"
         f"SELECT partition_value, min(offset_value) AS lower_value, "
         "max(offset_value) AS upper_value\nFROM (\n"
@@ -638,14 +474,16 @@ def _offset_coverage_query(replay: AdapterReplayRequest) -> str:
 
 def _full_offset_coverage_query(*, replay: AdapterReplayRequest, timestamp_column: str) -> str:
     return (
-        "SELECT toJSONString(groupArray(map("
-        f"'driving_input_relation_name', '{_escape_literal(replay.relations.anchor)}', "
-        "'replay_boundary_mode', 'offsets', "
-        "'boundary_key', concat('_replay_partition=', toString(partition_value)), "
-        f"'source_partition_column_name', '{_escape_literal(replay.columns.partition)}', "
-        f"'source_position_column_name', '{_escape_literal(replay.columns.offset)}', "
-        f"'source_timestamp_column_name', '{_escape_literal(timestamp_column)}', "
-        "'lower_value', toString(lower_value), 'upper_value', toString(upper_value)))) AS value\n"
+        f"SELECT '{_escape_literal(replay.relations.anchor)}' AS driving_input_relation_name, "
+        "'offsets' AS replay_boundary_mode, "
+        "concat('_replay_partition=', toString(partition_value)) AS boundary_key, "
+        "toString(partition_value) AS partition_value, "
+        f"'{_escape_literal(replay.columns.partition)}' AS source_partition_column_name, "
+        f"'{_escape_literal(replay.columns.offset)}' AS source_position_column_name, "
+        f"'{_escape_literal(timestamp_column)}' AS source_timestamp_column_name, "
+        "toString(lower_value) AS lower_value, toString(upper_value) AS upper_value, "
+        "toString(upper_value) AS replay_cutoff_value, true AS cutoff_inclusive, "
+        "now64(9, 'UTC') AS captured_at\n"
         "FROM (\n"
         f"SELECT partition_value, min(offset_value) AS lower_value, "
         "max(offset_value) AS upper_value\nFROM (\n"
@@ -692,14 +530,15 @@ def _scalar_coverage_query(request: AdapterReplayCoverageRequest) -> str:
     cutoff_prefix: str = f"WITH replay_cutoff AS ({cutoff_query})\n"
     return (
         f"{cutoff_prefix}"
-        "SELECT toJSONString(groupArray(map("
-        f"'driving_input_relation_name', '{_escape_literal(replay.relations.anchor)}', "
-        f"'replay_boundary_mode', '{replay.mode}', 'boundary_key', '{canonical_key}', "
-        "'source_partition_column_name', '', "
-        f"'source_position_column_name', '{_escape_literal(position_column)}', "
-        f"'source_timestamp_column_name', '{_escape_literal(replay.columns.timestamp)}', "
-        "'lower_value', toString(lower_value), 'upper_value', toString(upper_value), "
-        "'replay_cutoff_value', toString(cutoff_value)))) AS value\n"
+        f"SELECT '{_escape_literal(replay.relations.anchor)}' AS driving_input_relation_name, "
+        f"'{replay.mode}' AS replay_boundary_mode, '{canonical_key}' AS boundary_key, "
+        "CAST(NULL AS Nullable(String)) AS partition_value, "
+        "'' AS source_partition_column_name, "
+        f"'{_escape_literal(position_column)}' AS source_position_column_name, "
+        f"'{_escape_literal(replay.columns.timestamp)}' AS source_timestamp_column_name, "
+        "toString(lower_value) AS lower_value, toString(upper_value) AS upper_value, "
+        "toString(cutoff_value) AS replay_cutoff_value, true AS cutoff_inclusive, "
+        "now64(9, 'UTC') AS captured_at\n"
         f"FROM (SELECT min({position_column}) AS lower_value, "
         f"max({position_column}) AS upper_value, {upper_expression} AS cutoff_value "
         f"FROM {replay.database}.{replay.relations.anchor} WHERE {coverage_predicate} "
@@ -716,14 +555,15 @@ def _full_scalar_coverage_query(
         else "now64(3, 'UTC')"
     )
     return (
-        "SELECT toJSONString(groupArray(map("
-        f"'driving_input_relation_name', '{_escape_literal(replay.relations.anchor)}', "
-        f"'replay_boundary_mode', '{replay.mode}', 'boundary_key', '{canonical_key}', "
-        "'source_partition_column_name', '', "
-        f"'source_position_column_name', '{_escape_literal(position_column)}', "
-        f"'source_timestamp_column_name', '{_escape_literal(replay.columns.timestamp)}', "
-        "'lower_value', toString(lower_value), 'upper_value', toString(upper_value), "
-        "'replay_cutoff_value', toString(cutoff_value)))) AS value\n"
+        f"SELECT '{_escape_literal(replay.relations.anchor)}' AS driving_input_relation_name, "
+        f"'{replay.mode}' AS replay_boundary_mode, '{canonical_key}' AS boundary_key, "
+        "CAST(NULL AS Nullable(String)) AS partition_value, "
+        "'' AS source_partition_column_name, "
+        f"'{_escape_literal(position_column)}' AS source_position_column_name, "
+        f"'{_escape_literal(replay.columns.timestamp)}' AS source_timestamp_column_name, "
+        "toString(lower_value) AS lower_value, toString(upper_value) AS upper_value, "
+        "toString(cutoff_value) AS replay_cutoff_value, true AS cutoff_inclusive, "
+        "now64(9, 'UTC') AS captured_at\n"
         f"FROM (SELECT min({position_column}) AS lower_value, "
         f"max({position_column}) AS upper_value, {cutoff_expression} AS cutoff_value "
         f"FROM {replay.database}.{replay.relations.anchor} HAVING count() > 0)"
@@ -746,6 +586,12 @@ def _canonical_boundary_column(mode: AdapterReplayBoundaryMode) -> str:
 
 def _escape_literal(value: str) -> str:
     return value.replace("\\", "\\\\").replace("'", "\\'")
+
+
+def _required_partition_value(lower_bound: AdapterReplayLowerBound) -> str:
+    if lower_bound.partition_value is None:
+        raise AdapterReplayError("Offset replay lower bound requires a partition value")
+    return lower_bound.partition_value
 
 
 def _render_scalar_replay(
@@ -989,6 +835,11 @@ def _build_replay_insert(*, request: AdapterReplayRequest, query: str) -> str:
 
 
 def _offset_frontier_cte(*, boundaries: tuple[AdapterReplayBoundary, ...], value_alias: str) -> str:
+    if not boundaries:
+        return (
+            "SELECT toInt64(0) AS _replay_partition, toInt64(0) AS "
+            f"{value_alias}, true AS cutoff_inclusive WHERE false"
+        )
     return "\nUNION ALL\n".join(
         "SELECT "
         f"{boundary.partition_value} AS {_CANONICAL_REPLAY_PARTITION}, "

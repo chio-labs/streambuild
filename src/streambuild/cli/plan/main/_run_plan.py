@@ -57,7 +57,12 @@ def run_plan(
         )
         publish_plan_workflow(
             target_dir=options.pipelines_root.parent / "target",
-            workflow=preparation.workflow,
+            workflow=(
+                preparation.workflow.template
+                if isinstance(preparation, DirectWorkflowPreparation)
+                else preparation.workflow
+            ),
+            is_template=isinstance(preparation, DirectWorkflowPreparation),
         )
         rendered_output: str = (
             preparation.workflow.plan_json if options.json_output else preparation.plan_text + "\n"
