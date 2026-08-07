@@ -5,10 +5,17 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from uuid import uuid4
 
+from streambuild.adapter.models import AdapterReplayRequest
 from streambuild.compiler.discovery.types import ReplayLineageMode
 from streambuild.compiler.pipeline.models import RealizedProject
 from streambuild.compiler.planner.models import DirectPlan
 from streambuild.executor.auditing.models import SqlAuditRunResult
+from streambuild.executor.workflow.models import (
+    BuildWorkflow,
+    WarehouseStatement,
+    WorkflowExecutionResult,
+)
+from streambuild.executor.workflow.types import WorkflowMode
 
 
 @dataclass(frozen=True)
@@ -40,6 +47,78 @@ class DirectBuildAudit:
     query: str
     severity: str
     description: str | None
+
+
+@dataclass(frozen=True)
+class DirectReplayRange:
+    """One retained interval captured for a direct replay root."""
+
+    partition_value: str | None
+    source_partition_column_name: str | None
+    source_position_column_name: str
+    source_timestamp_column_name: str | None
+    lower_value: str
+    upper_value: str
+    replay_cutoff_value: str
+    cutoff_inclusive: bool
+
+
+@dataclass(frozen=True)
+class DirectReplayCapture:
+    """Process-owned replay boundaries captured after live stabilization."""
+
+    capture_id: str
+    workflow_id: str
+    target_database: str
+    logical_model_name: str
+    driving_input_relation_name: str
+    boundary_mode: ReplayLineageMode | str
+    captured_at: str | None
+    ranges: tuple[DirectReplayRange, ...]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "boundary_mode", ReplayLineageMode(self.boundary_mode))
+
+
+@dataclass(frozen=True)
+class DirectRuntimeReplay:
+    """One replay template and the steps that capture and consume its boundary."""
+
+    model_name: str
+    capture_step_id: str
+    replay_step_id: str
+    replay: AdapterReplayRequest
+    boundary_column_type: str | None
+
+
+@dataclass(frozen=True)
+class DirectBuildWorkflow:
+    """A direct workflow template plus its runtime replay realization inputs."""
+
+    template: BuildWorkflow
+    runtime_replays: tuple[DirectRuntimeReplay, ...]
+    workflow_id: str
+
+    @property
+    def mode(self) -> WorkflowMode:
+        return self.template.mode
+
+    @property
+    def plan_json(self) -> str:
+        return self.template.plan_json
+
+    @property
+    def statements(self) -> tuple[WarehouseStatement, ...]:
+        return self.template.statements
+
+
+@dataclass(frozen=True)
+class DirectRuntimeExecution:
+    """Exact direct workflow and typed captures produced by one runtime execution."""
+
+    workflow: BuildWorkflow
+    execution: WorkflowExecutionResult
+    captures: tuple[DirectReplayCapture, ...]
 
 
 @dataclass(frozen=True)

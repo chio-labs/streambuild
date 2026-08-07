@@ -90,7 +90,7 @@ def run_test(
                     summary={"failed_count": 0},
                 ),
             )
-            persist_terminal_observations(
+            _ = persist_terminal_observations(
                 client=client,
                 database=database,
                 invocation=invocation,
@@ -138,7 +138,7 @@ def run_test(
                 summary={"failed_before_results": True},
             ),
         )
-        persist_terminal_observations(
+        _ = persist_terminal_observations(
             client=client,
             database=database,
             invocation=failed_invocation,
@@ -173,7 +173,7 @@ def run_test(
         )
         for test_case, result in zip(test_cases, results, strict=True)
     )
-    persist_terminal_observations(
+    _ = persist_terminal_observations(
         client=client,
         database=database,
         invocation=invocation,

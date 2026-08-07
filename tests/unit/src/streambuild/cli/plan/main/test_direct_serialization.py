@@ -49,6 +49,7 @@ from tests.unit.src.streambuild.cli.plan.main._test_types import (
                         "resource_kinds": ["table", "materialized_view"],
                         "driving_input_key": {"resource_type": "source", "name": "orders"},
                         "is_replay_root": True,
+                        "sql_change": None,
                     }
                 ],
                 "replay_roots": [

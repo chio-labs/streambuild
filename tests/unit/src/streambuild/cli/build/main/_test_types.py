@@ -20,6 +20,7 @@ class CliBuildInterruptTestCase:
     expected_exit_code: int
     expected_invocation_outcome: str
     expected_stderr_fragment: str
+    expected_execution_status: str
 
 
 @dataclass(frozen=True)

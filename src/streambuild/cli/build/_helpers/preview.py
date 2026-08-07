@@ -31,7 +31,12 @@ def build_direct_build_preview(
     )
     metadata_database: str = options.metadata_database or database
     snapshot: DirectWarehouseSnapshot = load_direct_warehouse_snapshot(
-        client=client, database=database
+        client=client,
+        database=database,
+        metadata_database=metadata_database,
+        logical_model_identities=tuple(
+            f"{database}.{model.key.name}" for model in analysis.realized_project.project.models
+        ),
     )
     start_time: str | None = effective_start_time
     validate_declared_external_sources(
@@ -58,6 +63,7 @@ def build_direct_build_preview(
     return DirectBuildPreviewContext(
         analysis=analysis,
         plan=plan,
+        warehouse_snapshot=snapshot,
         database=database,
         metadata_database=metadata_database,
         adapter_name=client.adapter_identity.name,

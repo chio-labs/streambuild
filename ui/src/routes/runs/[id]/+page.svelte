@@ -5,11 +5,14 @@
 	import LineageCanvas from '$lib/components/lineage/lineage-canvas.svelte';
 	import {
 		getProject,
+		cancelBuild,
+		killBuild,
 		fetchBuildFeed,
 		fetchRunEvents,
 		fetchRuns,
 		type RunEvent,
-		type RunRecord
+		type RunRecord,
+		type RunStatus
 	} from '$lib/api';
 	import { refreshLiveState } from '$lib/api/store.svelte';
 	import { buildLogicalGraph } from '$lib/domain/derive';
@@ -19,13 +22,16 @@
 	const project: Project = getProject();
 	const invocationId = $derived(page.params.id ?? '');
 
-	// Live runs poll the in-memory feed with a cursor; finished runs read the
-	// durable timeline once. Both produce the same event shape, so everything
-	// below is source-agnostic.
 	let events = $state<RunEvent[]>([]);
-	let running = $state<boolean>(page.url.searchParams.get('live') === '1');
+	let running = $state<boolean>(true);
+	let status = $state<RunStatus>('running');
 	let exitCode = $state<number | null>(null);
 	let stderr = $state<string>('');
+	let owned = $state<boolean>(false);
+	let ownedRunning = $state<boolean>(false);
+	let forceAvailable = $state<boolean>(false);
+	let signalling = $state<boolean>(false);
+	let lastSignalAgeSeconds = $state<number | null>(null);
 	let record = $state<RunRecord | null>(null);
 	let commandLine = $state<string>('build');
 	let loadError = $state<string | null>(null);
@@ -36,58 +42,62 @@
 		const id: string = invocationId;
 		events = [];
 		record = null;
+		stderr = '';
+		owned = false;
+		ownedRunning = false;
 		let cancelled: boolean = false;
 		let timer: ReturnType<typeof setTimeout> | null = null;
-		// A plain cursor, NOT events.length: reading state synchronously here
-		// would make the effect depend on its own appends and reset forever.
 		let cursor: number = 0;
 
-		async function pollLive(): Promise<void> {
+		async function pollDurable(): Promise<void> {
 			try {
-				const feed = await fetchBuildFeed(cursor);
-				if (cancelled || feed.invocationId !== id) {
-					await loadRecorded();
-					return;
+				const feed = await fetchRunEvents(id, cursor);
+				if (cancelled) return;
+				if (feed.events.length > 0) cursor = feed.events[feed.events.length - 1].sequence;
+				const combinedEvents = [...events, ...feed.events];
+				const runStarted = combinedEvents.find((event) => event.event === 'run_started');
+				const recentEvents = combinedEvents.slice(-399);
+				events = runStarted !== undefined && !recentEvents.includes(runStarted)
+					? [runStarted, ...recentEvents]
+					: recentEvents;
+				status = feed.status ?? 'running';
+				lastSignalAgeSeconds = feed.lastSignalAgeSeconds;
+				running = status === 'running' || status === 'unresponsive';
+				const ownership = await fetchBuildFeed(0);
+				if (cancelled) return;
+				owned = ownership.invocationId === id;
+				ownedRunning = owned && ownership.running;
+				if (owned) {
+					stderr = ownership.stderr;
+					forceAvailable = ownership.forceAvailable;
 				}
-				cursor += feed.events.length;
-				events = [...events, ...feed.events];
-				stderr = feed.stderr;
-				exitCode = feed.exitCode;
-				running = feed.running;
-				commandLine = feed.command;
-				if (feed.running) {
-					timer = setTimeout(() => void pollLive(), POLL_MS);
+				const loadedRecord = await loadRunRecord();
+				if (cancelled) return;
+				record = loadedRecord;
+				if (record !== null) {
+					exitCode = record.exitCode;
+					commandLine = record.command;
+					status = record.status;
+				}
+				loadError = null;
+				if (running || feed.hasMore) {
+					timer = setTimeout(() => void pollDurable(), feed.hasMore ? 0 : POLL_MS);
 				} else {
-					// The build just changed the warehouse — refresh the app snapshot.
 					void refreshLiveState();
-					void loadRunRecord();
 				}
 			} catch (error) {
+				if (cancelled) return;
 				loadError = error instanceof Error ? error.message : String(error);
+				timer = setTimeout(() => void pollDurable(), POLL_MS);
 			}
 		}
 
-		async function loadRecorded(): Promise<void> {
-			try {
-				events = await fetchRunEvents(id);
-				running = false;
-				await loadRunRecord();
-			} catch (error) {
-				loadError = error instanceof Error ? error.message : String(error);
-			}
-		}
-
-		async function loadRunRecord(): Promise<void> {
+		async function loadRunRecord(): Promise<RunRecord | null> {
 			const runs: RunRecord[] = await fetchRuns();
-			record = runs.find((run) => run.invocationId === id) ?? null;
-			if (record !== null) {
-				exitCode = record.exitCode;
-				commandLine = record.command;
-			}
+			return runs.find((run) => run.invocationId === id) ?? null;
 		}
 
-		if (page.url.searchParams.get('live') === '1') void pollLive();
-		else void loadRecorded();
+		void pollDurable();
 		return () => {
 			cancelled = true;
 			if (timer !== null) clearTimeout(timer);
@@ -101,17 +111,46 @@
 	);
 	const totalStatements = $derived(startedEvent?.totalStatements ?? null);
 
-	const outcome = $derived.by((): 'running' | 'succeeded' | 'failed' => {
-		if (running) return 'running';
-		if (terminalEvent?.outcome === 'succeeded' || exitCode === 0) return 'succeeded';
-		return 'failed';
-	});
+	const outcome = $derived<RunStatus>(status);
 
 	const OUTCOME_COLOR: Record<string, string> = {
 		running: 'var(--sb-secondary)',
 		succeeded: 'var(--sb-success)',
-		failed: 'var(--sb-error)'
+		failed: 'var(--sb-error)',
+		cancelled: 'var(--sb-warning)',
+		unresponsive: 'var(--sb-warning)',
+		presumed_failed: 'var(--sb-warning)'
 	};
+
+	async function requestCancel(): Promise<void> {
+		if (
+			!window.confirm(
+				'Cancel this build? Direct mode may leave the selected closure partially rebuilt. Rerunning is safe.'
+			)
+		)
+			return;
+		signalling = true;
+		try {
+			const result = await cancelBuild(invocationId);
+			forceAvailable = Boolean(result.forceAvailable);
+		} catch (error) {
+			loadError = error instanceof Error ? error.message : String(error);
+		} finally {
+			signalling = false;
+		}
+	}
+
+	async function requestKill(): Promise<void> {
+		signalling = true;
+		try {
+			await killBuild(invocationId);
+			forceAvailable = false;
+		} catch (error) {
+			loadError = error instanceof Error ? error.message : String(error);
+		} finally {
+			signalling = false;
+		}
+	}
 
 	// ── the pipeline growing: per-model status from replay/realize events ─────
 	type ModelRunState = { state: 'running' | 'done' | 'failed'; rows: number | null };
@@ -238,7 +277,37 @@
 				· {completedStatements.length}/{totalStatements} statements
 			{/if}
 		</span>
+		{#if ownedRunning && running}
+			<button
+				class="rounded border border-border px-2.5 py-1 font-mono text-[10.5px] text-[var(--sb-warning)]"
+				disabled={signalling}
+				onclick={() => void requestCancel()}>Cancel</button
+			>
+		{/if}
+		{#if running && !ownedRunning}
+			<span class="text-[var(--sb-text-faint)] font-mono text-[10px]">
+				This server does not own the process and cannot cancel it.
+			</span>
+		{/if}
+		{#if forceAvailable}
+			<button
+				class="rounded border px-2.5 py-1 font-mono text-[10.5px]"
+				style:color="var(--sb-error)"
+				disabled={signalling}
+				onclick={() => void requestKill()}>Force kill</button
+			>
+		{/if}
 	</div>
+	{#if status === 'unresponsive' || status === 'presumed_failed'}
+		<div class="border-b border-border px-[18px] py-2 font-mono text-[11px]" style:color="var(--sb-warning)">
+			{status === 'presumed_failed' ? 'Presumed failed' : 'Unresponsive'} — no signal for
+			{lastSignalAgeSeconds ?? 0}s. Last activity: {record?.lastActivity ?? 'unknown'}.
+			The process may recover; rerunning the build is safe once it is presumed failed.
+			{#if status === 'presumed_failed'}
+				<a href="/plan" class="pl-2 underline">Rerun from Plan</a>
+			{/if}
+		</div>
+	{/if}
 
 	{#if loadError}
 		<div class="p-[18px]">

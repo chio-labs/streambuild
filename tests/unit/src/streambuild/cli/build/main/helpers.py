@@ -106,6 +106,7 @@ def run_scope_project_build_with_connection(
             auto_approve=auto_approve,
         ),
         client=connection,
+        observation_client=connection,
         loaded_project=load_project_input_for_path(path=project_root),
         adapter_profile=build_compiler_adapter_profile(ClickHouseAdapter()),
     )
@@ -182,6 +183,7 @@ def run_scope_project_virtual_build(*, project_root: Path, deployment_id: str) -
             auto_approve=True,
         ),
         client=_VirtualArtifactConnection(),
+        observation_client=_VirtualArtifactConnection(),
         loaded_project=load_project_input_for_path(path=project_root),
         adapter_profile=build_compiler_adapter_profile(ClickHouseAdapter()),
     )

@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 from streambuild.adapter.models import (
+    AdapterDirectFingerprintSnapshot,
     AdapterReplayColumns,
     CatalogSnapshot,
 )
@@ -30,6 +31,7 @@ from streambuild.compiler.planner.types import (
     DirectPlanReason,
     DirectRelationAction,
     DirectResourceKind,
+    DirectSqlBaselineStatus,
     PlannedChangeType,
     RebuildExecutionMode,
     RebuildStrategy,
@@ -410,6 +412,10 @@ class DirectWarehouseSnapshot:
     """Immutable live catalog captured for one Direct plan."""
 
     catalog: CatalogSnapshot
+    fingerprints: AdapterDirectFingerprintSnapshot = AdapterDirectFingerprintSnapshot(
+        status="absent",
+        baselines=(),
+    )
 
 
 @dataclass(frozen=True)
@@ -422,6 +428,7 @@ class DirectPlanEntry:
     resource_kinds: tuple[DirectResourceKind | str, ...]
     driving_input_key: LogicalResourceKey | None
     is_replay_root: bool
+    sql_change: DirectSqlChange | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "reason", DirectPlanReason(self.reason))
@@ -430,6 +437,22 @@ class DirectPlanEntry:
             "resource_kinds",
             tuple(DirectResourceKind(kind) for kind in self.resource_kinds),
         )
+
+
+@dataclass(frozen=True)
+class DirectSqlChange:
+    """Optional logical SQL baseline comparison for one selected direct model."""
+
+    status: DirectSqlBaselineStatus | str
+    current_sql: str
+    current_hash: str
+    previous_sql: str | None
+    previous_hash: str | None
+    unified_diff: str | None
+    warning: str | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "status", DirectSqlBaselineStatus(self.status))
 
 
 @dataclass(frozen=True)

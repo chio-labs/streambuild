@@ -153,14 +153,19 @@ def run_scope_project_plan(
 
 
 def read_workflow_artifact(
-    *, artifact_root: Path
+    *, artifact_root: Path, is_template: bool = False
 ) -> tuple[bytes, bytes, tuple[str, ...], tuple[bytes, ...]]:
     """Read one complete workflow artifact without interpreting its contents."""
 
-    step_paths: tuple[Path, ...] = tuple(sorted((artifact_root / "steps").glob("*.sql")))
+    step_pattern: str = {False: "*.sql", True: "*.sql.template"}[is_template]
+    workflow_name: str = {
+        False: "workflow.sql",
+        True: "workflow.template.sql",
+    }[is_template]
+    step_paths: tuple[Path, ...] = tuple(sorted((artifact_root / "steps").glob(step_pattern)))
     return (
         (artifact_root / "plan.json").read_bytes(),
-        (artifact_root / "workflow.sql").read_bytes(),
+        (artifact_root / workflow_name).read_bytes(),
         tuple(path.name for path in step_paths),
         tuple(path.read_bytes() for path in step_paths),
     )

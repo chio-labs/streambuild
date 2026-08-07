@@ -23,6 +23,7 @@ def dispatch_cli_command(
     invocation: ResolvedCliInvocation,
     handlers: CliEntrypointHandlers,
     adapter_connection: AdapterConnection | None,
+    observation_connection: AdapterConnection | None = None,
 ) -> int:
     args: argparse.Namespace = invocation.args
     adapter_profile: CompilerAdapterProfile = build_compiler_adapter_profile(invocation.adapter)
@@ -88,6 +89,8 @@ def dispatch_cli_command(
             database=invocation.database or "",
         )
     if args.command == CliCommand.BUILD:
+        if observation_connection is None:
+            raise CliUserError("Build requires a dedicated observation connection")
         return handlers.run_build(
             options=BuildCommandOptions(
                 pipelines_root=_require_pipelines_root(invocation),
@@ -103,6 +106,7 @@ def dispatch_cli_command(
                 events_output=bool(getattr(args, "events", False)),
             ),
             client=client,
+            observation_client=observation_connection,
             loaded_project=invocation.loaded_project,
             adapter_profile=adapter_profile,
         )
