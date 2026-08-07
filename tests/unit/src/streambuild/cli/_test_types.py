@@ -11,6 +11,13 @@ class CliDevRefactorTestCase:
 
 
 @dataclass(frozen=True)
+class CliUserErrorPresentationTestCase:
+    description: str
+    expected_error_fragments: tuple[str, ...]
+    expected_exit_code: int
+
+
+@dataclass(frozen=True)
 class CliMainTestCase:
     description: str
     argv: tuple[str, ...]
