@@ -1,4 +1,4 @@
-"""Render what one direct build durably changed as operator text or JSON."""
+"""Render direct build results and shared build terminal messages."""
 
 from __future__ import annotations
 
@@ -58,6 +58,12 @@ def render_direct_build_text(
             *_render_audits(audit_result=audit_result),
         )
     )
+
+
+def render_interrupted_build_message() -> str:
+    """Render one readable graceful-cancellation message after terminal Ctrl-C output."""
+
+    return f"\n{cli_style().warning('Cancelled')}  Build interrupted and recorded as cancelled."
 
 
 def _render_header(*, result: DirectBuildResult, adapter_name: str) -> tuple[str, ...]:
