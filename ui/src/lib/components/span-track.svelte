@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { clamp } from '$lib/domain/format';
+	import { clamp, parseUtc } from '$lib/domain/format';
 
 	export type TrackBand = {
 		from: string;
@@ -30,12 +30,12 @@
 		height = 20
 	}: Props = $props();
 
-	const domainStart = $derived(new Date(domainFrom).getTime());
-	const domainEnd = $derived(new Date(domainTo).getTime());
+	const domainStart = $derived(parseUtc(domainFrom).getTime());
+	const domainEnd = $derived(parseUtc(domainTo).getTime());
 	const span = $derived(Math.max(domainEnd - domainStart, 1));
 
 	function fraction(instant: string): number {
-		return clamp((new Date(instant).getTime() - domainStart) / span, 0, 1);
+		return clamp((parseUtc(instant).getTime() - domainStart) / span, 0, 1);
 	}
 
 	const geometry = $derived(

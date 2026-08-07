@@ -17,7 +17,7 @@ export type PlanPageData = {
 export const load = async ({ url }: { url: URL }): Promise<PlanPageData> => {
 	if (app.project === null) return { initialPlan: null, initialKey: null };
 	const tokens: string[] = url.searchParams.getAll('select');
-	const start: string | null = url.searchParams.get('start');
+	const start: string | null = tokens.length === 0 ? null : url.searchParams.get('start');
 	const key: string = `${tokens.join(',')}|${start ?? ''}`;
 	try {
 		return { initialPlan: await fetchPlan(tokens, start), initialKey: key };
