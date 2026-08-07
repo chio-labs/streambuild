@@ -48,8 +48,14 @@ jobs:
 
       - uses: astral-sh/setup-uv@v5
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
       - name: Build distributions
-        run: uv build
+        run: make dist
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1

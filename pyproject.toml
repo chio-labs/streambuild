@@ -38,7 +38,7 @@ dev = [
 ]
 
 [tool.hatch.build]
-# Built dev UI is gitignored but must ship in distributions (`make ui-build`).
+# Built dev UI is gitignored but must ship in distributions (`make dist`).
 artifacts = ["src/streambuild/dev_server/static/**"]
 
 [tool.hatch.build.targets.wheel]

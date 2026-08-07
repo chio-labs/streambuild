@@ -1,3 +1,6 @@
+.PHONY: dist
+
+
 format:
 	uv run ruff format .
 
@@ -51,6 +54,14 @@ ui-build:
 	cd ui && npm run build
 	rm -rf src/streambuild/dev_server/static
 	cp -r ui/build src/streambuild/dev_server/static
+
+
+dist:
+	$(MAKE) ui-install
+	$(MAKE) ui-build
+	rm -f dist/*.whl dist/*.tar.gz
+	uv build
+	uv run python scripts/verify_wheel_assets.py
 
 
 ui-dev:
