@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.9.2](https://github.com/chio-labs/streambuild/compare/v0.9.1...v0.9.2) (2026-08-07)
+
+
+### Bug Fixes
+
+* complete plan replay window controls ([37b31d0](https://github.com/chio-labs/streambuild/commit/37b31d03c08a2fa1634ad6be6d452256a421fcf5))
+* harden API and missing run states ([fa842f1](https://github.com/chio-labs/streambuild/commit/fa842f1bfa43827982ae7406eeadba23e9fbefe3))
+* make core UI usable on mobile ([ced9a42](https://github.com/chio-labs/streambuild/commit/ced9a428cc5c0f3e00b20fdbc5ec01e269c5a6ae))
+
 ## [0.9.1](https://github.com/chio-labs/streambuild/compare/v0.9.0...v0.9.1) (2026-08-07)
 
 
