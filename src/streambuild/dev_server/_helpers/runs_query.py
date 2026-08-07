@@ -186,9 +186,11 @@ def read_run_events(
         after=after,
         row_limit=_RUN_EVENT_PAGE_SIZE,
     )
+    events: list[dict[str, object]] = streams.get(invocation_id, [])
     return {
-        "events": streams.get(invocation_id, []),
-        "hasMore": len(streams.get(invocation_id, [])) == _RUN_EVENT_PAGE_SIZE,
+        "found": run is not None or bool(events),
+        "events": events,
+        "hasMore": len(events) == _RUN_EVENT_PAGE_SIZE,
         "status": None if run is None else run["status"],
         "lastSignalAt": None if run is None else run["lastSignalAt"],
         "lastSignalAgeSeconds": None if run is None else run["lastSignalAgeSeconds"],

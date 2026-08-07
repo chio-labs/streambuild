@@ -353,6 +353,7 @@ def test_given_recorded_run_when_reading_events_then_returns_ordered_timeline(
     payload: dict[str, object] = client.get(f"/api/runs/{test_case.invocation_id}/events").json()
     events: list[dict[str, object]] = payload["events"]
 
+    assert payload["found"] is True
     assert tuple(event["event"] for event in events) == test_case.expected_event_kinds
     assert events[1]["writtenRows"] == test_case.expected_written_rows
     assert events[1]["stepId"] == "replay_orders"

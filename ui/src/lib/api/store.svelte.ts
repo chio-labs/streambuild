@@ -9,7 +9,7 @@
  */
 
 import { applyRecordedCheckStatuses, projectFromServer } from '$lib/api/mapping';
-import { fetchChecksStatus } from '$lib/api';
+import { fetchChecksStatus, readApiResponse } from '$lib/api';
 import type { Project } from '$lib/domain/types';
 
 export type CompileError = {
@@ -63,7 +63,7 @@ export async function reloadProject(): Promise<void> {
 	app.reloading = true;
 	try {
 		const response = await fetch('/api/reload', { method: 'POST' });
-		applyStatusPayload(await response.json());
+		applyStatusPayload(await readApiResponse(response, 'project reload'));
 		if (app.status?.state === 'ok') {
 			await refreshDefinitionsAndState();
 		} else {
@@ -84,14 +84,17 @@ export async function refreshLiveState(): Promise<void> {
 			fetch('/api/status'),
 			fetch('/api/state')
 		]);
-		applyStatusPayload(await statusResponse.json());
+		applyStatusPayload(await readApiResponse(statusResponse, 'status refresh'));
 		if (app.status?.state !== 'ok') {
 			app.phase = 'compile_failing';
 			return;
 		}
 		if (!stateResponse.ok) return;
 		const definitionsResponse = await fetch('/api/definitions');
-		mergeProject(await definitionsResponse.json(), await stateResponse.json());
+		mergeProject(
+			await readApiResponse(definitionsResponse, 'definitions refresh'),
+			await readApiResponse(stateResponse, 'state refresh')
+		);
 		await refreshRecordedChecks();
 	} catch {
 		// A missed poll is not an outage; the topbar keeps the last capturedAt.
@@ -111,7 +114,7 @@ async function refreshRecordedChecks(): Promise<void> {
 async function refreshAll(): Promise<void> {
 	try {
 		const statusResponse = await fetch('/api/status');
-		applyStatusPayload(await statusResponse.json());
+		applyStatusPayload(await readApiResponse(statusResponse, 'initial status'));
 	} catch (error) {
 		app.phase = 'unreachable';
 		app.fetchError = String(error);
@@ -130,8 +133,13 @@ async function refreshDefinitionsAndState(): Promise<void> {
 			fetch('/api/definitions'),
 			fetch('/api/state')
 		]);
-		const definitions = await definitionsResponse.json();
-		const state = stateResponse.ok ? await stateResponse.json() : {};
+		const definitions = await readApiResponse<Record<string, unknown>>(
+			definitionsResponse,
+			'project definitions'
+		);
+		const state = stateResponse.ok
+			? await readApiResponse<Record<string, unknown>>(stateResponse, 'live state')
+			: {};
 		mergeProject(definitions, state);
 		await refreshRecordedChecks();
 		app.phase = 'ready';

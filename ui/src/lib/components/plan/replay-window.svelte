@@ -16,6 +16,8 @@
 		/** Sources that root the current rebuild closure. */
 		sources: Source[];
 		window: ReplayWindow;
+		/** The CLI only accepts --start-time alongside at least one --select. */
+		selectionSpecified: boolean;
 		/**
 		 * Rows the replay will read, counted server-side at plan time with the same
 		 * predicate the build uses. A fact, not an estimate — which is why there is
@@ -24,7 +26,14 @@
 		rowsToReplay: number | null;
 		onchange: (next: ReplayWindow) => void;
 	};
-	let { project, sources, window: replayWindow, rowsToReplay, onchange }: Props = $props();
+	let {
+		project,
+		sources,
+		window: replayWindow,
+		selectionSpecified,
+		rowsToReplay,
+		onchange
+	}: Props = $props();
 
 	// --start-time is the WORST flag to type and the BEST to render: its valid range
 	// is fully bounded by data we already hold. Typed into a shell it fails at build
@@ -41,16 +50,61 @@
 	 * max(start, its own oldest), so clamping to the most-constrained source would
 	 * stop you asking for history the other sources still hold.
 	 */
-	const boundFrom = $derived.by((): string => {
+	const retainedStartMilliseconds = $derived.by((): number | null => {
 		const candidates: number[] = sources
 			.map((source) => source.live.oldestEventAt)
 			.filter((instant): instant is string => Boolean(instant))
 			.map((instant) => parseUtc(instant).getTime())
 			.filter((milliseconds) => Number.isFinite(milliseconds));
-		if (candidates.length === 0) return project.capturedAt;
-		return new Date(Math.min(...candidates)).toISOString();
+		return candidates.length === 0 ? null : Math.min(...candidates);
 	});
-	const startTime = $derived(replayWindow.mode === 'from' ? replayWindow.startTime : boundFrom);
+	const boundToMilliseconds = $derived(parseUtc(project.capturedAt).getTime());
+	const hasRetentionWindow = $derived(
+		retainedStartMilliseconds !== null &&
+			Number.isFinite(boundToMilliseconds) &&
+			retainedStartMilliseconds < boundToMilliseconds
+	);
+	const boundFrom = $derived(
+		retainedStartMilliseconds === null
+			? project.capturedAt
+			: new Date(retainedStartMilliseconds).toISOString()
+	);
+	const boundTo = $derived(project.capturedAt);
+	const totalMs = $derived(
+		Math.max(
+			boundToMilliseconds - (retainedStartMilliseconds ?? boundToMilliseconds),
+			1
+		)
+	);
+	const canSetStartTime = $derived(selectionSpecified && hasRetentionWindow);
+	const requestedStartMilliseconds = $derived(
+		replayWindow.mode === 'from' ? parseUtc(replayWindow.startTime).getTime() : NaN
+	);
+	const effectiveStartMilliseconds = $derived.by((): number => {
+		if (!Number.isFinite(requestedStartMilliseconds)) {
+			return retainedStartMilliseconds ?? boundToMilliseconds;
+		}
+		return clamp(
+			requestedStartMilliseconds,
+			retainedStartMilliseconds ?? requestedStartMilliseconds,
+			boundToMilliseconds
+		);
+	});
+	const startTime = $derived(
+		replayWindow.mode === 'from'
+			? new Date(effectiveStartMilliseconds).toISOString()
+			: boundFrom
+	);
+
+	$effect(() => {
+		if (
+			replayWindow.mode === 'from' &&
+			canSetStartTime &&
+			requestedStartMilliseconds !== effectiveStartMilliseconds
+		) {
+			onchange({ mode: 'from', startTime });
+		}
+	});
 
 	/** Sources that cannot reach back as far as the chosen cutoff. */
 	const shortSources = $derived.by((): Source[] => {
@@ -62,19 +116,20 @@
 		});
 	});
 
-	const boundTo = $derived(project.capturedAt);
-	const totalMs = $derived(Math.max(new Date(boundTo).getTime() - new Date(boundFrom).getTime(), 1));
-
 	/** Slider position as a 0–1000 integer over the retention window. */
 	const sliderValue = $derived(
 		Math.round(
-			clamp((new Date(startTime).getTime() - new Date(boundFrom).getTime()) / totalMs, 0, 1) * 1000
+			clamp(
+				(parseUtc(startTime).getTime() - parseUtc(boundFrom).getTime()) / totalMs,
+				0,
+				1
+			) * 1000
 		)
 	);
 
 	function setFromSlider(value: number): void {
 		const instant = new Date(
-			new Date(boundFrom).getTime() + (clamp(value, 0, 1000) / 1000) * totalMs
+			parseUtc(boundFrom).getTime() + (clamp(value, 0, 1000) / 1000) * totalMs
 		);
 		// Snap to the minute — sub-minute precision is noise for a replay boundary.
 		instant.setUTCSeconds(0, 0);
@@ -85,16 +140,30 @@
 		if (!value) return;
 		const iso: string = fromDateTimeLocal(value);
 		const clamped = new Date(
-			clamp(new Date(iso).getTime(), new Date(boundFrom).getTime(), new Date(boundTo).getTime())
+			clamp(
+				parseUtc(iso).getTime(),
+				parseUtc(boundFrom).getTime(),
+				parseUtc(boundTo).getTime()
+			)
 		);
 		onchange({ mode: 'from', startTime: clamped.toISOString() });
 	}
 
+	function enableStartTime(): void {
+		if (!canSetStartTime) return;
+		onchange({
+			mode: 'from',
+			startTime: new Date(
+				boundToMilliseconds - Math.min(totalMs, 5.5 * 86_400_000)
+			).toISOString()
+		});
+	}
+
 	const skippedDays = $derived(
-		(new Date(startTime).getTime() - new Date(boundFrom).getTime()) / 86_400_000
+		(parseUtc(startTime).getTime() - parseUtc(boundFrom).getTime()) / 86_400_000
 	);
 	const replayedDays = $derived(
-		(new Date(boundTo).getTime() - new Date(startTime).getTime()) / 86_400_000
+		(parseUtc(boundTo).getTime() - parseUtc(startTime).getTime()) / 86_400_000
 	);
 
 	const totalRetainedRows = $derived(
@@ -121,14 +190,14 @@
 				class="border-l border-border px-2.5 py-1 font-mono text-[10.5px] transition-colors {replayWindow.mode ===
 				'from'
 					? 'bg-[var(--sb-hover)] text-foreground'
-					: 'text-muted-foreground hover:text-foreground'}"
-				onclick={() =>
-					onchange({
-						mode: 'from',
-						startTime: new Date(
-							new Date(boundTo).getTime() - Math.min(totalMs, 5.5 * 86_400_000)
-						).toISOString()
-					})}
+					: 'text-muted-foreground hover:text-foreground'} disabled:cursor-not-allowed disabled:opacity-45"
+				disabled={!canSetStartTime}
+				title={!selectionSpecified
+					? 'Choose at least one model or pipeline first'
+					: !hasRetentionWindow
+						? 'No retained source window is available yet'
+						: undefined}
+				onclick={enableStartTime}
 			>
 				From a time
 			</button>
@@ -139,6 +208,16 @@
 		{#if sources.length === 0}
 			<p class="text-muted-foreground text-[12px]">
 				This selection has no rooting stream source, so there is nothing to replay.
+			</p>
+		{:else if !selectionSpecified}
+			<p class="text-muted-foreground text-[12px]">
+				Choose at least one model or pipeline to set a start time. StreamBuild requires
+				<code class="code">--start-time</code> to be scoped by <code class="code">--select</code>.
+			</p>
+		{:else if !hasRetentionWindow}
+			<p class="text-muted-foreground text-[12px]">
+				A retained source window is not available yet. Build the source first, then choose a
+				bounded replay start time.
 			</p>
 		{:else}
 			<!-- retention track, with the chosen cutoff drawn on it -->
@@ -192,7 +271,7 @@
 
 			{#if replayWindow.mode === 'from'}
 				<!-- slider + calendar, mutually bound; both clamped to the retention window -->
-				<div class="flex items-center gap-3">
+				<div class="flex flex-col gap-3 sm:flex-row sm:items-center">
 					<input
 						type="range"
 						min="0"
@@ -200,15 +279,15 @@
 						value={sliderValue}
 						class="h-1 flex-1 cursor-pointer appearance-none rounded bg-[var(--sb-inset)] accent-[var(--primary)]"
 						aria-label="Replay start time"
-						oninput={(event) => setFromSlider(Number(event.currentTarget.value))}
+						onchange={(event) => setFromSlider(Number(event.currentTarget.value))}
 					/>
 					<input
 						type="datetime-local"
 						value={toDateTimeLocal(startTime)}
 						min={toDateTimeLocal(boundFrom)}
 						max={toDateTimeLocal(boundTo)}
-						class="bg-[var(--sb-inset)] rounded-[4px] border border-border px-2 py-1 font-mono text-[11px] outline-none focus:border-[var(--primary)]"
-						oninput={(event) => setFromCalendar(event.currentTarget.value)}
+						class="bg-[var(--sb-inset)] w-full rounded-[4px] border border-border px-2 py-1 font-mono text-[11px] outline-none focus:border-[var(--primary)] sm:w-auto"
+						onchange={(event) => setFromCalendar(event.currentTarget.value)}
 					/>
 				</div>
 
@@ -256,6 +335,10 @@
 						Resulting extent {formatTimestamp(startTime)} → now
 					</p>
 				{/if}
+			{:else}
+				<p class="text-[var(--sb-text-faint)] border-t border-[var(--border-subtle)] pt-2.5 text-[11px]">
+					Exact replay rows are unavailable until every rooting source can be counted.
+				</p>
 			{/if}
 		{/if}
 	</div>
