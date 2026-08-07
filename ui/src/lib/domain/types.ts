@@ -377,6 +377,18 @@ export type Selector = { kind: 'model' | 'pipeline'; name: string };
 
 export type PlanEntryReason = 'selected' | 'downstream_of_selected' | 'all_models';
 
+export type PlanSqlChangeStatus =
+	| 'first_baseline'
+	| 'query_changed'
+	| 'no_query_change'
+	| 'baseline_unavailable';
+
+export type PlanSqlChange = {
+	status: PlanSqlChangeStatus;
+	unifiedDiff: string | null;
+	warning: string | null;
+};
+
 export const PLAN_REASON_LABEL: Record<PlanEntryReason, string> = {
 	selected: 'selected',
 	downstream_of_selected: 'downstream of selection',
@@ -392,6 +404,7 @@ export type PlanEntry = {
 	ownership: { relation: string; ownership: OwnershipState }[];
 	drivingInput: string | null;
 	isReplayRoot: boolean;
+	sqlChange: PlanSqlChange | null;
 };
 
 export type PlanAction = {

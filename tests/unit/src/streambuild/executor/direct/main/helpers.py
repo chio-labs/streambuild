@@ -92,6 +92,22 @@ class DeniedFingerprintRenderingConnection(RecordingDirectBuildConnection):
         raise AdapterAuthenticationError("injected fingerprint rendering denial")
 
 
+class RecordingFingerprintConnection(RecordingDirectBuildConnection):
+    def __init__(self) -> None:
+        super().__init__()
+        self.fingerprints: tuple[AdapterDirectFingerprintRecord, ...] = ()
+
+    def render_direct_fingerprint_observations(
+        self,
+        *,
+        database: str,
+        fingerprints: tuple[AdapterDirectFingerprintRecord, ...],
+    ) -> tuple[str, ...]:
+        del database
+        self.fingerprints = fingerprints
+        return ()
+
+
 def build_direct_execution_request(
     *, project_root: Path, selected_model_names: tuple[str, ...]
 ) -> DirectBuildRequest:

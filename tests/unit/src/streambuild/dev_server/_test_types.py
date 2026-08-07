@@ -1,5 +1,7 @@
+from collections.abc import Callable
 from dataclasses import dataclass
 
+from streambuild.compiler.compile.models import CompiledModel
 from streambuild.dev_server.types import RunPresentationStatus
 
 
@@ -49,6 +51,9 @@ class FailingAnalysisTestCase:
 @dataclass(frozen=True)
 class StateFieldTestCase:
     description: str
+    fingerprint_status: str
+    definition_hash_builder: Callable[[CompiledModel], str]
+    identity_metadata_builder: Callable[[CompiledModel], str]
     expected_source_freshness: str
     expected_model_freshness: str
     expected_model_lag_seconds: float
@@ -66,6 +71,7 @@ class PlanEndpointTestCase:
     expected_entry_names: tuple[str, ...]
     expected_command: str
     expected_replay_root_rows: tuple[int | None, ...]
+    expected_sql_changes: tuple[str, ...]
 
 
 @dataclass(frozen=True)
