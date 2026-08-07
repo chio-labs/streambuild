@@ -1,5 +1,39 @@
 # Changelog
 
+## [0.7.0](https://github.com/chio-labs/streambuild/compare/v0.6.0...v0.7.0) (2026-08-07)
+
+
+### ⚠ BREAKING CHANGES
+
+* remove the direct-build preflight phase and retention coverage state
+
+### Features
+
+* --events JSONL stream and durable _streambuild_run_events timeline ([b081b7a](https://github.com/chio-labs/streambuild/commit/b081b7a4ffdd9dd7229671c84903a9e81e758927))
+* add authored source freshness policies ([0a6e90a](https://github.com/chio-labs/streambuild/commit/0a6e90a9e5768e8905039178c2e6a70ca0bc20f2))
+* add deployment CLI resource family ([c9abde7](https://github.com/chio-labs/streambuild/commit/c9abde75ce5d60e9337f075519c0536140a92623))
+* add description to the MODEL() header ([d574e88](https://github.com/chio-labs/streambuild/commit/d574e88549b9768acd204468fbc116ca24b7e4b8))
+* add stb dev ([4b2043d](https://github.com/chio-labs/streambuild/commit/4b2043dcd28e9f6665eca4de086ceb9023217ec6))
+* checks history, dagster-aligned runs table, plan preload ([8e179b5](https://github.com/chio-labs/streambuild/commit/8e179b52903dadffdf8babbec4189f56c5623d00))
+* dagster-style runs page, snapshot refresh, macro descriptions, and gap cleanup ([559e9d4](https://github.com/chio-labs/streambuild/commit/559e9d4085c8f8b13df7275ba3280edfeba4c053))
+* declare generic audits in the MODEL() header; delete schema.yml ([efa1ef9](https://github.com/chio-labs/streambuild/commit/efa1ef94c21c1b3137ba41151471ee2e4160588f))
+* dev UI - SvelteKit frontend, server-backed API client, and build glue ([e3546b2](https://github.com/chio-labs/streambuild/commit/e3546b20f014de1e8ba504a6a11ae1501c5df5aa))
+* dev_server core - compile state, status, reload, definitions ([60a0d93](https://github.com/chio-labs/streambuild/commit/60a0d93da7d73f6b33986d8348f43036e2604746))
+* dev_server live state - the /api/state warehouse overlay ([036b947](https://github.com/chio-labs/streambuild/commit/036b947661836a691edd4501054870bf4b9f2234))
+* dev_server plan, checks, and run history endpoints ([50f1ecd](https://github.com/chio-labs/streambuild/commit/50f1ecdbbeba4e7200e9138bcb216f543d8211fc))
+* execute from the UI — plan Execute, live run page, lineage run panel ([e571f64](https://github.com/chio-labs/streambuild/commit/e571f642d6ff85a7f826176a2439cdb0306d928a))
+* give stb dev a terminal voice — startup banner and live activity feed ([deab811](https://github.com/chio-labs/streambuild/commit/deab811b0f2cb508fa5a02f2ee37e11763a5eaaa))
+* honest plan numbers, stb --version, and remaining dev UI gaps ([e49c965](https://github.com/chio-labs/streambuild/commit/e49c965ff477c2a306daa4e222361481fe1dc212))
+* POST /api/build — single-flight subprocess execution with live feed ([6608506](https://github.com/chio-labs/streambuild/commit/6608506e4b44e29c71c768b9138392dcd71b2a6f))
+* remove the direct-build preflight phase and retention coverage state ([1bc7fd3](https://github.com/chio-labs/streambuild/commit/1bc7fd365c57992aaf91cf90bbb7bacae7b2331f))
+
+
+### Bug Fixes
+
+* dev UI — dead controls, shallow-routing filters, and fabricated data ([b354595](https://github.com/chio-labs/streambuild/commit/b354595ac677ce0e8a397b32631cc243e22904f9))
+* honest timestamps, live runs list, and Ctrl+C leaves a record ([f351fde](https://github.com/chio-labs/streambuild/commit/f351fde4577915acacdeb847c81abf75309835d8))
+* preserve UTC replay start times ([b333bf7](https://github.com/chio-labs/streambuild/commit/b333bf7d76743426368855b2abbb171384149808))
+
 ## [0.6.0](https://github.com/chio-labs/streambuild/compare/v0.5.0...v0.6.0) (2026-08-03)
 
 
