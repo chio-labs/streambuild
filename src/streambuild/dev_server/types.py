@@ -20,6 +20,17 @@ class ActivityTone(StrEnum):
     CAUTION = "caution"
 
 
+class RunPresentationStatus(StrEnum):
+    """Terminal facts and reversible liveness states shown for a run."""
+
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+    RUNNING = "running"
+    UNRESPONSIVE = "unresponsive"
+    PRESUMED_FAILED = "presumed_failed"
+
+
 class DevServerReporter(Protocol):
     """Terminal narrator for the long-running dev server; implemented by the CLI."""
 

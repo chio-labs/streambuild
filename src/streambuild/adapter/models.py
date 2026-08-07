@@ -557,7 +557,6 @@ class AdapterRunEventRecord:
 
     invocation_id: str
     sequence: int
-    emitted_at: str
     event_kind: str
     step_id: str | None
     phase: str | None

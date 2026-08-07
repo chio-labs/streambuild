@@ -27,7 +27,7 @@ from streambuild.dev_server._helpers.plan_payload import (
     build_plan_payload,
     count_replay_rows,
 )
-from streambuild.dev_server._helpers.runs_query import read_run_events, read_runs
+from streambuild.dev_server._helpers.runs_query import read_active_runs, read_run_events, read_runs
 from streambuild.dev_server._helpers.state_payload import build_state_payload
 from streambuild.dev_server.classes.build_process import BuildProcessManager, build_invocation
 from streambuild.dev_server.classes.dev_server_state import DevServerState
@@ -43,7 +43,7 @@ from streambuild.dev_server.models import (
     CompileOutcome,
     DevExecutionContext,
 )
-from streambuild.dev_server.types import ActivityTone, DevServerReporter
+from streambuild.dev_server.types import ActivityTone, DevServerReporter, RunPresentationStatus
 
 _HTTP_BAD_REQUEST: int = 400
 _HTTP_CONFLICT: int = 409
@@ -263,12 +263,17 @@ def _register_quality_routes(
         except AdapterError as error:
             raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
 
-    def read_one_run_events(invocation_id: str) -> list[dict[str, object]]:
+    def read_one_run_events(
+        *, invocation_id: str, after: Annotated[int, Query(ge=0)] = 0
+    ) -> dict[str, object]:
         client: AdapterConnection = required_connection()
         try:
             with state.query_lock:
                 return read_run_events(
-                    connection=client, database=database or "", invocation_id=invocation_id
+                    connection=client,
+                    database=database or "",
+                    invocation_id=invocation_id,
+                    after=after,
                 )
         except AdapterError as error:
             raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
@@ -277,7 +282,14 @@ def _register_quality_routes(
     app.get("/api/checks/status")(read_checks_status)
     app.get("/api/runs")(read_run_history)
     app.get("/api/runs/{invocation_id}/events")(read_one_run_events)
-    return _register_build_routes(app=app, builds=builds, project_dir=project_dir)
+    return _register_build_routes(
+        app=app,
+        builds=builds,
+        project_dir=project_dir,
+        required_connection=required_connection,
+        database=database or "",
+        state=state,
+    )
 
 
 def _register_build_routes(
@@ -285,11 +297,34 @@ def _register_build_routes(
     app: FastAPI,
     builds: BuildProcessManager,
     project_dir: Path,
+    required_connection: Callable[[], AdapterConnection],
+    database: str,
+    state: DevServerState,
 ) -> FastAPI:
     """Attach the execute and live-feed routes."""
 
     def start_build(request: BuildRunRequest) -> dict[str, object]:
         try:
+            with state.query_lock:
+                blocking_run: dict[str, object] | None = next(
+                    (
+                        run
+                        for run in read_active_runs(
+                            connection=required_connection(), database=database
+                        )
+                        if run["status"]
+                        in {
+                            RunPresentationStatus.RUNNING,
+                            RunPresentationStatus.UNRESPONSIVE,
+                        }
+                    ),
+                    None,
+                )
+            if blocking_run is not None:
+                raise BuildInProgressError(
+                    f"run {blocking_run['invocationId']} is {blocking_run['status']} "
+                    f"(last signal {blocking_run['lastSignalAgeSeconds']}s ago)"
+                )
             return builds.start(
                 project_dir=project_dir,
                 selectors=tuple(request.selectors),
@@ -303,6 +338,20 @@ def _register_build_routes(
     def read_build_feed(*, after: Annotated[int, Query(ge=0)] = 0) -> dict[str, object]:
         return builds.feed(after=after)
 
+    def cancel_build(request: dict[str, str]) -> dict[str, object]:
+        try:
+            return builds.cancel(invocation_id=request.get("invocationId", ""))
+        except BuildInProgressError as error:
+            raise HTTPException(status_code=_HTTP_CONFLICT, detail=str(error)) from error
+
+    def kill_build(request: dict[str, str]) -> dict[str, object]:
+        try:
+            return builds.kill(invocation_id=request.get("invocationId", ""))
+        except BuildInProgressError as error:
+            raise HTTPException(status_code=_HTTP_CONFLICT, detail=str(error)) from error
+
     app.post("/api/build")(start_build)
     app.get("/api/build/current")(read_build_feed)
+    app.post("/api/build/cancel")(cancel_build)
+    app.post("/api/build/kill")(kill_build)
     return app

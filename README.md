@@ -165,8 +165,17 @@ authoritative. It captures replay boundaries in process memory rather than check
 missing or inaccessible direct fingerprint metadata does not block materialization.
 
 `_streambuild_invocations` and `_streambuild_node_results` hold bounded terminal history for build,
-audit, and test UI views. These tables are observational only and never influence planning, replay,
-publication, repair, reconcile, or cleanup decisions.
+audit, and test UI views. Their contents never influence planning, replay, publication, repair,
+reconcile, or cleanup decisions. Builds require the current observability schema and a dedicated
+ClickHouse observation connection before planning; observation failures after execution starts do
+not interrupt warehouse work.
+
+Every build also emits append-only `_streambuild_run_events`, including a heartbeat every 10 seconds.
+The dev server derives `running`, `unresponsive` after 45 seconds, and `presumed_failed` after 10
+minutes without persisting guessed outcomes. These states are reversible when a later heartbeat or
+terminal fact arrives. UI cancellation signals only a child owned by the current dev-server process;
+orphaned and CLI-launched runs remain observable but cannot be signalled by that server. Recovery is
+always rerun, never resume.
 
 Mutating commands are single-writer operations per target database. Do not run concurrent direct
 builds, publishes, repairs, reconciles, or cleanup operations against the same target. Independent
