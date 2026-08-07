@@ -201,6 +201,15 @@ class CliDirectViewBuildIntegrationTestCase:
 
 
 @dataclass(frozen=True)
+class CliDirectOptionalMetadataIntegrationTestCase:
+    description: str
+    expected_exit_code: int
+    expected_order_ids: tuple[str, ...]
+    expected_warning_fragment: str
+    expected_absent_sql_fragments: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class CliDirectBuildBoundaryIntegrationTestCase:
     description: str
     landing_rows: tuple[tuple[str, int, int], ...]
@@ -251,6 +260,8 @@ class CliDirectBuildAuditIntegrationTestCase:
     expected_sample_query_fragment: str
     expected_error_message_count: int
     expected_fingerprint_count_delta: int
+    expected_execution_status: str
+    expected_artifact_audit_error_count: int
 
 
 @dataclass(frozen=True)

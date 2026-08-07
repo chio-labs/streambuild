@@ -117,8 +117,6 @@ from tests.integration.src.streambuild.executor.backfill.helpers import (
             expected_deployment_status="backfilling",
             expected_full_layout=(
                 ("_streambuild_direct_fingerprints", "MergeTree"),
-                ("_streambuild_direct_replay_checkpoints", "MergeTree"),
-                ("_streambuild_direct_replay_ranges", "MergeTree"),
                 ("_streambuild_invocations", "MergeTree"),
                 ("_streambuild_node_results", "MergeTree"),
                 ("_streambuild_run_events", "MergeTree"),
@@ -147,8 +145,6 @@ from tests.integration.src.streambuild.executor.backfill.helpers import (
             expected_deployment_status="backfilling",
             expected_full_layout=(
                 ("_streambuild_direct_fingerprints", "MergeTree"),
-                ("_streambuild_direct_replay_checkpoints", "MergeTree"),
-                ("_streambuild_direct_replay_ranges", "MergeTree"),
                 ("_streambuild_invocations", "MergeTree"),
                 ("_streambuild_node_results", "MergeTree"),
                 ("_streambuild_run_events", "MergeTree"),

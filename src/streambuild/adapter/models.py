@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from streambuild.adapter.constants import REDACTED_SECRET_PLACEHOLDER
 from streambuild.adapter.exceptions import AdapterResultError
 from streambuild.adapter.types import (
+    AdapterOptionalStateStatus,
     AdapterReplayBoundaryMode,
     AdapterReplayLowerBoundMode,
     AdapterReplaySeedMode,
@@ -378,15 +379,46 @@ class AdapterReplayCoverageRequest:
 
 
 @dataclass(frozen=True)
-class AdapterCheckpointReplayRequest:
-    """A replay whose dynamic upper boundary is stored in a direct checkpoint."""
+class AdapterReplayLowerBound:
+    """One captured replay lower bound in adapter-neutral string form."""
+
+    value: str
+    partition_value: str | None = None
+
+
+@dataclass(frozen=True)
+class AdapterCapturedReplayRequest:
+    """A replay rendered from boundaries captured by the current process."""
 
     replay: AdapterReplayRequest
-    metadata_database: str
-    checkpoint_id: str
-    logical_model_name: str
     boundary_column_type: str | None
-    checkpoint_sequence: int = 2
+    lower_bounds: tuple[AdapterReplayLowerBound, ...]
+
+
+@dataclass(frozen=True)
+class AdapterDirectFingerprintRecord:
+    """One logical SQL baseline recorded after direct materialization."""
+
+    fingerprint_id: str
+    logical_model_identity: str
+    definition_sql: str
+    definition_hash: str
+    identity_metadata: str
+    workflow_id: str
+    tool_version: str
+    applied_at: str | None = None
+
+
+@dataclass(frozen=True)
+class AdapterDirectFingerprintSnapshot:
+    """Explicit availability and latest logical direct SQL baselines."""
+
+    status: AdapterOptionalStateStatus | str
+    baselines: tuple[AdapterDirectFingerprintRecord, ...]
+    warning: str | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "status", AdapterOptionalStateStatus(self.status))
 
 
 @dataclass(frozen=True)

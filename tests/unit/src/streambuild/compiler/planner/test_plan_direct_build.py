@@ -1,9 +1,15 @@
 from dataclasses import replace
+from hashlib import sha256
 from pathlib import Path
 
 import pytest
 
-from streambuild.adapter.models import AdapterReplayColumns, CatalogRelation
+from streambuild.adapter.models import (
+    AdapterDirectFingerprintRecord,
+    AdapterDirectFingerprintSnapshot,
+    AdapterReplayColumns,
+    CatalogRelation,
+)
 from streambuild.compiler.compile.models import (
     DesiredState,
     ExternalSourceReplayConfig,
@@ -20,12 +26,14 @@ from streambuild.compiler.planner.models import (
 from streambuild.compiler.planner.types import (
     DirectPlanReason,
     DirectResourceKind,
+    DirectSqlBaselineStatus,
 )
 from tests.unit.src.streambuild.compiler.planner._test_types import (
     DirectModelInputReplayColumnsTestCase,
     DirectMutableWarningTestCase,
     DirectPlanRejectionTestCase,
     DirectScopeTestCase,
+    DirectSqlChangeTestCase,
     DirectUndeclaredRelationTestCase,
     DirectViewPlanTestCase,
 )
@@ -266,6 +274,136 @@ def test_given_settled_warehouse_when_planning_direct_twice_then_plans_are_ident
 
     assert first_plan == second_plan
     assert logical_key_names(second_plan.execution_scope) == test_case.expected_execution_scope
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DirectSqlChangeTestCase(
+            description="matching logical baseline explains equality without pruning",
+            expected_status=DirectSqlBaselineStatus.NO_QUERY_CHANGE,
+            expected_execution_scope=("alpha", "beta", "gamma", "delta"),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_matching_direct_fingerprint_when_planning_then_selected_scope_still_executes(
+    direct_scope_analysis: CompileAnalysis,
+    test_case: DirectSqlChangeTestCase,
+) -> None:
+    current_sql: str = direct_scope_analysis.realized_project.project.models[0].query
+    snapshot: DirectWarehouseSnapshot = replace(
+        build_settled_direct_snapshot(),
+        fingerprints=AdapterDirectFingerprintSnapshot(
+            status="available",
+            baselines=(
+                AdapterDirectFingerprintRecord(
+                    fingerprint_id="fingerprint-alpha",
+                    logical_model_identity="analytics.alpha",
+                    definition_sql=current_sql,
+                    definition_hash=sha256(current_sql.encode()).hexdigest(),
+                    identity_metadata="{}",
+                    workflow_id="workflow-prior",
+                    tool_version="test",
+                    applied_at="2026-08-07 12:00:00.000",
+                ),
+            ),
+        ),
+    )
+
+    plan: DirectPlan = plan_direct_scope(
+        analysis=direct_scope_analysis,
+        snapshot=snapshot,
+        selected_model_names=(),
+    )
+
+    assert plan.entries[0].sql_change is not None
+    assert plan.entries[0].sql_change.status == test_case.expected_status
+    assert logical_key_names(plan.execution_scope) == test_case.expected_execution_scope
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DirectSqlChangeTestCase(
+            description="changed logical baseline produces a complete unified diff",
+            expected_status=DirectSqlBaselineStatus.QUERY_CHANGED,
+            expected_execution_scope=("alpha", "beta", "gamma", "delta"),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_changed_direct_fingerprint_when_planning_then_sql_diff_is_explanatory(
+    direct_scope_analysis: CompileAnalysis,
+    test_case: DirectSqlChangeTestCase,
+) -> None:
+    previous_sql: str = "SELECT 'previous' AS order_id"
+    snapshot: DirectWarehouseSnapshot = replace(
+        build_settled_direct_snapshot(),
+        fingerprints=AdapterDirectFingerprintSnapshot(
+            status="available",
+            baselines=(
+                AdapterDirectFingerprintRecord(
+                    fingerprint_id="fingerprint-alpha",
+                    logical_model_identity="analytics.alpha",
+                    definition_sql=previous_sql,
+                    definition_hash=sha256(previous_sql.encode()).hexdigest(),
+                    identity_metadata="{}",
+                    workflow_id="workflow-prior",
+                    tool_version="test",
+                    applied_at="2026-08-07 12:00:00.000",
+                ),
+            ),
+        ),
+    )
+
+    plan: DirectPlan = plan_direct_scope(
+        analysis=direct_scope_analysis,
+        snapshot=snapshot,
+        selected_model_names=(),
+    )
+
+    assert plan.entries[0].sql_change is not None
+    assert plan.entries[0].sql_change.status == test_case.expected_status
+    assert plan.entries[0].sql_change.previous_sql == previous_sql
+    assert plan.entries[0].sql_change.unified_diff is not None
+    assert logical_key_names(plan.execution_scope) == test_case.expected_execution_scope
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DirectSqlChangeTestCase(
+            description="unavailable baseline degrades explanation without pruning",
+            expected_status=DirectSqlBaselineStatus.BASELINE_UNAVAILABLE,
+            expected_execution_scope=("alpha", "beta", "gamma", "delta"),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_unavailable_direct_fingerprint_when_planning_then_scope_still_executes(
+    direct_scope_analysis: CompileAnalysis,
+    test_case: DirectSqlChangeTestCase,
+) -> None:
+    snapshot: DirectWarehouseSnapshot = replace(
+        build_settled_direct_snapshot(),
+        fingerprints=AdapterDirectFingerprintSnapshot(
+            status="unavailable",
+            baselines=(),
+            warning="metadata denied",
+        ),
+    )
+
+    plan: DirectPlan = plan_direct_scope(
+        analysis=direct_scope_analysis,
+        snapshot=snapshot,
+        selected_model_names=(),
+    )
+
+    assert plan.entries[0].sql_change is not None
+    assert plan.entries[0].sql_change.status == test_case.expected_status
+    assert plan.entries[0].sql_change.warning == "metadata denied"
+    assert logical_key_names(plan.execution_scope) == test_case.expected_execution_scope
 
 
 @pytest.mark.parametrize(

@@ -8,7 +8,6 @@ from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import (
     AdapterBindingReplacementRequest,
     AdapterCapabilities,
-    AdapterCheckpointReplayRequest,
     AdapterDeploymentInventory,
     AdapterIdentity,
     AdapterManagedSource,
@@ -208,10 +207,6 @@ class SnapshotRecordingConnection(AdapterConnection):
     def load_deployment_inventory(self, database: str) -> AdapterDeploymentInventory:
         del database
         return AdapterDeploymentInventory(deployments=(), publish_events=())
-
-    def render_replay_from_checkpoint(self, request: AdapterCheckpointReplayRequest) -> str:
-        del request
-        return "INSERT INTO replay_target SELECT 1"
 
     def render_replay_coverage_query(self, request: AdapterReplayCoverageRequest) -> str:
         del request

@@ -122,7 +122,7 @@ def _persist_virtual_invocation(
             summary={},
         ),
     )
-    persist_terminal_observations(
+    _ = persist_terminal_observations(
         client=client,
         database=preparation.preview.metadata_database,
         invocation=invocation,

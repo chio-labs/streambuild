@@ -8,13 +8,19 @@ from streambuild.cli.workflow_artifacts.types import WorkflowArtifactOwner
 from streambuild.executor.workflow.models import BuildWorkflow, PublishedBuildWorkflow
 
 
-def publish_build_workflow(*, target_dir: Path, workflow: BuildWorkflow) -> PublishedBuildWorkflow:
+def publish_build_workflow(
+    *,
+    target_dir: Path,
+    workflow: BuildWorkflow,
+    execution_json: str | None = None,
+) -> PublishedBuildWorkflow:
     """Publish exact workflow bytes before granting permission to execute them."""
 
     artifact_root: Path = publish_workflow_artifact(
         target_dir=target_dir,
         owner=WorkflowArtifactOwner.BUILD,
         workflow=workflow,
+        execution_json=execution_json,
     )
     workflow_sql: str = "\n".join(statement.sql for statement in workflow.statements)
     return PublishedBuildWorkflow(

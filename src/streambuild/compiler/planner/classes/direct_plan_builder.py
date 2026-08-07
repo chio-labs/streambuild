@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+from difflib import unified_diff
+from hashlib import sha256
+
 from streambuild.adapter.models import (
+    AdapterDirectFingerprintRecord,
     AdapterMaterializedView,
     AdapterReplayColumns,
     AdapterTable,
     AdapterView,
 )
+from streambuild.adapter.types import AdapterOptionalStateStatus
 from streambuild.compiler.compile.constants import (
     REPLAY_CURSOR_COLUMN_NAME,
     REPLAY_LANDED_AT_COLUMN_NAME,
@@ -36,6 +41,7 @@ from streambuild.compiler.planner.models import (
     DirectPrerequisite,
     DirectRelationOperation,
     DirectReplayRoot,
+    DirectSqlChange,
     DirectWarehouseSnapshot,
     PlannerWarning,
 )
@@ -43,6 +49,7 @@ from streambuild.compiler.planner.types import (
     DirectPlanReason,
     DirectRelationAction,
     DirectResourceKind,
+    DirectSqlBaselineStatus,
 )
 
 _CANONICAL_REPLAY_COLUMNS: AdapterReplayColumns = AdapterReplayColumns(
@@ -160,6 +167,64 @@ class DirectPlanBuilder:
                 isinstance(model, CompiledTableModel)
                 and driving_parent_key not in self._executed_keys
             ),
+            sql_change=self._sql_change(model=model),
+        )
+
+    def _sql_change(self, *, model: CompiledModel) -> DirectSqlChange:
+        current_sql: str = model.query
+        current_hash: str = sha256(current_sql.encode()).hexdigest()
+        if self._snapshot.fingerprints.status == AdapterOptionalStateStatus.UNAVAILABLE:
+            return DirectSqlChange(
+                status=DirectSqlBaselineStatus.BASELINE_UNAVAILABLE,
+                current_sql=current_sql,
+                current_hash=current_hash,
+                previous_sql=None,
+                previous_hash=None,
+                unified_diff=None,
+                warning=self._snapshot.fingerprints.warning,
+            )
+        identity: str = f"{self._database}.{model.key.name}"
+        baseline: AdapterDirectFingerprintRecord | None = next(
+            (
+                record
+                for record in self._snapshot.fingerprints.baselines
+                if record.logical_model_identity == identity
+            ),
+            None,
+        )
+        if baseline is None:
+            return DirectSqlChange(
+                status=DirectSqlBaselineStatus.FIRST_BASELINE,
+                current_sql=current_sql,
+                current_hash=current_hash,
+                previous_sql=None,
+                previous_hash=None,
+                unified_diff=None,
+            )
+        status: DirectSqlBaselineStatus = (
+            DirectSqlBaselineStatus.NO_QUERY_CHANGE
+            if baseline.definition_hash == current_hash
+            else DirectSqlBaselineStatus.QUERY_CHANGED
+        )
+        diff: str | None = (
+            None
+            if status == DirectSqlBaselineStatus.NO_QUERY_CHANGE
+            else "".join(
+                unified_diff(
+                    baseline.definition_sql.splitlines(keepends=True),
+                    current_sql.splitlines(keepends=True),
+                    fromfile="previous",
+                    tofile="current",
+                )
+            )
+        )
+        return DirectSqlChange(
+            status=status,
+            current_sql=current_sql,
+            current_hash=current_hash,
+            previous_sql=baseline.definition_sql,
+            previous_hash=baseline.definition_hash,
+            unified_diff=diff,
         )
 
     def _plan_reason(self, *, model_key: LogicalResourceKey) -> DirectPlanReason:

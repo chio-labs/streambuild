@@ -13,8 +13,12 @@ from streambuild.compiler.planner.models import (
     DirectPrerequisite,
     DirectRelationOperation,
     DirectReplayRoot,
+    DirectSqlChange,
     PlannerWarning,
 )
+from streambuild.compiler.planner.types import DirectSqlBaselineStatus
+
+_DEFAULT_DIFF_LINE_LIMIT: int = 12
 
 
 def render_direct_plan_json(*, plan: DirectPlan, adapter_name: str) -> str:
@@ -39,103 +43,77 @@ def render_direct_plan_json(*, plan: DirectPlan, adapter_name: str) -> str:
     return json.dumps(payload, indent=2) + "\n"
 
 
-def render_direct_plan_text(*, plan: DirectPlan, adapter_name: str) -> str:
+def render_direct_plan_text(*, plan: DirectPlan, adapter_name: str, verbose: bool = False) -> str:
     """Render one direct plan as operator-facing text."""
 
-    return "\n".join(
-        (
-            *_render_header(plan=plan, adapter_name=adapter_name),
-            *_render_execution_scope(plan=plan),
-            *_render_prerequisites(plan=plan),
-            *_render_replay_roots(plan=plan),
-            *_render_destructive_actions(plan=plan),
-            *_render_warnings(plan=plan),
+    lines: list[str] = [cli_style().title(f"Direct plan  {plan.database}"), ""]
+    if verbose:
+        lines.append(cli_style().label_value(label="Adapter", value=adapter_name))
+        lines.append("")
+    entry: DirectPlanEntry
+    for entry in plan.entries:
+        lines.extend(_render_model_decision(plan=plan, entry=entry, verbose=verbose))
+    if plan.effective_start_time is not None:
+        lines.append(cli_style().label_value(label="Start time", value=plan.effective_start_time))
+    warning: PlannerWarning
+    for warning in plan.warnings:
+        lines.append(cli_style().warning(f"warning  {warning.message}"))
+    lines.append(_summary_line(plan=plan))
+    return "\n".join(lines)
+
+
+def _render_model_decision(
+    *, plan: DirectPlan, entry: DirectPlanEntry, verbose: bool
+) -> tuple[str, ...]:
+    lines: list[str] = [cli_style().object_name(text=_key_name(entry.model_key))]
+    if entry.sql_change is not None:
+        lines.extend(_render_sql_change(sql_change=entry.sql_change, verbose=verbose))
+    lines.append(f"  {cli_style().label('reason')}  {entry.reason}")
+    lines.append(f"  {cli_style().label('rebuild')}  {', '.join(entry.relation_names)}")
+    replay_root: DirectReplayRoot | None = next(
+        (root for root in plan.replay_roots if root.model_key == entry.model_key),
+        None,
+    )
+    if replay_root is not None:
+        lines.append(
+            f"  {cli_style().label('replay')}   {replay_root.driving_input_relation_name} "
+            f"[{replay_root.replay_boundary_mode}]"
         )
-    )
+    lines.append("")
+    return tuple(lines)
 
 
-def _render_header(*, plan: DirectPlan, adapter_name: str) -> tuple[str, ...]:
+def _render_sql_change(*, sql_change: DirectSqlChange, verbose: bool) -> tuple[str, ...]:
+    status: DirectSqlBaselineStatus = DirectSqlBaselineStatus(sql_change.status)
+    label: str = {
+        DirectSqlBaselineStatus.FIRST_BASELINE: "first SQL baseline",
+        DirectSqlBaselineStatus.QUERY_CHANGED: "SQL changed",
+        DirectSqlBaselineStatus.NO_QUERY_CHANGE: "no SQL change",
+        DirectSqlBaselineStatus.BASELINE_UNAVAILABLE: "SQL baseline unavailable",
+    }[status]
+    lines: list[str] = [f"  {label}"]
+    if sql_change.warning is not None:
+        lines.append(f"    {cli_style().warning(sql_change.warning)}")
+    if sql_change.unified_diff is not None:
+        diff_lines: tuple[str, ...] = tuple(sql_change.unified_diff.splitlines())
+        visible_lines: tuple[str, ...] = (
+            diff_lines if verbose else diff_lines[:_DEFAULT_DIFF_LINE_LIMIT]
+        )
+        lines.extend(f"    {line}" for line in cli_style().diff_lines(visible_lines))
+        if not verbose and len(diff_lines) > len(visible_lines):
+            lines.append(cli_style().muted("    ... use --verbose for the complete diff"))
+    return tuple(lines)
+
+
+def _summary_line(*, plan: DirectPlan) -> str:
+    model_count: int = len(plan.execution_scope)
+    relation_count: int = len(plan.creation_operations)
+    replay_count: int = len(plan.replay_roots)
     return (
-        cli_style().title("Direct Plan"),
-        cli_style().label_value(label="Adapter", value=adapter_name),
-        cli_style().label_value(label="Mode", value=DIRECT_MODE_LABEL),
-        cli_style().label_value(label="Database", value=plan.database),
-        *(
-            (
-                cli_style().label_value(
-                    label="Effective start time", value=plan.effective_start_time
-                ),
-            )
-            if plan.effective_start_time is not None
-            else ()
-        ),
-        cli_style().label_value(label="Models to rebuild", value=str(len(plan.execution_scope))),
-        cli_style().label_value(label="Replay roots", value=str(len(plan.replay_roots))),
-        "",
+        f"{model_count} model{'s' if model_count != 1 else ''} selected, "
+        f"{relation_count} relation{'s' if relation_count != 1 else ''} rebuilt, "
+        f"{replay_count} replay root{'s' if replay_count != 1 else ''}"
     )
-
-
-def _render_execution_scope(*, plan: DirectPlan) -> tuple[str, ...]:
-    return (
-        cli_style().section("Execution scope"),
-        *(
-            f"  {_key_name(entry.model_key)}  [{entry.reason}]  {', '.join(entry.relation_names)}"
-            for entry in plan.entries
-        ),
-        "",
-    )
-
-
-def _render_prerequisites(*, plan: DirectPlan) -> tuple[str, ...]:
-    return (
-        cli_style().section("Preserved prerequisites"),
-        *_or_none(
-            lines=tuple(
-                f"  {_key_name(prerequisite.key)}  {', '.join(prerequisite.relation_names)}"
-                for prerequisite in plan.prerequisite_scope
-            )
-        ),
-        "",
-    )
-
-
-def _render_replay_roots(*, plan: DirectPlan) -> tuple[str, ...]:
-    lines: list[str] = []
-    root: DirectReplayRoot
-    for root in plan.replay_roots:
-        lines.extend(_render_replay_root(root=root))
-    return (cli_style().section("Replay roots"), *_or_none(lines=tuple(lines)), "")
-
-
-def _render_replay_root(*, root: DirectReplayRoot) -> tuple[str, ...]:
-    propagated_names: str = ", ".join(_key_name(key) for key in root.propagated_model_keys)
-    return (
-        f"  {_key_name(root.model_key)} replays from "
-        f"{root.driving_input_relation_name} [{root.replay_boundary_mode}]",
-        f"    propagates to: {propagated_names}",
-    )
-
-
-def _render_destructive_actions(*, plan: DirectPlan) -> tuple[str, ...]:
-    return (
-        cli_style().section("Destructive actions"),
-        *(
-            f"  {operation.action}  {operation.relation_name}"
-            for operation in (*plan.teardown_operations, *plan.creation_operations)
-        ),
-        "",
-    )
-
-
-def _render_warnings(*, plan: DirectPlan) -> tuple[str, ...]:
-    return (
-        cli_style().section("Warnings"),
-        *_or_none(lines=tuple(f"  - {warning.message}" for warning in plan.warnings)),
-    )
-
-
-def _or_none(*, lines: tuple[str, ...]) -> tuple[str, ...]:
-    return lines or ("  - none",)
 
 
 def _prerequisite_payload(prerequisite: DirectPrerequisite) -> dict[str, object]:
@@ -159,6 +137,19 @@ def _entry_payload(entry: DirectPlanEntry) -> dict[str, object]:
             else _logical_key_payload(entry.driving_input_key)
         ),
         "is_replay_root": entry.is_replay_root,
+        "sql_change": (None if entry.sql_change is None else _sql_change_payload(entry.sql_change)),
+    }
+
+
+def _sql_change_payload(sql_change: DirectSqlChange) -> dict[str, object]:
+    return {
+        "status": str(sql_change.status),
+        "current_sql": sql_change.current_sql,
+        "current_hash": sql_change.current_hash,
+        "previous_sql": sql_change.previous_sql,
+        "previous_hash": sql_change.previous_hash,
+        "unified_diff": sql_change.unified_diff,
+        "warning": sql_change.warning,
     }
 
 

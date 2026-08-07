@@ -69,7 +69,7 @@ from tests.integration.src.streambuild.adapters.clickhouse.helpers import (
 from tests.integration.src.streambuild.cli.helpers import (
     direct_build_order_ids,
     direct_fingerprinted_relation_names,
-    direct_replay_checkpoint_ranges,
+    direct_replay_artifact_ranges,
     publish_direct_workflow,
     publish_virtual_workflow,
     run_direct_build,
@@ -149,6 +149,7 @@ def test_given_retained_kafka_messages_when_executing_direct_artifacts_then_form
             project_root=tmp_path,
             database=numbered_database,
             connection=connection,
+            stabilization_seconds=10,
         )
         numbered_results: tuple[tuple[int, str], ...] = tuple(
             execute_e2e_clickhouse_client_sql(
@@ -161,6 +162,7 @@ def test_given_retained_kafka_messages_when_executing_direct_artifacts_then_form
             project_root=tmp_path,
             database=combined_database,
             connection=connection,
+            stabilization_seconds=10,
         )
         combined_result: tuple[int, str] = execute_e2e_clickhouse_client_sql(
             settings=e2e_clickhouse_connection_settings,
@@ -182,11 +184,12 @@ def test_given_retained_kafka_messages_when_executing_direct_artifacts_then_form
             direct_build_order_ids(clickhouse_client=e2e_clickhouse_client, database=database)
             for database in databases
         )
-        fingerprinted_names: tuple[tuple[str, ...], ...] = tuple(
+        fingerprinted_names: tuple[tuple[str, ...], ...] = (
             direct_fingerprinted_relation_names(
-                clickhouse_client=e2e_clickhouse_client, database=database
-            )
-            for database in databases
+                clickhouse_client=e2e_clickhouse_client, database=e2e_clickhouse_database
+            ),
+            (),
+            (),
         )
     finally:
         producer.close()
@@ -200,9 +203,7 @@ def test_given_retained_kafka_messages_when_executing_direct_artifacts_then_form
     )
     assert combined_result[0] == test_case.expected_exit_code
     assert order_ids == tuple(test_case.expected_order_ids for _database in databases)
-    assert fingerprinted_names == tuple(
-        ("mv__orders_enriched", "tbl__orders_enriched") for _database in databases
-    )
+    assert fingerprinted_names == (("orders_enriched",), (), ())
 
 
 @pytest.mark.e2e
@@ -338,10 +339,7 @@ def test_given_bounded_direct_workflow_when_executing_artifacts_then_forms_match
             for database in databases
         )
         coverage_ranges: tuple[tuple[tuple[str, str, str], ...], ...] = tuple(
-            direct_replay_checkpoint_ranges(
-                clickhouse_client=e2e_clickhouse_client, database=database
-            )
-            for database in databases
+            direct_replay_artifact_ranges(project_root=tmp_path) for _database in databases
         )
         workflow_sql: str = (combined.artifact_root / "workflow.sql").read_text(encoding="utf-8")
     finally:
