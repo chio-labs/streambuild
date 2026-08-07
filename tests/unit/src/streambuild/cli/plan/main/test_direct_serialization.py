@@ -3,7 +3,10 @@ import json
 import pytest
 
 from streambuild.adapter.models import AdapterReplayColumns
-from streambuild.cli.plan._helpers.direct_rendering import render_direct_plan_json
+from streambuild.cli.plan._helpers.direct_rendering import (
+    render_direct_plan_json,
+    render_direct_plan_text,
+)
 from streambuild.compiler.compile.models import LogicalResourceKey, ObjectKey
 from streambuild.compiler.planner.models import (
     DirectPlan,
@@ -14,6 +17,7 @@ from streambuild.compiler.planner.models import (
     PlannerWarning,
 )
 from tests.unit.src.streambuild.cli.plan.main._test_types import (
+    CliDirectPlanRenderingTestCase,
     CliDirectPlanSerializationTestCase,
 )
 
@@ -192,3 +196,109 @@ def test_given_direct_plan_when_serializing_then_preserves_complete_nested_ident
     assert json.loads(render_direct_plan_json(plan=plan, adapter_name="clickhouse")) == (
         test_case.expected_payload
     )
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliDirectPlanRenderingTestCase(
+            description="renders replay propagation and standalone rebuilds as a compact forest",
+            expected_fragments=(
+                "Rebuild paths:",
+                "[replay source] raw__orders [offsets]",
+                "├── [replay root] order_cancellations",
+                "└── [replay root] orders",
+                "    └── [rebuild] enriched_orders",
+                "[rebuild] region_lookup",
+                "Model decisions:",
+            ),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_direct_replay_closure_when_rendering_then_rebuild_paths_form_a_forest(
+    test_case: CliDirectPlanRenderingTestCase,
+) -> None:
+    source_key: LogicalResourceKey = LogicalResourceKey("source", "orders")
+    cancellations_key: LogicalResourceKey = LogicalResourceKey("model", "order_cancellations")
+    orders_key: LogicalResourceKey = LogicalResourceKey("model", "orders")
+    enriched_key: LogicalResourceKey = LogicalResourceKey("model", "enriched_orders")
+    region_key: LogicalResourceKey = LogicalResourceKey("model", "region_lookup")
+    entries: tuple[DirectPlanEntry, ...] = (
+        DirectPlanEntry(
+            model_key=cancellations_key,
+            reason="selected",
+            relation_names=("tbl__order_cancellations",),
+            resource_kinds=("table",),
+            driving_input_key=source_key,
+            is_replay_root=True,
+        ),
+        DirectPlanEntry(
+            model_key=orders_key,
+            reason="selected",
+            relation_names=("tbl__orders",),
+            resource_kinds=("table",),
+            driving_input_key=source_key,
+            is_replay_root=True,
+        ),
+        DirectPlanEntry(
+            model_key=enriched_key,
+            reason="selected",
+            relation_names=("tbl__enriched_orders",),
+            resource_kinds=("table",),
+            driving_input_key=None,
+            is_replay_root=False,
+        ),
+        DirectPlanEntry(
+            model_key=region_key,
+            reason="selected",
+            relation_names=("tbl__region_lookup",),
+            resource_kinds=("table",),
+            driving_input_key=None,
+            is_replay_root=False,
+        ),
+    )
+    plan: DirectPlan = DirectPlan(
+        database="analytics",
+        user_scope=(orders_key,),
+        execution_scope=(cancellations_key, orders_key, enriched_key, region_key),
+        prerequisite_scope=(),
+        entries=entries,
+        replay_roots=(
+            DirectReplayRoot(
+                model_key=cancellations_key,
+                driving_input_key=source_key,
+                driving_input_relation_name="raw__orders",
+                driving_input_replay_columns=AdapterReplayColumns(
+                    partition="_replay_partition",
+                    offset="_replay_offset",
+                    timestamp="_replay_timestamp",
+                    landed_at="_replay_landed_at",
+                    cursor="_replay_cursor",
+                ),
+                replay_boundary_mode="offsets",
+                propagated_model_keys=(cancellations_key,),
+            ),
+            DirectReplayRoot(
+                model_key=orders_key,
+                driving_input_key=source_key,
+                driving_input_relation_name="raw__orders",
+                driving_input_replay_columns=AdapterReplayColumns(
+                    partition="_replay_partition",
+                    offset="_replay_offset",
+                    timestamp="_replay_timestamp",
+                    landed_at="_replay_landed_at",
+                    cursor="_replay_cursor",
+                ),
+                replay_boundary_mode="offsets",
+                propagated_model_keys=(orders_key, enriched_key),
+            ),
+        ),
+        teardown_operations=(),
+        creation_operations=(),
+    )
+
+    rendered: str = render_direct_plan_text(plan=plan, adapter_name="clickhouse")
+
+    for expected_fragment in test_case.expected_fragments:
+        assert expected_fragment in rendered

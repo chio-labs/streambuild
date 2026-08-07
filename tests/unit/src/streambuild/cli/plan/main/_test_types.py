@@ -90,6 +90,12 @@ class CliDirectPlanSerializationTestCase:
 
 
 @dataclass(frozen=True)
+class CliDirectPlanRenderingTestCase:
+    description: str
+    expected_fragments: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class CliPlanDeploymentIdRejectionTestCase:
     description: str
     deployment_id: str

@@ -11,6 +11,7 @@ from streambuild.cli.build._helpers.execution import execute_confirmed_direct_bu
 from streambuild.cli.build._helpers.rendering import (
     render_direct_build_json,
     render_direct_build_text,
+    render_interrupted_build_message,
 )
 from streambuild.cli.build.models import (
     BuildCommandOptions,
@@ -113,7 +114,7 @@ def execute_direct_build_command(
         if sink is not None:
             sink.run_completed(outcome="cancelled", exit_code=_SIGINT_EXIT_CODE, error_message=None)
         try:
-            print("build interrupted; recorded as cancelled", file=sys.stderr)
+            print(render_interrupted_build_message(), file=sys.stderr)
         except Exception:
             pass
         return _SIGINT_EXIT_CODE
