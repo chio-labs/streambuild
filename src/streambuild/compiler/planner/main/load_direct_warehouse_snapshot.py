@@ -8,7 +8,11 @@ from streambuild.compiler.planner.models import DirectWarehouseSnapshot
 
 
 def load_direct_warehouse_snapshot(
-    *, client: AdapterConnection, database: str
+    *,
+    client: AdapterConnection,
+    database: str,
+    metadata_database: str | None = None,
+    logical_model_identities: tuple[str, ...] = (),
 ) -> DirectWarehouseSnapshot:
     """Read the target catalog required for Direct planning."""
 
@@ -16,4 +20,10 @@ def load_direct_warehouse_snapshot(
         raise AdapterCapabilityError(
             f"Adapter '{client.adapter_identity.name}' does not support direct rebuilds"
         )
-    return DirectWarehouseSnapshot(catalog=client.load_catalog(database))
+    return DirectWarehouseSnapshot(
+        catalog=client.load_catalog(database),
+        fingerprints=client.load_direct_fingerprints(
+            database=metadata_database or database,
+            logical_model_identities=logical_model_identities,
+        ),
+    )

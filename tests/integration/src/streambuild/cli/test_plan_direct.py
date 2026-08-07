@@ -84,10 +84,10 @@ def test_given_unchanged_direct_warehouse_when_planning_twice_then_workflow_is_s
     )
     assert first_output == second_output
     artifact_root: Path = tmp_path / "target/run/plan"
-    step_paths: tuple[Path, ...] = tuple(sorted((artifact_root / "steps").glob("*.sql")))
+    step_paths: tuple[Path, ...] = tuple(sorted((artifact_root / "steps").glob("*.sql.template")))
     assert before_relation_names == after_relation_names
     assert step_paths
-    assert (artifact_root / "workflow.sql").read_bytes() == b"\n".join(
+    assert (artifact_root / "workflow.template.sql").read_bytes() == b"\n".join(
         path.read_bytes() for path in step_paths
     )
     assert plan_scope_names(plan_json=first_output) == test_case.expected_execution_scope

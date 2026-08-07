@@ -34,8 +34,6 @@ from tests.integration.src.streambuild.conftest import ClickHouseConnectionSetti
             description="empty metadata state migrates repeatedly without duplicate versions",
             expected_table_names=(
                 "_streambuild_direct_fingerprints",
-                "_streambuild_direct_replay_checkpoints",
-                "_streambuild_direct_replay_ranges",
                 "_streambuild_invocations",
                 "_streambuild_node_results",
                 "_streambuild_run_events",
@@ -98,8 +96,6 @@ def test_given_empty_database_when_migrating_metadata_repeatedly_then_schema_is_
             description="concurrent metadata migrations converge on one logical version",
             expected_table_names=(
                 "_streambuild_direct_fingerprints",
-                "_streambuild_direct_replay_checkpoints",
-                "_streambuild_direct_replay_ranges",
                 "_streambuild_invocations",
                 "_streambuild_node_results",
                 "_streambuild_run_events",

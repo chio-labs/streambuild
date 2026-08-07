@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import replace
 from pathlib import Path
 
@@ -28,7 +30,6 @@ def create_dev_app(
 ) -> FastAPI:
     """Assemble one application over the shared long-running server state."""
 
-    app: FastAPI = FastAPI(title="StreamBuild", docs_url=None, redoc_url=None)
     active_reporter: DevServerReporter = reporter or SilentDevServerReporter()
     active_context: DevExecutionContext = execution_context or DevExecutionContext(
         database=database
@@ -41,13 +42,23 @@ def create_dev_app(
     if active_context.database is None:
         active_context = replace(active_context, database=database)
     effective_database: str | None = active_context.database
+    builds: BuildProcessManager = BuildProcessManager(
+        reporter=active_reporter, execution_context=active_context
+    )
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+        yield
+        builds.close()
+
+    app: FastAPI = FastAPI(title="StreamBuild", docs_url=None, redoc_url=None, lifespan=lifespan)
     return register_api_routes(
         app=app,
         state=state,
         connection=connection,
         database=effective_database,
         project_dir=project_dir or Path.cwd(),
-        builds=BuildProcessManager(reporter=active_reporter, execution_context=active_context),
+        builds=builds,
         execution_context=active_context,
         reporter=active_reporter,
     )

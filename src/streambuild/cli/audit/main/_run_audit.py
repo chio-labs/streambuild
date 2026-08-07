@@ -96,7 +96,7 @@ def run_audit(
                 summary={"failed_before_results": True},
             ),
         )
-        persist_terminal_observations(
+        _ = persist_terminal_observations(
             client=client,
             database=database,
             invocation=failed_invocation,
@@ -130,7 +130,7 @@ def run_audit(
         result=result,
         project_dir=project_dir,
     )
-    persist_terminal_observations(
+    _ = persist_terminal_observations(
         client=client,
         database=database,
         invocation=invocation,

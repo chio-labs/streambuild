@@ -73,6 +73,22 @@ export type RunEvent = {
 	exitCode?: number;
 };
 
+export type RunStatus =
+	| 'succeeded'
+	| 'failed'
+	| 'cancelled'
+	| 'running'
+	| 'unresponsive'
+	| 'presumed_failed';
+
+export type RunEventFeed = {
+	events: RunEvent[];
+	hasMore: boolean;
+	status: RunStatus | null;
+	lastSignalAt: string | null;
+	lastSignalAgeSeconds: number | null;
+};
+
 export type BuildFeed = {
 	running: boolean;
 	invocationId: string | null;
@@ -80,6 +96,7 @@ export type BuildFeed = {
 	exitCode: number | null;
 	events: RunEvent[];
 	stderr: string;
+	forceAvailable: boolean;
 };
 
 /** Cursor read of the live build feed. */
@@ -90,10 +107,31 @@ export async function fetchBuildFeed(after: number): Promise<BuildFeed> {
 }
 
 /** The durable step timeline of one recorded run. */
-export async function fetchRunEvents(invocationId: string): Promise<RunEvent[]> {
-	const response = await fetch(`/api/runs/${encodeURIComponent(invocationId)}/events`);
+export async function fetchRunEvents(invocationId: string, after = 0): Promise<RunEventFeed> {
+	const response = await fetch(
+		`/api/runs/${encodeURIComponent(invocationId)}/events?after=${after}`
+	);
 	if (!response.ok) throw new Error(`run events failed (${response.status})`);
-	return (await response.json()) as RunEvent[];
+	return (await response.json()) as RunEventFeed;
+}
+
+export async function cancelBuild(invocationId: string): Promise<Record<string, unknown>> {
+	return signalBuild('/api/build/cancel', invocationId);
+}
+
+export async function killBuild(invocationId: string): Promise<Record<string, unknown>> {
+	return signalBuild('/api/build/kill', invocationId);
+}
+
+async function signalBuild(path: string, invocationId: string): Promise<Record<string, unknown>> {
+	const response = await fetch(path, {
+		method: 'POST',
+		headers: { 'content-type': 'application/json' },
+		body: JSON.stringify({ invocationId })
+	});
+	const payload = (await response.json()) as Record<string, unknown> & { detail?: string };
+	if (!response.ok) throw new Error(payload.detail ?? `build signal failed (${response.status})`);
+	return payload;
 }
 
 /** Fetch a server-side plan for the given selectors and optional start time. */
@@ -113,14 +151,18 @@ export type RunRecord = {
 	invocationId: string;
 	command: string;
 	mode: string;
-	outcome: string;
-	exitCode: number;
+	status: RunStatus;
+	outcome: RunStatus;
+	exitCode: number | null;
 	startedAt: string;
-	completedAt: string;
+	completedAt: string | null;
+	lastSignalAt: string;
+	lastSignalAgeSeconds: number;
 	durationMs: number;
 	selectedNodeCount: number;
 	errorMessage: string | null;
 	toolVersion: string;
+	lastActivity: string | null;
 };
 
 /** Recorded invocation history from `_streambuild_invocations`, newest first. */

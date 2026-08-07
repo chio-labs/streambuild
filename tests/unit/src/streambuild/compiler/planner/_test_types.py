@@ -14,6 +14,7 @@ from streambuild.compiler.discovery.types import (
 from streambuild.compiler.planner.types import (
     DeploymentAction,
     DirectPlanReason,
+    DirectSqlBaselineStatus,
     PlannedChangeType,
     RebuildExecutionMode,
     RebuildStrategy,
@@ -51,6 +52,13 @@ class DirectMutableWarningTestCase:
     description: str
     expected_warning_code: str
     expected_warning_fragment: str
+
+
+@dataclass(frozen=True)
+class DirectSqlChangeTestCase:
+    description: str
+    expected_status: DirectSqlBaselineStatus
+    expected_execution_scope: tuple[str, ...]
 
 
 @dataclass(frozen=True)

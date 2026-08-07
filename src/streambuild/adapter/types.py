@@ -47,6 +47,14 @@ class AdapterReplayLowerBoundMode(StrEnum):
     ACTIVE_FRONTIER = "active_frontier"
 
 
+class AdapterOptionalStateStatus(StrEnum):
+    """Availability of non-authoritative adapter metadata."""
+
+    AVAILABLE = "available"
+    ABSENT = "absent"
+    UNAVAILABLE = "unavailable"
+
+
 class AdapterResourceRenderer(Protocol):
     """Render one neutral resource request for an adapter."""
 

@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 
+from streambuild.dev_server.types import RunPresentationStatus
+
 
 @dataclass(frozen=True)
 class DevRefactorTestCase:
@@ -117,3 +119,19 @@ class ReplayTimeColumnTestCase:
     description: str
     boundary_mode: str
     expected_column: str
+
+
+@dataclass(frozen=True)
+class RunStatusDerivationTestCase:
+    description: str
+    terminal_outcome: str | None
+    completed_event_outcome: str | None
+    signal_age_seconds: int
+    expected_status: RunPresentationStatus
+
+
+@dataclass(frozen=True)
+class RunDetailHistoryTestCase:
+    description: str
+    invocation_id: str
+    expected_status: str

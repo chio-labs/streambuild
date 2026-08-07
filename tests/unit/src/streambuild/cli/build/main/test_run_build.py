@@ -89,6 +89,7 @@ def test_given_build_command_gates_when_running_then_it_refuses_before_writing(
             expected_exit_code=130,
             expected_invocation_outcome="cancelled",
             expected_stderr_fragment="build interrupted; recorded as cancelled",
+            expected_execution_status="cancelled",
         )
     ],
     ids=lambda case: case.description,
@@ -109,9 +110,13 @@ def test_given_interrupted_execution_when_building_then_cancelled_invocation_is_
     )
 
     captured: CaptureResult[str] = capsys.readouterr()
+    execution_payload: dict[str, object] = json.loads(
+        (tmp_path / "target/run/build/execution.json").read_text(encoding="utf-8")
+    )
     assert exit_code == test_case.expected_exit_code
     assert test_case.expected_stderr_fragment in captured.err
     assert connection.invocation_observations[0].outcome == test_case.expected_invocation_outcome
+    assert execution_payload["status"] == test_case.expected_execution_status
 
 
 @pytest.mark.parametrize(
