@@ -6,12 +6,11 @@ import json
 from hashlib import sha256
 from typing import cast
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.constants import (
     METADATA_DEPLOYMENT_WATERMARKS_TABLE_NAME,
     METADATA_DEPLOYMENTS_TABLE_NAME,
     METADATA_DIRECT_FINGERPRINTS_TABLE_NAME,
-    METADATA_DIRECT_REPLAY_CHECKPOINTS_TABLE_NAME,
-    METADATA_DIRECT_REPLAY_RANGES_TABLE_NAME,
     METADATA_INVOCATIONS_TABLE_NAME,
     METADATA_NODE_RESULTS_TABLE_NAME,
     METADATA_OBJECT_STATE_TABLE_NAME,
@@ -22,23 +21,38 @@ from streambuild.adapter.constants import (
     REPLAY_VALUE_KIND_TIMESTAMP,
     VIRTUAL_OBJECT_STATE_KIND_DEPLOYMENT,
 )
-from streambuild.adapter.exceptions import AdapterResultError
+from streambuild.adapter.exceptions import AdapterResultError, AdapterWarehouseError
 from streambuild.adapter.models import (
     AdapterCurrentQualityNode,
     AdapterDeploymentRecord,
     AdapterDeploymentWatermarkRecord,
+    AdapterDirectFingerprintRecord,
+    AdapterDirectFingerprintSnapshot,
     AdapterInvocationRecord,
     AdapterMetadataState,
     AdapterNodeResultRecord,
     AdapterObjectStateRecord,
     AdapterPublishEventRecord,
+    AdapterQueryResult,
     AdapterRunEventRecord,
 )
-from streambuild.adapter.types import AdapterReplayBoundaryMode
+from streambuild.adapter.types import AdapterOptionalStateStatus, AdapterReplayBoundaryMode
 from streambuild.adapters.clickhouse.models import ClickHouseMetadataStatement
 
 _CURRENT_STATE_SCHEMA_VERSION: int = 1
 _BOUNDARY_PART_COUNT: int = 2
+_DIRECT_FINGERPRINT_REQUIRED_COLUMNS: frozenset[str] = frozenset(
+    {
+        "fingerprint_id",
+        "logical_model_identity",
+        "definition_sql",
+        "definition_hash",
+        "identity_metadata",
+        "workflow_id",
+        "tool_version",
+        "applied_at",
+    }
+)
 
 
 def render_clickhouse_metadata_migration_statements(database: str) -> tuple[str, ...]:
@@ -49,8 +63,6 @@ def render_clickhouse_metadata_migration_statements(database: str) -> tuple[str,
         _render_deployments_table(database),
         _render_deployment_watermarks_table(database),
         _render_publish_history_table(database),
-        _render_direct_replay_ranges_table(database),
-        _render_direct_replay_checkpoints_table(database),
         _render_direct_fingerprints_table(database),
         _render_invocations_table(database),
         _render_node_results_table(database),
@@ -153,6 +165,120 @@ def build_clickhouse_metadata_insert_statements(
     )
 
 
+def load_clickhouse_direct_fingerprints(
+    *,
+    connection: AdapterConnection,
+    database: str,
+    logical_model_identities: tuple[str, ...],
+) -> AdapterDirectFingerprintSnapshot:
+    """Load latest compatible baselines without making them execution state."""
+
+    try:
+        columns: frozenset[str] = connection.metadata_columns(
+            database=database,
+            table=METADATA_DIRECT_FINGERPRINTS_TABLE_NAME,
+        )
+        if not columns:
+            return AdapterDirectFingerprintSnapshot(
+                status=AdapterOptionalStateStatus.ABSENT,
+                baselines=(),
+            )
+        if not _DIRECT_FINGERPRINT_REQUIRED_COLUMNS <= columns:
+            return AdapterDirectFingerprintSnapshot(
+                status=AdapterOptionalStateStatus.UNAVAILABLE,
+                baselines=(),
+                warning="Direct SQL baseline table has an incompatible schema",
+            )
+        if not logical_model_identities:
+            return AdapterDirectFingerprintSnapshot(
+                status=AdapterOptionalStateStatus.AVAILABLE,
+                baselines=(),
+            )
+        result: AdapterQueryResult = connection.query(
+            _latest_fingerprints_query(
+                database=database,
+                logical_model_identities=logical_model_identities,
+            )
+        )
+    except AdapterWarehouseError as error:
+        return AdapterDirectFingerprintSnapshot(
+            status=AdapterOptionalStateStatus.UNAVAILABLE,
+            baselines=(),
+            warning=f"Direct SQL baselines unavailable: {error}",
+        )
+    return AdapterDirectFingerprintSnapshot(
+        status=AdapterOptionalStateStatus.AVAILABLE,
+        baselines=tuple(
+            AdapterDirectFingerprintRecord(
+                fingerprint_id=str(row[0]),
+                logical_model_identity=str(row[1]),
+                definition_sql=str(row[2]),
+                definition_hash=str(row[3]),
+                identity_metadata=str(row[4]),
+                workflow_id=str(row[5]),
+                tool_version=str(row[6]),
+                applied_at=str(row[7]),
+            )
+            for row in result.rows
+        ),
+    )
+
+
+def render_clickhouse_direct_fingerprint_observations(
+    *, database: str, fingerprints: tuple[AdapterDirectFingerprintRecord, ...]
+) -> tuple[str, ...]:
+    """Render best-effort schema initialization and logical baseline inserts."""
+
+    if not fingerprints:
+        return ()
+    values: str = ",\n".join(_fingerprint_value(record) for record in fingerprints)
+    return (
+        f"CREATE DATABASE IF NOT EXISTS {database};",
+        _terminate_sql(_render_direct_fingerprints_table(database)),
+        (
+            f"INSERT INTO {database}.{METADATA_DIRECT_FINGERPRINTS_TABLE_NAME} "
+            "(fingerprint_id, logical_model_identity, definition_sql, definition_hash, "
+            "identity_metadata, workflow_id, tool_version, applied_at) VALUES\n"
+            f"{values};"
+        ),
+    )
+
+
+def _latest_fingerprints_query(*, database: str, logical_model_identities: tuple[str, ...]) -> str:
+    identities: str = ", ".join(
+        _render_sql_literal(identity) for identity in logical_model_identities
+    )
+    table: str = f"{database}.{METADATA_DIRECT_FINGERPRINTS_TABLE_NAME}"
+    return (
+        "SELECT tuple_value.1, logical_model_identity, tuple_value.2, tuple_value.3, "
+        "tuple_value.4, tuple_value.5, tuple_value.6, tuple_value.7 FROM ("
+        "SELECT logical_model_identity, argMax(tuple(fingerprint_id, definition_sql, "
+        "definition_hash, identity_metadata, workflow_id, tool_version, applied_at), "
+        "tuple(applied_at, fingerprint_id)) AS tuple_value "
+        f"FROM {table} WHERE logical_model_identity IN ({identities}) "
+        "GROUP BY logical_model_identity) ORDER BY logical_model_identity"
+    )
+
+
+def _fingerprint_value(record: AdapterDirectFingerprintRecord) -> str:
+    values: tuple[str, ...] = (
+        record.fingerprint_id,
+        record.logical_model_identity,
+        record.definition_sql,
+        record.definition_hash,
+        record.identity_metadata,
+        record.workflow_id,
+        record.tool_version,
+    )
+    quoted: str = ", ".join(_render_sql_literal(value) for value in values)
+    applied_at: str = (
+        "now64(3, 'UTC')"
+        if record.applied_at is None
+        else f"toDateTime64({_render_sql_literal(record.applied_at)}, 3, 'UTC')"
+    )
+    return f"({quoted}, {applied_at})"
+
+
 def render_clickhouse_metadata_state(
     *, database: str, state: AdapterMetadataState
 ) -> tuple[str, ...]:
@@ -252,57 +378,18 @@ def _render_publish_history_table(database: str) -> str:
     )
 
 
-def _render_direct_replay_ranges_table(database: str) -> str:
-    return (
-        f"CREATE TABLE IF NOT EXISTS {database}.{METADATA_DIRECT_REPLAY_RANGES_TABLE_NAME} (\n"
-        "    capture_id String,\n"
-        "    replay_set_id String,\n"
-        "    workflow_id String,\n"
-        "    checkpoint_sequence UInt8,\n"
-        "    target_database_name String,\n"
-        "    logical_model_database Nullable(String),\n"
-        "    logical_model_name String,\n"
-        "    range_present Bool,\n"
-        "    driving_input_relation_name Nullable(String),\n"
-        "    replay_boundary_mode Nullable(String),\n"
-        "    partition_value Nullable(String),\n"
-        "    source_partition_column_name Nullable(String),\n"
-        "    source_position_column_name Nullable(String),\n"
-        "    source_timestamp_column_name Nullable(String),\n"
-        "    lower_value Nullable(String),\n"
-        "    upper_value Nullable(String),\n"
-        "    replay_cutoff_value Nullable(String),\n"
-        "    captured_at DateTime64(9, 'UTC')\n"
-        ") ENGINE = MergeTree\n"
-        "ORDER BY (capture_id, replay_set_id, range_present)"
-    )
-
-
-def _render_direct_replay_checkpoints_table(database: str) -> str:
-    return (
-        f"CREATE TABLE IF NOT EXISTS {database}.{METADATA_DIRECT_REPLAY_CHECKPOINTS_TABLE_NAME} (\n"
-        "    checkpoint_id String,\n"
-        "    workflow_id String,\n"
-        "    target_database_name String,\n"
-        "    logical_model_name String,\n"
-        "    capture_id String,\n"
-        "    replay_set_id String,\n"
-        "    checkpoint_sequence UInt8,\n"
-        "    recorded_at DateTime64(9, 'UTC')\n"
-        ") ENGINE = MergeTree\n"
-        "ORDER BY (checkpoint_id, checkpoint_sequence, recorded_at, capture_id)"
-    )
-
-
 def _render_direct_fingerprints_table(database: str) -> str:
     return (
         f"CREATE TABLE IF NOT EXISTS {database}.{METADATA_DIRECT_FINGERPRINTS_TABLE_NAME} (\n"
-        "    fingerprint_id String, logical_model_identity String, physical_database String,\n"
-        "    physical_relation String, resource_kind String, definition_sql String,\n"
-        "    definition_hash String, rendered_definition_hash String,\n"
-        "    schema_fingerprint String, workflow_id String, tool_version String,\n"
-        "    succeeded_at DateTime64(3, 'UTC')\n"
-        ") ENGINE = MergeTree ORDER BY (logical_model_identity, succeeded_at, fingerprint_id)"
+        "    fingerprint_id String,\n"
+        "    logical_model_identity String,\n"
+        "    definition_sql String,\n"
+        "    definition_hash String,\n"
+        "    identity_metadata String,\n"
+        "    workflow_id String,\n"
+        "    tool_version String,\n"
+        "    applied_at DateTime64(3, 'UTC')\n"
+        ") ENGINE = MergeTree ORDER BY (logical_model_identity, applied_at, fingerprint_id)"
     )
 
 

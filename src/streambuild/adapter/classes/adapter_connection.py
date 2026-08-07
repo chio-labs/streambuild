@@ -7,10 +7,12 @@ from streambuild.adapter.exceptions import AdapterCapabilityError
 from streambuild.adapter.models import (
     AdapterBindingReplacementRequest,
     AdapterCapabilities,
-    AdapterCheckpointReplayRequest,
+    AdapterCapturedReplayRequest,
     AdapterCurrentQualityNode,
     AdapterDeploymentInventory,
     AdapterDeploymentReplayRequest,
+    AdapterDirectFingerprintRecord,
+    AdapterDirectFingerprintSnapshot,
     AdapterIdentity,
     AdapterInvocationRecord,
     AdapterManagedSource,
@@ -133,17 +135,44 @@ class AdapterConnection(ABC):
 
         return ()
 
+    def load_direct_fingerprints(
+        self, *, database: str, logical_model_identities: tuple[str, ...]
+    ) -> AdapterDirectFingerprintSnapshot:
+        """Load optional logical direct SQL baselines when supported."""
+
+        del database, logical_model_identities
+        return AdapterDirectFingerprintSnapshot(
+            status="unavailable",
+            baselines=(),
+            warning=f"Adapter '{self.adapter_identity.name}' does not expose direct SQL baselines",
+        )
+
+    def render_direct_fingerprint_observations(
+        self,
+        *,
+        database: str,
+        fingerprints: tuple[AdapterDirectFingerprintRecord, ...],
+    ) -> tuple[str, ...]:
+        """Render optional terminal logical SQL baseline writes when supported."""
+
+        del database, fingerprints
+        return ()
+
     @abstractmethod
     def load_deployment_inventory(self, database: str) -> AdapterDeploymentInventory:
         """Load persisted deployments and publish events for lifecycle cleanup."""
 
     @abstractmethod
-    def render_replay_from_checkpoint(self, request: AdapterCheckpointReplayRequest) -> str:
-        """Render one replay that reads its boundary from a durable checkpoint."""
-
-    @abstractmethod
     def render_replay_coverage_query(self, request: AdapterReplayCoverageRequest) -> str:
-        """Render one query returning replay-window checkpoint coverage as JSON."""
+        """Render one query returning typed replay-window coverage rows."""
+
+    def render_replay_from_capture(self, request: AdapterCapturedReplayRequest) -> str:
+        """Render one replay from boundaries owned by the current process."""
+
+        del request
+        raise AdapterCapabilityError(
+            f"Adapter '{self.adapter_identity.name}' cannot render captured replay SQL"
+        )
 
     def render_replay_from_deployment(
         self, request: AdapterDeploymentReplayRequest

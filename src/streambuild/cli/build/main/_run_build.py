@@ -141,7 +141,7 @@ def _persist_failed_build(
             summary={},
         ),
     )
-    persist_terminal_observations(
+    _ = persist_terminal_observations(
         client=client,
         database=database,
         invocation=invocation,
