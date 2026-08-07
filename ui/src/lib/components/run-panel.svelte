@@ -69,6 +69,9 @@
 				};
 			}
 		}
+		if (startTime !== null && selectors.length === 0) {
+			return { selectors: [], startTime: null, error: '--start-time requires --select' };
+		}
 		return { selectors, startTime, error: null };
 	}
 
@@ -161,7 +164,7 @@
 					</p>
 				{:else}
 					<div class="flex flex-wrap items-center gap-1.5">
-						{#each parsed.selectors as selector (selector)}
+						{#each parsed.selectors as selector, index (`${selector}:${index}`)}
 							<span class="sb-tag code">{selector}</span>
 						{/each}
 						<span class="text-[var(--sb-text-faint)] font-mono text-[10.5px]"

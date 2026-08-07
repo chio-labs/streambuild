@@ -14,7 +14,7 @@
 	import ReplayWindowControl from '$lib/components/plan/replay-window.svelte';
 	import { getProject, fetchPlan, fetchRuns, startBuild, type RunRecord } from '$lib/api';
 	import { parseSelector, rootSourcesFor, selectorToken } from '$lib/domain/derive';
-	import { formatAgo, formatClock, formatCompact, formatDuration } from '$lib/domain/format';
+	import { formatAgo, formatClock, formatCompact, formatDuration, parseUtc } from '$lib/domain/format';
 	import {
 		OWNERSHIP_LABEL,
 		type Plan,
@@ -68,6 +68,13 @@
 	const selectors = $derived<Selector[]>(urlSelectors);
 	const replayWindow = $derived<ReplayWindow>(windowFromUrl());
 
+	function replayStartToken(window: ReplayWindow): string | null {
+		if (window.mode === 'full') return null;
+		const parsed: Date = parseUtc(window.startTime);
+		if (!Number.isFinite(parsed.getTime())) return null;
+		return `${parsed.toISOString().slice(0, 19)}Z`;
+	}
+
 	/** One navigation per change: two `goto` calls would race on a stale URL. */
 	function applySelection(nextSelectors: Selector[], nextWindow?: ReplayWindow): void {
 		const url = new URL(page.url);
@@ -76,28 +83,29 @@
 			url.searchParams.append('select', selectorToken(selector));
 		}
 		if (nextWindow) {
-			if (nextWindow.mode === 'full') url.searchParams.delete('start');
-			else url.searchParams.set('start', `${nextWindow.startTime.slice(0, 19)}Z`);
+			const start: string | null = replayStartToken(nextWindow);
+			if (start === null) url.searchParams.delete('start');
+			else url.searchParams.set('start', start);
 		}
 		void goto(url, { replaceState: true, noScroll: true, keepFocus: true });
 	}
 
 	function setSelectors(next: Selector[]): void {
-		applySelection(next);
+		applySelection(next, next.length === 0 ? { mode: 'full' } : undefined);
 	}
 
 	// The replay window is URL-addressable too, so an entire plan — selection AND
 	// cutoff — is shareable and round-trips through paste-to-preview.
 	function windowFromUrl(): ReplayWindow {
 		const raw: string | null = page.url.searchParams.get('start');
-		if (!raw) return { mode: 'full' };
-		const parsed = new Date(raw.endsWith('Z') ? raw : `${raw}Z`);
-		if (Number.isNaN(parsed.getTime())) return { mode: 'full' };
+		if (!raw || urlSelectors.length === 0) return { mode: 'full' };
+		const parsed: Date = parseUtc(raw);
+		if (!Number.isFinite(parsed.getTime())) return { mode: 'full' };
 		return { mode: 'from', startTime: parsed.toISOString() };
 	}
 
 	function setReplayWindow(next: ReplayWindow): void {
-		applySelection(selectors, next);
+		applySelection(selectors, selectors.length === 0 ? { mode: 'full' } : next);
 	}
 
 	// The plan comes from the server: the same planner the CLI uses, run against
@@ -111,18 +119,23 @@
 	let planLoading = $state<boolean>(false);
 	// svelte-ignore state_referenced_locally -- same seeding as `plan`.
 	let planRequestKey = $state<string>(data.initialKey ?? '');
+	let planRequestVersion: number = 0;
 
 	function requestPlan(tokens: string[], start: string | null): void {
+		const requestVersion: number = ++planRequestVersion;
 		planLoading = true;
 		fetchPlan(tokens, start)
 			.then((next) => {
+				if (requestVersion !== planRequestVersion) return;
 				plan = next;
 				planError = null;
 			})
 			.catch((error: Error) => {
+				if (requestVersion !== planRequestVersion) return;
 				planError = error.message;
 			})
 			.finally(() => {
+				if (requestVersion !== planRequestVersion) return;
 				planLoading = false;
 			});
 	}
@@ -149,8 +162,7 @@
 		executeError = null;
 		try {
 			const tokens: string[] = selectors.map(selectorToken);
-			const start: string | null =
-				replayWindow.mode === 'from' ? `${replayWindow.startTime.slice(0, 19)}Z` : null;
+			const start: string | null = replayStartToken(replayWindow);
 			const startResult = await startBuild(tokens, start);
 			await goto(`/runs/${startResult.invocationId}?live=1`);
 		} catch (error) {
@@ -163,23 +175,27 @@
 	/** Re-run the same selection against a fresh warehouse snapshot. */
 	function replan(): void {
 		const tokens: string[] = selectors.map(selectorToken);
-		const start: string | null =
-			replayWindow.mode === 'from' ? `${replayWindow.startTime.slice(0, 19)}Z` : null;
+		const start: string | null = replayStartToken(replayWindow);
 		requestPlan(tokens, start);
 	}
 
 	$effect(() => {
 		const tokens: string[] = selectors.map(selectorToken);
-		const start: string | null =
-			replayWindow.mode === 'from' ? `${replayWindow.startTime.slice(0, 19)}Z` : null;
+		const start: string | null = replayStartToken(replayWindow);
+		if (page.url.searchParams.has('start') && start === null) {
+			applySelection(selectors, { mode: 'full' });
+			return;
+		}
 		const key: string = `${tokens.join(',')}|${start ?? ''}`;
 		if (key === planRequestKey) return;
 		planRequestKey = key;
 		// In-page navigations refetch through the route load; adopt its result
 		// instead of firing a second identical request.
 		if (data.initialKey === key && data.initialPlan !== null) {
+			planRequestVersion += 1;
 			plan = data.initialPlan;
 			planError = null;
+			planLoading = false;
 			return;
 		}
 		requestPlan(tokens, start);
@@ -188,15 +204,13 @@
 	const planEntries = $derived(plan?.entries ?? []);
 
 	/**
-	 * Total rows the replay will read — summed over the roots the server counted.
-	 * null until at least one root has a count (fresh project, no anchor tables).
+	 * Total rows the replay will read, available only when every root was counted.
+	 * A partial sum would look exact while silently omitting an unmaterialized root.
 	 */
 	const rowsToReplay = $derived.by((): number | null => {
-		const counted: number[] = (plan?.replayRoots ?? [])
-			.map((root) => root.rowsToReplay)
-			.filter((rows): rows is number => rows !== null);
-		if (counted.length === 0) return null;
-		return counted.reduce((total, rows) => total + rows, 0);
+		const roots: Plan['replayRoots'] = plan?.replayRoots ?? [];
+		if (roots.length === 0 || roots.some((root) => root.rowsToReplay === null)) return null;
+		return roots.reduce((total, root) => total + (root.rowsToReplay ?? 0), 0);
 	});
 
 	// The last RECORDED build from _streambuild_invocations — a fact to calibrate
@@ -541,6 +555,7 @@
 				{project}
 				sources={rootSources}
 				window={replayWindow}
+				selectionSpecified={selectors.length > 0}
 				{rowsToReplay}
 				onchange={setReplayWindow}
 			/>
@@ -655,6 +670,7 @@
 				class="flex shrink-0 items-center gap-1.5 rounded-[4px] border px-2.5 py-1.5 font-mono text-[11px] {copied
 					? 'border-[var(--sb-success)]'
 					: 'border-border text-muted-foreground hover:text-foreground'}"
+				disabled={planLoading || planError !== null || plan === null}
 				onclick={copyCommand}
 			>
 				{#if copied}
@@ -666,7 +682,7 @@
 			<button
 				class="bg-primary flex shrink-0 items-center gap-1.5 rounded-[4px] px-3 py-1.5 font-mono text-[11px] font-medium text-white disabled:opacity-60"
 				title="Runs the exact command shown, as a subprocess"
-				disabled={executing || plan === null}
+				disabled={executing || planLoading || planError !== null || plan === null}
 				onclick={() => void execute()}
 			>
 				<PlayIcon size={12} /> {executing ? 'starting…' : 'Execute'}
