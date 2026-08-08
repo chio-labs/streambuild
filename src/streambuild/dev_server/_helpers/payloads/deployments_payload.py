@@ -1,4 +1,4 @@
-"""Deployment inventory payload shaping for API consumers."""
+"""Deployment inventory payloads for the development UI."""
 
 from __future__ import annotations
 
@@ -17,20 +17,18 @@ from streambuild.compiler.planner.main.is_deployment_physical_name import (
 from streambuild.compiler.planner.main.logical_name_from_physical_name import (
     logical_name_from_physical_name,
 )
-from streambuild.executor.deployment._helpers.inventory import build_deployment_inventory
-from streambuild.executor.deployment.models import (
-    DeploymentInventory,
-    DeploymentSummary,
-    RelationStorage,
-)
+from streambuild.dev_server._helpers.payloads.state_payload import build_relation_stats_query
+from streambuild.dev_server.models import RelationStorage
+from streambuild.executor.deployment.main.load_deployments import load_deployments
+from streambuild.executor.deployment.models import DeploymentInventory, DeploymentSummary
 
 
-def build_inventory_payload(
+def build_deployments_payload(
     *, connection: AdapterConnection, database: str, metadata_database: str
 ) -> dict[str, object]:
     """Return every reconstructed deployment with storage totals for the UI."""
 
-    inventory: DeploymentInventory = build_deployment_inventory(
+    inventory: DeploymentInventory = load_deployments(
         client=connection,
         metadata_database=metadata_database,
         default_database=database,
@@ -47,7 +45,7 @@ def build_inventory_payload(
     }
 
 
-def build_detail_payload(
+def build_deployment_detail_payload(
     *,
     connection: AdapterConnection,
     database: str,
@@ -56,7 +54,7 @@ def build_detail_payload(
 ) -> dict[str, object] | None:
     """Return one deployment with per-model staged versus live comparison."""
 
-    inventory: DeploymentInventory = build_deployment_inventory(
+    inventory: DeploymentInventory = load_deployments(
         client=connection,
         metadata_database=metadata_database,
         default_database=database,
@@ -92,16 +90,6 @@ def build_detail_payload(
     }
 
 
-def build_deployment_storage_query(*, database: str) -> str:
-    """Approximate rows and bytes for every relation in one scan of system.tables."""
-
-    return (
-        "SELECT name, coalesce(total_rows, 0) AS total_rows, "
-        "coalesce(total_bytes, 0) AS total_bytes "
-        f"FROM system.tables WHERE database = '{database}'"
-    )
-
-
 def read_relation_storage(
     *, connection: AdapterConnection, database: str
 ) -> dict[str, RelationStorage]:
@@ -109,7 +97,7 @@ def read_relation_storage(
 
     try:
         rows: tuple[Mapping[str, object], ...] = connection.query(
-            build_deployment_storage_query(database=database)
+            build_relation_stats_query(database=database)
         ).named_rows()
     except AdapterError:
         return {}
@@ -136,6 +124,7 @@ def _summary_payload(
         "publishedAt": deployment.latest_published_at,
         "persistedStatus": deployment.persisted_status,
         "rootNames": list(deployment.root_names),
+        "physicalRelationNames": list(deployment.physical_relation_names),
         "activeBindingNames": list(deployment.active_binding_names),
         "missingRelationNames": list(deployment.missing_physical_relation_names),
         "modelCount": len(model_relations),
