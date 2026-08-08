@@ -176,7 +176,7 @@
 						</div>
 
 						<div class="ml-auto shrink-0 text-right">
-							<div class="font-mono text-[11px]">{formatCompact(source.live.rows)} retained</div>
+							<div class="font-mono text-[11px]">{formatCompact(source.live.rows)} rows</div>
 							<div
 								class="font-mono text-[10px]"
 								style:color={source.retentionDays === null
