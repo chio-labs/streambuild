@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.14.0](https://github.com/chio-labs/streambuild/compare/v0.13.0...v0.14.0) (2026-08-08)
+
+
+### Features
+
+* complete virtual deployment lifecycle ([acfbf58](https://github.com/chio-labs/streambuild/commit/acfbf5835b74113e65bf8135c01fd5e0ce1e0c30))
+* complete virtual deployment lifecycle ([3d5f971](https://github.com/chio-labs/streambuild/commit/3d5f97127d7cd8b3f226832a3980bcc67f825a84))
+
 ## [0.13.0](https://github.com/chio-labs/streambuild/compare/v0.12.4...v0.13.0) (2026-08-08)
 
 
