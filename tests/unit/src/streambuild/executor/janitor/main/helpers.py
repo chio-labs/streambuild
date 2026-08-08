@@ -3,10 +3,21 @@ from collections.abc import Iterator
 from streambuild.adapter.models import (
     AdapterBindingReplacementRequest,
     AdapterDeploymentInventory,
+    AdapterDeploymentRecord,
+    AdapterMetadataObjectKey,
+    AdapterPreparedObjectMapping,
+    AdapterPublishEventRecord,
     AdapterRelationCleanupRequest,
+    AdapterStableBinding,
+    InspectedActiveTableBinding,
     InspectedManagedTableState,
+    InspectedPhysicalTableCandidate,
 )
+from streambuild.executor.janitor.models import JanitorRequest
 from tests.unit.src.streambuild.cli.helpers import RecordingAdapterConnection
+from tests.unit.src.streambuild.executor.janitor.main._test_types import (
+    JanitorUnavailableRollbackTestCase,
+)
 
 
 class SequencedManagedStateAdapterConnection(RecordingAdapterConnection):
@@ -40,3 +51,98 @@ class JanitorWorkflowRecordingAdapterConnection(RecordingAdapterConnection):
             f"DROP TABLE IF EXISTS {request.database}.{relation_name} SYNC;"
             for relation_name in request.relation_names
         )
+
+
+def unavailable_rollback_test_case() -> JanitorUnavailableRollbackTestCase:
+    active_id: str = "20260727T130000Z_active1"
+    missing_id: str = "20260727T120000Z_missing1"
+    usable_id: str = "20260727T110000Z_usable1"
+    return JanitorUnavailableRollbackTestCase(
+        description="skips missing newer publication and retains older usable rollback target",
+        inventory=AdapterDeploymentInventory(
+            deployments=tuple(
+                _rollback_retention_deployment(deployment_id=deployment_id, created_at=created_at)
+                for deployment_id, created_at in (
+                    (active_id, "2020-01-03 00:00:00.000"),
+                    (missing_id, "2020-01-02 00:00:00.000"),
+                    (usable_id, "2020-01-01 00:00:00.000"),
+                )
+            ),
+            publish_events=tuple(
+                _rollback_retention_event(deployment_id=deployment_id, published_at=published_at)
+                for deployment_id, published_at in (
+                    (active_id, "2020-01-03 01:00:00.000"),
+                    (missing_id, "2020-01-02 01:00:00.000"),
+                    (usable_id, "2020-01-01 01:00:00.000"),
+                )
+            ),
+        ),
+        managed_table_state=InspectedManagedTableState(
+            active_bindings=(
+                InspectedActiveTableBinding(
+                    database="analytics",
+                    logical_name="orders",
+                    physical_name=f"orders__{active_id}",
+                ),
+            ),
+            physical_candidates=tuple(
+                InspectedPhysicalTableCandidate(
+                    database="analytics",
+                    logical_name="orders",
+                    physical_name=f"orders__{deployment_id}",
+                )
+                for deployment_id in (active_id, usable_id)
+            ),
+        ),
+        request=JanitorRequest(
+            database="analytics",
+            metadata_database="metadata",
+            retention_days=0,
+            apply=False,
+            minimum_rollback_deployments=1,
+        ),
+        missing_deployment_id=missing_id,
+        usable_deployment_id=usable_id,
+        expected_usable_reason="retained as rollback point (minimum 1 deployments)",
+    )
+
+
+def _rollback_retention_deployment(
+    *, deployment_id: str, created_at: str
+) -> AdapterDeploymentRecord:
+    return AdapterDeploymentRecord(
+        deployment_id=deployment_id,
+        created_at=created_at,
+        status="published",
+        replay_lineage_mode="offsets",
+        selected_root_keys=(),
+        warning_codes=(),
+        prepared_object_mappings=(
+            AdapterPreparedObjectMapping(
+                logical_key=AdapterMetadataObjectKey(
+                    database=None,
+                    object_type="table",
+                    name="orders",
+                ),
+                physical_name=f"orders__{deployment_id}",
+                logical_model_name="orders",
+            ),
+        ),
+    )
+
+
+def _rollback_retention_event(
+    *, deployment_id: str, published_at: str
+) -> AdapterPublishEventRecord:
+    return AdapterPublishEventRecord(
+        deployment_id=deployment_id,
+        published_at=published_at,
+        logical_view_names=("orders",),
+        bindings=(
+            AdapterStableBinding(
+                database="analytics",
+                logical_name="orders",
+                physical_name=f"orders__{deployment_id}",
+            ),
+        ),
+    )

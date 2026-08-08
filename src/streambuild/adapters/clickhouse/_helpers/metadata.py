@@ -41,7 +41,7 @@ from streambuild.adapter.models import (
 from streambuild.adapter.types import AdapterOptionalStateStatus, AdapterReplayBoundaryMode
 from streambuild.adapters.clickhouse.models import ClickHouseMetadataStatement
 
-_CURRENT_STATE_SCHEMA_VERSION: int = 2
+_CURRENT_STATE_SCHEMA_VERSION: int = 3
 _BOUNDARY_PART_COUNT: int = 2
 _SCHEDULE_CLAIM_STALE_SECONDS: int = 600
 _DIRECT_FINGERPRINT_REQUIRED_COLUMNS: frozenset[str] = frozenset(
@@ -71,6 +71,7 @@ def render_clickhouse_metadata_migration_statements(database: str) -> tuple[str,
         _render_node_results_table(database),
         _render_run_events_table(database),
         _render_audit_schedule_claims_table(database),
+        _render_publish_history_lifecycle_columns(database),
     )
 
 
@@ -140,8 +141,9 @@ def build_clickhouse_metadata_insert_statements(
             table=f"{database}.{METADATA_PUBLISH_HISTORY_TABLE_NAME}",
             sql=(
                 f"INSERT INTO {database}.{METADATA_PUBLISH_HISTORY_TABLE_NAME} "
-                "(publication_id, deployment_id, logical_database_name, logical_view_name, "
-                "physical_database_name, physical_relation_name, published_at) VALUES"
+                "(publication_id, deployment_id, operation, previous_deployment_id, "
+                "logical_database_name, logical_view_name, physical_database_name, "
+                "physical_relation_name, published_at) VALUES"
             ),
             rows=_publish_rows_for_records(state.publish_events),
         ),
@@ -436,6 +438,8 @@ def _render_publish_history_table(database: str) -> str:
         f"CREATE TABLE IF NOT EXISTS {database}.{METADATA_PUBLISH_HISTORY_TABLE_NAME} (\n"
         "    publication_id String,\n"
         "    deployment_id String,\n"
+        "    operation LowCardinality(String) DEFAULT 'promote',\n"
+        "    previous_deployment_id Nullable(String),\n"
         "    logical_database_name String,\n"
         "    logical_view_name String,\n"
         "    physical_database_name String,\n"
@@ -443,6 +447,15 @@ def _render_publish_history_table(database: str) -> str:
         "    published_at DateTime64(3, 'UTC')\n"
         ") ENGINE = MergeTree\n"
         "ORDER BY (publication_id, logical_database_name, logical_view_name)"
+    )
+
+
+def _render_publish_history_lifecycle_columns(database: str) -> str:
+    return (
+        f"ALTER TABLE {database}.{METADATA_PUBLISH_HISTORY_TABLE_NAME} "
+        "ADD COLUMN IF NOT EXISTS operation LowCardinality(String) DEFAULT 'promote' "
+        "AFTER deployment_id, ADD COLUMN IF NOT EXISTS previous_deployment_id Nullable(String) "
+        "AFTER operation"
     )
 
 
@@ -659,18 +672,29 @@ def _publish_event_rows(record: AdapterPublishEventRecord) -> tuple[dict[str, ob
         (binding.database, binding.logical_name, binding.physical_name)
         for binding in record.bindings
     )
-    publication_id: str = sha256(
-        json.dumps(
-            (record.deployment_id, record.published_at, binding_identity),
-            separators=(",", ":"),
-        ).encode()
-    ).hexdigest()
+    publication_id: str = (
+        record.publication_id
+        or sha256(
+            json.dumps(
+                (
+                    record.deployment_id,
+                    record.published_at,
+                    record.operation,
+                    record.previous_deployment_id,
+                    binding_identity,
+                ),
+                separators=(",", ":"),
+            ).encode()
+        ).hexdigest()
+    )
     return tuple(
         cast(
             dict[str, object],
             {
                 "publication_id": publication_id,
                 "deployment_id": record.deployment_id,
+                "operation": record.operation,
+                "previous_deployment_id": record.previous_deployment_id,
                 "logical_database_name": binding.database,
                 "logical_view_name": binding.logical_name,
                 "physical_database_name": binding.database,

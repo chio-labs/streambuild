@@ -43,6 +43,7 @@ from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHous
 from streambuild.cli.audit.main._run_audit import run_audit
 from streambuild.cli.build.main._run_build import run_build
 from streambuild.cli.compile.main._run_compile import run_compile
+from streambuild.cli.deployment.main._run_deployment_diff import run_deployment_diff
 from streambuild.cli.deployment.main._run_deployment_list import run_deployment_list
 from streambuild.cli.deployment.main._run_deployment_show import run_deployment_show
 from streambuild.cli.dev.main._run_dev import run_dev
@@ -55,6 +56,7 @@ from streambuild.cli.promotion.main._run_deployment_promotion import run_deploym
 from streambuild.cli.readiness.main._run_deployment_audit import run_deployment_audit
 from streambuild.cli.reconcile.main._run_reconcile import run_reconcile
 from streambuild.cli.repair_active_view.main._run_repair_active_view import run_repair_active_view
+from streambuild.cli.rollback.main._run_deployment_rollback import run_deployment_rollback
 from streambuild.cli.test.main._run_test import run_test
 
 _EMPTY_MANAGED_TABLE_STATE: InspectedManagedTableState = InspectedManagedTableState(
@@ -351,10 +353,12 @@ def handlers_with_overrides(**overrides: object) -> CliEntrypointHandlers:
             run_audit=run_audit,
             run_plan=run_plan,
             run_build=run_build,
+            run_deployment_diff=run_deployment_diff,
             run_deployment_list=run_deployment_list,
             run_deployment_show=run_deployment_show,
             run_deployment_audit=run_deployment_audit,
             run_deployment_promote=run_deployment_promotion,
+            run_deployment_rollback=run_deployment_rollback,
             run_reconcile=run_reconcile,
             run_janitor=run_janitor,
             run_doctor=run_doctor,
@@ -367,13 +371,23 @@ def handlers_with_overrides(**overrides: object) -> CliEntrypointHandlers:
 
 CLI_COMMAND_HANDLER_NAMES: dict[str, str] = {
     "deployment audit": "run_deployment_audit",
+    "deployment diff": "run_deployment_diff",
     "deployment promote": "run_deployment_promote",
+    "deployment rollback": "run_deployment_rollback",
     "doctor": "run_doctor",
 }
 
 CLI_COMMAND_ARGV: dict[str, tuple[str, ...]] = {
     "deployment audit": ("stb", "deployment", "audit", "deployment-id"),
+    "deployment diff": ("stb", "deployment", "diff", "deployment-id"),
     "deployment promote": ("stb", "deployment", "promote", "deployment-id"),
+    "deployment rollback": (
+        "stb",
+        "deployment",
+        "rollback",
+        "deployment-id",
+        "--auto-approve",
+    ),
     "doctor": ("stb", "doctor"),
 }
 

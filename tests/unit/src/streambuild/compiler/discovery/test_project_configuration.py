@@ -15,6 +15,7 @@ from streambuild.compiler.discovery._helpers.interpolation import (
 from streambuild.compiler.discovery.exceptions import PipelineDiscoveryError, ProjectConfigError
 from streambuild.compiler.discovery.models import (
     AuditDefaults,
+    DeploymentReadinessDefaults,
     EffectiveProjectConfiguration,
     LoadedProjectConfiguration,
     SourceFreshnessPolicy,
@@ -31,6 +32,7 @@ from tests.unit.src.streambuild.compiler.discovery._test_types import (
     MixedProjectConfigurationTestCase,
     ProjectAuditDefaultsTestCase,
     ProjectConfigurationErrorTestCase,
+    ProjectDeploymentReadinessDefaultsTestCase,
     ProjectFreshnessDefaultTestCase,
     ProjectFreshnessErrorTestCase,
     UnknownTargetTestCase,
@@ -94,6 +96,43 @@ def test_given_project_audit_defaults_when_loading_then_policy_is_typed(
     assert defaults.severity == test_case.expected_severity
     assert defaults.cadence_seconds == test_case.expected_cadence_seconds
     assert defaults.warmup_seconds == test_case.expected_warmup_seconds
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ProjectDeploymentReadinessDefaultsTestCase(
+            description="parses deployment readiness defaults into typed thresholds",
+            expected_maximum_lag_seconds=90.0,
+            expected_minimum_staged_row_ratio=0.85,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_deployment_readiness_defaults_when_loading_then_thresholds_are_typed(
+    test_case: ProjectDeploymentReadinessDefaultsTestCase,
+    tmp_path: Path,
+) -> None:
+    write_project_toml(
+        project_dir=tmp_path,
+        contents="""
+        name = "analytics"
+        default_target = "dev"
+
+        [defaults.deployment_readiness]
+        maximum_lag = "90s"
+        minimum_staged_row_ratio = 0.85
+
+        [targets.dev]
+        database = "analytics"
+        """,
+    )
+
+    loaded: LoadedProjectConfiguration = load_project_configuration(project_dir=tmp_path)
+    defaults: DeploymentReadinessDefaults = loaded.project.defaults.deployment_readiness
+
+    assert defaults.maximum_lag_seconds == test_case.expected_maximum_lag_seconds
+    assert defaults.minimum_staged_row_ratio == test_case.expected_minimum_staged_row_ratio
 
 
 @pytest.mark.parametrize(
@@ -351,6 +390,48 @@ def test_given_absent_local_toml_when_loading_then_returns_typed_defaults(
             description="rejects interpolation of committed project identity",
             project_contents=('name = "${project_name}"\ndefault_target = "dev"\n[targets.dev]\n'),
             expected_error_fragment="project.name must be a committed literal",
+        ),
+        ProjectConfigurationErrorTestCase(
+            description="rejects invalid deployment readiness lag",
+            project_contents=(
+                'name = "analytics"\ndefault_target = "dev"\n'
+                '[defaults.deployment_readiness]\nmaximum_lag = "soon"\n[targets.dev]\n'
+            ),
+            expected_error_fragment="defaults.deployment_readiness.maximum_lag must be a duration",
+        ),
+        ProjectConfigurationErrorTestCase(
+            description="rejects deployment readiness ratio above one",
+            project_contents=(
+                'name = "analytics"\ndefault_target = "dev"\n'
+                "[defaults.deployment_readiness]\nminimum_staged_row_ratio = 1.1\n"
+                "[targets.dev]\n"
+            ),
+            expected_error_fragment=(
+                "defaults.deployment_readiness.minimum_staged_row_ratio "
+                "must be a number from 0 to 1"
+            ),
+        ),
+        ProjectConfigurationErrorTestCase(
+            description="rejects boolean deployment readiness ratio",
+            project_contents=(
+                'name = "analytics"\ndefault_target = "dev"\n'
+                "[defaults.deployment_readiness]\nminimum_staged_row_ratio = true\n"
+                "[targets.dev]\n"
+            ),
+            expected_error_fragment=(
+                "defaults.deployment_readiness.minimum_staged_row_ratio "
+                "must be a number from 0 to 1"
+            ),
+        ),
+        ProjectConfigurationErrorTestCase(
+            description="rejects unknown deployment readiness setting",
+            project_contents=(
+                'name = "analytics"\ndefault_target = "dev"\n'
+                "[defaults.deployment_readiness]\nenforced = true\n[targets.dev]\n"
+            ),
+            expected_error_fragment=(
+                "defaults.deployment_readiness contains unsupported keys: enforced"
+            ),
         ),
     ],
     ids=lambda case: case.description,

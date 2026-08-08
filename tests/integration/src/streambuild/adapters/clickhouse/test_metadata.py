@@ -10,6 +10,7 @@ from streambuild.adapter.exceptions import AdapterWarehouseError
 from streambuild.adapter.models import (
     AdapterConnectionConfig,
     AdapterCurrentQualityNode,
+    AdapterDeploymentInventory,
     AdapterMetadataState,
     AdapterNodeResultRecord,
 )
@@ -17,6 +18,7 @@ from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHous
 from tests.integration.src.streambuild.adapters.clickhouse._test_types import (
     LatestNodeStatusIntegrationTestCase,
     LegacyNodeResultsSchemaTestCase,
+    LegacyPublicationMigrationTestCase,
     MetadataMigrationIntegrationTestCase,
 )
 from tests.integration.src.streambuild.adapters.clickhouse.helpers import (
@@ -73,7 +75,7 @@ def test_given_legacy_node_results_table_when_migrating_then_reset_instruction_i
                 "_streambuild_virtual_publications",
                 "_streambuild_virtual_replay_boundaries",
             ),
-            expected_version_rows=((2,),),
+            expected_version_rows=((3,),),
         )
     ],
     ids=lambda case: case.description,
@@ -122,6 +124,55 @@ def test_given_empty_database_when_migrating_metadata_repeatedly_then_schema_is_
 @pytest.mark.parametrize(
     "test_case",
     [
+        LegacyPublicationMigrationTestCase(
+            description="v2 publication rows gain default lifecycle values",
+            expected_operation="promote",
+            expected_publication_id="publication-1",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_v2_publication_rows_when_migrating_then_lifecycle_defaults_are_preserved(
+    test_case: LegacyPublicationMigrationTestCase,
+    managed_clickhouse_client: AdapterConnection,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    clickhouse_client.command(
+        f"CREATE TABLE {clickhouse_database}._streambuild_virtual_publications ("
+        "publication_id String, deployment_id String, logical_database_name String, "
+        "logical_view_name String, physical_database_name String, physical_relation_name String, "
+        "published_at DateTime64(3, 'UTC')) ENGINE = MergeTree "
+        "ORDER BY (publication_id, logical_database_name, logical_view_name)"
+    )
+    clickhouse_client.command(
+        f"INSERT INTO {clickhouse_database}._streambuild_virtual_publications VALUES "
+        "('publication-1', 'deployment-1', 'analytics', 'orders', 'analytics', "
+        "'orders__deployment-1', '2026-08-08 12:00:00.000')"
+    )
+
+    before: AdapterDeploymentInventory = managed_clickhouse_client.load_deployment_inventory(
+        clickhouse_database
+    )
+    execute_rendered_statements(
+        client=clickhouse_client,
+        statements=managed_clickhouse_client.render_migrate_metadata_state(clickhouse_database),
+    )
+    after: AdapterDeploymentInventory = managed_clickhouse_client.load_deployment_inventory(
+        clickhouse_database
+    )
+
+    assert before.publish_events[0].operation == test_case.expected_operation
+    assert before.publish_events[0].previous_deployment_id is None
+    assert after.publish_events[0].operation == test_case.expected_operation
+    assert after.publish_events[0].previous_deployment_id is None
+    assert after.publish_events[0].publication_id == test_case.expected_publication_id
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
         MetadataMigrationIntegrationTestCase(
             description="concurrent metadata migrations converge on one logical version",
             expected_table_names=(
@@ -136,7 +187,7 @@ def test_given_empty_database_when_migrating_metadata_repeatedly_then_schema_is_
                 "_streambuild_virtual_publications",
                 "_streambuild_virtual_replay_boundaries",
             ),
-            expected_version_rows=((2,),),
+            expected_version_rows=((3,),),
         )
     ],
     ids=lambda case: case.description,
