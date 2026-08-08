@@ -10,14 +10,16 @@ from pathlib import Path
 from fastapi import FastAPI
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.dev_server._helpers.api_routes import register_api_routes
+from streambuild.dev_server._helpers.state_payload import build_topics_payload
 from streambuild.dev_server.classes.audit_scheduler import AuditScheduler
 from streambuild.dev_server.classes.build_process import BuildProcessManager
 from streambuild.dev_server.classes.dev_server_state import DevServerState
 from streambuild.dev_server.classes.kafka_lag_reader import KafkaLagReader
 from streambuild.dev_server.classes.kafka_topic_reader import KafkaTopicReader
 from streambuild.dev_server.classes.silent_reporter import SilentDevServerReporter
-from streambuild.dev_server.exceptions import DevConfigurationError
+from streambuild.dev_server.exceptions import DevConfigurationError, ProjectNotCompiledError
 from streambuild.dev_server.models import DevExecutionContext
 from streambuild.dev_server.types import DevServerReporter
 
@@ -62,9 +64,28 @@ def create_dev_app(
         builds=builds,
     )
 
+    def _warm_broker_caches() -> None:
+        """Kick the non-blocking broker metadata refreshes at startup."""
+
+        # Both readers return cache misses instantly and refresh on their own
+        # executors, so warming here costs nothing and spares the first Topics
+        # or Sources visit the pop-in while metadata loads on demand.
+        try:
+            analysis: CompileAnalysis = state.current_analysis()
+        except ProjectNotCompiledError:
+            return
+        _ = build_topics_payload(
+            analysis=analysis,
+            connection=None,
+            database=effective_database,
+            topic_reader=kafka_topic_reader,
+            kafka_lag_reader=kafka_lag_reader,
+        )
+
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         audit_scheduler.start()
+        _warm_broker_caches()
         yield
         audit_scheduler.close()
         kafka_lag_reader.close()
