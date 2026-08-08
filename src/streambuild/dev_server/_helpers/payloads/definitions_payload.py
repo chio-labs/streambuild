@@ -39,7 +39,7 @@ from streambuild.compiler.graph.types import DependencyEdgeType
 from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.compiler.quality.models import QualityNodeIdentity
 from streambuild.compiler.testing.models import SqlTestCase
-from streambuild.dev_server._helpers.redaction import (
+from streambuild.dev_server._helpers.server.redaction import (
     redacted_broker_list,
     redacted_source_settings,
 )

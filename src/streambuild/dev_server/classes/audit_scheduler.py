@@ -12,7 +12,7 @@ from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import AdapterQualityScheduleClaim
 from streambuild.cli.entry.types import CliCommand
 from streambuild.compiler.pipeline.models import CompileAnalysis
-from streambuild.dev_server._helpers.runs_query import (
+from streambuild.dev_server._helpers.queries.runs_query import (
     read_active_runs,
     read_latest_applied_direct_build_at,
 )

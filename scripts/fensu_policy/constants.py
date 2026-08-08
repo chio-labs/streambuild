@@ -144,8 +144,7 @@ OBSERVABILITY_AUTHORITY_ALLOWED_PATH_PREFIXES: tuple[tuple[str, ...], ...] = (
     ("src", "streambuild", "executor", "observability"),
     ("src", "streambuild", "executor", "workflow", "main", "_execute_observation_workflow.py"),
     ("src", "streambuild", "quality"),
-    ("src", "streambuild", "dev_server", "_helpers", "runs_query.py"),
-    ("src", "streambuild", "dev_server", "_helpers", "checks_execution.py"),
+    ("src", "streambuild", "dev_server"),
 )
 QUALITY_MODULE_PREFIX: tuple[str, ...] = ("streambuild", "quality")
 OBSERVABILITY_QUERY_CALL_NAMES: frozenset[str] = frozenset({"render_latest_node_status_query"})

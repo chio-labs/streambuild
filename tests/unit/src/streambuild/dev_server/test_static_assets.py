@@ -4,7 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 from httpx import Response
 
-from streambuild.dev_server._helpers.static_assets import static_assets_present
+from streambuild.dev_server._helpers.server.static_assets import static_assets_present
 from tests.unit.src.streambuild.dev_server._test_types import (
     SpaFallbackTestCase,
     StaticAssetsPresenceTestCase,

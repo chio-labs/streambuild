@@ -154,3 +154,11 @@ class KafkaLagSnapshot:
 
     total_messages: int | None
     partitions: tuple[KafkaPartitionLag, ...]
+
+
+@dataclass(frozen=True)
+class RelationStorage:
+    """Row and byte totals for one warehouse relation."""
+
+    rows: int = 0
+    bytes: int = 0

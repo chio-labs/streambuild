@@ -11,7 +11,7 @@ from streambuild.compiler.discovery.main.load_project_input_for_path import (
     load_project_input_for_path,
 )
 from streambuild.compiler.discovery.models import LoadedProject
-from streambuild.dev_server._helpers.message_query import read_source_messages
+from streambuild.dev_server._helpers.queries.message_query import read_source_messages
 from streambuild.dev_server.classes.audit_scheduler import AuditScheduler
 from streambuild.dev_server.models import MessageQueryCursor, MessagesQueryRequest
 from tests.integration.src.streambuild.adapters.clickhouse.helpers import (

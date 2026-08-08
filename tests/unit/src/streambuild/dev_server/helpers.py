@@ -31,19 +31,19 @@ from streambuild.compiler.discovery.main.load_project_input_for_path import (
 from streambuild.compiler.discovery.models import KafkaSettings
 from streambuild.compiler.pipeline.main.analyze_project import analyze_project
 from streambuild.compiler.pipeline.models import CompileAnalysis
-from streambuild.dev_server._helpers.message_query import (
-    build_messages_sql,
-    parse_messages_document,
-)
-from streambuild.dev_server._helpers.plan_payload import build_replay_count_query
-from streambuild.dev_server._helpers.state_payload import (
+from streambuild.dev_server._helpers.payloads.plan_payload import build_replay_count_query
+from streambuild.dev_server._helpers.payloads.state_payload import (
     build_extents_query,
     build_partitions_query,
     build_parts_query,
     build_relation_stats_query,
     build_throughput_query,
 )
-from streambuild.dev_server._helpers.static_assets import register_static_assets
+from streambuild.dev_server._helpers.queries.message_query import (
+    build_messages_sql,
+    parse_messages_document,
+)
+from streambuild.dev_server._helpers.server.static_assets import register_static_assets
 from streambuild.dev_server.classes.dev_server_state import DevServerState
 from streambuild.dev_server.classes.kafka_lag_reader import KafkaLagReader
 from streambuild.dev_server.classes.kafka_topic_reader import KafkaTopicReader
@@ -53,7 +53,6 @@ from streambuild.dev_server.models import (
     KafkaTopicsSnapshot,
     MessagesQueryRequest,
 )
-from streambuild.executor.deployment._helpers.payload import build_deployment_storage_query
 from tests.unit.src.streambuild.compiler.discovery._helpers.load.helpers import (
     write_pipeline_file,
     write_project_configuration_and_source,
@@ -700,7 +699,7 @@ def build_deployment_stats_result(
     """Map the shared relation-stats query onto canned row and byte totals."""
 
     return {
-        build_deployment_storage_query(database="analytics"): AdapterQueryResult(
+        build_relation_stats_query(database="analytics"): AdapterQueryResult(
             rows=storage_rows,
             column_names=("name", "total_rows", "total_bytes"),
         )

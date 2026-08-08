@@ -2,10 +2,8 @@ from typing import cast
 
 import pytest
 
-from streambuild.executor.deployment.main.build_deployment_detail_payload import (
+from streambuild.dev_server._helpers.payloads.deployments_payload import (
     build_deployment_detail_payload,
-)
-from streambuild.executor.deployment.main.build_deployments_payload import (
     build_deployments_payload,
 )
 from tests.unit.src.streambuild.dev_server._test_types import (

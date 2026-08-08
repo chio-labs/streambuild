@@ -5,6 +5,7 @@
 	import PlayIcon from '@lucide/svelte/icons/play';
 	import RotateIcon from '@lucide/svelte/icons/rotate-ccw';
 	import AppTopbar from '$lib/components/app-topbar.svelte';
+	import { app } from '$lib/api/store.svelte';
 	import NodeFieldsPopover from '$lib/components/lineage/node-fields-popover.svelte';
 	import GraphFilters, { emptyFilters, filterCount } from '$lib/components/lineage/graph-filters.svelte';
 	import type { GraphFilterState, NodeKindFilter } from '$lib/components/lineage/graph-filters.svelte';
@@ -57,8 +58,22 @@
 		void goto(url, { replaceState: true, noScroll: true, keepFocus: true });
 	}
 
+	// Deployment relations are off by default: on a busy target they multiply
+	// every model by its retained deployments, which buries the shape of the
+	// graph. Turned on, they are the only view that shows what is orphaned.
+	const showDeployments = $derived(page.url.searchParams.get('deployments') === '1');
+
+	function setShowDeployments(next: boolean): void {
+		const url = new URL(page.url);
+		if (next) url.searchParams.set('deployments', '1');
+		else url.searchParams.delete('deployments');
+		void goto(url, { replaceState: true, noScroll: true, keepFocus: true });
+	}
+
 	const fullGraph = $derived<Graph>(
-		mode === 'logical' ? buildLogicalGraph(project) : buildPhysicalGraph(project)
+		mode === 'logical'
+			? buildLogicalGraph(project)
+			: buildPhysicalGraph(project, showDeployments ? app.deployments : [])
 	);
 
 	function nodeKind(node: Graph['nodes'][number]): NodeKindFilter {
@@ -209,6 +224,18 @@
 				Physical
 			</button>
 		</div>
+
+		{#if mode === 'physical' && app.deployments.length > 0}
+			<button
+				class="rounded-[4px] border border-border px-3 py-1.5 font-mono text-[11px] transition-colors {showDeployments
+					? 'bg-[var(--sb-hover)] text-foreground'
+					: 'text-muted-foreground hover:text-foreground'}"
+				onclick={() => setShowDeployments(!showDeployments)}
+				title="Show deployment-suffixed relations, including orphans nothing points at"
+			>
+				Deployments
+			</button>
+		{/if}
 
 		<span class="text-[var(--sb-text-faint)] hidden max-w-[380px] font-mono text-[10.5px] leading-snug xl:inline">
 			{#if mode === 'logical'}
