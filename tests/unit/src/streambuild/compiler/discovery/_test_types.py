@@ -112,6 +112,24 @@ class ProjectKafkaBrokerDefaultTestCase:
 
 
 @dataclass(frozen=True)
+class KafkaSourceNamingMacroErrorTestCase:
+    description: str
+    macro_name: str
+    macro_source: str
+    sources_yaml: str
+    expected_error_fragment: str
+
+
+@dataclass(frozen=True)
+class KafkaSourceNamingMacroSuccessTestCase:
+    description: str
+    expected_name: str
+    expected_topic: str
+    expected_origin: str
+    expected_macro_name: str | None
+
+
+@dataclass(frozen=True)
 class SourceRegistryErrorTestCase:
     description: str
     source_files: tuple[tuple[str, str], ...]

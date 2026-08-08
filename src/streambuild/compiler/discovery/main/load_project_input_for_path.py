@@ -12,11 +12,15 @@ from streambuild.compiler.discovery._helpers.effective_configuration import (
 )
 from streambuild.compiler.discovery._helpers.source_registry import discover_source_registry
 from streambuild.compiler.discovery.models import (
+    DiscoveredProjectFile,
     EffectiveProjectConfiguration,
     LoadedProject,
     LoadedProjectConfiguration,
     Project,
 )
+from streambuild.compiler.macros.main._discover_macro_files import discover_macro_files
+from streambuild.compiler.macros.main._load_macro_registry import load_macro_registry
+from streambuild.compiler.macros.models import MacroRegistry
 
 
 def load_project_input_for_path(
@@ -37,6 +41,12 @@ def load_project_input_for_path(
         selected_target=selected_target,
         cli_variables={} if cli_variables is None else cli_variables,
         environment={} if environment is None else environment,
+    )
+    macro_files: tuple[DiscoveredProjectFile, ...] = discover_macro_files(project_dir=project_dir)
+    macro_registry: MacroRegistry | None = (
+        None
+        if effective.defaults.sources.kafka.naming_macro is None
+        else load_macro_registry(macro_files=macro_files)
     )
     project: Project = Project(
         replay_on_change=effective.defaults.replay_on_change,
@@ -60,5 +70,9 @@ def load_project_input_for_path(
             default_managed_source_ttl=effective.defaults.managed_source_ttl,
             default_kafka_broker_list=effective.defaults.kafka_broker_list,
             default_freshness=effective.defaults.freshness,
+            default_kafka_naming_macro=effective.defaults.sources.kafka.naming_macro,
+            macro_registry=macro_registry,
         ),
+        macro_files=macro_files,
+        macro_registry=macro_registry,
     )

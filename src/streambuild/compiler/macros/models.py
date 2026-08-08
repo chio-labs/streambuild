@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from hashlib import sha256
 from pathlib import Path
 from types import MappingProxyType
 
@@ -22,6 +23,13 @@ class LoadedMacro:
     definition_line: int
     function: MacroFunction
     description: str | None = None
+
+    @property
+    def identity_fingerprint(self) -> str:
+        """Fingerprint the macro identity and retained implementation source."""
+
+        payload: str = f"{self.name}\0{self.relative_path.as_posix()}\0{self.source}"
+        return sha256(payload.encode("utf-8")).hexdigest()
 
 
 @dataclass(frozen=True, repr=False)
