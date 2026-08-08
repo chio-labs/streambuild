@@ -11,11 +11,11 @@
 	import { formatCompact, formatInteger, formatTimestamp } from '$lib/domain/format';
 	import type { Project } from '$lib/domain/types';
 	import ChipEditor from './chip-editor.svelte';
+	import HighlightText from './highlight-text.svelte';
 	import MessageDetail from './message-detail.svelte';
 	import {
-		createMessageBrowserState,
-		decodeFilterDocument,
 		encodeFilterDocument,
+		getMessageBrowserState,
 		predicateLabel
 	} from './state.svelte';
 	import type {
@@ -29,8 +29,9 @@
 	const sourceName = $derived(page.params.name ?? '');
 	const source = $derived(sourceByName(project, sourceName));
 
-	const browser = createMessageBrowserState(page.params.name ?? '');
-	browser.document = decodeFilterDocument(page.url.searchParams.get('q'));
+	// The load function already resolved this state and its first query; the
+	// component just attaches to the per-source session instance.
+	const browser = getMessageBrowserState(page.params.name ?? '');
 
 	let showKafkaTimestamp = $state(false);
 	let expanded = $state<string[]>([]);
@@ -206,9 +207,24 @@
 	}
 
 	const columnCount = $derived(
-		3 +
-			(showKafkaTimestamp ? 1 : 0) +
-			(browser.document.previewPaths.length === 0 ? 1 : browser.document.previewPaths.length)
+		4 + (showKafkaTimestamp ? 1 : 0) + browser.document.previewPaths.length
+	);
+
+	// Active filter criteria light up inside the cells they filtered, so the
+	// table never reshapes to explain why a row matched.
+	const keyHighlightTerms = $derived(
+		browser.document.predicates
+			.filter((predicate) => predicate.field === 'key' && typeof predicate.value === 'string')
+			.map((predicate) => String(predicate.value))
+	);
+	const valueHighlightTerms = $derived(
+		browser.document.predicates
+			.filter(
+				(predicate) =>
+					(predicate.field === 'value' || predicate.field === 'json') &&
+					typeof predicate.value === 'string'
+			)
+			.map((predicate) => String(predicate.value))
 	);
 	const windowLabel = $derived(
 		browser.windowSeconds === null
@@ -247,7 +263,7 @@
 			{/if}
 			<button
 				class="text-muted-foreground hover:text-foreground ml-auto flex items-center gap-1 rounded-[4px] border border-border px-2 py-1 font-mono text-[10.5px]"
-				onclick={() => void browser.refresh()}
+				onclick={() => void browser.refresh('manual')}
 				><RefreshCwIcon size={11} class={browser.loading ? 'animate-spin' : ''} /> refresh</button
 			>
 		</div>
@@ -438,13 +454,10 @@
 							{#if showKafkaTimestamp}<th class="w-[150px] px-3 py-2 font-normal">Broker ts</th>{/if}
 							<th class="w-[120px] px-3 py-2 font-normal">P / Offset</th>
 							<th class="w-[200px] px-3 py-2 font-normal">Key</th>
-							{#if browser.document.previewPaths.length === 0}
-								<th class="px-3 py-2 font-normal">Value</th>
-							{:else}
-								{#each browser.document.previewPaths as path, index (index)}
-									<th class="px-3 py-2 font-normal normal-case">{path.join('.')}</th>
-								{/each}
-							{/if}
+							<th class="px-3 py-2 font-normal">Value</th>
+							{#each browser.document.previewPaths as path, index (index)}
+								<th class="w-[180px] px-3 py-2 font-normal normal-case">{path.join('.')}</th>
+							{/each}
 						</tr>
 					</thead>
 					<tbody class={browser.loading && browser.rows.length > 0 ? 'opacity-50' : ''}>
@@ -471,18 +484,20 @@
 									<td class="code whitespace-nowrap px-3 py-1.5 text-[11px]"
 										>{row.partition} / {formatInteger(row.offset)}</td
 									>
-									<td class="code max-w-[220px] truncate px-3 py-1.5 text-[11.5px]">{row.key || '—'}</td>
-									{#if browser.document.previewPaths.length === 0}
-										<td class="text-muted-foreground code max-w-[480px] truncate px-3 py-1.5 text-[11px]">
-											{row.valuePreview}{row.valueTruncated ? ' …' : ''}
-										</td>
-									{:else}
-										{#each row.previewValues as previewValue, index (index)}
-											<td class="text-muted-foreground code max-w-[240px] truncate px-3 py-1.5 text-[11px]"
-												>{previewValue || '—'}</td
-											>
-										{/each}
-									{/if}
+									<td class="code truncate px-3 py-1.5 text-[11.5px]">
+										{#if row.key}<HighlightText text={row.key} terms={keyHighlightTerms} />{:else}—{/if}
+									</td>
+									<td class="text-muted-foreground code truncate px-3 py-1.5 text-[11px]">
+										<HighlightText
+											text={row.valuePreview}
+											terms={valueHighlightTerms}
+										/>{row.valueTruncated ? ' …' : ''}
+									</td>
+									{#each row.previewValues as previewValue, index (index)}
+										<td class="text-muted-foreground code truncate px-3 py-1.5 text-[11px]"
+											>{previewValue || '—'}</td
+										>
+									{/each}
 								</tr>
 								{#if expanded.includes(rowKey(row))}
 									<tr class="border-b border-[var(--border-subtle)] last:border-b-0">
