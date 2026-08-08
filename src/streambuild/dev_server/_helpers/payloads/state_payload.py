@@ -14,6 +14,7 @@ from streambuild.adapter.models import (
     AdapterDirectFingerprintSnapshot,
     AdapterManagedSource,
     CatalogSnapshot,
+    InspectedManagedTableState,
 )
 from streambuild.adapter.types import AdapterOptionalStateStatus
 from streambuild.compiler.compile.main.build_model_storage_identity import (
@@ -121,6 +122,40 @@ def _relation_stats(*, connection: AdapterConnection, database: str) -> dict[str
         entry: dict[str, int] | None = stats.get(str(row["table"]))
         if entry is not None:
             entry["parts"] = int(str(row["parts"]))
+    return apply_bound_relation_stats(
+        stats=stats,
+        bindings=_active_bindings(connection=connection, database=database),
+    )
+
+
+def _active_bindings(
+    *, connection: AdapterConnection, database: str
+) -> tuple[tuple[str, str], ...]:
+    """Logical-to-physical pairs, empty for adapters without stable bindings."""
+
+    if not connection.capabilities.stable_logical_bindings:
+        return ()
+    inspected: InspectedManagedTableState = connection.inspect_managed_table_state(database)
+    return tuple(
+        (binding.logical_name, binding.physical_name) for binding in inspected.active_bindings
+    )
+
+
+def apply_bound_relation_stats(
+    *, stats: dict[str, dict[str, int]], bindings: tuple[tuple[str, str], ...]
+) -> dict[str, dict[str, int]]:
+    """Measure a stable logical view by the deployment relation it is bound to.
+
+    In virtual mode a model's logical relation is a View, and system.tables
+    reports no rows or bytes for a view, so every model would read as empty.
+    """
+
+    logical_name: str
+    physical_name: str
+    for logical_name, physical_name in bindings:
+        measured: dict[str, int] | None = stats.get(physical_name)
+        if measured is not None:
+            stats[logical_name] = dict(measured)
     return stats
 
 
