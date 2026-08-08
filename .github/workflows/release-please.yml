@@ -21,10 +21,23 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
+      - name: Resolve release branch
+        id: release_branch
+        if: steps.release.outputs.prs_created == 'true'
+        env:
+          RELEASE_PRS: ${{ steps.release.outputs.prs }}
+        run: |
+          release_branch="$(jq -r '.[0].headBranchName // empty' <<< "${RELEASE_PRS}")"
+          if [[ -z "${release_branch}" ]]; then
+            echo "Release Please reported a created PR without a head branch" >&2
+            exit 1
+          fi
+          echo "name=${release_branch}" >> "${GITHUB_OUTPUT}"
+
       - uses: actions/checkout@v4
         if: steps.release.outputs.prs_created == 'true'
         with:
-          ref: ${{ fromJSON(steps.release.outputs.prs)[0].headBranchName }}
+          ref: ${{ steps.release_branch.outputs.name }}
 
       - uses: astral-sh/setup-uv@v5
         if: steps.release.outputs.prs_created == 'true'
@@ -34,7 +47,7 @@ jobs:
       - name: Refresh release lockfile
         if: steps.release.outputs.prs_created == 'true'
         env:
-          RELEASE_BRANCH: ${{ fromJSON(steps.release.outputs.prs)[0].headBranchName }}
+          RELEASE_BRANCH: ${{ steps.release_branch.outputs.name }}
         run: |
           uv lock
           uv sync --locked --all-groups
@@ -51,5 +64,5 @@ jobs:
         if: steps.release.outputs.prs_created == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_BRANCH: ${{ fromJSON(steps.release.outputs.prs)[0].headBranchName }}
+          RELEASE_BRANCH: ${{ steps.release_branch.outputs.name }}
         run: gh workflow run verify.yml --ref "${RELEASE_BRANCH}"
