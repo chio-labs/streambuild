@@ -8,7 +8,7 @@
 	import AppTopbar from '$lib/components/app-topbar.svelte';
 	import { getProject } from '$lib/api';
 	import { sourceByName } from '$lib/domain/derive';
-	import { formatCompact, formatInteger, formatTimestamp } from '$lib/domain/format';
+	import { formatBytes, formatCompact, formatInteger, formatTimestamp } from '$lib/domain/format';
 	import type { Project } from '$lib/domain/types';
 	import ChipEditor from './chip-editor.svelte';
 	import HighlightText from './highlight-text.svelte';
@@ -34,9 +34,11 @@
 	const browser = getMessageBrowserState(page.params.name ?? '');
 
 	// Client-side sort over the loaded page, Console-style. The server always
-	// pages newest-landed-first; sorting is presentation over fetched rows.
+	// pages newest-landed-first; the display defaults to the record's own
+	// broker timestamp because this is a topic view — landed-at ordering is
+	// one click away when the arrival gap is what matters.
 	type SortKey = 'landed' | 'broker' | 'offset' | 'key';
-	let sortKey = $state<SortKey>('landed');
+	let sortKey = $state<SortKey>('broker');
 	let sortAsc = $state(false);
 
 	const SORT_DEFAULT_ASCENDING: Record<SortKey, boolean> = {
@@ -64,10 +66,26 @@
 		return a.partition - b.partition || a.offset - b.offset;
 	}
 
-	const displayRows = $derived.by((): MessageRow[] => {
+	const sortedRows = $derived.by((): MessageRow[] => {
 		const sorted = [...browser.rows].sort(compareRows);
 		return sortAsc ? sorted : sorted.reverse();
 	});
+
+	// Console renders ten rows per page over the fetched result set; "Load
+	// older" extends the set and therefore the page count.
+	const PAGE_SIZES: number[] = [10, 25, 50];
+	let pageSize = $state(10);
+	let pageIndex = $state(0);
+	const pageCount = $derived(Math.max(Math.ceil(sortedRows.length / pageSize), 1));
+	const clampedPageIndex = $derived(Math.min(pageIndex, pageCount - 1));
+	const displayRows = $derived(
+		sortedRows.slice(clampedPageIndex * pageSize, (clampedPageIndex + 1) * pageSize)
+	);
+
+	function valueFormatLabel(row: MessageRow): string {
+		const first = row.valuePreview.trimStart().charAt(0);
+		return first === '{' || first === '[' ? 'JSON' : 'TEXT';
+	}
 
 	function sortIndicator(key: SortKey): string {
 		if (sortKey !== key) return '';
@@ -483,13 +501,13 @@
 							<th class="w-[150px] px-1 py-1 font-normal">
 								<button
 									class="hover:text-foreground w-full px-2 py-1 text-left uppercase tracking-[0.14em]"
-									onclick={() => pickSort('landed')}>Landed at{sortIndicator('landed')}</button
+									onclick={() => pickSort('broker')}>Timestamp{sortIndicator('broker')}</button
 								>
 							</th>
 							<th class="w-[150px] px-1 py-1 font-normal">
 								<button
 									class="hover:text-foreground w-full px-2 py-1 text-left uppercase tracking-[0.14em]"
-									onclick={() => pickSort('broker')}>Broker ts{sortIndicator('broker')}</button
+									onclick={() => pickSort('landed')}>Landed at{sortIndicator('landed')}</button
 								>
 							</th>
 							<th class="w-[120px] px-1 py-1 font-normal">
@@ -524,22 +542,32 @@
 									onclick={(event) => void toggleRow(event, row)}
 								>
 									<td class="text-muted-foreground code whitespace-nowrap px-3 py-1.5 text-[11px]"
-										>{formatTimestamp(row.landedAt)}</td
+										>{row.kafkaTimestamp === null ? '—' : formatTimestamp(row.kafkaTimestamp)}</td
 									>
 									<td class="text-muted-foreground code whitespace-nowrap px-3 py-1.5 text-[11px]"
-										>{row.kafkaTimestamp === null ? '—' : formatTimestamp(row.kafkaTimestamp)}</td
+										>{formatTimestamp(row.landedAt)}</td
 									>
 									<td class="code whitespace-nowrap px-3 py-1.5 text-[11px]"
 										>{row.partition} / {formatInteger(row.offset)}</td
 									>
-									<td class="code truncate px-3 py-1.5 text-[11.5px]">
-										{#if row.key}<HighlightText text={row.key} terms={keyHighlightTerms} />{:else}—{/if}
+									<td class="px-3 py-1.5">
+										<div class="code truncate text-[11.5px]">
+											{#if row.key}<HighlightText text={row.key} terms={keyHighlightTerms} />{:else}—{/if}
+										</div>
+										<div class="text-[var(--sb-text-faint)] font-mono text-[9.5px]">
+											TEXT - {formatBytes(row.keyBytes)}
+										</div>
 									</td>
-									<td class="text-muted-foreground code truncate px-3 py-1.5 text-[11px]">
-										<HighlightText
-											text={row.valuePreview}
-											terms={valueHighlightTerms}
-										/>{row.valueTruncated ? ' …' : ''}
+									<td class="px-3 py-1.5">
+										<div class="text-muted-foreground code truncate text-[11px]">
+											<HighlightText
+												text={row.valuePreview}
+												terms={valueHighlightTerms}
+											/>{row.valueTruncated ? ' …' : ''}
+										</div>
+										<div class="text-[var(--sb-text-faint)] font-mono text-[9.5px]">
+											{valueFormatLabel(row)} - {formatBytes(row.valueBytes)}
+										</div>
 									</td>
 									{#each row.previewValues as previewValue, index (index)}
 										<td class="text-muted-foreground code truncate px-3 py-1.5 text-[11px]"
@@ -560,12 +588,49 @@
 				</table>
 			</div>
 
-			<div class="flex items-center gap-3 pb-4">
+			<div class="flex flex-wrap items-center gap-3 pb-4">
 				{#if !browser.loading && browser.rows.length > 0}
 					<span class="text-[var(--sb-text-faint)] font-mono text-[10.5px]">
 						{formatInteger(browser.rows.length)} messages · searched the {windowLabel}
 					</span>
 				{/if}
+				{#if pageCount > 1}
+					<div class="flex items-center gap-1">
+						<button
+							class="text-muted-foreground hover:text-foreground rounded-[4px] border border-border px-2 py-[3px] font-mono text-[10.5px] disabled:opacity-40"
+							disabled={clampedPageIndex === 0}
+							onclick={() => (pageIndex = clampedPageIndex - 1)}>‹</button
+						>
+						{#each Array.from({ length: pageCount }, (_, index) => index) as candidate (candidate)}
+							<button
+								class="rounded-[4px] border px-2 py-[3px] font-mono text-[10.5px] {candidate ===
+								clampedPageIndex
+									? 'border-[var(--primary)] text-foreground'
+									: 'text-muted-foreground border-border hover:text-foreground'}"
+								onclick={() => (pageIndex = candidate)}>{candidate + 1}</button
+							>
+						{/each}
+						<button
+							class="text-muted-foreground hover:text-foreground rounded-[4px] border border-border px-2 py-[3px] font-mono text-[10.5px] disabled:opacity-40"
+							disabled={clampedPageIndex >= pageCount - 1}
+							onclick={() => (pageIndex = clampedPageIndex + 1)}>›</button
+						>
+					</div>
+				{/if}
+				<div class="flex overflow-hidden rounded-[4px] border border-border">
+					{#each PAGE_SIZES as candidate (candidate)}
+						<button
+							class="border-l border-border px-2 py-[3px] font-mono text-[10px] first:border-l-0 {pageSize ===
+							candidate
+								? 'bg-[var(--sb-hover)] text-foreground'
+								: 'text-muted-foreground hover:text-foreground'}"
+							onclick={() => {
+								pageSize = candidate;
+								pageIndex = 0;
+							}}>{candidate} / page</button
+						>
+					{/each}
+				</div>
 				{#if browser.nextCursor !== null}
 					<button
 						class="text-muted-foreground hover:text-foreground rounded-[4px] border border-border px-2.5 py-1 font-mono text-[10.5px] disabled:opacity-40"
