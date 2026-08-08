@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.10.0](https://github.com/chio-labs/streambuild/compare/v0.9.3...v0.10.0) (2026-08-08)
+
+
+### Features
+
+* add pipeline safeguards and Kafka observability ([124f735](https://github.com/chio-labs/streambuild/commit/124f7353463e0ac487de9d56f7ce624d03d0908e))
+* add pipeline safeguards and Kafka observability ([4aefee4](https://github.com/chio-labs/streambuild/commit/4aefee4ac941d37d3d17caccd06ad6b7c94315cc))
+
 ## [0.9.3](https://github.com/chio-labs/streambuild/compare/v0.9.2...v0.9.3) (2026-08-07)
 
 
