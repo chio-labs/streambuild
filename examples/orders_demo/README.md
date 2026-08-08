@@ -79,6 +79,7 @@ then list and inspect deployments:
 ```bash
 uv run stb deployment list --project-dir examples/orders_demo
 uv run stb deployment show <deployment-id> --project-dir examples/orders_demo
+uv run stb deployment diff <deployment-id> --project-dir examples/orders_demo
 ```
 
 Audit a staged deployment:
@@ -92,6 +93,16 @@ Promote:
 ```bash
 uv run stb deployment promote <deployment-id> --project-dir examples/orders_demo
 ```
+
+After publishing another deployment, compare it with the active graph or roll the complete graph
+back to the preceding publication:
+
+```bash
+uv run stb deployment diff <from-id>:<to-id> --project-dir examples/orders_demo
+uv run stb deployment rollback --previous --project-dir examples/orders_demo
+```
+
+Rollback rebinds retained live deployment tables; it does not restore a historical data snapshot.
 
 ## Producer Config
 

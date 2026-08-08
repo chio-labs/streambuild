@@ -56,3 +56,10 @@ class LatestNodeStatusIntegrationTestCase:
 class LegacyNodeResultsSchemaTestCase:
     description: str
     expected_error_fragment: str
+
+
+@dataclass(frozen=True)
+class LegacyPublicationMigrationTestCase:
+    description: str
+    expected_operation: str
+    expected_publication_id: str

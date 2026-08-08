@@ -6,7 +6,10 @@ from streambuild.adapter.models import (
     AdapterRelationCleanupRequest,
     InspectedManagedTableState,
 )
-from streambuild.executor.janitor.models import JanitorApplyResult, JanitorRequest
+from streambuild.executor.janitor.models import (
+    JanitorApplyResult,
+    JanitorRequest,
+)
 
 
 @dataclass(frozen=True)
@@ -51,3 +54,14 @@ class JanitorRollbackSafetyTestCase:
     expected_binding_request: AdapterBindingReplacementRequest
     expected_statements: tuple[str, ...]
     expected_result: JanitorApplyResult
+
+
+@dataclass(frozen=True)
+class JanitorUnavailableRollbackTestCase:
+    description: str
+    inventory: AdapterDeploymentInventory
+    managed_table_state: InspectedManagedTableState
+    request: JanitorRequest
+    missing_deployment_id: str
+    usable_deployment_id: str
+    expected_usable_reason: str
