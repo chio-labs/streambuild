@@ -37,18 +37,20 @@
 	}
 </script>
 
+<!-- Every node is one nowrap line; the ancestor payload box owns scrolling on
+     both axes, so deep or wide JSON scrolls instead of exploding the layout. -->
 {#if isComposite}
-	<div class="font-mono text-[11.5px] leading-[1.7]">
+	<div class="whitespace-nowrap">
 		<button
-			class="text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
+			class="text-muted-foreground hover:text-foreground inline-flex items-baseline gap-1 align-baseline"
 			onclick={() => (open = !open)}
 		>
-			<span class="text-[var(--sb-text-faint)] inline-block w-2.5">{open ? '▾' : '▸'}</span>
+			<span class="text-[var(--sb-text-faint)] inline-block w-2.5 text-left">{open ? '▾' : '▸'}</span>
 			{#if label !== null}<span class="text-foreground">{label}:</span>{/if}
 			<span class="text-[var(--sb-text-faint)]">{preview}</span>
 		</button>
 		{#if open}
-			<div class="border-l border-[var(--border-subtle)] ml-[4px] pl-3.5">
+			<div class="ml-[4px] border-l border-[var(--border-subtle)] pl-3">
 				{#each entries as [childLabel, childValue] (childLabel)}
 					<JsonTree value={childValue} label={childLabel} depth={depth + 1} />
 				{/each}
@@ -56,7 +58,7 @@
 		{/if}
 	</div>
 {:else}
-	<div class="font-mono text-[11.5px] leading-[1.7]">
+	<div class="whitespace-nowrap pl-3.5">
 		{#if label !== null}<span class="text-foreground">{label}:</span>{/if}
 		<span style:color={scalarColour(value)}>{scalarText(value)}</span>
 	</div>
