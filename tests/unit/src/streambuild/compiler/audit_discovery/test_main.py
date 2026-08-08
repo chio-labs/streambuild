@@ -13,6 +13,7 @@ from streambuild.compiler.macros.models import MacroContext, MacroRegistry
 from tests.unit.src.streambuild.compiler.audit_discovery._test_types import (
     DiscoverGenericSqlAuditsErrorTestCase,
     DiscoverGenericSqlAuditsTestCase,
+    DiscoverSqlAuditPolicyTestCase,
     DiscoverSqlAuditsErrorTestCase,
     DiscoverSqlAuditsTestCase,
     DiscoverSqlAuditsWithMacrosTestCase,
@@ -50,13 +51,13 @@ from tests.unit.src.streambuild.compiler.macros.helpers import (
             description="discovers multiple named audits from one file",
             relative_file_path="singular/order_events/quality.sql",
             file_contents="""
-        AUDIT (name: "negative totals", severity: "warning");
+        AUDIT (name "negative totals", severity warning);
 
         SELECT order_id
         FROM __ref("order_items")
         WHERE line_total < 0;
 
-        AUDIT (name: "missing orders");
+        AUDIT (name "missing orders");
 
         SELECT oi.order_id
         FROM __ref("order_items") AS oi
@@ -117,6 +118,41 @@ def test_given_valid_sql_audit_files_when_discovering_then_it_returns_loaded_sql
 @pytest.mark.parametrize(
     "test_case",
     [
+        DiscoverSqlAuditPolicyTestCase(
+            description="parses explicit audit policy into typed overrides",
+            header=(
+                'name "orders are valid", severity warning, every "2m", '
+                'warmup "15m", scheduled true'
+            ),
+            expected_severity_explicit=True,
+            expected_cadence_seconds=120,
+            expected_warmup_seconds=900,
+            expected_scheduled_override=True,
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_audit_policy_when_discovering_then_it_parses_typed_overrides(
+    test_case: DiscoverSqlAuditPolicyTestCase,
+    tmp_path: Path,
+) -> None:
+    audits_root: Path = tmp_path / "audits"
+    write_sql_audit_file(
+        audits_root / "orders.sql",
+        f'AUDIT ({test_case.header}); SELECT * FROM __ref("orders")',
+    )
+
+    audit: LoadedSqlAudit = discover_sql_audits(root=audits_root)[0]
+
+    assert audit.severity_is_explicit is test_case.expected_severity_explicit
+    assert audit.cadence_seconds_override == test_case.expected_cadence_seconds
+    assert audit.warmup_seconds_override == test_case.expected_warmup_seconds
+    assert audit.scheduled_override is test_case.expected_scheduled_override
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
         DiscoverSqlAuditsErrorTestCase(
             description="rejects audits without refs",
             relative_file_path="order_events/no_refs.sql",
@@ -131,7 +167,7 @@ def test_given_valid_sql_audit_files_when_discovering_then_it_returns_loaded_sql
             description="rejects unsupported severity",
             relative_file_path="order_events/bad_severity.sql",
             file_contents="""
-        AUDIT (severity: "info");
+        AUDIT (severity info);
 
         SELECT * FROM __ref("order_items")
         """,
@@ -154,7 +190,7 @@ def test_given_valid_sql_audit_files_when_discovering_then_it_returns_loaded_sql
         AUDIT ();
         SELECT * FROM __ref("order_items");
 
-        AUDIT (name: "named");
+        AUDIT (name "named");
         SELECT * FROM __ref("orders")
         """,
             expected_error_fragment=(
@@ -188,6 +224,26 @@ def test_given_valid_sql_audit_files_when_discovering_then_it_returns_loaded_sql
         DELETE FROM __ref("order_items") WHERE order_id = 1
         """,
             expected_error_fragment="SELECT or set-operation query",
+        ),
+        DiscoverSqlAuditsErrorTestCase(
+            description="rejects zero audit cadence",
+            relative_file_path="order_events/zero_cadence.sql",
+            file_contents='AUDIT (every "0s"); SELECT * FROM __ref("order_items")',
+            expected_error_fragment="every must be greater than zero",
+        ),
+        DiscoverSqlAuditsErrorTestCase(
+            description="rejects contradictory schedule opt out",
+            relative_file_path="order_events/schedule_conflict.sql",
+            file_contents=(
+                'AUDIT (scheduled false, every "5m"); SELECT * FROM __ref("order_items")'
+            ),
+            expected_error_fragment="cannot define both scheduled false and every",
+        ),
+        DiscoverSqlAuditsErrorTestCase(
+            description="rejects removed colon header syntax",
+            relative_file_path="order_events/legacy_header.sql",
+            file_contents='AUDIT (severity: warning); SELECT * FROM __ref("order_items")',
+            expected_error_fragment="unexpected ':' after key 'severity'",
         ),
     ],
     ids=lambda case: case.description,
@@ -264,7 +320,13 @@ def test_given_sql_audit_macros_when_discovering_then_it_expands_audit_body(
             MODEL (
               columns (
                 order_id (
-                  audits [not_null (name "order items order id not null", severity warning)],
+                    audits [not_null (
+                      name "order items order id not null",
+                      severity warning,
+                      every "2m",
+                      warmup "10m",
+                      scheduled true,
+                    )],
                 ),
               ),
             );
@@ -273,6 +335,9 @@ def test_given_sql_audit_macros_when_discovering_then_it_expands_audit_body(
             expected_name="order items order id not null",
             expected_query_fragments=('FROM __ref("order_items")',),
             expected_referenced_model_names=("order_items",),
+            expected_cadence_seconds=120,
+            expected_warmup_seconds=600,
+            expected_scheduled_override=True,
         ),
         DiscoverGenericSqlAuditsTestCase(
             description="renders escaped quoted generic audit argument lists",
@@ -331,6 +396,9 @@ def test_given_generic_sql_audits_when_discovering_then_it_renders_concrete_audi
         fragment in loaded_audits[0].query for fragment in test_case.expected_query_fragments
     )
     assert loaded_audits[0].referenced_model_names == test_case.expected_referenced_model_names
+    assert loaded_audits[0].cadence_seconds_override == test_case.expected_cadence_seconds
+    assert loaded_audits[0].warmup_seconds_override == test_case.expected_warmup_seconds
+    assert loaded_audits[0].scheduled_override is test_case.expected_scheduled_override
 
 
 @pytest.mark.parametrize(

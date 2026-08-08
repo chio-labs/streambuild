@@ -14,6 +14,7 @@ from streambuild.compiler.compile.models import CompiledPipeline, CompilerAdapte
 from streambuild.compiler.discovery.models import LoadedProject
 from streambuild.compiler.pipeline.main.analyze_project import analyze_project
 from streambuild.compiler.pipeline.models import CompileAnalysis
+from streambuild.compiler.quality.main.require_quality_identity import require_quality_identity
 from streambuild.compiler.test_discovery.models import LoadedSqlTest
 from streambuild.compiler.testing.models import SqlTestCase
 from streambuild.executor.observability.main.build_invocation_record import (
@@ -22,14 +23,12 @@ from streambuild.executor.observability.main.build_invocation_record import (
 from streambuild.executor.observability.main.build_node_result_record import (
     build_node_result_record,
 )
-from streambuild.executor.observability.main.build_quality_node_identity import (
-    build_quality_node_identity,
-)
 from streambuild.executor.observability.main.persist_terminal_observations import (
     persist_terminal_observations,
 )
 from streambuild.executor.observability.main.start_invocation import start_invocation
-from streambuild.executor.observability.models import TerminalInvocation
+from streambuild.executor.observability.models import QualityResultContext, TerminalInvocation
+from streambuild.executor.observability.types import QualityResultTrigger
 from streambuild.executor.testing.main.execute_sql_tests import execute_sql_tests
 from streambuild.executor.testing.models import (
     SqlTestExecutionResult,
@@ -56,6 +55,7 @@ def run_test(
     resolved_project_dir: Path = project_dir or pipelines_root.parent
     selected_node_count = 0
     try:
+        client.validate_metadata_state(database)
         analysis: CompileAnalysis = analyze_project(
             pipelines_root=pipelines_root,
             loaded_project=loaded_project,
@@ -169,7 +169,6 @@ def run_test(
             invocation=invocation,
             test_case=test_case,
             result=result,
-            project_dir=resolved_project_dir,
         )
         for test_case, result in zip(test_cases, results, strict=True)
     )
@@ -187,7 +186,6 @@ def _test_node_result(
     invocation: AdapterInvocationRecord,
     test_case: SqlTestCase,
     result: SqlTestExecutionResult,
-    project_dir: Path,
 ) -> AdapterNodeResultRecord:
     missing_count: int = sum(len(target.missing_rows) for target in result.target_results)
     unexpected_count: int = sum(len(target.unexpected_rows) for target in result.target_results)
@@ -196,13 +194,8 @@ def _test_node_result(
     )
     return build_node_result_record(
         invocation=invocation,
-        node_kind="test",
-        node_identity=build_quality_node_identity(
-            project_dir=project_dir,
-            file_path=test_case.file_path,
-            node_index=test_case.test_index,
-        ),
-        definition=test_case.query,
+        identity=require_quality_identity(test_case.quality_identity),
+        context=QualityResultContext(trigger=QualityResultTrigger.MANUAL),
         status=status,
         severity=None,
         failure_count=missing_count + unexpected_count + int(result.error_message is not None),

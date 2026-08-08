@@ -9,15 +9,25 @@ from typing import Any, cast
 from streambuild.compiler.audit_discovery._helpers.parsing import (
     parse_generic_sql_audit_definition,
 )
-from streambuild.compiler.audit_discovery.constants import ALLOWED_AUDIT_SEVERITIES
+from streambuild.compiler.audit_discovery.constants import (
+    ALLOWED_AUDIT_SEVERITIES,
+    AUDIT_COLUMN_ARGUMENT_KEY,
+    AUDIT_EVERY_KEY,
+    AUDIT_MODEL_ARGUMENT_KEY,
+    AUDIT_SCHEDULED_KEY,
+    AUDIT_SEVERITY_KEY,
+    AUDIT_WARMUP_KEY,
+)
 from streambuild.compiler.audit_discovery.exceptions import SqlAuditParseError
 from streambuild.compiler.audit_discovery.models import (
     LoadedGenericSqlAuditDefinition,
     LoadedGenericSqlAuditInstance,
     LoadedSqlAudit,
 )
+from streambuild.compiler.audit_discovery.types import AuditAttachmentKind
 from streambuild.compiler.compile.main._extract_refs import extract_refs
 from streambuild.compiler.compile.models import ParsedRef
+from streambuild.compiler.discovery.main._parse_duration_seconds import parse_duration_seconds
 from streambuild.compiler.discovery.models import ModelColumnSpec, TransformStep, ViewStep
 from streambuild.compiler.discovery.types import SqlRelationType
 from streambuild.compiler.macros.models import MacroContext, MacroRegistry
@@ -142,6 +152,21 @@ def render_generic_sql_audits(
                 name=instance.name,
                 audit_index=audit_index_by_file[instance.file_path],
                 generic_definition_name=instance.definition_name,
+                attachment_kind=(
+                    AuditAttachmentKind.COLUMN
+                    if AUDIT_COLUMN_ARGUMENT_KEY in instance.arguments
+                    else AuditAttachmentKind.MODEL
+                ),
+                attached_model=str(instance.arguments[AUDIT_MODEL_ARGUMENT_KEY]),
+                attached_column=(
+                    str(instance.arguments[AUDIT_COLUMN_ARGUMENT_KEY])
+                    if AUDIT_COLUMN_ARGUMENT_KEY in instance.arguments
+                    else None
+                ),
+                severity_is_explicit=instance.severity_is_explicit,
+                cadence_seconds_override=instance.cadence_seconds_override,
+                warmup_seconds_override=instance.warmup_seconds_override,
+                scheduled_override=instance.scheduled_override,
             )
         )
     return tuple(rendered_audits)
@@ -200,9 +225,10 @@ def _build_generic_sql_audit_instances(
             implicit_arguments=implicit_arguments,
             explicit_arguments=explicit_arguments,
         )
+        severity_is_explicit: bool = AUDIT_SEVERITY_KEY in explicit_arguments
         severity: str
         severity, merged_arguments = _pop_audit_string_argument(
-            key="severity",
+            key=AUDIT_SEVERITY_KEY,
             arguments=merged_arguments,
             default_value="error",
             file_path=file_path,
@@ -223,6 +249,34 @@ def _build_generic_sql_audit_instances(
             file_path=file_path,
             definition_name=definition_name,
         )
+        cadence_seconds: int | None
+        cadence_seconds, merged_arguments = _pop_optional_audit_duration_argument(
+            key=AUDIT_EVERY_KEY,
+            arguments=merged_arguments,
+            file_path=file_path,
+            definition_name=definition_name,
+            allow_zero=False,
+        )
+        warmup_seconds: int | None
+        warmup_seconds, merged_arguments = _pop_optional_audit_duration_argument(
+            key=AUDIT_WARMUP_KEY,
+            arguments=merged_arguments,
+            file_path=file_path,
+            definition_name=definition_name,
+            allow_zero=True,
+        )
+        scheduled: bool | None
+        scheduled, merged_arguments = _pop_optional_audit_bool_argument(
+            key=AUDIT_SCHEDULED_KEY,
+            arguments=merged_arguments,
+            file_path=file_path,
+            definition_name=definition_name,
+        )
+        if scheduled is False and cadence_seconds is not None:
+            raise SqlAuditParseError(
+                f"Model '{file_path}' audit '{definition_name}' cannot define both "
+                "scheduled false and every"
+            )
         instances.append(
             LoadedGenericSqlAuditInstance(
                 file_path=file_path,
@@ -231,6 +285,10 @@ def _build_generic_sql_audit_instances(
                 name=name or f"{default_name_prefix}.{definition_name}.{audit_index}",
                 severity=severity,
                 description=description,
+                severity_is_explicit=severity_is_explicit,
+                cadence_seconds_override=cadence_seconds,
+                warmup_seconds_override=warmup_seconds,
+                scheduled_override=scheduled,
             )
         )
     return instances
@@ -293,6 +351,49 @@ def _pop_optional_audit_string_argument(
             f"Model '{file_path}' audit '{definition_name}' must define {key} as a non-empty string"
         )
     return value.strip(), remaining_arguments
+
+
+def _pop_optional_audit_duration_argument(
+    *,
+    key: str,
+    arguments: dict[str, object],
+    file_path: Path,
+    definition_name: str,
+    allow_zero: bool,
+) -> tuple[int | None, dict[str, object]]:
+    remaining_arguments: dict[str, object] = dict(arguments)
+    if key not in remaining_arguments:
+        return None, remaining_arguments
+    value: object = remaining_arguments.pop(key)
+    try:
+        return (
+            parse_duration_seconds(
+                value=value,
+                field_path=f"Model '{file_path}' audit '{definition_name}' {key}",
+                allow_zero=allow_zero,
+            ),
+            remaining_arguments,
+        )
+    except ValueError as error:
+        raise SqlAuditParseError(str(error)) from None
+
+
+def _pop_optional_audit_bool_argument(
+    *,
+    key: str,
+    arguments: dict[str, object],
+    file_path: Path,
+    definition_name: str,
+) -> tuple[bool | None, dict[str, object]]:
+    remaining_arguments: dict[str, object] = dict(arguments)
+    if key not in remaining_arguments:
+        return None, remaining_arguments
+    value: object = remaining_arguments.pop(key)
+    if not isinstance(value, bool):
+        raise SqlAuditParseError(
+            f"Model '{file_path}' audit '{definition_name}' must define {key} as a boolean"
+        )
+    return value, remaining_arguments
 
 
 def _render_generic_sql_audit_query(

@@ -68,6 +68,57 @@ def test_given_one_run_when_emitting_then_streams_jsonl_and_persists_rows(
 @pytest.mark.parametrize(
     "test_case",
     [
+        RunEventSinkTestCase(
+            description="scheduled audit emits live start and completion progress",
+            expected_event_kinds=(
+                "run_started",
+                "audit_started",
+                "audit_completed",
+                "run_completed",
+            ),
+            expected_sequences=(1, 2, 3, 4),
+            expected_persisted_markers=(
+                "INSERT_RUN_EVENT analytics run_started 1;",
+                "INSERT_RUN_EVENT analytics audit_started 2;",
+                "INSERT_RUN_EVENT analytics audit_completed 3;",
+                "INSERT_RUN_EVENT analytics run_completed 4;",
+            ),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_scheduled_audit_when_emitting_then_run_progress_is_durable(
+    test_case: RunEventSinkTestCase,
+) -> None:
+    connection: RunEventRecordingConnection = RunEventRecordingConnection()
+    stream: io.StringIO = io.StringIO()
+    sink: RunEventSink = RunEventSink(
+        connection=connection,
+        database="analytics",
+        invocation_id="inv-scheduled",
+        jsonl_stream=stream,
+    )
+
+    sink.run_started(command="audit", mode="scheduled", total_statements=1, selected_node_count=1)
+    sink.audit_started(name="orders are valid")
+    sink.audit_completed(
+        name="orders are valid",
+        status="passed",
+        failure_count=0,
+        error_message=None,
+    )
+    sink.run_completed(outcome="succeeded", exit_code=0, error_message=None)
+
+    lines: list[dict] = [json.loads(line) for line in stream.getvalue().splitlines()]
+    assert tuple(line["event"] for line in lines) == test_case.expected_event_kinds
+    assert tuple(line["sequence"] for line in lines) == test_case.expected_sequences
+    assert lines[1]["stepId"] == "orders are valid"
+    assert tuple(connection.statements) == test_case.expected_persisted_markers
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
         RunEventHeartbeatTestCase(
             description="heartbeat continues while no workflow statement completes",
             expected_event_kind="run_heartbeat",

@@ -11,6 +11,7 @@ METADATA_DIRECT_FINGERPRINTS_TABLE_NAME: str = "_streambuild_direct_fingerprints
 METADATA_INVOCATIONS_TABLE_NAME: str = "_streambuild_invocations"
 METADATA_NODE_RESULTS_TABLE_NAME: str = "_streambuild_node_results"
 METADATA_RUN_EVENTS_TABLE_NAME: str = "_streambuild_run_events"
+METADATA_AUDIT_SCHEDULE_CLAIMS_TABLE_NAME: str = "_streambuild_audit_schedule_claims"
 VIRTUAL_OBJECT_STATE_KIND_DEPLOYMENT: str = "deployment"
 VIRTUAL_OBJECT_STATE_KIND_RECONCILE: str = "reconcile"
 VIRTUAL_DEPLOYMENT_STATUS_INCOMPLETE: str = "incomplete"

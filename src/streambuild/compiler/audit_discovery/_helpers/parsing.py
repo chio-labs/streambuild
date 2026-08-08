@@ -5,11 +5,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-import yaml
-
 from streambuild.compiler.audit_discovery.constants import (
     ALLOWED_AUDIT_KEYS,
     ALLOWED_AUDIT_SEVERITIES,
+    AUDIT_EVERY_KEY,
+    AUDIT_SEVERITY_KEY,
     GENERIC_AUDIT_QUOTED_PARAMETER_PATTERN,
     GENERIC_AUDIT_RAW_PARAMETER_PATTERN,
 )
@@ -20,6 +20,9 @@ from streambuild.compiler.audit_discovery.models import (
 )
 from streambuild.compiler.compile.main._extract_refs import extract_refs
 from streambuild.compiler.compile.models import ParsedRef
+from streambuild.compiler.discovery.exceptions import ModelHeaderSyntaxError
+from streambuild.compiler.discovery.main._parse_duration_seconds import parse_duration_seconds
+from streambuild.compiler.discovery.main._parse_sql_header import parse_sql_header
 from streambuild.compiler.discovery.types import SqlRelationType
 from streambuild.compiler.macros.main._expand_macro_calls import expand_macro_calls
 from streambuild.compiler.macros.models import MacroContext, MacroRegistry
@@ -190,6 +193,23 @@ def _parse_concrete_audit_block(
         description=_parse_audit_description(header_values=header_values, file_path=file_path),
         name=_parse_audit_name(header_values=header_values, file_path=file_path),
         audit_index=audit_index,
+        severity_is_explicit=AUDIT_SEVERITY_KEY in header_values,
+        cadence_seconds_override=_parse_audit_duration(
+            header_values=header_values,
+            key=AUDIT_EVERY_KEY,
+            file_path=file_path,
+            allow_zero=False,
+        ),
+        warmup_seconds_override=_parse_audit_duration(
+            header_values=header_values,
+            key="warmup",
+            file_path=file_path,
+            allow_zero=True,
+        ),
+        scheduled_override=_parse_audit_scheduled(
+            header_values=header_values,
+            file_path=file_path,
+        ),
     )
 
 
@@ -225,17 +245,11 @@ def _parse_audit_header(*, header: str, file_path: Path) -> dict[str, Any]:
     if not stripped_header:
         return {}
     try:
-        parsed_header: Any = yaml.safe_load(f"{{{stripped_header}}}")
-    except yaml.YAMLError as error:
+        parsed_header: dict[str, object] = parse_sql_header(header=stripped_header)
+    except ModelHeaderSyntaxError as error:
         raise SqlAuditParseError(
-            f"AUDIT() header in '{file_path}' could not be parsed: {error}"
+            f"AUDIT() header in '{file_path}' uses invalid SQLBuild syntax: {error}"
         ) from error
-    if not isinstance(parsed_header, dict) or not all(
-        isinstance(key, str) for key in parsed_header
-    ):
-        raise SqlAuditParseError(
-            f"AUDIT() header in '{file_path}' must be a mapping of key: value pairs"
-        )
     unknown_keys: tuple[str, ...] = tuple(
         sorted(str(key) for key in parsed_header if key not in ALLOWED_AUDIT_KEYS)
     )
@@ -274,7 +288,39 @@ def _parse_audit_name(*, header_values: dict[str, Any], file_path: Path) -> str 
         raise SqlAuditParseError(
             f"AUDIT() in '{file_path}' must define name as a non-empty string when set"
         )
-    return name_value
+    return name_value.strip()
+
+
+def _parse_audit_duration(
+    *,
+    header_values: dict[str, Any],
+    key: str,
+    file_path: Path,
+    allow_zero: bool,
+) -> int | None:
+    if key not in header_values:
+        return None
+    try:
+        return parse_duration_seconds(
+            value=header_values[key],
+            field_path=f"AUDIT() in '{file_path}' {key}",
+            allow_zero=allow_zero,
+        )
+    except ValueError as error:
+        raise SqlAuditParseError(str(error)) from None
+
+
+def _parse_audit_scheduled(*, header_values: dict[str, Any], file_path: Path) -> bool | None:
+    value: object | None = header_values.get("scheduled")
+    if value is None:
+        return None
+    if not isinstance(value, bool):
+        raise SqlAuditParseError(f"AUDIT() in '{file_path}' scheduled must be a boolean")
+    if value is False and AUDIT_EVERY_KEY in header_values:
+        raise SqlAuditParseError(
+            f"AUDIT() in '{file_path}' cannot define both scheduled false and every"
+        )
+    return value
 
 
 def _discover_raw_generic_sql_audit_parameter_names(query: str) -> tuple[str, ...]:

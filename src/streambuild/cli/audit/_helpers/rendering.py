@@ -44,7 +44,9 @@ def render_sql_audit_run_result(
             audit_results=tuple(
                 audit_result
                 for audit_result in result.audit_results
-                if audit_result.severity == AuditSeverity.ERROR and not audit_result.passed
+                if audit_result.severity == AuditSeverity.ERROR
+                and not audit_result.passed
+                and audit_result.deferred_until is None
             ),
             project_dir=project_dir,
         )
@@ -56,7 +58,21 @@ def render_sql_audit_run_result(
             audit_results=tuple(
                 audit_result
                 for audit_result in result.audit_results
-                if audit_result.severity == AuditSeverity.WARNING and not audit_result.passed
+                if audit_result.severity == AuditSeverity.WARNING
+                and not audit_result.passed
+                and audit_result.deferred_until is None
+            ),
+            project_dir=project_dir,
+        )
+    )
+    lines.append("")
+    lines.extend(
+        _render_group(
+            title="Deferred",
+            audit_results=tuple(
+                audit_result
+                for audit_result in result.audit_results
+                if audit_result.deferred_until is not None
             ),
             project_dir=project_dir,
         )
@@ -82,6 +98,9 @@ def _render_group(
         lines.append(f"    models: {', '.join(audit_result.referenced_model_names)}")
         if audit_result.description is not None:
             lines.append(f"    description: {audit_result.description}")
+        if audit_result.deferred_until is not None:
+            lines.append(f"    eligible at: {audit_result.deferred_until} UTC")
+            continue
         lines.append(f"    failing rows: {audit_result.failing_row_count}")
         if audit_result.sample_rows:
             lines.append("    sample:")
@@ -116,6 +135,7 @@ def _audit_result_payload(*, audit_result: SqlAuditResult, project_dir: Path) ->
         "failing_row_count": audit_result.failing_row_count,
         "sample_column_names": list(audit_result.sample_column_names),
         "sample_rows": [list(row) for row in audit_result.sample_rows],
+        "deferred_until": audit_result.deferred_until,
     }
 
 

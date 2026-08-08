@@ -1,4 +1,4 @@
-TEST (name: "order items never carry a negative line total");
+TEST (name "order items never carry a negative line total");
 
 WITH __ref__orders AS (
   @mock_rows(@with_timestamps(@load_fixture("orders_simple"), "2026-04-19 10:00:00"))

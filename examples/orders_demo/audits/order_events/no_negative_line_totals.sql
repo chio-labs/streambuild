@@ -1,6 +1,6 @@
 AUDIT (
-  severity: "warning",
-  description: "Line totals should not be negative",
+  severity warning,
+  description "Line totals should not be negative",
 );
 
 SELECT order_id, line_total

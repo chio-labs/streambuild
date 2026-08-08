@@ -6,32 +6,35 @@ import json
 from pathlib import Path
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.constants import METADATA_NODE_RESULTS_TABLE_NAME
 from streambuild.adapter.models import AdapterCurrentQualityNode, AdapterInvocationRecord
 from streambuild.compiler.audit_discovery.models import LoadedSqlAudit
 from streambuild.compiler.compile.types import LogicalResourceType
 from streambuild.compiler.pipeline.models import CompileAnalysis
+from streambuild.compiler.quality.main.require_quality_identity import require_quality_identity
+from streambuild.compiler.quality.models import QualityNodeIdentity
 from streambuild.compiler.testing.models import SqlTestCase
 from streambuild.dev_server.exceptions import DevServerError
+from streambuild.executor.auditing.main.deferred_audit_result import deferred_audit_result
 from streambuild.executor.auditing.main.execute_sql_audits import execute_sql_audits
-from streambuild.executor.auditing.models import SqlAuditResult, SqlAuditRunResult
-from streambuild.executor.auditing.types import AuditSeverity
-from streambuild.executor.observability.main.build_definition_fingerprint import (
-    build_definition_fingerprint,
+from streambuild.executor.auditing.main.load_model_anchors import load_model_anchors
+from streambuild.executor.auditing.main.resolve_audit_warmup_states import (
+    resolve_audit_warmup_states,
 )
+from streambuild.executor.auditing.models import AuditWarmupState, SqlAuditResult
+from streambuild.executor.auditing.types import AuditSeverity
 from streambuild.executor.observability.main.build_invocation_record import (
     build_invocation_record,
 )
 from streambuild.executor.observability.main.build_node_result_record import (
     build_node_result_record,
 )
-from streambuild.executor.observability.main.build_quality_node_identity import (
-    build_quality_node_identity,
-)
 from streambuild.executor.observability.main.persist_terminal_observations import (
     persist_terminal_observations,
 )
 from streambuild.executor.observability.main.start_invocation import start_invocation
-from streambuild.executor.observability.models import TerminalInvocation
+from streambuild.executor.observability.models import QualityResultContext, TerminalInvocation
+from streambuild.executor.observability.types import QualityResultTrigger
 from streambuild.executor.testing.main.execute_sql_tests import execute_sql_tests
 from streambuild.executor.testing.models import (
     SqlTestExecutionResult,
@@ -48,6 +51,8 @@ _ERROR_STATUS: str = "error"
 
 
 def _audit_status(result: SqlAuditResult) -> str:
+    if result.deferred_until is not None:
+        return "deferred"
     if result.error_message is not None:
         return _ERROR_STATUS
     if result.passed:
@@ -93,13 +98,28 @@ def run_one_audit(
     if audit is None:
         raise DevServerError(f"Unknown audit '{name}'")
     started: tuple[str, str, int] = start_invocation()
-    run: SqlAuditRunResult = execute_sql_audits(
-        loaded_audits=(audit,),
-        resolver=_model_resolver(analysis),
-        client=connection,
-        dialect=analysis.adapter_profile.sql_analysis_dialect,
+    warmup_state: dict[str, AuditWarmupState] = resolve_audit_warmup_states(
+        audits=(audit,),
+        anchors_by_model=load_model_anchors(
+            client=connection,
+            metadata_database=database,
+            target_database=database,
+            model_names=audit.referenced_model_names,
+            virtual_environments=analysis.compile_inputs.virtual_environments,
+        ),
+        warehouse_now=connection.capture_warehouse_timestamp(),
     )
-    result: SqlAuditResult = run.audit_results[0]
+    state: AuditWarmupState = warmup_state[audit.name or audit.file_path.stem]
+    result: SqlAuditResult = (
+        execute_sql_audits(
+            loaded_audits=(audit,),
+            resolver=_model_resolver(analysis),
+            client=connection,
+            dialect=analysis.adapter_profile.sql_analysis_dialect,
+        ).audit_results[0]
+        if state.eligible
+        else deferred_audit_result(audit=audit, state=state)
+    )
     _persist_audit_observation(
         connection=connection,
         database=database,
@@ -117,6 +137,7 @@ def run_one_audit(
         "sampleColumns": list(result.sample_column_names),
         "sampleRows": [list(row) for row in result.sample_rows],
         "errorMessage": result.error_message,
+        "deferredUntil": result.deferred_until,
     }
 
 
@@ -164,36 +185,49 @@ def build_checks_status_payload(
 ) -> list[dict[str, object]]:
     """Last-known outcome per audit/test from the observability tables."""
 
-    name_by_identity: dict[tuple[str, str], str] = {}
     nodes: list[AdapterCurrentQualityNode] = []
     for audit in analysis.compiled_project.audits:
-        identity: str = build_quality_node_identity(
-            project_dir=project_dir, file_path=audit.file_path, node_index=audit.audit_index
-        )
-        name_by_identity[("audit", identity)] = audit.name or audit.file_path.stem
+        identity: QualityNodeIdentity = require_quality_identity(audit.quality_identity)
         nodes.append(
             AdapterCurrentQualityNode(
-                node_kind="audit",
-                node_identity=identity,
-                definition_fingerprint=build_definition_fingerprint(
-                    definition=audit.query, severity=audit.severity
-                ),
+                node_kind=identity.node_kind,
+                node_name=identity.node_name,
+                binding_key=identity.binding_key,
+                definition_fingerprint=identity.definition_fingerprint,
+                execution_fingerprint=identity.execution_fingerprint,
+                cadence_seconds=audit.cadence_seconds,
+                warmup_seconds=audit.warmup_seconds,
             )
         )
     for test_case in analysis.compiled_project.test_cases:
-        identity = build_quality_node_identity(
-            project_dir=project_dir, file_path=test_case.file_path, node_index=test_case.test_index
-        )
-        name_by_identity[("test", identity)] = test_case.name or test_case.file_path.stem
+        identity: QualityNodeIdentity = require_quality_identity(test_case.quality_identity)
         nodes.append(
             AdapterCurrentQualityNode(
-                node_kind="test",
-                node_identity=identity,
-                definition_fingerprint=build_definition_fingerprint(
-                    definition=test_case.query, severity=None
-                ),
+                node_kind=identity.node_kind,
+                node_name=identity.node_name,
+                binding_key=identity.binding_key,
+                definition_fingerprint=identity.definition_fingerprint,
+                execution_fingerprint=identity.execution_fingerprint,
             )
         )
+    if not connection.metadata_columns(
+        database=database,
+        table=METADATA_NODE_RESULTS_TABLE_NAME,
+    ):
+        return [
+            {
+                "kind": node.node_kind,
+                "name": node.node_name,
+                "status": _NEVER_RUN_STATUS,
+                "driftReasons": [],
+                "severity": None,
+                "failureCount": 0,
+                "completedAt": None,
+                "payload": None,
+                "errorMessage": None,
+            }
+            for node in nodes
+        ]
     query: str = connection.render_latest_node_status_query(
         database=database,
         project_identity=str(project_dir.resolve()),
@@ -202,21 +236,26 @@ def build_checks_status_payload(
     )
     statuses: list[dict[str, object]] = []
     for row in connection.query(query).named_rows():
-        statuses.append(_status_row_payload(row=dict(row), name_by_identity=name_by_identity))
+        statuses.append(_status_row_payload(row=dict(row)))
     return statuses
 
 
-def _status_row_payload(
-    *, row: dict[str, object], name_by_identity: dict[tuple[str, str], str]
-) -> dict[str, object]:
+def _status_row_payload(*, row: dict[str, object]) -> dict[str, object]:
     kind: str = str(row["node_kind"])
-    identity: str = str(row["node_identity"])
+    node_name: str = str(row["node_name"])
     status: str = str(row["current_status"])
     recorded: bool = status != _NEVER_RUN_STATUS
+    raw_drift_reasons: object = row.get("drift_reasons")
+    drift_reasons: list[str] = (
+        [str(reason) for reason in raw_drift_reasons]
+        if isinstance(raw_drift_reasons, list | tuple)
+        else []
+    )
     return {
         "kind": kind,
-        "name": name_by_identity.get((kind, identity), identity),
+        "name": node_name,
         "status": status,
+        "driftReasons": drift_reasons,
         "severity": row["severity"],
         "failureCount": int(str(row["failure_count"])) if recorded else 0,
         "completedAt": str(row["completed_at"]) if recorded else None,
@@ -242,9 +281,11 @@ def _persist_audit_observation(
     audit: LoadedSqlAudit,
     result: SqlAuditResult,
 ) -> None:
-    hard_failure: bool = (result.error_message is not None or not result.passed) and str(
-        result.severity
-    ) != AuditSeverity.WARNING
+    hard_failure: bool = (
+        result.deferred_until is None
+        and (result.error_message is not None or not result.passed)
+        and str(result.severity) != AuditSeverity.WARNING
+    )
     invocation: AdapterInvocationRecord = build_invocation_record(
         started=started,
         terminal=TerminalInvocation(
@@ -270,19 +311,19 @@ def _persist_audit_observation(
         node_results=(
             build_node_result_record(
                 invocation=invocation,
-                node_kind="audit",
-                node_identity=build_quality_node_identity(
-                    project_dir=project_dir,
-                    file_path=audit.file_path,
-                    node_index=audit.audit_index,
+                identity=require_quality_identity(audit.quality_identity),
+                context=QualityResultContext(
+                    trigger=QualityResultTrigger.MANUAL,
+                    cadence_seconds=audit.cadence_seconds,
+                    warmup_seconds=audit.warmup_seconds,
                 ),
-                definition=audit.query,
                 status=status,
                 severity=result.severity,
                 failure_count=result.failing_row_count,
                 payload={
                     "sample_column_names": list(result.sample_column_names),
                     "sample_rows": [list(item) for item in result.sample_rows[:5]],
+                    "eligible_at": result.deferred_until,
                 },
                 error_message=result.error_message,
             ),
@@ -327,13 +368,8 @@ def _persist_test_observation(
         node_results=(
             build_node_result_record(
                 invocation=invocation,
-                node_kind="test",
-                node_identity=build_quality_node_identity(
-                    project_dir=project_dir,
-                    file_path=test_case.file_path,
-                    node_index=test_case.test_index,
-                ),
-                definition=test_case.query,
+                identity=require_quality_identity(test_case.quality_identity),
+                context=QualityResultContext(trigger=QualityResultTrigger.MANUAL),
                 status=status,
                 severity=None,
                 failure_count=missing_count

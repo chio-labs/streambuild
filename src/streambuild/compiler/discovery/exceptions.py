@@ -21,3 +21,7 @@ class ProjectSpecError(ValueError):
 
 class ProjectConfigError(ProjectSpecError):
     """Raised when project or local configuration is invalid."""
+
+
+class DurationParseError(ProjectSpecError):
+    """Raised when a compact authored duration is invalid."""

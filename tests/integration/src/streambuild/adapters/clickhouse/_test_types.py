@@ -49,3 +49,10 @@ class MetadataMigrationIntegrationTestCase:
 class LatestNodeStatusIntegrationTestCase:
     description: str
     expected_status_rows: tuple[tuple[str, str], ...]
+    expected_drift_rows: tuple[tuple[str, tuple[str, ...]], ...]
+
+
+@dataclass(frozen=True)
+class LegacyNodeResultsSchemaTestCase:
+    description: str
+    expected_error_fragment: str

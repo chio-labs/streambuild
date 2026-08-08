@@ -28,7 +28,7 @@ import {
 	type Source,
 	type SqlTest
 } from '$lib/domain/types';
-import { daysBetween, secondsBetween } from '$lib/domain/format';
+import { daysBetween, formatEngineFamily, secondsBetween } from '$lib/domain/format';
 
 // ─── lookups ─────────────────────────────────────────────────────────────────
 
@@ -66,6 +66,7 @@ export function auditCounts(audits: Audit[]): CheckCounts {
 	let failing = 0;
 	for (const audit of audits) {
 		if (!audit.result) continue;
+		if (audit.result.deferredUntil) continue;
 		if (audit.result.passed) passing += 1;
 		else if (audit.severity === 'warning') warning += 1;
 		else failing += 1;
@@ -136,7 +137,7 @@ function modelGraphNode(project: Project, model: Model): GraphNode {
 		physicalType: null,
 		status: model.status,
 		anchor: model.anchor,
-		kindLabel: model.kind === 'view' ? 'TERMINAL VIEW' : (model.storage.engine ?? 'TABLE'),
+		kindLabel: model.kind === 'view' ? 'TERMINAL VIEW' : formatEngineFamily(model.storage.engine),
 		sublabel: model.relationName,
 		rows: model.live.rows,
 		rowsPerSecond: null,
@@ -339,7 +340,7 @@ export function buildPhysicalGraph(project: Project): Graph {
 			physicalType: 'model_table',
 			status: model.status,
 			anchor: model.anchor,
-			kindLabel: model.storage.engine ?? 'TABLE',
+			kindLabel: formatEngineFamily(model.storage.engine),
 			sublabel: null,
 			rows: model.live.rows,
 			rowsPerSecond: null,

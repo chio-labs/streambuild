@@ -17,3 +17,40 @@ class KafkaLagSnapshotTestCase:
     end_offsets: tuple[tuple[int, int], ...]
     expected_total_messages: int | None
     expected_partition_lags: tuple[int | None, ...]
+
+
+@dataclass(frozen=True)
+class AuditScheduleCalculationTestCase:
+    description: str
+    status_payloads: tuple[dict[str, object], ...]
+    anchors_by_model: dict[str, str]
+    warmup_anchor: str | None
+    eligible_at: str | None
+    warmup_eligible: bool
+    materialization_outcome: str | None
+    expected_scheduler_state: str
+    expected_state: str
+    expected_scheduled_for: str
+    warehouse_now: str = "2026-08-08 12:00:00.000"
+
+
+@dataclass(frozen=True)
+class AuditSchedulerBackoffTestCase:
+    description: str
+    error_message: str
+    expected_initial_backoff_seconds: float
+    expected_result_count_after_recovery: int
+
+
+@dataclass(frozen=True)
+class AuditSchedulerActiveRunTestCase:
+    description: str
+    active_runs: tuple[dict[str, object], ...]
+    latest_applied_at: str | None
+    expected_payload_reads: int
+
+
+@dataclass(frozen=True)
+class AuditSchedulerLocalRaceTestCase:
+    description: str
+    expected_feed_reads: int

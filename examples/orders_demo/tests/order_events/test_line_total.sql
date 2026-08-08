@@ -1,4 +1,4 @@
-TEST (name: "line total computes correctly");
+TEST (name "line total computes correctly");
 
 WITH __ref__orders AS (
   SELECT
@@ -38,7 +38,7 @@ __expected__order_items AS (
 )
 SELECT 1
 
-TEST (name: "null quantity yields null line total");
+TEST (name "null quantity yields null line total");
 
 WITH __ref__orders AS (
   SELECT

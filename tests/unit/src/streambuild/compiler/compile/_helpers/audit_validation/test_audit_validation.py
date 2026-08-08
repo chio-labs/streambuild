@@ -87,7 +87,7 @@ def test_given_invalid_sql_audits_when_validating_then_it_raises_clear_errors(
                 (
                     AUDIT_FILE_PATH,
                     """
-        AUDIT (severity: "warning");
+        AUDIT (severity warning);
 
         SELECT * FROM __ref("order_items") WHERE line_total < 0
         """,

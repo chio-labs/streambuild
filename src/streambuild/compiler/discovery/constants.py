@@ -50,7 +50,7 @@ LEGACY_LOCAL_CONFIG_FILE_NAME: str = "streambuild_local.yml"
 
 PIPELINE_CONFIG_FILE_NAME: str = "pipeline.toml"
 PIPELINE_CONFIG_KEYS: frozenset[str] = frozenset(
-    {"replay_on_change", "bounded_replay_fallback", "naming", "protection"}
+    {"replay_on_change", "bounded_replay_fallback", "naming", "protection", "audit_defaults"}
 )
 NAMING_KEYS: frozenset[str] = frozenset({"table_prefix", "view_prefix"})
 NAMING_TABLE_PREFIX_KEY: str = "table_prefix"
@@ -74,13 +74,15 @@ PROJECT_CONFIG_KEYS: frozenset[str] = frozenset(
         "targets",
         "defaults",
         "naming",
+        "audit_scheduler",
     }
 )
 LOCAL_CONFIG_KEYS: frozenset[str] = frozenset(
     {"target", "adapter", "settings", "connection", "vars", "targets"}
 )
 SETTINGS_KEYS: frozenset[str] = frozenset({"virtual_environments"})
-TARGET_KEYS: frozenset[str] = frozenset({"database", "connection", "vars"})
+TARGET_KEYS: frozenset[str] = frozenset({"database", "connection", "vars", "audit_scheduler"})
+AUDIT_SCHEDULER_KEYS: frozenset[str] = frozenset({"enabled"})
 DEFAULTS_KEYS: frozenset[str] = frozenset(
     {
         "managed_source_ttl",
@@ -89,6 +91,7 @@ DEFAULTS_KEYS: frozenset[str] = frozenset(
         "replay_on_change",
         "bounded_replay_fallback",
         "freshness",
+        "audits",
     }
 )
 SOURCE_FILE_KEYS: frozenset[str] = frozenset({"sources"})
@@ -120,6 +123,11 @@ REPLAY_BOUNDARY_COLUMN_KEYS: frozenset[str] = frozenset(
 FRESHNESS_KEYS: frozenset[str] = frozenset({"warn_after", "error_after"})
 MODEL_COLUMN_KEYS: frozenset[str] = frozenset({"description", "audits"})
 FRESHNESS_DURATION_PATTERN: re.Pattern[str] = re.compile(r"(\d+)([dhms])")
+DURATION_PATTERN: re.Pattern[str] = re.compile(r"(\d+)([dhms])")
+AUDIT_DEFAULT_KEYS: frozenset[str] = frozenset({"severity", "every", "warmup"})
+AUDIT_SEVERITIES: frozenset[str] = frozenset({"error", "warning"})
+AUDIT_DEFAULT_EVERY_KEY: str = "every"
+AUDIT_DEFAULT_WARMUP_KEY: str = "warmup"
 SECONDS_BY_DURATION_UNIT: dict[str, int] = {
     "d": 24 * 60 * 60,
     "h": 60 * 60,

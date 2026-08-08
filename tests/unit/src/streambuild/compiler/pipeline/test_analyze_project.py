@@ -14,6 +14,7 @@ from streambuild.adapter.models import AdapterManagedSource, AdapterTable
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from streambuild.cli.compile.main._run_compile import run_compile
 from streambuild.cli.entry._helpers.compiler_profile import build_compiler_adapter_profile
+from streambuild.compiler.audit_discovery.models import LoadedSqlAudit
 from streambuild.compiler.compile.exceptions import PipelineCompileError
 from streambuild.compiler.compile.main._build_compile_inputs import build_compile_inputs
 from streambuild.compiler.compile.models import CompilerAdapterProfile, DesiredTable
@@ -32,10 +33,14 @@ from streambuild.compiler.graph.main._build_project_graph import (
 from streambuild.compiler.macros.main._expand_macro_calls import expand_macro_calls
 from streambuild.compiler.pipeline.main.analyze_project import analyze_project
 from streambuild.compiler.pipeline.models import CompileAnalysis
+from tests.unit.src.streambuild.compiler.audit_discovery.helpers import write_sql_audit_file
+from tests.unit.src.streambuild.compiler.discovery._helpers.load.helpers import write_pipeline_file
+from tests.unit.src.streambuild.compiler.discovery.helpers import write_project_toml
 from tests.unit.src.streambuild.compiler.pipeline._test_types import (
     AnalysisDialectTestCase,
     AnalyzeProjectTestCase,
     CompilationEntrypointsTestCase,
+    CompiledAuditPolicyTestCase,
     DuplicateProjectInputTestCase,
     ManagedSourceTtlPrecedenceTestCase,
     PrivateMacroDiscoveryTestCase,
@@ -57,6 +62,91 @@ from tests.unit.src.streambuild.compiler.pipeline.helpers import (
     write_source_model_name_collision,
 )
 from tests.unit.src.streambuild.compiler.test_discovery.helpers import model_payload
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CompiledAuditPolicyTestCase(
+            description="pipeline policy overrides project defaults",
+            audit_header='name "alpha quality"',
+            expected_severity="error",
+            expected_cadence_seconds=600,
+            expected_warmup_seconds=1800,
+            expected_scheduled=True,
+        ),
+        CompiledAuditPolicyTestCase(
+            description="audit policy overrides inherited defaults",
+            audit_header=('name "alpha quality", severity warning, every "2m", warmup "1m"'),
+            expected_severity="warning",
+            expected_cadence_seconds=120,
+            expected_warmup_seconds=60,
+            expected_scheduled=True,
+        ),
+        CompiledAuditPolicyTestCase(
+            description="schedule opt out removes inherited cadence",
+            audit_header='name "alpha quality", scheduled false',
+            expected_severity="error",
+            expected_cadence_seconds=None,
+            expected_warmup_seconds=1800,
+            expected_scheduled=False,
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_audit_policy_layers_when_compiling_then_effective_policy_is_explicit(
+    test_case: CompiledAuditPolicyTestCase,
+    tmp_path: Path,
+) -> None:
+    project_dir: Path = tmp_path / "project"
+    write_compilation_project(project_dir)
+    write_project_toml(
+        project_dir=project_dir,
+        contents="""
+        name = "compilation_project"
+        default_target = "test"
+
+        [settings]
+        virtual_environments = true
+
+        [defaults.audits]
+        severity = "warning"
+        every = "5m"
+        warmup = "15m"
+
+        [targets.test]
+        database = "analytics"
+        """,
+    )
+    write_pipeline_file(
+        project_dir / "pipelines" / "alpha" / "pipeline.toml",
+        """
+        [audit_defaults]
+        severity = "error"
+        every = "10m"
+        warmup = "30m"
+        """,
+    )
+    write_sql_audit_file(
+        project_dir / "audits" / "quality" / "alpha_audit.sql",
+        f"""
+        AUDIT ({test_case.audit_header});
+        SELECT order_id FROM __ref("alpha_model") WHERE order_id = 0
+        """,
+    )
+    loaded_project: LoadedProject | None = load_project_input_for_path(path=project_dir)
+
+    analysis: CompileAnalysis = analyze_project(
+        pipelines_root=project_dir / "pipelines",
+        loaded_project=loaded_project,
+        adapter_profile=build_compiler_adapter_profile(ClickHouseAdapter()),
+    )
+    audit: LoadedSqlAudit = analysis.compiled_project.audits[0]
+
+    assert audit.severity == test_case.expected_severity
+    assert audit.cadence_seconds == test_case.expected_cadence_seconds
+    assert audit.warmup_seconds == test_case.expected_warmup_seconds
+    assert audit.scheduled is test_case.expected_scheduled
 
 
 @pytest.mark.parametrize(
@@ -97,9 +187,9 @@ def test_given_adapter_profile_when_analyzing_then_references_use_its_dialect(
             description="bounds Polyglot calls across one complete two-model project analysis",
             expected_model_count=2,
             expected_parse_calls=2,
-            expected_parse_one_calls=9,
+            expected_parse_one_calls=15,
             expected_analyze_calls=3,
-            expected_generate_calls=20,
+            expected_generate_calls=26,
         )
     ],
     ids=lambda case: case.description,

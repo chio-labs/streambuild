@@ -3,6 +3,8 @@
 from dataclasses import dataclass
 from pathlib import Path
 
+from streambuild.executor.observability.types import QualityResultTrigger
+
 
 @dataclass(frozen=True)
 class TerminalInvocation:
@@ -20,3 +22,16 @@ class TerminalInvocation:
     selected_node_count: int
     error_message: str | None
     summary: dict[str, object]
+
+
+@dataclass(frozen=True)
+class QualityResultContext:
+    """Trigger, logical slot, and policy snapshot for one quality attempt."""
+
+    trigger: QualityResultTrigger | str
+    scheduled_for: str | None = None
+    cadence_seconds: int | None = None
+    warmup_seconds: int = 0
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "trigger", QualityResultTrigger(self.trigger))

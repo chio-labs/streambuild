@@ -1,5 +1,5 @@
 AUDIT (
-  description: "Orders must have a known status value",
+  description "Orders must have a known status value",
 );
 
 SELECT order_id, status

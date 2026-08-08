@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import yaml
-
+from streambuild.compiler.discovery.exceptions import ModelHeaderSyntaxError
+from streambuild.compiler.discovery.main._parse_sql_header import parse_sql_header
 from streambuild.compiler.test_discovery.constants import (
     DEFAULT_SQL_TEST_MODE,
     SUPPORTED_SQL_TEST_MODES,
@@ -36,16 +36,11 @@ def parse_test_header(*, file_path: Path, header_contents: str) -> SqlTestHeader
 
 def _parse_header_mapping(*, file_path: Path, header_contents: str) -> dict[str, object]:
     try:
-        parsed_header: object = yaml.safe_load(f"{{{header_contents}}}")
-    except yaml.YAMLError as error:
+        return parse_sql_header(header=header_contents)
+    except ModelHeaderSyntaxError as error:
         raise SqlTestParseError(
-            f"TEST() header in '{file_path}' could not be parsed: {error}"
+            f"TEST() header in '{file_path}' uses invalid SQLBuild syntax: {error}"
         ) from error
-    if not isinstance(parsed_header, dict):
-        raise SqlTestParseError(
-            f"TEST() header in '{file_path}' must be a mapping like `TEST (name: \"...\");`"
-        )
-    return {str(key): value for key, value in parsed_header.items()}
 
 
 def _reject_unsupported_keys(*, file_path: Path, parsed_header: dict[str, object]) -> None:

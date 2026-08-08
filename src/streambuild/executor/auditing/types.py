@@ -16,3 +16,13 @@ class AuditResultStatus(StrEnum):
     PASS = "PASS"
     WARN = "WARN"
     FAIL = "FAIL"
+
+
+class QualityResultStatus(StrEnum):
+    """Persisted status of one audit or SQL-test attempt."""
+
+    PASSED = "passed"
+    WARNING = "warning"
+    FAILED = "failed"
+    ERROR = "error"
+    DEFERRED = "deferred"

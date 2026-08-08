@@ -1075,13 +1075,13 @@ def test_given_virtual_environment_target_when_building_direct_then_direct_repla
             audit_sql_by_name=(
                 (
                     "first_nonempty_order_ids.sql",
-                    'AUDIT (\n  description: "order ids must not be empty",\n);\n\n'
+                    'AUDIT (\n  description "order ids must not be empty",\n);\n\n'
                     'SELECT order_id\nFROM __ref("orders_enriched")\n'
                     "WHERE order_id != '' ORDER BY order_id\n",
                 ),
                 (
                     "second_nonempty_order_ids.sql",
-                    'AUDIT (\n  description: "all order ids fail again",\n);\n\n'
+                    'AUDIT (\n  description "all order ids fail again",\n);\n\n'
                     'SELECT order_id\nFROM __ref("orders_enriched")\n'
                     "WHERE order_id != '' ORDER BY order_id\n",
                 ),
@@ -1188,7 +1188,7 @@ def test_given_failing_audit_when_building_then_command_fails_without_rollback(
             "WHERE node_kind = 'audit' AND invocation_id = ("
             "SELECT invocation_id FROM "
             f"{clickhouse_database}._streambuild_invocations WHERE command = 'build' "
-            "ORDER BY completed_at DESC LIMIT 1) ORDER BY node_identity"
+            "ORDER BY completed_at DESC LIMIT 1) ORDER BY node_name"
         ).result_rows
         audit_error_message_count: int = int(
             clickhouse_client.query(
@@ -1842,13 +1842,13 @@ def test_given_selection_matrix_when_building_then_exact_closure_is_reconstructe
             audit_sql_by_name=(
                 (
                     "covered.sql",
-                    'AUDIT (description: "covered");\n'
+                    'AUDIT (description "covered");\n'
                     "SELECT 'covered-audit-marker' AS marker "
                     'FROM __ref("beta") WHERE 0\n',
                 ),
                 (
                     "excluded.sql",
-                    'AUDIT (description: "excluded");\n'
+                    'AUDIT (description "excluded");\n'
                     "SELECT 'excluded-audit-marker' AS marker "
                     'FROM __ref("alpha")\n',
                 ),

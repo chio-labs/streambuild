@@ -55,7 +55,7 @@ def write_compilation_project(project_dir: Path) -> None:
     _write(
         project_dir / "tests" / "quality" / "alpha_test.sql",
         """
-        TEST (name: "shared test");
+        TEST (name "shared test");
 
         WITH
           __source__alpha_source AS (
@@ -70,7 +70,7 @@ def write_compilation_project(project_dir: Path) -> None:
     _write(
         project_dir / "audits" / "quality" / "alpha_audit.sql",
         """
-        AUDIT (name: "alpha quality");
+        AUDIT (name "alpha quality");
 
         SELECT order_id FROM __ref("alpha_model") WHERE order_id = @identity_sql('0')
         """,
@@ -106,7 +106,7 @@ def write_duplicate_test(project_dir: Path) -> None:
     _write(
         project_dir / "tests" / "other" / "duplicate.sql",
         """
-        TEST (name: "shared test");
+        TEST (name "shared test");
 
         WITH
           __source__alpha_source AS (

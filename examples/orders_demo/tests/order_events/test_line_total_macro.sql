@@ -1,4 +1,4 @@
-TEST (mode: macro, name: "line total expression handles nulls");
+TEST (mode macro, name "line total expression handles nulls");
 
 WITH input_values AS (
   SELECT 2 AS quantity, 10.0 AS unit_price
