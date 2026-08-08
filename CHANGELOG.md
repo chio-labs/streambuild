@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.12.2](https://github.com/chio-labs/streambuild/compare/v0.12.1...v0.12.2) (2026-08-08)
+
+
+### Bug Fixes
+
+* gate topics navigation on the first inventory load ([8712dd4](https://github.com/chio-labs/streambuild/commit/8712dd4edb4a9e50ff6dae9fa6581a430023f712))
+* keep dev app startup warmer within comment policy ([e04bcc6](https://github.com/chio-labs/streambuild/commit/e04bcc6d4ddab1c94ba7dbf8b1fc8bc491051255))
+* keep the topics inventory across navigations ([d6c22c4](https://github.com/chio-labs/streambuild/commit/d6c22c4171885a9f7ad1248833b799cec254b8bf))
+
 ## [0.12.1](https://github.com/chio-labs/streambuild/compare/v0.12.0...v0.12.1) (2026-08-08)
 
 
