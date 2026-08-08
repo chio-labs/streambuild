@@ -19,7 +19,7 @@ from streambuild.dev_server.models import (
 _LIMIT_MIN: int = 1
 _LIMIT_MAX: int = 500
 _VALUE_PREVIEW_BYTES: int = 512
-_RECORD_VALUE_MAX_BYTES: int = 1_048_576
+_RECORD_VALUE_MAX_BYTES: int = 16_777_216
 _FACET_VALUE_LIMIT: int = 20
 _NEWEST_WINDOWS_SECONDS: tuple[int | None, ...] = (3_600, 86_400, None)
 _FACET_NEWEST_WINDOW_SECONDS: int = 86_400
