@@ -175,6 +175,7 @@ def _source_request(
         format=authored_source.kafka.format,
         ttl=authored_source.kafka.ttl,
         settings=settings,
+        naming_macro_fingerprint=authored_source.naming_macro_fingerprint,
     )
 
 
@@ -452,6 +453,7 @@ def _desired_managed_source(*, resource: AdapterManagedSource, key: ObjectKey) -
                 format=resource.format,
                 settings=None if not resource.settings else dict(resource.settings),
             ),
+            naming_macro_fingerprint=resource.naming_macro_fingerprint,
         ),
     )
 
