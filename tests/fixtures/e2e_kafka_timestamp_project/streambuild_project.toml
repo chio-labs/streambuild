@@ -1,8 +1,8 @@
 name = "e2e_kafka_timestamp_project"
 default_target = "test"
 
-[settings]
-virtual_environments = true
+[defaults]
+pipeline_mode = "virtual"
 
 [targets.test]
 database = "analytics"

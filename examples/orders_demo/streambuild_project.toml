@@ -1,17 +1,15 @@
 name = "orders_demo"
 default_target = "demo"
 
-[settings]
-virtual_environments = false
+[defaults]
+pipeline_mode = "direct"
+kafka_broker_list = "redpanda:9092"
 
 [connection]
 host = "localhost"
 port = 18123
 username = "clickhouse"
 password = "clickhouse"
-
-[defaults]
-kafka_broker_list = "redpanda:9092"
 
 [targets.demo]
 database = "orders_demo"

@@ -83,8 +83,8 @@ def write_cli_compilation_project(*, project_root: Path, model_sql: str) -> None
             name = "demo"
             default_target = "test"
 
-            [settings]
-            virtual_environments = true
+            [defaults]
+            pipeline_mode = \"virtual\"
 
             [connection]
             host = "localhost"

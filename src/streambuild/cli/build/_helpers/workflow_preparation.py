@@ -1,6 +1,7 @@
 """Route connected workflow preparation through the effective project mode."""
 
 import json
+from dataclasses import replace
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.cli.build._helpers.audits import prepare_direct_build_audits
@@ -11,6 +12,7 @@ from streambuild.cli.build.constants import STREAMBUILD_TOOL_VERSION
 from streambuild.cli.build.models import (
     DirectBuildPreviewContext,
     DirectWorkflowPreparation,
+    MixedWorkflowPreparation,
     VirtualBuildPreviewContext,
     VirtualWorkflowPreparation,
     WorkflowPreparationOptions,
@@ -20,7 +22,9 @@ from streambuild.cli.plan.main._normalize_cli_start_time import normalize_cli_st
 from streambuild.cli.plan.main._render_direct_plan_json import render_direct_plan_json
 from streambuild.cli.plan.main.render_direct_plan_text import render_direct_plan_text
 from streambuild.cli.plan.main.render_plan_result import render_plan_result
-from streambuild.compiler.compile.models import CompilerAdapterProfile
+from streambuild.cli.selection.main._selection import resolve_selected_logical_model_keys
+from streambuild.compiler.compile.models import CompilerAdapterProfile, LogicalResourceKey
+from streambuild.compiler.discovery.types import PipelineMode
 from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.executor.backfill.main.assemble_virtual_build_workflow import (
     assemble_virtual_build_workflow,
@@ -43,11 +47,66 @@ def prepare_build_workflow(
     options: WorkflowPreparationOptions,
     client: AdapterConnection,
     adapter_profile: CompilerAdapterProfile,
-) -> DirectWorkflowPreparation | VirtualWorkflowPreparation:
+) -> DirectWorkflowPreparation | MixedWorkflowPreparation | VirtualWorkflowPreparation:
     """Return one complete workflow assembled from fresh connected inspection."""
 
     _validate_common_flags(options=options)
     start_time_utc: str | None = _normalized_utc_start_time(options=options)
+    selected_names_by_mode: dict[PipelineMode, tuple[str, ...]] = _selected_model_names_by_mode(
+        analysis=analysis,
+        selectors=options.selectors,
+    )
+    selected_modes: frozenset[PipelineMode] = frozenset(selected_names_by_mode)
+    if selected_modes == {PipelineMode.VIRTUAL}:
+        return prepare_virtual_build_workflow(
+            analysis=analysis,
+            options=options,
+            start_time_utc=start_time_utc,
+            client=client,
+        )
+    if selected_modes == {PipelineMode.DIRECT}:
+        _reject_direct_unsupported_flags(options=options)
+        return prepare_direct_build_workflow(
+            analysis=analysis,
+            options=options,
+            client=client,
+            adapter_profile=adapter_profile,
+            effective_start_time=start_time_utc,
+        )
+    if selected_modes == {PipelineMode.DIRECT, PipelineMode.VIRTUAL}:
+        virtual_options: WorkflowPreparationOptions = replace(
+            options,
+            selectors=selected_names_by_mode[PipelineMode.VIRTUAL],
+        )
+        direct_options: WorkflowPreparationOptions = replace(
+            options,
+            selectors=selected_names_by_mode[PipelineMode.DIRECT],
+            deployment_id=None,
+            full_refresh=False,
+        )
+        virtual: VirtualWorkflowPreparation = prepare_virtual_build_workflow(
+            analysis=analysis,
+            options=virtual_options,
+            start_time_utc=start_time_utc,
+            client=client,
+        )
+        direct: DirectWorkflowPreparation = prepare_direct_build_workflow(
+            analysis=analysis,
+            options=direct_options,
+            client=client,
+            adapter_profile=adapter_profile,
+            effective_start_time=start_time_utc,
+        )
+        return MixedWorkflowPreparation(
+            virtual=virtual,
+            direct=direct,
+            plan_text=_render_mixed_plan_text(virtual=virtual, direct=direct),
+            plan_json=_render_mixed_plan_json(virtual=virtual, direct=direct),
+            protection_requirements=(
+                *virtual.protection_requirements,
+                *direct.protection_requirements,
+            ),
+        )
     if analysis.compile_inputs.virtual_environments:
         return prepare_virtual_build_workflow(
             analysis=analysis,
@@ -62,6 +121,60 @@ def prepare_build_workflow(
         client=client,
         adapter_profile=adapter_profile,
         effective_start_time=start_time_utc,
+    )
+
+
+def _selected_model_names_by_mode(
+    *, analysis: CompileAnalysis, selectors: tuple[str, ...]
+) -> dict[PipelineMode, tuple[str, ...]]:
+    selected_keys: frozenset[LogicalResourceKey] = (
+        resolve_selected_logical_model_keys(
+            compiled_pipelines=analysis.compiled_project.pipelines,
+            selectors=selectors,
+        )
+        if selectors
+        else frozenset(model.key for model in analysis.compiled_project.models)
+    )
+    names_by_mode: dict[PipelineMode, list[str]] = {}
+    for pipeline in analysis.compiled_project.pipelines:
+        names: list[str] = [
+            model.key.name for model in pipeline.models if model.key in selected_keys
+        ]
+        if names:
+            names_by_mode.setdefault(PipelineMode(pipeline.pipeline.mode), []).extend(names)
+    return {mode: tuple(sorted(names)) for mode, names in names_by_mode.items()}
+
+
+def _render_mixed_plan_text(
+    *, virtual: VirtualWorkflowPreparation, direct: DirectWorkflowPreparation
+) -> str:
+    return "\n".join(
+        (
+            "Mixed Build Plan",
+            "Execution order  virtual (staged) -> direct (applied immediately)",
+            "",
+            "Phase 1/2  VIRTUAL - staged for later promotion",
+            virtual.plan_text,
+            "",
+            "Phase 2/2  DIRECT - applied immediately after phase 1 succeeds",
+            direct.plan_text,
+            "",
+            "The virtual deployment remains staged until it is promoted.",
+        )
+    )
+
+
+def _render_mixed_plan_json(
+    *, virtual: VirtualWorkflowPreparation, direct: DirectWorkflowPreparation
+) -> str:
+    return json.dumps(
+        {
+            "mode": "mixed",
+            "execution_order": ["virtual", "direct"],
+            "virtual": json.loads(virtual.workflow.plan_json),
+            "direct": json.loads(direct.workflow.plan_json),
+        },
+        indent=2,
     )
 
 
@@ -200,5 +313,6 @@ def _reject_direct_unsupported_flags(*, options: WorkflowPreparationOptions) -> 
     if options.full_refresh:
         raise CliUserError(
             "--full-refresh is a virtual-environment replay control and is not available in "
-            "direct mode. Enable settings.virtual_environments to use it."
+            "direct mode. Set defaults.pipeline_mode = 'virtual' or select a virtual pipeline "
+            "to use it."
         )

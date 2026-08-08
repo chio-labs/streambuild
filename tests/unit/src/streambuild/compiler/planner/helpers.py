@@ -578,8 +578,8 @@ DIRECT_SCOPE_SOURCE_RELATION_NAMES: tuple[str, ...] = (
 )
 _DIRECT_SCOPE_SETTINGS_BLOCK_BY_FLAG: dict[bool | None, str] = {
     None: "",
-    True: "\n[settings]\nvirtual_environments = true\n",
-    False: "\n[settings]\nvirtual_environments = false\n",
+    True: '\n[defaults]\npipeline_mode = "virtual"\n',
+    False: '\n[defaults]\npipeline_mode = "direct"\n',
 }
 _DIRECT_SCOPE_SOURCE_YML: str = (
     "sources:\n"

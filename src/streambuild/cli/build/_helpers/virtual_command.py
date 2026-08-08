@@ -41,6 +41,7 @@ def execute_virtual_build_command(
     client: AdapterConnection,
     observation_client: AdapterConnection,
     started: tuple[str, str, int],
+    confirmation_required: bool = True,
 ) -> int:
     """Confirm and populate one prepared isolated virtual deployment."""
 
@@ -58,10 +59,14 @@ def execute_virtual_build_command(
                 total_statements=len(preparation.workflow.statements),
                 selected_node_count=len(preparation.preview.plan.object_changes),
             )
-        confirmed: bool = confirm_build(
-            options=options,
-            plan_text=preparation.plan_text,
-            protection_requirements=preparation.protection_requirements,
+        confirmed: bool = (
+            confirm_build(
+                options=options,
+                plan_text=preparation.plan_text,
+                protection_requirements=preparation.protection_requirements,
+            )
+            if confirmation_required
+            else True
         )
     except KeyboardInterrupt:
         return _cancel_virtual_build(

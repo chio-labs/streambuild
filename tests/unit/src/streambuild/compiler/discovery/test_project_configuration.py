@@ -19,6 +19,7 @@ from streambuild.compiler.discovery.models import (
     LoadedProjectConfiguration,
     SourceFreshnessPolicy,
 )
+from streambuild.compiler.discovery.types import PipelineMode
 from tests.unit.src.streambuild.compiler.discovery._test_types import (
     EffectiveProjectConfigurationTestCase,
     InterpolationErrorTestCase,
@@ -104,7 +105,7 @@ def test_given_project_audit_defaults_when_loading_then_policy_is_typed(
             expected_adapter="clickhouse",
             expected_target_name="private",
             expected_database="cli_database",
-            expected_virtual_environments=True,
+            expected_pipeline_mode=PipelineMode.VIRTUAL,
             expected_variables=(
                 ("adapter_name", "clickhouse"),
                 ("database_name", "cli_database"),
@@ -113,7 +114,6 @@ def test_given_project_audit_defaults_when_loading_then_policy_is_typed(
                 ("rendered", "local-events"),
                 ("target_value", "private"),
                 ("ttl_days", 14),
-                ("virtual_mode", True),
             ),
             expected_connection=(
                 ("host", "private-host"),
@@ -138,9 +138,6 @@ def test_given_project_and_local_toml_when_resolving_then_applies_locked_precede
         adapter = "project-adapter"
         default_target = "dev"
 
-        [settings]
-        virtual_environments = false
-
         [connection]
         host = "project-host"
         port = 8123
@@ -154,6 +151,7 @@ def test_given_project_and_local_toml_when_resolving_then_applies_locked_precede
         ttl_days = 14
 
         [defaults]
+        pipeline_mode = \"direct\"
         managed_source_ttl = "_replay_landed_at + INTERVAL ${ttl_days} DAY"
         model_ttl = "event_at + INTERVAL ${ttl_days} DAY"
 
@@ -177,8 +175,8 @@ def test_given_project_and_local_toml_when_resolving_then_applies_locked_precede
         target = "private"
         adapter = "${adapter_name}"
 
-        [settings]
-        virtual_environments = "${virtual_mode}"
+        [defaults]
+        pipeline_mode = \"virtual\"
 
         [connection]
         username = "local-user"
@@ -186,7 +184,6 @@ def test_given_project_and_local_toml_when_resolving_then_applies_locked_precede
         [vars]
         adapter_name = "clickhouse"
         region = "local"
-        virtual_mode = true
 
         [targets.private]
         database = "${database_name}"
@@ -212,7 +209,7 @@ def test_given_project_and_local_toml_when_resolving_then_applies_locked_precede
     assert effective.adapter == test_case.expected_adapter
     assert effective.target_name == test_case.expected_target_name
     assert effective.database == test_case.expected_database
-    assert effective.settings.virtual_environments is test_case.expected_virtual_environments
+    assert effective.defaults.pipeline_mode == test_case.expected_pipeline_mode
     assert effective.variables == test_case.expected_variables
     assert effective.connection.values == test_case.expected_connection
     assert effective.defaults.managed_source_ttl == test_case.expected_managed_source_ttl
@@ -275,9 +272,25 @@ def test_given_absent_local_toml_when_loading_then_returns_typed_defaults(
             description="rejects a target-level project-wide mode",
             project_contents=(
                 'name = "analytics"\ndefault_target = "dev"\n'
-                '[targets.dev]\ndatabase = "analytics"\nvirtual_environments = true\n'
+                '[targets.dev]\ndatabase = "analytics"\npipeline_mode = "virtual"\n'
             ),
-            expected_error_fragment="targets.dev contains unsupported keys: virtual_environments",
+            expected_error_fragment="targets.dev contains unsupported keys: pipeline_mode",
+        ),
+        ProjectConfigurationErrorTestCase(
+            description="rejects the removed virtual environments setting",
+            project_contents=(
+                'name = "analytics"\ndefault_target = "dev"\n'
+                "[settings]\nvirtual_environments = true\n[targets.dev]\n"
+            ),
+            expected_error_fragment="project contains unsupported keys: settings",
+        ),
+        ProjectConfigurationErrorTestCase(
+            description="rejects an unknown default pipeline mode",
+            project_contents=(
+                'name = "analytics"\ndefault_target = "dev"\n'
+                '[defaults]\npipeline_mode = "shadow"\n[targets.dev]\n'
+            ),
+            expected_error_fragment="defaults.pipeline_mode must be 'direct' or 'virtual'",
         ),
         ProjectConfigurationErrorTestCase(
             description="rejects the removed bounded parenthesis spelling",
@@ -360,11 +373,10 @@ def test_given_invalid_toml_contract_when_loading_then_rejects_with_field_contex
             local_contents="""
             [targets.private]
             database = "analytics"
-            virtual_environments = false
+            pipeline_mode = \"direct\"
             """,
             expected_error_fragment=(
-                "streambuild_local.toml targets.private contains unsupported keys: "
-                "virtual_environments"
+                "streambuild_local.toml targets.private contains unsupported keys: pipeline_mode"
             ),
         )
     ],

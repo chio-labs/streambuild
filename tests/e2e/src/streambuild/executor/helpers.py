@@ -62,7 +62,7 @@ E2E_KAFKA_LANDED_AT_PROJECT_DIR: Path = Path("tests/fixtures/e2e_kafka_landed_at
 REPO_ROOT: Path = Path(__file__).resolve().parents[5]
 _EXTERNAL_SOURCE_SETTINGS_BY_MODE: dict[bool, str] = {
     False: "",
-    True: "\n[settings]\nvirtual_environments = true\n",
+    True: '\n[defaults]\npipeline_mode = "virtual"\n',
 }
 
 

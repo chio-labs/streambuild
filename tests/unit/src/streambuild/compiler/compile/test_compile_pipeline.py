@@ -1572,7 +1572,7 @@ def test_given_relation_collision_when_assembling_project_then_rejects_before_gr
         project_dir=tmp_path,
         contents=(
             'name = "test"\ndefault_target = "test"\n'
-            "[settings]\nvirtual_environments = true\n[targets.test]\n"
+            '[defaults]\npipeline_mode = "virtual"\n[targets.test]\n'
         ),
     )
     write_source_yml(

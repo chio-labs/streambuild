@@ -6,13 +6,15 @@
   Declarative ClickHouse streaming pipeline deployment for staged backfill, audit, and publish workflows.
 </p>
 
-`streambuild` is aimed at streaming data teams who want dbt-like authored models, but with deployment semantics that fit live ClickHouse pipelines:
+`streambuild` is for streaming data teams that want SQL-authored models with deployment semantics
+that fit live ClickHouse pipelines. Pipelines can build directly into live relations or stage a
+virtual deployment for audit and promotion.
 
-- plan rebuilds conservatively
-- create staged shadow objects
-- backfill history into the staged path
-- audit staged readiness
-- publish by switching stable logical views
+- compile a project-wide dependency graph before opening a warehouse connection
+- inspect exact rebuild and replay work before applying it
+- rebuild live relations directly or stage deployment-specific shadows
+- replay retained history through the same model graph
+- run SQL tests, audits, freshness checks, and scheduled quality checks
 
 The current product is centered on ClickHouse and streaming replay semantics. Kafka-backed sources work today, and adopted external streaming tables are now supported as replay roots.
 
@@ -22,6 +24,10 @@ Current implemented workflow:
 
 - `stb plan`
 - `stb build`
+- `stb test`
+- `stb audit`
+- `stb dev`
+- `stb discover`
 - `stb deployment list`
 - `stb deployment show <deployment-id>`
 - `stb deployment audit <deployment-id>`
@@ -35,7 +41,9 @@ Current implemented workflow:
 Current rollout model:
 
 - `plan` is read-only
+- direct `build` applies relation changes immediately
 - virtual `build` starts a real staged deployment
+- mixed `build` stages virtual pipelines first, then applies direct pipelines
 - `deployment audit` inspects staged readiness
 - `deployment promote` switches stable logical views to staged physical tables
 - `janitor` remains the top-level retention and cleanup command
@@ -82,7 +90,9 @@ Rules:
 - pipeline name is inferred from the folder name
 - pipeline source is inferred transitively from model driving inputs
 - model name is inferred from the SQL filename stem
-- optional `pipeline.toml` stores pipeline-wide virtual-environment policy
+- optional `pipeline.toml` stores mode, naming, replay, audit, and protection overrides
+- `pipeline.toml` can override the project build mode with `mode = "direct"` or `mode = "virtual"`
+- each table pipeline resolves to one source, but one source may feed multiple pipelines
 
 ## Macros
 
@@ -120,19 +130,17 @@ overrides may live in the gitignored `streambuild_local.toml`.
 name = "orders_project"
 default_target = "dev"
 
-[settings]
-virtual_environments = true
+[defaults]
+pipeline_mode = "virtual"
+managed_source_ttl = "_replay_landed_at + INTERVAL 14 DAY"
+model_ttl = "event_at + INTERVAL 30 DAY"
+kafka_broker_list = "kafka1:9092,kafka2:9092"
 
 [connection]
 host = "localhost"
 port = 8123
 username = "clickhouse"
 password = "${ENV:CLICKHOUSE_PASSWORD}"
-
-[defaults]
-managed_source_ttl = "_replay_landed_at + INTERVAL 14 DAY"
-model_ttl = "event_at + INTERVAL 30 DAY"
-kafka_broker_list = "kafka1:9092,kafka2:9092"
 
 [naming]
 table_prefix = "tbl__"
@@ -145,6 +153,8 @@ database = "analytics"
 Notes:
 
 - `name` and `default_target` are required; `adapter` defaults to `clickhouse`
+- `[defaults].pipeline_mode` is `direct` unless explicitly set to `virtual`
+- `streambuild_local.toml` may override the default with `[defaults].pipeline_mode`
 - target selection is CLI `--target`, local `target`, then project `default_target`
 - CLI `--vars` accepts one JSON object for `${name}` interpolation
 - connection templates are expanded only for commands that connect
@@ -239,6 +249,9 @@ This is the managed source shape:
 - StreamBuild creates the raw landing table and landing MV
 - source `broker_list` overrides `[defaults].kafka_broker_list`; one of them is required
 - source `ttl` overrides `[defaults].managed_source_ttl`; omitting both keeps data indefinitely
+- default consumer groups are scoped to the target database
+- when a landing is genuinely new, `stb build` clears orphaned committed offsets before consuming
+  from the earliest available message
 - downstream models usually read the source via `__source("orders")`
 
 ### Adopted External Source
@@ -278,6 +291,28 @@ Currently supported external-source replay boundary modes:
 
 - `cursor`
 
+### Pipeline Build Modes
+
+`[defaults].pipeline_mode` sets the project default:
+
+```toml
+[defaults]
+pipeline_mode = "direct"
+```
+
+A pipeline can override that default in its own `pipeline.toml`:
+
+```toml
+mode = "virtual"
+```
+
+Direct pipelines may reference direct pipelines, and virtual pipelines may reference virtual
+pipelines. Model relationships cannot cross the mode boundary in either direction; shared sources
+remain valid. `stb plan` and `stb build` accept mixed selections. They stage the virtual phase
+first and only start the immediately-applied direct phase after virtual staging succeeds.
+The CLI asks for confirmation once and reports the staged deployment separately from live direct
+changes. `--full-refresh` and `--deployment-id` apply to the virtual phase.
+
 Virtual-environment projects can choose change-driven replay independently from the
 fallback used when bounded replay cannot preserve aggregate history:
 
@@ -290,8 +325,8 @@ non_breaking = "bounded-7d"
 ```
 
 This optional `pipeline.toml` sits directly in the pipeline directory. The same policies can be
-defaults in `streambuild_project.toml` and overrides in a model `MODEL(...)` header. They are
-rejected when `settings.virtual_environments` is false.
+defaults in `streambuild_project.toml` and overrides in a model `MODEL(...)` header. Pipeline- and
+model-level replay policies are rejected for pipelines whose effective mode is direct.
 
 ### Protected Pipelines
 
@@ -315,6 +350,28 @@ stb build --select pipeline:protected_prices --auto-approve \
 
 Repeat `--confirm` when one build touches multiple protected pipelines. The development UI displays
 the same warning and will not start the subprocess until every required value matches.
+
+### Audit Policy And Scheduling
+
+Audit defaults can set severity, cadence, and post-build warmup:
+
+```toml
+[defaults.audits]
+severity = "warning"
+every = "1h"
+warmup = "5m"
+
+[targets.dev.audit_scheduler]
+enabled = true
+```
+
+Pipelines can override these values under `[audit_defaults]` in `pipeline.toml`, and individual
+audits can override them in `AUDIT(...)`. A direct build records warmup-delayed audits as deferred
+rather than running them too early. `stb audit` respects warmup; `stb audit --force` bypasses it.
+
+The scheduler runs inside `stb dev` when it is enabled for the selected target. It claims cadence
+slots in ClickHouse so repeated scheduler ticks do not duplicate the same logical audit attempt.
+The Quality page shows scheduler health, due times, recent outcomes, severity, and warmup state.
 
 ## Models
 
@@ -403,6 +460,9 @@ From a project directory:
 ```bash
 uv run stb plan
 uv run stb build
+uv run stb test
+uv run stb audit
+uv run stb dev
 uv run stb deployment list
 uv run stb deployment show <deployment-id>
 uv run stb deployment audit <deployment-id>
@@ -413,6 +473,30 @@ uv run stb reconcile
 uv run stb compile
 uv run stb janitor
 ```
+
+## Development UI
+
+Run the packaged UI and API from the project root:
+
+```bash
+uv run stb dev
+```
+
+The server binds to `127.0.0.1:8000` by default. Use `--ui-host` and `--ui-port` to change that.
+The UI includes:
+
+- project overview, pipeline detail, catalog, and lineage views
+- connected plan inspection and protected-pipeline confirmation
+- single-flight build execution with live statement events and owned-process cancellation
+- durable run and quality history, including unresponsive and presumed-failed states
+- source throughput, retained rows, storage, freshness, and Kafka consumer lag
+- broker topic inventory, defaulting to topics managed by the current project
+- a warehouse-backed source message browser with JSON predicates, facets, time or offset ranges,
+  stable columns, cursor pagination, and full-record inspection up to 16 MiB
+
+The message browser reads retained landing rows from ClickHouse. It does not consume messages from
+Kafka or advance consumer offsets. Broker metadata and lag are loaded separately and failures are
+reported without making the rest of the project UI unavailable.
 
 From outside the project directory:
 
@@ -469,9 +553,11 @@ not exist yet. `stb build` publishes the exact attempted SQL plus `execution.jso
 status, captures, completed steps, and failure evidence. Re-executing a build workflow reuses those
 exact captured boundaries rather than recapturing newer source rows.
 
-`stb plan` atomically replaces `target/run/plan/plan.json` with the complete connected plan. JSON
-stdout is byte-identical to this disposable visibility artifact. StreamBuild never reads
-`target/run/` as warehouse state, and deleting `target/` does not affect subsequent commands.
+For a single-mode selection, `stb plan` atomically replaces `target/run/plan/plan.json` with the
+complete connected plan. JSON stdout is byte-identical to this disposable visibility artifact. A
+mixed plan emits one combined text or JSON document but does not flatten its two phase workflows
+into one artifact. StreamBuild never reads `target/run/` as warehouse state, and deleting `target/`
+does not affect subsequent commands.
 
 ## Example
 
