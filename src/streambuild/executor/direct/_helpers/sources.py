@@ -17,6 +17,7 @@ from streambuild.compiler.compile.models import (
 from streambuild.compiler.pipeline.models import RealizedProject
 from streambuild.executor.direct.exceptions import DirectBuildError
 from streambuild.executor.population.models import (
+    PopulationManagedSource,
     PopulationRealization,
     PopulationSourcePreparation,
 )
@@ -57,11 +58,17 @@ def plan_preserved_managed_sources(
         for desired in realized_project.desired_state.objects
         if isinstance(desired, DesiredMaterializedView) and desired.name in landing_view_names
     )
+    managed_sources: tuple[PopulationManagedSource, ...] = tuple(
+        PopulationManagedSource(resource=resource, database=database)
+        for resource in resources
+        if isinstance(resource, AdapterManagedSource)
+    )
     return (
         PopulationSourcePreparation(
             preserved_relation_names=tuple(preserved_names),
             created_relation_names=tuple(created_names),
             landing_views=desired_landing_views,
+            managed_sources=managed_sources,
         ),
         tuple(realizations),
     )
