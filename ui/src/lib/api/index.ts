@@ -276,3 +276,64 @@ export async function fetchDeployment(deploymentId: string): Promise<DeploymentD
 	const response = await fetch(`/api/deployments/${encodeURIComponent(deploymentId)}`);
 	return readApiResponse<DeploymentDetail>(response, 'deployment');
 }
+
+export type DeploymentDiffRelation = {
+	logicalName: string;
+	status: 'added' | 'removed' | 'changed' | 'unchanged' | 'physical_missing';
+	fromPhysicalName: string | null;
+	toPhysicalName: string | null;
+	fromRowCount: number | null;
+	toRowCount: number | null;
+	addedColumns: string[];
+	removedColumns: string[];
+};
+
+export type DeploymentDiff = {
+	database: string;
+	fromEndpoint: string;
+	toEndpoint: string;
+	relations: DeploymentDiffRelation[];
+};
+
+/** Compare a deployment against the active bindings, or an explicit endpoint. */
+export async function fetchDeploymentDiff(
+	deploymentId: string,
+	against: string | null = null
+): Promise<DeploymentDiff> {
+	const query = against === null ? '' : `?against=${encodeURIComponent(against)}`;
+	const response = await fetch(
+		`/api/deployments/${encodeURIComponent(deploymentId)}/diff${query}`
+	);
+	return readApiResponse<DeploymentDiff>(response, 'deployment diff');
+}
+
+export type PromoteResult = {
+	invocationId: string;
+	deploymentId: string;
+	publishedViews: { logicalName: string; physicalName: string }[];
+	graphAtomicPublish: boolean;
+};
+
+/** Promote one deployment; the server records it as a run the run page can read. */
+export async function promoteDeployment(deploymentId: string): Promise<PromoteResult> {
+	const response = await fetch(`/api/deployments/${encodeURIComponent(deploymentId)}/promote`, {
+		method: 'POST'
+	});
+	return readApiResponse<PromoteResult>(response, 'deployment promote');
+}
+
+export type CleanupResult = {
+	invocationId: string;
+	removedRelations: number;
+	removedDeployments: number;
+};
+
+/** Apply janitor cleanup for deployments outside the retention window. */
+export async function cleanupDeployments(retentionDays: number): Promise<CleanupResult> {
+	const response = await fetch('/api/deployments/cleanup', {
+		method: 'POST',
+		headers: { 'content-type': 'application/json' },
+		body: JSON.stringify({ retentionDays })
+	});
+	return readApiResponse<CleanupResult>(response, 'deployment cleanup');
+}

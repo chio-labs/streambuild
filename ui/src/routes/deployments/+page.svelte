@@ -1,6 +1,7 @@
 <script lang="ts">
 	import AppTopbar from '$lib/components/app-topbar.svelte';
-	import { app } from '$lib/api/store.svelte';
+	import { app, refreshDeployments } from '$lib/api/store.svelte';
+	import { cleanupDeployments } from '$lib/api';
 	import { formatBytes, formatCompact } from '$lib/domain/format';
 	import type { Deployment, DeploymentState } from '$lib/domain/types';
 
@@ -35,11 +36,42 @@
 	function shortId(deploymentId: string): string {
 		return deploymentId.split('_').at(-1) ?? deploymentId;
 	}
+
+	let cleaning = $state<boolean>(false);
+	let cleanupError = $state<string | null>(null);
+	let cleanupSummary = $state<string | null>(null);
+
+	// Retention matches the janitor's own default; anything newer is protected
+	// as a rollback target, so this only ever removes what is already dead.
+	const CLEANUP_RETENTION_DAYS: number = 7;
+
+	async function cleanup(): Promise<void> {
+		cleaning = true;
+		cleanupError = null;
+		cleanupSummary = null;
+		try {
+			const result = await cleanupDeployments(CLEANUP_RETENTION_DAYS);
+			cleanupSummary =
+				result.removedRelations === 0
+					? 'nothing was outside the retention window'
+					: `removed ${result.removedRelations} relations across ${result.removedDeployments} deployments`;
+			await refreshDeployments();
+		} catch (error) {
+			cleanupError = String(error);
+		}
+		cleaning = false;
+	}
 </script>
 
 <AppTopbar title="Deployments" />
 
 <div class="min-h-0 flex-1 overflow-y-auto px-[18px] py-4">
+	{#if cleanupError !== null}
+		<div class="pb-3 text-[12px]" style:color="var(--sb-error)">{cleanupError}</div>
+	{:else if cleanupSummary !== null}
+		<div class="text-muted-foreground pb-3 text-[12px]">{cleanupSummary}</div>
+	{/if}
+
 	{#if deployments.length === 0}
 		<div class="text-muted-foreground rounded-md border border-[var(--sb-border)] p-6 text-[13px]">
 			No deployments in this database. Virtual-mode pipelines create one on every build; a
@@ -63,6 +95,14 @@
 						<span class="text-[var(--sb-text-faint)] ml-auto code text-[10.5px]"
 							>{rows.length} · {formatBytes(supersededBytes)} reclaimable</span
 						>
+						<button
+							class="rounded-[3px] border border-border px-2.5 py-1 font-mono text-[10.5px] transition-colors disabled:opacity-50 hover:bg-[var(--sb-hover)]"
+							onclick={() => void cleanup()}
+							disabled={cleaning}
+							title="Remove deployments outside the {CLEANUP_RETENTION_DAYS} day retention window"
+						>
+							{cleaning ? 'cleaning…' : 'Clean up'}
+						</button>
 					{/if}
 				</div>
 
