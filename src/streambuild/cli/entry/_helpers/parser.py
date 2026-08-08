@@ -137,6 +137,11 @@ def build_cli_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Output as JSON",
     )
+    audit_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Run audits before their post-build warmup is complete",
+    )
     reconcile_parser: argparse.ArgumentParser = subparsers.add_parser(
         "reconcile",
         help="Reconcile live metadata baseline",

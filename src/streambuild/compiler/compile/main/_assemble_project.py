@@ -1,11 +1,16 @@
 """Apache-2.0: SQLBuild compiler/compile/main/_assemble_project.py@7e3b2f854f05."""
 
+from dataclasses import replace
+
+from streambuild.compiler.audit_discovery.models import LoadedSqlAudit
+from streambuild.compiler.compile._helpers.audit_policy import resolve_audit_policies
 from streambuild.compiler.compile._helpers.audit_validation import validated_sql_audits
 from streambuild.compiler.compile._helpers.naming import validate_compiled_project_relation_names
 from streambuild.compiler.compile._helpers.replay_policies import (
     resolve_source_replay_lineage_mode,
 )
 from streambuild.compiler.compile.main._compile_pipeline import compile_pipeline
+from streambuild.compiler.compile.main.replace_refs import replace_refs
 from streambuild.compiler.compile.models import (
     CompiledModel,
     CompiledPipeline,
@@ -15,6 +20,10 @@ from streambuild.compiler.compile.models import (
     LogicalResourceKey,
 )
 from streambuild.compiler.compile.types import LogicalResourceType
+from streambuild.compiler.discovery.models import AuditDefaults, LoadedProject
+from streambuild.compiler.quality.main._build_audit_quality_identity import (
+    build_audit_quality_identity,
+)
 from streambuild.compiler.sql_analysis.classes.sql_model_analyzer import SqlModelAnalyzer
 from streambuild.compiler.sql_analysis.classes.sql_reference_rewriter import (
     SqlReferenceRewriter,
@@ -59,18 +68,65 @@ def assemble_project(
         comparison_renderer=inputs.adapter_profile.render_set_difference_comparison,
         dialect=inputs.adapter_profile.sql_analysis_dialect,
     )
+    audits: tuple[LoadedSqlAudit, ...] = _compiled_audits(
+        audits=resolve_audit_policies(
+            audits=validated_sql_audits(
+                loaded_audits=inputs.audits,
+                compiled_pipelines=pipelines,
+            ),
+            compiled_pipelines=pipelines,
+            project_defaults=_project_audit_defaults(inputs),
+        ),
+        models=tuple(models),
+        database=inputs.effective_target.default_database,
+        reference_rewriter=reference_rewriter,
+        dialect=inputs.adapter_profile.sql_analysis_dialect,
+    )
     project: CompiledProject = CompiledProject(
         sources=tuple(sources_by_name.values()),
         models=tuple(models),
         pipelines=pipelines,
         tests=inputs.tests,
         test_cases=test_cases,
-        audits=validated_sql_audits(
-            loaded_audits=inputs.audits,
-            compiled_pipelines=pipelines,
-        ),
+        audits=audits,
         macro_registry=inputs.macro_registry,
         macro_context=inputs.macro_context,
     )
     validate_compiled_project_relation_names(project=project)
     return project
+
+
+def _compiled_audits(
+    *,
+    audits: tuple[LoadedSqlAudit, ...],
+    models: tuple[CompiledModel, ...],
+    database: str | None,
+    reference_rewriter: SqlReferenceRewriter,
+    dialect: str,
+) -> tuple[LoadedSqlAudit, ...]:
+    resolver: dict[str, str] = {
+        model.key.name: (
+            model.relation_name if database is None else f"{database}.{model.relation_name}"
+        )
+        for model in models
+    }
+    return tuple(
+        replace(
+            audit,
+            quality_identity=build_audit_quality_identity(
+                audit=audit,
+                resolved_query=replace_refs(
+                    sql=audit.query,
+                    resolver=resolver,
+                    rewriter=reference_rewriter,
+                ),
+                dialect=dialect,
+            ),
+        )
+        for audit in audits
+    )
+
+
+def _project_audit_defaults(inputs: CompileProjectInputs) -> AuditDefaults:
+    loaded_project: LoadedProject | None = inputs.discovered_inputs.loaded_project
+    return AuditDefaults() if loaded_project is None else loaded_project.project.audit_defaults

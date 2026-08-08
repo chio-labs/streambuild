@@ -1,7 +1,6 @@
 """Execute one confirmed direct-mode build command."""
 
 import sys
-from pathlib import Path
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.exceptions import AdapterError
@@ -19,7 +18,11 @@ from streambuild.cli.build.models import (
     DirectWorkflowPreparation,
 )
 from streambuild.compiler.audit_discovery.models import LoadedSqlAudit
-from streambuild.executor.auditing.models import SqlAuditResult, SqlAuditRunResult
+from streambuild.compiler.quality.main.require_quality_identity import require_quality_identity
+from streambuild.executor.auditing.main.resolve_audit_warmup_states import (
+    resolve_audit_warmup_states,
+)
+from streambuild.executor.auditing.models import AuditWarmupState, SqlAuditResult, SqlAuditRunResult
 from streambuild.executor.auditing.types import AuditSeverity
 from streambuild.executor.direct.models import (
     DirectBuildExecutionResult,
@@ -32,13 +35,11 @@ from streambuild.executor.observability.main.build_invocation_record import (
 from streambuild.executor.observability.main.build_node_result_record import (
     build_node_result_record,
 )
-from streambuild.executor.observability.main.build_quality_node_identity import (
-    build_quality_node_identity,
-)
 from streambuild.executor.observability.main.persist_terminal_observations import (
     persist_terminal_observations,
 )
-from streambuild.executor.observability.models import TerminalInvocation
+from streambuild.executor.observability.models import QualityResultContext, TerminalInvocation
+from streambuild.executor.observability.types import MaterializationOutcome, QualityResultTrigger
 
 _SIGINT_EXIT_CODE: int = 130
 
@@ -80,7 +81,7 @@ def execute_direct_build_command(
             options=options,
             exit_code=1,
             outcome="failed",
-            materialized_outcome=None,
+            materialized_outcome=MaterializationOutcome.FAILED,
             audit_result=None,
             error_message=str(error),
         )
@@ -101,7 +102,7 @@ def execute_direct_build_command(
             options=options,
             exit_code=_SIGINT_EXIT_CODE,
             outcome="cancelled",
-            materialized_outcome=None,
+            materialized_outcome=MaterializationOutcome.FAILED,
             audit_result=None,
             error_message=None,
         )
@@ -146,22 +147,34 @@ def execute_direct_build_command(
         options=options,
         exit_code=exit_code,
         outcome="failed" if exit_code else "succeeded",
-        materialized_outcome="applied",
+        materialized_outcome=MaterializationOutcome.APPLIED,
         audit_result=execution.audit_result,
         error_message=None,
     )
-    selected_audits: tuple[LoadedSqlAudit, ...] = select_direct_build_audits(
+    all_selected_audits: tuple[LoadedSqlAudit, ...] = select_direct_build_audits(
         audits=preparation.preview.analysis.compiled_project.audits,
         execution_model_names=frozenset(
             key.name for key in preparation.preview.plan.execution_scope
         ),
         full_build=not preparation.preview.plan.user_scope,
     )
+    selected_audits: tuple[LoadedSqlAudit, ...] = tuple(
+        audit for audit in all_selected_audits if audit.warmup_seconds == 0
+    )
+    deferred_audits: tuple[LoadedSqlAudit, ...] = tuple(
+        audit for audit in all_selected_audits if audit.warmup_seconds > 0
+    )
     node_results: tuple[AdapterNodeResultRecord, ...] = _direct_audit_node_results(
         invocation=invocation,
         audits=selected_audits,
         audit_result=execution.audit_result,
-        project_dir=options.pipelines_root.parent,
+    )
+    node_results = (
+        *node_results,
+        *_deferred_direct_audit_node_results(
+            invocation=invocation,
+            audits=deferred_audits,
+        ),
     )
     _persist_terminal_observations(
         client=client,
@@ -176,6 +189,11 @@ def execute_direct_build_command(
             error_message=None,
         )
     if not options.events_output:
+        if deferred_audits:
+            print(
+                f"Deferred {len(deferred_audits)} audit(s) for post-build warmup.",
+                file=sys.stderr,
+            )
         print(
             _rendered_result(
                 options=options,
@@ -227,7 +245,6 @@ def _direct_audit_node_results(
     invocation: AdapterInvocationRecord,
     audits: tuple[LoadedSqlAudit, ...],
     audit_result: SqlAuditRunResult,
-    project_dir: Path,
 ) -> tuple[AdapterNodeResultRecord, ...]:
     records: list[AdapterNodeResultRecord] = []
     audit: LoadedSqlAudit
@@ -245,13 +262,12 @@ def _direct_audit_node_results(
         records.append(
             build_node_result_record(
                 invocation=invocation,
-                node_kind="audit",
-                node_identity=build_quality_node_identity(
-                    project_dir=project_dir,
-                    file_path=audit.file_path,
-                    node_index=audit.audit_index,
+                identity=require_quality_identity(audit.quality_identity),
+                context=QualityResultContext(
+                    trigger=QualityResultTrigger.BUILD,
+                    cadence_seconds=audit.cadence_seconds,
+                    warmup_seconds=audit.warmup_seconds,
                 ),
-                definition=audit.query,
                 status=status,
                 severity=result.severity,
                 failure_count=result.failing_row_count,
@@ -263,6 +279,41 @@ def _direct_audit_node_results(
             )
         )
     return tuple(records)
+
+
+def _deferred_direct_audit_node_results(
+    *, invocation: AdapterInvocationRecord, audits: tuple[LoadedSqlAudit, ...]
+) -> tuple[AdapterNodeResultRecord, ...]:
+    if not audits:
+        return ()
+    anchors_by_model: dict[str, str] = {}
+    for audit in audits:
+        for model_name in audit.referenced_model_names:
+            anchors_by_model[model_name] = invocation.completed_at
+    states: dict[str, AuditWarmupState] = resolve_audit_warmup_states(
+        audits=audits,
+        anchors_by_model=anchors_by_model,
+        warehouse_now=invocation.completed_at,
+    )
+    return tuple(
+        build_node_result_record(
+            invocation=invocation,
+            identity=require_quality_identity(audit.quality_identity),
+            context=QualityResultContext(
+                trigger=QualityResultTrigger.BUILD,
+                cadence_seconds=audit.cadence_seconds,
+                warmup_seconds=audit.warmup_seconds,
+            ),
+            status="deferred",
+            severity=audit.severity,
+            failure_count=0,
+            payload={
+                "eligible_at": states[audit.name or audit.file_path.stem].eligible_at,
+            },
+            error_message=None,
+        )
+        for audit in audits
+    )
 
 
 def _build_invocation(

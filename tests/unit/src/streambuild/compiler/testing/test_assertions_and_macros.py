@@ -112,7 +112,7 @@ def test_given_authored_assertions_when_assembling_then_it_builds_zero_row_targe
         MacroSqlTestAssemblyTestCase(
             description="compares an expanded macro result against its authored expectation",
             test_file_contents="""
-        TEST (mode: macro, name: "doubles the value");
+        TEST (mode macro, name "doubles the value");
 
         WITH
         input_values AS (
@@ -161,7 +161,7 @@ def test_given_macro_mode_test_when_assembling_then_it_builds_one_macro_comparis
         BuildSqlTestCasesErrorTestCase(
             description="rejects a macro test whose sides project different column names",
             test_file_contents="""
-        TEST (mode: macro, name: "mismatched projections");
+        TEST (mode macro, name "mismatched projections");
 
         WITH
         __macro_actual__ AS (

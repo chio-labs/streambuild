@@ -3,18 +3,16 @@
 from hashlib import sha256
 
 from streambuild.adapter.models import AdapterInvocationRecord, AdapterNodeResultRecord
+from streambuild.compiler.quality.models import QualityNodeIdentity
 from streambuild.executor.observability._helpers.payload import bounded_json, concise_error
-from streambuild.executor.observability.main.build_definition_fingerprint import (
-    build_definition_fingerprint,
-)
+from streambuild.executor.observability.models import QualityResultContext
 
 
 def build_node_result_record(
     *,
     invocation: AdapterInvocationRecord,
-    node_kind: str,
-    node_identity: str,
-    definition: str,
+    identity: QualityNodeIdentity,
+    context: QualityResultContext,
     status: str,
     severity: str | None,
     failure_count: int,
@@ -23,19 +21,26 @@ def build_node_result_record(
 ) -> AdapterNodeResultRecord:
     """Build one immutable bounded audit or test result row."""
 
-    definition_fingerprint: str = build_definition_fingerprint(
-        definition=definition, severity=severity
-    )
     result_id: str = sha256(
-        f"{invocation.invocation_id}:{node_kind}:{node_identity}:{definition_fingerprint}".encode()
+        (
+            f"{invocation.invocation_id}:{identity.node_kind}:{identity.node_name}:"
+            f"{identity.binding_key}:{identity.definition_fingerprint}:"
+            f"{identity.execution_fingerprint}"
+        ).encode()
     ).hexdigest()
     return AdapterNodeResultRecord(
         result_id=result_id,
         invocation_id=invocation.invocation_id,
-        node_kind=node_kind,
-        node_identity=node_identity,
-        definition_fingerprint=definition_fingerprint,
+        node_kind=identity.node_kind,
+        node_name=identity.node_name,
+        binding_key=identity.binding_key,
+        definition_fingerprint=identity.definition_fingerprint,
+        execution_fingerprint=identity.execution_fingerprint,
         target_identity=invocation.target_identity,
+        trigger=str(context.trigger),
+        scheduled_for=context.scheduled_for,
+        cadence_seconds=context.cadence_seconds,
+        warmup_seconds=context.warmup_seconds,
         status=status,
         severity=severity,
         failure_count=failure_count,

@@ -260,7 +260,7 @@ def test_given_terminal_view_auxiliaries_when_building_graph_then_excludes_auxil
     write_pipeline_file(
         tmp_path / "tests" / "answer.sql",
         """
-        TEST (name: "answer test");
+        TEST (name "answer test");
         WITH
           __source__orders AS (SELECT 1::UInt8 AS value),
           __expected__answer AS (SELECT 1::UInt8 AS value)
@@ -270,7 +270,7 @@ def test_given_terminal_view_auxiliaries_when_building_graph_then_excludes_auxil
     write_pipeline_file(
         tmp_path / "audits" / "answer.sql",
         """
-        AUDIT (name: "answer audit");
+        AUDIT (name "answer audit");
         SELECT value FROM __ref("answer") WHERE value = 0
         """,
     )

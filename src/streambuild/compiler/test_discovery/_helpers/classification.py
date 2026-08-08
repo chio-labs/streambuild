@@ -161,7 +161,7 @@ def _reject_macro_mode_cte(*, cte: SqlTestCte, file_path: Path) -> None:
     if cte.name in {MACRO_ACTUAL_CTE_NAME, MACRO_EXPECTED_CTE_NAME}:
         raise SqlTestParseError(
             f"SQL test '{file_path}' is mode 'model' but defines macro-test CTE "
-            f"'{cte.name}'; use TEST (mode: macro)"
+            f"'{cte.name}'; use TEST (mode macro)"
         )
 
 

@@ -36,7 +36,7 @@ from tests.unit.src.streambuild.compiler.test_discovery.helpers import (
         DiscoverMacroSqlTestTestCase(
             description="discovers a macro mode test with helper ctes",
             file_contents="""
-        TEST (mode: macro, name: "doubles the value");
+        TEST (mode macro, name "doubles the value");
 
         WITH
         input_values AS (
@@ -223,7 +223,7 @@ def test_given_lexically_tricky_sql_when_discovering_then_the_scanner_finds_ever
             description="rejects an unsupported udf mode",
             relative_file_path="unit/test_udf_mode.sql",
             file_contents="""
-        TEST (mode: udf, name: "unsupported");
+        TEST (mode udf, name "unsupported");
 
         WITH
         __udf_actual__ AS (
@@ -240,7 +240,7 @@ def test_given_lexically_tricky_sql_when_discovering_then_the_scanner_finds_ever
             description="rejects an unsupported table function mode",
             relative_file_path="unit/test_table_fn_mode.sql",
             file_contents="""
-        TEST (mode: table_fn, name: "unsupported");
+        TEST (mode table_fn, name "unsupported");
 
         WITH
         __table_fn_actual__ AS (
@@ -268,13 +268,13 @@ def test_given_lexically_tricky_sql_when_discovering_then_the_scanner_finds_ever
         )
         SELECT 1
         """,
-            expected_error_fragment=r"use TEST \(mode: macro\)",
+            expected_error_fragment=r"use TEST \(mode macro\)",
         ),
         DiscoverSqlTestsErrorTestCase(
             description="rejects a model test cte inside a macro mode test",
             relative_file_path="unit/test_model_in_macro.sql",
             file_contents="""
-        TEST (mode: macro, name: "invalid");
+        TEST (mode macro, name "invalid");
 
         WITH
         __source__orders AS (
@@ -345,7 +345,7 @@ def test_given_lexically_tricky_sql_when_discovering_then_the_scanner_finds_ever
             description="rejects an unsupported header key",
             relative_file_path="unit/test_unsupported_key.sql",
             file_contents="""
-        TEST (tags: ["finance"]);
+        TEST (tags ["finance"]);
 
         WITH
         __source__orders AS (
@@ -392,7 +392,7 @@ def test_given_unsupported_test_shapes_when_discovering_then_it_raises_clear_err
                 return f"({value}) * 2"
             """,
             file_contents="""
-            TEST (mode: macro, name: "helper calls macro");
+            TEST (mode macro, name "helper calls macro");
 
             WITH
             input_values AS (
@@ -418,7 +418,7 @@ def test_given_unsupported_test_shapes_when_discovering_then_it_raises_clear_err
                 return f"({value}) * 2"
             """,
             file_contents="""
-            TEST (mode: macro, name: "expected calls macro");
+            TEST (mode macro, name "expected calls macro");
 
             WITH
             __macro_actual__ AS (
@@ -460,7 +460,7 @@ def test_given_macro_mode_restrictions_when_discovering_then_it_rejects_extra_ma
         DiscoverMacroSqlTestTestCase(
             description="expands macros only inside the macro actual cte",
             file_contents="""
-            TEST (mode: macro, name: "doubles the value");
+            TEST (mode macro, name "doubles the value");
 
             WITH
             input_values AS (

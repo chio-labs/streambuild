@@ -31,6 +31,16 @@ class AnalysisDialectTestCase:
 
 
 @dataclass(frozen=True)
+class CompiledAuditPolicyTestCase:
+    description: str
+    audit_header: str
+    expected_severity: str
+    expected_cadence_seconds: int | None
+    expected_warmup_seconds: int
+    expected_scheduled: bool
+
+
+@dataclass(frozen=True)
 class ProjectSqlAnalysisCallCountTestCase:
     description: str
     expected_model_count: int

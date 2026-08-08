@@ -11,6 +11,7 @@ from streambuild.compiler.discovery._helpers.interpolation import (
 )
 from streambuild.compiler.discovery.exceptions import ProjectConfigError
 from streambuild.compiler.discovery.models import (
+    AuditSchedulerConfig,
     AuthoredProjectConfig,
     EffectiveProjectConfiguration,
     LoadedProjectConfiguration,
@@ -103,6 +104,17 @@ def resolve_effective_project_configuration(
             loaded=loaded,
             variables=variables,
             environment=environment,
+        ),
+        audit_scheduler=AuditSchedulerConfig(
+            enabled=(
+                local_target.audit_scheduler.enabled
+                if local_target.audit_scheduler.enabled is not None
+                else (
+                    project_target.audit_scheduler.enabled
+                    if project_target.audit_scheduler.enabled is not None
+                    else project.audit_scheduler.enabled
+                )
+            )
         ),
     )
 
