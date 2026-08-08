@@ -6,6 +6,7 @@ from streambuild.cli.build._helpers.workflow_preparation import (
 )
 from streambuild.cli.build.models import (
     DirectWorkflowPreparation,
+    MixedWorkflowPreparation,
     VirtualWorkflowPreparation,
     WorkflowPreparationOptions,
 )
@@ -19,7 +20,7 @@ def prepare_build_workflow(
     options: WorkflowPreparationOptions,
     client: AdapterConnection,
     adapter_profile: CompilerAdapterProfile,
-) -> DirectWorkflowPreparation | VirtualWorkflowPreparation:
+) -> DirectWorkflowPreparation | MixedWorkflowPreparation | VirtualWorkflowPreparation:
     """Return one complete workflow assembled from fresh connected inspection."""
 
     return _prepare_build_workflow(

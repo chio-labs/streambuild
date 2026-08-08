@@ -8,10 +8,12 @@ from streambuild.adapter.models import AdapterInvocationRecord
 from streambuild.cli.build._helpers.direct_command import execute_direct_build_command
 from streambuild.cli.build._helpers.rendering import render_interrupted_build_message
 from streambuild.cli.build._helpers.virtual_command import execute_virtual_build_command
+from streambuild.cli.build.main._execute_mixed_build import execute_mixed_build_command
 from streambuild.cli.build.main._prepare_build_workflow import prepare_build_workflow
 from streambuild.cli.build.models import (
     BuildCommandOptions,
     DirectWorkflowPreparation,
+    MixedWorkflowPreparation,
     VirtualWorkflowPreparation,
     WorkflowPreparationOptions,
 )
@@ -93,14 +95,22 @@ def run_build(
             start_time=options.start_time,
             verbose=options.verbose,
         )
-        preparation: DirectWorkflowPreparation | VirtualWorkflowPreparation = (
-            prepare_build_workflow(
-                analysis=analysis,
-                options=preparation_options,
-                client=client,
-                adapter_profile=adapter_profile,
-            )
+        preparation: (
+            DirectWorkflowPreparation | MixedWorkflowPreparation | VirtualWorkflowPreparation
+        ) = prepare_build_workflow(
+            analysis=analysis,
+            options=preparation_options,
+            client=client,
+            adapter_profile=adapter_profile,
         )
+        if isinstance(preparation, MixedWorkflowPreparation):
+            return execute_mixed_build_command(
+                preparation=preparation,
+                options=options,
+                client=client,
+                observation_client=observation_client,
+                started=started,
+            )
         if isinstance(preparation, VirtualWorkflowPreparation):
             return execute_virtual_build_command(
                 preparation=preparation,

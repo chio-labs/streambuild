@@ -48,3 +48,14 @@ class CliVirtualBuildArtifactTestCase:
     expected_created_at: str
     expected_mode: str
     expected_exit_code: int
+
+
+@dataclass(frozen=True)
+class CliMixedBuildTestCase:
+    description: str
+    expected_exit_code: int
+    expected_mode: str
+    expected_execution_order: tuple[str, str]
+    expected_virtual_phase_fragment: str
+    expected_direct_phase_fragment: str
+    expected_completion_fragment: str
