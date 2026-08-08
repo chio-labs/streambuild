@@ -9,6 +9,9 @@
 	let error = $state<string | null>(null);
 	let loading = $state(true);
 	let query = $state('');
+	// Managed topics are the point of this page; the full cluster inventory is
+	// opt-in noise. Internal topics are a further cut within unmanaged ones.
+	let showUnmanaged = $state(false);
 	let showInternal = $state(false);
 	let generation = 0;
 	let controller: AbortController | null = null;
@@ -50,9 +53,14 @@
 		const topics = payload?.topics ?? [];
 		const needle = query.trim().toLowerCase();
 		return topics
+			.filter((topic) => showUnmanaged || topic.sources.length > 0)
 			.filter((topic) => showInternal || !topic.internal)
 			.filter((topic) => needle === '' || topic.name.toLowerCase().includes(needle));
 	});
+	const unmanagedCount = $derived(
+		(payload?.topics ?? []).filter((topic) => topic.sources.length === 0 && !topic.internal)
+			.length
+	);
 	const totalPartitions = $derived(
 		visibleTopics.reduce((sum, topic) => sum + (topic.partitions ?? 0), 0)
 	);
@@ -125,8 +133,14 @@
 					class="bg-[var(--sb-inset)] w-[240px] rounded-[4px] border border-border px-2.5 py-1 font-mono text-[11px] outline-none focus:border-[var(--primary)]"
 				/>
 				<label class="text-muted-foreground flex items-center gap-1.5 font-mono text-[10.5px]">
-					<input type="checkbox" bind:checked={showInternal} /> internal topics
+					<input type="checkbox" bind:checked={showUnmanaged} />
+					unmanaged topics ({formatInteger(unmanagedCount)})
 				</label>
+				{#if showUnmanaged}
+					<label class="text-muted-foreground flex items-center gap-1.5 font-mono text-[10.5px]">
+						<input type="checkbox" bind:checked={showInternal} /> internal topics
+					</label>
+				{/if}
 			</div>
 
 			<div class="overflow-hidden rounded-[4px] border border-border">
@@ -153,7 +167,15 @@
 							{#each visibleTopics as topic (topic.name)}
 								<tr class="border-b border-[var(--border-subtle)] last:border-b-0">
 									<td class="code px-3 py-1.5 text-[11.5px]">
-										{topic.name}
+										{#if topic.sources.length > 0}
+											<a
+												href="/sources/{topic.sources[0].name}/messages"
+												class="text-primary hover:underline"
+												title="browse landed messages">{topic.name}</a
+											>
+										{:else}
+											{topic.name}
+										{/if}
 										{#if topic.internal}<span class="sb-tag ml-1.5">internal</span>{/if}
 									</td>
 									<td class="text-muted-foreground code px-3 py-1.5 text-[11.5px]"
