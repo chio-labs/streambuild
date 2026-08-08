@@ -13,6 +13,9 @@ from streambuild.executor.backfill.main.build_virtual_execution_result import (
     build_virtual_execution_result,
 )
 from streambuild.executor.backfill.models import BackfillExecutionResult
+from streambuild.executor.kafka_admin.main.reset_fresh_landing_offsets import (
+    reset_fresh_landing_offsets,
+)
 from streambuild.executor.observability.classes.run_event_sink import RunEventSink
 from streambuild.executor.observability.main.build_invocation_record import (
     build_invocation_record,
@@ -21,6 +24,9 @@ from streambuild.executor.observability.main.persist_terminal_observations impor
     persist_terminal_observations,
 )
 from streambuild.executor.observability.models import TerminalInvocation
+from streambuild.executor.population.main.plan_population_sources import (
+    plan_population_sources,
+)
 from streambuild.executor.workflow.exceptions import WorkflowExecutionError
 from streambuild.executor.workflow.main.execute_build_workflow import execute_build_workflow
 from streambuild.executor.workflow.models import PublishedBuildWorkflow, WorkflowExecutionResult
@@ -111,6 +117,7 @@ def execute_virtual_build_command(
             pass
         return 1
     try:
+        _reset_fresh_landing_offsets_for_virtual_build(preparation=preparation)
         execution: WorkflowExecutionResult = execute_build_workflow(
             published_workflow=published_workflow,
             connection=client,
@@ -174,6 +181,31 @@ def execute_virtual_build_command(
         )
     )
     return 0
+
+
+def _reset_fresh_landing_offsets_for_virtual_build(
+    *, preparation: VirtualWorkflowPreparation
+) -> None:
+    """Fresh landing tables consume from earliest: stale committed offsets are orphans."""
+
+    source_preparation, _source_realizations = plan_population_sources(
+        desired_state=preparation.preview.desired_state,
+        default_database=preparation.preview.database,
+        existing_relation_names=preparation.preview.existing_relation_names,
+    )
+    for reset in reset_fresh_landing_offsets(
+        source_preparation=source_preparation,
+    ):
+        _print_reset_notice(reset.notice)
+
+
+def _print_reset_notice(notice: str | None) -> None:
+    if notice is None:
+        return
+    try:
+        print(notice, file=sys.stderr)
+    except Exception:
+        return
 
 
 def _cancel_virtual_build(

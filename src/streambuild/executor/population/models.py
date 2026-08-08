@@ -63,12 +63,11 @@ class PopulationWatermark:
 
 
 @dataclass(frozen=True)
-class PopulationSourcePreparation:
-    """Managed source resources preserved, created, and awaiting activation."""
+class PopulationManagedSource:
+    """One complete managed-source definition used during source preparation."""
 
-    preserved_relation_names: tuple[str, ...]
-    created_relation_names: tuple[str, ...]
-    landing_views: tuple[DesiredMaterializedView, ...]
+    resource: AdapterManagedSource
+    database: str
 
 
 @dataclass(frozen=True)
@@ -83,3 +82,13 @@ class PopulationRealization:
         | AdapterStableView
     )
     database: str
+
+
+@dataclass(frozen=True)
+class PopulationSourcePreparation:
+    """Managed source resources preserved, created, and awaiting activation."""
+
+    preserved_relation_names: tuple[str, ...]
+    created_relation_names: tuple[str, ...]
+    landing_views: tuple[DesiredMaterializedView, ...]
+    managed_sources: tuple[PopulationManagedSource, ...]
