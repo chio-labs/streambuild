@@ -12,9 +12,15 @@ from streambuild.executor.workflow.main._execute_warehouse_workflow import (
     execute_warehouse_workflow,
 )
 from streambuild.executor.workflow.models import WarehouseStatement
+from streambuild.executor.workflow.types import WorkflowEventEmitter
 
 
-def execute_publish(*, request: PublishRequest, client: AdapterConnection) -> PublishResult:
+def execute_publish(
+    *,
+    request: PublishRequest,
+    client: AdapterConnection,
+    emitter: WorkflowEventEmitter | None = None,
+) -> PublishResult:
     """Publish a staged deployment by creating or replacing stable logical views."""
 
     _validate_publish_capabilities(client)
@@ -52,7 +58,7 @@ def execute_publish(*, request: PublishRequest, client: AdapterConnection) -> Pu
         binding_request=binding_request,
         metadata_state=metadata_state,
     )
-    _ = execute_warehouse_workflow(statements=statements, connection=client)
+    _ = execute_warehouse_workflow(statements=statements, connection=client, emitter=emitter)
     return PublishResult(
         deployment_id=resolved_deployment_id,
         published_views=published_views,

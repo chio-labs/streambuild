@@ -48,6 +48,11 @@ from streambuild.dev_server._helpers.server.checks_execution import (
     run_one_test,
 )
 from streambuild.dev_server._helpers.server.compile_runner import build_status_payload
+from streambuild.dev_server._helpers.server.deployment_operations import (
+    build_deployment_diff_payload,
+    run_deployment_cleanup,
+    run_deployment_promotion,
+)
 from streambuild.dev_server.classes.audit_scheduler import AuditScheduler
 from streambuild.dev_server.classes.build_process import BuildProcessManager, build_invocation
 from streambuild.dev_server.classes.dev_server_state import DevServerState
@@ -68,6 +73,7 @@ from streambuild.dev_server.models import (
     BuildRunRequest,
     ChecksRunRequest,
     CompileOutcome,
+    DeploymentCleanupRequest,
     DevExecutionContext,
     MessageFacetsRequest,
     MessageRecordRequest,
@@ -243,6 +249,7 @@ def register_api_routes(
         app=app,
         state=state,
         database=database,
+        project_dir=project_dir,
         required_connection=_required_connection,
     )
     _register_message_routes(
@@ -270,9 +277,10 @@ def _register_deployment_routes(
     app: FastAPI,
     state: DevServerState,
     database: str | None,
+    project_dir: Path,
     required_connection: Callable[[], AdapterConnection],
 ) -> FastAPI:
-    """Attach the deployment inventory and detail routes."""
+    """Attach the deployment inventory, detail and lifecycle routes."""
 
     def read_deployments() -> dict[str, object]:
         client: AdapterConnection = required_connection()
@@ -305,8 +313,61 @@ def _register_deployment_routes(
             )
         return payload
 
+    def read_deployment_diff(
+        *, deployment_id: str, against: Annotated[str | None, Query()] = None
+    ) -> dict[str, object]:
+        client: AdapterConnection = required_connection()
+        comparison: str = deployment_id if against is None else f"{against}:{deployment_id}"
+        try:
+            with state.query_lock:
+                return build_deployment_diff_payload(
+                    connection=client,
+                    database=database or "",
+                    metadata_database=database or "",
+                    comparison=comparison,
+                )
+        except AdapterError as error:
+            raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
+        except ValueError as error:
+            raise HTTPException(status_code=_HTTP_BAD_REQUEST, detail=str(error)) from error
+
+    def promote_deployment(*, deployment_id: str) -> dict[str, object]:
+        client: AdapterConnection = required_connection()
+        try:
+            with state.query_lock:
+                return run_deployment_promotion(
+                    connection=client,
+                    database=database or "",
+                    metadata_database=database or "",
+                    deployment_id=deployment_id,
+                    project_dir=project_dir,
+                )
+        except AdapterError as error:
+            raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
+        except ValueError as error:
+            raise HTTPException(status_code=_HTTP_BAD_REQUEST, detail=str(error)) from error
+
+    def cleanup_deployments(request: DeploymentCleanupRequest) -> dict[str, object]:
+        client: AdapterConnection = required_connection()
+        try:
+            with state.query_lock:
+                return run_deployment_cleanup(
+                    connection=client,
+                    database=database or "",
+                    metadata_database=database or "",
+                    retention_days=request.retentionDays,
+                    project_dir=project_dir,
+                )
+        except AdapterError as error:
+            raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
+        except ValueError as error:
+            raise HTTPException(status_code=_HTTP_BAD_REQUEST, detail=str(error)) from error
+
     app.get("/api/deployments")(read_deployments)
     app.get("/api/deployments/{deployment_id}")(read_one_deployment)
+    app.get("/api/deployments/{deployment_id}/diff")(read_deployment_diff)
+    app.post("/api/deployments/{deployment_id}/promote")(promote_deployment)
+    app.post("/api/deployments/cleanup")(cleanup_deployments)
     return app
 
 
