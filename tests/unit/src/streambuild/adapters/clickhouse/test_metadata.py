@@ -96,6 +96,8 @@ from tests.unit.src.streambuild.adapters.clickhouse.helpers import build_metadat
                 "CREATE TABLE IF NOT EXISTS metadata._streambuild_virtual_publications (\n"
                 "    publication_id String,\n"
                 "    deployment_id String,\n"
+                "    operation LowCardinality(String) DEFAULT 'promote',\n"
+                "    previous_deployment_id Nullable(String),\n"
                 "    logical_database_name String,\n"
                 "    logical_view_name String,\n"
                 "    physical_database_name String,\n"
@@ -272,14 +274,17 @@ def test_given_metadata_database_when_rendering_then_it_returns_expected_metadat
             statement_index=3,
             expected_sql=(
                 "INSERT INTO metadata._streambuild_virtual_publications "
-                "(publication_id, deployment_id, logical_database_name, logical_view_name, "
-                "physical_database_name, physical_relation_name, published_at) VALUES"
+                "(publication_id, deployment_id, operation, previous_deployment_id, "
+                "logical_database_name, logical_view_name, physical_database_name, "
+                "physical_relation_name, published_at) VALUES"
             ),
             expected_row={
                 "publication_id": (
-                    "62c4eb02c52a827ca9c617edd681fa320d3090c943a2937b68cd52073afe8d45"
+                    "7fde4a17795328da5b8f307aea327ca739a8475d033005bf2208d00e93b21d26"
                 ),
                 "deployment_id": "20260408T130000Z_ab12cd",
+                "operation": "promote",
+                "previous_deployment_id": None,
                 "logical_database_name": "analytics",
                 "logical_view_name": "tbl__orders_enriched",
                 "physical_database_name": "analytics",

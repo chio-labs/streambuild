@@ -19,3 +19,14 @@ class ReadinessComparisonConstructionTestCase:
     expected_assessments: tuple[AuditAssessment, ...]
     expected_row_deltas: tuple[int | None, ...]
     expected_lag_seconds: float
+
+
+@dataclass(frozen=True)
+class ReadinessThresholdTestCase:
+    description: str
+    maximum_lag_seconds: float
+    minimum_staged_row_ratio: float
+    active_row_count: int
+    staged_row_count: int
+    lag_seconds: float
+    expected_assessment: AuditAssessment

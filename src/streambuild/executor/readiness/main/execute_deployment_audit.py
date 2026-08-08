@@ -56,6 +56,7 @@ def execute_deployment_audit(
         inspected_state=inspected_state,
         root_keys=root_keys,
         prepared_object_mappings=prepared_object_mappings,
+        thresholds=request.thresholds,
     )
     return DeploymentAuditResult(
         deployment_id=resolved_deployment_id,
@@ -64,6 +65,7 @@ def execute_deployment_audit(
         replay_lineage_mode=loaded_deployment.replay_lineage_mode,
         warning_codes=loaded_deployment.warning_codes,
         root_results=root_results,
+        thresholds=request.thresholds,
     )
 
 

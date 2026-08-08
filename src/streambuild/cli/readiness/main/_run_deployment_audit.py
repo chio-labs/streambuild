@@ -15,13 +15,14 @@ from streambuild.cli.readiness.main.render_deployment_audit_result import (
 )
 from streambuild.compiler.audit_discovery.models import LoadedSqlAudit
 from streambuild.compiler.compile.models import CompiledPipeline, CompilerAdapterProfile
-from streambuild.compiler.discovery.models import LoadedProject
+from streambuild.compiler.discovery.models import DeploymentReadinessDefaults, LoadedProject
 from streambuild.compiler.pipeline.main.analyze_project import analyze_project
 from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.executor.readiness.main.execute_deployment_audit import execute_deployment_audit
 from streambuild.executor.readiness.models import (
     DeploymentAuditRequest,
     DeploymentAuditResult,
+    DeploymentReadinessThresholds,
 )
 
 
@@ -70,6 +71,7 @@ def run_deployment_audit(
                 deployment_id=deployment_id,
                 metadata_database=resolved_metadata_database,
                 default_database=database,
+                thresholds=_readiness_thresholds(loaded_project),
             ),
             client=client,
         )
@@ -102,3 +104,15 @@ def run_deployment_audit(
         )
     )
     return 0
+
+
+def _readiness_thresholds(loaded_project: LoadedProject | None) -> DeploymentReadinessThresholds:
+    if loaded_project is None or loaded_project.effective_configuration is None:
+        return DeploymentReadinessThresholds()
+    defaults: DeploymentReadinessDefaults = (
+        loaded_project.effective_configuration.defaults.deployment_readiness
+    )
+    return DeploymentReadinessThresholds(
+        maximum_lag_seconds=defaults.maximum_lag_seconds,
+        minimum_staged_row_ratio=defaults.minimum_staged_row_ratio,
+    )

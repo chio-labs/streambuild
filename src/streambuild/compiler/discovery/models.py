@@ -120,6 +120,14 @@ class AuditDefaults:
 
 
 @dataclass(frozen=True)
+class DeploymentReadinessDefaults:
+    """Project-wide virtual deployment comparison thresholds."""
+
+    maximum_lag_seconds: float = 30.0
+    minimum_staged_row_ratio: float = 0.5
+
+
+@dataclass(frozen=True)
 class ProjectDefaults:
     """Committed project-wide authored defaults."""
 
@@ -131,6 +139,9 @@ class ProjectDefaults:
     bounded_replay_fallback: BoundedReplayFallback | None = None
     freshness: SourceFreshnessPolicy | None = None
     audits: AuditDefaults = field(default_factory=AuditDefaults)
+    deployment_readiness: DeploymentReadinessDefaults = field(
+        default_factory=DeploymentReadinessDefaults
+    )
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "pipeline_mode", PipelineMode(self.pipeline_mode))

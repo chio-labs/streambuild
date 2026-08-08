@@ -43,6 +43,8 @@ def execute_publish(*, request: PublishRequest, client: AdapterConnection) -> Pu
         published_at=published_at,
         published_views=published_views,
         database=request.default_database,
+        operation=request.operation,
+        previous_deployment_id=request.previous_deployment_id,
     )
     statements: tuple[WarehouseStatement, ...] = assemble_publish_workflow(
         client=client,
@@ -56,6 +58,8 @@ def execute_publish(*, request: PublishRequest, client: AdapterConnection) -> Pu
         published_views=published_views,
         per_relation_atomic_replace=client.capabilities.per_relation_atomic_replace,
         graph_atomic_publish=client.capabilities.graph_atomic_publish,
+        operation=request.operation,
+        previous_deployment_id=request.previous_deployment_id,
     )
 
 

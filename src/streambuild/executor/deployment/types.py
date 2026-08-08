@@ -12,3 +12,13 @@ class DeploymentLifecycleState(StrEnum):
     INCOMPLETE = "incomplete"
     METADATA_MISSING = "metadata_missing"
     PHYSICAL_MISSING = "physical_missing"
+
+
+class DeploymentDiffStatus(StrEnum):
+    """Summary classification for one logical relation comparison."""
+
+    ADDED = "added"
+    REMOVED = "removed"
+    CHANGED = "changed"
+    UNCHANGED = "unchanged"
+    PHYSICAL_MISSING = "physical_missing"
