@@ -7,3 +7,13 @@ class SchedulerProcessE2ETestCase:
     expected_scheduler_state: str
     expected_result_status: str
     expected_run_mode: str
+
+
+@dataclass(frozen=True)
+class MessageBrowserProcessE2ETestCase:
+    description: str
+    produced_messages: tuple[tuple[str, str, tuple[tuple[str, bytes], ...]], ...]
+    filtered_order_id: str
+    expected_filtered_key: str
+    expected_filtered_headers: tuple[tuple[str, str], ...]
+    expected_facet_values: tuple[str, ...]

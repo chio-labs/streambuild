@@ -64,6 +64,80 @@ class BuildRunRequest(BaseModel):
     confirmations: list[str] = []
 
 
+class MessageQueryMode(BaseModel):
+    """One mutually exclusive message browsing window."""
+
+    kind: str = "newest"
+    fromTime: str | None = None  # noqa: N815 - wire format is camelCase
+    toTime: str | None = None  # noqa: N815 - wire format is camelCase
+    partition: int | None = None
+    fromOffset: int | None = None  # noqa: N815 - wire format is camelCase
+    toOffset: int | None = None  # noqa: N815 - wire format is camelCase
+
+
+class MessageQueryPredicate(BaseModel):
+    """One typed filter chip compiled to SQL server-side."""
+
+    field: str
+    op: str = "eq"
+    value: str | int | float | None = None
+    values: list[int] = []
+    path: list[str | int] = []
+
+
+class MessageQueryCursor(BaseModel):
+    """Keyset pagination position after the last returned row."""
+
+    landedAt: str  # noqa: N815 - wire format is camelCase
+    partition: int
+    offset: int
+
+
+class MessagesQueryRequest(BaseModel):
+    """POST /api/sources/{name}/messages body."""
+
+    mode: MessageQueryMode = MessageQueryMode()
+    predicates: list[MessageQueryPredicate] = []
+    limit: int = 50
+    cursor: MessageQueryCursor | None = None
+    timeColumn: str = "landed"  # noqa: N815 - wire format is camelCase
+    previewPaths: list[list[str | int]] = []  # noqa: N815 - wire format is camelCase
+
+
+class MessageRecordRequest(BaseModel):
+    """POST /api/sources/{name}/messages/record body."""
+
+    partition: int
+    offset: int
+
+
+class MessageFacetsRequest(BaseModel):
+    """POST /api/sources/{name}/messages/facets body."""
+
+    mode: MessageQueryMode = MessageQueryMode()
+    predicates: list[MessageQueryPredicate] = []
+    limit: int = 50
+    timeColumn: str = "landed"  # noqa: N815 - wire format is camelCase
+    facetPath: list[str | int] = []  # noqa: N815 - wire format is camelCase
+
+
+@dataclass(frozen=True)
+class KafkaTopicInfo:
+    """Broker metadata for one topic."""
+
+    name: str
+    partition_count: int
+    replication_factor: int
+    internal: bool
+
+
+@dataclass(frozen=True)
+class KafkaTopicsSnapshot:
+    """Best-effort topic inventory for one broker list."""
+
+    topics: tuple[KafkaTopicInfo, ...]
+
+
 @dataclass(frozen=True)
 class KafkaPartitionLag:
     """Broker offsets and lag for one topic partition."""

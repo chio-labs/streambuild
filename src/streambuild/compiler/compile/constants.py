@@ -71,7 +71,8 @@ RAW_LANDING_COLUMNS: tuple[Column, ...] = (
     Column(name=REPLAY_PARTITION_COLUMN_NAME, type="Int32"),
     Column(name=REPLAY_OFFSET_COLUMN_NAME, type="Int64"),
     Column(name=REPLAY_TIMESTAMP_COLUMN_NAME, type="Nullable(DateTime64(3))"),
-    Column(name="kafka_headers", type="String"),
+    Column(name="kafka_header_keys", type="Array(String)"),
+    Column(name="kafka_header_values", type="Array(String)"),
     Column(name=KAFKA_LANDED_AT_COLUMN_NAME, type="DateTime64(3)"),
     Column(name=REPLAY_LANDED_AT_COLUMN_NAME, type="DateTime64(3)"),
 )

@@ -87,7 +87,8 @@ def build_janitor_integration_state(
             "_replay_partition",
             "_replay_offset",
             "_replay_timestamp",
-            "kafka_headers",
+            "kafka_header_keys",
+            "kafka_header_values",
             "_replay_landed_at",
         ],
     )

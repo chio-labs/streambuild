@@ -109,7 +109,8 @@ def _raw_landing_columns() -> tuple[AdapterColumn, ...]:
         AdapterColumn(name=_REPLAY_PARTITION_COLUMN_NAME, type="Int32"),
         AdapterColumn(name=_REPLAY_OFFSET_COLUMN_NAME, type="Int64"),
         AdapterColumn(name="_replay_timestamp", type="Nullable(DateTime64(3))"),
-        AdapterColumn(name="kafka_headers", type="String"),
+        AdapterColumn(name="kafka_header_keys", type="Array(String)"),
+        AdapterColumn(name="kafka_header_values", type="Array(String)"),
         AdapterColumn(name="kafka_landed_at", type="DateTime64(3)"),
         AdapterColumn(name="_replay_landed_at", type="DateTime64(3)"),
     )
@@ -127,7 +128,8 @@ def _landing_query(*, logical_name: str, kafka_relation_name: str) -> str:
         "    _partition AS _replay_partition,\n"
         "    _offset AS _replay_offset,\n"
         "    _timestamp AS _replay_timestamp,\n"
-        "    '' AS kafka_headers,\n"
+        "    _headers.name AS kafka_header_keys,\n"
+        "    _headers.value AS kafka_header_values,\n"
         "    now64(3) AS kafka_landed_at,\n"
         "    now64(3) AS _replay_landed_at\n"
         f"FROM {kafka_relation_name}"
