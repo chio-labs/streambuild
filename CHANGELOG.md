@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.12.0](https://github.com/chio-labs/streambuild/compare/v0.11.0...v0.12.0) (2026-08-08)
+
+
+### Features
+
+* add source message browser and topics inventory ([40afebe](https://github.com/chio-labs/streambuild/commit/40afebe06d82645899671e5843d462efc28bf2f0))
+* add source message browser and topics inventory ([967af5c](https://github.com/chio-labs/streambuild/commit/967af5c6f9b46ad550dfdb4701566ff855d28733))
+
 ## [0.11.0](https://github.com/chio-labs/streambuild/compare/v0.10.0...v0.11.0) (2026-08-08)
 
 
