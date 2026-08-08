@@ -5,14 +5,20 @@ import pytest
 
 from streambuild.compiler.discovery._helpers.source_registry import discover_source_registry
 from streambuild.compiler.discovery.exceptions import PipelineDiscoveryError
+from streambuild.compiler.discovery.main.load_project_input_for_path import (
+    load_project_input_for_path,
+)
 from streambuild.compiler.discovery.models import (
     DiscoveredSourceFile,
     ExternalTableSourceStep,
     KafkaLandingStep,
+    LoadedProject,
     ReplayBoundary,
     SourceFreshnessPolicy,
 )
 from tests.unit.src.streambuild.compiler.discovery._test_types import (
+    KafkaBrokerDefaultTestCase,
+    ProjectKafkaBrokerDefaultTestCase,
     SourceBoundaryModeTestCase,
     SourceFreshnessTestCase,
     SourceRegistryErrorTestCase,
@@ -127,6 +133,104 @@ def test_given_source_files_when_discovering_then_returns_stable_typed_registry(
     )
     managed_source: KafkaLandingStep = cast(KafkaLandingStep, sources[0])
     assert managed_source.kafka.ttl == test_case.expected_managed_source_ttl
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        KafkaBrokerDefaultTestCase(
+            description="project brokers supply an omitted source value",
+            source_broker_yaml="",
+            default_broker_list="kafka1:9092,kafka2:9092",
+            expected_broker_list="kafka1:9092,kafka2:9092",
+        ),
+        KafkaBrokerDefaultTestCase(
+            description="source brokers override the project default",
+            source_broker_yaml="broker_list: source-kafka:9092",
+            default_broker_list="project-kafka:9092",
+            expected_broker_list="source-kafka:9092",
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_kafka_broker_defaults_when_discovering_source_then_applies_precedence(
+    test_case: KafkaBrokerDefaultTestCase,
+    tmp_path: Path,
+) -> None:
+    write_source_yml(
+        project_dir=tmp_path,
+        relative_path="events.yml",
+        contents=f"""
+        sources:
+          - name: events
+            kind: kafka
+            {test_case.source_broker_yaml}
+            topic: source.events
+            replay_boundary: {{mode: offsets}}
+        """,
+    )
+
+    source_files: tuple[DiscoveredSourceFile, ...] = discover_source_registry(
+        project_dir=tmp_path,
+        variables={},
+        environment={},
+        default_kafka_broker_list=test_case.default_broker_list,
+    )
+
+    source: KafkaLandingStep = cast(KafkaLandingStep, flatten_source_registry(source_files)[0])
+    assert source.kafka.broker_list == test_case.expected_broker_list
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ProjectKafkaBrokerDefaultTestCase(
+            description="interpolated project brokers reach source discovery",
+            configured_broker_list="${ENV:KAFKA_BROKERS}",
+            environment=(("KAFKA_BROKERS", "kafka1:9092,kafka2:9092"),),
+            expected_broker_list="kafka1:9092,kafka2:9092",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_interpolated_project_kafka_default_when_loading_project_then_source_inherits_it(
+    test_case: ProjectKafkaBrokerDefaultTestCase,
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "streambuild_project.toml").write_text(
+        f"""
+name = "events"
+default_target = "test"
+
+[defaults]
+kafka_broker_list = "{test_case.configured_broker_list}"
+
+[targets.test]
+""".strip(),
+        encoding="utf-8",
+    )
+    write_source_yml(
+        project_dir=tmp_path,
+        relative_path="events.yml",
+        contents="""
+        sources:
+          - name: events
+            kind: kafka
+            topic: source.events
+            replay_boundary: {mode: offsets}
+        """,
+    )
+
+    loaded: LoadedProject | None = load_project_input_for_path(
+        path=tmp_path,
+        environment=dict(test_case.environment),
+    )
+
+    assert loaded is not None
+    source: KafkaLandingStep = cast(
+        KafkaLandingStep, flatten_source_registry(loaded.source_files)[0]
+    )
+    assert source.kafka.broker_list == test_case.expected_broker_list
 
 
 @pytest.mark.parametrize(

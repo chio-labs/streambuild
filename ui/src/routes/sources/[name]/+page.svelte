@@ -71,7 +71,6 @@
 
 
 	// ── partition scaling ────────────────────────────────────────────────────
-	const LAG_WARN_SECONDS: number = 30;
 	const PARTITION_PAGE_SIZE: number = 25;
 	const LAG_BUCKET_COUNT: number = 48;
 
@@ -81,24 +80,26 @@
 
 	const behindCount = $derived(
 		(source?.live.partitions ?? []).filter(
-			(partition) => partition.lagSeconds > LAG_WARN_SECONDS
+			(partition) => partition.kafkaLagMessages !== null && partition.kafkaLagMessages > 0
 		).length
 	);
 
 	/** Fixed-width buckets over the observed lag range, so shape survives any count. */
 	const lagBuckets = $derived.by(
 		(): { label: string; count: number; behind: boolean }[] => {
-			const partitions = source?.live.partitions ?? [];
-			const maxLag: number = Math.max(...partitions.map((item) => item.lagSeconds), 1);
+			const lagValues: number[] = (source?.live.partitions ?? []).flatMap((partition) =>
+				partition.kafkaLagMessages === null ? [] : [partition.kafkaLagMessages]
+			);
+			const maxLag: number = Math.max(...lagValues, 1);
 			const width: number = maxLag / LAG_BUCKET_COUNT;
 			const buckets = Array.from({ length: LAG_BUCKET_COUNT }, (_, index) => ({
-				label: formatDuration(index * width),
+				label: formatCompact(Math.round(index * width)),
 				count: 0,
-				behind: index * width > LAG_WARN_SECONDS
+				behind: index > 0
 			}));
-			for (const partition of partitions) {
+			for (const lag of lagValues) {
 				const index: number = Math.min(
-					Math.floor(partition.lagSeconds / width),
+					Math.floor(lag / width),
 					LAG_BUCKET_COUNT - 1
 				);
 				buckets[index].count += 1;
@@ -115,7 +116,9 @@
 			(partition) => needle === '' || String(partition.partition).includes(needle)
 		);
 		return [...partitions].sort((a, b) =>
-			partitionSort === 'lag' ? b.lagSeconds - a.lagSeconds : a.partition - b.partition
+			partitionSort === 'lag'
+				? (b.kafkaLagMessages ?? -1) - (a.kafkaLagMessages ?? -1)
+				: a.partition - b.partition
 		);
 	});
 
@@ -129,15 +132,11 @@
 		)
 	);
 
-	const worstLagPartition = $derived.by((): number => {
-		if (!source || source.live.partitions.length === 0) return 0;
-		return Math.max(...source.live.partitions.map((partition) => partition.lagSeconds));
-	});
 </script>
 
 <AppTopbar title={sourceName} />
 
-<div class="min-h-0 flex-1 overflow-y-auto">
+<div class="min-h-0 flex-1 overflow-auto">
 	{#if !source}
 		<div class="px-[18px] py-10 text-center">
 			<p class="text-muted-foreground text-[13px]">No source named <code>{sourceName}</code>.</p>
@@ -157,7 +156,7 @@
 			<span class="sb-tag code">{source.boundaryMode}</span>
 		</div>
 
-		<div class="grid gap-5 p-[18px]" style:grid-template-columns="minmax(0,1fr) 320px">
+		<div class="grid grid-cols-1 gap-5 p-[18px] xl:grid-cols-[minmax(0,1fr)_320px]">
 			<div class="flex min-w-0 flex-col gap-5">
 				<!-- ── RECONSTRUCTION HORIZON ──────────────────────────────────────
 				     The single config value that defines the durability of everything
@@ -309,7 +308,7 @@
 							</span>
 						</div>
 
-						<!-- lag distribution across every partition, one bar per bucket -->
+						<!-- Kafka message lag distribution across every partition, one bar per bucket -->
 						<div class="rounded-[4px] border border-border p-3">
 							<div class="flex h-9 items-end gap-[2px]">
 								{#each lagBuckets as bucket, bucketIndex (bucketIndex)}
@@ -327,8 +326,8 @@
 							<div
 								class="text-[var(--sb-text-faint)] flex justify-between pt-1.5 font-mono text-[10px]"
 							>
-								<span>lag distribution</span>
-								<span>{lagBuckets[0].label} → {lagBuckets[lagBuckets.length - 1].label}</span>
+								<span>Kafka lag distribution</span>
+								<span>{lagBuckets[0].label} → {lagBuckets[lagBuckets.length - 1].label} messages</span>
 							</div>
 						</div>
 
@@ -343,7 +342,7 @@
 									class="px-2.5 py-1 font-mono text-[10.5px] {partitionSort === 'lag'
 										? 'bg-[var(--sb-hover)] text-foreground'
 										: 'text-muted-foreground hover:text-foreground'}"
-									onclick={() => (partitionSort = 'lag')}>worst lag</button
+									onclick={() => (partitionSort = 'lag')}>worst Kafka lag</button
 								>
 								<button
 									class="border-l border-border px-2.5 py-1 font-mono text-[10.5px] {partitionSort ===
@@ -360,15 +359,17 @@
 							</span>
 						</div>
 
-						<table class="sb-list w-full text-left">
+						<table class="sb-list min-w-[760px] w-full text-left">
 							<thead>
 								<tr
 									class="text-[var(--sb-text-faint)] font-mono text-[10px] uppercase tracking-[0.14em]"
 								>
 									<th class="px-3 py-2 font-normal">Partition</th>
-									<th class="px-3 py-2 font-normal">Max offset</th>
-									<th class="px-3 py-2 font-normal">Lag</th>
-									<th class="px-3 py-2 font-normal">Newest event</th>
+									<th class="px-3 py-2 font-normal">Landed offset</th>
+									<th class="px-3 py-2 font-normal">Committed</th>
+									<th class="px-3 py-2 font-normal">Broker end</th>
+									<th class="px-3 py-2 font-normal">Kafka lag</th>
+									<th class="px-3 py-2 font-normal">Last arrival</th>
 								</tr>
 							</thead>
 							<tbody>
@@ -376,14 +377,26 @@
 									<tr>
 										<td class="code px-3 text-[12px]">{partition.partition}</td>
 										<td class="text-muted-foreground code px-3 text-[11.5px]"
-											>{formatInteger(partition.offset)}</td
+											>{partition.offset === null ? '—' : formatInteger(partition.offset)}</td
 										>
+										<td class="text-muted-foreground code px-3 text-[11.5px]">
+											{partition.committedOffset === null
+												? '—'
+												: formatInteger(partition.committedOffset)}
+										</td>
+										<td class="text-muted-foreground code px-3 text-[11.5px]">
+											{partition.endOffset === null ? '—' : formatInteger(partition.endOffset)}
+										</td>
 										<td class="code px-3 text-[11.5px]">
-											<span
-												style:color={partition.lagSeconds > LAG_WARN_SECONDS
-													? 'var(--sb-warning)'
-													: 'var(--foreground)'}>{formatDuration(partition.lagSeconds)}</span
-											>
+											{#if partition.kafkaLagMessages === null}
+												<span class="text-[var(--sb-text-faint)]">—</span>
+											{:else}
+												<span
+													style:color={partition.kafkaLagMessages > 0
+														? 'var(--sb-warning)'
+														: 'var(--foreground)'}>{formatCompact(partition.kafkaLagMessages)} msg</span
+												>
+											{/if}
 										</td>
 										<td class="text-muted-foreground code px-3 text-[11.5px]"
 											>{formatTimestamp(partition.newestEventAt)}</td
@@ -442,10 +455,16 @@
 					{/if}
 					<FactRow label="Rate" value={formatRate(source.live.rowsPerSecond)} />
 					<FactRow
-						label="Lag"
-						value={source.live.lagSeconds === null
-							? 'n/a — no offset lineage'
-							: formatDuration(source.live.lagSeconds)}
+						label="Kafka lag"
+						value={source.live.kafkaLagMessages === null
+							? 'unavailable'
+							: `${formatCompact(source.live.kafkaLagMessages)} messages`}
+					/>
+					<FactRow
+						label="Last arrival"
+						value={source.live.lastArrivalSeconds === null
+							? 'unavailable'
+							: `${formatDuration(source.live.lastArrivalSeconds)} ago`}
 					/>
 					<FactRow label="Retained rows" value={formatCompact(source.live.rows)} />
 					<FactRow label="Newest event" value={formatTimestamp(source.live.newestEventAt)} />

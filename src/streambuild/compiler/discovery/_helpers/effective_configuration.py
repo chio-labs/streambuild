@@ -150,6 +150,18 @@ def _resolve_project_defaults(
             environment=environment,
             field_path=f"{loaded.project_source.file_path} defaults.managed_source_ttl",
         ),
+        model_ttl=_optional_interpolated_string(
+            value=defaults.model_ttl,
+            variables=variables,
+            environment=environment,
+            field_path=f"{loaded.project_source.file_path} defaults.model_ttl",
+        ),
+        kafka_broker_list=_optional_interpolated_string(
+            value=defaults.kafka_broker_list,
+            variables=variables,
+            environment=environment,
+            field_path=f"{loaded.project_source.file_path} defaults.kafka_broker_list",
+        ),
     )
 
 

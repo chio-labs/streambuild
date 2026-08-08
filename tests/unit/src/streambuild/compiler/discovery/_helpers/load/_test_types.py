@@ -23,6 +23,22 @@ class LoadReplayPoliciesTestCase:
 
 
 @dataclass(frozen=True)
+class PipelineProtectionTestCase:
+    description: str
+    pipeline_name: str
+    pipeline_config_contents: str
+    expected_warning: str
+    expected_confirmation: str
+
+
+@dataclass(frozen=True)
+class InvalidPipelineProtectionTestCase:
+    description: str
+    confirmation: str
+    expected_error_fragment: str
+
+
+@dataclass(frozen=True)
 class RemovedPipelineSurfaceTestCase:
     description: str
     pipeline_config_contents: str

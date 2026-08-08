@@ -52,12 +52,14 @@ class BuildProcessManager:
         project_dir: Path,
         selectors: tuple[str, ...],
         start_time: str | None,
+        confirmations: tuple[str, ...] = (),
     ) -> dict[str, object]:
         """Spawn one build and block until its run_started event or early death."""
 
         argv, command = build_invocation(
             selectors=selectors,
             start_time=start_time,
+            confirmations=confirmations,
             execution_context=self._execution_context,
         )
         with self._lock:
@@ -237,6 +239,7 @@ def build_invocation(
     selectors: tuple[str, ...],
     start_time: str | None,
     execution_context: DevExecutionContext | None,
+    confirmations: tuple[str, ...] = (),
 ) -> tuple[list[str], str]:
     """Build the executable argv and safe user-facing command from one source."""
     stb_path: Path = Path(sys.executable).parent / "stb"
@@ -250,6 +253,8 @@ def build_invocation(
         argv.extend(("--select", selector))
     if start_time is not None:
         argv.extend(("--start-time", start_time))
+    for confirmation in confirmations:
+        argv.extend(("--confirm", confirmation))
     display: str = shlex.join(["stb", *argv[1:]])
     argv.extend(("--auto-approve", "--events"))
     return argv, display

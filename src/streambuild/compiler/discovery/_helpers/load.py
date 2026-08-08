@@ -29,6 +29,9 @@ from streambuild.compiler.discovery.constants import (
     NAMING_KEYS,
     PIPELINE_CONFIG_FILE_NAME,
     PIPELINE_CONFIG_KEYS,
+    PROTECTION_CONFIRMATION_PATTERN,
+    PROTECTION_CONFIRMATION_UNSAFE_PATTERN,
+    PROTECTION_KEYS,
     SCHEMA_CHANGE_RULE_KEYS,
     SECONDS_BY_DURATION_UNIT,
 )
@@ -42,6 +45,7 @@ from streambuild.compiler.discovery.models import (
     LoadedPipeline,
     Pipeline,
     PipelineNaming,
+    PipelineProtection,
     Project,
     ReplayOnChangePolicy,
     ReplayOnChangeRule,
@@ -63,6 +67,7 @@ class _PipelineDraft:
     replay_on_change: ReplayOnChangePolicy | None
     bounded_replay_fallback: BoundedReplayFallback | None
     naming: PipelineNaming
+    protection: PipelineProtection | None
 
 
 def load_pipeline_directory(pipeline_dir: Path) -> LoadedPipeline:
@@ -86,6 +91,7 @@ def load_pipeline_directory(pipeline_dir: Path) -> LoadedPipeline:
                 variables=dict(effective.variables),
                 environment={},
                 default_managed_source_ttl=effective.defaults.managed_source_ttl,
+                default_kafka_broker_list=effective.defaults.kafka_broker_list,
                 default_freshness=effective.defaults.freshness,
             )
         )
@@ -115,6 +121,7 @@ def load_pipeline_directory(pipeline_dir: Path) -> LoadedPipeline:
         project=Project(
             replay_on_change=effective.defaults.replay_on_change,
             bounded_replay_fallback=effective.defaults.bounded_replay_fallback,
+            model_ttl=effective.defaults.model_ttl,
             default_database=effective.database,
             adapter=effective.adapter,
             naming=effective.naming,
@@ -168,6 +175,7 @@ def load_pipeline_directories(
                 replay_on_change=draft.replay_on_change,
                 bounded_replay_fallback=draft.bounded_replay_fallback,
                 naming=draft.naming,
+                protection=draft.protection,
             )
         )
     return tuple(pipelines)
@@ -208,6 +216,11 @@ def _load_pipeline_draft(
         ),
         naming=_load_pipeline_naming(
             value=pipeline_values.get("naming"),
+            file_path=config_path,
+        ),
+        protection=_load_pipeline_protection(
+            value=pipeline_values.get("protection"),
+            pipeline_name=pipeline_directory.pipeline_dir.name,
             file_path=config_path,
         ),
     )
@@ -424,6 +437,63 @@ def _pipeline_prefix(*, values: dict[str, object], key: str, file_path: Path) ->
     if not isinstance(value, str):
         raise PipelineDiscoveryError(
             f"Pipeline config '{file_path}' must define naming.{key} as a string"
+        )
+    return value
+
+
+def _load_pipeline_protection(
+    *, value: object, pipeline_name: str, file_path: Path
+) -> PipelineProtection | None:
+    if value is None:
+        return None
+    if not isinstance(value, dict) or not all(isinstance(key, str) for key in value):
+        raise PipelineDiscoveryError(
+            f"Pipeline config '{file_path}' must define protection as a mapping"
+        )
+    typed_value: dict[str, object] = cast(dict[str, object], value)
+    unknown_keys: list[str] = [key for key in typed_value if key not in PROTECTION_KEYS]
+    if unknown_keys:
+        raise PipelineDiscoveryError(
+            f"Pipeline config '{file_path}' contains unsupported protection keys: "
+            f"{', '.join(sorted(unknown_keys))}"
+        )
+    default_warning: str = (
+        f"Pipeline '{pipeline_name}' is protected. Confirm its operational impact before building."
+    )
+    warning: str = _protection_string(
+        values=typed_value,
+        key="warning",
+        default=default_warning,
+        file_path=file_path,
+    )
+    confirmation: str = _protection_string(
+        values=typed_value,
+        key="confirmation",
+        default=_default_protection_confirmation(pipeline_name=pipeline_name),
+        file_path=file_path,
+    )
+    if PROTECTION_CONFIRMATION_PATTERN.fullmatch(confirmation) is None:
+        raise PipelineDiscoveryError(
+            f"Pipeline config '{file_path}' protection.confirmation must contain only letters, "
+            "numbers, '.', '_', ':', or '-' and must start with a letter or number"
+        )
+    return PipelineProtection(warning=warning, confirmation=confirmation)
+
+
+def _default_protection_confirmation(*, pipeline_name: str) -> str:
+    if PROTECTION_CONFIRMATION_PATTERN.fullmatch(pipeline_name) is not None:
+        return pipeline_name
+    sanitized_name: str = PROTECTION_CONFIRMATION_UNSAFE_PATTERN.sub("_", pipeline_name)
+    return f"CONFIRM_{sanitized_name}"
+
+
+def _protection_string(
+    *, values: dict[str, object], key: str, default: str, file_path: Path
+) -> str:
+    value: object = values.get(key, default)
+    if not isinstance(value, str) or not value.strip():
+        raise PipelineDiscoveryError(
+            f"Pipeline config '{file_path}' must define protection.{key} as a non-empty string"
         )
     return value
 

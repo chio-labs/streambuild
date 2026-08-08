@@ -61,6 +61,7 @@ class EffectiveProjectConfigurationTestCase:
     expected_variables: tuple[tuple[str, object], ...]
     expected_connection: tuple[tuple[str, object], ...]
     expected_managed_source_ttl: str
+    expected_model_ttl: str
 
 
 @dataclass(frozen=True)
@@ -76,6 +77,22 @@ class SourceRegistryTestCase:
     expected_boundary_modes: tuple[str, ...]
     expected_relative_paths: tuple[str, ...]
     expected_managed_source_ttl: str
+
+
+@dataclass(frozen=True)
+class KafkaBrokerDefaultTestCase:
+    description: str
+    source_broker_yaml: str
+    default_broker_list: str
+    expected_broker_list: str
+
+
+@dataclass(frozen=True)
+class ProjectKafkaBrokerDefaultTestCase:
+    description: str
+    configured_broker_list: str
+    environment: tuple[tuple[str, str], ...]
+    expected_broker_list: str
 
 
 @dataclass(frozen=True)

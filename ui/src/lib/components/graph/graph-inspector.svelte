@@ -164,8 +164,11 @@
 					<FactRow label="Relation" value={source.relationName} mono />
 					<FactRow label="Rows" value={formatInteger(source.live.rows)} />
 					<FactRow label="Rate" value={formatRate(source.live.rowsPerSecond)} />
-					{#if source.live.lagSeconds !== null}
-						<FactRow label="Lag" value={formatDuration(source.live.lagSeconds)} />
+					{#if source.live.kafkaLagMessages !== null}
+						<FactRow label="Kafka lag" value={`${formatInteger(source.live.kafkaLagMessages)} messages`} />
+					{/if}
+					{#if source.live.lastArrivalSeconds !== null}
+						<FactRow label="Last arrival" value={`${formatDuration(source.live.lastArrivalSeconds)} ago`} />
 					{/if}
 					<FactRow
 						label="Retention"

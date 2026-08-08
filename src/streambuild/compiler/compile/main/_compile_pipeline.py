@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 from streambuild.compiler.compile._helpers.naming import resolve_model_relation_name
@@ -106,8 +107,15 @@ def _compile_models(
                     raise PipelineCompileError(
                         f"Table model '{model.name}' belongs to a source-less pipeline"
                     )
+                transform: TransformStep = (
+                    replace(model, ttl=loaded_pipeline.project.model_ttl)
+                    if model.ttl is None
+                    and loaded_pipeline.project is not None
+                    and loaded_pipeline.project.model_ttl is not None
+                    else model
+                )
                 compiled_model = compile_model(
-                    transform=model,
+                    transform=transform,
                     pipeline_name=loaded_pipeline.pipeline.name,
                     pipeline_dir=loaded_pipeline.file_path,
                     replay_lineage_mode=replay_lineage_mode,
@@ -115,10 +123,10 @@ def _compile_models(
                     sql_analyzer=sql_analyzer,
                     replay_on_change=resolve_replay_on_change(
                         loaded_pipeline=loaded_pipeline,
-                        transform=model,
+                        transform=transform,
                     ),
                     bounded_replay_fallback=resolve_bounded_replay_fallback(
-                        loaded_pipeline=loaded_pipeline, transform=model
+                        loaded_pipeline=loaded_pipeline, transform=transform
                     ),
                 )
         except TransformSqlContractError as error:
