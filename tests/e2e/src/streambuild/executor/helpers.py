@@ -805,6 +805,7 @@ def produce_kafka_messages(
     topic: str,
     messages: tuple[tuple[str, str], ...],
     timestamp_ms: int | None = None,
+    headers: tuple[tuple[str, bytes], ...] = (),
 ) -> None:
     message_key: str
     message_value: str
@@ -814,6 +815,7 @@ def produce_kafka_messages(
             key=message_key.encode("utf-8"),
             value=message_value.encode("utf-8"),
             timestamp_ms=timestamp_ms,
+            headers=list(headers),
         ).get(timeout=30)
     producer.flush()
 

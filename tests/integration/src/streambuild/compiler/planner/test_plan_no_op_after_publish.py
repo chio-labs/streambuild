@@ -106,7 +106,8 @@ def test_given_greenfield_backfill_and_publish_when_planning_again_then_it_is_a_
             "_replay_partition",
             "_replay_offset",
             "_replay_timestamp",
-            "kafka_headers",
+            "kafka_header_keys",
+            "kafka_header_values",
             "_replay_landed_at",
         ],
     )
@@ -217,7 +218,8 @@ def test_given_equivalent_type_casing_after_publish_when_planning_again_then_it_
             "_replay_partition",
             "_replay_offset",
             "_replay_timestamp",
-            "kafka_headers",
+            "kafka_header_keys",
+            "kafka_header_values",
             "_replay_landed_at",
         ],
     )
@@ -331,7 +333,8 @@ def test_given_published_deployment_when_authored_sql_changes_then_plan_requires
             "_replay_partition",
             "_replay_offset",
             "_replay_timestamp",
-            "kafka_headers",
+            "kafka_header_keys",
+            "kafka_header_values",
             "_replay_landed_at",
         ],
     )
@@ -493,7 +496,8 @@ def test_given_published_deployment_when_transform_output_schema_changes_then_pl
             "_replay_partition",
             "_replay_offset",
             "_replay_timestamp",
-            "kafka_headers",
+            "kafka_header_keys",
+            "kafka_header_values",
             "_replay_landed_at",
         ],
     )

@@ -23,3 +23,11 @@ class BuildStartError(DevServerError):
 
 class AuditSchedulerPersistenceError(DevServerError):
     """Raised when a scheduled slot cannot be durably marked as attempted."""
+
+
+class MessageQueryValidationError(DevServerError):
+    """Raised when a message browsing document names an unsupported field or value."""
+
+
+class MessageSchemaError(DevServerError):
+    """Raised when a raw landing table predates the header-array landing schema."""
