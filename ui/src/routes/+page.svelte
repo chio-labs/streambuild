@@ -26,17 +26,16 @@
 	const tests = $derived(testCounts(project.tests));
 
 	// Overview must survive a project with 20+ sources, so the list is sorted
-	// worst-lag-first and capped — you scan for what is NOT moving.
-	// Partition ticks keep a fixed 30s visual threshold (within-source skew);
-	// source-level status comes from the server-evaluated freshness policy.
-	const LAG_WARN_SECONDS: number = 30;
+	// oldest-arrival-first and capped — you scan for what is NOT moving.
 	const SOURCE_VISIBLE_LIMIT: number = 6;
 	const PARTITION_TICK_LIMIT: number = 12;
 
 	let showAllSources = $state<boolean>(false);
 
 	const sortedSources = $derived(
-		[...project.sources].sort((a, b) => (b.live.lagSeconds ?? -1) - (a.live.lagSeconds ?? -1))
+		[...project.sources].sort(
+			(a, b) => (b.live.lastArrivalSeconds ?? -1) - (a.live.lastArrivalSeconds ?? -1)
+		)
 	);
 	const visibleSources = $derived(
 		showAllSources ? sortedSources : sortedSources.slice(0, SOURCE_VISIBLE_LIMIT)
@@ -103,7 +102,7 @@
 				</span>
 			</div>
 
-			<!-- Sorted worst-lag-first and capped, so this holds up at 20+ sources:
+			<!-- Sorted oldest-arrival-first and capped, so this holds up at 20+ sources:
 			     the question is "what is not moving", not "list everything". -->
 			<div class="overflow-hidden rounded-[4px] border border-border">
 				{#each visibleSources as source (source.name)}
@@ -135,7 +134,9 @@
 									? 'var(--sb-warning)'
 									: 'var(--muted-foreground)'}
 						>
-							{source.live.lagSeconds === null ? '—' : formatDuration(source.live.lagSeconds)}
+							{source.live.lastArrivalSeconds === null
+								? '—'
+								: formatDuration(source.live.lastArrivalSeconds)}
 						</div>
 
 						<!-- Per-partition ticks only while they stay legible; beyond that a
@@ -148,17 +149,24 @@
 									{#each source.live.partitions as partition (partition.partition)}
 										<span
 											class="w-2.5 rounded-[1px]"
-											style:height="{partition.lagSeconds > LAG_WARN_SECONDS ? 7 : 14}px"
-											style:background={partition.lagSeconds > LAG_WARN_SECONDS
+										style:height="{partition.kafkaLagMessages !== null &&
+										partition.kafkaLagMessages > 0
+											? 7
+											: 14}px"
+										style:background={partition.kafkaLagMessages === null
+											? 'var(--sb-text-faint)'
+											: partition.kafkaLagMessages > 0
 												? 'var(--sb-warning)'
 												: 'var(--sb-secondary)'}
-											title="p{partition.partition} · lag {formatDuration(partition.lagSeconds)}"
+										title="p{partition.partition} · Kafka lag {partition.kafkaLagMessages === null
+											? 'unavailable'
+											: `${formatCompact(partition.kafkaLagMessages)} messages`}"
 										></span>
 									{/each}
 								</div>
 							{:else}
 								{@const behind = source.live.partitions.filter(
-									(partition) => partition.lagSeconds > LAG_WARN_SECONDS
+									(partition) => partition.kafkaLagMessages !== null && partition.kafkaLagMessages > 0
 								).length}
 								<span class="text-muted-foreground whitespace-nowrap font-mono text-[10.5px]">
 									{source.live.partitions.length} partitions

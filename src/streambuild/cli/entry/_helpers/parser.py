@@ -291,6 +291,13 @@ def _add_build_parser(
         action="store_true",
         help="Skip the confirmation prompt",
     )
+    build_parser.add_argument(
+        "--confirm",
+        action="append",
+        default=[],
+        metavar="VALUE",
+        help="Confirm a protected pipeline (repeat for multiple protected pipelines)",
+    )
     return build_parser
 
 

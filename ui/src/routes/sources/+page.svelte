@@ -15,8 +15,8 @@
 
 <AppTopbar title="Sources" />
 
-<div class="min-h-0 flex-1 overflow-y-auto">
-	<table class="sb-list w-full text-left">
+<div class="min-h-0 flex-1 overflow-auto">
+	<table class="sb-list min-w-[980px] w-full text-left">
 		<thead>
 			<tr class="text-[var(--sb-text-faint)] font-mono text-[10px] uppercase tracking-[0.14em]">
 				<th class="px-[18px] py-2 font-normal">Source</th>
@@ -29,7 +29,8 @@
 							>(last {formatDuration(throughputWindow)})</span
 						>{/if}</th
 				>
-				<th class="px-3 py-2 font-normal">Lag</th>
+				<th class="px-3 py-2 font-normal">Kafka lag</th>
+				<th class="px-3 py-2 font-normal">Last arrival</th>
 				<th class="px-3 py-2 font-normal">Retained</th>
 				<th class="px-3 py-2 pr-[18px] font-normal">Reconstruction horizon</th>
 			</tr>
@@ -62,13 +63,25 @@
 						</div>
 					</td>
 					<td class="code px-3 text-[11.5px]">
-						{#if source.live.lagSeconds === null}
+						{#if source.live.kafkaLagMessages === null}
 							<span class="text-[var(--sb-text-faint)]">—</span>
 						{:else}
 							<span
-								style:color={source.live.lagSeconds > 30
+								style:color={source.live.kafkaLagMessages > 0
 									? 'var(--sb-warning)'
-									: 'var(--foreground)'}>{formatDuration(source.live.lagSeconds)}</span
+									: 'var(--foreground)'}>{formatCompact(source.live.kafkaLagMessages)} msg</span
+							>
+						{/if}
+					</td>
+					<td class="code px-3 text-[11.5px]">
+						{#if source.live.lastArrivalSeconds === null}
+							<span class="text-[var(--sb-text-faint)]">—</span>
+						{:else}
+							<span
+								style:color={source.live.freshness === 'stalled' ||
+								source.live.freshness === 'lagging'
+									? 'var(--sb-warning)'
+									: 'var(--foreground)'}>{formatDuration(source.live.lastArrivalSeconds)}</span
 							>
 						{/if}
 					</td>

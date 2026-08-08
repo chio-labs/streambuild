@@ -52,7 +52,11 @@ def execute_virtual_build_command(
                 total_statements=len(preparation.workflow.statements),
                 selected_node_count=len(preparation.preview.plan.object_changes),
             )
-        confirmed: bool = confirm_build(options=options, plan_text=preparation.plan_text)
+        confirmed: bool = confirm_build(
+            options=options,
+            plan_text=preparation.plan_text,
+            protection_requirements=preparation.protection_requirements,
+        )
     except KeyboardInterrupt:
         return _cancel_virtual_build(
             started=started,

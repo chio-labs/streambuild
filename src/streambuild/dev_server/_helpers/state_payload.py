@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import datetime
 import json
+from dataclasses import replace
 from hashlib import sha256
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import (
     AdapterDirectFingerprintRecord,
     AdapterDirectFingerprintSnapshot,
+    AdapterManagedSource,
     CatalogSnapshot,
 )
 from streambuild.adapter.types import AdapterOptionalStateStatus
@@ -18,10 +20,15 @@ from streambuild.compiler.compile.main.build_model_storage_identity import (
 )
 from streambuild.compiler.compile.models import (
     CompiledModel,
+    CompiledSource,
     CompiledTableModel,
 )
 from streambuild.compiler.discovery.constants import SECONDS_BY_DURATION_UNIT
-from streambuild.compiler.discovery.models import SourceFreshnessPolicy
+from streambuild.compiler.discovery.models import (
+    KafkaLandingStep,
+    KafkaSettings,
+    SourceFreshnessPolicy,
+)
 from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.dev_server._helpers.state_queries import (
     build_extents_query,
@@ -31,6 +38,8 @@ from streambuild.dev_server._helpers.state_queries import (
     build_throughput_query,
     choose_throughput_window,
 )
+from streambuild.dev_server.classes.kafka_lag_reader import KafkaLagReader
+from streambuild.dev_server.models import KafkaLagSnapshot, KafkaPartitionLag
 from streambuild.dev_server.types import Freshness
 
 _LANDED_AT_COLUMN: str = "_replay_landed_at"
@@ -41,9 +50,18 @@ def build_state_payload(
     analysis: CompileAnalysis,
     connection: AdapterConnection,
     database: str,
+    kafka_lag_reader: KafkaLagReader | None = None,
 ) -> dict[str, object]:
     """Read the warehouse once and assemble the complete live overlay."""
 
+    if kafka_lag_reader is not None:
+        for source in analysis.compiled_project.sources:
+            _kafka_lag(
+                analysis=analysis,
+                source=source,
+                database=database,
+                reader=kafka_lag_reader,
+            )
     captured_at: str = connection.capture_warehouse_timestamp()
     catalog: CatalogSnapshot = connection.load_catalog(database)
     stats: dict[str, dict[str, int]] = _relation_stats(connection=connection, database=database)
@@ -72,6 +90,7 @@ def build_state_payload(
             stats=stats,
             extents=extents,
             captured_at=captured_at,
+            kafka_lag_reader=kafka_lag_reader,
         ),
     }
 
@@ -165,6 +184,7 @@ def _source_states(
     stats: dict[str, dict[str, int]],
     extents: dict[str, dict[str, object]],
     captured_at: str,
+    kafka_lag_reader: KafkaLagReader | None,
 ) -> dict[str, dict[str, object]]:
     states: dict[str, dict[str, object]] = {}
     for source in analysis.compiled_project.sources:
@@ -172,6 +192,12 @@ def _source_states(
         extent: dict[str, object] = extents.get(relation_name, {})
         newest: str | None = _optional_str(extent.get("newest"))
         age: float | None = _age_seconds(newest=newest, captured_at=captured_at)
+        kafka_lag: KafkaLagSnapshot | None = _kafka_lag(
+            analysis=analysis,
+            source=source,
+            database=database,
+            reader=kafka_lag_reader,
+        )
         throughput: dict[str, object] | None = _throughput(
             connection=connection,
             database=database,
@@ -184,7 +210,8 @@ def _source_states(
             "rows": stats.get(relation_name, {}).get("rows"),
             "oldestEventAt": _optional_str(extent.get("oldest")),
             "newestEventAt": newest,
-            "lagSeconds": age,
+            "lastArrivalSeconds": age,
+            "kafkaLagMessages": None if kafka_lag is None else kafka_lag.total_messages,
             "freshness": _freshness(
                 newest=newest, captured_at=captured_at, policy=source.source.freshness
             ),
@@ -195,6 +222,7 @@ def _source_states(
                 database=database,
                 relation_name=relation_name,
                 has_lineage=relation_name in extents,
+                kafka_lag=kafka_lag,
             ),
         }
     return states
@@ -279,20 +307,70 @@ def _partitions(
     database: str,
     relation_name: str,
     has_lineage: bool,
+    kafka_lag: KafkaLagSnapshot | None,
 ) -> list[dict[str, object]] | None:
-    if not has_lineage:
+    if not has_lineage and kafka_lag is None:
         return None
-    query: str = build_partitions_query(database=database, relation_name=relation_name)
-    partitions: list[dict[str, object]] = []
-    for row in connection.query(query).named_rows():
-        partitions.append(
-            {
-                "partition": int(str(row["partition"])),
+    lag_by_partition: dict[int, KafkaPartitionLag] = {
+        item.partition: item for item in (() if kafka_lag is None else kafka_lag.partitions)
+    }
+    partitions_by_id: dict[int, dict[str, object]] = {}
+    if has_lineage:
+        query: str = build_partitions_query(database=database, relation_name=relation_name)
+        for row in connection.query(query).named_rows():
+            partition: int = int(str(row["partition"]))
+            broker_lag: KafkaPartitionLag | None = lag_by_partition.get(partition)
+            partitions_by_id[partition] = {
+                "partition": partition,
                 "maxOffset": int(str(row["max_offset"])),
                 "newestEventAt": str(row["newest"]),
+                "committedOffset": None if broker_lag is None else broker_lag.committed_offset,
+                "endOffset": None if broker_lag is None else broker_lag.end_offset,
+                "kafkaLagMessages": None if broker_lag is None else broker_lag.lag_messages,
             }
+    for partition, broker_lag in lag_by_partition.items():
+        partitions_by_id.setdefault(
+            partition,
+            {
+                "partition": partition,
+                "maxOffset": None,
+                "newestEventAt": None,
+                "committedOffset": broker_lag.committed_offset,
+                "endOffset": broker_lag.end_offset,
+                "kafkaLagMessages": broker_lag.lag_messages,
+            },
         )
-    return partitions
+    return [partitions_by_id[partition] for partition in sorted(partitions_by_id)]
+
+
+def _kafka_lag(
+    *,
+    analysis: CompileAnalysis,
+    source: CompiledSource,
+    database: str,
+    reader: KafkaLagReader | None,
+) -> KafkaLagSnapshot | None:
+    if not isinstance(source.source, KafkaLandingStep) or reader is None:
+        return None
+    managed_source: AdapterManagedSource | None = next(
+        (
+            resource
+            for resource in analysis.realized_project.resources_by_logical_key.get(source.key, ())
+            if isinstance(resource, AdapterManagedSource)
+        ),
+        None,
+    )
+    if managed_source is None:
+        return None
+    kafka: KafkaSettings = replace(
+        source.source.kafka,
+        broker_list=managed_source.broker_list,
+        topic=managed_source.topic,
+        consumer_group=managed_source.consumer_group,
+        format=managed_source.format,
+        settings=dict(managed_source.settings) or None,
+    )
+    return reader.read(kafka=kafka, database=database)
 
 
 def _drift_reasons(

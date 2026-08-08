@@ -80,6 +80,7 @@ database = "dev_database"
                 ("username", "local-user"),
             ),
             expected_managed_source_ttl="_replay_landed_at + INTERVAL 14 DAY",
+            expected_model_ttl="event_at + INTERVAL 14 DAY",
         )
     ],
     ids=lambda case: case.description,
@@ -112,6 +113,7 @@ def test_given_project_and_local_toml_when_resolving_then_applies_locked_precede
 
         [defaults]
         managed_source_ttl = "_replay_landed_at + INTERVAL ${ttl_days} DAY"
+        model_ttl = "event_at + INTERVAL ${ttl_days} DAY"
 
         [targets.dev]
         database = "dev_database"
@@ -172,6 +174,7 @@ def test_given_project_and_local_toml_when_resolving_then_applies_locked_precede
     assert effective.variables == test_case.expected_variables
     assert effective.connection.values == test_case.expected_connection
     assert effective.defaults.managed_source_ttl == test_case.expected_managed_source_ttl
+    assert effective.defaults.model_ttl == test_case.expected_model_ttl
     assert loaded.project_source.contents.startswith('name = "analytics"')
     assert loaded.local_source is not None
 

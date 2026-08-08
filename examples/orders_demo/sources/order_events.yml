@@ -1,7 +1,6 @@
 sources:
   - name: order_events
     kind: kafka
-    broker_list: redpanda:9092
     topic: source.order_events.live
     replay_boundary:
       mode: offsets

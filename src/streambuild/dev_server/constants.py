@@ -4,6 +4,7 @@ DEFAULT_DEV_SERVER_HOST: str = "127.0.0.1"
 DEFAULT_DEV_SERVER_PORT: int = 8000
 REDACTED_SECRET_PLACEHOLDER: str = "<redacted>"
 BROKER_USERINFO_SEPARATOR: str = "@"
+KAFKA_SECURITY_PROTOCOL_CONFIG_NAME: str = "security_protocol"
 SENSITIVE_SOURCE_SETTING_FRAGMENTS: tuple[str, ...] = (
     "credential",
     "password",

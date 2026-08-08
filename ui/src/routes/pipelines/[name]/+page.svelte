@@ -128,10 +128,16 @@
 							</div>
 							<div class="w-[150px] shrink-0">
 								<FactRow
-									label="Lag"
-									value={source.live.lagSeconds === null
+									label="Kafka lag"
+									value={source.live.kafkaLagMessages === null
 										? '—'
-										: formatDuration(source.live.lagSeconds)}
+										: `${formatCompact(source.live.kafkaLagMessages)} msg`}
+								/>
+								<FactRow
+									label="Last arrival"
+									value={source.live.lastArrivalSeconds === null
+										? '—'
+										: `${formatDuration(source.live.lastArrivalSeconds)} ago`}
 								/>
 								<FactRow
 									label="Retention"

@@ -3,6 +3,7 @@
 	import XIcon from '@lucide/svelte/icons/x';
 	import { goto } from '$app/navigation';
 	import { getProject, startBuild } from '$lib/api';
+	import { protectedPipelinesForBuild } from '$lib/domain/protection';
 	import type { Project } from '$lib/domain/types';
 
 	/**
@@ -32,7 +33,12 @@
 		if (open && !userEdited) cmd = seed;
 	});
 
-	type ParsedCommand = { selectors: string[]; startTime: string | null; error: string | null };
+	type ParsedCommand = {
+		selectors: string[];
+		startTime: string | null;
+		confirmations: string[];
+		error: string | null;
+	};
 
 	const FLAGS: { flag: string; hint: string; description: string }[] = [
 		{ flag: '--select', hint: '<model | pipeline:name>', description: 'Limit the rebuild scope' },
@@ -40,15 +46,22 @@
 			flag: '--start-time',
 			hint: '<YYYY-MM-DDTHH:MM:SSZ>',
 			description: 'Bound the replay window'
-		}
+		},
+		{ flag: '--confirm', hint: '<word>', description: 'Confirm a protected pipeline' }
 	];
 
 	function parseCommand(raw: string): ParsedCommand {
 		const tokens: string[] = raw.trim().split(/\s+/);
 		if (tokens[0] !== 'stb' || tokens[1] !== 'build') {
-			return { selectors: [], startTime: null, error: 'command must start with `stb build`' };
+			return {
+				selectors: [],
+				startTime: null,
+				confirmations: [],
+				error: 'command must start with `stb build`'
+			};
 		}
 		const selectors: string[] = [];
+		const confirmations: string[] = [];
 		let startTime: string | null = null;
 		let index: number = 2;
 		while (index < tokens.length) {
@@ -59,23 +72,38 @@
 			} else if (token === '--start-time' && tokens[index + 1]) {
 				startTime = tokens[index + 1];
 				index += 2;
+			} else if (token === '--confirm' && tokens[index + 1]) {
+				confirmations.push(tokens[index + 1]);
+				index += 2;
 			} else if (token === '--auto-approve' || token === '--events') {
 				index += 1;
 			} else {
 				return {
 					selectors: [],
 					startTime: null,
+					confirmations: [],
 					error: `unsupported token '${token}' — the UI runs --select / --start-time builds`
 				};
 			}
 		}
 		if (startTime !== null && selectors.length === 0) {
-			return { selectors: [], startTime: null, error: '--start-time requires --select' };
+			return {
+				selectors: [],
+				startTime: null,
+				confirmations: [],
+				error: '--start-time requires --select'
+			};
 		}
-		return { selectors, startTime, error: null };
+		return { selectors, startTime, confirmations, error: null };
 	}
 
 	const parsed = $derived(parseCommand(cmd));
+	const protectedPipelines = $derived(protectedPipelinesForBuild(project, parsed.selectors));
+	const missingProtectedPipelines = $derived(
+		protectedPipelines.filter(
+			(pipeline) => !parsed.confirmations.includes(pipeline.protection?.confirmation ?? '')
+		)
+	);
 
 	const matchCount = $derived.by((): number => {
 		const names = new Set<string>();
@@ -101,7 +129,11 @@
 		executing = true;
 		executeError = null;
 		try {
-			const started = await startBuild(parsed.selectors, parsed.startTime);
+			const started = await startBuild(
+				parsed.selectors,
+				parsed.startTime,
+				parsed.confirmations
+			);
 			open = false;
 			userEdited = false;
 			await goto(`/runs/${started.invocationId}?live=1`);
@@ -202,13 +234,36 @@
 		</div>
 
 		<div class="border-t border-border px-[18px] py-3">
+			{#if protectedPipelines.length > 0}
+				<div
+					class="mb-3 rounded-[4px] border px-3 py-2"
+					style:border-color="color-mix(in srgb, var(--sb-warning) 45%, var(--border))"
+					style:background="color-mix(in srgb, var(--sb-warning) 7%, transparent)"
+				>
+					{#each protectedPipelines as pipeline (pipeline.name)}
+						<div class="text-[11.5px]" style:color="var(--sb-warning)">
+							<span class="font-mono font-semibold">Protected: {pipeline.name}</span>
+							<span class="text-muted-foreground"> · {pipeline.protection?.warning}</span>
+						</div>
+						<div class="text-muted-foreground pt-1 font-mono text-[10.5px]">
+							Add <code>--confirm {pipeline.protection?.confirmation}</code> to run this build.
+						</div>
+					{/each}
+				</div>
+			{/if}
 			<div class="flex flex-wrap items-center gap-2">
 				<span class="text-[var(--sb-text-faint)] shrink-0 font-mono text-[13px]">$</span>
 				<input
 					bind:value={cmd}
 					oninput={() => (userEdited = true)}
 					onkeydown={(event) => {
-						if (event.key === 'Enter' && parsed.error === null && !executing) void run();
+						if (
+							event.key === 'Enter' &&
+							parsed.error === null &&
+							missingProtectedPipelines.length === 0 &&
+							!executing
+						)
+							void run();
 					}}
 					spellcheck="false"
 					class="bg-[var(--sb-inset)] min-w-0 basis-full rounded-[4px] border border-border px-2.5 py-2 font-mono text-[12px] outline-none focus:border-[var(--primary)] sm:flex-1 sm:basis-auto"
@@ -216,7 +271,7 @@
 				/>
 				<button
 					class="bg-primary flex shrink-0 items-center gap-1.5 rounded-[4px] px-3.5 py-2 font-mono text-[12px] font-medium text-white disabled:opacity-50"
-					disabled={parsed.error !== null || executing}
+					disabled={parsed.error !== null || missingProtectedPipelines.length > 0 || executing}
 					onclick={() => void run()}
 				>
 					<PlayIcon size={13} /> {executing ? 'starting…' : 'Run'}

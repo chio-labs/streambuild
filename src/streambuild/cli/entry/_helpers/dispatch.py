@@ -104,6 +104,7 @@ def dispatch_cli_command(
                 verbose=bool(getattr(args, "verbose", False)),
                 auto_approve=bool(getattr(args, "auto_approve", False)),
                 events_output=bool(getattr(args, "events", False)),
+                confirmations=tuple(getattr(args, "confirm", [])),
             ),
             client=client,
             observation_client=observation_connection,

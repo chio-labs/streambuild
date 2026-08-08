@@ -144,4 +144,5 @@ def build_virtual_build_preview(
         full_refresh_keys=(selection.selected_model_keys if options.full_refresh else frozenset()),
         start_time_keys=selection.selected_model_keys if start_time is not None else frozenset(),
         start_time=start_time,
+        execution_logical_model_keys=selection.execution_logical_model_keys,
     )
