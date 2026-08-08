@@ -2,7 +2,7 @@
 	import CopyIcon from '@lucide/svelte/icons/copy';
 	import DownloadIcon from '@lucide/svelte/icons/download';
 	import { formatInteger, formatTimestamp } from '$lib/domain/format';
-	import JsonTree from './json-tree.svelte';
+	import JsonBlock from './json-block.svelte';
 	import { fetchMessageRecord } from './api';
 	import type { MessageRecord, MessageRow } from './types';
 
@@ -33,9 +33,9 @@
 
 	const value = $derived(record?.value ?? row.valuePreview);
 	const headers = $derived(record?.headers ?? row.headers);
-	const parsedValue = $derived.by((): unknown | undefined => {
+	const prettyValue = $derived.by((): string | undefined => {
 		try {
-			return JSON.parse(value) as unknown;
+			return JSON.stringify(JSON.parse(value), null, 2);
 		} catch {
 			return undefined;
 		}
@@ -99,15 +99,15 @@
 				>{candidate}{candidate === 'headers' ? ` (${headers.length})` : ''}</button
 			>
 		{/each}
-		{#if tab === 'value' && parsedValue !== undefined}
+		{#if tab === 'value' && prettyValue !== undefined}
 			<button
 				class="text-muted-foreground hover:text-foreground ml-auto px-2 py-1 font-mono text-[10px]"
-				onclick={() => (showRaw = !showRaw)}>{showRaw ? 'tree' : 'raw'}</button
+				onclick={() => (showRaw = !showRaw)}>{showRaw ? 'pretty' : 'raw'}</button
 			>
 		{/if}
 	</div>
 
-	<div class="max-h-[420px] overflow-auto pt-2.5">
+	<div class="bg-background mt-2.5 max-h-[480px] overflow-auto rounded-[4px] border border-[var(--border-subtle)] p-2.5">
 		{#if recordError}
 			<p class="pb-2 font-mono text-[11px]" style:color="var(--sb-danger)">
 				full record unavailable — showing the truncated preview · {recordError}
@@ -116,8 +116,8 @@
 		{#if tab === 'key'}
 			<pre class="whitespace-pre-wrap break-all font-mono text-[11.5px]">{record?.key ?? row.key}</pre>
 		{:else if tab === 'value'}
-			{#if parsedValue !== undefined && !showRaw}
-				<JsonTree value={parsedValue} />
+			{#if prettyValue !== undefined && !showRaw}
+				<JsonBlock text={prettyValue} />
 			{:else}
 				<pre class="whitespace-pre-wrap break-all font-mono text-[11.5px]">{value}</pre>
 			{/if}
