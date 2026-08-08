@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.11.0](https://github.com/chio-labs/streambuild/compare/v0.10.0...v0.11.0) (2026-08-08)
+
+
+### Features
+
+* add quality identities and audit scheduling ([d9b88ba](https://github.com/chio-labs/streambuild/commit/d9b88ba73c22302eb7f65ce9561d4270d097ff0a))
+* add quality identities and audit scheduling ([b165fab](https://github.com/chio-labs/streambuild/commit/b165fabc91c7a6449c0d2d344e595eb852f8f0ef))
+
+
+### Bug Fixes
+
+* guard empty Release Please outputs ([32b9cb6](https://github.com/chio-labs/streambuild/commit/32b9cb691c53862aa87b7bdb43a720b715cecd79))
+* guard empty Release Please outputs ([f4357d3](https://github.com/chio-labs/streambuild/commit/f4357d35e5c00dbe48bd98d6bc33a07e2c9ea597))
+
 ## [0.10.0](https://github.com/chio-labs/streambuild/compare/v0.9.3...v0.10.0) (2026-08-08)
 
 
