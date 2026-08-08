@@ -154,6 +154,8 @@ def test_given_warehouse_reads_when_reading_state_then_assembles_expected_overla
     assert model["drift"] is bool(test_case.expected_drift_reasons)
     source: dict = payload["sources"]["orders"]
     assert source["freshness"] == test_case.expected_source_freshness
+    assert source["lastArrivalSeconds"] == 2.0
+    assert source["kafkaLagMessages"] is None
     assert source["rowsPerSecond"] == test_case.expected_source_rows_per_second
     assert source["partitions"][0]["maxOffset"] == test_case.expected_partition_max_offset
     assert len(source["throughput"]["buckets"]) == test_case.expected_bucket_count

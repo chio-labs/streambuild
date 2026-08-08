@@ -81,12 +81,13 @@ export type BuildStartResult = {
 /** Start one build; rejects with the server detail when one is already running. */
 export async function startBuild(
 	selectors: string[],
-	startTime: string | null
+	startTime: string | null,
+	confirmations: string[] = []
 ): Promise<BuildStartResult> {
 	const response = await fetch('/api/build', {
 		method: 'POST',
 		headers: { 'content-type': 'application/json' },
-		body: JSON.stringify({ selectors, startTime })
+		body: JSON.stringify({ selectors, startTime, confirmations })
 	});
 	return readApiResponse<BuildStartResult>(response, 'build start');
 }

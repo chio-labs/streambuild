@@ -59,8 +59,11 @@ export type ManagedRelation = {
 
 export type PartitionState = {
 	partition: number;
-	offset: number;
-	lagSeconds: number;
+	/** Highest offset present in the StreamBuild landing table. */
+	offset: number | null;
+	committedOffset: number | null;
+	endOffset: number | null;
+	kafkaLagMessages: number | null;
 	newestEventAt: string;
 };
 
@@ -71,8 +74,10 @@ export type SourceLiveState = {
 	 * (warn_after / error_after). null when no policy is configured.
 	 */
 	freshness: 'fresh' | 'lagging' | 'stalled' | null;
-	/** null for adopted sources with no offset lineage to compare against. */
-	lagSeconds: number | null;
+	/** Age of the newest landed row. This is not Kafka consumer lag. */
+	lastArrivalSeconds: number | null;
+	/** Broker high-water offset minus the consumer group's committed offset. */
+	kafkaLagMessages: number | null;
 	newestEventAt: string;
 	/** Start of the retained extent — the floor of what any rebuild can reconstruct. */
 	oldestEventAt: string;
@@ -233,6 +238,8 @@ export type Pipeline = {
 	models: string[];
 	/** From an optional `pipeline.toml [naming]`. */
 	naming: { tablePrefix: string | null; viewPrefix: string | null } | null;
+	/** Present when `pipeline.toml` declares `[protection]`. */
+	protection: { warning: string; confirmation: string } | null;
 	directory: string;
 };
 
@@ -313,7 +320,11 @@ export type Project = {
 	connection: { host: string; port: number; username: string; secure: boolean };
 	vars: Record<string, string | number | boolean>;
 	naming: { tablePrefix: string; viewPrefix: string };
-	defaults: { managedSourceTtl: string | null };
+	defaults: {
+		managedSourceTtl: string | null;
+		modelTtl: string | null;
+		kafkaBrokerList: string | null;
+	};
 	/** Server clock at snapshot time — everything relative is computed from this. */
 	capturedAt: string;
 	sources: Source[];
@@ -436,6 +447,12 @@ export type PlanWarning = {
 	relatedModel: string | null;
 };
 
+export type PlanProtection = {
+	pipelineName: string;
+	warning: string;
+	confirmation: string;
+};
+
 export type PlanPrerequisite = {
 	name: string;
 	type: 'source' | 'model';
@@ -460,6 +477,7 @@ export type Plan = {
 	creation: PlanAction[];
 	replayRoots: PlanReplayRoot[];
 	warnings: PlanWarning[];
+	protections: PlanProtection[];
 	replayWindow: ReplayWindow;
 	plannedAt: string;
 	command: string;

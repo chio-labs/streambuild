@@ -1225,6 +1225,7 @@ source = { editable = "." }
 dependencies = [
     { name = "clickhouse-connect" },
     { name = "fastapi" },
+    { name = "kafka-python-ng" },
     { name = "polyglot-sql" },
     { name = "pyyaml" },
     { name = "uvicorn" },
@@ -1235,7 +1236,6 @@ dev = [
     { name = "commitizen" },
     { name = "fensu" },
     { name = "httpx" },
-    { name = "kafka-python-ng" },
     { name = "packaging" },
     { name = "pre-commit" },
     { name = "psycopg", extra = ["binary"] },
@@ -1252,6 +1252,7 @@ dev = [
 requires-dist = [
     { name = "clickhouse-connect", specifier = ">=0.8.18" },
     { name = "fastapi", specifier = ">=0.115" },
+    { name = "kafka-python-ng", specifier = ">=2.2.3" },
     { name = "polyglot-sql", specifier = ">=0.5.10" },
     { name = "pyyaml", specifier = ">=6.0.2" },
     { name = "uvicorn", specifier = ">=0.30" },
@@ -1262,7 +1263,6 @@ dev = [
     { name = "commitizen", specifier = ">=4.9.1" },
     { name = "fensu", specifier = ">=0.8.1" },
     { name = "httpx", specifier = ">=0.27" },
-    { name = "kafka-python-ng", specifier = ">=2.2.3" },
     { name = "packaging", specifier = ">=24.0" },
     { name = "pre-commit", specifier = ">=4.3.0" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2.9" },

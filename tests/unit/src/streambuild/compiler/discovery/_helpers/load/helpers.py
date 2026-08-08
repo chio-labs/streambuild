@@ -8,9 +8,13 @@ def write_pipeline_file(pipeline_file_path: Path, contents: str) -> None:
 
 
 def write_registry_project(
-    *, project_dir: Path, pipeline_config_contents: str, model_contents: str
+    *,
+    project_dir: Path,
+    pipeline_config_contents: str,
+    model_contents: str,
+    pipeline_name: str = "orders",
 ) -> Path:
-    pipeline_dir: Path = project_dir / "pipelines" / "orders"
+    pipeline_dir: Path = project_dir / "pipelines" / pipeline_name
     write_project_configuration_and_source(project_dir=project_dir)
     write_pipeline_file(pipeline_dir / "pipeline.toml", pipeline_config_contents)
     write_pipeline_file(

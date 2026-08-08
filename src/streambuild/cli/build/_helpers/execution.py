@@ -39,7 +39,11 @@ def execute_confirmed_direct_build(
 ) -> DirectBuildExecutionResult | None:
     """Show the destructive plan, require confirmation, then build."""
 
-    if not confirm_build(options=options, plan_text=preparation.plan_text):
+    if not confirm_build(
+        options=options,
+        plan_text=preparation.plan_text,
+        protection_requirements=preparation.protection_requirements,
+    ):
         return None
     try:
         runtime_execution: DirectRuntimeExecution = execute_direct_build_workflow(

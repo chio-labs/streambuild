@@ -2,6 +2,7 @@ import json
 import shlex
 from dataclasses import replace
 from pathlib import Path
+from typing import cast
 
 import pytest
 from fastapi.testclient import TestClient
@@ -92,6 +93,43 @@ def test_given_selectors_when_planning_then_returns_expected_plan(
     "test_case",
     [
         DevRefactorTestCase(
+            description="plan exposes the protected pipeline operator gate",
+            expected_value=[
+                {
+                    "pipelineName": "order_events",
+                    "warning": "Interrupts protected order events.",
+                    "confirmation": "DEPLOY_ORDER_EVENTS",
+                }
+            ],
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_protected_pipeline_when_planning_then_returns_confirmation_requirement(
+    test_case: DevRefactorTestCase,
+    tmp_path: Path,
+) -> None:
+    write_dev_server_project(project_dir=tmp_path)
+    (tmp_path / "pipelines" / "order_events" / "pipeline.toml").write_text(
+        """
+[protection]
+warning = "Interrupts protected order events."
+confirmation = "DEPLOY_ORDER_EVENTS"
+""".strip(),
+        encoding="utf-8",
+    )
+    client: TestClient = build_state_test_client(project_dir=tmp_path)
+
+    response: object = client.get("/api/plan", params={"select": "orders_clean"})
+
+    assert response.status_code == 200
+    assert response.json()["protections"] == test_case.expected_value
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DevRefactorTestCase(
             description="preview and build command share resolved dev context",
             expected_value=("local", "analytics"),
         )
@@ -150,6 +188,39 @@ def test_given_resolved_dev_context_when_planning_then_preview_and_build_command
     assert child_environment["STREAMBUILD_CLICKHOUSE_PORT"] == "8124"
     assert child_environment["STREAMBUILD_CLICKHOUSE_USERNAME"] == "builder"
     assert child_environment["STREAMBUILD_CLICKHOUSE_PASSWORD"] == "secret-value"
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DevRefactorTestCase(
+            description="build invocation passes every protection confirmation",
+            expected_value=("DEPLOY_ORDERS", "DEPLOY_PRICES"),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_protection_confirmations_when_building_invocation_then_passes_each_value(
+    test_case: DevRefactorTestCase,
+) -> None:
+    confirmations: tuple[str, ...] = cast(tuple[str, ...], test_case.expected_value)
+    argv, command = build_invocation(
+        selectors=("orders_clean",),
+        start_time=None,
+        execution_context=None,
+        confirmations=confirmations,
+    )
+
+    assert argv[-6:] == [
+        "--confirm",
+        "DEPLOY_ORDERS",
+        "--confirm",
+        "DEPLOY_PRICES",
+        "--auto-approve",
+        "--events",
+    ]
+    assert "--confirm DEPLOY_ORDERS" in command
+    assert "--confirm DEPLOY_PRICES" in command
 
 
 @pytest.mark.parametrize(

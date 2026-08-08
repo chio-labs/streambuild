@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from streambuild.adapter.models import CatalogSnapshot
-from streambuild.compiler.compile.models import DesiredState, ObjectKey
+from streambuild.compiler.compile.models import DesiredState, LogicalResourceKey, ObjectKey
 from streambuild.compiler.discovery.types import ReplayLineageMode
 from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.compiler.planner.models import DeploymentPlan, DirectPlan, DirectWarehouseSnapshot
@@ -30,6 +30,16 @@ class BuildCommandOptions:
     full_refresh: bool = False
     start_time: str | None = None
     events_output: bool = False
+    confirmations: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class BuildProtectionRequirement:
+    """One protected pipeline touched by the resolved build closure."""
+
+    pipeline_name: str
+    warning: str
+    confirmation: str
 
 
 @dataclass(frozen=True)
@@ -76,6 +86,7 @@ class VirtualBuildPreviewContext:
     full_refresh_keys: frozenset[ObjectKey] = frozenset()
     start_time_keys: frozenset[ObjectKey] = frozenset()
     start_time: str | None = None
+    execution_logical_model_keys: frozenset[LogicalResourceKey] = frozenset()
 
 
 @dataclass(frozen=True)
@@ -86,6 +97,7 @@ class DirectWorkflowPreparation:
     request: DirectBuildRequest
     workflow: DirectBuildWorkflow
     plan_text: str
+    protection_requirements: tuple[BuildProtectionRequirement, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -96,3 +108,4 @@ class VirtualWorkflowPreparation:
     request: BackfillBootstrapRequest
     workflow: BuildWorkflow
     plan_text: str
+    protection_requirements: tuple[BuildProtectionRequirement, ...] = ()

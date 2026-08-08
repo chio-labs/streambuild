@@ -61,3 +61,22 @@ class BuildRunRequest(BaseModel):
 
     selectors: list[str] = []
     startTime: str | None = None  # noqa: N815 - wire format is camelCase
+    confirmations: list[str] = []
+
+
+@dataclass(frozen=True)
+class KafkaPartitionLag:
+    """Broker offsets and lag for one topic partition."""
+
+    partition: int
+    committed_offset: int | None
+    end_offset: int
+    lag_messages: int | None
+
+
+@dataclass(frozen=True)
+class KafkaLagSnapshot:
+    """Best-effort consumer-group lag for one managed Kafka source."""
+
+    total_messages: int | None
+    partitions: tuple[KafkaPartitionLag, ...]

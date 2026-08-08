@@ -13,9 +13,11 @@ from streambuild.compiler.discovery.models import (
 )
 from streambuild.compiler.discovery.types import BoundedReplayFallback, ReplayOnChangeMode
 from tests.unit.src.streambuild.compiler.discovery._helpers.load._test_types import (
+    InvalidPipelineProtectionTestCase,
     LoadRegistryPipelineTestCase,
     LoadReplayPoliciesTestCase,
     MismatchedSourceTestCase,
+    PipelineProtectionTestCase,
     RemovedPipelineSurfaceTestCase,
     StandaloneMacroOwnershipTestCase,
 )
@@ -105,6 +107,98 @@ def test_given_replay_policies_when_loading_then_it_uses_renamed_values(
     assert model_policy.breaking is not None
     assert model_policy.breaking.lookback_seconds == test_case.expected_model_breaking_seconds
     assert transform.bounded_replay_fallback == test_case.expected_model_fallback
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        PipelineProtectionTestCase(
+            description="empty protection uses pipeline-specific defaults",
+            pipeline_name="orders",
+            pipeline_config_contents="[protection]",
+            expected_warning=(
+                "Pipeline 'orders' is protected. Confirm its operational impact before building."
+            ),
+            expected_confirmation="orders",
+        ),
+        PipelineProtectionTestCase(
+            description="custom protection preserves the operator message and confirmation",
+            pipeline_name="orders",
+            pipeline_config_contents="""
+            [protection]
+            warning = "Interrupts protected trading prices."
+            confirmation = "DEPLOY_PROTECTED_PRICES"
+            """,
+            expected_warning="Interrupts protected trading prices.",
+            expected_confirmation="DEPLOY_PROTECTED_PRICES",
+        ),
+        PipelineProtectionTestCase(
+            description="empty protection makes an unsafe pipeline name shell safe",
+            pipeline_name="order events",
+            pipeline_config_contents="[protection]",
+            expected_warning=(
+                "Pipeline 'order events' is protected. Confirm its operational impact before "
+                "building."
+            ),
+            expected_confirmation="CONFIRM_order_events",
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_pipeline_protection_when_loading_then_resolves_operator_gate(
+    test_case: PipelineProtectionTestCase,
+    tmp_path: Path,
+) -> None:
+    pipeline_dir: Path = write_registry_project(
+        project_dir=tmp_path,
+        pipeline_name=test_case.pipeline_name,
+        pipeline_config_contents=test_case.pipeline_config_contents,
+        model_contents="""
+        MODEL ();
+        SELECT order_id::UInt64 AS order_id FROM __source("orders")
+        """,
+    )
+
+    loaded: LoadedPipeline = load_pipeline_directory(pipeline_dir)
+
+    assert loaded.pipeline.protection is not None
+    assert loaded.pipeline.protection.warning == test_case.expected_warning
+    assert loaded.pipeline.protection.confirmation == test_case.expected_confirmation
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        InvalidPipelineProtectionTestCase(
+            description="rejects confirmation containing spaces",
+            confirmation="DEPLOY ORDERS",
+            expected_error_fragment="must contain only letters",
+        ),
+        InvalidPipelineProtectionTestCase(
+            description="rejects confirmation containing shell metacharacters",
+            confirmation="DEPLOY;ORDERS",
+            expected_error_fragment="must contain only letters",
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_unsafe_protection_confirmation_when_loading_then_rejects_it(
+    test_case: InvalidPipelineProtectionTestCase,
+    tmp_path: Path,
+) -> None:
+    pipeline_dir: Path = write_registry_project(
+        project_dir=tmp_path,
+        pipeline_config_contents=(f'[protection]\nconfirmation = "{test_case.confirmation}"'),
+        model_contents="""
+        MODEL ();
+        SELECT order_id::UInt64 AS order_id FROM __source("orders")
+        """,
+    )
+
+    with pytest.raises(PipelineDiscoveryError) as error_info:
+        load_pipeline_directory(pipeline_dir)
+
+    assert test_case.expected_error_fragment in str(error_info.value)
 
 
 @pytest.mark.parametrize(

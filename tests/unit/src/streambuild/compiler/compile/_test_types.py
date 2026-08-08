@@ -180,6 +180,13 @@ class CompileModelNamingTestCase:
 
 
 @dataclass(frozen=True)
+class CompileModelTtlDefaultTestCase:
+    description: str
+    model_ttl_header: str
+    expected_ttl: str
+
+
+@dataclass(frozen=True)
 class CompileRelationNameErrorTestCase:
     description: str
     relation_name: str

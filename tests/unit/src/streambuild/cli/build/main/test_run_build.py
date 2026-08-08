@@ -10,6 +10,7 @@ from tests.unit.src.streambuild.cli.build.main._test_types import (
     CliBuildArtifactTestCase,
     CliBuildGateTestCase,
     CliBuildInterruptTestCase,
+    CliProtectedBuildTestCase,
     CliVirtualBuildArtifactTestCase,
 )
 from tests.unit.src.streambuild.cli.build.main.helpers import (
@@ -79,6 +80,57 @@ def test_given_build_command_gates_when_running_then_it_refuses_before_writing(
     assert not (tmp_path / "target/run/build/plan.json").exists()
     assert connection.workflow_mutation_statements == []
     assert connection.invocation_observations[0].outcome == test_case.expected_invocation_outcome
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliProtectedBuildTestCase(
+            description="auto-approved protected build requires the exact confirmation",
+            warning="Interrupts protected order processing.",
+            confirmation="DEPLOY_ORDERS",
+            expected_rejected_exit_code=1,
+            expected_accepted_exit_code=0,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_protected_pipeline_when_auto_approving_then_requires_exact_confirmation(
+    test_case: CliProtectedBuildTestCase,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    write_direct_scope_project(project_root=tmp_path)
+    (tmp_path / "pipelines" / "orders" / "pipeline.toml").write_text(
+        f"""
+[protection]
+warning = "{test_case.warning}"
+confirmation = "{test_case.confirmation}"
+""".strip(),
+        encoding="utf-8",
+    )
+    rejected_connection: RecordingAdapterConnection = build_scope_project_connection()
+
+    rejected_exit_code: int = run_scope_project_build_with_connection(
+        project_root=tmp_path,
+        json_output=False,
+        auto_approve=True,
+        connection=rejected_connection,
+    )
+
+    assert rejected_exit_code == test_case.expected_rejected_exit_code
+    assert rejected_connection.workflow_mutation_statements == []
+    assert f"--confirm {test_case.confirmation}" in capsys.readouterr().err
+
+    accepted_exit_code: int = run_scope_project_build_with_connection(
+        project_root=tmp_path,
+        json_output=False,
+        auto_approve=True,
+        connection=build_scope_project_connection(),
+        confirmations=(test_case.confirmation,),
+    )
+
+    assert accepted_exit_code == test_case.expected_accepted_exit_code
 
 
 @pytest.mark.parametrize(

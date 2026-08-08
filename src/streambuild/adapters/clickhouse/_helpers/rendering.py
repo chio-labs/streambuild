@@ -12,6 +12,9 @@ from streambuild.adapter.models import (
     AdapterTable,
     AdapterView,
 )
+from streambuild.adapters.clickhouse.main.database_scoped_consumer_group import (
+    database_scoped_consumer_group,
+)
 
 
 def render_clickhouse_ensure_database(database: str) -> str:
@@ -78,7 +81,7 @@ def _render_managed_source(
         _render_column_definition(column) for column in resource.columns
     )
     create_prefix: str = "CREATE TABLE IF NOT EXISTS" if if_not_exists else "CREATE TABLE"
-    consumer_group: str = _database_scoped_consumer_group(
+    consumer_group: str = database_scoped_consumer_group(
         consumer_group=resource.consumer_group,
         database=database,
     )
@@ -159,11 +162,6 @@ def _render_column_definition(column: AdapterColumn) -> str:
     if column.default_expression is None:
         return f"{column.name} {column.type}"
     return f"{column.name} {column.type} DEFAULT {column.default_expression}"
-
-
-def _database_scoped_consumer_group(*, consumer_group: str, database: str) -> str:
-    normalized_database: str = database.replace("-", "_")
-    return f"{consumer_group}_{normalized_database}"
 
 
 def _render_set_difference_target(*, target: AdapterSetDifferenceTarget, index: int) -> str:

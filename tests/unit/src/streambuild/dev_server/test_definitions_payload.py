@@ -3,7 +3,10 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from tests.unit.src.streambuild.dev_server._test_types import DefinitionsFieldTestCase
+from tests.unit.src.streambuild.dev_server._test_types import (
+    DefinitionsFieldTestCase,
+    DevRefactorTestCase,
+)
 from tests.unit.src.streambuild.dev_server.helpers import (
     build_test_client,
     named_payload_item,
@@ -58,3 +61,38 @@ def test_given_compiled_project_when_reading_definitions_then_serializes_expecte
         for relation in source["managedRelations"]
     )
     assert payload["project"]["database"] == "analytics"
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DevRefactorTestCase(
+            description="definitions expose the protected pipeline operator gate",
+            expected_value={
+                "warning": "Interrupts protected order events.",
+                "confirmation": "DEPLOY_ORDER_EVENTS",
+            },
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_protected_pipeline_when_reading_definitions_then_serializes_protection(
+    test_case: DevRefactorTestCase,
+    tmp_path: Path,
+) -> None:
+    write_dev_server_project(project_dir=tmp_path)
+    (tmp_path / "pipelines" / "order_events" / "pipeline.toml").write_text(
+        """
+[protection]
+warning = "Interrupts protected order events."
+confirmation = "DEPLOY_ORDER_EVENTS"
+""".strip(),
+        encoding="utf-8",
+    )
+    client: TestClient = build_test_client(project_dir=tmp_path)
+
+    payload: dict = client.get("/api/definitions").json()
+
+    pipeline: dict = named_payload_item(payload["pipelines"], "order_events")
+    assert pipeline["protection"] == test_case.expected_value
+    assert pipeline["directory"] == "pipelines/order_events"

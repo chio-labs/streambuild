@@ -10,6 +10,9 @@ from streambuild.adapter.models import (
     AdapterTable,
     AdapterView,
 )
+from streambuild.adapters.clickhouse.main.database_scoped_consumer_group import (
+    database_scoped_consumer_group,
+)
 from streambuild.compiler.audit_discovery.models import LoadedSqlAudit
 from streambuild.compiler.compile.models import (
     CompiledModel,
@@ -26,6 +29,7 @@ from streambuild.compiler.discovery.models import (
     KafkaLandingStep,
     LoadedProject,
     ModelColumnSpec,
+    PipelineProtection,
     ReplayBoundary,
     SourceFreshnessPolicy,
 )
@@ -106,6 +110,12 @@ def _project_payload(analysis: CompileAnalysis) -> dict[str, object]:
         },
         "defaults": {
             "managedSourceTtl": effective.defaults.managed_source_ttl,
+            "modelTtl": effective.defaults.model_ttl,
+            "kafkaBrokerList": (
+                None
+                if effective.defaults.kafka_broker_list is None
+                else redacted_broker_list(effective.defaults.kafka_broker_list)
+            ),
             "freshness": _freshness_payload(effective.defaults.freshness),
         },
         "connection": {
@@ -137,7 +147,10 @@ def _source_payload(*, analysis: CompileAnalysis, source: CompiledSource) -> dic
             kafka = {
                 "brokerList": redacted_broker_list(resource.broker_list),
                 "topic": resource.topic,
-                "consumerGroup": resource.consumer_group,
+                "consumerGroup": database_scoped_consumer_group(
+                    consumer_group=resource.consumer_group,
+                    database=database,
+                ),
                 "format": resource.format,
                 "settings": redacted_source_settings(dict(resource.settings) or None),
             }
@@ -194,16 +207,25 @@ def _boundary_columns_payload(boundary: object) -> dict[str, str] | None:
 def _pipeline_payload(
     *, analysis: CompileAnalysis, pipeline: CompiledPipeline
 ) -> dict[str, object]:
+    protection: PipelineProtection | None = pipeline.pipeline.protection
     return {
         "name": pipeline.pipeline.name,
         "sourceName": None if pipeline.source is None else pipeline.source.key.name,
         "boundaryMode": str(pipeline.effective_replay_lineage_mode),
         "models": [model.key.name for model in pipeline.models],
-        "file": str(pipeline.file_path),
+        "directory": f"pipelines/{pipeline.pipeline.name}",
         "naming": {
             "tablePrefix": pipeline.pipeline.naming.table_prefix,
             "viewPrefix": pipeline.pipeline.naming.view_prefix,
         },
+        "protection": (
+            None
+            if protection is None
+            else {
+                "warning": protection.warning,
+                "confirmation": protection.confirmation,
+            }
+        ),
     }
 
 
