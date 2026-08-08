@@ -302,3 +302,12 @@ class DeploymentDetailMissingTestCase:
     description: str
     deployment_id: str
     expected_payload: dict[str, object] | None
+
+
+@dataclass(frozen=True)
+class BoundRelationStatsTestCase:
+    description: str
+    stats: tuple[tuple[str, int, int, int], ...]
+    bindings: tuple[tuple[str, str], ...]
+    expected_rows_by_relation: tuple[tuple[str, int], ...]
+    expected_parts_by_relation: tuple[tuple[str, int], ...]
