@@ -73,6 +73,40 @@ def validate_terminal_views(
             )
 
 
+def validate_pipeline_mode_boundaries(
+    *,
+    project: CompiledProject,
+    upstream_edges_by_key: dict[LogicalResourceKey, tuple[DependencyEdge, ...]],
+) -> None:
+    """Reject model relationships crossing direct and virtual pipelines."""
+
+    model_by_key: dict[LogicalResourceKey, CompiledModel] = {
+        model.key: model for model in project.models
+    }
+    mode_by_pipeline: dict[str, str] = {
+        pipeline.pipeline.name: str(pipeline.pipeline.mode) for pipeline in project.pipelines
+    }
+    downstream_model: CompiledModel
+    for downstream_model in project.models:
+        edge: DependencyEdge
+        for edge in upstream_edges_by_key[downstream_model.key]:
+            upstream_model: CompiledModel | None = model_by_key.get(edge.upstream_key)
+            if upstream_model is None:
+                continue
+            upstream_mode: str | None = mode_by_pipeline.get(upstream_model.pipeline_name)
+            downstream_mode: str | None = mode_by_pipeline.get(downstream_model.pipeline_name)
+            if upstream_mode is None or downstream_mode is None:
+                continue
+            if upstream_mode == downstream_mode:
+                continue
+            raise GraphInputError(
+                f"Pipeline '{downstream_model.pipeline_name}' is {downstream_mode} but model "
+                f"'{downstream_model.key.name}' references model '{upstream_model.key.name}' "
+                f"in {upstream_mode} pipeline '{upstream_model.pipeline_name}'. Relations "
+                "between direct and virtual pipelines are not allowed."
+            )
+
+
 def _model_upstream_edges(
     *,
     model: CompiledModel,

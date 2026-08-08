@@ -43,3 +43,11 @@ class ViewAuxiliaryReferenceTestCase:
     expected_test_case_count: int
     expected_audit_count: int
     expected_graph_names: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class CrossModeRelationshipTestCase:
+    description: str
+    upstream_mode: str
+    downstream_mode: str
+    expected_error_fragment: str

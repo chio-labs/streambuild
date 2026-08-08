@@ -31,8 +31,8 @@ def write_project_configuration_and_source(*, project_dir: Path) -> None:
         name = "test_project"
         default_target = "dev"
 
-        [settings]
-        virtual_environments = true
+        [defaults]
+        pipeline_mode = \"virtual\"
 
         [targets.dev]
         database = "analytics"

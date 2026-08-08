@@ -3,6 +3,11 @@
 from enum import StrEnum
 
 
+class PipelineMode(StrEnum):
+    DIRECT = "direct"
+    VIRTUAL = "virtual"
+
+
 class ReplayAnchorMode(StrEnum):
     AUTO = "auto"
     NEVER = "never"
