@@ -79,6 +79,8 @@ class ClickHousePublishEventInventoryRow:
     database_name: str
     logical_view_name: str
     physical_relation_name: str
+    operation: str = "promote"
+    previous_deployment_id: str | None = None
 
 
 @dataclass(frozen=True)

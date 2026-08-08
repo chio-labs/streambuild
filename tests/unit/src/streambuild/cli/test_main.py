@@ -1648,6 +1648,16 @@ def test_given_deployment_audit_options_when_parsing_then_values_are_preserved(
             argv=("deployment", "promote"),
             expected_exit_code=2,
         ),
+        CliRequiredDeploymentIdTestCase(
+            description="deployment rollback requires an identifier or previous",
+            argv=("deployment", "rollback"),
+            expected_exit_code=2,
+        ),
+        CliRequiredDeploymentIdTestCase(
+            description="deployment rollback rejects identifier with previous",
+            argv=("deployment", "rollback", "deployment-id", "--previous"),
+            expected_exit_code=2,
+        ),
     ),
     ids=lambda case: case.description,
 )

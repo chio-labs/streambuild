@@ -507,7 +507,10 @@ class AdapterPublishEventRecord:
     deployment_id: str
     published_at: str
     logical_view_names: tuple[str, ...]
+    publication_id: str = ""
     bindings: tuple[AdapterStableBinding, ...] = ()
+    operation: str = "promote"
+    previous_deployment_id: str | None = None
 
 
 @dataclass(frozen=True)
