@@ -65,11 +65,8 @@ def create_dev_app(
     )
 
     def _warm_broker_caches() -> None:
-        """Kick the non-blocking broker metadata refreshes at startup."""
+        """Kick the non-blocking broker metadata refreshes before the first request."""
 
-        # Both readers return cache misses instantly and refresh on their own
-        # executors, so warming here costs nothing and spares the first Topics
-        # or Sources visit the pop-in while metadata loads on demand.
         try:
             analysis: CompileAnalysis = state.current_analysis()
         except ProjectNotCompiledError:
