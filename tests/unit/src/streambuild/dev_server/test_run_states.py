@@ -3,11 +3,18 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from streambuild.adapter.models import AdapterQueryResult
-from streambuild.dev_server._helpers.runs_query import derive_run_status, read_run_events
+from streambuild.dev_server._helpers.runs_query import (
+    derive_run_duration_ms,
+    derive_run_status,
+    read_latest_direct_build_materialization,
+    read_run_events,
+)
 from streambuild.dev_server.types import RunPresentationStatus
 from tests.unit.src.streambuild.dev_server._test_types import (
+    DevRefactorTestCase,
     MissingRunDetailTestCase,
     RunDetailHistoryTestCase,
+    RunDurationDerivationTestCase,
     RunStatusDerivationTestCase,
 )
 from tests.unit.src.streambuild.dev_server.helpers import (
@@ -16,6 +23,50 @@ from tests.unit.src.streambuild.dev_server.helpers import (
 )
 
 _WAREHOUSE_NOW: datetime = datetime(2026, 8, 7, 12, 0, tzinfo=UTC)
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DevRefactorTestCase(
+            description="cancelled direct build cannot supersede failed materialization evidence",
+            expected_value="failed",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_cancelled_build_after_failure_when_reading_guard_then_latest_non_null_wins(
+    test_case: DevRefactorTestCase,
+) -> None:
+    table_query: str = (
+        "SELECT count() AS present FROM system.tables "
+        "WHERE database = 'analytics' AND name = '_streambuild_invocations'"
+    )
+    materialization_query: str = (
+        "SELECT materialized_outcome FROM `analytics`.`_streambuild_invocations` WHERE "
+        "project_identity = '/project' AND target_identity = 'analytics' AND command = 'build' "
+        "AND mode = 'direct' AND materialized_outcome IS NOT NULL "
+        "ORDER BY completed_at DESC, invocation_id DESC LIMIT 1"
+    )
+    connection: FakeAdapterConnection = FakeAdapterConnection(
+        catalog=build_fake_state_connection()._catalog,
+        results_by_query={
+            table_query: AdapterQueryResult(column_names=("present",), rows=((1,),)),
+            materialization_query: AdapterQueryResult(
+                column_names=("materialized_outcome",),
+                rows=(("failed",),),
+            ),
+        },
+        warehouse_timestamp="2026-08-08 12:00:00.000",
+    )
+
+    outcome: str | None = read_latest_direct_build_materialization(
+        connection=connection,
+        database="analytics",
+        project_identity="/project",
+    )
+
+    assert outcome == test_case.expected_value
 
 
 @pytest.mark.parametrize(
@@ -70,6 +121,38 @@ def test_given_run_facts_when_deriving_status_then_fact_and_liveness_contract_is
     )
 
     assert status == test_case.expected_status
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        RunDurationDerivationTestCase(
+            description="completed event stream uses terminal duration",
+            started_at="2026-08-07 11:00:00.000",
+            completed_at="2026-08-07 11:05:00.000",
+            warehouse_now=_WAREHOUSE_NOW,
+            expected_duration_ms=300_000,
+        ),
+        RunDurationDerivationTestCase(
+            description="active event stream uses current elapsed time",
+            started_at="2026-08-07 11:00:00.000",
+            completed_at=None,
+            warehouse_now=_WAREHOUSE_NOW,
+            expected_duration_ms=3_600_000,
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_event_stream_timestamps_when_deriving_duration_then_uses_correct_end(
+    test_case: RunDurationDerivationTestCase,
+) -> None:
+    duration_ms: int = derive_run_duration_ms(
+        started_at=test_case.started_at,
+        completed_at=test_case.completed_at,
+        warehouse_now=test_case.warehouse_now,
+    )
+
+    assert duration_ms == test_case.expected_duration_ms
 
 
 @pytest.mark.parametrize(

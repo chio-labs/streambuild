@@ -5,6 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from streambuild.compiler.audit_discovery.types import AuditAttachmentKind
+from streambuild.compiler.quality.models import QualityNodeIdentity
+
 
 @dataclass(frozen=True)
 class LoadedSqlAudit:
@@ -18,6 +21,20 @@ class LoadedSqlAudit:
     name: str | None = None
     audit_index: int = 1
     generic_definition_name: str | None = None
+    attachment_kind: AuditAttachmentKind | str = AuditAttachmentKind.STANDALONE
+    attached_model: str | None = None
+    attached_column: str | None = None
+    quality_identity: QualityNodeIdentity | None = None
+    severity_is_explicit: bool = False
+    cadence_seconds: int | None = None
+    warmup_seconds: int = 0
+    scheduled: bool = False
+    cadence_seconds_override: int | None = None
+    warmup_seconds_override: int | None = None
+    scheduled_override: bool | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "attachment_kind", AuditAttachmentKind(self.attachment_kind))
 
 
 @dataclass(frozen=True)
@@ -41,3 +58,7 @@ class LoadedGenericSqlAuditInstance:
     name: str
     severity: str = "error"
     description: str | None = None
+    severity_is_explicit: bool = False
+    cadence_seconds_override: int | None = None
+    warmup_seconds_override: int | None = None
+    scheduled_override: bool | None = None

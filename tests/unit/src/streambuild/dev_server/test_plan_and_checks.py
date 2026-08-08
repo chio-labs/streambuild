@@ -3,6 +3,7 @@ import shlex
 from dataclasses import replace
 from pathlib import Path
 from typing import cast
+from unittest.mock import MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -13,6 +14,7 @@ from streambuild.dev_server.classes.dev_server_state import DevServerState
 from streambuild.dev_server.exceptions import DevConfigurationError
 from streambuild.dev_server.main._create_dev_app import create_dev_app
 from streambuild.dev_server.models import DevExecutionContext
+from streambuild.dev_server.types import ActivityTone, DevServerReporter
 from tests.unit.src.streambuild.dev_server._test_types import (
     ChecksRunTestCase,
     ChecksStatusTestCase,
@@ -370,6 +372,52 @@ def test_given_check_request_when_running_then_returns_expected_result(
 
     assert response.status_code == test_case.expected_status
     assert response.json().get("passed", False) is test_case.expected_passed
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DevRefactorTestCase(
+            description="warming audit is narrated as deferred rather than failed",
+            expected_value="deferred",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_warming_audit_when_run_from_ui_then_activity_is_deferred(
+    test_case: DevRefactorTestCase,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    write_dev_server_project(project_dir=tmp_path)
+    runner: MagicMock = MagicMock(
+        return_value={
+            "name": "orders_clean.order_id.not_null.1",
+            "kind": "audit",
+            "passed": False,
+            "deferredUntil": "2026-08-03 12:15:00.000",
+        }
+    )
+    reporter_mock: MagicMock = MagicMock()
+    monkeypatch.setattr("streambuild.dev_server._helpers.api_routes.run_one_audit", runner)
+    client: TestClient = TestClient(
+        create_dev_app(
+            state=DevServerState(run_compile=build_compile_callable(project_dir=tmp_path)),
+            connection=build_fake_state_connection(),
+            database="analytics",
+            project_dir=tmp_path,
+            reporter=cast(DevServerReporter, reporter_mock),
+        )
+    )
+
+    response: object = client.post(
+        "/api/checks/run",
+        json={"kind": "audit", "name": "orders_clean.order_id.not_null.1"},
+    )
+
+    assert response.status_code == 200
+    assert reporter_mock.report_activity.call_args.kwargs["status"] == test_case.expected_value
+    assert reporter_mock.report_activity.call_args.kwargs["tone"] == ActivityTone.CAUTION
 
 
 @pytest.mark.parametrize(

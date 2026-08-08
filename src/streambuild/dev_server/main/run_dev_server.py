@@ -26,6 +26,7 @@ def run_dev_server(
     *,
     run_compile: Callable[[], CompileAnalysis],
     connection: AdapterConnection | None,
+    observation_connection: AdapterConnection | None,
     database: str | None,
     project_dir: Path,
     host: str,
@@ -48,6 +49,7 @@ def run_dev_server(
     app: FastAPI = create_dev_app(
         state=state,
         connection=connection,
+        observation_connection=observation_connection,
         database=database,
         project_dir=project_dir,
         reporter=reporter,

@@ -39,6 +39,7 @@ export function projectFromServer(definitions: Payload, state: Payload): Project
 	const connection = (header.connection ?? {}) as Record<string, unknown>;
 	const naming = (header.naming ?? {}) as Payload;
 	const defaults = (header.defaults ?? {}) as Payload;
+	const auditDefaults = (defaults.audits ?? {}) as Payload;
 	const models = (definitions.models as Payload[]).map((model) =>
 		modelFromServer(model, stateFor(state, 'models', model.name as string))
 	);
@@ -61,7 +62,12 @@ export function projectFromServer(definitions: Payload, state: Payload): Project
 		defaults: {
 			managedSourceTtl: (defaults.managedSourceTtl as string | null) ?? null,
 			modelTtl: (defaults.modelTtl as string | null) ?? null,
-			kafkaBrokerList: (defaults.kafkaBrokerList as string | null) ?? null
+			kafkaBrokerList: (defaults.kafkaBrokerList as string | null) ?? null,
+			audits: {
+				severity: (auditDefaults.severity as Project['defaults']['audits']['severity']) ?? null,
+				cadenceSeconds: (auditDefaults.cadenceSeconds as number | null) ?? null,
+				warmupSeconds: (auditDefaults.warmupSeconds as number | null) ?? null
+			}
 		},
 		capturedAt: (state.capturedAt as string) ?? new Date().toISOString(),
 		sources: (definitions.sources as Payload[]).map((source) =>
@@ -137,6 +143,7 @@ function partitionFromServer(partition: Payload): PartitionState {
 function pipelineFromServer(pipeline: Payload): Pipeline {
 	const naming = (pipeline.naming ?? {}) as Payload;
 	const protection = (pipeline.protection ?? null) as Payload | null;
+	const auditDefaults = (pipeline.auditDefaults ?? {}) as Payload;
 	return {
 		name: pipeline.name as string,
 		sourceName: (pipeline.sourceName as string | null) ?? null,
@@ -153,6 +160,11 @@ function pipelineFromServer(pipeline: Payload): Pipeline {
 						warning: (protection.warning as string) ?? '',
 						confirmation: (protection.confirmation as string) ?? ''
 					},
+		auditDefaults: {
+			severity: (auditDefaults.severity as Pipeline['auditDefaults']['severity']) ?? null,
+			cadenceSeconds: (auditDefaults.cadenceSeconds as number | null) ?? null,
+			warmupSeconds: (auditDefaults.warmupSeconds as number | null) ?? null
+		},
 		directory: (pipeline.directory as string) ?? ''
 	};
 }
@@ -230,6 +242,8 @@ function columnFromServer(column: Payload): Column {
 
 function auditFromServer(audit: Payload): Audit {
 	const genericName = (audit.genericName as string | null) ?? null;
+	const identity = audit.identity as Payload;
+	const policy = audit.policy as Payload;
 	return {
 		name: audit.name as string,
 		file: (audit.file as string) ?? '',
@@ -239,16 +253,32 @@ function auditFromServer(audit: Payload): Audit {
 		generic: genericName !== null,
 		genericName,
 		sql: (audit.sql as string) ?? '',
+		identity: {
+			bindingKey: identity.bindingKey as string,
+			definitionFingerprint: identity.definitionFingerprint as string,
+			executionFingerprint: identity.executionFingerprint as string
+		},
+		policy: {
+			cadenceSeconds: (policy.cadenceSeconds as number | null) ?? null,
+			warmupSeconds: Number(policy.warmupSeconds ?? 0),
+			scheduled: Boolean(policy.scheduled)
+		},
 		result: null
 	};
 }
 
 function testFromServer(test: Payload): SqlTest {
+	const identity = test.identity as Payload;
 	return {
 		name: test.name as string,
 		file: (test.file as string) ?? '',
 		targets: (test.targets as string[]) ?? [],
 		sql: (test.sql as string) ?? '',
+		identity: {
+			bindingKey: identity.bindingKey as string,
+			definitionFingerprint: identity.definitionFingerprint as string,
+			executionFingerprint: identity.executionFingerprint as string
+		},
 		result: null
 	};
 }
@@ -363,13 +393,12 @@ function recordedIso(completedAt: string): string {
 
 function recordedPassed(record: CheckStatusRecord): boolean {
 	if (record.status === 'passed') return true;
-	// A stale row keeps the outcome but loses the status label — infer it.
-	return record.status === 'stale' && record.failureCount === 0 && record.errorMessage === null;
+	return record.driftReasons.length > 0 && record.failureCount === 0 && record.errorMessage === null;
 }
 
 function isNewerThanExisting(checkedAt: string | undefined, record: CheckStatusRecord): boolean {
 	if (checkedAt === undefined) return true;
-	return Date.parse(recordedIso(record.completedAt ?? '')) > Date.parse(checkedAt);
+	return Date.parse(recordedIso(record.completedAt ?? '')) >= Date.parse(checkedAt);
 }
 
 function applyAuditStatus(project: Project, record: CheckStatusRecord): void {
@@ -382,7 +411,8 @@ function applyAuditStatus(project: Project, record: CheckStatusRecord): void {
 		sampleColumns: (payload.sample_column_names as string[]) ?? [],
 		sampleRows: (payload.sample_rows as CellValue[][]) ?? [],
 		checkedAt: recordedIso(record.completedAt ?? ''),
-		stale: record.status === 'stale'
+		driftReasons: record.driftReasons,
+		deferredUntil: (payload.eligible_at as string | null) ?? null
 	};
 }
 
@@ -406,6 +436,6 @@ function applyTestStatus(project: Project, record: CheckStatusRecord): void {
 		targets,
 		checkedAt: recordedIso(record.completedAt ?? ''),
 		errorMessage: record.errorMessage,
-		stale: record.status === 'stale'
+		driftReasons: record.driftReasons
 	};
 }

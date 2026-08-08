@@ -64,7 +64,7 @@ def _execute_single_sql_audit(
             )
             sample_column_names = sample_result.column_names
             sample_rows = sample_result.rows
-    except AdapterError as error:
+    except (AdapterError, AuditExecutionError) as error:
         return SqlAuditResult(
             file_path=loaded_audit.file_path,
             referenced_model_names=loaded_audit.referenced_model_names,
@@ -100,4 +100,9 @@ def _query_failing_row_count(*, query: str, client: AdapterConnection) -> int:
     count_value: object = result.rows[0][0]
     if not isinstance(count_value, (int, float, str)):
         raise AuditExecutionError("SQL audit count query returned a non-numeric row count")
-    return int(count_value)
+    try:
+        return int(count_value)
+    except (OverflowError, ValueError) as error:
+        raise AuditExecutionError(
+            "SQL audit count query returned a non-numeric row count"
+        ) from error

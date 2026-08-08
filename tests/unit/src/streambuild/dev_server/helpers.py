@@ -221,7 +221,19 @@ class FakeAdapterConnection(AdapterConnection):
         return self._fingerprints
 
     def metadata_columns(self, *, database: str, table: str) -> frozenset[str]:
-        raise NotImplementedError
+        del database, table
+        return frozenset(
+            {
+                "node_name",
+                "binding_key",
+                "definition_fingerprint",
+                "execution_fingerprint",
+                "trigger",
+                "scheduled_for",
+                "cadence_seconds",
+                "warmup_seconds",
+            }
+        )
 
     def query(self, statement: str) -> AdapterQueryResult:
         return self._results_by_query[statement]
@@ -434,9 +446,14 @@ def build_fake_state_connection(
             rows=(
                 (
                     "audit",
-                    "pipelines/order_events/orders_clean.sql:1",
+                    "orders_clean.order_id.not_null.1",
+                    "binding",
                     "fingerprint",
+                    "execution",
+                    None,
+                    0,
                     "passed",
+                    [],
                     "error",
                     0,
                     "2026-08-03 09:00:00.000",
@@ -446,9 +463,14 @@ def build_fake_state_connection(
             ),
             column_names=(
                 "node_kind",
-                "node_identity",
+                "node_name",
+                "binding_key",
                 "definition_fingerprint",
+                "execution_fingerprint",
+                "cadence_seconds",
+                "warmup_seconds",
                 "current_status",
+                "drift_reasons",
                 "severity",
                 "failure_count",
                 "completed_at",

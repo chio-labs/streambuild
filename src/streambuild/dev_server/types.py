@@ -81,3 +81,16 @@ class Freshness(StrEnum):
     FRESH = "fresh"
     LAGGING = "lagging"
     STALLED = "stalled"
+
+
+class AuditScheduleState(StrEnum):
+    """Current scheduler disposition of one compiled audit or target."""
+
+    DISABLED = "disabled"
+    IDLE = "idle"
+    DUE = "due"
+    SCHEDULED = "scheduled"
+    WARMING_UP = "warming_up"
+    RUNNING = "running"
+    BLOCKED = "blocked"
+    BACKING_OFF = "backing_off"

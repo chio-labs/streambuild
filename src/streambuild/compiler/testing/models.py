@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from streambuild.compiler.quality.models import QualityNodeIdentity
+
 
 @dataclass(frozen=True)
 class SqlTestChainStep:
@@ -38,3 +40,4 @@ class SqlTestCase:
     warnings: tuple[str, ...] = ()
     name: str | None = None
     test_index: int = 1
+    quality_identity: QualityNodeIdentity | None = None

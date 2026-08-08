@@ -8,6 +8,7 @@ from typing import cast
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.constants import (
+    METADATA_AUDIT_SCHEDULE_CLAIMS_TABLE_NAME,
     METADATA_DEPLOYMENT_WATERMARKS_TABLE_NAME,
     METADATA_DEPLOYMENTS_TABLE_NAME,
     METADATA_DIRECT_FINGERPRINTS_TABLE_NAME,
@@ -33,14 +34,16 @@ from streambuild.adapter.models import (
     AdapterNodeResultRecord,
     AdapterObjectStateRecord,
     AdapterPublishEventRecord,
+    AdapterQualityScheduleClaim,
     AdapterQueryResult,
     AdapterRunEventRecord,
 )
 from streambuild.adapter.types import AdapterOptionalStateStatus, AdapterReplayBoundaryMode
 from streambuild.adapters.clickhouse.models import ClickHouseMetadataStatement
 
-_CURRENT_STATE_SCHEMA_VERSION: int = 1
+_CURRENT_STATE_SCHEMA_VERSION: int = 2
 _BOUNDARY_PART_COUNT: int = 2
+_SCHEDULE_CLAIM_STALE_SECONDS: int = 600
 _DIRECT_FINGERPRINT_REQUIRED_COLUMNS: frozenset[str] = frozenset(
     {
         "fingerprint_id",
@@ -67,6 +70,7 @@ def render_clickhouse_metadata_migration_statements(database: str) -> tuple[str,
         _render_invocations_table(database),
         _render_node_results_table(database),
         _render_run_events_table(database),
+        _render_audit_schedule_claims_table(database),
     )
 
 
@@ -156,12 +160,76 @@ def build_clickhouse_metadata_insert_statements(
             table=f"{database}.{METADATA_NODE_RESULTS_TABLE_NAME}",
             sql=(
                 f"INSERT INTO {database}.{METADATA_NODE_RESULTS_TABLE_NAME} "
-                "(result_id, invocation_id, node_kind, node_identity, definition_fingerprint, "
-                "target_identity, status, severity, failure_count, completed_at, payload_json, "
-                "error_message) VALUES"
+                "(result_id, invocation_id, node_kind, node_name, binding_key, "
+                "definition_fingerprint, execution_fingerprint, target_identity, trigger, "
+                "scheduled_for, cadence_seconds, warmup_seconds, status, severity, "
+                "failure_count, completed_at, payload_json, error_message) VALUES"
             ),
             rows=tuple(_node_result_row(record) for record in state.node_results),
         ),
+    )
+
+
+def render_clickhouse_scheduled_quality_slot_claims(
+    *,
+    database: str,
+    project_identity: str,
+    target_identity: str,
+    owner_id: str,
+    claims: tuple[AdapterQualityScheduleClaim, ...],
+) -> tuple[str, ...]:
+    """Render migration and insert mutations for warehouse-visible slot claims."""
+
+    if not claims:
+        return ()
+    values: str = ", ".join(
+        _render_schedule_claim_row(
+            project_identity=project_identity,
+            target_identity=target_identity,
+            owner_id=owner_id,
+            claim=claim,
+        )
+        for claim in claims
+    )
+    return (
+        *render_clickhouse_metadata_migration_workflow(database),
+        (
+            f"INSERT INTO {database}.{METADATA_AUDIT_SCHEDULE_CLAIMS_TABLE_NAME} "
+            "(project_identity, target_identity, node_name, scheduled_for, owner_id, claimed_at) "
+            f"VALUES {values};"
+        ),
+    )
+
+
+def load_clickhouse_scheduled_quality_slot_claim_winners(
+    *,
+    connection: AdapterConnection,
+    database: str,
+    project_identity: str,
+    target_identity: str,
+    owner_id: str,
+    claims: tuple[AdapterQualityScheduleClaim, ...],
+) -> frozenset[AdapterQualityScheduleClaim]:
+    """Return logical slots where this owner has the earliest non-stale claim."""
+
+    if not claims:
+        return frozenset()
+    result: AdapterQueryResult = connection.query(
+        "SELECT node_name, toString(scheduled_for) AS scheduled_for, "
+        "argMin(owner_id, tuple(claimed_at, owner_id)) AS elected_owner FROM "
+        f"{database}.{METADATA_AUDIT_SCHEDULE_CLAIMS_TABLE_NAME} WHERE "
+        f"project_identity = {_render_sql_literal(project_identity)} AND "
+        f"target_identity = {_render_sql_literal(target_identity)} AND "
+        f"claimed_at >= now64(3, 'UTC') - INTERVAL {_SCHEDULE_CLAIM_STALE_SECONDS} SECOND "
+        "GROUP BY node_name, scheduled_for"
+    )
+    requested: frozenset[AdapterQualityScheduleClaim] = frozenset(claims)
+    return frozenset(
+        AdapterQualityScheduleClaim(node_name=str(row[0]), scheduled_for=str(row[1]))
+        for row in result.rows
+        if str(row[2]) == owner_id
+        and AdapterQualityScheduleClaim(node_name=str(row[0]), scheduled_for=str(row[1]))
+        in requested
     )
 
 
@@ -424,9 +492,15 @@ def _render_node_results_table(database: str) -> str:
         "    result_id String,\n"
         "    invocation_id String,\n"
         "    node_kind LowCardinality(String),\n"
-        "    node_identity String,\n"
+        "    node_name String,\n"
+        "    binding_key String,\n"
         "    definition_fingerprint String,\n"
+        "    execution_fingerprint String,\n"
         "    target_identity String,\n"
+        "    trigger LowCardinality(String),\n"
+        "    scheduled_for Nullable(DateTime64(3, 'UTC')),\n"
+        "    cadence_seconds Nullable(UInt64),\n"
+        "    warmup_seconds UInt64,\n"
         "    status LowCardinality(String),\n"
         "    severity Nullable(String),\n"
         "    failure_count UInt64,\n"
@@ -434,7 +508,7 @@ def _render_node_results_table(database: str) -> str:
         "    payload_json String,\n"
         "    error_message Nullable(String)\n"
         ") ENGINE = MergeTree\n"
-        "ORDER BY (node_kind, node_identity, completed_at, result_id)"
+        "ORDER BY (node_kind, node_name, completed_at, result_id)"
     )
 
 
@@ -450,6 +524,22 @@ def _render_run_events_table(database: str) -> str:
         "    payload_json String\n"
         ") ENGINE = MergeTree\n"
         "ORDER BY (invocation_id, sequence)"
+    )
+
+
+def _render_audit_schedule_claims_table(database: str) -> str:
+    return (
+        f"CREATE TABLE IF NOT EXISTS {database}.{METADATA_AUDIT_SCHEDULE_CLAIMS_TABLE_NAME} (\n"
+        "    project_identity String,\n"
+        "    target_identity String,\n"
+        "    node_name String,\n"
+        "    scheduled_for DateTime64(3, 'UTC'),\n"
+        "    owner_id String,\n"
+        "    claimed_at DateTime64(3, 'UTC')\n"
+        ") ENGINE = MergeTree\n"
+        "ORDER BY (project_identity, target_identity, node_name, scheduled_for, claimed_at, "
+        "owner_id)\n"
+        "TTL toDateTime(claimed_at) + INTERVAL 7 DAY DELETE"
     )
 
 
@@ -629,9 +719,15 @@ def _node_result_row(record: AdapterNodeResultRecord) -> dict[str, object]:
         "result_id": record.result_id,
         "invocation_id": record.invocation_id,
         "node_kind": record.node_kind,
-        "node_identity": record.node_identity,
+        "node_name": record.node_name,
+        "binding_key": record.binding_key,
         "definition_fingerprint": record.definition_fingerprint,
+        "execution_fingerprint": record.execution_fingerprint,
         "target_identity": record.target_identity,
+        "trigger": record.trigger,
+        "scheduled_for": record.scheduled_for,
+        "cadence_seconds": record.cadence_seconds,
+        "warmup_seconds": record.warmup_seconds,
         "status": record.status,
         "severity": record.severity,
         "failure_count": record.failure_count,
@@ -672,62 +768,93 @@ def render_clickhouse_latest_node_status_query(
 
     manifest_sql: str = _manifest_nodes_sql(nodes)
     return (
-        f"WITH manifest_nodes AS ({manifest_sql}), latest_results AS ("
-        "SELECT result.node_kind AS node_kind, result.node_identity AS node_identity, "
-        "argMax(tuple(result.definition_fingerprint, result.status, result.severity, "
-        "result.failure_count, result.completed_at, result.payload_json, result.error_message), "
+        f"WITH manifest_nodes AS ({manifest_sql}), logical_results AS ("
+        "SELECT result.node_kind AS node_kind, result.node_name AS node_name, "
+        "argMax(tuple(result.binding_key, result.definition_fingerprint, "
+        "result.execution_fingerprint, result.status, result.severity, result.failure_count, "
+        "result.completed_at, result.payload_json, result.error_message, result.cadence_seconds, "
+        "result.warmup_seconds, result.result_id), "
         "tuple(result.completed_at, result.result_id)) AS latest FROM "
         f"{database}.{METADATA_NODE_RESULTS_TABLE_NAME} AS result INNER JOIN "
         f"{database}.{METADATA_INVOCATIONS_TABLE_NAME} AS invocation ON "
         "invocation.invocation_id = result.invocation_id WHERE result.target_identity = "
         f"{_render_sql_literal(target_identity)} AND invocation.project_identity = "
-        f"{_render_sql_literal(project_identity)} GROUP BY result.node_kind, "
-        "result.node_identity), "
-        "matching_results AS (SELECT result.node_kind AS node_kind, "
-        "result.node_identity AS node_identity, "
-        "argMax(tuple(result.status, result.severity, result.failure_count, result.completed_at, "
-        "result.payload_json, result.error_message), tuple(result.completed_at, result.result_id)) "
-        f"AS latest FROM {database}.{METADATA_NODE_RESULTS_TABLE_NAME} AS result "
-        f"INNER JOIN {database}.{METADATA_INVOCATIONS_TABLE_NAME} AS invocation ON "
-        "invocation.invocation_id = result.invocation_id INNER JOIN manifest_nodes AS manifest ON "
-        "result.node_kind = manifest.node_kind AND "
-        "result.node_identity = manifest.node_identity WHERE "
-        f"result.target_identity = {_render_sql_literal(target_identity)} AND "
-        f"invocation.project_identity = {_render_sql_literal(project_identity)} AND "
-        "result.definition_fingerprint = manifest.definition_fingerprint "
-        "GROUP BY result.node_kind, result.node_identity) "
-        "SELECT manifest.node_kind AS node_kind, manifest.node_identity AS node_identity, "
+        f"{_render_sql_literal(project_identity)} GROUP BY result.node_kind, result.node_name, "
+        "result.binding_key, result.execution_fingerprint, "
+        "ifNull(toString(result.scheduled_for), result.result_id)), latest_results AS ("
+        "SELECT node_kind, node_name, argMax(latest, tuple(latest.7, latest.12)) AS latest "
+        "FROM logical_results GROUP BY node_kind, node_name), matching_results AS ("
+        "SELECT logical.node_kind AS node_kind, logical.node_name AS node_name, "
+        "argMax(logical.latest, tuple(logical.latest.7, logical.latest.12)) AS latest "
+        "FROM logical_results AS logical INNER JOIN manifest_nodes AS manifest ON "
+        "logical.node_kind = manifest.node_kind AND logical.node_name = manifest.node_name "
+        "WHERE logical.latest.1 = manifest.binding_key AND "
+        "logical.latest.2 = manifest.definition_fingerprint AND "
+        "logical.latest.3 = manifest.execution_fingerprint "
+        "GROUP BY logical.node_kind, logical.node_name) "
+        "SELECT manifest.node_kind AS node_kind, manifest.node_name AS node_name, "
+        "manifest.binding_key AS binding_key, "
         "manifest.definition_fingerprint AS definition_fingerprint, "
-        "multiIf(matching.node_identity != '', matching.latest.1, latest.node_identity = '', "
-        "'never_run', 'stale') AS current_status, "
-        "nullIf(if(matching.node_identity != '', matching.latest.2, latest.latest.3), '') "
-        "AS severity, if(matching.node_identity != '', matching.latest.3, latest.latest.4) "
-        "AS failure_count, if(matching.node_identity != '', matching.latest.4, latest.latest.5) "
-        "AS completed_at, if(matching.node_identity != '', matching.latest.5, latest.latest.6) "
-        "AS payload_json, nullIf(if(matching.node_identity != '', matching.latest.6, "
-        "latest.latest.7), '') AS error_message FROM manifest_nodes AS manifest "
+        "manifest.execution_fingerprint AS execution_fingerprint, "
+        "manifest.cadence_seconds AS cadence_seconds, "
+        "manifest.warmup_seconds AS warmup_seconds, "
+        "multiIf(latest.node_name = '', 'never_run', matching.node_name != '' AND ("
+        "ifNull(matching.latest.10, 0) != ifNull(manifest.cadence_seconds, 0) OR "
+        "matching.latest.11 != manifest.warmup_seconds), 'schedule_changed', "
+        "matching.node_name != '', matching.latest.4, latest.latest.1 != manifest.binding_key, "
+        "'binding_changed', latest.latest.2 != manifest.definition_fingerprint, "
+        "'definition_changed', latest.latest.3 != manifest.execution_fingerprint, "
+        "'execution_changed', ifNull(latest.latest.10, 0) != "
+        "ifNull(manifest.cadence_seconds, 0) OR latest.latest.11 != manifest.warmup_seconds, "
+        "'schedule_changed', latest.latest.4) AS current_status, "
+        "arrayFilter(reason -> reason != '', ["
+        "if(matching.node_name = '' AND latest.node_name != '' AND "
+        "latest.latest.1 != manifest.binding_key, "
+        "'binding_changed', ''), "
+        "if(matching.node_name = '' AND latest.node_name != '' AND "
+        "latest.latest.2 != manifest.definition_fingerprint, "
+        "'definition_changed', ''), "
+        "if(matching.node_name = '' AND latest.node_name != '' AND "
+        "latest.latest.3 != manifest.execution_fingerprint, "
+        "'execution_changed', ''), "
+        "if(ifNull(matching.latest.10, ifNull(latest.latest.10, 0)) != "
+        "ifNull(manifest.cadence_seconds, 0) OR "
+        "ifNull(matching.latest.11, latest.latest.11) != manifest.warmup_seconds, "
+        "'schedule_changed', '')]) AS drift_reasons, "
+        "nullIf(if(matching.node_name != '', matching.latest.5, latest.latest.5), '') AS severity, "
+        "if(matching.node_name != '', matching.latest.6, latest.latest.6) AS failure_count, "
+        "if(matching.node_name != '', matching.latest.7, latest.latest.7) AS completed_at, "
+        "if(matching.node_name != '', matching.latest.8, latest.latest.8) AS payload_json, "
+        "nullIf(if(matching.node_name != '', matching.latest.9, latest.latest.9), '') "
+        "AS error_message FROM manifest_nodes AS manifest "
         "LEFT JOIN latest_results AS latest ON latest.node_kind = manifest.node_kind AND "
-        "latest.node_identity = manifest.node_identity LEFT JOIN matching_results AS matching ON "
-        "matching.node_kind = manifest.node_kind AND "
-        "matching.node_identity = manifest.node_identity "
-        "ORDER BY manifest.node_kind, manifest.node_identity"
+        "latest.node_name = manifest.node_name LEFT JOIN matching_results AS matching ON "
+        "matching.node_kind = manifest.node_kind AND matching.node_name = manifest.node_name "
+        "ORDER BY manifest.node_kind, manifest.node_name"
     )
 
 
 def _manifest_nodes_sql(nodes: tuple[AdapterCurrentQualityNode, ...]) -> str:
     if not nodes:
         return (
-            "SELECT CAST('' AS String) AS node_kind, CAST('' AS String) AS node_identity, "
-            "CAST('' AS String) AS definition_fingerprint WHERE false"
+            "SELECT CAST('' AS String) AS node_kind, CAST('' AS String) AS node_name, "
+            "CAST('' AS String) AS binding_key, CAST('' AS String) AS "
+            "definition_fingerprint, CAST('' AS String) AS execution_fingerprint, "
+            "CAST(NULL AS Nullable(UInt64)) AS cadence_seconds, "
+            "CAST(0 AS UInt64) AS warmup_seconds WHERE false"
         )
     rows: str = ", ".join(
-        f"({_render_sql_literal(node.node_kind)}, {_render_sql_literal(node.node_identity)}, "
-        f"{_render_sql_literal(node.definition_fingerprint)})"
+        f"({_render_sql_literal(node.node_kind)}, {_render_sql_literal(node.node_name)}, "
+        f"{_render_sql_literal(node.binding_key)}, "
+        f"{_render_sql_literal(node.definition_fingerprint)}, "
+        f"{_render_sql_literal(node.execution_fingerprint)}, "
+        f"{_render_sql_literal(node.cadence_seconds)}, {node.warmup_seconds})"
         for node in nodes
     )
     return (
-        "SELECT * FROM VALUES('node_kind String, node_identity String, "
-        f"definition_fingerprint String', {rows})"
+        "SELECT * FROM VALUES('node_kind String, node_name String, binding_key String, "
+        "definition_fingerprint String, execution_fingerprint String, "
+        f"cadence_seconds Nullable(UInt64), warmup_seconds UInt64', {rows})"
     )
 
 
@@ -754,6 +881,24 @@ def _render_sql_literal(value: object) -> str:
         escaped_value: str = value.replace("\\", "\\\\").replace("'", "\\'")
         return f"'{escaped_value}'"
     raise AdapterResultError(f"Cannot render ClickHouse SQL literal for {type(value).__name__}")
+
+
+def _render_schedule_claim_row(
+    *,
+    project_identity: str,
+    target_identity: str,
+    owner_id: str,
+    claim: AdapterQualityScheduleClaim,
+) -> str:
+    return (
+        "("
+        f"{_render_sql_literal(project_identity)}, "
+        f"{_render_sql_literal(target_identity)}, "
+        f"{_render_sql_literal(claim.node_name)}, "
+        f"toDateTime64({_render_sql_literal(claim.scheduled_for)}, 3, 'UTC'), "
+        f"{_render_sql_literal(owner_id)}, now64(3, 'UTC')"
+        ")"
+    )
 
 
 def _terminate_sql(statement: str) -> str:

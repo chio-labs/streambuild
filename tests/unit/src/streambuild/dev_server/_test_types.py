@@ -1,5 +1,6 @@
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 
 from streambuild.compiler.compile.models import CompiledModel
 from streambuild.dev_server.types import RunPresentationStatus
@@ -134,6 +135,15 @@ class RunStatusDerivationTestCase:
     completed_event_outcome: str | None
     signal_age_seconds: int
     expected_status: RunPresentationStatus
+
+
+@dataclass(frozen=True)
+class RunDurationDerivationTestCase:
+    description: str
+    started_at: str
+    completed_at: str | None
+    warehouse_now: datetime
+    expected_duration_ms: int
 
 
 @dataclass(frozen=True)

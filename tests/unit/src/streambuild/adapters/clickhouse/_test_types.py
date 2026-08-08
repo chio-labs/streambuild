@@ -65,6 +65,7 @@ class LatestNodeStatusQueryTestCase:
     expected_node_values_fragment: str
     expected_target_fragment: str
     expected_project_fragment: str
+    expected_logical_slot_fragment: str
 
 
 @dataclass(frozen=True)

@@ -9,6 +9,11 @@ from typing import cast
 
 from streambuild.compiler.discovery._helpers.source_registry import parse_freshness_policy
 from streambuild.compiler.discovery.constants import (
+    AUDIT_DEFAULT_EVERY_KEY,
+    AUDIT_DEFAULT_KEYS,
+    AUDIT_DEFAULT_WARMUP_KEY,
+    AUDIT_SCHEDULER_KEYS,
+    AUDIT_SEVERITIES,
     DEFAULT_ADAPTER_NAME,
     DEFAULTS_KEYS,
     FULL_REPLAY_POLICY_VALUE,
@@ -27,7 +32,11 @@ from streambuild.compiler.discovery.constants import (
     TARGET_KEYS,
 )
 from streambuild.compiler.discovery.exceptions import ProjectConfigError
+from streambuild.compiler.discovery.main._parse_duration_seconds import parse_duration_seconds
 from streambuild.compiler.discovery.models import (
+    AuditDefaults,
+    AuditSchedulerConfig,
+    AuditSchedulerOverride,
     AuthoredProjectConfig,
     AuthoredProjectSettings,
     DiscoveredProjectFile,
@@ -189,6 +198,11 @@ def _parse_project_config(
         targets=_parse_project_targets(payload=payload.get("targets"), file_path=file_path),
         defaults=_parse_project_defaults(payload=payload.get("defaults"), file_path=file_path),
         naming=_parse_project_naming(payload=payload.get("naming"), file_path=file_path),
+        audit_scheduler=_parse_audit_scheduler_config(
+            payload=payload.get("audit_scheduler"),
+            label="audit_scheduler",
+            file_path=file_path,
+        ),
     )
 
 
@@ -328,6 +342,11 @@ def _parse_project_target(*, payload: object, label: str, file_path: Path) -> Pr
             label=f"{label}.vars",
             file_path=file_path,
         ),
+        audit_scheduler=_parse_audit_scheduler_override(
+            payload=mapping.get("audit_scheduler"),
+            label=f"{label}.audit_scheduler",
+            file_path=file_path,
+        ),
     )
 
 
@@ -341,6 +360,7 @@ def _parse_local_target(*, payload: object, label: str, file_path: Path) -> Loca
         database=target.database,
         connection=target.connection,
         variables=target.variables,
+        audit_scheduler=target.audit_scheduler,
     )
 
 
@@ -357,6 +377,37 @@ def _target_mapping(*, payload: object, label: str, file_path: Path) -> dict[str
         file_path=file_path,
     )
     return mapping
+
+
+def _parse_audit_scheduler_config(
+    *, payload: object, label: str, file_path: Path
+) -> AuditSchedulerConfig:
+    override: AuditSchedulerOverride = _parse_audit_scheduler_override(
+        payload=payload,
+        label=label,
+        file_path=file_path,
+    )
+    return AuditSchedulerConfig(enabled=bool(override.enabled))
+
+
+def _parse_audit_scheduler_override(
+    *, payload: object, label: str, file_path: Path
+) -> AuditSchedulerOverride:
+    mapping: dict[str, object] = _optional_mapping(
+        payload=payload,
+        label=label,
+        file_path=file_path,
+    )
+    _validate_allowed_keys(
+        mapping=mapping,
+        allowed_keys=AUDIT_SCHEDULER_KEYS,
+        label=label,
+        file_path=file_path,
+    )
+    enabled: object | None = mapping.get("enabled")
+    if enabled is not None and not isinstance(enabled, bool):
+        raise ProjectConfigError(f"{file_path} {label}.enabled must be a boolean")
+    return AuditSchedulerOverride(enabled=enabled if isinstance(enabled, bool) else None)
 
 
 def _parse_connection(*, payload: object, file_path: Path) -> RawConnectionConfig:
@@ -428,6 +479,54 @@ def _parse_project_defaults(*, payload: object, file_path: Path) -> ProjectDefau
             label="defaults.freshness",
             file_path=file_path,
         ),
+        audits=_parse_audit_defaults(
+            payload=mapping.get("audits"),
+            label="defaults.audits",
+            file_path=file_path,
+        ),
+    )
+
+
+def _parse_audit_defaults(*, payload: object, label: str, file_path: Path) -> AuditDefaults:
+    mapping: dict[str, object] = _optional_mapping(
+        payload=payload,
+        label=label,
+        file_path=file_path,
+    )
+    _validate_allowed_keys(
+        mapping=mapping,
+        allowed_keys=AUDIT_DEFAULT_KEYS,
+        label=label,
+        file_path=file_path,
+    )
+    severity_value: object | None = mapping.get("severity")
+    if severity_value is not None and severity_value not in AUDIT_SEVERITIES:
+        raise ProjectConfigError(f"{file_path} {label}.severity must be 'error' or 'warning'")
+    try:
+        cadence_seconds: int | None = (
+            parse_duration_seconds(
+                value=mapping[AUDIT_DEFAULT_EVERY_KEY],
+                field_path=f"{file_path} {label}.every",
+                allow_zero=False,
+            )
+            if AUDIT_DEFAULT_EVERY_KEY in mapping
+            else None
+        )
+        warmup_seconds: int | None = (
+            parse_duration_seconds(
+                value=mapping[AUDIT_DEFAULT_WARMUP_KEY],
+                field_path=f"{file_path} {label}.warmup",
+                allow_zero=True,
+            )
+            if AUDIT_DEFAULT_WARMUP_KEY in mapping
+            else None
+        )
+    except ValueError as error:
+        raise ProjectConfigError(str(error)) from None
+    return AuditDefaults(
+        severity=str(severity_value) if severity_value is not None else None,
+        cadence_seconds=cadence_seconds,
+        warmup_seconds=warmup_seconds,
     )
 
 

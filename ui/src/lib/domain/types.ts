@@ -240,6 +240,11 @@ export type Pipeline = {
 	naming: { tablePrefix: string | null; viewPrefix: string | null } | null;
 	/** Present when `pipeline.toml` declares `[protection]`. */
 	protection: { warning: string; confirmation: string } | null;
+	auditDefaults: {
+		severity: Severity | null;
+		cadenceSeconds: number | null;
+		warmupSeconds: number | null;
+	};
 	directory: string;
 };
 
@@ -249,14 +254,32 @@ export type Severity = 'error' | 'warning';
 
 export type CellValue = string | number | null;
 
+export type QualityDriftReason =
+	| 'binding_changed'
+	| 'definition_changed'
+	| 'execution_changed'
+	| 'schedule_changed';
+
+export type QualityIdentity = {
+	bindingKey: string;
+	definitionFingerprint: string;
+	executionFingerprint: string;
+};
+
+export type AuditPolicy = {
+	cadenceSeconds: number | null;
+	warmupSeconds: number;
+	scheduled: boolean;
+};
+
 export type AuditResult = {
 	passed: boolean;
 	failingRowCount: number;
 	sampleColumns: string[];
 	sampleRows: CellValue[][];
 	checkedAt: string;
-	/** True when the definition changed after this outcome was recorded. */
-	stale?: boolean;
+	driftReasons: QualityDriftReason[];
+	deferredUntil?: string | null;
 };
 
 export type Audit = {
@@ -270,6 +293,8 @@ export type Audit = {
 	/** The generic definition it came from, when `generic`. */
 	genericName: string | null;
 	sql: string;
+	identity: QualityIdentity;
+	policy: AuditPolicy;
 	result: AuditResult | null;
 };
 
@@ -288,8 +313,7 @@ export type SqlTestResult = {
 	targets: SqlTestTargetResult[];
 	checkedAt: string;
 	errorMessage: string | null;
-	/** True when the definition changed after this outcome was recorded. */
-	stale?: boolean;
+	driftReasons: QualityDriftReason[];
 };
 
 export type SqlTest = {
@@ -298,6 +322,7 @@ export type SqlTest = {
 	/** Multi-target tests exist — they land under `tests/_chain_/`. */
 	targets: string[];
 	sql: string;
+	identity: QualityIdentity;
 	result: SqlTestResult | null;
 };
 
@@ -324,6 +349,11 @@ export type Project = {
 		managedSourceTtl: string | null;
 		modelTtl: string | null;
 		kafkaBrokerList: string | null;
+		audits: {
+			severity: Severity | null;
+			cadenceSeconds: number | null;
+			warmupSeconds: number | null;
+		};
 	};
 	/** Server clock at snapshot time — everything relative is computed from this. */
 	capturedAt: string;

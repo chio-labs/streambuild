@@ -19,3 +19,7 @@ class BuildInProgressError(DevServerError):
 
 class BuildStartError(DevServerError):
     """Raised when a spawned build exits or stalls before its run_started event."""
+
+
+class AuditSchedulerPersistenceError(DevServerError):
+    """Raised when a scheduled slot cannot be durably marked as attempted."""
