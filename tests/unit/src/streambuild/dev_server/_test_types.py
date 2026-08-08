@@ -311,3 +311,12 @@ class BoundRelationStatsTestCase:
     bindings: tuple[tuple[str, str], ...]
     expected_rows_by_relation: tuple[tuple[str, int], ...]
     expected_parts_by_relation: tuple[tuple[str, int], ...]
+
+
+@dataclass(frozen=True)
+class DeploymentDiffPayloadTestCase:
+    description: str
+    expected_statuses: tuple[str, ...]
+    expected_row_pairs: tuple[tuple[int | None, int | None], ...]
+    expected_added_columns: tuple[tuple[str, ...], ...]
+    expected_removed_columns: tuple[tuple[str, ...], ...]
