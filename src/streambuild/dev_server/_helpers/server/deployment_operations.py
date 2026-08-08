@@ -169,14 +169,21 @@ def build_deployment_diff_payload(
 ) -> dict[str, object]:
     """Compare two deployment endpoints for the deployment detail view."""
 
-    result: DeploymentDiffResult = execute_deployment_diff(
-        request=DeploymentDiffRequest(
-            database=database,
-            metadata_database=metadata_database,
-            comparison=comparison,
-        ),
-        client=connection,
+    return diff_payload(
+        result=execute_deployment_diff(
+            request=DeploymentDiffRequest(
+                database=database,
+                metadata_database=metadata_database,
+                comparison=comparison,
+            ),
+            client=connection,
+        )
     )
+
+
+def diff_payload(*, result: DeploymentDiffResult) -> dict[str, object]:
+    """Serialize one deployment comparison for the deployment detail view."""
+
     return {
         "database": result.database,
         "fromEndpoint": result.from_endpoint,

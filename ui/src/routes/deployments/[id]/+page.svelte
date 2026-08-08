@@ -4,7 +4,10 @@
 	import LineageCanvas from '$lib/components/lineage/lineage-canvas.svelte';
 	import EdgeLegend from '$lib/components/lineage/edge-legend.svelte';
 	import FactRow from '$lib/components/fact-row.svelte';
-	import { fetchDeployment, getProject } from '$lib/api';
+	import { fetchDeployment, fetchDeploymentDiff, getProject, promoteDeployment } from '$lib/api';
+	import type { DeploymentDiff } from '$lib/api';
+	import { goto } from '$app/navigation';
+	import { refreshDeployments } from '$lib/api/store.svelte';
 	import { buildLogicalGraph } from '$lib/domain/derive';
 	import { formatBytes, formatCompact, formatInteger } from '$lib/domain/format';
 	import type { DeploymentDetail, DeploymentModel, Graph, Project } from '$lib/domain/types';
@@ -14,6 +17,36 @@
 
 	let detail = $state<DeploymentDetail | null>(null);
 	let loadError = $state<string | null>(null);
+	let tab = $state<'graph' | 'diff'>('graph');
+	let diff = $state<DeploymentDiff | null>(null);
+	let diffError = $state<string | null>(null);
+	let promoting = $state<boolean>(false);
+	let promoteError = $state<string | null>(null);
+
+	async function promote(): Promise<void> {
+		promoting = true;
+		promoteError = null;
+		try {
+			const result = await promoteDeployment(deploymentId);
+			await refreshDeployments();
+			await goto(`/runs/${result.invocationId}`);
+		} catch (error) {
+			promoteError = String(error);
+			promoting = false;
+		}
+	}
+
+	function loadDiff(): void {
+		tab = 'diff';
+		if (diff !== null) return;
+		fetchDeploymentDiff(deploymentId)
+			.then((payload) => {
+				diff = payload;
+			})
+			.catch((error: unknown) => {
+				diffError = String(error);
+			});
+	}
 
 	$effect(() => {
 		const id = deploymentId;
@@ -136,19 +169,86 @@
 		<div class="flex flex-col gap-4 lg:flex-row">
 			<div class="min-w-0 flex-1 overflow-hidden rounded-[4px] border border-border">
 				<div class="flex items-center gap-3 border-b border-border px-3 py-1.5">
-					<EdgeLegend compact />
-					<span class="text-[var(--sb-text-faint)] ml-auto font-mono text-[10px]">
-						node shows live → staged
-					</span>
+					<div class="flex overflow-hidden rounded-[3px] border border-border">
+						<button
+							class="px-2.5 py-1 font-mono text-[10.5px] {tab === 'graph'
+								? 'bg-[var(--sb-hover)] text-foreground'
+								: 'text-muted-foreground hover:text-foreground'}"
+							onclick={() => (tab = 'graph')}>Graph</button
+						>
+						<button
+							class="border-l border-border px-2.5 py-1 font-mono text-[10.5px] {tab === 'diff'
+								? 'bg-[var(--sb-hover)] text-foreground'
+								: 'text-muted-foreground hover:text-foreground'}"
+							onclick={() => loadDiff()}>Diff</button
+						>
+					</div>
+					{#if tab === 'graph'}
+						<EdgeLegend compact />
+						<span class="text-[var(--sb-text-faint)] ml-auto font-mono text-[10px]">
+							node shows live → staged
+						</span>
+					{:else}
+						<span class="text-[var(--sb-text-faint)] ml-auto font-mono text-[10px]">
+							{diff === null ? 'comparing…' : `${diff.fromEndpoint} → ${diff.toEndpoint}`}
+						</span>
+					{/if}
 				</div>
-				<div style:height="520px">
-					<LineageCanvas
-						{project}
-						graph={scoped}
-						groupMode="none"
-						layoutSalt={deploymentId}
-					/>
-				</div>
+				{#if tab === 'graph'}
+					<div style:height="520px">
+						<LineageCanvas {project} graph={scoped} groupMode="none" layoutSalt={deploymentId} />
+					</div>
+				{:else}
+					<div class="max-h-[520px] overflow-y-auto">
+						{#if diffError !== null}
+							<div class="p-4 text-[12px]" style:color="var(--sb-error)">{diffError}</div>
+						{:else if diff === null}
+							<div class="text-muted-foreground p-4 text-[12px]">comparing…</div>
+						{:else}
+							<table class="sb-list w-full text-left">
+								<thead>
+									<tr
+										class="text-[var(--sb-text-faint)] font-mono text-[10px] uppercase tracking-[0.14em]"
+									>
+										<th class="px-3 py-2 font-normal">Relation</th>
+										<th class="px-3 py-2 font-normal">Status</th>
+										<th class="px-3 py-2 font-normal">Rows</th>
+										<th class="px-3 py-2 font-normal">Columns</th>
+									</tr>
+								</thead>
+								<tbody>
+									{#each diff.relations as relation (relation.logicalName)}
+										<tr>
+											<td class="code px-3 py-1.5 text-[12px]">{relation.logicalName}</td>
+											<td class="px-3">
+												<span
+													class="sb-tag code"
+													style:color={relation.status === 'unchanged'
+														? 'var(--sb-text-faint)'
+														: 'var(--sb-warn)'}>{relation.status}</span
+												>
+											</td>
+											<td class="code px-3 text-[11.5px]">
+												{relation.fromRowCount ?? '—'} → {relation.toRowCount ?? '—'}
+											</td>
+											<td class="code text-[var(--sb-text-faint)] px-3 text-[11px]">
+												{relation.addedColumns.length > 0
+													? `+${relation.addedColumns.join(', ')}`
+													: ''}
+												{relation.removedColumns.length > 0
+													? `-${relation.removedColumns.join(', ')}`
+													: ''}
+												{relation.addedColumns.length === 0 && relation.removedColumns.length === 0
+													? '—'
+													: ''}
+											</td>
+										</tr>
+									{/each}
+								</tbody>
+							</table>
+						{/if}
+					</div>
+				{/if}
 			</div>
 
 			<div class="flex w-full shrink-0 flex-col gap-4 lg:w-[320px]">
@@ -219,10 +319,19 @@
 									? ''
 									: 's'} ({formatBytes(detail.wouldOrphan.bytes)}).
 							</div>
-							<code
-								class="block rounded-[3px] border border-border bg-[var(--sb-hover)] px-2 py-1.5 text-[11.5px]"
-								>stb deployment promote {detail.deploymentId}</code
+							<button
+								class="bg-primary text-primary-foreground w-full rounded-[3px] px-3 py-1.5 text-[12px] font-medium disabled:opacity-50"
+								onclick={() => void promote()}
+								disabled={promoting}
 							>
+								{promoting ? 'promoting…' : 'Promote'}
+							</button>
+							{#if promoteError !== null}
+								<div class="pt-2 text-[11px]" style:color="var(--sb-error)">{promoteError}</div>
+							{/if}
+							<div class="text-[var(--sb-text-faint)] pt-2 font-mono text-[10.5px]">
+								stb deployment promote {detail.deploymentId}
+							</div>
 						</div>
 					</div>
 				{/if}
