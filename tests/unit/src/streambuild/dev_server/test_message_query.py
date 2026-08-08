@@ -1,6 +1,6 @@
 import pytest
 
-from streambuild.dev_server._helpers.message_query import (
+from streambuild.dev_server._helpers.queries.message_query import (
     build_facets_sql,
     build_messages_sql,
     build_record_sql,

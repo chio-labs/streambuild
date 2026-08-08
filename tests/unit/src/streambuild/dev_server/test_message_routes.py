@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 from httpx import Response
 
 from streambuild.adapter.models import AdapterQueryResult
-from streambuild.dev_server._helpers.message_query import (
+from streambuild.dev_server._helpers.queries.message_query import (
     build_facets_sql,
     build_record_sql,
     parse_messages_document,

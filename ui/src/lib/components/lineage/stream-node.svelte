@@ -98,6 +98,17 @@
 				: 'var(--sb-success)'
 	);
 
+	// Deployment relations carry their own hue: the question they answer is
+	// "is this live, waiting, or dead weight", not how fresh the model is.
+	const DEPLOYMENT_COLOUR: Record<string, string> = {
+		active: 'var(--sb-success)',
+		staged: 'var(--sb-warning)',
+		orphaned: 'var(--sb-text-faint)'
+	};
+	const deploymentColour = $derived(
+		node.deployment ? (DEPLOYMENT_COLOUR[node.deployment.state] ?? null) : null
+	);
+
 	const showAnchor = $derived(fields.anchor && node.anchor !== null && node.anchor !== 'view');
 	const showChecks = $derived(fields.checks && node.totalChecks > 0);
 	const showRows = $derived(fields.rows && node.rows !== null);
@@ -124,7 +135,7 @@
 	<!-- left rail = STATUS -->
 	<span
 		class="absolute bottom-0 left-0 top-0 w-[3px]"
-		style:background={fields.status ? railColour : 'transparent'}
+		style:background={deploymentColour ?? (fields.status ? railColour : 'transparent')}
 	></span>
 	<Handle type="target" position={Position.Left} class="!border-border !bg-muted !h-2 !w-2" />
 
@@ -154,9 +165,10 @@
 			-->
 			{#if fields.kind && (!compact || node.logicalType === 'source')}
 				<div
-					class="text-[var(--sb-text-faint)] mt-[3px] truncate font-mono uppercase tracking-[0.1em] {compact
+					class="mt-[3px] truncate font-mono uppercase tracking-[0.1em] {compact
 						? 'text-[8.5px]'
 						: 'text-[9px]'}"
+					style:color={deploymentColour ?? 'var(--sb-text-faint)'}
 				>
 					{node.kindLabel}
 				</div>

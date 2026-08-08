@@ -11,8 +11,8 @@ from fastapi import FastAPI
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.compiler.pipeline.models import CompileAnalysis
-from streambuild.dev_server._helpers.api_routes import register_api_routes
-from streambuild.dev_server._helpers.state_payload import build_topics_payload
+from streambuild.dev_server._helpers.payloads.state_payload import build_topics_payload
+from streambuild.dev_server._helpers.server.api_routes import register_api_routes
 from streambuild.dev_server.classes.audit_scheduler import AuditScheduler
 from streambuild.dev_server.classes.build_process import BuildProcessManager
 from streambuild.dev_server.classes.dev_server_state import DevServerState

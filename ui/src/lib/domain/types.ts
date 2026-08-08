@@ -385,6 +385,14 @@ export type PhysicalNodeType =
 	| 'model_table'
 	| 'model_view';
 
+/** Why a physical relation exists in the warehouse, for the physical view. */
+export type RelationDeploymentState = 'active' | 'staged' | 'orphaned';
+
+export type NodeDeployment = {
+	deploymentId: string;
+	state: RelationDeploymentState;
+};
+
 export type GraphNode = {
 	id: string;
 	label: string;
@@ -402,6 +410,8 @@ export type GraphNode = {
 	warningChecks: number;
 	totalChecks: number;
 	drift: boolean;
+	/** Set only for deployment-suffixed relations in the physical view. */
+	deployment?: NodeDeployment | null;
 };
 
 export type GraphEdge = {
@@ -555,6 +565,7 @@ export type Deployment = {
 	publishedAt: string | null;
 	persistedStatus: string | null;
 	rootNames: string[];
+	physicalRelationNames: string[];
 	activeBindingNames: string[];
 	missingRelationNames: string[];
 	modelCount: number;

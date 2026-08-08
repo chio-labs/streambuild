@@ -4,6 +4,7 @@
 	import StatusPill from '$lib/components/status-pill.svelte';
 	import AnchorBadge from '$lib/components/anchor-badge.svelte';
 	import { getProject } from '$lib/api';
+	import { app } from '$lib/api/store.svelte';
 	import { auditCounts, auditsForModel } from '$lib/domain/derive';
 	import { formatAgo, formatBytes, formatCompact } from '$lib/domain/format';
 	import type { Model, Project } from '$lib/domain/types';
@@ -17,6 +18,34 @@
 
 	let query = $state<string>('');
 	let kind = $state<KindFilter>('all');
+
+	/**
+	 * Which deployment currently backs each logical relation, and how many other
+	 * deployments still hold a copy on disk. Only meaningful in virtual mode.
+	 */
+	const backingByRelation: Map<string, { deploymentId: string; retained: number }> = $derived.by(
+		() => {
+			const result = new Map<string, { deploymentId: string; retained: number }>();
+			for (const deployment of app.deployments) {
+				for (const logicalName of deployment.activeBindingNames) {
+					result.set(logicalName, { deploymentId: deployment.deploymentId, retained: 0 });
+				}
+			}
+			for (const deployment of app.deployments) {
+				for (const relationName of deployment.physicalRelationNames) {
+					const parts = relationName.split('__');
+					const logicalName = parts.length > 2 ? parts.slice(0, -1).join('__') : relationName;
+					const entry = result.get(logicalName);
+					if (entry !== undefined) entry.retained += 1;
+				}
+			}
+			return result;
+		}
+	);
+
+	function shortDeployment(deploymentId: string): string {
+		return deploymentId.split('_').at(-1) ?? deploymentId;
+	}
 
 	function matchesKind(model: Model): boolean {
 		switch (kind) {
@@ -92,6 +121,7 @@
 				<th class="px-[18px] py-2 font-normal">Model</th>
 				<th class="px-3 py-2 font-normal">Pipeline</th>
 				<th class="px-3 py-2 font-normal">Relation</th>
+				<th class="px-3 py-2 font-normal">Backed by</th>
 				<th class="px-3 py-2 font-normal">Engine</th>
 				<th class="px-3 py-2 font-normal">Replay</th>
 				<th class="px-3 py-2 font-normal">Audits</th>
@@ -119,6 +149,22 @@
 						>
 					</td>
 					<td class="text-muted-foreground code px-3 text-[11.5px]">{model.relationName}</td>
+					<td class="code px-3 text-[11px]">
+						{#if backingByRelation.get(model.relationName)}
+							{@const backing = backingByRelation.get(model.relationName)}
+							<a
+								href="/deployments/{backing?.deploymentId}"
+								class="text-primary hover:underline">{shortDeployment(backing?.deploymentId ?? '')}</a
+							>
+							{#if (backing?.retained ?? 0) > 1}
+								<span class="text-[var(--sb-text-faint)]"
+									>&nbsp;+{(backing?.retained ?? 1) - 1} retained</span
+								>
+							{/if}
+						{:else}
+							<span class="text-[var(--sb-text-faint)]">—</span>
+						{/if}
+					</td>
 					<td class="px-3">
 						<span class="sb-tag code">{model.storage.engine ?? 'VIEW'}</span>
 					</td>
