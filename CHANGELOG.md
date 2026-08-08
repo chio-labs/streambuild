@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.12.4](https://github.com/chio-labs/streambuild/compare/v0.12.3...v0.12.4) (2026-08-08)
+
+
+### Bug Fixes
+
+* label the overview source card row count as rows ([7570be8](https://github.com/chio-labs/streambuild/commit/7570be87610918b267a1ef0be960203e978a3d5f))
+* label the overview source card row count as rows ([3dd1b08](https://github.com/chio-labs/streambuild/commit/3dd1b0842de885895685e77cc84f703674123525))
+* reset offsets for fresh source landings ([6a61125](https://github.com/chio-labs/streambuild/commit/6a61125ea6452b936fe4cacb4bfe3f14c811dca1))
+* reset offsets for fresh source landings ([b9f43a4](https://github.com/chio-labs/streambuild/commit/b9f43a4ba454cddb4ff859bd9aa90ce650f91ba6))
+
 ## [0.12.3](https://github.com/chio-labs/streambuild/compare/v0.12.2...v0.12.3) (2026-08-08)
 
 
