@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.12.1](https://github.com/chio-labs/streambuild/compare/v0.12.0...v0.12.1) (2026-08-08)
+
+
+### Bug Fixes
+
+* default topics page to managed topics and link topic names ([3582faf](https://github.com/chio-labs/streambuild/commit/3582faf5568e898c517628ea247828ed89455cf5))
+* stabilise message browser layout and adopt debounced auto-search ([4f820dd](https://github.com/chio-labs/streambuild/commit/4f820ddfa20706eb67e6948c25715b001b42c247))
+* warm broker metadata caches at dev server startup ([1226094](https://github.com/chio-labs/streambuild/commit/12260948713566cfc0b3450d86ba7f16c997f881))
+
 ## [0.12.0](https://github.com/chio-labs/streambuild/compare/v0.11.0...v0.12.0) (2026-08-08)
 
 
