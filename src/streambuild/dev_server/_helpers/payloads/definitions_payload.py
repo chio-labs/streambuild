@@ -165,6 +165,11 @@ def _source_payload(*, analysis: CompileAnalysis, source: CompiledSource) -> dic
     boundary: ReplayBoundary | None = step.replay_boundary
     return {
         "name": source.key.name,
+        "nameOrigin": {
+            "kind": step.name_origin,
+            "macro": getattr(step, "naming_macro", None),
+            "macroFingerprint": getattr(step, "naming_macro_fingerprint", None),
+        },
         "kind": "kafka" if isinstance(step, KafkaLandingStep) else "stream_table",
         "boundaryMode": str(source.effective_replay_lineage_mode),
         "relationName": relation_name,

@@ -25,6 +25,11 @@ class SourceKind(StrEnum):
     STREAM_TABLE = "stream_table"
 
 
+class SourceNameOrigin(StrEnum):
+    EXPLICIT = "explicit"
+    DERIVED = "derived"
+
+
 class ModelKind(StrEnum):
     TABLE = "table"
     VIEW = "view"

@@ -25,6 +25,14 @@ class AdoptedCompileTargetTestCase:
 
 
 @dataclass(frozen=True)
+class DerivedSourceManifestTestCase:
+    description: str
+    expected_name: str
+    expected_origin: str
+    expected_macro_name: str
+
+
+@dataclass(frozen=True)
 class StaticReplacementTestCase:
     description: str
     stale_relative_paths: tuple[str, ...]

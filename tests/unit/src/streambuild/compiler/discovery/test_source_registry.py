@@ -18,6 +18,8 @@ from streambuild.compiler.discovery.models import (
 )
 from tests.unit.src.streambuild.compiler.discovery._test_types import (
     KafkaBrokerDefaultTestCase,
+    KafkaSourceNamingMacroErrorTestCase,
+    KafkaSourceNamingMacroSuccessTestCase,
     ProjectKafkaBrokerDefaultTestCase,
     SourceBoundaryModeTestCase,
     SourceFreshnessTestCase,
@@ -231,6 +233,227 @@ kafka_broker_list = "{test_case.configured_broker_list}"
         KafkaLandingStep, flatten_source_registry(loaded.source_files)[0]
     )
     assert source.kafka.broker_list == test_case.expected_broker_list
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        KafkaSourceNamingMacroSuccessTestCase(
+            description="derives a source name after topic interpolation",
+            expected_name="orders",
+            expected_topic="source.orders.created",
+            expected_origin="derived",
+            expected_macro_name="kafka_source_name",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_omitted_kafka_name_when_loading_project_then_macro_derives_interpolated_topic_name(
+    test_case: KafkaSourceNamingMacroSuccessTestCase,
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "streambuild_project.toml").write_text(
+        """
+name = "events"
+default_target = "test"
+
+[vars]
+topic = "source.orders.created"
+
+[defaults.sources.kafka]
+naming_macro = "kafka_source_name"
+
+[targets.test]
+""".strip(),
+        encoding="utf-8",
+    )
+    macros_dir: Path = tmp_path / "macros"
+    macros_dir.mkdir()
+    (macros_dir / "source_names.py").write_text(
+        "def kafka_source_name(topic: str) -> str:\n    return topic.split('.')[1]\n",
+        encoding="utf-8",
+    )
+    write_source_yml(
+        project_dir=tmp_path,
+        relative_path="events.yml",
+        contents="""
+        sources:
+          - kind: kafka
+            broker_list: redpanda:9092
+            topic: "${topic}"
+            replay_boundary: {mode: offsets}
+        """,
+    )
+
+    loaded: LoadedProject | None = load_project_input_for_path(path=tmp_path)
+
+    assert loaded is not None
+    source: KafkaLandingStep = cast(
+        KafkaLandingStep, flatten_source_registry(loaded.source_files)[0]
+    )
+    assert source.name == test_case.expected_name
+    assert source.kafka.topic == test_case.expected_topic
+    assert source.name_origin == test_case.expected_origin
+    assert source.naming_macro == test_case.expected_macro_name
+    assert source.naming_macro_fingerprint is not None
+    assert len(source.naming_macro_fingerprint) == 64
+
+    first_fingerprint: str = source.naming_macro_fingerprint
+    (macros_dir / "source_names.py").write_text(
+        (
+            "def kafka_source_name(topic: str) -> str:\n"
+            "    return topic.split('.')[1] if topic else 'unused'\n"
+        ),
+        encoding="utf-8",
+    )
+    reloaded: LoadedProject | None = load_project_input_for_path(path=tmp_path)
+    assert reloaded is not None
+    reloaded_source: KafkaLandingStep = cast(
+        KafkaLandingStep, flatten_source_registry(reloaded.source_files)[0]
+    )
+    assert reloaded_source.name == source.name
+    assert reloaded_source.naming_macro_fingerprint != first_fingerprint
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        KafkaSourceNamingMacroSuccessTestCase(
+            description="keeps an explicit source name without calling the macro",
+            expected_name="authored_events",
+            expected_topic="source.events",
+            expected_origin="explicit",
+            expected_macro_name=None,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_explicit_kafka_name_when_naming_macro_would_fail_then_explicit_name_wins(
+    test_case: KafkaSourceNamingMacroSuccessTestCase,
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "streambuild_project.toml").write_text(
+        """
+name = "events"
+default_target = "test"
+
+[defaults.sources.kafka]
+naming_macro = "kafka_source_name"
+
+[targets.test]
+""".strip(),
+        encoding="utf-8",
+    )
+    macros_dir: Path = tmp_path / "macros"
+    macros_dir.mkdir()
+    (macros_dir / "source_names.py").write_text(
+        "def kafka_source_name(topic: str) -> str:\n    raise RuntimeError('not called')\n",
+        encoding="utf-8",
+    )
+    write_source_yml(
+        project_dir=tmp_path,
+        relative_path="events.yml",
+        contents="""
+        sources:
+          - name: authored_events
+            kind: kafka
+            broker_list: redpanda:9092
+            topic: source.events
+            replay_boundary: {mode: offsets}
+        """,
+    )
+
+    loaded: LoadedProject | None = load_project_input_for_path(path=tmp_path)
+
+    assert loaded is not None
+    source: KafkaLandingStep = cast(
+        KafkaLandingStep, flatten_source_registry(loaded.source_files)[0]
+    )
+    assert source.name == test_case.expected_name
+    assert source.kafka.topic == test_case.expected_topic
+    assert source.name_origin == test_case.expected_origin
+    assert source.naming_macro == test_case.expected_macro_name
+    assert source.naming_macro_fingerprint is None
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        KafkaSourceNamingMacroErrorTestCase(
+            description="rejects an unknown configured macro",
+            macro_name="missing_naming_macro",
+            macro_source="def other_macro(topic: str) -> str:\n    return 'events'\n",
+            sources_yaml="""
+            sources:
+              - kind: kafka
+                broker_list: redpanda:9092
+                topic: source.events
+                replay_boundary: {mode: offsets}
+            """,
+            expected_error_fragment="unknown Kafka naming macro 'missing_naming_macro'",
+        ),
+        KafkaSourceNamingMacroErrorTestCase(
+            description="rejects a non-identifier macro result",
+            macro_name="kafka_source_name",
+            macro_source=(
+                "def kafka_source_name(topic: str) -> str:\n    return 'source.events'\n"
+            ),
+            sources_yaml="""
+            sources:
+              - kind: kafka
+                broker_list: redpanda:9092
+                topic: source.events
+                replay_boundary: {mode: offsets}
+            """,
+            expected_error_fragment="must resolve to an unqualified identifier",
+        ),
+        KafkaSourceNamingMacroErrorTestCase(
+            description="rejects collisions between derived names",
+            macro_name="kafka_source_name",
+            macro_source="def kafka_source_name(topic: str) -> str:\n    return 'events'\n",
+            sources_yaml="""
+            sources:
+              - kind: kafka
+                broker_list: redpanda:9092
+                topic: source.events.one
+                replay_boundary: {mode: offsets}
+              - kind: kafka
+                broker_list: redpanda:9092
+                topic: source.events.two
+                replay_boundary: {mode: offsets}
+            """,
+            expected_error_fragment="Duplicate source name 'events'",
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_invalid_kafka_naming_macro_case_when_loading_project_then_reports_source_error(
+    test_case: KafkaSourceNamingMacroErrorTestCase,
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "streambuild_project.toml").write_text(
+        f"""
+name = "events"
+default_target = "test"
+
+[defaults.sources.kafka]
+naming_macro = "{test_case.macro_name}"
+
+[targets.test]
+""".strip(),
+        encoding="utf-8",
+    )
+    macros_dir: Path = tmp_path / "macros"
+    macros_dir.mkdir()
+    (macros_dir / "source_names.py").write_text(test_case.macro_source, encoding="utf-8")
+    write_source_yml(
+        project_dir=tmp_path,
+        relative_path="events.yml",
+        contents=test_case.sources_yaml,
+    )
+
+    with pytest.raises(PipelineDiscoveryError, match=test_case.expected_error_fragment):
+        load_project_input_for_path(path=tmp_path)
 
 
 @pytest.mark.parametrize(

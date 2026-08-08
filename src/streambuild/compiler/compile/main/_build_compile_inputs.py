@@ -70,7 +70,12 @@ def build_compile_inputs(
         if effective_configuration is None
         else effective_configuration.defaults.pipeline_mode == PipelineMode.VIRTUAL
     )
-    macro_registry: MacroRegistry = load_macro_registry(macro_files=discovered_inputs.macro_files)
+    macro_registry: MacroRegistry = (
+        load_macro_registry(macro_files=discovered_inputs.macro_files)
+        if discovered_inputs.loaded_project is None
+        or discovered_inputs.loaded_project.macro_registry is None
+        else discovered_inputs.loaded_project.macro_registry
+    )
     macro_context: MacroContext = build_macro_context(
         adapter_name=adapter_profile.identity.name,
         dialect=adapter_profile.sql_analysis_dialect,
