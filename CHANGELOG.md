@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.13.0](https://github.com/chio-labs/streambuild/compare/v0.12.4...v0.13.0) (2026-08-08)
+
+
+### Features
+
+* add per-pipeline build modes ([95b892c](https://github.com/chio-labs/streambuild/commit/95b892cbf3d63b1f172eed1e16a697f1a203a409))
+* add per-pipeline build modes ([a189fa6](https://github.com/chio-labs/streambuild/commit/a189fa6353c42f1050a20bc709bc17f079fecabd))
+
 ## [0.12.4](https://github.com/chio-labs/streambuild/compare/v0.12.3...v0.12.4) (2026-08-08)
 
 
