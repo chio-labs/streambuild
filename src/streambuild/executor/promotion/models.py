@@ -2,6 +2,9 @@
 
 from dataclasses import dataclass
 
+from streambuild.executor.promotion.exceptions import PublishExecutionError
+from streambuild.executor.promotion.types import PublishOperation
+
 
 @dataclass(frozen=True)
 class PublishRequest:
@@ -10,6 +13,16 @@ class PublishRequest:
     deployment_id: str | None
     metadata_database: str
     default_database: str
+    operation: PublishOperation | str = PublishOperation.PROMOTE
+    previous_deployment_id: str | None = None
+
+    def __post_init__(self) -> None:
+        try:
+            object.__setattr__(self, "operation", PublishOperation(self.operation))
+        except ValueError as error:
+            raise PublishExecutionError(
+                "publish operation must be 'promote' or 'rollback'"
+            ) from error
 
 
 @dataclass(frozen=True)
@@ -28,3 +41,31 @@ class PublishResult:
     published_views: tuple[PublishedView, ...]
     per_relation_atomic_replace: bool
     graph_atomic_publish: bool
+    operation: PublishOperation | str = PublishOperation.PROMOTE
+    previous_deployment_id: str | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "operation", PublishOperation(self.operation))
+
+
+@dataclass(frozen=True)
+class RollbackRequest:
+    """Input used to resolve one whole-deployment rollback."""
+
+    deployment_id: str | None
+    previous: bool
+    metadata_database: str
+    default_database: str
+
+    def __post_init__(self) -> None:
+        if (self.deployment_id is None) == (not self.previous):
+            raise PublishExecutionError("rollback requires either a deployment ID or --previous")
+
+
+@dataclass(frozen=True)
+class RollbackPlan:
+    """Resolved current and target publication identities for rollback."""
+
+    current_deployment_id: str
+    target_deployment_id: str
+    logical_view_names: tuple[str, ...]

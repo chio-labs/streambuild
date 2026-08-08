@@ -1,1 +1,1 @@
-"""Deployment lifecycle implementation helpers."""
+"""Deployment lifecycle helpers."""

@@ -38,11 +38,11 @@ from tests.integration.src.streambuild.executor.janitor.helpers import (
             expected_deletable_deployment_ids=(
                 "20260409T104000Z_failed1",
                 "20260409T103000Z_stale11",
-                "20260409T100000Z_old111",
             ),
             expected_kept_deployment_ids=(
                 "20260409T102000Z_active1",
                 "20260409T101000Z_recent1",
+                "20260409T100000Z_old111",
             ),
         )
     ],
@@ -104,16 +104,15 @@ def test_given_mixed_real_deployments_when_previewing_janitor_then_it_classifies
             expected_deleted_deployment_ids=(
                 "20260409T104000Z_failed1",
                 "20260409T103000Z_stale11",
-                "20260409T100000Z_old111",
             ),
             expected_deleted_target_tables=(
                 "tbl__orders_enriched__20260409T104000Z_failed1",
                 "tbl__orders_enriched__20260409T103000Z_stale11",
-                "tbl__orders_enriched__20260409T100000Z_old111",
             ),
             expected_retained_target_tables=(
                 "tbl__orders_enriched__20260409T102000Z_active1",
                 "tbl__orders_enriched__20260409T101000Z_recent1",
+                "tbl__orders_enriched__20260409T100000Z_old111",
                 "tbl__orders_enriched",
                 "_streambuild_virtual_deployments",
                 "_streambuild_virtual_publications",
@@ -176,7 +175,7 @@ def test_given_real_deletable_deployments_when_applying_janitor_then_it_drops_on
     assert result.deleted_deployment_ids == test_case.expected_deleted_deployment_ids
     assert (
         integration_state.old_published_target_table_name
-        in test_case.expected_deleted_target_tables
+        in test_case.expected_retained_target_tables
     )
     assert (
         integration_state.stale_unpublished_target_table_name

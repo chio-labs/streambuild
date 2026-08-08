@@ -1,13 +1,16 @@
 from datetime import UTC, datetime, timedelta
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.constants import VIRTUAL_DEPLOYMENT_STATUS_INCOMPLETE
 from streambuild.adapter.exceptions import AdapterResultError
 from streambuild.adapter.models import (
     AdapterBindingReplacementRequest,
     AdapterDeploymentInventory,
     AdapterDeploymentRecord,
+    AdapterPreparedObjectMapping,
     AdapterPublishEventRecord,
     AdapterRelationCleanupRequest,
+    AdapterStableBinding,
     AdapterStableBindingRemoval,
     InspectedManagedTableState,
 )
@@ -49,6 +52,7 @@ def execute_janitor_for_managed_table_state(
             database=request.database,
             metadata_database=request.metadata_database,
             retention_days=request.retention_days,
+            minimum_rollback_deployments=request.minimum_rollback_deployments,
             managed_table_state=managed_table_state,
         )
     return _preview_janitor(
@@ -56,6 +60,7 @@ def execute_janitor_for_managed_table_state(
         database=request.database,
         metadata_database=request.metadata_database,
         retention_days=request.retention_days,
+        minimum_rollback_deployments=request.minimum_rollback_deployments,
         managed_table_state=managed_table_state,
     )
 
@@ -66,6 +71,7 @@ def _preview_janitor(
     database: str,
     metadata_database: str,
     retention_days: int,
+    minimum_rollback_deployments: int,
     managed_table_state: InspectedManagedTableState,
 ) -> JanitorPreviewResult:
     inventory: AdapterDeploymentInventory = client.load_deployment_inventory(metadata_database)
@@ -82,6 +88,13 @@ def _preview_janitor(
         if binding.physical_name in active_relation_names
         and is_deployment_physical_name(binding.physical_name)
     }
+    rollback_deployment_ids: frozenset[str] = _rollback_deployment_ids(
+        inventory=inventory,
+        database=database,
+        managed_table_state=managed_table_state,
+        active_deployment_ids=frozenset(active_deployment_ids),
+        minimum_rollback_deployments=minimum_rollback_deployments,
+    )
     retention_cutoff: datetime = datetime.now(tz=UTC) - timedelta(days=retention_days)
 
     candidates: list[JanitorPreviewCandidate] = []
@@ -141,6 +154,22 @@ def _preview_janitor(
                 )
             )
             continue
+        if deployment.deployment_id in rollback_deployment_ids:
+            candidates.append(
+                JanitorPreviewCandidate(
+                    deployment_id=deployment.deployment_id,
+                    created_at=deployment.created_at,
+                    status=deployment.status,
+                    logical_view_names=logical_view_names,
+                    physical_object_names=physical_object_names,
+                    deletable=False,
+                    reason=(
+                        "retained as rollback point "
+                        f"(minimum {minimum_rollback_deployments} deployments)"
+                    ),
+                )
+            )
+            continue
         published_at: datetime | None = published_at_by_deployment.get(deployment.deployment_id)
         if published_at is not None and published_at >= retention_cutoff:
             candidates.append(
@@ -175,6 +204,7 @@ def _preview_janitor(
     return JanitorPreviewResult(
         database=database,
         retention_days=retention_days,
+        minimum_rollback_deployments=minimum_rollback_deployments,
         candidates=tuple(candidates),
     )
 
@@ -185,6 +215,7 @@ def _apply_janitor(
     database: str,
     metadata_database: str,
     retention_days: int,
+    minimum_rollback_deployments: int,
     managed_table_state: InspectedManagedTableState,
 ) -> JanitorApplyResult:
     preview_result: JanitorPreviewResult = _preview_janitor(
@@ -192,6 +223,7 @@ def _apply_janitor(
         database=database,
         metadata_database=metadata_database,
         retention_days=retention_days,
+        minimum_rollback_deployments=minimum_rollback_deployments,
         managed_table_state=managed_table_state,
     )
     inventory: AdapterDeploymentInventory = client.load_deployment_inventory(metadata_database)
@@ -244,6 +276,7 @@ def _apply_janitor(
     return JanitorApplyResult(
         database=database,
         retention_days=retention_days,
+        minimum_rollback_deployments=minimum_rollback_deployments,
         deleted_deployment_ids=tuple(deleted_deployment_ids),
         deleted_object_names=cleanup_request.relation_names,
     )
@@ -273,6 +306,122 @@ def _latest_publish_times(
     return latest_by_deployment
 
 
+def _rollback_deployment_ids(
+    *,
+    inventory: AdapterDeploymentInventory,
+    database: str,
+    managed_table_state: InspectedManagedTableState,
+    active_deployment_ids: frozenset[str],
+    minimum_rollback_deployments: int,
+) -> frozenset[str]:
+    if minimum_rollback_deployments == 0:
+        return frozenset()
+    published_rank_by_deployment: dict[str, tuple[datetime, str]] = _latest_publish_ranks(
+        inventory.publish_events
+    )
+    physical_relations: frozenset[tuple[str, str]] = frozenset(
+        (candidate.database, candidate.physical_name)
+        for candidate in managed_table_state.physical_candidates
+    )
+    eligible_deployments: tuple[AdapterDeploymentRecord, ...] = tuple(
+        deployment
+        for deployment in inventory.deployments
+        if deployment.deployment_id in published_rank_by_deployment
+        and deployment.deployment_id not in active_deployment_ids
+        and deployment.status != VIRTUAL_DEPLOYMENT_STATUS_INCOMPLETE
+        and _physical_mappings_are_safe(deployment)
+        and _rollback_relations_are_available(
+            deployment=deployment,
+            database=database,
+            physical_relations=physical_relations,
+        )
+        and _has_complete_publication(
+            deployment=deployment,
+            database=database,
+            publish_events=inventory.publish_events,
+        )
+    )
+    ordered_deployments: tuple[AdapterDeploymentRecord, ...] = tuple(
+        sorted(
+            eligible_deployments,
+            key=lambda deployment: published_rank_by_deployment[deployment.deployment_id],
+            reverse=True,
+        )
+    )
+    return frozenset(
+        deployment.deployment_id
+        for deployment in ordered_deployments[:minimum_rollback_deployments]
+    )
+
+
+def _rollback_relations_are_available(
+    *,
+    deployment: AdapterDeploymentRecord,
+    database: str,
+    physical_relations: frozenset[tuple[str, str]],
+) -> bool:
+    mappings: tuple[AdapterPreparedObjectMapping, ...] = _publish_mappings(deployment)
+    return bool(mappings) and all(
+        (mapping.logical_key.database or database, mapping.physical_name) in physical_relations
+        for mapping in mappings
+    )
+
+
+def _has_complete_publication(
+    *,
+    deployment: AdapterDeploymentRecord,
+    database: str,
+    publish_events: tuple[AdapterPublishEventRecord, ...],
+) -> bool:
+    expected_identity: tuple[tuple[str, str, str], ...] = tuple(
+        sorted(
+            (
+                mapping.logical_key.database or database,
+                mapping.logical_key.name,
+                mapping.physical_name,
+            )
+            for mapping in _publish_mappings(deployment)
+        )
+    )
+    return bool(expected_identity) and any(
+        event.deployment_id == deployment.deployment_id
+        and _binding_identity(event.bindings) == expected_identity
+        for event in publish_events
+    )
+
+
+def _publish_mappings(
+    deployment: AdapterDeploymentRecord,
+) -> tuple[AdapterPreparedObjectMapping, ...]:
+    return tuple(
+        mapping
+        for mapping in deployment.prepared_object_mappings
+        if mapping.logical_key.object_type in {DESIRED_OBJECT_TYPE_TABLE, DESIRED_OBJECT_TYPE_VIEW}
+    )
+
+
+def _binding_identity(
+    bindings: tuple[AdapterStableBinding, ...],
+) -> tuple[tuple[str, str, str], ...]:
+    return tuple(
+        sorted(
+            (binding.database, binding.logical_name, binding.physical_name) for binding in bindings
+        )
+    )
+
+
+def _latest_publish_ranks(
+    publish_events: tuple[AdapterPublishEventRecord, ...],
+) -> dict[str, tuple[datetime, str]]:
+    latest_by_deployment: dict[str, tuple[datetime, str]] = {}
+    for event in publish_events:
+        rank: tuple[datetime, str] = _event_rank(event)
+        current: tuple[datetime, str] | None = latest_by_deployment.get(event.deployment_id)
+        if current is None or rank > current:
+            latest_by_deployment[event.deployment_id] = rank
+    return latest_by_deployment
+
+
 def _binding_activity(
     *,
     inventory: AdapterDeploymentInventory,
@@ -284,10 +433,7 @@ def _binding_activity(
         published_names_by_deployment.setdefault(event.deployment_id, set()).update(
             event.logical_view_names
         )
-        published_at: datetime = datetime.fromisoformat(
-            event.published_at.replace(" ", "T")
-        ).replace(tzinfo=UTC)
-        rank: tuple[datetime, str] = (published_at, event.deployment_id)
+        rank: tuple[datetime, str] = _event_rank(event)
         current_rank: tuple[datetime, str] | None = published_rank_by_deployment.get(
             event.deployment_id
         )
@@ -333,3 +479,10 @@ def _binding_activity(
             continue
         protected_names.add(binding.physical_name)
     return frozenset(protected_names), tuple(obsolete_removals)
+
+
+def _event_rank(event: AdapterPublishEventRecord) -> tuple[datetime, str]:
+    published_at: datetime = datetime.fromisoformat(event.published_at.replace(" ", "T"))
+    if published_at.tzinfo is None:
+        published_at = published_at.replace(tzinfo=UTC)
+    return published_at, event.publication_id or event.deployment_id
