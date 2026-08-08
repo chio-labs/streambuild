@@ -26,11 +26,3 @@ class DeploymentInventory:
 
     database: str
     deployments: tuple[DeploymentSummary, ...]
-
-
-@dataclass(frozen=True)
-class RelationStorage:
-    """Row and byte totals for one warehouse relation."""
-
-    rows: int = 0
-    bytes: int = 0
