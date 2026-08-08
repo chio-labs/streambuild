@@ -185,6 +185,26 @@
 					</div>
 				</div>
 
+				{#if detail.state === 'superseded'}
+					<div class="rounded-[4px] border border-border">
+						<div
+							class="text-[var(--sb-text-faint)] border-b border-border px-3 py-2 font-mono text-[10px] uppercase tracking-[0.16em]"
+						>
+							Roll back
+						</div>
+						<div class="px-3 py-2.5">
+							<div class="text-muted-foreground pb-2 text-[11.5px]">
+								This deployment's relations are still on disk, so it remains a rollback target
+								until the janitor removes them.
+							</div>
+							<code
+								class="block rounded-[3px] border border-border bg-[var(--sb-hover)] px-2 py-1.5 text-[11.5px]"
+								>stb deployment rollback {detail.deploymentId}</code
+							>
+						</div>
+					</div>
+				{/if}
+
 				{#if detail.state === 'staged'}
 					<div class="rounded-[4px] border border-border">
 						<div

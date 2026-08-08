@@ -144,11 +144,7 @@ def _active_bindings(
 def apply_bound_relation_stats(
     *, stats: dict[str, dict[str, int]], bindings: tuple[tuple[str, str], ...]
 ) -> dict[str, dict[str, int]]:
-    """Measure a stable logical view by the deployment relation it is bound to.
-
-    In virtual mode a model's logical relation is a View, and system.tables
-    reports no rows or bytes for a view, so every model would read as empty.
-    """
+    """Measure a stable logical view by the deployment relation it is bound to."""
 
     logical_name: str
     physical_name: str
