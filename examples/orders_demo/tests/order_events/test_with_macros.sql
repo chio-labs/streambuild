@@ -1,4 +1,4 @@
-TEST (name: "line total with mock_rows macro");
+TEST (name "line total with mock_rows macro");
 
 WITH __ref__orders AS (
   @mock_rows([

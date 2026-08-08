@@ -25,6 +25,10 @@ from streambuild.compiler.discovery._helpers.source_registry import (
     source_registry_by_name,
 )
 from streambuild.compiler.discovery.constants import (
+    AUDIT_DEFAULT_EVERY_KEY,
+    AUDIT_DEFAULT_KEYS,
+    AUDIT_DEFAULT_WARMUP_KEY,
+    AUDIT_SEVERITIES,
     FULL_REPLAY_POLICY_VALUE,
     NAMING_KEYS,
     PIPELINE_CONFIG_FILE_NAME,
@@ -36,7 +40,9 @@ from streambuild.compiler.discovery.constants import (
     SECONDS_BY_DURATION_UNIT,
 )
 from streambuild.compiler.discovery.exceptions import PipelineDiscoveryError
+from streambuild.compiler.discovery.main._parse_duration_seconds import parse_duration_seconds
 from streambuild.compiler.discovery.models import (
+    AuditDefaults,
     DiscoveredPipelineDirectory,
     DiscoveredProjectFile,
     EffectiveProjectConfiguration,
@@ -68,6 +74,7 @@ class _PipelineDraft:
     bounded_replay_fallback: BoundedReplayFallback | None
     naming: PipelineNaming
     protection: PipelineProtection | None
+    audit_defaults: AuditDefaults
 
 
 def load_pipeline_directory(pipeline_dir: Path) -> LoadedPipeline:
@@ -125,6 +132,8 @@ def load_pipeline_directory(pipeline_dir: Path) -> LoadedPipeline:
             default_database=effective.database,
             adapter=effective.adapter,
             naming=effective.naming,
+            audit_defaults=effective.defaults.audits,
+            audit_scheduler=effective.audit_scheduler,
         ),
     )
     validate_replay_policies_for_mode(
@@ -176,6 +185,7 @@ def load_pipeline_directories(
                 bounded_replay_fallback=draft.bounded_replay_fallback,
                 naming=draft.naming,
                 protection=draft.protection,
+                audit_defaults=draft.audit_defaults,
             )
         )
     return tuple(pipelines)
@@ -221,6 +231,10 @@ def _load_pipeline_draft(
         protection=_load_pipeline_protection(
             value=pipeline_values.get("protection"),
             pipeline_name=pipeline_directory.pipeline_dir.name,
+            file_path=config_path,
+        ),
+        audit_defaults=_load_pipeline_audit_defaults(
+            value=pipeline_values.get("audit_defaults"),
             file_path=config_path,
         ),
     )
@@ -478,6 +492,53 @@ def _load_pipeline_protection(
             "numbers, '.', '_', ':', or '-' and must start with a letter or number"
         )
     return PipelineProtection(warning=warning, confirmation=confirmation)
+
+
+def _load_pipeline_audit_defaults(*, value: object, file_path: Path) -> AuditDefaults:
+    if value is None:
+        return AuditDefaults()
+    if not isinstance(value, dict) or not all(isinstance(key, str) for key in value):
+        raise PipelineDiscoveryError(
+            f"Pipeline config '{file_path}' must define audit_defaults as a mapping"
+        )
+    values: dict[str, object] = cast(dict[str, object], value)
+    unknown_keys: list[str] = [key for key in values if key not in AUDIT_DEFAULT_KEYS]
+    if unknown_keys:
+        raise PipelineDiscoveryError(
+            f"Pipeline config '{file_path}' contains unsupported audit_defaults keys: "
+            f"{', '.join(sorted(unknown_keys))}"
+        )
+    severity_value: object | None = values.get("severity")
+    if severity_value is not None and severity_value not in AUDIT_SEVERITIES:
+        raise PipelineDiscoveryError(
+            f"Pipeline config '{file_path}' audit_defaults.severity must be 'error' or 'warning'"
+        )
+    try:
+        cadence_seconds: int | None = (
+            parse_duration_seconds(
+                value=values[AUDIT_DEFAULT_EVERY_KEY],
+                field_path=f"Pipeline config '{file_path}' audit_defaults.every",
+                allow_zero=False,
+            )
+            if AUDIT_DEFAULT_EVERY_KEY in values
+            else None
+        )
+        warmup_seconds: int | None = (
+            parse_duration_seconds(
+                value=values[AUDIT_DEFAULT_WARMUP_KEY],
+                field_path=f"Pipeline config '{file_path}' audit_defaults.warmup",
+                allow_zero=True,
+            )
+            if AUDIT_DEFAULT_WARMUP_KEY in values
+            else None
+        )
+    except ValueError as error:
+        raise PipelineDiscoveryError(str(error)) from None
+    return AuditDefaults(
+        severity=str(severity_value) if severity_value is not None else None,
+        cadence_seconds=cadence_seconds,
+        warmup_seconds=warmup_seconds,
+    )
 
 
 def _default_protection_confirmation(*, pipeline_name: str) -> str:

@@ -22,6 +22,7 @@ class SqlAuditResult:
     description: str | None = None
     name: str | None = None
     error_message: str | None = None
+    deferred_until: str | None = None
 
 
 @dataclass(frozen=True)
@@ -35,7 +36,9 @@ class SqlAuditRunResult:
         return sum(
             1
             for audit_result in self.audit_results
-            if audit_result.severity == AuditSeverity.ERROR and not audit_result.passed
+            if audit_result.severity == AuditSeverity.ERROR
+            and not audit_result.passed
+            and audit_result.deferred_until is None
         )
 
     @property
@@ -43,5 +46,16 @@ class SqlAuditRunResult:
         return sum(
             1
             for audit_result in self.audit_results
-            if audit_result.severity == AuditSeverity.WARNING and not audit_result.passed
+            if audit_result.severity == AuditSeverity.WARNING
+            and not audit_result.passed
+            and audit_result.deferred_until is None
         )
+
+
+@dataclass(frozen=True)
+class AuditWarmupState:
+    """Eligibility of one audit relative to its newest referenced model anchor."""
+
+    eligible: bool
+    anchor: str | None
+    eligible_at: str | None

@@ -38,11 +38,11 @@ from tests.unit.src.streambuild.adapters.clickhouse.helpers import (
         RenderMetadataMutationSqlTestCase(
             description="renders database and metadata mutations as exact executable SQL",
             expected_database_sql="CREATE DATABASE IF NOT EXISTS metadata;",
-            expected_migration_statement_count=11,
+            expected_migration_statement_count=12,
             expected_migration_last_sql=(
                 "INSERT INTO metadata._streambuild_schema_versions "
-                "(version, applied_at) SELECT 1, now64(3, 'UTC') WHERE NOT EXISTS ("
-                "SELECT 1 FROM metadata._streambuild_schema_versions WHERE version = 1);"
+                "(version, applied_at) SELECT 2, now64(3, 'UTC') WHERE NOT EXISTS ("
+                "SELECT 1 FROM metadata._streambuild_schema_versions WHERE version = 2);"
             ),
             expected_persistence_first_sql=(
                 "INSERT INTO metadata._streambuild_virtual_object_state "

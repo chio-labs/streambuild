@@ -161,7 +161,7 @@ def test_given_valid_sql_test_files_when_discovering_then_it_returns_loaded_sql_
             description="rejects unnamed blocks in multi test files",
             relative_file_path="order_events/test_unnamed_multi.sql",
             file_contents="""
-        TEST (name: "first test");
+        TEST (name "first test");
 
         WITH
         __source__orders AS (
@@ -189,7 +189,7 @@ def test_given_valid_sql_test_files_when_discovering_then_it_returns_loaded_sql_
             description="rejects duplicate names in one file",
             relative_file_path="order_events/test_duplicate_names.sql",
             file_contents="""
-        TEST (name: "shared name");
+        TEST (name "shared name");
 
         WITH
         __source__orders AS (
@@ -200,7 +200,7 @@ def test_given_valid_sql_test_files_when_discovering_then_it_returns_loaded_sql_
         )
         SELECT 1;
 
-        TEST (name: "shared name");
+        TEST (name "shared name");
 
         WITH
         __ref__order_items AS (
@@ -212,6 +212,12 @@ def test_given_valid_sql_test_files_when_discovering_then_it_returns_loaded_sql_
         SELECT 1
         """,
             expected_error_fragment=r"defines duplicate TEST\(\) name 'shared name'",
+        ),
+        DiscoverSqlTestsErrorTestCase(
+            description="rejects removed colon header syntax",
+            relative_file_path="order_events/test_legacy_header.sql",
+            file_contents='TEST (name: "legacy"); SELECT 1',
+            expected_error_fragment="unexpected ':' after key 'name'",
         ),
     ],
     ids=lambda case: case.description,
@@ -280,7 +286,7 @@ def test_given_sql_test_macros_when_discovering_then_it_expands_test_body(
         DiscoverMultipleSqlTestsInFileTestCase(
             description="discovers multiple sql tests from one file",
             file_contents="""
-            TEST (name: "line total computes correctly");
+            TEST (name "line total computes correctly");
 
             WITH
             __source__orders AS (
@@ -291,7 +297,7 @@ def test_given_sql_test_macros_when_discovering_then_it_expands_test_body(
             )
             SELECT 1;
 
-            TEST (name: "daily revenue mirrors order items");
+            TEST (name "daily revenue mirrors order items");
 
             WITH
             __ref__order_items AS (

@@ -3,10 +3,11 @@
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import AppTopbar from '$lib/components/app-topbar.svelte';
 	import SqlBlock from '$lib/components/sql-block.svelte';
+	import SchedulerStatus from './scheduler-status.svelte';
 	import { getProject, runCheck } from '$lib/api';
 	import { auditCounts, testCounts } from '$lib/domain/derive';
-	import { formatAgo, formatInteger } from '$lib/domain/format';
-	import type { Audit, CellValue, Project, SqlTest } from '$lib/domain/types';
+	import { formatAgo, formatDuration, formatInteger } from '$lib/domain/format';
+	import type { Audit, CellValue, Project, QualityDriftReason, SqlTest } from '$lib/domain/types';
 
 	const project: Project = getProject();
 
@@ -29,6 +30,7 @@
 	function auditVisible(audit: Audit): boolean {
 		if (filter === 'all') return true;
 		if (!audit.result) return false;
+		if (audit.result.deferredUntil) return false;
 		return filter === 'passing' ? audit.result.passed : !audit.result.passed;
 	}
 
@@ -44,6 +46,17 @@
 		return String(value);
 	}
 
+	const DRIFT_LABEL: Record<QualityDriftReason, string> = {
+		binding_changed: 'binding changed',
+		definition_changed: 'definition changed',
+		execution_changed: 'execution changed',
+		schedule_changed: 'schedule changed'
+	};
+
+	function driftSummary(reasons: QualityDriftReason[]): string {
+		return reasons.map((reason) => DRIFT_LABEL[reason]).join(', ');
+	}
+
 	const visibleAudits = $derived(project.audits.filter(auditVisible));
 	const visibleTests = $derived(project.tests.filter(testVisible));
 
@@ -57,14 +70,20 @@
 		runError = null;
 		try {
 			const outcome = await runCheck('audit', name);
+			if (outcome.deferredUntil) {
+				runError = `Audit is warming up until ${outcome.deferredUntil} UTC`;
+				return;
+			}
 			const audit = project.audits.find((item) => item.name === name);
 			if (audit) {
-				audit.result = {
+					audit.result = {
 					passed: outcome.passed,
 					failingRowCount: outcome.failingRowCount ?? 0,
 					sampleColumns: outcome.sampleColumns ?? [],
 					sampleRows: outcome.sampleRows ?? [],
-					checkedAt: new Date().toISOString()
+					checkedAt: new Date().toISOString(),
+					driftReasons: [],
+					deferredUntil: null
 				};
 			}
 		} catch (error) {
@@ -81,7 +100,7 @@
 			const outcome = await runCheck('test', name);
 			const test = project.tests.find((item) => item.name === name);
 			if (test) {
-				test.result = {
+					test.result = {
 					passed: outcome.passed,
 					targets: (outcome.targets ?? []).map((target) => ({
 						targetModelName: target.targetModelName,
@@ -91,7 +110,8 @@
 						unexpectedRows: target.unexpectedRows ?? []
 					})),
 					checkedAt: new Date().toISOString(),
-					errorMessage: outcome.errorMessage ?? null
+					errorMessage: outcome.errorMessage ?? null,
+					driftReasons: []
 				};
 			}
 		} catch (error) {
@@ -168,6 +188,8 @@
 	</div>
 
 	<div class="flex flex-col gap-6 p-[18px]">
+		<SchedulerStatus />
+
 		<!-- ── audits ──────────────────────────────────────────────────────── -->
 		<div>
 			<div
@@ -223,6 +245,8 @@
 							<span class="w-[92px] shrink-0 text-right font-mono text-[11px]">
 								{#if !audit.result}
 									<span class="text-[var(--sb-text-faint)]">not run</span>
+								{:else if audit.result.deferredUntil}
+									<span style:color="var(--sb-warning)">warming up</span>
 								{:else if failing}
 									<span style:color={audit.severity === 'warning' ? 'var(--sb-warning)' : 'var(--sb-error)'}
 										>{formatInteger(audit.result.failingRowCount)} rows</span
@@ -230,9 +254,9 @@
 								{:else}
 									<span style:color="var(--sb-success)">pass</span>
 								{/if}
-								{#if audit.result?.stale}
-									<span class="text-[var(--sb-text-faint)]" title="Definition changed since this run"
-										>· stale</span
+								{#if audit.result?.driftReasons.length}
+									<span class="text-[var(--sb-text-faint)]" title={driftSummary(audit.result.driftReasons)}
+										>· changed</span
 									>
 								{/if}
 							</span>
@@ -243,6 +267,10 @@
 
 						{#if expandedAudit === audit.name}
 							<div class="flex flex-col gap-3 border-t border-[var(--border-subtle)] px-3 py-3">
+								<div class="text-[var(--sb-text-faint)] flex gap-4 font-mono text-[10.5px]">
+									<span>{audit.policy.scheduled ? `every ${formatDuration(audit.policy.cadenceSeconds ?? 0)}` : 'manual/build only'}</span>
+									<span>warmup {formatDuration(audit.policy.warmupSeconds)}</span>
+								</div>
 								<div class="flex items-center gap-2">
 									<button
 										class="text-muted-foreground hover:text-foreground flex items-center gap-1.5 rounded-[4px] border border-border px-2 py-1 font-mono text-[10.5px] disabled:opacity-60"
@@ -356,9 +384,9 @@
 								{:else}
 									<span style:color="var(--sb-error)">fail</span>
 								{/if}
-								{#if test.result?.stale}
-									<span class="text-[var(--sb-text-faint)]" title="Definition changed since this run"
-										>· stale</span
+								{#if test.result?.driftReasons.length}
+									<span class="text-[var(--sb-text-faint)]" title={driftSummary(test.result.driftReasons)}
+										>· changed</span
 									>
 								{/if}
 							</span>

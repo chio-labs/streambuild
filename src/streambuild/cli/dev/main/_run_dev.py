@@ -23,6 +23,7 @@ def run_dev(
     *,
     options: DevCommandOptions,
     client: AdapterConnection | None,
+    observation_client: AdapterConnection | None = None,
     loaded_project: LoadedProject | None,
     adapter_profile: CompilerAdapterProfile,
 ) -> int:
@@ -60,6 +61,7 @@ def run_dev(
     return run_dev_server(
         run_compile=run_compile,
         connection=client,
+        observation_connection=observation_client,
         database=options.database,
         project_dir=project_dir,
         host=options.host,

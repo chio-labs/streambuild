@@ -572,8 +572,8 @@ def write_audit_project_files(project_dir: Path) -> None:
         project_dir / "audits" / "singular" / "order_events" / "negative_line_totals.sql",
         """
         AUDIT (
-          severity: "warning",
-          description: "Line totals should not be negative",
+          severity warning,
+          description "Line totals should not be negative",
         );
 
         SELECT order_id, line_total
@@ -609,7 +609,7 @@ def write_backfill_audit_project_files(project_dir: Path) -> None:
         project_dir / "audits" / "singular" / "order_events" / "known_order_id.sql",
         """
         AUDIT (
-          description: "ord_001 should be flagged by the staged quality check",
+          description "ord_001 should be flagged by the staged quality check",
         );
 
         SELECT order_id
@@ -684,8 +684,8 @@ def write_multi_audit_project_files(project_dir: Path) -> None:
         project_dir / "audits" / "singular" / "order_events" / "quality.sql",
         """
         AUDIT (
-          name: "negative line totals",
-          severity: "warning",
+          name "negative line totals",
+          severity warning,
         );
 
         SELECT order_id, line_total
@@ -693,8 +693,8 @@ def write_multi_audit_project_files(project_dir: Path) -> None:
         WHERE line_total < 0;
 
         AUDIT (
-          name: "missing order ids",
-          severity: "warning",
+          name "missing order ids",
+          severity warning,
         );
 
         SELECT order_id
@@ -712,15 +712,15 @@ def write_error_audit_project_files(project_dir: Path) -> None:
         project_dir / "audits" / "singular" / "order_events" / "quality.sql",
         """
         AUDIT (
-          name: "broken column",
+          name "broken column",
         );
 
         SELECT missing_order_id
         FROM __ref("order_items");
 
         AUDIT (
-          name: "negative line totals",
-          severity: "warning",
+          name "negative line totals",
+          severity warning,
         );
 
         SELECT order_id, line_total
@@ -815,7 +815,7 @@ SINGLE_EXPECTED_SQL_TEST: str = """
     """
 
 MULTI_NAMED_SQL_TESTS: str = """
-    TEST (name: "line total computes correctly");
+    TEST (name "line total computes correctly");
 
     WITH
     helper_orders AS (
@@ -829,7 +829,7 @@ MULTI_NAMED_SQL_TESTS: str = """
     )
     SELECT 1;
 
-    TEST (name: "line total remains stable on repeat");
+    TEST (name "line total remains stable on repeat");
 
     WITH
     helper_orders AS (
@@ -1414,7 +1414,7 @@ def write_direct_adopted_source_project(
     (source_root / "orders.yml").write_text(source_yml, encoding="utf-8")
     (pipeline_root / "orders_enriched.sql").write_text(model_sql, encoding="utf-8")
     (audit_root / "adopted_target.sql").write_text(
-        'AUDIT (description: "adopted target is live");\n'
+        'AUDIT (description "adopted target is live");\n'
         "SELECT 'adopted-audit-marker' AS marker "
         'FROM __ref("orders_enriched") WHERE 0\n',
         encoding="utf-8",

@@ -37,6 +37,19 @@ class DiscoverGenericSqlAuditsTestCase:
     expected_name: str
     expected_query_fragments: tuple[str, ...]
     expected_referenced_model_names: tuple[str, ...]
+    expected_cadence_seconds: int | None = None
+    expected_warmup_seconds: int | None = None
+    expected_scheduled_override: bool | None = None
+
+
+@dataclass(frozen=True)
+class DiscoverSqlAuditPolicyTestCase:
+    description: str
+    header: str
+    expected_severity_explicit: bool
+    expected_cadence_seconds: int | None
+    expected_warmup_seconds: int | None
+    expected_scheduled_override: bool | None
 
 
 @dataclass(frozen=True)

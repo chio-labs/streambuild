@@ -6,6 +6,7 @@ import pytest
 from clickhouse_connect.driver.client import Client
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.exceptions import AdapterWarehouseError
 from streambuild.adapter.models import (
     AdapterConnectionConfig,
     AdapterCurrentQualityNode,
@@ -15,6 +16,7 @@ from streambuild.adapter.models import (
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from tests.integration.src.streambuild.adapters.clickhouse._test_types import (
     LatestNodeStatusIntegrationTestCase,
+    LegacyNodeResultsSchemaTestCase,
     MetadataMigrationIntegrationTestCase,
 )
 from tests.integration.src.streambuild.adapters.clickhouse.helpers import (
@@ -30,9 +32,37 @@ from tests.integration.src.streambuild.conftest import ClickHouseConnectionSetti
 @pytest.mark.parametrize(
     "test_case",
     [
+        LegacyNodeResultsSchemaTestCase(
+            description="legacy node-result shape fails before migration writes",
+            expected_error_fragment="incompatible pre-0.11 schema",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_legacy_node_results_table_when_migrating_then_reset_instruction_is_explicit(
+    test_case: LegacyNodeResultsSchemaTestCase,
+    managed_clickhouse_client: AdapterConnection,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    clickhouse_client.command(
+        f"CREATE TABLE {clickhouse_database}._streambuild_node_results ("
+        "result_id String, invocation_id String, node_kind String, node_identity String, "
+        "definition_fingerprint String) ENGINE = MergeTree ORDER BY result_id"
+    )
+
+    with pytest.raises(AdapterWarehouseError, match=test_case.expected_error_fragment):
+        managed_clickhouse_client.render_migrate_metadata_state(clickhouse_database)
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
         MetadataMigrationIntegrationTestCase(
             description="empty metadata state migrates repeatedly without duplicate versions",
             expected_table_names=(
+                "_streambuild_audit_schedule_claims",
                 "_streambuild_direct_fingerprints",
                 "_streambuild_invocations",
                 "_streambuild_node_results",
@@ -43,7 +73,7 @@ from tests.integration.src.streambuild.conftest import ClickHouseConnectionSetti
                 "_streambuild_virtual_publications",
                 "_streambuild_virtual_replay_boundaries",
             ),
-            expected_version_rows=((1,),),
+            expected_version_rows=((2,),),
         )
     ],
     ids=lambda case: case.description,
@@ -95,6 +125,7 @@ def test_given_empty_database_when_migrating_metadata_repeatedly_then_schema_is_
         MetadataMigrationIntegrationTestCase(
             description="concurrent metadata migrations converge on one logical version",
             expected_table_names=(
+                "_streambuild_audit_schedule_claims",
                 "_streambuild_direct_fingerprints",
                 "_streambuild_invocations",
                 "_streambuild_node_results",
@@ -105,7 +136,7 @@ def test_given_empty_database_when_migrating_metadata_repeatedly_then_schema_is_
                 "_streambuild_virtual_publications",
                 "_streambuild_virtual_replay_boundaries",
             ),
-            expected_version_rows=((1,),),
+            expected_version_rows=((2,),),
         )
     ],
     ids=lambda case: case.description,
@@ -154,9 +185,14 @@ def test_given_empty_database_when_migrating_metadata_concurrently_then_attempts
         LatestNodeStatusIntegrationTestCase(
             description="latest deterministic results classify current stale and never-run nodes",
             expected_status_rows=(
-                ("audits/current.sql:1", "failed"),
-                ("audits/never.sql:1", "never_run"),
-                ("tests/stale.sql:1", "stale"),
+                ("current audit", "failed"),
+                ("never audit", "never_run"),
+                ("stale test", "definition_changed"),
+            ),
+            expected_drift_rows=(
+                ("current audit", ()),
+                ("never audit", ()),
+                ("stale test", ("definition_changed",)),
             ),
         )
     ],
@@ -177,9 +213,15 @@ def test_given_manifest_nodes_and_result_history_when_querying_then_ui_states_ar
             result_id="result-a",
             invocation_id="inv-1",
             node_kind="audit",
-            node_identity="audits/current.sql:1",
+            node_name="current audit",
+            binding_key="current-binding",
             definition_fingerprint="current-fingerprint",
+            execution_fingerprint="current-execution",
             target_identity=clickhouse_database,
+            trigger="manual",
+            scheduled_for=None,
+            cadence_seconds=None,
+            warmup_seconds=0,
             status="passed",
             severity="error",
             failure_count=0,
@@ -191,9 +233,15 @@ def test_given_manifest_nodes_and_result_history_when_querying_then_ui_states_ar
             result_id="result-z",
             invocation_id="inv-2",
             node_kind="audit",
-            node_identity="audits/current.sql:1",
+            node_name="current audit",
+            binding_key="current-binding",
             definition_fingerprint="current-fingerprint",
+            execution_fingerprint="current-execution",
             target_identity=clickhouse_database,
+            trigger="build",
+            scheduled_for=None,
+            cadence_seconds=None,
+            warmup_seconds=0,
             status="failed",
             severity="error",
             failure_count=2,
@@ -205,9 +253,15 @@ def test_given_manifest_nodes_and_result_history_when_querying_then_ui_states_ar
             result_id="result-stale",
             invocation_id="inv-3",
             node_kind="test",
-            node_identity="tests/stale.sql:1",
+            node_name="stale test",
+            binding_key="stale-binding",
             definition_fingerprint="old-fingerprint",
+            execution_fingerprint="stale-execution",
             target_identity=clickhouse_database,
+            trigger="manual",
+            scheduled_for=None,
+            cadence_seconds=None,
+            warmup_seconds=0,
             status="passed",
             severity=None,
             failure_count=0,
@@ -219,9 +273,15 @@ def test_given_manifest_nodes_and_result_history_when_querying_then_ui_states_ar
             result_id="result-newer-other-fingerprint",
             invocation_id="inv-4",
             node_kind="audit",
-            node_identity="audits/current.sql:1",
+            node_name="current audit",
+            binding_key="current-binding",
             definition_fingerprint="other-fingerprint",
+            execution_fingerprint="current-execution",
             target_identity=clickhouse_database,
+            trigger="manual",
+            scheduled_for=None,
+            cadence_seconds=None,
+            warmup_seconds=0,
             status="passed",
             severity="error",
             failure_count=0,
@@ -233,9 +293,15 @@ def test_given_manifest_nodes_and_result_history_when_querying_then_ui_states_ar
             result_id="result-other-project",
             invocation_id="inv-other-project",
             node_kind="audit",
-            node_identity="audits/current.sql:1",
+            node_name="current audit",
+            binding_key="current-binding",
             definition_fingerprint="current-fingerprint",
+            execution_fingerprint="current-execution",
             target_identity=clickhouse_database,
+            trigger="deployment",
+            scheduled_for=None,
+            cadence_seconds=None,
+            warmup_seconds=0,
             status="passed",
             severity="error",
             failure_count=0,
@@ -295,11 +361,22 @@ def test_given_manifest_nodes_and_result_history_when_querying_then_ui_states_ar
         project_identity=project_identity,
         target_identity=clickhouse_database,
         nodes=(
-            AdapterCurrentQualityNode("audit", "audits/current.sql:1", "current-fingerprint"),
-            AdapterCurrentQualityNode("audit", "audits/never.sql:1", "never-fingerprint"),
-            AdapterCurrentQualityNode("test", "tests/stale.sql:1", "new-fingerprint"),
+            AdapterCurrentQualityNode(
+                "audit",
+                "current audit",
+                "current-binding",
+                "current-fingerprint",
+                "current-execution",
+            ),
+            AdapterCurrentQualityNode(
+                "audit", "never audit", "never-binding", "never-fingerprint", "never-execution"
+            ),
+            AdapterCurrentQualityNode(
+                "test", "stale test", "stale-binding", "new-fingerprint", "stale-execution"
+            ),
         ),
     )
     rows: Sequence[Sequence[object]] = clickhouse_client.query(query).result_rows
 
-    assert tuple((str(row[1]), str(row[3])) for row in rows) == test_case.expected_status_rows
+    assert tuple((str(row[1]), str(row[7])) for row in rows) == test_case.expected_status_rows
+    assert tuple((str(row[1]), tuple(row[8])) for row in rows) == test_case.expected_drift_rows

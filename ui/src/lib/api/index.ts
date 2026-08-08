@@ -107,6 +107,7 @@ export type RunEvent = {
 	elapsedMs?: number;
 	writtenRows?: number | null;
 	errorMessage?: string | null;
+	deferredUntil?: string | null;
 	outcome?: string;
 	exitCode?: number;
 };
@@ -206,13 +207,30 @@ export async function fetchRuns(): Promise<RunRecord[]> {
 export type CheckStatusRecord = {
 	kind: 'audit' | 'test';
 	name: string;
-	status: 'passed' | 'warning' | 'failed' | 'error' | 'stale' | 'never_run';
+	status:
+		| 'passed'
+		| 'warning'
+		| 'failed'
+		| 'error'
+		| 'deferred'
+		| 'binding_changed'
+		| 'definition_changed'
+		| 'execution_changed'
+		| 'schedule_changed'
+		| 'never_run';
+	driftReasons: QualityDriftReason[];
 	severity: string | null;
 	failureCount: number;
 	completedAt: string | null;
 	payload: Record<string, unknown> | null;
 	errorMessage: string | null;
 };
+
+export type QualityDriftReason =
+	| 'binding_changed'
+	| 'definition_changed'
+	| 'execution_changed'
+	| 'schedule_changed';
 
 /** Last-known audit/test outcomes recorded in `_streambuild_node_results`. */
 export async function fetchChecksStatus(): Promise<CheckStatusRecord[]> {
@@ -222,6 +240,7 @@ export async function fetchChecksStatus(): Promise<CheckStatusRecord[]> {
 
 export type CheckRunResult = {
 	passed: boolean;
+	deferredUntil?: string | null;
 	failingRowCount?: number;
 	sampleColumns?: string[];
 	sampleRows?: (string | number | null)[][];

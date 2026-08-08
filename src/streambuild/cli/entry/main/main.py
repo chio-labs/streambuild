@@ -112,13 +112,18 @@ def _main_with_dependencies(
         )
         observation_connection: ResolvedInvocationConnection | None = None
         try:
-            if adapter_connection is None and args.command == CliCommand.BUILD:
+            if adapter_connection is None and args.command in {CliCommand.BUILD, CliCommand.DEV}:
                 observation_connection = resolve_invocation_connection(
                     invocation=invocation, provided_connection=None
                 )
             if adapter_connection is not None and args.command == CliCommand.BUILD:
                 if observation_adapter_connection is None:
                     raise CliUserError("Build requires a dedicated observation connection")
+                observation_connection = ResolvedInvocationConnection(
+                    connection=observation_adapter_connection,
+                    close_after_command=False,
+                )
+            if adapter_connection is not None and args.command == CliCommand.DEV:
                 observation_connection = ResolvedInvocationConnection(
                     connection=observation_adapter_connection,
                     close_after_command=False,

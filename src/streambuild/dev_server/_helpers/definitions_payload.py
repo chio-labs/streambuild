@@ -37,6 +37,7 @@ from streambuild.compiler.discovery.types import ReplayAnchorMode
 from streambuild.compiler.graph.models import DependencyEdge
 from streambuild.compiler.graph.types import DependencyEdgeType
 from streambuild.compiler.pipeline.models import CompileAnalysis
+from streambuild.compiler.quality.models import QualityNodeIdentity
 from streambuild.compiler.testing.models import SqlTestCase
 from streambuild.dev_server._helpers.redaction import (
     redacted_broker_list,
@@ -97,6 +98,7 @@ def _project_payload(analysis: CompileAnalysis) -> dict[str, object]:
             "naming": None,
             "defaults": None,
             "connection": {},
+            "auditScheduler": {"enabled": False},
         }
     return {
         "name": effective.name,
@@ -117,12 +119,18 @@ def _project_payload(analysis: CompileAnalysis) -> dict[str, object]:
                 else redacted_broker_list(effective.defaults.kafka_broker_list)
             ),
             "freshness": _freshness_payload(effective.defaults.freshness),
+            "audits": {
+                "severity": effective.defaults.audits.severity,
+                "cadenceSeconds": effective.defaults.audits.cadence_seconds,
+                "warmupSeconds": effective.defaults.audits.warmup_seconds,
+            },
         },
         "connection": {
             key: value
             for key, value in effective.connection.values
             if key not in _CONNECTION_SECRET_KEYS
         },
+        "auditScheduler": {"enabled": effective.audit_scheduler.enabled},
     }
 
 
@@ -226,6 +234,11 @@ def _pipeline_payload(
                 "confirmation": protection.confirmation,
             }
         ),
+        "auditDefaults": {
+            "severity": pipeline.pipeline.audit_defaults.severity,
+            "cadenceSeconds": pipeline.pipeline.audit_defaults.cadence_seconds,
+            "warmupSeconds": pipeline.pipeline.audit_defaults.warmup_seconds,
+        },
     }
 
 
@@ -370,6 +383,7 @@ def _model_source_path(model: CompiledModel) -> Path | None:
 
 
 def _audit_payload(audit: LoadedSqlAudit) -> dict[str, object]:
+    identity: QualityNodeIdentity | None = audit.quality_identity
     return {
         "name": audit.name or audit.file_path.stem,
         "file": str(audit.file_path),
@@ -378,15 +392,39 @@ def _audit_payload(audit: LoadedSqlAudit) -> dict[str, object]:
         "genericName": audit.generic_definition_name,
         "referencedModels": list(audit.referenced_model_names),
         "sql": audit.query,
+        "policy": {
+            "cadenceSeconds": audit.cadence_seconds,
+            "warmupSeconds": audit.warmup_seconds,
+            "scheduled": audit.scheduled,
+        },
+        "identity": (
+            None
+            if identity is None
+            else {
+                "bindingKey": identity.binding_key,
+                "definitionFingerprint": identity.definition_fingerprint,
+                "executionFingerprint": identity.execution_fingerprint,
+            }
+        ),
     }
 
 
 def _test_payload(test_case: SqlTestCase) -> dict[str, object]:
+    identity: QualityNodeIdentity | None = test_case.quality_identity
     return {
         "name": test_case.name or test_case.file_path.stem,
         "file": str(test_case.file_path),
         "targets": [target.target_model_name for target in test_case.target_cases],
         "sql": test_case.query,
+        "identity": (
+            None
+            if identity is None
+            else {
+                "bindingKey": identity.binding_key,
+                "definitionFingerprint": identity.definition_fingerprint,
+                "executionFingerprint": identity.execution_fingerprint,
+            }
+        ),
     }
 
 

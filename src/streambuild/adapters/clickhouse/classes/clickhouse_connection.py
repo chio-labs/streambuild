@@ -8,7 +8,8 @@ from clickhouse_connect.driver.exceptions import ClickHouseError, StreamFailureE
 from clickhouse_connect.driver.summary import QuerySummary
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.adapter.exceptions import AdapterResultError
+from streambuild.adapter.constants import METADATA_NODE_RESULTS_TABLE_NAME
+from streambuild.adapter.exceptions import AdapterResultError, AdapterWarehouseError
 from streambuild.adapter.models import (
     AdapterBindingReplacementRequest,
     AdapterCapabilities,
@@ -25,6 +26,7 @@ from streambuild.adapter.models import (
     AdapterMetadataState,
     AdapterMutationResult,
     AdapterNodeResultRecord,
+    AdapterQualityScheduleClaim,
     AdapterQueryResult,
     AdapterReadinessRequest,
     AdapterReadinessRootObservation,
@@ -49,11 +51,13 @@ from streambuild.adapters.clickhouse._helpers.managed_tables import (
 )
 from streambuild.adapters.clickhouse._helpers.metadata import (
     load_clickhouse_direct_fingerprints,
+    load_clickhouse_scheduled_quality_slot_claim_winners,
     render_clickhouse_direct_fingerprint_observations,
     render_clickhouse_latest_node_status_query,
     render_clickhouse_metadata_migration_workflow,
     render_clickhouse_metadata_state,
     render_clickhouse_run_event_inserts,
+    render_clickhouse_scheduled_quality_slot_claims,
 )
 from streambuild.adapters.clickhouse._helpers.readiness import compare_clickhouse_readiness
 from streambuild.adapters.clickhouse._helpers.rendering import (
@@ -81,6 +85,19 @@ from streambuild.adapters.clickhouse.constants import (
 from streambuild.adapters.clickhouse.types import (
     RawClickHouseClient,
     RawClickHouseQueryResult,
+)
+
+_NODE_RESULT_REQUIRED_COLUMNS: frozenset[str] = frozenset(
+    {
+        "node_name",
+        "binding_key",
+        "definition_fingerprint",
+        "execution_fingerprint",
+        "trigger",
+        "scheduled_for",
+        "cadence_seconds",
+        "warmup_seconds",
+    }
 )
 
 
@@ -200,6 +217,7 @@ class ClickHouseConnection(AdapterConnection):
     def render_migrate_metadata_state(self, database: str) -> tuple[str, ...]:
         """Render the exact idempotent ClickHouse metadata migration."""
 
+        self.validate_metadata_state(database)
         return render_clickhouse_metadata_migration_workflow(database)
 
     def render_persist_metadata_state(
@@ -207,6 +225,7 @@ class ClickHouseConnection(AdapterConnection):
     ) -> tuple[str, ...]:
         """Render exact ClickHouse metadata persistence SQL."""
 
+        self.validate_metadata_state(database)
         return render_clickhouse_metadata_state(database=database, state=state)
 
     def render_terminal_observations(
@@ -218,6 +237,7 @@ class ClickHouseConnection(AdapterConnection):
     ) -> tuple[str, ...]:
         """Render terminal UI observations without exposing them to lifecycle readers."""
 
+        self.validate_metadata_state(database)
         state: AdapterMetadataState = AdapterMetadataState(
             object_states=(),
             deployments=(),
@@ -241,11 +261,66 @@ class ClickHouseConnection(AdapterConnection):
     ) -> str:
         """Render current, stale, and never-run Quality UI states."""
 
+        self.validate_metadata_state(database)
         return render_clickhouse_latest_node_status_query(
             database=database,
             project_identity=project_identity,
             target_identity=target_identity,
             nodes=nodes,
+        )
+
+    def render_scheduled_quality_slot_claims(
+        self,
+        *,
+        database: str,
+        project_identity: str,
+        target_identity: str,
+        owner_id: str,
+        claims: tuple[AdapterQualityScheduleClaim, ...],
+    ) -> tuple[str, ...]:
+        """Render warehouse-visible contenders for each logical slot."""
+
+        return render_clickhouse_scheduled_quality_slot_claims(
+            database=database,
+            project_identity=project_identity,
+            target_identity=target_identity,
+            owner_id=owner_id,
+            claims=claims,
+        )
+
+    def load_scheduled_quality_slot_claim_winners(
+        self,
+        *,
+        database: str,
+        project_identity: str,
+        target_identity: str,
+        owner_id: str,
+        claims: tuple[AdapterQualityScheduleClaim, ...],
+    ) -> frozenset[AdapterQualityScheduleClaim] | None:
+        """Load slots where this connection's owner has the earliest claim."""
+
+        return load_clickhouse_scheduled_quality_slot_claim_winners(
+            connection=self,
+            database=database,
+            project_identity=project_identity,
+            target_identity=target_identity,
+            owner_id=owner_id,
+            claims=claims,
+        )
+
+    def validate_metadata_state(self, database: str) -> None:
+        """Reject the intentionally incompatible pre-0.11 quality result schema."""
+
+        columns: frozenset[str] = self.metadata_columns(
+            database=database,
+            table=METADATA_NODE_RESULTS_TABLE_NAME,
+        )
+        if not columns or _NODE_RESULT_REQUIRED_COLUMNS <= columns:
+            return
+        raise AdapterWarehouseError(
+            f"{database}.{METADATA_NODE_RESULTS_TABLE_NAME} uses an incompatible pre-0.11 "
+            "schema; drop this pre-production metadata table and retry so StreamBuild can "
+            "recreate it"
         )
 
     def render_run_events(

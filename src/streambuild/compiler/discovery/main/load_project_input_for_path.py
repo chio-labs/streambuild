@@ -45,6 +45,8 @@ def load_project_input_for_path(
         adapter=effective.adapter,
         bounded_replay_fallback=effective.defaults.bounded_replay_fallback,
         naming=effective.naming,
+        audit_defaults=effective.defaults.audits,
+        audit_scheduler=effective.audit_scheduler,
     )
     return LoadedProject(
         project=project,

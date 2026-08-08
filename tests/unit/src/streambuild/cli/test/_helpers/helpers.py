@@ -232,7 +232,7 @@ def seed_existing_target_tree(*, target_dir: Path) -> None:
 
 
 MACRO_SQL_TEST_CONTENTS: str = """
-TEST (mode: macro, name: "orphan macro check");
+TEST (mode macro, name "orphan macro check");
 
 WITH
 __macro_actual__ AS (

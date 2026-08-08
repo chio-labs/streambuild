@@ -1,5 +1,5 @@
 AUDIT (
-  description: "order_items must not have null order_id values",
+  description "order_items must not have null order_id values",
 );
 
 SELECT order_id

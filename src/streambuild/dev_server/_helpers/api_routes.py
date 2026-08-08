@@ -29,6 +29,7 @@ from streambuild.dev_server._helpers.plan_payload import (
 )
 from streambuild.dev_server._helpers.runs_query import read_active_runs, read_run_events, read_runs
 from streambuild.dev_server._helpers.state_payload import build_state_payload
+from streambuild.dev_server.classes.audit_scheduler import AuditScheduler
 from streambuild.dev_server.classes.build_process import BuildProcessManager, build_invocation
 from streambuild.dev_server.classes.dev_server_state import DevServerState
 from streambuild.dev_server.classes.kafka_lag_reader import KafkaLagReader
@@ -38,13 +39,21 @@ from streambuild.dev_server.exceptions import (
     DevServerError,
     ProjectNotCompiledError,
 )
+from streambuild.dev_server.main._build_audit_scheduler_payload import (
+    build_audit_scheduler_payload,
+)
 from streambuild.dev_server.models import (
     BuildRunRequest,
     ChecksRunRequest,
     CompileOutcome,
     DevExecutionContext,
 )
-from streambuild.dev_server.types import ActivityTone, DevServerReporter, RunPresentationStatus
+from streambuild.dev_server.types import (
+    ActivityTone,
+    AuditScheduleState,
+    DevServerReporter,
+    RunPresentationStatus,
+)
 
 _HTTP_BAD_REQUEST: int = 400
 _HTTP_CONFLICT: int = 409
@@ -60,6 +69,7 @@ def register_api_routes(
     database: str | None,
     project_dir: Path,
     builds: BuildProcessManager,
+    audit_scheduler: AuditScheduler,
     kafka_lag_reader: KafkaLagReader,
     reporter: DevServerReporter,
     execution_context: DevExecutionContext | None = None,
@@ -192,6 +202,7 @@ def register_api_routes(
         database=database,
         project_dir=project_dir,
         builds=builds,
+        audit_scheduler=audit_scheduler,
         reporter=reporter,
         required_connection=_required_connection,
         servable_analysis=_servable_analysis,
@@ -205,6 +216,7 @@ def _register_quality_routes(
     database: str | None,
     project_dir: Path,
     builds: BuildProcessManager,
+    audit_scheduler: AuditScheduler,
     reporter: DevServerReporter,
     required_connection: Callable[[], AdapterConnection],
     servable_analysis: Callable[[], CompileAnalysis],
@@ -237,11 +249,16 @@ def _register_quality_routes(
             raise HTTPException(status_code=_HTTP_BAD_REQUEST, detail=str(error)) from error
         except AdapterError as error:
             raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
+        deferred: bool = payload.get("deferredUntil") is not None
         passed: bool = bool(payload.get("passed"))
         reporter.report_activity(
             category=request.kind,
-            status="pass" if passed else "fail",
-            tone=ActivityTone.GOOD if passed else ActivityTone.BAD,
+            status="deferred" if deferred else ("pass" if passed else "fail"),
+            tone=(
+                ActivityTone.CAUTION
+                if deferred
+                else (ActivityTone.GOOD if passed else ActivityTone.BAD)
+            ),
             detail=request.name,
         )
         return payload
@@ -257,6 +274,35 @@ def _register_quality_routes(
                     database=database or "",
                     project_dir=project_dir,
                 )
+        except AdapterError as error:
+            raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
+
+    def read_audit_scheduler() -> dict[str, object]:
+        client: AdapterConnection = required_connection()
+        health: dict[str, object] = audit_scheduler.health()
+        if health["state"] in {
+            AuditScheduleState.RUNNING,
+            AuditScheduleState.BACKING_OFF,
+        }:
+            return {
+                "enabled": True,
+                "state": health["state"],
+                "warehouseNow": health["lastSuccessfulTick"],
+                "dueCount": health["runningAuditCount"],
+                "audits": [],
+                "health": health,
+            }
+        analysis: CompileAnalysis = servable_analysis()
+        try:
+            with state.query_lock:
+                payload: dict[str, object] = build_audit_scheduler_payload(
+                    analysis=analysis,
+                    connection=client,
+                    database=database or "",
+                    project_dir=project_dir,
+                )
+                payload["health"] = health
+                return payload
         except AdapterError as error:
             raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
 
@@ -285,6 +331,7 @@ def _register_quality_routes(
 
     app.post("/api/checks/run")(run_check)
     app.get("/api/checks/status")(read_checks_status)
+    app.get("/api/audit-scheduler")(read_audit_scheduler)
     app.get("/api/runs")(read_run_history)
     app.get("/api/runs/{invocation_id}/events")(read_one_run_events)
     return _register_build_routes(
@@ -325,17 +372,17 @@ def _register_build_routes(
                     ),
                     None,
                 )
-            if blocking_run is not None:
-                raise BuildInProgressError(
-                    f"run {blocking_run['invocationId']} is {blocking_run['status']} "
-                    f"(last signal {blocking_run['lastSignalAgeSeconds']}s ago)"
+                if blocking_run is not None:
+                    raise BuildInProgressError(
+                        f"run {blocking_run['invocationId']} is {blocking_run['status']} "
+                        f"(last signal {blocking_run['lastSignalAgeSeconds']}s ago)"
+                    )
+                return builds.start(
+                    project_dir=project_dir,
+                    selectors=tuple(request.selectors),
+                    start_time=request.startTime,
+                    confirmations=tuple(request.confirmations),
                 )
-            return builds.start(
-                project_dir=project_dir,
-                selectors=tuple(request.selectors),
-                start_time=request.startTime,
-                confirmations=tuple(request.confirmations),
-            )
         except BuildInProgressError as error:
             raise HTTPException(status_code=_HTTP_CONFLICT, detail=str(error)) from error
         except BuildStartError as error:

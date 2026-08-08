@@ -11,14 +11,6 @@ class BoundedNodeResultTestCase:
 
 
 @dataclass(frozen=True)
-class AuditSeverityFingerprintTestCase:
-    description: str
-    first_severity: str
-    second_severity: str
-    expected_fingerprints_differ: bool
-
-
-@dataclass(frozen=True)
 class ObservationArtifactTestCase:
     description: str
     statements: tuple[str, ...]

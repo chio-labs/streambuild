@@ -22,6 +22,8 @@ _RUN_COMPLETED_KIND: str = "run_completed"
 _STATEMENT_STARTED_KIND: str = "statement_started"
 _STATEMENT_COMPLETED_KIND: str = "statement_completed"
 _RUN_HEARTBEAT_KIND: str = "run_heartbeat"
+_AUDIT_STARTED_KIND: str = "audit_started"
+_AUDIT_COMPLETED_KIND: str = "audit_completed"
 
 
 class RunEventSink:
@@ -93,6 +95,33 @@ class RunEventSink:
             step_id=statement.step_id,
             phase=str(statement.phase),
             payload={"statementSequence": statement.sequence, "intent": str(statement.intent)},
+        )
+
+    def audit_started(self, *, name: str) -> None:
+        """One scheduled audit is about to execute."""
+
+        self._emit(
+            event_kind=_AUDIT_STARTED_KIND,
+            step_id=name,
+            phase="audit",
+            payload={"name": name},
+        )
+
+    def audit_completed(
+        self, *, name: str, status: str, failure_count: int, error_message: str | None
+    ) -> None:
+        """One scheduled audit reached a terminal result."""
+
+        self._emit(
+            event_kind=_AUDIT_COMPLETED_KIND,
+            step_id=name,
+            phase="audit",
+            payload={
+                "name": name,
+                "status": status,
+                "failureCount": failure_count,
+                "errorMessage": error_message,
+            },
         )
 
     def statement_completed(

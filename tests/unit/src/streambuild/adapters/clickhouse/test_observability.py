@@ -15,16 +15,22 @@ from tests.unit.src.streambuild.adapters.clickhouse._test_types import (
     "test_case",
     [
         LatestNodeStatusQueryTestCase(
-            description="joins current manifest nodes to current stale and never-run history",
+            description="classifies current identity drift and never-run history",
             expected_current_status_fragment=(
-                "multiIf(matching.node_identity != '', matching.latest.1, "
-                "latest.node_identity = '', 'never_run', 'stale') AS current_status"
+                "matching.node_name != '', matching.latest.4, "
+                "latest.latest.1 != manifest.binding_key, 'binding_changed'"
             ),
             expected_node_values_fragment=(
-                "('audit', 'audits/orders.sql:1', 'current-fingerprint')"
+                "('audit', 'order ids are present', 'binding', "
+                "'current-fingerprint', 'execution', NULL, 0)"
             ),
             expected_target_fragment=("WHERE result.target_identity = 'analytics'"),
             expected_project_fragment=("invocation.project_identity = '/project/current'"),
+            expected_logical_slot_fragment=(
+                "GROUP BY result.node_kind, result.node_name, result.binding_key, "
+                "result.execution_fingerprint, ifNull(toString(result.scheduled_for), "
+                "result.result_id)"
+            ),
         )
     ],
     ids=lambda case: case.description,
@@ -39,8 +45,10 @@ def test_given_current_manifest_nodes_when_rendering_status_query_then_all_ui_st
         nodes=(
             AdapterCurrentQualityNode(
                 node_kind="audit",
-                node_identity="audits/orders.sql:1",
+                node_name="order ids are present",
+                binding_key="binding",
                 definition_fingerprint="current-fingerprint",
+                execution_fingerprint="execution",
             ),
         ),
     )
@@ -49,6 +57,7 @@ def test_given_current_manifest_nodes_when_rendering_status_query_then_all_ui_st
     assert test_case.expected_node_values_fragment in query
     assert test_case.expected_target_fragment in query
     assert test_case.expected_project_fragment in query
+    assert test_case.expected_logical_slot_fragment in query
 
 
 @pytest.mark.parametrize(
@@ -70,7 +79,7 @@ def test_given_current_manifest_nodes_when_rendering_status_query_then_all_ui_st
         RunEventInsertsTestCase(
             description="prepends the idempotent migration for the first event",
             include_migration=True,
-            expected_statement_count=12,
+            expected_statement_count=13,
             expected_insert_fragment="CREATE DATABASE IF NOT EXISTS metadata;",
             expected_values_fragment=("emitted_at DateTime64(3, 'UTC') DEFAULT now64(3, 'UTC')"),
         ),

@@ -183,8 +183,7 @@ def test_given_audit_project_when_running_live_audit_then_it_reports_expected_re
     node_result_statuses: tuple[str, ...] = tuple(
         str(row[0])
         for row in clickhouse_client.query(
-            f"SELECT status FROM {clickhouse_database}._streambuild_node_results "
-            "ORDER BY node_identity"
+            f"SELECT status FROM {clickhouse_database}._streambuild_node_results ORDER BY node_name"
         ).result_rows
     )
 

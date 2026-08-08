@@ -22,6 +22,7 @@ def prepare_direct_build_audits(
         execution_model_names=frozenset(key.name for key in preview.plan.execution_scope),
         full_build=not preview.plan.user_scope,
     )
+    audits = tuple(audit for audit in audits if audit.warmup_seconds == 0)
     resolver: dict[str, str] = {
         model.key.name: (
             f"{preview.database}."

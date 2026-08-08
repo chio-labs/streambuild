@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from streambuild.adapter.types import AdapterSetDifferenceComparisonRenderer
 from streambuild.compiler.compile.models import CompiledPipeline
+from streambuild.compiler.quality.main._build_test_quality_identity import (
+    build_test_quality_identity,
+)
 from streambuild.compiler.sql_analysis.classes.sql_reference_rewriter import (
     SqlReferenceRewriter,
 )
@@ -85,7 +90,7 @@ def _build_model_test_case(
         authored_ctes=authored_ctes,
         dialect=dialect,
     )
-    return SqlTestCase(
+    test_case: SqlTestCase = SqlTestCase(
         file_path=loaded_test.file_path,
         query=render_comparison_query(
             comparison_renderer=comparison_renderer,
@@ -97,6 +102,14 @@ def _build_model_test_case(
         warnings=assembler.unreachable_mock_warnings(),
         test_index=loaded_test.test_index,
         name=loaded_test.name,
+    )
+    return replace(
+        test_case,
+        quality_identity=build_test_quality_identity(
+            loaded_test=loaded_test,
+            test_case=test_case,
+            dialect=dialect,
+        ),
     )
 
 
@@ -110,7 +123,7 @@ def _build_macro_test_case(
     target_cases: tuple[SqlTestChainStep, ...] = (
         build_macro_target(loaded_test=loaded_test, payload=payload, dialect=dialect),
     )
-    return SqlTestCase(
+    test_case: SqlTestCase = SqlTestCase(
         file_path=loaded_test.file_path,
         query=render_comparison_query(
             comparison_renderer=comparison_renderer,
@@ -120,6 +133,14 @@ def _build_macro_test_case(
         target_cases=target_cases,
         test_index=loaded_test.test_index,
         name=loaded_test.name,
+    )
+    return replace(
+        test_case,
+        quality_identity=build_test_quality_identity(
+            loaded_test=loaded_test,
+            test_case=test_case,
+            dialect=dialect,
+        ),
     )
 
 

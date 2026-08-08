@@ -133,6 +133,13 @@ export function formatPercent(fraction: number): string {
 	return `${Math.round(fraction * 100)}%`;
 }
 
+/** Compact graph labels show the engine family; details retain the complete expression. */
+export function formatEngineFamily(engine: string | null): string {
+	if (engine === null) return 'TABLE';
+	const argumentStart = engine.indexOf('(');
+	return (argumentStart === -1 ? engine : engine.slice(0, argumentStart)).trim() || 'TABLE';
+}
+
 /** Clamp helper used by every track/slider geometry calculation. */
 export function clamp(value: number, min: number, max: number): number {
 	return Math.min(Math.max(value, min), max);

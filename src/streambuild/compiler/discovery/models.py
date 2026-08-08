@@ -63,6 +63,20 @@ class LocalProjectSettings:
     virtual_environments: bool | str | None = None
 
 
+@dataclass(frozen=True)
+class AuditSchedulerConfig:
+    """Effective target-resolved background audit scheduler configuration."""
+
+    enabled: bool = False
+
+
+@dataclass(frozen=True)
+class AuditSchedulerOverride:
+    """Optional authored scheduler override at target scope."""
+
+    enabled: bool | None = None
+
+
 @dataclass(frozen=True, repr=False)
 class ProjectTarget:
     """One committed named target before local resolution."""
@@ -70,6 +84,7 @@ class ProjectTarget:
     database: str | None = None
     connection: RawConnectionConfig = field(default_factory=RawConnectionConfig)
     variables: tuple[tuple[str, object], ...] = ()
+    audit_scheduler: AuditSchedulerOverride = field(default_factory=AuditSchedulerOverride)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "variables", immutable_config_pairs(self.variables))
@@ -82,6 +97,7 @@ class LocalProjectTarget:
     database: str | None = None
     connection: RawConnectionConfig = field(default_factory=RawConnectionConfig)
     variables: tuple[tuple[str, object], ...] = ()
+    audit_scheduler: AuditSchedulerOverride = field(default_factory=AuditSchedulerOverride)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "variables", immutable_config_pairs(self.variables))
@@ -115,6 +131,15 @@ class SourceFreshnessPolicy:
 
 
 @dataclass(frozen=True)
+class AuditDefaults:
+    """Optional project- or pipeline-level audit policy defaults."""
+
+    severity: str | None = None
+    cadence_seconds: int | None = None
+    warmup_seconds: int | None = None
+
+
+@dataclass(frozen=True)
 class ProjectDefaults:
     """Committed project-wide authored defaults."""
 
@@ -124,6 +149,7 @@ class ProjectDefaults:
     replay_on_change: ReplayOnChangePolicy | None = None
     bounded_replay_fallback: BoundedReplayFallback | None = None
     freshness: SourceFreshnessPolicy | None = None
+    audits: AuditDefaults = field(default_factory=AuditDefaults)
 
 
 @dataclass(frozen=True)
@@ -163,6 +189,7 @@ class AuthoredProjectConfig:
     targets: tuple[tuple[str, ProjectTarget], ...]
     defaults: ProjectDefaults = field(default_factory=ProjectDefaults)
     naming: ProjectNaming = field(default_factory=ProjectNaming)
+    audit_scheduler: AuditSchedulerConfig = field(default_factory=AuditSchedulerConfig)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "variables", immutable_config_pairs(self.variables))
@@ -206,6 +233,7 @@ class EffectiveProjectConfiguration:
     variables: tuple[tuple[str, object], ...]
     defaults: ProjectDefaults
     naming: ProjectNaming = field(default_factory=ProjectNaming)
+    audit_scheduler: AuditSchedulerConfig = field(default_factory=AuditSchedulerConfig)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "variables", immutable_config_pairs(self.variables))
@@ -353,6 +381,8 @@ class Project:
     default_database: str | None = None
     adapter: str = DEFAULT_ADAPTER_NAME
     naming: ProjectNaming = field(default_factory=ProjectNaming)
+    audit_defaults: AuditDefaults = field(default_factory=AuditDefaults)
+    audit_scheduler: AuditSchedulerConfig = field(default_factory=AuditSchedulerConfig)
 
     def __post_init__(self) -> None:
         if self.bounded_replay_fallback is not None:
@@ -374,6 +404,7 @@ class Pipeline:
     bounded_replay_fallback: BoundedReplayFallback | str | None = None
     naming: PipelineNaming = field(default_factory=PipelineNaming)
     protection: PipelineProtection | None = None
+    audit_defaults: AuditDefaults = field(default_factory=AuditDefaults)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "transforms", tuple(self.transforms))

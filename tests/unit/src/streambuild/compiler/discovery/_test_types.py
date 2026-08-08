@@ -65,6 +65,14 @@ class EffectiveProjectConfigurationTestCase:
 
 
 @dataclass(frozen=True)
+class ProjectAuditDefaultsTestCase:
+    description: str
+    expected_severity: str
+    expected_cadence_seconds: int
+    expected_warmup_seconds: int
+
+
+@dataclass(frozen=True)
 class LegacyProjectConfigurationTestCase:
     description: str
     expected_error_fragment: str
