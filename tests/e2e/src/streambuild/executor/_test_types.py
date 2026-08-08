@@ -31,6 +31,16 @@ class ManagedSourceBootstrapE2ETestCase:
 
 
 @dataclass(frozen=True)
+class VirtualRollbackE2ETestCase:
+    description: str
+    fixture_project_dir: Path
+    initial_deployment_id: str
+    current_deployment_id: str
+    expected_rolled_back_order_ids: tuple[str, ...]
+    expected_current_order_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class DirectManagedManualWorkflowE2ETestCase:
     description: str
     messages: tuple[tuple[str, str], ...]

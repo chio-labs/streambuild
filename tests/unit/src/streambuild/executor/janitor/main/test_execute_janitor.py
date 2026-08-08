@@ -11,9 +11,11 @@ from streambuild.adapter.models import (
     AdapterPreparedObjectMapping,
     AdapterPublishEventRecord,
     AdapterRelationCleanupRequest,
+    AdapterStableBinding,
     AdapterStableBindingRemoval,
     InspectedActiveTableBinding,
     InspectedManagedTableState,
+    InspectedPhysicalTableCandidate,
 )
 from streambuild.executor.janitor.main.execute_janitor import execute_janitor
 from streambuild.executor.janitor.models import (
@@ -26,12 +28,16 @@ from tests.unit.src.streambuild.executor.janitor.main._test_types import (
     JanitorAdapterCleanupTestCase,
     JanitorConcurrentActivationTestCase,
     JanitorRollbackSafetyTestCase,
+    JanitorUnavailableRollbackTestCase,
     JanitorUnsafeMappingTestCase,
 )
 from tests.unit.src.streambuild.executor.janitor.main.helpers import (
     JanitorWorkflowRecordingAdapterConnection,
     SequencedManagedStateAdapterConnection,
+    unavailable_rollback_test_case,
 )
+
+_UNAVAILABLE_ROLLBACK_CASE: JanitorUnavailableRollbackTestCase = unavailable_rollback_test_case()
 
 
 @pytest.mark.parametrize(
@@ -110,6 +116,7 @@ from tests.unit.src.streambuild.executor.janitor.main.helpers import (
             expected_result=JanitorApplyResult(
                 database="analytics",
                 retention_days=7,
+                minimum_rollback_deployments=2,
                 deleted_deployment_ids=("20260727T110000Z_stale1",),
                 deleted_object_names=("tbl__orders_enriched__20260727T110000Z_stale1",),
             ),
@@ -190,6 +197,7 @@ from tests.unit.src.streambuild.executor.janitor.main.helpers import (
                 metadata_database="metadata",
                 retention_days=0,
                 apply=True,
+                minimum_rollback_deployments=0,
             ),
             expected_cleanup_request=AdapterRelationCleanupRequest(
                 database="analytics",
@@ -211,6 +219,7 @@ from tests.unit.src.streambuild.executor.janitor.main.helpers import (
             expected_result=JanitorApplyResult(
                 database="analytics",
                 retention_days=0,
+                minimum_rollback_deployments=0,
                 deleted_deployment_ids=("20260727T110000Z_stale1",),
                 deleted_object_names=("orders_legacy__20260727T110000Z_stale1",),
             ),
@@ -293,11 +302,25 @@ def test_given_active_and_stale_deployments_when_applying_janitor_then_adapter_c
                         deployment_id="20260727T120000Z_newer1",
                         published_at="2020-01-02 01:00:00.000",
                         logical_view_names=("orders",),
+                        bindings=(
+                            AdapterStableBinding(
+                                database="analytics",
+                                logical_name="orders",
+                                physical_name="orders__20260727T120000Z_newer1",
+                            ),
+                        ),
                     ),
                     AdapterPublishEventRecord(
                         deployment_id="20260727T110000Z_older1",
                         published_at="2020-01-03 01:00:00.000",
                         logical_view_names=("orders",),
+                        bindings=(
+                            AdapterStableBinding(
+                                database="analytics",
+                                logical_name="orders",
+                                physical_name="orders__20260727T110000Z_older1",
+                            ),
+                        ),
                     ),
                 ),
             ),
@@ -309,7 +332,18 @@ def test_given_active_and_stale_deployments_when_applying_janitor_then_adapter_c
                         physical_name="orders__20260727T110000Z_older1",
                     ),
                 ),
-                physical_candidates=(),
+                physical_candidates=(
+                    InspectedPhysicalTableCandidate(
+                        database="analytics",
+                        logical_name="orders",
+                        physical_name="orders__20260727T110000Z_older1",
+                    ),
+                    InspectedPhysicalTableCandidate(
+                        database="analytics",
+                        logical_name="orders",
+                        physical_name="orders__20260727T120000Z_newer1",
+                    ),
+                ),
             ),
             preview_request=JanitorRequest(
                 database="analytics",
@@ -327,7 +361,7 @@ def test_given_active_and_stale_deployments_when_applying_janitor_then_adapter_c
                 (
                     "20260727T120000Z_newer1",
                     False,
-                    "published within retention window (10000 days)",
+                    "retained as rollback point (minimum 2 deployments)",
                 ),
                 (
                     "20260727T110000Z_older1",
@@ -337,17 +371,16 @@ def test_given_active_and_stale_deployments_when_applying_janitor_then_adapter_c
             ),
             expected_cleanup_request=AdapterRelationCleanupRequest(
                 database="analytics",
-                relation_names=("orders__20260727T120000Z_newer1",),
+                relation_names=(),
             ),
             expected_binding_request=AdapterBindingReplacementRequest(bindings=()),
-            expected_statements=(
-                "DROP TABLE IF EXISTS analytics.orders__20260727T120000Z_newer1 SYNC;",
-            ),
+            expected_statements=(),
             expected_result=JanitorApplyResult(
                 database="analytics",
                 retention_days=0,
-                deleted_deployment_ids=("20260727T120000Z_newer1",),
-                deleted_object_names=("orders__20260727T120000Z_newer1",),
+                minimum_rollback_deployments=2,
+                deleted_deployment_ids=(),
+                deleted_object_names=(),
             ),
         )
     ],
@@ -387,6 +420,44 @@ def test_given_newer_then_older_publish_when_running_janitor_then_rollback_targe
     assert apply_connection.binding_requests == [test_case.expected_binding_request]
     assert tuple(apply_connection.statements) == test_case.expected_statements
     assert apply_result == test_case.expected_result
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        JanitorUnavailableRollbackTestCase(
+            description=_UNAVAILABLE_ROLLBACK_CASE.description,
+            inventory=_UNAVAILABLE_ROLLBACK_CASE.inventory,
+            managed_table_state=_UNAVAILABLE_ROLLBACK_CASE.managed_table_state,
+            request=_UNAVAILABLE_ROLLBACK_CASE.request,
+            missing_deployment_id=_UNAVAILABLE_ROLLBACK_CASE.missing_deployment_id,
+            usable_deployment_id=_UNAVAILABLE_ROLLBACK_CASE.usable_deployment_id,
+            expected_usable_reason=_UNAVAILABLE_ROLLBACK_CASE.expected_usable_reason,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_newest_publication_is_missing_when_retaining_then_keeps_usable_target(
+    test_case: JanitorUnavailableRollbackTestCase,
+) -> None:
+    connection: RecordingAdapterConnection = RecordingAdapterConnection(
+        managed_table_state=test_case.managed_table_state,
+        deployment_inventory=test_case.inventory,
+    )
+
+    result: JanitorPreviewResult = cast(
+        JanitorPreviewResult,
+        execute_janitor(request=test_case.request, client=connection),
+    )
+    candidate_state_by_id: dict[str, tuple[bool, str]] = {
+        candidate.deployment_id: (candidate.deletable, candidate.reason)
+        for candidate in result.candidates
+    }
+
+    assert candidate_state_by_id[test_case.missing_deployment_id][0] is True
+    assert candidate_state_by_id[test_case.usable_deployment_id][1] == (
+        test_case.expected_usable_reason
+    )
 
 
 @pytest.mark.parametrize(

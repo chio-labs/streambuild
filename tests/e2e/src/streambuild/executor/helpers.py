@@ -495,6 +495,38 @@ def run_streambuild_deployment_promote_cli(
     )
 
 
+def run_streambuild_deployment_rollback_previous_cli(
+    *,
+    project_dir: Path,
+    host: str,
+    port: int,
+    username: str,
+    password: str,
+    database: str,
+) -> dict[str, object]:
+    return _run_streambuild_cli_json(
+        command=(
+            "deployment",
+            "rollback",
+            "--previous",
+            "--project-dir",
+            str(project_dir),
+            "--host",
+            host,
+            "--port",
+            str(port),
+            "--username",
+            username,
+            "--password",
+            password,
+            "--database",
+            database,
+            "--json",
+            "--auto-approve",
+        )
+    )
+
+
 def run_streambuild_doctor_cli(
     *,
     project_dir: Path,

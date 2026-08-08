@@ -8,7 +8,7 @@
 
 `streambuild` is for streaming data teams that want SQL-authored models with deployment semantics
 that fit live ClickHouse pipelines. Pipelines can build directly into live relations or stage a
-virtual deployment for audit and promotion.
+virtual deployment for audit, comparison, promotion, and rollback.
 
 - compile a project-wide dependency graph before opening a warehouse connection
 - inspect exact rebuild and replay work before applying it
@@ -30,8 +30,11 @@ Current implemented workflow:
 - `stb discover`
 - `stb deployment list`
 - `stb deployment show <deployment-id>`
+- `stb deployment diff <deployment-id|from:to>`
 - `stb deployment audit <deployment-id>`
 - `stb deployment promote <deployment-id>`
+- `stb deployment rollback <deployment-id>`
+- `stb deployment rollback --previous`
 - `stb doctor`
 - `stb repair active-view`
 - `stb reconcile`
@@ -45,8 +48,10 @@ Current rollout model:
 - virtual `build` starts a real staged deployment
 - mixed `build` stages virtual pipelines first, then applies direct pipelines
 - `deployment audit` inspects staged readiness
+- `deployment diff` compares model presence, schemas, physical availability, and row counts
 - `deployment promote` switches stable logical views to staged physical tables
-- `janitor` remains the top-level retention and cleanup command
+- `deployment rollback` switches the whole stable graph to a retained prior publication
+- `janitor` protects rollback history in addition to its time-based retention window
 
 ## Installation
 
@@ -136,6 +141,10 @@ managed_source_ttl = "_replay_landed_at + INTERVAL 14 DAY"
 model_ttl = "event_at + INTERVAL 30 DAY"
 kafka_broker_list = "kafka1:9092,kafka2:9092"
 
+[defaults.deployment_readiness]
+maximum_lag = "30s"
+minimum_staged_row_ratio = 0.5
+
 [connection]
 host = "localhost"
 port = 8123
@@ -154,6 +163,8 @@ Notes:
 
 - `name` and `default_target` are required; `adapter` defaults to `clickhouse`
 - `[defaults].pipeline_mode` is `direct` unless explicitly set to `virtual`
+- `[defaults.deployment_readiness]` configures advisory virtual audit thresholds; lag defaults to
+  `30s` and staged row ratio defaults to `0.5`
 - `streambuild_local.toml` may override the default with `[defaults].pipeline_mode`
 - target selection is CLI `--target`, local `target`, then project `default_target`
 - CLI `--vars` accepts one JSON object for `${name}` interpolation
@@ -194,7 +205,7 @@ orphaned and CLI-launched runs remain observable but cannot be signalled by that
 always rerun, never resume.
 
 Mutating commands are single-writer operations per target database. Do not run concurrent direct
-builds, publishes, repairs, reconciles, or cleanup operations against the same target. Independent
+builds, promotions, rollbacks, repairs, reconciles, or cleanup operations against the same target. Independent
 virtual builds remain isolated through deployment-specific physical relation names and
 deployment-scoped append-only rows.
 
@@ -465,8 +476,11 @@ uv run stb audit
 uv run stb dev
 uv run stb deployment list
 uv run stb deployment show <deployment-id>
+uv run stb deployment diff <deployment-id>
+uv run stb deployment diff <from-deployment-id>:<to-deployment-id>
 uv run stb deployment audit <deployment-id>
 uv run stb deployment promote <deployment-id>
+uv run stb deployment rollback --previous
 uv run stb doctor
 uv run stb repair active-view --table tbl__orders
 uv run stb reconcile

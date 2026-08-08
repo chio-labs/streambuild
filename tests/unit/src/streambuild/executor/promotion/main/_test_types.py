@@ -5,7 +5,12 @@ from streambuild.adapter.models import (
     CatalogRelation,
     InspectedManagedTableState,
 )
-from streambuild.executor.promotion.models import PublishRequest, PublishResult
+from streambuild.executor.promotion.models import (
+    PublishRequest,
+    PublishResult,
+    RollbackPlan,
+    RollbackRequest,
+)
 
 
 @dataclass(frozen=True)
@@ -23,3 +28,34 @@ class PublishWorkflowTestCase:
 class PublishCapabilityRejectionTestCase:
     description: str
     expected_error_fragment: str
+
+
+@dataclass(frozen=True)
+class RollbackResolutionSuccessTestCase:
+    description: str
+    request: RollbackRequest
+    expected_plan: RollbackPlan
+
+
+@dataclass(frozen=True)
+class RollbackResolutionErrorTestCase:
+    description: str
+    request: RollbackRequest
+    managed_table_state: InspectedManagedTableState
+    expected_error_fragment: str
+
+
+@dataclass(frozen=True)
+class RollbackInventoryErrorTestCase:
+    description: str
+    request: RollbackRequest
+    inventory: AdapterDeploymentInventory
+    managed_table_state: InspectedManagedTableState
+    expected_error_fragment: str
+
+
+@dataclass(frozen=True)
+class RollbackPublicationOrderTestCase:
+    description: str
+    inventory: AdapterDeploymentInventory
+    expected_target_deployment_id: str

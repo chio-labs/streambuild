@@ -7,6 +7,8 @@ from streambuild.adapter.constants import (
     METADATA_DEPLOYMENTS_TABLE_NAME,
     METADATA_OBJECT_STATE_TABLE_NAME,
     METADATA_PUBLISH_HISTORY_TABLE_NAME,
+    METADATA_PUBLISH_OPERATION_COLUMN_NAME,
+    METADATA_PUBLISH_PREVIOUS_DEPLOYMENT_COLUMN_NAME,
     VIRTUAL_DEPLOYMENT_STATUS_INCOMPLETE,
 )
 from streambuild.adapter.exceptions import AdapterRelationNotFoundError, AdapterResultError
@@ -152,8 +154,23 @@ def _load_publish_rows(
     *, connection: AdapterConnection, database: str
 ) -> tuple[ClickHousePublishEventInventoryRow, ...]:
     try:
+        columns: frozenset[str] = connection.metadata_columns(
+            database=database,
+            table=METADATA_PUBLISH_HISTORY_TABLE_NAME,
+        )
+        operation_projection: str = (
+            "operation"
+            if METADATA_PUBLISH_OPERATION_COLUMN_NAME in columns
+            else "'promote' AS operation"
+        )
+        previous_projection: str = (
+            "previous_deployment_id"
+            if METADATA_PUBLISH_PREVIOUS_DEPLOYMENT_COLUMN_NAME in columns
+            else "CAST(NULL AS Nullable(String)) AS previous_deployment_id"
+        )
         return connection.query_many(
-            statement="SELECT DISTINCT publication_id, deployment_id, published_at, "
+            statement="SELECT DISTINCT publication_id, deployment_id, "
+            f"{operation_projection}, {previous_projection}, published_at, "
             "logical_database_name, logical_view_name, physical_relation_name "
             f"FROM {database}.{METADATA_PUBLISH_HISTORY_TABLE_NAME}",
             decode=_decode_publish_event_row,
@@ -252,6 +269,7 @@ def _publish_event_record(
         deployment_id=first.deployment_id,
         published_at=first.published_at,
         logical_view_names=tuple(row.logical_view_name for row in rows),
+        publication_id=first.publication_id,
         bindings=tuple(
             AdapterStableBinding(
                 database=row.database_name,
@@ -260,6 +278,8 @@ def _publish_event_record(
             )
             for row in rows
         ),
+        operation=first.operation,
+        previous_deployment_id=first.previous_deployment_id,
     )
 
 
@@ -308,4 +328,8 @@ def _decode_publish_event_row(
         database_name=str(row["logical_database_name"]),
         logical_view_name=str(row["logical_view_name"]),
         physical_relation_name=str(row["physical_relation_name"]),
+        operation=str(row["operation"]),
+        previous_deployment_id=(
+            None if row["previous_deployment_id"] is None else str(row["previous_deployment_id"])
+        ),
     )

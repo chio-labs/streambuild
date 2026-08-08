@@ -27,6 +27,7 @@ def render_janitor_result(
             payload = {
                 "database": apply_result.database,
                 "retention_days": apply_result.retention_days,
+                "minimum_rollback_deployments": apply_result.minimum_rollback_deployments,
                 "deleted_deployment_ids": apply_result.deleted_deployment_ids,
                 "deleted_object_names": apply_result.deleted_object_names,
             }
@@ -34,6 +35,7 @@ def render_janitor_result(
             payload = {
                 "database": preview_result.database,
                 "retention_days": preview_result.retention_days,
+                "minimum_rollback_deployments": preview_result.minimum_rollback_deployments,
                 "candidates": [candidate.__dict__ for candidate in preview_result.candidates],
             }
         return json.dumps(payload, indent=2)
@@ -42,6 +44,7 @@ def render_janitor_result(
         lines: list[str] = [
             f"Janitor Apply\nDatabase: {apply_result.database}\n"
             f"Retention days: {apply_result.retention_days}\n"
+            f"Minimum rollback deployments: {apply_result.minimum_rollback_deployments}\n"
         ]
         if not apply_result.deleted_deployment_ids:
             lines.append("Deleted deployments:\n- none")
@@ -59,6 +62,7 @@ def render_janitor_result(
     lines = [
         f"Janitor Preview\nDatabase: {preview_result.database}\n"
         f"Retention days: {preview_result.retention_days}\n"
+        f"Minimum rollback deployments: {preview_result.minimum_rollback_deployments}\n"
     ]
     lines.append("Deletable deployments:")
     deletable_candidate: JanitorPreviewCandidate

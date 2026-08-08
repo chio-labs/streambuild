@@ -29,6 +29,10 @@ def render_deployment_audit_json(*, result: DeploymentAuditResult, project_dir: 
         "assessment": result.assessment,
         "replay_lineage_mode": result.replay_lineage_mode,
         "warning_codes": list(result.warning_codes),
+        "thresholds": {
+            "maximum_lag_seconds": result.thresholds.maximum_lag_seconds,
+            "minimum_staged_row_ratio": result.thresholds.minimum_staged_row_ratio,
+        },
         "root_results": [_root_result_payload(root_result) for root_result in result.root_results],
         "quality_check_results": [
             _quality_check_payload(audit_result=audit_result, project_dir=project_dir)
@@ -132,6 +136,14 @@ def _render_audit_header(*, result: DeploymentAuditResult, database: str) -> lis
         cli_style().label_value(
             label="Deployment status",
             value=humanize_deployment_status(result.deployment_status),
+        ),
+        cli_style().label_value(
+            label="Readiness thresholds",
+            value=(
+                f"maximum lag {result.thresholds.maximum_lag_seconds:g}s, "
+                "minimum staged rows "
+                f"{format_percentage(result.thresholds.minimum_staged_row_ratio)}"
+            ),
         ),
     ]
     if result.replay_lineage_mode is not None:
