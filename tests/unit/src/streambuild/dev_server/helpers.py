@@ -23,10 +23,15 @@ from streambuild.cli.entry._helpers.compiler_profile import build_compiler_adapt
 from streambuild.compiler.discovery.main.load_project_input_for_path import (
     load_project_input_for_path,
 )
+from streambuild.compiler.discovery.models import KafkaSettings
 from streambuild.compiler.pipeline.main.analyze_project import analyze_project
 from streambuild.compiler.pipeline.models import CompileAnalysis
+from streambuild.dev_server._helpers.message_query import (
+    build_messages_sql,
+    parse_messages_document,
+)
 from streambuild.dev_server._helpers.plan_payload import build_replay_count_query
-from streambuild.dev_server._helpers.state_queries import (
+from streambuild.dev_server._helpers.state_payload import (
     build_extents_query,
     build_partitions_query,
     build_parts_query,
@@ -35,7 +40,14 @@ from streambuild.dev_server._helpers.state_queries import (
 )
 from streambuild.dev_server._helpers.static_assets import register_static_assets
 from streambuild.dev_server.classes.dev_server_state import DevServerState
+from streambuild.dev_server.classes.kafka_lag_reader import KafkaLagReader
+from streambuild.dev_server.classes.kafka_topic_reader import KafkaTopicReader
 from streambuild.dev_server.main._create_dev_app import create_dev_app
+from streambuild.dev_server.models import (
+    KafkaLagSnapshot,
+    KafkaTopicsSnapshot,
+    MessagesQueryRequest,
+)
 from tests.unit.src.streambuild.compiler.discovery._helpers.load.helpers import (
     write_pipeline_file,
     write_project_configuration_and_source,
@@ -492,3 +504,138 @@ class FakeEmptyResultConnection(FakeAdapterConnection):
 
     def query(self, statement: str) -> AdapterQueryResult:
         return AdapterQueryResult(rows=((0,),), column_names=("value",))
+
+
+_ADOPTED_ORDERS_SOURCE: str = """
+sources:
+  - name: orders
+    kind: stream_table
+    table_name: raw_orders_external
+    replay_boundary:
+      mode: offsets
+      columns:
+        _replay_partition: _replay_partition
+        _replay_offset: _replay_offset
+        _replay_timestamp: _replay_timestamp
+"""
+
+
+def write_adopted_dev_server_project(*, project_dir: Path) -> None:
+    """The dev fixture project with its only source adopted instead of managed."""
+
+    write_dev_server_project(project_dir=project_dir)
+    write_pipeline_file(project_dir / "sources" / "orders.yml", _ADOPTED_ORDERS_SOURCE)
+
+
+class FakeKafkaTopicReader(KafkaTopicReader):
+    """Returns one canned inventory for every broker list without touching Kafka."""
+
+    def __init__(self, *, snapshot: KafkaTopicsSnapshot | None) -> None:
+        super().__init__()
+        self._snapshot = snapshot
+
+    def read(self, *, kafka: KafkaSettings) -> KafkaTopicsSnapshot | None:
+        del kafka
+        return self._snapshot
+
+
+class FakeKafkaLagReader(KafkaLagReader):
+    """Returns one canned lag snapshot for every source without touching Kafka."""
+
+    def __init__(self, *, snapshot: KafkaLagSnapshot | None) -> None:
+        super().__init__()
+        self._snapshot = snapshot
+
+    def read(self, *, kafka: KafkaSettings, database: str) -> KafkaLagSnapshot | None:
+        del kafka, database
+        return self._snapshot
+
+
+MESSAGE_HEADER_SCHEMA_QUERY: str = (
+    "SELECT count() AS present FROM system.columns "
+    "WHERE database = 'analytics' AND table = 'raw__orders' "
+    "AND name = 'kafka_header_keys'"
+)
+
+MESSAGE_LIST_COLUMN_NAMES: tuple[str, ...] = (
+    "landed_at",
+    "kafka_timestamp",
+    "partition",
+    "offset",
+    "key",
+    "key_bytes",
+    "value_preview",
+    "value_bytes",
+    "header_keys",
+    "header_values",
+)
+
+MESSAGE_RECORD_COLUMN_NAMES: tuple[str, ...] = (
+    "landed_at",
+    "kafka_timestamp",
+    "partition",
+    "offset",
+    "topic",
+    "key",
+    "key_bytes",
+    "value",
+    "value_bytes",
+    "header_keys",
+    "header_values",
+)
+
+
+def build_expected_messages_sql(
+    *,
+    projections: str = "",
+    where_clause: str = "",
+    limit: int = 50,
+    database: str = "analytics",
+    relation: str = "raw__orders",
+) -> str:
+    return (
+        "SELECT toString(_replay_landed_at) AS landed_at, "
+        "toString(kafka_timestamp) AS kafka_timestamp, "
+        "_replay_partition AS partition, _replay_offset AS offset, "
+        "kafka_key AS key, length(kafka_key) AS key_bytes, "
+        "substring(kafka_value, 1, 512) AS value_preview, "
+        "length(kafka_value) AS value_bytes, "
+        "kafka_header_keys AS header_keys, kafka_header_values AS header_values"
+        f"{projections} "
+        f"FROM `{database}`.`{relation}`{where_clause} "
+        "ORDER BY _replay_landed_at DESC, _replay_partition DESC, _replay_offset DESC "
+        f"LIMIT {limit}"
+    )
+
+
+def build_canned_messages_sql(*, limit: int, window_seconds: int | None) -> str:
+    return build_messages_sql(
+        database="analytics",
+        relation_name="raw__orders",
+        document=parse_messages_document(MessagesQueryRequest(limit=limit)),
+        window_seconds=window_seconds,
+    )
+
+
+def build_message_test_client(
+    *, project_dir: Path, results_by_query: dict[str, AdapterQueryResult]
+) -> TestClient:
+    state: DevServerState = DevServerState(
+        run_compile=build_compile_callable(project_dir=project_dir)
+    )
+    connection: FakeAdapterConnection = FakeAdapterConnection(
+        catalog=CatalogSnapshot(
+            identity=CatalogIdentity(
+                adapter=AdapterIdentity(name="clickhouse"), database="analytics"
+            ),
+            warehouse_timezone="UTC",
+            relations=(),
+        ),
+        results_by_query=results_by_query,
+        warehouse_timestamp=_STATE_WAREHOUSE_NOW,
+    )
+    return TestClient(
+        create_dev_app(
+            state=state, connection=connection, database="analytics", project_dir=project_dir
+        )
+    )

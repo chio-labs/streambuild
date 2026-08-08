@@ -353,7 +353,8 @@ def _create_suffixed_raw_landing(
         f"CREATE TABLE {clickhouse_database}.raw__orders__20260731T120000Z_depaaa "
         "(kafka_key String, kafka_value String, kafka_topic String, "
         "_replay_partition Int64, _replay_offset Int64, "
-        "_replay_timestamp DateTime64(3), kafka_headers String, "
+        "_replay_timestamp DateTime64(3), kafka_header_keys Array(String), "
+        "kafka_header_values Array(String), "
         "_replay_landed_at DateTime64(3)) "
         "ENGINE = MergeTree ORDER BY (_replay_partition, _replay_offset)"
     )

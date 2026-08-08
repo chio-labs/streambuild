@@ -1,11 +1,12 @@
-"""Assemble the /api/state live overlay from warehouse reads."""
+"""Assemble the /api/state and /api/topics live overlays from warehouse reads."""
 
 from __future__ import annotations
 
 import datetime
 import json
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from hashlib import sha256
+from typing import cast
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import (
@@ -30,19 +31,32 @@ from streambuild.compiler.discovery.models import (
     SourceFreshnessPolicy,
 )
 from streambuild.compiler.pipeline.models import CompileAnalysis
-from streambuild.dev_server._helpers.state_queries import (
-    build_extents_query,
-    build_partitions_query,
-    build_parts_query,
-    build_relation_stats_query,
-    build_throughput_query,
-    choose_throughput_window,
-)
 from streambuild.dev_server.classes.kafka_lag_reader import KafkaLagReader
-from streambuild.dev_server.models import KafkaLagSnapshot, KafkaPartitionLag
+from streambuild.dev_server.classes.kafka_topic_reader import KafkaTopicReader
+from streambuild.dev_server.constants import THROUGHPUT_WINDOW_LADDER
+from streambuild.dev_server.models import (
+    KafkaLagSnapshot,
+    KafkaPartitionLag,
+    KafkaTopicInfo,
+    KafkaTopicsSnapshot,
+)
 from streambuild.dev_server.types import Freshness
 
 _LANDED_AT_COLUMN: str = "_replay_landed_at"
+
+_NO_MANAGED_SOURCES_REASON: str = (
+    "no managed Kafka sources define broker connections; the dev server has no "
+    "credentials to inspect a cluster"
+)
+
+
+@dataclass(frozen=True)
+class _ManagedTopicSource:
+    """One managed source resolved to its broker connection and raw relation."""
+
+    source_name: str
+    relation_name: str
+    kafka: KafkaSettings
 
 
 def build_state_payload(
@@ -467,3 +481,202 @@ def _parse_warehouse_timestamp(value: str) -> datetime.datetime | None:
 
 def _optional_str(value: object) -> str | None:
     return None if value is None else str(value)
+
+
+def build_relation_stats_query(*, database: str) -> str:
+    """Approximate rows and bytes for every relation in one scan of system.tables."""
+
+    return (
+        "SELECT name, coalesce(total_rows, 0) AS total_rows, "
+        "coalesce(total_bytes, 0) AS total_bytes "
+        f"FROM system.tables WHERE database = '{database}'"
+    )
+
+
+def build_parts_query(*, database: str) -> str:
+    """Active part counts per relation in one scan of system.parts."""
+
+    return (
+        "SELECT table, count() AS parts "
+        f"FROM system.parts WHERE database = '{database}' AND active GROUP BY table"
+    )
+
+
+def build_extents_query(*, database: str, relation_names: tuple[str, ...]) -> str:
+    """Oldest and newest landed event per lineage-bearing relation, batched."""
+
+    selects: list[str] = [
+        (
+            f"SELECT '{name}' AS relation, "
+            "toString(min(_replay_landed_at)) AS oldest, "
+            "toString(max(_replay_landed_at)) AS newest, "
+            "count() AS rows "
+            f"FROM `{database}`.`{name}` HAVING count() > 0"
+        )
+        for name in relation_names
+    ]
+    return " UNION ALL ".join(selects)
+
+
+def build_throughput_query(
+    *,
+    database: str,
+    relation_name: str,
+    window_seconds: int,
+    bucket_seconds: int,
+) -> str:
+    """Landed-event counts per bucket over one window of a lineage-bearing relation."""
+
+    return (
+        "SELECT toUnixTimestamp(toStartOfInterval("
+        f"_replay_landed_at, INTERVAL {bucket_seconds} SECOND)) AS bucket, "
+        "count() AS rows "
+        f"FROM `{database}`.`{relation_name}` "
+        f"WHERE _replay_landed_at >= now64(3) - INTERVAL {window_seconds} SECOND "
+        "GROUP BY bucket ORDER BY bucket"
+    )
+
+
+def build_partitions_query(*, database: str, relation_name: str) -> str:
+    """Per-partition landed offsets for one managed raw relation."""
+
+    return (
+        "SELECT _replay_partition AS partition, "
+        "max(_replay_offset) AS max_offset, "
+        "toString(max(_replay_landed_at)) AS newest "
+        f"FROM `{database}`.`{relation_name}` GROUP BY partition ORDER BY partition"
+    )
+
+
+def choose_throughput_window(*, newest_age_seconds: float | None) -> tuple[int, int]:
+    """Pick the smallest ladder rung whose window still contains the newest event."""
+
+    if newest_age_seconds is None:
+        return THROUGHPUT_WINDOW_LADDER[-1]
+    for window_seconds, bucket_seconds in THROUGHPUT_WINDOW_LADDER:
+        if newest_age_seconds < window_seconds:
+            return (window_seconds, bucket_seconds)
+    return THROUGHPUT_WINDOW_LADDER[-1]
+
+
+def build_topics_payload(
+    *,
+    analysis: CompileAnalysis,
+    connection: AdapterConnection | None,
+    database: str | None,
+    topic_reader: KafkaTopicReader,
+    kafka_lag_reader: KafkaLagReader,
+) -> dict[str, object]:
+    """Merge broker topic inventories with managed-source lag and retained stats."""
+
+    managed: tuple[_ManagedTopicSource, ...] = _managed_topic_sources(analysis)
+    if not managed:
+        return {
+            "available": False,
+            "reason": _NO_MANAGED_SOURCES_REASON,
+            "pendingBrokers": [],
+            "topics": [],
+        }
+    snapshots: dict[str, KafkaTopicsSnapshot | None] = {}
+    for entry in managed:
+        if entry.kafka.broker_list not in snapshots:
+            snapshots[entry.kafka.broker_list] = topic_reader.read(kafka=entry.kafka)
+    stats: dict[str, dict[str, int]] = _retained_stats(connection=connection, database=database)
+    topics: dict[str, dict[str, object]] = {}
+    for broker_list, snapshot in snapshots.items():
+        for topic in () if snapshot is None else snapshot.topics:
+            topics[topic.name] = _broker_topic_item(topic=topic, broker_list=broker_list)
+    for entry in managed:
+        item: dict[str, object] = topics.setdefault(
+            entry.kafka.topic,
+            {
+                "name": entry.kafka.topic,
+                "brokerList": entry.kafka.broker_list,
+                "partitions": None,
+                "replicationFactor": None,
+                "internal": False,
+                "sources": [],
+                "lagMessages": None,
+                "retainedRows": None,
+                "retainedBytes": None,
+            },
+        )
+        sources: list[dict[str, object]] = cast("list[dict[str, object]]", item["sources"])
+        sources.append({"name": entry.source_name, "relationName": entry.relation_name})
+        lag: KafkaLagSnapshot | None = kafka_lag_reader.read(
+            kafka=entry.kafka, database=database or ""
+        )
+        item["lagMessages"] = None if lag is None else lag.total_messages
+        relation_stats: dict[str, int] | None = stats.get(entry.relation_name)
+        item["retainedRows"] = None if relation_stats is None else relation_stats["rows"]
+        item["retainedBytes"] = None if relation_stats is None else relation_stats["bytes"]
+    return {
+        "available": True,
+        "reason": None,
+        "pendingBrokers": sorted(
+            broker_list for broker_list, snapshot in snapshots.items() if snapshot is None
+        ),
+        "topics": [topics[name] for name in sorted(topics)],
+    }
+
+
+def _broker_topic_item(*, topic: KafkaTopicInfo, broker_list: str) -> dict[str, object]:
+    return {
+        "name": topic.name,
+        "brokerList": broker_list,
+        "partitions": topic.partition_count,
+        "replicationFactor": topic.replication_factor,
+        "internal": topic.internal,
+        "sources": [],
+        "lagMessages": None,
+        "retainedRows": None,
+        "retainedBytes": None,
+    }
+
+
+def _managed_topic_sources(analysis: CompileAnalysis) -> tuple[_ManagedTopicSource, ...]:
+    entries: list[_ManagedTopicSource] = []
+    for source in analysis.compiled_project.sources:
+        if not isinstance(source.source, KafkaLandingStep):
+            continue
+        managed_source: AdapterManagedSource | None = next(
+            (
+                resource
+                for resource in analysis.realized_project.resources_by_logical_key.get(
+                    source.key, ()
+                )
+                if isinstance(resource, AdapterManagedSource)
+            ),
+            None,
+        )
+        if managed_source is None:
+            continue
+        entries.append(
+            _ManagedTopicSource(
+                source_name=source.key.name,
+                relation_name=analysis.realized_project.relation_name_by_logical_key[source.key],
+                kafka=replace(
+                    source.source.kafka,
+                    broker_list=managed_source.broker_list,
+                    topic=managed_source.topic,
+                    consumer_group=managed_source.consumer_group,
+                    format=managed_source.format,
+                    settings=dict(managed_source.settings) or None,
+                ),
+            )
+        )
+    return tuple(entries)
+
+
+def _retained_stats(
+    *, connection: AdapterConnection | None, database: str | None
+) -> dict[str, dict[str, int]]:
+    if connection is None or database is None:
+        return {}
+    stats: dict[str, dict[str, int]] = {}
+    for row in connection.query(build_relation_stats_query(database=database)).named_rows():
+        stats[str(row["name"])] = {
+            "rows": int(str(row["total_rows"])),
+            "bytes": int(str(row["total_bytes"])),
+        }
+    return stats

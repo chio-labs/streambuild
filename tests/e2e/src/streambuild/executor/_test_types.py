@@ -17,6 +17,9 @@ class GreenfieldKafkaWorkflowE2ETestCase:
     expected_order_ids: tuple[str, ...]
     expected_audit_assessment: AuditAssessment
     expected_replay_lineage_mode: ReplayLineageMode
+    produced_headers: tuple[tuple[str, bytes], ...]
+    expected_header_keys: tuple[str, ...]
+    expected_header_values: tuple[str, ...]
 
 
 @dataclass(frozen=True)

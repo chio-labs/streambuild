@@ -299,7 +299,8 @@ def test_given_staged_backfill_when_auditing_then_it_returns_expected_comparison
             "_replay_partition",
             "_replay_offset",
             "_replay_timestamp",
-            "kafka_headers",
+            "kafka_header_keys",
+            "kafka_header_values",
             "_replay_landed_at",
         ],
     )
@@ -544,7 +545,8 @@ def test_given_deleted_audit_metadata_when_auditing_then_it_uses_live_clickhouse
             "_replay_partition",
             "_replay_offset",
             "_replay_timestamp",
-            "kafka_headers",
+            "kafka_header_keys",
+            "kafka_header_values",
             "_replay_landed_at",
         ],
     )
@@ -655,7 +657,8 @@ def test_given_dangling_active_view_when_auditing_then_it_returns_caution(
             "_replay_partition",
             "_replay_offset",
             "_replay_timestamp",
-            "kafka_headers",
+            "kafka_header_keys",
+            "kafka_header_values",
             "_replay_landed_at",
         ],
     )
@@ -800,7 +803,8 @@ def test_given_deleted_active_view_when_auditing_then_it_uses_live_staged_state(
             "_replay_partition",
             "_replay_offset",
             "_replay_timestamp",
-            "kafka_headers",
+            "kafka_header_keys",
+            "kafka_header_values",
             "_replay_landed_at",
         ],
     )
@@ -975,7 +979,8 @@ def test_given_degraded_offset_state_when_auditing_then_it_returns_caution(
             "_replay_partition",
             "_replay_offset",
             "_replay_timestamp",
-            "kafka_headers",
+            "kafka_header_keys",
+            "kafka_header_values",
             "_replay_landed_at",
         ],
     )

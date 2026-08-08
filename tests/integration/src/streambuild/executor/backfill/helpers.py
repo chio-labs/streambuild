@@ -868,7 +868,8 @@ def build_raw_orders_row(
         _replay_partition,
         _replay_offset,
         _replay_timestamp,
-        "",
+        [],
+        [],
         _replay_landed_at,
     )
 
@@ -1193,7 +1194,8 @@ def _prepare_managed_matrix_source(
             "_replay_partition",
             "_replay_offset",
             "_replay_timestamp",
-            "kafka_headers",
+            "kafka_header_keys",
+            "kafka_header_values",
             "_replay_landed_at",
         ],
     )
@@ -1263,7 +1265,8 @@ def _insert_managed_matrix_tail(
             "_replay_partition",
             "_replay_offset",
             "_replay_timestamp",
-            "kafka_headers",
+            "kafka_header_keys",
+            "kafka_header_values",
             "_replay_landed_at",
         ],
     )
@@ -1684,7 +1687,8 @@ def run_start_time_replay_scenario(
             "_replay_partition",
             "_replay_offset",
             "_replay_timestamp",
-            "kafka_headers",
+            "kafka_header_keys",
+            "kafka_header_values",
             "_replay_landed_at",
         ],
     )
@@ -1765,7 +1769,8 @@ def run_start_time_replay_scenario(
                 "_replay_partition",
                 "_replay_offset",
                 "_replay_timestamp",
-                "kafka_headers",
+                "kafka_header_keys",
+                "kafka_header_values",
                 "_replay_landed_at",
             ],
         )

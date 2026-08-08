@@ -5,7 +5,7 @@ import time
 from pathlib import Path
 from typing import cast
 from urllib.error import HTTPError
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 from clickhouse_connect.driver.client import Client
 
@@ -13,6 +13,20 @@ from clickhouse_connect.driver.client import Client
 def read_json_url(url: str) -> object:
     try:
         with urlopen(url, timeout=10) as response:  # noqa: S310 - loopback test server only
+            return json.loads(response.read().decode("utf-8"))
+    except HTTPError as error:
+        raise RuntimeError(error.read().decode("utf-8")) from error
+
+
+def post_json_url(url: str, payload: dict[str, object]) -> object:
+    request: Request = Request(  # noqa: S310 - loopback test server only
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"content-type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urlopen(request, timeout=10) as response:  # noqa: S310 - loopback test server only
             return json.loads(response.read().decode("utf-8"))
     except HTTPError as error:
         raise RuntimeError(error.read().decode("utf-8")) from error

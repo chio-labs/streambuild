@@ -123,6 +123,8 @@ from tests.unit.src.streambuild.compiler.planner.helpers import (
                 "_partition AS _replay_partition",
                 "_offset AS _replay_offset",
                 "_timestamp AS _replay_timestamp",
+                "_headers.name AS kafka_header_keys",
+                "_headers.value AS kafka_header_values",
                 "now64(3) AS _replay_landed_at",
                 "now64(3) AS _replay_landed_at",
                 "FROM kafka__orders",

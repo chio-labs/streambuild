@@ -1462,13 +1462,14 @@ def insert_landing_rows(
 
     values: str = ", ".join(
         f"('{order_key}', '', '', {partition_value}, {offset_value}, now64(3), "
-        f"{partition_value}, {offset_value}, now64(3), '', now64(3), now64(3))"
+        f"{partition_value}, {offset_value}, now64(3), [], [], now64(3), now64(3))"
         for order_key, partition_value, offset_value in rows
     )
     clickhouse_client.command(
         f"INSERT INTO {database}.{DIRECT_BUILD_LANDING_TABLE_NAME} "
         "(kafka_key, kafka_value, kafka_topic, kafka_partition, kafka_offset, kafka_timestamp, "
-        "_replay_partition, _replay_offset, _replay_timestamp, kafka_headers, kafka_landed_at, "
+        "_replay_partition, _replay_offset, _replay_timestamp, kafka_header_keys, "
+        "kafka_header_values, kafka_landed_at, "
         f"_replay_landed_at) VALUES {values}"
     )
 
