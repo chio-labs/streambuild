@@ -479,7 +479,8 @@ def test_given_scalar_replay_mode_when_executing_then_it_persists_watermarks_and
             "_replay_partition",
             "_replay_offset",
             "_replay_timestamp",
-            "kafka_headers",
+            "kafka_header_keys",
+            "kafka_header_values",
             "_replay_landed_at",
         ],
     )
@@ -514,7 +515,8 @@ def test_given_scalar_replay_mode_when_executing_then_it_persists_watermarks_and
                 "_replay_partition",
                 "_replay_offset",
                 "_replay_timestamp",
-                "kafka_headers",
+                "kafka_header_keys",
+                "kafka_header_values",
                 "_replay_landed_at",
             ],
         )
@@ -598,7 +600,8 @@ def test_given_nonempty_offset_input_without_cutoff_when_replaying_then_populati
             "_replay_partition",
             "_replay_offset",
             "_replay_timestamp",
-            "kafka_headers",
+            "kafka_header_keys",
+            "kafka_header_values",
             "_replay_landed_at",
         ],
     )
@@ -702,7 +705,8 @@ def test_given_nonempty_scalar_input_without_cutoff_when_replaying_then_populati
             "_replay_partition",
             "_replay_offset",
             "_replay_timestamp",
-            "kafka_headers",
+            "kafka_header_keys",
+            "kafka_header_values",
             "_replay_landed_at",
         ],
     )
@@ -834,7 +838,8 @@ def test_given_offset_replay_mode_when_executing_then_it_persists_partition_wate
             "_replay_partition",
             "_replay_offset",
             "_replay_timestamp",
-            "kafka_headers",
+            "kafka_header_keys",
+            "kafka_header_values",
             "_replay_landed_at",
         ],
     )
@@ -868,7 +873,8 @@ def test_given_offset_replay_mode_when_executing_then_it_persists_partition_wate
                 "_replay_partition",
                 "_replay_offset",
                 "_replay_timestamp",
-                "kafka_headers",
+                "kafka_header_keys",
+                "kafka_header_values",
                 "_replay_landed_at",
             ],
         )
@@ -964,7 +970,8 @@ def test_given_reference_join_when_executing_then_it_replays_from_staged_referen
             "_replay_partition",
             "_replay_offset",
             "_replay_timestamp",
-            "kafka_headers",
+            "kafka_header_keys",
+            "kafka_header_values",
             "_replay_landed_at",
         ],
     )
@@ -1076,7 +1083,8 @@ def test_given_published_reference_join_dependency_when_backfilling_then_it_uses
             "_replay_partition",
             "_replay_offset",
             "_replay_timestamp",
-            "kafka_headers",
+            "kafka_header_keys",
+            "kafka_header_values",
             "_replay_landed_at",
         ],
     )
@@ -1465,7 +1473,8 @@ def test_given_aggregate_offset_replay_when_executing_then_it_filters_anchor_row
             "_replay_partition",
             "_replay_offset",
             "_replay_timestamp",
-            "kafka_headers",
+            "kafka_header_keys",
+            "kafka_header_values",
             "_replay_landed_at",
         ],
     )
@@ -1687,7 +1696,8 @@ def test_given_aggregate_start_time_when_bootstrapping_then_it_resolves_policy_p
             "_replay_partition",
             "_replay_offset",
             "_replay_timestamp",
-            "kafka_headers",
+            "kafka_header_keys",
+            "kafka_header_values",
             "_replay_landed_at",
         ],
     )
@@ -1832,7 +1842,8 @@ def test_given_aggregate_start_time_when_executing_then_it_falls_back_to_full_re
             "_replay_partition",
             "_replay_offset",
             "_replay_timestamp",
-            "kafka_headers",
+            "kafka_header_keys",
+            "kafka_header_values",
             "_replay_landed_at",
         ],
     )
@@ -1981,7 +1992,8 @@ def test_given_unseeded_bounded_aggregate_offset_replay_when_executing_then_it_r
             "_replay_partition",
             "_replay_offset",
             "_replay_timestamp",
-            "kafka_headers",
+            "kafka_header_keys",
+            "kafka_header_values",
             "_replay_landed_at",
         ],
     )
@@ -2077,7 +2089,8 @@ def test_given_unseeded_bounded_aggregate_offset_replay_when_executing_then_it_r
                 "_replay_partition",
                 "_replay_offset",
                 "_replay_timestamp",
-                "kafka_headers",
+                "kafka_header_keys",
+                "kafka_header_values",
                 "_replay_landed_at",
             ],
         )
@@ -2162,7 +2175,8 @@ def test_given_seeded_bounded_scalar_replay_when_executing_then_it_copies_prefix
             "_replay_partition",
             "_replay_offset",
             "_replay_timestamp",
-            "kafka_headers",
+            "kafka_header_keys",
+            "kafka_header_values",
             "_replay_landed_at",
         ],
     )
@@ -2229,7 +2243,8 @@ def test_given_seeded_bounded_scalar_replay_when_executing_then_it_copies_prefix
                 "_replay_partition",
                 "_replay_offset",
                 "_replay_timestamp",
-                "kafka_headers",
+                "kafka_header_keys",
+                "kafka_header_values",
                 "_replay_landed_at",
             ],
         )
@@ -2381,7 +2396,8 @@ def test_given_unseeded_bounded_scalar_replay_when_executing_then_it_replays_onl
             "_replay_partition",
             "_replay_offset",
             "_replay_timestamp",
-            "kafka_headers",
+            "kafka_header_keys",
+            "kafka_header_values",
             "_replay_landed_at",
         ],
     )
@@ -2469,7 +2485,8 @@ def test_given_unseeded_bounded_scalar_replay_when_executing_then_it_replays_onl
                 "_replay_partition",
                 "_replay_offset",
                 "_replay_timestamp",
-                "kafka_headers",
+                "kafka_header_keys",
+                "kafka_header_values",
                 "_replay_landed_at",
             ],
         )
@@ -2555,7 +2572,8 @@ def test_given_unseeded_bounded_offset_replay_when_executing_then_it_replays_onl
             "_replay_partition",
             "_replay_offset",
             "_replay_timestamp",
-            "kafka_headers",
+            "kafka_header_keys",
+            "kafka_header_values",
             "_replay_landed_at",
         ],
     )
@@ -2642,7 +2660,8 @@ def test_given_unseeded_bounded_offset_replay_when_executing_then_it_replays_onl
                 "_replay_partition",
                 "_replay_offset",
                 "_replay_timestamp",
-                "kafka_headers",
+                "kafka_header_keys",
+                "kafka_header_values",
                 "_replay_landed_at",
             ],
         )
@@ -2727,7 +2746,8 @@ def test_given_seeded_bounded_offset_replay_when_executing_then_it_copies_prefix
             "_replay_partition",
             "_replay_offset",
             "_replay_timestamp",
-            "kafka_headers",
+            "kafka_header_keys",
+            "kafka_header_values",
             "_replay_landed_at",
         ],
     )
@@ -2793,7 +2813,8 @@ def test_given_seeded_bounded_offset_replay_when_executing_then_it_copies_prefix
                 "_replay_partition",
                 "_replay_offset",
                 "_replay_timestamp",
-                "kafka_headers",
+                "kafka_header_keys",
+                "kafka_header_values",
                 "_replay_landed_at",
             ],
         )
@@ -2937,7 +2958,8 @@ def test_given_two_staged_backfills_before_publish_when_executing_then_both_stag
             "_replay_partition",
             "_replay_offset",
             "_replay_timestamp",
-            "kafka_headers",
+            "kafka_header_keys",
+            "kafka_header_values",
             "_replay_landed_at",
         ],
     )
@@ -3048,7 +3070,8 @@ def test_given_active_view_when_backfilling_then_it_reports_bounded_replay_strat
             "_replay_partition",
             "_replay_offset",
             "_replay_timestamp",
-            "kafka_headers",
+            "kafka_header_keys",
+            "kafka_header_values",
             "_replay_landed_at",
         ],
     )
@@ -3381,7 +3404,8 @@ def test_given_deleted_staged_table_after_bootstrap_when_rerunning_then_candidat
             "_replay_partition",
             "_replay_offset",
             "_replay_timestamp",
-            "kafka_headers",
+            "kafka_header_keys",
+            "kafka_header_values",
             "_replay_landed_at",
         ],
     )

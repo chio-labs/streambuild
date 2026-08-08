@@ -14,6 +14,8 @@ from streambuild.cli.build.main.build_direct_build_preview import build_direct_b
 from streambuild.cli.build.models import DirectBuildPreviewContext, WorkflowPreparationOptions
 from streambuild.cli.entry.exceptions import CliUserError
 from streambuild.cli.plan.main.normalize_cli_start_time import normalize_cli_start_time
+from streambuild.compiler.compile.models import CompiledSource
+from streambuild.compiler.discovery.models import KafkaLandingStep
 from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.compiler.planner.exceptions import DirectPlanError
 from streambuild.dev_server._helpers.checks_execution import (
@@ -23,20 +25,32 @@ from streambuild.dev_server._helpers.checks_execution import (
 )
 from streambuild.dev_server._helpers.compile_runner import build_status_payload
 from streambuild.dev_server._helpers.definitions_payload import build_definitions_payload
+from streambuild.dev_server._helpers.message_query import (
+    ensure_header_columns,
+    read_source_message_facets,
+    read_source_message_record,
+    read_source_messages,
+)
 from streambuild.dev_server._helpers.plan_payload import (
     build_plan_payload,
     count_replay_rows,
 )
 from streambuild.dev_server._helpers.runs_query import read_active_runs, read_run_events, read_runs
-from streambuild.dev_server._helpers.state_payload import build_state_payload
+from streambuild.dev_server._helpers.state_payload import (
+    build_state_payload,
+    build_topics_payload,
+)
 from streambuild.dev_server.classes.audit_scheduler import AuditScheduler
 from streambuild.dev_server.classes.build_process import BuildProcessManager, build_invocation
 from streambuild.dev_server.classes.dev_server_state import DevServerState
 from streambuild.dev_server.classes.kafka_lag_reader import KafkaLagReader
+from streambuild.dev_server.classes.kafka_topic_reader import KafkaTopicReader
 from streambuild.dev_server.exceptions import (
     BuildInProgressError,
     BuildStartError,
     DevServerError,
+    MessageQueryValidationError,
+    MessageSchemaError,
     ProjectNotCompiledError,
 )
 from streambuild.dev_server.main._build_audit_scheduler_payload import (
@@ -47,6 +61,9 @@ from streambuild.dev_server.models import (
     ChecksRunRequest,
     CompileOutcome,
     DevExecutionContext,
+    MessageFacetsRequest,
+    MessageRecordRequest,
+    MessagesQueryRequest,
 )
 from streambuild.dev_server.types import (
     ActivityTone,
@@ -56,6 +73,7 @@ from streambuild.dev_server.types import (
 )
 
 _HTTP_BAD_REQUEST: int = 400
+_HTTP_NOT_FOUND: int = 404
 _HTTP_CONFLICT: int = 409
 _HTTP_BAD_GATEWAY: int = 502
 _HTTP_SERVICE_UNAVAILABLE: int = 503
@@ -66,15 +84,17 @@ def register_api_routes(
     app: FastAPI,
     state: DevServerState,
     connection: AdapterConnection | None,
-    database: str | None,
     project_dir: Path,
     builds: BuildProcessManager,
     audit_scheduler: AuditScheduler,
     kafka_lag_reader: KafkaLagReader,
+    kafka_topic_reader: KafkaTopicReader,
     reporter: DevServerReporter,
-    execution_context: DevExecutionContext | None = None,
+    execution_context: DevExecutionContext,
 ) -> FastAPI:
     """Attach every /api route; handlers close over the shared server state."""
+
+    database: str | None = execution_context.database
 
     def read_status() -> dict[str, object]:
         connected: bool = connection is not None
@@ -191,11 +211,33 @@ def register_api_routes(
         except AdapterError as error:
             raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
 
+    def read_topics() -> dict[str, object]:
+        analysis: CompileAnalysis = _servable_analysis()
+        try:
+            with state.query_lock:
+                return build_topics_payload(
+                    analysis=analysis,
+                    connection=connection,
+                    database=database,
+                    topic_reader=kafka_topic_reader,
+                    kafka_lag_reader=kafka_lag_reader,
+                )
+        except AdapterError as error:
+            raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
+
     app.get("/api/status")(read_status)
     app.get("/api/state")(read_state)
     app.get("/api/plan")(read_plan)
     app.post("/api/reload")(reload_project)
     app.get("/api/definitions")(read_definitions)
+    app.get("/api/topics")(read_topics)
+    _register_message_routes(
+        app=app,
+        state=state,
+        database=database,
+        required_connection=_required_connection,
+        servable_analysis=_servable_analysis,
+    )
     return _register_quality_routes(
         app=app,
         state=state,
@@ -207,6 +249,119 @@ def register_api_routes(
         required_connection=_required_connection,
         servable_analysis=_servable_analysis,
     )
+
+
+def _register_message_routes(
+    *,
+    app: FastAPI,
+    state: DevServerState,
+    database: str | None,
+    required_connection: Callable[[], AdapterConnection],
+    servable_analysis: Callable[[], CompileAnalysis],
+) -> FastAPI:
+    """Attach the warehouse-backed source message browsing routes."""
+
+    def _browsable_relation_name(*, analysis: CompileAnalysis, source_name: str) -> str:
+        source: CompiledSource | None = next(
+            (
+                candidate
+                for candidate in analysis.compiled_project.sources
+                if candidate.key.name == source_name
+            ),
+            None,
+        )
+        if source is None:
+            raise HTTPException(
+                status_code=_HTTP_NOT_FOUND,
+                detail=f"unknown source '{source_name}'",
+            )
+        if not isinstance(source.source, KafkaLandingStep):
+            raise HTTPException(
+                status_code=_HTTP_BAD_REQUEST,
+                detail=f"source '{source_name}' is not a managed Kafka source",
+            )
+        return analysis.realized_project.relation_name_by_logical_key[source.key]
+
+    def read_messages(*, name: str, request: MessagesQueryRequest) -> dict[str, object]:
+        client: AdapterConnection = required_connection()
+        analysis: CompileAnalysis = servable_analysis()
+        relation_name: str = _browsable_relation_name(analysis=analysis, source_name=name)
+        try:
+            with state.query_lock:
+                ensure_header_columns(
+                    connection=client, database=database or "", relation_name=relation_name
+                )
+                return read_source_messages(
+                    connection=client,
+                    database=database or "",
+                    relation_name=relation_name,
+                    request=request,
+                )
+        except MessageQueryValidationError as error:
+            raise HTTPException(status_code=_HTTP_BAD_REQUEST, detail=str(error)) from error
+        except MessageSchemaError as error:
+            raise HTTPException(status_code=_HTTP_CONFLICT, detail=str(error)) from error
+        except AdapterError as error:
+            raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
+
+    def read_message_record(*, name: str, request: MessageRecordRequest) -> dict[str, object]:
+        client: AdapterConnection = required_connection()
+        analysis: CompileAnalysis = servable_analysis()
+        relation_name: str = _browsable_relation_name(analysis=analysis, source_name=name)
+        try:
+            with state.query_lock:
+                ensure_header_columns(
+                    connection=client, database=database or "", relation_name=relation_name
+                )
+                record: dict[str, object] | None = read_source_message_record(
+                    connection=client,
+                    database=database or "",
+                    relation_name=relation_name,
+                    partition=request.partition,
+                    offset=request.offset,
+                )
+        except MessageQueryValidationError as error:
+            raise HTTPException(status_code=_HTTP_BAD_REQUEST, detail=str(error)) from error
+        except MessageSchemaError as error:
+            raise HTTPException(status_code=_HTTP_CONFLICT, detail=str(error)) from error
+        except AdapterError as error:
+            raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
+        if record is None:
+            raise HTTPException(
+                status_code=_HTTP_NOT_FOUND,
+                detail=(
+                    f"no message at partition {request.partition} "
+                    f"offset {request.offset} in '{name}'"
+                ),
+            )
+        return record
+
+    def read_message_facets(*, name: str, request: MessageFacetsRequest) -> dict[str, object]:
+        client: AdapterConnection = required_connection()
+        analysis: CompileAnalysis = servable_analysis()
+        relation_name: str = _browsable_relation_name(analysis=analysis, source_name=name)
+        try:
+            with state.query_lock:
+                ensure_header_columns(
+                    connection=client, database=database or "", relation_name=relation_name
+                )
+                return read_source_message_facets(
+                    connection=client,
+                    database=database or "",
+                    relation_name=relation_name,
+                    request=request,
+                )
+        except MessageQueryValidationError as error:
+            raise HTTPException(status_code=_HTTP_BAD_REQUEST, detail=str(error)) from error
+        except MessageSchemaError as error:
+            raise HTTPException(status_code=_HTTP_CONFLICT, detail=str(error)) from error
+        except AdapterError as error:
+            raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
+
+    app.post("/api/sources/{name}/messages")(read_messages)
+    app.post("/api/sources/{name}/messages/record")(read_message_record)
+    app.post("/api/sources/{name}/messages/facets")(read_message_facets)
+    return app
 
 
 def _register_quality_routes(

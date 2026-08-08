@@ -5,6 +5,7 @@
 	import WorkflowIcon from '@lucide/svelte/icons/workflow';
 	import LibraryIcon from '@lucide/svelte/icons/library';
 	import RadioIcon from '@lucide/svelte/icons/radio';
+	import ListTreeIcon from '@lucide/svelte/icons/list-tree';
 	import ReplaceIcon from '@lucide/svelte/icons/replace';
 	import ShieldCheckIcon from '@lucide/svelte/icons/shield-check';
 	import HistoryIcon from '@lucide/svelte/icons/history';
@@ -30,7 +31,8 @@
 				{ label: 'Lineage', href: '/lineage', icon: NetworkIcon },
 				{ label: 'Pipelines', href: '/pipelines', icon: WorkflowIcon },
 				{ label: 'Catalog', href: '/catalog', icon: LibraryIcon },
-				{ label: 'Sources', href: '/sources', icon: RadioIcon }
+				{ label: 'Sources', href: '/sources', icon: RadioIcon },
+				{ label: 'Topics', href: '/topics', icon: ListTreeIcon }
 			]
 		},
 		{

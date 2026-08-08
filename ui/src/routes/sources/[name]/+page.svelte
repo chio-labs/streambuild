@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
+	import MessageSquareTextIcon from '@lucide/svelte/icons/message-square-text';
 	import AppTopbar from '$lib/components/app-topbar.svelte';
 	import FactRow from '$lib/components/fact-row.svelte';
 	import ResizableSplitPane from '$lib/components/resizable-split-pane.svelte';
@@ -126,6 +127,18 @@
 	const pageCount = $derived(
 		Math.max(Math.ceil(filteredPartitions.length / PARTITION_PAGE_SIZE), 1)
 	);
+
+	/** Deep link into the message browser with an offset-range filter preselected. */
+	function partitionMessagesHref(partition: number): string {
+		const document = {
+			mode: { kind: 'offsetRange', partition, fromOffset: null, toOffset: null },
+			predicates: [],
+			limit: 50,
+			timeColumn: 'landed',
+			previewPaths: []
+		};
+		return `/sources/${sourceName}/messages?q=${encodeURIComponent(JSON.stringify(document))}`;
+	}
 	const pagedPartitions = $derived(
 		filteredPartitions.slice(
 			Math.min(partitionPage, pageCount - 1) * PARTITION_PAGE_SIZE,
@@ -155,6 +168,13 @@
 			<span class="text-[var(--sb-text-faint)]">/</span>
 			<span class="sb-tag">{source.kind === 'kafka' ? 'managed by StreamBuild' : 'adopted'}</span>
 			<span class="sb-tag code">{source.boundaryMode}</span>
+			{#if source.kind === 'kafka'}
+				<a
+					href="/sources/{sourceName}/messages"
+					class="text-primary ml-auto flex items-center gap-1 font-mono text-[11px] hover:underline"
+					><MessageSquareTextIcon size={12} /> Browse messages</a
+				>
+			{/if}
 		</div>
 
 		<ResizableSplitPane storageKey="sb-source-detail-sidebar-width">
@@ -377,7 +397,17 @@
 							<tbody>
 								{#each pagedPartitions as partition (partition.partition)}
 									<tr>
-										<td class="code px-3 text-[12px]">{partition.partition}</td>
+										<td class="code px-3 text-[12px]">
+											{#if source.kind === 'kafka'}
+												<a
+													href={partitionMessagesHref(partition.partition)}
+													class="text-primary hover:underline"
+													title="browse this partition's messages">{partition.partition}</a
+												>
+											{:else}
+												{partition.partition}
+											{/if}
+										</td>
 										<td class="text-muted-foreground code px-3 text-[11.5px]"
 											>{partition.offset === null ? '—' : formatInteger(partition.offset)}</td
 										>

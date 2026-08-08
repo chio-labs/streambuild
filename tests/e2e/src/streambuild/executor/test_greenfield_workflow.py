@@ -583,6 +583,9 @@ def test_given_retained_kafka_messages_when_executing_virtual_artifacts_then_for
             expected_order_ids=("order-1", "order-2"),
             expected_audit_assessment=AuditAssessment.READY,
             expected_replay_lineage_mode=ReplayLineageMode.TIMESTAMP,
+            produced_headers=(("trace-id", b"greenfield-trace"), ("trace-id", b"duplicate-key")),
+            expected_header_keys=("trace-id", "trace-id"),
+            expected_header_values=("greenfield-trace", "duplicate-key"),
         ),
         GreenfieldKafkaWorkflowE2ETestCase(
             description="runs managed Kafka landed-at replay from landing ingest through publish",
@@ -593,6 +596,9 @@ def test_given_retained_kafka_messages_when_executing_virtual_artifacts_then_for
             expected_order_ids=("order-1", "order-2"),
             expected_audit_assessment=AuditAssessment.READY,
             expected_replay_lineage_mode=ReplayLineageMode.LANDED_AT,
+            produced_headers=(),
+            expected_header_keys=(),
+            expected_header_values=(),
         ),
     ],
     ids=lambda case: case.description,
@@ -645,6 +651,7 @@ def test_given_kafka_backed_greenfield_pipeline_when_running_then_it_publishes_e
                 (order_id, json.dumps({"order_id": order_id}))
                 for order_id in test_case.expected_order_ids
             ),
+            headers=test_case.produced_headers,
         )
     finally:
         producer.close()
@@ -654,6 +661,17 @@ def test_given_kafka_backed_greenfield_pipeline_when_running_then_it_publishes_e
         clickhouse_database=e2e_clickhouse_database,
         table_name=require_managed_source(compiled_pipeline).raw_table.name,
         expected_count=len(test_case.expected_order_ids),
+    )
+    landed_header_rows: Sequence[Sequence[object]] = e2e_clickhouse_client.query(
+        "SELECT kafka_header_keys, kafka_header_values FROM "
+        f"{e2e_clickhouse_database}.{require_managed_source(compiled_pipeline).raw_table.name} "
+        "ORDER BY _replay_offset"
+    ).result_rows
+    assert tuple(tuple(row[0]) for row in landed_header_rows) == tuple(
+        test_case.expected_header_keys for _order_id in test_case.expected_order_ids
+    )
+    assert tuple(tuple(row[1]) for row in landed_header_rows) == tuple(
+        test_case.expected_header_values for _order_id in test_case.expected_order_ids
     )
 
     run_streambuild_virtual_build_cli(
