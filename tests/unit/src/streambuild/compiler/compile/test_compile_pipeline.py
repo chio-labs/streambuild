@@ -49,6 +49,7 @@ from streambuild.compiler.pipeline.models import RealizedProject
 from tests.unit.src.streambuild.compiler.compile._test_types import (
     CompileAdoptedSourceSharingTestCase,
     CompileModelNamingTestCase,
+    CompileModelTtlDefaultTestCase,
     CompilePipelineAdditionalRefDependencyTestCase,
     CompilePipelineAdoptedSourceTestCase,
     CompilePipelineInlineRefsTestCase,
@@ -1292,6 +1293,69 @@ def test_given_model_relation_naming_layers_when_compiling_then_resolves_locked_
 @pytest.mark.parametrize(
     "test_case",
     [
+        CompileModelTtlDefaultTestCase(
+            description="project model TTL supplies an omitted model value",
+            model_ttl_header="",
+            expected_ttl="event_at + INTERVAL 7 DAY",
+        ),
+        CompileModelTtlDefaultTestCase(
+            description="model TTL overrides the project default",
+            model_ttl_header=', ttl "event_at + INTERVAL 1 DAY"',
+            expected_ttl="event_at + INTERVAL 1 DAY",
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_project_model_ttl_when_compiling_then_applies_model_precedence(
+    test_case: CompileModelTtlDefaultTestCase,
+    tmp_path: Path,
+) -> None:
+    write_project_toml(
+        project_dir=tmp_path,
+        contents="""
+        name = "ttl_defaults"
+        default_target = "test"
+
+        [defaults]
+        model_ttl = "event_at + INTERVAL 7 DAY"
+
+        [targets.test]
+        """,
+    )
+    write_source_yml(
+        project_dir=tmp_path,
+        relative_path="events.yml",
+        contents="""
+        sources:
+          - name: events
+            kind: kafka
+            broker_list: kafka:9092
+            topic: source.events
+            replay_boundary: {mode: offsets}
+        """,
+    )
+    write_pipeline_file(
+        tmp_path / "pipelines" / "events" / "events_table.sql",
+        (
+            f"MODEL (order_by [event_at]{test_case.model_ttl_header}); "
+            "SELECT CAST(_replay_timestamp AS DateTime64(3)) AS event_at, "
+            "CAST(_replay_partition AS Int32) AS _replay_partition, "
+            "CAST(_replay_offset AS Int64) AS _replay_offset, "
+            "CAST(_replay_timestamp AS DateTime64(3)) AS _replay_timestamp, "
+            "CAST(_replay_landed_at AS DateTime64(3)) AS _replay_landed_at "
+            'FROM __source("events")'
+        ),
+    )
+
+    project: CompiledProject = compile_logical_project(tmp_path)
+    model: CompiledTableModel = cast(CompiledTableModel, project.models[0])
+
+    assert model.transform.ttl == test_case.expected_ttl
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
         CompileRelationNameErrorTestCase(
             description="rejects an empty exact relation name",
             relation_name="",
@@ -1345,6 +1409,54 @@ def test_given_invalid_effective_relation_name_when_compiling_then_rejects_befor
 
     with pytest.raises(PipelineCompileError, match=test_case.expected_error_fragment):
         compile_test_pipeline(loaded_pipeline)
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CompileRelationNameErrorTestCase(
+            description="rejects a reserved prefix inherited from project naming",
+            relation_name="raw__",
+            expected_error_fragment="uses reserved prefix",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_reserved_project_table_prefix_when_compiling_then_rejects_effective_name(
+    test_case: CompileRelationNameErrorTestCase,
+    tmp_path: Path,
+) -> None:
+    write_project_toml(
+        project_dir=tmp_path,
+        contents=f"""
+        name = "reserved_naming"
+        default_target = "test"
+
+        [naming]
+        table_prefix = "{test_case.relation_name}"
+
+        [targets.test]
+        """,
+    )
+    write_source_yml(
+        project_dir=tmp_path,
+        relative_path="events.yml",
+        contents="""
+        sources:
+          - name: events
+            kind: kafka
+            broker_list: kafka:9092
+            topic: source.events
+            replay_boundary: {mode: offsets}
+        """,
+    )
+    write_pipeline_file(
+        tmp_path / "pipelines" / "events" / "clean.sql",
+        'MODEL (); SELECT kafka_value::String AS value FROM __source("events")',
+    )
+
+    with pytest.raises(PipelineCompileError, match=test_case.expected_error_fragment):
+        compile_logical_project(tmp_path)
 
 
 @pytest.mark.parametrize(

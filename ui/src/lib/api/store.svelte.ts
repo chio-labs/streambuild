@@ -34,6 +34,7 @@ export type ServerStatus = {
 export type AppPhase = 'loading' | 'ready' | 'compile_failing' | 'unreachable';
 
 const POLL_INTERVAL_MS = 30_000;
+const INITIAL_KAFKA_LAG_RETRY_DELAYS_MS = [1_000, 4_000, 10_000] as const;
 
 type AppState = {
 	phase: AppPhase;
@@ -53,6 +54,8 @@ export const app = $state<AppState>({
 
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let startedPolling = false;
+let kafkaLagRetryTimer: ReturnType<typeof setTimeout> | null = null;
+let kafkaLagRetryAttempt = 0;
 
 export async function initializeApp(): Promise<void> {
 	await refreshAll();
@@ -61,6 +64,7 @@ export async function initializeApp(): Promise<void> {
 
 export async function reloadProject(): Promise<void> {
 	app.reloading = true;
+	resetInitialKafkaLagRetry();
 	try {
 		const response = await fetch('/api/reload', { method: 'POST' });
 		applyStatusPayload(await readApiResponse(response, 'project reload'));
@@ -154,20 +158,46 @@ function mergeProject(definitions: Record<string, unknown>, state: Record<string
 	const next = projectFromServer(definitions, state);
 	if (app.project === null) {
 		app.project = next;
+	} else {
+		// Check results are produced client-side (POST /api/checks/run) and the
+		// server payloads never carry them — carry them over by name or every poll
+		// would silently wipe outcomes the user just produced.
+		for (const audit of next.audits) {
+			const previous = app.project.audits.find((item) => item.name === audit.name);
+			if (previous?.result) audit.result = previous.result;
+		}
+		for (const test of next.tests) {
+			const previous = app.project.tests.find((item) => item.name === test.name);
+			if (previous?.result) test.result = previous.result;
+		}
+		Object.assign(app.project, next);
+	}
+	scheduleInitialKafkaLagRetry();
+}
+
+function scheduleInitialKafkaLagRetry(): void {
+	if (
+		kafkaLagRetryTimer !== null ||
+		kafkaLagRetryAttempt >= INITIAL_KAFKA_LAG_RETRY_DELAYS_MS.length ||
+		app.project === null ||
+		!app.project.sources.some(
+			(source) => source.kind === 'kafka' && source.live.kafkaLagMessages === null
+		)
+	) {
 		return;
 	}
-	// Check results are produced client-side (POST /api/checks/run) and the
-	// server payloads never carry them — carry them over by name or every poll
-	// would silently wipe outcomes the user just produced.
-	for (const audit of next.audits) {
-		const previous = app.project.audits.find((item) => item.name === audit.name);
-		if (previous?.result) audit.result = previous.result;
-	}
-	for (const test of next.tests) {
-		const previous = app.project.tests.find((item) => item.name === test.name);
-		if (previous?.result) test.result = previous.result;
-	}
-	Object.assign(app.project, next);
+	const delay = INITIAL_KAFKA_LAG_RETRY_DELAYS_MS[kafkaLagRetryAttempt];
+	kafkaLagRetryAttempt += 1;
+	kafkaLagRetryTimer = setTimeout(() => {
+		kafkaLagRetryTimer = null;
+		if (!document.hidden) void refreshLiveState();
+	}, delay);
+}
+
+function resetInitialKafkaLagRetry(): void {
+	if (kafkaLagRetryTimer !== null) clearTimeout(kafkaLagRetryTimer);
+	kafkaLagRetryTimer = null;
+	kafkaLagRetryAttempt = 0;
 }
 
 function applyStatusPayload(payload: Record<string, unknown>): void {

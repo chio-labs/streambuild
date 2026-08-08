@@ -5,6 +5,8 @@ from __future__ import annotations
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.exceptions import AdapterError
 from streambuild.adapter.models import AdapterReplayColumns
+from streambuild.compiler.compile.models import CompiledPipeline, LogicalResourceKey
+from streambuild.compiler.discovery.models import PipelineProtection
 from streambuild.compiler.discovery.types import ReplayLineageMode
 from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.compiler.planner.models import (
@@ -55,12 +57,31 @@ def build_plan_payload(
         "warnings": [
             {"code": item.warning_code, "message": item.message} for item in plan.warnings
         ],
+        "protections": _protection_payloads(plan=plan, analysis=analysis),
         "replayWindow": (
             {"mode": "full"} if start_time is None else {"mode": "from", "startTime": start_time}
         ),
         "plannedAt": planned_at,
         "command": command,
     }
+
+
+def _protection_payloads(*, plan: DirectPlan, analysis: CompileAnalysis) -> list[dict[str, str]]:
+    execution_keys: frozenset[LogicalResourceKey] = frozenset(plan.execution_scope)
+    payloads: list[dict[str, str]] = []
+    pipeline: CompiledPipeline
+    for pipeline in analysis.compiled_project.pipelines:
+        protection: PipelineProtection | None = pipeline.pipeline.protection
+        if protection is None or not any(model.key in execution_keys for model in pipeline.models):
+            continue
+        payloads.append(
+            {
+                "pipelineName": pipeline.pipeline.name,
+                "warning": protection.warning,
+                "confirmation": protection.confirmation,
+            }
+        )
+    return payloads
 
 
 def _entry_payload(

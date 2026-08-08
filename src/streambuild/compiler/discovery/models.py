@@ -119,6 +119,8 @@ class ProjectDefaults:
     """Committed project-wide authored defaults."""
 
     managed_source_ttl: str | None = None
+    model_ttl: str | None = None
+    kafka_broker_list: str | None = None
     replay_on_change: ReplayOnChangePolicy | None = None
     bounded_replay_fallback: BoundedReplayFallback | None = None
     freshness: SourceFreshnessPolicy | None = None
@@ -138,6 +140,14 @@ class PipelineNaming:
 
     table_prefix: str | None = None
     view_prefix: str | None = None
+
+
+@dataclass(frozen=True)
+class PipelineProtection:
+    """Operator warning and exact confirmation required before a protected build."""
+
+    warning: str
+    confirmation: str
 
 
 @dataclass(frozen=True, repr=False)
@@ -339,6 +349,7 @@ class Project:
 
     replay_on_change: ReplayOnChangePolicy | None = None
     bounded_replay_fallback: BoundedReplayFallback | str | None = None
+    model_ttl: str | None = None
     default_database: str | None = None
     adapter: str = DEFAULT_ADAPTER_NAME
     naming: ProjectNaming = field(default_factory=ProjectNaming)
@@ -362,6 +373,7 @@ class Pipeline:
     replay_on_change: ReplayOnChangePolicy | None = None
     bounded_replay_fallback: BoundedReplayFallback | str | None = None
     naming: PipelineNaming = field(default_factory=PipelineNaming)
+    protection: PipelineProtection | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "transforms", tuple(self.transforms))

@@ -4,6 +4,7 @@ import json
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.cli.build._helpers.audits import prepare_direct_build_audits
+from streambuild.cli.build._helpers.confirmation import build_protection_requirements
 from streambuild.cli.build._helpers.preview import build_direct_build_preview
 from streambuild.cli.build._helpers.virtual_preview import build_virtual_build_preview
 from streambuild.cli.build.constants import STREAMBUILD_TOOL_VERSION
@@ -107,6 +108,10 @@ def prepare_direct_build_workflow(
             adapter_name=preview.adapter_name,
             verbose=options.verbose,
         ),
+        protection_requirements=build_protection_requirements(
+            compiled_project=analysis.compiled_project,
+            execution_model_keys=frozenset(preview.plan.execution_scope),
+        ),
     )
 
 
@@ -168,6 +173,10 @@ def prepare_virtual_build_workflow(
         request=request,
         workflow=workflow,
         plan_text=plan_text,
+        protection_requirements=build_protection_requirements(
+            compiled_project=analysis.compiled_project,
+            execution_model_keys=preview.execution_logical_model_keys,
+        ),
     )
 
 
