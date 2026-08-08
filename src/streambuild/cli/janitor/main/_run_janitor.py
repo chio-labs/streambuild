@@ -14,6 +14,7 @@ def run_janitor(
     *,
     database: str,
     retention_days: int,
+    minimum_rollback_deployments: int,
     apply: bool,
     json_output: bool,
     client: AdapterConnection,
@@ -24,6 +25,7 @@ def run_janitor(
             metadata_database=database,
             retention_days=retention_days,
             apply=apply,
+            minimum_rollback_deployments=minimum_rollback_deployments,
         ),
         client=client,
     )

@@ -181,6 +181,12 @@ def build_cli_parser() -> argparse.ArgumentParser:
         help="Keep deployments newer than this many days (default: 7)",
     )
     janitor_parser.add_argument(
+        "--minimum-rollback-deployments",
+        type=int,
+        default=2,
+        help="Keep at least this many previously published deployments (default: 2)",
+    )
+    janitor_parser.add_argument(
         "--apply",
         action="store_true",
         help="Actually drop stale tables (dry-run by default)",
@@ -312,7 +318,7 @@ def _add_deployment_parser(
     deployment_parser: argparse.ArgumentParser = subparsers.add_parser(
         "deployment",
         help="Inspect and operate on virtual deployments",
-        description="List, inspect, audit, or promote virtual deployments.",
+        description="List, inspect, audit, promote, or roll back virtual deployments.",
     )
     deployment_subparsers: argparse._SubParsersAction[argparse.ArgumentParser] = (
         deployment_parser.add_subparsers(dest="deployment_command", required=True)
@@ -328,6 +334,14 @@ def _add_deployment_parser(
         description="Show authoritative lifecycle and catalog evidence for one deployment.",
     )
     deployment_show_parser.add_argument("deployment_id", help="Deployment identifier to inspect")
+    deployment_diff_parser: argparse.ArgumentParser = deployment_subparsers.add_parser(
+        "diff", help="Compare active or retained deployments"
+    )
+    deployment_diff_parser.add_argument(
+        "comparison",
+        metavar="DEPLOYMENT|FROM:TO",
+        help="Deployment ID (active baseline) or explicit FROM:TO endpoints",
+    )
     deployment_audit_parser: argparse.ArgumentParser = deployment_subparsers.add_parser(
         "audit", help="Audit a staged deployment"
     )
@@ -336,12 +350,35 @@ def _add_deployment_parser(
         "promote", help="Promote a staged deployment to active"
     )
     deployment_promote_parser.add_argument("deployment_id", help="Deployment identifier to promote")
+    deployment_rollback_parser: argparse.ArgumentParser = deployment_subparsers.add_parser(
+        "rollback", help="Roll back to a previously published deployment"
+    )
+    rollback_target_group: argparse._MutuallyExclusiveGroup = (
+        deployment_rollback_parser.add_mutually_exclusive_group(required=True)
+    )
+    rollback_target_group.add_argument(
+        "deployment_id",
+        nargs="?",
+        help="Previously published deployment identifier",
+    )
+    rollback_target_group.add_argument(
+        "--previous",
+        action="store_true",
+        help="Select the publication immediately before the active deployment",
+    )
+    deployment_rollback_parser.add_argument(
+        "--auto-approve",
+        action="store_true",
+        help="Skip the rollback confirmation prompt",
+    )
     deployment_command_parser: argparse.ArgumentParser
     for deployment_command_parser in (
         deployment_list_parser,
         deployment_show_parser,
+        deployment_diff_parser,
         deployment_audit_parser,
         deployment_promote_parser,
+        deployment_rollback_parser,
     ):
         _add_project_dir_arg(parser=deployment_command_parser)
         _add_clickhouse_args(parser=deployment_command_parser)

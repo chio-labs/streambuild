@@ -42,6 +42,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     from streambuild.cli.audit.main._run_audit import run_audit
     from streambuild.cli.build.main._run_build import run_build
     from streambuild.cli.compile.main._run_compile import run_compile
+    from streambuild.cli.deployment.main._run_deployment_diff import run_deployment_diff
     from streambuild.cli.deployment.main._run_deployment_list import run_deployment_list
     from streambuild.cli.deployment.main._run_deployment_show import run_deployment_show
     from streambuild.cli.dev.main._run_dev import run_dev
@@ -57,6 +58,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     from streambuild.cli.repair_active_view.main._run_repair_active_view import (
         run_repair_active_view,
     )
+    from streambuild.cli.rollback.main._run_deployment_rollback import run_deployment_rollback
     from streambuild.cli.test.main._run_test import run_test
 
     handlers: CliEntrypointHandlers = CliEntrypointHandlers(
@@ -66,10 +68,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         run_audit=run_audit,
         run_plan=run_plan,
         run_build=run_build,
+        run_deployment_diff=run_deployment_diff,
         run_deployment_list=run_deployment_list,
         run_deployment_show=run_deployment_show,
         run_deployment_audit=run_deployment_audit,
         run_deployment_promote=run_deployment_promotion,
+        run_deployment_rollback=run_deployment_rollback,
         run_reconcile=run_reconcile,
         run_janitor=run_janitor,
         run_doctor=run_doctor,

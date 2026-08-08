@@ -24,7 +24,9 @@ class CliSubcommand(StrEnum):
     """One nested `stb <command> <subcommand>` selector."""
 
     ACTIVE_VIEW = "active-view"
+    DIFF = "diff"
     LIST = "list"
     SHOW = "show"
     AUDIT = "audit"
     PROMOTE = "promote"
+    ROLLBACK = "rollback"
