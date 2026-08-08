@@ -83,10 +83,15 @@ export function createMessageBrowserState(sourceName: string) {
 	let error = $state<string | null>(null);
 	let generation = 0;
 	let controller: AbortController | null = null;
+	// Console-style search signature: automatic triggers skip when nothing
+	// about the effective search changed; manual refresh always re-queries.
+	let searchedSignature: string | null = null;
 
-	async function refresh(): Promise<void> {
+	async function refresh(source: 'auto' | 'manual' = 'auto'): Promise<void> {
 		const snapshot = $state.snapshot(document) as MessageFilterDocument;
 		if (!isQueryableDocument(snapshot)) return;
+		const signature = JSON.stringify({ snapshot, facetPath: $state.snapshot(facetPath) });
+		if (source === 'auto' && signature === searchedSignature) return;
 		controller?.abort();
 		generation += 1;
 		const current = generation;
@@ -108,6 +113,7 @@ export function createMessageBrowserState(sourceName: string) {
 			nextCursor = messages.nextCursor;
 			windowSeconds = messages.windowSeconds;
 			facets = facetsPayload;
+			searchedSignature = signature;
 		} catch (caught) {
 			if (current === generation && !(controller?.signal.aborted ?? false)) {
 				error = String(caught instanceof Error ? caught.message : caught);
@@ -148,6 +154,11 @@ export function createMessageBrowserState(sourceName: string) {
 		controller?.abort();
 	}
 
+	/** Navigation gate: fetch only when the pending document differs from the last search. */
+	async function ensureLoaded(): Promise<void> {
+		await refresh('auto');
+	}
+
 	return {
 		get document() {
 			return document;
@@ -184,6 +195,20 @@ export function createMessageBrowserState(sourceName: string) {
 		},
 		refresh,
 		loadOlder,
-		stop
+		stop,
+		ensureLoaded
 	};
+}
+
+const statesBySource = new Map<string, ReturnType<typeof createMessageBrowserState>>();
+
+/** One browser state per source for the whole session, so revisits render instantly. */
+export function getMessageBrowserState(
+	sourceName: string
+): ReturnType<typeof createMessageBrowserState> {
+	const existing = statesBySource.get(sourceName);
+	if (existing !== undefined) return existing;
+	const created = createMessageBrowserState(sourceName);
+	statesBySource.set(sourceName, created);
+	return created;
 }

@@ -362,6 +362,10 @@
 .token.sb-ref {
 	color: var(--syn-function);
 }
+/* JSON object keys (Prism's json grammar emits `property`) */
+.token.property {
+	color: var(--syn-function);
+}
 .token.operator,
 .token.entity,
 .token.url {

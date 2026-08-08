@@ -8,14 +8,14 @@
 	import AppTopbar from '$lib/components/app-topbar.svelte';
 	import { getProject } from '$lib/api';
 	import { sourceByName } from '$lib/domain/derive';
-	import { formatCompact, formatInteger, formatTimestamp } from '$lib/domain/format';
+	import { formatBytes, formatCompact, formatInteger, formatTimestamp } from '$lib/domain/format';
 	import type { Project } from '$lib/domain/types';
 	import ChipEditor from './chip-editor.svelte';
+	import HighlightText from './highlight-text.svelte';
 	import MessageDetail from './message-detail.svelte';
 	import {
-		createMessageBrowserState,
-		decodeFilterDocument,
 		encodeFilterDocument,
+		getMessageBrowserState,
 		predicateLabel
 	} from './state.svelte';
 	import type {
@@ -29,10 +29,68 @@
 	const sourceName = $derived(page.params.name ?? '');
 	const source = $derived(sourceByName(project, sourceName));
 
-	const browser = createMessageBrowserState(page.params.name ?? '');
-	browser.document = decodeFilterDocument(page.url.searchParams.get('q'));
+	// The load function already resolved this state and its first query; the
+	// component just attaches to the per-source session instance.
+	const browser = getMessageBrowserState(page.params.name ?? '');
 
-	let showKafkaTimestamp = $state(false);
+	// Client-side sort over the loaded page, Console-style. The server always
+	// pages newest-landed-first; the display defaults to the record's own
+	// broker timestamp because this is a topic view — landed-at ordering is
+	// one click away when the arrival gap is what matters.
+	type SortKey = 'landed' | 'broker' | 'offset' | 'key';
+	let sortKey = $state<SortKey>('broker');
+	let sortAsc = $state(false);
+
+	const SORT_DEFAULT_ASCENDING: Record<SortKey, boolean> = {
+		landed: false,
+		broker: false,
+		offset: false,
+		key: true
+	};
+
+	function pickSort(key: SortKey): void {
+		if (sortKey === key) {
+			sortAsc = !sortAsc;
+			return;
+		}
+		sortKey = key;
+		sortAsc = SORT_DEFAULT_ASCENDING[key];
+	}
+
+	function compareRows(a: MessageRow, b: MessageRow): number {
+		if (sortKey === 'landed') return a.landedAt.localeCompare(b.landedAt);
+		if (sortKey === 'broker') {
+			return (a.kafkaTimestamp ?? '').localeCompare(b.kafkaTimestamp ?? '');
+		}
+		if (sortKey === 'key') return a.key.localeCompare(b.key);
+		return a.partition - b.partition || a.offset - b.offset;
+	}
+
+	const sortedRows = $derived.by((): MessageRow[] => {
+		const sorted = [...browser.rows].sort(compareRows);
+		return sortAsc ? sorted : sorted.reverse();
+	});
+
+	// Console renders ten rows per page over the fetched result set; "Load
+	// older" extends the set and therefore the page count.
+	const PAGE_SIZES: number[] = [10, 25, 50];
+	let pageSize = $state(10);
+	let pageIndex = $state(0);
+	const pageCount = $derived(Math.max(Math.ceil(sortedRows.length / pageSize), 1));
+	const clampedPageIndex = $derived(Math.min(pageIndex, pageCount - 1));
+	const displayRows = $derived(
+		sortedRows.slice(clampedPageIndex * pageSize, (clampedPageIndex + 1) * pageSize)
+	);
+
+	function valueFormatLabel(row: MessageRow): string {
+		const first = row.valuePreview.trimStart().charAt(0);
+		return first === '{' || first === '[' ? 'JSON' : 'TEXT';
+	}
+
+	function sortIndicator(key: SortKey): string {
+		if (sortKey !== key) return '';
+		return sortAsc ? ' ▲' : ' ▼';
+	}
 	let expanded = $state<string[]>([]);
 	let facetPathText = $state(browser.facetPath.join('.'));
 	let previewPathText = $state('');
@@ -205,10 +263,23 @@
 		if (scroller) scroller.scrollTop += after - before;
 	}
 
-	const columnCount = $derived(
-		3 +
-			(showKafkaTimestamp ? 1 : 0) +
-			(browser.document.previewPaths.length === 0 ? 1 : browser.document.previewPaths.length)
+	const columnCount = $derived(5 + browser.document.previewPaths.length);
+
+	// Active filter criteria light up inside the cells they filtered, so the
+	// table never reshapes to explain why a row matched.
+	const keyHighlightTerms = $derived(
+		browser.document.predicates
+			.filter((predicate) => predicate.field === 'key' && typeof predicate.value === 'string')
+			.map((predicate) => String(predicate.value))
+	);
+	const valueHighlightTerms = $derived(
+		browser.document.predicates
+			.filter(
+				(predicate) =>
+					(predicate.field === 'value' || predicate.field === 'json') &&
+					typeof predicate.value === 'string'
+			)
+			.map((predicate) => String(predicate.value))
 	);
 	const windowLabel = $derived(
 		browser.windowSeconds === null
@@ -247,7 +318,7 @@
 			{/if}
 			<button
 				class="text-muted-foreground hover:text-foreground ml-auto flex items-center gap-1 rounded-[4px] border border-border px-2 py-1 font-mono text-[10.5px]"
-				onclick={() => void browser.refresh()}
+				onclick={() => void browser.refresh('manual')}
 				><RefreshCwIcon size={11} class={browser.loading ? 'animate-spin' : ''} /> refresh</button
 			>
 		</div>
@@ -346,13 +417,6 @@
 					</span>
 				{/each}
 
-				<span class="text-muted-foreground ml-auto font-mono text-[10.5px]">
-					<button
-						class="hover:text-foreground {showKafkaTimestamp ? 'text-foreground' : ''}"
-						onclick={() => (showKafkaTimestamp = !showKafkaTimestamp)}
-						title="toggle broker timestamp column">broker ts</button
-					>
-				</span>
 			</div>
 
 			<!-- preview fields: chosen JSON paths become list columns -->
@@ -434,17 +498,34 @@
 						<tr
 							class="text-[var(--sb-text-faint)] border-b border-border font-mono text-[10px] uppercase tracking-[0.14em]"
 						>
-							<th class="w-[150px] px-3 py-2 font-normal">Landed at</th>
-							{#if showKafkaTimestamp}<th class="w-[150px] px-3 py-2 font-normal">Broker ts</th>{/if}
-							<th class="w-[120px] px-3 py-2 font-normal">P / Offset</th>
-							<th class="w-[200px] px-3 py-2 font-normal">Key</th>
-							{#if browser.document.previewPaths.length === 0}
-								<th class="px-3 py-2 font-normal">Value</th>
-							{:else}
-								{#each browser.document.previewPaths as path, index (index)}
-									<th class="px-3 py-2 font-normal normal-case">{path.join('.')}</th>
-								{/each}
-							{/if}
+							<th class="w-[150px] px-1 py-1 font-normal">
+								<button
+									class="hover:text-foreground w-full px-2 py-1 text-left uppercase tracking-[0.14em]"
+									onclick={() => pickSort('broker')}>Timestamp{sortIndicator('broker')}</button
+								>
+							</th>
+							<th class="w-[150px] px-1 py-1 font-normal">
+								<button
+									class="hover:text-foreground w-full px-2 py-1 text-left uppercase tracking-[0.14em]"
+									onclick={() => pickSort('landed')}>Landed at{sortIndicator('landed')}</button
+								>
+							</th>
+							<th class="w-[120px] px-1 py-1 font-normal">
+								<button
+									class="hover:text-foreground w-full px-2 py-1 text-left uppercase tracking-[0.14em]"
+									onclick={() => pickSort('offset')}>P / Offset{sortIndicator('offset')}</button
+								>
+							</th>
+							<th class="w-[200px] px-1 py-1 font-normal">
+								<button
+									class="hover:text-foreground w-full px-2 py-1 text-left uppercase tracking-[0.14em]"
+									onclick={() => pickSort('key')}>Key{sortIndicator('key')}</button
+								>
+							</th>
+							<th class="px-3 py-2 font-normal">Value</th>
+							{#each browser.document.previewPaths as path, index (index)}
+								<th class="w-[180px] px-3 py-2 font-normal normal-case">{path.join('.')}</th>
+							{/each}
 						</tr>
 					</thead>
 					<tbody class={browser.loading && browser.rows.length > 0 ? 'opacity-50' : ''}>
@@ -455,34 +536,44 @@
 						{:else if !browser.loading && browser.rows.length === 0}
 							<tr><td colspan={columnCount} class="text-muted-foreground px-3 py-6 text-center font-mono text-[11px]">no messages match — searched the {windowLabel}</td></tr>
 						{:else}
-							{#each browser.rows as row (rowKey(row))}
+							{#each displayRows as row (rowKey(row))}
 								<tr
 									class="cursor-pointer border-b border-[var(--border-subtle)] last:border-b-0 hover:bg-[var(--sb-hover)]"
 									onclick={(event) => void toggleRow(event, row)}
 								>
 									<td class="text-muted-foreground code whitespace-nowrap px-3 py-1.5 text-[11px]"
+										>{row.kafkaTimestamp === null ? '—' : formatTimestamp(row.kafkaTimestamp)}</td
+									>
+									<td class="text-muted-foreground code whitespace-nowrap px-3 py-1.5 text-[11px]"
 										>{formatTimestamp(row.landedAt)}</td
 									>
-									{#if showKafkaTimestamp}
-										<td class="text-muted-foreground code whitespace-nowrap px-3 py-1.5 text-[11px]"
-											>{row.kafkaTimestamp === null ? '—' : formatTimestamp(row.kafkaTimestamp)}</td
-										>
-									{/if}
 									<td class="code whitespace-nowrap px-3 py-1.5 text-[11px]"
 										>{row.partition} / {formatInteger(row.offset)}</td
 									>
-									<td class="code max-w-[220px] truncate px-3 py-1.5 text-[11.5px]">{row.key || '—'}</td>
-									{#if browser.document.previewPaths.length === 0}
-										<td class="text-muted-foreground code max-w-[480px] truncate px-3 py-1.5 text-[11px]">
-											{row.valuePreview}{row.valueTruncated ? ' …' : ''}
-										</td>
-									{:else}
-										{#each row.previewValues as previewValue, index (index)}
-											<td class="text-muted-foreground code max-w-[240px] truncate px-3 py-1.5 text-[11px]"
-												>{previewValue || '—'}</td
-											>
-										{/each}
-									{/if}
+									<td class="px-3 py-1.5">
+										<div class="code truncate text-[11.5px]">
+											{#if row.key}<HighlightText text={row.key} terms={keyHighlightTerms} />{:else}—{/if}
+										</div>
+										<div class="text-[var(--sb-text-faint)] font-mono text-[9.5px]">
+											TEXT - {formatBytes(row.keyBytes)}
+										</div>
+									</td>
+									<td class="px-3 py-1.5">
+										<div class="text-muted-foreground code truncate text-[11px]">
+											<HighlightText
+												text={row.valuePreview}
+												terms={valueHighlightTerms}
+											/>{row.valueTruncated ? ' …' : ''}
+										</div>
+										<div class="text-[var(--sb-text-faint)] font-mono text-[9.5px]">
+											{valueFormatLabel(row)} - {formatBytes(row.valueBytes)}
+										</div>
+									</td>
+									{#each row.previewValues as previewValue, index (index)}
+										<td class="text-muted-foreground code truncate px-3 py-1.5 text-[11px]"
+											>{previewValue || '—'}</td
+										>
+									{/each}
 								</tr>
 								{#if expanded.includes(rowKey(row))}
 									<tr class="border-b border-[var(--border-subtle)] last:border-b-0">
@@ -497,12 +588,49 @@
 				</table>
 			</div>
 
-			<div class="flex items-center gap-3 pb-4">
+			<div class="flex flex-wrap items-center gap-3 pb-4">
 				{#if !browser.loading && browser.rows.length > 0}
 					<span class="text-[var(--sb-text-faint)] font-mono text-[10.5px]">
 						{formatInteger(browser.rows.length)} messages · searched the {windowLabel}
 					</span>
 				{/if}
+				{#if pageCount > 1}
+					<div class="flex items-center gap-1">
+						<button
+							class="text-muted-foreground hover:text-foreground rounded-[4px] border border-border px-2 py-[3px] font-mono text-[10.5px] disabled:opacity-40"
+							disabled={clampedPageIndex === 0}
+							onclick={() => (pageIndex = clampedPageIndex - 1)}>‹</button
+						>
+						{#each Array.from({ length: pageCount }, (_, index) => index) as candidate (candidate)}
+							<button
+								class="rounded-[4px] border px-2 py-[3px] font-mono text-[10.5px] {candidate ===
+								clampedPageIndex
+									? 'border-[var(--primary)] text-foreground'
+									: 'text-muted-foreground border-border hover:text-foreground'}"
+								onclick={() => (pageIndex = candidate)}>{candidate + 1}</button
+							>
+						{/each}
+						<button
+							class="text-muted-foreground hover:text-foreground rounded-[4px] border border-border px-2 py-[3px] font-mono text-[10.5px] disabled:opacity-40"
+							disabled={clampedPageIndex >= pageCount - 1}
+							onclick={() => (pageIndex = clampedPageIndex + 1)}>›</button
+						>
+					</div>
+				{/if}
+				<div class="flex overflow-hidden rounded-[4px] border border-border">
+					{#each PAGE_SIZES as candidate (candidate)}
+						<button
+							class="border-l border-border px-2 py-[3px] font-mono text-[10px] first:border-l-0 {pageSize ===
+							candidate
+								? 'bg-[var(--sb-hover)] text-foreground'
+								: 'text-muted-foreground hover:text-foreground'}"
+							onclick={() => {
+								pageSize = candidate;
+								pageIndex = 0;
+							}}>{candidate} / page</button
+						>
+					{/each}
+				</div>
 				{#if browser.nextCursor !== null}
 					<button
 						class="text-muted-foreground hover:text-foreground rounded-[4px] border border-border px-2.5 py-1 font-mono text-[10.5px] disabled:opacity-40"
