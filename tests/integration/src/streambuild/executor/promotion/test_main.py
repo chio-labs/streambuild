@@ -174,7 +174,8 @@ def test_given_greenfield_staged_deployment_when_publishing_then_it_creates_stab
             "_replay_partition",
             "_replay_offset",
             "_replay_timestamp",
-            "kafka_headers",
+            "kafka_header_keys",
+            "kafka_header_values",
             "_replay_landed_at",
         ],
     )
@@ -407,7 +408,8 @@ def test_given_deleted_publish_metadata_when_publishing_then_it_uses_live_clickh
             "_replay_partition",
             "_replay_offset",
             "_replay_timestamp",
-            "kafka_headers",
+            "kafka_header_keys",
+            "kafka_header_values",
             "_replay_landed_at",
         ],
     )
@@ -515,7 +517,8 @@ def test_given_deleted_staged_table_when_publishing_then_it_fails_conservatively
             "_replay_partition",
             "_replay_offset",
             "_replay_timestamp",
-            "kafka_headers",
+            "kafka_header_keys",
+            "kafka_header_values",
             "_replay_landed_at",
         ],
     )
@@ -630,7 +633,8 @@ def test_given_deleted_active_view_when_publishing_then_it_recreates_stable_view
             "_replay_partition",
             "_replay_offset",
             "_replay_timestamp",
-            "kafka_headers",
+            "kafka_header_keys",
+            "kafka_header_values",
             "_replay_landed_at",
         ],
     )

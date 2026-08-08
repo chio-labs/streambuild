@@ -209,7 +209,8 @@ def test_given_conflicting_metadata_when_loading_actual_state_then_live_view_bin
             "_replay_partition",
             "_replay_offset",
             "_replay_timestamp",
-            "kafka_headers",
+            "kafka_header_keys",
+            "kafka_header_values",
             "_replay_landed_at",
         ],
     )
@@ -464,7 +465,8 @@ def test_given_published_state_when_metadata_is_deleted_then_load_actual_state_u
             "_replay_partition",
             "_replay_offset",
             "_replay_timestamp",
-            "kafka_headers",
+            "kafka_header_keys",
+            "kafka_header_values",
             "_replay_landed_at",
         ],
     )
@@ -597,7 +599,8 @@ def test_given_latest_object_state_record_when_loading_then_only_reconcile_overr
             "_replay_partition",
             "_replay_offset",
             "_replay_timestamp",
-            "kafka_headers",
+            "kafka_header_keys",
+            "kafka_header_values",
             "_replay_landed_at",
         ],
     )

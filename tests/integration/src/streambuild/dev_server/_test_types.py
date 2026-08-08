@@ -26,3 +26,41 @@ class ScheduledAuditContentionTestCase:
     expected_tick_counts: tuple[int, int]
     expected_claim_count: int
     expected_result_count: int
+
+
+@dataclass(frozen=True)
+class MessageCorpusQueryTestCase:
+    description: str
+    request_json: dict
+    expected_coordinates: tuple[tuple[int, int], ...]
+    expected_window_seconds: int | None
+    expected_has_next_cursor: bool
+
+
+@dataclass(frozen=True)
+class MessagePaginationTestCase:
+    description: str
+    page_limit: int
+    expected_walk: tuple[tuple[int, int], ...]
+
+
+@dataclass(frozen=True)
+class MessageTruncationTestCase:
+    description: str
+    expected_preview_chars: int
+    expected_duplicate_headers: tuple[tuple[str, str], ...]
+
+
+@dataclass(frozen=True)
+class MessageFacetsCorpusTestCase:
+    description: str
+    expected_values: tuple[tuple[str, int], ...]
+    expected_null_count: int
+    expected_total_count: int
+    expected_window_seconds: int
+
+
+@dataclass(frozen=True)
+class MessageSchemaResetTestCase:
+    description: str
+    expected_error_fragment: str

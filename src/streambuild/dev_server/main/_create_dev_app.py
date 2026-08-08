@@ -15,6 +15,7 @@ from streambuild.dev_server.classes.audit_scheduler import AuditScheduler
 from streambuild.dev_server.classes.build_process import BuildProcessManager
 from streambuild.dev_server.classes.dev_server_state import DevServerState
 from streambuild.dev_server.classes.kafka_lag_reader import KafkaLagReader
+from streambuild.dev_server.classes.kafka_topic_reader import KafkaTopicReader
 from streambuild.dev_server.classes.silent_reporter import SilentDevServerReporter
 from streambuild.dev_server.exceptions import DevConfigurationError
 from streambuild.dev_server.models import DevExecutionContext
@@ -51,6 +52,7 @@ def create_dev_app(
         reporter=active_reporter, execution_context=active_context
     )
     kafka_lag_reader: KafkaLagReader = KafkaLagReader()
+    kafka_topic_reader: KafkaTopicReader = KafkaTopicReader()
     audit_scheduler: AuditScheduler = AuditScheduler(
         state=state,
         connection=connection,
@@ -66,6 +68,7 @@ def create_dev_app(
         yield
         audit_scheduler.close()
         kafka_lag_reader.close()
+        kafka_topic_reader.close()
         builds.close()
 
     app: FastAPI = FastAPI(title="StreamBuild", docs_url=None, redoc_url=None, lifespan=lifespan)
@@ -73,11 +76,11 @@ def create_dev_app(
         app=app,
         state=state,
         connection=connection,
-        database=effective_database,
         project_dir=project_dir or Path.cwd(),
         builds=builds,
         audit_scheduler=audit_scheduler,
         kafka_lag_reader=kafka_lag_reader,
+        kafka_topic_reader=kafka_topic_reader,
         execution_context=active_context,
         reporter=active_reporter,
     )

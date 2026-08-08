@@ -73,7 +73,7 @@ def collect_kafka_lag(
 
     if kafka.consumer_group is None:
         return KafkaLagSnapshot(total_messages=None, partitions=())
-    client_config: dict[str, object] = _client_config(kafka=kafka)
+    client_config: dict[str, object] = build_kafka_client_config(kafka=kafka)
     consumer_group: str = database_scoped_consumer_group(
         consumer_group=kafka.consumer_group,
         database=database,
@@ -177,7 +177,9 @@ class KafkaLagReader:
             self._refreshing.discard(key)
 
 
-def _client_config(*, kafka: KafkaSettings) -> dict[str, object]:
+def build_kafka_client_config(*, kafka: KafkaSettings) -> dict[str, object]:
+    """Translate resolved managed-source Kafka settings into kafka-python config."""
+
     settings: Mapping[str, str] = kafka.settings or {}
     config: dict[str, object] = {
         "bootstrap_servers": [item.strip() for item in kafka.broker_list.split(",")],

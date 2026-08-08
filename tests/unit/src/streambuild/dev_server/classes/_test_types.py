@@ -54,3 +54,10 @@ class AuditSchedulerActiveRunTestCase:
 class AuditSchedulerLocalRaceTestCase:
     description: str
     expected_feed_reads: int
+
+
+@dataclass(frozen=True)
+class KafkaTopicsSnapshotTestCase:
+    description: str
+    metadata: tuple[dict, ...]
+    expected_topics: tuple[tuple[str, int, int, bool], ...]

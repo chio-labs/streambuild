@@ -160,3 +160,117 @@ class MissingRunDetailTestCase:
     invocation_id: str
     expected_status: None
     expected_found: bool
+
+
+@dataclass(frozen=True)
+class MessageQuerySqlTestCase:
+    description: str
+    request_json: dict
+    window_seconds: int | None
+    expected_sql: str
+
+
+@dataclass(frozen=True)
+class MessageQueryValidationTestCase:
+    description: str
+    request_json: dict
+    expected_error_fragment: str
+
+
+@dataclass(frozen=True)
+class MessageRecordSqlTestCase:
+    description: str
+    partition: int
+    offset: int
+    expected_sql: str
+
+
+@dataclass(frozen=True)
+class MessageFacetsSqlTestCase:
+    description: str
+    request_json: dict
+    facet_path: tuple[str | int, ...]
+    expected_top_values_sql: str
+    expected_totals_sql: str
+
+
+@dataclass(frozen=True)
+class MessageRouteTestCase:
+    description: str
+    path: str
+    body: dict
+    expected_status_code: int
+    expected_fragment: str
+
+
+@dataclass(frozen=True)
+class MessageListRouteTestCase:
+    description: str
+    limit: int
+    expected_keys: tuple[str, ...]
+    expected_first_headers: tuple[tuple[str, str], ...]
+    expected_window_seconds: int
+    expected_next_cursor: dict
+
+
+@dataclass(frozen=True)
+class MessageWideningRouteTestCase:
+    description: str
+    limit: int
+    expected_row_count: int
+
+
+@dataclass(frozen=True)
+class MessageRecordRouteTestCase:
+    description: str
+    partition: int
+    offset: int
+    expected_value: str
+    expected_topic: str
+    expected_headers: tuple[tuple[str, str], ...]
+
+
+@dataclass(frozen=True)
+class MessageRecordMissingTestCase:
+    description: str
+    partition: int
+    offset: int
+    expected_fragment: str
+
+
+@dataclass(frozen=True)
+class MessageFacetsRouteTestCase:
+    description: str
+    expected_values: tuple[tuple[str, int], ...]
+    expected_null_count: int
+    expected_other_count: int
+    expected_total_count: int
+
+
+@dataclass(frozen=True)
+class TopicsMergedPayloadTestCase:
+    description: str
+    expected_topic_names: frozenset[str]
+    expected_managed_sources: tuple[dict, ...]
+    expected_lag_messages: int
+    expected_retained_rows: int
+    expected_retained_bytes: int
+
+
+@dataclass(frozen=True)
+class TopicsColdCachePayloadTestCase:
+    description: str
+    expected_pending_brokers: tuple[str, ...]
+    expected_topic_names: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class TopicsUnavailableTestCase:
+    description: str
+    expected_reason_fragment: str
+
+
+@dataclass(frozen=True)
+class TopicsRouteTestCase:
+    description: str
+    expected_topic_name: str
