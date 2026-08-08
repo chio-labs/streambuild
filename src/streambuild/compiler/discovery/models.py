@@ -16,6 +16,7 @@ from streambuild.compiler.discovery.exceptions import ProjectSpecError
 from streambuild.compiler.discovery.main._immutable_config_pairs import immutable_config_pairs
 from streambuild.compiler.discovery.types import (
     BoundedReplayFallback,
+    PipelineMode,
     ReplayAnchorMode,
     ReplayBoundaryMode,
     ReplayOnChangeMode,
@@ -40,27 +41,6 @@ class RawConnectionConfig:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "values", immutable_config_pairs(self.values))
-
-
-@dataclass(frozen=True)
-class ProjectSettings:
-    """Committed project-wide feature settings."""
-
-    virtual_environments: bool = False
-
-
-@dataclass(frozen=True)
-class AuthoredProjectSettings:
-    """Committed project-wide settings before effective interpolation."""
-
-    virtual_environments: bool | str = False
-
-
-@dataclass(frozen=True)
-class LocalProjectSettings:
-    """Explicit local project-wide setting overrides."""
-
-    virtual_environments: bool | str | None = None
 
 
 @dataclass(frozen=True)
@@ -146,10 +126,25 @@ class ProjectDefaults:
     managed_source_ttl: str | None = None
     model_ttl: str | None = None
     kafka_broker_list: str | None = None
+    pipeline_mode: PipelineMode | str = PipelineMode.DIRECT
     replay_on_change: ReplayOnChangePolicy | None = None
     bounded_replay_fallback: BoundedReplayFallback | None = None
     freshness: SourceFreshnessPolicy | None = None
     audits: AuditDefaults = field(default_factory=AuditDefaults)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "pipeline_mode", PipelineMode(self.pipeline_mode))
+
+
+@dataclass(frozen=True)
+class LocalProjectDefaults:
+    """Local overrides for project-wide pipeline defaults."""
+
+    pipeline_mode: PipelineMode | str | None = None
+
+    def __post_init__(self) -> None:
+        if self.pipeline_mode is not None:
+            object.__setattr__(self, "pipeline_mode", PipelineMode(self.pipeline_mode))
 
 
 @dataclass(frozen=True)
@@ -183,7 +178,6 @@ class AuthoredProjectConfig:
     name: str
     adapter: str
     default_target: str
-    settings: AuthoredProjectSettings
     connection: RawConnectionConfig
     variables: tuple[tuple[str, object], ...]
     targets: tuple[tuple[str, ProjectTarget], ...]
@@ -201,7 +195,7 @@ class LocalProjectConfig:
 
     target: str | None = None
     adapter: str | None = None
-    settings: LocalProjectSettings = field(default_factory=LocalProjectSettings)
+    defaults: LocalProjectDefaults = field(default_factory=LocalProjectDefaults)
     connection: RawConnectionConfig = field(default_factory=RawConnectionConfig)
     variables: tuple[tuple[str, object], ...] = ()
     targets: tuple[tuple[str, LocalProjectTarget], ...] = ()
@@ -227,7 +221,6 @@ class EffectiveProjectConfiguration:
     name: str
     adapter: str
     target_name: str
-    settings: ProjectSettings
     database: str | None
     connection: RawConnectionConfig
     variables: tuple[tuple[str, object], ...]
@@ -400,6 +393,7 @@ class Pipeline:
     name: str
     source: KafkaLandingStep | ExternalTableSourceStep | None
     transforms: Sequence[TransformStep | ViewStep] = field(default_factory=tuple)
+    mode: PipelineMode | str = PipelineMode.DIRECT
     replay_on_change: ReplayOnChangePolicy | None = None
     bounded_replay_fallback: BoundedReplayFallback | str | None = None
     naming: PipelineNaming = field(default_factory=PipelineNaming)
@@ -408,6 +402,7 @@ class Pipeline:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "transforms", tuple(self.transforms))
+        object.__setattr__(self, "mode", PipelineMode(self.mode))
         if self.bounded_replay_fallback is not None:
             object.__setattr__(
                 self,

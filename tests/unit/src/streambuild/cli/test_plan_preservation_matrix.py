@@ -231,7 +231,7 @@ def test_given_preservation_source_mode_when_running_plan_then_snapshot_path_sta
     pipeline_dir.mkdir(parents=True)
     (project_dir / "streambuild_project.toml").write_text(
         'name = "matrix_project"\ndefault_target = "test"\n\n'
-        "[settings]\nvirtual_environments = true\n\n"
+        '[defaults]\npipeline_mode = "virtual"\n\n'
         '[targets.test]\ndatabase = "analytics"\n\n'
         '[targets.test.connection]\nhost = "localhost"\nport = 8123\n'
         'username = "streambuild"\npassword = "streambuild"\n',

@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 import tomllib
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import cast
 
@@ -60,6 +60,7 @@ from streambuild.compiler.discovery.models import (
 )
 from streambuild.compiler.discovery.types import (
     BoundedReplayFallback,
+    PipelineMode,
     ReplayOnChangeMode,
 )
 from streambuild.compiler.macros.models import MacroContext, MacroRegistry
@@ -70,6 +71,7 @@ class _PipelineDraft:
     pipeline_dir: Path
     config_path: Path
     transforms: tuple[TransformStep | ViewStep, ...]
+    mode: PipelineMode
     replay_on_change: ReplayOnChangePolicy | None
     bounded_replay_fallback: BoundedReplayFallback | None
     naming: PipelineNaming
@@ -121,6 +123,7 @@ def load_pipeline_directory(pipeline_dir: Path) -> LoadedPipeline:
             ),
         ),
         sources_by_name=sources_by_name,
+        default_mode=PipelineMode(effective.defaults.pipeline_mode),
     )[0]
     loaded_pipeline: LoadedPipeline = LoadedPipeline(
         pipeline=pipeline,
@@ -137,7 +140,7 @@ def load_pipeline_directory(pipeline_dir: Path) -> LoadedPipeline:
         ),
     )
     validate_replay_policies_for_mode(
-        virtual_environments=effective.settings.virtual_environments,
+        default_pipeline_mode=PipelineMode(effective.defaults.pipeline_mode),
         project=loaded_pipeline.project,
         project_file_path=project_dir / "streambuild_project.toml",
         loaded_pipelines=(loaded_pipeline,),
@@ -152,6 +155,7 @@ def load_pipeline_directories(
     macro_registry: MacroRegistry | None = None,
     macro_context: MacroContext | None = None,
     sources_by_name: Mapping[str, KafkaLandingStep | ExternalTableSourceStep],
+    default_mode: PipelineMode = PipelineMode.DIRECT,
 ) -> tuple[Pipeline, ...]:
     """Load pipeline directories and infer each source from driving-input chains."""
 
@@ -161,6 +165,7 @@ def load_pipeline_directories(
             model_contents_by_path=model_contents_by_path,
             macro_registry=macro_registry,
             macro_context=macro_context,
+            default_mode=default_mode,
         )
         for pipeline_directory in pipeline_directories
     )
@@ -181,6 +186,7 @@ def load_pipeline_directories(
                 name=draft.pipeline_dir.name,
                 source=pipeline_source,
                 transforms=draft.transforms,
+                mode=draft.mode,
                 replay_on_change=draft.replay_on_change,
                 bounded_replay_fallback=draft.bounded_replay_fallback,
                 naming=draft.naming,
@@ -197,6 +203,7 @@ def _load_pipeline_draft(
     model_contents_by_path: Mapping[Path, str] | None,
     macro_registry: MacroRegistry | None,
     macro_context: MacroContext | None,
+    default_mode: PipelineMode,
 ) -> _PipelineDraft:
     pipeline_values: dict[str, object] = _load_pipeline_config(
         pipeline_directory=pipeline_directory
@@ -206,16 +213,31 @@ def _load_pipeline_draft(
         if pipeline_directory.config_file is None
         else pipeline_directory.config_file.file_path
     )
+    mode: PipelineMode = _load_pipeline_mode(
+        value=pipeline_values.get("mode"),
+        default=default_mode,
+        file_path=config_path,
+    )
+    effective_macro_context: MacroContext | None = (
+        macro_context
+        if macro_context is None
+        or macro_context.virtual_environments == (mode == PipelineMode.VIRTUAL)
+        else replace(
+            macro_context,
+            virtual_environments=mode == PipelineMode.VIRTUAL,
+        )
+    )
     transforms: tuple[TransformStep | ViewStep, ...] = _load_pipeline_transforms(
         pipeline_root=pipeline_directory.pipeline_dir,
         model_contents_by_path=model_contents_by_path,
         macro_registry=macro_registry,
-        macro_context=macro_context,
+        macro_context=effective_macro_context,
     )
     return _PipelineDraft(
         pipeline_dir=pipeline_directory.pipeline_dir,
         config_path=config_path,
         transforms=transforms,
+        mode=mode,
         replay_on_change=_load_replay_on_change(
             value=pipeline_values.get("replay_on_change"),
             file_path=config_path,
@@ -257,6 +279,22 @@ def _load_pipeline_config(*, pipeline_directory: DiscoveredPipelineDirectory) ->
             f"{', '.join(sorted(unknown_keys))}"
         )
     return pipeline_values
+
+
+def _load_pipeline_mode(*, value: object, default: PipelineMode, file_path: Path) -> PipelineMode:
+    if value is None:
+        return default
+    if not isinstance(value, str):
+        raise PipelineDiscoveryError(
+            f"Pipeline config '{file_path}' must define mode as 'direct' or 'virtual'"
+        )
+    try:
+        return PipelineMode(value)
+    except ValueError as error:
+        raise PipelineDiscoveryError(
+            f"Pipeline config '{file_path}' has unsupported mode '{value}'; "
+            "expected 'direct' or 'virtual'"
+        ) from error
 
 
 def _transforms_by_name(*, drafts: tuple[_PipelineDraft, ...]) -> dict[str, TransformStep]:

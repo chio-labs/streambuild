@@ -14,6 +14,7 @@ from streambuild.compiler.discovery.models import (
     Pipeline,
     Project,
 )
+from streambuild.compiler.discovery.types import PipelineMode
 from streambuild.compiler.macros.models import MacroContext, MacroRegistry
 
 
@@ -70,6 +71,7 @@ def load_discovered_pipelines(
     macro_context: MacroContext,
     sources_by_name: Mapping[str, KafkaLandingStep | ExternalTableSourceStep],
     project: Project | None,
+    default_mode: PipelineMode,
 ) -> tuple[LoadedPipeline, ...]:
     """Parse loaded pipeline and model sources without rereading either kind."""
 
@@ -82,6 +84,7 @@ def load_discovered_pipelines(
         macro_registry=macro_registry,
         macro_context=macro_context,
         sources_by_name=sources_by_name,
+        default_mode=default_mode,
     )
     return tuple(
         LoadedPipeline(

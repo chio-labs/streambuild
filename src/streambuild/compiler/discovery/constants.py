@@ -50,7 +50,14 @@ LEGACY_LOCAL_CONFIG_FILE_NAME: str = "streambuild_local.yml"
 
 PIPELINE_CONFIG_FILE_NAME: str = "pipeline.toml"
 PIPELINE_CONFIG_KEYS: frozenset[str] = frozenset(
-    {"replay_on_change", "bounded_replay_fallback", "naming", "protection", "audit_defaults"}
+    {
+        "mode",
+        "replay_on_change",
+        "bounded_replay_fallback",
+        "naming",
+        "protection",
+        "audit_defaults",
+    }
 )
 NAMING_KEYS: frozenset[str] = frozenset({"table_prefix", "view_prefix"})
 NAMING_TABLE_PREFIX_KEY: str = "table_prefix"
@@ -68,7 +75,6 @@ PROJECT_CONFIG_KEYS: frozenset[str] = frozenset(
         "name",
         "adapter",
         "default_target",
-        "settings",
         "connection",
         "vars",
         "targets",
@@ -78,9 +84,8 @@ PROJECT_CONFIG_KEYS: frozenset[str] = frozenset(
     }
 )
 LOCAL_CONFIG_KEYS: frozenset[str] = frozenset(
-    {"target", "adapter", "settings", "connection", "vars", "targets"}
+    {"target", "adapter", "defaults", "connection", "vars", "targets"}
 )
-SETTINGS_KEYS: frozenset[str] = frozenset({"virtual_environments"})
 TARGET_KEYS: frozenset[str] = frozenset({"database", "connection", "vars", "audit_scheduler"})
 AUDIT_SCHEDULER_KEYS: frozenset[str] = frozenset({"enabled"})
 DEFAULTS_KEYS: frozenset[str] = frozenset(
@@ -88,12 +93,15 @@ DEFAULTS_KEYS: frozenset[str] = frozenset(
         "managed_source_ttl",
         "model_ttl",
         "kafka_broker_list",
+        "pipeline_mode",
         "replay_on_change",
         "bounded_replay_fallback",
         "freshness",
         "audits",
     }
 )
+LOCAL_DEFAULTS_KEYS: frozenset[str] = frozenset({"pipeline_mode"})
+PIPELINE_MODE_KEY: str = "pipeline_mode"
 SOURCE_FILE_KEYS: frozenset[str] = frozenset({"sources"})
 SOURCE_KEYS: frozenset[str] = frozenset(
     {

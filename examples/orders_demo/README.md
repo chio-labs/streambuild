@@ -64,7 +64,17 @@ Build:
 uv run stb build --project-dir examples/orders_demo
 ```
 
-List and inspect deployments:
+The demo uses `pipeline_mode = "direct"`, so the build applies immediately. Open the development UI:
+
+```bash
+uv run stb dev --project-dir examples/orders_demo
+```
+
+The UI shows the model graph, live catalog state, source throughput and lag, runs, quality checks,
+Kafka topics, and retained source messages.
+
+To try staged deployment commands, change `[defaults].pipeline_mode` to `"virtual"`, build again,
+then list and inspect deployments:
 
 ```bash
 uv run stb deployment list --project-dir examples/orders_demo

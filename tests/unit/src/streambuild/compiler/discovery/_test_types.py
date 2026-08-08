@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from streambuild.compiler.discovery.models import SourceFreshnessPolicy
+from streambuild.compiler.discovery.types import PipelineMode
 
 
 @dataclass(frozen=True)
@@ -57,7 +58,7 @@ class EffectiveProjectConfigurationTestCase:
     expected_adapter: str
     expected_target_name: str
     expected_database: str
-    expected_virtual_environments: bool
+    expected_pipeline_mode: PipelineMode
     expected_variables: tuple[tuple[str, object], ...]
     expected_connection: tuple[tuple[str, object], ...]
     expected_managed_source_ttl: str
