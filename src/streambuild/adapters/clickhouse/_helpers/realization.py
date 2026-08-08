@@ -49,6 +49,7 @@ def realize_clickhouse_source(
                 consumer_group=consumer_group,
                 format=request.format,
                 settings=request.settings,
+                naming_macro_fingerprint=request.naming_macro_fingerprint,
             ),
             AdapterTable(
                 name=raw_name,

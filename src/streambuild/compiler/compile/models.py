@@ -85,6 +85,7 @@ class KafkaTableSpec:
 
     columns: tuple[Column, ...]
     kafka: KafkaSettings
+    naming_macro_fingerprint: str | None = field(default=None, compare=False)
 
 
 @dataclass(frozen=True)
