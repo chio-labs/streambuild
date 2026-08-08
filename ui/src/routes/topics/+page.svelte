@@ -2,50 +2,33 @@
 	import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
 	import AppTopbar from '$lib/components/app-topbar.svelte';
 	import { formatBytes, formatCompact, formatInteger } from '$lib/domain/format';
-	import { fetchTopics } from './api';
-	import type { TopicsPayload } from './types';
+	import { topicsStore } from './state.svelte';
 
-	let payload = $state<TopicsPayload | null>(null);
-	let error = $state<string | null>(null);
-	let loading = $state(true);
 	let query = $state('');
 	// Managed topics are the point of this page; the full cluster inventory is
 	// opt-in noise. Internal topics are a further cut within unmanaged ones.
 	let showUnmanaged = $state(false);
 	let showInternal = $state(false);
-	let generation = 0;
-	let controller: AbortController | null = null;
 
-	// Broker metadata is cache-backed server-side (10s TTL); the first response
-	// often reports pending brokers, so a short follow-up poll fills the table.
-	async function refresh(): Promise<void> {
-		controller?.abort();
-		generation += 1;
-		const current = generation;
-		controller = new AbortController();
-		loading = true;
-		try {
-			payload = await fetchTopics(controller.signal);
-			error = null;
-			if (payload.pendingBrokers.length > 0) {
-				setTimeout(() => {
-					if (current === generation) void refresh();
-				}, 2000);
-			}
-		} catch (caught) {
-			if (current === generation && !(controller?.signal.aborted ?? false)) {
-				error = String(caught instanceof Error ? caught.message : caught);
-			}
-		} finally {
-			if (current === generation) loading = false;
-		}
-	}
+	const payload = $derived(topicsStore.payload);
+	const error = $derived(topicsStore.error);
+	const loading = $derived(topicsStore.loading);
 
+	// The store keeps the last inventory across navigations, so this mount
+	// renders instantly from cache and revalidates in place. While brokers are
+	// still pending server-side, a short follow-up poll fills the gaps.
 	$effect(() => {
-		void refresh();
+		let cancelled = false;
+		let timer: ReturnType<typeof setTimeout> | null = null;
+		async function poll(): Promise<void> {
+			const brokersPending = await topicsStore.refresh();
+			if (!cancelled && brokersPending) timer = setTimeout(() => void poll(), 2000);
+		}
+		void poll();
 		return () => {
-			generation += 1;
-			controller?.abort();
+			cancelled = true;
+			if (timer !== null) clearTimeout(timer);
+			topicsStore.stop();
 		};
 	});
 
@@ -111,7 +94,7 @@
 				{/if}
 				<button
 					class="text-muted-foreground hover:text-foreground ml-auto flex items-center gap-1 rounded-[4px] border border-border px-2 py-1 font-mono text-[10.5px]"
-					onclick={() => void refresh()}
+					onclick={() => void topicsStore.refresh()}
 					><RefreshCwIcon size={11} class={loading ? 'animate-spin' : ''} /> refresh</button
 				>
 			</div>
