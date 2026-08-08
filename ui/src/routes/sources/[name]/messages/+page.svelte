@@ -33,7 +33,46 @@
 	// component just attaches to the per-source session instance.
 	const browser = getMessageBrowserState(page.params.name ?? '');
 
-	let showKafkaTimestamp = $state(false);
+	// Client-side sort over the loaded page, Console-style. The server always
+	// pages newest-landed-first; sorting is presentation over fetched rows.
+	type SortKey = 'landed' | 'broker' | 'offset' | 'key';
+	let sortKey = $state<SortKey>('landed');
+	let sortAsc = $state(false);
+
+	const SORT_DEFAULT_ASCENDING: Record<SortKey, boolean> = {
+		landed: false,
+		broker: false,
+		offset: false,
+		key: true
+	};
+
+	function pickSort(key: SortKey): void {
+		if (sortKey === key) {
+			sortAsc = !sortAsc;
+			return;
+		}
+		sortKey = key;
+		sortAsc = SORT_DEFAULT_ASCENDING[key];
+	}
+
+	function compareRows(a: MessageRow, b: MessageRow): number {
+		if (sortKey === 'landed') return a.landedAt.localeCompare(b.landedAt);
+		if (sortKey === 'broker') {
+			return (a.kafkaTimestamp ?? '').localeCompare(b.kafkaTimestamp ?? '');
+		}
+		if (sortKey === 'key') return a.key.localeCompare(b.key);
+		return a.partition - b.partition || a.offset - b.offset;
+	}
+
+	const displayRows = $derived.by((): MessageRow[] => {
+		const sorted = [...browser.rows].sort(compareRows);
+		return sortAsc ? sorted : sorted.reverse();
+	});
+
+	function sortIndicator(key: SortKey): string {
+		if (sortKey !== key) return '';
+		return sortAsc ? ' ▲' : ' ▼';
+	}
 	let expanded = $state<string[]>([]);
 	let facetPathText = $state(browser.facetPath.join('.'));
 	let previewPathText = $state('');
@@ -206,9 +245,7 @@
 		if (scroller) scroller.scrollTop += after - before;
 	}
 
-	const columnCount = $derived(
-		4 + (showKafkaTimestamp ? 1 : 0) + browser.document.previewPaths.length
-	);
+	const columnCount = $derived(5 + browser.document.previewPaths.length);
 
 	// Active filter criteria light up inside the cells they filtered, so the
 	// table never reshapes to explain why a row matched.
@@ -362,13 +399,6 @@
 					</span>
 				{/each}
 
-				<span class="text-muted-foreground ml-auto font-mono text-[10.5px]">
-					<button
-						class="hover:text-foreground {showKafkaTimestamp ? 'text-foreground' : ''}"
-						onclick={() => (showKafkaTimestamp = !showKafkaTimestamp)}
-						title="toggle broker timestamp column">broker ts</button
-					>
-				</span>
 			</div>
 
 			<!-- preview fields: chosen JSON paths become list columns -->
@@ -450,10 +480,30 @@
 						<tr
 							class="text-[var(--sb-text-faint)] border-b border-border font-mono text-[10px] uppercase tracking-[0.14em]"
 						>
-							<th class="w-[150px] px-3 py-2 font-normal">Landed at</th>
-							{#if showKafkaTimestamp}<th class="w-[150px] px-3 py-2 font-normal">Broker ts</th>{/if}
-							<th class="w-[120px] px-3 py-2 font-normal">P / Offset</th>
-							<th class="w-[200px] px-3 py-2 font-normal">Key</th>
+							<th class="w-[150px] px-1 py-1 font-normal">
+								<button
+									class="hover:text-foreground w-full px-2 py-1 text-left uppercase tracking-[0.14em]"
+									onclick={() => pickSort('landed')}>Landed at{sortIndicator('landed')}</button
+								>
+							</th>
+							<th class="w-[150px] px-1 py-1 font-normal">
+								<button
+									class="hover:text-foreground w-full px-2 py-1 text-left uppercase tracking-[0.14em]"
+									onclick={() => pickSort('broker')}>Broker ts{sortIndicator('broker')}</button
+								>
+							</th>
+							<th class="w-[120px] px-1 py-1 font-normal">
+								<button
+									class="hover:text-foreground w-full px-2 py-1 text-left uppercase tracking-[0.14em]"
+									onclick={() => pickSort('offset')}>P / Offset{sortIndicator('offset')}</button
+								>
+							</th>
+							<th class="w-[200px] px-1 py-1 font-normal">
+								<button
+									class="hover:text-foreground w-full px-2 py-1 text-left uppercase tracking-[0.14em]"
+									onclick={() => pickSort('key')}>Key{sortIndicator('key')}</button
+								>
+							</th>
 							<th class="px-3 py-2 font-normal">Value</th>
 							{#each browser.document.previewPaths as path, index (index)}
 								<th class="w-[180px] px-3 py-2 font-normal normal-case">{path.join('.')}</th>
@@ -468,7 +518,7 @@
 						{:else if !browser.loading && browser.rows.length === 0}
 							<tr><td colspan={columnCount} class="text-muted-foreground px-3 py-6 text-center font-mono text-[11px]">no messages match — searched the {windowLabel}</td></tr>
 						{:else}
-							{#each browser.rows as row (rowKey(row))}
+							{#each displayRows as row (rowKey(row))}
 								<tr
 									class="cursor-pointer border-b border-[var(--border-subtle)] last:border-b-0 hover:bg-[var(--sb-hover)]"
 									onclick={(event) => void toggleRow(event, row)}
@@ -476,11 +526,9 @@
 									<td class="text-muted-foreground code whitespace-nowrap px-3 py-1.5 text-[11px]"
 										>{formatTimestamp(row.landedAt)}</td
 									>
-									{#if showKafkaTimestamp}
-										<td class="text-muted-foreground code whitespace-nowrap px-3 py-1.5 text-[11px]"
-											>{row.kafkaTimestamp === null ? '—' : formatTimestamp(row.kafkaTimestamp)}</td
-										>
-									{/if}
+									<td class="text-muted-foreground code whitespace-nowrap px-3 py-1.5 text-[11px]"
+										>{row.kafkaTimestamp === null ? '—' : formatTimestamp(row.kafkaTimestamp)}</td
+									>
 									<td class="code whitespace-nowrap px-3 py-1.5 text-[11px]"
 										>{row.partition} / {formatInteger(row.offset)}</td
 									>
