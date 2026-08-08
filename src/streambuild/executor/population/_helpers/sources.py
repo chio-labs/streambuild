@@ -1,5 +1,6 @@
 """Create passive managed sources and activate landing after downstream realization."""
 
+from streambuild.adapter.models import AdapterManagedSource
 from streambuild.compiler.compile.constants import RAW_TABLE_NAME_PREFIX
 from streambuild.compiler.compile.models import (
     DesiredKafkaTable,
@@ -10,6 +11,7 @@ from streambuild.compiler.compile.models import (
 )
 from streambuild.compiler.planner.main.build_adapter_resource import build_adapter_resource
 from streambuild.executor.population.models import (
+    PopulationManagedSource,
     PopulationRealization,
     PopulationSourcePreparation,
 )
@@ -26,11 +28,21 @@ def plan_population_sources(
     preserved_names: list[str] = []
     created_names: list[str] = []
     landing_views: list[DesiredMaterializedView] = []
+    managed_sources: list[PopulationManagedSource] = []
     realizations: list[PopulationRealization] = []
     desired_object: DesiredKafkaTable | DesiredTable | DesiredMaterializedView | DesiredView
     for desired_object in desired_state.objects:
         if not _is_managed_source_object(desired_object):
             continue
+        if isinstance(desired_object, DesiredKafkaTable):
+            managed_resource: object = build_adapter_resource(desired_object)
+            if isinstance(managed_resource, AdapterManagedSource):
+                managed_sources.append(
+                    PopulationManagedSource(
+                        resource=managed_resource,
+                        database=desired_object.key.database or default_database,
+                    )
+                )
         if desired_object.name in existing_relation_names:
             preserved_names.append(desired_object.name)
             continue
@@ -49,6 +61,7 @@ def plan_population_sources(
             preserved_relation_names=tuple(preserved_names),
             created_relation_names=tuple(created_names),
             landing_views=tuple(landing_views),
+            managed_sources=tuple(managed_sources),
         ),
         tuple(realizations),
     )
