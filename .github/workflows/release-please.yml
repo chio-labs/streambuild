@@ -7,6 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: write
   contents: write
   pull-requests: write
 
@@ -36,6 +37,7 @@ jobs:
           RELEASE_BRANCH: ${{ fromJSON(steps.release.outputs.prs)[0].headBranchName }}
         run: |
           uv lock
+          uv sync --locked --all-groups
           if git diff --quiet -- uv.lock; then
             exit 0
           fi
@@ -44,3 +46,10 @@ jobs:
           git add uv.lock
           git commit -m "chore: refresh uv lock"
           git push origin "HEAD:${RELEASE_BRANCH}"
+
+      - name: Verify release branch head
+        if: steps.release.outputs.prs_created == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_BRANCH: ${{ fromJSON(steps.release.outputs.prs)[0].headBranchName }}
+        run: gh workflow run verify.yml --ref "${RELEASE_BRANCH}"

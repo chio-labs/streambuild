@@ -3,7 +3,7 @@
  *
  * The server payloads were designed against these types, so most of this is
  * mechanical renaming plus the handful of derivations that are cheaper client
- * side (partition lag, replay roles from column names, macro signatures).
+ * side (replay roles from column names and macro signatures).
  */
 
 import type {
@@ -58,10 +58,14 @@ export function projectFromServer(definitions: Payload, state: Payload): Project
 			tablePrefix: (naming.tablePrefix as string) ?? 'tbl__',
 			viewPrefix: (naming.viewPrefix as string) ?? 'view__'
 		},
-		defaults: { managedSourceTtl: (defaults.managedSourceTtl as string | null) ?? null },
+		defaults: {
+			managedSourceTtl: (defaults.managedSourceTtl as string | null) ?? null,
+			modelTtl: (defaults.modelTtl as string | null) ?? null,
+			kafkaBrokerList: (defaults.kafkaBrokerList as string | null) ?? null
+		},
 		capturedAt: (state.capturedAt as string) ?? new Date().toISOString(),
 		sources: (definitions.sources as Payload[]).map((source) =>
-			sourceFromServer(source, stateFor(state, 'sources', source.name as string), state)
+			sourceFromServer(source, stateFor(state, 'sources', source.name as string))
 		),
 		pipelines: (definitions.pipelines as Payload[]).map(pipelineFromServer),
 		models,
@@ -81,11 +85,10 @@ function stateFor(state: Payload, section: string, name: string): Payload {
 	return bucket[name] ?? {};
 }
 
-function sourceFromServer(source: Payload, live: Payload, state: Payload): Source {
+function sourceFromServer(source: Payload, live: Payload): Source {
 	const kafka = (source.kafka ?? null) as Payload | null;
 	const throughput = (live.throughput ?? null) as Payload | null;
 	const buckets = (throughput?.buckets ?? []) as number[];
-	const capturedAt = (state.capturedAt as string) ?? '';
 	return {
 		name: source.name as string,
 		kind: source.kind === 'kafka' ? 'kafka' : 'stream_table',
@@ -107,32 +110,33 @@ function sourceFromServer(source: Payload, live: Payload, state: Payload): Sourc
 		live: {
 			rowsPerSecond: (live.rowsPerSecond as number) ?? 0,
 			freshness: (live.freshness as Source['live']['freshness']) ?? null,
-			lagSeconds: (live.lagSeconds as number | null) ?? null,
+			lastArrivalSeconds: (live.lastArrivalSeconds as number | null) ?? null,
+			kafkaLagMessages: (live.kafkaLagMessages as number | null) ?? null,
 			newestEventAt: (live.newestEventAt as string) ?? '',
 			oldestEventAt: (live.oldestEventAt as string) ?? '',
 			rows: (live.rows as number) ?? 0,
-			partitions: ((live.partitions ?? []) as Payload[]).map((partition) =>
-				partitionFromServer(partition, capturedAt)
-			),
+			partitions: ((live.partitions ?? []) as Payload[]).map(partitionFromServer),
 			throughput: buckets,
 			throughputWindowSeconds: (throughput?.windowSeconds as number | null) ?? null
 		}
 	};
 }
 
-function partitionFromServer(partition: Payload, capturedAt: string): PartitionState {
+function partitionFromServer(partition: Payload): PartitionState {
 	const newest = (partition.newestEventAt as string) ?? '';
 	return {
 		partition: partition.partition as number,
-		offset: (partition.maxOffset as number) ?? 0,
-		lagSeconds: ageSeconds(newest, capturedAt) ?? 0,
+		offset: (partition.maxOffset as number | null) ?? null,
+		committedOffset: (partition.committedOffset as number | null) ?? null,
+		endOffset: (partition.endOffset as number | null) ?? null,
+		kafkaLagMessages: (partition.kafkaLagMessages as number | null) ?? null,
 		newestEventAt: newest
 	};
 }
 
 function pipelineFromServer(pipeline: Payload): Pipeline {
-	const file = (pipeline.file as string) ?? '';
 	const naming = (pipeline.naming ?? {}) as Payload;
+	const protection = (pipeline.protection ?? null) as Payload | null;
 	return {
 		name: pipeline.name as string,
 		sourceName: (pipeline.sourceName as string | null) ?? null,
@@ -142,7 +146,14 @@ function pipelineFromServer(pipeline: Payload): Pipeline {
 			tablePrefix: (naming.tablePrefix as string | null) ?? null,
 			viewPrefix: (naming.viewPrefix as string | null) ?? null
 		},
-		directory: file.replace(/\/[^/]*$/, '')
+		protection:
+			protection === null
+				? null
+				: {
+						warning: (protection.warning as string) ?? '',
+						confirmation: (protection.confirmation as string) ?? ''
+					},
+		directory: (pipeline.directory as string) ?? ''
 	};
 }
 
@@ -282,6 +293,11 @@ export function planFromServer(payload: Payload, adapter: string): Plan {
 			message: (warning.message as string) ?? '',
 			relatedModel: null
 		})),
+		protections: ((payload.protections as Payload[]) ?? []).map((protection) => ({
+			pipelineName: (protection.pipelineName as string) ?? '',
+			warning: (protection.warning as string) ?? '',
+			confirmation: (protection.confirmation as string) ?? ''
+		})),
 		replayWindow: (payload.replayWindow as Plan['replayWindow']) ?? { mode: 'full' },
 		plannedAt: (payload.plannedAt as string) ?? '',
 		command: (payload.command as string) ?? 'stb build'
@@ -323,14 +339,6 @@ function retentionDaysFromTtl(ttl: string | null): number | null {
 	if (ttl === null) return null;
 	const match = ttl.match(/INTERVAL\s+(\d+)\s+DAY/i);
 	return match ? Number(match[1]) : null;
-}
-
-function ageSeconds(newest: string, capturedAt: string): number | null {
-	if (!newest || !capturedAt) return null;
-	const newestMs = Date.parse(newest.replace(' ', 'T') + 'Z');
-	const nowMs = Date.parse(capturedAt.replace(' ', 'T') + 'Z');
-	if (Number.isNaN(newestMs) || Number.isNaN(nowMs)) return null;
-	return Math.round((nowMs - newestMs) / 100) / 10;
 }
 
 /**

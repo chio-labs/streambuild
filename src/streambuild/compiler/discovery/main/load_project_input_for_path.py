@@ -40,6 +40,7 @@ def load_project_input_for_path(
     )
     project: Project = Project(
         replay_on_change=effective.defaults.replay_on_change,
+        model_ttl=effective.defaults.model_ttl,
         default_database=effective.database,
         adapter=effective.adapter,
         bounded_replay_fallback=effective.defaults.bounded_replay_fallback,
@@ -55,6 +56,7 @@ def load_project_input_for_path(
             variables=dict(effective.variables),
             environment={} if environment is None else environment,
             default_managed_source_ttl=effective.defaults.managed_source_ttl,
+            default_kafka_broker_list=effective.defaults.kafka_broker_list,
             default_freshness=effective.defaults.freshness,
         ),
     )

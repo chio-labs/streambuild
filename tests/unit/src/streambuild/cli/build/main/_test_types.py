@@ -24,6 +24,15 @@ class CliBuildInterruptTestCase:
 
 
 @dataclass(frozen=True)
+class CliProtectedBuildTestCase:
+    description: str
+    warning: str
+    confirmation: str
+    expected_rejected_exit_code: int
+    expected_accepted_exit_code: int
+
+
+@dataclass(frozen=True)
 class CliBuildArtifactTestCase:
     description: str
     expected_exit_code: int
