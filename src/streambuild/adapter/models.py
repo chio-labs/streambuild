@@ -95,6 +95,7 @@ class AdapterManagedSource:
     consumer_group: str
     format: str
     settings: tuple[tuple[str, str], ...] = ()
+    naming_macro_fingerprint: str | None = None
 
 
 @dataclass(frozen=True)
@@ -142,6 +143,7 @@ class AdapterManagedSourceRealizationRequest:
     format: str
     ttl: str | None = None
     settings: tuple[tuple[str, str], ...] = ()
+    naming_macro_fingerprint: str | None = None
 
 
 @dataclass(frozen=True)
