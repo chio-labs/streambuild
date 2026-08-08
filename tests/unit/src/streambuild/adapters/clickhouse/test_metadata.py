@@ -156,9 +156,15 @@ from tests.unit.src.streambuild.adapters.clickhouse.helpers import build_metadat
                 "    result_id String,\n"
                 "    invocation_id String,\n"
                 "    node_kind LowCardinality(String),\n"
-                "    node_identity String,\n"
+                "    node_name String,\n"
+                "    binding_key String,\n"
                 "    definition_fingerprint String,\n"
+                "    execution_fingerprint String,\n"
                 "    target_identity String,\n"
+                "    trigger LowCardinality(String),\n"
+                "    scheduled_for Nullable(DateTime64(3, 'UTC')),\n"
+                "    cadence_seconds Nullable(UInt64),\n"
+                "    warmup_seconds UInt64,\n"
                 "    status LowCardinality(String),\n"
                 "    severity Nullable(String),\n"
                 "    failure_count UInt64,\n"
@@ -166,7 +172,7 @@ from tests.unit.src.streambuild.adapters.clickhouse.helpers import build_metadat
                 "    payload_json String,\n"
                 "    error_message Nullable(String)\n"
                 ") ENGINE = MergeTree\n"
-                "ORDER BY (node_kind, node_identity, completed_at, result_id)"
+                "ORDER BY (node_kind, node_name, completed_at, result_id)"
             ),
         ),
     ],
@@ -336,9 +342,15 @@ def test_given_terminal_observations_when_building_inserts_then_rows_are_structu
         result_id=test_case.expected_result_id,
         invocation_id=test_case.expected_invocation_id,
         node_kind="audit",
-        node_identity="audits/orders.sql:1",
+        node_name="order ids are present",
+        binding_key="binding",
         definition_fingerprint="fingerprint",
+        execution_fingerprint="execution",
         target_identity="analytics",
+        trigger="manual",
+        scheduled_for=None,
+        cadence_seconds=None,
+        warmup_seconds=0,
         status="failed",
         severity="error",
         failure_count=2,

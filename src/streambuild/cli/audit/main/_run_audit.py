@@ -4,6 +4,7 @@ from pathlib import Path
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import AdapterInvocationRecord, AdapterNodeResultRecord
+from streambuild.cli.audit._helpers.referenced_models import referenced_model_names
 from streambuild.cli.audit._helpers.rendering import render_sql_audit_run_result
 from streambuild.cli.audit._helpers.selection import select_loaded_sql_audits
 from streambuild.compiler.audit_discovery.models import LoadedSqlAudit
@@ -11,8 +12,14 @@ from streambuild.compiler.compile.models import CompiledPipeline, CompilerAdapte
 from streambuild.compiler.discovery.models import LoadedProject
 from streambuild.compiler.pipeline.main.analyze_project import analyze_project
 from streambuild.compiler.pipeline.models import CompileAnalysis
+from streambuild.compiler.quality.main.require_quality_identity import require_quality_identity
+from streambuild.executor.auditing.main.deferred_audit_result import deferred_audit_result
 from streambuild.executor.auditing.main.execute_sql_audits import execute_sql_audits
-from streambuild.executor.auditing.models import SqlAuditResult, SqlAuditRunResult
+from streambuild.executor.auditing.main.load_model_anchors import load_model_anchors
+from streambuild.executor.auditing.main.resolve_audit_warmup_states import (
+    resolve_audit_warmup_states,
+)
+from streambuild.executor.auditing.models import AuditWarmupState, SqlAuditResult, SqlAuditRunResult
 from streambuild.executor.auditing.types import AuditSeverity
 from streambuild.executor.observability.main.build_invocation_record import (
     build_invocation_record,
@@ -20,14 +27,12 @@ from streambuild.executor.observability.main.build_invocation_record import (
 from streambuild.executor.observability.main.build_node_result_record import (
     build_node_result_record,
 )
-from streambuild.executor.observability.main.build_quality_node_identity import (
-    build_quality_node_identity,
-)
 from streambuild.executor.observability.main.persist_terminal_observations import (
     persist_terminal_observations,
 )
 from streambuild.executor.observability.main.start_invocation import start_invocation
-from streambuild.executor.observability.models import TerminalInvocation
+from streambuild.executor.observability.models import QualityResultContext, TerminalInvocation
+from streambuild.executor.observability.types import QualityResultTrigger
 
 
 def run_audit(
@@ -40,12 +45,14 @@ def run_audit(
     client: AdapterConnection,
     loaded_project: LoadedProject | None,
     adapter_profile: CompilerAdapterProfile,
+    force: bool = False,
 ) -> int:
     """Run user-defined SQL audits against published logical views."""
 
     started: tuple[str, str, int] = start_invocation()
     selected_node_count = 0
     try:
+        client.validate_metadata_state(database)
         analysis: CompileAnalysis = analyze_project(
             pipelines_root=pipelines_root,
             loaded_project=loaded_project,
@@ -59,16 +66,13 @@ def run_audit(
             selectors=selectors,
         )
         selected_node_count = len(selected_audits)
-        result: SqlAuditRunResult = execute_sql_audits(
-            loaded_audits=selected_audits,
-            resolver={
-                model.key.name: (
-                    f"{database}.{analysis.realized_project.relation_name_by_logical_key[model.key]}"
-                )
-                for model in analysis.compiled_project.models
-            },
+        result: SqlAuditRunResult = _execute_selected_audits(
+            analysis=analysis,
+            selected_audits=selected_audits,
+            database=database,
             client=client,
-            dialect=adapter_profile.sql_analysis_dialect,
+            adapter_profile=adapter_profile,
+            force=force,
         )
         print(
             render_sql_audit_run_result(
@@ -128,7 +132,6 @@ def run_audit(
         invocation=invocation,
         audits=selected_audits,
         result=result,
-        project_dir=project_dir,
     )
     _ = persist_terminal_observations(
         client=client,
@@ -139,42 +142,106 @@ def run_audit(
     return exit_code
 
 
+def _execute_selected_audits(
+    *,
+    analysis: CompileAnalysis,
+    selected_audits: tuple[LoadedSqlAudit, ...],
+    database: str,
+    client: AdapterConnection,
+    adapter_profile: CompilerAdapterProfile,
+    force: bool,
+) -> SqlAuditRunResult:
+    anchors_by_model: dict[str, str] = (
+        {}
+        if force
+        else load_model_anchors(
+            client=client,
+            metadata_database=database,
+            target_database=database,
+            model_names=referenced_model_names(selected_audits),
+            virtual_environments=analysis.compile_inputs.virtual_environments,
+        )
+    )
+    warmup_states: dict[str, AuditWarmupState] = resolve_audit_warmup_states(
+        audits=selected_audits,
+        anchors_by_model=anchors_by_model,
+        warehouse_now=client.capture_warehouse_timestamp(),
+    )
+    executable_audits: tuple[LoadedSqlAudit, ...] = tuple(
+        audit
+        for audit in selected_audits
+        if force or warmup_states[audit.name or audit.file_path.stem].eligible
+    )
+    executed_result: SqlAuditRunResult = execute_sql_audits(
+        loaded_audits=executable_audits,
+        resolver={
+            model.key.name: (
+                f"{database}.{analysis.realized_project.relation_name_by_logical_key[model.key]}"
+            )
+            for model in analysis.compiled_project.models
+        },
+        client=client,
+        dialect=adapter_profile.sql_analysis_dialect,
+    )
+    executed_by_name: dict[str, SqlAuditResult] = {
+        audit.name or audit.file_path.stem: audit_result
+        for audit, audit_result in zip(
+            executable_audits,
+            executed_result.audit_results,
+            strict=True,
+        )
+    }
+    return SqlAuditRunResult(
+        audit_results=tuple(
+            executed_by_name.get(audit.name or audit.file_path.stem)
+            or deferred_audit_result(
+                audit=audit,
+                state=warmup_states[audit.name or audit.file_path.stem],
+            )
+            for audit in selected_audits
+        )
+    )
+
+
 def _audit_node_results(
     *,
     invocation: AdapterInvocationRecord,
     audits: tuple[LoadedSqlAudit, ...],
     result: SqlAuditRunResult,
-    project_dir: Path,
 ) -> tuple[AdapterNodeResultRecord, ...]:
     records: list[AdapterNodeResultRecord] = []
     audit: LoadedSqlAudit
     audit_result: SqlAuditResult
     for audit, audit_result in zip(audits, result.audit_results, strict=True):
         status: str = (
-            "error"
-            if audit_result.error_message is not None
+            "deferred"
+            if audit_result.deferred_until is not None
             else (
-                "passed"
-                if audit_result.passed
-                else ("warning" if audit_result.severity == AuditSeverity.WARNING else "failed")
+                "error"
+                if audit_result.error_message is not None
+                else (
+                    "passed"
+                    if audit_result.passed
+                    else ("warning" if audit_result.severity == AuditSeverity.WARNING else "failed")
+                )
             )
         )
         records.append(
             build_node_result_record(
                 invocation=invocation,
-                node_kind="audit",
-                node_identity=build_quality_node_identity(
-                    project_dir=project_dir,
-                    file_path=audit.file_path,
-                    node_index=audit.audit_index,
+                identity=require_quality_identity(audit.quality_identity),
+                context=QualityResultContext(
+                    trigger=QualityResultTrigger.MANUAL,
+                    cadence_seconds=audit.cadence_seconds,
+                    warmup_seconds=audit.warmup_seconds,
                 ),
-                definition=audit.query,
                 status=status,
                 severity=audit_result.severity,
                 failure_count=audit_result.failing_row_count,
                 payload={
                     "sample_column_names": list(audit_result.sample_column_names),
                     "sample_rows": [list(row) for row in audit_result.sample_rows[:5]],
+                    "eligible_at": audit_result.deferred_until,
                 },
                 error_message=audit_result.error_message,
             )

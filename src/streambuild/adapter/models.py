@@ -540,9 +540,15 @@ class AdapterNodeResultRecord:
     result_id: str
     invocation_id: str
     node_kind: str
-    node_identity: str
+    node_name: str
+    binding_key: str
     definition_fingerprint: str
+    execution_fingerprint: str
     target_identity: str
+    trigger: str
+    scheduled_for: str | None
+    cadence_seconds: int | None
+    warmup_seconds: int
     status: str
     severity: str | None
     failure_count: int
@@ -564,12 +570,24 @@ class AdapterRunEventRecord:
 
 
 @dataclass(frozen=True)
+class AdapterQualityScheduleClaim:
+    """One process contender for a scheduled quality-node logical slot."""
+
+    node_name: str
+    scheduled_for: str
+
+
+@dataclass(frozen=True)
 class AdapterCurrentQualityNode:
     """One current manifest node joined to persisted terminal history."""
 
     node_kind: str
-    node_identity: str
+    node_name: str
+    binding_key: str
     definition_fingerprint: str
+    execution_fingerprint: str
+    cadence_seconds: int | None = None
+    warmup_seconds: int = 0
 
 
 @dataclass(frozen=True)

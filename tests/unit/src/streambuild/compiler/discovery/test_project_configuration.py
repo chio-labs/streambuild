@@ -14,6 +14,7 @@ from streambuild.compiler.discovery._helpers.interpolation import (
 )
 from streambuild.compiler.discovery.exceptions import PipelineDiscoveryError, ProjectConfigError
 from streambuild.compiler.discovery.models import (
+    AuditDefaults,
     EffectiveProjectConfiguration,
     LoadedProjectConfiguration,
     SourceFreshnessPolicy,
@@ -27,6 +28,7 @@ from tests.unit.src.streambuild.compiler.discovery._test_types import (
     LocalConfigurationErrorTestCase,
     MissingProjectConfigurationTestCase,
     MixedProjectConfigurationTestCase,
+    ProjectAuditDefaultsTestCase,
     ProjectConfigurationErrorTestCase,
     ProjectFreshnessDefaultTestCase,
     ProjectFreshnessErrorTestCase,
@@ -51,6 +53,46 @@ port = 8123
 [targets.dev]
 database = "dev_database"
 """
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ProjectAuditDefaultsTestCase(
+            description="parses project audit defaults into typed policy",
+            expected_severity="warning",
+            expected_cadence_seconds=300,
+            expected_warmup_seconds=900,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_project_audit_defaults_when_loading_then_policy_is_typed(
+    test_case: ProjectAuditDefaultsTestCase,
+    tmp_path: Path,
+) -> None:
+    write_project_toml(
+        project_dir=tmp_path,
+        contents="""
+        name = "analytics"
+        default_target = "dev"
+
+        [defaults.audits]
+        severity = "warning"
+        every = "5m"
+        warmup = "15m"
+
+        [targets.dev]
+        database = "analytics"
+        """,
+    )
+
+    loaded: LoadedProjectConfiguration = load_project_configuration(project_dir=tmp_path)
+    defaults: AuditDefaults = loaded.project.defaults.audits
+
+    assert defaults.severity == test_case.expected_severity
+    assert defaults.cadence_seconds == test_case.expected_cadence_seconds
+    assert defaults.warmup_seconds == test_case.expected_warmup_seconds
 
 
 @pytest.mark.parametrize(

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from datetime import UTC, datetime
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
@@ -46,6 +47,17 @@ def derive_run_status(
     if signal_age < PRESUMED_FAILED_AFTER_SECONDS:
         return RunPresentationStatus.UNRESPONSIVE
     return RunPresentationStatus.PRESUMED_FAILED
+
+
+def derive_run_duration_ms(
+    *, started_at: str, completed_at: str | None, warehouse_now: datetime
+) -> int:
+    """Return terminal duration or current elapsed time for an active event stream."""
+
+    duration_end: datetime = (
+        warehouse_now if completed_at is None else _parse_timestamp(completed_at)
+    )
+    return max(int((duration_end - _parse_timestamp(started_at)).total_seconds()), 0) * 1000
 
 
 def read_runs(
@@ -95,6 +107,55 @@ def read_active_runs(*, connection: AdapterConnection, database: str) -> list[di
     )
 
 
+def read_latest_direct_build_materialization(
+    *, connection: AdapterConnection, database: str, project_identity: str
+) -> str | None:
+    """Return the latest terminal direct-build materialization outcome for this target."""
+
+    if not _table_exists(
+        connection=connection,
+        database=database,
+        table=METADATA_INVOCATIONS_TABLE_NAME,
+    ):
+        return None
+    query: str = (
+        "SELECT materialized_outcome FROM "
+        f"`{database}`.`{METADATA_INVOCATIONS_TABLE_NAME}` WHERE "
+        f"project_identity = '{_sql_literal(project_identity)}' AND "
+        f"target_identity = '{_sql_literal(database)}' AND command = 'build' AND mode = 'direct' "
+        "AND materialized_outcome IS NOT NULL "
+        "ORDER BY completed_at DESC, invocation_id DESC LIMIT 1"
+    )
+    rows: tuple[Mapping[str, object], ...] = connection.query(query).named_rows()
+    if not rows:
+        return None
+    value: object = rows[0]["materialized_outcome"]
+    return str(value) if value else None
+
+
+def read_latest_applied_direct_build_at(
+    *, connection: AdapterConnection, database: str, project_identity: str
+) -> str | None:
+    """Return the latest successful direct materialization completion for this target."""
+
+    if not _table_exists(
+        connection=connection,
+        database=database,
+        table=METADATA_INVOCATIONS_TABLE_NAME,
+    ):
+        return None
+    query: str = (
+        "SELECT toString(completed_at) AS completed_at FROM "
+        f"`{database}`.`{METADATA_INVOCATIONS_TABLE_NAME}` WHERE "
+        f"project_identity = '{_sql_literal(project_identity)}' AND "
+        f"target_identity = '{_sql_literal(database)}' AND command = 'build' AND mode = 'direct' "
+        "AND materialized_outcome = 'applied' "
+        "ORDER BY completed_at DESC, invocation_id DESC LIMIT 1"
+    )
+    rows: tuple[Mapping[str, object], ...] = connection.query(query).named_rows()
+    return None if not rows else str(rows[0]["completed_at"])
+
+
 def _assemble_runs(
     *,
     terminal_by_id: dict[str, dict[str, object]],
@@ -139,8 +200,11 @@ def _assemble_runs(
                 "lastSignalAgeSeconds": _age_seconds(
                     timestamp=last_signal_at, warehouse_now=warehouse_now
                 ),
-                "durationMs": _age_seconds(timestamp=started_at, warehouse_now=warehouse_now)
-                * 1000,
+                "durationMs": derive_run_duration_ms(
+                    started_at=started_at,
+                    completed_at=None if completed is None else str(completed["emittedAt"]),
+                    warehouse_now=warehouse_now,
+                ),
                 "selectedNodeCount": int(str(started.get("selectedNodeCount", 0))),
                 "errorMessage": None if completed is None else completed.get("errorMessage"),
                 "toolVersion": "",

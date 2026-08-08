@@ -158,7 +158,7 @@ SELECT 1
 """
 
 _PASSING_MACRO_TEST: str = """
-TEST (mode: macro, name: "doubles the value");
+TEST (mode macro, name "doubles the value");
 
 WITH
 input_values AS (
@@ -174,7 +174,7 @@ SELECT 1
 """
 
 _FAILING_MACRO_TEST: str = """
-TEST (mode: macro, name: "doubles the value");
+TEST (mode macro, name "doubles the value");
 
 WITH
 input_values AS (

@@ -26,11 +26,20 @@ jobs:
           enable-cache: true
           cache-dependency-glob: uv.lock
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
       - name: Install Python
         run: uv python install "$(cat .python-version)"
 
       - name: Install dependencies
         run: uv sync --locked --all-groups
+
+      - name: Build UI assets
+        run: make ui-install ui-build
 
       - name: Run repository verification
         run: make verify-ci
