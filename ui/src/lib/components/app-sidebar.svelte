@@ -9,6 +9,7 @@
 	import ReplaceIcon from '@lucide/svelte/icons/replace';
 	import ShieldCheckIcon from '@lucide/svelte/icons/shield-check';
 	import HistoryIcon from '@lucide/svelte/icons/history';
+	import LayersIcon from '@lucide/svelte/icons/layers';
 	import ServerIcon from '@lucide/svelte/icons/server';
 	import SettingsIcon from '@lucide/svelte/icons/settings';
 	import type { Icon as IconType } from '@lucide/svelte';
@@ -39,6 +40,7 @@
 			section: 'Change',
 			items: [
 				{ label: 'Plan', href: '/plan', icon: ReplaceIcon },
+				{ label: 'Deployments', href: '/deployments', icon: LayersIcon },
 				{ label: 'Quality', href: '/quality', icon: ShieldCheckIcon },
 				{ label: 'Runs', href: '/runs', icon: HistoryIcon }
 			]
@@ -46,9 +48,18 @@
 	];
 
 	const footerItems: NavItem[] = [
-		{ label: 'Deployment', href: '/deployment', icon: ServerIcon },
+		{ label: 'Status', href: '/status', icon: ServerIcon },
 		{ label: 'Settings', href: '/settings', icon: SettingsIcon }
 	];
+
+	// Mode is per pipeline, so the project line reports the shape of the project
+	// rather than claiming one mode for everything in it.
+	const virtualPipelineCount: number = $derived(
+		project.pipelines.filter((pipeline) => pipeline.mode === 'virtual').length
+	);
+	const stagedCount: number = $derived(
+		app.deployments.filter((deployment) => deployment.state === 'staged').length
+	);
 
 	function isActive(href: string): boolean {
 		if (href === '/') return page.url.pathname === '/';
@@ -84,9 +95,10 @@
 		<span class="bg-[var(--sb-secondary)] h-1.5 w-1.5 rounded-[2px]"></span>
 		{project.name}
 	</div>
-	<!-- Mode is config-based and single-valued, so it is a label and never a switcher. -->
 	<div class="text-[var(--sb-text-faint)] mx-1 mb-3 hidden px-2.5 font-mono text-[10px] md:block">
-		direct mode · {project.adapter}
+		{project.adapter} · {project.pipelines.length} pipeline{project.pipelines.length === 1
+			? ''
+			: 's'}{virtualPipelineCount > 0 ? ` · ${virtualPipelineCount} virtual` : ''}
 	</div>
 
 	<nav class="flex flex-1 flex-col gap-px">
@@ -109,6 +121,13 @@
 				>
 					<span class="grid w-4 place-items-center opacity-80"><Glyph size={14} /></span>
 					<span class="hidden md:inline">{item.label}</span>
+					{#if item.href === '/deployments' && stagedCount > 0}
+						<span
+							class="text-[var(--sb-warn)] ml-auto hidden font-mono text-[10px] md:inline"
+							title="{stagedCount} staged deployment{stagedCount === 1 ? '' : 's'}"
+							>● {stagedCount}</span
+						>
+					{/if}
 				</a>
 			{/each}
 		{/each}

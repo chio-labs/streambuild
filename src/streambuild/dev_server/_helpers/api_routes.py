@@ -35,7 +35,11 @@ from streambuild.dev_server._helpers.plan_payload import (
     build_plan_payload,
     count_replay_rows,
 )
-from streambuild.dev_server._helpers.runs_query import read_active_runs, read_run_events, read_runs
+from streambuild.dev_server._helpers.runs_query import (
+    read_active_runs,
+    read_run_events,
+    read_runs,
+)
 from streambuild.dev_server._helpers.state_payload import (
     build_state_payload,
     build_topics_payload,
@@ -70,6 +74,12 @@ from streambuild.dev_server.types import (
     AuditScheduleState,
     DevServerReporter,
     RunPresentationStatus,
+)
+from streambuild.executor.deployment.main.build_deployment_detail_payload import (
+    build_deployment_detail_payload,
+)
+from streambuild.executor.deployment.main.build_deployments_payload import (
+    build_deployments_payload,
 )
 
 _HTTP_BAD_REQUEST: int = 400
@@ -231,6 +241,12 @@ def register_api_routes(
     app.post("/api/reload")(reload_project)
     app.get("/api/definitions")(read_definitions)
     app.get("/api/topics")(read_topics)
+    _register_deployment_routes(
+        app=app,
+        state=state,
+        database=database,
+        required_connection=_required_connection,
+    )
     _register_message_routes(
         app=app,
         state=state,
@@ -249,6 +265,51 @@ def register_api_routes(
         required_connection=_required_connection,
         servable_analysis=_servable_analysis,
     )
+
+
+def _register_deployment_routes(
+    *,
+    app: FastAPI,
+    state: DevServerState,
+    database: str | None,
+    required_connection: Callable[[], AdapterConnection],
+) -> FastAPI:
+    """Attach the deployment inventory and detail routes."""
+
+    def read_deployments() -> dict[str, object]:
+        client: AdapterConnection = required_connection()
+        try:
+            with state.query_lock:
+                return build_deployments_payload(
+                    connection=client,
+                    database=database or "",
+                    metadata_database=database or "",
+                )
+        except AdapterError as error:
+            raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
+
+    def read_one_deployment(*, deployment_id: str) -> dict[str, object]:
+        client: AdapterConnection = required_connection()
+        try:
+            with state.query_lock:
+                payload: dict[str, object] | None = build_deployment_detail_payload(
+                    connection=client,
+                    database=database or "",
+                    metadata_database=database or "",
+                    deployment_id=deployment_id,
+                )
+        except AdapterError as error:
+            raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
+        if payload is None:
+            raise HTTPException(
+                status_code=_HTTP_NOT_FOUND,
+                detail=f"deployment '{deployment_id}' was not found",
+            )
+        return payload
+
+    app.get("/api/deployments")(read_deployments)
+    app.get("/api/deployments/{deployment_id}")(read_one_deployment)
+    return app
 
 
 def _register_message_routes(

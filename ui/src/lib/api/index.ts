@@ -15,7 +15,7 @@
 
 import { app } from '$lib/api/store.svelte';
 import { planFromServer } from '$lib/api/mapping';
-import type { Plan, Project } from '$lib/domain/types';
+import type { Deployment, DeploymentDetail, Plan, Project } from '$lib/domain/types';
 
 export class ApiError extends Error {
 	constructor(
@@ -262,4 +262,17 @@ export async function runCheck(kind: 'audit' | 'test', name: string): Promise<Ch
 		body: JSON.stringify({ kind, name })
 	});
 	return readApiResponse<CheckRunResult>(response, 'check run');
+}
+
+/** Every reconstructed deployment for the connected target database. */
+export async function fetchDeployments(): Promise<Deployment[]> {
+	const response = await fetch('/api/deployments');
+	const payload = await readApiResponse<{ deployments: Deployment[] }>(response, 'deployments');
+	return payload.deployments;
+}
+
+/** One deployment with its staged-versus-live model comparison. */
+export async function fetchDeployment(deploymentId: string): Promise<DeploymentDetail> {
+	const response = await fetch(`/api/deployments/${encodeURIComponent(deploymentId)}`);
+	return readApiResponse<DeploymentDetail>(response, 'deployment');
 }

@@ -146,6 +146,7 @@ function pipelineFromServer(pipeline: Payload): Pipeline {
 	const auditDefaults = (pipeline.auditDefaults ?? {}) as Payload;
 	return {
 		name: pipeline.name as string,
+		mode: (pipeline.mode as Pipeline['mode']) ?? 'direct',
 		sourceName: (pipeline.sourceName as string | null) ?? null,
 		boundaryMode: (pipeline.boundaryMode as Pipeline['boundaryMode']) ?? null,
 		models: (pipeline.models as string[]) ?? [],
