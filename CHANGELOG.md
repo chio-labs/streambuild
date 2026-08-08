@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.12.3](https://github.com/chio-labs/streambuild/compare/v0.12.2...v0.12.3) (2026-08-08)
+
+
+### Bug Fixes
+
+* adopt Console-style payload view, stable columns, and match highlighting ([a8c7955](https://github.com/chio-labs/streambuild/commit/a8c79555a297b16597e77b1b7553ff1f900a453b))
+* always show broker timestamp and make message columns sortable ([b98ee7e](https://github.com/chio-labs/streambuild/commit/b98ee7ebd8f58086122cfb5457bf6f4b708ea30a))
+* paginate the message list and default to broker timestamp order ([a2237da](https://github.com/chio-labs/streambuild/commit/a2237dac9344f0ad2569cbeeee2f606ff4d27c90))
+* raise the full-record cap to 16 MiB ([b7ffc03](https://github.com/chio-labs/streambuild/commit/b7ffc03c6f8e590192988283ea1b35cbe55ee007))
+
 ## [0.12.2](https://github.com/chio-labs/streambuild/compare/v0.12.1...v0.12.2) (2026-08-08)
 
 
