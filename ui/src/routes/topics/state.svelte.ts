@@ -37,6 +37,12 @@ function stop(): void {
 	controller?.abort();
 }
 
+/** Block first navigation on data; later navigations resolve instantly from cache. */
+async function ensureLoaded(): Promise<void> {
+	if (payload !== null) return;
+	await refresh();
+}
+
 export const topicsStore = {
 	get payload() {
 		return payload;
@@ -48,5 +54,6 @@ export const topicsStore = {
 		return loading;
 	},
 	refresh,
-	stop
+	stop,
+	ensureLoaded
 };
