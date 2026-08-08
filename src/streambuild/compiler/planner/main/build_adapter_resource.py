@@ -41,6 +41,7 @@ def build_adapter_resource(
             consumer_group=desired_object.kafka.consumer_group,
             format=desired_object.kafka.format,
             settings=tuple(sorted((desired_object.kafka.settings or {}).items())),
+            naming_macro_fingerprint=desired_object.spec.naming_macro_fingerprint,
         )
     if isinstance(desired_object, DesiredTable):
         return AdapterTable(

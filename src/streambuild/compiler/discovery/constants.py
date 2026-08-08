@@ -99,9 +99,13 @@ DEFAULTS_KEYS: frozenset[str] = frozenset(
         "freshness",
         "audits",
         "deployment_readiness",
+        "sources",
     }
 )
 DEPLOYMENT_READINESS_KEYS: frozenset[str] = frozenset({"maximum_lag", "minimum_staged_row_ratio"})
+SOURCE_DEFAULT_KEYS: frozenset[str] = frozenset({"kafka"})
+KAFKA_SOURCE_DEFAULT_KEYS: frozenset[str] = frozenset({"naming_macro"})
+KAFKA_NAMING_MACRO_TOPIC_PARAMETER: str = "topic"
 LOCAL_DEFAULTS_KEYS: frozenset[str] = frozenset({"pipeline_mode"})
 PIPELINE_MODE_KEY: str = "pipeline_mode"
 SOURCE_FILE_KEYS: frozenset[str] = frozenset({"sources"})

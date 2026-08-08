@@ -6,7 +6,6 @@ from streambuild.compiler.discovery._helpers.project_inputs import (
     discover_pipeline_directories,
     read_discovered_files,
 )
-from streambuild.compiler.discovery.constants import PYTHON_PACKAGE_INITIALIZER_FILE_NAME
 from streambuild.compiler.discovery.models import (
     DiscoveredPipelineDirectory,
     DiscoveredProjectFile,
@@ -14,6 +13,7 @@ from streambuild.compiler.discovery.models import (
     DiscoveredSourceFile,
     LoadedProject,
 )
+from streambuild.compiler.macros.main._discover_macro_files import discover_macro_files
 
 
 def discover_project_inputs(
@@ -38,13 +38,10 @@ def discover_project_inputs(
         file_paths=tuple((project_dir / "audits").rglob("*.sql")),
         project_dir=project_dir,
     )
-    macro_files: tuple[DiscoveredProjectFile, ...] = read_discovered_files(
-        file_paths=tuple(
-            path
-            for path in (project_dir / "macros").rglob("*.py")
-            if _is_public_macro_file(path=path, project_dir=project_dir)
-        ),
-        project_dir=project_dir,
+    macro_files: tuple[DiscoveredProjectFile, ...] = (
+        discover_macro_files(project_dir=project_dir)
+        if loaded_project is None
+        else loaded_project.macro_files
     )
     source_files: tuple[DiscoveredSourceFile, ...] = (
         () if loaded_project is None else loaded_project.source_files
@@ -58,11 +55,4 @@ def discover_project_inputs(
         test_files=test_files,
         audit_files=audit_files,
         macro_files=macro_files,
-    )
-
-
-def _is_public_macro_file(*, path: Path, project_dir: Path) -> bool:
-    relative_path: Path = path.relative_to(project_dir)
-    return path.name != PYTHON_PACKAGE_INITIALIZER_FILE_NAME and not any(
-        part.startswith("_") for part in relative_path.parts
     )
