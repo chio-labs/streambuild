@@ -22,13 +22,14 @@ from streambuild.compiler.discovery.constants import (
     LEGACY_PROJECT_CONFIG_FILE_NAME,
     LOCAL_CONFIG_FILE_NAME,
     LOCAL_CONFIG_KEYS,
+    LOCAL_DEFAULTS_KEYS,
     NAMING_KEYS,
     NAMING_TABLE_PREFIX_KEY,
     NAMING_VIEW_PREFIX_KEY,
+    PIPELINE_MODE_KEY,
     PROJECT_CONFIG_FILE_NAME,
     PROJECT_CONFIG_KEYS,
     SECONDS_BY_DURATION_UNIT,
-    SETTINGS_KEYS,
     TARGET_KEYS,
 )
 from streambuild.compiler.discovery.exceptions import ProjectConfigError
@@ -38,11 +39,10 @@ from streambuild.compiler.discovery.models import (
     AuditSchedulerConfig,
     AuditSchedulerOverride,
     AuthoredProjectConfig,
-    AuthoredProjectSettings,
     DiscoveredProjectFile,
     LoadedProjectConfiguration,
     LocalProjectConfig,
-    LocalProjectSettings,
+    LocalProjectDefaults,
     LocalProjectTarget,
     ProjectDefaults,
     ProjectNaming,
@@ -53,6 +53,7 @@ from streambuild.compiler.discovery.models import (
 )
 from streambuild.compiler.discovery.types import (
     BoundedReplayFallback,
+    PipelineMode,
     ReplayOnChangeMode,
 )
 
@@ -188,7 +189,6 @@ def _parse_project_config(
             label="project",
             file_path=file_path,
         ),
-        settings=_parse_project_settings(payload=payload.get("settings"), file_path=file_path),
         connection=_parse_connection(payload=payload.get("connection"), file_path=file_path),
         variables=_parse_variables(
             payload=payload.get("vars"),
@@ -230,7 +230,7 @@ def _parse_local_config(
             label="local project",
             file_path=file_path,
         ),
-        settings=_parse_local_settings(payload=payload.get("settings"), file_path=file_path),
+        defaults=_parse_local_defaults(payload=payload.get("defaults"), file_path=file_path),
         connection=_parse_connection(payload=payload.get("connection"), file_path=file_path),
         variables=_parse_variables(
             payload=payload.get("vars"),
@@ -241,44 +241,29 @@ def _parse_local_config(
     )
 
 
-def _parse_project_settings(*, payload: object, file_path: Path) -> AuthoredProjectSettings:
+def _parse_local_defaults(*, payload: object, file_path: Path) -> LocalProjectDefaults:
     mapping: dict[str, object] = _optional_mapping(
         payload=payload,
-        label="settings",
+        label="defaults",
         file_path=file_path,
     )
     _validate_allowed_keys(
         mapping=mapping,
-        allowed_keys=SETTINGS_KEYS,
-        label="settings",
+        allowed_keys=LOCAL_DEFAULTS_KEYS,
+        label="defaults",
         file_path=file_path,
     )
-    value: object = mapping.get("virtual_environments", False)
-    if not isinstance(value, (bool, str)):
-        raise ProjectConfigError(
-            f"{file_path} settings.virtual_environments must be a boolean or interpolation"
+    return LocalProjectDefaults(
+        pipeline_mode=(
+            _parse_pipeline_mode(
+                value=mapping[PIPELINE_MODE_KEY],
+                label="defaults.pipeline_mode",
+                file_path=file_path,
+            )
+            if PIPELINE_MODE_KEY in mapping
+            else None
         )
-    return AuthoredProjectSettings(virtual_environments=value)
-
-
-def _parse_local_settings(*, payload: object, file_path: Path) -> LocalProjectSettings:
-    mapping: dict[str, object] = _optional_mapping(
-        payload=payload,
-        label="settings",
-        file_path=file_path,
     )
-    _validate_allowed_keys(
-        mapping=mapping,
-        allowed_keys=SETTINGS_KEYS,
-        label="settings",
-        file_path=file_path,
-    )
-    value: object | None = mapping.get("virtual_environments")
-    if value is not None and not isinstance(value, (bool, str)):
-        raise ProjectConfigError(
-            f"{file_path} settings.virtual_environments must be a boolean or interpolation"
-        )
-    return LocalProjectSettings(virtual_environments=value)
 
 
 def _parse_project_targets(
@@ -464,6 +449,11 @@ def _parse_project_defaults(*, payload: object, file_path: Path) -> ProjectDefau
             label="defaults",
             file_path=file_path,
         ),
+        pipeline_mode=_parse_pipeline_mode(
+            value=mapping.get(PIPELINE_MODE_KEY, PipelineMode.DIRECT),
+            label="defaults.pipeline_mode",
+            file_path=file_path,
+        ),
         replay_on_change=_parse_replay_on_change(
             payload=mapping.get("replay_on_change"),
             label="defaults.replay_on_change",
@@ -485,6 +475,13 @@ def _parse_project_defaults(*, payload: object, file_path: Path) -> ProjectDefau
             file_path=file_path,
         ),
     )
+
+
+def _parse_pipeline_mode(*, value: object, label: str, file_path: Path) -> PipelineMode:
+    try:
+        return PipelineMode(value)
+    except (TypeError, ValueError) as error:
+        raise ProjectConfigError(f"{file_path} {label} must be 'direct' or 'virtual'") from error
 
 
 def _parse_audit_defaults(*, payload: object, label: str, file_path: Path) -> AuditDefaults:

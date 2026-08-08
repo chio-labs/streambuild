@@ -14,6 +14,7 @@ from streambuild.compiler.discovery.models import (
     LoadedPipeline,
     LoadedProject,
 )
+from streambuild.compiler.discovery.types import PipelineMode
 from streambuild.compiler.test_discovery.models import LoadedSqlTest
 
 
@@ -29,10 +30,10 @@ def validate_discovered_project_inputs(
 
     _validate_pipeline_names(loaded_pipelines)
     validate_replay_policies_for_mode(
-        virtual_environments=(
-            False
+        default_pipeline_mode=(
+            PipelineMode.DIRECT
             if loaded_project is None or loaded_project.effective_configuration is None
-            else loaded_project.effective_configuration.settings.virtual_environments
+            else PipelineMode(loaded_project.effective_configuration.defaults.pipeline_mode)
         ),
         project=None if loaded_project is None else loaded_project.project,
         project_file_path=None if loaded_project is None else loaded_project.source_file.file_path,

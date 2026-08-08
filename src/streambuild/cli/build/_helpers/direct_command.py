@@ -51,6 +51,7 @@ def execute_direct_build_command(
     client: AdapterConnection,
     observation_client: AdapterConnection,
     started: tuple[str, str, int],
+    confirmation_required: bool = True,
 ) -> int:
     """Confirm, execute, and audit one prepared direct build."""
 
@@ -73,6 +74,7 @@ def execute_direct_build_command(
             options=options,
             client=client,
             emitter=sink,
+            confirmation_required=confirmation_required,
         )
     except (AdapterError, OSError) as error:
         failed_invocation: AdapterInvocationRecord = _build_invocation(

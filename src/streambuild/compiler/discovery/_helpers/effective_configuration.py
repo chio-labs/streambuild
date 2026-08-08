@@ -19,7 +19,6 @@ from streambuild.compiler.discovery.models import (
     LocalProjectTarget,
     ProjectDefaults,
     ProjectNaming,
-    ProjectSettings,
     ProjectTarget,
     RawConnectionConfig,
 )
@@ -74,13 +73,6 @@ def resolve_effective_project_configuration(
             field_path=f"{loaded.project_source.file_path} adapter",
         ),
         target_name=target_name,
-        settings=ProjectSettings(
-            virtual_environments=_resolve_virtual_environments(
-                loaded=loaded,
-                variables=variables,
-                environment=environment,
-            )
-        ),
         database=database,
         connection=RawConnectionConfig(
             values=tuple(
@@ -119,34 +111,6 @@ def resolve_effective_project_configuration(
     )
 
 
-def _resolve_virtual_environments(
-    *,
-    loaded: LoadedProjectConfiguration,
-    variables: Mapping[str, object],
-    environment: Mapping[str, str],
-) -> bool:
-    local_value: bool | str | None = loaded.local.settings.virtual_environments
-    raw_value: bool | str = (
-        local_value if local_value is not None else loaded.project.settings.virtual_environments
-    )
-    source_path: str = str(
-        loaded.local_source.file_path
-        if local_value is not None and loaded.local_source is not None
-        else loaded.project_source.file_path
-    )
-    value: object = interpolate_config_value(
-        value=raw_value,
-        variables=variables,
-        environment=environment,
-        field_path=f"{source_path} settings.virtual_environments",
-    )
-    if not isinstance(value, bool):
-        raise ProjectConfigError(
-            f"{source_path} settings.virtual_environments must resolve to a boolean"
-        )
-    return value
-
-
 def _resolve_project_defaults(
     *,
     loaded: LoadedProjectConfiguration,
@@ -156,6 +120,11 @@ def _resolve_project_defaults(
     defaults: ProjectDefaults = loaded.project.defaults
     return replace(
         defaults,
+        pipeline_mode=(
+            loaded.local.defaults.pipeline_mode
+            if loaded.local.defaults.pipeline_mode is not None
+            else defaults.pipeline_mode
+        ),
         managed_source_ttl=_optional_interpolated_string(
             value=defaults.managed_source_ttl,
             variables=variables,

@@ -41,7 +41,7 @@ _DIRECT_PROJECT_CONFIG: str = (
 )
 _VIRTUAL_ENVIRONMENT_PROJECT_CONFIG: str = (
     'name = "mode_gate"\ndefault_target = "test"\n\n'
-    "[settings]\nvirtual_environments = true\n\n"
+    '[defaults]\npipeline_mode = "virtual"\n\n'
     '[targets.test]\ndatabase = "analytics"\n'
 )
 
@@ -105,8 +105,8 @@ name = "selector_project"
 adapter = "clickhouse"
 default_target = "test"
 
-[settings]
-virtual_environments = true
+[defaults]
+pipeline_mode = \"virtual\"
 
 [connection]
 host = "project-host"
@@ -327,7 +327,7 @@ def test_given_mode_specific_command_when_mode_conflicts_then_it_fails_before_co
             description="local override enables virtual environment lifecycle",
             argv=("stb", "build"),
             project_file_contents=_DIRECT_PROJECT_CONFIG,
-            local_file_contents="[settings]\nvirtual_environments = true\n",
+            local_file_contents='[defaults]\npipeline_mode = "virtual"\n',
             expected_handler_name="run_build",
             expected_exit_code=0,
             expected_handler_call_count=1,
@@ -336,7 +336,7 @@ def test_given_mode_specific_command_when_mode_conflicts_then_it_fails_before_co
             description="local override enables direct build",
             argv=("stb", "build"),
             project_file_contents=_VIRTUAL_ENVIRONMENT_PROJECT_CONFIG,
-            local_file_contents="[settings]\nvirtual_environments = false\n",
+            local_file_contents='[defaults]\npipeline_mode = "direct"\n',
             expected_handler_name="run_build",
             expected_exit_code=0,
             expected_handler_call_count=1,
@@ -416,7 +416,7 @@ def test_given_lazy_connection_secret_when_compiling_then_only_connecting_comman
     copytree(Path("tests/fixtures/selector_project"), project_dir)
     (project_dir / "streambuild_project.toml").write_text(
         'name = "selector_project"\ndefault_target = "test"\n\n'
-        "[settings]\nvirtual_environments = true\n\n"
+        '[defaults]\npipeline_mode = "virtual"\n\n'
         f"{test_case.project_vars_contents}"
         '[connection]\npassword = "${ENV:LOWER_PRIORITY_PASSWORD}"\n\n'
         '[targets.test]\ndatabase = "analytics"\n\n'
@@ -485,7 +485,7 @@ def test_given_resolved_project_secret_when_rendering_surfaces_then_it_is_never_
     )
     (project_dir / "streambuild_project.toml").write_text(
         'name = "redaction_project"\ndefault_target = "test"\n\n'
-        "[settings]\nvirtual_environments = true\n\n"
+        '[defaults]\npipeline_mode = "virtual"\n\n'
         f'[vars]\nwarehouse_password = "{test_case.secret}"\n\n'
         '[connection]\nhost = "localhost"\nport = 8123\n'
         'username = "streambuild"\npassword = "${warehouse_password}"\nwarehouse = "bad"\n\n'

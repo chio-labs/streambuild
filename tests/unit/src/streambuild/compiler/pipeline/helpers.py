@@ -33,8 +33,8 @@ def write_compilation_project(project_dir: Path) -> None:
         name = "compilation_project"
         default_target = "test"
 
-        [settings]
-        virtual_environments = true
+        [defaults]
+        pipeline_mode = \"virtual\"
 
         [targets.test]
         database = "analytics"
@@ -141,8 +141,8 @@ def write_shared_source_project(project_dir: Path) -> None:
         name = "shared_source_project"
         default_target = "test"
 
-        [settings]
-        virtual_environments = true
+        [defaults]
+        pipeline_mode = \"virtual\"
 
         [targets.test]
         database = "analytics"

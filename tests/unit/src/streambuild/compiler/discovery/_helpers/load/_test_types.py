@@ -1,6 +1,10 @@
 from dataclasses import dataclass
 
-from streambuild.compiler.discovery.types import BoundedReplayFallback, ReplayOnChangeMode
+from streambuild.compiler.discovery.types import (
+    BoundedReplayFallback,
+    PipelineMode,
+    ReplayOnChangeMode,
+)
 
 
 @dataclass(frozen=True)
@@ -57,3 +61,17 @@ class StandaloneMacroOwnershipTestCase:
     description: str
     macro_contents: str
     expected_query: str
+
+
+@dataclass(frozen=True)
+class PipelineModeTestCase:
+    description: str
+    configured_mode: str
+    expected_mode: PipelineMode
+
+
+@dataclass(frozen=True)
+class InvalidPipelineModeTestCase:
+    description: str
+    configured_mode: str
+    expected_error_fragment: str

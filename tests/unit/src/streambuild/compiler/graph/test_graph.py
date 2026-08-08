@@ -21,6 +21,7 @@ from tests.unit.src.streambuild.compiler.discovery._helpers.load.helpers import 
 )
 from tests.unit.src.streambuild.compiler.discovery.helpers import write_project_toml
 from tests.unit.src.streambuild.compiler.graph._test_types import (
+    CrossModeRelationshipTestCase,
     FilteredClosureTestCase,
     GraphCycleTestCase,
     NonTerminalViewGraphTestCase,
@@ -231,6 +232,66 @@ def test_given_view_with_downstream_model_when_building_graph_then_rejects_nonte
 ) -> None:
     with pytest.raises(GraphInputError, match=test_case.expected_error_fragment):
         build_project_graph_from_compiled_project(project=build_nonterminal_view_graph_project())
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CrossModeRelationshipTestCase(
+            description="rejects a direct model consumed by a virtual pipeline",
+            upstream_mode="direct",
+            downstream_mode="virtual",
+            expected_error_fragment="Relations between direct and virtual",
+        ),
+        CrossModeRelationshipTestCase(
+            description="rejects a virtual model consumed by a direct pipeline",
+            upstream_mode="virtual",
+            downstream_mode="direct",
+            expected_error_fragment="Relations between direct and virtual",
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_cross_mode_relationship_when_building_graph_then_it_is_rejected_symmetrically(
+    test_case: CrossModeRelationshipTestCase,
+    tmp_path: Path,
+) -> None:
+    write_project_toml(
+        project_dir=tmp_path,
+        contents='name = "test"\ndefault_target = "test"\n[targets.test]\n',
+    )
+    write_pipeline_file(
+        tmp_path / "sources" / "orders.yml",
+        """
+        sources:
+          - name: orders
+            kind: kafka
+            broker_list: kafka:9092
+            topic: source.orders
+            replay_boundary: {mode: offsets}
+        """,
+    )
+    write_pipeline_file(
+        tmp_path / "pipelines" / "upstream" / "pipeline.toml",
+        f'mode = "{test_case.upstream_mode}"',
+    )
+    write_pipeline_file(
+        tmp_path / "pipelines" / "upstream" / "alpha.sql",
+        'MODEL (order_by ["order_id"]); '
+        'SELECT order_id::UInt64 AS order_id FROM __source("orders")',
+    )
+    write_pipeline_file(
+        tmp_path / "pipelines" / "downstream" / "pipeline.toml",
+        f'mode = "{test_case.downstream_mode}"',
+    )
+    write_pipeline_file(
+        tmp_path / "pipelines" / "downstream" / "beta.sql",
+        'MODEL (order_by ["order_id"]); SELECT order_id::UInt64 AS order_id FROM __ref("alpha")',
+    )
+    project: CompiledProject = compile_logical_project(tmp_path)
+
+    with pytest.raises(GraphInputError, match=test_case.expected_error_fragment):
+        build_project_graph_from_compiled_project(project=project)
 
 
 @pytest.mark.parametrize(
