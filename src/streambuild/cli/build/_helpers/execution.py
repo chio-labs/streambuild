@@ -20,11 +20,17 @@ from streambuild.executor.direct.main.execute_direct_build_workflow import (
 from streambuild.executor.direct.main.persist_direct_fingerprints import (
     persist_direct_fingerprints,
 )
+from streambuild.executor.direct.main.plan_preserved_managed_sources import (
+    plan_preserved_managed_sources,
+)
 from streambuild.executor.direct.models import (
     DirectBuildExecutionResult,
     DirectBuildRequest,
     DirectBuildWorkflow,
     DirectRuntimeExecution,
+)
+from streambuild.executor.kafka_admin.main.reset_fresh_landing_offsets import (
+    reset_fresh_landing_offsets,
 )
 from streambuild.executor.workflow.models import BuildWorkflow, WorkflowExecutionResult
 from streambuild.executor.workflow.types import WorkflowEventEmitter
@@ -45,6 +51,7 @@ def execute_confirmed_direct_build(
         protection_requirements=preparation.protection_requirements,
     ):
         return None
+    _reset_fresh_landing_offsets_for_direct_build(preparation=preparation)
     try:
         runtime_execution: DirectRuntimeExecution = execute_direct_build_workflow(
             workflow=preparation.workflow,
@@ -146,6 +153,22 @@ def _applied_model_names(
     }
     applied_model_names.difference_update(incomplete_runtime_models)
     return frozenset(applied_model_names)
+
+
+def _reset_fresh_landing_offsets_for_direct_build(
+    *, preparation: DirectWorkflowPreparation
+) -> None:
+    """Fresh landing tables consume from earliest: stale committed offsets are orphans."""
+
+    source_preparation, _source_realizations = plan_preserved_managed_sources(
+        realized_project=preparation.preview.analysis.realized_project,
+        catalog=preparation.preview.warehouse_snapshot.catalog,
+        database=preparation.preview.database,
+    )
+    for reset in reset_fresh_landing_offsets(
+        source_preparation=source_preparation,
+    ):
+        _print_optional_warning(reset.notice)
 
 
 def _print_optional_warning(warning: str | None) -> None:
