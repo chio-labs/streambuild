@@ -16,6 +16,7 @@ from streambuild.compiler.discovery.constants import (
     AUDIT_SEVERITIES,
     DEFAULT_ADAPTER_NAME,
     DEFAULTS_KEYS,
+    DEPLOYMENT_READINESS_KEYS,
     FULL_REPLAY_POLICY_VALUE,
     INTERPOLATION_TOKEN_START,
     LEGACY_LOCAL_CONFIG_FILE_NAME,
@@ -39,6 +40,7 @@ from streambuild.compiler.discovery.models import (
     AuditSchedulerConfig,
     AuditSchedulerOverride,
     AuthoredProjectConfig,
+    DeploymentReadinessDefaults,
     DiscoveredProjectFile,
     LoadedProjectConfiguration,
     LocalProjectConfig,
@@ -474,6 +476,51 @@ def _parse_project_defaults(*, payload: object, file_path: Path) -> ProjectDefau
             label="defaults.audits",
             file_path=file_path,
         ),
+        deployment_readiness=_parse_deployment_readiness_defaults(
+            payload=mapping.get("deployment_readiness"),
+            file_path=file_path,
+        ),
+    )
+
+
+def _parse_deployment_readiness_defaults(
+    *, payload: object, file_path: Path
+) -> DeploymentReadinessDefaults:
+    label: str = "defaults.deployment_readiness"
+    mapping: dict[str, object] = _optional_mapping(
+        payload=payload,
+        label=label,
+        file_path=file_path,
+    )
+    _validate_allowed_keys(
+        mapping=mapping,
+        allowed_keys=DEPLOYMENT_READINESS_KEYS,
+        label=label,
+        file_path=file_path,
+    )
+    try:
+        maximum_lag_seconds: float = float(
+            parse_duration_seconds(
+                value=mapping.get("maximum_lag", "30s"),
+                field_path=f"{file_path} {label}.maximum_lag",
+                allow_zero=True,
+            )
+        )
+    except ValueError as error:
+        raise ProjectConfigError(str(error)) from error
+    ratio_value: object = mapping.get("minimum_staged_row_ratio", 0.5)
+    if isinstance(ratio_value, bool) or not isinstance(ratio_value, (int, float)):
+        raise ProjectConfigError(
+            f"{file_path} {label}.minimum_staged_row_ratio must be a number from 0 to 1"
+        )
+    minimum_staged_row_ratio: float = float(ratio_value)
+    if not 0.0 <= minimum_staged_row_ratio <= 1.0:
+        raise ProjectConfigError(
+            f"{file_path} {label}.minimum_staged_row_ratio must be a number from 0 to 1"
+        )
+    return DeploymentReadinessDefaults(
+        maximum_lag_seconds=maximum_lag_seconds,
+        minimum_staged_row_ratio=minimum_staged_row_ratio,
     )
 
 

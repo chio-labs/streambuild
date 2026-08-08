@@ -1,11 +1,23 @@
 """Audit backfill runtime models."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from streambuild.compiler.compile.models import ObjectKey
 from streambuild.compiler.discovery.types import ReplayLineageMode
 from streambuild.executor.auditing.models import SqlAuditResult
+from streambuild.executor.readiness.constants import (
+    ACCEPTABLE_LAG_SECONDS,
+    MINIMUM_STAGED_ROW_RATIO,
+)
 from streambuild.executor.readiness.types import AuditAssessment
+
+
+@dataclass(frozen=True)
+class DeploymentReadinessThresholds:
+    """Effective thresholds used to assess one staged deployment."""
+
+    maximum_lag_seconds: float = ACCEPTABLE_LAG_SECONDS
+    minimum_staged_row_ratio: float = MINIMUM_STAGED_ROW_RATIO
 
 
 @dataclass(frozen=True)
@@ -15,6 +27,7 @@ class DeploymentAuditRequest:
     deployment_id: str | None
     metadata_database: str
     default_database: str
+    thresholds: DeploymentReadinessThresholds = field(default_factory=DeploymentReadinessThresholds)
 
 
 @dataclass(frozen=True)
@@ -118,6 +131,7 @@ class DeploymentAuditResult:
     warning_codes: tuple[str, ...]
     root_results: tuple[RootAuditResult, ...]
     quality_check_results: tuple[SqlAuditResult, ...] = ()
+    thresholds: DeploymentReadinessThresholds = field(default_factory=DeploymentReadinessThresholds)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "assessment", AuditAssessment(self.assessment))

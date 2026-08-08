@@ -105,10 +105,13 @@ from tests.unit.src.streambuild.executor.promotion.main.helpers import (
                 "DROP VIEW IF EXISTS analytics.tbl__orders_legacy SYNC;",
                 "CREATE DATABASE IF NOT EXISTS metadata;",
                 "INSERT INTO metadata._streambuild_virtual_publications "
-                "(publication_id, deployment_id, logical_database_name, logical_view_name, "
-                "physical_database_name, physical_relation_name, published_at) VALUES\n"
-                "('c3b90a45d6bb36a296f251990fa00f8184dd0bad6d9a8a64e5f205b8609b4d4e', "
-                "'20260726T190000Z_ab12cd', 'analytics', 'tbl__orders_enriched', "
+                "(publication_id, deployment_id, operation, previous_deployment_id, "
+                "logical_database_name, logical_view_name, physical_database_name, "
+                "physical_relation_name, published_at) VALUES\n"
+                "('00000000000000000001_"
+                "52a0bd798d318e48aa2d4e4de7c9439f2aadb94fbc0d5ae521a015797a60eb77', "
+                "'20260726T190000Z_ab12cd', 'promote', NULL, 'analytics', "
+                "'tbl__orders_enriched', "
                 "'analytics', 'tbl__orders_enriched__20260726T190000Z_ab12cd', "
                 "'2026-07-31 12:00:00.000');",
             ),
@@ -129,7 +132,12 @@ from tests.unit.src.streambuild.executor.promotion.main.helpers import (
 )
 def test_given_staged_deployment_when_publishing_then_exact_workflow_sql_reaches_gateway(
     test_case: PublishWorkflowTestCase,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setattr(
+        "streambuild.executor.promotion._helpers.metadata.time_ns",
+        lambda: 1,
+    )
     connection: PublishWorkflowAdapterConnection = PublishWorkflowAdapterConnection(
         managed_table_state=test_case.managed_table_state,
         deployment_inventory=test_case.deployment_inventory,

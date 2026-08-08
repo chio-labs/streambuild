@@ -74,6 +74,13 @@ class ProjectAuditDefaultsTestCase:
 
 
 @dataclass(frozen=True)
+class ProjectDeploymentReadinessDefaultsTestCase:
+    description: str
+    expected_maximum_lag_seconds: float
+    expected_minimum_staged_row_ratio: float
+
+
+@dataclass(frozen=True)
 class LegacyProjectConfigurationTestCase:
     description: str
     expected_error_fragment: str
