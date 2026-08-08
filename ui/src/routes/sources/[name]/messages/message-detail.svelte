@@ -33,7 +33,11 @@
 
 	const value = $derived(record?.value ?? row.valuePreview);
 	const headers = $derived(record?.headers ?? row.headers);
+	// Multi-MiB payloads render as plain text: parsing is cheap but syntax
+	// highlighting megabytes of tokens would freeze the tab.
+	const PRETTY_LIMIT_BYTES = 2_097_152;
 	const prettyValue = $derived.by((): string | undefined => {
+		if (value.length > PRETTY_LIMIT_BYTES) return undefined;
 		try {
 			return JSON.stringify(JSON.parse(value), null, 2);
 		} catch {
@@ -121,9 +125,14 @@
 			{:else}
 				<pre class="whitespace-pre-wrap break-all font-mono text-[11.5px]">{value}</pre>
 			{/if}
+			{#if value.length > PRETTY_LIMIT_BYTES}
+				<p class="pt-2 font-mono text-[10.5px]" style:color="var(--sb-warning)">
+					large payload — rendered as plain text; Copy and Download carry the full bytes
+				</p>
+			{/if}
 			{#if record?.valueTruncated}
 				<p class="pt-2 font-mono text-[10.5px]" style:color="var(--sb-warning)">
-					value exceeds 1 MiB — display truncated; Download record carries the same cap
+					value exceeds 16 MiB — display truncated; Download record carries the same cap
 				</p>
 			{/if}
 		{:else}

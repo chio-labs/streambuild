@@ -342,7 +342,7 @@ def test_given_invalid_document_when_parsing_then_names_the_offending_field(
                 "toString(kafka_timestamp) AS kafka_timestamp, "
                 "_replay_partition AS partition, _replay_offset AS offset, "
                 "kafka_topic AS topic, kafka_key AS key, length(kafka_key) AS key_bytes, "
-                "substring(kafka_value, 1, 1048576) AS value, "
+                "substring(kafka_value, 1, 16777216) AS value, "
                 "length(kafka_value) AS value_bytes, "
                 "kafka_header_keys AS header_keys, kafka_header_values AS header_values "
                 "FROM `analytics`.`raw__orders` "
