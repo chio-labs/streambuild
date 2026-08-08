@@ -33,6 +33,7 @@ from tests.e2e.src.streambuild.executor._test_types import (
     ManagedSourceBootstrapE2ETestCase,
     VirtualManagedManualWorkflowE2ETestCase,
     VirtualManagedManualWorkflowSnapshot,
+    VirtualRollbackE2ETestCase,
 )
 from tests.e2e.src.streambuild.executor.helpers import (
     E2E_KAFKA_LANDED_AT_PROJECT_DIR,
@@ -53,6 +54,7 @@ from tests.e2e.src.streambuild.executor.helpers import (
     run_kafka_live_shadow_scenario,
     run_streambuild_deployment_audit_cli,
     run_streambuild_deployment_promote_cli,
+    run_streambuild_deployment_rollback_previous_cli,
     run_streambuild_doctor_cli,
     run_streambuild_repair_active_view_cli,
     run_streambuild_virtual_build_cli,
@@ -715,6 +717,150 @@ def test_given_kafka_backed_greenfield_pipeline_when_running_then_it_publishes_e
     assert audit_result["assessment"] == test_case.expected_audit_assessment
     assert compiled_pipeline.effective_replay_lineage_mode == test_case.expected_replay_lineage_mode
     assert tuple(row[0] for row in published_rows) == test_case.expected_order_ids
+
+
+@pytest.mark.e2e
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        VirtualRollbackE2ETestCase(
+            description="rebinds active Kafka-backed views to the previous live publication",
+            fixture_project_dir=E2E_KAFKA_LANDED_AT_PROJECT_DIR,
+            initial_deployment_id="20260808T130000Z_initial",
+            current_deployment_id="20260808T131000Z_current",
+            expected_rolled_back_order_ids=("rollback-order-1", "rollback-order-2"),
+            expected_current_order_ids=("rollback-order-1", "rollback-order-2"),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_two_published_kafka_deployments_when_rolling_back_then_previous_rows_are_active(
+    test_case: VirtualRollbackE2ETestCase,
+    e2e_clickhouse_connection_settings: E2EClickHouseConnectionSettings,
+    e2e_kafka_connection_settings: E2EKafkaConnectionSettings,
+    e2e_clickhouse_client: Client,
+    e2e_clickhouse_database: str,
+    tmp_path: Path,
+) -> None:
+    project_dir: Path = prepare_authored_e2e_project(
+        fixture_project_dir=test_case.fixture_project_dir,
+        tmp_path=tmp_path,
+        kafka_broker_list=e2e_kafka_connection_settings.internal_bootstrap_server,
+        topic_suffix=e2e_clickhouse_database,
+    )
+    compiled_pipeline: CompiledPipeline = build_authored_greenfield_workflow_compiled_pipeline(
+        project_dir=project_dir
+    )
+    target_table_name: str = require_model_resources(compiled_pipeline).target_table_name
+    topic: str = require_managed_source(compiled_pipeline).kafka_table.spec.kafka.topic
+    producer: KafkaProducer = build_kafka_producer(
+        bootstrap_server=e2e_kafka_connection_settings.bootstrap_server
+    )
+    try:
+        produce_kafka_messages(
+            producer=producer,
+            topic=topic,
+            messages=(("rollback-order-1", '{"order_id":"rollback-order-1"}'),),
+        )
+        run_streambuild_virtual_build_cli(
+            project_dir=project_dir,
+            host=e2e_clickhouse_connection_settings.host,
+            port=e2e_clickhouse_connection_settings.port,
+            username=e2e_clickhouse_connection_settings.username,
+            password=e2e_clickhouse_connection_settings.password,
+            database=e2e_clickhouse_database,
+            deployment_id=test_case.initial_deployment_id,
+        )
+        run_streambuild_deployment_promote_cli(
+            project_dir=project_dir,
+            host=e2e_clickhouse_connection_settings.host,
+            port=e2e_clickhouse_connection_settings.port,
+            username=e2e_clickhouse_connection_settings.username,
+            password=e2e_clickhouse_connection_settings.password,
+            database=e2e_clickhouse_database,
+            deployment_id=test_case.initial_deployment_id,
+        )
+        produce_kafka_messages(
+            producer=producer,
+            topic=topic,
+            messages=(("rollback-order-2", '{"order_id":"rollback-order-2"}'),),
+        )
+        wait_for_row_count(
+            clickhouse_client=e2e_clickhouse_client,
+            clickhouse_database=e2e_clickhouse_database,
+            table_name=require_managed_source(compiled_pipeline).raw_table.name,
+            expected_count=len(test_case.expected_current_order_ids),
+        )
+        initial_physical_name: str = f"{target_table_name}__{test_case.initial_deployment_id}"
+        current_physical_name: str = f"{target_table_name}__{test_case.current_deployment_id}"
+        raw_table_name: str = require_managed_source(compiled_pipeline).raw_table.name
+        e2e_clickhouse_client.command(
+            f"CREATE TABLE {e2e_clickhouse_database}.{current_physical_name} AS "
+            f"{e2e_clickhouse_database}.{initial_physical_name}"
+        )
+        e2e_clickhouse_client.command(
+            f"INSERT INTO {e2e_clickhouse_database}.{current_physical_name} "
+            "SELECT JSONExtractString(kafka_value, 'order_id') AS order_id, "
+            f"_replay_landed_at FROM {e2e_clickhouse_database}.{raw_table_name}"
+        )
+        e2e_clickhouse_client.command(
+            f"INSERT INTO {e2e_clickhouse_database}._streambuild_virtual_deployments "
+            "(deployment_id, workflow_fingerprint, replay_lineage_mode, boundary_time, "
+            "created_at, tool_version) VALUES ("
+            f"'{test_case.current_deployment_id}', 'rollback-e2e', 'landed_at', now64(3), "
+            "now64(3), 'e2e')"
+        )
+        e2e_clickhouse_client.command(
+            f"INSERT INTO {e2e_clickhouse_database}._streambuild_virtual_object_state "
+            "(state_id, observation_id, state_kind, deployment_id, logical_database_name, "
+            "logical_object_type, logical_object_name, physical_database_name, "
+            "physical_relation_name, logical_model_database, logical_model_name, "
+            "is_selected_root, object_fingerprint, canonical_query, observed_at) VALUES ("
+            f"'{test_case.current_deployment_id}', 'rollback-e2e-current', 'deployment', "
+            f"'{test_case.current_deployment_id}', '{e2e_clickhouse_database}', 'table', "
+            f"'{target_table_name}', '{e2e_clickhouse_database}', '{current_physical_name}', "
+            f"NULL, '{compiled_pipeline.models[0].key.name}', true, 'rollback-e2e', NULL, now64(3))"
+        )
+        run_streambuild_deployment_promote_cli(
+            project_dir=project_dir,
+            host=e2e_clickhouse_connection_settings.host,
+            port=e2e_clickhouse_connection_settings.port,
+            username=e2e_clickhouse_connection_settings.username,
+            password=e2e_clickhouse_connection_settings.password,
+            database=e2e_clickhouse_database,
+            deployment_id=test_case.current_deployment_id,
+        )
+    finally:
+        producer.close()
+    current_rows: Sequence[Sequence[object]] = e2e_clickhouse_client.query(
+        f"SELECT order_id FROM {e2e_clickhouse_database}.{target_table_name} ORDER BY order_id"
+    ).result_rows
+
+    rollback_result: dict[str, object] = run_streambuild_deployment_rollback_previous_cli(
+        project_dir=project_dir,
+        host=e2e_clickhouse_connection_settings.host,
+        port=e2e_clickhouse_connection_settings.port,
+        username=e2e_clickhouse_connection_settings.username,
+        password=e2e_clickhouse_connection_settings.password,
+        database=e2e_clickhouse_database,
+    )
+    rolled_back_rows: Sequence[Sequence[object]] = e2e_clickhouse_client.query(
+        f"SELECT order_id FROM {e2e_clickhouse_database}.{target_table_name} ORDER BY order_id"
+    ).result_rows
+    rollback_history: Sequence[Sequence[object]] = e2e_clickhouse_client.query(
+        "SELECT operation, previous_deployment_id, deployment_id FROM "
+        f"{e2e_clickhouse_database}._streambuild_virtual_publications "
+        "ORDER BY published_at DESC LIMIT 1"
+    ).result_rows
+
+    assert tuple(row[0] for row in current_rows) == test_case.expected_current_order_ids
+    assert rollback_result["operation"] == "rollback"
+    assert rollback_result["previous_deployment_id"] == test_case.current_deployment_id
+    assert rollback_result["deployment_id"] == test_case.initial_deployment_id
+    assert tuple(row[0] for row in rolled_back_rows) == test_case.expected_rolled_back_order_ids
+    assert rollback_history == [
+        ("rollback", test_case.current_deployment_id, test_case.initial_deployment_id)
+    ]
 
 
 @pytest.mark.e2e

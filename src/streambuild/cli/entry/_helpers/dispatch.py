@@ -129,6 +129,14 @@ def dispatch_cli_command(
                 json_output=bool(getattr(args, "json", False)),
                 client=client,
             )
+        if deployment_command == CliSubcommand.DIFF:
+            return handlers.run_deployment_diff(
+                database=invocation.database,
+                metadata_database=getattr(args, "metadata_database", None),
+                comparison=args.comparison,
+                json_output=bool(getattr(args, "json", False)),
+                client=client,
+            )
         if deployment_command == CliSubcommand.AUDIT:
             return handlers.run_deployment_audit(
                 pipelines_root=invocation.pipelines_root,
@@ -148,6 +156,16 @@ def dispatch_cli_command(
                 client=client,
                 loaded_project=invocation.loaded_project,
                 adapter_profile=adapter_profile,
+            )
+        if deployment_command == CliSubcommand.ROLLBACK:
+            return handlers.run_deployment_rollback(
+                database=invocation.database,
+                metadata_database=getattr(args, "metadata_database", None),
+                deployment_id=getattr(args, "deployment_id", None),
+                previous=bool(getattr(args, "previous", False)),
+                auto_approve=bool(getattr(args, "auto_approve", False)),
+                json_output=bool(getattr(args, "json", False)),
+                client=client,
             )
         return handlers.run_deployment_promote(
             database=invocation.database,
@@ -188,6 +206,7 @@ def dispatch_cli_command(
         return handlers.run_janitor(
             database=invocation.database,
             retention_days=args.retention_days,
+            minimum_rollback_deployments=args.minimum_rollback_deployments,
             apply=bool(getattr(args, "apply", False)),
             json_output=bool(getattr(args, "json", False)),
             client=client,
