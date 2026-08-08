@@ -228,8 +228,12 @@ export type Model = {
 
 // ─── pipelines ───────────────────────────────────────────────────────────────
 
+export type PipelineMode = 'direct' | 'virtual';
+
 export type Pipeline = {
 	name: string;
+	/** Per-pipeline build mode from `pipeline.toml [mode]`, else the project default. */
+	mode: PipelineMode;
 	/** null for a valid view-only pipeline. */
 	sourceName: string | null;
 	/** Inherited from the source. null when source-less. */
@@ -532,4 +536,47 @@ export type ReconstructionCoverage = {
 	retainedDays: number | null;
 	/** Days of model history the source can no longer rebuild. */
 	unreconstructableDays: number | null;
+};
+
+// ─── deployments ─────────────────────────────────────────────────────────────
+
+export type DeploymentState =
+	| 'active'
+	| 'staged'
+	| 'superseded'
+	| 'incomplete'
+	| 'metadata_missing'
+	| 'physical_missing';
+
+export type Deployment = {
+	deploymentId: string;
+	state: DeploymentState;
+	createdAt: string | null;
+	publishedAt: string | null;
+	persistedStatus: string | null;
+	rootNames: string[];
+	activeBindingNames: string[];
+	missingRelationNames: string[];
+	modelCount: number;
+	relationCount: number;
+	rows: number;
+	bytes: number;
+};
+
+export type DeploymentModel = {
+	logicalName: string;
+	stagedRelation: string;
+	stagedRows: number;
+	stagedBytes: number;
+	liveRelation: string | null;
+	liveDeploymentId: string | null;
+	liveRows: number | null;
+	isActive: boolean;
+	isNew: boolean;
+};
+
+export type DeploymentDetail = Deployment & {
+	database: string;
+	models: DeploymentModel[];
+	wouldOrphan: { relationCount: number; bytes: number };
 };

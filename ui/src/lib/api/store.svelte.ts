@@ -9,8 +9,8 @@
  */
 
 import { applyRecordedCheckStatuses, projectFromServer } from '$lib/api/mapping';
-import { fetchChecksStatus, readApiResponse } from '$lib/api';
-import type { Project } from '$lib/domain/types';
+import { fetchChecksStatus, fetchDeployments, readApiResponse } from '$lib/api';
+import type { Deployment, Project } from '$lib/domain/types';
 
 export type CompileError = {
 	message: string;
@@ -40,6 +40,8 @@ type AppState = {
 	phase: AppPhase;
 	status: ServerStatus | null;
 	project: Project | null;
+	/** Empty until the first inventory read; a direct-only project stays empty. */
+	deployments: Deployment[];
 	reloading: boolean;
 	fetchError: string | null;
 };
@@ -48,6 +50,7 @@ export const app = $state<AppState>({
 	phase: 'loading',
 	status: null,
 	project: null,
+	deployments: [],
 	reloading: false,
 	fetchError: null
 });
@@ -145,6 +148,7 @@ async function refreshDefinitionsAndState(): Promise<void> {
 			? await readApiResponse<Record<string, unknown>>(stateResponse, 'live state')
 			: {};
 		mergeProject(definitions, state);
+		await refreshDeployments();
 		await refreshRecordedChecks();
 		app.phase = 'ready';
 		app.fetchError = null;
@@ -225,4 +229,16 @@ function startPolling(): void {
 		if (!document.hidden) void refreshLiveState();
 	});
 	void pollTimer;
+}
+
+/**
+ * Deployment inventory is a warehouse read, so a direct-only project or a
+ * disconnected warehouse simply leaves the list empty rather than erroring.
+ */
+export async function refreshDeployments(): Promise<void> {
+	try {
+		app.deployments = await fetchDeployments();
+	} catch {
+		app.deployments = [];
+	}
 }
