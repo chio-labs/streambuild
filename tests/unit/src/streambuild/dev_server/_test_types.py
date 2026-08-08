@@ -274,3 +274,31 @@ class TopicsUnavailableTestCase:
 class TopicsRouteTestCase:
     description: str
     expected_topic_name: str
+
+
+@dataclass(frozen=True)
+class DeploymentsPayloadTestCase:
+    description: str
+    expected_deployment_ids: tuple[str, ...]
+    expected_states: tuple[str, ...]
+    expected_model_counts: tuple[int, ...]
+    expected_rows: tuple[int, ...]
+
+
+@dataclass(frozen=True)
+class DeploymentDetailTestCase:
+    description: str
+    deployment_id: str
+    expected_state: str
+    expected_logical_names: tuple[str, ...]
+    expected_staged_rows: tuple[int, ...]
+    expected_live_rows: tuple[int | None, ...]
+    expected_new_flags: tuple[bool, ...]
+    expected_orphan_relations: int
+
+
+@dataclass(frozen=True)
+class DeploymentDetailMissingTestCase:
+    description: str
+    deployment_id: str
+    expected_payload: dict[str, object] | None

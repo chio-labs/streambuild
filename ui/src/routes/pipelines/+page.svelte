@@ -40,6 +40,7 @@
 		<thead>
 			<tr class="text-[var(--sb-text-faint)] font-mono text-[10px] uppercase tracking-[0.14em]">
 				<th class="px-[18px] py-2 font-normal">Pipeline</th>
+				<th class="px-3 py-2 font-normal">Mode</th>
 				<th class="px-3 py-2 font-normal">Source</th>
 				<th class="px-3 py-2 font-normal">Boundary</th>
 				<th class="px-3 py-2 font-normal">Models</th>
@@ -61,6 +62,14 @@
 						<div class="text-[var(--sb-text-faint)] code pt-0.5 text-[10.5px]">
 							{row.pipeline.directory}
 						</div>
+					</td>
+					<td class="px-3">
+						<span
+							class="sb-tag code"
+							style:color={row.pipeline.mode === 'virtual'
+								? 'var(--sb-primary)'
+								: 'var(--sb-text-faint)'}>{row.pipeline.mode}</span
+						>
 					</td>
 					<td class="px-3">
 						{#if row.source}

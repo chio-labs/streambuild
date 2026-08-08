@@ -218,6 +218,7 @@ def _pipeline_payload(
     protection: PipelineProtection | None = pipeline.pipeline.protection
     return {
         "name": pipeline.pipeline.name,
+        "mode": str(pipeline.pipeline.mode),
         "sourceName": None if pipeline.source is None else pipeline.source.key.name,
         "boundaryMode": str(pipeline.effective_replay_lineage_mode),
         "models": [model.key.name for model in pipeline.models],

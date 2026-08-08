@@ -8,14 +8,19 @@ from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import (
     AdapterCapabilities,
     AdapterDeploymentInventory,
+    AdapterDeploymentRecord,
     AdapterDirectFingerprintSnapshot,
     AdapterIdentity,
+    AdapterMetadataObjectKey,
     AdapterMutationResult,
+    AdapterPreparedObjectMapping,
+    AdapterPublishEventRecord,
     AdapterQueryResult,
     CatalogColumn,
     CatalogIdentity,
     CatalogRelation,
     CatalogSnapshot,
+    InspectedActiveTableBinding,
     InspectedManagedTableState,
 )
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
@@ -48,6 +53,7 @@ from streambuild.dev_server.models import (
     KafkaTopicsSnapshot,
     MessagesQueryRequest,
 )
+from streambuild.executor.deployment._helpers.payload import build_deployment_storage_query
 from tests.unit.src.streambuild.compiler.discovery._helpers.load.helpers import (
     write_pipeline_file,
     write_project_configuration_and_source,
@@ -638,4 +644,167 @@ def build_message_test_client(
         create_dev_app(
             state=state, connection=connection, database="analytics", project_dir=project_dir
         )
+    )
+
+
+class FakeDeploymentConnection(FakeAdapterConnection):
+    """Canned warehouse that also answers deployment lifecycle inspection."""
+
+    def __init__(
+        self,
+        *,
+        catalog: CatalogSnapshot,
+        results_by_query: dict[str, AdapterQueryResult],
+        warehouse_timestamp: str,
+        inventory: AdapterDeploymentInventory,
+        managed_state: InspectedManagedTableState,
+    ) -> None:
+        super().__init__(
+            catalog=catalog,
+            results_by_query=results_by_query,
+            warehouse_timestamp=warehouse_timestamp,
+        )
+        self._inventory = inventory
+        self._managed_state = managed_state
+
+    def inspect_managed_table_state(self, database: str) -> InspectedManagedTableState:
+        del database
+        return self._managed_state
+
+    def load_deployment_inventory(self, database: str) -> AdapterDeploymentInventory:
+        del database
+        return self._inventory
+
+
+def build_deployment_catalog(*, relation_names: tuple[str, ...]) -> CatalogSnapshot:
+    """Catalog containing exactly the supplied relations."""
+
+    return CatalogSnapshot(
+        identity=CatalogIdentity(adapter=AdapterIdentity(name="clickhouse"), database="analytics"),
+        warehouse_timezone="UTC",
+        relations=tuple(
+            CatalogRelation(
+                name=relation_name,
+                engine="ReplacingMergeTree",
+                columns=(CatalogColumn(name="order_id", type="String"),),
+                order_by=("order_id",),
+            )
+            for relation_name in relation_names
+        ),
+    )
+
+
+def build_deployment_stats_result(
+    *, storage_rows: tuple[tuple[str, int, int], ...]
+) -> dict[str, AdapterQueryResult]:
+    """Map the shared relation-stats query onto canned row and byte totals."""
+
+    return {
+        build_deployment_storage_query(database="analytics"): AdapterQueryResult(
+            rows=storage_rows,
+            column_names=("name", "total_rows", "total_bytes"),
+        )
+    }
+
+
+DEPLOYMENT_ACTIVE_ID: str = "20260408T091200Z_a1b2cd"
+DEPLOYMENT_STAGED_ID: str = "20260410T005500Z_cd34ef"
+DEPLOYMENT_ACTIVE_RELATIONS: tuple[str, ...] = (
+    f"tbl__orders__{DEPLOYMENT_ACTIVE_ID}",
+    f"tbl__revenue__{DEPLOYMENT_ACTIVE_ID}",
+    f"mv__orders__{DEPLOYMENT_ACTIVE_ID}",
+)
+DEPLOYMENT_STAGED_RELATIONS: tuple[str, ...] = (
+    f"tbl__orders__{DEPLOYMENT_STAGED_ID}",
+    f"tbl__revenue__{DEPLOYMENT_STAGED_ID}",
+    f"tbl__refunds__{DEPLOYMENT_STAGED_ID}",
+    f"mv__orders__{DEPLOYMENT_STAGED_ID}",
+)
+_DEPLOYMENT_STORAGE_ROWS: tuple[tuple[str, int, int], ...] = (
+    (f"tbl__orders__{DEPLOYMENT_ACTIVE_ID}", 1000, 4096),
+    (f"tbl__revenue__{DEPLOYMENT_ACTIVE_ID}", 50, 512),
+    (f"mv__orders__{DEPLOYMENT_ACTIVE_ID}", 0, 0),
+    (f"tbl__orders__{DEPLOYMENT_STAGED_ID}", 1200, 5120),
+    (f"tbl__revenue__{DEPLOYMENT_STAGED_ID}", 60, 640),
+    (f"tbl__refunds__{DEPLOYMENT_STAGED_ID}", 7, 128),
+    (f"mv__orders__{DEPLOYMENT_STAGED_ID}", 0, 0),
+)
+
+
+def build_deployment_mapping(*, relation_name: str) -> AdapterPreparedObjectMapping:
+    """One prepared mapping whose logical name is the relation without its suffix."""
+
+    logical_name: str = relation_name.rsplit("__", 1)[0]
+    return AdapterPreparedObjectMapping(
+        logical_key=AdapterMetadataObjectKey(
+            database="analytics", object_type="table", name=logical_name
+        ),
+        physical_name=relation_name,
+        logical_model_name=logical_name,
+    )
+
+
+def build_deployment_record(
+    *, deployment_id: str, relations: tuple[str, ...], status: str
+) -> AdapterDeploymentRecord:
+    """One persisted deployment record covering the supplied relations."""
+
+    return AdapterDeploymentRecord(
+        deployment_id=deployment_id,
+        created_at="2026-04-10 00:55:00.000000",
+        status=status,
+        replay_lineage_mode="offsets",
+        selected_root_keys=(),
+        warning_codes=(),
+        prepared_object_mappings=tuple(
+            build_deployment_mapping(relation_name=relation_name) for relation_name in relations
+        ),
+    )
+
+
+def build_fake_deployment_connection() -> FakeDeploymentConnection:
+    """One published deployment plus one staged successor with known storage."""
+
+    return FakeDeploymentConnection(
+        catalog=build_deployment_catalog(
+            relation_names=DEPLOYMENT_ACTIVE_RELATIONS + DEPLOYMENT_STAGED_RELATIONS
+        ),
+        results_by_query=build_deployment_stats_result(storage_rows=_DEPLOYMENT_STORAGE_ROWS),
+        warehouse_timestamp="2026-04-10 01:00:00.000",
+        inventory=AdapterDeploymentInventory(
+            deployments=(
+                build_deployment_record(
+                    deployment_id=DEPLOYMENT_ACTIVE_ID,
+                    relations=DEPLOYMENT_ACTIVE_RELATIONS,
+                    status="published",
+                ),
+                build_deployment_record(
+                    deployment_id=DEPLOYMENT_STAGED_ID,
+                    relations=DEPLOYMENT_STAGED_RELATIONS,
+                    status="staged",
+                ),
+            ),
+            publish_events=(
+                AdapterPublishEventRecord(
+                    deployment_id=DEPLOYMENT_ACTIVE_ID,
+                    published_at="2026-04-08 09:15:00.000000",
+                    logical_view_names=("tbl__orders", "tbl__revenue"),
+                ),
+            ),
+        ),
+        managed_state=InspectedManagedTableState(
+            active_bindings=(
+                InspectedActiveTableBinding(
+                    database="analytics",
+                    logical_name="tbl__orders",
+                    physical_name=f"tbl__orders__{DEPLOYMENT_ACTIVE_ID}",
+                ),
+                InspectedActiveTableBinding(
+                    database="analytics",
+                    logical_name="tbl__revenue",
+                    physical_name=f"tbl__revenue__{DEPLOYMENT_ACTIVE_ID}",
+                ),
+            ),
+            physical_candidates=(),
+        ),
     )
