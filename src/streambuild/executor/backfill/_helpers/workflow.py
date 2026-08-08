@@ -40,7 +40,7 @@ from streambuild.executor.population.main._build_population_replay_templates imp
 )
 from streambuild.executor.population.main._expand_population_plan import expand_population_plan
 from streambuild.executor.population.main._plan_population_objects import plan_population_objects
-from streambuild.executor.population.main._plan_population_sources import plan_population_sources
+from streambuild.executor.population.main.plan_population_sources import plan_population_sources
 from streambuild.executor.population.models import (
     PopulationObject,
     PopulationPlan,
