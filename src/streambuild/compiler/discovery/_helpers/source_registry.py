@@ -41,6 +41,7 @@ def discover_source_registry(
     variables: Mapping[str, object],
     environment: Mapping[str, str],
     default_managed_source_ttl: str | None = None,
+    default_kafka_broker_list: str | None = None,
     default_freshness: SourceFreshnessPolicy | None = None,
 ) -> tuple[DiscoveredSourceFile, ...]:
     """Load direct sources/*.yml files once in stable order and validate uniqueness."""
@@ -55,6 +56,7 @@ def discover_source_registry(
             variables=variables,
             environment=environment,
             default_managed_source_ttl=default_managed_source_ttl,
+            default_kafka_broker_list=default_kafka_broker_list,
             default_freshness=default_freshness,
         )
         for file_path in sorted(sources_root.glob("*.yml"))
@@ -166,6 +168,7 @@ def _load_source_file(
     variables: Mapping[str, object],
     environment: Mapping[str, str],
     default_managed_source_ttl: str | None,
+    default_kafka_broker_list: str | None,
     default_freshness: SourceFreshnessPolicy | None,
 ) -> DiscoveredSourceFile:
     contents: str = file_path.read_text(encoding="utf-8")
@@ -181,6 +184,7 @@ def _load_source_file(
             variables=variables,
             environment=environment,
             default_managed_source_ttl=default_managed_source_ttl,
+            default_kafka_broker_list=default_kafka_broker_list,
             default_freshness=default_freshness,
         ),
     )
@@ -192,6 +196,7 @@ def _parse_source_file(
     variables: Mapping[str, object],
     environment: Mapping[str, str],
     default_managed_source_ttl: str | None,
+    default_kafka_broker_list: str | None,
     default_freshness: SourceFreshnessPolicy | None,
 ) -> tuple[KafkaLandingStep | ExternalTableSourceStep, ...]:
     try:
@@ -224,6 +229,7 @@ def _parse_source_file(
             variables=variables,
             environment=environment,
             default_managed_source_ttl=default_managed_source_ttl,
+            default_kafka_broker_list=default_kafka_broker_list,
             default_freshness=default_freshness,
         )
         for index, raw_source in enumerate(raw_sources)
@@ -238,6 +244,7 @@ def _parse_source(
     variables: Mapping[str, object],
     environment: Mapping[str, str],
     default_managed_source_ttl: str | None,
+    default_kafka_broker_list: str | None,
     default_freshness: SourceFreshnessPolicy | None,
 ) -> KafkaLandingStep | ExternalTableSourceStep:
     label: str = f"sources[{index}]"
@@ -286,6 +293,7 @@ def _parse_source(
             variables=variables,
             environment=environment,
             default_managed_source_ttl=default_managed_source_ttl,
+            default_kafka_broker_list=default_kafka_broker_list,
             freshness=freshness,
         )
     return _parse_adopted_source(
@@ -308,6 +316,7 @@ def _parse_managed_kafka_source(
     variables: Mapping[str, object],
     environment: Mapping[str, str],
     default_managed_source_ttl: str | None,
+    default_kafka_broker_list: str | None,
     freshness: SourceFreshnessPolicy | None,
 ) -> KafkaLandingStep:
     if mapping.get("table_name") is not None:
@@ -345,17 +354,25 @@ def _parse_managed_kafka_source(
         )
         for key, value in settings_mapping.items()
     }
+    broker_list: str | None = _optional_string(
+        mapping=mapping,
+        key="broker_list",
+        field_path=label,
+        file_path=file_path,
+        variables=variables,
+        environment=environment,
+    )
+    if broker_list is None:
+        broker_list = default_kafka_broker_list
+    if broker_list is None:
+        raise PipelineDiscoveryError(
+            f"Source file '{file_path}' {label}.broker_list must be a non-empty string "
+            "or defaults.kafka_broker_list must be configured"
+        )
     return KafkaLandingStep(
         name=name,
         kafka=KafkaSettings(
-            broker_list=_required_string(
-                mapping=mapping,
-                key="broker_list",
-                field_path=label,
-                file_path=file_path,
-                variables=variables,
-                environment=environment,
-            ),
+            broker_list=broker_list,
             topic=_required_string(
                 mapping=mapping,
                 key="topic",

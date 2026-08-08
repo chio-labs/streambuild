@@ -31,6 +31,7 @@ from streambuild.dev_server._helpers.runs_query import read_active_runs, read_ru
 from streambuild.dev_server._helpers.state_payload import build_state_payload
 from streambuild.dev_server.classes.build_process import BuildProcessManager, build_invocation
 from streambuild.dev_server.classes.dev_server_state import DevServerState
+from streambuild.dev_server.classes.kafka_lag_reader import KafkaLagReader
 from streambuild.dev_server.exceptions import (
     BuildInProgressError,
     BuildStartError,
@@ -59,6 +60,7 @@ def register_api_routes(
     database: str | None,
     project_dir: Path,
     builds: BuildProcessManager,
+    kafka_lag_reader: KafkaLagReader,
     reporter: DevServerReporter,
     execution_context: DevExecutionContext | None = None,
 ) -> FastAPI:
@@ -104,7 +106,10 @@ def register_api_routes(
         try:
             with state.query_lock:
                 return build_state_payload(
-                    analysis=analysis, connection=connection, database=database
+                    analysis=analysis,
+                    connection=connection,
+                    database=database,
+                    kafka_lag_reader=kafka_lag_reader,
                 )
         except AdapterError as error:
             raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
@@ -329,6 +334,7 @@ def _register_build_routes(
                 project_dir=project_dir,
                 selectors=tuple(request.selectors),
                 start_time=request.startTime,
+                confirmations=tuple(request.confirmations),
             )
         except BuildInProgressError as error:
             raise HTTPException(status_code=_HTTP_CONFLICT, detail=str(error)) from error

@@ -131,6 +131,8 @@ password = "${ENV:CLICKHOUSE_PASSWORD}"
 
 [defaults]
 managed_source_ttl = "_replay_landed_at + INTERVAL 14 DAY"
+model_ttl = "event_at + INTERVAL 30 DAY"
+kafka_broker_list = "kafka1:9092,kafka2:9092"
 
 [naming]
 table_prefix = "tbl__"
@@ -147,6 +149,10 @@ Notes:
 - CLI `--vars` accepts one JSON object for `${name}` interpolation
 - connection templates are expanded only for commands that connect
 - metadata lives in the same database by default
+- managed Kafka sources inherit `[defaults].kafka_broker_list` when they omit
+  `broker_list`; a source-level value overrides the project default
+- table models inherit `[defaults].model_ttl` when `MODEL(...)` omits `ttl`; an explicit model TTL
+  overrides it, and the effective expression is validated against that model's output columns
 - model relation names use the model's exact `relation_name`, then pipeline, project, and built-in
   kind-specific prefixes
 - connection precedence is CLI flags, fixed `STREAMBUILD_CLICKHOUSE_*` environment
@@ -182,6 +188,32 @@ builds, publishes, repairs, reconciles, or cleanup operations against the same t
 virtual builds remain isolated through deployment-specific physical relation names and
 deployment-scoped append-only rows.
 
+Build workflow statements currently execute serially and there is no `threads` setting. This is
+intentional: replay statements can consume most of a small ClickHouse host's memory on their own.
+Concurrency should only be introduced with warehouse-aware resource limits rather than as an
+unbounded thread count.
+
+### Model Relation Naming
+
+Models normally omit `relation_name`. Table models use `[naming].table_prefix` and view models use
+`[naming].view_prefix`, followed by the SQL filename stem:
+
+```toml
+# streambuild_project.toml
+[naming]
+table_prefix = "event__tbl_"
+view_prefix = "event__view_"
+```
+
+An optional `pipeline.toml` `[naming]` block overrides either project prefix for that pipeline.
+An explicit `MODEL (relation_name ...)` has highest precedence and should be reserved for genuine
+exceptions.
+
+`kafka__`, `raw__`, and `mv__` are framework-owned prefixes. Compilation rejects an effective model
+relation beginning with one of them, whether it came from an explicit `relation_name`, a pipeline
+prefix, or the project default. Deployment-suffixed physical-name lookalikes and project-wide
+relation collisions are also compile errors.
+
 ## Pipeline Sources
 
 Reusable replay-driving sources live under `sources/*.yml`. StreamBuild follows each table model's
@@ -195,7 +227,6 @@ source inference, so a view-only pipeline is valid and source-less.
 sources:
   - kind: kafka
     name: orders
-    broker_list: kafka:9092
     topic: source.orders.created
     ttl: _replay_landed_at + INTERVAL 30 DAY
     replay_boundary:
@@ -206,6 +237,7 @@ This is the managed source shape:
 
 - StreamBuild creates the Kafka table
 - StreamBuild creates the raw landing table and landing MV
+- source `broker_list` overrides `[defaults].kafka_broker_list`; one of them is required
 - source `ttl` overrides `[defaults].managed_source_ttl`; omitting both keeps data indefinitely
 - downstream models usually read the source via `__source("orders")`
 
@@ -260,6 +292,29 @@ non_breaking = "bounded-7d"
 This optional `pipeline.toml` sits directly in the pipeline directory. The same policies can be
 defaults in `streambuild_project.toml` and overrides in a model `MODEL(...)` header. They are
 rejected when `settings.virtual_environments` is false.
+
+### Protected Pipelines
+
+Add `[protection]` to a pipeline's `pipeline.toml` when rebuilding it has operational impact:
+
+```toml
+[protection]
+warning = "Interrupts the protected trading price feed while objects are replaced."
+confirmation = "DEPLOY_PROTECTED_PRICES"
+```
+
+The warning defaults to a generic protected-pipeline message. `confirmation` defaults to the
+pipeline name when it is already a shell-safe token, or a `CONFIRM_`-prefixed sanitized name
+otherwise, so an empty `[protection]` block is valid. A protected pipeline in the resolved build
+closure always requires its exact confirmation. `--auto-approve` does not bypass this gate:
+
+```bash
+stb build --select pipeline:protected_prices --auto-approve \
+  --confirm DEPLOY_PROTECTED_PRICES
+```
+
+Repeat `--confirm` when one build touches multiple protected pipelines. The development UI displays
+the same warning and will not start the subprocess until every required value matches.
 
 ## Models
 

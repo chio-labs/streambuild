@@ -50,11 +50,14 @@ LEGACY_LOCAL_CONFIG_FILE_NAME: str = "streambuild_local.yml"
 
 PIPELINE_CONFIG_FILE_NAME: str = "pipeline.toml"
 PIPELINE_CONFIG_KEYS: frozenset[str] = frozenset(
-    {"replay_on_change", "bounded_replay_fallback", "naming"}
+    {"replay_on_change", "bounded_replay_fallback", "naming", "protection"}
 )
 NAMING_KEYS: frozenset[str] = frozenset({"table_prefix", "view_prefix"})
 NAMING_TABLE_PREFIX_KEY: str = "table_prefix"
 NAMING_VIEW_PREFIX_KEY: str = "view_prefix"
+PROTECTION_KEYS: frozenset[str] = frozenset({"warning", "confirmation"})
+PROTECTION_CONFIRMATION_PATTERN: re.Pattern[str] = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]*")
+PROTECTION_CONFIRMATION_UNSAFE_PATTERN: re.Pattern[str] = re.compile(r"[^A-Za-z0-9._:-]")
 DEFAULT_ADAPTER_NAME: str = "clickhouse"
 PYTHON_PACKAGE_INITIALIZER_FILE_NAME: str = "__init__.py"
 FULL_REPLAY_POLICY_VALUE: str = "full"
@@ -79,7 +82,14 @@ LOCAL_CONFIG_KEYS: frozenset[str] = frozenset(
 SETTINGS_KEYS: frozenset[str] = frozenset({"virtual_environments"})
 TARGET_KEYS: frozenset[str] = frozenset({"database", "connection", "vars"})
 DEFAULTS_KEYS: frozenset[str] = frozenset(
-    {"managed_source_ttl", "replay_on_change", "bounded_replay_fallback", "freshness"}
+    {
+        "managed_source_ttl",
+        "model_ttl",
+        "kafka_broker_list",
+        "replay_on_change",
+        "bounded_replay_fallback",
+        "freshness",
+    }
 )
 SOURCE_FILE_KEYS: frozenset[str] = frozenset({"sources"})
 SOURCE_KEYS: frozenset[str] = frozenset(

@@ -31,6 +31,9 @@ def resolve_selection(
     compiled_pipelines: tuple[CompiledPipeline, ...] = realized_project.project.pipelines
     full_desired_state: DesiredState = realized_project.desired_state
     if not selectors:
+        execution_logical_model_keys: frozenset[LogicalResourceKey] = frozenset(
+            model.key for model in realized_project.project.models
+        )
         return SelectionResolution(
             desired_state=full_desired_state,
             selected_logical_model_keys=frozenset(),
@@ -39,6 +42,7 @@ def resolve_selection(
                 compiled_pipelines=compiled_pipelines,
                 selected_model_keys=frozenset(),
             ),
+            execution_logical_model_keys=execution_logical_model_keys,
         )
 
     selected_logical_model_keys: frozenset[LogicalResourceKey] = (
@@ -81,4 +85,5 @@ def resolve_selection(
             compiled_pipelines=compiled_pipelines,
             selected_model_keys=execution_logical_model_keys,
         ),
+        execution_logical_model_keys=execution_logical_model_keys,
     )

@@ -401,6 +401,18 @@ def _parse_project_defaults(*, payload: object, file_path: Path) -> ProjectDefau
             label="defaults",
             file_path=file_path,
         ),
+        model_ttl=_optional_non_empty_string(
+            mapping=mapping,
+            key="model_ttl",
+            label="defaults",
+            file_path=file_path,
+        ),
+        kafka_broker_list=_optional_non_empty_string(
+            mapping=mapping,
+            key="kafka_broker_list",
+            label="defaults",
+            file_path=file_path,
+        ),
         replay_on_change=_parse_replay_on_change(
             payload=mapping.get("replay_on_change"),
             label="defaults.replay_on_change",

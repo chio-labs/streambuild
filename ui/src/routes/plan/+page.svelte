@@ -155,6 +155,24 @@
 
 	let executing = $state<boolean>(false);
 	let executeError = $state<string | null>(null);
+	let protectionConfirmations = $state<Record<string, string>>({});
+	const missingProtections = $derived(
+		(plan?.protections ?? []).filter(
+			(protection) =>
+				protectionConfirmations[protection.pipelineName] !== protection.confirmation
+		)
+	);
+	const acceptedConfirmations = $derived(
+		(plan?.protections ?? [])
+			.filter(
+				(protection) =>
+					protectionConfirmations[protection.pipelineName] === protection.confirmation
+			)
+			.map((protection) => protection.confirmation)
+	);
+	const executionCommand = $derived(
+		`${plan?.command ?? 'stb build'}${acceptedConfirmations.map((value) => ` --confirm ${value}`).join('')}`
+	);
 
 	/** POST the exact planned command and follow the run live. */
 	async function execute(): Promise<void> {
@@ -163,7 +181,7 @@
 		try {
 			const tokens: string[] = selectors.map(selectorToken);
 			const start: string | null = replayStartToken(replayWindow);
-			const startResult = await startBuild(tokens, start);
+			const startResult = await startBuild(tokens, start, acceptedConfirmations);
 			await goto(`/runs/${startResult.invocationId}?live=1`);
 		} catch (error) {
 			executeError = error instanceof Error ? error.message : String(error);
@@ -254,7 +272,7 @@
 
 	async function copyCommand(): Promise<void> {
 		try {
-			await navigator.clipboard.writeText(plan?.command ?? 'stb build');
+			await navigator.clipboard.writeText(executionCommand);
 			copied = true;
 			setTimeout(() => (copied = false), 1600);
 		} catch {
@@ -643,6 +661,34 @@
 
 	<!-- ── hand-off ────────────────────────────────────────────────────────── -->
 	<div class="bg-[var(--sb-surface-low)] shrink-0 border-t border-border px-[18px] py-3">
+		{#if (plan?.protections.length ?? 0) > 0}
+			<div
+				class="mb-3 space-y-2 rounded-[4px] border px-3 py-2.5"
+				style:border-color="color-mix(in srgb, var(--sb-warning) 45%, var(--border))"
+				style:background="color-mix(in srgb, var(--sb-warning) 7%, transparent)"
+			>
+				{#each plan?.protections ?? [] as protection (protection.pipelineName)}
+					<div class="grid gap-1.5 sm:grid-cols-[1fr_260px] sm:items-end">
+						<div>
+							<div class="font-mono text-[11.5px] font-semibold" style:color="var(--sb-warning)">
+								Protected pipeline: {protection.pipelineName}
+							</div>
+							<div class="text-muted-foreground pt-0.5 text-[11.5px]">{protection.warning}</div>
+						</div>
+						<label class="grid gap-1 font-mono text-[10.5px] text-muted-foreground">
+							Type <code>{protection.confirmation}</code> to continue
+							<input
+								value={protectionConfirmations[protection.pipelineName] ?? ''}
+								oninput={(event) =>
+									(protectionConfirmations[protection.pipelineName] = event.currentTarget.value)}
+								spellcheck="false"
+								class="bg-[var(--sb-inset)] rounded-[4px] border border-border px-2.5 py-1.5 font-mono text-[11px] text-foreground outline-none focus:border-[var(--sb-warning)]"
+							/>
+						</label>
+					</div>
+				{/each}
+			</div>
+		{/if}
 		<div class="flex flex-wrap items-center gap-3">
 			<div class="text-muted-foreground shrink-0 font-mono text-[10.5px]">
 				Planned against the {formatClock(plan?.plannedAt ?? '')} snapshot
@@ -664,7 +710,7 @@
 			</button>
 			<code
 				class="bg-[var(--sb-inset)] order-last min-w-0 basis-full truncate rounded-[4px] border border-border px-2.5 py-1.5 font-mono text-[11.5px] lg:order-none lg:ml-auto lg:flex-1 lg:basis-auto"
-				>$ {plan?.command ?? 'stb build'}</code
+				>$ {executionCommand}</code
 			>
 			<button
 				class="flex shrink-0 items-center gap-1.5 rounded-[4px] border px-2.5 py-1.5 font-mono text-[11px] {copied
@@ -682,7 +728,7 @@
 			<button
 				class="bg-primary flex shrink-0 items-center gap-1.5 rounded-[4px] px-3 py-1.5 font-mono text-[11px] font-medium text-white disabled:opacity-60"
 				title="Runs the exact command shown, as a subprocess"
-				disabled={executing || planLoading || planError !== null || plan === null}
+				disabled={executing || planLoading || planError !== null || plan === null || missingProtections.length > 0}
 				onclick={() => void execute()}
 			>
 				<PlayIcon size={12} /> {executing ? 'starting…' : 'Execute'}
