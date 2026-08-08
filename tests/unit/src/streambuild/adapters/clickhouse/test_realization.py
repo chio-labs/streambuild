@@ -18,6 +18,7 @@ from streambuild.adapter.models import (
 )
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from tests.unit.src.streambuild.adapters.clickhouse._test_types import (
+    ClickHouseLandingSchemaTestCase,
     ClickHouseManagedSourceRealizationTestCase,
     ClickHouseModelRealizationTestCase,
     ClickHouseSourceRealizationErrorTestCase,
@@ -60,6 +61,59 @@ def test_given_managed_source_request_when_realizing_then_returns_expected_resou
     )
     assert managed_source.consumer_group == test_case.expected_consumer_group
     assert landing_table.ttl == test_case.expected_landing_ttl
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ClickHouseLandingSchemaTestCase(
+            description="lands kafka header arrays alongside the raw message columns",
+            expected_columns=(
+                ("kafka_key", "String"),
+                ("kafka_value", "String"),
+                ("kafka_topic", "String"),
+                ("kafka_partition", "Int32"),
+                ("kafka_offset", "Int64"),
+                ("kafka_timestamp", "Nullable(DateTime64(3))"),
+                ("_replay_partition", "Int32"),
+                ("_replay_offset", "Int64"),
+                ("_replay_timestamp", "Nullable(DateTime64(3))"),
+                ("kafka_header_keys", "Array(String)"),
+                ("kafka_header_values", "Array(String)"),
+                ("kafka_landed_at", "DateTime64(3)"),
+                ("_replay_landed_at", "DateTime64(3)"),
+            ),
+            expected_query_fragments=(
+                "_headers.name AS kafka_header_keys",
+                "_headers.value AS kafka_header_values",
+            ),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_managed_source_request_when_realizing_then_lands_header_arrays(
+    test_case: ClickHouseLandingSchemaTestCase,
+) -> None:
+    realization: AdapterSourceRealization = ClickHouseAdapter().realize_source(
+        request=AdapterManagedSourceRealizationRequest(
+            logical_name="orders",
+            source_kind="kafka",
+            broker_list="kafka:9092",
+            topic="source.orders",
+            consumer_group=None,
+            format="JSONAsString",
+        )
+    )
+    landing_table: AdapterTable = cast(AdapterTable, realization.resources[1])
+    landing_view: AdapterMaterializedView = cast(AdapterMaterializedView, realization.resources[2])
+
+    assert (
+        tuple((column.name, column.type) for column in landing_table.columns)
+        == test_case.expected_columns
+    )
+    for expected_fragment in test_case.expected_query_fragments:
+        assert expected_fragment in landing_view.query
+        assert expected_fragment in landing_view.database_template
 
 
 @pytest.mark.parametrize(

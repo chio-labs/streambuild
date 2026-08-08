@@ -37,6 +37,13 @@ class CatalogInspectionTestCase:
 
 
 @dataclass(frozen=True)
+class ClickHouseLandingSchemaTestCase:
+    description: str
+    expected_columns: tuple[tuple[str, str], ...]
+    expected_query_fragments: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class ClickHousePublishCapabilitiesTestCase:
     description: str
     expected_stable_logical_bindings: bool
