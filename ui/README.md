@@ -1,42 +1,36 @@
-# sv
+# StreamBuild UI
 
-Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
+This SvelteKit application is the frontend served by `stb dev`. Production assets are built into
+`src/streambuild/dev_server/static` and included in the Python distribution.
 
-## Creating a project
+## Local Development
 
-If you're seeing this, you've probably already done this step. Congrats!
+Start the StreamBuild backend from a project directory:
 
-```sh
-# create a new project
-npx sv create my-app
+```bash
+uv run stb dev
 ```
 
-To recreate this project with the same configuration:
+Then start Vite in another terminal:
 
-```sh
-# recreate this project
-npx sv@0.15.3 create --template minimal --types ts --no-install /tmp/opencode/sk-scaffold
-```
-
-## Developing
-
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
-
-```sh
+```bash
+cd ui
+npm ci
 npm run dev
-
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
 ```
 
-## Building
+Vite proxies `/api` to `http://127.0.0.1:8000`. Open the URL printed by Vite.
 
-To create a production version of your app:
+## Checks
 
-```sh
+```bash
+npm run check
+npm run verify:lanes
 npm run build
 ```
 
-You can preview the production build with `npm run preview`.
+`npm run shots` runs the Playwright screenshot script used for visual review. It expects the
+required browser and a reachable backend.
 
-> To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
+From the repository root, `make ui-build` installs dependencies, builds the static application,
+and replaces the packaged assets.

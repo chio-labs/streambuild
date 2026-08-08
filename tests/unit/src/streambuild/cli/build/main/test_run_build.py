@@ -10,17 +10,20 @@ from tests.unit.src.streambuild.cli.build.main._test_types import (
     CliBuildArtifactTestCase,
     CliBuildGateTestCase,
     CliBuildInterruptTestCase,
+    CliMixedBuildTestCase,
     CliProtectedBuildTestCase,
     CliVirtualBuildArtifactTestCase,
 )
 from tests.unit.src.streambuild.cli.build.main.helpers import (
     InterruptedBuildConnection,
     build_interrupted_scope_project_connection,
+    build_mixed_scope_project_connection,
     build_scope_project_connection,
     publish_scope_project_virtual_workflow,
     run_scope_project_build,
     run_scope_project_build_with_connection,
     run_scope_project_virtual_build,
+    write_mixed_scope_project,
 )
 from tests.unit.src.streambuild.cli.helpers import RecordingAdapterConnection
 from tests.unit.src.streambuild.compiler.planner.helpers import write_direct_scope_project
@@ -252,3 +255,90 @@ def test_given_fixed_virtual_identity_when_publishing_then_plan_and_steps_are_ex
     assert tuple(path.read_bytes() for path in step_paths) == tuple(
         statement.sql.encode("utf-8") for statement in published.workflow.statements
     )
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliMixedBuildTestCase(
+            description="runs virtual staging before direct application",
+            expected_exit_code=0,
+            expected_mode="mixed",
+            expected_execution_order=("virtual", "direct"),
+            expected_virtual_phase_fragment="Phase 1/2  VIRTUAL",
+            expected_direct_phase_fragment="Phase 2/2  DIRECT",
+            expected_completion_fragment=("Direct changes are live. Virtual changes remain staged"),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_mixed_pipeline_modes_when_building_then_virtual_runs_before_direct(
+    test_case: CliMixedBuildTestCase,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    write_mixed_scope_project(project_root=tmp_path)
+    connection: RecordingAdapterConnection = build_mixed_scope_project_connection()
+    monkeypatch.setattr(
+        "streambuild.cli.build._helpers.virtual_command.reset_fresh_landing_offsets",
+        lambda **_kwargs: (),
+    )
+
+    exit_code: int = run_scope_project_build_with_connection(
+        project_root=tmp_path,
+        json_output=False,
+        auto_approve=True,
+        connection=connection,
+    )
+
+    captured: CaptureResult[str] = capsys.readouterr()
+    output: str = captured.out
+    assert exit_code == test_case.expected_exit_code, captured
+    assert "Mixed Build Plan" in output
+    assert output.index(test_case.expected_virtual_phase_fragment) < output.index(
+        test_case.expected_direct_phase_fragment
+    )
+    assert test_case.expected_completion_fragment in output
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliMixedBuildTestCase(
+            description="emits one mixed JSON document",
+            expected_exit_code=0,
+            expected_mode="mixed",
+            expected_execution_order=("virtual", "direct"),
+            expected_virtual_phase_fragment="virtual",
+            expected_direct_phase_fragment="direct",
+            expected_completion_fragment="mode",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_mixed_pipeline_modes_when_building_json_then_it_emits_one_document(
+    test_case: CliMixedBuildTestCase,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    write_mixed_scope_project(project_root=tmp_path)
+    monkeypatch.setattr(
+        "streambuild.cli.build._helpers.virtual_command.reset_fresh_landing_offsets",
+        lambda **_kwargs: (),
+    )
+
+    exit_code: int = run_scope_project_build_with_connection(
+        project_root=tmp_path,
+        json_output=True,
+        auto_approve=True,
+        connection=build_mixed_scope_project_connection(),
+    )
+
+    payload: dict[str, object] = json.loads(capsys.readouterr().out)
+    assert exit_code == test_case.expected_exit_code
+    assert payload[test_case.expected_completion_fragment] == test_case.expected_mode
+    assert payload["execution_order"] == list(test_case.expected_execution_order)
+    assert isinstance(payload[test_case.expected_virtual_phase_fragment], dict)
+    assert isinstance(payload[test_case.expected_direct_phase_fragment], dict)

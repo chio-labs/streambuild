@@ -11,12 +11,18 @@ from streambuild.compiler.discovery.models import (
     ReplayOnChangePolicy,
     TransformStep,
 )
-from streambuild.compiler.discovery.types import BoundedReplayFallback, ReplayOnChangeMode
+from streambuild.compiler.discovery.types import (
+    BoundedReplayFallback,
+    PipelineMode,
+    ReplayOnChangeMode,
+)
 from tests.unit.src.streambuild.compiler.discovery._helpers.load._test_types import (
+    InvalidPipelineModeTestCase,
     InvalidPipelineProtectionTestCase,
     LoadRegistryPipelineTestCase,
     LoadReplayPoliciesTestCase,
     MismatchedSourceTestCase,
+    PipelineModeTestCase,
     PipelineProtectionTestCase,
     RemovedPipelineSurfaceTestCase,
     StandaloneMacroOwnershipTestCase,
@@ -52,6 +58,57 @@ def test_given_registry_project_when_loading_pipeline_then_it_resolves_source(
         tuple(transform.name for transform in loaded.pipeline.transforms)
         == test_case.expected_transform_names
     )
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        PipelineModeTestCase(
+            description="direct mode overrides a virtual project default",
+            configured_mode="direct",
+            expected_mode=PipelineMode.DIRECT,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_pipeline_mode_override_when_loading_then_it_overrides_project_default(
+    test_case: PipelineModeTestCase,
+    tmp_path: Path,
+) -> None:
+    pipeline_dir: Path = write_registry_project(
+        project_dir=tmp_path,
+        pipeline_config_contents=f'mode = "{test_case.configured_mode}"',
+        model_contents='MODEL (); SELECT order_id::UInt64 AS order_id FROM __source("orders")',
+    )
+
+    loaded: LoadedPipeline = load_pipeline_directory(pipeline_dir)
+
+    assert loaded.pipeline.mode == test_case.expected_mode
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        InvalidPipelineModeTestCase(
+            description="rejects an unknown pipeline mode",
+            configured_mode="shadow",
+            expected_error_fragment="expected 'direct' or 'virtual'",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_invalid_pipeline_mode_when_loading_then_it_reports_supported_values(
+    test_case: InvalidPipelineModeTestCase,
+    tmp_path: Path,
+) -> None:
+    pipeline_dir: Path = write_registry_project(
+        project_dir=tmp_path,
+        pipeline_config_contents=f'mode = "{test_case.configured_mode}"',
+        model_contents='MODEL (); SELECT order_id::UInt64 AS order_id FROM __source("orders")',
+    )
+
+    with pytest.raises(PipelineDiscoveryError, match=test_case.expected_error_fragment):
+        load_pipeline_directory(pipeline_dir)
 
 
 @pytest.mark.parametrize(

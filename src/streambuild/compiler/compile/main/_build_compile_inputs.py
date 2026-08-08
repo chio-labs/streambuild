@@ -29,6 +29,7 @@ from streambuild.compiler.discovery.models import (
     TransformStep,
     ViewStep,
 )
+from streambuild.compiler.discovery.types import PipelineMode
 from streambuild.compiler.macros.main._build_macro_context import build_macro_context
 from streambuild.compiler.macros.main._load_macro_registry import load_macro_registry
 from streambuild.compiler.macros.models import MacroContext, MacroRegistry
@@ -67,7 +68,7 @@ def build_compile_inputs(
     virtual_environments: bool = (
         False
         if effective_configuration is None
-        else effective_configuration.settings.virtual_environments
+        else effective_configuration.defaults.pipeline_mode == PipelineMode.VIRTUAL
     )
     macro_registry: MacroRegistry = load_macro_registry(macro_files=discovered_inputs.macro_files)
     macro_context: MacroContext = build_macro_context(
@@ -91,6 +92,11 @@ def build_compile_inputs(
         macro_context=macro_context,
         sources_by_name=sources_by_name,
         project=project,
+        default_mode=(
+            PipelineMode.DIRECT
+            if effective_configuration is None
+            else PipelineMode(effective_configuration.defaults.pipeline_mode)
+        ),
     )
     contents_by_path: dict[Path, str] = {
         source_file.file_path: source_file.contents

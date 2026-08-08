@@ -7,6 +7,7 @@ from streambuild.adapter.exceptions import AdapterError
 from streambuild.cli.build.main._prepare_build_workflow import prepare_build_workflow
 from streambuild.cli.build.models import (
     DirectWorkflowPreparation,
+    MixedWorkflowPreparation,
     VirtualWorkflowPreparation,
     WorkflowPreparationOptions,
 )
@@ -47,26 +48,32 @@ def run_plan(
             start_time=options.start_time,
             verbose=options.verbose,
         )
-        preparation: DirectWorkflowPreparation | VirtualWorkflowPreparation = (
-            prepare_build_workflow(
-                analysis=analysis,
-                options=preparation_options,
-                client=client,
-                adapter_profile=adapter_profile,
+        preparation: (
+            DirectWorkflowPreparation | MixedWorkflowPreparation | VirtualWorkflowPreparation
+        ) = prepare_build_workflow(
+            analysis=analysis,
+            options=preparation_options,
+            client=client,
+            adapter_profile=adapter_profile,
+        )
+        if not isinstance(preparation, MixedWorkflowPreparation):
+            publish_plan_workflow(
+                target_dir=options.pipelines_root.parent / "target",
+                workflow=(
+                    preparation.workflow.template
+                    if isinstance(preparation, DirectWorkflowPreparation)
+                    else preparation.workflow
+                ),
+                is_template=isinstance(preparation, DirectWorkflowPreparation),
             )
-        )
-        publish_plan_workflow(
-            target_dir=options.pipelines_root.parent / "target",
-            workflow=(
-                preparation.workflow.template
-                if isinstance(preparation, DirectWorkflowPreparation)
-                else preparation.workflow
-            ),
-            is_template=isinstance(preparation, DirectWorkflowPreparation),
-        )
-        rendered_output: str = (
-            preparation.workflow.plan_json if options.json_output else preparation.plan_text + "\n"
-        )
+        if options.json_output:
+            rendered_output: str = (
+                preparation.plan_json
+                if isinstance(preparation, MixedWorkflowPreparation)
+                else preparation.workflow.plan_json
+            )
+        else:
+            rendered_output = preparation.plan_text + "\n"
         print(rendered_output, end="")
     except (
         TransformSqlContractError,

@@ -109,3 +109,14 @@ class VirtualWorkflowPreparation:
     workflow: BuildWorkflow
     plan_text: str
     protection_requirements: tuple[BuildProtectionRequirement, ...] = ()
+
+
+@dataclass(frozen=True)
+class MixedWorkflowPreparation:
+    """Virtual-first and direct-second workflows prepared for one build."""
+
+    virtual: VirtualWorkflowPreparation
+    direct: DirectWorkflowPreparation
+    plan_text: str
+    plan_json: str
+    protection_requirements: tuple[BuildProtectionRequirement, ...] = ()

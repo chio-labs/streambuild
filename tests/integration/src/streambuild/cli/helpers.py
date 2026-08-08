@@ -118,7 +118,7 @@ def write_managed_source_project(
     project_dir.mkdir(parents=True, exist_ok=True)
     (project_dir / "streambuild_project.toml").write_text(
         'name = "integration_project"\ndefault_target = "test"\n\n'
-        "[settings]\nvirtual_environments = true\n\n"
+        '[defaults]\npipeline_mode = "virtual"\n\n'
         '[targets.test]\ndatabase = "analytics"\n',
         encoding="utf-8",
     )
@@ -529,7 +529,7 @@ def write_source_mode_plan_project(
     pipeline_dir.mkdir(parents=True)
     (project_dir / "streambuild_project.toml").write_text(
         'name = "source_mode_project"\ndefault_target = "test"\n\n'
-        "[settings]\nvirtual_environments = true\n\n"
+        '[defaults]\npipeline_mode = "virtual"\n\n'
         '[targets.test]\ndatabase = "analytics"\n',
         encoding="utf-8",
     )
@@ -1112,7 +1112,7 @@ _DIRECT_BUILD_SOURCE_YML: str = (
 )
 _DIRECT_BUILD_SETTINGS_BY_MODE: dict[bool, str] = {
     False: "",
-    True: "\n[settings]\nvirtual_environments = true\n",
+    True: '\n[defaults]\npipeline_mode = "virtual"\n',
 }
 _DIRECT_SELECTED_GRAPH_SQL_BY_NAME: tuple[tuple[str, str], ...] = (
     (
@@ -1228,7 +1228,7 @@ def write_virtual_fan_in_project(*, project_root: Path) -> None:
     source_root.mkdir(parents=True, exist_ok=True)
     (project_root / "streambuild_project.toml").write_text(
         'name = "virtual_fan_in"\ndefault_target = "test"\n\n'
-        "[settings]\nvirtual_environments = true\n\n"
+        '[defaults]\npipeline_mode = "virtual"\n\n'
         '[targets.test]\ndatabase = "analytics"\n',
         encoding="utf-8",
     )
@@ -1301,7 +1301,7 @@ def write_virtual_environment_view_project(*, project_root: Path) -> None:
     source_root.mkdir(parents=True, exist_ok=True)
     (project_root / "streambuild_project.toml").write_text(
         'name = "virtual_environment_view"\ndefault_target = "test"\n\n'
-        "[settings]\nvirtual_environments = true\n\n"
+        '[defaults]\npipeline_mode = "virtual"\n\n'
         '[targets.test]\ndatabase = "analytics"\n',
         encoding="utf-8",
     )

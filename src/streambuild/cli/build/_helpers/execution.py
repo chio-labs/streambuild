@@ -42,10 +42,11 @@ def execute_confirmed_direct_build(
     options: BuildCommandOptions,
     client: AdapterConnection,
     emitter: WorkflowEventEmitter | None = None,
+    confirmation_required: bool = True,
 ) -> DirectBuildExecutionResult | None:
     """Show the destructive plan, require confirmation, then build."""
 
-    if not confirm_build(
+    if confirmation_required and not confirm_build(
         options=options,
         plan_text=preparation.plan_text,
         protection_requirements=preparation.protection_requirements,

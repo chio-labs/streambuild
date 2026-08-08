@@ -106,8 +106,8 @@ def test_given_audit_policy_layers_when_compiling_then_effective_policy_is_expli
         name = "compilation_project"
         default_target = "test"
 
-        [settings]
-        virtual_environments = true
+        [defaults]
+        pipeline_mode = \"virtual\"
 
         [defaults.audits]
         severity = "warning"
@@ -627,16 +627,15 @@ def test_given_source_and_model_share_name_when_analyzing_then_rejects_logical_c
             project_contents="""
             name = "policy_project"
             default_target = "test"
-            [settings]
-            virtual_environments = true
+            [defaults]
+            pipeline_mode = \"virtual\"
+            bounded_replay_fallback = "bounded_without_history"
             [targets.test]
             database = "analytics"
-            [defaults]
-            bounded_replay_fallback = "bounded_without_history"
             """,
             local_contents="""
-            [settings]
-            virtual_environments = false
+            [defaults]
+            pipeline_mode = \"direct\"
             """,
             pipeline_config_contents="",
             model_contents="""
