@@ -143,6 +143,20 @@ def _resolve_project_defaults(
             environment=environment,
             field_path=f"{loaded.project_source.file_path} defaults.kafka_broker_list",
         ),
+        sources=replace(
+            defaults.sources,
+            kafka=replace(
+                defaults.sources.kafka,
+                naming_macro=_optional_interpolated_string(
+                    value=defaults.sources.kafka.naming_macro,
+                    variables=variables,
+                    environment=environment,
+                    field_path=(
+                        f"{loaded.project_source.file_path} defaults.sources.kafka.naming_macro"
+                    ),
+                ),
+            ),
+        ),
     )
 
 

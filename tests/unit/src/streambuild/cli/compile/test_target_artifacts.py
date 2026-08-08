@@ -12,6 +12,7 @@ from tests.unit.src.streambuild.cli.compile._test_types import (
     CompileCheckArtifactsTestCase,
     CompileDiagnosticOutputTestCase,
     CompileGenerationFailureTestCase,
+    DerivedSourceManifestTestCase,
     EmptyCompileTargetTestCase,
     ExactCompileTargetTestCase,
     PublicationRollbackTestCase,
@@ -140,6 +141,70 @@ def test_given_adopted_source_when_compiling_then_omits_managed_source_candidate
     assert source_entry["relation_name"] == test_case.expected_relation_name
     assert len(source_entry["resources"]) == test_case.expected_source_resource_count
     assert not (target_dir / test_case.expected_forbidden_workflow_path).exists()
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DerivedSourceManifestTestCase(
+            description="manifest exposes a derived Kafka source name origin",
+            expected_name="orders",
+            expected_origin="derived",
+            expected_macro_name="kafka_source_name",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_macro_named_kafka_source_when_compiling_then_manifest_exposes_derived_origin(
+    test_case: DerivedSourceManifestTestCase,
+    tmp_path: Path,
+) -> None:
+    project_dir: Path = tmp_path / "project"
+    target_dir: Path = project_dir / "target"
+    copy_basic_project(project_dir=project_dir)
+    (project_dir / "streambuild_project.toml").write_text(
+        """
+name = "basic_project"
+default_target = "test"
+
+[defaults]
+pipeline_mode = "virtual"
+
+[defaults.sources.kafka]
+naming_macro = "kafka_source_name"
+
+[targets.test]
+database = "analytics"
+""".strip(),
+        encoding="utf-8",
+    )
+    (project_dir / "sources" / "orders.yml").write_text(
+        """sources:
+  - kind: kafka
+    broker_list: kafka:9092
+    topic: source.orders.created
+    replay_boundary:
+      mode: offsets
+""",
+        encoding="utf-8",
+    )
+    macros_dir: Path = project_dir / "macros"
+    macros_dir.mkdir()
+    (macros_dir / "source_names.py").write_text(
+        "def kafka_source_name(topic: str) -> str:\n    return topic.split('.')[1]\n",
+        encoding="utf-8",
+    )
+
+    exit_code: int = compile_project(project_dir=project_dir, target_dir=target_dir)
+    manifest: dict[str, object] = json.loads((target_dir / "manifest.json").read_text())
+    source_entry: dict[str, object] = manifest["sources"][test_case.expected_name]
+    name_origin: dict[str, object] = source_entry["name_origin"]
+
+    assert exit_code == 0
+    assert source_entry["name"] == test_case.expected_name
+    assert name_origin["kind"] == test_case.expected_origin
+    assert name_origin["macro"] == test_case.expected_macro_name
+    assert len(name_origin["macro_fingerprint"]) == 64
 
 
 @pytest.mark.parametrize(

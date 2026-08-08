@@ -95,12 +95,18 @@ def _pipeline_entry(*, pipeline: CompiledPipeline, analysis: CompileAnalysis) ->
 
 
 def _source_entry(*, source: CompiledSource, analysis: CompileAnalysis) -> dict[str, object]:
+    naming_macro: str | None = getattr(source.source, "naming_macro", None)
     resources: tuple[AdapterResource, ...] = analysis.realized_project.resources_by_logical_key[
         source.key
     ]
     return {
         "logical_key": f"source:{source.key.name}",
         "name": source.key.name,
+        "name_origin": {
+            "kind": source.source.name_origin,
+            "macro": naming_macro,
+            "macro_fingerprint": getattr(source.source, "naming_macro_fingerprint", None),
+        },
         "relation_name": analysis.realized_project.relation_name_by_logical_key[source.key],
         "replay_lineage_mode": source.effective_replay_lineage_mode,
         "resources": tuple(

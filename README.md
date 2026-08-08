@@ -145,6 +145,9 @@ kafka_broker_list = "kafka1:9092,kafka2:9092"
 maximum_lag = "30s"
 minimum_staged_row_ratio = 0.5
 
+[defaults.sources.kafka]
+naming_macro = "kafka_source_name"
+
 [connection]
 host = "localhost"
 port = 8123
@@ -172,6 +175,8 @@ Notes:
 - metadata lives in the same database by default
 - managed Kafka sources inherit `[defaults].kafka_broker_list` when they omit
   `broker_list`; a source-level value overrides the project default
+- `[defaults.sources.kafka].naming_macro` names Kafka sources that omit `name` by calling the
+  configured project macro with the resolved topic; an explicit source `name` always wins
 - table models inherit `[defaults].model_ttl` when `MODEL(...)` omits `ttl`; an explicit model TTL
   overrides it, and the effective expression is validated against that model's output columns
 - model relation names use the model's exact `relation_name`, then pipeline, project, and built-in
@@ -247,7 +252,6 @@ source inference, so a view-only pipeline is valid and source-less.
 ```yaml
 sources:
   - kind: kafka
-    name: orders
     topic: source.orders.created
     ttl: _replay_landed_at + INTERVAL 30 DAY
     replay_boundary:
@@ -256,6 +260,12 @@ sources:
 
 This is the managed source shape:
 
+- `name` is required unless `[defaults.sources.kafka].naming_macro` is configured
+- the naming macro has the contract `def kafka_source_name(topic: str) -> str` and must return an
+  unqualified identifier; topic interpolation completes before the macro is called
+- explicit names bypass the macro, and duplicate explicit or derived names are compile errors
+- derived-name origin, macro identity, and implementation fingerprint are included in discovery and
+  manifest metadata
 - StreamBuild creates the Kafka table
 - StreamBuild creates the raw landing table and landing MV
 - source `broker_list` overrides `[defaults].kafka_broker_list`; one of them is required

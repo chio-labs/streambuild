@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import inspect
 import re
 from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
@@ -15,6 +17,7 @@ from streambuild.compiler.discovery.constants import (
     FRESHNESS_DURATION_PATTERN,
     FRESHNESS_KEYS,
     INTERPOLATION_TOKEN_START,
+    KAFKA_NAMING_MACRO_TOPIC_PARAMETER,
     REPLAY_BOUNDARY_COLUMN_KEYS,
     REPLAY_BOUNDARY_KEYS,
     SECONDS_BY_DURATION_UNIT,
@@ -32,7 +35,19 @@ from streambuild.compiler.discovery.models import (
     ReplayBoundaryColumns,
     SourceFreshnessPolicy,
 )
-from streambuild.compiler.discovery.types import ReplayBoundaryMode, SourceKind
+from streambuild.compiler.discovery.types import ReplayBoundaryMode, SourceKind, SourceNameOrigin
+from streambuild.compiler.macros.models import LoadedMacro, MacroRegistry
+
+_SOURCE_NAME_PATTERN: re.Pattern[str] = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+@dataclass(frozen=True)
+class _ResolvedKafkaSourceName:
+    name: str
+    topic: str
+    origin: SourceNameOrigin
+    macro_name: str | None = None
+    macro_fingerprint: str | None = None
 
 
 def discover_source_registry(
@@ -43,6 +58,8 @@ def discover_source_registry(
     default_managed_source_ttl: str | None = None,
     default_kafka_broker_list: str | None = None,
     default_freshness: SourceFreshnessPolicy | None = None,
+    default_kafka_naming_macro: str | None = None,
+    macro_registry: MacroRegistry | None = None,
 ) -> tuple[DiscoveredSourceFile, ...]:
     """Load direct sources/*.yml files once in stable order and validate uniqueness."""
 
@@ -58,6 +75,8 @@ def discover_source_registry(
             default_managed_source_ttl=default_managed_source_ttl,
             default_kafka_broker_list=default_kafka_broker_list,
             default_freshness=default_freshness,
+            default_kafka_naming_macro=default_kafka_naming_macro,
+            macro_registry=macro_registry,
         )
         for file_path in sorted(sources_root.glob("*.yml"))
     )
@@ -170,6 +189,8 @@ def _load_source_file(
     default_managed_source_ttl: str | None,
     default_kafka_broker_list: str | None,
     default_freshness: SourceFreshnessPolicy | None,
+    default_kafka_naming_macro: str | None,
+    macro_registry: MacroRegistry | None,
 ) -> DiscoveredSourceFile:
     contents: str = file_path.read_text(encoding="utf-8")
     source_file: DiscoveredProjectFile = DiscoveredProjectFile(
@@ -186,6 +207,8 @@ def _load_source_file(
             default_managed_source_ttl=default_managed_source_ttl,
             default_kafka_broker_list=default_kafka_broker_list,
             default_freshness=default_freshness,
+            default_kafka_naming_macro=default_kafka_naming_macro,
+            macro_registry=macro_registry,
         ),
     )
 
@@ -198,6 +221,8 @@ def _parse_source_file(
     default_managed_source_ttl: str | None,
     default_kafka_broker_list: str | None,
     default_freshness: SourceFreshnessPolicy | None,
+    default_kafka_naming_macro: str | None,
+    macro_registry: MacroRegistry | None,
 ) -> tuple[KafkaLandingStep | ExternalTableSourceStep, ...]:
     try:
         raw_payload: object = yaml.safe_load(source_file.contents)
@@ -231,6 +256,8 @@ def _parse_source_file(
             default_managed_source_ttl=default_managed_source_ttl,
             default_kafka_broker_list=default_kafka_broker_list,
             default_freshness=default_freshness,
+            default_kafka_naming_macro=default_kafka_naming_macro,
+            macro_registry=macro_registry,
         )
         for index, raw_source in enumerate(raw_sources)
     )
@@ -246,6 +273,8 @@ def _parse_source(
     default_managed_source_ttl: str | None,
     default_kafka_broker_list: str | None,
     default_freshness: SourceFreshnessPolicy | None,
+    default_kafka_naming_macro: str | None,
+    macro_registry: MacroRegistry | None,
 ) -> KafkaLandingStep | ExternalTableSourceStep:
     label: str = f"sources[{index}]"
     mapping: dict[str, object] = _mapping(
@@ -254,14 +283,6 @@ def _parse_source(
         file_path=file_path,
     )
     _validate_keys(mapping=mapping, allowed=SOURCE_KEYS, field_path=label, file_path=file_path)
-    name: str = _required_string(
-        mapping=mapping,
-        key="name",
-        field_path=label,
-        file_path=file_path,
-        variables=variables,
-        environment=environment,
-    )
     raw_kind: str = _required_string(
         mapping=mapping,
         key="kind",
@@ -285,9 +306,49 @@ def _parse_source(
         or default_freshness
     )
     if kind == SourceKind.KAFKA:
+        topic: str = _required_string(
+            mapping=mapping,
+            key="topic",
+            field_path=label,
+            file_path=file_path,
+            variables=variables,
+            environment=environment,
+        )
+        explicit_name: str | None = _optional_string(
+            mapping=mapping,
+            key="name",
+            field_path=label,
+            file_path=file_path,
+            variables=variables,
+            environment=environment,
+        )
+        name: str
+        name_origin: SourceNameOrigin = SourceNameOrigin.EXPLICIT
+        naming_macro: str | None = None
+        naming_macro_fingerprint: str | None = None
+        if explicit_name is None:
+            name, loaded_naming_macro = _derive_kafka_source_name(
+                topic=topic,
+                macro_name=default_kafka_naming_macro,
+                macro_registry=macro_registry,
+                label=label,
+                file_path=file_path,
+            )
+            name_origin = SourceNameOrigin.DERIVED
+            naming_macro = loaded_naming_macro.name
+            naming_macro_fingerprint = loaded_naming_macro.identity_fingerprint
+        else:
+            name = explicit_name
+        _validate_source_name(name=name, label=label, file_path=file_path)
         return _parse_managed_kafka_source(
             mapping=mapping,
-            name=name,
+            source_name=_ResolvedKafkaSourceName(
+                name=name,
+                topic=topic,
+                origin=name_origin,
+                macro_name=naming_macro,
+                macro_fingerprint=naming_macro_fingerprint,
+            ),
             label=label,
             file_path=file_path,
             variables=variables,
@@ -296,6 +357,15 @@ def _parse_source(
             default_kafka_broker_list=default_kafka_broker_list,
             freshness=freshness,
         )
+    name = _required_string(
+        mapping=mapping,
+        key="name",
+        field_path=label,
+        file_path=file_path,
+        variables=variables,
+        environment=environment,
+    )
+    _validate_source_name(name=name, label=label, file_path=file_path)
     return _parse_adopted_source(
         mapping=mapping,
         name=name,
@@ -310,7 +380,7 @@ def _parse_source(
 def _parse_managed_kafka_source(
     *,
     mapping: dict[str, object],
-    name: str,
+    source_name: _ResolvedKafkaSourceName,
     label: str,
     file_path: Path,
     variables: Mapping[str, object],
@@ -370,17 +440,10 @@ def _parse_managed_kafka_source(
             "or defaults.kafka_broker_list must be configured"
         )
     return KafkaLandingStep(
-        name=name,
+        name=source_name.name,
         kafka=KafkaSettings(
             broker_list=broker_list,
-            topic=_required_string(
-                mapping=mapping,
-                key="topic",
-                field_path=label,
-                file_path=file_path,
-                variables=variables,
-                environment=environment,
-            ),
+            topic=source_name.topic,
             consumer_group=_optional_string(
                 mapping=mapping,
                 key="consumer_group",
@@ -411,6 +474,9 @@ def _parse_managed_kafka_source(
         ),
         replay_boundary=replay_boundary,
         freshness=freshness,
+        name_origin=source_name.origin,
+        naming_macro=source_name.macro_name,
+        naming_macro_fingerprint=source_name.macro_fingerprint,
     )
 
 
@@ -622,6 +688,71 @@ def _validate_adopted_boundary_columns(
     if any(value is not None for value in (columns.partition, columns.offset, columns.landed_at)):
         raise PipelineDiscoveryError(
             f"Source file '{file_path}' {label} cursor mode has incompatible role columns"
+        )
+
+
+def _derive_kafka_source_name(
+    *,
+    topic: str,
+    macro_name: str | None,
+    macro_registry: MacroRegistry | None,
+    label: str,
+    file_path: Path,
+) -> tuple[str, LoadedMacro]:
+    if macro_name is None:
+        raise PipelineDiscoveryError(
+            f"Source file '{file_path}' {label}.name must be a non-empty string or "
+            "defaults.sources.kafka.naming_macro must be configured"
+        )
+    loaded_macro: LoadedMacro | None = (
+        None if macro_registry is None else macro_registry.macros.get(macro_name)
+    )
+    if loaded_macro is None:
+        available: str = (
+            "none" if macro_registry is None else ", ".join(sorted(macro_registry.macros)) or "none"
+        )
+        raise PipelineDiscoveryError(
+            f"Source file '{file_path}' {label}.name cannot use unknown Kafka naming macro "
+            f"'{macro_name}'. Available macros: {available}"
+        )
+    parameters: tuple[inspect.Parameter, ...] = tuple(
+        inspect.signature(loaded_macro.function).parameters.values()
+    )
+    if (
+        len(parameters) != 1
+        or parameters[0].name != KAFKA_NAMING_MACRO_TOPIC_PARAMETER
+        or parameters[0].kind
+        not in {inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD}
+    ):
+        raise PipelineDiscoveryError(
+            f"Kafka source naming macro '{macro_name}' in '{loaded_macro.file_path}' must have "
+            "the signature def <name>(topic: str) -> str"
+        )
+    try:
+        result: object = loaded_macro.function(topic)
+    except TypeError as error:
+        raise PipelineDiscoveryError(
+            f"Kafka source naming macro '{macro_name}' in '{loaded_macro.file_path}' must accept "
+            f"exactly one topic string: {error}"
+        ) from error
+    except Exception as error:
+        raise PipelineDiscoveryError(
+            f"Kafka source naming macro '{macro_name}' in '{loaded_macro.file_path}' failed for "
+            f"topic '{topic}': {error}"
+        ) from error
+    if not isinstance(result, str):
+        raise PipelineDiscoveryError(
+            f"Kafka source naming macro '{macro_name}' in '{loaded_macro.file_path}' must return "
+            "a string"
+        )
+    return result, loaded_macro
+
+
+def _validate_source_name(*, name: str, label: str, file_path: Path) -> None:
+    if _SOURCE_NAME_PATTERN.fullmatch(name) is None:
+        raise PipelineDiscoveryError(
+            f"Source file '{file_path}' {label}.name must resolve to an unqualified identifier "
+            "using only letters, numbers, and underscores"
         )
 
 
