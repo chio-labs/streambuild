@@ -58,21 +58,35 @@
 	);
 	let scroller = $state<HTMLElement | null>(null);
 
+	// Console-style auto-search: any change to the effective search signature
+	// re-queries after a short debounce, aborting the in-flight search. The
+	// signature is read synchronously so this effect tracks exactly the filter
+	// state and nothing else — refresh() itself runs outside tracking.
+	const searchSignature = $derived(
+		JSON.stringify({
+			document: browser.document,
+			facetPath: browser.facetPath
+		})
+	);
 	$effect(() => {
-		void browser.refresh();
+		void searchSignature;
+		const timer = setTimeout(() => void browser.refresh(), 150);
+		return () => clearTimeout(timer);
+	});
+	$effect(() => {
 		return () => browser.stop();
 	});
 
-	/** Every filter change flows through here: URL stays a shareable session link. */
+	/** Every filter change flows through here: URL stays a shareable session link.
+	    Expanded rows are keyed by partition:offset, so rows that survive the new
+	    filter stay expanded instead of collapsing underneath the operator. */
 	function applyDocument(next: MessageFilterDocument): void {
 		browser.document = next;
-		expanded = [];
 		const encoded = encodeFilterDocument(next);
 		const url = new URL(page.url);
 		if (encoded === null) url.searchParams.delete('q');
 		else url.searchParams.set('q', encoded);
 		replaceState(url, {});
-		void browser.refresh();
 	}
 
 	function addPredicate(predicate: MessagePredicate): void {
@@ -137,7 +151,6 @@
 			.map((segment) => segment.trim())
 			.filter((segment) => segment !== '')
 			.map((segment) => (/^\d+$/.test(segment) ? Number(segment) : segment));
-		void browser.refresh();
 	}
 
 	/** Facet click toggles an equality chip on the current facet path. */
@@ -410,17 +423,21 @@
 				</div>
 			{/if}
 
-			<!-- ── MESSAGE TABLE ──────────────────────────────────────────────── -->
+			<!-- ── MESSAGE TABLE ──────────────────────────────────────────────────
+			     Fixed table layout: columns keep their widths across filter changes
+			     and expanded payloads can never widen the page. While a re-query is
+			     in flight the previous rows stay visible, dimmed, instead of the
+			     whole table blanking out. -->
 			<div class="overflow-hidden rounded-[4px] border border-border">
-				<table class="w-full text-left">
+				<table class="w-full table-fixed text-left">
 					<thead>
 						<tr
 							class="text-[var(--sb-text-faint)] border-b border-border font-mono text-[10px] uppercase tracking-[0.14em]"
 						>
-							<th class="px-3 py-2 font-normal">Landed at</th>
-							{#if showKafkaTimestamp}<th class="px-3 py-2 font-normal">Broker ts</th>{/if}
-							<th class="px-3 py-2 font-normal">P / Offset</th>
-							<th class="px-3 py-2 font-normal">Key</th>
+							<th class="w-[150px] px-3 py-2 font-normal">Landed at</th>
+							{#if showKafkaTimestamp}<th class="w-[150px] px-3 py-2 font-normal">Broker ts</th>{/if}
+							<th class="w-[120px] px-3 py-2 font-normal">P / Offset</th>
+							<th class="w-[200px] px-3 py-2 font-normal">Key</th>
 							{#if browser.document.previewPaths.length === 0}
 								<th class="px-3 py-2 font-normal">Value</th>
 							{:else}
@@ -430,10 +447,12 @@
 							{/if}
 						</tr>
 					</thead>
-					<tbody>
-						{#if browser.loading}
+					<tbody class={browser.loading && browser.rows.length > 0 ? 'opacity-50' : ''}>
+						{#if browser.loading && browser.rows.length === 0}
 							<tr><td colspan={columnCount} class="text-muted-foreground px-3 py-6 text-center font-mono text-[11px]">querying the warehouse…</td></tr>
-						{:else if browser.rows.length === 0}
+						{:else if !browser.loading && browser.rows.length === 0 && browser.error !== null}
+							<tr><td colspan={columnCount} class="px-3 py-6 text-center font-mono text-[11px]" style:color="var(--sb-danger)">query failed — adjust the filters above</td></tr>
+						{:else if !browser.loading && browser.rows.length === 0}
 							<tr><td colspan={columnCount} class="text-muted-foreground px-3 py-6 text-center font-mono text-[11px]">no messages match — searched the {windowLabel}</td></tr>
 						{:else}
 							{#each browser.rows as row (rowKey(row))}
