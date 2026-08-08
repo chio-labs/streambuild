@@ -1,0 +1,286 @@
+"""Small single-process audit scheduler owned by the dev-server lifecycle."""
+
+from __future__ import annotations
+
+import threading
+from datetime import UTC, datetime
+from pathlib import Path
+from time import monotonic
+from uuid import uuid4
+
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.models import AdapterQualityScheduleClaim
+from streambuild.cli.entry.types import CliCommand
+from streambuild.compiler.pipeline.models import CompileAnalysis
+from streambuild.dev_server._helpers.runs_query import (
+    read_active_runs,
+    read_latest_applied_direct_build_at,
+)
+from streambuild.dev_server.classes.build_process import BuildProcessManager
+from streambuild.dev_server.classes.dev_server_state import DevServerState
+from streambuild.dev_server.main._build_audit_scheduler_payload import (
+    build_audit_scheduler_payload,
+)
+from streambuild.dev_server.main._execute_due_audits import execute_due_audits
+from streambuild.dev_server.main._scheduler_enabled import scheduler_enabled
+from streambuild.dev_server.types import AuditScheduleState, RunPresentationStatus
+from streambuild.executor.auditing.main.claim_scheduled_quality_slots import (
+    claim_scheduled_quality_slots,
+)
+from streambuild.executor.observability.types import QualityResultTrigger
+
+_POLL_SECONDS: float = 10.0
+_MAX_BACKOFF_SECONDS: float = 300.0
+
+
+class AuditScheduler:
+    """Poll current compile and metadata state, then run one due batch at a time."""
+
+    def __init__(
+        self,
+        *,
+        state: DevServerState,
+        connection: AdapterConnection | None,
+        observation_connection: AdapterConnection | None = None,
+        database: str | None,
+        project_dir: Path,
+        builds: BuildProcessManager,
+    ) -> None:
+        self._state = state
+        self._connection = connection
+        self._observation_connection = observation_connection
+        self._database = database
+        self._project_dir: Path = project_dir
+        self._builds = builds
+        self._stop = threading.Event()
+        self._tick_lock = threading.Lock()
+        self._health_lock = threading.RLock()
+        self._thread: threading.Thread | None = None
+        self._health_state: AuditScheduleState = (
+            AuditScheduleState.IDLE
+            if connection is not None and database is not None
+            else AuditScheduleState.DISABLED
+        )
+        self._consecutive_errors = 0
+        self._backoff_until = 0.0
+        self._latest_error: str | None = None
+        self._last_successful_tick: str | None = None
+        self._running_audit_count = 0
+
+    def start(self) -> None:
+        """Start the daemon polling loop once."""
+
+        if self._thread is not None:
+            return
+        self._thread = threading.Thread(target=self._run, name="streambuild-audits", daemon=True)
+        self._thread.start()
+
+    def close(self) -> None:
+        """Stop polling and wait briefly for the current tick."""
+
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join()
+
+    def tick(self) -> int:
+        """Run at most one due batch, returning its terminal result count."""
+
+        if self._seconds_until_attempt() > 0:
+            return 0
+        try:
+            return self._tick_once()
+        except Exception as error:
+            self._record_error(error)
+            raise
+
+    def health(self) -> dict[str, object]:
+        """Return the process-local scheduler lifecycle and backoff state."""
+
+        with self._health_lock:
+            return {
+                "state": self._health_state,
+                "consecutiveErrors": self._consecutive_errors,
+                "latestError": self._latest_error,
+                "backoffSeconds": self._seconds_until_attempt(),
+                "nextTickSeconds": max(self._seconds_until_attempt(), _POLL_SECONDS),
+                "lastSuccessfulTick": self._last_successful_tick,
+                "runningAuditCount": self._running_audit_count,
+            }
+
+    def _tick_once(self) -> int:
+        if self._connection is None or self._database is None:
+            self._record_success(state=AuditScheduleState.DISABLED)
+            return 0
+        if bool(self._builds.feed(after=0)["running"]):
+            self._record_success(state=AuditScheduleState.BLOCKED)
+            return 0
+        if not self._tick_lock.acquire(blocking=False):
+            return 0
+        try:
+            with self._state.query_lock:
+                if bool(self._builds.feed(after=0)["running"]):
+                    self._record_success(state=AuditScheduleState.BLOCKED)
+                    return 0
+                analysis: CompileAnalysis = self._state.current_analysis()
+                if not scheduler_enabled(analysis):
+                    self._record_success(state=AuditScheduleState.DISABLED)
+                    return 0
+                if self._has_active_mutating_build():
+                    self._record_success(state=AuditScheduleState.BLOCKED)
+                    return 0
+                if self._has_active_scheduled_audit():
+                    self._record_blocked(
+                        warning="another scheduler process has an active scheduled audit run"
+                    )
+                    return 0
+                payload: dict[str, object] = build_audit_scheduler_payload(
+                    analysis=analysis,
+                    connection=self._connection,
+                    database=self._database,
+                    project_dir=self._project_dir,
+                )
+                if not payload["enabled"]:
+                    self._record_success(state=AuditScheduleState.DISABLED)
+                    return 0
+                raw_audits: object = payload["audits"]
+                due_items: list[dict[str, object]] = []
+                if isinstance(raw_audits, list):
+                    for item in raw_audits:
+                        if not isinstance(item, dict):
+                            continue
+                        typed_item: dict[str, object] = {
+                            str(key): value for key, value in item.items()
+                        }
+                        if typed_item.get("state") == AuditScheduleState.DUE:
+                            due_items.append(typed_item)
+                due: tuple[dict[str, object], ...] = tuple(due_items)
+                payload_state: AuditScheduleState = AuditScheduleState(str(payload["state"]))
+                if not due:
+                    self._record_success(
+                        state=payload_state,
+                        completed_at=str(payload["warehouseNow"]),
+                    )
+                    return 0
+                claims: tuple[AdapterQualityScheduleClaim, ...] = tuple(
+                    AdapterQualityScheduleClaim(
+                        node_name=str(item["name"]),
+                        scheduled_for=str(item["scheduledFor"]),
+                    )
+                    for item in due
+                )
+                claimed_slots: frozenset[AdapterQualityScheduleClaim] | None = (
+                    claim_scheduled_quality_slots(
+                        connection=self._connection,
+                        database=self._database,
+                        project_identity=str(self._project_dir.resolve()),
+                        target_identity=self._database,
+                        owner_id=str(uuid4()),
+                        claims=claims,
+                    )
+                )
+                if isinstance(claimed_slots, frozenset):
+                    due = tuple(
+                        item
+                        for item, claim in zip(due, claims, strict=True)
+                        if claim in claimed_slots
+                    )
+                    if not due:
+                        self._record_blocked(
+                            warning="another scheduler process claimed the due logical slots"
+                        )
+                        return 0
+                self._set_running_audit_count(len(due))
+                result_count: int = execute_due_audits(
+                    analysis=analysis,
+                    connection=self._connection,
+                    observation_connection=self._observation_connection,
+                    database=self._database,
+                    project_dir=self._project_dir,
+                    due=due,
+                )
+                self._record_success(state=AuditScheduleState.IDLE)
+                return result_count
+        finally:
+            self._set_running_audit_count(0)
+            self._tick_lock.release()
+
+    def _run(self) -> None:
+        while not self._stop.is_set():
+            try:
+                self.tick()
+            except Exception:
+                pass
+            self._stop.wait(max(_POLL_SECONDS, self._seconds_until_attempt()))
+
+    def _has_active_mutating_build(self) -> bool:
+        if self._connection is None or self._database is None:
+            return False
+        latest_applied_at: str | None = read_latest_applied_direct_build_at(
+            connection=self._connection,
+            database=self._database,
+            project_identity=str(self._project_dir.resolve()),
+        )
+        for run in read_active_runs(connection=self._connection, database=self._database):
+            if run["command"] != CliCommand.BUILD:
+                continue
+            if run["status"] in {
+                RunPresentationStatus.RUNNING,
+                RunPresentationStatus.UNRESPONSIVE,
+            }:
+                return True
+            if run["status"] == RunPresentationStatus.PRESUMED_FAILED and (
+                latest_applied_at is None or str(run["startedAt"]) >= latest_applied_at
+            ):
+                return True
+        return False
+
+    def _has_active_scheduled_audit(self) -> bool:
+        if self._connection is None or self._database is None:
+            return False
+        return any(
+            run["command"] == CliCommand.AUDIT
+            and run["mode"] == QualityResultTrigger.SCHEDULED
+            and run["status"] in {RunPresentationStatus.RUNNING, RunPresentationStatus.UNRESPONSIVE}
+            for run in read_active_runs(connection=self._connection, database=self._database)
+        )
+
+    def _record_error(self, error: Exception) -> None:
+        with self._health_lock:
+            self._consecutive_errors += 1
+            delay: float = min(
+                _POLL_SECONDS * (2 ** (self._consecutive_errors - 1)),
+                _MAX_BACKOFF_SECONDS,
+            )
+            self._backoff_until = monotonic() + delay
+            self._latest_error = str(error)
+            self._health_state = AuditScheduleState.BACKING_OFF
+
+    def _record_success(
+        self,
+        *,
+        state: AuditScheduleState,
+        completed_at: str | None = None,
+    ) -> None:
+        with self._health_lock:
+            self._consecutive_errors = 0
+            self._backoff_until = 0.0
+            self._latest_error = None
+            self._health_state = state
+            self._last_successful_tick = (
+                completed_at or datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+            )
+
+    def _seconds_until_attempt(self) -> float:
+        with self._health_lock:
+            return max(self._backoff_until - monotonic(), 0.0)
+
+    def _record_blocked(self, *, warning: str) -> None:
+        self._record_success(state=AuditScheduleState.BLOCKED)
+        with self._health_lock:
+            self._latest_error = warning
+
+    def _set_running_audit_count(self, count: int) -> None:
+        with self._health_lock:
+            self._running_audit_count = count
+            if count:
+                self._health_state = AuditScheduleState.RUNNING

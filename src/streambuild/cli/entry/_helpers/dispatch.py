@@ -72,6 +72,7 @@ def dispatch_cli_command(
                 connection_password=invocation.connection.password,
             ),
             client=client,
+            observation_client=observation_connection,
             loaded_project=invocation.loaded_project,
             adapter_profile=adapter_profile,
         )
@@ -167,6 +168,7 @@ def dispatch_cli_command(
             client=client,
             loaded_project=invocation.loaded_project,
             adapter_profile=adapter_profile,
+            force=bool(getattr(args, "force", False)),
         )
     if args.command == CliCommand.RECONCILE:
         return handlers.run_reconcile(

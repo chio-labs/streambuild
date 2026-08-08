@@ -3,6 +3,7 @@
 	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
 	import AppTopbar from '$lib/components/app-topbar.svelte';
 	import FactRow from '$lib/components/fact-row.svelte';
+	import ResizableSplitPane from '$lib/components/resizable-split-pane.svelte';
 	import Sparkline from '$lib/components/sparkline.svelte';
 	import SpanTrack from '$lib/components/span-track.svelte';
 	import SqlBlock from '$lib/components/sql-block.svelte';
@@ -156,7 +157,8 @@
 			<span class="sb-tag code">{source.boundaryMode}</span>
 		</div>
 
-		<div class="grid grid-cols-1 gap-5 p-[18px] xl:grid-cols-[minmax(0,1fr)_320px]">
+		<ResizableSplitPane storageKey="sb-source-detail-sidebar-width">
+			{#snippet main()}
 			<div class="flex min-w-0 flex-col gap-5">
 				<!-- ── RECONSTRUCTION HORIZON ──────────────────────────────────────
 				     The single config value that defines the durability of everything
@@ -438,8 +440,9 @@
 					</div>
 				{/if}
 			</div>
+			{/snippet}
 
-			<!-- right rail -->
+			{#snippet sidebar()}
 			<div class="flex flex-col gap-5">
 				<div>
 					<div
@@ -537,6 +540,7 @@
 					</div>
 				{/if}
 			</div>
-		</div>
+			{/snippet}
+		</ResizableSplitPane>
 	{/if}
 </div>
