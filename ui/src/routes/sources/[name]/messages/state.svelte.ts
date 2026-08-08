@@ -49,6 +49,17 @@ export function decodeFilterDocument(encoded: string | null): MessageFilterDocum
 	}
 }
 
+/** Whether a document is complete enough to query; half-built modes never fire. */
+export function isQueryableDocument(document: MessageFilterDocument): boolean {
+	if (document.mode.kind === 'timeRange') {
+		return Boolean(document.mode.fromTime) || Boolean(document.mode.toTime);
+	}
+	if (document.mode.kind === 'offsetRange') {
+		return document.mode.partition !== null && document.mode.partition !== undefined;
+	}
+	return true;
+}
+
 /** One human-readable label per chip, mirroring the server-side SQL semantics. */
 export function predicateLabel(predicate: MessagePredicate): string {
 	if (predicate.field === 'partition') return `partition in [${(predicate.values ?? []).join(', ')}]`;
@@ -74,6 +85,8 @@ export function createMessageBrowserState(sourceName: string) {
 	let controller: AbortController | null = null;
 
 	async function refresh(): Promise<void> {
+		const snapshot = $state.snapshot(document) as MessageFilterDocument;
+		if (!isQueryableDocument(snapshot)) return;
 		controller?.abort();
 		generation += 1;
 		const current = generation;
@@ -81,7 +94,6 @@ export function createMessageBrowserState(sourceName: string) {
 		loading = true;
 		error = null;
 		try {
-			const snapshot = $state.snapshot(document) as MessageFilterDocument;
 			const [messages, facetsPayload] = await Promise.all([
 				fetchMessages(sourceName, snapshot, null, controller.signal),
 				fetchMessageFacets(
