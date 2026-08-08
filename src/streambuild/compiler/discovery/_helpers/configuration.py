@@ -19,6 +19,7 @@ from streambuild.compiler.discovery.constants import (
     DEPLOYMENT_READINESS_KEYS,
     FULL_REPLAY_POLICY_VALUE,
     INTERPOLATION_TOKEN_START,
+    KAFKA_SOURCE_DEFAULT_KEYS,
     LEGACY_LOCAL_CONFIG_FILE_NAME,
     LEGACY_PROJECT_CONFIG_FILE_NAME,
     LOCAL_CONFIG_FILE_NAME,
@@ -31,6 +32,7 @@ from streambuild.compiler.discovery.constants import (
     PROJECT_CONFIG_FILE_NAME,
     PROJECT_CONFIG_KEYS,
     SECONDS_BY_DURATION_UNIT,
+    SOURCE_DEFAULT_KEYS,
     TARGET_KEYS,
 )
 from streambuild.compiler.discovery.exceptions import ProjectConfigError
@@ -42,6 +44,7 @@ from streambuild.compiler.discovery.models import (
     AuthoredProjectConfig,
     DeploymentReadinessDefaults,
     DiscoveredProjectFile,
+    KafkaSourceDefaults,
     LoadedProjectConfiguration,
     LocalProjectConfig,
     LocalProjectDefaults,
@@ -52,6 +55,7 @@ from streambuild.compiler.discovery.models import (
     RawConnectionConfig,
     ReplayOnChangePolicy,
     ReplayOnChangeRule,
+    SourceDefaults,
 )
 from streambuild.compiler.discovery.types import (
     BoundedReplayFallback,
@@ -480,6 +484,7 @@ def _parse_project_defaults(*, payload: object, file_path: Path) -> ProjectDefau
             payload=mapping.get("deployment_readiness"),
             file_path=file_path,
         ),
+        sources=_parse_source_defaults(payload=mapping.get("sources"), file_path=file_path),
     )
 
 
@@ -521,6 +526,41 @@ def _parse_deployment_readiness_defaults(
     return DeploymentReadinessDefaults(
         maximum_lag_seconds=maximum_lag_seconds,
         minimum_staged_row_ratio=minimum_staged_row_ratio,
+    )
+
+
+def _parse_source_defaults(*, payload: object, file_path: Path) -> SourceDefaults:
+    mapping: dict[str, object] = _optional_mapping(
+        payload=payload,
+        label="defaults.sources",
+        file_path=file_path,
+    )
+    _validate_allowed_keys(
+        mapping=mapping,
+        allowed_keys=SOURCE_DEFAULT_KEYS,
+        label="defaults.sources",
+        file_path=file_path,
+    )
+    kafka_mapping: dict[str, object] = _optional_mapping(
+        payload=mapping.get("kafka"),
+        label="defaults.sources.kafka",
+        file_path=file_path,
+    )
+    _validate_allowed_keys(
+        mapping=kafka_mapping,
+        allowed_keys=KAFKA_SOURCE_DEFAULT_KEYS,
+        label="defaults.sources.kafka",
+        file_path=file_path,
+    )
+    return SourceDefaults(
+        kafka=KafkaSourceDefaults(
+            naming_macro=_optional_non_empty_string(
+                mapping=kafka_mapping,
+                key="naming_macro",
+                label="defaults.sources.kafka",
+                file_path=file_path,
+            )
+        )
     )
 
 

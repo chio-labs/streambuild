@@ -63,6 +63,8 @@ from streambuild.compiler.discovery.types import (
     PipelineMode,
     ReplayOnChangeMode,
 )
+from streambuild.compiler.macros.main._discover_macro_files import discover_macro_files
+from streambuild.compiler.macros.main._load_macro_registry import load_macro_registry
 from streambuild.compiler.macros.models import MacroContext, MacroRegistry
 
 
@@ -93,6 +95,11 @@ def load_pipeline_directory(pipeline_dir: Path) -> LoadedPipeline:
         cli_variables={},
         environment={},
     )
+    macro_registry: MacroRegistry = (
+        MacroRegistry()
+        if effective.defaults.sources.kafka.naming_macro is None
+        else load_macro_registry(macro_files=discover_macro_files(project_dir=project_dir))
+    )
     sources_by_name: dict[str, KafkaLandingStep | ExternalTableSourceStep] = (
         source_registry_by_name(
             discover_source_registry(
@@ -102,6 +109,8 @@ def load_pipeline_directory(pipeline_dir: Path) -> LoadedPipeline:
                 default_managed_source_ttl=effective.defaults.managed_source_ttl,
                 default_kafka_broker_list=effective.defaults.kafka_broker_list,
                 default_freshness=effective.defaults.freshness,
+                default_kafka_naming_macro=effective.defaults.sources.kafka.naming_macro,
+                macro_registry=macro_registry,
             )
         )
     )

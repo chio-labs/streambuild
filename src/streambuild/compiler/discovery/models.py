@@ -21,7 +21,9 @@ from streambuild.compiler.discovery.types import (
     ReplayBoundaryMode,
     ReplayOnChangeMode,
     SourceKind,
+    SourceNameOrigin,
 )
+from streambuild.compiler.macros.models import MacroRegistry
 
 
 @dataclass(frozen=True, repr=False)
@@ -128,6 +130,20 @@ class DeploymentReadinessDefaults:
 
 
 @dataclass(frozen=True)
+class KafkaSourceDefaults:
+    """Project-wide defaults for managed Kafka sources."""
+
+    naming_macro: str | None = None
+
+
+@dataclass(frozen=True)
+class SourceDefaults:
+    """Project-wide defaults grouped by source kind."""
+
+    kafka: KafkaSourceDefaults = field(default_factory=KafkaSourceDefaults)
+
+
+@dataclass(frozen=True)
 class ProjectDefaults:
     """Committed project-wide authored defaults."""
 
@@ -142,6 +158,7 @@ class ProjectDefaults:
     deployment_readiness: DeploymentReadinessDefaults = field(
         default_factory=DeploymentReadinessDefaults
     )
+    sources: SourceDefaults = field(default_factory=SourceDefaults)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "pipeline_mode", PipelineMode(self.pipeline_mode))
@@ -267,6 +284,12 @@ class KafkaLandingStep:
     kafka: KafkaSettings
     replay_boundary: ReplayBoundary | None = None
     freshness: SourceFreshnessPolicy | None = None
+    name_origin: SourceNameOrigin | str = SourceNameOrigin.EXPLICIT
+    naming_macro: str | None = None
+    naming_macro_fingerprint: str | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "name_origin", SourceNameOrigin(self.name_origin))
 
 
 @dataclass(frozen=True)
@@ -300,9 +323,11 @@ class ExternalTableSourceStep:
     table_name: str
     replay_boundary: ReplayBoundary
     freshness: SourceFreshnessPolicy | None = None
+    name_origin: SourceNameOrigin | str = SourceNameOrigin.EXPLICIT
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "kind", SourceKind(self.kind))
+        object.__setattr__(self, "name_origin", SourceNameOrigin(self.name_origin))
 
 
 @dataclass(frozen=True)
@@ -440,6 +465,8 @@ class LoadedProject:
     configuration: LoadedProjectConfiguration | None = None
     effective_configuration: EffectiveProjectConfiguration | None = None
     source_files: tuple[DiscoveredSourceFile, ...] = ()
+    macro_files: tuple[DiscoveredProjectFile, ...] = ()
+    macro_registry: MacroRegistry | None = None
 
 
 @dataclass(frozen=True, repr=False)
