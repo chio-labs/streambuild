@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.17.0](https://github.com/chio-labs/streambuild/compare/v0.16.6...v0.17.0) (2026-08-09)
+
+
+### Features
+
+* add lineage activity telemetry ([c390acd](https://github.com/chio-labs/streambuild/commit/c390acda03bb8c29906fa9b1bd799118daa4b08e))
+* add lineage activity telemetry ([be76937](https://github.com/chio-labs/streambuild/commit/be76937eabaa52a6ad647b8735a598aaea95ed56))
+
 ## [0.16.6](https://github.com/chio-labs/streambuild/compare/v0.16.5...v0.16.6) (2026-08-09)
 
 
