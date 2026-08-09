@@ -37,6 +37,7 @@ from tests.unit.src.streambuild.executor.direct.main._test_types import (
     DirectDistinctCaptureTestCase,
     DirectFingerprintMetadataTestCase,
     DirectFingerprintPersistenceTestCase,
+    DirectSourceScopeTestCase,
     DirectWorkflowTestCase,
 )
 from tests.unit.src.streambuild.executor.direct.main.helpers import (
@@ -47,8 +48,48 @@ from tests.unit.src.streambuild.executor.direct.main.helpers import (
     RecordingDirectBuildConnection,
     RecordingFingerprintConnection,
     build_direct_execution_request,
+    build_direct_execution_request_with_unrelated_pipeline,
     build_direct_execution_snapshot,
 )
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DirectSourceScopeTestCase(
+            description="selected closure prepares only its managed source",
+            expected_source_step_ids=(
+                "prepare_source_kafka__orders",
+                "prepare_source_raw__orders",
+                "activate_source_mv__orders",
+            ),
+            unexpected_source_step_ids=(
+                "prepare_source_kafka__unrelated",
+                "prepare_source_raw__unrelated",
+                "activate_source_mv__unrelated",
+            ),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_selected_direct_closure_when_assembling_then_unrelated_sources_are_omitted(
+    test_case: DirectSourceScopeTestCase,
+    tmp_path: Path,
+) -> None:
+    request: DirectBuildRequest = build_direct_execution_request_with_unrelated_pipeline(
+        project_root=tmp_path,
+        selected_model_names=("alpha",),
+    )
+    workflow: DirectBuildWorkflow = assemble_direct_build_workflow(
+        request=request,
+        client=RecordingDirectBuildConnection(),
+        snapshot=build_direct_execution_snapshot(),
+        plan_json=render_direct_plan_json(plan=request.plan, adapter_name="clickhouse"),
+    )
+
+    step_ids: set[str] = {statement.step_id for statement in workflow.statements}
+    assert set(test_case.expected_source_step_ids) <= step_ids
+    assert set(test_case.unexpected_source_step_ids).isdisjoint(step_ids)
 
 
 @pytest.mark.parametrize(

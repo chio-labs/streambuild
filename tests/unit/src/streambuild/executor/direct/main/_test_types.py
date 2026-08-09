@@ -13,6 +13,13 @@ class DirectWorkflowTestCase:
 
 
 @dataclass(frozen=True)
+class DirectSourceScopeTestCase:
+    description: str
+    expected_source_step_ids: tuple[str, ...]
+    unexpected_source_step_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class DirectDistinctCaptureTestCase:
     description: str
     expected_capture_models: tuple[str, ...]

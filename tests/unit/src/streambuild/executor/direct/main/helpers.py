@@ -112,6 +112,26 @@ def build_direct_execution_request(
     *, project_root: Path, selected_model_names: tuple[str, ...]
 ) -> DirectBuildRequest:
     write_direct_scope_project(project_root=project_root)
+    return _analyze_direct_execution_request(
+        project_root=project_root,
+        selected_model_names=selected_model_names,
+    )
+
+
+def build_direct_execution_request_with_unrelated_pipeline(
+    *, project_root: Path, selected_model_names: tuple[str, ...]
+) -> DirectBuildRequest:
+    write_direct_scope_project(project_root=project_root)
+    _write_unrelated_pipeline(project_root=project_root)
+    return _analyze_direct_execution_request(
+        project_root=project_root,
+        selected_model_names=selected_model_names,
+    )
+
+
+def _analyze_direct_execution_request(
+    *, project_root: Path, selected_model_names: tuple[str, ...]
+) -> DirectBuildRequest:
     analysis: CompileAnalysis = analyze_direct_scope_project(project_root=project_root)
     plan: DirectPlan = plan_direct_scope(
         analysis=analysis,
@@ -125,6 +145,25 @@ def build_direct_execution_request(
         metadata_database="analytics",
         tool_version="test",
         stabilization_seconds=0,
+    )
+
+
+def _write_unrelated_pipeline(*, project_root: Path) -> None:
+    (project_root / "sources" / "unrelated.yml").write_text(
+        "sources:\n"
+        "  - name: unrelated\n"
+        "    kind: kafka\n"
+        "    broker_list: kafka:9092\n"
+        "    topic: source.unrelated\n"
+        "    replay_boundary: {mode: offsets}\n",
+        encoding="utf-8",
+    )
+    pipeline_root: Path = project_root / "pipelines" / "unrelated"
+    pipeline_root.mkdir(parents=True)
+    (pipeline_root / "unrelated_model.sql").write_text(
+        'MODEL (order_by ["event_id"]);\n'
+        'SELECT event_id::UInt64 AS event_id FROM __source("unrelated")\n',
+        encoding="utf-8",
     )
 
 
