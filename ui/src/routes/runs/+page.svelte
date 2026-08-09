@@ -186,7 +186,7 @@
 								<div class="flex max-w-[190px] flex-wrap items-center gap-1.5 pt-1 sm:max-w-none">
 									<span class="sb-tag code">{run.mode}</span>
 									<span class="sb-tag code">{run.selectedNodeCount} nodes</span>
-									<span class="sb-tag code">v{run.toolVersion}</span>
+									{#if run.toolVersion}<span class="sb-tag code">v{run.toolVersion}</span>{/if}
 								</div>
 							</td>
 							<td class="hidden px-3 align-top md:table-cell">
@@ -214,9 +214,17 @@
 									<span class="h-1.5 w-1.5 rounded-full" style:background={chip.dot}></span>
 									{chip.label}
 								</span>
+								{#if run.totalStatements !== null && run.completedOperationCount !== null}
+									<div class="text-[var(--sb-text-faint)] pt-1 font-mono text-[10px]">
+										{run.completedOperationCount}/{run.totalStatements}
+										{run.command === 'audit' ? 'audits' : 'statements'}
+										{#if run.currentStep} · {run.currentStep}{/if}
+									</div>
+								{/if}
 								{#if run.status === 'unresponsive' || run.status === 'presumed_failed'}
 									<div class="text-[var(--sb-text-faint)] pt-1 font-mono text-[10px]">
-										no signal for {run.lastSignalAgeSeconds}s · last activity {run.lastActivity ?? 'unknown'}
+										no signal for {run.lastSignalAgeSeconds}s
+										{#if run.currentStep === null} · last activity {run.lastActivity ?? 'unknown'}{/if}
 									</div>
 									{#if run.status === 'presumed_failed'}
 										<div class="text-[var(--sb-text-faint)] pt-1 text-[10px]">The process may have been killed. Rerunning is safe.</div>

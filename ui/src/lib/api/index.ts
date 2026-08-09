@@ -211,6 +211,9 @@ export type RunRecord = {
 	errorMessage: string | null;
 	toolVersion: string;
 	lastActivity: string | null;
+	completedOperationCount: number | null;
+	totalStatements: number | null;
+	currentStep: string | null;
 };
 
 const RUNS_PREFETCH_MAX_AGE_MS = 10_000;
