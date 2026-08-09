@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.14.1](https://github.com/chio-labs/streambuild/compare/v0.14.0...v0.14.1) (2026-08-09)
+
+
+### Bug Fixes
+
+* serialize immutable mappings in fingerprints ([3f6d68a](https://github.com/chio-labs/streambuild/commit/3f6d68a40b0ff87d610f18621a61f0fe12ccadc0))
+* serialize immutable mappings in fingerprints ([57c8d27](https://github.com/chio-labs/streambuild/commit/57c8d2732cab7858a797fe252e76cb242063e3f2))
+
 ## [0.14.0](https://github.com/chio-labs/streambuild/compare/v0.13.0...v0.14.0) (2026-08-09)
 
 
