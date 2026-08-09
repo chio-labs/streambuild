@@ -9,6 +9,7 @@ from time import monotonic
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.cli.entry.types import CliCommand
+from streambuild.compiler.discovery.constants import DEFAULT_RUN_PRESUMED_FAILED_AFTER_SECONDS
 from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.dev_server._helpers.queries.runs_query import (
     read_active_runs,
@@ -40,6 +41,7 @@ class AuditScheduler:
         database: str | None,
         project_dir: Path,
         builds: BuildProcessManager,
+        presumed_failed_after_seconds: int = DEFAULT_RUN_PRESUMED_FAILED_AFTER_SECONDS,
     ) -> None:
         self._state = state
         self._connection = connection
@@ -47,6 +49,7 @@ class AuditScheduler:
         self._database = database
         self._project_dir: Path = project_dir
         self._builds = builds
+        self._presumed_failed_after_seconds = presumed_failed_after_seconds
         self._stop = threading.Event()
         self._tick_lock = threading.Lock()
         self._health_lock = threading.RLock()
@@ -187,7 +190,11 @@ class AuditScheduler:
             database=self._database,
             project_identity=str(self._project_dir.resolve()),
         )
-        for run in read_active_runs(connection=self._connection, database=self._database):
+        for run in read_active_runs(
+            connection=self._connection,
+            database=self._database,
+            presumed_failed_after_seconds=self._presumed_failed_after_seconds,
+        ):
             if run["command"] != CliCommand.BUILD:
                 continue
             if run["status"] in {
@@ -208,7 +215,11 @@ class AuditScheduler:
             run["command"] == CliCommand.AUDIT
             and run["mode"] == QualityResultTrigger.SCHEDULED
             and run["status"] in {RunPresentationStatus.RUNNING, RunPresentationStatus.UNRESPONSIVE}
-            for run in read_active_runs(connection=self._connection, database=self._database)
+            for run in read_active_runs(
+                connection=self._connection,
+                database=self._database,
+                presumed_failed_after_seconds=self._presumed_failed_after_seconds,
+            )
         )
 
     def _record_error(self, error: Exception) -> None:

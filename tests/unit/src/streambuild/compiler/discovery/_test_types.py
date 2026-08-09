@@ -81,6 +81,12 @@ class ProjectDeploymentReadinessDefaultsTestCase:
 
 
 @dataclass(frozen=True)
+class ProjectRunSafetyDefaultTestCase:
+    description: str
+    expected_seconds: int
+
+
+@dataclass(frozen=True)
 class LegacyProjectConfigurationTestCase:
     description: str
     expected_error_fragment: str

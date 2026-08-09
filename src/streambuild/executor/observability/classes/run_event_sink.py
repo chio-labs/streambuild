@@ -10,6 +10,7 @@ from typing import TextIO
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import AdapterRunEventRecord
+from streambuild.cli.build.constants import STREAMBUILD_TOOL_VERSION
 from streambuild.executor.observability._helpers.payload import bounded_json
 from streambuild.executor.observability._helpers.workflow import assemble_observation_workflow
 from streambuild.executor.observability.constants import (
@@ -81,6 +82,7 @@ class RunEventSink:
                     else os.environ.get(RUN_DISPLAY_COMMAND_ENV_VAR, command)
                 ),
                 "mode": mode,
+                "toolVersion": STREAMBUILD_TOOL_VERSION,
                 "totalStatements": total_statements,
                 "selectedNodeCount": selected_node_count,
                 "database": self._database,

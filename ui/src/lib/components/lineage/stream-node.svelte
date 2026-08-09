@@ -153,6 +153,7 @@
 				class="truncate font-mono font-medium leading-tight {compact
 					? 'text-[10px]'
 					: 'text-[12px]'}"
+				title={node.label}
 			>
 				{node.label}
 			</div>
@@ -174,7 +175,10 @@
 				</div>
 			{/if}
 			{#if showRelation && node.label !== node.sublabel}
-				<div class="text-[var(--sb-text-faint)] mt-[2px] truncate font-mono text-[10px]">
+				<div
+					class="text-[var(--sb-text-faint)] mt-[2px] truncate font-mono text-[10px]"
+					title={node.sublabel}
+				>
 					{node.sublabel}
 				</div>
 			{/if}

@@ -3,10 +3,11 @@ import shlex
 from dataclasses import replace
 from pathlib import Path
 from typing import cast
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
+from httpx import Response
 
 from streambuild.cli.entry.constants import DEV_CLI_VARIABLES_ENV_VAR
 from streambuild.dev_server.classes.build_process import _build_environment, build_invocation
@@ -485,3 +486,40 @@ def test_given_recorded_run_when_reading_events_then_returns_ordered_timeline(
     assert events[1]["stepId"] == "replay_orders"
     assert events[0]["executedLogicalIds"] == list(test_case.expected_executed_logical_ids)
     assert events[0]["contextLogicalIds"] == list(test_case.expected_context_logical_ids)
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DevRefactorTestCase(
+            description="unresponsive build conflict explains the safety window",
+            expected_value=(
+                "Run stale-run is unresponsive: no signal for 550s. No new run was started. "
+                "To prevent overlapping warehouse writes, StreamBuild will wait 50s more "
+                "before treating it as presumed failed (configured safety window: 600s via "
+                "defaults.run_presumed_failed_after). Retry after that."
+            ),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_unresponsive_run_when_starting_build_then_conflict_explains_retry(
+    test_case: DevRefactorTestCase,
+    tmp_path: Path,
+) -> None:
+    write_dev_server_project(project_dir=tmp_path)
+    client: TestClient = build_state_test_client(project_dir=tmp_path)
+    with patch(
+        "streambuild.dev_server._helpers.server.api_routes.read_active_runs",
+        return_value=[
+            {
+                "invocationId": "stale-run",
+                "status": "unresponsive",
+                "lastSignalAgeSeconds": 550,
+            }
+        ],
+    ):
+        response: Response = client.post("/api/build", json={"selectors": ["orders_clean"]})
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == test_case.expected_value

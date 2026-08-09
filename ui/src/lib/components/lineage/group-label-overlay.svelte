@@ -79,7 +79,7 @@
 					<ChevronDownIcon size={13} />
 				</button>
 			{/if}
-			<span class="truncate font-mono text-[12px] font-medium leading-none"
+			<span class="truncate font-mono text-[12px] font-medium leading-none" title={entry.item.label}
 				>{entry.item.label}</span
 			>
 			{#if entry.item.sublabel}

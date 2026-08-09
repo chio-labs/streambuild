@@ -60,7 +60,9 @@
 			<WorkflowIcon size={15} />
 		</span>
 		<div class="min-w-0 flex-1">
-			<div class="truncate font-mono text-[12px] font-medium leading-tight">{group.label}</div>
+			<div class="truncate font-mono text-[12px] font-medium leading-tight" title={group.label}>
+				{group.label}
+			</div>
 			<div class="text-[var(--sb-text-faint)] mt-[3px] font-mono text-[9.5px] uppercase tracking-[0.1em]">
 				pipeline · {group.modelCount} models
 			</div>

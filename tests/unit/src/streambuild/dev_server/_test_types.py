@@ -137,6 +137,7 @@ class RunStatusDerivationTestCase:
     completed_event_outcome: str | None
     signal_age_seconds: int
     expected_status: RunPresentationStatus
+    presumed_failed_after_seconds: int = 600
 
 
 @dataclass(frozen=True)

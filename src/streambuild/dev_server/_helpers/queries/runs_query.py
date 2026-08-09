@@ -11,9 +11,9 @@ from streambuild.adapter.constants import (
     METADATA_INVOCATIONS_TABLE_NAME,
     METADATA_RUN_EVENTS_TABLE_NAME,
 )
-from streambuild.dev_server.constants import (
-    PRESUMED_FAILED_AFTER_SECONDS,
-    UNRESPONSIVE_AFTER_SECONDS,
+from streambuild.compiler.discovery.constants import (
+    DEFAULT_RUN_PRESUMED_FAILED_AFTER_SECONDS,
+    RUN_UNRESPONSIVE_AFTER_SECONDS,
 )
 from streambuild.dev_server.types import RunPresentationStatus
 
@@ -22,6 +22,13 @@ _RUN_EVENT_PAGE_SIZE: int = 500
 _RUN_EVENT_WINDOW_SIZE: int = 400
 _RUN_STARTED_KIND: str = "run_started"
 _RUN_COMPLETED_KIND: str = "run_completed"
+_STATEMENT_STARTED_KIND: str = "statement_started"
+_STATEMENT_COMPLETED_KIND: str = "statement_completed"
+_AUDIT_STARTED_KIND: str = "audit_started"
+_AUDIT_COMPLETED_KIND: str = "audit_completed"
+_COMPLETED_OPERATION_KINDS: frozenset[str] = frozenset(
+    {_STATEMENT_COMPLETED_KIND, _AUDIT_COMPLETED_KIND}
+)
 
 
 def derive_run_status(
@@ -30,6 +37,7 @@ def derive_run_status(
     completed_event_outcome: str | None,
     last_signal_at: datetime,
     warehouse_now: datetime,
+    presumed_failed_after_seconds: int = DEFAULT_RUN_PRESUMED_FAILED_AFTER_SECONDS,
 ) -> RunPresentationStatus:
     """Derive one reversible presentation status from durable facts."""
 
@@ -43,9 +51,9 @@ def derive_run_status(
     if completed_event_outcome in terminal_statuses:
         return terminal_statuses[completed_event_outcome]
     signal_age: float = max((warehouse_now - last_signal_at).total_seconds(), 0.0)
-    if signal_age < UNRESPONSIVE_AFTER_SECONDS:
+    if signal_age < RUN_UNRESPONSIVE_AFTER_SECONDS:
         return RunPresentationStatus.RUNNING
-    if signal_age < PRESUMED_FAILED_AFTER_SECONDS:
+    if signal_age < presumed_failed_after_seconds:
         return RunPresentationStatus.UNRESPONSIVE
     return RunPresentationStatus.PRESUMED_FAILED
 
@@ -62,7 +70,11 @@ def derive_run_duration_ms(
 
 
 def read_runs(
-    *, connection: AdapterConnection, database: str, limit: int | None = _DEFAULT_RUNS_LIMIT
+    *,
+    connection: AdapterConnection,
+    database: str,
+    limit: int | None = _DEFAULT_RUNS_LIMIT,
+    presumed_failed_after_seconds: int = DEFAULT_RUN_PRESUMED_FAILED_AFTER_SECONDS,
 ) -> list[dict[str, object]]:
     """Return terminal and unterminated event streams with derived states."""
 
@@ -81,10 +93,16 @@ def read_runs(
         streams=streams,
         warehouse_now=warehouse_now,
         limit=limit,
+        presumed_failed_after_seconds=presumed_failed_after_seconds,
     )
 
 
-def read_active_runs(*, connection: AdapterConnection, database: str) -> list[dict[str, object]]:
+def read_active_runs(
+    *,
+    connection: AdapterConnection,
+    database: str,
+    presumed_failed_after_seconds: int = DEFAULT_RUN_PRESUMED_FAILED_AFTER_SECONDS,
+) -> list[dict[str, object]]:
     """Return only event streams that have no durable terminal fact."""
 
     warehouse_now: datetime = _parse_timestamp(connection.capture_warehouse_timestamp())
@@ -105,6 +123,7 @@ def read_active_runs(*, connection: AdapterConnection, database: str) -> list[di
         streams=streams,
         warehouse_now=warehouse_now,
         limit=None,
+        presumed_failed_after_seconds=presumed_failed_after_seconds,
     )
 
 
@@ -163,6 +182,7 @@ def _assemble_runs(
     streams: dict[str, list[dict[str, object]]],
     warehouse_now: datetime,
     limit: int | None,
+    presumed_failed_after_seconds: int = DEFAULT_RUN_PRESUMED_FAILED_AFTER_SECONDS,
 ) -> list[dict[str, object]]:
     terminal_runs: dict[str, dict[str, object]] = {
         invocation_id: dict(run) for invocation_id, run in terminal_by_id.items()
@@ -178,6 +198,7 @@ def _assemble_runs(
             )
             if started is not None and started.get("displayCommand"):
                 terminal_runs[invocation_id]["displayCommand"] = str(started["displayCommand"])
+            terminal_runs[invocation_id].update(_run_progress(events=events))
             continue
         started: dict[str, object] = events[0]
         completed: dict[str, object] | None = next(
@@ -190,6 +211,7 @@ def _assemble_runs(
             completed_event_outcome=completed_outcome,
             last_signal_at=_parse_timestamp(last_signal_at),
             warehouse_now=warehouse_now,
+            presumed_failed_after_seconds=presumed_failed_after_seconds,
         )
         started_at: str = str(started["emittedAt"])
         runs.append(
@@ -216,8 +238,9 @@ def _assemble_runs(
                 ),
                 "selectedNodeCount": int(str(started.get("selectedNodeCount", 0))),
                 "errorMessage": None if completed is None else completed.get("errorMessage"),
-                "toolVersion": "",
+                "toolVersion": str(started.get("toolVersion", "")),
                 "lastActivity": _last_activity(events=events),
+                **_run_progress(events=events),
             }
         )
     runs.sort(key=lambda run: str(run["startedAt"]), reverse=True)
@@ -230,6 +253,7 @@ def read_run_events(
     database: str,
     invocation_id: str,
     after: int = 0,
+    presumed_failed_after_seconds: int = DEFAULT_RUN_PRESUMED_FAILED_AFTER_SECONDS,
 ) -> dict[str, object]:
     """Return durable cursor events and the current derived run state."""
 
@@ -250,6 +274,7 @@ def read_run_events(
         streams=status_streams,
         warehouse_now=warehouse_now,
         limit=None,
+        presumed_failed_after_seconds=presumed_failed_after_seconds,
     )
     run: dict[str, object] | None = None if not runs else runs[0]
     streams: dict[str, list[dict[str, object]]] = _event_streams(
@@ -312,6 +337,9 @@ def _terminal_runs(
             "errorMessage": row["error_message"],
             "toolVersion": str(row["tool_version"]),
             "lastActivity": None,
+            "completedOperationCount": None,
+            "totalStatements": None,
+            "currentStep": None,
         }
     return runs
 
@@ -427,3 +455,67 @@ def _last_activity(*, events: list[dict[str, object]]) -> str | None:
         (str(event["stepId"]) for event in reversed(events) if event.get("stepId") is not None),
         None,
     )
+
+
+def _run_progress(*, events: list[dict[str, object]]) -> dict[str, object]:
+    started: dict[str, object] | None = next(
+        (event for event in events if event["event"] == _RUN_STARTED_KIND), None
+    )
+    raw_total: object = None if started is None else started.get("totalStatements")
+    total_statements: int | None = None if raw_total is None else int(str(raw_total))
+    completed_count: int = sum(event["event"] in _COMPLETED_OPERATION_KINDS for event in events)
+    return {
+        "completedOperationCount": completed_count,
+        "totalStatements": total_statements,
+        "currentStep": _active_step(events=events),
+    }
+
+
+def _active_step(*, events: list[dict[str, object]]) -> str | None:
+    completed_statements: dict[int, int] = {}
+    completed_audits: dict[str, int] = {}
+    for event in reversed(events):
+        event_kind: str = str(event["event"])
+        if event_kind == _STATEMENT_COMPLETED_KIND and event.get("statementSequence") is not None:
+            key: int = int(str(event["statementSequence"]))
+            completed_statements[key] = completed_statements.get(key, 0) + 1
+        elif event_kind == _AUDIT_COMPLETED_KIND and event.get("stepId") is not None:
+            audit_key: str = str(event["stepId"])
+            completed_audits[audit_key] = completed_audits.get(audit_key, 0) + 1
+        elif event_kind == _STATEMENT_STARTED_KIND:
+            statement_key: int | None = (
+                None
+                if event.get("statementSequence") is None
+                else int(str(event["statementSequence"]))
+            )
+            if statement_key is not None:
+                completed_statements, consumed = _consume_count(
+                    counts=completed_statements, key=statement_key
+                )
+                if consumed:
+                    continue
+            return None if event.get("stepId") is None else str(event["stepId"])
+        elif event_kind == _AUDIT_STARTED_KIND:
+            started_audit_key: str | None = (
+                None if event.get("stepId") is None else str(event["stepId"])
+            )
+            if started_audit_key is not None:
+                completed_audits, consumed = _consume_count(
+                    counts=completed_audits, key=started_audit_key
+                )
+                if consumed:
+                    continue
+            return started_audit_key
+    return None
+
+
+def _consume_count[T](*, counts: dict[T, int], key: T) -> tuple[dict[T, int], bool]:
+    count: int = counts.get(key, 0)
+    if count == 0:
+        return counts, False
+    remaining: dict[T, int] = dict(counts)
+    if count == 1:
+        remaining.pop(key)
+    else:
+        remaining[key] = count - 1
+    return remaining, True
