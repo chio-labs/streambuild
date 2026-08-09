@@ -103,6 +103,7 @@ export async function refreshLiveState(): Promise<void> {
 			await readApiResponse(stateResponse, 'state refresh')
 		);
 		await refreshRecordedChecks();
+		scheduleInitialKafkaLagRetry();
 	} catch {
 		// A missed poll is not an outage; the topbar keeps the last capturedAt.
 	}
@@ -152,6 +153,7 @@ async function refreshDefinitionsAndState(): Promise<void> {
 		await refreshRecordedChecks();
 		app.phase = 'ready';
 		app.fetchError = null;
+		scheduleInitialKafkaLagRetry();
 	} catch (error) {
 		app.phase = 'unreachable';
 		app.fetchError = String(error);
@@ -176,7 +178,6 @@ function mergeProject(definitions: Record<string, unknown>, state: Record<string
 		}
 		Object.assign(app.project, next);
 	}
-	scheduleInitialKafkaLagRetry();
 }
 
 function scheduleInitialKafkaLagRetry(): void {
@@ -239,6 +240,6 @@ export async function refreshDeployments(): Promise<void> {
 	try {
 		app.deployments = await fetchDeployments();
 	} catch {
-		app.deployments = [];
+		// Preserve the last successful inventory through transient warehouse errors.
 	}
 }
