@@ -288,19 +288,23 @@
 		return map;
 	});
 
-	// Newest first; started events are transient noise once completed.
+	// Newest first; heartbeats are status signals rather than useful timeline entries,
+	// and terminal runs only need the completed half of each operation.
 	const timeline = $derived(
 		[...events]
 			.filter(
-				(event) => event.event !== 'statement_started' || running
+				(event) =>
+					event.event !== 'run_heartbeat' &&
+					(running || (event.event !== 'statement_started' && event.event !== 'audit_started'))
 			)
 			.reverse()
 			.slice(0, 400)
 	);
-	const metadataPreparationCount = $derived(
-		numberedStepCount('prepare_metadata_')
-	);
+	const metadataPreparationCount = $derived(numberedStepCount('prepare_metadata_'));
 	const metadataMigrationCount = $derived(numberedStepCount('migrate_metadata_'));
+	const candidateMetadataCount = $derived(numberedStepCount('persist_candidate_metadata_'));
+	const publicationCount = $derived(numberedStepCount('persist_publish_event_'));
+	const reconcileCount = $derived(numberedStepCount('persist_reconcile_state_'));
 
 	function numberedStepCount(prefix: string): number {
 		return Math.max(
@@ -317,17 +321,36 @@
 		if (stepId === null) {
 			return event.event === 'run_completed' ? (event.outcome ?? 'completed') : displayCommand;
 		}
+		if (event.event === 'audit_started' || event.event === 'audit_completed') {
+			const statusLabel = event.status ? ` · ${humanizeIdentifier(event.status)}` : '';
+			const failureLabel =
+				(event.failureCount ?? 0) > 0 ? ` · ${event.failureCount} failures` : '';
+			return `${resourceLabel(stepId)}${statusLabel}${failureLabel}`;
+		}
 		const metadataStep = stepId.match(/^prepare_metadata_(\d+)$/);
 		if (metadataStep) {
-			return `Prepare metadata schema (${metadataStep[1]}/${metadataPreparationCount})`;
+			return numberedLabel('Prepare metadata schema', metadataStep[1], metadataPreparationCount);
 		}
 		const persistenceStep = stepId.match(/^persist_candidate_metadata_(\d+)$/);
-		if (persistenceStep) return `Record deployment metadata (${persistenceStep[1]})`;
+		if (persistenceStep) {
+			return numberedLabel('Record deployment metadata', persistenceStep[1], candidateMetadataCount);
+		}
 		const migrationStep = stepId.match(/^migrate_metadata_(\d+)$/);
 		if (migrationStep) {
-			return `Prepare metadata schema (${Number(migrationStep[1])}/${metadataMigrationCount})`;
+			return numberedLabel('Prepare metadata schema', migrationStep[1], metadataMigrationCount);
 		}
-		if (/^persist_publish_event_\d+$/.test(stepId)) return 'Record publication';
+		const publicationStep = stepId.match(/^persist_publish_event_(\d+)$/);
+		if (publicationStep) {
+			return numberedLabel('Record publication', publicationStep[1], publicationCount);
+		}
+		const reconcileStep = stepId.match(/^persist_reconcile_state_(\d+)$/);
+		if (reconcileStep) {
+			return numberedLabel('Record reconciled metadata', reconcileStep[1], reconcileCount);
+		}
+		const auditStep = stepId.match(/^audit_\d+_(.+)_(count|sample)$/);
+		if (auditStep) {
+			return `${auditStep[2] === 'count' ? 'Check audit' : 'Sample audit failures'} · ${resourceLabel(auditStep[1])}`;
+		}
 		const exact: Record<string, string> = {
 			prepare_target_database: 'Ensure target database exists',
 			assert_candidate_metadata: 'Validate deployment metadata',
@@ -335,17 +358,23 @@
 			wait_for_virtual_live_stabilization: 'Wait for source stabilization',
 			wait_for_live_stabilization: 'Wait for source stabilization',
 			capture_boundary_time: 'Capture replay boundary',
-			read_boundary_time: 'Read replay boundary'
+			read_boundary_time: 'Read replay boundary',
+			replace_active_view: 'Repair active view'
 		};
 		if (exact[stepId]) return exact[stepId];
 		const prefixes: [string, string][] = [
 			['assert_candidate_relation_', 'Check candidate relation'],
+			['prepare_source_', 'Prepare source'],
 			['replace_stable_binding_', 'Publish'],
 			['remove_stable_binding_', 'Unpublish'],
+			['drop_', 'Remove existing relation'],
 			['realize_', 'Create relation'],
+			['attach_source_', 'Activate source'],
 			['activate_source_', 'Activate source'],
+			['capture_replay_', 'Capture replay range'],
 			['capture_watermark_', 'Capture source watermark'],
 			['assert_qualifying_input_', 'Verify replayable input'],
+			['seed_', 'Seed replay input'],
 			['replay_', 'Replay source data'],
 			['read_readiness_', 'Measure source readiness'],
 			['assert_readiness_', 'Verify source readiness']
@@ -355,16 +384,28 @@
 		}
 		const numbered: [string, string][] = [
 			['remove_obsolete_binding_', 'Remove obsolete binding'],
-			['cleanup_relation_', 'Delete retained relation']
+			['cleanup_relation_', 'Delete retained relation'],
+			['record_direct_fingerprint_', 'Record build fingerprint'],
+			['record_terminal_observation_', 'Record run result']
 		];
 		for (const [prefix, label] of numbered) {
 			if (stepId.startsWith(prefix)) return `${label} (${Number(stepId.slice(prefix.length))})`;
 		}
-		return stepId.replaceAll('_', ' ');
+		return humanizeIdentifier(stepId);
 	}
 
 	function resourceLabel(value: string): string {
-		return value.replaceAll('__', ' / ');
+		return humanizeIdentifier(value.replaceAll('__', ' / '));
+	}
+
+	function humanizeIdentifier(value: string): string {
+		const words = value.replaceAll('_', ' ');
+		return words.charAt(0).toUpperCase() + words.slice(1);
+	}
+
+	function numberedLabel(label: string, rawIndex: string, total: number): string {
+		const index = Number(rawIndex);
+		return total > 1 ? `${label} (${index}/${total})` : label;
 	}
 
 	const durationSeconds = $derived.by((): number | null => {
