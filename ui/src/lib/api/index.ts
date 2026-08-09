@@ -100,6 +100,9 @@ export type RunEvent = {
 	phase: string | null;
 	// run_started / statement / terminal payload fields, flattened server-side.
 	command?: string;
+	displayCommand?: string;
+	selectors?: string[];
+	startTime?: string | null;
 	totalStatements?: number;
 	selectedNodeCount?: number;
 	statementSequence?: number;
@@ -183,6 +186,7 @@ export async function fetchPlan(selectors: string[], startTime: string | null): 
 export type RunRecord = {
 	invocationId: string;
 	command: string;
+	displayCommand: string | null;
 	mode: string;
 	status: RunStatus;
 	outcome: RunStatus;
