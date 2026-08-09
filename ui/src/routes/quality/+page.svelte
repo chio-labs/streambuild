@@ -1,9 +1,12 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import PlayIcon from '@lucide/svelte/icons/play';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import AppTopbar from '$lib/components/app-topbar.svelte';
 	import SqlBlock from '$lib/components/sql-block.svelte';
 	import SchedulerStatus from './scheduler-status.svelte';
+	import { createAuditSchedulerState } from './state.svelte';
+	import { auditScheduleColor, auditScheduleLabel } from './utils';
 	import { getProject, runCheck } from '$lib/api';
 	import { auditCounts, testCounts } from '$lib/domain/derive';
 	import { formatAgo, formatDuration, formatInteger } from '$lib/domain/format';
@@ -16,6 +19,12 @@
 	// Only `build` writes.
 	const audits = $derived(auditCounts(project.audits));
 	const tests = $derived(testCounts(project.tests));
+	const scheduler = createAuditSchedulerState();
+	const auditScheduleByName = $derived(
+		new Map((scheduler.payload?.audits ?? []).map((item) => [item.name, item]))
+	);
+
+	onMount(scheduler.start);
 
 	type Filter = 'all' | 'failing' | 'passing';
 	let filter = $state<Filter>('all');
@@ -55,6 +64,14 @@
 
 	function driftSummary(reasons: QualityDriftReason[]): string {
 		return reasons.map((reason) => DRIFT_LABEL[reason]).join(', ');
+	}
+
+	function missingScheduleLabel(): string {
+		if (!scheduler.payload) return scheduler.error ? 'schedule unavailable' : 'loading schedule…';
+		if (!scheduler.payload.enabled) return 'scheduler disabled';
+		if (scheduler.payload.health.state === 'running') return 'scheduler running';
+		if (scheduler.payload.health.state === 'backing_off') return 'retry pending';
+		return 'schedule unavailable';
 	}
 
 	const visibleAudits = $derived(project.audits.filter(auditVisible));
@@ -188,7 +205,7 @@
 	</div>
 
 	<div class="flex flex-col gap-6 p-[18px]">
-		<SchedulerStatus />
+		<SchedulerStatus payload={scheduler.payload} loading={scheduler.loading} error={scheduler.error} />
 
 		<!-- ── audits ──────────────────────────────────────────────────────── -->
 		<div>
@@ -201,6 +218,7 @@
 			<div class="overflow-hidden rounded-[4px] border border-border">
 				{#each visibleAudits as audit (audit.name)}
 					{@const failing = audit.result && !audit.result.passed}
+					{@const schedule = auditScheduleByName.get(audit.name)}
 					<div class="border-b border-[var(--border-subtle)] last:border-b-0">
 						<button
 							class="hover:bg-[var(--sb-hover)] flex w-full items-center gap-3 px-3 py-2 text-left"
@@ -222,7 +240,7 @@
 											: 'var(--sb-error)'}
 							></span>
 							<span class="code min-w-0 flex-1 truncate text-[12px]">{audit.name}</span>
-							<span class="w-[70px] shrink-0 font-mono text-[10.5px]">
+							<span class="hidden w-[70px] shrink-0 font-mono text-[10.5px] lg:block">
 								{#if audit.generic}
 									<span class="text-[var(--sb-text-faint)]">generic</span>
 								{:else}
@@ -230,19 +248,32 @@
 								{/if}
 							</span>
 							<span
-								class="w-[64px] shrink-0 font-mono text-[10.5px]"
+								class="hidden w-[64px] shrink-0 font-mono text-[10.5px] md:block"
 								style:color={audit.severity === 'warning'
 									? 'var(--sb-warning)'
 									: 'var(--sb-text-faint)'}>{audit.severity}</span
 							>
-							<span class="w-[170px] shrink-0 truncate font-mono text-[11px]">
+							<span class="hidden w-[170px] shrink-0 truncate font-mono text-[11px] xl:block">
 								{#each audit.referencedModels as model, index (model)}
 									<a href="/catalog/{model}" class="text-primary hover:underline"
 										>{model}</a
 									>{#if index < audit.referencedModels.length - 1}, {/if}
 								{/each}
 							</span>
-							<span class="w-[92px] shrink-0 text-right font-mono text-[11px]">
+							<span
+								class="w-[108px] shrink-0 truncate text-right font-mono text-[10.5px] sm:w-[138px]"
+								style:color={schedule ? auditScheduleColor(schedule.state) : 'var(--sb-text-faint)'}
+								title={schedule?.scheduledFor ?? undefined}
+							>
+								{#if !audit.policy.scheduled}
+									manual
+								{:else if schedule && scheduler.payload?.warehouseNow}
+									{auditScheduleLabel(schedule, scheduler.payload.warehouseNow)}
+								{:else}
+									{missingScheduleLabel()}
+								{/if}
+							</span>
+							<span class="hidden w-[92px] shrink-0 text-right font-mono text-[11px] sm:block">
 								{#if !audit.result}
 									<span class="text-[var(--sb-text-faint)]">not run</span>
 								{:else if audit.result.deferredUntil}
@@ -260,7 +291,7 @@
 									>
 								{/if}
 							</span>
-							<span class="text-[var(--sb-text-faint)] w-[74px] shrink-0 text-right font-mono text-[10.5px]"
+							<span class="text-[var(--sb-text-faint)] hidden w-[74px] shrink-0 text-right font-mono text-[10.5px] lg:block"
 								>{formatAgo(audit.result?.checkedAt ?? null, project.capturedAt)}</span
 							>
 						</button>

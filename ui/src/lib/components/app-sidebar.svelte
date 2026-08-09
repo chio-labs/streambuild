@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import ActivityIcon from '@lucide/svelte/icons/activity';
 	import NetworkIcon from '@lucide/svelte/icons/network';
@@ -13,7 +14,7 @@
 	import ServerIcon from '@lucide/svelte/icons/server';
 	import SettingsIcon from '@lucide/svelte/icons/settings';
 	import type { Icon as IconType } from '@lucide/svelte';
-	import { getProject } from '$lib/api';
+	import { getProject, prefetchRuns } from '$lib/api';
 	import { app } from '$lib/api/store.svelte';
 	import type { Project } from '$lib/domain/types';
 
@@ -65,6 +66,30 @@
 		if (href === '/') return page.url.pathname === '/';
 		return page.url.pathname.startsWith(href);
 	}
+
+	function prefetchNavItem(item: NavItem): void {
+		if (item.href === '/runs') void prefetchRuns();
+	}
+
+	async function navigateToPrefetchedItem(event: MouseEvent, item: NavItem): Promise<void> {
+		if (
+			item.href !== '/runs' ||
+			event.button !== 0 ||
+			event.metaKey ||
+			event.ctrlKey ||
+			event.shiftKey ||
+			event.altKey
+		) {
+			return;
+		}
+		event.preventDefault();
+		try {
+			await prefetchRuns();
+		} catch {
+			// Navigation still exposes the page's ordinary retry and error state.
+		}
+		await goto(item.href);
+	}
 </script>
 
 <aside
@@ -113,6 +138,9 @@
 				<a
 					href={item.href}
 					title={item.label}
+					onpointerenter={() => prefetchNavItem(item)}
+					onfocus={() => prefetchNavItem(item)}
+					onclick={(event) => void navigateToPrefetchedItem(event, item)}
 					class="relative flex items-center justify-center gap-2.5 rounded-md px-2 py-2 text-[13px] md:justify-start md:px-3 {isActive(
 						item.href
 					)
