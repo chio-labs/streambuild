@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.16.5](https://github.com/chio-labs/streambuild/compare/v0.16.4...v0.16.5) (2026-08-09)
+
+
+### Bug Fixes
+
+* clarify stalled run recovery ([013ea96](https://github.com/chio-labs/streambuild/commit/013ea96636336098c166e9a64342f18efba377cb))
+* clarify stalled run recovery ([330353a](https://github.com/chio-labs/streambuild/commit/330353a66989de57155137d49f123fd1affb5544))
+
 ## [0.16.4](https://github.com/chio-labs/streambuild/compare/v0.16.3...v0.16.4) (2026-08-09)
 
 
