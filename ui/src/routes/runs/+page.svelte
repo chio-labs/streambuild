@@ -18,8 +18,11 @@
 
 	async function refresh(): Promise<void> {
 		try {
-			const [recordedRuns, ownership] = await Promise.all([fetchRuns(), fetchBuildFeed(0)]);
-			runs = recordedRuns;
+			const runsRequest = fetchRuns().then((recordedRuns) => {
+				runs = recordedRuns;
+				return recordedRuns;
+			});
+			const [, ownership] = await Promise.all([runsRequest, fetchBuildFeed(0)]);
 			ownedInvocationId = ownership.running ? ownership.invocationId : null;
 			loadError = null;
 		} catch (error) {
@@ -163,30 +166,30 @@
 			<table class="sb-list w-full text-left">
 				<thead>
 					<tr>
-						<th class="px-[18px] py-2 font-normal">ID</th>
-						<th class="px-3 py-2 font-normal">Command</th>
-						<th class="px-3 py-2 font-normal">Status</th>
-						<th class="px-3 py-2 font-normal">Created at</th>
-						<th class="px-3 py-2 pr-[18px] text-right font-normal">Duration</th>
+						<th class="w-[220px] px-3 py-2 font-normal sm:px-[18px]">ID</th>
+						<th class="hidden px-3 py-2 font-normal md:table-cell">Command</th>
+						<th class="px-2 py-2 font-normal sm:px-3">Status</th>
+						<th class="hidden px-3 py-2 font-normal lg:table-cell">Created at</th>
+						<th class="hidden px-3 py-2 pr-[18px] text-right font-normal xl:table-cell">Duration</th>
 					</tr>
 				</thead>
 				<tbody>
 					{#each visibleRuns as run (run.invocationId)}
 						{@const chip = statusChip(run.status)}
 						<tr>
-							<td class="px-[18px] py-2.5 align-top">
+							<td class="w-[220px] px-3 py-2.5 align-top sm:px-[18px]">
 								<a
 									href="/runs/{run.invocationId}"
 									class="code text-primary text-[12px] hover:underline"
 									title={run.invocationId}>{run.invocationId.slice(0, 8)}</a
 								>
-								<div class="flex items-center gap-1.5 pt-1">
+								<div class="flex max-w-[190px] flex-wrap items-center gap-1.5 pt-1 sm:max-w-none">
 									<span class="sb-tag code">{run.mode}</span>
 									<span class="sb-tag code">{run.selectedNodeCount} nodes</span>
 									<span class="sb-tag code">v{run.toolVersion}</span>
 								</div>
 							</td>
-							<td class="px-3 align-top">
+							<td class="hidden px-3 align-top md:table-cell">
 								<div class="code pt-0.5 text-[12px]">stb {run.command}</div>
 								{#if run.errorMessage}
 									<div
@@ -198,7 +201,7 @@
 									</div>
 								{/if}
 							</td>
-							<td class="px-3 align-top">
+							<td class="px-2 align-top sm:px-3">
 								<span
 									class="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-mono text-[10.5px]"
 									style:border-color={chip.border}
@@ -219,14 +222,14 @@
 									<button class="mt-1 font-mono text-[10px] underline disabled:opacity-50" style:color="var(--sb-warning)" disabled={cancellingInvocationId !== null} onclick={() => void cancelOwned(run.invocationId)}>{cancellingInvocationId === run.invocationId ? 'Cancelling...' : 'Cancel'}</button>
 								{/if}
 							</td>
-							<td class="px-3 align-top">
+							<td class="hidden px-3 align-top lg:table-cell">
 								<div class="text-[12px]">{formatTimestamp(run.startedAt)}</div>
 								<div class="text-[var(--sb-text-faint)] font-mono text-[10.5px]">
 									{formatAgo(run.startedAt, project.capturedAt)}
 								</div>
 							</td>
 							<td
-								class="text-muted-foreground code px-3 pr-[18px] pt-3 text-right align-top text-[11.5px]"
+								class="text-muted-foreground code hidden px-3 pr-[18px] pt-3 text-right align-top text-[11.5px] xl:table-cell"
 								>{formatDuration(run.durationMs / 1000)}</td
 							>
 						</tr>
