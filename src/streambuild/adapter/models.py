@@ -577,14 +577,6 @@ class AdapterRunEventRecord:
 
 
 @dataclass(frozen=True)
-class AdapterQualityScheduleClaim:
-    """One process contender for a scheduled quality-node logical slot."""
-
-    node_name: str
-    scheduled_for: str
-
-
-@dataclass(frozen=True)
 class AdapterCurrentQualityNode:
     """One current manifest node joined to persisted terminal history."""
 

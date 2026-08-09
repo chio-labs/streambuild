@@ -68,6 +68,8 @@ def execute_direct_build_command(
                 mode="direct",
                 total_statements=len(preparation.workflow.statements),
                 selected_node_count=len(preparation.preview.plan.execution_scope),
+                selectors=options.selectors,
+                start_time=options.start_time,
             )
         execution: DirectBuildExecutionResult | None = execute_confirmed_direct_build(
             preparation=preparation,

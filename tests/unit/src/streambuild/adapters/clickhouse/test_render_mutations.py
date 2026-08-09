@@ -38,7 +38,7 @@ from tests.unit.src.streambuild.adapters.clickhouse.helpers import (
         RenderMetadataMutationSqlTestCase(
             description="renders database and metadata mutations as exact executable SQL",
             expected_database_sql="CREATE DATABASE IF NOT EXISTS metadata;",
-            expected_migration_statement_count=13,
+            expected_migration_statement_count=12,
             expected_migration_last_sql=(
                 "INSERT INTO metadata._streambuild_schema_versions "
                 "(version, applied_at) SELECT 3, now64(3, 'UTC') WHERE NOT EXISTS ("

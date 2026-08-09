@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import AppTopbar from '$lib/components/app-topbar.svelte';
 	import { app, refreshDeployments } from '$lib/api/store.svelte';
 	import { cleanupDeployments } from '$lib/api';
@@ -21,6 +22,22 @@
 	];
 
 	const deployments: Deployment[] = $derived(app.deployments);
+	let refreshing = $state<boolean>(true);
+	const POLL_MS: number = 30_000;
+
+	async function refreshInventory(): Promise<void> {
+		if (deployments.length === 0) refreshing = true;
+		await refreshDeployments();
+		refreshing = false;
+	}
+
+	onMount(() => {
+		void refreshInventory();
+		const timer = setInterval(() => {
+			if (!document.hidden) void refreshInventory();
+		}, POLL_MS);
+		return () => clearInterval(timer);
+	});
 
 	function inState(state: DeploymentState): Deployment[] {
 		return deployments.filter((deployment) => deployment.state === state);
@@ -72,7 +89,9 @@
 		<div class="text-muted-foreground pb-3 text-[12px]">{cleanupSummary}</div>
 	{/if}
 
-	{#if deployments.length === 0}
+	{#if refreshing && deployments.length === 0}
+		<div class="text-muted-foreground p-6 font-mono text-[12px]">loading deployments…</div>
+	{:else if deployments.length === 0}
 		<div class="text-muted-foreground rounded-md border border-[var(--sb-border)] p-6 text-[13px]">
 			No deployments in this database. Virtual-mode pipelines create one on every build; a
 			direct-mode project has none by design.

@@ -64,7 +64,6 @@ def test_given_legacy_node_results_table_when_migrating_then_reset_instruction_i
         MetadataMigrationIntegrationTestCase(
             description="empty metadata state migrates repeatedly without duplicate versions",
             expected_table_names=(
-                "_streambuild_audit_schedule_claims",
                 "_streambuild_direct_fingerprints",
                 "_streambuild_invocations",
                 "_streambuild_node_results",
@@ -176,7 +175,6 @@ def test_given_v2_publication_rows_when_migrating_then_lifecycle_defaults_are_pr
         MetadataMigrationIntegrationTestCase(
             description="concurrent metadata migrations converge on one logical version",
             expected_table_names=(
-                "_streambuild_audit_schedule_claims",
                 "_streambuild_direct_fingerprints",
                 "_streambuild_invocations",
                 "_streambuild_node_results",

@@ -19,6 +19,7 @@ from streambuild.dev_server.constants import CANCEL_GRACE_SECONDS, TERMINATE_GRA
 from streambuild.dev_server.exceptions import BuildInProgressError, BuildStartError
 from streambuild.dev_server.models import DevExecutionContext
 from streambuild.dev_server.types import ActivityTone, DevServerReporter
+from streambuild.executor.observability.constants import RUN_DISPLAY_COMMAND_ENV_VAR
 
 _RUN_STARTED_KIND: str = "run_started"
 _STATEMENT_COMPLETED_KIND: str = "statement_completed"
@@ -84,7 +85,10 @@ class BuildProcessManager:
                 stdout=subprocess.PIPE,
                 stderr=stderr_file,
                 text=True,
-                env=_build_environment(execution_context=self._execution_context),
+                env=_build_environment(
+                    execution_context=self._execution_context,
+                    display_command=command,
+                ),
             )
             stderr_file.close()
             process: subprocess.Popen[str] = self._process
@@ -260,12 +264,16 @@ def build_invocation(
     return argv, display
 
 
-def _build_environment(*, execution_context: DevExecutionContext | None) -> dict[str, str]:
+def _build_environment(
+    *, execution_context: DevExecutionContext | None, display_command: str | None = None
+) -> dict[str, str]:
     environment: dict[str, str] = dict(
         os.environ
         if execution_context is None or execution_context.environment is None
         else execution_context.environment
     )
+    if display_command is not None:
+        environment[RUN_DISPLAY_COMMAND_ENV_VAR] = display_command
     if execution_context is None:
         return environment
     if execution_context.cli_variables:

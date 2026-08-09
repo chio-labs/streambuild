@@ -190,7 +190,11 @@
 								</div>
 							</td>
 							<td class="hidden px-3 align-top md:table-cell">
-								<div class="code pt-0.5 text-[12px]">stb {run.command}</div>
+								<div class="code pt-0.5 text-[12px]">
+									{run.displayCommand?.startsWith('stb ')
+										? run.displayCommand
+										: `stb ${run.displayCommand ?? run.command}`}
+								</div>
 								{#if run.errorMessage}
 									<div
 										class="max-w-[480px] truncate pt-1 font-mono text-[10.5px]"

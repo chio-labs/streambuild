@@ -15,6 +15,7 @@ from streambuild.dev_server.exceptions import DevConfigurationError
 from streambuild.dev_server.main._create_dev_app import create_dev_app
 from streambuild.dev_server.models import DevExecutionContext
 from streambuild.dev_server.types import ActivityTone, DevServerReporter
+from streambuild.executor.observability.constants import RUN_DISPLAY_COMMAND_ENV_VAR
 from tests.unit.src.streambuild.dev_server._test_types import (
     ChecksRunTestCase,
     ChecksStatusTestCase,
@@ -180,7 +181,10 @@ def test_given_resolved_dev_context_when_planning_then_preview_and_build_command
     assert "secret-value" not in expected_command
     assert "variable-secret" not in expected_command
     assert all("variable-secret" not in argument for argument in expected_argv)
-    child_environment: dict[str, str] = _build_environment(execution_context=context)
+    child_environment: dict[str, str] = _build_environment(
+        execution_context=context,
+        display_command=expected_command,
+    )
     assert json.loads(child_environment[DEV_CLI_VARIABLES_ENV_VAR]) == {
         "batch_size": 50,
         "region": "eu",
@@ -190,6 +194,7 @@ def test_given_resolved_dev_context_when_planning_then_preview_and_build_command
     assert child_environment["STREAMBUILD_CLICKHOUSE_PORT"] == "8124"
     assert child_environment["STREAMBUILD_CLICKHOUSE_USERNAME"] == "builder"
     assert child_environment["STREAMBUILD_CLICKHOUSE_PASSWORD"] == "secret-value"
+    assert child_environment[RUN_DISPLAY_COMMAND_ENV_VAR] == expected_command
 
 
 @pytest.mark.parametrize(

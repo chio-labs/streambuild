@@ -20,6 +20,7 @@ from streambuild.dev_server.types import RunPresentationStatus
 _DEFAULT_RUNS_LIMIT: int = 100
 _RUN_EVENT_PAGE_SIZE: int = 500
 _RUN_EVENT_WINDOW_SIZE: int = 400
+_RUN_STARTED_KIND: str = "run_started"
 _RUN_COMPLETED_KIND: str = "run_completed"
 
 
@@ -172,6 +173,11 @@ def _assemble_runs(
     for invocation_id, events in streams.items():
         if invocation_id in terminal_runs:
             terminal_runs[invocation_id]["lastSignalAt"] = events[-1]["emittedAt"]
+            started: dict[str, object] | None = next(
+                (event for event in events if event["event"] == _RUN_STARTED_KIND), None
+            )
+            if started is not None and started.get("displayCommand"):
+                terminal_runs[invocation_id]["displayCommand"] = str(started["displayCommand"])
             continue
         started: dict[str, object] = events[0]
         completed: dict[str, object] | None = next(
@@ -190,6 +196,9 @@ def _assemble_runs(
             {
                 "invocationId": invocation_id,
                 "command": str(started.get("command", "build")),
+                "displayCommand": str(
+                    started.get("displayCommand", started.get("command", "build"))
+                ),
                 "mode": str(started.get("mode", "unknown")),
                 "status": str(status),
                 "outcome": str(status),
@@ -289,6 +298,7 @@ def _terminal_runs(
         runs[invocation_id] = {
             "invocationId": invocation_id,
             "command": str(row["command"]),
+            "displayCommand": None,
             "mode": str(row["mode"]),
             "status": str(row["outcome"]),
             "outcome": str(row["outcome"]),

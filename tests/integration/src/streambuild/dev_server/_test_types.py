@@ -21,14 +21,6 @@ class ScheduledAuditOutcomeTestCase:
 
 
 @dataclass(frozen=True)
-class ScheduledAuditContentionTestCase:
-    description: str
-    expected_tick_counts: tuple[int, int]
-    expected_claim_count: int
-    expected_result_count: int
-
-
-@dataclass(frozen=True)
 class MessageCorpusQueryTestCase:
     description: str
     request_json: dict
