@@ -91,8 +91,7 @@ export function testCounts(tests: SqlTest[]): CheckCounts {
 
 
 /**
- * Whether rows are still moving through this model — what the animated driving
- * edge encodes.
+ * The measured flow state of a model's driving edge.
  *
  * Deliberately NOT derived from lag. Lag measures how far BEHIND the output is;
  * it says nothing about whether it is moving. A model ten minutes behind but
@@ -101,11 +100,12 @@ export function testCounts(tests: SqlTest[]): CheckCounts {
  * input — a cursor-polled dimension feed, say — look stopped when it was
  * merely behind.
  *
- * `stalled` is the status that actually means stopped, and is what the graph
- * header already counts.
+ * Missing lineage telemetry is unknown, not stalled: the edge remains visibly
+ * driving but does not claim motion through animation.
  */
-function isFlowing(model: Model): boolean {
-	return model.kind === 'table' && model.live.lagSeconds !== null && model.status !== 'stalled';
+function modelFlowState(model: Model): GraphEdge['flowState'] {
+	if (model.kind !== 'table' || model.live.lagSeconds === null) return 'unknown';
+	return model.status === 'stalled' ? 'stalled' : 'flowing';
 }
 
 function sourceGraphNode(project: Project, source: Source): GraphNode {
@@ -164,7 +164,7 @@ export function buildLogicalGraph(project: Project): Graph {
 				source: fromId,
 				target: `model:${model.name}`,
 				type: ref.type,
-				flowing: ref.type === 'driving_input' && isFlowing(model)
+				flowState: ref.type === 'driving_input' ? modelFlowState(model) : 'unknown'
 			});
 		}
 	}
@@ -222,7 +222,7 @@ function appendDeploymentRelations(
 				source: parentId,
 				target: nodeId,
 				type: 'reference',
-				flowing: false
+				flowState: 'unknown'
 			});
 		}
 	}
@@ -333,14 +333,14 @@ export function buildPhysicalGraph(project: Project, deployments: Deployment[] =
 				source: kafkaId,
 				target: mvId,
 				type: 'driving_input',
-				flowing: true
+				flowState: 'flowing'
 			});
 			edges.push({
 				id: `${mvId}->${rawId}`,
 				source: mvId,
 				target: rawId,
 				type: 'driving_input',
-				flowing: true
+				flowState: 'flowing'
 			});
 			readRelationId.set(source.name, rawId);
 		} else {
@@ -432,7 +432,7 @@ export function buildPhysicalGraph(project: Project, deployments: Deployment[] =
 			source: mvId,
 			target: tableId,
 			type: 'driving_input',
-			flowing: isFlowing(model)
+			flowState: modelFlowState(model)
 		});
 		readRelationId.set(model.name, tableId);
 	}
@@ -448,7 +448,7 @@ export function buildPhysicalGraph(project: Project, deployments: Deployment[] =
 				source: fromId,
 				target: targetId,
 				type: ref.type,
-				flowing: ref.type === 'driving_input' && isFlowing(model)
+				flowState: ref.type === 'driving_input' ? modelFlowState(model) : 'unknown'
 			});
 		}
 	}
