@@ -121,6 +121,9 @@
 	const newModelCount: number = $derived(
 		deploymentModels.filter((model) => model.isNew).length
 	);
+	const isInitialPublish: boolean = $derived(
+		deploymentModels.length > 0 && newModelCount === deploymentModels.length
+	);
 </script>
 
 <AppTopbar title={deploymentId} />
@@ -147,7 +150,7 @@
 			>
 			{#if detail.state === 'staged'}
 				<span class="text-[var(--sb-text-faint)] text-[11.5px]">
-					nothing changes until this is promoted
+					nothing changes until this is {isInitialPublish ? 'published' : 'promoted'}
 				</span>
 			{/if}
 		</div>
@@ -172,7 +175,7 @@
 					{#if tab === 'graph'}
 						<EdgeLegend compact />
 						<span class="text-[var(--sb-text-faint)] ml-auto font-mono text-[10px]">
-							node shows live → staged
+							{isInitialPublish ? 'node shows new staged relation' : 'node shows live → staged'}
 						</span>
 					{:else}
 						<span class="text-[var(--sb-text-faint)] ml-auto font-mono text-[10px]">
@@ -250,26 +253,44 @@
 						<FactRow label="New models" value={formatInteger(newModelCount)} mono />
 						<FactRow label="Storage" value={formatBytes(detail.bytes)} mono />
 						<FactRow label="Created" value={detail.createdAt ?? '—'} mono />
-						<FactRow label="Published" value={detail.publishedAt ?? 'not promoted'} mono />
-					</div>
-				</div>
-
-				<div class="rounded-[4px] border border-border">
-					<div
-						class="text-[var(--sb-text-faint)] border-b border-border px-3 py-2 font-mono text-[10px] uppercase tracking-[0.16em]"
-					>
-						Rows versus live
-					</div>
-					<div class="px-3 py-1.5">
-						<FactRow label="Staged" value={formatCompact(totalStagedRows)} mono />
-						<FactRow label="Live" value={formatCompact(totalLiveRows)} mono />
 						<FactRow
-							label="Delta"
-							value={`${rowDelta >= 0 ? '+' : ''}${formatInteger(rowDelta)}`}
+							label="Published"
+							value={detail.publishedAt ?? (isInitialPublish ? 'not published' : 'not promoted')}
 							mono
 						/>
 					</div>
 				</div>
+
+				{#if isInitialPublish}
+					<div class="rounded-[4px] border border-border">
+						<div
+							class="text-[var(--sb-text-faint)] border-b border-border px-3 py-2 font-mono text-[10px] uppercase tracking-[0.16em]"
+						>
+							Initial publish
+						</div>
+						<div class="px-3 py-1.5">
+							<FactRow label="Models to publish" value={formatInteger(detail.modelCount)} mono />
+							<FactRow label="Staged rows" value={formatCompact(totalStagedRows)} mono />
+						</div>
+					</div>
+				{:else}
+					<div class="rounded-[4px] border border-border">
+						<div
+							class="text-[var(--sb-text-faint)] border-b border-border px-3 py-2 font-mono text-[10px] uppercase tracking-[0.16em]"
+						>
+							Rows versus live
+						</div>
+						<div class="px-3 py-1.5">
+							<FactRow label="Staged" value={formatCompact(totalStagedRows)} mono />
+							<FactRow label="Live" value={formatCompact(totalLiveRows)} mono />
+							<FactRow
+								label="Delta"
+								value={`${rowDelta >= 0 ? '+' : ''}${formatInteger(rowDelta)}`}
+								mono
+							/>
+						</div>
+					</div>
+				{/if}
 
 				{#if detail.state === 'superseded'}
 					<div class="rounded-[4px] border border-border">
@@ -296,21 +317,29 @@
 						<div
 							class="text-[var(--sb-text-faint)] border-b border-border px-3 py-2 font-mono text-[10px] uppercase tracking-[0.16em]"
 						>
-							Promote
+							{isInitialPublish ? 'Publish' : 'Promote'}
 						</div>
 						<div class="px-3 py-2.5">
 							<div class="text-muted-foreground pb-2 text-[11.5px]">
-								Models switch over one at a time, not all together. Promoting also releases
-								{detail.wouldOrphan.relationCount} relation{detail.wouldOrphan.relationCount === 1
-									? ''
-									: 's'} ({formatBytes(detail.wouldOrphan.bytes)}).
+								{#if isInitialPublish}
+									This deployment publishes {detail.modelCount} model{detail.modelCount === 1
+										? ''
+										: 's'} for the first time. No live bindings will be replaced and no relations
+									will be released.
+								{:else}
+									Models switch over one at a time, not all together. Promoting also releases
+									{detail.wouldOrphan.relationCount} relation{detail.wouldOrphan.relationCount ===
+									1
+										? ''
+										: 's'} ({formatBytes(detail.wouldOrphan.bytes)}).
+								{/if}
 							</div>
 							<button
 								class="bg-primary text-primary-foreground w-full rounded-[3px] px-3 py-1.5 text-[12px] font-medium disabled:opacity-50"
 								onclick={() => void promote()}
 								disabled={promoting}
 							>
-								{promoting ? 'promoting…' : 'Promote'}
+								{promoting ? (isInitialPublish ? 'publishing…' : 'promoting…') : isInitialPublish ? 'Publish' : 'Promote'}
 							</button>
 							{#if promoteError !== null}
 								<div class="pt-2 text-[11px]" style:color="var(--sb-error)">{promoteError}</div>
@@ -328,36 +357,42 @@
 			<thead>
 				<tr class="text-[var(--sb-text-faint)] font-mono text-[10px] uppercase tracking-[0.14em]">
 					<th class="px-3 py-2 font-normal">Model</th>
-					<th class="px-3 py-2 font-normal">Live</th>
+					{#if !isInitialPublish}<th class="px-3 py-2 font-normal">Live</th>{/if}
 					<th class="px-3 py-2 font-normal">Staged</th>
-					<th class="px-3 py-2 font-normal">Live rows</th>
+					{#if !isInitialPublish}<th class="px-3 py-2 font-normal">Live rows</th>{/if}
 					<th class="px-3 py-2 font-normal">Staged rows</th>
-					<th class="px-3 py-2 font-normal">Delta</th>
+					{#if !isInitialPublish}<th class="px-3 py-2 font-normal">Delta</th>{/if}
 				</tr>
 			</thead>
 			<tbody>
 				{#each deploymentModels as model (model.logicalName)}
 					<tr>
 						<td class="code px-3 py-1.5 text-[12px]">{model.logicalName}</td>
-						<td class="code text-[var(--sb-text-faint)] px-3 text-[11px]"
-							>{suffixOf(model.liveRelation)}</td
-						>
+						{#if !isInitialPublish}
+							<td class="code text-[var(--sb-text-faint)] px-3 text-[11px]">
+								{model.liveRelation === null ? 'not published' : suffixOf(model.liveRelation)}
+							</td>
+						{/if}
 						<td class="code px-3 text-[11px]">{suffixOf(model.stagedRelation)}</td>
-						<td class="code px-3 text-[11.5px]"
-							>{model.liveRows === null ? '—' : formatInteger(model.liveRows)}</td
-						>
+						{#if !isInitialPublish}
+							<td class="code px-3 text-[11.5px]">
+								{model.liveRows === null ? '—' : formatInteger(model.liveRows)}
+							</td>
+						{/if}
 						<td class="code px-3 text-[11.5px]">{formatInteger(model.stagedRows)}</td>
-						<td class="code px-3 text-[11.5px]">
-							{#if model.isNew}
-								<span style:color="var(--sb-primary)">new</span>
-							{:else}
-								{@const delta = model.stagedRows - (model.liveRows ?? 0)}
-								<span
-									style:color={delta === 0 ? 'var(--sb-text-faint)' : 'var(--sb-secondary)'}
-									>{delta >= 0 ? '+' : ''}{formatInteger(delta)}</span
-								>
-							{/if}
-						</td>
+						{#if !isInitialPublish}
+							<td class="code px-3 text-[11.5px]">
+								{#if model.isNew}
+									<span style:color="var(--sb-primary)">new</span>
+								{:else}
+									{@const delta = model.stagedRows - (model.liveRows ?? 0)}
+									<span
+										style:color={delta === 0 ? 'var(--sb-text-faint)' : 'var(--sb-secondary)'}
+										>{delta >= 0 ? '+' : ''}{formatInteger(delta)}</span
+									>
+								{/if}
+							</td>
+						{/if}
 					</tr>
 				{/each}
 			</tbody>
