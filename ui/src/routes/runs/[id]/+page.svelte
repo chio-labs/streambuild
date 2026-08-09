@@ -18,6 +18,8 @@
 	import { buildLogicalGraph } from '$lib/domain/derive';
 	import { formatCompact, formatDuration, formatTimestamp } from '$lib/domain/format';
 	import type { Graph, Project } from '$lib/domain/types';
+	import { consumeRunDetail } from './state';
+	import type { RunDetailSnapshot } from './state';
 
 	const project: Project = getProject();
 	const invocationId = $derived(page.params.id ?? '');
@@ -36,6 +38,7 @@
 	let commandLine = $state<string>('build');
 	let loadError = $state<string | null>(null);
 	let notFound = $state<boolean>(false);
+	let initialLoading = $state<boolean>(true);
 
 	const POLL_MS: number = 1200;
 
@@ -51,9 +54,9 @@
 		let timer: ReturnType<typeof setTimeout> | null = null;
 		let cursor: number = 0;
 
-		async function pollDurable(): Promise<void> {
+		async function pollDurable(initial?: RunDetailSnapshot): Promise<void> {
 			try {
-				const feed = await fetchRunEvents(id, cursor);
+				const feed = initial?.feed ?? (await fetchRunEvents(id, cursor));
 				if (cancelled) return;
 				if (feed.events.length > 0) cursor = feed.events[feed.events.length - 1].sequence;
 				const combinedEvents = [...events, ...feed.events];
@@ -65,7 +68,7 @@
 				status = feed.status ?? 'running';
 				lastSignalAgeSeconds = feed.lastSignalAgeSeconds;
 				running = status === 'running' || status === 'unresponsive';
-				const ownership = await fetchBuildFeed(0);
+				const ownership = initial?.ownership ?? (await fetchBuildFeed(0));
 				if (cancelled) return;
 				owned = ownership.invocationId === id;
 				ownedRunning = owned && ownership.running;
@@ -73,12 +76,13 @@
 					stderr = ownership.stderr;
 					forceAvailable = ownership.forceAvailable;
 				}
-				const loadedRecord = await loadRunRecord();
+				const loadedRecord = initial === undefined ? await loadRunRecord() : initial.record;
 				if (cancelled) return;
 				if (!feed.found && !owned && loadedRecord === null) {
 					notFound = true;
 					running = false;
 					loadError = null;
+					initialLoading = false;
 					return;
 				}
 				notFound = false;
@@ -89,6 +93,7 @@
 					status = record.status;
 				}
 				loadError = null;
+				initialLoading = false;
 				if (running || feed.hasMore) {
 					timer = setTimeout(() => void pollDurable(), feed.hasMore ? 0 : POLL_MS);
 				} else {
@@ -97,6 +102,7 @@
 			} catch (error) {
 				if (cancelled) return;
 				loadError = error instanceof Error ? error.message : String(error);
+				initialLoading = false;
 				timer = setTimeout(() => void pollDurable(), POLL_MS);
 			}
 		}
@@ -106,7 +112,10 @@
 			return runs.find((run) => run.invocationId === id) ?? null;
 		}
 
-		void pollDurable();
+		void consumeRunDetail(id).then(
+			(initial) => pollDurable(initial),
+			() => pollDurable()
+		);
 		return () => {
 			cancelled = true;
 			if (timer !== null) clearTimeout(timer);
@@ -290,6 +299,18 @@
 					Back to runs
 				</a>
 			</div>
+		</div>
+	{:else if initialLoading}
+		<div class="flex min-h-[520px] flex-1 flex-col" aria-label="Loading run details">
+			<div class="flex h-[53px] shrink-0 items-center gap-3 border-b border-border px-[18px]">
+				<div class="h-5 w-16 animate-pulse rounded bg-[var(--sb-inset)]"></div>
+				<div class="h-6 w-24 animate-pulse rounded-full bg-[var(--sb-inset)]"></div>
+				<div class="h-7 min-w-0 flex-1 animate-pulse rounded bg-[var(--sb-inset)]"></div>
+			</div>
+			<div class="grid h-[380px] shrink-0 place-items-center border-b border-border">
+				<span class="text-muted-foreground font-mono text-[11px]">loading run timeline…</span>
+			</div>
+			<div class="m-[18px] h-24 animate-pulse rounded-[4px] border border-border bg-[var(--sb-inset)]/40"></div>
 		</div>
 	{:else}
 	<!-- header -->
