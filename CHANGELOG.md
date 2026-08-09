@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.16.1](https://github.com/chio-labs/streambuild/compare/v0.16.0...v0.16.1) (2026-08-09)
+
+
+### Bug Fixes
+
+* stabilize UI loading transitions ([5e0562e](https://github.com/chio-labs/streambuild/commit/5e0562e5c1868873a862245c50aadaaa4d755fca))
+* stabilize UI loading transitions ([fab7973](https://github.com/chio-labs/streambuild/commit/fab79733b5e4e20529981819a299d486feef9b15))
+
 ## [0.16.0](https://github.com/chio-labs/streambuild/compare/v0.15.0...v0.16.0) (2026-08-09)
 
 
