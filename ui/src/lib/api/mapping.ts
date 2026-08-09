@@ -177,6 +177,7 @@ function modelFromServer(model: Payload, live: Payload): Model {
 	const anchor = model.anchor as AnchorState;
 	const freshness = (live.freshness as string | null) ?? null;
 	const drift = Boolean(live.drift ?? false);
+	const activity = (live.activity ?? {}) as Payload;
 	return {
 		name: model.name as string,
 		pipeline: model.pipeline as string,
@@ -216,6 +217,17 @@ function modelFromServer(model: Payload, live: Payload): Model {
 			newestRowAt: (live.newestRowAt as string | null) ?? null,
 			oldestRowAt: (live.oldestRowAt as string | null) ?? null,
 			lagSeconds: (live.lagSeconds as number | null) ?? null,
+			activity: {
+				state: (activity.state as Model['live']['activity']['state']) ?? 'unknown',
+				source: (activity.source as Model['live']['activity']['source']) ?? 'unavailable',
+				sourceAvailable: Boolean(activity.sourceAvailable ?? false),
+				approximate: Boolean(activity.approximate ?? false),
+				lastTriggeredAt: (activity.lastTriggeredAt as string | null) ?? null,
+				lastWriteAt: (activity.lastWriteAt as string | null) ?? null,
+				rowsWritten: (activity.rowsWritten as number) ?? 0,
+				windowSeconds: (activity.windowSeconds as number) ?? 0,
+				detail: (activity.detail as string) ?? 'ClickHouse activity telemetry is unavailable.'
+			},
 			inSyncWithCompiled: !drift,
 			driftReasons: (live.driftReasons as string[]) ?? [],
 			ownership: ((live.ownership as string) ?? 'absent') as Model['live']['ownership'],
