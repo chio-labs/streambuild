@@ -21,10 +21,10 @@ def assemble_publish_workflow(
         database=metadata_database,
         state=metadata_state,
     )
-    binding_statements: tuple[WarehouseStatement, ...] = _build_statements(
+    binding_statements: tuple[WarehouseStatement, ...] = _build_named_statements(
         sql_statements=binding_sql,
+        step_ids=_binding_step_ids(binding_request=binding_request),
         sequence_start=1,
-        step_prefix="replace_stable_binding",
         phase=WorkflowPhase.STABILIZATION,
     )
     migration_statements: tuple[WarehouseStatement, ...] = _build_statements(
@@ -58,4 +58,33 @@ def _build_statements(
             sql=sql,
         )
         for sequence, sql in enumerate(sql_statements, start=sequence_start)
+    )
+
+
+def _binding_step_ids(*, binding_request: AdapterBindingReplacementRequest) -> tuple[str, ...]:
+    """Name each switchover after the relation it rebinds, as other phases do."""
+
+    return tuple(
+        f"replace_stable_binding_{binding.logical_name}" for binding in binding_request.bindings
+    ) + tuple(
+        f"remove_stable_binding_{removal.logical_name}" for removal in binding_request.removals
+    )
+
+
+def _build_named_statements(
+    *,
+    sql_statements: tuple[str, ...],
+    step_ids: tuple[str, ...],
+    sequence_start: int,
+    phase: WorkflowPhase,
+) -> tuple[WarehouseStatement, ...]:
+    return tuple(
+        WarehouseStatement(
+            sequence=sequence_start + index,
+            step_id=step_ids[index],
+            phase=phase,
+            intent=StatementIntent.MUTATION,
+            sql=sql,
+        )
+        for index, sql in enumerate(sql_statements)
     )

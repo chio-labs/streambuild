@@ -176,6 +176,10 @@
 				if (event.errorMessage) states.set(model, { state: 'failed', rows: null });
 				else if ((event.stepId ?? '').startsWith('replay_')) {
 					states.set(model, { state: 'done', rows: event.writtenRows ?? null });
+				} else if ((event.stepId ?? '').startsWith('replace_stable_binding_')) {
+					// A switchover is the whole unit of work for this model, so its
+					// completion is terminal rather than a step towards a later replay.
+					states.set(model, { state: 'done', rows: null });
 				} else if (states.get(model)?.state !== 'done') {
 					states.set(model, { state: 'running', rows: null });
 				}
@@ -209,6 +213,9 @@
 		)
 	);
 
+	// A promotion rebinds views; nothing is rebuilt, so the vocabulary changes.
+	const isPromotion = $derived(commandLine.startsWith('deployment promote'));
+
 	const notes = $derived.by(() => {
 		const map = new Map<string, { text: string; tone: 'info' | 'warn' }>();
 		for (const node of fullGraph.nodes) {
@@ -220,12 +227,25 @@
 				// MV-cascaded models never get their own replay step — once the run
 				// succeeds, their rebuild happened through the roots' replay.
 				map.set(node.id, {
-					text: running ? 'rebuilding…' : outcome === 'succeeded' ? 'rebuilt' : 'incomplete',
+					text: running
+						? isPromotion
+							? 'switching…'
+							: 'rebuilding…'
+						: outcome === 'succeeded'
+							? isPromotion
+								? 'switched'
+								: 'rebuilt'
+							: 'incomplete',
 					tone: running || outcome === 'succeeded' ? 'info' : 'warn'
 				});
 			} else {
 				map.set(node.id, {
-					text: state.rows === null ? 'rebuilt' : `${formatCompact(state.rows)} rows`,
+					text:
+						state.rows === null
+							? isPromotion
+								? 'switched'
+								: 'rebuilt'
+							: `${formatCompact(state.rows)} rows`,
 					tone: 'info'
 				});
 			}
