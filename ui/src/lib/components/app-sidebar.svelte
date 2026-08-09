@@ -151,7 +151,7 @@
 					<span class="hidden md:inline">{item.label}</span>
 					{#if item.href === '/deployments' && stagedCount > 0}
 						<span
-							class="text-[var(--sb-warn)] ml-auto hidden font-mono text-[10px] md:inline"
+							class="text-[var(--sb-warning)] ml-auto hidden font-mono text-[10px] md:inline"
 							title="{stagedCount} staged deployment{stagedCount === 1 ? '' : 's'}"
 							>● {stagedCount}</span
 						>

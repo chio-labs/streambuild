@@ -59,3 +59,11 @@ class CliMixedBuildTestCase:
     expected_virtual_phase_fragment: str
     expected_direct_phase_fragment: str
     expected_completion_fragment: str
+
+
+@dataclass(frozen=True)
+class CliRunScopeTestCase:
+    description: str
+    parent_invocation_id: str
+    expected_executed_logical_ids: tuple[tuple[str, ...], ...]
+    expected_context_logical_ids: tuple[tuple[str, ...], ...]

@@ -35,10 +35,17 @@ from streambuild.executor.observability.main.build_invocation_record import (
 from streambuild.executor.observability.main.build_node_result_record import (
     build_node_result_record,
 )
+from streambuild.executor.observability.main.logical_resource_identities import (
+    logical_resource_identities,
+)
 from streambuild.executor.observability.main.persist_terminal_observations import (
     persist_terminal_observations,
 )
-from streambuild.executor.observability.models import QualityResultContext, TerminalInvocation
+from streambuild.executor.observability.models import (
+    QualityResultContext,
+    RunStartupTimings,
+    TerminalInvocation,
+)
 from streambuild.executor.observability.types import MaterializationOutcome, QualityResultTrigger
 
 _SIGINT_EXIT_CODE: int = 130
@@ -52,6 +59,7 @@ def execute_direct_build_command(
     observation_client: AdapterConnection,
     started: tuple[str, str, int],
     confirmation_required: bool = True,
+    startup_timings: RunStartupTimings | None = None,
 ) -> int:
     """Confirm, execute, and audit one prepared direct build."""
 
@@ -70,6 +78,13 @@ def execute_direct_build_command(
                 selected_node_count=len(preparation.preview.plan.execution_scope),
                 selectors=options.selectors,
                 start_time=options.start_time,
+                executed_logical_ids=logical_resource_identities(
+                    preparation.preview.plan.execution_scope
+                ),
+                context_logical_ids=logical_resource_identities(
+                    tuple(item.key for item in preparation.preview.plan.prerequisite_scope)
+                ),
+                startup_timings=startup_timings,
             )
         execution: DirectBuildExecutionResult | None = execute_confirmed_direct_build(
             preparation=preparation,

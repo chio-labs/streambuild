@@ -463,6 +463,8 @@ def test_given_recorded_history_when_reading_checks_status_then_maps_names(
             invocation_id="inv-42",
             expected_event_kinds=("run_started", "statement_completed"),
             expected_written_rows=42,
+            expected_executed_logical_ids=("model:orders",),
+            expected_context_logical_ids=("source:order_events",),
         ),
     ],
     ids=lambda case: case.description,
@@ -481,3 +483,5 @@ def test_given_recorded_run_when_reading_events_then_returns_ordered_timeline(
     assert tuple(event["event"] for event in events) == test_case.expected_event_kinds
     assert events[1]["writtenRows"] == test_case.expected_written_rows
     assert events[1]["stepId"] == "replay_orders"
+    assert events[0]["executedLogicalIds"] == list(test_case.expected_executed_logical_ids)
+    assert events[0]["contextLogicalIds"] == list(test_case.expected_context_logical_ids)

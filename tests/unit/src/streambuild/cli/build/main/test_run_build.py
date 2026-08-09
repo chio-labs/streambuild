@@ -1,10 +1,13 @@
 import json
+import re
 from pathlib import Path
+from typing import cast
 
 import pytest
 from _pytest.capture import CaptureResult
 
 from streambuild.executor.backfill.models import BackfillDeploymentIdentity
+from streambuild.executor.observability.constants import RUN_INVOCATION_ID_ENV_VAR
 from streambuild.executor.workflow.models import PublishedBuildWorkflow
 from tests.unit.src.streambuild.cli.build.main._test_types import (
     CliBuildArtifactTestCase,
@@ -12,6 +15,7 @@ from tests.unit.src.streambuild.cli.build.main._test_types import (
     CliBuildInterruptTestCase,
     CliMixedBuildTestCase,
     CliProtectedBuildTestCase,
+    CliRunScopeTestCase,
     CliVirtualBuildArtifactTestCase,
 )
 from tests.unit.src.streambuild.cli.build.main.helpers import (
@@ -300,6 +304,61 @@ def test_given_mixed_pipeline_modes_when_building_then_virtual_runs_before_direc
         test_case.expected_direct_phase_fragment
     )
     assert test_case.expected_completion_fragment in output
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliRunScopeTestCase(
+            description="records each mixed phase from its own confirmed plan",
+            parent_invocation_id="parent-assigned-invocation",
+            expected_executed_logical_ids=(
+                ("model:virtual_alpha",),
+                ("model:alpha", "model:beta", "model:gamma", "model:delta"),
+            ),
+            expected_context_logical_ids=(("source:orders",), ("source:orders",)),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_mixed_pipeline_modes_when_emitting_events_then_each_phase_has_exact_plan_scope(
+    test_case: CliRunScopeTestCase,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    write_mixed_scope_project(project_root=tmp_path)
+    monkeypatch.setattr(
+        "streambuild.cli.build._helpers.virtual_command.reset_fresh_landing_offsets",
+        lambda **_kwargs: (),
+    )
+    monkeypatch.setenv(RUN_INVOCATION_ID_ENV_VAR, test_case.parent_invocation_id)
+
+    exit_code: int = run_scope_project_build_with_connection(
+        project_root=tmp_path,
+        json_output=False,
+        auto_approve=True,
+        connection=build_mixed_scope_project_connection(),
+        events_output=True,
+    )
+
+    started_events: list[dict[str, object]] = [
+        json.loads(line)
+        for line in re.findall(
+            r'^\{"event": "run_started".*$', capsys.readouterr().out, re.MULTILINE
+        )
+    ]
+    assert exit_code == 0
+    assert started_events[0]["invocationId"] == test_case.parent_invocation_id
+    assert started_events[1]["invocationId"] != test_case.parent_invocation_id
+    assert (
+        tuple(tuple(cast(list[str], event["executedLogicalIds"])) for event in started_events)
+        == test_case.expected_executed_logical_ids
+    )
+    assert (
+        tuple(tuple(cast(list[str], event["contextLogicalIds"])) for event in started_events)
+        == test_case.expected_context_logical_ids
+    )
 
 
 @pytest.mark.parametrize(

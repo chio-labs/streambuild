@@ -13,6 +13,7 @@ from streambuild.cli.build._helpers.direct_command import execute_direct_build_c
 from streambuild.cli.build._helpers.virtual_command import execute_virtual_build_command
 from streambuild.cli.build.models import BuildCommandOptions, MixedWorkflowPreparation
 from streambuild.executor.observability.main.start_invocation import start_invocation
+from streambuild.executor.observability.models import RunStartupTimings
 
 
 def execute_mixed_build_command(
@@ -22,6 +23,7 @@ def execute_mixed_build_command(
     client: AdapterConnection,
     observation_client: AdapterConnection,
     started: tuple[str, str, int],
+    startup_timings: RunStartupTimings,
 ) -> int:
     """Confirm once, stage virtual work, then apply direct work."""
 
@@ -40,6 +42,7 @@ def execute_mixed_build_command(
             client=client,
             observation_client=observation_client,
             started=started,
+            startup_timings=startup_timings,
         )
 
     if not options.events_output:
@@ -51,6 +54,7 @@ def execute_mixed_build_command(
         observation_client=observation_client,
         started=started,
         confirmation_required=False,
+        startup_timings=startup_timings,
     )
     if virtual_exit_code:
         if not options.events_output:
@@ -90,6 +94,7 @@ def _execute_json_build(
     client: AdapterConnection,
     observation_client: AdapterConnection,
     started: tuple[str, str, int],
+    startup_timings: RunStartupTimings,
 ) -> int:
     virtual_output: io.StringIO = io.StringIO()
     with redirect_stdout(virtual_output):
@@ -100,6 +105,7 @@ def _execute_json_build(
             observation_client=observation_client,
             started=started,
             confirmation_required=False,
+            startup_timings=startup_timings,
         )
     if virtual_exit_code:
         return virtual_exit_code
