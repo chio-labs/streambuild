@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from streambuild.adapter.models import CatalogSnapshot
 from streambuild.compiler.pipeline.models import RealizedProject
+from streambuild.compiler.planner.models import DirectPlan
 from streambuild.executor.direct._helpers.sources import (
     plan_preserved_managed_sources as _plan_preserved_managed_sources,
 )
@@ -15,6 +16,7 @@ from streambuild.executor.population.models import (
 
 def plan_preserved_managed_sources(
     *,
+    plan: DirectPlan,
     realized_project: RealizedProject,
     catalog: CatalogSnapshot,
     database: str,
@@ -22,6 +24,7 @@ def plan_preserved_managed_sources(
     """Validate preserved sources and plan absent resources without mutation."""
 
     return _plan_preserved_managed_sources(
+        plan=plan,
         realized_project=realized_project,
         catalog=catalog,
         database=database,
