@@ -181,6 +181,13 @@ Run observability is warehouse-backed. A silent run becomes `unresponsive` after
 `presumed_failed` after `[defaults].run_presumed_failed_after` (default `10m`). A new build is blocked
 until that safety window expires to prevent overlapping warehouse writes.
 
+Lineage activity is separate from replay freshness. StreamBuild prefers ClickHouse
+`system.query_views_log`, then insert-only `system.part_log` evidence. Enable the `query_views_log`
+and `part_log` server log sections and set `log_query_views = 1` for ingestion users to get exact
+materialized-view activity. If both logs are unavailable, recent `system.parts` modification time is
+shown as approximate evidence because background merges can also modify parts. Missing evidence is
+reported as unknown rather than stalled.
+
 ## Guarantees
 
 - `stb compile` is connection-free and writes disposable artifacts under `target/`.
