@@ -1,6 +1,5 @@
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from threading import Barrier
 from typing import cast
 
 from clickhouse_connect.driver.client import Client
@@ -12,7 +11,6 @@ from streambuild.compiler.discovery.main.load_project_input_for_path import (
 )
 from streambuild.compiler.discovery.models import LoadedProject
 from streambuild.dev_server._helpers.queries.message_query import read_source_messages
-from streambuild.dev_server.classes.audit_scheduler import AuditScheduler
 from streambuild.dev_server.models import MessageQueryCursor, MessagesQueryRequest
 from tests.integration.src.streambuild.adapters.clickhouse.helpers import (
     build_compiled_example_pipeline,
@@ -65,11 +63,6 @@ def write_scheduled_audit_project(
         """,
     )
     return cast(LoadedProject, load_project_input_for_path(path=project_dir))
-
-
-def tick_after_barrier(scheduler: AuditScheduler, start_barrier: Barrier) -> int:
-    start_barrier.wait()
-    return scheduler.tick()
 
 
 MESSAGE_CORPUS_RELATION_NAME: str = "raw__orders"

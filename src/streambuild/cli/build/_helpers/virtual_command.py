@@ -58,6 +58,8 @@ def execute_virtual_build_command(
                 mode="virtual_environment",
                 total_statements=len(preparation.workflow.statements),
                 selected_node_count=len(preparation.preview.plan.object_changes),
+                selectors=options.selectors,
+                start_time=options.start_time,
             )
         confirmed: bool = (
             confirm_build(

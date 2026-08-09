@@ -92,7 +92,6 @@ def test_given_empty_inventory_when_resolving_publish_without_deployment_id_then
             expected_target_table_name="tbl__orders_enriched__20260409T180000Z_ab12cd",
             expected_published_order_ids=("historical-order",),
             expected_full_layout=(
-                ("_streambuild_audit_schedule_claims", "MergeTree"),
                 ("_streambuild_direct_fingerprints", "MergeTree"),
                 ("_streambuild_invocations", "MergeTree"),
                 ("_streambuild_node_results", "MergeTree"),

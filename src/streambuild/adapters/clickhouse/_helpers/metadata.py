@@ -8,7 +8,6 @@ from typing import cast
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.constants import (
-    METADATA_AUDIT_SCHEDULE_CLAIMS_TABLE_NAME,
     METADATA_DEPLOYMENT_WATERMARKS_TABLE_NAME,
     METADATA_DEPLOYMENTS_TABLE_NAME,
     METADATA_DIRECT_FINGERPRINTS_TABLE_NAME,
@@ -34,7 +33,6 @@ from streambuild.adapter.models import (
     AdapterNodeResultRecord,
     AdapterObjectStateRecord,
     AdapterPublishEventRecord,
-    AdapterQualityScheduleClaim,
     AdapterQueryResult,
     AdapterRunEventRecord,
 )
@@ -43,7 +41,6 @@ from streambuild.adapters.clickhouse.models import ClickHouseMetadataStatement
 
 _CURRENT_STATE_SCHEMA_VERSION: int = 3
 _BOUNDARY_PART_COUNT: int = 2
-_SCHEDULE_CLAIM_STALE_SECONDS: int = 600
 _DIRECT_FINGERPRINT_REQUIRED_COLUMNS: frozenset[str] = frozenset(
     {
         "fingerprint_id",
@@ -70,7 +67,6 @@ def render_clickhouse_metadata_migration_statements(database: str) -> tuple[str,
         _render_invocations_table(database),
         _render_node_results_table(database),
         _render_run_events_table(database),
-        _render_audit_schedule_claims_table(database),
         _render_publish_history_lifecycle_columns(database),
     )
 
@@ -169,69 +165,6 @@ def build_clickhouse_metadata_insert_statements(
             ),
             rows=tuple(_node_result_row(record) for record in state.node_results),
         ),
-    )
-
-
-def render_clickhouse_scheduled_quality_slot_claims(
-    *,
-    database: str,
-    project_identity: str,
-    target_identity: str,
-    owner_id: str,
-    claims: tuple[AdapterQualityScheduleClaim, ...],
-) -> tuple[str, ...]:
-    """Render migration and insert mutations for warehouse-visible slot claims."""
-
-    if not claims:
-        return ()
-    values: str = ", ".join(
-        _render_schedule_claim_row(
-            project_identity=project_identity,
-            target_identity=target_identity,
-            owner_id=owner_id,
-            claim=claim,
-        )
-        for claim in claims
-    )
-    return (
-        *render_clickhouse_metadata_migration_workflow(database),
-        (
-            f"INSERT INTO {database}.{METADATA_AUDIT_SCHEDULE_CLAIMS_TABLE_NAME} "
-            "(project_identity, target_identity, node_name, scheduled_for, owner_id, claimed_at) "
-            f"VALUES {values};"
-        ),
-    )
-
-
-def load_clickhouse_scheduled_quality_slot_claim_winners(
-    *,
-    connection: AdapterConnection,
-    database: str,
-    project_identity: str,
-    target_identity: str,
-    owner_id: str,
-    claims: tuple[AdapterQualityScheduleClaim, ...],
-) -> frozenset[AdapterQualityScheduleClaim]:
-    """Return logical slots where this owner has the earliest non-stale claim."""
-
-    if not claims:
-        return frozenset()
-    result: AdapterQueryResult = connection.query(
-        "SELECT node_name, toString(scheduled_for) AS scheduled_for, "
-        "argMin(owner_id, tuple(claimed_at, owner_id)) AS elected_owner FROM "
-        f"{database}.{METADATA_AUDIT_SCHEDULE_CLAIMS_TABLE_NAME} WHERE "
-        f"project_identity = {_render_sql_literal(project_identity)} AND "
-        f"target_identity = {_render_sql_literal(target_identity)} AND "
-        f"claimed_at >= now64(3, 'UTC') - INTERVAL {_SCHEDULE_CLAIM_STALE_SECONDS} SECOND "
-        "GROUP BY node_name, scheduled_for"
-    )
-    requested: frozenset[AdapterQualityScheduleClaim] = frozenset(claims)
-    return frozenset(
-        AdapterQualityScheduleClaim(node_name=str(row[0]), scheduled_for=str(row[1]))
-        for row in result.rows
-        if str(row[2]) == owner_id
-        and AdapterQualityScheduleClaim(node_name=str(row[0]), scheduled_for=str(row[1]))
-        in requested
     )
 
 
@@ -537,22 +470,6 @@ def _render_run_events_table(database: str) -> str:
         "    payload_json String\n"
         ") ENGINE = MergeTree\n"
         "ORDER BY (invocation_id, sequence)"
-    )
-
-
-def _render_audit_schedule_claims_table(database: str) -> str:
-    return (
-        f"CREATE TABLE IF NOT EXISTS {database}.{METADATA_AUDIT_SCHEDULE_CLAIMS_TABLE_NAME} (\n"
-        "    project_identity String,\n"
-        "    target_identity String,\n"
-        "    node_name String,\n"
-        "    scheduled_for DateTime64(3, 'UTC'),\n"
-        "    owner_id String,\n"
-        "    claimed_at DateTime64(3, 'UTC')\n"
-        ") ENGINE = MergeTree\n"
-        "ORDER BY (project_identity, target_identity, node_name, scheduled_for, claimed_at, "
-        "owner_id)\n"
-        "TTL toDateTime(claimed_at) + INTERVAL 7 DAY DELETE"
     )
 
 
@@ -905,24 +822,6 @@ def _render_sql_literal(value: object) -> str:
         escaped_value: str = value.replace("\\", "\\\\").replace("'", "\\'")
         return f"'{escaped_value}'"
     raise AdapterResultError(f"Cannot render ClickHouse SQL literal for {type(value).__name__}")
-
-
-def _render_schedule_claim_row(
-    *,
-    project_identity: str,
-    target_identity: str,
-    owner_id: str,
-    claim: AdapterQualityScheduleClaim,
-) -> str:
-    return (
-        "("
-        f"{_render_sql_literal(project_identity)}, "
-        f"{_render_sql_literal(target_identity)}, "
-        f"{_render_sql_literal(claim.node_name)}, "
-        f"toDateTime64({_render_sql_literal(claim.scheduled_for)}, 3, 'UTC'), "
-        f"{_render_sql_literal(owner_id)}, now64(3, 'UTC')"
-        ")"
-    )
 
 
 def _terminate_sql(statement: str) -> str:

@@ -5,6 +5,7 @@ import time
 import pytest
 
 from streambuild.executor.observability.classes.run_event_sink import RunEventSink
+from streambuild.executor.observability.constants import RUN_DISPLAY_COMMAND_ENV_VAR
 from tests.unit.src.streambuild.executor.observability.classes._test_types import (
     RunEventHeartbeatTestCase,
     RunEventSinkTestCase,
@@ -39,6 +40,7 @@ from tests.unit.src.streambuild.executor.observability.classes.helpers import (
 )
 def test_given_one_run_when_emitting_then_streams_jsonl_and_persists_rows(
     test_case: RunEventSinkTestCase,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     connection: RunEventRecordingConnection = RunEventRecordingConnection()
     stream: io.StringIO = io.StringIO()
@@ -49,7 +51,18 @@ def test_given_one_run_when_emitting_then_streams_jsonl_and_persists_rows(
         jsonl_stream=stream,
     )
 
-    sink.run_started(command="build", mode="direct", total_statements=1, selected_node_count=1)
+    monkeypatch.setenv(
+        RUN_DISPLAY_COMMAND_ENV_VAR,
+        "stb build --target test --select orders --start-time 2026-08-09T09:00:00Z",
+    )
+    sink.run_started(
+        command="build",
+        mode="direct",
+        total_statements=1,
+        selected_node_count=1,
+        selectors=("orders",),
+        start_time="2026-08-09T09:00:00Z",
+    )
     sink.statement_started(build_replay_statement())
     sink.statement_completed(
         statement=build_replay_statement(), error_message=None, written_rows=42, elapsed_ms=5
@@ -61,6 +74,12 @@ def test_given_one_run_when_emitting_then_streams_jsonl_and_persists_rows(
     assert tuple(line["sequence"] for line in lines) == test_case.expected_sequences
     assert lines[2]["writtenRows"] == 42
     assert lines[1]["stepId"] == "replay_orders"
+    assert lines[0]["command"] == "build"
+    assert lines[0]["displayCommand"] == (
+        "stb build --target test --select orders --start-time 2026-08-09T09:00:00Z"
+    )
+    assert lines[0]["selectors"] == ["orders"]
+    assert lines[0]["startTime"] == "2026-08-09T09:00:00Z"
     assert all(line["invocationId"] == "inv-1" for line in lines)
     assert tuple(connection.statements) == test_case.expected_persisted_markers
 
