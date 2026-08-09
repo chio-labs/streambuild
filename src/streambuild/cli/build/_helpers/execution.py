@@ -162,6 +162,7 @@ def _reset_fresh_landing_offsets_for_direct_build(
     """Fresh landing tables consume from earliest: stale committed offsets are orphans."""
 
     source_preparation, _source_realizations = plan_preserved_managed_sources(
+        plan=preparation.request.plan,
         realized_project=preparation.preview.analysis.realized_project,
         catalog=preparation.preview.warehouse_snapshot.catalog,
         database=preparation.preview.database,
