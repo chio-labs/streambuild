@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.16.2](https://github.com/chio-labs/streambuild/compare/v0.16.1...v0.16.2) (2026-08-09)
+
+
+### Bug Fixes
+
+* clarify initial deployment publishing ([45408d4](https://github.com/chio-labs/streambuild/commit/45408d4e6ff4f3a18e3048a49ff5610167d749a3))
+* stabilize scheduler and run state ([729f975](https://github.com/chio-labs/streambuild/commit/729f9754017fe5e0143204b561511546b0d6e9d1))
+
 ## [0.16.1](https://github.com/chio-labs/streambuild/compare/v0.16.0...v0.16.1) (2026-08-09)
 
 
