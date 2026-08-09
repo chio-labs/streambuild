@@ -7,8 +7,10 @@ from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.compiler.audit_discovery.models import LoadedSqlAudit
 from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.compiler.quality.types import QualityNodeKind
-from streambuild.dev_server._helpers.checks_execution import build_checks_status_payload
-from streambuild.dev_server._helpers.runs_query import read_latest_direct_build_materialization
+from streambuild.dev_server._helpers.queries.runs_query import (
+    read_latest_direct_build_materialization,
+)
+from streambuild.dev_server._helpers.server.checks_execution import build_checks_status_payload
 from streambuild.dev_server.constants import IDENTITY_DRIFT_STATUSES
 from streambuild.dev_server.types import AuditScheduleState
 from streambuild.executor.auditing.main.load_model_anchors import load_model_anchors

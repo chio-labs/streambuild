@@ -6,7 +6,7 @@ import threading
 from collections.abc import Callable
 
 from streambuild.compiler.pipeline.models import CompileAnalysis
-from streambuild.dev_server._helpers.compile_runner import build_compile_outcome
+from streambuild.dev_server._helpers.server.compile_runner import build_compile_outcome
 from streambuild.dev_server.exceptions import ProjectNotCompiledError
 from streambuild.dev_server.models import CompileOutcome
 

@@ -4,7 +4,7 @@ import pytest
 from clickhouse_connect.driver.client import Client
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.dev_server._helpers.message_query import (
+from streambuild.dev_server._helpers.queries.message_query import (
     ensure_header_columns,
     read_source_message_facets,
     read_source_message_record,

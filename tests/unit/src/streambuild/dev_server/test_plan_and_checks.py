@@ -274,7 +274,7 @@ def test_given_non_utc_warehouse_when_planning_then_replay_count_keeps_utc_start
         return {"orders_clean": 1}
 
     monkeypatch.setattr(
-        "streambuild.dev_server._helpers.api_routes.count_replay_rows",
+        "streambuild.dev_server._helpers.server.api_routes.count_replay_rows",
         fake_count_replay_rows,
     )
     client: TestClient = TestClient(
@@ -399,7 +399,7 @@ def test_given_warming_audit_when_run_from_ui_then_activity_is_deferred(
         }
     )
     reporter_mock: MagicMock = MagicMock()
-    monkeypatch.setattr("streambuild.dev_server._helpers.api_routes.run_one_audit", runner)
+    monkeypatch.setattr("streambuild.dev_server._helpers.server.api_routes.run_one_audit", runner)
     client: TestClient = TestClient(
         create_dev_app(
             state=DevServerState(run_compile=build_compile_callable(project_dir=tmp_path)),

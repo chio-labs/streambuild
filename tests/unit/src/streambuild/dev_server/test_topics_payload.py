@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from streambuild.adapter.models import AdapterQueryResult
 from streambuild.compiler.pipeline.models import CompileAnalysis
-from streambuild.dev_server._helpers.state_payload import (
+from streambuild.dev_server._helpers.payloads.state_payload import (
     build_relation_stats_query,
     build_topics_payload,
 )

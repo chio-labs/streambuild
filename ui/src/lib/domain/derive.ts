@@ -8,6 +8,7 @@
 
 import {
 	type Audit,
+	type Deployment,
 	type Graph,
 	type GraphEdge,
 	type GraphNode,
@@ -171,6 +172,83 @@ export function buildLogicalGraph(project: Project): Graph {
 	return { nodes, edges };
 }
 
+/**
+ * Deployment-suffixed relations are real warehouse objects that the definition
+ * graph cannot know about: a logical `tbl__x` may be backed by one active
+ * relation while several superseded ones still occupy disk. Emitting them here
+ * is what makes the physical view answer "what is actually in my database and
+ * why".
+ */
+function appendDeploymentRelations(
+	project: Project,
+	deployments: Deployment[],
+	nodes: GraphNode[],
+	edges: GraphEdge[]
+): void {
+	if (deployments.length === 0) return;
+
+	const modelByRelation = new Map(project.models.map((model) => [model.relationName, model]));
+
+	for (const deployment of deployments) {
+		for (const relationName of deployment.physicalRelationNames) {
+			const logicalName = logicalRelationName(relationName);
+			const model = modelByRelation.get(logicalName);
+			if (model === undefined) continue;
+
+			const parentId = `rel:${logicalName}`;
+			const nodeId = `rel:${relationName}`;
+			const state = relationDeploymentState(deployment, logicalName);
+
+			nodes.push({
+				id: nodeId,
+				label: relationName,
+				logicalName: model.name,
+				logicalType: 'model',
+				physicalType: 'model_table',
+				status: model.status,
+				anchor: null,
+				kindLabel: state.toUpperCase(),
+				sublabel: deployment.deploymentId,
+				rows: null,
+				rowsPerSecond: null,
+				failingChecks: 0,
+				warningChecks: 0,
+				totalChecks: 0,
+				drift: false,
+				deployment: { deploymentId: deployment.deploymentId, state }
+			});
+			edges.push({
+				id: `${parentId}->${nodeId}`,
+				source: parentId,
+				target: nodeId,
+				type: 'reference',
+				flowing: false
+			});
+		}
+	}
+}
+
+/** `tbl__orders__20260410T005500Z_cd34ef` → `tbl__orders`. */
+function logicalRelationName(relationName: string): string {
+	const parts = relationName.split('__');
+	return parts.length > 2 ? parts.slice(0, -1).join('__') : relationName;
+}
+
+/**
+ * Binding is per deployment, not global: after promoting a deployment that
+ * covered only part of the graph, two deployments can each hold live bindings,
+ * and the relations they no longer back are orphaned even though the deployment
+ * itself is still active.
+ */
+function relationDeploymentState(
+	deployment: Deployment,
+	logicalName: string
+): 'active' | 'staged' | 'orphaned' {
+	if (deployment.activeBindingNames.includes(logicalName)) return 'active';
+	if (deployment.state === 'staged') return 'staged';
+	return 'orphaned';
+}
+
 // ─── graph: physical ─────────────────────────────────────────────────────────
 
 /**
@@ -179,7 +257,7 @@ export function buildLogicalGraph(project: Project): Graph {
  *
  *   kafka__x ─▶ mv__x ─▶ raw__x ─▶ mv__model ─▶ tbl__model
  */
-export function buildPhysicalGraph(project: Project): Graph {
+export function buildPhysicalGraph(project: Project, deployments: Deployment[] = []): Graph {
 	const nodes: GraphNode[] = [];
 	const edges: GraphEdge[] = [];
 
@@ -374,6 +452,8 @@ export function buildPhysicalGraph(project: Project): Graph {
 			});
 		}
 	}
+
+	appendDeploymentRelations(project, deployments, nodes, edges);
 
 	return { nodes, edges };
 }

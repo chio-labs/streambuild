@@ -10,7 +10,7 @@
 	const timingEntries = $derived(Object.entries(status?.timings ?? {}));
 </script>
 
-<AppTopbar title="Deployment" />
+<AppTopbar title="Status" />
 
 <div class="min-h-0 flex-1 overflow-y-auto px-[18px] py-4">
 	<div class="grid max-w-[880px] gap-4" style:grid-template-columns="minmax(0,1fr) minmax(0,1fr)">

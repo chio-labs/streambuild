@@ -16,7 +16,8 @@ _INDEX_FILE_NAME: str = "index.html"
 def static_assets_root() -> Path:
     """Return the packaged UI build directory; it may not exist in dev checkouts."""
 
-    return Path(__file__).resolve().parent.parent / STATIC_ASSETS_DIRECTORY_NAME
+    dev_server_root: Path = Path(__file__).resolve().parents[2]
+    return dev_server_root / STATIC_ASSETS_DIRECTORY_NAME
 
 
 def static_assets_present(*, assets_root: Path) -> bool:
