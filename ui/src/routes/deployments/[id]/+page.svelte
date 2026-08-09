@@ -4,19 +4,22 @@
 	import LineageCanvas from '$lib/components/lineage/lineage-canvas.svelte';
 	import EdgeLegend from '$lib/components/lineage/edge-legend.svelte';
 	import FactRow from '$lib/components/fact-row.svelte';
-	import { fetchDeployment, fetchDeploymentDiff, getProject, promoteDeployment } from '$lib/api';
+	import { fetchDeploymentDiff, getProject, promoteDeployment } from '$lib/api';
 	import type { DeploymentDiff } from '$lib/api';
 	import { goto } from '$app/navigation';
 	import { refreshDeployments } from '$lib/api/store.svelte';
 	import { buildLogicalGraph } from '$lib/domain/derive';
 	import { formatBytes, formatCompact, formatInteger } from '$lib/domain/format';
 	import type { DeploymentDetail, DeploymentModel, Graph, Project } from '$lib/domain/types';
+	import type { DeploymentDetailPageData } from './+page';
+
+	let { data }: { data: DeploymentDetailPageData } = $props();
 
 	const project: Project = getProject();
 	const deploymentId: string = $derived(page.params.id ?? '');
 
-	let detail = $state<DeploymentDetail | null>(null);
-	let loadError = $state<string | null>(null);
+	const detail: DeploymentDetail | null = $derived(data.initialDetail);
+	const loadError: string | null = $derived(data.initialError);
 	let tab = $state<'graph' | 'diff'>('graph');
 	let diff = $state<DeploymentDiff | null>(null);
 	let diffError = $state<string | null>(null);
@@ -47,23 +50,6 @@
 				diffError = String(error);
 			});
 	}
-
-	$effect(() => {
-		const id = deploymentId;
-		let cancelled = false;
-		detail = null;
-		loadError = null;
-		fetchDeployment(id)
-			.then((payload) => {
-				if (!cancelled) detail = payload;
-			})
-			.catch((error: unknown) => {
-				if (!cancelled) loadError = String(error);
-			});
-		return () => {
-			cancelled = true;
-		};
-	});
 
 	/** Deployment relation names are physical; the graph is keyed by model name. */
 	const modelByRelation: Map<string, string> = $derived(

@@ -5,7 +5,7 @@
 	import AppTopbar from '$lib/components/app-topbar.svelte';
 	import SqlBlock from '$lib/components/sql-block.svelte';
 	import SchedulerStatus from './scheduler-status.svelte';
-	import { createAuditSchedulerState } from './state.svelte';
+	import { auditSchedulerStore } from './state.svelte';
 	import { auditScheduleColor, auditScheduleLabel } from './utils';
 	import { getProject, runCheck } from '$lib/api';
 	import { auditCounts, testCounts } from '$lib/domain/derive';
@@ -19,7 +19,7 @@
 	// Only `build` writes.
 	const audits = $derived(auditCounts(project.audits));
 	const tests = $derived(testCounts(project.tests));
-	const scheduler = createAuditSchedulerState();
+	const scheduler = auditSchedulerStore;
 	const auditScheduleByName = $derived(
 		new Map((scheduler.payload?.audits ?? []).map((item) => [item.name, item]))
 	);
