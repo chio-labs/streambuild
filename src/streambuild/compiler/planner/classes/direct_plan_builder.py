@@ -11,6 +11,7 @@ from streambuild.adapter.models import (
     AdapterReplayColumns,
     AdapterTable,
     AdapterView,
+    CatalogRelation,
 )
 from streambuild.adapter.types import AdapterOptionalStateStatus
 from streambuild.compiler.compile.constants import (
@@ -108,6 +109,8 @@ class DirectPlanBuilder:
         prerequisites: tuple[DirectPrerequisite, ...] = self._build_prerequisites()
         self._reject_missing_prerequisites(prerequisites=prerequisites)
         entries: tuple[DirectPlanEntry, ...] = self._build_entries()
+        replay_roots: tuple[DirectReplayRoot, ...] = self._build_replay_roots()
+        self._reject_incompatible_replay_inputs(replay_roots=replay_roots)
         return DirectPlan(
             database=self._database,
             effective_start_time=self._effective_start_time,
@@ -117,7 +120,7 @@ class DirectPlanBuilder:
             execution_scope=self._execution_scope,
             prerequisite_scope=prerequisites,
             entries=entries,
-            replay_roots=self._build_replay_roots(),
+            replay_roots=replay_roots,
             teardown_operations=_teardown_operations(entries=entries),
             creation_operations=_creation_operations(entries=entries),
             warnings=self._build_warnings(entries=entries),
@@ -431,6 +434,49 @@ class DirectPlanBuilder:
                 "Direct plan requires preserved upstream relations that do not exist: "
                 f"{', '.join(missing_names)}"
             )
+
+    def _reject_incompatible_replay_inputs(
+        self, *, replay_roots: tuple[DirectReplayRoot, ...]
+    ) -> None:
+        for root in replay_roots:
+            relation: CatalogRelation | None = self._snapshot.catalog.relation(
+                root.driving_input_relation_name
+            )
+            if relation is None:
+                continue
+            available_columns: frozenset[str] = frozenset(
+                column.name for column in relation.columns
+            )
+            required_columns: tuple[str, ...] = self._required_replay_input_columns(root=root)
+            missing_columns: tuple[str, ...] = tuple(
+                column for column in required_columns if column not in available_columns
+            )
+            if not missing_columns:
+                continue
+            upstream_name: str = root.driving_input_key.name
+            raise DirectPlanError(
+                f"Direct plan cannot replay '{root.model_key.name}' from preserved upstream "
+                f"relation '{root.driving_input_relation_name}': required replay columns are "
+                f"missing: {', '.join(missing_columns)}. Rebuild the upstream scope in the same "
+                f"invocation (for example, --select {upstream_name}) or select its pipeline."
+            )
+
+    def _required_replay_input_columns(self, *, root: DirectReplayRoot) -> tuple[str, ...]:
+        columns: AdapterReplayColumns = root.driving_input_replay_columns
+        mode: ReplayLineageMode = ReplayLineageMode(root.replay_boundary_mode)
+        required_by_mode: dict[ReplayLineageMode, tuple[str, ...]] = {
+            ReplayLineageMode.OFFSETS: (columns.partition, columns.offset),
+            ReplayLineageMode.TIMESTAMP: (columns.timestamp,),
+            ReplayLineageMode.LANDED_AT: (columns.landed_at,),
+            ReplayLineageMode.CURSOR: (columns.cursor,),
+        }
+        required: list[str] = list(required_by_mode[mode])
+        if self._effective_start_time is not None:
+            if mode == ReplayLineageMode.OFFSETS:
+                required.append(columns.landed_at or columns.timestamp)
+            if mode == ReplayLineageMode.CURSOR:
+                required.append(columns.timestamp)
+        return tuple(dict.fromkeys(column for column in required if column))
 
 
 def _teardown_operations(
