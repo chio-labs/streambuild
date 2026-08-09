@@ -237,6 +237,8 @@ def _assemble_runs(
                     warehouse_now=warehouse_now,
                 ),
                 "selectedNodeCount": int(str(started.get("selectedNodeCount", 0))),
+                "executedLogicalIds": started.get("executedLogicalIds"),
+                "contextLogicalIds": started.get("contextLogicalIds"),
                 "errorMessage": None if completed is None else completed.get("errorMessage"),
                 "toolVersion": str(started.get("toolVersion", "")),
                 "lastActivity": _last_activity(events=events),
