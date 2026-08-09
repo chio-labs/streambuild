@@ -5,6 +5,7 @@ from typing import cast
 
 import pytest
 
+from streambuild.cli.build.constants import STREAMBUILD_TOOL_VERSION
 from streambuild.executor.observability.classes.run_event_sink import RunEventSink
 from streambuild.executor.observability.constants import RUN_DISPLAY_COMMAND_ENV_VAR
 from streambuild.executor.observability.models import RunStartupTimings
@@ -83,6 +84,7 @@ def test_given_one_run_when_emitting_then_streams_jsonl_and_persists_rows(
     assert lines[0]["displayCommand"] == (
         "stb build --target test --select orders --start-time 2026-08-09T09:00:00Z"
     )
+    assert lines[0]["toolVersion"] == STREAMBUILD_TOOL_VERSION
     assert lines[0]["selectors"] == ["orders"]
     assert lines[0]["startTime"] == "2026-08-09T09:00:00Z"
     assert all(line["invocationId"] == "inv-1" for line in lines)

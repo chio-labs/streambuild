@@ -35,6 +35,7 @@ from tests.unit.src.streambuild.compiler.discovery._test_types import (
     ProjectDeploymentReadinessDefaultsTestCase,
     ProjectFreshnessDefaultTestCase,
     ProjectFreshnessErrorTestCase,
+    ProjectRunSafetyDefaultTestCase,
     UnknownTargetTestCase,
 )
 from tests.unit.src.streambuild.compiler.discovery.helpers import (
@@ -56,6 +57,39 @@ port = 8123
 [targets.dev]
 database = "dev_database"
 """
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ProjectRunSafetyDefaultTestCase(
+            description="parses the project run safety window",
+            expected_seconds=90,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_run_safety_default_when_loading_then_duration_is_typed(
+    test_case: ProjectRunSafetyDefaultTestCase,
+    tmp_path: Path,
+) -> None:
+    write_project_toml(
+        project_dir=tmp_path,
+        contents="""
+        name = "analytics"
+        default_target = "dev"
+
+        [defaults]
+        run_presumed_failed_after = "90s"
+
+        [targets.dev]
+        database = "analytics"
+        """,
+    )
+
+    loaded: LoadedProjectConfiguration = load_project_configuration(project_dir=tmp_path)
+
+    assert loaded.project.defaults.run_presumed_failed_after_seconds == test_case.expected_seconds
 
 
 @pytest.mark.parametrize(
@@ -432,6 +466,14 @@ def test_given_absent_local_toml_when_loading_then_returns_typed_defaults(
             expected_error_fragment=(
                 "defaults.deployment_readiness contains unsupported keys: enforced"
             ),
+        ),
+        ProjectConfigurationErrorTestCase(
+            description="rejects a run safety window shorter than unresponsive detection",
+            project_contents=(
+                'name = "analytics"\ndefault_target = "dev"\n'
+                '[defaults]\nrun_presumed_failed_after = "30s"\n[targets.dev]\n'
+            ),
+            expected_error_fragment="run_presumed_failed_after must be longer than 45s",
         ),
     ],
     ids=lambda case: case.description,

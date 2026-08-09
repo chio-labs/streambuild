@@ -62,6 +62,7 @@ def create_dev_app(
         database=effective_database,
         project_dir=project_dir or Path.cwd(),
         builds=builds,
+        presumed_failed_after_seconds=active_context.run_presumed_failed_after_seconds,
     )
 
     def _warm_broker_caches() -> None:

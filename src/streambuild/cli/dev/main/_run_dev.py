@@ -12,7 +12,11 @@ from streambuild.compiler.compile.models import CompilerAdapterProfile
 from streambuild.compiler.discovery.main.load_project_input_for_path import (
     load_project_input_for_path,
 )
-from streambuild.compiler.discovery.models import LoadedProject
+from streambuild.compiler.discovery.models import (
+    EffectiveProjectConfiguration,
+    LoadedProject,
+    ProjectDefaults,
+)
 from streambuild.compiler.pipeline.main.analyze_project import analyze_project
 from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.dev_server.main.run_dev_server import run_dev_server
@@ -30,6 +34,14 @@ def run_dev(
     """Serve the dev UI and API over this project until interrupted."""
 
     project_dir: Path = options.pipelines_root.parent
+    effective_configuration: EffectiveProjectConfiguration | None = getattr(
+        loaded_project, "effective_configuration", None
+    )
+    project_defaults: ProjectDefaults = (
+        effective_configuration.defaults
+        if effective_configuration is not None
+        else ProjectDefaults()
+    )
     execution_context: DevExecutionContext = DevExecutionContext(
         database=options.database,
         selected_target=options.selected_target,
@@ -39,6 +51,7 @@ def run_dev(
         connection_port=options.connection_port,
         connection_username=options.connection_username,
         connection_password=options.connection_password,
+        run_presumed_failed_after_seconds=project_defaults.run_presumed_failed_after_seconds,
     )
 
     def run_compile() -> CompileAnalysis:

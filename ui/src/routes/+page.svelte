@@ -112,7 +112,8 @@
 						<div class="w-[168px] shrink-0">
 							<a
 								href="/sources/{source.name}"
-								class="text-primary code truncate text-[12px] font-medium hover:underline"
+								class="text-primary code block w-full truncate text-[12px] font-medium hover:underline"
+								title={source.name}
 								>{source.name}</a
 							>
 							<div class="text-[var(--sb-text-faint)] font-mono text-[10px]">

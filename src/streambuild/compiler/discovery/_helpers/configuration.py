@@ -31,6 +31,7 @@ from streambuild.compiler.discovery.constants import (
     PIPELINE_MODE_KEY,
     PROJECT_CONFIG_FILE_NAME,
     PROJECT_CONFIG_KEYS,
+    RUN_UNRESPONSIVE_AFTER_SECONDS,
     SECONDS_BY_DURATION_UNIT,
     SOURCE_DEFAULT_KEYS,
     TARGET_KEYS,
@@ -436,6 +437,19 @@ def _parse_project_defaults(*, payload: object, file_path: Path) -> ProjectDefau
         label="defaults",
         file_path=file_path,
     )
+    try:
+        run_presumed_failed_after_seconds: int = parse_duration_seconds(
+            value=mapping.get("run_presumed_failed_after", "10m"),
+            field_path=f"{file_path} defaults.run_presumed_failed_after",
+            allow_zero=False,
+        )
+    except ValueError as error:
+        raise ProjectConfigError(str(error)) from error
+    if run_presumed_failed_after_seconds <= RUN_UNRESPONSIVE_AFTER_SECONDS:
+        raise ProjectConfigError(
+            f"{file_path} defaults.run_presumed_failed_after must be longer than "
+            f"{RUN_UNRESPONSIVE_AFTER_SECONDS}s"
+        )
     return ProjectDefaults(
         managed_source_ttl=_optional_non_empty_string(
             mapping=mapping,
@@ -470,6 +484,7 @@ def _parse_project_defaults(*, payload: object, file_path: Path) -> ProjectDefau
             label="defaults.bounded_replay_fallback",
             file_path=file_path,
         ),
+        run_presumed_failed_after_seconds=run_presumed_failed_after_seconds,
         freshness=parse_freshness_policy(
             payload=mapping.get("freshness"),
             label="defaults.freshness",

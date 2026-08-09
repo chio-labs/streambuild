@@ -22,6 +22,7 @@
 	import type { Graph, Project } from '$lib/domain/types';
 	import { consumeRunDetail } from './state';
 	import type { RunDetailSnapshot } from './state';
+	import { buildTimeline } from './utils';
 
 	const project: Project = getProject();
 	const invocationId = $derived(page.params.id ?? '');
@@ -40,6 +41,7 @@
 	let record = $state<RunRecord | null>(null);
 	let commandLine = $state<string>('build');
 	let loadError = $state<string | null>(null);
+	let pollError = $state<string | null>(null);
 	let notFound = $state<boolean>(false);
 	let initialLoading = $state<boolean>(true);
 
@@ -58,6 +60,7 @@
 		exitCode = null;
 		commandLine = 'build';
 		loadError = null;
+		pollError = null;
 		initialLoading = true;
 		forceAvailable = false;
 		lastSignalAgeSeconds = null;
@@ -140,6 +143,7 @@
 					record?.displayCommand ??
 					record?.command ??
 					'build';
+				pollError = null;
 				loadError = null;
 				initialLoading = false;
 				if (running || feed.hasMore) {
@@ -149,7 +153,7 @@
 				}
 			} catch (error) {
 				if (cancelled) return;
-				loadError = error instanceof Error ? error.message : String(error);
+				pollError = error instanceof Error ? error.message : String(error);
 				initialLoading = false;
 				timer = setTimeout(() => void pollDurable(), POLL_MS);
 			}
@@ -340,18 +344,7 @@
 		return map;
 	});
 
-	// Newest first; heartbeats are status signals rather than useful timeline entries,
-	// and terminal runs only need the completed half of each operation.
-	const timeline = $derived(
-		[...events]
-			.filter(
-				(event) =>
-					event.event !== 'run_heartbeat' &&
-					(running || (event.event !== 'statement_started' && event.event !== 'audit_started'))
-			)
-			.reverse()
-			.slice(0, 400)
-	);
+	const timeline = $derived(buildTimeline(events, running));
 	const metadataPreparationCount = $derived(numberedStepCount('prepare_metadata_'));
 	const metadataMigrationCount = $derived(numberedStepCount('migrate_metadata_'));
 	const candidateMetadataCount = $derived(numberedStepCount('persist_candidate_metadata_'));
@@ -571,10 +564,15 @@
 	{/if}
 
 	{#if loadError}
-		<div class="p-[18px]">
+		<div class="border-b border-border px-[18px] py-2">
 			<p class="font-mono text-[12px]" style:color="var(--sb-error)">{loadError}</p>
 		</div>
-	{:else}
+	{/if}
+	{#if pollError}
+		<div class="border-b border-border px-[18px] py-2 font-mono text-[11px]" style:color="var(--sb-warning)">
+			Observability temporarily unavailable: {pollError}. Retrying…
+		</div>
+	{/if}
 		<!-- progress -->
 		{#if totalStatements !== null && totalStatements > 0}
 			<div class="shrink-0 px-[18px] pt-3">
@@ -691,6 +689,5 @@
 				{/each}
 			</div>
 		</div>
-	{/if}
 	{/if}
 </div>

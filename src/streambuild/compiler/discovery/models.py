@@ -9,6 +9,7 @@ from types import MappingProxyType
 
 from streambuild.compiler.discovery.constants import (
     DEFAULT_ADAPTER_NAME,
+    DEFAULT_RUN_PRESUMED_FAILED_AFTER_SECONDS,
     DEFAULT_TABLE_PREFIX,
     DEFAULT_VIEW_PREFIX,
 )
@@ -153,6 +154,7 @@ class ProjectDefaults:
     pipeline_mode: PipelineMode | str = PipelineMode.DIRECT
     replay_on_change: ReplayOnChangePolicy | None = None
     bounded_replay_fallback: BoundedReplayFallback | None = None
+    run_presumed_failed_after_seconds: int = DEFAULT_RUN_PRESUMED_FAILED_AFTER_SECONDS
     freshness: SourceFreshnessPolicy | None = None
     audits: AuditDefaults = field(default_factory=AuditDefaults)
     deployment_readiness: DeploymentReadinessDefaults = field(
