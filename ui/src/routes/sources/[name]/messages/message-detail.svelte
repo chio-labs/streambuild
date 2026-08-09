@@ -19,6 +19,9 @@
 	// full record by primary key so Copy/Download act on complete bytes.
 	$effect(() => {
 		let cancelled = false;
+		record = null;
+		recordError = null;
+		showRaw = false;
 		fetchMessageRecord(sourceName, row.partition, row.offset)
 			.then((payload) => {
 				if (!cancelled) record = payload;
@@ -31,6 +34,7 @@
 		};
 	});
 
+	const recordLoading = $derived(record === null && recordError === null);
 	const value = $derived(record?.value ?? row.valuePreview);
 	const headers = $derived(record?.headers ?? row.headers);
 	// Multi-MiB payloads render as plain text: parsing is cheap but syntax
@@ -83,11 +87,13 @@
 		<span>broker <span class="text-foreground">{row.kafkaTimestamp === null ? '—' : formatTimestamp(row.kafkaTimestamp)}</span></span>
 		<span class="ml-auto flex items-center gap-1.5">
 			<button
-				class="text-muted-foreground hover:text-foreground flex items-center gap-1 rounded-[4px] border border-border px-2 py-0.5"
+				class="text-muted-foreground hover:text-foreground flex items-center gap-1 rounded-[4px] border border-border px-2 py-0.5 disabled:opacity-50"
+				disabled={recordLoading}
 				onclick={copyValue}><CopyIcon size={11} /> {copied ? 'copied' : 'Copy value'}</button
 			>
 			<button
-				class="text-muted-foreground hover:text-foreground flex items-center gap-1 rounded-[4px] border border-border px-2 py-0.5"
+				class="text-muted-foreground hover:text-foreground flex items-center gap-1 rounded-[4px] border border-border px-2 py-0.5 disabled:opacity-50"
+				disabled={recordLoading}
 				onclick={downloadRecord}><DownloadIcon size={11} /> Download record</button
 			>
 		</span>
@@ -111,7 +117,12 @@
 		{/if}
 	</div>
 
-	<div class="bg-background mt-2.5 max-h-[480px] overflow-auto rounded-[4px] border border-[var(--border-subtle)] p-2.5">
+	<div class="bg-background mt-2.5 min-h-[180px] max-h-[480px] overflow-auto rounded-[4px] border border-[var(--border-subtle)] p-2.5">
+		{#if recordLoading}
+			<div class="text-muted-foreground grid h-[158px] place-items-center font-mono text-[11px]">
+				loading full record…
+			</div>
+		{:else}
 		{#if recordError}
 			<p class="pb-2 font-mono text-[11px]" style:color="var(--sb-danger)">
 				full record unavailable — showing the truncated preview · {recordError}
@@ -150,6 +161,7 @@
 					</tbody>
 				</table>
 			{/if}
+		{/if}
 		{/if}
 	</div>
 </div>
