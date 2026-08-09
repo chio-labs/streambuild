@@ -35,6 +35,11 @@ from streambuild.compiler.compile.constants import (
     DESIRED_OBJECT_TYPE_KAFKA_TABLE,
     DESIRED_OBJECT_TYPE_MATERIALIZED_VIEW,
     DESIRED_OBJECT_TYPE_TABLE,
+    REPLAY_CURSOR_COLUMN_NAME,
+    REPLAY_LANDED_AT_COLUMN_NAME,
+    REPLAY_OFFSET_COLUMN_NAME,
+    REPLAY_PARTITION_COLUMN_NAME,
+    REPLAY_TIMESTAMP_COLUMN_NAME,
 )
 from streambuild.compiler.compile.main._compile_pipeline import (
     compile_pipeline as compile_pipeline_impl,
@@ -716,7 +721,14 @@ def build_direct_snapshot(
                 CatalogRelation(
                     name=relation_name,
                     engine="MergeTree",
-                    columns=(CatalogColumn(name="order_id", type="UInt64"),),
+                    columns=(
+                        CatalogColumn(name="order_id", type="UInt64"),
+                        CatalogColumn(name=REPLAY_PARTITION_COLUMN_NAME, type="Int64"),
+                        CatalogColumn(name=REPLAY_OFFSET_COLUMN_NAME, type="Int64"),
+                        CatalogColumn(name=REPLAY_TIMESTAMP_COLUMN_NAME, type="DateTime64(3)"),
+                        CatalogColumn(name=REPLAY_LANDED_AT_COLUMN_NAME, type="DateTime64(3)"),
+                        CatalogColumn(name=REPLAY_CURSOR_COLUMN_NAME, type="String"),
+                    ),
                     stable_binding_name=stable_binding_by_name.get(relation_name),
                 )
                 for relation_name in relation_names
@@ -778,6 +790,33 @@ def build_settled_direct_snapshot() -> DirectWarehouseSnapshot:
     return build_direct_snapshot(
         relation_names=(*DIRECT_SCOPE_SOURCE_RELATION_NAMES, *model_relation_names),
     )
+
+
+def without_catalog_columns(
+    *,
+    snapshot: DirectWarehouseSnapshot,
+    relation_name: str,
+    column_names: tuple[str, ...],
+) -> DirectWarehouseSnapshot:
+    """Return a snapshot with selected columns removed from one relation."""
+
+    relation_by_name: dict[str, CatalogRelation] = {
+        relation.name: relation for relation in snapshot.catalog.relations
+    }
+    target: CatalogRelation = relation_by_name[relation_name]
+    retained_column_by_name: dict[str, CatalogColumn] = {
+        column.name: column for column in target.columns
+    }
+    for column_name in column_names:
+        retained_column_by_name.pop(column_name)
+    relation_by_name[relation_name] = replace(
+        target,
+        columns=tuple(retained_column_by_name.values()),
+    )
+    relations: tuple[CatalogRelation, ...] = tuple(
+        relation_by_name[relation.name] for relation in snapshot.catalog.relations
+    )
+    return replace(snapshot, catalog=replace(snapshot.catalog, relations=relations))
 
 
 def direct_scope_relation_names(*, model_names: tuple[str, ...]) -> tuple[str, ...]:
