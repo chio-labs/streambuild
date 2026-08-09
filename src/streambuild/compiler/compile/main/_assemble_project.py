@@ -91,6 +91,8 @@ def assemble_project(
         audits=audits,
         macro_registry=inputs.macro_registry,
         macro_context=inputs.macro_context,
+        project_name=inputs.project_name,
+        target_name=inputs.target_name,
     )
     validate_compiled_project_relation_names(project=project)
     return project

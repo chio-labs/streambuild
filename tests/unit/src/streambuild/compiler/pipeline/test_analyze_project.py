@@ -413,7 +413,10 @@ def test_given_project_sources_when_analyzing_then_builds_one_stable_offline_res
             expected_logical_source_count=1,
             expected_model_count=2,
             expected_source_resource_count=3,
-            expected_consumer_group="streambuild_orders_orders",
+            expected_consumer_group="streambuild_shared_source_project_test_orders",
+            expected_effective_consumer_group=(
+                "streambuild_shared_source_project_test_orders_analytics"
+            ),
         )
     ],
     ids=lambda case: case.description,
@@ -425,10 +428,11 @@ def test_given_two_pipelines_share_source_when_analyzing_then_realizes_source_on
     project_dir: Path = tmp_path / "project"
     write_shared_source_project(project_dir)
     loaded_project: LoadedProject | None = load_project_input_for_path(path=project_dir)
+    adapter: ClickHouseAdapter = ClickHouseAdapter()
     analysis: CompileAnalysis = analyze_project(
         pipelines_root=project_dir / "pipelines",
         loaded_project=loaded_project,
-        adapter_profile=build_compiler_adapter_profile(ClickHouseAdapter()),
+        adapter_profile=build_compiler_adapter_profile(adapter),
     )
     source_resources: tuple[object, ...] = analysis.realized_project.resources_by_logical_key[
         analysis.compiled_project.sources[0].key
@@ -439,6 +443,11 @@ def test_given_two_pipelines_share_source_when_analyzing_then_realizes_source_on
     assert len(analysis.compiled_project.models) == test_case.expected_model_count
     assert len(source_resources) == test_case.expected_source_resource_count
     assert managed_source.consumer_group == test_case.expected_consumer_group
+    rendered_source: str = adapter.render_resource(
+        resource=managed_source,
+        database=analysis.compile_inputs.effective_target.default_database or "",
+    )
+    assert f"kafka_group_name = '{test_case.expected_effective_consumer_group}'" in rendered_source
     immutable_graph_mapping: dict[object, tuple[object, ...]] = cast(
         dict[object, tuple[object, ...]], analysis.graph.upstream_edges_by_key
     )

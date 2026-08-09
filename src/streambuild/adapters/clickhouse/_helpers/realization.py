@@ -34,9 +34,7 @@ def realize_clickhouse_source(
     _validate_managed_source_request(request)
     kafka_name: str = f"{CLICKHOUSE_KAFKA_TABLE_NAME_PREFIX}{request.logical_name}"
     raw_name: str = f"{CLICKHOUSE_RAW_TABLE_NAME_PREFIX}{request.logical_name}"
-    consumer_group: str = request.consumer_group or (
-        f"streambuild_{request.logical_name}_{request.logical_name}"
-    )
+    consumer_group: str = request.consumer_group or _default_consumer_group(request)
     return AdapterSourceRealization(
         relation_name=raw_name,
         resources=(
@@ -73,6 +71,15 @@ def realize_clickhouse_source(
             ),
         ),
     )
+
+
+def _default_consumer_group(request: AdapterManagedSourceRealizationRequest) -> str:
+    segments: tuple[str, ...] = tuple(
+        segment
+        for segment in (request.project_name, request.target_name, request.logical_name)
+        if segment is not None
+    )
+    return "streambuild_" + "_".join(segments)
 
 
 def _validate_managed_source_request(request: AdapterManagedSourceRealizationRequest) -> None:
