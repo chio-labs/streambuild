@@ -140,6 +140,7 @@ pipeline_mode = "virtual"
 managed_source_ttl = "_replay_landed_at + INTERVAL 14 DAY"
 model_ttl = "event_at + INTERVAL 30 DAY"
 kafka_broker_list = "kafka1:9092,kafka2:9092"
+run_presumed_failed_after = "10m"
 
 [defaults.deployment_readiness]
 maximum_lag = "30s"
@@ -166,6 +167,8 @@ Notes:
 
 - `name` and `default_target` are required; `adapter` defaults to `clickhouse`
 - `[defaults].pipeline_mode` is `direct` unless explicitly set to `virtual`
+- `[defaults].run_presumed_failed_after` controls how long a silent run blocks overlapping
+  warehouse writes before it becomes presumed failed; it defaults to `10m`
 - `[defaults.deployment_readiness]` configures advisory virtual audit thresholds; lag defaults to
   `30s` and staged row ratio defaults to `0.5`
 - `streambuild_local.toml` may override the default with `[defaults].pipeline_mode`

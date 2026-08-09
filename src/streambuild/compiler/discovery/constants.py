@@ -43,6 +43,8 @@ DEFAULT_SQL_MODEL_ENGINE: str = "MergeTree()"
 DEFAULT_SQL_MODEL_ORDER_BY: tuple[str, ...] = ("_replay_timestamp",)
 DEFAULT_TABLE_PREFIX: str = "tbl__"
 DEFAULT_VIEW_PREFIX: str = "view__"
+RUN_UNRESPONSIVE_AFTER_SECONDS: int = 45
+DEFAULT_RUN_PRESUMED_FAILED_AFTER_SECONDS: int = 10 * 60
 PROJECT_CONFIG_FILE_NAME: str = "streambuild_project.toml"
 LOCAL_CONFIG_FILE_NAME: str = "streambuild_local.toml"
 LEGACY_PROJECT_CONFIG_FILE_NAME: str = "streambuild_project.yml"
@@ -99,6 +101,7 @@ DEFAULTS_KEYS: frozenset[str] = frozenset(
         "freshness",
         "audits",
         "deployment_readiness",
+        "run_presumed_failed_after",
         "sources",
     }
 )

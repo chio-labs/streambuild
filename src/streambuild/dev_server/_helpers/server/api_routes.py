@@ -269,6 +269,7 @@ def register_api_routes(
         reporter=reporter,
         required_connection=_required_connection,
         servable_analysis=_servable_analysis,
+        presumed_failed_after_seconds=execution_context.run_presumed_failed_after_seconds,
     )
 
 
@@ -497,6 +498,7 @@ def _register_quality_routes(
     reporter: DevServerReporter,
     required_connection: Callable[[], AdapterConnection],
     servable_analysis: Callable[[], CompileAnalysis],
+    presumed_failed_after_seconds: int,
 ) -> FastAPI:
     """Attach the checks, run-history, and build routes."""
 
@@ -587,7 +589,11 @@ def _register_quality_routes(
         client: AdapterConnection = required_connection()
         try:
             with state.query_lock:
-                return read_runs(connection=client, database=database or "")
+                return read_runs(
+                    connection=client,
+                    database=database or "",
+                    presumed_failed_after_seconds=presumed_failed_after_seconds,
+                )
         except AdapterError as error:
             raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
 
@@ -602,6 +608,7 @@ def _register_quality_routes(
                     database=database or "",
                     invocation_id=invocation_id,
                     after=after,
+                    presumed_failed_after_seconds=presumed_failed_after_seconds,
                 )
         except AdapterError as error:
             raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
@@ -618,6 +625,7 @@ def _register_quality_routes(
         required_connection=required_connection,
         database=database or "",
         state=state,
+        presumed_failed_after_seconds=presumed_failed_after_seconds,
     )
 
 
@@ -629,6 +637,7 @@ def _register_build_routes(
     required_connection: Callable[[], AdapterConnection],
     database: str,
     state: DevServerState,
+    presumed_failed_after_seconds: int,
 ) -> FastAPI:
     """Attach the execute and live-feed routes."""
 
@@ -639,7 +648,9 @@ def _register_build_routes(
                     (
                         run
                         for run in read_active_runs(
-                            connection=required_connection(), database=database
+                            connection=required_connection(),
+                            database=database,
+                            presumed_failed_after_seconds=presumed_failed_after_seconds,
                         )
                         if run["status"]
                         in {
@@ -651,8 +662,10 @@ def _register_build_routes(
                 )
                 if blocking_run is not None:
                     raise BuildInProgressError(
-                        f"run {blocking_run['invocationId']} is {blocking_run['status']} "
-                        f"(last signal {blocking_run['lastSignalAgeSeconds']}s ago)"
+                        _blocking_run_message(
+                            run=blocking_run,
+                            presumed_failed_after_seconds=presumed_failed_after_seconds,
+                        )
                     )
                 return builds.start(
                     project_dir=project_dir,
@@ -685,3 +698,22 @@ def _register_build_routes(
     app.post("/api/build/cancel")(cancel_build)
     app.post("/api/build/kill")(kill_build)
     return app
+
+
+def _blocking_run_message(*, run: dict[str, object], presumed_failed_after_seconds: int) -> str:
+    invocation_id: object = run["invocationId"]
+    status: object = run["status"]
+    signal_age_seconds: int = int(str(run["lastSignalAgeSeconds"]))
+    if status == RunPresentationStatus.UNRESPONSIVE:
+        retry_seconds: int = max(presumed_failed_after_seconds - signal_age_seconds, 0)
+        return (
+            f"Run {invocation_id} is unresponsive: no signal for {signal_age_seconds}s. "
+            "No new run was started. To prevent overlapping warehouse writes, StreamBuild "
+            f"will wait {retry_seconds}s more before treating it as presumed failed "
+            f"(configured safety window: {presumed_failed_after_seconds}s via "
+            "defaults.run_presumed_failed_after). Retry after that."
+        )
+    return (
+        f"Run {invocation_id} is still {status} (last signal {signal_age_seconds}s ago), "
+        "so no new run was started. Wait for it to finish or cancel it from Runs."
+    )

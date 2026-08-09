@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+from typing import cast
 
 import pytest
 
@@ -74,6 +75,69 @@ def test_given_full_started_command_when_assembling_terminal_run_then_uses_full_
     "test_case",
     [
         DevRefactorTestCase(
+            description="active run exposes completed operations and current step",
+            expected_value={
+                "completedOperationCount": 1,
+                "totalStatements": 2,
+                "currentStep": "replay_orders",
+                "toolVersion": "0.16.4",
+            },
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_active_event_stream_when_assembling_run_then_progress_is_exposed(
+    test_case: DevRefactorTestCase,
+) -> None:
+    runs: list[dict[str, object]] = _assemble_runs(
+        terminal_by_id={},
+        streams={
+            "inv-active": [
+                {
+                    "event": "run_started",
+                    "emittedAt": "2026-08-07 11:59:00.000",
+                    "command": "build",
+                    "totalStatements": 2,
+                    "toolVersion": "0.16.4",
+                },
+                {
+                    "event": "statement_started",
+                    "emittedAt": "2026-08-07 11:59:10.000",
+                    "stepId": "prepare_orders",
+                    "statementSequence": 1,
+                },
+                {
+                    "event": "statement_completed",
+                    "emittedAt": "2026-08-07 11:59:20.000",
+                    "stepId": "prepare_orders",
+                    "statementSequence": 1,
+                },
+                {
+                    "event": "statement_started",
+                    "emittedAt": "2026-08-07 11:59:30.000",
+                    "stepId": "replay_orders",
+                    "statementSequence": 2,
+                },
+                {
+                    "event": "run_heartbeat",
+                    "emittedAt": "2026-08-07 11:59:40.000",
+                    "stepId": None,
+                },
+            ]
+        },
+        warehouse_now=_WAREHOUSE_NOW,
+        limit=None,
+    )
+
+    expected: dict[str, object] = cast(dict[str, object], test_case.expected_value)
+    progress: dict[str, object] = {key: runs[0][key] for key in expected}
+    assert progress == expected
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DevRefactorTestCase(
             description="cancelled direct build cannot supersede failed materialization evidence",
             expected_value="failed",
         )
@@ -139,6 +203,14 @@ def test_given_cancelled_build_after_failure_when_reading_guard_then_latest_non_
             expected_status=RunPresentationStatus.PRESUMED_FAILED,
         ),
         RunStatusDerivationTestCase(
+            description="project timeout controls presumed failure",
+            terminal_outcome=None,
+            completed_event_outcome=None,
+            signal_age_seconds=90,
+            presumed_failed_after_seconds=60,
+            expected_status=RunPresentationStatus.PRESUMED_FAILED,
+        ),
+        RunStatusDerivationTestCase(
             description="terminal invocation overrides stale signals",
             terminal_outcome="succeeded",
             completed_event_outcome=None,
@@ -163,6 +235,7 @@ def test_given_run_facts_when_deriving_status_then_fact_and_liveness_contract_is
         completed_event_outcome=test_case.completed_event_outcome,
         last_signal_at=_WAREHOUSE_NOW - timedelta(seconds=test_case.signal_age_seconds),
         warehouse_now=_WAREHOUSE_NOW,
+        presumed_failed_after_seconds=test_case.presumed_failed_after_seconds,
     )
 
     assert status == test_case.expected_status

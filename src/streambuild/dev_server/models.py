@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 from pydantic import BaseModel
 
+from streambuild.compiler.discovery.constants import DEFAULT_RUN_PRESUMED_FAILED_AFTER_SECONDS
 from streambuild.compiler.pipeline.models import CompilationTimings, CompileAnalysis
 from streambuild.dev_server.types import CompileStateKind
 
@@ -23,6 +24,7 @@ class DevExecutionContext:
     connection_port: int | None = None
     connection_username: str | None = None
     connection_password: str | None = None
+    run_presumed_failed_after_seconds: int = DEFAULT_RUN_PRESUMED_FAILED_AFTER_SECONDS
 
 
 @dataclass(frozen=True)
