@@ -141,6 +141,8 @@ class AdapterManagedSourceRealizationRequest:
     topic: str
     consumer_group: str | None
     format: str
+    project_name: str | None = None
+    target_name: str | None = None
     ttl: str | None = None
     settings: tuple[tuple[str, str], ...] = ()
     naming_macro_fingerprint: str | None = None

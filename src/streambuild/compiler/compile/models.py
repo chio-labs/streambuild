@@ -429,6 +429,8 @@ class CompileProjectInputs:
     audits: tuple[LoadedSqlAudit, ...]
     sources: tuple[KafkaLandingStep | ExternalTableSourceStep, ...] = ()
     virtual_environments: bool = False
+    project_name: str | None = None
+    target_name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -443,3 +445,5 @@ class CompiledProject:
     audits: tuple[LoadedSqlAudit, ...]
     macro_registry: MacroRegistry = field(default_factory=MacroRegistry)
     macro_context: MacroContext | None = None
+    project_name: str | None = None
+    target_name: str | None = None
