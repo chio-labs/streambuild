@@ -270,7 +270,8 @@ This is the managed source shape:
 - StreamBuild creates the raw landing table and landing MV
 - source `broker_list` overrides `[defaults].kafka_broker_list`; one of them is required
 - source `ttl` overrides `[defaults].managed_source_ttl`; omitting both keeps data indefinitely
-- default consumer groups are scoped to the target database
+- default consumer groups use `streambuild_<project>_<target>_<source>_<database>`, preventing
+  different project targets connected to the same Kafka cluster from sharing offsets
 - when a landing is genuinely new, `stb build` clears orphaned committed offsets before consuming
   from the earliest available message
 - downstream models usually read the source via `__source("orders")`
