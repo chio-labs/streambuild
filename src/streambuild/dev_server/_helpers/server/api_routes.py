@@ -85,6 +85,9 @@ from streambuild.dev_server.types import (
     DevServerReporter,
     RunPresentationStatus,
 )
+from streambuild.executor.observability.main.logical_resource_identities import (
+    logical_resource_identities,
+)
 
 _HTTP_BAD_REQUEST: int = 400
 _HTTP_NOT_FOUND: int = 404
@@ -625,6 +628,7 @@ def _register_quality_routes(
         required_connection=required_connection,
         database=database or "",
         state=state,
+        servable_analysis=servable_analysis,
         presumed_failed_after_seconds=presumed_failed_after_seconds,
     )
 
@@ -637,6 +641,7 @@ def _register_build_routes(
     required_connection: Callable[[], AdapterConnection],
     database: str,
     state: DevServerState,
+    servable_analysis: Callable[[], CompileAnalysis],
     presumed_failed_after_seconds: int,
 ) -> FastAPI:
     """Attach the execute and live-feed routes."""
@@ -644,22 +649,63 @@ def _register_build_routes(
     def start_build(request: BuildRunRequest) -> dict[str, object]:
         try:
             with state.query_lock:
-                blocking_run: dict[str, object] | None = next(
-                    (
-                        run
-                        for run in read_active_runs(
-                            connection=required_connection(),
+                client: AdapterConnection = required_connection()
+                active_runs: list[dict[str, object]] = [
+                    run
+                    for run in read_active_runs(
+                        connection=client,
+                        database=database,
+                        presumed_failed_after_seconds=presumed_failed_after_seconds,
+                    )
+                    if run["status"]
+                    in {
+                        RunPresentationStatus.RUNNING,
+                        RunPresentationStatus.UNRESPONSIVE,
+                    }
+                ]
+                blocking_run: dict[str, object] | None = None
+                if active_runs:
+                    if request.startTime is not None and not request.selectors:
+                        raise CliUserError("--start-time requires at least one --select")
+                    effective_start_time: str | None = (
+                        None
+                        if request.startTime is None
+                        else normalize_cli_start_time(request.startTime)
+                    )
+                    preview: DirectBuildPreviewContext = build_direct_build_preview(
+                        options=WorkflowPreparationOptions(
                             database=database,
-                            presumed_failed_after_seconds=presumed_failed_after_seconds,
+                            metadata_database=database,
+                            selectors=tuple(request.selectors),
+                            deployment_id=None,
+                            full_refresh=False,
+                            start_time=request.startTime,
+                            verbose=False,
+                        ),
+                        client=client,
+                        analysis=servable_analysis(),
+                        effective_start_time=effective_start_time,
+                    )
+                    requested_writes: frozenset[str] = frozenset(
+                        logical_resource_identities(preview.plan.execution_scope)
+                    )
+                    requested_reads: frozenset[str] = frozenset(
+                        logical_resource_identities(
+                            tuple(item.key for item in preview.plan.prerequisite_scope)
                         )
-                        if run["status"]
-                        in {
-                            RunPresentationStatus.RUNNING,
-                            RunPresentationStatus.UNRESPONSIVE,
-                        }
-                    ),
-                    None,
-                )
+                    )
+                    blocking_run = next(
+                        (
+                            run
+                            for run in active_runs
+                            if _run_overlaps_requested_scope(
+                                run=run,
+                                requested_writes=requested_writes,
+                                requested_reads=requested_reads,
+                            )
+                        ),
+                        None,
+                    )
                 if blocking_run is not None:
                     raise BuildInProgressError(
                         _blocking_run_message(
@@ -677,6 +723,10 @@ def _register_build_routes(
             raise HTTPException(status_code=_HTTP_CONFLICT, detail=str(error)) from error
         except BuildStartError as error:
             raise HTTPException(status_code=_HTTP_BAD_REQUEST, detail=str(error)) from error
+        except (CliUserError, DirectPlanError, ValueError) as error:
+            raise HTTPException(status_code=_HTTP_BAD_REQUEST, detail=str(error)) from error
+        except AdapterError as error:
+            raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
 
     def read_build_feed(*, after: Annotated[int, Query(ge=0)] = 0) -> dict[str, object]:
         return builds.feed(after=after)
@@ -717,3 +767,33 @@ def _blocking_run_message(*, run: dict[str, object], presumed_failed_after_secon
         f"Run {invocation_id} is still {status} (last signal {signal_age_seconds}s ago), "
         "so no new run was started. Wait for it to finish or cancel it from Runs."
     )
+
+
+def _run_overlaps_requested_scope(
+    *,
+    run: dict[str, object],
+    requested_writes: frozenset[str],
+    requested_reads: frozenset[str],
+) -> bool:
+    """Conservatively detect read/write conflicts between two direct build plans."""
+
+    active_writes: frozenset[str] | None = _logical_id_scope(run.get("executedLogicalIds"))
+    active_reads: frozenset[str] | None = _logical_id_scope(run.get("contextLogicalIds"))
+    if active_writes is None or active_reads is None:
+        return True
+    return bool(
+        (active_writes & requested_writes)
+        or (active_writes & requested_reads)
+        or (active_reads & requested_writes)
+    )
+
+
+def _logical_id_scope(value: object) -> frozenset[str] | None:
+    if not isinstance(value, list):
+        return None
+    scope: set[str] = set()
+    for item in value:
+        if not isinstance(item, str):
+            return None
+        scope.add(item)
+    return frozenset(scope)
