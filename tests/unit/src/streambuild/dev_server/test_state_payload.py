@@ -150,6 +150,9 @@ def test_given_warehouse_reads_when_reading_state_then_assembles_expected_overla
     model: dict = payload["models"]["orders_clean"]
     assert model["freshness"] == test_case.expected_model_freshness
     assert model["lagSeconds"] == test_case.expected_model_lag_seconds
+    assert model["activity"]["state"] == "idle"
+    assert model["activity"]["source"] == "system_parts"
+    assert model["activity"]["approximate"] is True
     assert tuple(sorted(model["driftReasons"])) == test_case.expected_drift_reasons
     assert model["drift"] is bool(test_case.expected_drift_reasons)
     source: dict = payload["sources"]["orders"]
