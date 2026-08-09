@@ -7,6 +7,7 @@ import pytest
 from streambuild.executor.observability.classes.run_event_sink import RunEventSink
 from streambuild.executor.observability.constants import RUN_DISPLAY_COMMAND_ENV_VAR
 from tests.unit.src.streambuild.executor.observability.classes._test_types import (
+    RunEventDisplayCommandTestCase,
     RunEventHeartbeatTestCase,
     RunEventSinkTestCase,
 )
@@ -133,6 +134,53 @@ def test_given_scheduled_audit_when_emitting_then_run_progress_is_durable(
     assert tuple(line["sequence"] for line in lines) == test_case.expected_sequences
     assert lines[1]["stepId"] == "orders are valid"
     assert tuple(connection.statements) == test_case.expected_persisted_markers
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        RunEventDisplayCommandTestCase(
+            description="child build inherits its display command from the environment",
+            command="build",
+            environment_command="stb build --select orders",
+            explicit_command=None,
+            expected_command="stb build --select orders",
+        ),
+        RunEventDisplayCommandTestCase(
+            description="in-process operation supplies its exact display command explicitly",
+            command="deployment promote",
+            environment_command="stb build --select unrelated",
+            explicit_command="stb deployment promote deployment-1",
+            expected_command="stb deployment promote deployment-1",
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_display_command_source_when_starting_run_then_exact_command_is_emitted(
+    test_case: RunEventDisplayCommandTestCase,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stream: io.StringIO = io.StringIO()
+    sink: RunEventSink = RunEventSink(
+        connection=RunEventRecordingConnection(),
+        database="analytics",
+        invocation_id="inv-display",
+        jsonl_stream=stream,
+    )
+    monkeypatch.setenv(RUN_DISPLAY_COMMAND_ENV_VAR, test_case.environment_command)
+
+    sink.run_started(
+        command=test_case.command,
+        display_command=test_case.explicit_command,
+        mode="virtual_environment",
+        total_statements=0,
+        selected_node_count=0,
+    )
+    sink.run_completed(outcome="succeeded", exit_code=0, error_message=None)
+
+    started: dict = json.loads(stream.getvalue().splitlines()[0])
+    assert started["command"] == test_case.command
+    assert started["displayCommand"] == test_case.expected_command
 
 
 @pytest.mark.parametrize(

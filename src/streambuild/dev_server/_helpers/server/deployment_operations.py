@@ -52,6 +52,7 @@ def run_deployment_promotion(
     )
     sink.run_started(
         command=_PROMOTE_COMMAND,
+        display_command=f"stb {_PROMOTE_COMMAND} {deployment_id}",
         mode="virtual_environment",
         total_statements=0,
         selected_node_count=0,
