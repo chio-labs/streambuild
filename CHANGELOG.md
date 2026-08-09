@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.15.0](https://github.com/chio-labs/streambuild/compare/v0.14.1...v0.15.0) (2026-08-09)
+
+
+### Features
+
+* scope Kafka consumer groups by target ([fc7f7c4](https://github.com/chio-labs/streambuild/commit/fc7f7c48b982d071b41270b48e5c6a2e2f39bc86))
+* scope Kafka consumer groups by target ([bbede77](https://github.com/chio-labs/streambuild/commit/bbede77019d6d8a609f18a7d8c6e321a395f2a81))
+
 ## [0.14.1](https://github.com/chio-labs/streambuild/compare/v0.14.0...v0.14.1) (2026-08-09)
 
 
