@@ -13,6 +13,16 @@ class DevRefactorTestCase:
 
 
 @dataclass(frozen=True)
+class BuildConflictScopeTestCase:
+    description: str
+    executed_logical_ids: tuple[str, ...]
+    context_logical_ids: tuple[str, ...]
+    expected_status: int
+    expected_started: bool
+    expected_detail_fragment: str
+
+
+@dataclass(frozen=True)
 class CompileOutcomeTestCase:
     description: str
     break_compile: bool

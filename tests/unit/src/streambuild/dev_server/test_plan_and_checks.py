@@ -18,6 +18,7 @@ from streambuild.dev_server.models import DevExecutionContext
 from streambuild.dev_server.types import ActivityTone, DevServerReporter
 from streambuild.executor.observability.constants import RUN_DISPLAY_COMMAND_ENV_VAR
 from tests.unit.src.streambuild.dev_server._test_types import (
+    BuildConflictScopeTestCase,
     ChecksRunTestCase,
     ChecksStatusTestCase,
     DevRefactorTestCase,
@@ -523,3 +524,61 @@ def test_given_unresponsive_run_when_starting_build_then_conflict_explains_retry
 
     assert response.status_code == 409
     assert response.json()["detail"] == test_case.expected_value
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        BuildConflictScopeTestCase(
+            description="disjoint active build launches",
+            executed_logical_ids=("model:inventory_clean",),
+            context_logical_ids=("source:inventory",),
+            expected_status=200,
+            expected_started=True,
+            expected_detail_fragment="new-run",
+        ),
+        BuildConflictScopeTestCase(
+            description="overlapping active model blocks",
+            executed_logical_ids=("model:orders_clean",),
+            context_logical_ids=(),
+            expected_status=409,
+            expected_started=False,
+            expected_detail_fragment="Run active-run is still running",
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_active_run_scope_when_starting_build_then_only_overlap_conflicts(
+    test_case: BuildConflictScopeTestCase,
+    tmp_path: Path,
+) -> None:
+    write_dev_server_project(project_dir=tmp_path)
+    client: TestClient = build_state_test_client(project_dir=tmp_path)
+    launch_payload: dict[str, object] = {
+        "invocationId": "new-run",
+        "command": "stb build --database analytics --select orders_clean",
+        "status": "starting",
+    }
+    with (
+        patch(
+            "streambuild.dev_server._helpers.server.api_routes.read_active_runs",
+            return_value=[
+                {
+                    "invocationId": "active-run",
+                    "status": "running",
+                    "lastSignalAgeSeconds": 10,
+                    "executedLogicalIds": list(test_case.executed_logical_ids),
+                    "contextLogicalIds": list(test_case.context_logical_ids),
+                }
+            ],
+        ),
+        patch(
+            "streambuild.dev_server.classes.build_process.BuildProcessManager.start",
+            return_value=launch_payload,
+        ) as start_build,
+    ):
+        response: Response = client.post("/api/build", json={"selectors": ["orders_clean"]})
+
+    assert response.status_code == test_case.expected_status
+    assert start_build.called is test_case.expected_started
+    assert test_case.expected_detail_fragment in response.text
