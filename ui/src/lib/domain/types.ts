@@ -419,8 +419,8 @@ export type GraphEdge = {
 	source: string;
 	target: string;
 	type: RefType;
-	/** True when data is actively moving along this edge. Drives the flow animation. */
-	flowing: boolean;
+	/** Unknown remains a visible driver; only measured stalls lose the driving hue. */
+	flowState: 'flowing' | 'stalled' | 'unknown';
 };
 
 export type Graph = { nodes: GraphNode[]; edges: GraphEdge[] };

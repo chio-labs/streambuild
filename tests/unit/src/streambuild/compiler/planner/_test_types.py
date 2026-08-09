@@ -288,6 +288,15 @@ class DirectPlanRejectionTestCase:
 
 
 @dataclass(frozen=True)
+class DirectReplayInputCompatibilityTestCase:
+    description: str
+    selected_model_names: tuple[str, ...]
+    replay_input_relation_name: str
+    removed_columns: tuple[str, ...]
+    expected_error_fragment: str
+
+
+@dataclass(frozen=True)
 class DirectUndeclaredRelationTestCase:
     description: str
     expected_preserved_relation_name: str

@@ -119,14 +119,19 @@
 	});
 
 	let selectedId = $state<string | null>(null);
+	let selectedIds = $state<Set<string>>(new Set());
 	let fitView = $state<(() => void) | undefined>();
 	let runOpen = $state<boolean>(false);
 
 	/** The graph selection seeds the run panel's --select flags (models only). */
 	const runSelection = $derived.by((): string[] => {
-		const node = selectedId ? graph.nodes.find((item) => item.id === selectedId) : undefined;
-		if (node === undefined || node.logicalType === 'source') return [];
-		return [node.logicalName];
+		return [
+			...new Set(
+				graph.nodes
+					.filter((node) => selectedIds.has(node.id) && node.logicalType !== 'source')
+					.map((node) => node.logicalName)
+			)
+		];
 	});
 	// Lanes is the default: it fits the viewport ~30% larger than boxes on the
 	// same graph, and its bounding box stays near viewport aspect because lane
@@ -138,7 +143,7 @@
 		return groupParam === 'boxes' ? 'boxes' : groupParam === 'none' ? 'none' : 'lanes';
 	});
 	let cyclicPairs = $state<[string, string][]>([]);
-	let canvas = $state<{ relayout: () => void } | undefined>();
+	let canvas = $state<{ relayout: () => void; clearSelection: () => void } | undefined>();
 
 	const selectedNode = $derived<GraphNode | null>(
 		selectedId ? (graph.nodes.find((node) => node.id === selectedId) ?? null) : null
@@ -337,6 +342,7 @@
 				{groupMode}
 				layoutSalt={mode}
 				bind:selectedId
+				bind:selectedIds
 				bind:fitView
 				onCycles={(pairs) => (cyclicPairs = pairs)}
 			/>
@@ -356,7 +362,11 @@
 				class="lineage-inspector max-h-[45vh] w-full shrink-0 overflow-y-auto border-t border-border md:max-h-none md:border-l md:border-t-0"
 				style="--inspector-width: {inspectorWidth}px"
 			>
-				<GraphInspector node={selectedNode} {mode} onclose={() => (selectedId = null)} />
+				<GraphInspector
+					node={selectedNode}
+					{mode}
+					onclose={() => canvas?.clearSelection()}
+				/>
 			</div>
 		{/if}
 	</div>

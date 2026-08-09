@@ -5,7 +5,8 @@
 		Controls,
 		type Node,
 		type Edge,
-		type NodeTypes
+		type NodeTypes,
+		type OnSelectionChange
 	} from '@xyflow/svelte';
 	import '@xyflow/svelte/dist/style.css';
 	import StreamNode from '$lib/components/lineage/stream-node.svelte';
@@ -28,7 +29,7 @@
 	import { neighbourEdgeIds, tracePath } from '$lib/lineage/trace';
 	import { nodeFields } from '$lib/lineage/node-fields.svelte';
 	import { modelByName } from '$lib/domain/derive';
-	import type { Graph, GraphNode, ModelStatus, Project, RefType } from '$lib/domain/types';
+	import type { Graph, GraphNode, GraphEdge, ModelStatus, Project, RefType } from '$lib/domain/types';
 
 	type Props = {
 		project: Project;
@@ -40,6 +41,7 @@
 		/** Extra key mixed into the relayout trigger, e.g. the parent's mode. */
 		layoutSalt?: string;
 		selectedId?: string | null;
+		selectedIds?: Set<string>;
 		/** Rendered held-back: in view for context, but not acted on. */
 		mutedIds?: Set<string>;
 		/** Rendered as directly asked for, rather than pulled in by consequence. */
@@ -67,6 +69,7 @@
 		compactNodes = false,
 		layoutSalt = '',
 		selectedId = $bindable(null),
+		selectedIds = $bindable(new Set<string>()),
 		mutedIds,
 		emphasisIds,
 		notes,
@@ -151,7 +154,7 @@
 
 	function edgeClass(
 		type: RefType,
-		flowing: boolean,
+		flowState: GraphEdge['flowState'],
 		dimmed: boolean,
 		back: boolean,
 		intoView: boolean = false
@@ -169,9 +172,11 @@
 						intoView
 						? 'sb-edge-view-read'
 						: 'sb-edge-reference'
-					: flowing
+					: flowState === 'flowing'
 						? 'sb-edge-driving-flowing'
-						: 'sb-edge-driving';
+						: flowState === 'stalled'
+							? 'sb-edge-driving-stalled'
+							: 'sb-edge-driving';
 		// Against-rank cross-box edges get routed clear of the boxes so they read
 		// as deliberate rather than as a tangle.
 		return back ? `${base} sb-edge-back` : base;
@@ -188,8 +193,8 @@
 			// must re-render even though the map cardinality is unchanged.
 			[...(notes ?? new Map())].map(([id, note]) => `${id}=${note.text}`).join('|'),
 			graph.nodes.length,
-			graph.edges.length,
 			graph.nodes.map((node) => node.id).join('|').length,
+			graph.edges.map((edge) => `${edge.id}:${edge.type}:${edge.flowState}`).join('|'),
 			[...collapsed].sort().join(','),
 			Object.entries(nodeFields.value)
 				.filter(([, on]) => on)
@@ -216,6 +221,7 @@
 				id: node.id,
 				type: 'stream',
 				position: { x: 0, y: 0 },
+				selected: selectedIds.has(node.id),
 				data: {
 					...node,
 					compact: compactNodes,
@@ -228,7 +234,7 @@
 				id: edge.id,
 				source: edge.source,
 				target: edge.target,
-				class: edgeClass(edge.type, edge.flowing, false, false, viewTargets.has(edge.target))
+				class: edgeClass(edge.type, edge.flowState, false, false, viewTargets.has(edge.target))
 			}));
 			flowNodes = layoutGraph(nextNodes, nextEdges, {
 				rankSep: compactNodes ? 96 : 150,
@@ -249,6 +255,7 @@
 				id: node.id,
 				type: 'stream',
 				position: { x: 0, y: 0 },
+				selected: selectedIds.has(node.id),
 				data: {
 					...node,
 					compact: compactNodes,
@@ -304,7 +311,7 @@
 				id: edge.id,
 				source: edge.source,
 				target: edge.target,
-				class: edgeClass(edge.type, edge.flowing, false, false, viewTargets.has(edge.target))
+				class: edgeClass(edge.type, edge.flowState, false, false, viewTargets.has(edge.target))
 			}));
 			boxes = [];
 			onCycles?.([]);
@@ -324,7 +331,13 @@
 		};
 
 		const seenEdge = new Set<string>();
-		const remappedEdges: { id: string; source: string; target: string; type: RefType; flowing: boolean }[] = [];
+		const remappedEdges: {
+			id: string;
+			source: string;
+			target: string;
+			type: RefType;
+			flowState: GraphEdge['flowState'];
+		}[] = [];
 		for (const edge of graph.edges) {
 			const source: string = remap(edge.source);
 			const target: string = remap(edge.target);
@@ -332,7 +345,13 @@
 			const signature = `${source}->${target}`;
 			if (seenEdge.has(signature)) continue;
 			seenEdge.add(signature);
-			remappedEdges.push({ id: edge.id, source, target, type: edge.type, flowing: edge.flowing });
+			remappedEdges.push({
+				id: edge.id,
+				source,
+				target,
+				type: edge.type,
+				flowState: edge.flowState
+			});
 		}
 
 		const statusCountsByGroup = new Map<string, Record<ModelStatus, number>>();
@@ -350,6 +369,7 @@
 			id: node.id,
 			type: 'stream',
 			position: { x: 0, y: 0 },
+			selected: selectedIds.has(node.id),
 			data: {
 				...node,
 				compact: compactNodes,
@@ -448,14 +468,20 @@
 			id: edge.id,
 			source: edge.source,
 			target: edge.target,
-			class: edgeClass(edge.type, edge.flowing, false, back.has(edge.id), viewTargets.has(edge.target))
+			class: edgeClass(
+				edge.type,
+				edge.flowState,
+				false,
+				back.has(edge.id),
+				viewTargets.has(edge.target)
+			)
 		}));
 		boxes = result.boxes;
 	}
 
 	// ── highlight ─────────────────────────────────────────────────────────────
 	const litEdgeIds = $derived.by((): Set<string> | null => {
-		if (selectedId) return tracePath(new Set([selectedId]), flowEdges).edges;
+		if (selectedIds.size) return tracePath(selectedIds, flowEdges).edges;
 		if (hoveredId) return neighbourEdgeIds(hoveredId, flowEdges);
 		return null;
 	});
@@ -471,7 +497,7 @@
 			const wasBack: boolean = (edge.class ?? '').includes('sb-edge-back');
 			const nextClass: string = edgeClass(
 				domainEdge.type,
-				domainEdge.flowing,
+				domainEdge.flowState,
 				dimmed,
 				wasBack,
 				viewTargets.has(domainEdge.target)
@@ -491,10 +517,21 @@
 		return id;
 	}
 
-	function onCanvasClick(event: Event): void {
-		const id: string | null = nodeIdFromEvent(event);
-		selectedId = id === selectedId ? null : id;
-	}
+
+	const onSelectionChange: OnSelectionChange = ({ nodes }): void => {
+		const nextIds = new Set(
+			nodes
+				.map((node) => node.id)
+				.filter(
+					(id) =>
+						!id.startsWith('group:') && !id.startsWith('lane:') && !id.startsWith('collapsed:')
+				)
+		);
+		selectedIds = nextIds;
+		if (selectedId === null || !nextIds.has(selectedId)) {
+			selectedId = nodes.at(-1)?.id ?? null;
+		}
+	};
 
 	function onCanvasHover(event: Event): void {
 		hoveredId = nodeIdFromEvent(event);
@@ -503,12 +540,17 @@
 	export function relayout(): void {
 		appliedKey = '';
 	}
+
+	export function clearSelection(): void {
+		selectedId = null;
+		selectedIds = new Set();
+		flowNodes = flowNodes.map((node) => (node.selected ? { ...node, selected: false } : node));
+	}
 </script>
 
 <div
 	class="h-full w-full"
 	role="presentation"
-	onclick={onCanvasClick}
 	onmouseover={onCanvasHover}
 	onmouseout={() => (hoveredId = null)}
 	onfocus={onCanvasHover}
@@ -524,6 +566,9 @@
 		maxZoom={1.8}
 		zoomOnScroll={!embedded}
 		preventScrolling={!embedded}
+		multiSelectionKey={['Meta', 'Control', 'Shift']}
+		onselectionchange={onSelectionChange}
+		onnodeclick={({ node }) => (selectedId = node.id)}
 		proOptions={{ hideAttribution: true }}
 	>
 		<Background bgColor="var(--background)" patternColor="var(--sb-grid)" gap={22} />
