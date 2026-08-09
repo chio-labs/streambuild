@@ -20,7 +20,6 @@ from streambuild.adapter.models import (
     AdapterMetadataState,
     AdapterMutationResult,
     AdapterNodeResultRecord,
-    AdapterQualityScheduleClaim,
     AdapterQueryResult,
     AdapterReadinessRequest,
     AdapterReadinessRootObservation,
@@ -129,34 +128,6 @@ class AdapterConnection(ABC):
         """Render the current-manifest quality status query when supported."""
 
         return ""
-
-    def render_scheduled_quality_slot_claims(
-        self,
-        *,
-        database: str,
-        project_identity: str,
-        target_identity: str,
-        owner_id: str,
-        claims: tuple[AdapterQualityScheduleClaim, ...],
-    ) -> tuple[str, ...]:
-        """Render warehouse mutations that register contenders for logical schedule slots."""
-
-        del database, project_identity, target_identity, owner_id, claims
-        return ()
-
-    def load_scheduled_quality_slot_claim_winners(
-        self,
-        *,
-        database: str,
-        project_identity: str,
-        target_identity: str,
-        owner_id: str,
-        claims: tuple[AdapterQualityScheduleClaim, ...],
-    ) -> frozenset[AdapterQualityScheduleClaim] | None:
-        """Load slots won by this process, or return None when election is unsupported."""
-
-        del database, project_identity, target_identity, owner_id, claims
-        return None
 
     def render_run_events(
         self,

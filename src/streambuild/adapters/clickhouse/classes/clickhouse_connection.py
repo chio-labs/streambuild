@@ -26,7 +26,6 @@ from streambuild.adapter.models import (
     AdapterMetadataState,
     AdapterMutationResult,
     AdapterNodeResultRecord,
-    AdapterQualityScheduleClaim,
     AdapterQueryResult,
     AdapterReadinessRequest,
     AdapterReadinessRootObservation,
@@ -51,13 +50,11 @@ from streambuild.adapters.clickhouse._helpers.managed_tables import (
 )
 from streambuild.adapters.clickhouse._helpers.metadata import (
     load_clickhouse_direct_fingerprints,
-    load_clickhouse_scheduled_quality_slot_claim_winners,
     render_clickhouse_direct_fingerprint_observations,
     render_clickhouse_latest_node_status_query,
     render_clickhouse_metadata_migration_workflow,
     render_clickhouse_metadata_state,
     render_clickhouse_run_event_inserts,
-    render_clickhouse_scheduled_quality_slot_claims,
 )
 from streambuild.adapters.clickhouse._helpers.readiness import compare_clickhouse_readiness
 from streambuild.adapters.clickhouse._helpers.rendering import (
@@ -267,45 +264,6 @@ class ClickHouseConnection(AdapterConnection):
             project_identity=project_identity,
             target_identity=target_identity,
             nodes=nodes,
-        )
-
-    def render_scheduled_quality_slot_claims(
-        self,
-        *,
-        database: str,
-        project_identity: str,
-        target_identity: str,
-        owner_id: str,
-        claims: tuple[AdapterQualityScheduleClaim, ...],
-    ) -> tuple[str, ...]:
-        """Render warehouse-visible contenders for each logical slot."""
-
-        return render_clickhouse_scheduled_quality_slot_claims(
-            database=database,
-            project_identity=project_identity,
-            target_identity=target_identity,
-            owner_id=owner_id,
-            claims=claims,
-        )
-
-    def load_scheduled_quality_slot_claim_winners(
-        self,
-        *,
-        database: str,
-        project_identity: str,
-        target_identity: str,
-        owner_id: str,
-        claims: tuple[AdapterQualityScheduleClaim, ...],
-    ) -> frozenset[AdapterQualityScheduleClaim] | None:
-        """Load slots where this connection's owner has the earliest claim."""
-
-        return load_clickhouse_scheduled_quality_slot_claim_winners(
-            connection=self,
-            database=database,
-            project_identity=project_identity,
-            target_identity=target_identity,
-            owner_id=owner_id,
-            claims=claims,
         )
 
     def validate_metadata_state(self, database: str) -> None:

@@ -88,7 +88,7 @@ def wait_for_scheduler_api(*, process: subprocess.Popen[str], api_port: int) -> 
 
 def wait_for_scheduled_result(
     *,
-    processes: tuple[subprocess.Popen[str], subprocess.Popen[str]],
+    processes: tuple[subprocess.Popen[str], ...],
     client: Client,
     database: str,
 ) -> None:

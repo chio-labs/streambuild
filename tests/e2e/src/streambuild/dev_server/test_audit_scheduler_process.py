@@ -1,5 +1,4 @@
 import subprocess
-import time
 from pathlib import Path
 from typing import cast
 
@@ -65,7 +64,6 @@ def test_given_scheduler_enabled_dev_process_when_started_then_automatic_run_is_
         column_names=["order_id", "line_total"],
     )
     api_port: int = available_port()
-    second_api_port: int = available_port()
     repository_root: Path = Path(__file__).resolve().parents[5]
     process: subprocess.Popen[str] = start_dev_process(
         repository_root=repository_root,
@@ -77,29 +75,15 @@ def test_given_scheduler_enabled_dev_process_when_started_then_automatic_run_is_
         database=isolated_e2e_clickhouse_database,
         api_port=api_port,
     )
-    second_process: subprocess.Popen[str] = start_dev_process(
-        repository_root=repository_root,
-        project_dir=tmp_path,
-        host=isolated_e2e_clickhouse_connection_settings.host,
-        port=isolated_e2e_clickhouse_connection_settings.port,
-        username=isolated_e2e_clickhouse_connection_settings.username,
-        password=isolated_e2e_clickhouse_connection_settings.password,
-        database=isolated_e2e_clickhouse_database,
-        api_port=second_api_port,
-    )
-
     try:
         _ = wait_for_scheduler_api(process=process, api_port=api_port)
-        _ = wait_for_scheduler_api(process=second_process, api_port=second_api_port)
         wait_for_scheduled_result(
-            processes=(process, second_process),
+            processes=(process,),
             client=isolated_e2e_clickhouse_client,
             database=isolated_e2e_clickhouse_database,
         )
-        time.sleep(0.2)
-        scheduler_payloads: tuple[dict[str, object], dict[str, object]] = (
-            wait_for_scheduler_api(process=process, api_port=api_port),
-            wait_for_scheduler_api(process=second_process, api_port=second_api_port),
+        scheduler_payload: dict[str, object] = wait_for_scheduler_api(
+            process=process, api_port=api_port
         )
         runs_payload: list[dict[str, object]] = cast(
             list[dict[str, object]],
@@ -111,7 +95,6 @@ def test_given_scheduler_enabled_dev_process_when_started_then_automatic_run_is_
         )
     finally:
         stop_process(process)
-        stop_process(second_process)
 
     result_count: int = int(
         isolated_e2e_clickhouse_client.query(
@@ -119,22 +102,11 @@ def test_given_scheduler_enabled_dev_process_when_started_then_automatic_run_is_
             "_streambuild_node_results WHERE trigger = 'scheduled'"
         ).result_rows[0][0]
     )
-    claim_count: int = int(
-        isolated_e2e_clickhouse_client.query(
-            f"SELECT count() FROM {isolated_e2e_clickhouse_database}."
-            "_streambuild_audit_schedule_claims"
-        ).result_rows[0][0]
-    )
-    scheduler_health_states: set[object] = {
-        cast(dict[str, object], payload["health"])["state"] for payload in scheduler_payloads
-    }
-    scheduler_states: set[object] = {payload["state"] for payload in scheduler_payloads}
+    scheduler_health: dict[str, object] = cast(dict[str, object], scheduler_payload["health"])
 
     assert process.poll() is not None
-    assert second_process.poll() is not None
-    assert "blocked" in scheduler_health_states
-    assert test_case.expected_scheduler_state in scheduler_states
+    assert scheduler_health["state"] == test_case.expected_scheduler_state
+    assert scheduler_payload["state"] == test_case.expected_scheduler_state
     assert runs_payload[0]["mode"] == test_case.expected_run_mode
     assert checks_payload[0]["status"] == test_case.expected_result_status
     assert result_count == 1
-    assert claim_count == 2
