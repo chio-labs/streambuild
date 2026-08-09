@@ -13,3 +13,12 @@ class RunEventSinkTestCase:
 class RunEventHeartbeatTestCase:
     description: str
     expected_event_kind: str
+
+
+@dataclass(frozen=True)
+class RunEventDisplayCommandTestCase:
+    description: str
+    command: str
+    environment_command: str
+    explicit_command: str | None
+    expected_command: str

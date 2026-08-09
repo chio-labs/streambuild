@@ -133,7 +133,16 @@
 	const completedStatements = $derived(
 		events.filter((event) => event.event === 'statement_completed')
 	);
-	const totalStatements = $derived(startedEvent?.totalStatements ?? null);
+	const totalStatements = $derived(
+		(startedEvent?.totalStatements ?? 0) > 0 ? (startedEvent?.totalStatements ?? null) : null
+	);
+	const statementSummary = $derived(
+		totalStatements !== null
+			? `${completedStatements.length}/${totalStatements}`
+			: !running && completedStatements.length > 0
+				? `${completedStatements.length}`
+				: null
+	);
 	const displayCommand = $derived(commandLine.startsWith('stb ') ? commandLine : `stb ${commandLine}`);
 	const retryHref = $derived.by((): string | null => {
 		if (running || !(commandLine === 'build' || commandLine.startsWith('stb build'))) return null;
@@ -238,7 +247,9 @@
 	);
 
 	// A promotion rebinds views; nothing is rebuilt, so the vocabulary changes.
-	const isPromotion = $derived(commandLine.startsWith('deployment promote'));
+	const isPromotion = $derived(
+		(startedEvent?.command ?? record?.command ?? commandLine) === 'deployment promote'
+	);
 
 	const notes = $derived.by(() => {
 		const map = new Map<string, { text: string; tone: 'info' | 'warn' }>();
@@ -287,24 +298,36 @@
 			.slice(0, 400)
 	);
 	const metadataPreparationCount = $derived(
-		Math.max(
+		numberedStepCount('prepare_metadata_')
+	);
+	const metadataMigrationCount = $derived(numberedStepCount('migrate_metadata_'));
+
+	function numberedStepCount(prefix: string): number {
+		return Math.max(
 			0,
 			...events.map((event) => {
-				const match = event.stepId?.match(/^prepare_metadata_(\d+)$/);
+				const match = event.stepId?.match(new RegExp(`^${prefix}(\\d+)$`));
 				return match ? Number(match[1]) : 0;
 			})
-		)
-	);
+		);
+	}
 
 	function eventStepLabel(event: RunEvent): string {
 		const stepId = event.stepId;
-		if (stepId === null) return event.event === 'run_completed' ? (event.outcome ?? 'completed') : 'run started';
+		if (stepId === null) {
+			return event.event === 'run_completed' ? (event.outcome ?? 'completed') : displayCommand;
+		}
 		const metadataStep = stepId.match(/^prepare_metadata_(\d+)$/);
 		if (metadataStep) {
 			return `Prepare metadata schema (${metadataStep[1]}/${metadataPreparationCount})`;
 		}
 		const persistenceStep = stepId.match(/^persist_candidate_metadata_(\d+)$/);
 		if (persistenceStep) return `Record deployment metadata (${persistenceStep[1]})`;
+		const migrationStep = stepId.match(/^migrate_metadata_(\d+)$/);
+		if (migrationStep) {
+			return `Prepare metadata schema (${Number(migrationStep[1])}/${metadataMigrationCount})`;
+		}
+		if (/^persist_publish_event_\d+$/.test(stepId)) return 'Record publication';
 		const exact: Record<string, string> = {
 			prepare_target_database: 'Ensure target database exists',
 			assert_candidate_metadata: 'Validate deployment metadata',
@@ -317,6 +340,8 @@
 		if (exact[stepId]) return exact[stepId];
 		const prefixes: [string, string][] = [
 			['assert_candidate_relation_', 'Check candidate relation'],
+			['replace_stable_binding_', 'Publish'],
+			['remove_stable_binding_', 'Unpublish'],
 			['realize_', 'Create relation'],
 			['activate_source_', 'Activate source'],
 			['capture_watermark_', 'Capture source watermark'],
@@ -327,6 +352,13 @@
 		];
 		for (const [prefix, label] of prefixes) {
 			if (stepId.startsWith(prefix)) return `${label} · ${resourceLabel(stepId.slice(prefix.length))}`;
+		}
+		const numbered: [string, string][] = [
+			['remove_obsolete_binding_', 'Remove obsolete binding'],
+			['cleanup_relation_', 'Delete retained relation']
+		];
+		for (const [prefix, label] of numbered) {
+			if (stepId.startsWith(prefix)) return `${label} (${Number(stepId.slice(prefix.length))})`;
 		}
 		return stepId.replaceAll('_', ' ');
 	}
@@ -401,8 +433,8 @@
 		>
 		<span class="text-muted-foreground shrink-0 font-mono text-[11px]">
 			{#if durationSeconds !== null}{formatDuration(durationSeconds)}{/if}
-			{#if totalStatements !== null}
-				· {completedStatements.length}/{totalStatements} statements
+			{#if statementSummary !== null}
+				· {statementSummary} statements
 			{/if}
 		</span>
 		{#if retryHref}
