@@ -392,16 +392,20 @@
      mutable_reference  emits a replay warning and disqualifies the anchor — amber
 */
 /*
- * A driving edge that is not currently flowing — the model is stalled, or the
- * source is idle.
+ * Unknown telemetry keeps the driving hue but not the animation. Only a
+ * positively identified stall gives up both.
  *
- * It keeps the dash and the weight, and gives up only the hue and the
- * animation. Edge TYPE lives on the dash pattern and stroke width; flow STATE
- * lives on colour and motion. Dropping the dash here would put both on one
- * channel and make a stalled spine read as an ordinary reference edge, which is
- * the exact opposite of what it means.
+ * A confirmed stall keeps the dash and weight, and gives up only the hue and
+ * animation. Edge TYPE lives on dash pattern and stroke width; flow STATE lives
+ * on colour and motion. Dropping the dash would make a stalled spine read as an
+ * ordinary reference edge, which is the opposite of what it means.
  */
 .sb-edge-driving path.svelte-flow__edge-path {
+	stroke: var(--sb-secondary);
+	stroke-width: 2.25px;
+	stroke-dasharray: 5 4;
+}
+.sb-edge-driving-stalled path.svelte-flow__edge-path {
 	stroke: var(--sb-edge);
 	stroke-width: 2.25px;
 	stroke-dasharray: 5 4;

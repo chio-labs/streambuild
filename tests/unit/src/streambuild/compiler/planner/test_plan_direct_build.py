@@ -32,6 +32,7 @@ from tests.unit.src.streambuild.compiler.planner._test_types import (
     DirectModelInputReplayColumnsTestCase,
     DirectMutableWarningTestCase,
     DirectPlanRejectionTestCase,
+    DirectReplayInputCompatibilityTestCase,
     DirectScopeTestCase,
     DirectSqlChangeTestCase,
     DirectUndeclaredRelationTestCase,
@@ -45,6 +46,7 @@ from tests.unit.src.streambuild.compiler.planner.helpers import (
     plan_direct_scope,
     relation_operation_summaries,
     replay_root_summaries,
+    without_catalog_columns,
     write_direct_multi_upstream_view_project,
     write_direct_mutable_scope_project,
 )
@@ -154,6 +156,43 @@ def test_given_selection_when_planning_direct_then_scope_and_replay_roots_match(
     )
     assert all(prerequisite.present for prerequisite in plan.prerequisite_scope)
     assert replay_root_summaries(plan=plan) == test_case.expected_replay_roots
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DirectReplayInputCompatibilityTestCase(
+            description="retained model lacks offset replay identity",
+            selected_model_names=("delta",),
+            replay_input_relation_name="tbl__alpha",
+            removed_columns=("_replay_partition", "_replay_offset"),
+            expected_error_fragment=(
+                "cannot replay 'delta' from preserved upstream relation 'tbl__alpha': required "
+                "replay columns are missing: _replay_partition, _replay_offset"
+            ),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_incompatible_replay_input_when_planning_direct_then_rejects_before_teardown(
+    direct_scope_analysis: CompileAnalysis,
+    test_case: DirectReplayInputCompatibilityTestCase,
+) -> None:
+    base_snapshot: DirectWarehouseSnapshot = build_settled_direct_snapshot()
+    snapshot: DirectWarehouseSnapshot = without_catalog_columns(
+        snapshot=base_snapshot,
+        relation_name=test_case.replay_input_relation_name,
+        column_names=test_case.removed_columns,
+    )
+
+    with pytest.raises(DirectPlanError) as rejection:
+        plan_direct_scope(
+            analysis=direct_scope_analysis,
+            snapshot=snapshot,
+            selected_model_names=test_case.selected_model_names,
+        )
+
+    assert test_case.expected_error_fragment in str(rejection.value)
 
 
 @pytest.mark.parametrize(
