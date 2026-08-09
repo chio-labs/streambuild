@@ -3,7 +3,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from streambuild.adapter.models import AdapterQueryResult
-from streambuild.dev_server._helpers.runs_query import (
+from streambuild.dev_server._helpers.queries.runs_query import (
     derive_run_duration_ms,
     derive_run_status,
     read_latest_direct_build_materialization,

@@ -274,3 +274,49 @@ class TopicsUnavailableTestCase:
 class TopicsRouteTestCase:
     description: str
     expected_topic_name: str
+
+
+@dataclass(frozen=True)
+class DeploymentsPayloadTestCase:
+    description: str
+    expected_deployment_ids: tuple[str, ...]
+    expected_states: tuple[str, ...]
+    expected_model_counts: tuple[int, ...]
+    expected_rows: tuple[int, ...]
+
+
+@dataclass(frozen=True)
+class DeploymentDetailTestCase:
+    description: str
+    deployment_id: str
+    expected_state: str
+    expected_logical_names: tuple[str, ...]
+    expected_staged_rows: tuple[int, ...]
+    expected_live_rows: tuple[int | None, ...]
+    expected_new_flags: tuple[bool, ...]
+    expected_orphan_relations: int
+
+
+@dataclass(frozen=True)
+class DeploymentDetailMissingTestCase:
+    description: str
+    deployment_id: str
+    expected_payload: dict[str, object] | None
+
+
+@dataclass(frozen=True)
+class BoundRelationStatsTestCase:
+    description: str
+    stats: tuple[tuple[str, int, int, int], ...]
+    bindings: tuple[tuple[str, str], ...]
+    expected_rows_by_relation: tuple[tuple[str, int], ...]
+    expected_parts_by_relation: tuple[tuple[str, int], ...]
+
+
+@dataclass(frozen=True)
+class DeploymentDiffPayloadTestCase:
+    description: str
+    expected_statuses: tuple[str, ...]
+    expected_row_pairs: tuple[tuple[int | None, int | None], ...]
+    expected_added_columns: tuple[tuple[str, ...], ...]
+    expected_removed_columns: tuple[tuple[str, ...], ...]
