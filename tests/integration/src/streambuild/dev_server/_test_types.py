@@ -2,6 +2,15 @@ from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
+class ActivityEvidenceTestCase:
+    description: str
+    relation_name: str
+    expected_state: str
+    expected_source: str
+    expected_rows_written: int
+
+
+@dataclass(frozen=True)
 class ScheduledAuditWarehouseTestCase:
     description: str
     expected_first_tick_count: int

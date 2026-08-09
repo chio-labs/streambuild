@@ -176,6 +176,18 @@ export const OWNERSHIP_LABEL: Record<OwnershipState, string> = {
  */
 export type ModelStatus = 'fresh' | 'lagging' | 'stalled' | 'drift' | 'source';
 
+export type ModelActivity = {
+	state: 'moving' | 'idle' | 'stalled' | 'unknown';
+	source: 'query_views_log' | 'part_log' | 'system_parts' | 'unavailable';
+	sourceAvailable: boolean;
+	approximate: boolean;
+	lastTriggeredAt: string | null;
+	lastWriteAt: string | null;
+	rowsWritten: number;
+	windowSeconds: number;
+	detail: string;
+};
+
 export type SqlArtifacts = {
 	/** The authored .sql file including its MODEL() header. */
 	authored: string;
@@ -194,6 +206,7 @@ export type ModelLiveState = {
 	/** Start of the extent this table actually holds — may predate source retention. */
 	oldestRowAt: string | null;
 	lagSeconds: number | null;
+	activity: ModelActivity;
 	/** Live DDL matches compiled DDL. False = drift. */
 	inSyncWithCompiled: boolean;
 	/** Server-reported reasons the live warehouse diverges from compiled state. */

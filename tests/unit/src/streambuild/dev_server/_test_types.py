@@ -75,6 +75,20 @@ class StateFieldTestCase:
 
 
 @dataclass(frozen=True)
+class ActivityPayloadTestCase:
+    description: str
+    capabilities: tuple[str, ...]
+    view_rows: tuple[tuple[object, ...], ...]
+    part_log_rows: tuple[tuple[object, ...], ...]
+    parts_rows: tuple[tuple[object, ...], ...]
+    expected_state: str
+    expected_source: str
+    expected_approximate: bool
+    expected_rows_written: int
+    expected_last_triggered_at: str | None
+
+
+@dataclass(frozen=True)
 class PlanEndpointTestCase:
     description: str
     selectors: tuple[str, ...]

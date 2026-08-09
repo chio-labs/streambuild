@@ -19,6 +19,7 @@ IDENTITY_DRIFT_STATUSES: frozenset[str] = frozenset(
 )
 CANCEL_GRACE_SECONDS: float = 15.0
 TERMINATE_GRACE_SECONDS: float = 3.0
+ACTIVITY_WINDOW_SECONDS: int = 120
 THROUGHPUT_WINDOW_LADDER: tuple[tuple[int, int], ...] = (
     (3600, 60),
     (86400, 1800),

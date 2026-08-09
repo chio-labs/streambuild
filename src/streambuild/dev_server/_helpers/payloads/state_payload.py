@@ -32,6 +32,7 @@ from streambuild.compiler.discovery.models import (
     SourceFreshnessPolicy,
 )
 from streambuild.compiler.pipeline.models import CompileAnalysis
+from streambuild.dev_server._helpers.payloads.activity_payload import read_model_activity
 from streambuild.dev_server.classes.kafka_lag_reader import KafkaLagReader
 from streambuild.dev_server.classes.kafka_topic_reader import KafkaTopicReader
 from streambuild.dev_server.constants import THROUGHPUT_WINDOW_LADDER
@@ -89,6 +90,17 @@ def build_state_payload(
         connection=connection,
         database=database,
     )
+    model_relation_names: tuple[str, ...] = tuple(
+        analysis.realized_project.relation_name_by_logical_key[model.key]
+        for model in analysis.compiled_project.models
+        if isinstance(model, CompiledTableModel)
+    )
+    activity_by_relation: dict[str, dict[str, object]] = read_model_activity(
+        connection=connection,
+        database=database,
+        relation_names=model_relation_names,
+        captured_at=captured_at,
+    )
     return {
         "capturedAt": captured_at,
         "models": _model_states(
@@ -97,6 +109,7 @@ def build_state_payload(
             stats=stats,
             extents=extents,
             captured_at=captured_at,
+            activity_by_relation=activity_by_relation,
         ),
         "sources": _source_states(
             analysis=analysis,
@@ -190,6 +203,7 @@ def _model_states(
     stats: dict[str, dict[str, int]],
     extents: dict[str, dict[str, object]],
     captured_at: str,
+    activity_by_relation: dict[str, dict[str, object]],
 ) -> dict[str, dict[str, object]]:
     policy_by_model: dict[str, SourceFreshnessPolicy | None] = _policies_by_model(analysis)
     states: dict[str, dict[str, object]] = {}
@@ -215,6 +229,7 @@ def _model_states(
                 captured_at=captured_at,
                 policy=policy_by_model.get(model.key.name),
             ),
+            "activity": activity_by_relation.get(relation_name),
             "drift": bool(drift_reasons),
             "driftReasons": list(drift_reasons),
         }

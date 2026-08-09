@@ -104,8 +104,10 @@ export function testCounts(tests: SqlTest[]): CheckCounts {
  * driving but does not claim motion through animation.
  */
 function modelFlowState(model: Model): GraphEdge['flowState'] {
-	if (model.kind !== 'table' || model.live.lagSeconds === null) return 'unknown';
-	return model.status === 'stalled' ? 'stalled' : 'flowing';
+	if (model.kind !== 'table') return 'unknown';
+	if (model.live.activity.state === 'moving') return 'flowing';
+	if (model.live.activity.state === 'stalled') return 'stalled';
+	return 'unknown';
 }
 
 function sourceGraphNode(project: Project, source: Source): GraphNode {
