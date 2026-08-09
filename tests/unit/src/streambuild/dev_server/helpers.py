@@ -394,7 +394,8 @@ def build_fake_state_connection(
                     "run_started",
                     None,
                     None,
-                    '{"command": "build"}',
+                    '{"command": "build", "executedLogicalIds": ["model:orders"], '
+                    '"contextLogicalIds": ["source:order_events"]}',
                 ),
                 (
                     "inv-42",
@@ -429,7 +430,8 @@ def build_fake_state_connection(
                     "run_started",
                     None,
                     None,
-                    '{"command": "build"}',
+                    '{"command": "build", "executedLogicalIds": ["model:orders"], '
+                    '"contextLogicalIds": ["source:order_events"]}',
                 ),
                 (
                     "inv-42",
@@ -734,9 +736,12 @@ def build_deployment_mapping(*, relation_name: str) -> AdapterPreparedObjectMapp
     """One prepared mapping whose logical name is the relation without its suffix."""
 
     logical_name: str = relation_name.rsplit("__", 1)[0]
+    object_type_by_prefix: dict[str, str] = {"mv": "materialized_view", "tbl": "table"}
     return AdapterPreparedObjectMapping(
         logical_key=AdapterMetadataObjectKey(
-            database="analytics", object_type="table", name=logical_name
+            database="analytics",
+            object_type=object_type_by_prefix[logical_name.partition("__")[0]],
+            name=logical_name,
         ),
         physical_name=relation_name,
         logical_model_name=logical_name,
@@ -802,6 +807,121 @@ def build_fake_deployment_connection() -> FakeDeploymentConnection:
                     database="analytics",
                     logical_name="tbl__revenue",
                     physical_name=f"tbl__revenue__{DEPLOYMENT_ACTIVE_ID}",
+                ),
+            ),
+            physical_candidates=(),
+        ),
+    )
+
+
+def build_fake_partial_promotion_connection() -> FakeDeploymentConnection:
+    """A staged successor with one binding switched before promotion failed."""
+
+    return FakeDeploymentConnection(
+        catalog=build_deployment_catalog(
+            relation_names=DEPLOYMENT_ACTIVE_RELATIONS + DEPLOYMENT_STAGED_RELATIONS
+        ),
+        results_by_query=build_deployment_stats_result(storage_rows=_DEPLOYMENT_STORAGE_ROWS),
+        warehouse_timestamp="2026-04-10 01:00:00.000",
+        inventory=AdapterDeploymentInventory(
+            deployments=(
+                build_deployment_record(
+                    deployment_id=DEPLOYMENT_ACTIVE_ID,
+                    relations=DEPLOYMENT_ACTIVE_RELATIONS,
+                    status="published",
+                ),
+                build_deployment_record(
+                    deployment_id=DEPLOYMENT_STAGED_ID,
+                    relations=DEPLOYMENT_STAGED_RELATIONS,
+                    status="staged",
+                ),
+            ),
+            publish_events=(
+                AdapterPublishEventRecord(
+                    deployment_id=DEPLOYMENT_ACTIVE_ID,
+                    published_at="2026-04-08 09:15:00.000000",
+                    logical_view_names=("tbl__orders", "tbl__revenue"),
+                ),
+            ),
+        ),
+        managed_state=InspectedManagedTableState(
+            active_bindings=(
+                InspectedActiveTableBinding(
+                    database="analytics",
+                    logical_name="tbl__orders",
+                    physical_name=f"tbl__orders__{DEPLOYMENT_STAGED_ID}",
+                ),
+                InspectedActiveTableBinding(
+                    database="analytics",
+                    logical_name="tbl__revenue",
+                    physical_name=f"tbl__revenue__{DEPLOYMENT_ACTIVE_ID}",
+                ),
+            ),
+            physical_candidates=(),
+        ),
+    )
+
+
+def build_fake_candidate_only_promotion_connection() -> FakeDeploymentConnection:
+    """A renamed binding whose staged candidate appears new but removes its live predecessor."""
+
+    active_relation: str = f"tbl__orders_legacy__{DEPLOYMENT_ACTIVE_ID}"
+    staged_relation: str = f"tbl__orders_current__{DEPLOYMENT_STAGED_ID}"
+    active_mapping: AdapterPreparedObjectMapping = AdapterPreparedObjectMapping(
+        logical_key=AdapterMetadataObjectKey(
+            database="analytics", object_type="table", name="tbl__orders_legacy"
+        ),
+        physical_name=active_relation,
+        logical_model_name="orders",
+    )
+    staged_mapping: AdapterPreparedObjectMapping = AdapterPreparedObjectMapping(
+        logical_key=AdapterMetadataObjectKey(
+            database="analytics", object_type="table", name="tbl__orders_current"
+        ),
+        physical_name=staged_relation,
+        logical_model_name="orders",
+    )
+    return FakeDeploymentConnection(
+        catalog=build_deployment_catalog(relation_names=(active_relation, staged_relation)),
+        results_by_query=build_deployment_stats_result(
+            storage_rows=((active_relation, 1000, 4096), (staged_relation, 1200, 5120))
+        ),
+        warehouse_timestamp="2026-04-10 01:00:00.000",
+        inventory=AdapterDeploymentInventory(
+            deployments=(
+                AdapterDeploymentRecord(
+                    deployment_id=DEPLOYMENT_ACTIVE_ID,
+                    created_at="2026-04-08 09:12:00.000000",
+                    status="published",
+                    replay_lineage_mode="offsets",
+                    selected_root_keys=(),
+                    warning_codes=(),
+                    prepared_object_mappings=(active_mapping,),
+                ),
+                AdapterDeploymentRecord(
+                    deployment_id=DEPLOYMENT_STAGED_ID,
+                    created_at="2026-04-10 00:55:00.000000",
+                    status="staged",
+                    replay_lineage_mode="offsets",
+                    selected_root_keys=(),
+                    warning_codes=(),
+                    prepared_object_mappings=(staged_mapping,),
+                ),
+            ),
+            publish_events=(
+                AdapterPublishEventRecord(
+                    deployment_id=DEPLOYMENT_ACTIVE_ID,
+                    published_at="2026-04-08 09:15:00.000000",
+                    logical_view_names=("tbl__orders_legacy",),
+                ),
+            ),
+        ),
+        managed_state=InspectedManagedTableState(
+            active_bindings=(
+                InspectedActiveTableBinding(
+                    database="analytics",
+                    logical_name="tbl__orders_legacy",
+                    physical_name=active_relation,
                 ),
             ),
             physical_candidates=(),

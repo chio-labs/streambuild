@@ -16,6 +16,7 @@ from streambuild.executor.observability.constants import (
     HEARTBEAT_INTERVAL_SECONDS,
     RUN_DISPLAY_COMMAND_ENV_VAR,
 )
+from streambuild.executor.observability.models import RunStartupTimings
 from streambuild.executor.workflow.main._execute_observation_workflow import (
     execute_observation_workflow,
 )
@@ -62,6 +63,9 @@ class RunEventSink:
         display_command: str | None = None,
         selectors: tuple[str, ...] = (),
         start_time: str | None = None,
+        executed_logical_ids: tuple[str, ...] = (),
+        context_logical_ids: tuple[str, ...] = (),
+        startup_timings: RunStartupTimings | None = None,
     ) -> None:
         """The workflow is assembled and about to execute."""
 
@@ -82,6 +86,18 @@ class RunEventSink:
                 "database": self._database,
                 "selectors": list(selectors),
                 "startTime": start_time,
+                "executedLogicalIds": list(executed_logical_ids),
+                "contextLogicalIds": list(context_logical_ids),
+                "startupTimings": (
+                    None
+                    if startup_timings is None
+                    else {
+                        "compileMs": startup_timings.compile_ms,
+                        "observabilityMs": startup_timings.observability_ms,
+                        "planningMs": startup_timings.planning_ms,
+                        "totalMs": startup_timings.total_ms,
+                    }
+                ),
             },
         )
         self._heartbeat_stop.clear()
@@ -182,7 +198,11 @@ class RunEventSink:
                 event_kind=event_kind,
                 step_id=step_id,
                 phase=phase,
-                payload_json=bounded_json(payload),
+                payload_json=(
+                    json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
+                    if event_kind == _RUN_STARTED_KIND
+                    else bounded_json(payload)
+                ),
             )
             self._write_jsonl(record=record, payload=payload)
             self._persist(record)

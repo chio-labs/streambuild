@@ -586,8 +586,29 @@ export type DeploymentModel = {
 	isNew: boolean;
 };
 
+export type DeploymentPromotionPreview = {
+	classification: 'initial_publish' | 'promotion';
+	additions: {
+		database: string;
+		logicalName: string;
+		physicalName: string;
+	}[];
+	replacements: {
+		database: string;
+		logicalName: string;
+		fromPhysicalName: string;
+		toPhysicalName: string;
+	}[];
+	removals: {
+		database: string;
+		logicalName: string;
+		physicalName: string;
+	}[];
+};
+
 export type DeploymentDetail = Deployment & {
 	database: string;
 	models: DeploymentModel[];
-	wouldOrphan: { relationCount: number; bytes: number };
+	promotionPreview: DeploymentPromotionPreview | null;
+	wouldOrphan: { relationNames: string[]; relationCount: number; bytes: number };
 };

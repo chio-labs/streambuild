@@ -1,16 +1,27 @@
 from dataclasses import dataclass
 
 from streambuild.adapter.models import (
+    AdapterBindingReplacementRequest,
     AdapterDeploymentInventory,
     CatalogRelation,
+    InspectedActiveTableBinding,
     InspectedManagedTableState,
 )
 from streambuild.executor.promotion.models import (
+    DeploymentPromotionPreview,
     PublishRequest,
     PublishResult,
     RollbackPlan,
     RollbackRequest,
 )
+
+
+@dataclass(frozen=True)
+class PromotionPreviewTestCase:
+    description: str
+    binding_request: AdapterBindingReplacementRequest
+    active_bindings: tuple[InspectedActiveTableBinding, ...]
+    expected_preview: DeploymentPromotionPreview
 
 
 @dataclass(frozen=True)

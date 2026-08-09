@@ -90,6 +90,8 @@ class RunEventsFeedTestCase:
     invocation_id: str
     expected_event_kinds: tuple[str, ...]
     expected_written_rows: int
+    expected_executed_logical_ids: tuple[str, ...] = ()
+    expected_context_logical_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -295,6 +297,10 @@ class DeploymentDetailTestCase:
     expected_live_rows: tuple[int | None, ...]
     expected_new_flags: tuple[bool, ...]
     expected_orphan_relations: int
+    expected_preview_classification: str | None
+    expected_additions: tuple[str, ...]
+    expected_replacements: tuple[str, ...]
+    expected_removals: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -302,6 +308,23 @@ class DeploymentDetailMissingTestCase:
     description: str
     deployment_id: str
     expected_payload: dict[str, object] | None
+
+
+@dataclass(frozen=True)
+class DeploymentInitialPublishSafetyTestCase:
+    description: str
+    expected_candidate_new_flags: tuple[bool, ...]
+    expected_classification: str
+    expected_removed_logical_names: tuple[str, ...]
+    expected_orphan_relation_names: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class DeploymentPartialPromotionTestCase:
+    description: str
+    expected_state: str
+    expected_additions: tuple[str, ...]
+    expected_replacements: tuple[str, ...]
 
 
 @dataclass(frozen=True)

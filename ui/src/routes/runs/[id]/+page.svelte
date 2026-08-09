@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
 	import RotateCcwIcon from '@lucide/svelte/icons/rotate-ccw';
@@ -32,6 +33,7 @@
 	let stderr = $state<string>('');
 	let owned = $state<boolean>(false);
 	let ownedRunning = $state<boolean>(false);
+	let ownerInvocationId = $state<string | null>(null);
 	let forceAvailable = $state<boolean>(false);
 	let signalling = $state<boolean>(false);
 	let lastSignalAgeSeconds = $state<number | null>(null);
@@ -50,6 +52,15 @@
 		stderr = '';
 		owned = false;
 		ownedRunning = false;
+		ownerInvocationId = null;
+		running = true;
+		status = 'running';
+		exitCode = null;
+		commandLine = 'build';
+		loadError = null;
+		initialLoading = true;
+		forceAvailable = false;
+		lastSignalAgeSeconds = null;
 		notFound = false;
 		let cancelled: boolean = false;
 		let timer: ReturnType<typeof setTimeout> | null = null;
@@ -60,24 +71,55 @@
 				const feed = initial?.feed ?? (await fetchRunEvents(id, cursor));
 				if (cancelled) return;
 				if (feed.events.length > 0) cursor = feed.events[feed.events.length - 1].sequence;
-				const combinedEvents = [...events, ...feed.events];
+				const combinedEvents = [
+					...events,
+					...feed.events.filter((event) => event.event !== 'run_heartbeat')
+				];
 				const runStarted = combinedEvents.find((event) => event.event === 'run_started');
-				const recentEvents = combinedEvents.slice(-399);
-				events = runStarted !== undefined && !recentEvents.includes(runStarted)
-					? [runStarted, ...recentEvents]
-					: recentEvents;
+				events = combinedEvents;
 				status = feed.status ?? 'running';
 				lastSignalAgeSeconds = feed.lastSignalAgeSeconds;
 				running = status === 'running' || status === 'unresponsive';
 				const ownership = initial?.ownership ?? (await fetchBuildFeed(0));
 				if (cancelled) return;
-				owned = ownership.invocationId === id;
+				owned = ownership.invocationId === id || ownership.currentInvocationId === id;
 				ownedRunning = owned && ownership.running;
+				ownerInvocationId = owned ? ownership.invocationId : null;
 				if (owned) {
 					stderr = ownership.stderr;
 					forceAvailable = ownership.forceAvailable;
 				}
-				const loadedRecord = initial === undefined ? await loadRunRecord() : initial.record;
+				if (
+					ownership.running &&
+					page.url.searchParams.get('live') === '1' &&
+					ownership.invocationId === id &&
+					ownership.currentInvocationId !== null &&
+					ownership.currentInvocationId !== id
+				) {
+					await goto(`/runs/${ownership.currentInvocationId}?live=1`, {
+						replaceState: true,
+						noScroll: true
+					});
+					return;
+				}
+				if (owned && !feed.found) {
+					exitCode = ownership.exitCode;
+					running = ownership.running;
+					status = ownership.running
+						? 'running'
+						: ownership.exitCode === 0
+							? 'succeeded'
+							: 'failed';
+				} else if (ownedRunning && !running) {
+					running = true;
+					status = 'running';
+				}
+				const loadedRecord =
+					initial !== undefined
+						? initial.record
+						: ownedRunning
+							? record
+							: await loadRunRecord();
 				if (cancelled) return;
 				if (!feed.found && !owned && loadedRecord === null) {
 					notFound = true;
@@ -173,7 +215,7 @@
 			return;
 		signalling = true;
 		try {
-			const result = await cancelBuild(invocationId);
+			const result = await cancelBuild(ownerInvocationId ?? invocationId);
 			forceAvailable = Boolean(result.forceAvailable);
 		} catch (error) {
 			loadError = error instanceof Error ? error.message : String(error);
@@ -185,7 +227,7 @@
 	async function requestKill(): Promise<void> {
 		signalling = true;
 		try {
-			await killBuild(invocationId);
+			await killBuild(ownerInvocationId ?? invocationId);
 			forceAvailable = false;
 		} catch (error) {
 			loadError = error instanceof Error ? error.message : String(error);
@@ -235,14 +277,24 @@
 	}
 
 	const fullGraph = $derived<Graph>(buildLogicalGraph(project));
+	const executedIds = $derived(new Set<string>(startedEvent?.executedLogicalIds ?? []));
+	const contextIds = $derived(new Set<string>(startedEvent?.contextLogicalIds ?? []));
+	const runGraph = $derived<Graph>({
+		nodes: fullGraph.nodes.filter((node) => executedIds.has(node.id) || contextIds.has(node.id)),
+		edges: fullGraph.edges.filter(
+			(edge) =>
+				(executedIds.has(edge.source) || contextIds.has(edge.source)) &&
+				(executedIds.has(edge.target) || contextIds.has(edge.target))
+		)
+	});
+	const recordedScopeCount = $derived(executedIds.size + contextIds.size);
+	const missingScopeCount = $derived(
+		recordedScopeCount - runGraph.nodes.length
+	);
 
 	const mutedIds = $derived(
 		new Set<string>(
-			fullGraph.nodes
-				.filter(
-					(node) => node.logicalType !== 'source' && !modelStates.has(node.logicalName)
-				)
-				.map((node) => node.id)
+			runGraph.nodes.filter((node) => contextIds.has(node.id)).map((node) => node.id)
 		)
 	);
 
@@ -253,7 +305,7 @@
 
 	const notes = $derived.by(() => {
 		const map = new Map<string, { text: string; tone: 'info' | 'warn' }>();
-		for (const node of fullGraph.nodes) {
+		for (const node of runGraph.nodes) {
 			const state: ModelRunState | undefined = modelStates.get(node.logicalName);
 			if (state === undefined) continue;
 			if (state.state === 'failed') {
@@ -319,13 +371,17 @@
 	function eventStepLabel(event: RunEvent): string {
 		const stepId = event.stepId;
 		if (stepId === null) {
-			return event.event === 'run_completed' ? (event.outcome ?? 'completed') : displayCommand;
+			if (event.event === 'run_completed') return event.outcome ?? 'completed';
+			if (event.event === 'run_started' && event.startupTimings) {
+				return `${displayCommand} · prepared in ${formatDuration(event.startupTimings.totalMs / 1000)} (compile ${formatDuration(event.startupTimings.compileMs / 1000)}, observability ${formatDuration(event.startupTimings.observabilityMs / 1000)}, warehouse plan ${formatDuration(event.startupTimings.planningMs / 1000)})`;
+			}
+			return displayCommand;
 		}
 		if (event.event === 'audit_started' || event.event === 'audit_completed') {
 			const statusLabel = event.status ? ` · ${humanizeIdentifier(event.status)}` : '';
 			const failureLabel =
 				(event.failureCount ?? 0) > 0 ? ` · ${event.failureCount} failures` : '';
-			return `${resourceLabel(stepId)}${statusLabel}${failureLabel}`;
+			return `${stepId}${statusLabel}${failureLabel}`;
 		}
 		const metadataStep = stepId.match(/^prepare_metadata_(\d+)$/);
 		if (metadataStep) {
@@ -349,7 +405,7 @@
 		}
 		const auditStep = stepId.match(/^audit_\d+_(.+)_(count|sample)$/);
 		if (auditStep) {
-			return `${auditStep[2] === 'count' ? 'Check audit' : 'Sample audit failures'} · ${resourceLabel(auditStep[1])}`;
+			return `${auditStep[2] === 'count' ? 'Check audit' : 'Sample audit failures'} · ${auditStep[1]}`;
 		}
 		const exact: Record<string, string> = {
 			prepare_target_database: 'Ensure target database exists',
@@ -380,7 +436,7 @@
 			['assert_readiness_', 'Verify source readiness']
 		];
 		for (const [prefix, label] of prefixes) {
-			if (stepId.startsWith(prefix)) return `${label} · ${resourceLabel(stepId.slice(prefix.length))}`;
+			if (stepId.startsWith(prefix)) return `${label} · ${stepId.slice(prefix.length)}`;
 		}
 		const numbered: [string, string][] = [
 			['remove_obsolete_binding_', 'Remove obsolete binding'],
@@ -391,11 +447,7 @@
 		for (const [prefix, label] of numbered) {
 			if (stepId.startsWith(prefix)) return `${label} (${Number(stepId.slice(prefix.length))})`;
 		}
-		return humanizeIdentifier(stepId);
-	}
-
-	function resourceLabel(value: string): string {
-		return humanizeIdentifier(value.replaceAll('__', ' / '));
+		return stepId;
 	}
 
 	function humanizeIdentifier(value: string): string {
@@ -483,7 +535,7 @@
 				href={retryHref}
 				class="text-muted-foreground hover:text-foreground flex items-center gap-1.5 rounded border border-border px-2.5 py-1 font-mono text-[10.5px]"
 			>
-				<RotateCcwIcon size={11} /> Retry
+				<RotateCcwIcon size={11} /> Open in Plan
 			</a>
 		{/if}
 		{#if ownedRunning && running}
@@ -538,15 +590,38 @@
 
 		<!-- the pipeline, growing as replays land -->
 		<div class="h-[380px] shrink-0 border-b border-border">
-			<LineageCanvas
-				{project}
-				graph={fullGraph}
-				{mutedIds}
-				{notes}
-				groupMode="none"
-				compactNodes
-				embedded
-			/>
+			{#if runGraph.nodes.length > 0}
+				<div class="flex h-full flex-col">
+					{#if missingScopeCount > 0}
+						<div class="border-b border-border px-3 py-1.5 font-mono text-[10.5px] text-[var(--sb-warning)]">
+							{missingScopeCount} recorded scope {missingScopeCount === 1 ? 'node is' : 'nodes are'} no longer present in the current project.
+						</div>
+					{/if}
+					<div class="min-h-0 flex-1">
+						<LineageCanvas
+							{project}
+							graph={runGraph}
+							{mutedIds}
+							{notes}
+							groupMode="none"
+							compactNodes
+							embedded
+						/>
+					</div>
+				</div>
+			{:else if startedEvent === undefined && ownedRunning}
+				<div class="text-muted-foreground grid h-full place-items-center px-6 text-center font-mono text-[11px]">
+					Compiling project and inspecting warehouse…
+				</div>
+			{:else if recordedScopeCount > 0}
+				<div class="text-muted-foreground grid h-full place-items-center px-6 text-center font-mono text-[11px]">
+					The recorded scope no longer exists in the current project.
+				</div>
+			{:else}
+				<div class="text-muted-foreground grid h-full place-items-center px-6 text-center font-mono text-[11px]">
+					Scope was not recorded for this run. Project-wide lineage is intentionally not shown.
+				</div>
+			{/if}
 		</div>
 
 		{#if stderr && outcome === 'failed'}
@@ -565,6 +640,13 @@
 				Events {#if running}<span class="text-[var(--sb-secondary)]">· live</span>{/if}
 			</div>
 			<div class="overflow-hidden rounded-[4px] border border-border">
+				{#if timeline.length === 0 && ownedRunning}
+					<div class="flex items-center gap-3 px-3 py-1.5">
+						<span class="text-[var(--sb-text-faint)] w-[86px] shrink-0 font-mono text-[10.5px]">now</span>
+						<span class="w-[92px] shrink-0"><span class="sb-tag code">startup</span></span>
+						<span class="code min-w-0 flex-1 text-[11.5px]">Compile project and inspect warehouse</span>
+					</div>
+				{/if}
 				{#each timeline as event (event.sequence)}
 					<div
 						class="flex items-center gap-3 border-b border-[var(--border-subtle)] px-3 py-1.5 last:border-b-0"

@@ -67,7 +67,7 @@
 						<span
 							class="sb-tag code"
 							style:color={row.pipeline.mode === 'virtual'
-								? 'var(--sb-primary)'
+								? 'var(--primary)'
 								: 'var(--sb-text-faint)'}>{row.pipeline.mode}</span
 						>
 					</td>

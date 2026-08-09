@@ -13,17 +13,20 @@ import threading
 import time
 from pathlib import Path
 from typing import IO
+from uuid import uuid4
 
 from streambuild.cli.entry.constants import DEV_CLI_VARIABLES_ENV_VAR
 from streambuild.dev_server.constants import CANCEL_GRACE_SECONDS, TERMINATE_GRACE_SECONDS
 from streambuild.dev_server.exceptions import BuildInProgressError, BuildStartError
 from streambuild.dev_server.models import DevExecutionContext
 from streambuild.dev_server.types import ActivityTone, DevServerReporter
-from streambuild.executor.observability.constants import RUN_DISPLAY_COMMAND_ENV_VAR
+from streambuild.executor.observability.constants import (
+    RUN_DISPLAY_COMMAND_ENV_VAR,
+    RUN_INVOCATION_ID_ENV_VAR,
+)
 
 _RUN_STARTED_KIND: str = "run_started"
 _STATEMENT_COMPLETED_KIND: str = "statement_completed"
-_START_TIMEOUT_SECONDS: float = 180.0
 _STDERR_TAIL_LINES: int = 50
 
 
@@ -42,7 +45,7 @@ class BuildProcessManager:
         self._exit_code: int | None = None
         self._command: str = ""
         self._started_monotonic: float = 0.0
-        self._started_event: threading.Event = threading.Event()
+        self._current_invocation_id: str | None = None
         self._cancelling_invocation_id: str | None = None
         self._force_available: bool = False
         self._execution_context = execution_context
@@ -55,7 +58,7 @@ class BuildProcessManager:
         start_time: str | None,
         confirmations: tuple[str, ...] = (),
     ) -> dict[str, object]:
-        """Spawn one build and block until its run_started event or early death."""
+        """Spawn one build and return its stable launch identity immediately."""
 
         argv, command = build_invocation(
             selectors=selectors,
@@ -63,51 +66,57 @@ class BuildProcessManager:
             confirmations=confirmations,
             execution_context=self._execution_context,
         )
+        launch_invocation_id: str = str(uuid4())
         with self._lock:
             if self._process is not None and self._process.poll() is None:
                 raise BuildInProgressError("a build is already running")
             self._statement_count = 0
             self._remove_stderr_file()
-            self._invocation_id = None
+            self._invocation_id = launch_invocation_id
+            self._current_invocation_id = None
             self._cancelling_invocation_id = None
             self._force_available = False
             self._exit_code = None
             self._command = command
             self._started_monotonic = time.monotonic()
-            self._started_event = threading.Event()
             stderr_file: IO[str] = tempfile.NamedTemporaryFile(
                 mode="w+", prefix="streambuild-run-", suffix=".stderr", delete=False
             )
             self._stderr_path = Path(stderr_file.name)
-            self._process = subprocess.Popen(
-                argv,
-                cwd=project_dir,
-                stdout=subprocess.PIPE,
-                stderr=stderr_file,
-                text=True,
-                env=_build_environment(
-                    execution_context=self._execution_context,
-                    display_command=command,
-                ),
-            )
+            try:
+                self._process = subprocess.Popen(
+                    argv,
+                    cwd=project_dir,
+                    stdout=subprocess.PIPE,
+                    stderr=stderr_file,
+                    text=True,
+                    env=_build_environment(
+                        execution_context=self._execution_context,
+                        display_command=command,
+                        invocation_id=launch_invocation_id,
+                    ),
+                )
+            except OSError as error:
+                stderr_file.close()
+                self._remove_stderr_file()
+                self._invocation_id = None
+                self._command = ""
+                raise BuildStartError(str(error)) from error
             stderr_file.close()
             process: subprocess.Popen[str] = self._process
-        threading.Thread(target=self._consume_stdout, args=(process,), daemon=True).start()
-        if not self._started_event.wait(timeout=_START_TIMEOUT_SECONDS):
-            raise BuildStartError("timed out waiting for the build's run_started event")
-        with self._lock:
-            if self._invocation_id is None:
-                raise BuildStartError(self._start_failure_message())
-            command: str = self._command
+        threading.Thread(
+            target=self._consume_stdout,
+            kwargs={"process": process, "launch_invocation_id": launch_invocation_id},
+            daemon=True,
+        ).start()
         self._reporter.report_activity(
-            category="build", status="started", tone=ActivityTone.NEUTRAL, detail=command
+            category="build", status="starting", tone=ActivityTone.NEUTRAL, detail=command
         )
-        with self._lock:
-            return {
-                "invocationId": self._invocation_id,
-                "command": self._command,
-                "status": "running",
-            }
+        return {
+            "invocationId": launch_invocation_id,
+            "command": command,
+            "status": "starting",
+        }
 
     def feed(self, *, after: int) -> dict[str, object]:
         """A cursor read of the live feed: events past `after`, plus run state."""
@@ -118,6 +127,7 @@ class BuildProcessManager:
             return {
                 "running": running,
                 "invocationId": self._invocation_id,
+                "currentInvocationId": self._current_invocation_id,
                 "command": self._command,
                 "exitCode": self._exit_code,
                 "events": [],
@@ -160,7 +170,7 @@ class BuildProcessManager:
             self._force_available = False
         return {"status": "killed"}
 
-    def _consume_stdout(self, process: subprocess.Popen[str]) -> None:
+    def _consume_stdout(self, *, process: subprocess.Popen[str], launch_invocation_id: str) -> None:
         if process.stdout is None:
             return
         for line in process.stdout:
@@ -168,19 +178,20 @@ class BuildProcessManager:
             if event is None:
                 continue
             with self._lock:
+                if process is not self._process or self._invocation_id != launch_invocation_id:
+                    continue
                 if event.get("event") == _RUN_STARTED_KIND:
-                    self._invocation_id = str(event.get("invocationId"))
+                    self._current_invocation_id = str(event.get("invocationId"))
                 if event.get("event") == _STATEMENT_COMPLETED_KIND:
                     self._statement_count += 1
-            if event.get("event") == _RUN_STARTED_KIND:
-                self._started_event.set()
         exit_code: int = process.wait()
         with self._lock:
+            if process is not self._process or self._invocation_id != launch_invocation_id:
+                return
             self._exit_code = exit_code
             self._force_available = False
             elapsed_seconds: float = time.monotonic() - self._started_monotonic
             statement_count: int = self._statement_count
-        self._started_event.set()
         self._report_finished(
             exit_code=exit_code, elapsed_seconds=elapsed_seconds, statement_count=statement_count
         )
@@ -232,11 +243,6 @@ class BuildProcessManager:
             detail=detail,
         )
 
-    def _start_failure_message(self) -> str:
-        detail: str = self._read_stderr_tail().strip()
-        exit_note: str = f"build exited with code {self._exit_code} before starting"
-        return f"{exit_note}: {detail}" if detail else exit_note
-
 
 def build_invocation(
     *,
@@ -265,7 +271,10 @@ def build_invocation(
 
 
 def _build_environment(
-    *, execution_context: DevExecutionContext | None, display_command: str | None = None
+    *,
+    execution_context: DevExecutionContext | None,
+    display_command: str | None = None,
+    invocation_id: str | None = None,
 ) -> dict[str, str]:
     environment: dict[str, str] = dict(
         os.environ
@@ -274,6 +283,8 @@ def _build_environment(
     )
     if display_command is not None:
         environment[RUN_DISPLAY_COMMAND_ENV_VAR] = display_command
+    if invocation_id is not None:
+        environment[RUN_INVOCATION_ID_ENV_VAR] = invocation_id
     if execution_context is None:
         return environment
     if execution_context.cli_variables:

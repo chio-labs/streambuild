@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 
 from streambuild.executor.promotion.exceptions import PublishExecutionError
-from streambuild.executor.promotion.types import PublishOperation
+from streambuild.executor.promotion.types import PromotionPreviewClassification, PublishOperation
 
 
 @dataclass(frozen=True)
@@ -46,6 +46,53 @@ class PublishResult:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "operation", PublishOperation(self.operation))
+
+
+@dataclass(frozen=True)
+class PromotionBindingAddition:
+    """One new stable logical binding created by promotion."""
+
+    database: str
+    logical_name: str
+    physical_name: str
+
+
+@dataclass(frozen=True)
+class PromotionBindingReplacement:
+    """One stable logical binding switched to a different physical relation."""
+
+    database: str
+    logical_name: str
+    from_physical_name: str
+    to_physical_name: str
+
+
+@dataclass(frozen=True)
+class PromotionBindingRemoval:
+    """One obsolete live binding removed by promotion."""
+
+    database: str
+    logical_name: str
+    physical_name: str
+
+
+@dataclass(frozen=True)
+class PromotionOrphanedRelation:
+    """One formerly live physical relation left unbound after promotion."""
+
+    database: str
+    physical_name: str
+
+
+@dataclass(frozen=True)
+class DeploymentPromotionPreview:
+    """Exact live-binding effects of one deployment promotion."""
+
+    classification: PromotionPreviewClassification
+    additions: tuple[PromotionBindingAddition, ...]
+    replacements: tuple[PromotionBindingReplacement, ...]
+    removals: tuple[PromotionBindingRemoval, ...]
+    orphaned_relations: tuple[PromotionOrphanedRelation, ...]
 
 
 @dataclass(frozen=True)

@@ -181,3 +181,4 @@ class DeploymentOperationRecord:
     materialized_outcome: str | None
     error_message: str | None
     summary: dict[str, object]
+    selected_node_count: int = 0

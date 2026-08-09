@@ -14,9 +14,11 @@ from streambuild.cli.plan.main._source_validation import (
 from streambuild.cli.plan.main._warnings import add_empty_replay_source_warnings
 from streambuild.cli.selection.main._selection import resolve_selection
 from streambuild.cli.selection.models import SelectionResolution
-from streambuild.compiler.compile.models import DesiredState
+from streambuild.compiler.compile.models import DesiredState, LogicalResourceKey
+from streambuild.compiler.compile.types import LogicalResourceType
 from streambuild.compiler.discovery.models import LoadedPipeline
 from streambuild.compiler.discovery.types import ReplayLineageMode
+from streambuild.compiler.graph.models import DependencyEdge
 from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.compiler.planner.main.load_actual_state_from_snapshot import (
     load_actual_state_from_snapshot,
@@ -113,6 +115,24 @@ def build_virtual_build_preview(
         default_database=resolved_database,
         replay_lineage_mode=replay_lineage_mode,
     )
+    planned_model_names: frozenset[str] = frozenset(
+        prepared.logical_model_name for prepared in plan.prepared_shadow_objects
+    )
+    run_execution_scope: tuple[LogicalResourceKey, ...] = tuple(
+        key
+        for key in analysis.graph.ordered_keys
+        if key.resource_type == LogicalResourceType.MODEL and key.name in planned_model_names
+    )
+    executed_keys: frozenset[LogicalResourceKey] = frozenset(run_execution_scope)
+    context_keys: set[LogicalResourceKey] = set()
+    for key in run_execution_scope:
+        edge: DependencyEdge
+        for edge in analysis.graph.upstream_edges_by_key.get(key, ()):
+            if edge.upstream_key not in executed_keys:
+                context_keys.add(edge.upstream_key)
+    run_context_scope: tuple[LogicalResourceKey, ...] = tuple(
+        key for key in analysis.graph.ordered_keys if key in context_keys
+    )
     preview_root_reports: tuple[RootBackfillReport, ...] = build_root_backfill_reports(
         catalog=snapshot.catalog,
         desired_state=desired_state,
@@ -145,4 +165,6 @@ def build_virtual_build_preview(
         start_time_keys=selection.selected_model_keys if start_time is not None else frozenset(),
         start_time=start_time,
         execution_logical_model_keys=selection.execution_logical_model_keys,
+        run_execution_scope=run_execution_scope,
+        run_context_scope=run_context_scope,
     )

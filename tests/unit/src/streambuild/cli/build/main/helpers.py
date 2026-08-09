@@ -103,6 +103,7 @@ def run_scope_project_build_with_connection(
     auto_approve: bool,
     connection: RecordingAdapterConnection,
     confirmations: tuple[str, ...] = (),
+    events_output: bool = False,
 ) -> int:
     """Run a direct build with an observable recording connection."""
 
@@ -116,6 +117,7 @@ def run_scope_project_build_with_connection(
             verbose=False,
             auto_approve=auto_approve,
             confirmations=confirmations,
+            events_output=events_output,
         ),
         client=connection,
         observation_client=connection,
