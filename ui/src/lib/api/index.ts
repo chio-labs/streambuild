@@ -110,6 +110,8 @@ export type RunEvent = {
 	elapsedMs?: number;
 	writtenRows?: number | null;
 	errorMessage?: string | null;
+	status?: string;
+	failureCount?: number;
 	deferredUntil?: string | null;
 	outcome?: string;
 	exitCode?: number;
