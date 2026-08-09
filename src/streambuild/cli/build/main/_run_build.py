@@ -1,6 +1,8 @@
 """CLI command for mode-aware builds."""
 
+import os
 import sys
+from time import monotonic_ns
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.exceptions import AdapterError
@@ -27,6 +29,7 @@ from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.compiler.planner.exceptions import DirectPlanError
 from streambuild.executor.backfill.exceptions import BackfillExecutionError
 from streambuild.executor.direct.exceptions import DirectBuildError
+from streambuild.executor.observability.constants import RUN_INVOCATION_ID_ENV_VAR
 from streambuild.executor.observability.main.build_invocation_record import (
     build_invocation_record,
 )
@@ -37,7 +40,7 @@ from streambuild.executor.observability.main.persist_terminal_observations impor
     persist_terminal_observations,
 )
 from streambuild.executor.observability.main.start_invocation import start_invocation
-from streambuild.executor.observability.models import TerminalInvocation
+from streambuild.executor.observability.models import RunStartupTimings, TerminalInvocation
 from streambuild.executor.workflow.exceptions import WorkflowExecutionError
 
 
@@ -51,7 +54,9 @@ def run_build(
 ) -> int:
     """Plan and execute one build through the effective project mode."""
 
-    started: tuple[str, str, int] = start_invocation()
+    started: tuple[str, str, int] = start_invocation(
+        invocation_id=os.environ.get(RUN_INVOCATION_ID_ENV_VAR)
+    )
     resolved_database: str = options.database or ""
     try:
         if options.json_output and not options.auto_approve:
@@ -72,20 +77,24 @@ def run_build(
             )
             print("--events requires --auto-approve for build", file=sys.stderr)
             return 1
+        compile_started_ns: int = monotonic_ns()
         analysis: CompileAnalysis = analyze_project(
             pipelines_root=options.pipelines_root,
             loaded_project=loaded_project,
             adapter_profile=adapter_profile,
         )
+        compile_ms: int = max((monotonic_ns() - compile_started_ns) // 1_000_000, 0)
         database: str = resolve_default_database(
             loaded_pipelines=list(analysis.compile_inputs.pipelines),
             override=options.database,
         )
         resolved_database = database
+        observability_started_ns: int = monotonic_ns()
         initialize_observability(
             connection=observation_client,
             database=options.metadata_database or database,
         )
+        observability_ms: int = max((monotonic_ns() - observability_started_ns) // 1_000_000, 0)
         preparation_options: WorkflowPreparationOptions = WorkflowPreparationOptions(
             database=options.database,
             metadata_database=options.metadata_database,
@@ -95,6 +104,7 @@ def run_build(
             start_time=options.start_time,
             verbose=options.verbose,
         )
+        planning_started_ns: int = monotonic_ns()
         preparation: (
             DirectWorkflowPreparation | MixedWorkflowPreparation | VirtualWorkflowPreparation
         ) = prepare_build_workflow(
@@ -103,6 +113,11 @@ def run_build(
             client=client,
             adapter_profile=adapter_profile,
         )
+        startup_timings: RunStartupTimings = RunStartupTimings(
+            compile_ms=compile_ms,
+            observability_ms=observability_ms,
+            planning_ms=max((monotonic_ns() - planning_started_ns) // 1_000_000, 0),
+        )
         if isinstance(preparation, MixedWorkflowPreparation):
             return execute_mixed_build_command(
                 preparation=preparation,
@@ -110,6 +125,7 @@ def run_build(
                 client=client,
                 observation_client=observation_client,
                 started=started,
+                startup_timings=startup_timings,
             )
         if isinstance(preparation, VirtualWorkflowPreparation):
             return execute_virtual_build_command(
@@ -118,6 +134,7 @@ def run_build(
                 client=client,
                 observation_client=observation_client,
                 started=started,
+                startup_timings=startup_timings,
             )
         return execute_direct_build_command(
             preparation=preparation,
@@ -125,6 +142,7 @@ def run_build(
             client=client,
             observation_client=observation_client,
             started=started,
+            startup_timings=startup_timings,
         )
     except (
         TransformSqlContractError,

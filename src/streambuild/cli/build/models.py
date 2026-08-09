@@ -87,6 +87,8 @@ class VirtualBuildPreviewContext:
     start_time_keys: frozenset[ObjectKey] = frozenset()
     start_time: str | None = None
     execution_logical_model_keys: frozenset[LogicalResourceKey] = frozenset()
+    run_execution_scope: tuple[LogicalResourceKey, ...] = ()
+    run_context_scope: tuple[LogicalResourceKey, ...] = ()
 
 
 @dataclass(frozen=True)

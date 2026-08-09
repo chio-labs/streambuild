@@ -334,6 +334,7 @@
 	<div class="border-b border-border px-[18px] py-3.5">
 		<div class="flex items-center gap-2 pb-2">
 			<span
+				id="plan-selection-label"
 				class="text-[var(--sb-text-faint)] font-mono text-[10px] uppercase tracking-[0.14em]"
 				>What to rebuild</span
 			>
@@ -374,7 +375,13 @@
 			</Popover.Root>
 		</div>
 
-		<SelectionCombobox {project} {selectors} onchange={setSelectors} />
+		<SelectionCombobox
+			id="plan-selection"
+			labelledby="plan-selection-label"
+			{project}
+			{selectors}
+			onchange={setSelectors}
+		/>
 
 		{#if replacedNote}
 			<p class="pt-2 font-mono text-[11px]" style:color="var(--sb-secondary)">{replacedNote}</p>

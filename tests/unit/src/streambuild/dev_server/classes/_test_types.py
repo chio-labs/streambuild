@@ -10,6 +10,14 @@ class BuildCancellationStateTestCase:
 
 
 @dataclass(frozen=True)
+class BuildStartTestCase:
+    description: str
+    selector: str
+    expected_status: str
+    expected_running: bool
+
+
+@dataclass(frozen=True)
 class KafkaLagSnapshotTestCase:
     description: str
     partition_ids: frozenset[int]

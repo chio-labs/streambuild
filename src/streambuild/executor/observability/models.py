@@ -7,6 +7,19 @@ from streambuild.executor.observability.types import QualityResultTrigger
 
 
 @dataclass(frozen=True)
+class RunStartupTimings:
+    """Pre-execution work completed before the first durable run event."""
+
+    compile_ms: int
+    observability_ms: int
+    planning_ms: int
+
+    @property
+    def total_ms(self) -> int:
+        return self.compile_ms + self.observability_ms + self.planning_ms
+
+
+@dataclass(frozen=True)
 class TerminalInvocation:
     """Command outcome fields captured at one finite CLI boundary."""
 

@@ -105,6 +105,14 @@ export type RunEvent = {
 	startTime?: string | null;
 	totalStatements?: number;
 	selectedNodeCount?: number;
+	executedLogicalIds?: string[];
+	contextLogicalIds?: string[];
+	startupTimings?: {
+		compileMs: number;
+		observabilityMs: number;
+		planningMs: number;
+		totalMs: number;
+	} | null;
 	statementSequence?: number;
 	intent?: string;
 	elapsedMs?: number;
@@ -137,6 +145,7 @@ export type RunEventFeed = {
 export type BuildFeed = {
 	running: boolean;
 	invocationId: string | null;
+	currentInvocationId: string | null;
 	command: string;
 	exitCode: number | null;
 	events: RunEvent[];

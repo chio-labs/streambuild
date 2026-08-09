@@ -8,6 +8,12 @@ from pathlib import Path
 from time import monotonic_ns
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.exceptions import AdapterError
+from streambuild.adapter.models import AdapterDeploymentInventory, AdapterDeploymentRecord
+from streambuild.compiler.compile.constants import (
+    DESIRED_OBJECT_TYPE_TABLE,
+    DESIRED_OBJECT_TYPE_VIEW,
+)
 from streambuild.dev_server.models import DeploymentOperationRecord
 from streambuild.executor.deployment.main.execute_deployment_diff import execute_deployment_diff
 from streambuild.executor.deployment.models import (
@@ -50,12 +56,18 @@ def run_deployment_promotion(
     sink: RunEventSink = RunEventSink(
         connection=connection, database=metadata_database, invocation_id=started[0]
     )
+    executed_logical_ids: tuple[str, ...] = _promotion_executed_logical_ids(
+        connection=connection,
+        metadata_database=metadata_database,
+        deployment_id=deployment_id,
+    )
     sink.run_started(
         command=_PROMOTE_COMMAND,
         display_command=f"stb {_PROMOTE_COMMAND} {deployment_id}",
         mode="virtual_environment",
         total_statements=0,
-        selected_node_count=0,
+        selected_node_count=len(executed_logical_ids),
+        executed_logical_ids=executed_logical_ids,
     )
     try:
         result: PublishResult = execute_publish(
@@ -83,6 +95,7 @@ def run_deployment_promotion(
                 materialized_outcome=None,
                 error_message=str(error),
                 summary={},
+                selected_node_count=len(executed_logical_ids),
             ),
         )
         raise
@@ -101,6 +114,7 @@ def run_deployment_promotion(
             materialized_outcome="applied",
             error_message=None,
             summary={"publishedViews": len(result.published_views)},
+            selected_node_count=len(executed_logical_ids),
         ),
     )
     return {
@@ -227,6 +241,30 @@ def _start() -> tuple[str, str, int]:
     )
 
 
+def _promotion_executed_logical_ids(
+    *, connection: AdapterConnection, metadata_database: str, deployment_id: str
+) -> tuple[str, ...]:
+    """Return model identities when persisted deployment mappings make them authoritative."""
+
+    try:
+        inventory: AdapterDeploymentInventory = connection.load_deployment_inventory(
+            metadata_database
+        )
+    except AdapterError:
+        return ()
+    deployment: AdapterDeploymentRecord | None = next(
+        (item for item in inventory.deployments if item.deployment_id == deployment_id), None
+    )
+    if deployment is None:
+        return ()
+    names: set[str] = {
+        mapping.logical_model_name
+        for mapping in deployment.prepared_object_mappings
+        if mapping.logical_key.object_type in {DESIRED_OBJECT_TYPE_TABLE, DESIRED_OBJECT_TYPE_VIEW}
+    }
+    return tuple(f"model:{name}" for name in sorted(names))
+
+
 def _persist(
     *,
     connection: AdapterConnection,
@@ -251,7 +289,7 @@ def _persist(
                 materialized_outcome=record.materialized_outcome,
                 deployment_id=record.deployment_id,
                 workflow_id=None,
-                selected_node_count=0,
+                selected_node_count=record.selected_node_count,
                 error_message=record.error_message,
                 summary=record.summary,
             ),
