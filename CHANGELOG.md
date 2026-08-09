@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.16.6](https://github.com/chio-labs/streambuild/compare/v0.16.5...v0.16.6) (2026-08-09)
+
+
+### Bug Fixes
+
+* harden lineage rebuild safety ([518b3af](https://github.com/chio-labs/streambuild/commit/518b3af294e28de6c0bfe34d84d77a7fa5ea4c3e))
+* harden lineage rebuild safety ([40c022d](https://github.com/chio-labs/streambuild/commit/40c022dd2ee934364314469f4afbc51e6dc63065))
+* scope active build conflicts ([c73fabb](https://github.com/chio-labs/streambuild/commit/c73fabbad216a3c7cf0aa2dab63e6271b41ea046))
+
+
+### Documentation
+
+* streamline project overview ([01f3971](https://github.com/chio-labs/streambuild/commit/01f397118ff52b9ef918862659bb7a52447e67a7))
+
 ## [0.16.5](https://github.com/chio-labs/streambuild/compare/v0.16.4...v0.16.5) (2026-08-09)
 
 
