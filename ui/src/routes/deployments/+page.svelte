@@ -104,7 +104,7 @@
 					<span
 						class="font-mono text-[10px] uppercase tracking-[0.16em]"
 						style:color={section.state === 'staged'
-							? 'var(--sb-warn)'
+							? 'var(--sb-warning)'
 							: section.state === 'active'
 								? 'var(--sb-secondary)'
 								: 'var(--sb-text-faint)'}>{section.label}</span
@@ -165,7 +165,7 @@
 										<a
 											href="/deployments/{deployment.deploymentId}"
 											class="sb-tag code hover:text-foreground"
-											style:color="var(--sb-warn)">review · {shortId(deployment.deploymentId)}</a
+											style:color="var(--sb-warning)">review · {shortId(deployment.deploymentId)}</a
 										>
 									{:else if deployment.state === 'active'}
 										<span class="sb-tag code" style:color="var(--sb-secondary)">live</span>

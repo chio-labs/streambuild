@@ -14,15 +14,30 @@ const SNAPSHOT_MAX_AGE_MS = 10_000;
 export function prefetchRunDetail(invocationId: string): Promise<RunDetailSnapshot> {
 	const existing = snapshots.get(invocationId);
 	if (existing !== undefined) return existing;
-	const request = Promise.all([
-		fetchRunEvents(invocationId, 0),
-		fetchBuildFeed(0),
-		fetchRuns()
-	]).then(([feed, ownership, runs]) => ({
-		feed,
-		ownership,
-		record: runs.find((run) => run.invocationId === invocationId) ?? null
-	}));
+	const request = fetchBuildFeed(0).then(async (ownership) => {
+		const locallyOwned =
+			ownership.invocationId === invocationId || ownership.currentInvocationId === invocationId;
+		if (locallyOwned && ownership.running) {
+			return {
+				feed: {
+					found: false,
+					events: [],
+					hasMore: false,
+					status: null,
+					lastSignalAt: null,
+					lastSignalAgeSeconds: null
+				},
+				ownership,
+				record: null
+			};
+		}
+		const [feed, runs] = await Promise.all([fetchRunEvents(invocationId, 0), fetchRuns()]);
+		return {
+			feed,
+			ownership,
+			record: runs.find((run) => run.invocationId === invocationId) ?? null
+		};
+	});
 	snapshots.set(invocationId, request);
 	setTimeout(() => {
 		if (snapshots.get(invocationId) === request) snapshots.delete(invocationId);
