@@ -13,7 +13,7 @@ export function auditScheduleLabel(item: AuditScheduleItem, warehouseNow: string
 
 export function auditScheduleColor(state: AuditScheduleState): string {
 	if (state === 'idle' || state === 'scheduled') return 'var(--sb-success)';
-	if (state === 'running') return 'var(--sb-primary)';
+	if (state === 'running') return 'var(--primary)';
 	if (state === 'due' || state === 'warming_up') return 'var(--sb-warning)';
 	if (state === 'blocked' || state === 'backing_off') return 'var(--sb-error)';
 	return 'var(--sb-text-faint)';

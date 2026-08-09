@@ -20,10 +20,13 @@ from streambuild.executor.observability.classes.run_event_sink import RunEventSi
 from streambuild.executor.observability.main.build_invocation_record import (
     build_invocation_record,
 )
+from streambuild.executor.observability.main.logical_resource_identities import (
+    logical_resource_identities,
+)
 from streambuild.executor.observability.main.persist_terminal_observations import (
     persist_terminal_observations,
 )
-from streambuild.executor.observability.models import TerminalInvocation
+from streambuild.executor.observability.models import RunStartupTimings, TerminalInvocation
 from streambuild.executor.population.main.plan_population_sources import (
     plan_population_sources,
 )
@@ -42,6 +45,7 @@ def execute_virtual_build_command(
     observation_client: AdapterConnection,
     started: tuple[str, str, int],
     confirmation_required: bool = True,
+    startup_timings: RunStartupTimings | None = None,
 ) -> int:
     """Confirm and populate one prepared isolated virtual deployment."""
 
@@ -57,9 +61,16 @@ def execute_virtual_build_command(
                 command="build",
                 mode="virtual_environment",
                 total_statements=len(preparation.workflow.statements),
-                selected_node_count=len(preparation.preview.plan.object_changes),
+                selected_node_count=len(preparation.preview.run_execution_scope),
                 selectors=options.selectors,
                 start_time=options.start_time,
+                executed_logical_ids=logical_resource_identities(
+                    preparation.preview.run_execution_scope
+                ),
+                context_logical_ids=logical_resource_identities(
+                    preparation.preview.run_context_scope
+                ),
+                startup_timings=startup_timings,
             )
         confirmed: bool = (
             confirm_build(
@@ -265,7 +276,7 @@ def _persist_virtual_invocation(
             materialized_outcome=materialized_outcome,
             deployment_id=preparation.preview.deployment_id,
             workflow_id=None,
-            selected_node_count=len(preparation.preview.plan.object_changes),
+            selected_node_count=len(preparation.preview.run_execution_scope),
             error_message=error_message,
             summary={},
         ),

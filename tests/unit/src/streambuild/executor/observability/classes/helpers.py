@@ -14,6 +14,7 @@ class RunEventRecordingConnection(RecordingAdapterConnection):
         events: tuple[AdapterRunEventRecord, ...],
         include_migration: bool = False,
     ) -> tuple[str, ...]:
+        self.run_events = (*getattr(self, "run_events", ()), *events)
         return tuple(
             f"INSERT_RUN_EVENT {database} {event.event_kind} {event.sequence};" for event in events
         )
