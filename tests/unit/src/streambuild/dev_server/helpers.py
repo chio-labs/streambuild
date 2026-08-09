@@ -31,6 +31,10 @@ from streambuild.compiler.discovery.main.load_project_input_for_path import (
 from streambuild.compiler.discovery.models import KafkaSettings
 from streambuild.compiler.pipeline.main.analyze_project import analyze_project
 from streambuild.compiler.pipeline.models import CompileAnalysis
+from streambuild.dev_server._helpers.payloads.activity_payload import (
+    build_activity_capabilities_query,
+    build_parts_activity_query,
+)
 from streambuild.dev_server._helpers.payloads.plan_payload import build_replay_count_query
 from streambuild.dev_server._helpers.payloads.state_payload import (
     build_extents_query,
@@ -334,6 +338,17 @@ def build_fake_state_connection(
     )
     lineage_relations: tuple[str, ...] = ("raw__orders", "tbl__orders_clean")
     results: dict[str, AdapterQueryResult] = {
+        build_activity_capabilities_query(): AdapterQueryResult(
+            rows=(),
+            column_names=("name",),
+        ),
+        build_parts_activity_query(database="analytics"): AdapterQueryResult(
+            rows=(
+                ("raw__orders", _STATE_NEWEST_EVENT),
+                ("tbl__orders_clean", _STATE_MODEL_NEWEST),
+            ),
+            column_names=("table", "last_modified_at"),
+        ),
         build_relation_stats_query(database="analytics"): AdapterQueryResult(
             rows=(
                 ("raw__orders", 1000, 4096),

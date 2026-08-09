@@ -137,6 +137,45 @@
 						value={formatAgo(model.live.newestRowAt, project.capturedAt)}
 					/>
 					<FactRow
+						label="Activity"
+						value={model.live.activity.state}
+						tone={model.live.activity.state === 'moving'
+							? 'success'
+							: model.live.activity.state === 'stalled'
+								? 'warning'
+								: 'default'}
+					/>
+					<FactRow
+						label="Activity evidence"
+						value={model.live.activity.approximate
+							? `${model.live.activity.source} (approximate)`
+							: model.live.activity.source}
+						mono
+					/>
+					{#if model.live.activity.lastTriggeredAt}
+						<FactRow
+							label="Last trigger"
+							value={formatAgo(model.live.activity.lastTriggeredAt, project.capturedAt)}
+						/>
+					{/if}
+					{#if model.live.activity.lastWriteAt}
+						<FactRow
+							label="Last write"
+							value={formatAgo(model.live.activity.lastWriteAt, project.capturedAt)}
+						/>
+					{/if}
+					{#if !model.live.activity.approximate && model.live.activity.sourceAvailable}
+						<FactRow
+							label="Recent writes"
+							value="{formatInteger(model.live.activity.rowsWritten)} rows / {formatDuration(
+								model.live.activity.windowSeconds
+							)}"
+						/>
+					{/if}
+					<p class="text-muted-foreground py-1.5 text-[11px] leading-relaxed">
+						{model.live.activity.detail}
+					</p>
+					<FactRow
 						label="Ownership"
 						value={OWNERSHIP_LABEL[model.live.ownership]}
 						tone={model.live.ownership === 'direct' ? 'default' : 'warning'}
