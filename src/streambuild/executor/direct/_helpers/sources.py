@@ -15,6 +15,7 @@ from streambuild.compiler.compile.models import (
     LogicalResourceKey,
 )
 from streambuild.compiler.pipeline.models import RealizedProject
+from streambuild.compiler.planner.models import DirectPlan
 from streambuild.executor.direct.exceptions import DirectBuildError
 from streambuild.executor.population.models import (
     PopulationManagedSource,
@@ -29,6 +30,7 @@ _KAFKA_FORMAT_SETTING: str = "kafka_format"
 
 def plan_preserved_managed_sources(
     *,
+    plan: DirectPlan,
     realized_project: RealizedProject,
     catalog: CatalogSnapshot,
     database: str,
@@ -36,7 +38,14 @@ def plan_preserved_managed_sources(
     """Validate preserved sources and plan absent resources without mutation."""
 
     resources: tuple[AdapterManagedSource | AdapterTable | AdapterMaterializedView, ...] = (
-        _managed_source_resources(realized_project=realized_project)
+        _managed_source_resources(
+            realized_project=realized_project,
+            source_keys=frozenset(
+                prerequisite.key
+                for prerequisite in plan.prerequisite_scope
+                if prerequisite.framework_managed
+            ),
+        )
     )
     _reject_managed_source_drift(resources=resources, catalog=catalog)
     preserved_names: list[str] = []
@@ -75,12 +84,14 @@ def plan_preserved_managed_sources(
 
 
 def _managed_source_resources(
-    *, realized_project: RealizedProject
+    *, realized_project: RealizedProject, source_keys: frozenset[LogicalResourceKey]
 ) -> tuple[AdapterManagedSource | AdapterTable | AdapterMaterializedView, ...]:
     resources: list[AdapterManagedSource | AdapterTable | AdapterMaterializedView] = []
     source: CompiledSource
     for source in realized_project.project.sources:
         key: LogicalResourceKey = source.key
+        if key not in source_keys:
+            continue
         resources.extend(
             resource
             for resource in realized_project.resources_by_logical_key[key]
