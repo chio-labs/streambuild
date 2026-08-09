@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.16.4](https://github.com/chio-labs/streambuild/compare/v0.16.3...v0.16.4) (2026-08-09)
+
+
+### Bug Fixes
+
+* align execution UI with runtime state ([600c683](https://github.com/chio-labs/streambuild/commit/600c683b1f03db35422634fdd55957b05c771d17))
+* align execution UI with runtime state ([01ec96d](https://github.com/chio-labs/streambuild/commit/01ec96d5fb9d775344c4e8b797800dcebc5e6a7e))
+
 ## [0.16.3](https://github.com/chio-labs/streambuild/compare/v0.16.2...v0.16.3) (2026-08-09)
 
 
