@@ -18,6 +18,7 @@ from streambuild.adapter.models import (
 )
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from tests.unit.src.streambuild.adapters.clickhouse._test_types import (
+    ClickHouseConsumerGroupTestCase,
     ClickHouseLandingSchemaTestCase,
     ClickHouseManagedSourceRealizationTestCase,
     ClickHouseModelRealizationTestCase,
@@ -32,7 +33,7 @@ from tests.unit.src.streambuild.adapters.clickhouse._test_types import (
             description="realizes one managed source as three ordered ClickHouse resources",
             expected_relation_name="raw__orders",
             expected_resource_names=("kafka__orders", "raw__orders", "mv__orders"),
-            expected_consumer_group="streambuild_orders_orders",
+            expected_consumer_group="streambuild_analytics_prod_orders",
             expected_landing_ttl="_replay_landed_at + INTERVAL 7 DAY",
         )
     ],
@@ -49,6 +50,8 @@ def test_given_managed_source_request_when_realizing_then_returns_expected_resou
             topic="source.orders",
             consumer_group=None,
             format="JSONAsString",
+            project_name="analytics",
+            target_name="prod",
             ttl="_replay_landed_at + INTERVAL 7 DAY",
         )
     )
@@ -61,6 +64,37 @@ def test_given_managed_source_request_when_realizing_then_returns_expected_resou
     )
     assert managed_source.consumer_group == test_case.expected_consumer_group
     assert landing_table.ttl == test_case.expected_landing_ttl
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ClickHouseConsumerGroupTestCase(
+            description="explicit group bypasses default project and target scope",
+            consumer_group="orders_ingestion",
+            expected_consumer_group="orders_ingestion",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_explicit_consumer_group_when_realizing_then_project_scope_is_not_added(
+    test_case: ClickHouseConsumerGroupTestCase,
+) -> None:
+    realization: AdapterSourceRealization = ClickHouseAdapter().realize_source(
+        request=AdapterManagedSourceRealizationRequest(
+            logical_name="orders",
+            source_kind="kafka",
+            broker_list="kafka:9092",
+            topic="source.orders",
+            consumer_group=test_case.consumer_group,
+            format="JSONAsString",
+            project_name="analytics",
+            target_name="prod",
+        )
+    )
+
+    managed_source: AdapterManagedSource = cast(AdapterManagedSource, realization.resources[0])
+    assert managed_source.consumer_group == test_case.expected_consumer_group
 
 
 @pytest.mark.parametrize(
