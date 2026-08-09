@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.adapter.exceptions import AdapterError
 from streambuild.adapter.models import InspectedManagedTableState
 from streambuild.compiler.compile.constants import MATERIALIZED_VIEW_NAME_PREFIX
 from streambuild.compiler.planner.main.deployment_id_from_physical_name import (
@@ -21,6 +20,11 @@ from streambuild.dev_server._helpers.payloads.state_payload import build_relatio
 from streambuild.dev_server.models import RelationStorage
 from streambuild.executor.deployment.main.load_deployments import load_deployments
 from streambuild.executor.deployment.models import DeploymentInventory, DeploymentSummary
+from streambuild.executor.deployment.types import DeploymentLifecycleState
+from streambuild.executor.promotion.main.build_deployment_promotion_preview import (
+    build_deployment_promotion_preview,
+)
+from streambuild.executor.promotion.models import DeploymentPromotionPreview
 
 
 def build_deployments_payload(
@@ -77,15 +81,27 @@ def build_deployment_detail_payload(
         live_by_logical=live_by_logical,
         storage=storage,
     )
+    promotion_preview: DeploymentPromotionPreview | None = None
+    if deployment.state in {DeploymentLifecycleState.STAGED, DeploymentLifecycleState.ACTIVE}:
+        candidate_preview: DeploymentPromotionPreview = build_deployment_promotion_preview(
+            client=connection,
+            metadata_database=metadata_database,
+            default_database=database,
+            deployment_id=deployment_id,
+            inspected_state=inspected,
+        )
+        if deployment.state == DeploymentLifecycleState.STAGED or _has_binding_changes(
+            candidate_preview
+        ):
+            promotion_preview = candidate_preview
     return {
         "database": database,
         **_summary_payload(deployment=deployment, storage=storage),
         "models": models,
+        "promotionPreview": _promotion_preview_payload(promotion_preview),
         "wouldOrphan": _would_orphan_payload(
-            deployment=deployment,
-            live_by_logical=live_by_logical,
+            promotion_preview=promotion_preview,
             storage=storage,
-            models=models,
         ),
     }
 
@@ -93,14 +109,11 @@ def build_deployment_detail_payload(
 def read_relation_storage(
     *, connection: AdapterConnection, database: str
 ) -> dict[str, RelationStorage]:
-    """Return row and byte totals per relation; empty when storage is unreadable."""
+    """Return row and byte totals per relation."""
 
-    try:
-        rows: tuple[Mapping[str, object], ...] = connection.query(
-            build_relation_stats_query(database=database)
-        ).named_rows()
-    except AdapterError:
-        return {}
+    rows: tuple[Mapping[str, object], ...] = connection.query(
+        build_relation_stats_query(database=database)
+    ).named_rows()
     return {
         str(row["name"]): RelationStorage(
             rows=_as_int(row["total_rows"]),
@@ -165,29 +178,60 @@ def _model_payloads(
     return payloads
 
 
-def _would_orphan_payload(
-    *,
-    deployment: DeploymentSummary,
-    live_by_logical: Mapping[str, str],
-    storage: Mapping[str, RelationStorage],
-    models: list[dict[str, object]],
-) -> dict[str, object]:
-    """Relations the current active bindings would release if this deployment is promoted."""
-
-    replaced_logical_names: set[str] = {
-        str(model["logicalName"]) for model in models if model["isActive"] is False
-    }
-    released: tuple[str, ...] = tuple(
-        sorted(
-            physical_name
-            for logical_name, physical_name in live_by_logical.items()
-            if logical_name in replaced_logical_names
-        )
-    )
-    totals: RelationStorage = _storage_total(relation_names=released, storage=storage)
+def _promotion_preview_payload(
+    preview: DeploymentPromotionPreview | None,
+) -> dict[str, object] | None:
+    if preview is None:
+        return None
     return {
-        "relationCount": 0 if deployment.active_binding_names else len(released),
-        "bytes": 0 if deployment.active_binding_names else totals.bytes,
+        "classification": str(preview.classification),
+        "additions": [
+            {
+                "database": addition.database,
+                "logicalName": addition.logical_name,
+                "physicalName": addition.physical_name,
+            }
+            for addition in preview.additions
+        ],
+        "replacements": [
+            {
+                "database": replacement.database,
+                "logicalName": replacement.logical_name,
+                "fromPhysicalName": replacement.from_physical_name,
+                "toPhysicalName": replacement.to_physical_name,
+            }
+            for replacement in preview.replacements
+        ],
+        "removals": [
+            {
+                "database": removal.database,
+                "logicalName": removal.logical_name,
+                "physicalName": removal.physical_name,
+            }
+            for removal in preview.removals
+        ],
+    }
+
+
+def _has_binding_changes(preview: DeploymentPromotionPreview) -> bool:
+    return bool(preview.additions or preview.replacements or preview.removals)
+
+
+def _would_orphan_payload(
+    *, promotion_preview: DeploymentPromotionPreview | None, storage: Mapping[str, RelationStorage]
+) -> dict[str, object]:
+    """Physical relations left without a live binding after the exact promotion request."""
+
+    relation_names: tuple[str, ...] = (
+        ()
+        if promotion_preview is None
+        else tuple(relation.physical_name for relation in promotion_preview.orphaned_relations)
+    )
+    totals: RelationStorage = _storage_total(relation_names=relation_names, storage=storage)
+    return {
+        "relationNames": list(relation_names),
+        "relationCount": len(relation_names),
+        "bytes": totals.bytes,
     }
 
 

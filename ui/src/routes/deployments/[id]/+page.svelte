@@ -66,10 +66,9 @@
 		)
 	);
 
-	function suffixOf(relation: string | null): string {
+	function exactRelationName(relation: string | null): string {
 		if (relation === null) return '—';
-		const deploymentPart = relation.split('__').at(-1) ?? relation;
-		return deploymentPart.split('_').at(-1) ?? deploymentPart;
+		return relation;
 	}
 
 	/**
@@ -102,8 +101,8 @@
 					return {
 						...node,
 						sublabel: comparison.isNew
-							? `new · ${suffixOf(comparison.stagedRelation)}`
-							: `${suffixOf(comparison.liveRelation)} → ${suffixOf(comparison.stagedRelation)}`,
+							? `new · ${exactRelationName(comparison.stagedRelation)}`
+							: `${exactRelationName(comparison.liveRelation)} → ${exactRelationName(comparison.stagedRelation)}`,
 						rows: comparison.stagedRows
 					};
 				}),
@@ -122,7 +121,19 @@
 		deploymentModels.filter((model) => model.isNew).length
 	);
 	const isInitialPublish: boolean = $derived(
-		deploymentModels.length > 0 && newModelCount === deploymentModels.length
+		detail?.promotionPreview?.classification === 'initial_publish'
+	);
+	const additionCount: number = $derived(detail?.promotionPreview?.additions.length ?? 0);
+	const replacementCount: number = $derived(detail?.promotionPreview?.replacements.length ?? 0);
+	const removalCount: number = $derived(detail?.promotionPreview?.removals.length ?? 0);
+	const isPartialPromotion: boolean = $derived(
+		detail?.state === 'active' && detail.promotionPreview !== null
+	);
+	const changedLogicalNames: Set<string> = $derived(
+		new Set([
+			...(detail?.promotionPreview?.additions.map((item) => item.logicalName) ?? []),
+			...(detail?.promotionPreview?.replacements.map((item) => item.logicalName) ?? [])
+		])
 	);
 </script>
 
@@ -145,7 +156,7 @@
 				style:color={detail.state === 'active'
 					? 'var(--sb-secondary)'
 					: detail.state === 'staged'
-						? 'var(--sb-warn)'
+						? 'var(--sb-warning)'
 						: 'var(--sb-text-faint)'}>{detail.state}</span
 			>
 			{#if detail.state === 'staged'}
@@ -214,7 +225,7 @@
 													class="sb-tag code"
 													style:color={relation.status === 'unchanged'
 														? 'var(--sb-text-faint)'
-														: 'var(--sb-warn)'}>{relation.status}</span
+																: 'var(--sb-warning)'}>{relation.status}</span
 												>
 											</td>
 											<td class="code px-3 text-[11.5px]">
@@ -271,6 +282,7 @@
 						<div class="px-3 py-1.5">
 							<FactRow label="Models to publish" value={formatInteger(detail.modelCount)} mono />
 							<FactRow label="Staged rows" value={formatCompact(totalStagedRows)} mono />
+							<FactRow label="Bindings added" value={formatInteger(additionCount)} mono />
 						</div>
 					</div>
 				{:else}
@@ -281,8 +293,8 @@
 							Rows versus live
 						</div>
 						<div class="px-3 py-1.5">
-							<FactRow label="Staged" value={formatCompact(totalStagedRows)} mono />
-							<FactRow label="Live" value={formatCompact(totalLiveRows)} mono />
+							<FactRow label="Staged rows" value={formatCompact(totalStagedRows)} mono />
+							<FactRow label="Matching live rows" value={formatCompact(totalLiveRows)} mono />
 							<FactRow
 								label="Delta"
 								value={`${rowDelta >= 0 ? '+' : ''}${formatInteger(rowDelta)}`}
@@ -312,26 +324,25 @@
 					</div>
 				{/if}
 
-				{#if detail.state === 'staged'}
+				{#if detail.promotionPreview !== null}
 					<div class="rounded-[4px] border border-border">
 						<div
 							class="text-[var(--sb-text-faint)] border-b border-border px-3 py-2 font-mono text-[10px] uppercase tracking-[0.16em]"
 						>
-							{isInitialPublish ? 'Publish' : 'Promote'}
+							{isInitialPublish ? 'Publish' : isPartialPromotion ? 'Resume promotion' : 'Promote'}
 						</div>
 						<div class="px-3 py-2.5">
 							<div class="text-muted-foreground pb-2 text-[11.5px]">
 								{#if isInitialPublish}
-									This deployment publishes {detail.modelCount} model{detail.modelCount === 1
-										? ''
-										: 's'} for the first time. No live bindings will be replaced and no relations
-									will be released.
+									This operation adds {additionCount} live binding{additionCount === 1 ? '' : 's'}.
+									It replaces 0 and removes 0 live bindings.
 								{:else}
-									Models switch over one at a time, not all together. Promoting also releases
-									{detail.wouldOrphan.relationCount} relation{detail.wouldOrphan.relationCount ===
-									1
+									Bindings change one at a time, not all together. This operation adds
+									{additionCount}, replaces {replacementCount}, and removes {removalCount}. After
+									promotion, {detail.wouldOrphan.relationCount} physical relation{detail.wouldOrphan
+										.relationCount === 1
 										? ''
-										: 's'} ({formatBytes(detail.wouldOrphan.bytes)}).
+										: 's'} ({formatBytes(detail.wouldOrphan.bytes)}) will no longer be live.
 								{/if}
 							</div>
 							<button
@@ -339,7 +350,15 @@
 								onclick={() => void promote()}
 								disabled={promoting}
 							>
-								{promoting ? (isInitialPublish ? 'publishing…' : 'promoting…') : isInitialPublish ? 'Publish' : 'Promote'}
+								{promoting
+									? isInitialPublish
+										? 'publishing…'
+										: 'promoting…'
+									: isInitialPublish
+										? 'Publish'
+										: isPartialPromotion
+											? 'Resume promotion'
+											: 'Promote'}
 							</button>
 							{#if promoteError !== null}
 								<div class="pt-2 text-[11px]" style:color="var(--sb-error)">{promoteError}</div>
@@ -357,44 +376,84 @@
 			<thead>
 				<tr class="text-[var(--sb-text-faint)] font-mono text-[10px] uppercase tracking-[0.14em]">
 					<th class="px-3 py-2 font-normal">Model</th>
-					{#if !isInitialPublish}<th class="px-3 py-2 font-normal">Live</th>{/if}
+					<th class="px-3 py-2 font-normal">Action</th>
+					<th class="px-3 py-2 font-normal">Live</th>
 					<th class="px-3 py-2 font-normal">Staged</th>
-					{#if !isInitialPublish}<th class="px-3 py-2 font-normal">Live rows</th>{/if}
+					<th class="px-3 py-2 font-normal">Live rows</th>
 					<th class="px-3 py-2 font-normal">Staged rows</th>
-					{#if !isInitialPublish}<th class="px-3 py-2 font-normal">Delta</th>{/if}
+					<th class="px-3 py-2 font-normal">Delta</th>
 				</tr>
 			</thead>
 			<tbody>
-				{#each deploymentModels as model (model.logicalName)}
-					<tr>
-						<td class="code px-3 py-1.5 text-[12px]">{model.logicalName}</td>
-						{#if !isInitialPublish}
-							<td class="code text-[var(--sb-text-faint)] px-3 text-[11px]">
-								{model.liveRelation === null ? 'not published' : suffixOf(model.liveRelation)}
-							</td>
-						{/if}
-						<td class="code px-3 text-[11px]">{suffixOf(model.stagedRelation)}</td>
-						{#if !isInitialPublish}
+				{#if detail.promotionPreview !== null}
+					{#each detail.promotionPreview.additions as addition (`${addition.database}:${addition.logicalName}`)}
+						{@const model = deploymentModels.find((item) => item.logicalName === addition.logicalName)}
+						<tr>
+							<td class="code px-3 py-1.5 text-[12px]">{addition.logicalName}</td>
+							<td class="code px-3 text-[11px]" style:color="var(--primary)">add</td>
+							<td class="code text-[var(--sb-text-faint)] px-3 text-[11px]">not published</td>
+							<td class="code px-3 text-[11px]">{exactRelationName(addition.physicalName)}</td>
+							<td class="code px-3 text-[11.5px]">—</td>
+							<td class="code px-3 text-[11.5px]">{model ? formatInteger(model.stagedRows) : '—'}</td>
+							<td class="code px-3 text-[11.5px]" style:color="var(--primary)">new</td>
+						</tr>
+					{/each}
+					{#each detail.promotionPreview.replacements as replacement (`${replacement.database}:${replacement.logicalName}`)}
+						{@const model = deploymentModels.find((item) => item.logicalName === replacement.logicalName)}
+						<tr>
+							<td class="code px-3 py-1.5 text-[12px]">{replacement.logicalName}</td>
+							<td class="code px-3 text-[11px]" style:color="var(--sb-warning)">replace</td>
+							<td class="code text-[var(--sb-text-faint)] px-3 text-[11px]">{exactRelationName(replacement.fromPhysicalName)}</td>
+							<td class="code px-3 text-[11px]">{exactRelationName(replacement.toPhysicalName)}</td>
+							<td class="code px-3 text-[11.5px]">{model?.liveRows === null || model === undefined ? '—' : formatInteger(model.liveRows)}</td>
+							<td class="code px-3 text-[11.5px]">{model ? formatInteger(model.stagedRows) : '—'}</td>
 							<td class="code px-3 text-[11.5px]">
-								{model.liveRows === null ? '—' : formatInteger(model.liveRows)}
-							</td>
-						{/if}
-						<td class="code px-3 text-[11.5px]">{formatInteger(model.stagedRows)}</td>
-						{#if !isInitialPublish}
-							<td class="code px-3 text-[11.5px]">
-								{#if model.isNew}
-									<span style:color="var(--sb-primary)">new</span>
+								{#if model === undefined || model.liveRows === null}
+									—
 								{:else}
-									{@const delta = model.stagedRows - (model.liveRows ?? 0)}
-									<span
-										style:color={delta === 0 ? 'var(--sb-text-faint)' : 'var(--sb-secondary)'}
+									{@const delta = model.stagedRows - model.liveRows}
+									<span style:color={delta === 0 ? 'var(--sb-text-faint)' : 'var(--sb-secondary)'}
 										>{delta >= 0 ? '+' : ''}{formatInteger(delta)}</span
 									>
 								{/if}
 							</td>
-						{/if}
-					</tr>
-				{/each}
+						</tr>
+					{/each}
+					{#each deploymentModels.filter((model) => !changedLogicalNames.has(model.logicalName)) as model (model.logicalName)}
+						<tr>
+							<td class="code px-3 py-1.5 text-[12px]">{model.logicalName}</td>
+							<td class="code text-[var(--sb-text-faint)] px-3 text-[11px]">unchanged</td>
+							<td class="code text-[var(--sb-text-faint)] px-3 text-[11px]">{exactRelationName(model.liveRelation)}</td>
+							<td class="code px-3 text-[11px]">{exactRelationName(model.stagedRelation)}</td>
+							<td class="code px-3 text-[11.5px]">{model.liveRows === null ? '—' : formatInteger(model.liveRows)}</td>
+							<td class="code px-3 text-[11.5px]">{formatInteger(model.stagedRows)}</td>
+							<td class="code px-3 text-[11.5px]">0</td>
+						</tr>
+					{/each}
+					{#each detail.promotionPreview.removals as removal (`${removal.database}:${removal.logicalName}`)}
+						<tr>
+							<td class="code px-3 py-1.5 text-[12px]">{removal.logicalName}</td>
+							<td class="code px-3 text-[11px]" style:color="var(--sb-error)">remove</td>
+							<td class="code text-[var(--sb-text-faint)] px-3 text-[11px]">{exactRelationName(removal.physicalName)}</td>
+							<td class="code px-3 text-[11px]">removed</td>
+							<td class="code px-3 text-[11.5px]">—</td>
+							<td class="code px-3 text-[11.5px]">—</td>
+							<td class="code px-3 text-[11.5px]" style:color="var(--sb-error)">removed</td>
+						</tr>
+					{/each}
+				{:else}
+					{#each deploymentModels as model (model.logicalName)}
+						<tr>
+							<td class="code px-3 py-1.5 text-[12px]">{model.logicalName}</td>
+							<td class="code text-[var(--sb-text-faint)] px-3 text-[11px]">unchanged</td>
+							<td class="code text-[var(--sb-text-faint)] px-3 text-[11px]">{exactRelationName(model.liveRelation)}</td>
+							<td class="code px-3 text-[11px]">{exactRelationName(model.stagedRelation)}</td>
+							<td class="code px-3 text-[11.5px]">{model.liveRows === null ? '—' : formatInteger(model.liveRows)}</td>
+							<td class="code px-3 text-[11.5px]">{formatInteger(model.stagedRows)}</td>
+							<td class="code px-3 text-[11.5px]">—</td>
+						</tr>
+					{/each}
+				{/if}
 			</tbody>
 		</table>
 	{/if}

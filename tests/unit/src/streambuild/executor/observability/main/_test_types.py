@@ -17,3 +17,9 @@ class ObservationArtifactTestCase:
     expected_workflow_sql: str
     expected_step_names: tuple[str, ...]
     expected_artifact_seen_before_execution: bool
+
+
+@dataclass(frozen=True)
+class StartInvocationTestCase:
+    description: str
+    expected_invocation_id: str

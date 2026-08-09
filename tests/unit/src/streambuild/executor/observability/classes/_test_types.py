@@ -22,3 +22,19 @@ class RunEventDisplayCommandTestCase:
     environment_command: str
     explicit_command: str | None
     expected_command: str
+
+
+@dataclass(frozen=True)
+class RunEventScopeTestCase:
+    description: str
+    expected_executed_logical_ids: tuple[str, ...]
+    expected_context_logical_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class RunEventStartupTimingsTestCase:
+    description: str
+    compile_ms: int
+    observability_ms: int
+    planning_ms: int
+    expected_total_ms: int

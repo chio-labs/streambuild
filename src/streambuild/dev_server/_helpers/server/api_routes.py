@@ -306,6 +306,8 @@ def _register_deployment_routes(
                 )
         except AdapterError as error:
             raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
+        except ValueError as error:
+            raise HTTPException(status_code=_HTTP_BAD_REQUEST, detail=str(error)) from error
         if payload is None:
             raise HTTPException(
                 status_code=_HTTP_NOT_FOUND,

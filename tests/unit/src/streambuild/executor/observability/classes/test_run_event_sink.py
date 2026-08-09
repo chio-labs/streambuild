@@ -1,15 +1,19 @@
 import io
 import json
 import time
+from typing import cast
 
 import pytest
 
 from streambuild.executor.observability.classes.run_event_sink import RunEventSink
 from streambuild.executor.observability.constants import RUN_DISPLAY_COMMAND_ENV_VAR
+from streambuild.executor.observability.models import RunStartupTimings
 from tests.unit.src.streambuild.executor.observability.classes._test_types import (
     RunEventDisplayCommandTestCase,
     RunEventHeartbeatTestCase,
+    RunEventScopeTestCase,
     RunEventSinkTestCase,
+    RunEventStartupTimingsTestCase,
 )
 from tests.unit.src.streambuild.executor.observability.classes.helpers import (
     RunEventRecordingConnection,
@@ -181,6 +185,101 @@ def test_given_display_command_source_when_starting_run_then_exact_command_is_em
     started: dict = json.loads(stream.getvalue().splitlines()[0])
     assert started["command"] == test_case.command
     assert started["displayCommand"] == test_case.expected_command
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        RunEventScopeTestCase(
+            description="persists exact executed and prerequisite logical identities",
+            expected_executed_logical_ids=("model:order_items_v2", "model:daily/revenue"),
+            expected_context_logical_ids=("source:order_events_v1",),
+        ),
+        RunEventScopeTestCase(
+            description="persists a complete scope beyond the diagnostic payload bound",
+            expected_executed_logical_ids=tuple(
+                f"model:long_exact_model_identifier_{index:04d}" for index in range(500)
+            ),
+            expected_context_logical_ids=("source:order_events_v1",),
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_authoritative_scope_when_starting_run_then_exact_logical_identities_are_emitted(
+    test_case: RunEventScopeTestCase,
+) -> None:
+    stream: io.StringIO = io.StringIO()
+    connection: RunEventRecordingConnection = RunEventRecordingConnection()
+    sink: RunEventSink = RunEventSink(
+        connection=connection,
+        database="analytics",
+        invocation_id="inv-scope",
+        jsonl_stream=stream,
+    )
+
+    sink.run_started(
+        command="build",
+        mode="direct",
+        total_statements=1,
+        selected_node_count=len(test_case.expected_executed_logical_ids),
+        executed_logical_ids=test_case.expected_executed_logical_ids,
+        context_logical_ids=test_case.expected_context_logical_ids,
+    )
+    sink.run_completed(outcome="succeeded", exit_code=0, error_message=None)
+
+    started: dict = json.loads(stream.getvalue().splitlines()[0])
+    persisted_started: dict = json.loads(connection.run_events[0].payload_json)
+    assert started["executedLogicalIds"] == list(test_case.expected_executed_logical_ids)
+    assert started["contextLogicalIds"] == list(test_case.expected_context_logical_ids)
+    assert persisted_started["executedLogicalIds"] == list(test_case.expected_executed_logical_ids)
+    assert persisted_started["contextLogicalIds"] == list(test_case.expected_context_logical_ids)
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        RunEventStartupTimingsTestCase(
+            description="pre-execution phases retain their measured durations",
+            compile_ms=420,
+            observability_ms=30,
+            planning_ms=2050,
+            expected_total_ms=2500,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_startup_timings_when_starting_run_then_phase_breakdown_is_emitted(
+    test_case: RunEventStartupTimingsTestCase,
+) -> None:
+    stream: io.StringIO = io.StringIO()
+    sink: RunEventSink = RunEventSink(
+        connection=RunEventRecordingConnection(),
+        database="analytics",
+        invocation_id="inv-timings",
+        jsonl_stream=stream,
+    )
+
+    sink.run_started(
+        command="build",
+        mode="direct",
+        total_statements=1,
+        selected_node_count=1,
+        startup_timings=RunStartupTimings(
+            compile_ms=test_case.compile_ms,
+            observability_ms=test_case.observability_ms,
+            planning_ms=test_case.planning_ms,
+        ),
+    )
+    sink.run_completed(outcome="succeeded", exit_code=0, error_message=None)
+
+    started: dict[str, object] = json.loads(stream.getvalue().splitlines()[0])
+    timings: dict[str, int] = cast(dict[str, int], started["startupTimings"])
+    assert timings == {
+        "compileMs": test_case.compile_ms,
+        "observabilityMs": test_case.observability_ms,
+        "planningMs": test_case.planning_ms,
+        "totalMs": test_case.expected_total_ms,
+    }
 
 
 @pytest.mark.parametrize(
