@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.14.0](https://github.com/chio-labs/streambuild/compare/v0.13.0...v0.14.0) (2026-08-09)
+
+
+### Features
+
+* complete virtual deployment lifecycle ([acfbf58](https://github.com/chio-labs/streambuild/commit/acfbf5835b74113e65bf8135c01fd5e0ce1e0c30))
+* complete virtual deployment lifecycle ([3d5f971](https://github.com/chio-labs/streambuild/commit/3d5f97127d7cd8b3f226832a3980bcc67f825a84))
+* derive Kafka source names with macros ([e30223d](https://github.com/chio-labs/streambuild/commit/e30223d4ce955fb554ee0ebe7fd1103625944f63))
+* derive Kafka source names with macros ([0fd2861](https://github.com/chio-labs/streambuild/commit/0fd28618f538d44d3af18469e7f0afb89beee3b4))
+* expose deployment promote, cleanup and diff over the dev API ([71f3372](https://github.com/chio-labs/streambuild/commit/71f33723150ad89f1cdb195487cf0e0c9d03a2fb))
+* promote, clean up and diff deployments from the UI ([d8231f3](https://github.com/chio-labs/streambuild/commit/d8231f3c3d663e7cfd76697a0e52fef9ed351b56))
+* show deployment relations and orphans in the physical view ([e8e6414](https://github.com/chio-labs/streambuild/commit/e8e64142f007f6eee82ed80d68aea69fc8a9eeb3))
+* show the switchover model by model on the run page ([1a46901](https://github.com/chio-labs/streambuild/commit/1a469018c5356cd9a2972c313a604ba58f2d3a32))
+* show the switchover model by model on the run page ([3feb1aa](https://github.com/chio-labs/streambuild/commit/3feb1aa7e29354465cd56c2bdb87644396e94ae9))
+* surface virtual deployments in the dev UI ([5d64f69](https://github.com/chio-labs/streambuild/commit/5d64f692c71c25a8bebb5e339565315e6b49be3e))
+
+
+### Bug Fixes
+
+* measure virtual-mode models by the relation they are bound to ([914a48c](https://github.com/chio-labs/streambuild/commit/914a48c203f089594e8c67560f72958ca23215ae))
+* offer rollback on superseded deployments ([83c128a](https://github.com/chio-labs/streambuild/commit/83c128a836cbd053ea02b3489d0235bf77a451ea))
+
 ## [0.13.0](https://github.com/chio-labs/streambuild/compare/v0.12.4...v0.13.0) (2026-08-08)
 
 
