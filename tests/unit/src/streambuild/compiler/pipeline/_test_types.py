@@ -109,6 +109,7 @@ class SharedSourceRealizationTestCase:
     expected_model_count: int
     expected_source_resource_count: int
     expected_consumer_group: str
+    expected_effective_consumer_group: str
 
 
 @dataclass(frozen=True)

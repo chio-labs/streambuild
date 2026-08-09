@@ -73,7 +73,9 @@ def build_realized_project(
 
     source_realizations: dict[LogicalResourceKey, AdapterSourceRealization] = {
         source.key: _canonical_source_realization(
-            realization=adapter_profile.realize_source(request=_source_request(source)),
+            realization=adapter_profile.realize_source(
+                request=_source_request(source=source, project=project)
+            ),
             sql_analyzer=sql_analyzer,
         )
         for source in project.sources
@@ -153,7 +155,7 @@ def _canonical_source_realization(
 
 
 def _source_request(
-    source: CompiledSource,
+    *, source: CompiledSource, project: CompiledProject
 ) -> AdapterManagedSourceRealizationRequest | AdapterAdoptedSourceRealizationRequest:
     authored_source: KafkaLandingStep | ExternalTableSourceStep = source.source
     if isinstance(authored_source, ExternalTableSourceStep):
@@ -173,6 +175,8 @@ def _source_request(
         topic=authored_source.kafka.topic,
         consumer_group=authored_source.kafka.consumer_group,
         format=authored_source.kafka.format,
+        project_name=project.project_name,
+        target_name=project.target_name,
         ttl=authored_source.kafka.ttl,
         settings=settings,
         naming_macro_fingerprint=authored_source.naming_macro_fingerprint,

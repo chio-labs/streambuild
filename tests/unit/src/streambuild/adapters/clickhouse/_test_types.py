@@ -229,6 +229,13 @@ class ClickHouseManagedSourceRealizationTestCase:
 
 
 @dataclass(frozen=True)
+class ClickHouseConsumerGroupTestCase:
+    description: str
+    consumer_group: str
+    expected_consumer_group: str
+
+
+@dataclass(frozen=True)
 class ClickHouseSourceRealizationErrorTestCase:
     description: str
     source_format: str
