@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict
-
 from streambuild.adapter.constants import VIRTUAL_OBJECT_STATE_KIND_RECONCILE
 from streambuild.adapter.models import AdapterMetadataState
 from streambuild.compiler.compile.models import DesiredMaterializedView, DesiredTable, DesiredView
@@ -43,7 +41,7 @@ def build_object_state_record(
     return ObjectStateRecord(
         deployment_id=reconcile_id,
         key=desired_object.key,
-        normalized_fingerprint=build_normalized_fingerprint(asdict(desired_object.spec)),
+        normalized_fingerprint=build_normalized_fingerprint(desired_object.spec),
         normalized_query=normalized_query,
         recorded_at=recorded_at,
         state_kind=VIRTUAL_OBJECT_STATE_KIND_RECONCILE,

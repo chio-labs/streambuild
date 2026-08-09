@@ -1,7 +1,5 @@
 """Metadata persistence for backfill bootstrap execution."""
 
-from dataclasses import asdict
-
 from streambuild.adapter.constants import VIRTUAL_OBJECT_STATE_KIND_DEPLOYMENT
 from streambuild.adapter.models import AdapterMetadataState
 from streambuild.compiler.compile.models import DesiredMaterializedView, DesiredView, ObjectKey
@@ -90,7 +88,7 @@ def _build_object_state_records(
                     object_type=desired_object.key.object_type,
                     name=desired_object.key.name,
                 ),
-                normalized_fingerprint=build_normalized_fingerprint(asdict(desired_object.spec)),
+                normalized_fingerprint=build_normalized_fingerprint(desired_object.spec),
                 normalized_query=normalized_query,
                 recorded_at=recorded_at,
                 state_kind=VIRTUAL_OBJECT_STATE_KIND_DEPLOYMENT,
