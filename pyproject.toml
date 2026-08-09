@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "streambuild"
-version = "0.16.2"
+version = "0.16.3"
 description = "Declarative ClickHouse streaming pipeline planning tool"
 readme = "README.md"
 requires-python = ">=3.12"
