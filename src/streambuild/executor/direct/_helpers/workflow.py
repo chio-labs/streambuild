@@ -69,6 +69,7 @@ def assemble_direct_build_workflow(
     source_preparation: PopulationSourcePreparation
     source_realizations: tuple[PopulationRealization, ...]
     source_preparation, source_realizations = plan_preserved_managed_sources(
+        plan=request.plan,
         realized_project=request.realized_project,
         catalog=snapshot.catalog,
         database=request.database,
