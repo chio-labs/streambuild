@@ -6,10 +6,8 @@ import threading
 from datetime import UTC, datetime
 from pathlib import Path
 from time import monotonic
-from uuid import uuid4
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.adapter.models import AdapterQualityScheduleClaim
 from streambuild.cli.entry.types import CliCommand
 from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.dev_server._helpers.queries.runs_query import (
@@ -24,9 +22,6 @@ from streambuild.dev_server.main._build_audit_scheduler_payload import (
 from streambuild.dev_server.main._execute_due_audits import execute_due_audits
 from streambuild.dev_server.main._scheduler_enabled import scheduler_enabled
 from streambuild.dev_server.types import AuditScheduleState, RunPresentationStatus
-from streambuild.executor.auditing.main.claim_scheduled_quality_slots import (
-    claim_scheduled_quality_slots,
-)
 from streambuild.executor.observability.types import QualityResultTrigger
 
 _POLL_SECONDS: float = 10.0
@@ -161,34 +156,6 @@ class AuditScheduler:
                         completed_at=str(payload["warehouseNow"]),
                     )
                     return 0
-                claims: tuple[AdapterQualityScheduleClaim, ...] = tuple(
-                    AdapterQualityScheduleClaim(
-                        node_name=str(item["name"]),
-                        scheduled_for=str(item["scheduledFor"]),
-                    )
-                    for item in due
-                )
-                claimed_slots: frozenset[AdapterQualityScheduleClaim] | None = (
-                    claim_scheduled_quality_slots(
-                        connection=self._connection,
-                        database=self._database,
-                        project_identity=str(self._project_dir.resolve()),
-                        target_identity=self._database,
-                        owner_id=str(uuid4()),
-                        claims=claims,
-                    )
-                )
-                if isinstance(claimed_slots, frozenset):
-                    due = tuple(
-                        item
-                        for item, claim in zip(due, claims, strict=True)
-                        if claim in claimed_slots
-                    )
-                    if not due:
-                        self._record_blocked(
-                            warning="another scheduler process claimed the due logical slots"
-                        )
-                        return 0
                 self._set_running_audit_count(len(due))
                 result_count: int = execute_due_audits(
                     analysis=analysis,

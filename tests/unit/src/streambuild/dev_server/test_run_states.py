@@ -4,6 +4,7 @@ import pytest
 
 from streambuild.adapter.models import AdapterQueryResult
 from streambuild.dev_server._helpers.queries.runs_query import (
+    _assemble_runs,
     derive_run_duration_ms,
     derive_run_status,
     read_latest_direct_build_materialization,
@@ -23,6 +24,50 @@ from tests.unit.src.streambuild.dev_server.helpers import (
 )
 
 _WAREHOUSE_NOW: datetime = datetime(2026, 8, 7, 12, 0, tzinfo=UTC)
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DevRefactorTestCase(
+            description="terminal run presentation uses the richer started-event command",
+            expected_value="stb build --target test --select orders",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_full_started_command_when_assembling_terminal_run_then_uses_full_command(
+    test_case: DevRefactorTestCase,
+) -> None:
+    runs: list[dict[str, object]] = _assemble_runs(
+        terminal_by_id={
+            "inv-1": {
+                "invocationId": "inv-1",
+                "command": "build",
+                "startedAt": "2026-08-07 11:00:00.000",
+                "lastSignalAt": "2026-08-07 11:01:00.000",
+            }
+        },
+        streams={
+            "inv-1": [
+                {
+                    "event": "run_started",
+                    "emittedAt": "2026-08-07 11:00:00.000",
+                    "command": "build",
+                    "displayCommand": "stb build --target test --select orders",
+                },
+                {
+                    "event": "run_completed",
+                    "emittedAt": "2026-08-07 11:01:00.000",
+                },
+            ]
+        },
+        warehouse_now=_WAREHOUSE_NOW,
+        limit=None,
+    )
+
+    assert runs[0]["command"] == "build"
+    assert runs[0]["displayCommand"] == test_case.expected_value
 
 
 @pytest.mark.parametrize(
