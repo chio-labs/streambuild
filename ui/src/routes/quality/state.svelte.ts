@@ -56,3 +56,6 @@ export function createAuditSchedulerState() {
 		start
 	};
 }
+
+/** Preserve the last scheduler payload across Quality route remounts. */
+export const auditSchedulerStore = createAuditSchedulerState();
