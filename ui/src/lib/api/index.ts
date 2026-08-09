@@ -198,8 +198,36 @@ export type RunRecord = {
 	lastActivity: string | null;
 };
 
+const RUNS_PREFETCH_MAX_AGE_MS = 10_000;
+let runsPrefetch: Promise<RunRecord[]> | null = null;
+let runsPrefetchedAt = 0;
+
+/** Warm run history before navigation; the Runs page consumes this exact request once. */
+export function prefetchRuns(): Promise<RunRecord[]> {
+	if (runsPrefetch !== null && Date.now() - runsPrefetchedAt < RUNS_PREFETCH_MAX_AGE_MS) {
+		return runsPrefetch;
+	}
+	runsPrefetchedAt = Date.now();
+	const request = requestRuns();
+	runsPrefetch = request;
+	void request.catch(() => {
+		if (runsPrefetch === request) runsPrefetch = null;
+	});
+	return request;
+}
+
 /** Recorded invocation history from `_streambuild_invocations`, newest first. */
 export async function fetchRuns(): Promise<RunRecord[]> {
+	if (runsPrefetch !== null && Date.now() - runsPrefetchedAt < RUNS_PREFETCH_MAX_AGE_MS) {
+		const request = runsPrefetch;
+		runsPrefetch = null;
+		return request;
+	}
+	runsPrefetch = null;
+	return requestRuns();
+}
+
+async function requestRuns(): Promise<RunRecord[]> {
 	const response = await fetch('/api/runs');
 	return readApiResponse<RunRecord[]>(response, 'runs request');
 }
