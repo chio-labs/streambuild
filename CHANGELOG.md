@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.16.0](https://github.com/chio-labs/streambuild/compare/v0.15.0...v0.16.0) (2026-08-09)
+
+
+### Features
+
+* improve UI loading and audit scheduling ([62b15f3](https://github.com/chio-labs/streambuild/commit/62b15f3ffbe68da55916326a4bfefefe4487e2f1))
+* improve UI loading and scheduler status ([e6b1446](https://github.com/chio-labs/streambuild/commit/e6b1446e5955747b19508e653b22588b7652a4a4))
+
+
+### Bug Fixes
+
+* scope direct source preparation to selection ([28206e1](https://github.com/chio-labs/streambuild/commit/28206e1f219912d93c565528585ece6c5023dbfd))
+* scope direct source preparation to selection ([ec06a14](https://github.com/chio-labs/streambuild/commit/ec06a141e1f57651e9ab690d55a446d9f56ea7a5))
+
 ## [0.15.0](https://github.com/chio-labs/streambuild/compare/v0.14.1...v0.15.0) (2026-08-09)
 
 
