@@ -1,7 +1,7 @@
 import pytest
 
 from streambuild.adapter.models import AdapterReplayColumns
-from streambuild.dev_server._helpers.plan_payload import (
+from streambuild.dev_server._helpers.payloads.plan_payload import (
     build_replay_count_query,
     replay_time_column,
 )

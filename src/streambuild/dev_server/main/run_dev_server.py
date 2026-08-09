@@ -11,7 +11,7 @@ from fastapi import FastAPI
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.compiler.pipeline.models import CompileAnalysis
-from streambuild.dev_server._helpers.static_assets import (
+from streambuild.dev_server._helpers.server.static_assets import (
     register_static_assets,
     static_assets_present,
     static_assets_root,

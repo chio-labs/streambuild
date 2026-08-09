@@ -18,27 +18,40 @@ from streambuild.compiler.compile.models import CompiledSource
 from streambuild.compiler.discovery.models import KafkaLandingStep
 from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.compiler.planner.exceptions import DirectPlanError
-from streambuild.dev_server._helpers.checks_execution import (
-    build_checks_status_payload,
-    run_one_audit,
-    run_one_test,
+from streambuild.dev_server._helpers.payloads.definitions_payload import build_definitions_payload
+from streambuild.dev_server._helpers.payloads.deployments_payload import (
+    build_deployment_detail_payload,
+    build_deployments_payload,
 )
-from streambuild.dev_server._helpers.compile_runner import build_status_payload
-from streambuild.dev_server._helpers.definitions_payload import build_definitions_payload
-from streambuild.dev_server._helpers.message_query import (
+from streambuild.dev_server._helpers.payloads.plan_payload import (
+    build_plan_payload,
+    count_replay_rows,
+)
+from streambuild.dev_server._helpers.payloads.state_payload import (
+    build_state_payload,
+    build_topics_payload,
+)
+from streambuild.dev_server._helpers.queries.message_query import (
     ensure_header_columns,
     read_source_message_facets,
     read_source_message_record,
     read_source_messages,
 )
-from streambuild.dev_server._helpers.plan_payload import (
-    build_plan_payload,
-    count_replay_rows,
+from streambuild.dev_server._helpers.queries.runs_query import (
+    read_active_runs,
+    read_run_events,
+    read_runs,
 )
-from streambuild.dev_server._helpers.runs_query import read_active_runs, read_run_events, read_runs
-from streambuild.dev_server._helpers.state_payload import (
-    build_state_payload,
-    build_topics_payload,
+from streambuild.dev_server._helpers.server.checks_execution import (
+    build_checks_status_payload,
+    run_one_audit,
+    run_one_test,
+)
+from streambuild.dev_server._helpers.server.compile_runner import build_status_payload
+from streambuild.dev_server._helpers.server.deployment_operations import (
+    build_deployment_diff_payload,
+    run_deployment_cleanup,
+    run_deployment_promotion,
 )
 from streambuild.dev_server.classes.audit_scheduler import AuditScheduler
 from streambuild.dev_server.classes.build_process import BuildProcessManager, build_invocation
@@ -60,6 +73,7 @@ from streambuild.dev_server.models import (
     BuildRunRequest,
     ChecksRunRequest,
     CompileOutcome,
+    DeploymentCleanupRequest,
     DevExecutionContext,
     MessageFacetsRequest,
     MessageRecordRequest,
@@ -231,6 +245,13 @@ def register_api_routes(
     app.post("/api/reload")(reload_project)
     app.get("/api/definitions")(read_definitions)
     app.get("/api/topics")(read_topics)
+    _register_deployment_routes(
+        app=app,
+        state=state,
+        database=database,
+        project_dir=project_dir,
+        required_connection=_required_connection,
+    )
     _register_message_routes(
         app=app,
         state=state,
@@ -249,6 +270,105 @@ def register_api_routes(
         required_connection=_required_connection,
         servable_analysis=_servable_analysis,
     )
+
+
+def _register_deployment_routes(
+    *,
+    app: FastAPI,
+    state: DevServerState,
+    database: str | None,
+    project_dir: Path,
+    required_connection: Callable[[], AdapterConnection],
+) -> FastAPI:
+    """Attach the deployment inventory, detail and lifecycle routes."""
+
+    def read_deployments() -> dict[str, object]:
+        client: AdapterConnection = required_connection()
+        try:
+            with state.query_lock:
+                return build_deployments_payload(
+                    connection=client,
+                    database=database or "",
+                    metadata_database=database or "",
+                )
+        except AdapterError as error:
+            raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
+
+    def read_one_deployment(*, deployment_id: str) -> dict[str, object]:
+        client: AdapterConnection = required_connection()
+        try:
+            with state.query_lock:
+                payload: dict[str, object] | None = build_deployment_detail_payload(
+                    connection=client,
+                    database=database or "",
+                    metadata_database=database or "",
+                    deployment_id=deployment_id,
+                )
+        except AdapterError as error:
+            raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
+        if payload is None:
+            raise HTTPException(
+                status_code=_HTTP_NOT_FOUND,
+                detail=f"deployment '{deployment_id}' was not found",
+            )
+        return payload
+
+    def read_deployment_diff(
+        *, deployment_id: str, against: Annotated[str | None, Query()] = None
+    ) -> dict[str, object]:
+        client: AdapterConnection = required_connection()
+        comparison: str = deployment_id if against is None else f"{against}:{deployment_id}"
+        try:
+            with state.query_lock:
+                return build_deployment_diff_payload(
+                    connection=client,
+                    database=database or "",
+                    metadata_database=database or "",
+                    comparison=comparison,
+                )
+        except AdapterError as error:
+            raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
+        except ValueError as error:
+            raise HTTPException(status_code=_HTTP_BAD_REQUEST, detail=str(error)) from error
+
+    def promote_deployment(*, deployment_id: str) -> dict[str, object]:
+        client: AdapterConnection = required_connection()
+        try:
+            with state.query_lock:
+                return run_deployment_promotion(
+                    connection=client,
+                    database=database or "",
+                    metadata_database=database or "",
+                    deployment_id=deployment_id,
+                    project_dir=project_dir,
+                )
+        except AdapterError as error:
+            raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
+        except ValueError as error:
+            raise HTTPException(status_code=_HTTP_BAD_REQUEST, detail=str(error)) from error
+
+    def cleanup_deployments(request: DeploymentCleanupRequest) -> dict[str, object]:
+        client: AdapterConnection = required_connection()
+        try:
+            with state.query_lock:
+                return run_deployment_cleanup(
+                    connection=client,
+                    database=database or "",
+                    metadata_database=database or "",
+                    retention_days=request.retentionDays,
+                    project_dir=project_dir,
+                )
+        except AdapterError as error:
+            raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
+        except ValueError as error:
+            raise HTTPException(status_code=_HTTP_BAD_REQUEST, detail=str(error)) from error
+
+    app.get("/api/deployments")(read_deployments)
+    app.get("/api/deployments/{deployment_id}")(read_one_deployment)
+    app.get("/api/deployments/{deployment_id}/diff")(read_deployment_diff)
+    app.post("/api/deployments/{deployment_id}/promote")(promote_deployment)
+    app.post("/api/deployments/cleanup")(cleanup_deployments)
+    return app
 
 
 def _register_message_routes(

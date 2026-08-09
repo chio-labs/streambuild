@@ -154,3 +154,30 @@ class KafkaLagSnapshot:
 
     total_messages: int | None
     partitions: tuple[KafkaPartitionLag, ...]
+
+
+@dataclass(frozen=True)
+class RelationStorage:
+    """Row and byte totals for one warehouse relation."""
+
+    rows: int = 0
+    bytes: int = 0
+
+
+class DeploymentCleanupRequest(BaseModel):
+    """Janitor apply request from the development UI."""
+
+    retentionDays: int = 7
+
+
+@dataclass(frozen=True)
+class DeploymentOperationRecord:
+    """Terminal facts for one UI-triggered deployment lifecycle operation."""
+
+    command: str
+    deployment_id: str | None
+    outcome: str
+    exit_code: int
+    materialized_outcome: str | None
+    error_message: str | None
+    summary: dict[str, object]
