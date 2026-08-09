@@ -59,6 +59,7 @@ class RunEventSink:
         mode: str,
         total_statements: int,
         selected_node_count: int,
+        display_command: str | None = None,
         selectors: tuple[str, ...] = (),
         start_time: str | None = None,
     ) -> None:
@@ -70,7 +71,11 @@ class RunEventSink:
             phase=None,
             payload={
                 "command": command,
-                "displayCommand": os.environ.get(RUN_DISPLAY_COMMAND_ENV_VAR, command),
+                "displayCommand": (
+                    display_command
+                    if display_command is not None
+                    else os.environ.get(RUN_DISPLAY_COMMAND_ENV_VAR, command)
+                ),
                 "mode": mode,
                 "totalStatements": total_statements,
                 "selectedNodeCount": selected_node_count,
