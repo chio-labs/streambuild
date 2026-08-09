@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.16.3](https://github.com/chio-labs/streambuild/compare/v0.16.2...v0.16.3) (2026-08-09)
+
+
+### Bug Fixes
+
+* clarify promotion run events ([8f6ae31](https://github.com/chio-labs/streambuild/commit/8f6ae31d23efa5bffa9d610f04ad837f1713253d))
+* humanize run event timeline ([d822320](https://github.com/chio-labs/streambuild/commit/d822320a06da8a1f4df97b2bffc331116a8686d4))
+
 ## [0.16.2](https://github.com/chio-labs/streambuild/compare/v0.16.1...v0.16.2) (2026-08-09)
 
 
