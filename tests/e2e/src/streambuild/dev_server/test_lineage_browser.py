@@ -82,6 +82,39 @@ def test_given_logged_activity_when_using_lineage_then_live_semantics_remain_tru
     expect(moving_edge).to_have_attribute("data-flow-state", "unknown")
     assert "sb-edge-driving" in str(moving_edge.get_attribute("class"))
 
+    viewport: Locator = page.locator(".svelte-flow__viewport")
+    canvas_box: dict[str, float] = cast(
+        dict[str, float], page.get_by_test_id("lineage-canvas").bounding_box()
+    )
+    page.mouse.move(
+        canvas_box["x"] + canvas_box["width"] / 2,
+        canvas_box["y"] + canvas_box["height"] / 2,
+    )
+    zoom_before_wheel: float = viewport.evaluate(
+        "element => new DOMMatrix(getComputedStyle(element).transform).a"
+    )
+    page.mouse.wheel(0, -500)
+    page.wait_for_timeout(100)
+    assert (
+        viewport.evaluate("element => new DOMMatrix(getComputedStyle(element).transform).a")
+        == zoom_before_wheel
+    )
+    page.keyboard.down("Control")
+    page.mouse.wheel(0, -500)
+    page.keyboard.up("Control")
+    page.wait_for_timeout(100)
+    zoom_after_control_wheel: float = viewport.evaluate(
+        "element => new DOMMatrix(getComputedStyle(element).transform).a"
+    )
+    assert zoom_after_control_wheel != zoom_before_wheel
+    page.mouse.wheel(0, -500)
+    page.wait_for_timeout(100)
+    assert (
+        viewport.evaluate("element => new DOMMatrix(getComputedStyle(element).transform).a")
+        == zoom_after_control_wheel
+    )
+    page.get_by_role("button", name="Fit view", exact=True).click()
+
     page.get_by_role("button", name="Boxes", exact=True).click()
     expect(page).to_have_url(re.compile(r"/lineage\?group=boxes$"))
     page.goto(f"{base_url}/lineage?group=none&q=moving", wait_until="domcontentloaded")
@@ -121,7 +154,6 @@ def test_given_logged_activity_when_using_lineage_then_live_semantics_remain_tru
     assert "selected" in str(idle_node.get_attribute("class"))
     page.get_by_role("button", name="Close inspector").click()
 
-    viewport: Locator = page.locator(".svelte-flow__viewport")
     viewport_before_source_click: str = viewport.evaluate(
         "element => getComputedStyle(element).transform"
     )
@@ -140,32 +172,6 @@ def test_given_logged_activity_when_using_lineage_then_live_semantics_remain_tru
     )
     run_dialog.get_by_role("button", name="Close", exact=True).click()
     page.get_by_role("button", name="Close inspector").click()
-
-    canvas_box: dict[str, float] = cast(
-        dict[str, float], page.get_by_test_id("lineage-canvas").bounding_box()
-    )
-    page.mouse.move(
-        canvas_box["x"] + canvas_box["width"] / 2,
-        canvas_box["y"] + canvas_box["height"] / 2,
-    )
-    zoom_before_wheel: float = viewport.evaluate(
-        "element => new DOMMatrix(getComputedStyle(element).transform).a"
-    )
-    page.mouse.wheel(0, -500)
-    page.wait_for_timeout(100)
-    assert (
-        viewport.evaluate("element => new DOMMatrix(getComputedStyle(element).transform).a")
-        == zoom_before_wheel
-    )
-    page.keyboard.down("Control")
-    page.mouse.wheel(0, -500)
-    page.keyboard.up("Control")
-    page.wait_for_timeout(350)
-    assert (
-        viewport.evaluate("element => new DOMMatrix(getComputedStyle(element).transform).a")
-        != zoom_before_wheel
-    )
-    page.get_by_role("button", name="Fit view", exact=True).click()
 
     page.get_by_role("button", name="Physical", exact=True).click()
     physical_mv: Locator = page.locator('.svelte-flow__node[data-id="rel:mv__moving_orders"]')
