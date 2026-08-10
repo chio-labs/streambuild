@@ -59,6 +59,7 @@ let pollTimer: ReturnType<typeof setInterval> | null = null;
 let startedPolling = false;
 let kafkaLagRetryTimer: ReturnType<typeof setTimeout> | null = null;
 let kafkaLagRetryAttempt = 0;
+let liveStateRequestGeneration = 0;
 
 export async function initializeApp(): Promise<void> {
 	await refreshAll();
@@ -66,6 +67,7 @@ export async function initializeApp(): Promise<void> {
 }
 
 export async function reloadProject(): Promise<void> {
+	liveStateRequestGeneration += 1;
 	app.reloading = true;
 	resetInitialKafkaLagRetry();
 	try {
@@ -86,22 +88,31 @@ export async function reloadProject(): Promise<void> {
 
 export async function refreshLiveState(): Promise<void> {
 	if (app.project === null) return;
+	const requestGeneration = ++liveStateRequestGeneration;
 	try {
 		const [statusResponse, stateResponse] = await Promise.all([
 			fetch('/api/status'),
 			fetch('/api/state')
 		]);
-		applyStatusPayload(await readApiResponse(statusResponse, 'status refresh'));
+		const statusPayload = await readApiResponse<Record<string, unknown>>(
+			statusResponse,
+			'status refresh'
+		);
+		if (requestGeneration !== liveStateRequestGeneration) return;
+		applyStatusPayload(statusPayload);
 		if (app.status?.state !== 'ok') {
 			app.phase = 'compile_failing';
 			return;
 		}
 		if (!stateResponse.ok) return;
 		const definitionsResponse = await fetch('/api/definitions');
-		mergeProject(
-			await readApiResponse(definitionsResponse, 'definitions refresh'),
-			await readApiResponse(stateResponse, 'state refresh')
+		const definitions = await readApiResponse<Record<string, unknown>>(
+			definitionsResponse,
+			'definitions refresh'
 		);
+		const state = await readApiResponse<Record<string, unknown>>(stateResponse, 'state refresh');
+		if (requestGeneration !== liveStateRequestGeneration) return;
+		mergeProject(definitions, state);
 		await refreshRecordedChecks();
 		scheduleInitialKafkaLagRetry();
 	} catch {

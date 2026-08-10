@@ -35,6 +35,7 @@ from tests.e2e.src.streambuild.executor.helpers import (
     prepare_authored_e2e_project,
     produce_kafka_messages,
     require_managed_source,
+    run_streambuild_build_cli,
     run_streambuild_deployment_promote_cli,
     run_streambuild_virtual_build_cli,
     wait_for_row_count,
@@ -301,6 +302,82 @@ def running_quality_browser_server(
         )
     finally:
         stop_process(process)
+
+
+@pytest.fixture
+def running_complete_streaming_browser_server(
+    e2e_clickhouse_connection_settings: E2EClickHouseConnectionSettings,
+    e2e_kafka_connection_settings: E2EKafkaConnectionSettings,
+    e2e_clickhouse_client: Client,
+    e2e_clickhouse_database: str,
+    output_path: str,
+    tmp_path: Path,
+) -> Iterator[tuple[str, str, str, Path]]:
+    project_dir: Path = prepare_authored_e2e_project(
+        fixture_project_dir=E2E_KAFKA_TIMESTAMP_PROJECT_DIR,
+        tmp_path=tmp_path,
+        kafka_broker_list=e2e_kafka_connection_settings.internal_bootstrap_server,
+        topic_suffix=e2e_clickhouse_database,
+    )
+    (project_dir / "streambuild_project.toml").write_text(
+        'name = "e2e_kafka_lineage_browser_project"\n'
+        'default_target = "test"\n\n'
+        '[defaults]\npipeline_mode = "direct"\n\n'
+        '[targets.test]\ndatabase = "analytics"\n',
+        encoding="utf-8",
+    )
+    (project_dir / "pipelines" / "order_events" / "orders_enriched.sql").write_text(
+        'MODEL (\n  engine "MergeTree()",\n'
+        '  order_by ["order_id", "_replay_timestamp"]\n);\n\n'
+        "SELECT\n  CAST(concat('enriched:', order_id) AS String) AS order_id,\n"
+        "  CAST(_replay_timestamp AS DateTime64(3)) AS _replay_timestamp,\n"
+        "  CAST(_replay_landed_at AS DateTime64(3)) AS _replay_landed_at\n"
+        'FROM __ref("orders")\n',
+        encoding="utf-8",
+    )
+    compiled_pipeline: CompiledPipeline = build_authored_greenfield_workflow_compiled_pipeline(
+        project_dir=project_dir
+    )
+    topic: str = require_managed_source(compiled_pipeline).kafka_table.spec.kafka.topic
+    connection: E2EClickHouseConnectionSettings = e2e_clickhouse_connection_settings
+    run_streambuild_build_cli(
+        project_dir=project_dir,
+        host=connection.host,
+        port=connection.port,
+        username=connection.username,
+        password=connection.password,
+        database=e2e_clickhouse_database,
+    )
+    api_port: int = available_port()
+    log_path: Path = Path(output_path) / "stb-dev-complete-streaming.log"
+    process: subprocess.Popen[str] = start_dev_process(
+        repository_root=Path(__file__).resolve().parents[5],
+        project_dir=project_dir,
+        host=connection.host,
+        port=connection.port,
+        username=connection.username,
+        password=connection.password,
+        database=e2e_clickhouse_database,
+        api_port=api_port,
+        log_path=log_path,
+    )
+    try:
+        _ = wait_for_state_api(process=process, api_port=api_port, log_path=log_path)
+        yield (
+            f"http://127.0.0.1:{api_port}",
+            topic,
+            e2e_kafka_connection_settings.bootstrap_server,
+            log_path,
+        )
+    finally:
+        stop_process(process)
+        admin_client: KafkaAdminClient = KafkaAdminClient(
+            bootstrap_servers=e2e_kafka_connection_settings.bootstrap_server
+        )
+        try:
+            admin_client.delete_topics(topics=[topic])
+        finally:
+            admin_client.close()
 
 
 @pytest.fixture
