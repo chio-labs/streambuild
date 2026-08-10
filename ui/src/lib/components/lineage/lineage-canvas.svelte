@@ -182,6 +182,13 @@
 		return back ? `${base} sb-edge-back` : base;
 	}
 
+	function edgeDomAttributes(
+		type: RefType,
+		flowState: GraphEdge['flowState']
+	): Record<string, string> {
+		return { 'data-ref-type': type, 'data-flow-state': flowState };
+	}
+
 	const layoutKey = $derived(
 		[
 			layoutSalt,
@@ -234,6 +241,7 @@
 				id: edge.id,
 				source: edge.source,
 				target: edge.target,
+				domAttributes: edgeDomAttributes(edge.type, edge.flowState),
 				class: edgeClass(edge.type, edge.flowState, false, false, viewTargets.has(edge.target))
 			}));
 			flowNodes = layoutGraph(nextNodes, nextEdges, {
@@ -311,6 +319,7 @@
 				id: edge.id,
 				source: edge.source,
 				target: edge.target,
+				domAttributes: edgeDomAttributes(edge.type, edge.flowState),
 				class: edgeClass(edge.type, edge.flowState, false, false, viewTargets.has(edge.target))
 			}));
 			boxes = [];
@@ -468,6 +477,7 @@
 			id: edge.id,
 			source: edge.source,
 			target: edge.target,
+			domAttributes: edgeDomAttributes(edge.type, edge.flowState),
 			class: edgeClass(
 				edge.type,
 				edge.flowState,
@@ -550,6 +560,7 @@
 
 <div
 	class="h-full w-full"
+	data-testid="lineage-canvas"
 	role="presentation"
 	onmouseover={onCanvasHover}
 	onmouseout={() => (hoveredId = null)}
