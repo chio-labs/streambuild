@@ -100,7 +100,8 @@
 		if (
 			replayWindow.mode === 'from' &&
 			canSetStartTime &&
-			requestedStartMilliseconds !== effectiveStartMilliseconds
+			Math.floor(requestedStartMilliseconds / 1000) !==
+				Math.floor(effectiveStartMilliseconds / 1000)
 		) {
 			onchange({ mode: 'from', startTime });
 		}
