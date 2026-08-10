@@ -31,6 +31,7 @@ def read_model_activity(
     database: str,
     relation_names: tuple[str, ...],
     captured_at: str,
+    active_bindings: tuple[tuple[str, str], ...] = (),
     window_seconds: int = ACTIVITY_WINDOW_SECONDS,
 ) -> dict[str, dict[str, object]]:
     """Return capability-aware activity evidence for every model relation."""
@@ -74,25 +75,36 @@ def read_model_activity(
     except (AdapterError, KeyError, TypeError, ValueError):
         return unknown
 
+    physical_by_logical: dict[str, str] = dict(active_bindings)
     payloads: dict[str, dict[str, object]] = {}
     for relation_name in relation_names:
-        if relation_name in view_observations:
+        evidence_relation: str = physical_by_logical.get(relation_name, relation_name)
+        view_observation: _ActivityObservation | None = view_observations.get(
+            evidence_relation
+        ) or view_observations.get(relation_name)
+        part_observation: _ActivityObservation | None = part_observations.get(
+            evidence_relation
+        ) or part_observations.get(relation_name)
+        approximate_observation: _ActivityObservation | None = approximate_observations.get(
+            evidence_relation
+        ) or approximate_observations.get(relation_name)
+        if view_observation is not None:
             payloads[relation_name] = _view_activity_payload(
-                observation=view_observations[relation_name],
+                observation=view_observation,
                 window_seconds=window_seconds,
             )
             continue
-        if relation_name in part_observations:
+        if part_observation is not None:
             payloads[relation_name] = _write_activity_payload(
-                observation=part_observations[relation_name],
+                observation=part_observation,
                 source=_PART_LOG,
                 approximate=False,
                 window_seconds=window_seconds,
             )
             continue
-        if relation_name in approximate_observations:
+        if approximate_observation is not None:
             payloads[relation_name] = _approximate_activity_payload(
-                observation=approximate_observations[relation_name],
+                observation=approximate_observation,
                 captured_at=captured_at,
                 window_seconds=window_seconds,
             )
