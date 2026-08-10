@@ -68,7 +68,7 @@ export function getProject(): Project {
 /**
  * Whether this UI is allowed to mutate the warehouse. True since the execute
  * tier: the Plan page and lineage run panel POST /api/build, which runs the
- * exact `stb build` command shown, as a subprocess.
+ * displayed `stb build` options in the dev server's pinned context.
  */
 export const CAN_EXECUTE_BUILD: boolean = true;
 

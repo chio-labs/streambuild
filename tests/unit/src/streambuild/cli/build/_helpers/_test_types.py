@@ -21,3 +21,10 @@ class BuildConfirmationTestCase:
     input_response: str | None
     expected_confirmed: bool
     expected_stderr_fragment: str
+
+
+@dataclass(frozen=True)
+class MultipleBuildProtectionTestCase:
+    description: str
+    responses: tuple[str, ...]
+    expected_pipeline_names: tuple[str, ...]

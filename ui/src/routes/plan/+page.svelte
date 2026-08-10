@@ -168,7 +168,7 @@
 			: `${plan.command}${acceptedConfirmations.map((value) => ` --confirm ${value}`).join('')}`
 	);
 
-	/** POST the exact planned command and follow the run live. */
+	/** POST the planned options in the dev server's pinned context and follow the run live. */
 	async function execute(): Promise<void> {
 		executing = true;
 		executeError = null;
@@ -745,7 +745,7 @@
 			</button>
 			<button
 				class="bg-primary flex shrink-0 items-center gap-1.5 rounded-[4px] px-3 py-1.5 font-mono text-[11px] font-medium text-white disabled:opacity-60"
-				title="Runs the exact command shown, as a subprocess"
+				title="Runs these options in the dev server's pinned context"
 				disabled={executing || planLoading || planError !== null || plan === null || missingProtections.length > 0}
 				onclick={() => void execute()}
 			>

@@ -79,6 +79,13 @@ def running_lineage_server(
         password=e2e_clickhouse_connection_settings.password,
         database=e2e_clickhouse_database,
     )
+    (project_dir / "pipelines" / "moving_events" / "pipeline.toml").write_text(
+        'mode = "direct"\n\n'
+        "[protection]\n"
+        'warning = "Interrupts protected moving events."\n'
+        'confirmation = "DEPLOY_MOVING_EVENTS"\n',
+        encoding="utf-8",
+    )
     api_port: int = available_port()
     log_path: Path = Path(output_path) / "stb-dev.log"
     process: subprocess.Popen[str] = start_dev_process(
