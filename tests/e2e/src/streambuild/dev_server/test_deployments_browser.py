@@ -55,6 +55,15 @@ def test_given_active_and_staged_deployments_when_switching_ids_then_persisted_s
     expect(page.get_by_role("link", name=active_id, exact=True)).to_be_visible()
     staged_link: Locator = page.get_by_role("link", name=staged_id, exact=True)
     expect(staged_link).to_be_visible()
+    active_cells: Locator = page.get_by_test_id("deployment-table-active").locator("td")
+    staged_cells: Locator = page.get_by_test_id("deployment-table-staged").locator("td")
+    active_column_x: tuple[float, ...] = tuple(
+        cast(dict[str, float], active_cells.nth(index).bounding_box())["x"] for index in range(1, 5)
+    )
+    staged_column_x: tuple[float, ...] = tuple(
+        cast(dict[str, float], staged_cells.nth(index).bounding_box())["x"] for index in range(1, 5)
+    )
+    assert active_column_x == pytest.approx(staged_column_x, abs=1)
 
     with page.expect_response(
         lambda response: urlparse(response.url).path == f"/api/deployments/{staged_id}"
