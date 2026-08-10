@@ -5,7 +5,7 @@ import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass
 from textwrap import dedent
-from typing import Self, cast
+from typing import Self
 
 import clickhouse_connect
 import pytest
@@ -13,6 +13,7 @@ from clickhouse_connect.driver.client import Client
 from docker.errors import DockerException
 from testcontainers.core.container import DockerContainer
 from testcontainers.core.network import Network
+from testcontainers.core.wait_strategies import LogMessageWaitStrategy
 from testcontainers.kafka._redpanda import RedpandaContainer
 
 os.environ.setdefault("TESTCONTAINERS_RYUK_DISABLED", "true")
@@ -35,7 +36,14 @@ class E2ERedpandaContainer(RedpandaContainer):
     """
 
     def start(self, timeout: int = CONTAINER_STARTUP_TIMEOUT_SECONDS) -> Self:
-        return cast(Self, super().start(timeout=timeout))
+        script: str = RedpandaContainer.TC_START_SCRIPT
+        self.with_command(f'-c "while [ ! -f {script} ]; do sleep 0.1; done; sh {script}"')
+        _ = DockerContainer.start(self)
+        self.tc_start()
+        LogMessageWaitStrategy(r".*Started Kafka API server.*").with_startup_timeout(
+            timeout
+        ).wait_until_ready(self)
+        return self
 
     def tc_start(self) -> None:
         host: str = self.get_container_host_ip()

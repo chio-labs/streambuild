@@ -1,4 +1,6 @@
 import json
+import os
+import signal
 import socket
 import subprocess
 import time
@@ -10,9 +12,11 @@ from urllib.request import Request, urlopen
 from clickhouse_connect.driver.client import Client
 
 
-def read_json_url(url: str) -> object:
+def read_json_url(url: str, *, timeout_seconds: float = 10) -> object:
     try:
-        with urlopen(url, timeout=10) as response:  # noqa: S310 - loopback test server only
+        with urlopen(  # noqa: S310 - loopback test server only
+            url, timeout=timeout_seconds
+        ) as response:
             return json.loads(response.read().decode("utf-8"))
     except HTTPError as error:
         raise RuntimeError(error.read().decode("utf-8")) from error
@@ -42,36 +46,43 @@ def start_dev_process(
     password: str,
     database: str,
     api_port: int,
+    log_path: Path,
 ) -> subprocess.Popen[str]:
-    return subprocess.Popen(
-        [
-            str(repository_root / ".venv" / "bin" / "stb"),
-            "dev",
-            "--project-dir",
-            str(project_dir),
-            "--host",
-            host,
-            "--port",
-            str(port),
-            "--username",
-            username,
-            "--password",
-            password,
-            "--database",
-            database,
-            "--ui-host",
-            "127.0.0.1",
-            "--ui-port",
-            str(api_port),
-        ],
-        cwd=repository_root,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    with log_path.open("w", encoding="utf-8") as log_file:
+        return subprocess.Popen(
+            [
+                str(repository_root / ".venv" / "bin" / "stb"),
+                "dev",
+                "--project-dir",
+                str(project_dir),
+                "--host",
+                host,
+                "--port",
+                str(port),
+                "--username",
+                username,
+                "--password",
+                password,
+                "--database",
+                database,
+                "--ui-host",
+                "127.0.0.1",
+                "--ui-port",
+                str(api_port),
+            ],
+            cwd=repository_root,
+            env={**os.environ, "PYTHONUNBUFFERED": "1"},
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+            text=True,
+        )
 
 
-def wait_for_scheduler_api(*, process: subprocess.Popen[str], api_port: int) -> dict[str, object]:
+def wait_for_scheduler_api(
+    *, process: subprocess.Popen[str], api_port: int, log_path: Path
+) -> dict[str, object]:
     deadline: float = time.monotonic() + 30
     while True:
         try:
@@ -81,8 +92,50 @@ def wait_for_scheduler_api(*, process: subprocess.Popen[str], api_port: int) -> 
             )
         except (OSError, RuntimeError):
             pass
-        assert process.poll() is None, f"stb dev exited before API readiness: {process.returncode}"
-        assert time.monotonic() < deadline, "stb dev API did not become ready before timeout"
+        assert process.poll() is None, _process_failure(
+            message="stb dev exited before API readiness", process=process, log_path=log_path
+        )
+        assert time.monotonic() < deadline, _process_failure(
+            message="stb dev API did not become ready before timeout",
+            process=process,
+            log_path=log_path,
+        )
+        time.sleep(0.1)
+
+
+def wait_for_state_api(
+    *, process: subprocess.Popen[str], api_port: int, log_path: Path
+) -> dict[str, object]:
+    deadline: float = time.monotonic() + 30
+    while True:
+        try:
+            payload: object = read_json_url(
+                f"http://127.0.0.1:{api_port}/api/state", timeout_seconds=1
+            )
+            assert isinstance(payload, dict), "state payload is not an object"
+            state_payload: dict[str, object] = cast(dict[str, object], payload)
+            assert isinstance(state_payload.get("capturedAt"), str), (
+                "state payload has no capturedAt timestamp"
+            )
+            assert isinstance(state_payload.get("models"), dict), (
+                "state payload has no models object"
+            )
+            assert isinstance(state_payload.get("sources"), dict), (
+                "state payload has no sources object"
+            )
+            return state_payload
+        except (AssertionError, OSError, RuntimeError):
+            pass
+        assert process.poll() is None, _process_failure(
+            message="stb dev exited before state API readiness",
+            process=process,
+            log_path=log_path,
+        )
+        assert time.monotonic() < deadline, _process_failure(
+            message="stb dev state API did not become ready before timeout",
+            process=process,
+            log_path=log_path,
+        )
         time.sleep(0.1)
 
 
@@ -111,14 +164,28 @@ def wait_for_scheduled_result(
 
 def stop_process(process: subprocess.Popen[str]) -> None:
     try:
-        process.terminate()
+        os.killpg(process.pid, signal.SIGTERM)
     except ProcessLookupError:
         pass
     try:
         process.wait(timeout=30)
     except subprocess.TimeoutExpired:
-        process.kill()
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
         process.wait(timeout=10)
+
+
+def _process_failure(*, message: str, process: subprocess.Popen[str], log_path: Path) -> str:
+    try:
+        log_contents: str = log_path.read_text(encoding="utf-8", errors="replace")
+    except FileNotFoundError:
+        log_contents = "<log file was not created>"
+    return (
+        f"{message}: returncode={process.poll()}, log={log_path}\n"
+        f"--- stb dev output ---\n{log_contents}"
+    )
 
 
 def available_port() -> int:

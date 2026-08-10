@@ -212,3 +212,13 @@ make ui-build
 ```
 
 Tests are split across `tests/unit`, `tests/integration`, and `tests/e2e`.
+
+Browser E2E tests exercise the packaged UI served by the real `stb dev` process, not Vite or
+browser-intercepted APIs. Install managed Chromium and build the packaged assets before running them:
+
+```bash
+uv sync --locked --all-groups
+uv run playwright install chromium
+make ui-install ui-build
+make test-browser
+```
