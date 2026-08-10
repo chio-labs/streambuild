@@ -183,6 +183,7 @@ def test_given_planned_model_when_executing_then_live_and_durable_run_surfaces_a
     assert final_path_parts[0] == "runs"
     final_invocation_id: str = final_path_parts[1]
     assert final_invocation_id
+    expect(page.get_by_label("Run ID", exact=True)).to_have_text(final_invocation_id)
     expected_command: re.Pattern[str] = re.compile(rf"stb build .*--select {test_case.selector}")
     expect(page.get_by_text(expected_command).first).to_be_visible()
     expect(
