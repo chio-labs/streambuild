@@ -39,6 +39,19 @@ class StatusEndpointTestCase:
 
 
 @dataclass(frozen=True)
+class StateRouteErrorTestCase:
+    description: str
+    expected_status: int
+    expected_detail: str
+
+
+@dataclass(frozen=True)
+class DevAppLifespanTestCase:
+    description: str
+    expected_status: int
+
+
+@dataclass(frozen=True)
 class DefinitionsFieldTestCase:
     description: str
     expected_model_name: str

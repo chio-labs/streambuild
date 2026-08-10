@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from httpx import Response
 
 from streambuild.adapter.models import (
     AdapterDirectFingerprintRecord,
@@ -145,8 +146,14 @@ def test_given_warehouse_reads_when_reading_state_then_assembles_expected_overla
         )
     )
 
-    payload: dict = client.get("/api/state").json()
+    response: Response = client.get("/api/state")
+    payload: dict = response.json()
 
+    assert response.status_code == 200
+    assert set(payload) == {"capturedAt", "models", "sources"}
+    assert isinstance(payload["capturedAt"], str)
+    assert set(payload["models"]) == {"orders_clean"}
+    assert set(payload["sources"]) == {"orders"}
     model: dict = payload["models"]["orders_clean"]
     assert model["freshness"] == test_case.expected_model_freshness
     assert model["lagSeconds"] == test_case.expected_model_lag_seconds

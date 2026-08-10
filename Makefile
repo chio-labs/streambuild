@@ -1,4 +1,4 @@
-.PHONY: dist
+.PHONY: dist test-browser test-e2e test-integration ui-verify
 
 
 format:
@@ -17,12 +17,27 @@ test:
 	uv run pytest tests/unit -q -n auto
 
 
-test-all:
-	uv run pytest tests/unit -q -n auto
+test-integration:
 	uv run pytest tests/integration -q -n 4
-	uv run pytest tests/e2e -q -m "not performance" -n 4
-	uv run pytest tests/e2e -q -m performance -k 3000 -n 4
-	uv run pytest tests/e2e -q -m performance -k 10000 -n 4
+
+
+test-e2e:
+	uv run pytest tests/e2e -q -m "not performance and not browser" -n 2
+	uv run pytest tests/e2e -q -m performance -k 3000 -n 2
+	uv run pytest tests/e2e -q -m performance -k 10000 -n 2
+
+
+test-all:
+	$(MAKE) test
+	$(MAKE) test-integration
+	$(MAKE) test-e2e
+	$(MAKE) test-browser
+
+
+test-browser:
+	uv run pytest tests/e2e/src/streambuild/dev_server/test_lineage_browser.py -q -n 2 \
+		--browser chromium --tracing retain-on-failure --video retain-on-failure \
+		--screenshot only-on-failure --output test-results --durations=25
 
 
 check:
@@ -37,11 +52,11 @@ verify:
 	uv run ruff check --fix .
 	uv run ty check src tests scripts
 	uv run fensu check
-	uv run pytest tests/unit -q -n auto
-	uv run pytest tests/integration -q -n 4
-	uv run pytest tests/e2e -q -m "not performance" -n 4
-	uv run pytest tests/e2e -q -m performance -k 3000 -n 4
-	uv run pytest tests/e2e -q -m performance -k 10000 -n 4
+	$(MAKE) ui-verify
+	$(MAKE) test
+	$(MAKE) test-integration
+	$(MAKE) test-e2e
+	$(MAKE) test-browser
 
 
 ui-install:
@@ -52,6 +67,12 @@ ui-build:
 	cd ui && npm run build
 	rm -rf src/streambuild/dev_server/static
 	cp -r ui/build src/streambuild/dev_server/static
+
+
+ui-verify:
+	cd ui && npm run check
+	cd ui && npm run verify:lanes
+	cd ui && npm run verify:run-timeline
 
 
 dist:
@@ -78,8 +99,8 @@ verify-ci:
 	uv run ruff check .
 	uv run ty check src tests scripts
 	uv run fensu check
-	uv run pytest tests/unit -q -n auto
-	uv run pytest tests/integration -q -n 4
-	uv run pytest tests/e2e -q -m "not performance" -n 4
-	uv run pytest tests/e2e -q -m performance -k 3000 -n 4
-	uv run pytest tests/e2e -q -m performance -k 10000 -n 4
+	$(MAKE) ui-verify
+	$(MAKE) test
+	$(MAKE) test-integration
+	$(MAKE) test-e2e
+	$(MAKE) test-browser

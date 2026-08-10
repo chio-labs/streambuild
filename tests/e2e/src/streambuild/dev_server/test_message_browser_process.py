@@ -113,6 +113,7 @@ def test_given_landed_kafka_messages_when_browsing_through_dev_api_then_filters_
     )
 
     api_port: int = available_port()
+    log_path: Path = tmp_path / "stb-dev-message-browser.log"
     process: subprocess.Popen[str] = start_dev_process(
         repository_root=Path(__file__).resolve().parents[5],
         project_dir=project_dir,
@@ -122,9 +123,10 @@ def test_given_landed_kafka_messages_when_browsing_through_dev_api_then_filters_
         password=e2e_clickhouse_connection_settings.password,
         database=e2e_clickhouse_database,
         api_port=api_port,
+        log_path=log_path,
     )
     try:
-        _ = wait_for_scheduler_api(process=process, api_port=api_port)
+        _ = wait_for_scheduler_api(process=process, api_port=api_port, log_path=log_path)
         filtered: dict[str, object] = cast(
             dict[str, object],
             post_json_url(
