@@ -13,6 +13,7 @@ from streambuild.compiler.discovery.exceptions import ProjectConfigError
 from streambuild.compiler.discovery.models import (
     AuditSchedulerConfig,
     AuthoredProjectConfig,
+    BuildConfig,
     EffectiveProjectConfiguration,
     LoadedProjectConfiguration,
     LocalProjectConfig,
@@ -106,6 +107,13 @@ def resolve_effective_project_configuration(
                     if project_target.audit_scheduler.enabled is not None
                     else project.audit_scheduler.enabled
                 )
+            )
+        ),
+        build=BuildConfig(
+            max_pipelines=(
+                project_target.build.max_pipelines
+                if project_target.build.max_pipelines is not None
+                else project.build.max_pipelines
             )
         ),
     )

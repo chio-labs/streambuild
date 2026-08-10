@@ -79,8 +79,9 @@ def test_given_retained_source_when_editing_plan_then_url_and_replay_contract_ro
     expect(page.get_by_role("button", name=f"Remove {test_case.selector}")).to_be_visible()
     expect(page.get_by_text("1 selector", exact=True)).to_be_visible()
     plan_command: str = str(selected_plan["command"])
-    assert plan_command.startswith("stb build --target test --database ")
-    assert plan_command.endswith(test_case.expected_command_suffix)
+    assert plan_command == f"stb build {test_case.expected_command_suffix}"
+    assert "--target" not in plan_command
+    assert "--database" not in plan_command
     expect(page.get_by_text(f"$ {plan_command}", exact=True)).to_be_visible()
     replay_roots: list[dict[str, object]] = cast(
         list[dict[str, object]], selected_plan["replayRoots"]
@@ -183,7 +184,7 @@ def test_given_planned_model_when_executing_then_live_and_durable_run_surfaces_a
     assert final_path_parts[0] == "runs"
     final_invocation_id: str = final_path_parts[1]
     assert final_invocation_id
-    expected_command: re.Pattern[str] = re.compile(rf"stb build .*--select {test_case.selector}")
+    expected_command: re.Pattern[str] = re.compile(rf"stb build --select {test_case.selector}")
     expect(page.get_by_text(expected_command).first).to_be_visible()
     expect(
         page.locator(f'.svelte-flow__node[data-id="{test_case.expected_model_node_id}"]')
