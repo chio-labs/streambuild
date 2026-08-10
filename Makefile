@@ -23,8 +23,8 @@ test-integration:
 
 test-e2e:
 	uv run pytest tests/e2e -q -m "not performance and not browser" -n 2
-	uv run pytest tests/e2e -q -m performance -k 3000 -n 2
-	uv run pytest tests/e2e -q -m performance -k 10000 -n 2
+	uv run pytest tests/e2e -q -m "performance and not browser" -k 3000 -n 2
+	uv run pytest tests/e2e -q -m "performance and not browser" -k 10000 -n 2
 
 
 test-all:
@@ -35,7 +35,7 @@ test-all:
 
 
 test-browser:
-	uv run pytest tests/e2e/src/streambuild/dev_server -q -m browser -n 2 \
+	uv run pytest tests/e2e -q -m browser -n 2 \
 		--browser chromium --tracing retain-on-failure --video retain-on-failure \
 		--screenshot only-on-failure --output test-results --durations=25
 
