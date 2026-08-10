@@ -186,6 +186,7 @@
 	<div class="flex items-center gap-2.5 border-b border-border px-[18px] py-2.5">
 		{#each [['all', 'All'], ['failing', 'Failing'], ['passing', 'Passing']] as [key, label] (key)}
 			<button
+				aria-pressed={filter === key}
 				class="rounded-[4px] border px-2.5 py-1.5 font-mono text-[11px] transition-colors {filter ===
 				key
 					? 'border-primary text-foreground bg-[var(--sidebar-accent)]'
@@ -216,18 +217,24 @@
 			</div>
 
 			<div class="overflow-hidden rounded-[4px] border border-border">
-				{#each visibleAudits as audit (audit.name)}
+				{#each visibleAudits as audit, auditIndex (audit.name)}
 					{@const failing = audit.result && !audit.result.passed}
 					{@const schedule = auditScheduleByName.get(audit.name)}
-					<div class="border-b border-[var(--border-subtle)] last:border-b-0">
-						<button
+					<div
+						data-quality-name={audit.name}
+						class="border-b border-[var(--border-subtle)] last:border-b-0"
+					>
+						<div
 							class="hover:bg-[var(--sb-hover)] flex w-full items-center gap-3 px-3 py-2 text-left"
-							onclick={() => (expandedAudit = expandedAudit === audit.name ? null : audit.name)}
 						>
-							<span
+							<button
+								aria-label="Expand audit {audit.name}"
+								aria-expanded={expandedAudit === audit.name}
+								aria-controls="audit-panel-{auditIndex}"
 								class="shrink-0 transition-transform"
 								style:transform={expandedAudit === audit.name ? 'rotate(90deg)' : 'none'}
-								><ChevronRightIcon size={12} class="text-muted-foreground" /></span
+								onclick={() => (expandedAudit = expandedAudit === audit.name ? null : audit.name)}
+								><ChevronRightIcon size={12} class="text-muted-foreground" /></button
 							>
 							<span
 								class="h-1.5 w-1.5 shrink-0 rounded-[2px]"
@@ -294,10 +301,13 @@
 							<span class="text-[var(--sb-text-faint)] hidden w-[74px] shrink-0 text-right font-mono text-[10.5px] lg:block"
 								>{formatAgo(audit.result?.checkedAt ?? null, project.capturedAt)}</span
 							>
-						</button>
+						</div>
 
 						{#if expandedAudit === audit.name}
-							<div class="flex flex-col gap-3 border-t border-[var(--border-subtle)] px-3 py-3">
+							<div
+								id="audit-panel-{auditIndex}"
+								class="flex flex-col gap-3 border-t border-[var(--border-subtle)] px-3 py-3"
+							>
 								<div class="text-[var(--sb-text-faint)] flex gap-4 font-mono text-[10.5px]">
 									<span>{audit.policy.scheduled ? `every ${formatDuration(audit.policy.cadenceSeconds ?? 0)}` : 'manual/build only'}</span>
 									<span>warmup {formatDuration(audit.policy.warmupSeconds)}</span>
@@ -380,16 +390,22 @@
 			</div>
 
 			<div class="overflow-hidden rounded-[4px] border border-border">
-				{#each visibleTests as test (test.name)}
-					<div class="border-b border-[var(--border-subtle)] last:border-b-0">
-						<button
+				{#each visibleTests as test, testIndex (test.name)}
+					<div
+						data-quality-name={test.name}
+						class="border-b border-[var(--border-subtle)] last:border-b-0"
+					>
+						<div
 							class="hover:bg-[var(--sb-hover)] flex w-full items-center gap-3 px-3 py-2 text-left"
-							onclick={() => (expandedTest = expandedTest === test.name ? null : test.name)}
 						>
-							<span
+							<button
+								aria-label="Expand test {test.name}"
+								aria-expanded={expandedTest === test.name}
+								aria-controls="test-panel-{testIndex}"
 								class="shrink-0 transition-transform"
 								style:transform={expandedTest === test.name ? 'rotate(90deg)' : 'none'}
-								><ChevronRightIcon size={12} class="text-muted-foreground" /></span
+								onclick={() => (expandedTest = expandedTest === test.name ? null : test.name)}
+								><ChevronRightIcon size={12} class="text-muted-foreground" /></button
 							>
 							<span
 								class="h-1.5 w-1.5 shrink-0 rounded-[2px]"
@@ -424,10 +440,13 @@
 							<span class="text-[var(--sb-text-faint)] w-[74px] shrink-0 text-right font-mono text-[10.5px]"
 								>{formatAgo(test.result?.checkedAt ?? null, project.capturedAt)}</span
 							>
-						</button>
+						</div>
 
 						{#if expandedTest === test.name}
-							<div class="flex flex-col gap-3 border-t border-[var(--border-subtle)] px-3 py-3">
+							<div
+								id="test-panel-{testIndex}"
+								class="flex flex-col gap-3 border-t border-[var(--border-subtle)] px-3 py-3"
+							>
 								<div class="flex items-center gap-2">
 									<button
 										class="text-muted-foreground hover:text-foreground flex items-center gap-1.5 rounded-[4px] border border-border px-2 py-1 font-mono text-[10.5px] disabled:opacity-60"

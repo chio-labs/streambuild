@@ -167,6 +167,7 @@
 						>
 						<div class="ml-auto flex overflow-hidden rounded-[4px] border border-border">
 							<button
+								aria-pressed={view === 'tree'}
 								class="px-2.5 py-1 font-mono text-[10px] normal-case tracking-normal transition-colors {view ===
 								'tree'
 									? 'bg-[var(--sb-hover)] text-foreground'
@@ -174,6 +175,7 @@
 								onclick={() => setView('tree')}>Tree</button
 							>
 							<button
+								aria-pressed={view === 'graph'}
 								class="border-l border-border px-2.5 py-1 font-mono text-[10px] normal-case tracking-normal transition-colors {view ===
 								'graph'
 									? 'bg-[var(--sb-hover)] text-foreground'
@@ -186,7 +188,11 @@
 					{#if view === 'graph'}
 						<PipelineGraph {project} {pipelineName} />
 					{:else}
-					<div class="overflow-hidden rounded-[4px] border border-border">
+					<div
+						aria-label="Stream tree"
+						data-testid="stream-tree"
+						class="overflow-hidden rounded-[4px] border border-border"
+					>
 						<div
 							class="text-[var(--sb-text-faint)] bg-[var(--sb-surface-low)] flex items-center gap-3 border-b border-border px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em]"
 						>
@@ -201,6 +207,7 @@
 
 						{#each tree as row (row.name)}
 							<div
+								data-node-name={row.name}
 								class="flex items-stretch gap-3 border-b border-[var(--border-subtle)] px-3 py-2 last:border-b-0"
 							>
 								<div class="flex w-[300px] shrink-0 items-center overflow-hidden">

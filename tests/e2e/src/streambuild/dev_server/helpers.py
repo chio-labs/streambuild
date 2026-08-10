@@ -45,6 +45,18 @@ def prepare_lineage_browser_project(*, tmp_path: Path) -> Path:
     return project_dir
 
 
+def prepare_catalog_pipeline_browser_project(*, tmp_path: Path) -> Path:
+    project_dir: Path = prepare_lineage_browser_project(tmp_path=tmp_path)
+    (project_dir / "pipelines" / "moving_events" / "derived_moving_orders.sql").write_text(
+        'MODEL (\n  engine "MergeTree()",\n  order_by ["order_id"]\n);\n\n'
+        "SELECT\n  order_id::String AS order_id,\n"
+        "  _replay_timestamp::DateTime64(3) AS _replay_timestamp\n"
+        'FROM __ref("moving_orders")\n',
+        encoding="utf-8",
+    )
+    return project_dir
+
+
 def create_lineage_browser_source_tables(*, client: Client, database: str) -> None:
     for relation_name in (
         "browser_moving_events",
@@ -245,22 +257,27 @@ def wait_for_scheduled_result(
     processes: tuple[subprocess.Popen[str], ...],
     client: Client,
     database: str,
+    expected_count: int = 1,
 ) -> None:
     deadline: float = time.monotonic() + 30
     result_count = 0
-    while result_count != 1:
+    while result_count < expected_count:
         assert time.monotonic() < deadline, "scheduled result did not arrive before timeout"
         assert all(process.poll() is None for process in processes), (
             f"stb dev exited before scheduling completed: "
             f"{tuple(process.returncode for process in processes)}"
         )
-        result_count = int(
-            client.query(
-                f"SELECT count() FROM {database}._streambuild_node_results "
-                "WHERE trigger = 'scheduled'"
-            ).result_rows[0][0]
-        )
+        try:
+            result_count = int(
+                client.query(
+                    f"SELECT count() FROM {database}._streambuild_node_results "
+                    "WHERE trigger = 'scheduled'"
+                ).result_rows[0][0]
+            )
+        except Exception as error:
+            assert "UNKNOWN_TABLE" in str(error) or "doesn't exist" in str(error)
         time.sleep(0.1)
+    assert result_count == expected_count
 
 
 def stop_process(process: subprocess.Popen[str]) -> None:

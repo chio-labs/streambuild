@@ -17,12 +17,14 @@ from tests.e2e.src.streambuild.conftest import (
 from tests.e2e.src.streambuild.dev_server.helpers import (
     available_port,
     create_lineage_browser_source_tables,
+    prepare_catalog_pipeline_browser_project,
     prepare_lineage_browser_project,
     run_lineage_browser_build,
     seed_lineage_approximate_activity,
     seed_lineage_plan_replay_data,
     start_dev_process,
     stop_process,
+    wait_for_scheduled_result,
     wait_for_scheduler_api,
     wait_for_state_api,
 )
@@ -33,6 +35,8 @@ from tests.e2e.src.streambuild.executor.helpers import (
     prepare_authored_e2e_project,
     produce_kafka_messages,
     require_managed_source,
+    run_streambuild_deployment_promote_cli,
+    run_streambuild_virtual_build_cli,
     wait_for_row_count,
 )
 from tests.integration.src.streambuild.adapters.clickhouse.helpers import (
@@ -40,6 +44,15 @@ from tests.integration.src.streambuild.adapters.clickhouse.helpers import (
     render_create_materialized_view_ddl,
     render_create_table_ddl,
 )
+from tests.integration.src.streambuild.cli.helpers import (
+    KEYED_ORDER_ITEMS_COLUMNS,
+    KEYED_ORDER_ITEMS_ORDER_BY,
+    build_order_items_ddl,
+    prepare_virtual_environment_view_sources,
+    write_virtual_environment_view_model,
+    write_virtual_environment_view_project,
+)
+from tests.integration.src.streambuild.dev_server.helpers import write_scheduled_audit_project
 from tests.integration.src.streambuild.executor.backfill._test_types import ManagedSourceResources
 
 
@@ -88,6 +101,203 @@ def running_lineage_server(
             log_path,
             e2e_clickhouse_client,
             e2e_clickhouse_database,
+        )
+    finally:
+        stop_process(process)
+
+
+@pytest.fixture
+def running_catalog_pipeline_browser_server(
+    e2e_clickhouse_connection_settings: E2EClickHouseConnectionSettings,
+    e2e_clickhouse_client: Client,
+    e2e_clickhouse_database: str,
+    output_path: str,
+    tmp_path: Path,
+) -> Iterator[tuple[str, dict[str, object], str, Path]]:
+    repository_root: Path = Path(__file__).resolve().parents[5]
+    project_dir: Path = prepare_catalog_pipeline_browser_project(tmp_path=tmp_path)
+    create_lineage_browser_source_tables(
+        client=e2e_clickhouse_client, database=e2e_clickhouse_database
+    )
+    run_lineage_browser_build(
+        repository_root=repository_root,
+        project_dir=project_dir,
+        host=e2e_clickhouse_connection_settings.host,
+        port=e2e_clickhouse_connection_settings.port,
+        username=e2e_clickhouse_connection_settings.username,
+        password=e2e_clickhouse_connection_settings.password,
+        database=e2e_clickhouse_database,
+    )
+    e2e_clickhouse_client.command(
+        f"INSERT INTO {e2e_clickhouse_database}.browser_moving_events "
+        "(order_id, event_timestamp) VALUES ('catalog-42', now64(3))"
+    )
+    api_port: int = available_port()
+    log_path: Path = Path(output_path) / "stb-dev-catalog-pipeline.log"
+    process: subprocess.Popen[str] = start_dev_process(
+        repository_root=repository_root,
+        project_dir=project_dir,
+        host=e2e_clickhouse_connection_settings.host,
+        port=e2e_clickhouse_connection_settings.port,
+        username=e2e_clickhouse_connection_settings.username,
+        password=e2e_clickhouse_connection_settings.password,
+        database=e2e_clickhouse_database,
+        api_port=api_port,
+        log_path=log_path,
+    )
+    try:
+        state_payload: dict[str, object] = wait_for_state_api(
+            process=process, api_port=api_port, log_path=log_path
+        )
+        yield (
+            f"http://127.0.0.1:{api_port}",
+            state_payload,
+            e2e_clickhouse_database,
+            log_path,
+        )
+    finally:
+        stop_process(process)
+
+
+@pytest.fixture
+def running_deployment_browser_server(
+    e2e_clickhouse_connection_settings: E2EClickHouseConnectionSettings,
+    e2e_clickhouse_client: Client,
+    e2e_clickhouse_database: str,
+    output_path: str,
+    tmp_path: Path,
+) -> Iterator[tuple[str, str, str, str, Path]]:
+    active_deployment_id: str = "20260810T120000Z_before"
+    staged_deployment_id: str = "20260810T121000Z_after"
+    write_virtual_environment_view_project(project_root=tmp_path)
+    prepare_virtual_environment_view_sources(
+        clickhouse_client=e2e_clickhouse_client, database=e2e_clickhouse_database
+    )
+    connection: E2EClickHouseConnectionSettings = e2e_clickhouse_connection_settings
+    run_streambuild_virtual_build_cli(
+        project_dir=tmp_path,
+        host=connection.host,
+        port=connection.port,
+        username=connection.username,
+        password=connection.password,
+        database=e2e_clickhouse_database,
+        deployment_id=active_deployment_id,
+    )
+    run_streambuild_deployment_promote_cli(
+        project_dir=tmp_path,
+        host=connection.host,
+        port=connection.port,
+        username=connection.username,
+        password=connection.password,
+        database=e2e_clickhouse_database,
+        deployment_id=active_deployment_id,
+    )
+    write_virtual_environment_view_model(
+        project_root=tmp_path,
+        customer_name_expression="CAST(concat(customers.customer_name, '!') AS String)",
+    )
+    run_streambuild_virtual_build_cli(
+        project_dir=tmp_path,
+        host=connection.host,
+        port=connection.port,
+        username=connection.username,
+        password=connection.password,
+        database=e2e_clickhouse_database,
+        deployment_id=staged_deployment_id,
+    )
+    api_port: int = available_port()
+    log_path: Path = Path(output_path) / "stb-dev-deployments.log"
+    process: subprocess.Popen[str] = start_dev_process(
+        repository_root=Path(__file__).resolve().parents[5],
+        project_dir=tmp_path,
+        host=connection.host,
+        port=connection.port,
+        username=connection.username,
+        password=connection.password,
+        database=e2e_clickhouse_database,
+        api_port=api_port,
+        log_path=log_path,
+    )
+    try:
+        _ = wait_for_state_api(process=process, api_port=api_port, log_path=log_path)
+        yield (
+            f"http://127.0.0.1:{api_port}",
+            active_deployment_id,
+            staged_deployment_id,
+            e2e_clickhouse_database,
+            log_path,
+        )
+    finally:
+        stop_process(process)
+
+
+@pytest.fixture
+def running_quality_browser_server(
+    e2e_clickhouse_connection_settings: E2EClickHouseConnectionSettings,
+    e2e_clickhouse_client: Client,
+    e2e_clickhouse_database: str,
+    output_path: str,
+    tmp_path: Path,
+) -> Iterator[tuple[str, str, tuple[str, str, str], Path]]:
+    passing_name: str = "scheduled valid line totals"
+    warning_name: str = "scheduled negative line totals"
+    failing_name: str = "scheduled hard negative line totals"
+    _ = write_scheduled_audit_project(
+        project_dir=tmp_path,
+        database=e2e_clickhouse_database,
+        severity="warning",
+        audit_query=('SELECT order_id, line_total FROM __ref("order_items") WHERE line_total < 0'),
+    )
+    audits_dir: Path = tmp_path / "audits" / "singular" / "order_events"
+    (audits_dir / "valid_line_totals.sql").write_text(
+        f'AUDIT (name "{passing_name}", severity error);\n\n'
+        'SELECT order_id, line_total FROM __ref("order_items") WHERE line_total < -100\n',
+        encoding="utf-8",
+    )
+    (audits_dir / "hard_negative_line_totals.sql").write_text(
+        f'AUDIT (name "{failing_name}", severity error);\n\n'
+        'SELECT order_id, line_total FROM __ref("order_items") WHERE line_total < 0\n',
+        encoding="utf-8",
+    )
+    e2e_clickhouse_client.command(
+        build_order_items_ddl(
+            database=e2e_clickhouse_database,
+            columns=KEYED_ORDER_ITEMS_COLUMNS,
+            order_by=KEYED_ORDER_ITEMS_ORDER_BY,
+        )
+    )
+    e2e_clickhouse_client.insert(
+        table=f"{e2e_clickhouse_database}.tbl__order_items",
+        data=[["ord_001", -5.0]],
+        column_names=["order_id", "line_total"],
+    )
+    api_port: int = available_port()
+    log_path: Path = Path(output_path) / "stb-dev-quality.log"
+    connection: E2EClickHouseConnectionSettings = e2e_clickhouse_connection_settings
+    process: subprocess.Popen[str] = start_dev_process(
+        repository_root=Path(__file__).resolve().parents[5],
+        project_dir=tmp_path,
+        host=connection.host,
+        port=connection.port,
+        username=connection.username,
+        password=connection.password,
+        database=e2e_clickhouse_database,
+        api_port=api_port,
+        log_path=log_path,
+    )
+    try:
+        _ = wait_for_scheduler_api(process=process, api_port=api_port, log_path=log_path)
+        wait_for_scheduled_result(
+            processes=(process,),
+            client=e2e_clickhouse_client,
+            database=e2e_clickhouse_database,
+            expected_count=3,
+        )
+        yield (
+            f"http://127.0.0.1:{api_port}",
+            e2e_clickhouse_database,
+            (passing_name, warning_name, failing_name),
+            log_path,
         )
     finally:
         stop_process(process)
