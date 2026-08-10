@@ -58,3 +58,20 @@ class BuildRunBrowserE2ETestCase:
     expected_start_status: str
     expected_outcome: str
     expected_model_node_id: str
+
+
+@dataclass(frozen=True)
+class SourceTopicBrowserE2ETestCase:
+    description: str
+    source_name: str
+    expected_kind: str
+    expected_retained_rows: int
+
+
+@dataclass(frozen=True)
+class MessageConsoleBrowserE2ETestCase:
+    description: str
+    source_name: str
+    filtered_order_id: str
+    expected_header_name: str
+    expected_header_value: str
