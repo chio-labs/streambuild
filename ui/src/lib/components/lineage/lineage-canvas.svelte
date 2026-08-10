@@ -48,14 +48,7 @@
 		emphasisIds?: Set<string>;
 		/** Context-specific per-node facts, keyed by node id. */
 		notes?: Map<string, { text: string; tone: 'info' | 'warn' }>;
-		/**
-		 * Embedded in a scrolling page rather than owning the viewport.
-		 *
-		 * A canvas that owns the viewport can take the wheel for zoom. One sitting
-		 * inside a scrolling page must not: the wheel belongs to the page, and
-		 * stealing it traps the reader the moment the pointer crosses the graph.
-		 * Zoom moves to ctrl/cmd + wheel, which browsers report as a pinch.
-		 */
+		/** Embedded graphs leave ordinary wheel scrolling to their parent page. */
 		embedded?: boolean;
 		fitView?: ((opts?: FitOptions) => void) | undefined;
 		/** Pipelines whose members are never grouped away (embedded single-pipeline use). */
@@ -575,7 +568,9 @@
 		fitViewOptions={DEFAULT_FIT}
 		minZoom={0.15}
 		maxZoom={1.8}
-		zoomOnScroll={!embedded}
+		zoomOnScroll={false}
+		zoomActivationKey={['Meta', 'Control']}
+		panOnScroll={!embedded}
 		preventScrolling={!embedded}
 		multiSelectionKey={['Meta', 'Control', 'Shift']}
 		onselectionchange={onSelectionChange}

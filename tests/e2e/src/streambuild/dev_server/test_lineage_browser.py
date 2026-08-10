@@ -98,6 +98,7 @@ def test_given_logged_activity_when_using_lineage_then_live_semantics_remain_tru
     idle_node: Locator = page.locator('.svelte-flow__node[data-id="model:idle_orders"]')
     source_node: Locator = page.locator('.svelte-flow__node[data-id="source:moving_events"]')
     moving_node.click(position={"x": 20, "y": 20})
+    page.get_by_role("button", name="Fit view", exact=True).click()
     idle_node.click(position={"x": 20, "y": 20}, modifiers=["Control"])
     assert "selected" in str(moving_node.get_attribute("class"))
     assert "selected" in str(idle_node.get_attribute("class"))
@@ -108,17 +109,29 @@ def test_given_logged_activity_when_using_lineage_then_live_semantics_remain_tru
     page.get_by_role("button", name="Close inspector").click()
 
     moving_node.click(position={"x": 20, "y": 20})
+    page.get_by_role("button", name="Fit view", exact=True).click()
     idle_node.click(position={"x": 20, "y": 20}, modifiers=["Meta"])
     assert "selected" in str(moving_node.get_attribute("class"))
     assert "selected" in str(idle_node.get_attribute("class"))
     page.get_by_role("button", name="Close inspector").click()
     moving_node.click(position={"x": 20, "y": 20})
+    page.get_by_role("button", name="Fit view", exact=True).click()
     idle_node.click(position={"x": 20, "y": 20}, modifiers=["Shift"])
     assert "selected" in str(moving_node.get_attribute("class"))
     assert "selected" in str(idle_node.get_attribute("class"))
     page.get_by_role("button", name="Close inspector").click()
 
+    viewport: Locator = page.locator(".svelte-flow__viewport")
+    viewport_before_source_click: str = viewport.evaluate(
+        "element => getComputedStyle(element).transform"
+    )
     source_node.click(position={"x": 20, "y": 20})
+    page.wait_for_timeout(350)
+    assert (
+        viewport.evaluate("element => getComputedStyle(element).transform")
+        == viewport_before_source_click
+    )
+    page.get_by_role("button", name="Fit view", exact=True).click()
     moving_node.click(position={"x": 20, "y": 20}, modifiers=["Control"])
     page.get_by_role("button", name="Execute", exact=True).click()
     run_dialog = page.get_by_role("dialog", name="Run")
@@ -128,10 +141,37 @@ def test_given_logged_activity_when_using_lineage_then_live_semantics_remain_tru
     run_dialog.get_by_role("button", name="Close", exact=True).click()
     page.get_by_role("button", name="Close inspector").click()
 
+    canvas_box: dict[str, float] = cast(
+        dict[str, float], page.get_by_test_id("lineage-canvas").bounding_box()
+    )
+    page.mouse.move(
+        canvas_box["x"] + canvas_box["width"] / 2,
+        canvas_box["y"] + canvas_box["height"] / 2,
+    )
+    zoom_before_wheel: float = viewport.evaluate(
+        "element => new DOMMatrix(getComputedStyle(element).transform).a"
+    )
+    page.mouse.wheel(0, -500)
+    page.wait_for_timeout(100)
+    assert (
+        viewport.evaluate("element => new DOMMatrix(getComputedStyle(element).transform).a")
+        == zoom_before_wheel
+    )
+    page.keyboard.down("Control")
+    page.mouse.wheel(0, -500)
+    page.keyboard.up("Control")
+    page.wait_for_timeout(350)
+    assert (
+        viewport.evaluate("element => new DOMMatrix(getComputedStyle(element).transform).a")
+        != zoom_before_wheel
+    )
+    page.get_by_role("button", name="Fit view", exact=True).click()
+
     page.get_by_role("button", name="Physical", exact=True).click()
     physical_mv: Locator = page.locator('.svelte-flow__node[data-id="rel:mv__moving_orders"]')
     physical_table: Locator = page.locator('.svelte-flow__node[data-id="rel:tbl__moving_orders"]')
     physical_mv.click(position={"x": 20, "y": 20})
+    page.get_by_role("button", name="Fit view", exact=True).click()
     physical_table.click(position={"x": 20, "y": 20}, modifiers=["Control"])
     page.get_by_role("button", name="Execute", exact=True).click()
     run_dialog = page.get_by_role("dialog", name="Run")
