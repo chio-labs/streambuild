@@ -105,17 +105,26 @@ jobs:
         run: uv sync --locked --all-groups
       - name: Install Chromium
         run: uv run playwright install --with-deps chromium
+      - name: Verify Docker
+        run: docker info
       - name: Build packaged UI
         run: make ui-install ui-build
       - name: Run browser E2E tests
         run: make test-browser
+      - name: Capture container diagnostics
+        if: always()
+        run: |
+          mkdir -p test-results/ci
+          docker info > test-results/ci/docker-info.txt 2>&1 || true
+          docker ps -a > test-results/ci/docker-containers.txt 2>&1 || true
+          docker network ls > test-results/ci/docker-networks.txt 2>&1 || true
       - name: Upload browser diagnostics
-        if: failure()
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-browser-artifacts
           path: test-results/
-          if-no-files-found: ignore
+          if-no-files-found: error
           retention-days: 7
 
   verify:

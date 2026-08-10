@@ -29,8 +29,9 @@ npm run verify:lanes
 npm run build
 ```
 
-`npm run shots` runs the Playwright screenshot script used for visual review. It expects the
-required browser and a reachable backend.
+`npm run shots` is a visual-review screenshot tool, not the pytest browser E2E lane. It expects the
+required browser and a reachable backend. Run the packaged browser suite from the repository root
+with `make test-browser`.
 
-From the repository root, `make ui-build` installs dependencies, builds the static application,
-and replaces the packaged assets.
+From the repository root, `make ui-install ui-build` installs dependencies, builds the static
+application, and replaces the packaged assets.

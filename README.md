@@ -204,21 +204,44 @@ reported as unknown rather than stalled.
 
 ## Development
 
-```bash
-make check-ci
-make test
-make test-all
-make ui-build
-```
-
-Tests are split across `tests/unit`, `tests/integration`, and `tests/e2e`.
-
-Browser E2E tests exercise the packaged UI served by the real `stb dev` process, not Vite or
-browser-intercepted APIs. Install managed Chromium and build the packaged assets before running them:
+Install the locked Python and UI dependencies before running the verification lanes:
 
 ```bash
 uv sync --locked --all-groups
-uv run playwright install chromium
+make ui-install ui-build
+make check-ci
+make ui-verify
+make test
+```
+
+Tests are split into independent unit, ClickHouse integration, non-browser E2E, and browser E2E
+lanes. Run them individually or use `make test-all` for the complete local suite:
+
+```bash
+make test
+make test-integration
+make test-e2e
+make test-browser
+```
+
+Browser E2E tests exercise the packaged UI served by the real `stb dev` process, not Vite or
+browser-intercepted APIs. Docker must be running because the tests provision real ClickHouse and
+Redpanda containers on isolated networks. Install Chromium and its system dependencies before the
+first run:
+
+```bash
+uv run playwright install --with-deps chromium
 make ui-install ui-build
 make test-browser
 ```
+
+The browser lane is marker-owned, fixed to Chromium, and capped at two pytest workers to keep the
+real services within predictable resource limits. CI runs the same target in the required
+`Packaged Chromium E2E tests` job and treats Docker provisioning failures as failures rather than
+skips.
+
+Browser output is replaced under `test-results/` on each run. Every test records browser console,
+page, request, response, and `stb dev` process diagnostics in its output directory. Failed tests also
+retain a Playwright trace, video, and screenshot. CI uploads the complete directory as the
+`playwright-browser-artifacts` artifact for seven days; inspect a downloaded trace with
+`uv run playwright show-trace path/to/trace.zip`.

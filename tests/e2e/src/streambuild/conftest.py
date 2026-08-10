@@ -6,7 +6,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from textwrap import dedent
-from typing import Self
+from typing import NoReturn, Self
 
 import clickhouse_connect
 import pytest
@@ -27,6 +27,13 @@ KAFKA_INTERNAL_BOOTSTRAP_SERVER: str = f"{KAFKA_NETWORK_ALIAS}:{KAFKA_INTERNAL_P
 REDPANDA_IMAGE: str = "redpandadata/redpanda:v24.2.7"
 CONTAINER_STARTUP_TIMEOUT_SECONDS: int = 90
 NO_ACTIVITY_LOG_CONFIG: Path = Path("tests/fixtures/clickhouse/no_activity_logs.xml").resolve()
+
+
+def _stop_for_docker_unavailable(*, service: str, error: DockerException) -> NoReturn:
+    message: str = f"Docker is not available for {service} E2E tests: {error}"
+    if os.environ.get("CI", "").lower() == "true":
+        pytest.fail(message, pytrace=False)
+    pytest.skip(message)
 
 
 class E2ERedpandaContainer(RedpandaContainer):
@@ -104,7 +111,7 @@ def e2e_kafka_connection_settings(e2e_network: Network) -> Iterator[E2EKafkaConn
                 internal_bootstrap_server=KAFKA_INTERNAL_BOOTSTRAP_SERVER,
             )
     except DockerException as error:
-        pytest.skip(f"Docker is not available for Kafka E2E tests: {error}")
+        _stop_for_docker_unavailable(service="Kafka", error=error)
 
 
 @pytest.fixture
@@ -124,7 +131,7 @@ def isolated_e2e_kafka_connection_settings(
                 internal_bootstrap_server=KAFKA_INTERNAL_BOOTSTRAP_SERVER,
             )
     except DockerException as error:
-        pytest.skip(f"Docker is not available for Kafka E2E tests: {error}")
+        _stop_for_docker_unavailable(service="Kafka", error=error)
 
 
 @pytest.fixture(scope="session")
@@ -154,7 +161,7 @@ def e2e_clickhouse_connection_settings(
                 container_id=container.get_wrapped_container().id,
             )
     except DockerException as error:
-        pytest.skip(f"Docker is not available for ClickHouse E2E tests: {error}")
+        _stop_for_docker_unavailable(service="ClickHouse", error=error)
 
 
 @pytest.fixture(scope="session")
@@ -182,7 +189,7 @@ def no_activity_log_clickhouse_connection_settings() -> Iterator[E2EClickHouseCo
                 container_id=container.get_wrapped_container().id,
             )
     except DockerException as error:
-        pytest.skip(f"Docker is not available for ClickHouse E2E tests: {error}")
+        _stop_for_docker_unavailable(service="ClickHouse", error=error)
 
 
 @pytest.fixture
@@ -212,7 +219,7 @@ def isolated_e2e_clickhouse_connection_settings(
                 container_id=container.get_wrapped_container().id,
             )
     except DockerException as error:
-        pytest.skip(f"Docker is not available for ClickHouse E2E tests: {error}")
+        _stop_for_docker_unavailable(service="ClickHouse", error=error)
 
 
 @pytest.fixture(scope="session")

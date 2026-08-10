@@ -52,6 +52,7 @@ version_scheme = "semver2"
 update_changelog_on_bump = false
 
 [tool.pytest.ini_options]
+addopts = ["--strict-markers"]
 testpaths = ["tests"]
 norecursedirs = ["*.egg", ".*", "_darcs", "CVS", "dist", "node_modules", "venv", "{arch}"]
 markers = [
