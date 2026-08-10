@@ -102,8 +102,9 @@ def wait_for_scheduled_result(
         )
         result_count = int(
             client.query(
-                f"SELECT count() FROM {database}._streambuild_node_results "
-                "WHERE trigger = 'scheduled'"
+                "SELECT coalesce(sum(rows), 0) FROM system.parts "
+                f"WHERE database = '{database}' "
+                "AND table = '_streambuild_node_results' AND active = 1"
             ).result_rows[0][0]
         )
         time.sleep(0.1)
