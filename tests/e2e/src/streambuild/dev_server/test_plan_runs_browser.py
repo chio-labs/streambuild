@@ -13,6 +13,7 @@ from playwright.sync_api import (
     Page,
     Request,
     Response,
+    Route,
     expect,
 )
 
@@ -46,10 +47,23 @@ def test_given_retained_source_when_editing_plan_then_url_and_replay_contract_ro
     console_messages, page_errors, failed_requests, responses = browser_diagnostics
 
     document_response: Response | None = page.goto(
-        f"{base_url}/plan", wait_until="domcontentloaded", timeout=30_000
+        f"{base_url}/runs", wait_until="domcontentloaded", timeout=30_000
     )
     assert document_response is not None
     assert document_response.status == 200
+    held_plan_requests: list[Route] = []
+    plan_route_pattern: str = "**/api/plan?*"
+    page.route(plan_route_pattern, lambda route: held_plan_requests.append(route))
+    with page.expect_request(lambda request: urlparse(request.url).path == "/api/plan"):
+        page.get_by_role("link", name="Plan", exact=True).click(no_wait_after=True)
+    expect(page).to_have_url(re.compile(r"/plan$"))
+    expect(page.get_by_role("combobox", name="What to rebuild")).to_be_visible()
+    expect(page.get_by_test_id("plan-loading-state")).to_contain_text("Planning all models…")
+    assert len(held_plan_requests) == 1
+    held_plan_requests[0].continue_()
+    page.unroute(plan_route_pattern)
+    expect(page.get_by_test_id("plan-loading-state")).to_have_count(0, timeout=30_000)
+
     selector_input: Locator = page.get_by_role("combobox", name="What to rebuild")
     selector_input.fill(test_case.selector)
     with page.expect_response(

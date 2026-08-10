@@ -24,10 +24,6 @@
 		type Selector,
 		type Source
 	} from '$lib/domain/types';
-	import type { PlanPageData } from './+page';
-
-	let { data }: { data: PlanPageData } = $props();
-
 	const project: Project = getProject();
 	const SQL_CHANGE_LABEL: Record<PlanSqlChangeStatus, string> = {
 		first_baseline: 'first build',
@@ -108,17 +104,13 @@
 		applySelection(selectors, selectors.length === 0 ? { mode: 'full' } : next);
 	}
 
-	// The plan comes from the server: the same planner the CLI uses, run against
-	// a live warehouse snapshot. Refetched whenever the URL-held selection or
-	// replay window changes; the previous plan stays visible while the next one
-	// is in flight so the page never blanks between keystrokes.
-	// svelte-ignore state_referenced_locally -- deliberate: seeded from the route
-	// load; later navigations are adopted inside the effect below.
-	let plan = $state<Plan | null>(data.initialPlan);
+	// Planning begins after the route renders so navigation is never held behind
+	// a live warehouse round-trip. Later requests retain the previous plan while
+	// the replacement is in flight, avoiding a blank page between selections.
+	let plan = $state<Plan | null>(null);
 	let planError = $state<string | null>(null);
-	let planLoading = $state<boolean>(false);
-	// svelte-ignore state_referenced_locally -- same seeding as `plan`.
-	let planRequestKey = $state<string>(data.initialKey ?? '');
+	let planLoading = $state<boolean>(true);
+	let planRequestKey = $state<string>('');
 	let planRequestVersion: number = 0;
 
 	function requestPlan(tokens: string[], start: string | null): void {
@@ -171,7 +163,9 @@
 			.map((protection) => protection.confirmation)
 	);
 	const executionCommand = $derived(
-		`${plan?.command ?? 'stb build'}${acceptedConfirmations.map((value) => ` --confirm ${value}`).join('')}`
+		plan === null
+			? 'preparing plan…'
+			: `${plan.command}${acceptedConfirmations.map((value) => ` --confirm ${value}`).join('')}`
 	);
 
 	/** POST the exact planned command and follow the run live. */
@@ -215,15 +209,6 @@
 		const key: string = `${tokens.join(',')}|${start ?? ''}`;
 		if (key === planRequestKey) return;
 		planRequestKey = key;
-		// In-page navigations refetch through the route load; adopt its result
-		// instead of firing a second identical request.
-		if (data.initialKey === key && data.initialPlan !== null) {
-			planRequestVersion += 1;
-			plan = data.initialPlan;
-			planError = null;
-			planLoading = false;
-			return;
-		}
 		requestPlan(tokens, start);
 	});
 
@@ -411,14 +396,27 @@
 			{planError}
 		</div>
 	{:else if plan === null}
-		<div class="text-muted-foreground px-[18px] py-8 font-mono text-[12px]">
-			{planLoading ? 'planning…' : 'no plan yet'}
+		<div
+			role="status"
+			data-testid="plan-loading-state"
+			class="text-muted-foreground mx-[18px] my-4 flex items-center gap-2.5 rounded-[4px] border border-border bg-[var(--sb-surface-low)] px-3 py-4 font-mono text-[12px]"
+		>
+			<RotateIcon size={13} class="animate-spin" />
+			<div>
+				<div class="text-foreground">
+					{selectors.length === 0 ? 'Planning all models…' : 'Planning selected scope…'}
+				</div>
+				<div class="text-[var(--sb-text-faint)] pt-0.5 text-[10.5px]">
+					Reading the current warehouse state
+				</div>
+			</div>
 		</div>
 	{:else}
 	<PlanGraph {project} {plan} />
 	{/if}
 
 	<!-- ── scope ───────────────────────────────────────────────────────────── -->
+	{#if plan !== null}
 	<div class="grid grid-cols-1 gap-5 px-3 py-4 sm:px-[18px] xl:grid-cols-[minmax(0,1fr)_380px]">
 		<div class="flex min-w-0 flex-col gap-5">
 			<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -671,6 +669,7 @@
 
 		</div>
 	</div>
+	{/if}
 
 	</div>
 
@@ -706,13 +705,17 @@
 		{/if}
 		<div class="flex flex-wrap items-center gap-3">
 			<div class="text-muted-foreground shrink-0 font-mono text-[10.5px]">
-				Planned against the {formatClock(plan?.plannedAt ?? '')} snapshot
-				{#if lastBuild}
-					· last build {formatDuration(lastBuild.durationMs / 1000)}
-					({lastBuild.selectedNodeCount} nodes, {formatAgo(
-						lastBuild.startedAt,
-						project.capturedAt
-					)})
+				{#if plan === null}
+					Waiting for the current warehouse plan
+				{:else}
+					Planned against the {formatClock(plan.plannedAt)} snapshot
+					{#if lastBuild}
+						· last build {formatDuration(lastBuild.durationMs / 1000)}
+						({lastBuild.selectedNodeCount} nodes, {formatAgo(
+							lastBuild.startedAt,
+							project.capturedAt
+						)})
+					{/if}
 				{/if}
 			</div>
 			<button
