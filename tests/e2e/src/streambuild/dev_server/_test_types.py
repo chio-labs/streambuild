@@ -41,3 +41,20 @@ class LineageApproximateActivityE2ETestCase:
     expected_unknown_state: str
     expected_moving_source: str
     expected_unknown_source: str
+
+
+@dataclass(frozen=True)
+class PlanBrowserE2ETestCase:
+    description: str
+    selector: str
+    expected_command_suffix: str
+    expected_replay_rows: int
+
+
+@dataclass(frozen=True)
+class BuildRunBrowserE2ETestCase:
+    description: str
+    selector: str
+    expected_start_status: str
+    expected_outcome: str
+    expected_model_node_id: str
