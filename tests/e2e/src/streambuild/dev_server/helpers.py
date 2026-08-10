@@ -53,7 +53,9 @@ def create_lineage_browser_source_tables(*, client: Client, database: str) -> No
     ):
         client.command(
             f"CREATE TABLE {database}.{relation_name} "
-            "(order_id String, event_timestamp DateTime64(3)) "
+            "(order_id String, event_timestamp DateTime64(3), "
+            "_replay_partition Int64 DEFAULT 0, _replay_offset Int64 DEFAULT 0, "
+            "_replay_landed_at DateTime64(3) DEFAULT now64(3)) "
             "ENGINE = MergeTree ORDER BY (event_timestamp, order_id)"
         )
 
@@ -98,11 +100,18 @@ def run_lineage_browser_build(
 
 
 def seed_lineage_exact_activity(*, client: Client, database: str) -> None:
-    client.command(f"INSERT INTO {database}.browser_moving_events VALUES ('101', now64(3))")
-    client.command(f"INSERT INTO {database}.browser_idle_events VALUES ('idle', now64(3))")
+    client.command(
+        f"INSERT INTO {database}.browser_moving_events (order_id, event_timestamp) "
+        "VALUES ('101', now64(3))"
+    )
+    client.command(
+        f"INSERT INTO {database}.browser_idle_events (order_id, event_timestamp) "
+        "VALUES ('idle', now64(3))"
+    )
     try:
         client.command(
-            f"INSERT INTO {database}.browser_stalled_events VALUES ('not-a-number', now64(3))"
+            f"INSERT INTO {database}.browser_stalled_events (order_id, event_timestamp) "
+            "VALUES ('not-a-number', now64(3))"
         )
     except Exception as error:
         assert "Cannot parse" in str(error) or "CANNOT_PARSE" in str(error)
@@ -112,7 +121,20 @@ def seed_lineage_exact_activity(*, client: Client, database: str) -> None:
 
 
 def seed_lineage_approximate_activity(*, client: Client, database: str) -> None:
-    client.command(f"INSERT INTO {database}.browser_moving_events VALUES ('101', now64(3))")
+    client.command(
+        f"INSERT INTO {database}.browser_moving_events (order_id, event_timestamp) "
+        "VALUES ('101', now64(3))"
+    )
+
+
+def seed_lineage_plan_replay_data(*, client: Client, database: str) -> None:
+    client.command(
+        f"INSERT INTO {database}.browser_moving_events "
+        "(order_id, event_timestamp, _replay_landed_at) VALUES "
+        "('plan-oldest', now64(3) - INTERVAL 3 DAY, now64(3) - INTERVAL 3 DAY), "
+        "('plan-middle', now64(3) - INTERVAL 2 DAY, now64(3) - INTERVAL 2 DAY), "
+        "('plan-newest', now64(3) - INTERVAL 1 DAY, now64(3) - INTERVAL 1 DAY)"
+    )
 
 
 def start_dev_process(

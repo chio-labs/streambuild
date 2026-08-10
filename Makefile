@@ -35,7 +35,7 @@ test-all:
 
 
 test-browser:
-	uv run pytest tests/e2e/src/streambuild/dev_server/test_lineage_browser.py -q -n 2 \
+	uv run pytest tests/e2e/src/streambuild/dev_server -q -m browser -n 2 \
 		--browser chromium --tracing retain-on-failure --video retain-on-failure \
 		--screenshot only-on-failure --output test-results --durations=25
 

@@ -13,6 +13,7 @@ from tests.e2e.src.streambuild.dev_server.helpers import (
     prepare_lineage_browser_project,
     run_lineage_browser_build,
     seed_lineage_approximate_activity,
+    seed_lineage_plan_replay_data,
     start_dev_process,
     stop_process,
     wait_for_state_api,
@@ -43,6 +44,57 @@ def running_lineage_server(
     )
     api_port: int = available_port()
     log_path: Path = Path(output_path) / "stb-dev.log"
+    process: subprocess.Popen[str] = start_dev_process(
+        repository_root=repository_root,
+        project_dir=project_dir,
+        host=e2e_clickhouse_connection_settings.host,
+        port=e2e_clickhouse_connection_settings.port,
+        username=e2e_clickhouse_connection_settings.username,
+        password=e2e_clickhouse_connection_settings.password,
+        database=e2e_clickhouse_database,
+        api_port=api_port,
+        log_path=log_path,
+    )
+    try:
+        state_payload: dict[str, object] = wait_for_state_api(
+            process=process, api_port=api_port, log_path=log_path
+        )
+        yield (
+            f"http://127.0.0.1:{api_port}",
+            state_payload,
+            log_path,
+            e2e_clickhouse_client,
+            e2e_clickhouse_database,
+        )
+    finally:
+        stop_process(process)
+
+
+@pytest.fixture
+def running_plan_server(
+    e2e_clickhouse_connection_settings: E2EClickHouseConnectionSettings,
+    e2e_clickhouse_client: Client,
+    e2e_clickhouse_database: str,
+    output_path: str,
+    tmp_path: Path,
+) -> Iterator[tuple[str, dict[str, object], Path, Client, str]]:
+    repository_root: Path = Path(__file__).resolve().parents[5]
+    project_dir: Path = prepare_lineage_browser_project(tmp_path=tmp_path)
+    create_lineage_browser_source_tables(
+        client=e2e_clickhouse_client, database=e2e_clickhouse_database
+    )
+    run_lineage_browser_build(
+        repository_root=repository_root,
+        project_dir=project_dir,
+        host=e2e_clickhouse_connection_settings.host,
+        port=e2e_clickhouse_connection_settings.port,
+        username=e2e_clickhouse_connection_settings.username,
+        password=e2e_clickhouse_connection_settings.password,
+        database=e2e_clickhouse_database,
+    )
+    seed_lineage_plan_replay_data(client=e2e_clickhouse_client, database=e2e_clickhouse_database)
+    api_port: int = available_port()
+    log_path: Path = Path(output_path) / "stb-dev-plan.log"
     process: subprocess.Popen[str] = start_dev_process(
         repository_root=repository_root,
         project_dir=project_dir,
