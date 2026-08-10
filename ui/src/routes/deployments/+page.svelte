@@ -125,7 +125,14 @@
 					{/if}
 				</div>
 
-				<table class="sb-list w-full text-left">
+				<table class="sb-list w-full table-fixed text-left" data-testid="deployment-table-{section.state}">
+					<colgroup>
+						<col class="w-[32%]" />
+						<col class="w-[14%]" />
+						<col class="w-[14%]" />
+						<col class="w-[27%]" />
+						<col class="w-[13%]" />
+					</colgroup>
 					<tbody>
 						{#each rows as deployment (deployment.deploymentId)}
 							<tr>
