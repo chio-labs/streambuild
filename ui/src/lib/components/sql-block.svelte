@@ -4,6 +4,7 @@
 </script>
 
 <script lang="ts">
+	import CopyIcon from '@lucide/svelte/icons/copy';
 	import { highlightStreambuild } from '$lib/sql/highlight';
 
 	type Props = {
@@ -18,20 +19,30 @@
 	// Empty until the user picks: `active` falls back to the first available
 	// artifact, so we never read a prop during initialisation.
 	let activeLabel = $state<string>('');
+	let copied = $state(false);
 
 	const active = $derived(
 		available.find((artifact) => artifact.label === activeLabel) ?? available[0]
 	);
 	const highlighted = $derived(active ? highlightStreambuild(active.code as string) : '');
+
+	async function copyActive(): Promise<void> {
+		if (!active) return;
+		await navigator.clipboard.writeText(active.code as string);
+		copied = true;
+		setTimeout(() => (copied = false), 1200);
+	}
 </script>
 
 <div class="overflow-hidden rounded-[4px] border border-border">
 	{#if available.length > 1 || caption}
 		<div
+			aria-label="SQL artifacts"
 			class="bg-[var(--sb-surface-low)] flex items-center gap-1 border-b border-border px-2 py-1.5"
 		>
 			{#each available as artifact (artifact.label)}
 				<button
+					aria-pressed={artifact.label === active?.label}
 					class="rounded-[3px] px-2 py-1 font-mono text-[10.5px] transition-colors {artifact.label ===
 					active?.label
 						? 'bg-[var(--sb-hover)] text-foreground'
@@ -47,12 +58,24 @@
 					>{caption}</span
 				>
 			{/if}
+			<button
+				class="text-muted-foreground hover:text-foreground {caption ? '' : 'ml-auto'} flex items-center gap-1 rounded-[3px] px-2 py-1 font-mono text-[10px]"
+				aria-label={active ? `Copy ${active.label} SQL` : 'Copy SQL'}
+				disabled={!active}
+				onclick={copyActive}><CopyIcon size={11} /> {copied ? 'copied' : 'copy'}</button
+			>
 		</div>
 	{/if}
 	{#if active}
-		<pre
-			class="bg-[var(--sb-inset)] m-0 overflow-auto p-3 font-mono text-[11.5px] leading-[1.65]"
-			style:max-height={maxHeight}><code>{@html highlighted}</code></pre>
+		<div
+			aria-label={`${active.label} SQL`}
+			data-sql-artifact={active.label}
+		>
+			<pre
+				class="bg-[var(--sb-inset)] m-0 overflow-auto p-3 font-mono text-[11.5px] leading-[1.65]"
+				style:max-height={maxHeight}><code>{@html highlighted}</code></pre
+			>
+		</div>
 		{#if active.note}
 			<div
 				class="text-[var(--sb-text-faint)] border-t border-border px-3 py-1.5 font-mono text-[10px]"

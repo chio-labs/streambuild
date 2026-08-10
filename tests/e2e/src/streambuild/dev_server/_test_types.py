@@ -75,3 +75,31 @@ class MessageConsoleBrowserE2ETestCase:
     filtered_order_id: str
     expected_header_name: str
     expected_header_value: str
+
+
+@dataclass(frozen=True)
+class CatalogPipelineBrowserE2ETestCase:
+    description: str
+    pipeline_name: str
+    parent_model: str
+    child_model: str
+    expected_relation: str
+    expected_child_relation: str
+
+
+@dataclass(frozen=True)
+class DeploymentBrowserE2ETestCase:
+    description: str
+    expected_changed_model: str
+    expected_active_value: str
+    expected_staged_value: str
+    missing_deployment_id: str
+
+
+@dataclass(frozen=True)
+class QualityBrowserE2ETestCase:
+    description: str
+    expected_passing: int
+    expected_warning: int
+    expected_failing: int
+    expected_sample_key: str
