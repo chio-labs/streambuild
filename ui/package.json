@@ -12,6 +12,7 @@
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"verify:lanes": "node scripts/run-lane-order-verifier.mjs",
+		"verify:lineage-activity": "node scripts/verify-lineage-activity.mjs",
 		"verify:run-timeline": "node scripts/verify-run-timeline.mjs"
 	},
 	"devDependencies": {

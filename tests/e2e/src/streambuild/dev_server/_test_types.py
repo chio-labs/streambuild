@@ -20,12 +20,24 @@ class MessageBrowserProcessE2ETestCase:
 
 
 @dataclass(frozen=True)
-class LineageBrowserE2ETestCase:
+class LineageExactActivityE2ETestCase:
     description: str
-    route: str
     expected_title: str
-    expected_query: str
-    expected_source_node_id: str
-    expected_model_node_id: str
-    expected_node_count: int
-    expected_edge_count: int
+    expected_logical_counts: str
+    expected_physical_counts: str
+    expected_multi_command: str
+    expected_model_only_command: str
+    expected_moving_state: str
+    expected_idle_state: str
+    expected_stalled_state: str
+    expected_source: str
+
+
+@dataclass(frozen=True)
+class LineageApproximateActivityE2ETestCase:
+    description: str
+    expected_counts: str
+    expected_moving_state: str
+    expected_unknown_state: str
+    expected_moving_source: str
+    expected_unknown_source: str

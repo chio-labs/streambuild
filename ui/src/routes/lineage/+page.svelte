@@ -15,6 +15,7 @@
 	import RunPanel from '$lib/components/run-panel.svelte';
 	import { getProject } from '$lib/api';
 	import { buildLogicalGraph, buildPhysicalGraph, modelByName } from '$lib/domain/derive';
+	import { DEFAULT_FIT, type FitOptions } from '$lib/lineage/flow-controller.svelte';
 	import { nodeFields } from '$lib/lineage/node-fields.svelte';
 	import type { Graph, GraphMode, GraphNode, ModelStatus, Project } from '$lib/domain/types';
 
@@ -120,7 +121,7 @@
 
 	let selectedId = $state<string | null>(null);
 	let selectedIds = $state<Set<string>>(new Set());
-	let fitView = $state<(() => void) | undefined>();
+	let fitView = $state<((options?: FitOptions) => void) | undefined>();
 	let runOpen = $state<boolean>(false);
 
 	/** The graph selection seeds the run panel's --select flags (models only). */
@@ -148,11 +149,20 @@
 	const selectedNode = $derived<GraphNode | null>(
 		selectedId ? (graph.nodes.find((node) => node.id === selectedId) ?? null) : null
 	);
+	let inspectorWasOpen = false;
+
+	$effect(() => {
+		const inspectorOpen = selectedNode !== null;
+		if (inspectorOpen && !inspectorWasOpen) {
+			requestAnimationFrame(() => fitView?.(DEFAULT_FIT));
+		}
+		inspectorWasOpen = inspectorOpen;
+	});
 
 	function resetLayout(): void {
 		canvas?.relayout();
 		inspectorWidth = 460;
-		queueMicrotask(() => fitView?.());
+		queueMicrotask(() => fitView?.(DEFAULT_FIT));
 	}
 
 	function setGroupMode(next: 'none' | 'boxes' | 'lanes'): void {
@@ -275,7 +285,7 @@
 			<button
 				class="text-muted-foreground hover:text-foreground hover:bg-[var(--sb-hover)] grid h-[30px] w-[30px] place-items-center rounded-[4px] border border-border"
 				aria-label="Fit view"
-				onclick={() => fitView?.()}
+				onclick={() => fitView?.(DEFAULT_FIT)}
 			>
 				<MaximizeIcon size={13} />
 			</button>

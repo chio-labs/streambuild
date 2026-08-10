@@ -1,0 +1,5 @@
+name = "lineage_browser_project"
+default_target = "test"
+
+[targets.test]
+database = "analytics"
