@@ -5,11 +5,14 @@ import socket
 import subprocess
 import time
 from pathlib import Path
+from shutil import copytree
 from typing import cast
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from clickhouse_connect.driver.client import Client
+
+LINEAGE_BROWSER_PROJECT_DIR: Path = Path("tests/fixtures/lineage_browser_project")
 
 
 def read_json_url(url: str, *, timeout_seconds: float = 10) -> object:
@@ -34,6 +37,82 @@ def post_json_url(url: str, payload: dict[str, object]) -> object:
             return json.loads(response.read().decode("utf-8"))
     except HTTPError as error:
         raise RuntimeError(error.read().decode("utf-8")) from error
+
+
+def prepare_lineage_browser_project(*, tmp_path: Path) -> Path:
+    project_dir: Path = tmp_path / LINEAGE_BROWSER_PROJECT_DIR.name
+    _ = copytree(LINEAGE_BROWSER_PROJECT_DIR, project_dir)
+    return project_dir
+
+
+def create_lineage_browser_source_tables(*, client: Client, database: str) -> None:
+    for relation_name in (
+        "browser_moving_events",
+        "browser_idle_events",
+        "browser_stalled_events",
+    ):
+        client.command(
+            f"CREATE TABLE {database}.{relation_name} "
+            "(order_id String, event_timestamp DateTime64(3)) "
+            "ENGINE = MergeTree ORDER BY (event_timestamp, order_id)"
+        )
+
+
+def run_lineage_browser_build(
+    *,
+    repository_root: Path,
+    project_dir: Path,
+    host: str,
+    port: int,
+    username: str,
+    password: str,
+    database: str,
+) -> None:
+    result: subprocess.CompletedProcess[str] = subprocess.run(
+        [
+            str(repository_root / ".venv" / "bin" / "stb"),
+            "build",
+            "--project-dir",
+            str(project_dir),
+            "--host",
+            host,
+            "--port",
+            str(port),
+            "--username",
+            username,
+            "--password",
+            password,
+            "--database",
+            database,
+            "--auto-approve",
+        ],
+        cwd=repository_root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, (
+        f"lineage browser build failed with code {result.returncode}. "
+        f"stdout={result.stdout!r} stderr={result.stderr!r}"
+    )
+
+
+def seed_lineage_exact_activity(*, client: Client, database: str) -> None:
+    client.command(f"INSERT INTO {database}.browser_moving_events VALUES ('101', now64(3))")
+    client.command(f"INSERT INTO {database}.browser_idle_events VALUES ('idle', now64(3))")
+    try:
+        client.command(
+            f"INSERT INTO {database}.browser_stalled_events VALUES ('not-a-number', now64(3))"
+        )
+    except Exception as error:
+        assert "Cannot parse" in str(error) or "CANNOT_PARSE" in str(error)
+    else:
+        raise AssertionError("stalled activity probe unexpectedly succeeded")
+    client.command("SYSTEM FLUSH LOGS")
+
+
+def seed_lineage_approximate_activity(*, client: Client, database: str) -> None:
+    client.command(f"INSERT INTO {database}.browser_moving_events VALUES ('101', now64(3))")
 
 
 def start_dev_process(
