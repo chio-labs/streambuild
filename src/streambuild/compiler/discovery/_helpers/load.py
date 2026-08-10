@@ -263,6 +263,7 @@ def _load_pipeline_draft(
             value=pipeline_values.get("protection"),
             pipeline_name=pipeline_directory.pipeline_dir.name,
             file_path=config_path,
+            mode=mode,
         ),
         audit_defaults=_load_pipeline_audit_defaults(
             value=pipeline_values.get("audit_defaults"),
@@ -503,10 +504,14 @@ def _pipeline_prefix(*, values: dict[str, object], key: str, file_path: Path) ->
 
 
 def _load_pipeline_protection(
-    *, value: object, pipeline_name: str, file_path: Path
+    *, value: object, pipeline_name: str, file_path: Path, mode: PipelineMode
 ) -> PipelineProtection | None:
     if value is None:
         return None
+    if mode != PipelineMode.DIRECT:
+        raise PipelineDiscoveryError(
+            f"Pipeline config '{file_path}' may define protection only for direct pipelines"
+        )
     if not isinstance(value, dict) or not all(isinstance(key, str) for key in value):
         raise PipelineDiscoveryError(
             f"Pipeline config '{file_path}' must define protection as a mapping"

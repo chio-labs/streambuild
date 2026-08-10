@@ -11,6 +11,7 @@ from fastapi import FastAPI, HTTPException, Query
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.exceptions import AdapterError
 from streambuild.cli.build.main.build_direct_build_preview import build_direct_build_preview
+from streambuild.cli.build.main.validate_build_pipeline_limit import validate_build_pipeline_limit
 from streambuild.cli.build.models import DirectBuildPreviewContext, WorkflowPreparationOptions
 from streambuild.cli.entry.exceptions import CliUserError
 from streambuild.cli.plan.main.normalize_cli_start_time import normalize_cli_start_time
@@ -650,6 +651,11 @@ def _register_build_routes(
         try:
             with state.query_lock:
                 client: AdapterConnection = required_connection()
+                analysis: CompileAnalysis = servable_analysis()
+                validate_build_pipeline_limit(
+                    analysis=analysis,
+                    selectors=tuple(request.selectors),
+                )
                 active_runs: list[dict[str, object]] = [
                     run
                     for run in read_active_runs(
@@ -683,7 +689,7 @@ def _register_build_routes(
                             verbose=False,
                         ),
                         client=client,
-                        analysis=servable_analysis(),
+                        analysis=analysis,
                         effective_start_time=effective_start_time,
                     )
                     requested_writes: frozenset[str] = frozenset(
