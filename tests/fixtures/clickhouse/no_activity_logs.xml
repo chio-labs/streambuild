@@ -1,0 +1,4 @@
+<clickhouse>
+    <query_views_log remove="remove"/>
+    <part_log remove="remove"/>
+</clickhouse>

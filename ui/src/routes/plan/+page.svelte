@@ -200,7 +200,15 @@
 	$effect(() => {
 		const tokens: string[] = selectors.map(selectorToken);
 		const start: string | null = replayStartToken(replayWindow);
-		if (page.url.searchParams.has('start') && start === null) {
+		const rawStart: string | null = page.url.searchParams.get('start');
+		const rawStartDate: Date | null = rawStart === null ? null : parseUtc(rawStart);
+		const hasUrlSelector: boolean = page.url.searchParams
+			.getAll('select')
+			.some((token) => parseSelector(token) !== null);
+		if (
+			rawStart !== null &&
+			(!hasUrlSelector || rawStartDate === null || !Number.isFinite(rawStartDate.getTime()))
+		) {
 			applySelection(selectors, { mode: 'full' });
 			return;
 		}

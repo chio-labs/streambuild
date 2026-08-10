@@ -72,6 +72,7 @@ def test_given_scheduler_enabled_dev_process_when_started_then_automatic_run_is_
     )
     assert initial_node_results_table_count == 0
     api_port: int = available_port()
+    log_path: Path = tmp_path / "stb-dev-audit-scheduler.log"
     repository_root: Path = Path(__file__).resolve().parents[5]
     process: subprocess.Popen[str] = start_dev_process(
         repository_root=repository_root,
@@ -82,16 +83,17 @@ def test_given_scheduler_enabled_dev_process_when_started_then_automatic_run_is_
         password=isolated_e2e_clickhouse_connection_settings.password,
         database=isolated_e2e_clickhouse_database,
         api_port=api_port,
+        log_path=log_path,
     )
     try:
-        _ = wait_for_scheduler_api(process=process, api_port=api_port)
+        _ = wait_for_scheduler_api(process=process, api_port=api_port, log_path=log_path)
         wait_for_scheduled_result(
             processes=(process,),
             client=isolated_e2e_clickhouse_client,
             database=isolated_e2e_clickhouse_database,
         )
         scheduler_payload: dict[str, object] = wait_for_scheduler_api(
-            process=process, api_port=api_port
+            process=process, api_port=api_port, log_path=log_path
         )
         runs_payload: list[dict[str, object]] = cast(
             list[dict[str, object]],

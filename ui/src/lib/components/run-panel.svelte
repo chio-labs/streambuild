@@ -24,6 +24,7 @@
 	let userEdited = $state<boolean>(false);
 	let executing = $state<boolean>(false);
 	let executeError = $state<string | null>(null);
+	let commandInput = $state<HTMLInputElement>();
 
 	const seed = $derived(
 		`stb build${selection.map((name) => ` --select ${name}`).join('')} --auto-approve`
@@ -31,6 +32,13 @@
 
 	$effect(() => {
 		if (open && !userEdited) cmd = seed;
+	});
+
+	$effect(() => {
+		if (!open) return;
+		const returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+		queueMicrotask(() => commandInput?.focus());
+		return () => returnFocus?.focus();
 	});
 
 	type ParsedCommand = {
@@ -165,9 +173,11 @@
 	></button>
 	<div
 		class="bg-background fixed inset-x-0 bottom-0 z-50 max-h-[85vh] overflow-y-auto rounded-t-[10px] border-t border-border shadow-2xl lg:max-h-[70vh]"
+		role="dialog"
+		aria-labelledby="run-panel-title"
 	>
 		<div class="flex items-center gap-3 border-b border-border px-[18px] py-3">
-			<span class="font-display text-[14px] font-semibold">Run</span>
+			<span id="run-panel-title" class="font-display text-[14px] font-semibold">Run</span>
 			<span class="sb-tag code">build</span>
 			<span class="text-[var(--sb-text-faint)] font-mono text-[11px]"
 				>target {project.target} · database {project.database}</span
@@ -254,6 +264,8 @@
 			<div class="flex flex-wrap items-center gap-2">
 				<span class="text-[var(--sb-text-faint)] shrink-0 font-mono text-[13px]">$</span>
 				<input
+					bind:this={commandInput}
+					aria-label="Build command"
 					bind:value={cmd}
 					oninput={() => (userEdited = true)}
 					onkeydown={(event) => {

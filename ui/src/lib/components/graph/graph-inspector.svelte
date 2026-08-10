@@ -60,7 +60,7 @@
 	);
 </script>
 
-<div class="bg-card flex min-h-full flex-col">
+<div class="bg-card flex min-h-full flex-col" data-testid="lineage-inspector">
 	<!-- header -->
 	<div class="border-b border-border px-4 py-3">
 		<div class="flex items-start gap-2">
@@ -136,45 +136,52 @@
 						label="Newest row"
 						value={formatAgo(model.live.newestRowAt, project.capturedAt)}
 					/>
-					<FactRow
-						label="Activity"
-						value={model.live.activity.state}
-						tone={model.live.activity.state === 'moving'
-							? 'success'
-							: model.live.activity.state === 'stalled'
-								? 'warning'
-								: 'default'}
-					/>
-					<FactRow
-						label="Activity evidence"
-						value={model.live.activity.approximate
-							? `${model.live.activity.source} (approximate)`
-							: model.live.activity.source}
-						mono
-					/>
-					{#if model.live.activity.lastTriggeredAt}
+					<div
+						data-testid="lineage-activity"
+						data-state={model.live.activity.state}
+						data-source={model.live.activity.source}
+						data-approximate={String(model.live.activity.approximate)}
+					>
 						<FactRow
-							label="Last trigger"
-							value={formatAgo(model.live.activity.lastTriggeredAt, project.capturedAt)}
+							label="Activity"
+							value={model.live.activity.state}
+							tone={model.live.activity.state === 'moving'
+								? 'success'
+								: model.live.activity.state === 'stalled'
+									? 'warning'
+									: 'default'}
 						/>
-					{/if}
-					{#if model.live.activity.lastWriteAt}
 						<FactRow
-							label="Last write"
-							value={formatAgo(model.live.activity.lastWriteAt, project.capturedAt)}
+							label="Activity evidence"
+							value={model.live.activity.approximate
+								? `${model.live.activity.source} (approximate)`
+								: model.live.activity.source}
+							mono
 						/>
-					{/if}
-					{#if !model.live.activity.approximate && model.live.activity.sourceAvailable}
-						<FactRow
-							label="Recent writes"
-							value="{formatInteger(model.live.activity.rowsWritten)} rows / {formatDuration(
-								model.live.activity.windowSeconds
-							)}"
-						/>
-					{/if}
-					<p class="text-muted-foreground py-1.5 text-[11px] leading-relaxed">
-						{model.live.activity.detail}
-					</p>
+						{#if model.live.activity.lastTriggeredAt}
+							<FactRow
+								label="Last trigger"
+								value={formatAgo(model.live.activity.lastTriggeredAt, project.capturedAt)}
+							/>
+						{/if}
+						{#if model.live.activity.lastWriteAt}
+							<FactRow
+								label="Last write"
+								value={formatAgo(model.live.activity.lastWriteAt, project.capturedAt)}
+							/>
+						{/if}
+						{#if !model.live.activity.approximate && model.live.activity.sourceAvailable}
+							<FactRow
+								label="Recent writes"
+								value="{formatInteger(model.live.activity.rowsWritten)} rows / {formatDuration(
+									model.live.activity.windowSeconds
+								)}"
+							/>
+						{/if}
+						<p class="text-muted-foreground py-1.5 text-[11px] leading-relaxed">
+							{model.live.activity.detail}
+						</p>
+					</div>
 					<FactRow
 						label="Ownership"
 						value={OWNERSHIP_LABEL[model.live.ownership]}

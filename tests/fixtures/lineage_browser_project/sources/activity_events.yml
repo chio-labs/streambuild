@@ -1,0 +1,22 @@
+sources:
+  - name: moving_events
+    kind: stream_table
+    table_name: browser_moving_events
+    replay_boundary:
+      mode: timestamp
+      columns:
+        _replay_timestamp: event_timestamp
+  - name: idle_events
+    kind: stream_table
+    table_name: browser_idle_events
+    replay_boundary:
+      mode: timestamp
+      columns:
+        _replay_timestamp: event_timestamp
+  - name: stalled_events
+    kind: stream_table
+    table_name: browser_stalled_events
+    replay_boundary:
+      mode: timestamp
+      columns:
+        _replay_timestamp: event_timestamp

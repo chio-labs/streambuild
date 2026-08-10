@@ -444,6 +444,7 @@
 					facet
 					<input
 						bind:value={facetPathText}
+						aria-label="Facet path"
 						class="bg-[var(--sb-inset)] w-[140px] rounded-[4px] border border-border px-2 py-[3px] font-mono text-[10px] outline-none focus:border-[var(--primary)]"
 						onkeydown={(event) => {
 							if (event.key === 'Enter') applyFacetPath();

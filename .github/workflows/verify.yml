@@ -13,33 +13,124 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  verify:
-    name: Verify
+  checks:
+    name: Static, UI, and unit checks
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-
       - uses: astral-sh/setup-uv@v5
         with:
           version: "0.12.3"
           enable-cache: true
           cache-dependency-glob: uv.lock
-
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: ui/package-lock.json
-
       - name: Install Python
         run: uv python install "$(cat .python-version)"
-
       - name: Install dependencies
         run: uv sync --locked --all-groups
-
       - name: Build UI assets
         run: make ui-install ui-build
+      - name: Run static and UI checks
+        run: make check-ci ui-verify
+      - name: Run unit tests
+        run: make test
 
-      - name: Run repository verification
-        run: make verify-ci
+  integration:
+    name: ClickHouse integration tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.12.3"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Install Python
+        run: uv python install "$(cat .python-version)"
+      - name: Install dependencies
+        run: uv sync --locked --all-groups
+      - name: Run integration tests
+        run: make test-integration
+
+  e2e:
+    name: Process and executor E2E tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.12.3"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - name: Install Python
+        run: uv python install "$(cat .python-version)"
+      - name: Install dependencies
+        run: uv sync --locked --all-groups
+      - name: Build packaged UI
+        run: make ui-install ui-build
+      - name: Run non-browser E2E tests
+        run: make test-e2e
+
+  browser:
+    name: Packaged Chromium E2E tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.12.3"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - name: Install Python
+        run: uv python install "$(cat .python-version)"
+      - name: Install dependencies
+        run: uv sync --locked --all-groups
+      - name: Install Chromium
+        run: uv run playwright install --with-deps chromium
+      - name: Verify Docker
+        run: docker info
+      - name: Build packaged UI
+        run: make ui-install ui-build
+      - name: Run browser E2E tests
+        run: make test-browser
+      - name: Capture container diagnostics
+        if: always()
+        run: |
+          mkdir -p test-results/ci
+          docker info > test-results/ci/docker-info.txt 2>&1 || true
+          docker ps -a > test-results/ci/docker-containers.txt 2>&1 || true
+          docker network ls > test-results/ci/docker-networks.txt 2>&1 || true
+      - name: Upload browser diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-browser-artifacts
+          path: test-results/
+          if-no-files-found: error
+          retention-days: 7
+
+  verify:
+    name: Verify
+    needs: [checks, integration, e2e, browser]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Confirm all required verification jobs passed
+        run: echo "All required verification jobs passed"
