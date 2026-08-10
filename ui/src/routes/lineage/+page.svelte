@@ -149,15 +149,6 @@
 	const selectedNode = $derived<GraphNode | null>(
 		selectedId ? (graph.nodes.find((node) => node.id === selectedId) ?? null) : null
 	);
-	let inspectorWasOpen = false;
-
-	$effect(() => {
-		const inspectorOpen = selectedNode !== null;
-		if (inspectorOpen && !inspectorWasOpen) {
-			requestAnimationFrame(() => fitView?.(DEFAULT_FIT));
-		}
-		inspectorWasOpen = inspectorOpen;
-	});
 
 	function resetLayout(): void {
 		canvas?.relayout();
