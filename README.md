@@ -158,7 +158,8 @@ stb build --select order_totals --start-time 2026-08-01T00:00:00Z
 An optional `[build].max_pipelines` is an absolute limit on the distinct pipelines in the final
 expanded build scope. A target-specific `[targets.<name>.build].max_pipelines` replaces the project
 default and requires that default to be configured. The limit cannot be authored in
-`streambuild_local.toml`; local-only targets inherit the committed project default.
+`streambuild_local.toml`; local-only targets inherit the committed project default. Builds above the
+effective limit stop before any warehouse mutation.
 
 Direct pipelines can declare an operator gate in `pipeline.toml`:
 
@@ -172,7 +173,7 @@ confirmation = "DEPLOY_ORDERS"
 
 Every protected pipeline in a build requires its exact configured `--confirm` value, even with
 `--auto-approve`. Interactive builds prompt for each missing confirmation. Virtual pipelines cannot
-declare `[protection]`.
+declare `[protection]`. The UI shows one confirmation input for each protected pipeline in scope.
 
 ## Deployments
 
@@ -201,6 +202,11 @@ publication's bindings, not a historical data snapshot.
 - deployment inventory, diff, promotion, and cleanup
 - durable run timelines, statement progress, cancellation, and stale-run recovery guidance
 - audit history and scheduler health
+
+The UI is pinned to the target and database used to launch `stb dev`. Displayed commands omit that
+internal context, and the command box rejects target, database, connection, project, and variable
+overrides. It autocompletes supported flags, model and pipeline selectors, and required confirmation
+tokens.
 
 Run observability is warehouse-backed. A silent run becomes `unresponsive` after 45 seconds and
 `presumed_failed` after `[defaults].run_presumed_failed_after` (default `10m`). A new build is blocked
