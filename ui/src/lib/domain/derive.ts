@@ -103,7 +103,7 @@ export function testCounts(tests: SqlTest[]): CheckCounts {
  * Missing lineage telemetry is unknown, not stalled: the edge remains visibly
  * driving but does not claim motion through animation.
  */
-function modelFlowState(model: Model): GraphEdge['flowState'] {
+export function modelFlowState(model: Model): GraphEdge['flowState'] {
 	if (model.kind !== 'table') return 'unknown';
 	if (model.live.activity.state === 'moving') return 'flowing';
 	if (model.live.activity.state === 'stalled') return 'stalled';

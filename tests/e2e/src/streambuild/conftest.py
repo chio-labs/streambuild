@@ -4,6 +4,7 @@ import time
 import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass
+from pathlib import Path
 from textwrap import dedent
 from typing import Self
 
@@ -25,6 +26,7 @@ KAFKA_INTERNAL_PORT: int = 29092
 KAFKA_INTERNAL_BOOTSTRAP_SERVER: str = f"{KAFKA_NETWORK_ALIAS}:{KAFKA_INTERNAL_PORT}"
 REDPANDA_IMAGE: str = "redpandadata/redpanda:v24.2.7"
 CONTAINER_STARTUP_TIMEOUT_SECONDS: int = 90
+NO_ACTIVITY_LOG_CONFIG: Path = Path("tests/fixtures/clickhouse/no_activity_logs.xml").resolve()
 
 
 class E2ERedpandaContainer(RedpandaContainer):
@@ -155,6 +157,34 @@ def e2e_clickhouse_connection_settings(
         pytest.skip(f"Docker is not available for ClickHouse E2E tests: {error}")
 
 
+@pytest.fixture(scope="session")
+def no_activity_log_clickhouse_connection_settings() -> Iterator[E2EClickHouseConnectionSettings]:
+    try:
+        host_port: int = _reserve_host_port()
+        container: DockerContainer = DockerContainer("clickhouse/clickhouse-server:24.8")
+        container.with_bind_ports(8123, host_port)
+        container.with_env("CLICKHOUSE_USER", CLICKHOUSE_USERNAME)
+        container.with_env("CLICKHOUSE_PASSWORD", CLICKHOUSE_PASSWORD)
+        container.with_volume_mapping(
+            NO_ACTIVITY_LOG_CONFIG,
+            "/etc/clickhouse-server/config.d/no_activity_logs.xml",
+        )
+        with container:
+            host: str = container.get_container_host_ip()
+            port: int = int(container.get_exposed_port(8123))
+            client: Client = _wait_for_clickhouse_client(host=host, port=port)
+            client.close()
+            yield E2EClickHouseConnectionSettings(
+                host=host,
+                port=port,
+                username=CLICKHOUSE_USERNAME,
+                password=CLICKHOUSE_PASSWORD,
+                container_id=container.get_wrapped_container().id,
+            )
+    except DockerException as error:
+        pytest.skip(f"Docker is not available for ClickHouse E2E tests: {error}")
+
+
 @pytest.fixture
 def isolated_e2e_clickhouse_connection_settings(
     isolated_e2e_network: Network,
@@ -201,6 +231,22 @@ def e2e_clickhouse_client(
         client.close()
 
 
+@pytest.fixture(scope="session")
+def no_activity_log_clickhouse_client(
+    no_activity_log_clickhouse_connection_settings: E2EClickHouseConnectionSettings,
+) -> Iterator[Client]:
+    client: Client = clickhouse_connect.get_client(
+        host=no_activity_log_clickhouse_connection_settings.host,
+        port=no_activity_log_clickhouse_connection_settings.port,
+        username=no_activity_log_clickhouse_connection_settings.username,
+        password=no_activity_log_clickhouse_connection_settings.password,
+    )
+    try:
+        yield client
+    finally:
+        client.close()
+
+
 @pytest.fixture
 def isolated_e2e_clickhouse_client(
     isolated_e2e_clickhouse_connection_settings: E2EClickHouseConnectionSettings,
@@ -225,6 +271,18 @@ def e2e_clickhouse_database(e2e_clickhouse_client: Client) -> Iterator[str]:
         yield database_name
     finally:
         e2e_clickhouse_client.command(f"DROP DATABASE IF EXISTS {database_name} SYNC")
+
+
+@pytest.fixture
+def no_activity_log_clickhouse_database(
+    no_activity_log_clickhouse_client: Client,
+) -> Iterator[str]:
+    database_name: str = f"streambuild_e2e_{uuid.uuid4().hex[:12]}"
+    no_activity_log_clickhouse_client.command(f"CREATE DATABASE {database_name}")
+    try:
+        yield database_name
+    finally:
+        no_activity_log_clickhouse_client.command(f"DROP DATABASE IF EXISTS {database_name} SYNC")
 
 
 @pytest.fixture
