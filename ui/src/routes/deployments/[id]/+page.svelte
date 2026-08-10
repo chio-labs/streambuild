@@ -25,29 +25,54 @@
 	let diffError = $state<string | null>(null);
 	let promoting = $state<boolean>(false);
 	let promoteError = $state<string | null>(null);
+	let diffRequestGeneration = 0;
+	let promotionRequestGeneration = 0;
+
+	$effect(() => {
+		void deploymentId;
+		diffRequestGeneration += 1;
+		promotionRequestGeneration += 1;
+		tab = 'graph';
+		diff = null;
+		diffError = null;
+		promoting = false;
+		promoteError = null;
+	});
 
 	async function promote(): Promise<void> {
+		const requestedId = deploymentId;
+		const requestGeneration = ++promotionRequestGeneration;
 		promoting = true;
 		promoteError = null;
 		try {
-			const result = await promoteDeployment(deploymentId);
+			const result = await promoteDeployment(requestedId);
+			if (deploymentId !== requestedId || promotionRequestGeneration !== requestGeneration) return;
 			await refreshDeployments();
+			if (deploymentId !== requestedId || promotionRequestGeneration !== requestGeneration) return;
 			await goto(`/runs/${result.invocationId}`);
 		} catch (error) {
-			promoteError = String(error);
-			promoting = false;
+			if (deploymentId === requestedId && promotionRequestGeneration === requestGeneration) {
+				promoteError = String(error);
+				promoting = false;
+			}
 		}
 	}
 
 	function loadDiff(): void {
 		tab = 'diff';
 		if (diff !== null) return;
-		fetchDeploymentDiff(deploymentId)
+		const requestedId = deploymentId;
+		const requestGeneration = ++diffRequestGeneration;
+		fetchDeploymentDiff(requestedId)
 			.then((payload) => {
-				diff = payload;
+				if (deploymentId === requestedId && diffRequestGeneration === requestGeneration) {
+					diff = payload;
+				}
 			})
 			.catch((error: unknown) => {
-				diffError = String(error);
+				if (deploymentId === requestedId && diffRequestGeneration === requestGeneration) {
+					diffError = String(error);
+				}
 			});
 	}
 
@@ -171,12 +196,14 @@
 				<div class="flex items-center gap-3 border-b border-border px-3 py-1.5">
 					<div class="flex overflow-hidden rounded-[3px] border border-border">
 						<button
+							aria-pressed={tab === 'graph'}
 							class="px-2.5 py-1 font-mono text-[10.5px] {tab === 'graph'
 								? 'bg-[var(--sb-hover)] text-foreground'
 								: 'text-muted-foreground hover:text-foreground'}"
 							onclick={() => (tab = 'graph')}>Graph</button
 						>
 						<button
+							aria-pressed={tab === 'diff'}
 							class="border-l border-border px-2.5 py-1 font-mono text-[10.5px] {tab === 'diff'
 								? 'bg-[var(--sb-hover)] text-foreground'
 								: 'text-muted-foreground hover:text-foreground'}"
@@ -403,7 +430,17 @@
 						<tr>
 							<td class="code px-3 py-1.5 text-[12px]">{replacement.logicalName}</td>
 							<td class="code px-3 text-[11px]" style:color="var(--sb-warning)">replace</td>
-							<td class="code text-[var(--sb-text-faint)] px-3 text-[11px]">{exactRelationName(replacement.fromPhysicalName)}</td>
+							<td class="code text-[var(--sb-text-faint)] px-3 text-[11px]">
+								{#if model?.liveDeploymentId && model.liveDeploymentId !== deploymentId}
+									<a
+										href="/deployments/{model.liveDeploymentId}"
+										aria-label="Open live deployment {model.liveDeploymentId}"
+										class="text-primary hover:underline">{exactRelationName(replacement.fromPhysicalName)}</a
+									>
+								{:else}
+									{exactRelationName(replacement.fromPhysicalName)}
+								{/if}
+							</td>
 							<td class="code px-3 text-[11px]">{exactRelationName(replacement.toPhysicalName)}</td>
 							<td class="code px-3 text-[11.5px]">{model?.liveRows === null || model === undefined ? '—' : formatInteger(model.liveRows)}</td>
 							<td class="code px-3 text-[11.5px]">{model ? formatInteger(model.stagedRows) : '—'}</td>
