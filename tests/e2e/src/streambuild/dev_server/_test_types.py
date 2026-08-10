@@ -103,3 +103,22 @@ class QualityBrowserE2ETestCase:
     expected_warning: int
     expected_failing: int
     expected_sample_key: str
+
+
+@dataclass(frozen=True)
+class CompleteStreamingBrowserE2ETestCase:
+    description: str
+    message_key: str
+    message_value: str
+    expected_order_id: str
+    expected_final_order_id: str
+    expected_activity_source: str
+
+
+@dataclass(frozen=True)
+class UnsafeReplayBrowserE2ETestCase:
+    description: str
+    unsafe_selector: str
+    safe_selector: str
+    expected_missing_column: str
+    expected_preserved_row: str
