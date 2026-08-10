@@ -63,6 +63,14 @@ def test_given_scheduler_enabled_dev_process_when_started_then_automatic_run_is_
         data=[["ord_001", -5.0]],
         column_names=["order_id", "line_total"],
     )
+    initial_node_results_table_count: int = int(
+        isolated_e2e_clickhouse_client.query(
+            "SELECT count() FROM system.tables "
+            f"WHERE database = '{isolated_e2e_clickhouse_database}' "
+            "AND name = '_streambuild_node_results'"
+        ).result_rows[0][0]
+    )
+    assert initial_node_results_table_count == 0
     api_port: int = available_port()
     log_path: Path = tmp_path / "stb-dev-audit-scheduler.log"
     repository_root: Path = Path(__file__).resolve().parents[5]
