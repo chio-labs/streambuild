@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.18.1](https://github.com/chio-labs/streambuild/compare/v0.18.0...v0.18.1) (2026-08-10)
+
+
+### Bug Fixes
+
+* align deployment inventory columns ([d40f82b](https://github.com/chio-labs/streambuild/commit/d40f82b86ac41978531c9bc91f9417c591fe611f))
+* preserve lineage activity and viewport ([c4a259c](https://github.com/chio-labs/streambuild/commit/c4a259c84880e492b60cb901a9bab0296774ea28))
+* preserve lineage activity and viewport ([27062dc](https://github.com/chio-labs/streambuild/commit/27062dc1278adcc8a7ddbf90d79cd226bb85450b))
+
 ## [0.18.0](https://github.com/chio-labs/streambuild/compare/v0.17.0...v0.18.0) (2026-08-10)
 
 
