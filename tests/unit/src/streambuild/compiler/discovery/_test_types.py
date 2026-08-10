@@ -87,6 +87,14 @@ class ProjectRunSafetyDefaultTestCase:
 
 
 @dataclass(frozen=True)
+class ProjectBuildLimitResolutionTestCase:
+    description: str
+    expected_dev_limit: int
+    expected_staging_limit: int
+    expected_private_limit: int
+
+
+@dataclass(frozen=True)
 class LegacyProjectConfigurationTestCase:
     description: str
     expected_error_fragment: str

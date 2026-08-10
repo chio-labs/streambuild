@@ -67,8 +67,17 @@ password = "${ENV:CLICKHOUSE_PASSWORD}"
 pipeline_mode = "direct"
 run_presumed_failed_after = "10m"
 
+[build]
+max_pipelines = 20
+
 [targets.dev]
 database = "analytics"
+
+[targets.prod]
+database = "analytics_prod"
+
+[targets.prod.build]
+max_pipelines = 10
 ```
 
 Developer-specific target and connection overrides belong in the gitignored
@@ -146,8 +155,24 @@ stb plan --select pipeline:orders
 stb build --select order_totals --start-time 2026-08-01T00:00:00Z
 ```
 
-Protected pipelines require their exact configured `--confirm` value even with
-`--auto-approve`.
+An optional `[build].max_pipelines` is an absolute limit on the distinct pipelines in the final
+expanded build scope. A target-specific `[targets.<name>.build].max_pipelines` replaces the project
+default and requires that default to be configured. The limit cannot be authored in
+`streambuild_local.toml`; local-only targets inherit the committed project default.
+
+Direct pipelines can declare an operator gate in `pipeline.toml`:
+
+```toml
+mode = "direct"
+
+[protection]
+warning = "Interrupts protected order processing."
+confirmation = "DEPLOY_ORDERS"
+```
+
+Every protected pipeline in a build requires its exact configured `--confirm` value, even with
+`--auto-approve`. Interactive builds prompt for each missing confirmation. Virtual pipelines cannot
+declare `[protection]`.
 
 ## Deployments
 

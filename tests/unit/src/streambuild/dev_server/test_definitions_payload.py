@@ -83,6 +83,8 @@ def test_given_protected_pipeline_when_reading_definitions_then_serializes_prote
     write_dev_server_project(project_dir=tmp_path)
     (tmp_path / "pipelines" / "order_events" / "pipeline.toml").write_text(
         """
+mode = "direct"
+
 [protection]
 warning = "Interrupts protected order events."
 confirmation = "DEPLOY_ORDER_EVENTS"

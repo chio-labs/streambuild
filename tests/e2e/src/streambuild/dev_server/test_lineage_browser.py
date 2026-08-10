@@ -10,8 +10,93 @@ from playwright.sync_api import ConsoleMessage, Error, Locator, Page, Request, R
 from tests.e2e.src.streambuild.dev_server._test_types import (
     LineageApproximateActivityE2ETestCase,
     LineageExactActivityE2ETestCase,
+    RunCommandBoxE2ETestCase,
 )
 from tests.e2e.src.streambuild.dev_server.helpers import seed_lineage_exact_activity
+
+
+@pytest.mark.e2e
+@pytest.mark.browser
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        RunCommandBoxE2ETestCase(
+            description="completes supported options while preserving pinned context",
+            protected_model="moving_orders",
+            expected_confirmation="DEPLOY_MOVING_EVENTS",
+            expected_quoted_selector="pipeline:order events",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_run_command_box_when_editing_then_completes_only_pinned_context_options(
+    test_case: RunCommandBoxE2ETestCase,
+    running_lineage_server: tuple[str, dict[str, object], Path, Client, str],
+    browser_diagnostics: tuple[list[ConsoleMessage], list[Error], list[Request], list[Response]],
+    page: Page,
+) -> None:
+    base_url, _readiness_payload, _log_path, _clickhouse_client, _database = running_lineage_server
+    console_messages, page_errors, failed_requests, responses = browser_diagnostics
+    page.goto(f"{base_url}/lineage?group=none", wait_until="domcontentloaded", timeout=30_000)
+    page.locator(f'.svelte-flow__node[data-id="model:{test_case.protected_model}"]').click(
+        position={"x": 20, "y": 20}
+    )
+    page.get_by_role("button", name="Execute", exact=True).click()
+    run_dialog: Locator = page.get_by_role("dialog", name="Run")
+    command: Locator = run_dialog.get_by_role("combobox", name="Build command")
+    run_button: Locator = run_dialog.get_by_role("button", name="Run", exact=True)
+
+    command.fill("stb build --target prod")
+    expect(run_dialog.get_by_role("alert")).to_contain_text(
+        "--target is fixed by stb dev and cannot be overridden from the UI"
+    )
+    expect(run_button).to_be_disabled()
+
+    command.fill(f"stb build --select '{test_case.expected_quoted_selector}' --auto-approve")
+    expect(run_dialog.get_by_role("alert")).to_have_count(0)
+    expect(run_dialog.get_by_text(test_case.expected_quoted_selector, exact=True)).to_be_visible()
+
+    command.fill("stb build --sel")
+    expect(run_dialog.get_by_role("option", name=re.compile(r"^--select"))).to_be_visible()
+    command.press("ArrowDown")
+    command.press("Enter")
+    expect(command).to_have_value("stb build --select ")
+
+    selector_command: str = "stb build --select mov --auto-approve"
+    selector_cursor: int = selector_command.index("mov") + len("mov")
+    command.fill(selector_command)
+    command.evaluate(
+        "(element, cursor) => { element.setSelectionRange(cursor, cursor); "
+        "element.dispatchEvent(new Event('select', { bubbles: true })); }",
+        selector_cursor,
+    )
+    run_dialog.get_by_role("option", name=re.compile(rf"^{test_case.protected_model}\b")).click()
+    expect(command).to_have_value(f"stb build --select {test_case.protected_model} --auto-approve")
+
+    confirmation_command: str = (
+        f"stb build --select {test_case.protected_model} --confirm DEP --auto-approve"
+    )
+    confirmation_cursor: int = confirmation_command.index("DEP") + len("DEP")
+    command.fill(confirmation_command)
+    command.evaluate(
+        "(element, cursor) => { element.setSelectionRange(cursor, cursor); "
+        "element.dispatchEvent(new Event('select', { bubbles: true })); }",
+        confirmation_cursor,
+    )
+    confirmation: Locator = run_dialog.get_by_role(
+        "option", name=re.compile(rf"^{test_case.expected_confirmation}\b")
+    )
+    expect(confirmation).to_be_visible()
+    confirmation.click()
+    expect(command).to_have_value(
+        f"stb build --select {test_case.protected_model} "
+        f"--confirm {test_case.expected_confirmation} --auto-approve"
+    )
+    expect(run_button).to_be_enabled()
+    assert all(message.type != "error" for message in console_messages)
+    assert page_errors == []
+    assert failed_requests == []
+    assert all(response.status < 400 for response in responses)
 
 
 @pytest.mark.e2e

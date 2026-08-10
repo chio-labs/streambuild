@@ -254,6 +254,7 @@ def build_invocation(
     """Build the executable argv and safe user-facing command from one source."""
     stb_path: Path = Path(sys.executable).parent / "stb"
     argv: list[str] = [str(stb_path), "build"]
+    display_argv: list[str] = ["stb", "build"]
     if execution_context is not None:
         if execution_context.selected_target is not None:
             argv.extend(("--target", execution_context.selected_target))
@@ -261,11 +262,14 @@ def build_invocation(
             argv.extend(("--database", execution_context.database))
     for selector in selectors:
         argv.extend(("--select", selector))
+        display_argv.extend(("--select", selector))
     if start_time is not None:
         argv.extend(("--start-time", start_time))
+        display_argv.extend(("--start-time", start_time))
     for confirmation in confirmations:
         argv.extend(("--confirm", confirmation))
-    display: str = shlex.join(["stb", *argv[1:]])
+        display_argv.extend(("--confirm", confirmation))
+    display: str = shlex.join(display_argv)
     argv.extend(("--auto-approve", "--events"))
     return argv, display
 
