@@ -80,7 +80,14 @@ def build_state_payload(
             )
     captured_at: str = connection.capture_warehouse_timestamp()
     catalog: CatalogSnapshot = connection.load_catalog(database)
-    stats: dict[str, dict[str, int]] = _relation_stats(connection=connection, database=database)
+    active_bindings: tuple[tuple[str, str], ...] = _active_bindings(
+        connection=connection, database=database
+    )
+    stats: dict[str, dict[str, int]] = _relation_stats(
+        connection=connection,
+        database=database,
+        active_bindings=active_bindings,
+    )
     lineage_relations: tuple[str, ...] = _lineage_relation_names(catalog)
     extents: dict[str, dict[str, object]] = _extents(
         connection=connection, database=database, relation_names=lineage_relations
@@ -100,6 +107,7 @@ def build_state_payload(
         database=database,
         relation_names=model_relation_names,
         captured_at=captured_at,
+        active_bindings=active_bindings,
     )
     return {
         "capturedAt": captured_at,
@@ -123,7 +131,12 @@ def build_state_payload(
     }
 
 
-def _relation_stats(*, connection: AdapterConnection, database: str) -> dict[str, dict[str, int]]:
+def _relation_stats(
+    *,
+    connection: AdapterConnection,
+    database: str,
+    active_bindings: tuple[tuple[str, str], ...],
+) -> dict[str, dict[str, int]]:
     stats: dict[str, dict[str, int]] = {}
     for row in connection.query(build_relation_stats_query(database=database)).named_rows():
         stats[str(row["name"])] = {
@@ -137,7 +150,7 @@ def _relation_stats(*, connection: AdapterConnection, database: str) -> dict[str
             entry["parts"] = int(str(row["parts"]))
     return apply_bound_relation_stats(
         stats=stats,
-        bindings=_active_bindings(connection=connection, database=database),
+        bindings=active_bindings,
     )
 
 

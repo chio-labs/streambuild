@@ -100,6 +100,19 @@ _CAPTURED_AT: str = "2026-08-09 12:00:00.000"
             expected_last_triggered_at=None,
         ),
         ActivityPayloadTestCase(
+            description="active deployment binding maps physical part evidence to logical model",
+            capabilities=(),
+            view_rows=(),
+            part_log_rows=(),
+            parts_rows=(("tbl__orders__20260810T103523Z_bd67d9", "2026-08-09 11:59:50"),),
+            expected_state="moving",
+            expected_source="system_parts",
+            expected_approximate=True,
+            expected_rows_written=0,
+            expected_last_triggered_at=None,
+            physical_relation_name="tbl__orders__20260810T103523Z_bd67d9",
+        ),
+        ActivityPayloadTestCase(
             description="available log without recent evidence is idle",
             capabilities=("query_views_log",),
             view_rows=(),
@@ -167,6 +180,7 @@ def test_given_clickhouse_evidence_when_reading_activity_then_uses_strict_priori
         database=_DATABASE,
         relation_names=(_RELATION,),
         captured_at=_CAPTURED_AT,
+        active_bindings=((_RELATION, test_case.physical_relation_name),),
     )[_RELATION]
 
     assert activity["state"] == test_case.expected_state

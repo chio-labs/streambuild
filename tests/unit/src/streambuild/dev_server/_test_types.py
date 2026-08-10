@@ -99,6 +99,7 @@ class ActivityPayloadTestCase:
     expected_approximate: bool
     expected_rows_written: int
     expected_last_triggered_at: str | None
+    physical_relation_name: str = "tbl__orders"
 
 
 @dataclass(frozen=True)
