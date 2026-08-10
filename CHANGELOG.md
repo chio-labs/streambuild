@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.18.0](https://github.com/chio-labs/streambuild/compare/v0.17.0...v0.18.0) (2026-08-10)
+
+
+### Features
+
+* render Plan before warehouse planning ([3ed7c05](https://github.com/chio-labs/streambuild/commit/3ed7c052c4273e33e87d0cd73e177ede6382da7f))
+* render plan page before planning ([91fe307](https://github.com/chio-labs/streambuild/commit/91fe3071044a3bcf76693aef57d1d0c25ed8dd11))
+
 ## [0.17.0](https://github.com/chio-labs/streambuild/compare/v0.16.6...v0.17.0) (2026-08-09)
 
 
