@@ -9,8 +9,8 @@
  * plausible-but-suboptimal answer when it is wrong, which no screenshot would
  * catch. So it is checked against a brute force over every permutation.
  *
- * Run with Node's built-in type stripping; the module under test has no imports
- * of its own, so no bundler or alias resolution is involved.
+ * Loaded through Vite so the check works on supported Node versions without
+ * relying on Node's experimental TypeScript stripping flag.
  */
 
 import {
@@ -139,4 +139,4 @@ console.log(`${suboptimal === 0 ? '✓' : '✗'} exact solver  ${TRIALS - subopt
 	console.log(`${quick ? '✓' : '✗'} heuristic     40 lanes in ${elapsed.toFixed(0)}ms`);
 }
 
-process.exit(failures > 0 ? 1 : 0);
+process.exitCode = failures > 0 ? 1 : 0;
