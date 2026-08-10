@@ -8,6 +8,7 @@ from pathlib import Path
 from shutil import copytree
 from textwrap import dedent
 from typing import Any, cast
+from urllib.request import urlopen
 
 from clickhouse_connect.driver.client import Client
 from kafka import KafkaProducer
@@ -30,6 +31,9 @@ from streambuild.compiler.discovery.models import (
 from streambuild.compiler.discovery.types import ReplayLineageMode, ReplayOnChangeMode
 from streambuild.compiler.sql_analysis.classes.sql_model_analyzer import SqlModelAnalyzer
 from streambuild.compiler.sql_analysis.models import SqlModelAnalysis
+from streambuild.dev_server._helpers.payloads.activity_payload import (
+    build_query_views_activity_query,
+)
 from streambuild.executor.backfill.models import BackfillBootstrapRequest
 from tests.e2e.src.streambuild.conftest import (
     E2EClickHouseConnectionSettings,
@@ -1067,6 +1071,58 @@ def wait_for_row_count(
         time.sleep(poll_interval_seconds)
     raise AssertionError(
         f"Timed out waiting for {clickhouse_database}.{table_name} to reach {expected_count} rows"
+    )
+
+
+def wait_for_query_view_activity(
+    *, client: Client, database: str, relation_name: str, expected_rows: int
+) -> tuple[str, int]:
+    deadline: float = time.monotonic() + 25
+    last_observation: tuple[str, int] | None = None
+    while time.monotonic() < deadline:
+        client.command("SYSTEM FLUSH LOGS")
+        rows: Sequence[Sequence[Any]] = client.query(
+            build_query_views_activity_query(database=database, window_seconds=120)
+        ).result_rows
+        for row in rows:
+            target: str = str(row[1]).replace("`", "").rsplit(".", 1)[-1]
+            if target != relation_name:
+                continue
+            last_observation = (str(row[3]), int(row[2]))
+        if last_observation is not None:
+            status, written_rows = last_observation
+            if status == "QueryFinish" and written_rows >= expected_rows:
+                return last_observation
+        time.sleep(0.25)
+    raise AssertionError(
+        f"query_views_log activity did not reach {expected_rows} rows for "
+        f"{database}.{relation_name}; last={last_observation!r}"
+    )
+
+
+def wait_for_state_model_activity(
+    *, base_url: str, model_name: str, expected_state: str
+) -> dict[str, object]:
+    deadline: float = time.monotonic() + 25
+    last_activity: dict[str, object] | None = None
+    while time.monotonic() < deadline:
+        with urlopen(f"{base_url}/api/state", timeout=10) as response:  # noqa: S310
+            payload: object = json.loads(response.read().decode("utf-8"))
+        assert isinstance(payload, dict)
+        payload_dict: dict[str, object] = cast(dict[str, object], payload)
+        models: object = payload_dict.get("models")
+        assert isinstance(models, dict)
+        model: object = cast(dict[str, object], models).get(model_name)
+        assert isinstance(model, dict)
+        activity: object = cast(dict[str, object], model).get("activity")
+        assert isinstance(activity, dict)
+        last_activity = cast(dict[str, object], activity)
+        if last_activity.get("state") == expected_state:
+            return payload_dict
+        time.sleep(0.1)
+    raise AssertionError(
+        f"state API activity for {model_name!r} did not become {expected_state!r}; "
+        f"last={last_activity!r}"
     )
 
 
