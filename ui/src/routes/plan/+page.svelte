@@ -7,107 +7,45 @@
 	import RotateIcon from '@lucide/svelte/icons/rotate-ccw';
 	import TriangleAlertIcon from '@lucide/svelte/icons/triangle-alert';
 	import TerminalIcon from '@lucide/svelte/icons/terminal';
-	import * as Popover from '$lib/components/ui/popover';
-	import AppTopbar from '$lib/components/app-topbar.svelte';
-	import SelectionCombobox from '$lib/components/plan/selection-combobox.svelte';
-	import PlanGraph from '$lib/components/plan/plan-graph.svelte';
-	import ReplayWindowControl from '$lib/components/plan/replay-window.svelte';
-	import { getProject, fetchPlan, fetchRuns, startBuild, type RunRecord } from '$lib/api';
-	import { parseSelector, rootSourcesFor, selectorToken } from '$lib/domain/derive';
-	import { formatAgo, formatClock, formatCompact, formatDuration, parseUtc } from '$lib/domain/format';
-	import {
-		OWNERSHIP_LABEL,
-		type Plan,
-		type PlanSqlChangeStatus,
-		type Project,
-		type ReplayWindow,
-		type Selector,
-		type Source
-	} from '$lib/domain/types';
-	const project: Project = getProject();
-	const SQL_CHANGE_LABEL: Record<PlanSqlChangeStatus, string> = {
-		first_baseline: 'first build',
-		query_changed: 'SQL changed',
-		no_query_change: 'no SQL change',
-		baseline_unavailable: 'baseline unavailable'
-	};
-	const SQL_CHANGE_COLOUR: Record<PlanSqlChangeStatus, string> = {
-		first_baseline: 'var(--primary)',
-		query_changed: 'var(--sb-warning)',
-		no_query_change: 'var(--sb-text-faint)',
-		baseline_unavailable: 'var(--sb-warning)'
-	};
+	import * as Popover from '$ui-kit/popover/main';
+	import AppTopbar from '$lib/presentation/components/app-topbar.svelte';
+	import SelectionCombobox from '$lib/presentation/components/plan/selection-combobox.svelte';
+	import PlanGraph from '$lib/presentation/components/plan/plan-graph.svelte';
+	import ReplayWindowControl from '$lib/presentation/components/plan/replay-window.svelte';
+	import { startBuild } from '$lib/api/main/build/start-build';
+	import { fetchPlan } from '$lib/api/main/planning/fetch-plan';
+	import { getProject } from '$lib/api/main/project/get-project';
+	import { fetchRuns } from '$lib/api/main/runs/fetch-runs';
+	import { createPlanView } from '$lib/plan-view/main/create-plan-view';
+	import type { PlanViewTypes } from '$lib/plan-view/types';
 
-	// Selection lives in the URL, so every other surface (Graph, Pipelines,
-	// Catalog) is just a link constructor and a plan is shareable.
-	const urlSelectors = $derived.by((): Selector[] => {
-		const raw: string[] = page.url.searchParams.getAll('select');
-		return raw.map(parseSelector).filter((selector): selector is Selector => selector !== null);
-	});
+	const project = getProject();
+	const planView = createPlanView();
 
-	/**
-	 * The URL is the only source of truth for the selection and the replay
-	 * window. There is deliberately no local mirror.
-	 *
-	 * The previous version kept `selectors` in state, wrote the URL with
-	 * `replaceState`, and used an $effect to sync back — guarded by the last URL
-	 * it had written. That guard could not work: `replaceState` from
-	 * $app/navigation is SHALLOW routing. It updates the address bar and
-	 * `page.state`, but not `page.url`. So the effect always re-ran against the
-	 * stale search string, missed its guard, and reset the selection to empty —
-	 * the URL gained the selector while the page insisted nothing was selected,
-	 * and only a reload agreed with the address bar.
-	 *
-	 * Deriving straight from `page.url` and navigating with `goto` removes the
-	 * mirror, the guard, and the race together.
-	 */
-	const selectors = $derived<Selector[]>(urlSelectors);
-	const replayWindow = $derived<ReplayWindow>(windowFromUrl());
+	const location = $derived(planView.readLocation(page.url));
+	const selectors = $derived(location.selectors);
+	const replayWindow = $derived(location.replayWindow);
 
-	function replayStartToken(window: ReplayWindow): string | null {
-		if (window.mode === 'full') return null;
-		const parsed: Date = parseUtc(window.startTime);
-		if (!Number.isFinite(parsed.getTime())) return null;
-		return `${parsed.toISOString().slice(0, 19)}Z`;
+	function applySelection(
+		nextSelectors: PlanViewTypes['selector'][],
+		nextWindow?: PlanViewTypes['replayWindow']
+	): void {
+		void goto(planView.selectionUrl(page.url, nextSelectors, nextWindow), {
+			replaceState: true,
+			noScroll: true,
+			keepFocus: true
+		});
 	}
 
-	/** One navigation per change: two `goto` calls would race on a stale URL. */
-	function applySelection(nextSelectors: Selector[], nextWindow?: ReplayWindow): void {
-		const url = new URL(page.url);
-		url.searchParams.delete('select');
-		for (const selector of nextSelectors) {
-			url.searchParams.append('select', selectorToken(selector));
-		}
-		if (nextWindow) {
-			const start: string | null = replayStartToken(nextWindow);
-			if (start === null) url.searchParams.delete('start');
-			else url.searchParams.set('start', start);
-		}
-		void goto(url, { replaceState: true, noScroll: true, keepFocus: true });
-	}
-
-	function setSelectors(next: Selector[]): void {
+	function setSelectors(next: PlanViewTypes['selector'][]): void {
 		applySelection(next, next.length === 0 ? { mode: 'full' } : undefined);
 	}
 
-	// The replay window is URL-addressable too, so an entire plan — selection AND
-	// cutoff — is shareable and round-trips through paste-to-preview.
-	function windowFromUrl(): ReplayWindow {
-		const raw: string | null = page.url.searchParams.get('start');
-		if (!raw || urlSelectors.length === 0) return { mode: 'full' };
-		const parsed: Date = parseUtc(raw);
-		if (!Number.isFinite(parsed.getTime())) return { mode: 'full' };
-		return { mode: 'from', startTime: parsed.toISOString() };
-	}
-
-	function setReplayWindow(next: ReplayWindow): void {
+	function setReplayWindow(next: PlanViewTypes['replayWindow']): void {
 		applySelection(selectors, selectors.length === 0 ? { mode: 'full' } : next);
 	}
 
-	// Planning begins after the route renders so navigation is never held behind
-	// a live warehouse round-trip. Later requests retain the previous plan while
-	// the replacement is in flight, avoiding a blank page between selections.
-	let plan = $state<Plan | null>(null);
+	let plan = $state<PlanViewTypes['plan'] | null>(null);
 	let planError = $state<string | null>(null);
 	let planLoading = $state<boolean>(true);
 	let planRequestKey = $state<string>('');
@@ -130,19 +68,6 @@
 				if (requestVersion !== planRequestVersion) return;
 				planLoading = false;
 			});
-	}
-
-	/** The physical column(s) the replay window bounds on, by boundary mode. */
-	function boundaryColumns(root: Plan['replayRoots'][number]): string | null {
-		const columns = root.replayColumns;
-		if (root.boundaryMode === 'offsets') {
-			const pair: string = [columns.partition, columns.offset].filter(Boolean).join(' / ');
-			return pair || null;
-		}
-		if (root.boundaryMode === 'timestamp' || root.boundaryMode === 'cursor') {
-			return columns.timestamp ?? null;
-		}
-		return columns.landed_at ?? null;
 	}
 
 	let executing = $state<boolean>(false);
@@ -168,14 +93,17 @@
 			: `${plan.command}${acceptedConfirmations.map((value) => ` --confirm ${value}`).join('')}`
 	);
 
-	/** POST the planned options in the dev server's pinned context and follow the run live. */
-	async function execute(): Promise<void> {
+	/** POST the planned options in the dev server's pinned context and follow the run live. */ async function execute(): Promise<void> {
 		executing = true;
 		executeError = null;
 		try {
-			const tokens: string[] = selectors.map(selectorToken);
-			const start: string | null = replayStartToken(replayWindow);
-			const startResult = await startBuild(tokens, start, acceptedConfirmations);
+			const tokens: string[] = selectors.map(planView.selectorToken);
+			const start: string | null = planView.replayStartToken(replayWindow);
+			const startResult: Awaited<ReturnType<typeof startBuild>> = await startBuild(
+				tokens,
+				start,
+				acceptedConfirmations
+			);
 			await goto(`/runs/${startResult.invocationId}?live=1`);
 		} catch (error) {
 			executeError = error instanceof Error ? error.message : String(error);
@@ -184,25 +112,16 @@
 		}
 	}
 
-	/** Re-run the same selection against a fresh warehouse snapshot. */
 	function replan(): void {
-		const tokens: string[] = selectors.map(selectorToken);
-		const start: string | null = replayStartToken(replayWindow);
+		const tokens: string[] = selectors.map(planView.selectorToken);
+		const start: string | null = planView.replayStartToken(replayWindow);
 		requestPlan(tokens, start);
 	}
 
 	$effect(() => {
-		const tokens: string[] = selectors.map(selectorToken);
-		const start: string | null = replayStartToken(replayWindow);
-		const rawStart: string | null = page.url.searchParams.get('start');
-		const rawStartDate: Date | null = rawStart === null ? null : parseUtc(rawStart);
-		const hasUrlSelector: boolean = page.url.searchParams
-			.getAll('select')
-			.some((token) => parseSelector(token) !== null);
-		if (
-			rawStart !== null &&
-			(!hasUrlSelector || rawStartDate === null || !Number.isFinite(rawStartDate.getTime()))
-		) {
+		const tokens: string[] = selectors.map(planView.selectorToken);
+		const start: string | null = planView.replayStartToken(replayWindow);
+		if (planView.shouldClearReplayStart(page.url)) {
 			applySelection(selectors, { mode: 'full' });
 			return;
 		}
@@ -214,19 +133,13 @@
 
 	const planEntries = $derived(plan?.entries ?? []);
 
-	/**
-	 * Total rows the replay will read, available only when every root was counted.
-	 * A partial sum would look exact while silently omitting an unmaterialized root.
-	 */
 	const rowsToReplay = $derived.by((): number | null => {
-		const roots: Plan['replayRoots'] = plan?.replayRoots ?? [];
+		const roots: PlanViewTypes['plan']['replayRoots'] = plan?.replayRoots ?? [];
 		if (roots.length === 0 || roots.some((root) => root.rowsToReplay === null)) return null;
 		return roots.reduce((total, root) => total + (root.rowsToReplay ?? 0), 0);
 	});
 
-	// The last RECORDED build from _streambuild_invocations — a fact to calibrate
-	// expectations against, deliberately not extrapolated into a prediction.
-	let lastBuild = $state<RunRecord | null>(null);
+	let lastBuild = $state<PlanViewTypes['runRecord'] | null>(null);
 	$effect(() => {
 		fetchRuns()
 			.then((runs) => {
@@ -238,9 +151,8 @@
 			});
 	});
 
-	/** Sources rooting the closure — bounds the replay-window control. */
-	const rootSources = $derived<Source[]>(
-		rootSourcesFor(
+	const rootSources = $derived<PlanViewTypes['source'][]>(
+		planView.rootSources(
 			project,
 			planEntries.map((entry) => entry.modelName)
 		)
@@ -268,51 +180,21 @@
 			await navigator.clipboard.writeText(executionCommand);
 			copied = true;
 			setTimeout(() => (copied = false), 1600);
-		} catch {
-			// Clipboard can be blocked; the command is selectable text anyway.
-		}
+		} catch {}
 	}
 
-	// Paste-to-preview: the inverse of autocomplete. The point of a read-only Plan
-	// page is "tell me what this will do before I run it" — including for a command
-	// somebody handed you.
 	let pasted = $state<string>('');
 	let pasteOpen = $state<boolean>(false);
 	let replacedNote = $state<string>('');
 
 	function previewPasted(): void {
 		const previousCount: number = selectors.length;
-		const tokens: string[] = pasted
-			.replace(/^\s*(?:\$\s*)?(?:stb|streambuild)\s+(?:build|plan)\s*/, '')
-			.split(/\s+/)
-			.filter(Boolean);
-
-		const next: Selector[] = [];
-		let start: string | null = null;
-		for (let index = 0; index < tokens.length; index += 1) {
-			if (tokens[index] === '--select' && tokens[index + 1]) {
-				const parsed = parseSelector(tokens[index + 1]);
-				if (parsed) next.push(parsed);
-				index += 1;
-			} else if (tokens[index] === '--start-time' && tokens[index + 1]) {
-				start = tokens[index + 1];
-				index += 1;
-			}
-		}
-		let nextWindow: ReplayWindow = { mode: 'full' };
-		if (start) {
-			const parsedDate = new Date(start.endsWith('Z') ? start : `${start}Z`);
-			if (!Number.isNaN(parsedDate.getTime())) {
-				nextWindow = { mode: 'from', startTime: parsedDate.toISOString() };
-			}
-		}
-		applySelection(next, nextWindow);
-		// Say what happened. A silent wholesale replace is the thing that makes
-		// people distrust an input.
+		const parsed: ReturnType<typeof planView.parseCommand> = planView.parseCommand(pasted);
+		applySelection(parsed.selectors, parsed.replayWindow);
 		replacedNote =
 			previousCount > 0
-				? `Replaced ${previousCount} ${previousCount === 1 ? 'selector' : 'selectors'} with ${next.length} from the pasted command.`
-				: `Loaded ${next.length} ${next.length === 1 ? 'selector' : 'selectors'} from the pasted command.`;
+				? `Replaced ${previousCount} ${previousCount === 1 ? 'selector' : 'selectors'} with ${parsed.selectors.length} from the pasted command.`
+				: `Loaded ${parsed.selectors.length} ${parsed.selectors.length === 1 ? 'selector' : 'selectors'} from the pasted command.`;
 		setTimeout(() => (replacedNote = ''), 6000);
 		pasted = '';
 		pasteOpen = false;
@@ -436,8 +318,8 @@
 							>
 						</div>
 						<div class="flex flex-wrap gap-1.5 pt-2">
-							{#each selectors as selector (selectorToken(selector))}
-								<code class="sb-tag code">{selectorToken(selector)}</code>
+						{#each selectors as selector (planView.selectorToken(selector))}
+							<code class="sb-tag code">{planView.selectorToken(selector)}</code>
 							{/each}
 						</div>
 					{/if}
@@ -486,9 +368,9 @@
 								{#if entry.sqlChange}
 									<span
 										class="ml-auto shrink-0 font-mono text-[10px]"
-										style:color={SQL_CHANGE_COLOUR[entry.sqlChange.status]}
+									style:color={planView.sqlChangeColour[entry.sqlChange.status]}
 									>
-										{SQL_CHANGE_LABEL[entry.sqlChange.status]}
+									{planView.sqlChangeLabel[entry.sqlChange.status]}
 									</span>
 								{:else}
 									<span class="text-[var(--sb-text-faint)] ml-auto font-mono text-[10px]">
@@ -604,11 +486,11 @@
 							<div class="code text-[11px]">{root.modelName}</div>
 							<div class="text-[var(--sb-text-faint)] pt-0.5 font-mono text-[10px] leading-relaxed">
 								reads {root.drivingInputRelationName} · {root.boundaryMode}
-								{#if boundaryColumns(root)}
-									on <span class="code">{boundaryColumns(root)}</span>
+								{#if planView.boundaryColumns(root)}
+									on <span class="code">{planView.boundaryColumns(root)}</span>
 								{/if}
 								{#if root.rowsToReplay !== null}
-									· {formatCompact(root.rowsToReplay)} rows
+									· {planView.formatCompact(root.rowsToReplay)} rows
 								{/if}
 							</div>
 							{#if root.hasAggregateSemantics}
@@ -660,7 +542,7 @@
 						<div class="border-b border-[var(--border-subtle)] py-1.5 last:border-b-0">
 							<div class="code text-[11px]">{item.relation}</div>
 							<div class="pt-0.5 font-mono text-[10px]" style:color="var(--sb-warning)">
-								{OWNERSHIP_LABEL[item.ownership]}
+								{planView.ownershipLabel[item.ownership]}
 							</div>
 						</div>
 					{/each}
@@ -708,10 +590,10 @@
 				{#if plan === null}
 					Waiting for the current warehouse plan
 				{:else}
-					Planned against the {formatClock(plan.plannedAt)} snapshot
+					Planned against the {planView.formatClock(plan.plannedAt)} snapshot
 					{#if lastBuild}
-						· last build {formatDuration(lastBuild.durationMs / 1000)}
-						({lastBuild.selectedNodeCount} nodes, {formatAgo(
+						· last build {planView.formatDuration(lastBuild.durationMs / 1000)}
+						({lastBuild.selectedNodeCount} nodes, {planView.formatAgo(
 							lastBuild.startedAt,
 							project.capturedAt
 						)})
