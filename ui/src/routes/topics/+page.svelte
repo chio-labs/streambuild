@@ -1,14 +1,18 @@
 <script lang="ts">
 	import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
-	import AppTopbar from '$lib/components/app-topbar.svelte';
-	import { formatBytes, formatCompact, formatInteger } from '$lib/domain/format';
-	import { topicsStore } from './state.svelte';
+	import AppTopbar from '$lib/presentation/components/app-topbar.svelte';
+	import { formatBytes } from '$lib/formatting/main/format-bytes';
+	import { formatCompact } from '$lib/formatting/main/format-compact';
+	import { formatInteger } from '$lib/formatting/main/format-integer';
+	import { createTopicBrowserState } from '$lib/topic-browser/main/create-topic-browser-state.svelte';
+	import type { TopicItem } from '$lib/topic-browser/types';
 
-	let query = $state('');
+	const topicsStore = createTopicBrowserState();
+	let query = $state<string>('');
 	// Managed topics are the point of this page; the full cluster inventory is
 	// opt-in noise. Internal topics are a further cut within unmanaged ones.
-	let showUnmanaged = $state(false);
-	let showInternal = $state(false);
+	let showUnmanaged = $state<boolean>(false);
+	let showInternal = $state<boolean>(false);
 
 	const payload = $derived(topicsStore.payload);
 	const error = $derived(topicsStore.error);
@@ -17,24 +21,11 @@
 	// The store keeps the last inventory across navigations, so this mount
 	// renders instantly from cache and revalidates in place. While brokers are
 	// still pending server-side, a short follow-up poll fills the gaps.
-	$effect(() => {
-		let cancelled = false;
-		let timer: ReturnType<typeof setTimeout> | null = null;
-		async function poll(): Promise<void> {
-			const brokersPending = await topicsStore.refresh();
-			if (!cancelled && brokersPending) timer = setTimeout(() => void poll(), 2000);
-		}
-		void poll();
-		return () => {
-			cancelled = true;
-			if (timer !== null) clearTimeout(timer);
-			topicsStore.stop();
-		};
-	});
+	$effect(() => topicsStore.start());
 
-	const visibleTopics = $derived.by(() => {
-		const topics = payload?.topics ?? [];
-		const needle = query.trim().toLowerCase();
+	const visibleTopics = $derived.by((): TopicItem[] => {
+		const topics: TopicItem[] = payload?.topics ?? [];
+		const needle: string = query.trim().toLowerCase();
 		return topics
 			.filter((topic) => showUnmanaged || topic.sources.length > 0)
 			.filter((topic) => showInternal || !topic.internal)

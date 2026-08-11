@@ -2,30 +2,19 @@
 	import { page } from '$app/state';
 	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
 	import MessageSquareTextIcon from '@lucide/svelte/icons/message-square-text';
-	import AppTopbar from '$lib/components/app-topbar.svelte';
-	import FactRow from '$lib/components/fact-row.svelte';
-	import ResizableSplitPane from '$lib/components/resizable-split-pane.svelte';
-	import Sparkline from '$lib/components/sparkline.svelte';
-	import SpanTrack from '$lib/components/span-track.svelte';
-	import SqlBlock from '$lib/components/sql-block.svelte';
-	import type { SqlArtifact } from '$lib/components/sql-block.svelte';
-	import { getProject } from '$lib/api';
-	import { reconstructionCoverage, sourceByName } from '$lib/domain/derive';
-	import {
-		formatCompact,
-		formatDaySpan,
-		formatDuration,
-		formatInteger,
-		formatRate,
-		formatTimestamp,
-		parseUtc
-	} from '$lib/domain/format';
-	import {
-		REPLAY_COLUMN_BY_ROLE,
-		type ManagedRelationKind,
-		type Project,
-		type ReplayRole
-	} from '$lib/domain/types';
+	import AppTopbar from '$lib/presentation/components/app-topbar.svelte';
+	import ResizableSplitPane from '$lib/presentation/components/resizable-split-pane.svelte';
+	import SpanTrack from '$lib/presentation/components/span-track.svelte';
+	import SqlBlock from '$lib/presentation/components/sql-block.svelte';
+	import type { SqlArtifact } from '$lib/presentation/components/sql-block.svelte';
+	import { getProject } from '$lib/api/main/project/get-project';
+	import { sourceByName } from '$lib/domain/main/lookups/source-by-name';
+	import { reconstructionCoverage } from '$lib/domain/main/reconstruction/reconstruction-coverage';
+	import { formatDaySpan } from '$lib/formatting/main/format-day-span';
+	import SourcePartitions from '$lib/source-browser/components/source-partitions.svelte';
+	import SourceSidebar from '$lib/source-browser/components/source-sidebar.svelte';
+	import { sourceDomainFrom } from '$lib/source-browser/main/source-domain-from';
+	import type { ManagedRelationKind, Project, Source } from '$lib/domain/types';
 
 	const MANAGED_RELATION_LABEL: Record<ManagedRelationKind, string> = {
 		kafka_engine: 'Kafka engine',
@@ -44,7 +33,7 @@
 	const source = $derived(sourceByName(project, sourceName));
 
 	const managedArtifacts = $derived.by((): SqlArtifact[] => {
-		const relations = source?.managedRelations ?? [];
+		const relations: Source['managedRelations'] = source?.managedRelations ?? [];
 		return MANAGED_RELATION_ORDER.flatMap((kind) =>
 			relations
 				.filter((relation) => relation.kind === kind && relation.ddl !== null)
@@ -57,94 +46,7 @@
 	);
 	const truncating = $derived(coverage.filter((row) => row.state === 'truncating'));
 
-	/** Oldest instant across the source and every dependent model, so all tracks share one domain. */
-	const domainFrom = $derived.by((): string => {
-		const instants: (string | null)[] = [
-			source?.live.oldestEventAt || null,
-			...coverage.map((row) => row.heldFrom)
-		];
-		const candidates: number[] = instants
-			.filter((instant): instant is string => Boolean(instant))
-			.map((instant) => parseUtc(instant).getTime())
-			.filter((milliseconds) => Number.isFinite(milliseconds));
-		if (candidates.length === 0) return project.capturedAt;
-		return new Date(Math.min(...candidates)).toISOString();
-	});
-
-
-	// ── partition scaling ────────────────────────────────────────────────────
-	const PARTITION_PAGE_SIZE: number = 25;
-	const LAG_BUCKET_COUNT: number = 48;
-
-	let partitionQuery = $state<string>('');
-	let partitionSort = $state<'lag' | 'id'>('lag');
-	let partitionPage = $state<number>(0);
-
-	const behindCount = $derived(
-		(source?.live.partitions ?? []).filter(
-			(partition) => partition.kafkaLagMessages !== null && partition.kafkaLagMessages > 0
-		).length
-	);
-
-	/** Fixed-width buckets over the observed lag range, so shape survives any count. */
-	const lagBuckets = $derived.by(
-		(): { label: string; count: number; behind: boolean }[] => {
-			const lagValues: number[] = (source?.live.partitions ?? []).flatMap((partition) =>
-				partition.kafkaLagMessages === null ? [] : [partition.kafkaLagMessages]
-			);
-			const maxLag: number = Math.max(...lagValues, 1);
-			const width: number = maxLag / LAG_BUCKET_COUNT;
-			const buckets = Array.from({ length: LAG_BUCKET_COUNT }, (_, index) => ({
-				label: formatCompact(Math.round(index * width)),
-				count: 0,
-				behind: index > 0
-			}));
-			for (const lag of lagValues) {
-				const index: number = Math.min(
-					Math.floor(lag / width),
-					LAG_BUCKET_COUNT - 1
-				);
-				buckets[index].count += 1;
-			}
-			return buckets;
-		}
-	);
-
-	const maxBucketCount = $derived(Math.max(...lagBuckets.map((bucket) => bucket.count), 1));
-
-	const filteredPartitions = $derived.by(() => {
-		const needle: string = partitionQuery.trim();
-		const partitions = (source?.live.partitions ?? []).filter(
-			(partition) => needle === '' || String(partition.partition).includes(needle)
-		);
-		return [...partitions].sort((a, b) =>
-			partitionSort === 'lag'
-				? (b.kafkaLagMessages ?? -1) - (a.kafkaLagMessages ?? -1)
-				: a.partition - b.partition
-		);
-	});
-
-	const pageCount = $derived(
-		Math.max(Math.ceil(filteredPartitions.length / PARTITION_PAGE_SIZE), 1)
-	);
-
-	/** Deep link into the message browser with an offset-range filter preselected. */
-	function partitionMessagesHref(partition: number): string {
-		const document = {
-			mode: { kind: 'offsetRange', partition, fromOffset: null, toOffset: null },
-			predicates: [],
-			limit: 50,
-			timeColumn: 'landed',
-			previewPaths: []
-		};
-		return `/sources/${sourceName}/messages?q=${encodeURIComponent(JSON.stringify(document))}`;
-	}
-	const pagedPartitions = $derived(
-		filteredPartitions.slice(
-			Math.min(partitionPage, pageCount - 1) * PARTITION_PAGE_SIZE,
-			(Math.min(partitionPage, pageCount - 1) + 1) * PARTITION_PAGE_SIZE
-		)
-	);
+	const domainFrom = $derived(sourceDomainFrom(source, coverage, project.capturedAt));
 
 </script>
 
@@ -319,143 +221,7 @@
 				     Topics with hundreds or thousands of partitions are normal, so this
 				     leads with the distribution and the stragglers, and pages the rest. -->
 				{#if source.live.partitions.length}
-					<div>
-						<div
-							class="text-[var(--sb-text-faint)] flex items-baseline gap-2 pb-2 font-mono text-[10px] uppercase tracking-[0.14em]"
-						>
-							Partitions
-							<span class="normal-case tracking-normal">
-								{formatInteger(source.live.partitions.length)} total{#if behindCount}
-									· <span style:color="var(--sb-warning)">{behindCount} behind</span>{/if}
-							</span>
-						</div>
-
-						<!-- Kafka message lag distribution across every partition, one bar per bucket -->
-						<div class="rounded-[4px] border border-border p-3">
-							<div class="flex h-9 items-end gap-[2px]">
-								{#each lagBuckets as bucket, bucketIndex (bucketIndex)}
-									<div
-										class="flex-1 rounded-[1px]"
-										style:height="{bucket.count
-											? Math.max(Math.sqrt(bucket.count / maxBucketCount) * 100, 12)
-											: 3}%"
-										style:background={bucket.behind ? 'var(--sb-warning)' : 'var(--sb-secondary)'}
-										style:opacity={bucket.count ? 0.75 : 0.15}
-										title="{bucket.label} · {bucket.count} partitions"
-									></div>
-								{/each}
-							</div>
-							<div
-								class="text-[var(--sb-text-faint)] flex justify-between pt-1.5 font-mono text-[10px]"
-							>
-								<span>Kafka lag distribution</span>
-								<span>{lagBuckets[0].label} → {lagBuckets[lagBuckets.length - 1].label} messages</span>
-							</div>
-						</div>
-
-						<div class="flex items-center gap-2 py-2">
-							<input
-								bind:value={partitionQuery}
-								placeholder="partition id…"
-								class="bg-[var(--sb-inset)] w-[140px] rounded-[4px] border border-border px-2.5 py-1 font-mono text-[11px] outline-none focus:border-[var(--primary)]"
-							/>
-							<div class="flex overflow-hidden rounded-[4px] border border-border">
-								<button
-									class="px-2.5 py-1 font-mono text-[10.5px] {partitionSort === 'lag'
-										? 'bg-[var(--sb-hover)] text-foreground'
-										: 'text-muted-foreground hover:text-foreground'}"
-									onclick={() => (partitionSort = 'lag')}>worst Kafka lag</button
-								>
-								<button
-									class="border-l border-border px-2.5 py-1 font-mono text-[10.5px] {partitionSort ===
-									'id'
-										? 'bg-[var(--sb-hover)] text-foreground'
-										: 'text-muted-foreground hover:text-foreground'}"
-									onclick={() => (partitionSort = 'id')}>id</button
-								>
-							</div>
-							<span class="text-muted-foreground ml-auto font-mono text-[10.5px]">
-								{filteredPartitions.length === source.live.partitions.length
-									? `${formatInteger(filteredPartitions.length)} partitions`
-									: `${formatInteger(filteredPartitions.length)} of ${formatInteger(source.live.partitions.length)}`}
-							</span>
-						</div>
-
-						<table class="sb-list min-w-[760px] w-full text-left">
-							<thead>
-								<tr
-									class="text-[var(--sb-text-faint)] font-mono text-[10px] uppercase tracking-[0.14em]"
-								>
-									<th class="px-3 py-2 font-normal">Partition</th>
-									<th class="px-3 py-2 font-normal">Landed offset</th>
-									<th class="px-3 py-2 font-normal">Committed</th>
-									<th class="px-3 py-2 font-normal">Broker end</th>
-									<th class="px-3 py-2 font-normal">Kafka lag</th>
-									<th class="px-3 py-2 font-normal">Last arrival</th>
-								</tr>
-							</thead>
-							<tbody>
-								{#each pagedPartitions as partition (partition.partition)}
-									<tr>
-										<td class="code px-3 text-[12px]">
-											{#if source.kind === 'kafka'}
-												<a
-													href={partitionMessagesHref(partition.partition)}
-													class="text-primary hover:underline"
-													title="browse this partition's messages">{partition.partition}</a
-												>
-											{:else}
-												{partition.partition}
-											{/if}
-										</td>
-										<td class="text-muted-foreground code px-3 text-[11.5px]"
-											>{partition.offset === null ? '—' : formatInteger(partition.offset)}</td
-										>
-										<td class="text-muted-foreground code px-3 text-[11.5px]">
-											{partition.committedOffset === null
-												? '—'
-												: formatInteger(partition.committedOffset)}
-										</td>
-										<td class="text-muted-foreground code px-3 text-[11.5px]">
-											{partition.endOffset === null ? '—' : formatInteger(partition.endOffset)}
-										</td>
-										<td class="code px-3 text-[11.5px]">
-											{#if partition.kafkaLagMessages === null}
-												<span class="text-[var(--sb-text-faint)]">—</span>
-											{:else}
-												<span
-													style:color={partition.kafkaLagMessages > 0
-														? 'var(--sb-warning)'
-														: 'var(--foreground)'}>{formatCompact(partition.kafkaLagMessages)} msg</span
-												>
-											{/if}
-										</td>
-										<td class="text-muted-foreground code px-3 text-[11.5px]"
-											>{formatTimestamp(partition.newestEventAt)}</td
-										>
-									</tr>
-								{/each}
-							</tbody>
-						</table>
-
-						{#if pageCount > 1}
-							<div class="flex items-center gap-2 pt-2">
-								<button
-									class="text-muted-foreground hover:text-foreground rounded-[4px] border border-border px-2.5 py-1 font-mono text-[10.5px] disabled:opacity-40"
-									disabled={partitionPage === 0}
-									onclick={() => (partitionPage -= 1)}>← prev</button
-								>
-								<span class="text-muted-foreground font-mono text-[10.5px]"
-									>page {partitionPage + 1} of {pageCount}</span
-								>
-								<button
-									class="text-muted-foreground hover:text-foreground rounded-[4px] border border-border px-2.5 py-1 font-mono text-[10.5px] disabled:opacity-40"
-									disabled={partitionPage >= pageCount - 1}
-									onclick={() => (partitionPage += 1)}>next →</button
-								>
-							</div>
-						{/if}
-					</div>
+					<SourcePartitions {sourceName} {source} />
 				{/if}
 
 				<!-- managed object DDL, rendered by the compiler and served per relation -->
@@ -473,103 +239,7 @@
 			{/snippet}
 
 			{#snippet sidebar()}
-			<div class="flex flex-col gap-5">
-				<div>
-					<div
-						class="text-[var(--sb-text-faint)] pb-1.5 font-mono text-[10px] uppercase tracking-[0.14em]"
-					>
-						Live
-					</div>
-					<div class="pb-2"><Sparkline values={source.live.throughput} width={280} height={34} /></div>
-					{#if source.live.throughputWindowSeconds}
-						<div class="text-[var(--sb-text-faint)] pb-2 font-mono text-[10px]">
-							last {formatDuration(source.live.throughputWindowSeconds)}
-						</div>
-					{/if}
-					<FactRow label="Rate" value={formatRate(source.live.rowsPerSecond)} />
-					<FactRow
-						label="Kafka lag"
-						value={source.live.kafkaLagMessages === null
-							? 'unavailable'
-							: `${formatCompact(source.live.kafkaLagMessages)} messages`}
-					/>
-					<FactRow
-						label="Last arrival"
-						value={source.live.lastArrivalSeconds === null
-							? 'unavailable'
-							: `${formatDuration(source.live.lastArrivalSeconds)} ago`}
-					/>
-					<FactRow label="Retained rows" value={formatCompact(source.live.rows)} />
-					<FactRow label="Newest event" value={formatTimestamp(source.live.newestEventAt)} />
-					<FactRow label="Retained from" value={formatTimestamp(source.live.oldestEventAt)} />
-				</div>
-
-				<div>
-					<div
-						class="text-[var(--sb-text-faint)] pb-1.5 font-mono text-[10px] uppercase tracking-[0.14em]"
-					>
-						Configuration
-					</div>
-					<FactRow label="Kind" value={source.kind} mono />
-					<FactRow label="Boundary" value={source.boundaryMode} mono />
-					{#if source.brokerList}<FactRow label="Broker" value={source.brokerList} mono />{/if}
-					{#if source.topic}<FactRow label="Topic" value={source.topic} mono />{/if}
-					{#if source.consumerGroup}
-						<FactRow label="Consumer group" value={source.consumerGroup} mono />
-					{/if}
-					{#if source.format}<FactRow label="Format" value={source.format} mono />{/if}
-					<FactRow label="Read relation" value={source.relationName} mono />
-					{#if source.settings}
-						{#each Object.entries(source.settings) as [key, value] (key)}
-							<FactRow label={key} value={value} mono />
-						{/each}
-					{/if}
-				</div>
-
-				{#if source.managedRelations.length}
-					<div>
-						<div
-							class="text-[var(--sb-text-faint)] pb-1.5 font-mono text-[10px] uppercase tracking-[0.14em]"
-						>
-							Managed relations
-						</div>
-						{#each source.managedRelations as relation (relation.name)}
-							<div class="border-b border-[var(--border-subtle)] py-2">
-								<div class="code text-[11.5px]">{relation.name}</div>
-								<div class="text-[var(--sb-text-faint)] pt-0.5 font-mono text-[10px]">
-									{MANAGED_RELATION_LABEL[relation.kind]}
-								</div>
-							</div>
-						{/each}
-					</div>
-				{:else}
-					<div>
-						<div
-							class="text-[var(--sb-text-faint)] pb-1.5 font-mono text-[10px] uppercase tracking-[0.14em]"
-						>
-							Adopted relation
-						</div>
-						<div class="code pb-1 text-[11.5px]">{source.relationName}</div>
-					</div>
-				{/if}
-
-				{#if source.columnMapping}
-					<div>
-						<div
-							class="text-[var(--sb-text-faint)] pb-1.5 font-mono text-[10px] uppercase tracking-[0.14em]"
-						>
-							Replay column mapping
-						</div>
-						{#each Object.entries(source.columnMapping) as [role, column] (role)}
-							<FactRow
-								label={REPLAY_COLUMN_BY_ROLE[role as ReplayRole]}
-								value={column ?? '—'}
-								mono
-							/>
-						{/each}
-					</div>
-				{/if}
-			</div>
+			<SourceSidebar {source} />
 			{/snippet}
 		</ResizableSplitPane>
 	{/if}
