@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.1](https://github.com/chio-labs/streambuild/compare/v0.19.0...v0.19.1) (2026-08-11)
+
+
+### Bug Fixes
+
+* show full run ID on detail page ([39f4a3a](https://github.com/chio-labs/streambuild/commit/39f4a3adf2ffb4500f98116011bc725a8d90d471))
+
 ## [0.19.0](https://github.com/chio-labs/streambuild/compare/v0.18.1...v0.19.0) (2026-08-11)
 
 
