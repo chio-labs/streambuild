@@ -296,7 +296,10 @@ function testFromServer(test: Payload): SqlTest {
 }
 
 export function planFromServer(payload: Payload, adapter: string): Plan {
-	return {
+	const mode: Plan['mode'] =
+		payload.mode === 'virtual' ? 'virtual' : payload.mode === 'mixed' ? 'mixed' : 'direct';
+	const upperBoundary: Payload = (payload.upperBoundary as Payload | undefined) ?? {};
+	const common: Omit<Plan, 'mode' | 'deploymentId'> = {
 		adapter,
 		database: (payload.database as string) ?? '',
 		userScope: ((payload.userScope as string[]) ?? []).map(parseUserScope),
@@ -313,7 +316,7 @@ export function planFromServer(payload: Payload, adapter: string): Plan {
 		})),
 		prerequisites: ((payload.prerequisites as Payload[]) ?? []).map((item) => ({
 			name: item.name as string,
-			type: item.type === 'source' ? 'source' : 'model',
+			type: item.type === 'source' ? ('source' as const) : ('model' as const),
 			relationNames: (item.relationNames as string[]) ?? [],
 			present: Boolean(item.present),
 			frameworkManaged: Boolean(item.frameworkManaged)
@@ -333,7 +336,7 @@ export function planFromServer(payload: Payload, adapter: string): Plan {
 		warnings: ((payload.warnings as Payload[]) ?? []).map((warning) => ({
 			code: (warning.code as string) ?? '',
 			message: (warning.message as string) ?? '',
-			relatedModel: null
+			relatedModel: (warning.relatedModel as string | null) ?? null
 		})),
 		protections: ((payload.protections as Payload[]) ?? []).map((protection) => ({
 			pipelineName: (protection.pipelineName as string) ?? '',
@@ -342,7 +345,35 @@ export function planFromServer(payload: Payload, adapter: string): Plan {
 		})),
 		replayWindow: (payload.replayWindow as Plan['replayWindow']) ?? { mode: 'full' },
 		plannedAt: (payload.plannedAt as string) ?? '',
-		command: (payload.command as string) ?? 'stb build'
+		command: (payload.command as string) ?? 'stb build',
+		executionOrder: ((payload.executionOrder as string[]) ?? []).filter(
+			(item): item is Plan['executionOrder'][number] => item === 'direct' || item === 'virtual'
+		),
+		phases: ((payload.phases as Payload[]) ?? []).map(planPhaseFromServer),
+		upperBoundary: {
+			mode: 'captured_at_execution' as const,
+			continuesLive: Boolean(upperBoundary.continuesLive)
+		}
+	};
+	if (mode === 'direct') return { ...common, mode, deploymentId: null };
+	return { ...common, mode, deploymentId: (payload.deploymentId as string) ?? '' };
+}
+
+function planPhaseFromServer(phase: Payload): Plan['phases'][number] {
+	return {
+		mode: phase.mode === 'virtual' ? 'virtual' : 'direct',
+		effect: phase.effect === 'staged' ? 'staged' : 'applied_immediately',
+		deploymentId: (phase.deploymentId as string | null) ?? null,
+		modelNames: (phase.modelNames as string[]) ?? [],
+		contextModelNames: (phase.contextModelNames as string[]) ?? [],
+		relationNames: (phase.relationNames as string[]) ?? [],
+		actions: ((phase.actions as Payload[]) ?? []).map((action) => ({
+			phase: (action.phase as string) ?? '',
+			action: (action.action as string) ?? '',
+			logicalName: (action.logicalName as string) ?? '',
+			physicalName: (action.physicalName as string | null) ?? null
+		})),
+		startTime: (phase.startTime as string | null) ?? null
 	};
 }
 

@@ -63,6 +63,7 @@ class BuildRunRequest(BaseModel):
 
     selectors: list[str] = []
     startTime: str | None = None  # noqa: N815 - wire format is camelCase
+    deploymentId: str | None = None  # noqa: N815 - wire format is camelCase
     confirmations: list[str] = []
 
 
