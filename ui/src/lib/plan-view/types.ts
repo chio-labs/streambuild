@@ -5,11 +5,13 @@ import type { Plan, PlanSqlChangeStatus, ReplayWindow, Selector } from '$lib/pla
 export type ParsedPlanLocation = {
 	readonly selectors: Selector[];
 	readonly replayWindow: ReplayWindow;
+	readonly deploymentId: string | null;
 };
 
 export type ParsedPlanCommand = {
 	readonly selectors: Selector[];
 	readonly replayWindow: ReplayWindow;
+	readonly deploymentId: string | null;
 };
 
 export type PlanViewTypes = {
@@ -23,8 +25,15 @@ export type PlanViewTypes = {
 
 export type PlanViewFacade = {
 	readLocation(url: URL): ParsedPlanLocation;
+	locationRequestKey(url: URL): string;
 	shouldClearReplayStart(url: URL): boolean;
-	selectionUrl(url: URL, selectors: Selector[], replayWindow?: ReplayWindow): URL;
+	selectionUrl(
+		url: URL,
+		selectors: Selector[],
+		replayWindow?: ReplayWindow,
+		deploymentId?: string | null
+	): URL;
+	deploymentUrl(url: URL, deploymentId: string): URL;
 	replayStartToken(replayWindow: ReplayWindow): string | null;
 	parseCommand(command: string): ParsedPlanCommand;
 	boundaryColumns(root: Plan['replayRoots'][number]): string | null;

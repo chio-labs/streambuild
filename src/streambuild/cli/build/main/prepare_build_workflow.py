@@ -1,4 +1,4 @@
-"""Publish connected workflow preparation to mode-aware CLI commands."""
+"""Publish connected workflow preparation to mode-aware callers."""
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.cli.build._helpers.workflow_preparation import (

@@ -12,7 +12,7 @@ from streambuild.cli.build._helpers.rendering import render_interrupted_build_me
 from streambuild.cli.build._helpers.virtual_command import execute_virtual_build_command
 from streambuild.cli.build.exceptions import BuildPipelineLimitError
 from streambuild.cli.build.main._execute_mixed_build import execute_mixed_build_command
-from streambuild.cli.build.main._prepare_build_workflow import prepare_build_workflow
+from streambuild.cli.build.main.prepare_build_workflow import prepare_build_workflow
 from streambuild.cli.build.main.validate_build_pipeline_limit import validate_build_pipeline_limit
 from streambuild.cli.build.models import (
     BuildCommandOptions,

@@ -11,7 +11,12 @@ describe('build API', () => {
 		);
 		vi.stubGlobal('fetch', fetchMock);
 
-		await requestBuildStart(['model:orders'], '2026-08-10T12:00:00Z', ['breaking-change']);
+		await requestBuildStart(
+			['model:orders'],
+			'2026-08-10T12:00:00Z',
+			['breaking-change'],
+			'20260811T120000Z_plan'
+		);
 		await requestBuildFeed(17);
 		await requestRunEvents('run/id', 23);
 
@@ -21,6 +26,7 @@ describe('build API', () => {
 			body: JSON.stringify({
 				selectors: ['model:orders'],
 				startTime: '2026-08-10T12:00:00Z',
+				deploymentId: '20260811T120000Z_plan',
 				confirmations: ['breaking-change']
 			})
 		});

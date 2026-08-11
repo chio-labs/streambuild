@@ -45,7 +45,12 @@
 	 * leave the closure looking self-rooting, hiding exactly the inputs someone
 	 * checking a destructive command needs to see.
 	 */
-	const inScope = $derived(new Set<string>(plan.entries.map((entry) => entry.modelName)));
+	const inScope = $derived(
+		new Set<string>([
+			...plan.entries.map((entry) => entry.modelName),
+			...plan.phases.flatMap((phase) => phase.modelNames)
+		])
+	);
 	/**
 	 * Separating these two is the whole point of the scope card's "1 selected ·
 	 * 9 downstream of selection": the second number is the one that surprises
@@ -57,7 +62,10 @@
 		)
 	);
 	const heldBack = $derived(
-		new Set<string>(plan.prerequisites.map((prerequisite) => prerequisite.name))
+		new Set<string>([
+			...plan.prerequisites.map((prerequisite) => prerequisite.name),
+			...plan.phases.flatMap((phase) => phase.contextModelNames)
+		])
 	);
 
 	const full = $derived<Graph>(buildLogicalGraph(project));

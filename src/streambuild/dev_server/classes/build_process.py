@@ -56,6 +56,7 @@ class BuildProcessManager:
         project_dir: Path,
         selectors: tuple[str, ...],
         start_time: str | None,
+        deployment_id: str | None = None,
         confirmations: tuple[str, ...] = (),
     ) -> dict[str, object]:
         """Spawn one build and return its stable launch identity immediately."""
@@ -63,6 +64,7 @@ class BuildProcessManager:
         argv, command = build_invocation(
             selectors=selectors,
             start_time=start_time,
+            deployment_id=deployment_id,
             confirmations=confirmations,
             execution_context=self._execution_context,
         )
@@ -248,6 +250,7 @@ def build_invocation(
     *,
     selectors: tuple[str, ...],
     start_time: str | None,
+    deployment_id: str | None = None,
     execution_context: DevExecutionContext | None,
     confirmations: tuple[str, ...] = (),
 ) -> tuple[list[str], str]:
@@ -266,6 +269,9 @@ def build_invocation(
     if start_time is not None:
         argv.extend(("--start-time", start_time))
         display_argv.extend(("--start-time", start_time))
+    if deployment_id is not None:
+        argv.extend(("--deployment-id", deployment_id))
+        display_argv.extend(("--deployment-id", deployment_id))
     for confirmation in confirmations:
         argv.extend(("--confirm", confirmation))
         display_argv.extend(("--confirm", confirmation))

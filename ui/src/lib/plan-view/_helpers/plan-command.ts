@@ -9,6 +9,7 @@ export function parsePlanCommand(command: string): ParsedPlanCommand {
 		.filter(Boolean);
 	const selectors: Selector[] = [];
 	let start: string | null = null;
+	let deploymentId: string | null = null;
 	for (let index: number = 0; index < tokens.length; index += 1) {
 		if (tokens[index] === '--select' && tokens[index + 1]) {
 			const parsed: Selector | null = parseSelector(tokens[index + 1]);
@@ -16,6 +17,9 @@ export function parsePlanCommand(command: string): ParsedPlanCommand {
 			index += 1;
 		} else if (tokens[index] === '--start-time' && tokens[index + 1]) {
 			start = tokens[index + 1];
+			index += 1;
+		} else if (tokens[index] === '--deployment-id' && tokens[index + 1]) {
+			deploymentId = tokens[index + 1];
 			index += 1;
 		}
 	}
@@ -26,5 +30,5 @@ export function parsePlanCommand(command: string): ParsedPlanCommand {
 			replayWindow = { mode: 'from', startTime: parsedDate.toISOString() };
 		}
 	}
-	return { selectors, replayWindow };
+	return { selectors, replayWindow, deploymentId };
 }
