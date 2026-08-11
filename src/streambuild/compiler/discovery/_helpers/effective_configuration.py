@@ -176,6 +176,18 @@ def _resolve_project_naming(
 ) -> ProjectNaming:
     naming: ProjectNaming = loaded.project.naming
     return ProjectNaming(
+        pipeline_prefix=_interpolated_string(
+            value=naming.pipeline_prefix,
+            variables=variables,
+            environment=environment,
+            field_path=f"{loaded.project_source.file_path} naming.pipeline_prefix",
+        ),
+        pipeline_naming_macro=_optional_interpolated_string(
+            value=naming.pipeline_naming_macro,
+            variables=variables,
+            environment=environment,
+            field_path=f"{loaded.project_source.file_path} naming.pipeline_naming_macro",
+        ),
         table_prefix=_interpolated_string(
             value=naming.table_prefix,
             variables=variables,

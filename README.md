@@ -41,7 +41,7 @@ sources/
 macros/
   common.py
 pipelines/
-  orders/
+  pl__orders/
     pipeline.toml
     order_totals.sql
 audits/
@@ -115,6 +115,46 @@ sources:
 StreamBuild owns managed Kafka landing objects. It validates but never mutates adopted source
 tables.
 
+## Pipelines
+
+Each direct child of `pipelines/` is a pipeline. Its directory name is its logical name:
+
+```text
+pipelines/
+  pl__orders/
+    staging/
+      orders_clean.sql
+    order_totals.sql
+```
+
+Nested directories organize models but do not change pipeline identity. Pipeline, source, and model
+names share one namespace and must be unique.
+
+Pipeline names must start with `pl__` by default. Configure or disable the prefix with:
+
+```toml
+[naming]
+pipeline_prefix = "custom__" # Use "" to allow unprefixed names.
+```
+
+For a stricter rule, configure a naming macro:
+
+```toml
+[naming]
+pipeline_naming_macro = "pipeline_name"
+```
+
+```python
+from streambuild.compiler.macros.models import PipelineNamingContext
+
+def pipeline_name(ctx: PipelineNamingContext) -> str:
+    return ctx.name if ctx.source_name is None else f"pl__{ctx.source_name}"
+```
+
+The optional macro receives an immutable context containing the pipeline name, source, sorted model
+names, relative directory, and mode. It returns the required directory name. A mismatch fails
+discovery; compile, plan, and build never rename files.
+
 ## Models
 
 ```sql
@@ -151,7 +191,7 @@ stb dev                      # local UI at 127.0.0.1:8000
 Select a model or pipeline with repeatable selectors:
 
 ```bash
-stb plan --select pipeline:orders
+stb plan --select pipeline:pl__orders
 stb build --select order_totals --start-time 2026-08-01T00:00:00Z
 ```
 

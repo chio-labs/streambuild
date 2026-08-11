@@ -41,6 +41,7 @@ VIEW_FORBIDDEN_MODEL_KEYS: frozenset[str] = frozenset(
 )
 DEFAULT_SQL_MODEL_ENGINE: str = "MergeTree()"
 DEFAULT_SQL_MODEL_ORDER_BY: tuple[str, ...] = ("_replay_timestamp",)
+DEFAULT_PIPELINE_PREFIX: str = "pl__"
 DEFAULT_TABLE_PREFIX: str = "tbl__"
 DEFAULT_VIEW_PREFIX: str = "view__"
 RUN_UNRESPONSIVE_AFTER_SECONDS: int = 45
@@ -62,6 +63,11 @@ PIPELINE_CONFIG_KEYS: frozenset[str] = frozenset(
     }
 )
 NAMING_KEYS: frozenset[str] = frozenset({"table_prefix", "view_prefix"})
+PROJECT_NAMING_KEYS: frozenset[str] = NAMING_KEYS | frozenset(
+    {"pipeline_prefix", "pipeline_naming_macro"}
+)
+NAMING_PIPELINE_PREFIX_KEY: str = "pipeline_prefix"
+NAMING_PIPELINE_MACRO_KEY: str = "pipeline_naming_macro"
 NAMING_TABLE_PREFIX_KEY: str = "table_prefix"
 NAMING_VIEW_PREFIX_KEY: str = "view_prefix"
 PROTECTION_KEYS: frozenset[str] = frozenset({"warning", "confirmation"})

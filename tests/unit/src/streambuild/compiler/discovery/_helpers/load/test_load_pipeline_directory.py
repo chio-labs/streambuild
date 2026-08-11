@@ -37,7 +37,7 @@ from tests.unit.src.streambuild.compiler.discovery._helpers.load.helpers import 
     [
         LoadRegistryPipelineTestCase(
             description="resolves the registered source and discovered models",
-            expected_pipeline_name="orders",
+            expected_pipeline_name="pl__orders",
             expected_source_name="orders",
             expected_transform_names=("orders_enriched",),
         )
@@ -48,7 +48,7 @@ def test_given_registry_project_when_loading_pipeline_then_it_resolves_source(
     test_case: LoadRegistryPipelineTestCase,
 ) -> None:
     loaded: LoadedPipeline = load_pipeline_directory(
-        Path("tests/fixtures/basic_project/pipelines/orders")
+        Path("tests/fixtures/basic_project/pipelines/pl__orders")
     )
 
     assert loaded.pipeline.name == test_case.expected_pipeline_name
