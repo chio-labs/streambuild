@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.20.0](https://github.com/chio-labs/streambuild/compare/v0.19.1...v0.20.0) (2026-08-11)
+
+
+### Features
+
+* make plan UI mode aware ([cb9bba6](https://github.com/chio-labs/streambuild/commit/cb9bba6c034bd2bf2806acd81768e6430b282985))
+* make Plan UI mode aware ([370ba8b](https://github.com/chio-labs/streambuild/commit/370ba8b9a429f749dffc7166097bd1561c63be7f))
+
 ## [0.19.1](https://github.com/chio-labs/streambuild/compare/v0.19.0...v0.19.1) (2026-08-11)
 
 
