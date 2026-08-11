@@ -111,7 +111,7 @@ from streambuild.compiler.planner.models import (
 from streambuild.compiler.sql_analysis.classes.sql_model_analyzer import SqlModelAnalyzer
 from tests.unit.src.streambuild.compiler.compile.helpers import build_realization_analyzer
 
-EXAMPLE_PIPELINE_DIRECTORY: Path = Path("tests/fixtures/basic_project/pipelines/orders")
+EXAMPLE_PIPELINE_DIRECTORY: Path = Path("tests/fixtures/basic_project/pipelines/pl__orders")
 
 
 def compile_pipeline(loaded_pipeline: LoadedPipeline) -> CompiledPipeline:
@@ -601,7 +601,7 @@ def write_direct_scope_project(
 ) -> None:
     """Write the alpha/beta/gamma/delta scope project used by direct planning tests."""
 
-    pipeline_root: Path = project_root / "pipelines" / "orders"
+    pipeline_root: Path = project_root / "pipelines" / "pl__orders"
     source_root: Path = project_root / "sources"
     pipeline_root.mkdir(parents=True, exist_ok=True)
     source_root.mkdir(parents=True, exist_ok=True)
@@ -627,7 +627,7 @@ def write_direct_mutable_scope_project(*, project_root: Path) -> None:
     """Write the direct scope with delta using a mutable side reference."""
 
     write_direct_scope_project(project_root=project_root)
-    delta_path: Path = project_root / "pipelines" / "orders" / "delta.sql"
+    delta_path: Path = project_root / "pipelines" / "pl__orders" / "delta.sql"
     delta_path.write_text(
         delta_path.read_text(encoding="utf-8").replace(
             'ref_type="reference"', 'ref_type="mutable"'
@@ -639,7 +639,7 @@ def write_direct_mutable_scope_project(*, project_root: Path) -> None:
 def write_direct_view_only_project(*, project_root: Path) -> None:
     """Write one source-less direct project containing an exact-named terminal view."""
 
-    pipeline_root: Path = project_root / "pipelines" / "consumer"
+    pipeline_root: Path = project_root / "pipelines" / "pl__consumer"
     pipeline_root.mkdir(parents=True, exist_ok=True)
     _write_direct_project_config(project_root=project_root)
     (pipeline_root / "customer_orders.sql").write_text(
@@ -651,7 +651,7 @@ def write_direct_view_only_project(*, project_root: Path) -> None:
 def write_direct_multi_upstream_view_project(*, project_root: Path) -> None:
     """Write a custom-named table and terminal view with source and model dependencies."""
 
-    pipeline_root: Path = project_root / "pipelines" / "orders"
+    pipeline_root: Path = project_root / "pipelines" / "pl__orders"
     source_root: Path = project_root / "sources"
     pipeline_root.mkdir(parents=True, exist_ok=True)
     source_root.mkdir(parents=True, exist_ok=True)

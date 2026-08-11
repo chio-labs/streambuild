@@ -12,8 +12,8 @@ A runnable local `streambuild` demo using synthetic e-commerce order events.
 - `producer/fake_orders_producer.py`: generates synthetic order events
 - `streambuild_project.toml`: project defaults, target, and ClickHouse connection config
 - `sources/order_events.yml`: managed Kafka source and replay boundary
-- `pipelines/order_events/`: pipeline models; the source is inferred from their driving inputs
-- `pipelines/order_events/*.sql`: transform graph for orders, items, rollups
+- `pipelines/pl__order_events/`: pipeline models; the source is inferred from their driving inputs
+- `pipelines/pl__order_events/*.sql`: transform graph for orders, items, rollups
 
 ## Model DAG
 

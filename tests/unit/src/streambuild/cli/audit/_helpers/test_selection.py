@@ -32,7 +32,7 @@ from tests.unit.src.streambuild.cli.selection.main.helpers import (
         ),
         CliAuditSelectionTestCase(
             description="pipeline selector includes audits for all pipeline models",
-            selectors=("pipeline:payments",),
+            selectors=("pipeline:pl__payments",),
             audit_model_names=(("orders_clean",), ("payments_enriched",)),
             expected_selected_indexes=(1,),
         ),

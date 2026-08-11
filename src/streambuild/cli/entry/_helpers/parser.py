@@ -488,6 +488,6 @@ def _add_select_args(parser: argparse.ArgumentParser) -> None:
         default=[],
         help=(
             "Select models or pipelines, e.g. --select daily_revenue "
-            "or --select pipeline:order_events (repeatable)"
+            "or --select pipeline:pl__order_events (repeatable)"
         ),
     )
