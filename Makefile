@@ -1,5 +1,7 @@
 .PHONY: dist test-browser test-e2e test-integration ui-verify
 
+NPM_VERSION := 11.6.2
+
 
 format:
 	uv run ruff format .
@@ -60,7 +62,7 @@ verify:
 
 
 ui-install:
-	cd ui && npm ci
+	cd ui && npx --yes npm@$(NPM_VERSION) ci
 
 
 ui-build:
