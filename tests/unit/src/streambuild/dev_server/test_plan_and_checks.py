@@ -9,6 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 from httpx import Response
 
+from streambuild.cli.build.models import WorkflowPreparationOptions
 from streambuild.cli.entry.constants import DEV_CLI_VARIABLES_ENV_VAR
 from streambuild.dev_server.classes.build_process import _build_environment, build_invocation
 from streambuild.dev_server.classes.dev_server_state import DevServerState
@@ -22,6 +23,7 @@ from tests.unit.src.streambuild.dev_server._test_types import (
     ChecksRunTestCase,
     ChecksStatusTestCase,
     DevRefactorTestCase,
+    ModeAwarePlanTestCase,
     PlanEndpointTestCase,
     RunEventsFeedTestCase,
 )
@@ -30,7 +32,9 @@ from tests.unit.src.streambuild.dev_server.helpers import (
     FakeEmptyResultConnection,
     build_compile_callable,
     build_fake_state_connection,
+    build_mixed_plan_preparation,
     build_state_test_client,
+    build_virtual_plan_preparation,
     write_dev_server_project,
 )
 
@@ -92,6 +96,91 @@ def test_given_selectors_when_planning_then_returns_expected_plan(
         entry["sqlChange"]["status"] for entry in response.json().get("entries", ())
     )
     assert sql_changes == test_case.expected_sql_changes
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DevRefactorTestCase(
+            description="direct plan exposes one immediate execution phase",
+            expected_value=["direct"],
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_direct_pipeline_when_planning_then_returns_direct_execution_phase(
+    test_case: DevRefactorTestCase,
+    tmp_path: Path,
+) -> None:
+    write_dev_server_project(project_dir=tmp_path)
+    client: TestClient = build_state_test_client(project_dir=tmp_path)
+
+    response: Response = client.get("/api/plan", params={"select": "orders_clean"})
+
+    assert response.status_code == 200
+    assert response.json()["mode"] == "direct"
+    assert response.json()["executionOrder"] == test_case.expected_value
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ModeAwarePlanTestCase(
+            description="virtual plan exposes one staged phase",
+            mode="virtual",
+            expected_execution_order=("virtual",),
+            preparation_builder=build_virtual_plan_preparation,
+        ),
+        ModeAwarePlanTestCase(
+            description="mixed plan exposes virtual then direct phases",
+            mode="mixed",
+            expected_execution_order=("virtual", "direct"),
+            preparation_builder=build_mixed_plan_preparation,
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_mode_aware_preparation_when_planning_then_returns_exact_execution_phases(
+    test_case: ModeAwarePlanTestCase,
+    tmp_path: Path,
+) -> None:
+    write_dev_server_project(project_dir=tmp_path)
+    client: TestClient = build_state_test_client(project_dir=tmp_path)
+    deployment_id: str = "20260811T120000Z_plan"
+    preparation: object = test_case.preparation_builder(deployment_id)
+
+    with patch(
+        "streambuild.dev_server._helpers.server.api_routes.prepare_build_workflow",
+        return_value=preparation,
+    ) as prepare_build:
+        response: Response = client.get(
+            "/api/plan",
+            params={
+                "select": "orders_clean",
+                "start": "2026-08-01T12:00:00Z",
+                "deployment": deployment_id,
+            },
+        )
+
+    payload: dict = response.json()
+    options: object = prepare_build.call_args.kwargs["options"]
+    assert isinstance(options, WorkflowPreparationOptions)
+    assert response.status_code == 200
+    assert payload["mode"] == test_case.mode
+    assert tuple(payload["executionOrder"]) == test_case.expected_execution_order
+    assert tuple(phase["mode"] for phase in payload["phases"]) == (
+        test_case.expected_execution_order
+    )
+    assert payload["deploymentId"] == deployment_id
+    assert payload["command"].endswith(f"--deployment-id {deployment_id}")
+    assert payload["upperBoundary"] == {
+        "mode": "captured_at_execution",
+        "continuesLive": True,
+    }
+    assert payload["phases"][0]["contextModelNames"] == ["orders"]
+    assert payload["phases"][0]["actions"][0]["logicalName"] == "orders_summary"
+    assert payload["warnings"][0]["relatedModel"] == "orders_summary"
+    assert options.deployment_id == deployment_id
 
 
 @pytest.mark.parametrize(
@@ -242,6 +331,45 @@ def test_given_protection_confirmations_when_building_invocation_then_passes_eac
     ]
     assert "--confirm DEPLOY_ORDERS" in command
     assert "--confirm DEPLOY_PRICES" in command
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DevRefactorTestCase(
+            description="planned deployment is passed to process launch",
+            expected_value="20260811T120000Z_plan",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_planned_deployment_when_starting_build_then_launches_same_deployment(
+    test_case: DevRefactorTestCase,
+    tmp_path: Path,
+) -> None:
+    write_dev_server_project(project_dir=tmp_path)
+    client: TestClient = build_state_test_client(project_dir=tmp_path)
+    deployment_id: str = str(test_case.expected_value)
+    with (
+        patch(
+            "streambuild.dev_server._helpers.server.api_routes.read_active_runs",
+            return_value=[],
+        ),
+        patch(
+            "streambuild.dev_server.classes.build_process.BuildProcessManager.start",
+            return_value={"invocationId": "new-run", "status": "starting"},
+        ) as start_build,
+    ):
+        response: Response = client.post(
+            "/api/build",
+            json={
+                "selectors": ["orders_clean"],
+                "deploymentId": deployment_id,
+            },
+        )
+
+    assert response.status_code == 200
+    assert start_build.call_args.kwargs["deployment_id"] == deployment_id
 
 
 @pytest.mark.parametrize(
