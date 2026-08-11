@@ -1,4 +1,4 @@
-import { fetchDeployment } from '$lib/api';
+import { fetchDeployment } from '$lib/api/main/deployments/fetch-deployment';
 import type { DeploymentDetail } from '$lib/domain/types';
 import type { PageLoad } from './$types';
 

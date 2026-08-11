@@ -1,9 +1,11 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import AppTopbar from '$lib/components/app-topbar.svelte';
-	import { app, refreshDeployments } from '$lib/api/store.svelte';
-	import { cleanupDeployments } from '$lib/api';
-	import { formatBytes, formatCompact } from '$lib/domain/format';
+	import AppTopbar from '$lib/presentation/components/app-topbar.svelte';
+	import { cleanupDeployments } from '$lib/api/main/deployments/cleanup-deployments';
+	import { getApp } from '$lib/api/main/project/get-app';
+	import { refreshDeployments } from '$lib/api/main/project/refresh-deployments';
+	import { formatBytes } from '$lib/formatting/main/format-bytes';
+	import { formatCompact } from '$lib/formatting/main/format-compact';
 	import type { Deployment, DeploymentState } from '$lib/domain/types';
 
 	// Deployments are grouped by lifecycle state rather than listed flat: the
@@ -21,6 +23,7 @@
 		'physical_missing'
 	];
 
+	const app = getApp();
 	const deployments: Deployment[] = $derived(app.deployments);
 	let refreshing = $state<boolean>(true);
 	const POLL_MS: number = 30_000;
@@ -33,7 +36,7 @@
 
 	onMount(() => {
 		void refreshInventory();
-		const timer = setInterval(() => {
+		const timer: ReturnType<typeof setInterval> = setInterval(() => {
 			if (!document.hidden) void refreshInventory();
 		}, POLL_MS);
 		return () => clearInterval(timer);
@@ -67,7 +70,9 @@
 		cleanupError = null;
 		cleanupSummary = null;
 		try {
-			const result = await cleanupDeployments(CLEANUP_RETENTION_DAYS);
+			const result: Awaited<ReturnType<typeof cleanupDeployments>> = await cleanupDeployments(
+				CLEANUP_RETENTION_DAYS
+			);
 			cleanupSummary =
 				result.removedRelations === 0
 					? 'nothing was outside the retention window'

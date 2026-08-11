@@ -1,16 +1,22 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import AppTopbar from '$lib/components/app-topbar.svelte';
-	import LineageCanvas from '$lib/components/lineage/lineage-canvas.svelte';
-	import EdgeLegend from '$lib/components/lineage/edge-legend.svelte';
-	import FactRow from '$lib/components/fact-row.svelte';
-	import { fetchDeploymentDiff, getProject, promoteDeployment } from '$lib/api';
-	import type { DeploymentDiff } from '$lib/api';
+	import AppTopbar from '$lib/presentation/components/app-topbar.svelte';
+	import LineageCanvas from '$lib/presentation/components/lineage/lineage-canvas.svelte';
+	import EdgeLegend from '$lib/presentation/components/lineage/edge-legend.svelte';
+	import FactRow from '$lib/presentation/components/fact-row.svelte';
+	import { fetchDeploymentDiff } from '$lib/api/main/deployments/fetch-deployment-diff';
+	import { promoteDeployment } from '$lib/api/main/deployments/promote-deployment';
+	import { getProject } from '$lib/api/main/project/get-project';
+	import type { DeploymentDiff } from '$lib/api/types';
 	import { goto } from '$app/navigation';
-	import { refreshDeployments } from '$lib/api/store.svelte';
-	import { buildLogicalGraph } from '$lib/domain/derive';
-	import { formatBytes, formatCompact, formatInteger } from '$lib/domain/format';
-	import type { DeploymentDetail, DeploymentModel, Graph, Project } from '$lib/domain/types';
+	import { refreshDeployments } from '$lib/api/main/project/refresh-deployments';
+	import { buildLogicalGraph } from '$lib/domain/main/graphs/build-logical-graph';
+	import { formatBytes } from '$lib/formatting/main/format-bytes';
+	import { formatCompact } from '$lib/formatting/main/format-compact';
+	import { formatInteger } from '$lib/formatting/main/format-integer';
+	import type { DeploymentDetail, Project } from '$lib/domain/types';
+	type DeploymentModel = DeploymentDetail['models'][number];
+	import type { Graph } from '$lib/lineage/types';
 	import type { DeploymentDetailPageData } from './+page';
 
 	let { data }: { data: DeploymentDetailPageData } = $props();
@@ -40,12 +46,12 @@
 	});
 
 	async function promote(): Promise<void> {
-		const requestedId = deploymentId;
-		const requestGeneration = ++promotionRequestGeneration;
+		const requestedId: string = deploymentId;
+		const requestGeneration: number = ++promotionRequestGeneration;
 		promoting = true;
 		promoteError = null;
 		try {
-			const result = await promoteDeployment(requestedId);
+			const result: Awaited<ReturnType<typeof promoteDeployment>> = await promoteDeployment(requestedId);
 			if (deploymentId !== requestedId || promotionRequestGeneration !== requestGeneration) return;
 			await refreshDeployments();
 			if (deploymentId !== requestedId || promotionRequestGeneration !== requestGeneration) return;
@@ -61,8 +67,8 @@
 	function loadDiff(): void {
 		tab = 'diff';
 		if (diff !== null) return;
-		const requestedId = deploymentId;
-		const requestGeneration = ++diffRequestGeneration;
+		const requestedId: string = deploymentId;
+		const requestGeneration: number = ++diffRequestGeneration;
 		fetchDeploymentDiff(requestedId)
 			.then((payload) => {
 				if (deploymentId === requestedId && diffRequestGeneration === requestGeneration) {
@@ -105,7 +111,7 @@
 		const full: Graph = buildLogicalGraph(project);
 		const comparisonByModel = new Map<string, DeploymentModel>();
 		for (const model of deploymentModels) {
-			const name = modelByRelation.get(model.logicalName);
+			const name: string | undefined = modelByRelation.get(model.logicalName);
 			if (name !== undefined) comparisonByModel.set(name, model);
 		}
 
@@ -121,7 +127,7 @@
 			nodes: full.nodes
 				.filter((node) => keep.has(node.id))
 				.map((node) => {
-					const comparison = comparisonByModel.get(node.logicalName);
+					const comparison: DeploymentModel | undefined = comparisonByModel.get(node.logicalName);
 					if (comparison === undefined) return node;
 					return {
 						...node,

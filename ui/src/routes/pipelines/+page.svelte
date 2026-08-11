@@ -1,15 +1,13 @@
 <script lang="ts">
-	import AppTopbar from '$lib/components/app-topbar.svelte';
-	import { getProject } from '$lib/api';
-	import {
-		anchorCount,
-		auditCounts,
-		auditsForModel,
-		modelsInPipeline,
-		pipelineFreshness,
-		sourceByName
-	} from '$lib/domain/derive';
-	import { formatRate } from '$lib/domain/format';
+	import AppTopbar from '$lib/presentation/components/app-topbar.svelte';
+	import { getProject } from '$lib/api/main/project/get-project';
+	import { modelsInPipeline } from '$lib/domain/main/lookups/models-in-pipeline';
+	import { sourceByName } from '$lib/domain/main/lookups/source-by-name';
+	import { anchorCount } from '$lib/domain/main/pipelines/anchor-count';
+	import { pipelineFreshness } from '$lib/domain/main/pipelines/pipeline-freshness';
+	import { auditCounts } from '$lib/domain/main/quality/audit-counts';
+	import { auditsForModel } from '$lib/domain/main/quality/audits-for-model';
+	import { formatRate } from '$lib/formatting/main/format-rate';
 	import type { Audit, Project } from '$lib/domain/types';
 
 	const project: Project = getProject();
@@ -19,7 +17,7 @@
 	// selector forms. It is not a folder convention.
 	const rows = $derived(
 		project.pipelines.map((pipeline) => {
-			const models = modelsInPipeline(project, pipeline.name);
+			const models: ReturnType<typeof modelsInPipeline> = modelsInPipeline(project, pipeline.name);
 			const audits: Audit[] = models.flatMap((model) => auditsForModel(project, model.name));
 			return {
 				pipeline,

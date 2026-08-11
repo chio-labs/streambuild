@@ -1,11 +1,13 @@
 <script lang="ts">
 	import './layout.css';
 	import { onMount } from 'svelte';
-	import AppSidebar from '$lib/components/app-sidebar.svelte';
-	import CompileErrorScreen from '$lib/components/compile-error-screen.svelte';
-	import { app, initializeApp } from '$lib/api/store.svelte';
+	import AppSidebar from '$lib/presentation/components/app-sidebar.svelte';
+	import CompileErrorScreen from '$lib/presentation/components/compile-error-screen.svelte';
+	import { getApp } from '$lib/api/main/project/get-app';
+	import { initializeApp } from '$lib/api/main/project/initialize-app';
 
 	let { children } = $props();
+	const app = getApp();
 
 	onMount(() => {
 		void initializeApp();

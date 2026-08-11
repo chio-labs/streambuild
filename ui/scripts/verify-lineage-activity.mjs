@@ -9,7 +9,8 @@ const vite = await createServer({
 });
 
 try {
-	const { modelFlowState } = await vite.ssrLoadModule('/src/lib/domain/derive.ts');
+	const { domainDerivations } = await vite.ssrLoadModule('/src/lib/domain/_helpers/derive.ts');
+	const { modelFlowState } = domainDerivations;
 	const table = (state) => ({ kind: 'table', live: { activity: { state } } });
 
 	assert.equal(modelFlowState(table('moving')), 'flowing');
