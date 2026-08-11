@@ -1,15 +1,19 @@
 <script lang="ts">
 	import SearchIcon from '@lucide/svelte/icons/search';
-	import AppTopbar from '$lib/components/app-topbar.svelte';
-	import StatusPill from '$lib/components/status-pill.svelte';
-	import AnchorBadge from '$lib/components/anchor-badge.svelte';
-	import { getProject } from '$lib/api';
-	import { app } from '$lib/api/store.svelte';
-	import { auditCounts, auditsForModel } from '$lib/domain/derive';
-	import { formatAgo, formatBytes, formatCompact } from '$lib/domain/format';
+	import AppTopbar from '$lib/presentation/components/app-topbar.svelte';
+	import StatusPill from '$lib/presentation/components/status-pill.svelte';
+	import AnchorBadge from '$lib/presentation/components/anchor-badge.svelte';
+	import { getApp } from '$lib/api/main/project/get-app';
+	import { getProject } from '$lib/api/main/project/get-project';
+	import { auditCounts } from '$lib/domain/main/quality/audit-counts';
+	import { auditsForModel } from '$lib/domain/main/quality/audits-for-model';
+	import { formatAgo } from '$lib/formatting/main/format-ago';
+	import { formatBytes } from '$lib/formatting/main/format-bytes';
+	import { formatCompact } from '$lib/formatting/main/format-compact';
 	import type { Model, Project } from '$lib/domain/types';
 
 	const project: Project = getProject();
+	const app = getApp();
 
 	// Catalog is the FLAT index across pipelines — the search surface. Pipelines is
 	// where structure is read. Whether both earn a slot at 11 models is an open
@@ -33,9 +37,9 @@
 			}
 			for (const deployment of app.deployments) {
 				for (const relationName of deployment.physicalRelationNames) {
-					const parts = relationName.split('__');
-					const logicalName = parts.length > 2 ? parts.slice(0, -1).join('__') : relationName;
-					const entry = result.get(logicalName);
+					const parts: string[] = relationName.split('__');
+					const logicalName: string = parts.length > 2 ? parts.slice(0, -1).join('__') : relationName;
+					const entry: { deploymentId: string; retained: number } | undefined = result.get(logicalName);
 					if (entry !== undefined) entry.retained += 1;
 				}
 			}

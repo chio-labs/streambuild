@@ -1,10 +1,12 @@
 <script lang="ts">
 	import RotateIcon from '@lucide/svelte/icons/rotate-ccw';
-	import AppTopbar from '$lib/components/app-topbar.svelte';
-	import FactRow from '$lib/components/fact-row.svelte';
-	import { app, reloadProject } from '$lib/api/store.svelte';
-	import { getProject } from '$lib/api';
+	import AppTopbar from '$lib/presentation/components/app-topbar.svelte';
+	import FactRow from '$lib/presentation/components/fact-row.svelte';
+	import { getApp } from '$lib/api/main/project/get-app';
+	import { getProject } from '$lib/api/main/project/get-project';
+	import { reloadProject } from '$lib/api/main/project/reload-project';
 
+	const app = getApp();
 	const project = getProject();
 	const status = $derived(app.status);
 	const timingEntries = $derived(Object.entries(status?.timings ?? {}));

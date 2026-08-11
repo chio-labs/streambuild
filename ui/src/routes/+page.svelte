@@ -1,18 +1,19 @@
 <script lang="ts">
 	import GitCompareIcon from '@lucide/svelte/icons/git-compare';
-	import AppTopbar from '$lib/components/app-topbar.svelte';
-	import Sparkline from '$lib/components/sparkline.svelte';
-	import StatusPill from '$lib/components/status-pill.svelte';
-	import { getProject } from '$lib/api';
-	import { auditCounts, driftedModels, freshnessSummary, testCounts } from '$lib/domain/derive';
-	import {
-		formatAgo,
-		formatCompact,
-		formatDuration,
-		formatInteger,
-		formatRate,
-		formatTimestamp
-	} from '$lib/domain/format';
+	import AppTopbar from '$lib/presentation/components/app-topbar.svelte';
+	import Sparkline from '$lib/presentation/components/sparkline.svelte';
+	import StatusPill from '$lib/presentation/components/status-pill.svelte';
+	import { getProject } from '$lib/api/main/project/get-project';
+	import { auditCounts } from '$lib/domain/main/quality/audit-counts';
+	import { testCounts } from '$lib/domain/main/quality/test-counts';
+	import { driftedModels } from '$lib/domain/main/summaries/drifted-models';
+	import { freshnessSummary } from '$lib/domain/main/summaries/freshness-summary';
+	import { formatAgo } from '$lib/formatting/main/format-ago';
+	import { formatCompact } from '$lib/formatting/main/format-compact';
+	import { formatDuration } from '$lib/formatting/main/format-duration';
+	import { formatInteger } from '$lib/formatting/main/format-integer';
+	import { formatRate } from '$lib/formatting/main/format-rate';
+	import { formatTimestamp } from '$lib/formatting/main/format-timestamp';
 	import type { Project } from '$lib/domain/types';
 
 	const project: Project = getProject();
