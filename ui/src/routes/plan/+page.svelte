@@ -18,47 +18,57 @@
 	import { fetchRuns } from '$lib/api/main/runs/fetch-runs';
 	import { createPlanView } from '$lib/plan-view/main/create-plan-view';
 	import type { PlanViewTypes } from '$lib/plan-view/types';
-
 	const project = getProject();
 	const planView = createPlanView();
-
 	const location = $derived(planView.readLocation(page.url));
 	const selectors = $derived(location.selectors);
 	const replayWindow = $derived(location.replayWindow);
-
+	const deploymentId = $derived(location.deploymentId);
 	function applySelection(
 		nextSelectors: PlanViewTypes['selector'][],
-		nextWindow?: PlanViewTypes['replayWindow']
+		nextWindow?: PlanViewTypes['replayWindow'],
+		nextDeploymentId: string | null = null
 	): void {
-		void goto(planView.selectionUrl(page.url, nextSelectors, nextWindow), {
+		const nextUrl: URL = planView.selectionUrl(page.url, nextSelectors, nextWindow, nextDeploymentId);
+		if (planView.locationRequestKey(nextUrl) === planView.locationRequestKey(page.url)) return;
+		planRequestVersion += 1;
+		planLoading = true;
+		void goto(nextUrl, {
 			replaceState: true,
 			noScroll: true,
 			keepFocus: true
 		});
 	}
-
 	function setSelectors(next: PlanViewTypes['selector'][]): void {
 		applySelection(next, next.length === 0 ? { mode: 'full' } : undefined);
 	}
-
 	function setReplayWindow(next: PlanViewTypes['replayWindow']): void {
 		applySelection(selectors, selectors.length === 0 ? { mode: 'full' } : next);
 	}
-
 	let plan = $state<PlanViewTypes['plan'] | null>(null);
 	let planError = $state<string | null>(null);
 	let planLoading = $state<boolean>(true);
 	let planRequestKey = $state<string>('');
 	let planRequestVersion: number = 0;
-
-	function requestPlan(tokens: string[], start: string | null): void {
+	function requestKey(tokens: string[], start: string | null, deployment: string | null): string {
+		return `${tokens.join(',')}|${start ?? ''}|${deployment ?? ''}`;
+	}
+	function requestPlan(tokens: string[], start: string | null, deployment: string | null): void {
 		const requestVersion: number = ++planRequestVersion;
 		planLoading = true;
-		fetchPlan(tokens, start)
+		fetchPlan(tokens, start, deployment)
 			.then((next) => {
 				if (requestVersion !== planRequestVersion) return;
 				plan = next;
 				planError = null;
+				if (deployment === null && next.deploymentId !== null) {
+					planRequestKey = requestKey(tokens, start, next.deploymentId);
+					void goto(planView.deploymentUrl(page.url, next.deploymentId), {
+						replaceState: true,
+						noScroll: true,
+						keepFocus: true
+					});
+				}
 			})
 			.catch((error: Error) => {
 				if (requestVersion !== planRequestVersion) return;
@@ -69,7 +79,6 @@
 				planLoading = false;
 			});
 	}
-
 	let executing = $state<boolean>(false);
 	let executeError = $state<string | null>(null);
 	let protectionConfirmations = $state<Record<string, string>>({});
@@ -92,7 +101,6 @@
 			? 'preparing plan…'
 			: `${plan.command}${acceptedConfirmations.map((value) => ` --confirm ${value}`).join('')}`
 	);
-
 	/** POST the planned options in the dev server's pinned context and follow the run live. */ async function execute(): Promise<void> {
 		executing = true;
 		executeError = null;
@@ -102,7 +110,8 @@
 			const startResult: Awaited<ReturnType<typeof startBuild>> = await startBuild(
 				tokens,
 				start,
-				acceptedConfirmations
+				acceptedConfirmations,
+				plan?.deploymentId ?? null
 			);
 			await goto(`/runs/${startResult.invocationId}?live=1`);
 		} catch (error) {
@@ -111,13 +120,11 @@
 			executing = false;
 		}
 	}
-
 	function replan(): void {
 		const tokens: string[] = selectors.map(planView.selectorToken);
 		const start: string | null = planView.replayStartToken(replayWindow);
-		requestPlan(tokens, start);
+		requestPlan(tokens, start, deploymentId);
 	}
-
 	$effect(() => {
 		const tokens: string[] = selectors.map(planView.selectorToken);
 		const start: string | null = planView.replayStartToken(replayWindow);
@@ -125,20 +132,24 @@
 			applySelection(selectors, { mode: 'full' });
 			return;
 		}
-		const key: string = `${tokens.join(',')}|${start ?? ''}`;
+		const key: string = requestKey(tokens, start, deploymentId);
 		if (key === planRequestKey) return;
 		planRequestKey = key;
-		requestPlan(tokens, start);
+		requestPlan(tokens, start, deploymentId);
 	});
-
 	const planEntries = $derived(plan?.entries ?? []);
-
+	const plannedModelNames = $derived(
+		Array.from(new Set((plan?.phases ?? []).flatMap((phase) => phase.modelNames)))
+	);
+	const plannedRelationNames = $derived(
+		Array.from(new Set((plan?.phases ?? []).flatMap((phase) => phase.relationNames)))
+	);
+	const hasDirectPhase = $derived((plan?.phases ?? []).some((phase) => phase.mode === 'direct'));
 	const rowsToReplay = $derived.by((): number | null => {
 		const roots: PlanViewTypes['plan']['replayRoots'] = plan?.replayRoots ?? [];
 		if (roots.length === 0 || roots.some((root) => root.rowsToReplay === null)) return null;
 		return roots.reduce((total, root) => total + (root.rowsToReplay ?? 0), 0);
 	});
-
 	let lastBuild = $state<PlanViewTypes['runRecord'] | null>(null);
 	$effect(() => {
 		fetchRuns()
@@ -150,31 +161,21 @@
 				lastBuild = null;
 			});
 	});
-
 	const rootSources = $derived<PlanViewTypes['source'][]>(
-		planView.rootSources(
-			project,
-			planEntries.map((entry) => entry.modelName)
-		)
+		planView.rootSources(project, plannedModelNames)
 	);
-
 	const selectedCount = $derived(
 		planEntries.filter((entry) => entry.reason === 'selected').length
 	);
 	const downstreamCount = $derived(
 		planEntries.filter((entry) => entry.reason === 'downstream_of_selected').length
 	);
-	const relationCount = $derived(
-		planEntries.reduce((sum, entry) => sum + entry.relationNames.length, 0)
-	);
 	const riskyOwnership = $derived(
 		planEntries.flatMap((entry) =>
 			entry.ownership.filter((item) => item.ownership !== 'direct' && item.ownership !== 'absent')
 		)
 	);
-
 	let copied = $state<boolean>(false);
-
 	async function copyCommand(): Promise<void> {
 		try {
 			await navigator.clipboard.writeText(executionCommand);
@@ -182,15 +183,13 @@
 			setTimeout(() => (copied = false), 1600);
 		} catch {}
 	}
-
 	let pasted = $state<string>('');
 	let pasteOpen = $state<boolean>(false);
 	let replacedNote = $state<string>('');
-
 	function previewPasted(): void {
 		const previousCount: number = selectors.length;
 		const parsed: ReturnType<typeof planView.parseCommand> = planView.parseCommand(pasted);
-		applySelection(parsed.selectors, parsed.replayWindow);
+		applySelection(parsed.selectors, parsed.replayWindow, parsed.deploymentId);
 		replacedNote =
 			previousCount > 0
 				? `Replaced ${previousCount} ${previousCount === 1 ? 'selector' : 'selectors'} with ${parsed.selectors.length} from the pasted command.`
@@ -297,6 +296,32 @@
 	<PlanGraph {project} {plan} />
 	{/if}
 
+	{#if plan !== null}
+		<div class="border-b border-border bg-[var(--sb-surface-low)] px-[18px] py-3">
+			<div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+				<span class="font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--sb-text-faint)]">
+					Build mode
+				</span>
+				<strong class="font-mono text-[12px] uppercase" data-testid="plan-build-mode">{plan.mode}</strong>
+				<span class="text-muted-foreground text-[11.5px]">
+					{#if plan.mode === 'virtual'}
+						changes are staged for later promotion
+					{:else if plan.mode === 'mixed'}
+						virtual changes are staged before direct changes are applied
+					{:else}
+						changes are applied immediately
+					{/if}
+				</span>
+			</div>
+			<div class="text-muted-foreground pt-1 font-mono text-[10.5px] leading-relaxed">
+				Replay reads through an upper boundary captured when Execute starts, then continues with live ingestion.
+				{#if plan.deploymentId !== null}
+					Deployment <code class="text-foreground">{plan.deploymentId}</code> is fixed in this Plan URL.
+				{/if}
+			</div>
+		</div>
+	{/if}
+
 	<!-- ── scope ───────────────────────────────────────────────────────────── -->
 	{#if plan !== null}
 	<div class="grid grid-cols-1 gap-5 px-3 py-4 sm:px-[18px] xl:grid-cols-[minmax(0,1fr)_380px]">
@@ -327,22 +352,30 @@
 
 				<div
 					class="rounded-[4px] border p-3"
-					style:border-color="color-mix(in srgb, var(--sb-error) 45%, var(--border))"
+					style:border-color={hasDirectPhase
+						? 'color-mix(in srgb, var(--sb-error) 45%, var(--border))'
+						: 'color-mix(in srgb, var(--primary) 45%, var(--border))'}
 				>
 					<div
 						class="text-[var(--sb-text-faint)] pb-1.5 font-mono text-[10px] uppercase tracking-[0.14em]"
 					>
-						Will be dropped and recreated
+						{plan.mode === 'direct'
+							? 'Will be dropped and recreated'
+							: plan.mode === 'virtual'
+								? 'Will be staged'
+								: 'Runs in two phases'}
 					</div>
 					<div class="font-display text-[22px] font-semibold leading-none">
-						{planEntries.length}
+						{plannedModelNames.length}
 						<span class="text-muted-foreground text-[13px] font-normal">models</span>
 						<span class="text-muted-foreground text-[13px] font-normal"
-							>· {relationCount} relations</span
+							>· {plannedRelationNames.length} relations</span
 						>
 					</div>
 					<div class="text-muted-foreground pt-2 font-mono text-[11px]">
-						{#if selectors.length === 0}
+						{#if plan.mode !== 'direct'}
+							{plan.executionOrder.join(' → ')}
+						{:else if selectors.length === 0}
 							{planEntries.length} · all models
 						{:else}
 							{selectedCount} selected · {downstreamCount} downstream of selection
@@ -351,6 +384,52 @@
 				</div>
 			</div>
 
+			<div>
+				<div
+					class="text-[var(--sb-text-faint)] pb-2 font-mono text-[10px] uppercase tracking-[0.14em]"
+				>
+					Execution phases
+				</div>
+				<div class="grid grid-cols-1 gap-3 {plan.phases.length > 1 ? 'lg:grid-cols-2' : ''}">
+					{#each plan.phases as phase, phaseIndex (`${phase.mode}-${phaseIndex}`)}
+						<div class="rounded-[4px] border border-border p-3">
+							<div class="flex items-baseline gap-2">
+								<span class="font-mono text-[10px] text-[var(--sb-text-faint)]">{phaseIndex + 1}</span>
+								<strong class="font-mono text-[11.5px] uppercase">{phase.mode}</strong>
+								<span class="text-muted-foreground ml-auto font-mono text-[10px]">
+									{phase.effect === 'staged' ? 'staged' : 'applied immediately'}
+								</span>
+							</div>
+							<div class="text-muted-foreground pt-1 font-mono text-[10.5px]">
+								{phase.modelNames.length} models · {phase.contextModelNames.length} context · {phase.relationNames.length} relations · {phase.actions.length} actions
+							</div>
+							{#if phase.deploymentId !== null}
+								<div class="truncate pt-1 font-mono text-[10px] text-[var(--sb-text-faint)]">
+									{phase.deploymentId}
+								</div>
+							{/if}
+							{#if phase.actions.length > 0}
+								<details class="pt-2">
+									<summary class="text-muted-foreground cursor-pointer font-mono text-[10px]">
+										view ordered actions
+									</summary>
+									<div class="mt-1 max-h-48 overflow-auto rounded-[3px] bg-[var(--sb-inset)] px-2 py-1">
+										{#each phase.actions as action, actionIndex (`${action.action}-${action.logicalName}-${actionIndex}`)}
+											<div class="border-b border-[var(--border-subtle)] py-1 font-mono text-[10px] last:border-b-0">
+												<span class="text-[var(--sb-text-faint)]">{action.phase}</span>
+												· {action.action} · {action.logicalName}
+												{#if action.physicalName} → {action.physicalName}{/if}
+											</div>
+										{/each}
+									</div>
+								</details>
+							{/if}
+						</div>
+					{/each}
+				</div>
+			</div>
+
+			{#if planEntries.length > 0}
 			<div>
 				<div
 					class="text-[var(--sb-text-faint)] pb-2 font-mono text-[10px] uppercase tracking-[0.14em]"
@@ -397,9 +476,11 @@
 					{/each}
 				</div>
 			</div>
+			{/if}
 
 
 			<!-- destructive notice -->
+			{#if hasDirectPhase}
 			<div
 				class="flex items-start gap-2.5 rounded-[4px] border px-3 py-2.5"
 				style:border-color="color-mix(in srgb, var(--sb-error) 45%, var(--border))"
@@ -407,12 +488,14 @@
 			>
 				<TriangleAlertIcon size={14} class="mt-[2px] shrink-0" color="var(--sb-error)" />
 				<div class="text-[12px] leading-snug">
-					<span class="font-medium">Destructive, and does not roll back.</span>
+					<span class="font-medium">The direct phase is destructive and does not roll back.</span>
 					A failure after teardown leaves the graph incomplete.
 				</div>
 			</div>
+			{/if}
 
 			<!-- teardown / creation -->
+			{#if hasDirectPhase}
 			<div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
 				<div>
 					<div
@@ -459,6 +542,7 @@
 					</div>
 				</div>
 			</div>
+			{/if}
 
 		</div>
 

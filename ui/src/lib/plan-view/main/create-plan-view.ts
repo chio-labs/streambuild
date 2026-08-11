@@ -7,9 +7,11 @@ import { selectorToken } from '$lib/planning/main/selector-token';
 import { rootSourcesFor } from '$lib/domain/main/planning/root-sources-for';
 import { parsePlanCommand } from '$lib/plan-view/_helpers/plan-command';
 import {
+	planLocationRequestKey,
 	readPlanLocation,
 	replayStartToken,
 	shouldClearReplayStart,
+	writePlanDeployment,
 	writePlanSelection
 } from '$lib/plan-view/_helpers/plan-location';
 import { planBoundaryColumns } from '$lib/plan-view/_helpers/plan-presentation';
@@ -18,8 +20,10 @@ import type { PlanViewFacade } from '$lib/plan-view/types';
 export function createPlanView(): PlanViewFacade {
 	return {
 		readLocation: readPlanLocation,
+		locationRequestKey: planLocationRequestKey,
 		shouldClearReplayStart,
 		selectionUrl: writePlanSelection,
+		deploymentUrl: writePlanDeployment,
 		replayStartToken,
 		parseCommand: parsePlanCommand,
 		boundaryColumns: planBoundaryColumns,

@@ -44,6 +44,22 @@ type PlanPrerequisite = {
 	present: boolean;
 	frameworkManaged: boolean;
 };
+type PlanExecutionMode = 'direct' | 'virtual';
+type PlanPhase = {
+	mode: PlanExecutionMode;
+	effect: 'applied_immediately' | 'staged';
+	deploymentId: string | null;
+	modelNames: string[];
+	contextModelNames: string[];
+	relationNames: string[];
+	actions: {
+		phase: string;
+		action: string;
+		logicalName: string;
+		physicalName: string | null;
+	}[];
+	startTime: string | null;
+};
 
 export type Selector = { kind: 'model' | 'pipeline'; name: string };
 export type PlanSqlChangeStatus =
@@ -52,7 +68,7 @@ export type PlanSqlChangeStatus =
 	| 'no_query_change'
 	| 'baseline_unavailable';
 export type ReplayWindow = { mode: 'full' } | { mode: 'from'; startTime: string };
-export type Plan = {
+type PlanBase = {
 	adapter: string;
 	database: string;
 	userScope: Selector[];
@@ -66,4 +82,15 @@ export type Plan = {
 	replayWindow: ReplayWindow;
 	plannedAt: string;
 	command: string;
+	executionOrder: PlanExecutionMode[];
+	phases: PlanPhase[];
+	upperBoundary: {
+		mode: 'captured_at_execution';
+		continuesLive: boolean;
+	};
 };
+export type Plan = PlanBase &
+	(
+		| { mode: 'direct'; deploymentId: null }
+		| { mode: 'virtual' | 'mixed'; deploymentId: string }
+	);
