@@ -9,6 +9,7 @@ from types import MappingProxyType
 
 from streambuild.compiler.discovery.constants import (
     DEFAULT_ADAPTER_NAME,
+    DEFAULT_PIPELINE_PREFIX,
     DEFAULT_RUN_PRESUMED_FAILED_AFTER_SECONDS,
     DEFAULT_TABLE_PREFIX,
     DEFAULT_VIEW_PREFIX,
@@ -60,6 +61,13 @@ class AuditSchedulerOverride:
     enabled: bool | None = None
 
 
+@dataclass(frozen=True)
+class BuildConfig:
+    """Committed absolute limits applied before a build mutates its target."""
+
+    max_pipelines: int | None = None
+
+
 @dataclass(frozen=True, repr=False)
 class ProjectTarget:
     """One committed named target before local resolution."""
@@ -68,6 +76,7 @@ class ProjectTarget:
     connection: RawConnectionConfig = field(default_factory=RawConnectionConfig)
     variables: tuple[tuple[str, object], ...] = ()
     audit_scheduler: AuditSchedulerOverride = field(default_factory=AuditSchedulerOverride)
+    build: BuildConfig = field(default_factory=BuildConfig)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "variables", immutable_config_pairs(self.variables))
@@ -179,8 +188,10 @@ class LocalProjectDefaults:
 
 @dataclass(frozen=True)
 class ProjectNaming:
-    """Project-wide model relation prefixes by model kind."""
+    """Project-wide pipeline validation and model relation naming."""
 
+    pipeline_prefix: str = DEFAULT_PIPELINE_PREFIX
+    pipeline_naming_macro: str | None = None
     table_prefix: str = DEFAULT_TABLE_PREFIX
     view_prefix: str = DEFAULT_VIEW_PREFIX
 
@@ -214,6 +225,7 @@ class AuthoredProjectConfig:
     defaults: ProjectDefaults = field(default_factory=ProjectDefaults)
     naming: ProjectNaming = field(default_factory=ProjectNaming)
     audit_scheduler: AuditSchedulerConfig = field(default_factory=AuditSchedulerConfig)
+    build: BuildConfig = field(default_factory=BuildConfig)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "variables", immutable_config_pairs(self.variables))
@@ -257,6 +269,7 @@ class EffectiveProjectConfiguration:
     defaults: ProjectDefaults
     naming: ProjectNaming = field(default_factory=ProjectNaming)
     audit_scheduler: AuditSchedulerConfig = field(default_factory=AuditSchedulerConfig)
+    build: BuildConfig = field(default_factory=BuildConfig)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "variables", immutable_config_pairs(self.variables))

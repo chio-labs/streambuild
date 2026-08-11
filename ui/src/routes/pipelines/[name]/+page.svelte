@@ -5,35 +5,23 @@
 	import ReplaceIcon from '@lucide/svelte/icons/replace';
 	import NetworkIcon from '@lucide/svelte/icons/network';
 	import AnchorIcon from '@lucide/svelte/icons/anchor';
-	import AppTopbar from '$lib/components/app-topbar.svelte';
-	import PipelineGraph from '$lib/components/pipeline/pipeline-graph.svelte';
-	import StatusPill from '$lib/components/status-pill.svelte';
-	import FactRow from '$lib/components/fact-row.svelte';
-	import Sparkline from '$lib/components/sparkline.svelte';
-	import { getProject } from '$lib/api';
-	import {
-		auditCounts,
-		auditsForModel,
-		modelsInPipeline,
-		pipelineByName,
-		sourceByName,
-		streamTree
-	} from '$lib/domain/derive';
-	import {
-		formatAgo,
-		formatCompact,
-		formatDuration,
-		formatRate,
-		formatTimestamp
-	} from '$lib/domain/format';
-	import { REF_TYPE_LABEL, type ModelRef, type Project } from '$lib/domain/types';
+	import AppTopbar from '$lib/presentation/components/app-topbar.svelte';
+	import PipelineGraph from '$lib/presentation/components/pipeline/pipeline-graph.svelte';
+	import StatusPill from '$lib/presentation/components/status-pill.svelte';
+	import FactRow from '$lib/presentation/components/fact-row.svelte';
+	import Sparkline from '$lib/presentation/components/sparkline.svelte';
+	import { getProject } from '$lib/api/main/project/get-project';
+	import { createPipelineView } from '$lib/pipeline-view/main/create-pipeline-view';
 
-	const project: Project = getProject();
+	const project = getProject();
+	const pipelineView = createPipelineView();
 	const pipelineName = $derived(page.params.name ?? '');
-	const pipeline = $derived(pipelineByName(project, pipelineName));
-	const source = $derived(pipeline?.sourceName ? sourceByName(project, pipeline.sourceName) : undefined);
-	const tree = $derived(streamTree(project, pipelineName));
-	const models = $derived(modelsInPipeline(project, pipelineName));
+	const snapshot = $derived(pipelineView.snapshot(project, pipelineName));
+	const pipeline = $derived(snapshot.pipeline);
+	const source = $derived(snapshot.source);
+	const tree = $derived(snapshot.tree);
+	const models = $derived(snapshot.models);
+	const sideRefs = $derived(snapshot.sideReferences);
 
 	// URL-addressable like every other view toggle, so a specific reading of a
 	// pipeline is shareable. Derived from the URL and navigated with `goto` —
@@ -43,22 +31,11 @@
 	);
 
 	function setView(next: 'tree' | 'graph'): void {
-		const url = new URL(page.url);
+		const url: URL = new URL(page.url);
 		if (next === 'tree') url.searchParams.delete('view');
 		else url.searchParams.set('view', next);
 		void goto(url, { replaceState: true, noScroll: true, keepFocus: true });
 	}
-
-	/** Side references break the tree, so they are listed separately rather than faked into it. */
-	const sideRefs = $derived.by((): { from: string; ref: ModelRef }[] => {
-		const found: { from: string; ref: ModelRef }[] = [];
-		for (const model of models) {
-			for (const ref of model.refs) {
-				if (ref.type !== 'driving_input') found.push({ from: model.name, ref });
-			}
-		}
-		return found;
-	});
 </script>
 
 <AppTopbar title={pipelineName}>
@@ -123,7 +100,7 @@
 							<div class="shrink-0 text-right">
 								<Sparkline values={source.live.throughput} width={130} height={28} />
 								<div class="pt-1 font-mono text-[11px]" style:color="var(--sb-secondary)">
-									{formatRate(source.live.rowsPerSecond)}
+									{pipelineView.formatRate(source.live.rowsPerSecond)}
 								</div>
 							</div>
 							<div class="w-[150px] shrink-0">
@@ -131,13 +108,13 @@
 									label="Kafka lag"
 									value={source.live.kafkaLagMessages === null
 										? '—'
-										: `${formatCompact(source.live.kafkaLagMessages)} msg`}
+										: `${pipelineView.formatCompact(source.live.kafkaLagMessages)} msg`}
 								/>
 								<FactRow
 									label="Last arrival"
 									value={source.live.lastArrivalSeconds === null
 										? '—'
-										: `${formatDuration(source.live.lastArrivalSeconds)} ago`}
+										: `${pipelineView.formatDuration(source.live.lastArrivalSeconds)} ago`}
 								/>
 								<FactRow
 									label="Retention"
@@ -242,10 +219,10 @@
 								</span>
 								<span class="text-muted-foreground code w-[62px] shrink-0 text-right text-[10.5px]">
 									{row.kind === 'source'
-										? formatCompact(row.source?.live.rows ?? 0)
+										? pipelineView.formatCompact(row.source?.live.rows ?? 0)
 										: row.model?.kind === 'view'
 											? '—'
-											: formatCompact(row.model?.live.rows ?? 0)}
+											: pipelineView.formatCompact(row.model?.live.rows ?? 0)}
 								</span>
 								<span class="w-[84px] shrink-0">
 									{#if row.model}<StatusPill status={row.model.status} />{/if}
@@ -300,7 +277,7 @@
 									class="ml-auto font-mono text-[10.5px]"
 									style:color={item.ref.type === 'mutable_reference'
 										? 'var(--sb-warning)'
-										: 'var(--sb-text-faint)'}>{REF_TYPE_LABEL[item.ref.type]}</span
+										: 'var(--sb-text-faint)'}>{pipelineView.refTypeLabel[item.ref.type]}</span
 								>
 							</div>
 						{/each}
@@ -337,9 +314,9 @@
 						>
 							Source window
 						</div>
-						<FactRow label="Retained from" value={formatTimestamp(source.live.oldestEventAt)} />
-						<FactRow label="Newest event" value={formatTimestamp(source.live.newestEventAt)} />
-						<FactRow label="Retained rows" value={formatCompact(source.live.rows)} />
+					<FactRow label="Retained from" value={pipelineView.formatTimestamp(source.live.oldestEventAt)} />
+					<FactRow label="Newest event" value={pipelineView.formatTimestamp(source.live.newestEventAt)} />
+					<FactRow label="Retained rows" value={pipelineView.formatCompact(source.live.rows)} />
 					</div>
 				{/if}
 
@@ -350,7 +327,7 @@
 						Models
 					</div>
 					{#each models as model (model.name)}
-						{@const counts = auditCounts(auditsForModel(project, model.name))}
+					{@const counts = pipelineView.auditCounts(project, model.name)}
 						<div class="flex items-center gap-2 border-b border-[var(--border-subtle)] py-1.5">
 							<a href="/catalog/{model.name}" class="text-primary code truncate text-[11.5px] hover:underline"
 								>{model.name}</a
@@ -367,7 +344,7 @@
 								{/if}
 							</span>
 							<span class="shrink-0 text-right font-mono text-[10px]"
-								>{formatAgo(model.live.newestRowAt, project.capturedAt)}</span
+								>{pipelineView.formatAgo(model.live.newestRowAt, project.capturedAt)}</span
 							>
 						</div>
 					{/each}

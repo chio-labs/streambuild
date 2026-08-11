@@ -67,3 +67,20 @@ class CliRunScopeTestCase:
     parent_invocation_id: str
     expected_executed_logical_ids: tuple[tuple[str, ...], ...]
     expected_context_logical_ids: tuple[tuple[str, ...], ...]
+
+
+@dataclass(frozen=True)
+class CliRejectedPipelineLimitTestCase:
+    description: str
+    project_max_pipelines: int
+    target_max_pipelines: int
+    expected_exit_code: int
+    expected_error_fragment: str
+
+
+@dataclass(frozen=True)
+class CliAllowedPipelineLimitTestCase:
+    description: str
+    project_max_pipelines: int
+    selectors: tuple[str, ...]
+    expected_exit_code: int

@@ -9,6 +9,7 @@ from pathlib import Path
 from types import MappingProxyType
 
 from streambuild.compiler.discovery.main._immutable_config_pairs import immutable_config_pairs
+from streambuild.compiler.discovery.types import PipelineMode
 from streambuild.compiler.macros.types import MacroFunction
 
 
@@ -40,6 +41,17 @@ class MacroRegistry:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "macros", MappingProxyType(dict(self.macros)))
+
+
+@dataclass(frozen=True)
+class PipelineNamingContext:
+    """Immutable authored pipeline metadata supplied to a naming macro."""
+
+    name: str
+    source_name: str | None
+    model_names: tuple[str, ...]
+    relative_directory: str
+    mode: PipelineMode
 
 
 @dataclass(frozen=True, repr=False)

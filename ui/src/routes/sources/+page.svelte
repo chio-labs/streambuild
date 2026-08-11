@@ -1,8 +1,11 @@
 <script lang="ts">
-	import AppTopbar from '$lib/components/app-topbar.svelte';
-	import Sparkline from '$lib/components/sparkline.svelte';
-	import { getProject } from '$lib/api';
-	import { formatCompact, formatDuration, formatRate, formatTimestamp } from '$lib/domain/format';
+	import AppTopbar from '$lib/presentation/components/app-topbar.svelte';
+	import Sparkline from '$lib/presentation/components/sparkline.svelte';
+	import { getProject } from '$lib/api/main/project/get-project';
+	import { formatCompact } from '$lib/formatting/main/format-compact';
+	import { formatDuration } from '$lib/formatting/main/format-duration';
+	import { formatRate } from '$lib/formatting/main/format-rate';
+	import { formatTimestamp } from '$lib/formatting/main/format-timestamp';
 	import type { Project } from '$lib/domain/types';
 
 	const project: Project = getProject();

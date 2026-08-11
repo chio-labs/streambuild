@@ -272,20 +272,20 @@ def test_given_cross_mode_relationship_when_building_graph_then_it_is_rejected_s
         """,
     )
     write_pipeline_file(
-        tmp_path / "pipelines" / "upstream" / "pipeline.toml",
+        tmp_path / "pipelines" / "pl__upstream" / "pipeline.toml",
         f'mode = "{test_case.upstream_mode}"',
     )
     write_pipeline_file(
-        tmp_path / "pipelines" / "upstream" / "alpha.sql",
+        tmp_path / "pipelines" / "pl__upstream" / "alpha.sql",
         'MODEL (order_by ["order_id"]); '
         'SELECT order_id::UInt64 AS order_id FROM __source("orders")',
     )
     write_pipeline_file(
-        tmp_path / "pipelines" / "downstream" / "pipeline.toml",
+        tmp_path / "pipelines" / "pl__downstream" / "pipeline.toml",
         f'mode = "{test_case.downstream_mode}"',
     )
     write_pipeline_file(
-        tmp_path / "pipelines" / "downstream" / "beta.sql",
+        tmp_path / "pipelines" / "pl__downstream" / "beta.sql",
         'MODEL (order_by ["order_id"]); SELECT order_id::UInt64 AS order_id FROM __ref("alpha")',
     )
     project: CompiledProject = compile_logical_project(tmp_path)
@@ -315,7 +315,7 @@ def test_given_terminal_view_auxiliaries_when_building_graph_then_excludes_auxil
         contents='name = "test"\ndefault_target = "test"\n[targets.test]\n',
     )
     write_pipeline_file(
-        tmp_path / "pipelines" / "views" / "answer.sql",
+        tmp_path / "pipelines" / "pl__views" / "answer.sql",
         "MODEL (kind view); SELECT 1::UInt8 AS value",
     )
     write_pipeline_file(

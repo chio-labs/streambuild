@@ -1,7 +1,13 @@
+from collections.abc import Iterator
+
 import pytest
 
 from streambuild.cli.build._helpers.confirmation import confirm_build
-from tests.unit.src.streambuild.cli.build._helpers._test_types import BuildConfirmationTestCase
+from streambuild.cli.build.models import BuildProtectionRequirement
+from tests.unit.src.streambuild.cli.build._helpers._test_types import (
+    BuildConfirmationTestCase,
+    MultipleBuildProtectionTestCase,
+)
 from tests.unit.src.streambuild.cli.build._helpers.helpers import (
     build_confirmation_options,
     build_protection_requirement,
@@ -68,6 +74,51 @@ def test_given_build_protection_when_confirming_then_applies_required_gate(
 
     assert confirmed is test_case.expected_confirmed
     assert test_case.expected_stderr_fragment in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        MultipleBuildProtectionTestCase(
+            description="prompts once for each protected pipeline",
+            responses=("DEPLOY_PROTECTED_PRICES", "DEPLOY_SETTLEMENT"),
+            expected_pipeline_names=("protected_prices", "settlement"),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_two_protected_pipelines_when_confirming_interactively_then_prompts_for_each(
+    test_case: MultipleBuildProtectionTestCase,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prompts: list[str] = []
+    responses: Iterator[str] = iter(test_case.responses)
+
+    def answer(prompt: str) -> str:
+        prompts.append(prompt)
+        return next(responses)
+
+    monkeypatch.setattr("builtins.input", answer)
+
+    confirmed: bool = confirm_build(
+        options=build_confirmation_options(auto_approve=False, confirmations=()),
+        plan_text="plan",
+        protection_requirements=(
+            *build_protection_requirement(),
+            BuildProtectionRequirement(
+                pipeline_name="settlement",
+                warning="Interrupts settlement processing.",
+                confirmation="DEPLOY_SETTLEMENT",
+            ),
+        ),
+    )
+
+    assert confirmed is True
+    assert len(prompts) == len(test_case.expected_pipeline_names)
+    assert all(
+        name in prompt
+        for name, prompt in zip(test_case.expected_pipeline_names, prompts, strict=True)
+    )
 
 
 if __name__ == "__main__":

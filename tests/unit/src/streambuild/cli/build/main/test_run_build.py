@@ -10,11 +10,13 @@ from streambuild.executor.backfill.models import BackfillDeploymentIdentity
 from streambuild.executor.observability.constants import RUN_INVOCATION_ID_ENV_VAR
 from streambuild.executor.workflow.models import PublishedBuildWorkflow
 from tests.unit.src.streambuild.cli.build.main._test_types import (
+    CliAllowedPipelineLimitTestCase,
     CliBuildArtifactTestCase,
     CliBuildGateTestCase,
     CliBuildInterruptTestCase,
     CliMixedBuildTestCase,
     CliProtectedBuildTestCase,
+    CliRejectedPipelineLimitTestCase,
     CliRunScopeTestCase,
     CliVirtualBuildArtifactTestCase,
 )
@@ -108,7 +110,7 @@ def test_given_protected_pipeline_when_auto_approving_then_requires_exact_confir
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     write_direct_scope_project(project_root=tmp_path)
-    (tmp_path / "pipelines" / "orders" / "pipeline.toml").write_text(
+    (tmp_path / "pipelines" / "pl__orders" / "pipeline.toml").write_text(
         f"""
 [protection]
 warning = "{test_case.warning}"
@@ -304,6 +306,85 @@ def test_given_mixed_pipeline_modes_when_building_then_virtual_runs_before_direc
         test_case.expected_direct_phase_fragment
     )
     assert test_case.expected_completion_fragment in output
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliRejectedPipelineLimitTestCase(
+            description="target limit rejects a mixed build before mutation",
+            project_max_pipelines=2,
+            target_max_pipelines=1,
+            expected_exit_code=1,
+            expected_error_fragment="Build affects 2 pipelines, exceeding max_pipelines=1",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_exceeded_pipeline_limit_when_running_then_rejects_before_mutation(
+    test_case: CliRejectedPipelineLimitTestCase,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    write_mixed_scope_project(project_root=tmp_path)
+    project_path: Path = tmp_path / "streambuild_project.toml"
+    project_path.write_text(
+        project_path.read_text(encoding="utf-8")
+        + f"\n[build]\nmax_pipelines = {test_case.project_max_pipelines}\n"
+        + f"\n[targets.test.build]\nmax_pipelines = {test_case.target_max_pipelines}\n",
+        encoding="utf-8",
+    )
+    connection: RecordingAdapterConnection = build_mixed_scope_project_connection()
+
+    exit_code: int = run_scope_project_build_with_connection(
+        project_root=tmp_path,
+        json_output=False,
+        auto_approve=True,
+        connection=connection,
+    )
+
+    assert exit_code == test_case.expected_exit_code
+    captured: CaptureResult[str] = capsys.readouterr()
+    assert test_case.expected_error_fragment in captured.err
+    assert connection.statements == []
+    assert connection.workflow_mutation_statements == []
+    assert connection.invocation_observations == []
+    assert not (tmp_path / "target/run/build").exists()
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliAllowedPipelineLimitTestCase(
+            description="selection within the project limit proceeds",
+            project_max_pipelines=1,
+            selectors=("alpha",),
+            expected_exit_code=0,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_selection_within_pipeline_limit_when_running_then_build_proceeds(
+    test_case: CliAllowedPipelineLimitTestCase,
+    tmp_path: Path,
+) -> None:
+    write_mixed_scope_project(project_root=tmp_path)
+    project_path: Path = tmp_path / "streambuild_project.toml"
+    project_path.write_text(
+        project_path.read_text(encoding="utf-8")
+        + f"\n[build]\nmax_pipelines = {test_case.project_max_pipelines}\n",
+        encoding="utf-8",
+    )
+
+    exit_code: int = run_scope_project_build_with_connection(
+        project_root=tmp_path,
+        json_output=False,
+        auto_approve=True,
+        connection=build_mixed_scope_project_connection(),
+        selectors=test_case.selectors,
+    )
+
+    assert exit_code == test_case.expected_exit_code
 
 
 @pytest.mark.parametrize(

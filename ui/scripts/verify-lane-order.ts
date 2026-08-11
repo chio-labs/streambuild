@@ -20,7 +20,7 @@ import {
 	weightKey,
 	arrangementCost,
 	type LaneWeights
-} from '../src/lib/lineage/lane-order.ts';
+} from '../src/lib/presentation/_helpers/lineage/lane-order.ts';
 
 function bruteForceCost(groups: string[], weights: LaneWeights): number {
 	let best: number = Infinity;

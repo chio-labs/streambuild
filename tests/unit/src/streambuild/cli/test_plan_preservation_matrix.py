@@ -227,7 +227,7 @@ def test_given_preservation_source_mode_when_running_plan_then_snapshot_path_sta
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     project_dir: Path = tmp_path / "project"
-    pipeline_dir: Path = project_dir / "pipelines" / "order_events"
+    pipeline_dir: Path = project_dir / "pipelines" / "pl__order_events"
     pipeline_dir.mkdir(parents=True)
     (project_dir / "streambuild_project.toml").write_text(
         'name = "matrix_project"\ndefault_target = "test"\n\n'
