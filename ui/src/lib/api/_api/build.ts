@@ -4,12 +4,18 @@ import type { BuildFeed, BuildStartResult, RunEventFeed } from '$lib/api/types';
 export async function requestBuildStart(
 	selectors: string[],
 	startTime: string | null,
-	confirmations: string[]
+	confirmations: string[],
+	deploymentId: string | null = null
 ): Promise<BuildStartResult> {
 	const response: Response = await fetch('/api/build', {
 		method: 'POST',
 		headers: { 'content-type': 'application/json' },
-		body: JSON.stringify({ selectors, startTime, confirmations })
+		body: JSON.stringify({
+			selectors,
+			startTime,
+			...(deploymentId === null ? {} : { deploymentId }),
+			confirmations
+		})
 	});
 	return readApiResponse<BuildStartResult>(response, 'build start');
 }

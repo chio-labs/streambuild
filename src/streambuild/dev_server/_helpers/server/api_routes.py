@@ -10,11 +10,15 @@ from fastapi import FastAPI, HTTPException, Query
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.exceptions import AdapterError
-from streambuild.cli.build.main.build_direct_build_preview import build_direct_build_preview
+from streambuild.cli.build.main.prepare_build_workflow import prepare_build_workflow
 from streambuild.cli.build.main.validate_build_pipeline_limit import validate_build_pipeline_limit
-from streambuild.cli.build.models import DirectBuildPreviewContext, WorkflowPreparationOptions
+from streambuild.cli.build.models import (
+    DirectWorkflowPreparation,
+    MixedWorkflowPreparation,
+    VirtualWorkflowPreparation,
+    WorkflowPreparationOptions,
+)
 from streambuild.cli.entry.exceptions import CliUserError
-from streambuild.cli.plan.main.normalize_cli_start_time import normalize_cli_start_time
 from streambuild.compiler.compile.models import CompiledSource
 from streambuild.compiler.discovery.models import KafkaLandingStep
 from streambuild.compiler.pipeline.models import CompileAnalysis
@@ -25,7 +29,7 @@ from streambuild.dev_server._helpers.payloads.deployments_payload import (
     build_deployments_payload,
 )
 from streambuild.dev_server._helpers.payloads.plan_payload import (
-    build_plan_payload,
+    build_mode_aware_plan_payload,
     count_replay_rows,
 )
 from streambuild.dev_server._helpers.payloads.state_payload import (
@@ -86,6 +90,8 @@ from streambuild.dev_server.types import (
     DevServerReporter,
     RunPresentationStatus,
 )
+from streambuild.executor.backfill.exceptions import BackfillExecutionError
+from streambuild.executor.direct.exceptions import DirectBuildError
 from streambuild.executor.observability.main.logical_resource_identities import (
     logical_resource_identities,
 )
@@ -180,51 +186,66 @@ def register_api_routes(
         *,
         select: Annotated[list[str] | None, Query()] = None,
         start: Annotated[str | None, Query()] = None,
+        deployment: Annotated[str | None, Query()] = None,
     ) -> dict[str, object]:
         client: AdapterConnection = _required_connection()
         analysis: CompileAnalysis = _servable_analysis()
         try:
             if start is not None and not select:
                 raise CliUserError("--start-time requires at least one --select")
-            normalized_start: str | None = (
-                None if start is None else normalize_cli_start_time(start)
-            )
             with state.query_lock:
                 planned_at: str = client.capture_warehouse_timestamp()
-                preview: DirectBuildPreviewContext = build_direct_build_preview(
+                preparation: (
+                    DirectWorkflowPreparation
+                    | MixedWorkflowPreparation
+                    | VirtualWorkflowPreparation
+                ) = prepare_build_workflow(
+                    analysis=analysis,
                     options=WorkflowPreparationOptions(
                         database=database,
                         metadata_database=database,
                         selectors=tuple(select or ()),
-                        deployment_id=None,
+                        deployment_id=deployment,
                         full_refresh=False,
                         start_time=start,
                         verbose=False,
                     ),
                     client=client,
-                    analysis=analysis,
-                    effective_start_time=normalized_start,
+                    adapter_profile=analysis.adapter_profile,
                 )
+                direct: DirectWorkflowPreparation | None = _direct_preparation(preparation)
+                resolved_deployment_id: str | None = _resolved_deployment_id(preparation)
                 _, command = build_invocation(
                     selectors=tuple(select or ()),
                     start_time=start,
+                    deployment_id=resolved_deployment_id,
                     execution_context=execution_context,
                 )
-                return build_plan_payload(
-                    plan=preview.plan,
+                replay_row_counts: dict[str, int | None] = (
+                    {}
+                    if direct is None
+                    else count_replay_rows(
+                        connection=client,
+                        database=direct.preview.database,
+                        plan=direct.preview.plan,
+                        start_time=direct.preview.effective_start_time,
+                    )
+                )
+                return build_mode_aware_plan_payload(
+                    preparation=preparation,
                     analysis=analysis,
                     selectors=tuple(select or ()),
-                    start_time=normalized_start,
                     planned_at=planned_at,
                     command=command,
-                    replay_row_counts=count_replay_rows(
-                        connection=client,
-                        database=preview.database,
-                        plan=preview.plan,
-                        start_time=normalized_start,
-                    ),
+                    replay_row_counts=replay_row_counts,
                 )
-        except (CliUserError, DirectPlanError, ValueError) as error:
+        except (
+            BackfillExecutionError,
+            CliUserError,
+            DirectBuildError,
+            DirectPlanError,
+            ValueError,
+        ) as error:
             raise HTTPException(status_code=_HTTP_BAD_REQUEST, detail=str(error)) from error
         except AdapterError as error:
             raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
@@ -671,35 +692,25 @@ def _register_build_routes(
                 ]
                 blocking_run: dict[str, object] | None = None
                 if active_runs:
-                    if request.startTime is not None and not request.selectors:
-                        raise CliUserError("--start-time requires at least one --select")
-                    effective_start_time: str | None = (
-                        None
-                        if request.startTime is None
-                        else normalize_cli_start_time(request.startTime)
-                    )
-                    preview: DirectBuildPreviewContext = build_direct_build_preview(
+                    preparation: (
+                        DirectWorkflowPreparation
+                        | MixedWorkflowPreparation
+                        | VirtualWorkflowPreparation
+                    ) = prepare_build_workflow(
+                        analysis=analysis,
                         options=WorkflowPreparationOptions(
                             database=database,
                             metadata_database=database,
                             selectors=tuple(request.selectors),
-                            deployment_id=None,
+                            deployment_id=request.deploymentId,
                             full_refresh=False,
                             start_time=request.startTime,
                             verbose=False,
                         ),
                         client=client,
-                        analysis=analysis,
-                        effective_start_time=effective_start_time,
+                        adapter_profile=analysis.adapter_profile,
                     )
-                    requested_writes: frozenset[str] = frozenset(
-                        logical_resource_identities(preview.plan.execution_scope)
-                    )
-                    requested_reads: frozenset[str] = frozenset(
-                        logical_resource_identities(
-                            tuple(item.key for item in preview.plan.prerequisite_scope)
-                        )
-                    )
+                    requested_writes, requested_reads = _preparation_logical_scopes(preparation)
                     blocking_run = next(
                         (
                             run
@@ -723,13 +734,20 @@ def _register_build_routes(
                     project_dir=project_dir,
                     selectors=tuple(request.selectors),
                     start_time=request.startTime,
+                    deployment_id=request.deploymentId,
                     confirmations=tuple(request.confirmations),
                 )
         except BuildInProgressError as error:
             raise HTTPException(status_code=_HTTP_CONFLICT, detail=str(error)) from error
         except BuildStartError as error:
             raise HTTPException(status_code=_HTTP_BAD_REQUEST, detail=str(error)) from error
-        except (CliUserError, DirectPlanError, ValueError) as error:
+        except (
+            BackfillExecutionError,
+            CliUserError,
+            DirectBuildError,
+            DirectPlanError,
+            ValueError,
+        ) as error:
             raise HTTPException(status_code=_HTTP_BAD_REQUEST, detail=str(error)) from error
         except AdapterError as error:
             raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
@@ -773,6 +791,52 @@ def _blocking_run_message(*, run: dict[str, object], presumed_failed_after_secon
         f"Run {invocation_id} is still {status} (last signal {signal_age_seconds}s ago), "
         "so no new run was started. Wait for it to finish or cancel it from Runs."
     )
+
+
+def _direct_preparation(
+    preparation: DirectWorkflowPreparation | MixedWorkflowPreparation | VirtualWorkflowPreparation,
+) -> DirectWorkflowPreparation | None:
+    if isinstance(preparation, DirectWorkflowPreparation):
+        return preparation
+    if isinstance(preparation, MixedWorkflowPreparation):
+        return preparation.direct
+    return None
+
+
+def _resolved_deployment_id(
+    preparation: DirectWorkflowPreparation | MixedWorkflowPreparation | VirtualWorkflowPreparation,
+) -> str | None:
+    if isinstance(preparation, VirtualWorkflowPreparation):
+        return preparation.preview.deployment_id
+    if isinstance(preparation, MixedWorkflowPreparation):
+        return preparation.virtual.preview.deployment_id
+    return None
+
+
+def _preparation_logical_scopes(
+    preparation: DirectWorkflowPreparation | MixedWorkflowPreparation | VirtualWorkflowPreparation,
+) -> tuple[frozenset[str], frozenset[str]]:
+    writes: set[str] = set()
+    reads: set[str] = set()
+    direct: DirectWorkflowPreparation | None = _direct_preparation(preparation)
+    if direct is not None:
+        writes.update(logical_resource_identities(direct.preview.plan.execution_scope))
+        reads.update(
+            logical_resource_identities(
+                tuple(item.key for item in direct.preview.plan.prerequisite_scope)
+            )
+        )
+    virtual: VirtualWorkflowPreparation | None = (
+        preparation.virtual
+        if isinstance(preparation, MixedWorkflowPreparation)
+        else preparation
+        if isinstance(preparation, VirtualWorkflowPreparation)
+        else None
+    )
+    if virtual is not None:
+        writes.update(logical_resource_identities(virtual.preview.run_execution_scope))
+        reads.update(logical_resource_identities(virtual.preview.run_context_scope))
+    return frozenset(writes), frozenset(reads)
 
 
 def _run_overlaps_requested_scope(

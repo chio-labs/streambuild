@@ -4,7 +4,8 @@ import type { BuildStartResult } from '$lib/api/types';
 export async function startBuild(
 	selectors: string[],
 	startTime: string | null,
-	confirmations: string[] = []
+	confirmations: string[] = [],
+	deploymentId: string | null = null
 ): Promise<BuildStartResult> {
-	return requestBuildStart(selectors, startTime, confirmations);
+	return requestBuildStart(selectors, startTime, confirmations, deploymentId);
 }

@@ -16,13 +16,22 @@ export function readPlanLocation(url: URL): ParsedPlanLocation {
 		.getAll('select')
 		.map(parseSelector)
 		.filter((selector): selector is Selector => selector !== null);
+	const deploymentId: string | null = url.searchParams.get('deployment') || null;
 	const rawStart: string | null = url.searchParams.get('start');
-	if (!rawStart || selectors.length === 0) return { selectors, replayWindow: { mode: 'full' } };
+	if (!rawStart || selectors.length === 0) {
+		return { selectors, replayWindow: { mode: 'full' }, deploymentId };
+	}
 	const parsed: Date = parseUtc(rawStart);
 	const replayWindow: ReplayWindow = Number.isFinite(parsed.getTime())
 		? { mode: 'from', startTime: parsed.toISOString() }
 		: { mode: 'full' };
-	return { selectors, replayWindow };
+	return { selectors, replayWindow, deploymentId };
+}
+
+export function planLocationRequestKey(url: URL): string {
+	const location: ParsedPlanLocation = readPlanLocation(url);
+	const tokens: string[] = location.selectors.map(selectorToken);
+	return `${tokens.join(',')}|${replayStartToken(location.replayWindow) ?? ''}|${location.deploymentId ?? ''}`;
 }
 
 export function shouldClearReplayStart(url: URL): boolean {
@@ -38,15 +47,24 @@ export function shouldClearReplayStart(url: URL): boolean {
 export function writePlanSelection(
 	url: URL,
 	selectors: Selector[],
-	replayWindow?: ReplayWindow
+	replayWindow?: ReplayWindow,
+	deploymentId: string | null = null
 ): URL {
 	const nextUrl: URL = new URL(url);
 	nextUrl.searchParams.delete('select');
+	nextUrl.searchParams.delete('deployment');
 	for (const selector of selectors) nextUrl.searchParams.append('select', selectorToken(selector));
 	if (replayWindow) {
 		const start: string | null = replayStartToken(replayWindow);
 		if (start === null) nextUrl.searchParams.delete('start');
 		else nextUrl.searchParams.set('start', start);
 	}
+	if (deploymentId !== null) nextUrl.searchParams.set('deployment', deploymentId);
+	return nextUrl;
+}
+
+export function writePlanDeployment(url: URL, deploymentId: string): URL {
+	const nextUrl: URL = new URL(url);
+	nextUrl.searchParams.set('deployment', deploymentId);
 	return nextUrl;
 }
