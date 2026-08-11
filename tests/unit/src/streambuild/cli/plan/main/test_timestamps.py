@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from streambuild.cli.entry.exceptions import CliUserError
-from streambuild.cli.plan.main._normalize_cli_start_time import normalize_cli_start_time
+from streambuild.cli.plan.main.normalize_cli_start_time import normalize_cli_start_time
 from tests.unit.src.streambuild.cli.plan.main._test_types import (
     CliStartTimeNormalizationErrorTestCase,
     CliStartTimeNormalizationTestCase,

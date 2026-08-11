@@ -1,5 +1,7 @@
 from collections.abc import Callable
 from pathlib import Path
+from typing import cast
+from unittest.mock import MagicMock
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -11,11 +13,17 @@ from streambuild.adapter.models import (
     AdapterDeploymentRecord,
     AdapterDirectFingerprintSnapshot,
     AdapterIdentity,
+    AdapterManagedSource,
+    AdapterMaterializedView,
     AdapterMetadataObjectKey,
     AdapterMutationResult,
     AdapterPreparedObjectMapping,
     AdapterPublishEventRecord,
     AdapterQueryResult,
+    AdapterReplayCoverageRequest,
+    AdapterStableView,
+    AdapterTable,
+    AdapterView,
     CatalogColumn,
     CatalogIdentity,
     CatalogRelation,
@@ -23,14 +31,32 @@ from streambuild.adapter.models import (
     InspectedActiveTableBinding,
     InspectedManagedTableState,
 )
+from streambuild.adapters.clickhouse._helpers.replay import (
+    render_clickhouse_replay_coverage_query,
+)
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
+from streambuild.cli.build.models import (
+    DirectWorkflowPreparation,
+    MixedWorkflowPreparation,
+    VirtualWorkflowPreparation,
+)
 from streambuild.cli.entry._helpers.compiler_profile import build_compiler_adapter_profile
+from streambuild.compiler.compile.models import LogicalResourceKey, ObjectKey
 from streambuild.compiler.discovery.main.load_project_input_for_path import (
     load_project_input_for_path,
 )
 from streambuild.compiler.discovery.models import KafkaSettings
 from streambuild.compiler.pipeline.main.analyze_project import analyze_project
 from streambuild.compiler.pipeline.models import CompileAnalysis
+from streambuild.compiler.planner.models import (
+    DeploymentPlan,
+    DeploymentStep,
+    DirectPlan,
+    DirectPlanEntry,
+    DirectRelationOperation,
+    PlannerWarning,
+    PreparedShadowObject,
+)
 from streambuild.dev_server._helpers.payloads.activity_payload import (
     build_activity_capabilities_query,
     build_parts_activity_query,
@@ -109,6 +135,10 @@ _UNAVAILABLE_FINGERPRINTS: AdapterDirectFingerprintSnapshot = AdapterDirectFinge
 
 def write_dev_server_project(*, project_dir: Path) -> None:
     write_project_configuration_and_source(project_dir=project_dir)
+    write_pipeline_file(
+        project_dir / "pipelines" / "order_events" / "pipeline.toml",
+        'mode = "direct"',
+    )
     write_pipeline_file(project_dir / "sources" / "orders.yml", _ORDERS_SOURCE_WITH_FRESHNESS)
     write_pipeline_file(
         project_dir / "pipelines" / "order_events" / "orders_clean.sql",
@@ -263,7 +293,7 @@ class FakeAdapterConnection(AdapterConnection):
         raise NotImplementedError
 
     def render_ensure_database(self, database: str) -> str:
-        raise NotImplementedError
+        return f"CREATE DATABASE IF NOT EXISTS `{database}`"
 
     def render_migrate_metadata_state(self, database: str) -> tuple[str, ...]:
         raise NotImplementedError
@@ -275,12 +305,26 @@ class FakeAdapterConnection(AdapterConnection):
         raise NotImplementedError
 
     def render_replay_coverage_query(self, request: object) -> str:
-        raise NotImplementedError
+        return render_clickhouse_replay_coverage_query(cast(AdapterReplayCoverageRequest, request))
 
     def render_resource(
-        self, *, resource: object, database: str, if_not_exists: bool = False
+        self,
+        *,
+        resource: (
+            AdapterManagedSource
+            | AdapterTable
+            | AdapterMaterializedView
+            | AdapterView
+            | AdapterStableView
+        ),
+        database: str,
+        if_not_exists: bool = False,
     ) -> str:
-        raise NotImplementedError
+        return ClickHouseAdapter().render_resource(
+            resource=resource,
+            database=database,
+            if_not_exists=if_not_exists,
+        )
 
 
 _STATE_WAREHOUSE_NOW: str = "2026-08-03 12:00:00.000"
@@ -289,9 +333,18 @@ _STATE_OLDEST_EVENT: str = "2026-08-01 00:00:00.000"
 _STATE_MODEL_NEWEST: str = "2026-08-03 10:00:00.000"
 
 _RAW_COLUMNS: tuple[CatalogColumn, ...] = (
+    CatalogColumn(name="kafka_key", type="String"),
     CatalogColumn(name="kafka_value", type="String"),
+    CatalogColumn(name="kafka_topic", type="String"),
+    CatalogColumn(name="kafka_partition", type="Int32"),
+    CatalogColumn(name="kafka_offset", type="Int64"),
+    CatalogColumn(name="kafka_timestamp", type="Nullable(DateTime64(3))"),
     CatalogColumn(name="_replay_partition", type="Int32"),
     CatalogColumn(name="_replay_offset", type="Int64"),
+    CatalogColumn(name="_replay_timestamp", type="Nullable(DateTime64(3))"),
+    CatalogColumn(name="kafka_header_keys", type="Array(String)"),
+    CatalogColumn(name="kafka_header_values", type="Array(String)"),
+    CatalogColumn(name="kafka_landed_at", type="DateTime64(3)"),
     CatalogColumn(name="_replay_landed_at", type="DateTime64(3)"),
 )
 
@@ -312,6 +365,109 @@ def build_state_test_client(*, project_dir: Path) -> TestClient:
         create_dev_app(
             state=state, connection=connection, database="analytics", project_dir=project_dir
         )
+    )
+
+
+def build_virtual_plan_preparation(deployment_id: str) -> VirtualWorkflowPreparation:
+    model_key: LogicalResourceKey = LogicalResourceKey("model", "orders_clean")
+    object_key: ObjectKey = ObjectKey("analytics", "table", "tbl__orders_clean")
+    target_key: ObjectKey = ObjectKey("analytics", "table", "tbl__orders_summary")
+    preview: MagicMock = MagicMock()
+    preview.database = "analytics"
+    preview.deployment_id = deployment_id
+    preview.start_time = "2026-08-01 12:00:00.000"
+    preview.run_execution_scope = (
+        model_key,
+        LogicalResourceKey("model", "orders_summary"),
+    )
+    preview.run_context_scope = (LogicalResourceKey("source", "orders"),)
+    preview.plan = DeploymentPlan(
+        deployment_id=deployment_id,
+        object_changes=(),
+        rebuild_subtrees=(),
+        steps=(
+            DeploymentStep(
+                step_id="plan_orders",
+                phase="plan",
+                action="plan_shadow_table",
+                root_key=object_key,
+                target_key=target_key,
+                physical_name=f"tbl__orders_summary__{deployment_id}",
+            ),
+        ),
+        prepared_shadow_objects=(
+            PreparedShadowObject(
+                logical_key=object_key,
+                physical_name=f"tbl__orders_clean__{deployment_id}",
+                logical_model_name="orders_clean",
+            ),
+            PreparedShadowObject(
+                logical_key=target_key,
+                physical_name=f"tbl__orders_summary__{deployment_id}",
+                logical_model_name="orders_summary",
+            ),
+        ),
+        warnings=(
+            PlannerWarning(
+                warning_code="bounded_replay",
+                message="Replay is bounded.",
+                root_key=object_key,
+                target_key=target_key,
+            ),
+        ),
+    )
+    return VirtualWorkflowPreparation(
+        preview=preview,
+        request=MagicMock(),
+        workflow=MagicMock(),
+        plan_text="virtual",
+    )
+
+
+def build_mixed_plan_preparation(deployment_id: str) -> MixedWorkflowPreparation:
+    return MixedWorkflowPreparation(
+        virtual=build_virtual_plan_preparation(deployment_id),
+        direct=_build_direct_plan_preparation(),
+        plan_text="mixed",
+        plan_json="{}",
+    )
+
+
+def _build_direct_plan_preparation() -> DirectWorkflowPreparation:
+    model_key: LogicalResourceKey = LogicalResourceKey("model", "orders_clean")
+    operation: DirectRelationOperation = DirectRelationOperation(
+        relation_name="tbl__orders_clean",
+        action="create",
+        model_key=model_key,
+        resource_kind="table",
+    )
+    preview: MagicMock = MagicMock()
+    preview.database = "analytics"
+    preview.effective_start_time = "2026-08-01 12:00:00.000"
+    preview.plan = DirectPlan(
+        database="analytics",
+        user_scope=(model_key,),
+        execution_scope=(model_key,),
+        prerequisite_scope=(),
+        entries=(
+            DirectPlanEntry(
+                model_key=model_key,
+                reason="selected",
+                relation_names=("tbl__orders_clean",),
+                resource_kinds=("table",),
+                driving_input_key=None,
+                is_replay_root=False,
+            ),
+        ),
+        replay_roots=(),
+        teardown_operations=(),
+        creation_operations=(operation,),
+    )
+    return DirectWorkflowPreparation(
+        preview=preview,
+        request=MagicMock(),
+        workflow=MagicMock(),
+        plan_text="direct",
     )
 
 

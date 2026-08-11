@@ -43,10 +43,10 @@ from streambuild.adapter.models import (
 from streambuild.adapters.clickhouse._helpers.inspection import load_clickhouse_catalog
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from streambuild.cli.build._helpers.execution_artifacts import render_direct_execution_json
-from streambuild.cli.build._helpers.preview import build_direct_build_preview
 from streambuild.cli.build._helpers.virtual_preview import build_virtual_build_preview
 from streambuild.cli.build.constants import STREAMBUILD_TOOL_VERSION
 from streambuild.cli.build.main._run_build import run_build
+from streambuild.cli.build.main.build_direct_build_preview import build_direct_build_preview
 from streambuild.cli.build.models import (
     BuildCommandOptions,
     DirectBuildPreviewContext,

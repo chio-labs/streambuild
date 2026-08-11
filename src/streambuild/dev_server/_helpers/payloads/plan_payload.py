@@ -5,18 +5,28 @@ from __future__ import annotations
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.exceptions import AdapterError
 from streambuild.adapter.models import AdapterReplayColumns
-from streambuild.compiler.compile.models import CompiledPipeline, LogicalResourceKey
+from streambuild.cli.build.models import (
+    BuildProtectionRequirement,
+    DirectWorkflowPreparation,
+    MixedWorkflowPreparation,
+    VirtualWorkflowPreparation,
+)
+from streambuild.compiler.compile.models import CompiledPipeline, LogicalResourceKey, ObjectKey
 from streambuild.compiler.discovery.models import PipelineProtection
 from streambuild.compiler.discovery.types import ReplayLineageMode
 from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.compiler.planner.models import (
+    DeploymentStep,
     DirectPlan,
     DirectPlanEntry,
     DirectPrerequisite,
     DirectRelationOperation,
     DirectReplayRoot,
     DirectSqlChange,
+    PlannerWarning,
+    PreparedShadowObject,
 )
+from streambuild.dev_server.exceptions import DevServerError
 
 _TIMESTAMP_DRIVEN_MODES: frozenset[ReplayLineageMode] = frozenset(
     {ReplayLineageMode.TIMESTAMP, ReplayLineageMode.CURSOR}
@@ -63,6 +73,216 @@ def build_plan_payload(
         ),
         "plannedAt": planned_at,
         "command": command,
+    }
+
+
+def build_mode_aware_plan_payload(
+    *,
+    preparation: DirectWorkflowPreparation | MixedWorkflowPreparation | VirtualWorkflowPreparation,
+    analysis: CompileAnalysis,
+    selectors: tuple[str, ...],
+    planned_at: str,
+    replay_row_counts: dict[str, int | None],
+    command: str,
+) -> dict[str, object]:
+    """Serialize the exact mode-aware preparation the UI can execute."""
+
+    direct: DirectWorkflowPreparation | None = (
+        preparation.direct
+        if isinstance(preparation, MixedWorkflowPreparation)
+        else preparation
+        if isinstance(preparation, DirectWorkflowPreparation)
+        else None
+    )
+    virtual: VirtualWorkflowPreparation | None = (
+        preparation.virtual
+        if isinstance(preparation, MixedWorkflowPreparation)
+        else preparation
+        if isinstance(preparation, VirtualWorkflowPreparation)
+        else None
+    )
+    if direct is not None:
+        start_time: str | None = direct.preview.effective_start_time
+        payload: dict[str, object] = build_plan_payload(
+            plan=direct.preview.plan,
+            analysis=analysis,
+            selectors=selectors,
+            start_time=start_time,
+            planned_at=planned_at,
+            replay_row_counts=replay_row_counts,
+            command=command,
+        )
+    else:
+        if virtual is None:
+            raise DevServerError(
+                "Cannot serialize a workflow preparation without a direct or virtual phase"
+            )
+        start_time = virtual.preview.start_time
+        payload = _empty_plan_payload(
+            database=virtual.preview.database,
+            selectors=selectors,
+            start_time=start_time,
+            planned_at=planned_at,
+            command=command,
+        )
+    phases: list[dict[str, object]] = []
+    if virtual is not None:
+        phases.append(_virtual_phase_payload(preparation=virtual))
+    if direct is not None:
+        phases.append(_direct_phase_payload(preparation=direct))
+    mode: str = (
+        "mixed"
+        if isinstance(preparation, MixedWorkflowPreparation)
+        else "virtual"
+        if isinstance(preparation, VirtualWorkflowPreparation)
+        else "direct"
+    )
+    requirements: tuple[BuildProtectionRequirement, ...] = preparation.protection_requirements
+    payload.update(
+        {
+            "mode": mode,
+            "executionOrder": [str(phase["mode"]) for phase in phases],
+            "phases": phases,
+            "deploymentId": None if virtual is None else virtual.preview.deployment_id,
+            "protections": [
+                {
+                    "pipelineName": requirement.pipeline_name,
+                    "warning": requirement.warning,
+                    "confirmation": requirement.confirmation,
+                }
+                for requirement in requirements
+            ],
+            "upperBoundary": {
+                "mode": "captured_at_execution",
+                "continuesLive": True,
+            },
+        }
+    )
+    if virtual is not None:
+        existing_warnings: object = payload["warnings"]
+        model_name_by_object: dict[ObjectKey, str] = {
+            prepared.logical_key: prepared.logical_model_name
+            for prepared in virtual.preview.plan.prepared_shadow_objects
+        }
+        payload["warnings"] = [
+            *(existing_warnings if isinstance(existing_warnings, list) else []),
+            *[
+                _virtual_warning_payload(
+                    warning=warning,
+                    model_name_by_object=model_name_by_object,
+                )
+                for warning in virtual.preview.plan.warnings
+            ],
+        ]
+    return payload
+
+
+def _empty_plan_payload(
+    *,
+    database: str,
+    selectors: tuple[str, ...],
+    start_time: str | None,
+    planned_at: str,
+    command: str,
+) -> dict[str, object]:
+    return {
+        "database": database,
+        "userScope": list(selectors),
+        "entries": [],
+        "prerequisites": [],
+        "teardown": [],
+        "creation": [],
+        "replayRoots": [],
+        "warnings": [],
+        "protections": [],
+        "replayWindow": (
+            {"mode": "full"} if start_time is None else {"mode": "from", "startTime": start_time}
+        ),
+        "plannedAt": planned_at,
+        "command": command,
+    }
+
+
+def _direct_phase_payload(*, preparation: DirectWorkflowPreparation) -> dict[str, object]:
+    plan: DirectPlan = preparation.preview.plan
+    relation_names: list[str] = []
+    for entry in plan.entries:
+        relation_names.extend(entry.relation_names)
+    return {
+        "mode": "direct",
+        "effect": "applied_immediately",
+        "deploymentId": None,
+        "modelNames": [entry.model_key.name for entry in plan.entries],
+        "contextModelNames": [item.key.name for item in plan.prerequisite_scope],
+        "relationNames": relation_names,
+        "actions": [
+            {
+                "phase": "teardown",
+                "action": str(operation.action),
+                "logicalName": operation.model_key.name,
+                "physicalName": operation.relation_name,
+            }
+            for operation in plan.teardown_operations
+        ]
+        + [
+            {
+                "phase": "creation",
+                "action": str(operation.action),
+                "logicalName": operation.model_key.name,
+                "physicalName": operation.relation_name,
+            }
+            for operation in plan.creation_operations
+        ],
+        "startTime": preparation.preview.effective_start_time,
+    }
+
+
+def _virtual_phase_payload(*, preparation: VirtualWorkflowPreparation) -> dict[str, object]:
+    prepared_objects: tuple[PreparedShadowObject, ...] = (
+        preparation.preview.plan.prepared_shadow_objects
+    )
+    model_name_by_object: dict[ObjectKey, str] = {
+        prepared.logical_key: prepared.logical_model_name for prepared in prepared_objects
+    }
+    model_names: list[str] = []
+    for key in preparation.preview.run_execution_scope:
+        if key.name not in model_names:
+            model_names.append(key.name)
+    return {
+        "mode": "virtual",
+        "effect": "staged",
+        "deploymentId": preparation.preview.deployment_id,
+        "modelNames": model_names,
+        "contextModelNames": [key.name for key in preparation.preview.run_context_scope],
+        "relationNames": [prepared.physical_name for prepared in prepared_objects],
+        "actions": [
+            _virtual_action_payload(step=step, model_name_by_object=model_name_by_object)
+            for step in preparation.preview.plan.steps
+        ],
+        "startTime": preparation.preview.start_time,
+    }
+
+
+def _virtual_action_payload(
+    *, step: DeploymentStep, model_name_by_object: dict[ObjectKey, str]
+) -> dict[str, object]:
+    affected_key: ObjectKey = step.target_key or step.root_key
+    return {
+        "phase": str(step.phase),
+        "action": str(step.action),
+        "logicalName": model_name_by_object.get(affected_key, affected_key.name),
+        "physicalName": step.physical_name,
+    }
+
+
+def _virtual_warning_payload(
+    *, warning: PlannerWarning, model_name_by_object: dict[ObjectKey, str]
+) -> dict[str, object]:
+    affected_key: ObjectKey = warning.target_key or warning.root_key
+    return {
+        "code": warning.warning_code,
+        "message": warning.message,
+        "relatedModel": model_name_by_object.get(affected_key, affected_key.name),
     }
 
 

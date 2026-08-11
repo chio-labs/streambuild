@@ -4,7 +4,7 @@ import sys
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.exceptions import AdapterError
-from streambuild.cli.build.main._prepare_build_workflow import prepare_build_workflow
+from streambuild.cli.build.main.prepare_build_workflow import prepare_build_workflow
 from streambuild.cli.build.models import (
     DirectWorkflowPreparation,
     MixedWorkflowPreparation,
