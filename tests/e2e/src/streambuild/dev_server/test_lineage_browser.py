@@ -14,6 +14,8 @@ from tests.e2e.src.streambuild.dev_server._test_types import (
 )
 from tests.e2e.src.streambuild.dev_server.helpers import seed_lineage_exact_activity
 
+_FLOW_ANIMATION_SETTLE_MS: int = 350
+
 
 @pytest.mark.e2e
 @pytest.mark.browser
@@ -187,7 +189,7 @@ def test_given_logged_activity_when_using_lineage_then_live_semantics_remain_tru
     page.keyboard.down("Control")
     page.mouse.wheel(0, -500)
     page.keyboard.up("Control")
-    page.wait_for_timeout(100)
+    page.wait_for_timeout(_FLOW_ANIMATION_SETTLE_MS)
     zoom_after_control_wheel: float = viewport.evaluate(
         "element => new DOMMatrix(getComputedStyle(element).transform).a"
     )
@@ -239,11 +241,12 @@ def test_given_logged_activity_when_using_lineage_then_live_semantics_remain_tru
     assert "selected" in str(idle_node.get_attribute("class"))
     page.get_by_role("button", name="Close inspector").click()
 
+    page.wait_for_timeout(_FLOW_ANIMATION_SETTLE_MS)
     viewport_before_source_click: str = viewport.evaluate(
         "element => getComputedStyle(element).transform"
     )
     source_node.click(position={"x": 20, "y": 20})
-    page.wait_for_timeout(350)
+    page.wait_for_timeout(_FLOW_ANIMATION_SETTLE_MS)
     assert (
         viewport.evaluate("element => getComputedStyle(element).transform")
         == viewport_before_source_click
