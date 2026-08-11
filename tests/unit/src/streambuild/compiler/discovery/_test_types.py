@@ -45,6 +45,46 @@ class PipelineSourceInferenceErrorTestCase:
 
 
 @dataclass(frozen=True)
+class PipelinePrefixViolationTestCase:
+    description: str
+    pipeline_directory_name: str
+    expected_error_fragment: str
+
+
+@dataclass(frozen=True)
+class PipelineNamingMacroTestCase:
+    description: str
+    pipeline_directory_name: str
+    source_name: str
+    model_name: str
+    macro_source: str
+    expected_pipeline_names: list[str]
+
+
+@dataclass(frozen=True)
+class PipelineNamingMacroRenameTestCase:
+    description: str
+    pipeline_directory_name: str
+    macro_source: str
+    expected_error_fragment: str
+
+
+@dataclass(frozen=True)
+class ProjectPipelineNamingDefaultTestCase:
+    description: str
+    expected_pipeline_prefix: str
+    expected_pipeline_naming_macro: str | None
+
+
+@dataclass(frozen=True)
+class ProjectPipelineNamingOverrideTestCase:
+    description: str
+    naming_toml: str
+    expected_pipeline_prefix: str
+    expected_pipeline_naming_macro: str | None
+
+
+@dataclass(frozen=True)
 class ProjectConfigurationErrorTestCase:
     description: str
     project_contents: str

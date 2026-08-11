@@ -208,9 +208,9 @@ def write_mixed_scope_project(*, project_root: Path) -> None:
     """Write independent direct and virtual pipelines sharing one source."""
 
     write_direct_scope_project(project_root=project_root)
-    direct_pipeline_dir: Path = project_root / "pipelines" / "orders"
+    direct_pipeline_dir: Path = project_root / "pipelines" / "pl__orders"
     (direct_pipeline_dir / "pipeline.toml").write_text('mode = "direct"\n', encoding="utf-8")
-    virtual_pipeline_dir: Path = project_root / "pipelines" / "virtual_orders"
+    virtual_pipeline_dir: Path = project_root / "pipelines" / "pl__virtual_orders"
     virtual_pipeline_dir.mkdir(parents=True)
     (virtual_pipeline_dir / "pipeline.toml").write_text('mode = "virtual"\n', encoding="utf-8")
     (virtual_pipeline_dir / "virtual_alpha.sql").write_text(

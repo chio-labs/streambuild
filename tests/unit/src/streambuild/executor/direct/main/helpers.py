@@ -158,7 +158,7 @@ def _write_unrelated_pipeline(*, project_root: Path) -> None:
         "    replay_boundary: {mode: offsets}\n",
         encoding="utf-8",
     )
-    pipeline_root: Path = project_root / "pipelines" / "unrelated"
+    pipeline_root: Path = project_root / "pipelines" / "pl__unrelated"
     pipeline_root.mkdir(parents=True)
     (pipeline_root / "unrelated_model.sql").write_text(
         'MODEL (order_by ["event_id"]);\n'
