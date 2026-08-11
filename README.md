@@ -41,7 +41,7 @@ sources/
 macros/
   common.py
 pipelines/
-  orders/
+  pl__orders/
     pipeline.toml
     order_totals.sql
 audits/
@@ -117,8 +117,7 @@ tables.
 
 ## Pipelines
 
-Pipeline names are their direct directory names. The default `pl__` prefix keeps pipeline names
-distinct from source and model names:
+Each direct child of `pipelines/` is a pipeline. Its directory name is its logical name:
 
 ```text
 pipelines/
@@ -128,16 +127,17 @@ pipelines/
     order_totals.sql
 ```
 
-Models may be nested recursively; only the direct child `pl__orders` identifies the pipeline.
-Pipeline, source, and model names must be globally unique. Change or disable the required prefix in
-project configuration:
+Nested directories organize models but do not change pipeline identity. Pipeline, source, and model
+names share one namespace and must be unique.
+
+Pipeline names must start with `pl__` by default. Configure or disable the prefix with:
 
 ```toml
 [naming]
-pipeline_prefix = "custom__" # Set to "" to allow unprefixed pipeline directories.
+pipeline_prefix = "custom__" # Use "" to allow unprefixed names.
 ```
 
-Projects can impose a stronger deterministic naming rule with a macro:
+For a stricter rule, configure a naming macro:
 
 ```toml
 [naming]
@@ -151,9 +151,9 @@ def pipeline_name(ctx: PipelineNamingContext) -> str:
     return ctx.name if ctx.source_name is None else f"pl__{ctx.source_name}"
 ```
 
-The macro receives the authored name, inferred source name, sorted model names, relative pipeline
-directory, and mode. It returns the expected directory name. A mismatch fails discovery with a
-rename suggestion; StreamBuild never renames project files during compile, plan, or build.
+The optional macro receives an immutable context containing the pipeline name, source, sorted model
+names, relative directory, and mode. It returns the required directory name. A mismatch fails
+discovery; compile, plan, and build never rename files.
 
 ## Models
 
