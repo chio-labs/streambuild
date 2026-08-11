@@ -21,7 +21,7 @@ def run_compile_benchmark(*, project_dir: Path, model_count: int) -> float:
 
 
 def write_compile_benchmark_project(*, project_dir: Path, model_count: int) -> None:
-    pipeline_dir: Path = project_dir / "pipelines" / "performance"
+    pipeline_dir: Path = project_dir / "pipelines" / "pl__performance"
     pipeline_dir.mkdir(parents=True)
     (project_dir / "streambuild_project.toml").write_text(
         'name = "benchmark_project"\ndefault_target = "test"\n\n'

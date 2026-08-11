@@ -115,6 +115,46 @@ sources:
 StreamBuild owns managed Kafka landing objects. It validates but never mutates adopted source
 tables.
 
+## Pipelines
+
+Pipeline names are their direct directory names. The default `pl__` prefix keeps pipeline names
+distinct from source and model names:
+
+```text
+pipelines/
+  pl__orders/
+    staging/
+      orders_clean.sql
+    order_totals.sql
+```
+
+Models may be nested recursively; only the direct child `pl__orders` identifies the pipeline.
+Pipeline, source, and model names must be globally unique. Change or disable the required prefix in
+project configuration:
+
+```toml
+[naming]
+pipeline_prefix = "custom__" # Set to "" to allow unprefixed pipeline directories.
+```
+
+Projects can impose a stronger deterministic naming rule with a macro:
+
+```toml
+[naming]
+pipeline_naming_macro = "pipeline_name"
+```
+
+```python
+from streambuild.compiler.macros.models import PipelineNamingContext
+
+def pipeline_name(ctx: PipelineNamingContext) -> str:
+    return ctx.name if ctx.source_name is None else f"pl__{ctx.source_name}"
+```
+
+The macro receives the authored name, inferred source name, sorted model names, relative pipeline
+directory, and mode. It returns the expected directory name. A mismatch fails discovery with a
+rename suggestion; StreamBuild never renames project files during compile, plan, or build.
+
 ## Models
 
 ```sql
@@ -151,7 +191,7 @@ stb dev                      # local UI at 127.0.0.1:8000
 Select a model or pipeline with repeatable selectors:
 
 ```bash
-stb plan --select pipeline:orders
+stb plan --select pipeline:pl__orders
 stb build --select order_totals --start-time 2026-08-01T00:00:00Z
 ```
 

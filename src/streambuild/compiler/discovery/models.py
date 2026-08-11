@@ -9,6 +9,7 @@ from types import MappingProxyType
 
 from streambuild.compiler.discovery.constants import (
     DEFAULT_ADAPTER_NAME,
+    DEFAULT_PIPELINE_PREFIX,
     DEFAULT_RUN_PRESUMED_FAILED_AFTER_SECONDS,
     DEFAULT_TABLE_PREFIX,
     DEFAULT_VIEW_PREFIX,
@@ -187,8 +188,10 @@ class LocalProjectDefaults:
 
 @dataclass(frozen=True)
 class ProjectNaming:
-    """Project-wide model relation prefixes by model kind."""
+    """Project-wide pipeline validation and model relation naming."""
 
+    pipeline_prefix: str = DEFAULT_PIPELINE_PREFIX
+    pipeline_naming_macro: str | None = None
     table_prefix: str = DEFAULT_TABLE_PREFIX
     view_prefix: str = DEFAULT_VIEW_PREFIX
 

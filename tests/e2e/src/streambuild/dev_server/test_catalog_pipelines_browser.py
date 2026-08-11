@@ -27,7 +27,8 @@ FROM __ref("moving_events")
     [
         CatalogPipelineBrowserE2ETestCase(
             description="pipeline dependencies and catalog SQL remain exact across routes",
-            pipeline_name="moving_events",
+            pipeline_name="pl__moving_events",
+            source_name="moving_events",
             parent_model="moving_orders",
             child_model="derived_moving_orders",
             expected_relation="tbl__moving_orders",
@@ -60,7 +61,7 @@ def test_given_compiled_pipeline_when_navigating_catalog_then_identity_and_sql_r
     pipeline_by_name: dict[str, dict[str, object]] = {str(item["name"]): item for item in pipelines}
     pipeline: dict[str, object] = pipeline_by_name[test_case.pipeline_name]
     assert pipeline["mode"] == "direct"
-    assert pipeline["sourceName"] == test_case.pipeline_name
+    assert pipeline["sourceName"] == test_case.source_name
     assert pipeline["boundaryMode"] == "timestamp"
     assert pipeline["directory"] == f"pipelines/{test_case.pipeline_name}"
     assert set(cast(list[str], pipeline["models"])) == {
@@ -73,7 +74,7 @@ def test_given_compiled_pipeline_when_navigating_catalog_then_identity_and_sql_r
     parent: dict[str, object] = model_by_name[test_case.parent_model]
     child: dict[str, object] = model_by_name[test_case.child_model]
     assert parent["relationName"] == test_case.expected_relation
-    assert parent["drivingInput"] == test_case.pipeline_name
+    assert parent["drivingInput"] == test_case.source_name
     assert child["relationName"] == test_case.expected_child_relation
     assert child["mvRelationName"] == "mv__derived_moving_orders"
     assert child["drivingInput"] == test_case.parent_model
@@ -92,7 +93,7 @@ def test_given_compiled_pipeline_when_navigating_catalog_then_identity_and_sql_r
     expect(tree_item_locator).to_have_count(3)
     tree_items: list[Locator] = tree_item_locator.all()
     assert [item.get_attribute("data-node-name") for item in tree_items] == [
-        test_case.pipeline_name,
+        test_case.source_name,
         test_case.parent_model,
         test_case.child_model,
     ]

@@ -75,7 +75,7 @@ def normalize_json_output(output: str) -> str:
 
 
 def write_cli_compilation_project(*, project_root: Path, model_sql: str) -> None:
-    pipeline_root: Path = project_root / "pipelines" / "orders"
+    pipeline_root: Path = project_root / "pipelines" / "pl__orders"
     source_root: Path = project_root / "sources"
     pipeline_root.mkdir(parents=True, exist_ok=True)
     source_root.mkdir(parents=True, exist_ok=True)

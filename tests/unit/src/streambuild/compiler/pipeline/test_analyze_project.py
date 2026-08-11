@@ -119,7 +119,7 @@ def test_given_audit_policy_layers_when_compiling_then_effective_policy_is_expli
         """,
     )
     write_pipeline_file(
-        project_dir / "pipelines" / "alpha" / "pipeline.toml",
+        project_dir / "pipelines" / "pl__alpha" / "pipeline.toml",
         """
         [audit_defaults]
         severity = "error"
@@ -238,7 +238,7 @@ def test_given_complete_project_when_analyzing_then_polyglot_calls_remain_bounde
     [
         AnalyzeProjectTestCase(
             description="builds one immutable project analysis in stable order without connecting",
-            expected_pipeline_names=("alpha", "zeta"),
+            expected_pipeline_names=("pl__alpha", "pl__zeta"),
             expected_graph_names=(
                 "alpha_source",
                 "alpha_model",
@@ -498,7 +498,9 @@ def test_given_managed_source_ttl_when_analyzing_then_applies_source_over_projec
         source_ttl_declaration=test_case.source_ttl_declaration,
     )
     loaded_project: LoadedProject | None = load_project_input_for_path(path=project_dir)
-    loaded_pipeline: LoadedPipeline = load_pipeline_directory(project_dir / "pipelines" / "orders")
+    loaded_pipeline: LoadedPipeline = load_pipeline_directory(
+        project_dir / "pipelines" / "pl__orders"
+    )
 
     analysis: CompileAnalysis = analyze_project(
         pipelines_root=project_dir / "pipelines",
@@ -873,8 +875,8 @@ def test_given_private_macro_modules_when_analyzing_then_only_public_modules_are
             expected_relative_source_paths=(
                 "audits/quality/alpha_audit.sql",
                 "macros/formatting.py",
-                "pipelines/alpha/alpha_model.sql",
-                "pipelines/zeta/zeta_model.sql",
+                "pipelines/pl__alpha/alpha_model.sql",
+                "pipelines/pl__zeta/zeta_model.sql",
                 "sources/alpha_source.yml",
                 "sources/zeta_source.yml",
                 "streambuild_project.toml",

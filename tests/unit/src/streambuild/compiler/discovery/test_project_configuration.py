@@ -36,6 +36,8 @@ from tests.unit.src.streambuild.compiler.discovery._test_types import (
     ProjectDeploymentReadinessDefaultsTestCase,
     ProjectFreshnessDefaultTestCase,
     ProjectFreshnessErrorTestCase,
+    ProjectPipelineNamingDefaultTestCase,
+    ProjectPipelineNamingOverrideTestCase,
     ProjectRunSafetyDefaultTestCase,
     UnknownTargetTestCase,
 )
@@ -58,6 +60,73 @@ port = 8123
 [targets.dev]
 database = "dev_database"
 """
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ProjectPipelineNamingDefaultTestCase(
+            description="defaults to the pl__ pipeline prefix without a naming macro",
+            expected_pipeline_prefix="pl__",
+            expected_pipeline_naming_macro=None,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_no_pipeline_naming_configuration_when_loading_then_default_prefix_is_pl(
+    test_case: ProjectPipelineNamingDefaultTestCase,
+    tmp_path: Path,
+) -> None:
+    write_project_toml(
+        project_dir=tmp_path,
+        contents='name = "analytics"\ndefault_target = "dev"\n[targets.dev]\n',
+    )
+
+    loaded: LoadedProjectConfiguration = load_project_configuration(project_dir=tmp_path)
+
+    assert loaded.project.naming.pipeline_prefix == test_case.expected_pipeline_prefix
+    assert loaded.project.naming.pipeline_naming_macro == test_case.expected_pipeline_naming_macro
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ProjectPipelineNamingOverrideTestCase(
+            description="retains an empty prefix and a configured naming macro",
+            naming_toml='pipeline_prefix = ""\npipeline_naming_macro = "pipeline_name"',
+            expected_pipeline_prefix="",
+            expected_pipeline_naming_macro="pipeline_name",
+        ),
+        ProjectPipelineNamingOverrideTestCase(
+            description="retains a custom pipeline prefix",
+            naming_toml='pipeline_prefix = "custom__"',
+            expected_pipeline_prefix="custom__",
+            expected_pipeline_naming_macro=None,
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_pipeline_naming_overrides_when_loading_then_values_are_retained(
+    test_case: ProjectPipelineNamingOverrideTestCase,
+    tmp_path: Path,
+) -> None:
+    write_project_toml(
+        project_dir=tmp_path,
+        contents=f"""
+        name = "analytics"
+        default_target = "dev"
+
+        [naming]
+        {test_case.naming_toml}
+
+        [targets.dev]
+        """,
+    )
+
+    loaded: LoadedProjectConfiguration = load_project_configuration(project_dir=tmp_path)
+
+    assert loaded.project.naming.pipeline_prefix == test_case.expected_pipeline_prefix
+    assert loaded.project.naming.pipeline_naming_macro == test_case.expected_pipeline_naming_macro
 
 
 @pytest.mark.parametrize(

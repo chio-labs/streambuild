@@ -89,6 +89,7 @@ class MessageConsoleBrowserE2ETestCase:
 class CatalogPipelineBrowserE2ETestCase:
     description: str
     pipeline_name: str
+    source_name: str
     parent_model: str
     child_model: str
     expected_relation: str

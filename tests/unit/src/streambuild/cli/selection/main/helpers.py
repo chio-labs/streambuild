@@ -73,8 +73,8 @@ def realize_cross_pipeline_reference_project() -> RealizedProject:
     pipelines_by_name: dict[str, CompiledPipeline] = {
         pipeline.pipeline.name: pipeline for pipeline in compile_selector_project_pipelines()
     }
-    orders_pipeline: CompiledPipeline = pipelines_by_name["orders"]
-    payments_pipeline: CompiledPipeline = pipelines_by_name["payments"]
+    orders_pipeline: CompiledPipeline = pipelines_by_name["pl__orders"]
+    payments_pipeline: CompiledPipeline = pipelines_by_name["pl__payments"]
     orders_models_by_name: dict[str, CompiledModel] = {
         model.key.name: model for model in orders_pipeline.models
     }
