@@ -65,6 +65,14 @@ def _validate_logical_node_names(
     known_logical_node_names: dict[str, Path] = dict(logical_node_names)
     loaded_pipeline: LoadedPipeline
     for loaded_pipeline in loaded_pipelines:
+        pipeline_name: str = loaded_pipeline.pipeline.name
+        existing_pipeline_name_path: Path | None = known_logical_node_names.get(pipeline_name)
+        if existing_pipeline_name_path is not None:
+            raise PipelineDiscoveryError(
+                f"Logical resource name '{pipeline_name}' is defined in both "
+                f"'{existing_pipeline_name_path}' and '{loaded_pipeline.file_path}'"
+            )
+        known_logical_node_names[pipeline_name] = loaded_pipeline.file_path
         logical_name: str
         for logical_name in (transform.name for transform in loaded_pipeline.pipeline.transforms):
             existing_path: Path | None = known_logical_node_names.get(logical_name)

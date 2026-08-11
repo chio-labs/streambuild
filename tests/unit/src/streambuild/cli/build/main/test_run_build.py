@@ -110,7 +110,7 @@ def test_given_protected_pipeline_when_auto_approving_then_requires_exact_confir
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     write_direct_scope_project(project_root=tmp_path)
-    (tmp_path / "pipelines" / "orders" / "pipeline.toml").write_text(
+    (tmp_path / "pipelines" / "pl__orders" / "pipeline.toml").write_text(
         f"""
 [protection]
 warning = "{test_case.warning}"

@@ -48,7 +48,7 @@ from tests.unit.src.streambuild.cli.selection.main.helpers import (
         ),
         CliSelectionResolutionTestCase(
             description="pipeline selector includes all authored models in one pipeline only",
-            selectors=("pipeline:payments",),
+            selectors=("pipeline:pl__payments",),
             expected_selected_logical_model_names=("payments_enriched",),
             expected_selected_model_names=("tbl__payments_enriched",),
             expected_object_names=(
@@ -61,7 +61,7 @@ from tests.unit.src.streambuild.cli.selection.main.helpers import (
         ),
         CliSelectionResolutionTestCase(
             description="multiple selectors union before closure expansion",
-            selectors=("orders_clean", "pipeline:payments"),
+            selectors=("orders_clean", "pipeline:pl__payments"),
             expected_selected_logical_model_names=("orders_clean", "payments_enriched"),
             expected_selected_model_names=("tbl__orders_clean", "tbl__payments_enriched"),
             expected_object_names=(
@@ -198,10 +198,10 @@ def test_given_invalid_selectors_when_resolving_then_it_raises_clear_error(
         CliSelectionLineageMismatchTestCase(
             description="replay lineage mismatch error names conflicting pipelines and modes",
             selectors=(),
-            mutated_pipeline_name="payments",
+            mutated_pipeline_name="pl__payments",
             expected_error_fragment=(
                 "Selected pipelines disagree on replay_lineage_mode: "
-                "orders=offsets, payments=timestamp"
+                "pl__orders=offsets, pl__payments=timestamp"
             ),
         )
     ],
@@ -246,7 +246,7 @@ def test_given_conflicting_selected_pipeline_modes_when_resolving_then_it_raises
             selectors=("payments_enriched",),
             expected_error_fragment=(
                 "Selected pipelines disagree on replay_lineage_mode: "
-                "orders=timestamp, payments=offsets"
+                "pl__orders=timestamp, pl__payments=offsets"
             ),
         )
     ],

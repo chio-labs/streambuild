@@ -105,7 +105,7 @@ from tests.unit.src.streambuild.compiler.planner.helpers import (
     [
         CompilePipelineInlineRefsTestCase(
             description="resolves inline refs for example pipeline",
-            pipeline_dir="tests/fixtures/basic_project/pipelines/orders",
+            pipeline_dir="tests/fixtures/basic_project/pipelines/pl__orders",
             expected_relation_names={
                 "orders": "raw__orders",
                 "orders_enriched": "tbl__orders_enriched",
@@ -710,7 +710,7 @@ def test_given_transform_when_compiling_then_it_sets_replay_anchor_inference_fla
     )
     loaded_pipeline: LoadedPipeline = LoadedPipeline(
         pipeline=pipeline,
-        file_path=Path("tests/fixtures/basic_project/pipelines/orders"),
+        file_path=Path("tests/fixtures/basic_project/pipelines/pl__orders"),
         project=None,
     )
 
@@ -829,7 +829,7 @@ def test_given_pipeline_when_compiling_then_it_exposes_the_replay_surface(
 ) -> None:
     loaded_pipeline: LoadedPipeline = LoadedPipeline(
         pipeline=test_case.pipeline,
-        file_path=Path("tests/fixtures/basic_project/pipelines/orders"),
+        file_path=Path("tests/fixtures/basic_project/pipelines/pl__orders"),
         project=None,
     )
     compiled_pipeline: CompiledPipeline
@@ -883,7 +883,7 @@ def test_given_pipeline_when_compiling_then_it_resolves_expected_replay_lineage_
     compiled_pipeline: CompiledPipeline = compile_test_pipeline(
         LoadedPipeline(
             pipeline=test_case.pipeline,
-            file_path=Path("tests/fixtures/basic_project/pipelines/orders"),
+            file_path=Path("tests/fixtures/basic_project/pipelines/pl__orders"),
             project=None,
         )
     )
@@ -1275,7 +1275,7 @@ def test_given_model_relation_naming_layers_when_compiling_then_resolves_locked_
             replay_boundary: {mode: offsets}
         """,
     )
-    pipeline_dir: Path = tmp_path / "pipelines" / "models"
+    pipeline_dir: Path = tmp_path / "pipelines" / "pl__models"
     write_pipeline_file(pipeline_dir / "pipeline.toml", test_case.pipeline_contents)
     file_name: str
     contents: str
@@ -1337,7 +1337,7 @@ def test_given_project_model_ttl_when_compiling_then_applies_model_precedence(
         """,
     )
     write_pipeline_file(
-        tmp_path / "pipelines" / "events" / "events_table.sql",
+        tmp_path / "pipelines" / "pl__events" / "events_table.sql",
         (
             f"MODEL (order_by [event_at]{test_case.model_ttl_header}); "
             "SELECT CAST(_replay_timestamp AS DateTime64(3)) AS event_at, "
@@ -1453,7 +1453,7 @@ def test_given_reserved_project_table_prefix_when_compiling_then_rejects_effecti
         """,
     )
     write_pipeline_file(
-        tmp_path / "pipelines" / "events" / "clean.sql",
+        tmp_path / "pipelines" / "pl__events" / "clean.sql",
         'MODEL (); SELECT kafka_value::String AS value FROM __source("events")',
     )
 
@@ -1580,7 +1580,7 @@ def test_given_relation_collision_when_assembling_project_then_rejects_before_gr
         relative_path="sources.yml",
         contents=test_case.source_contents,
     )
-    pipeline_dir: Path = tmp_path / "pipelines" / "views"
+    pipeline_dir: Path = tmp_path / "pipelines" / "pl__views"
     file_name: str
     contents: str
     for file_name, contents in test_case.model_files.items():

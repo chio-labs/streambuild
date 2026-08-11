@@ -45,7 +45,7 @@ def write_adopted_source(*, project_dir: Path) -> None:
 
 
 def write_invalid_model(*, project_dir: Path) -> None:
-    (project_dir / "pipelines" / "orders" / "orders_enriched.sql").write_text(
+    (project_dir / "pipelines" / "pl__orders" / "orders_enriched.sql").write_text(
         """MODEL (
   engine "MergeTree()",
   order_by ["order_id"],
@@ -59,14 +59,14 @@ FROM __ref("orders")
 
 
 def write_invalid_model_header(*, project_dir: Path) -> None:
-    (project_dir / "pipelines" / "orders" / "orders_enriched.sql").write_text(
+    (project_dir / "pipelines" / "pl__orders" / "orders_enriched.sql").write_text(
         "SELECT 1 AS order_id\n",
         encoding="utf-8",
     )
 
 
 def write_invalid_reference_model(*, project_dir: Path) -> None:
-    (project_dir / "pipelines" / "orders" / "orders_enriched.sql").write_text(
+    (project_dir / "pipelines" / "pl__orders" / "orders_enriched.sql").write_text(
         """MODEL (
   engine "MergeTree()",
   order_by ["order_id"],
@@ -93,7 +93,7 @@ database = "analytics"
 
 
 def write_view_project(*, project_dir: Path) -> None:
-    pipeline_dir: Path = project_dir / "pipelines" / "consumer"
+    pipeline_dir: Path = project_dir / "pipelines" / "pl__consumer"
     pipeline_dir.mkdir(parents=True, exist_ok=True)
     (project_dir / "streambuild_project.toml").write_text(
         'name = "view_project"\ndefault_target = "test"\n\n'
@@ -123,7 +123,7 @@ def write_secret_source(*, project_dir: Path) -> None:
 
 
 def write_artifact_leaf_model(*, project_dir: Path) -> None:
-    (project_dir / "pipelines" / "order_events" / "artifact_leaf.sql").write_text(
+    (project_dir / "pipelines" / "pl__order_events" / "artifact_leaf.sql").write_text(
         """MODEL (
   engine "MergeTree()",
   order_by ["region"],

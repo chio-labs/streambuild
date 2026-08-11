@@ -74,7 +74,7 @@ def render_create_view_ddl(*, database: str, view_name: str, target_table_name: 
 def build_compiled_example_pipeline() -> CompiledPipeline:
     return compile_pipeline(
         loaded_pipeline=load_pipeline_directory(
-            Path("tests/fixtures/basic_project/pipelines/orders")
+            Path("tests/fixtures/basic_project/pipelines/pl__orders")
         ),
         sql_analyzer=SqlModelAnalyzer(dialect="clickhouse"),
     )

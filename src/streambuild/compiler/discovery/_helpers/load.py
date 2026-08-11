@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import re
 import tomllib
 from collections.abc import Mapping
@@ -53,6 +54,7 @@ from streambuild.compiler.discovery.models import (
     PipelineNaming,
     PipelineProtection,
     Project,
+    ProjectNaming,
     ReplayOnChangePolicy,
     ReplayOnChangeRule,
     TransformStep,
@@ -63,9 +65,18 @@ from streambuild.compiler.discovery.types import (
     PipelineMode,
     ReplayOnChangeMode,
 )
+from streambuild.compiler.macros.constants import (
+    MACRO_CONTEXT_PARAMETER_NAME,
+    PIPELINE_NAMING_CONTEXT_ANNOTATION_NAME,
+)
 from streambuild.compiler.macros.main._discover_macro_files import discover_macro_files
 from streambuild.compiler.macros.main._load_macro_registry import load_macro_registry
-from streambuild.compiler.macros.models import MacroContext, MacroRegistry
+from streambuild.compiler.macros.models import (
+    LoadedMacro,
+    MacroContext,
+    MacroRegistry,
+    PipelineNamingContext,
+)
 
 
 @dataclass(frozen=True)
@@ -98,6 +109,7 @@ def load_pipeline_directory(pipeline_dir: Path) -> LoadedPipeline:
     macro_registry: MacroRegistry = (
         MacroRegistry()
         if effective.defaults.sources.kafka.naming_macro is None
+        and effective.naming.pipeline_naming_macro is None
         else load_macro_registry(macro_files=discover_macro_files(project_dir=project_dir))
     )
     sources_by_name: dict[str, KafkaLandingStep | ExternalTableSourceStep] = (
@@ -132,6 +144,8 @@ def load_pipeline_directory(pipeline_dir: Path) -> LoadedPipeline:
             ),
         ),
         sources_by_name=sources_by_name,
+        macro_registry=macro_registry,
+        project_naming=effective.naming,
         default_mode=PipelineMode(effective.defaults.pipeline_mode),
     )[0]
     loaded_pipeline: LoadedPipeline = LoadedPipeline(
@@ -164,6 +178,7 @@ def load_pipeline_directories(
     macro_registry: MacroRegistry | None = None,
     macro_context: MacroContext | None = None,
     sources_by_name: Mapping[str, KafkaLandingStep | ExternalTableSourceStep],
+    project_naming: ProjectNaming | None = None,
     default_mode: PipelineMode = PipelineMode.DIRECT,
 ) -> tuple[Pipeline, ...]:
     """Load pipeline directories and infer each source from driving-input chains."""
@@ -190,6 +205,13 @@ def load_pipeline_directories(
             sources_by_name=sources_by_name,
             source_names_by_transform=source_names_by_transform,
         )
+        if project_naming is not None:
+            _validate_pipeline_name(
+                draft=draft,
+                source=pipeline_source,
+                project_naming=project_naming,
+                macro_registry=macro_registry,
+            )
         pipelines.append(
             Pipeline(
                 name=draft.pipeline_dir.name,
@@ -204,6 +226,79 @@ def load_pipeline_directories(
             )
         )
     return tuple(pipelines)
+
+
+def _validate_pipeline_name(
+    *,
+    draft: _PipelineDraft,
+    source: KafkaLandingStep | ExternalTableSourceStep | None,
+    project_naming: ProjectNaming,
+    macro_registry: MacroRegistry | None,
+) -> None:
+    name: str = draft.pipeline_dir.name
+    prefix: str = project_naming.pipeline_prefix
+    if not name.startswith(prefix):
+        raise PipelineDiscoveryError(
+            f"Pipeline directory '{draft.pipeline_dir}' must start with configured "
+            f"naming.pipeline_prefix '{prefix}'"
+        )
+    macro_name: str | None = project_naming.pipeline_naming_macro
+    if macro_name is None:
+        return
+    loaded_macro: LoadedMacro | None = (
+        None if macro_registry is None else macro_registry.macros.get(macro_name)
+    )
+    if loaded_macro is None:
+        available: str = (
+            "none" if macro_registry is None else ", ".join(sorted(macro_registry.macros)) or "none"
+        )
+        raise PipelineDiscoveryError(
+            f"Pipeline naming macro '{macro_name}' is not defined. Available macros: {available}"
+        )
+    parameters: tuple[inspect.Parameter, ...] = tuple(
+        inspect.signature(loaded_macro.function).parameters.values()
+    )
+    if (
+        len(parameters) != 1
+        or parameters[0].name != MACRO_CONTEXT_PARAMETER_NAME
+        or parameters[0].kind
+        not in {inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD}
+        or parameters[0].annotation
+        not in {PipelineNamingContext, PIPELINE_NAMING_CONTEXT_ANNOTATION_NAME}
+    ):
+        raise PipelineDiscoveryError(
+            f"Pipeline naming macro '{macro_name}' in '{loaded_macro.file_path}' must have the "
+            "signature def <name>(ctx: PipelineNamingContext) -> str"
+        )
+    context: PipelineNamingContext = PipelineNamingContext(
+        name=name,
+        source_name=None if source is None else source.name,
+        model_names=tuple(sorted(transform.name for transform in draft.transforms)),
+        relative_directory=f"pipelines/{name}",
+        mode=draft.mode,
+    )
+    try:
+        expected_name: object = loaded_macro.function(context)
+    except TypeError as error:
+        raise PipelineDiscoveryError(
+            f"Pipeline naming macro '{macro_name}' in '{loaded_macro.file_path}' must accept "
+            f"exactly one PipelineNamingContext: {error}"
+        ) from error
+    except Exception as error:
+        raise PipelineDiscoveryError(
+            f"Pipeline naming macro '{macro_name}' in '{loaded_macro.file_path}' failed for "
+            f"pipeline '{name}': {error}"
+        ) from error
+    if not isinstance(expected_name, str) or not expected_name:
+        raise PipelineDiscoveryError(
+            f"Pipeline naming macro '{macro_name}' in '{loaded_macro.file_path}' must return a "
+            "non-empty string"
+        )
+    if expected_name != name:
+        raise PipelineDiscoveryError(
+            f"Pipeline directory '{draft.pipeline_dir}' does not satisfy naming macro "
+            f"'{macro_name}'; expected 'pipelines/{expected_name}'"
+        )
 
 
 def _load_pipeline_draft(

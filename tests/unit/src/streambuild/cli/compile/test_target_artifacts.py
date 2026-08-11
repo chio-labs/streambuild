@@ -46,9 +46,9 @@ from tests.unit.src.streambuild.cli.compile.helpers import (
         ExactCompileTargetTestCase(
             description="writes the exact managed static target without runtime evidence",
             expected_relative_files=(
-                "compiled/models/orders/orders_enriched.sql",
-                "compiled/resources/models/orders/orders_enriched.mv.sql",
-                "compiled/resources/models/orders/orders_enriched.table.sql",
+                "compiled/models/pl__orders/orders_enriched.sql",
+                "compiled/resources/models/pl__orders/orders_enriched.mv.sql",
+                "compiled/resources/models/pl__orders/orders_enriched.table.sql",
                 "compiled/resources/sources/orders/kafka__orders.sql",
                 "compiled/resources/sources/orders/mv__orders.sql",
                 "compiled/resources/sources/orders/raw__orders.sql",
@@ -81,8 +81,8 @@ def test_given_managed_project_when_compiling_then_writes_exact_static_target_tr
         ViewCompileTargetTestCase(
             description="ordinary view writes query, resource, and manifest artifacts",
             expected_relative_files=(
-                "compiled/models/consumer/customer_orders.sql",
-                "compiled/resources/models/consumer/customer_orders.view.sql",
+                "compiled/models/pl__consumer/customer_orders.sql",
+                "compiled/resources/models/pl__consumer/customer_orders.view.sql",
                 "manifest.json",
                 "streambuild_dag.json",
             ),
@@ -213,7 +213,7 @@ database = "analytics"
         StaticReplacementTestCase(
             description="replaces all static owners deterministically while preserving runtime",
             stale_relative_paths=(
-                "compiled/models/orders/removed_model.sql",
+                "compiled/models/pl__orders/removed_model.sql",
                 "compiled/tests/removed/removed_test.sql",
                 "compiled/audits/removed_audit.sql",
             ),
@@ -586,12 +586,12 @@ def test_given_existing_target_when_atomic_publication_fails_then_rolls_back_all
         RemovedStaticInputsTestCase(
             description="removes model test and audit artifacts after authored inputs disappear",
             removed_relative_inputs=(
-                "pipelines/order_events/artifact_leaf.sql",
+                "pipelines/pl__order_events/artifact_leaf.sql",
                 "tests/order_events/test_line_total.sql",
                 "audits/order_events/no_null_order_ids.sql",
             ),
             expected_removed_artifacts=(
-                "compiled/models/order_events/artifact_leaf.sql",
+                "compiled/models/pl__order_events/artifact_leaf.sql",
                 "compiled/tests/order_items/line total computes correctly.sql",
                 "compiled/audits/order_events/no_null_order_ids.sql",
             ),

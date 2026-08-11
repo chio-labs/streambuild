@@ -32,7 +32,7 @@ from tests.unit.src.streambuild.cli.test._helpers.helpers import (
         ),
         SelectLoadedSqlTestsTestCase(
             description="pipeline selector includes tests for all models in that pipeline",
-            selectors=("pipeline:orders",),
+            selectors=("pipeline:pl__orders",),
             paths=(),
             expected_target_model_names=("orders_clean", "orders_enriched"),
         ),
@@ -50,7 +50,7 @@ from tests.unit.src.streambuild.cli.test._helpers.helpers import (
         ),
         SelectLoadedSqlTestsTestCase(
             description="multiple selectors union correctly",
-            selectors=("orders_clean", "pipeline:payments"),
+            selectors=("orders_clean", "pipeline:pl__payments"),
             paths=(),
             expected_target_model_names=("orders_clean", "payments_enriched"),
         ),

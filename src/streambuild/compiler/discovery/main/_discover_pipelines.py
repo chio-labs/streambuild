@@ -19,7 +19,9 @@ from streambuild.compiler.discovery.models import (
     LoadedPipeline,
     LoadedProject,
     Pipeline,
+    ProjectNaming,
 )
+from streambuild.compiler.discovery.types import PipelineMode
 
 
 def discover_pipelines(root: Path) -> list[LoadedPipeline]:
@@ -37,7 +39,18 @@ def discover_pipelines(root: Path) -> list[LoadedPipeline]:
     )
     pipelines: tuple[Pipeline, ...] = load_pipeline_directories(
         pipeline_directories=pipeline_directories,
+        macro_registry=loaded_project.macro_registry,
         sources_by_name=sources_by_name,
+        project_naming=(
+            ProjectNaming()
+            if loaded_project.effective_configuration is None
+            else loaded_project.effective_configuration.naming
+        ),
+        default_mode=(
+            PipelineMode.DIRECT
+            if loaded_project.effective_configuration is None
+            else PipelineMode(loaded_project.effective_configuration.defaults.pipeline_mode)
+        ),
     )
     return [
         LoadedPipeline(
