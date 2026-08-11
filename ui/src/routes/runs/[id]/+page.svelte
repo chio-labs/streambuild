@@ -118,7 +118,9 @@
 			></span>
 			{outcome}
 		</span>
-		<code class="code text-[12px]">{invocationId.slice(0, 8)}</code>
+		<code class="code max-w-full break-all text-[11px]" aria-label="Run ID" title={invocationId}
+			>{invocationId}</code
+		>
 		<code
 			class="bg-[var(--sb-inset)] min-w-0 flex-1 truncate rounded-[4px] border border-border px-2.5 py-1 font-mono text-[11px]"
 			>$ {displayCommand}</code
