@@ -122,7 +122,7 @@ def write_duplicate_test(project_dir: Path) -> None:
 
 def write_source_model_name_collision(project_dir: Path) -> None:
     _write(
-        project_dir / "pipelines" / "alpha" / "alpha_source.sql",
+        project_dir / "pipelines" / "pl__alpha" / "alpha_source.sql",
         """
         MODEL (
           engine "MergeTree()",
@@ -200,7 +200,7 @@ def write_managed_source_ttl_project(
         """,
     )
     _write(
-        project_dir / "pipelines" / "orders" / "orders_enriched.sql",
+        project_dir / "pipelines" / "pl__orders" / "orders_enriched.sql",
         """
         MODEL (order_by ["order_id"]);
 
@@ -231,10 +231,10 @@ def write_policy_validation_project(
         """,
     )
     _write(
-        project_dir / "pipelines" / "orders" / "pipeline.toml",
+        project_dir / "pipelines" / "pl__orders" / "pipeline.toml",
         pipeline_config_contents,
     )
-    _write(project_dir / "pipelines" / "orders" / "orders_enriched.sql", model_contents)
+    _write(project_dir / "pipelines" / "pl__orders" / "orders_enriched.sql", model_contents)
 
 
 def has_compilation_service_import(file_path: Path) -> bool:
@@ -247,7 +247,7 @@ def has_compilation_service_import(file_path: Path) -> bool:
 def _write_pipeline(
     *, project_dir: Path, pipeline_name: str, source_name: str, model_name: str
 ) -> None:
-    pipeline_dir: Path = project_dir / "pipelines" / pipeline_name
+    pipeline_dir: Path = project_dir / "pipelines" / f"pl__{pipeline_name}"
     _write(
         project_dir / "sources" / f"{source_name}.yml",
         f"""
@@ -277,7 +277,7 @@ def _write_pipeline(
 def _write_shared_source_pipeline(
     *, project_dir: Path, pipeline_name: str, model_name: str
 ) -> None:
-    pipeline_dir: Path = project_dir / "pipelines" / pipeline_name
+    pipeline_dir: Path = project_dir / "pipelines" / f"pl__{pipeline_name}"
     _write(
         pipeline_dir / f"{model_name}.sql",
         """

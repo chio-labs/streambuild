@@ -27,12 +27,14 @@ from streambuild.compiler.discovery.constants import (
     LOCAL_CONFIG_KEYS,
     LOCAL_DEFAULTS_KEYS,
     LOCAL_TARGET_KEYS,
-    NAMING_KEYS,
+    NAMING_PIPELINE_MACRO_KEY,
+    NAMING_PIPELINE_PREFIX_KEY,
     NAMING_TABLE_PREFIX_KEY,
     NAMING_VIEW_PREFIX_KEY,
     PIPELINE_MODE_KEY,
     PROJECT_CONFIG_FILE_NAME,
     PROJECT_CONFIG_KEYS,
+    PROJECT_NAMING_KEYS,
     RUN_UNRESPONSIVE_AFTER_SECONDS,
     SECONDS_BY_DURATION_UNIT,
     SOURCE_DEFAULT_KEYS,
@@ -699,12 +701,26 @@ def _parse_project_naming(*, payload: object, file_path: Path) -> ProjectNaming:
     )
     _validate_allowed_keys(
         mapping=mapping,
-        allowed_keys=NAMING_KEYS,
+        allowed_keys=PROJECT_NAMING_KEYS,
         label="naming",
         file_path=file_path,
     )
     defaults: ProjectNaming = ProjectNaming()
     return ProjectNaming(
+        pipeline_prefix=_optional_string_allowing_empty(
+            mapping=mapping,
+            key=NAMING_PIPELINE_PREFIX_KEY,
+            label="naming",
+            file_path=file_path,
+        )
+        if NAMING_PIPELINE_PREFIX_KEY in mapping
+        else defaults.pipeline_prefix,
+        pipeline_naming_macro=_optional_non_empty_string(
+            mapping=mapping,
+            key=NAMING_PIPELINE_MACRO_KEY,
+            label="naming",
+            file_path=file_path,
+        ),
         table_prefix=_optional_string_allowing_empty(
             mapping=mapping,
             key=NAMING_TABLE_PREFIX_KEY,

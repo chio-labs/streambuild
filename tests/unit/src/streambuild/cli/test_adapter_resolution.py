@@ -583,7 +583,7 @@ def test_given_target_inputs_when_nested_compile_then_precedence_applies(
         argv=("stb", "compile", "--target-dir", str(target_dir), *test_case.argv_suffix),
         handlers=handlers_with_overrides(),
         environment={},
-        working_directory=project_dir / "pipelines" / "orders",
+        working_directory=project_dir / "pipelines" / "pl__orders",
     )
     manifest: str = (target_dir / "manifest.json").read_text(encoding="utf-8")
 

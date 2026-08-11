@@ -46,6 +46,7 @@ def load_project_input_for_path(
     macro_registry: MacroRegistry | None = (
         None
         if effective.defaults.sources.kafka.naming_macro is None
+        and effective.naming.pipeline_naming_macro is None
         else load_macro_registry(macro_files=macro_files)
     )
     project: Project = Project(

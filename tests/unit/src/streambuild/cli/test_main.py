@@ -1517,9 +1517,9 @@ def test_given_reconcile_flags_when_running_reconcile_then_it_passes_kwargs_to_c
             expected_written_files=(
                 "target_out/manifest.json",
                 "target_out/streambuild_dag.json",
-                "target_out/compiled/models/orders/orders_enriched.sql",
-                "target_out/compiled/resources/models/orders/orders_enriched.table.sql",
-                "target_out/compiled/resources/models/orders/orders_enriched.mv.sql",
+                "target_out/compiled/models/pl__orders/orders_enriched.sql",
+                "target_out/compiled/resources/models/pl__orders/orders_enriched.table.sql",
+                "target_out/compiled/resources/models/pl__orders/orders_enriched.mv.sql",
                 "target_out/compiled/resources/sources/orders/kafka__orders.sql",
                 "target_out/compiled/resources/sources/orders/raw__orders.sql",
                 "target_out/compiled/resources/sources/orders/mv__orders.sql",
@@ -1539,7 +1539,7 @@ def test_given_reconcile_flags_when_running_reconcile_then_it_passes_kwargs_to_c
             expected_written_files=(
                 "target/manifest.json",
                 "target/streambuild_dag.json",
-                "target/compiled/models/orders/orders_enriched.sql",
+                "target/compiled/models/pl__orders/orders_enriched.sql",
             ),
         ),
     ],

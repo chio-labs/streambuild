@@ -12,6 +12,7 @@ from streambuild.compiler.discovery.models import (
     KafkaLandingStep,
     LoadedPipeline,
     Project,
+    ProjectNaming,
 )
 from streambuild.compiler.discovery.types import PipelineMode
 from streambuild.compiler.macros.models import MacroContext, MacroRegistry
@@ -25,6 +26,7 @@ def load_discovered_pipelines(
     macro_context: MacroContext,
     sources_by_name: Mapping[str, KafkaLandingStep | ExternalTableSourceStep],
     project: Project | None,
+    project_naming: ProjectNaming,
     default_mode: PipelineMode,
 ) -> tuple[LoadedPipeline, ...]:
     """Attach retained pipeline/model sources without rereading or loading macros."""
@@ -36,5 +38,6 @@ def load_discovered_pipelines(
         macro_context=macro_context,
         sources_by_name=sources_by_name,
         project=project,
+        project_naming=project_naming,
         default_mode=default_mode,
     )

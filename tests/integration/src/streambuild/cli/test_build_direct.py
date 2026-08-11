@@ -2203,7 +2203,7 @@ def test_given_direct_offset_when_building_from_start_time_then_replay_is_unseed
             project_root=tmp_path,
             database=clickhouse_database,
             connection=connection,
-            selectors=("pipeline:orders",),
+            selectors=("pipeline:pl__orders",),
             start_time=requested_start_time,
         )
         pipeline_plan_capture: CaptureResult[str] = capsys.readouterr()
@@ -2474,7 +2474,7 @@ def test_given_aggregate_model_when_building_from_start_time_then_input_is_bound
     clickhouse_database: str,
 ) -> None:
     write_direct_build_project(project_root=tmp_path)
-    (tmp_path / "pipelines/orders/orders_enriched.sql").write_text(
+    (tmp_path / "pipelines/pl__orders/orders_enriched.sql").write_text(
         'MODEL (order_by ["order_id"]);\n'
         "SELECT kafka_key::String AS order_id, count()::UInt64 AS order_count "
         'FROM __source("orders") GROUP BY kafka_key\n',
