@@ -12,6 +12,9 @@ from tests.unit.src.streambuild.compiler.discovery._helpers.load.helpers import 
 from tests.unit.src.streambuild.compiler.discovery._test_types import (
     DiscoverPipelinesErrorTestCase,
     DiscoverPipelinesTestCase,
+    PipelineNamingMacroRenameTestCase,
+    PipelineNamingMacroTestCase,
+    PipelinePrefixViolationTestCase,
     PipelineSourceInferenceErrorTestCase,
     PipelineSourceInferenceTestCase,
     ViewPipelineSourceInferenceTestCase,
@@ -28,7 +31,7 @@ from tests.unit.src.streambuild.compiler.discovery.helpers import (
         DiscoverPipelinesTestCase(
             description="finds example pipeline under pipelines root",
             pipelines_root=Path("tests/fixtures/basic_project/pipelines"),
-            expected_pipeline_names=["orders"],
+            expected_pipeline_names=["pl__orders"],
         )
     ],
     ids=lambda case: case.description,
@@ -41,6 +44,150 @@ def test_given_pipeline_root_when_discovering_pipelines_then_returns_loaded_pipe
     assert [
         pipeline.pipeline.name for pipeline in loaded_pipelines
     ] == test_case.expected_pipeline_names
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        PipelinePrefixViolationTestCase(
+            description="rejects an unprefixed pipeline directory under the default prefix",
+            pipeline_directory_name="orders",
+            expected_error_fragment="must start with configured naming.pipeline_prefix 'pl__'",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_default_pipeline_prefix_when_directory_is_unprefixed_then_discovery_rejects_it(
+    test_case: PipelinePrefixViolationTestCase,
+    tmp_path: Path,
+) -> None:
+    write_project_toml(
+        project_dir=tmp_path,
+        contents='name = "test"\ndefault_target = "test"\n[targets.test]\n',
+    )
+    write_pipeline_file(
+        tmp_path / "pipelines" / test_case.pipeline_directory_name / "orders_view.sql",
+        "MODEL (kind view); SELECT 1 AS order_id",
+    )
+
+    with pytest.raises(PipelineDiscoveryError, match=test_case.expected_error_fragment):
+        discover_pipelines(tmp_path / "pipelines")
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        PipelineNamingMacroTestCase(
+            description="accepts a directory whose name matches the naming macro result",
+            pipeline_directory_name="pl__orders",
+            source_name="orders",
+            model_name="orders_model",
+            macro_source="""
+from streambuild.compiler.macros.models import PipelineNamingContext
+
+def pipeline_name(ctx: PipelineNamingContext) -> str:
+    expected_context = (
+        "pl__orders",
+        "orders",
+        ("orders_model",),
+        "pipelines/pl__orders",
+        "direct",
+    )
+    actual_context = (
+        ctx.name,
+        ctx.source_name,
+        ctx.model_names,
+        ctx.relative_directory,
+        ctx.mode.value,
+    )
+    return ctx.name if actual_context == expected_context else "pl__unexpected"
+""",
+            expected_pipeline_names=["pl__orders"],
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_pipeline_naming_macro_when_context_matches_then_pipeline_is_loaded(
+    test_case: PipelineNamingMacroTestCase,
+    tmp_path: Path,
+) -> None:
+    write_project_toml(
+        project_dir=tmp_path,
+        contents="""
+        name = "test"
+        default_target = "test"
+
+        [naming]
+        pipeline_naming_macro = "pipeline_name"
+
+        [targets.test]
+        """,
+    )
+    write_pipeline_file(tmp_path / "macros" / "pipeline_names.py", test_case.macro_source)
+    write_source_yml(
+        project_dir=tmp_path,
+        relative_path="orders.yml",
+        contents=f"""
+        sources:
+          - name: {test_case.source_name}
+            kind: kafka
+            broker_list: kafka:9092
+            topic: source.orders
+            replay_boundary: {{mode: offsets}}
+        """,
+    )
+    write_pipeline_file(
+        tmp_path / "pipelines" / test_case.pipeline_directory_name / f"{test_case.model_name}.sql",
+        f'MODEL (); SELECT 1 AS order_id FROM __source("{test_case.source_name}")',
+    )
+
+    loaded_pipelines: list[LoadedPipeline] = discover_pipelines(tmp_path / "pipelines")
+
+    assert [
+        loaded.pipeline.name for loaded in loaded_pipelines
+    ] == test_case.expected_pipeline_names
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        PipelineNamingMacroRenameTestCase(
+            description="reports the expected directory when the macro result differs",
+            pipeline_directory_name="pl__orders",
+            macro_source=(
+                "from streambuild.compiler.macros.models import PipelineNamingContext\n\n"
+                "def pipeline_name(ctx: PipelineNamingContext) -> str:\n"
+                '    return "pl__expected"\n'
+            ),
+            expected_error_fragment="expected 'pipelines/pl__expected'",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_pipeline_naming_macro_when_expected_name_differs_then_discovery_reports_rename(
+    test_case: PipelineNamingMacroRenameTestCase,
+    tmp_path: Path,
+) -> None:
+    write_project_toml(
+        project_dir=tmp_path,
+        contents="""
+        name = "test"
+        default_target = "test"
+
+        [naming]
+        pipeline_naming_macro = "pipeline_name"
+
+        [targets.test]
+        """,
+    )
+    write_pipeline_file(tmp_path / "macros" / "pipeline_names.py", test_case.macro_source)
+    write_pipeline_file(
+        tmp_path / "pipelines" / test_case.pipeline_directory_name / "orders_view.sql",
+        "MODEL (kind view); SELECT 1 AS order_id",
+    )
+
+    with pytest.raises(PipelineDiscoveryError, match=test_case.expected_error_fragment):
+        discover_pipelines(tmp_path / "pipelines")
 
 
 @pytest.mark.parametrize(
@@ -86,7 +233,10 @@ def test_given_transitive_driving_inputs_when_discovering_then_infers_pipeline_s
         write_pipeline_file(pipelines_root / relative_path, file_contents)
     write_project_toml(
         project_dir=tmp_path,
-        contents='name = "test"\ndefault_target = "test"\n[targets.test]\n',
+        contents=(
+            'name = "test"\ndefault_target = "test"\n'
+            '[naming]\npipeline_prefix = ""\n[targets.test]\n'
+        ),
     )
     write_source_yml(
         project_dir=tmp_path,
@@ -171,7 +321,10 @@ def test_given_views_when_discovering_then_ignores_them_for_pipeline_source_infe
         write_pipeline_file(pipelines_root / relative_path, file_contents)
     write_project_toml(
         project_dir=tmp_path,
-        contents='name = "test"\ndefault_target = "test"\n[targets.test]\n',
+        contents=(
+            'name = "test"\ndefault_target = "test"\n'
+            '[naming]\npipeline_prefix = ""\n[targets.test]\n'
+        ),
     )
     write_source_yml(
         project_dir=tmp_path,
@@ -234,7 +387,10 @@ def test_given_multiple_source_roots_when_discovering_then_rejects_pipeline(
         write_pipeline_file(pipelines_root / relative_path, file_contents)
     write_project_toml(
         project_dir=tmp_path,
-        contents='name = "test"\ndefault_target = "test"\n[targets.test]\n',
+        contents=(
+            'name = "test"\ndefault_target = "test"\n'
+            '[naming]\npipeline_prefix = ""\n[targets.test]\n'
+        ),
     )
     write_source_yml(
         project_dir=tmp_path,
@@ -284,7 +440,10 @@ def test_given_duplicate_logical_names_when_discovering_then_it_raises_expected_
         write_pipeline_file(pipelines_root / relative_path, file_contents)
     write_project_toml(
         project_dir=tmp_path,
-        contents='name = "test"\ndefault_target = "test"\n[targets.test]\n',
+        contents=(
+            'name = "test"\ndefault_target = "test"\n'
+            '[naming]\npipeline_prefix = ""\n[targets.test]\n'
+        ),
     )
     write_source_yml(
         project_dir=tmp_path,

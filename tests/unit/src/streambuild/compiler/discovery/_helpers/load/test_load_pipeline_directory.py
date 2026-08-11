@@ -37,7 +37,7 @@ from tests.unit.src.streambuild.compiler.discovery._helpers.load.helpers import 
     [
         LoadRegistryPipelineTestCase(
             description="resolves the registered source and discovered models",
-            expected_pipeline_name="orders",
+            expected_pipeline_name="pl__orders",
             expected_source_name="orders",
             expected_transform_names=("orders_enriched",),
         )
@@ -48,7 +48,7 @@ def test_given_registry_project_when_loading_pipeline_then_it_resolves_source(
     test_case: LoadRegistryPipelineTestCase,
 ) -> None:
     loaded: LoadedPipeline = load_pipeline_directory(
-        Path("tests/fixtures/basic_project/pipelines/orders")
+        Path("tests/fixtures/basic_project/pipelines/pl__orders")
     )
 
     assert loaded.pipeline.name == test_case.expected_pipeline_name
@@ -172,7 +172,7 @@ def test_given_replay_policies_when_loading_then_it_uses_renamed_values(
         PipelineProtectionTestCase(
             description="empty protection uses pipeline-specific defaults",
             pipeline_name="orders",
-            pipeline_config_contents="[protection]",
+            pipeline_config_contents='mode = "direct"\n[protection]',
             expected_warning=(
                 "Pipeline 'orders' is protected. Confirm its operational impact before building."
             ),
@@ -182,6 +182,7 @@ def test_given_replay_policies_when_loading_then_it_uses_renamed_values(
             description="custom protection preserves the operator message and confirmation",
             pipeline_name="orders",
             pipeline_config_contents="""
+            mode = "direct"
             [protection]
             warning = "Interrupts protected trading prices."
             confirmation = "DEPLOY_PROTECTED_PRICES"
@@ -192,7 +193,7 @@ def test_given_replay_policies_when_loading_then_it_uses_renamed_values(
         PipelineProtectionTestCase(
             description="empty protection makes an unsafe pipeline name shell safe",
             pipeline_name="order events",
-            pipeline_config_contents="[protection]",
+            pipeline_config_contents='mode = "direct"\n[protection]',
             expected_warning=(
                 "Pipeline 'order events' is protected. Confirm its operational impact before "
                 "building."
@@ -245,7 +246,9 @@ def test_given_unsafe_protection_confirmation_when_loading_then_rejects_it(
 ) -> None:
     pipeline_dir: Path = write_registry_project(
         project_dir=tmp_path,
-        pipeline_config_contents=(f'[protection]\nconfirmation = "{test_case.confirmation}"'),
+        pipeline_config_contents=(
+            f'mode = "direct"\n[protection]\nconfirmation = "{test_case.confirmation}"'
+        ),
         model_contents="""
         MODEL ();
         SELECT order_id::UInt64 AS order_id FROM __source("orders")
@@ -285,6 +288,11 @@ def test_given_unsafe_protection_confirmation_when_loading_then_rejects_it(
             description="rejects the old fallback value",
             pipeline_config_contents='bounded_replay_fallback = "full_refresh"',
             expected_error_fragment="expected 'full' or 'bounded_without_history'",
+        ),
+        RemovedPipelineSurfaceTestCase(
+            description="rejects protection on a virtual pipeline",
+            pipeline_config_contents="[protection]",
+            expected_error_fragment="only for direct pipelines",
         ),
     ],
     ids=lambda case: case.description,

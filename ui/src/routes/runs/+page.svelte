@@ -1,7 +1,13 @@
 <script lang="ts">
-	import AppTopbar from '$lib/components/app-topbar.svelte';
-	import { cancelBuild, fetchBuildFeed, getProject, fetchRuns, type RunRecord } from '$lib/api';
-	import { formatAgo, formatDuration, formatTimestamp } from '$lib/domain/format';
+	import AppTopbar from '$lib/presentation/components/app-topbar.svelte';
+	import { cancelBuild } from '$lib/api/main/build/cancel-build';
+	import { fetchBuildFeed } from '$lib/api/main/build/fetch-build-feed';
+	import { getProject } from '$lib/api/main/project/get-project';
+	import { fetchRuns } from '$lib/api/main/runs/fetch-runs';
+	import type { RunRecord } from '$lib/api/types';
+	import { formatAgo } from '$lib/formatting/main/format-ago';
+	import { formatDuration } from '$lib/formatting/main/format-duration';
+	import { formatTimestamp } from '$lib/formatting/main/format-timestamp';
 	import type { Project } from '$lib/domain/types';
 
 	const project: Project = getProject();
@@ -18,7 +24,7 @@
 
 	async function refresh(): Promise<void> {
 		try {
-			const runsRequest = fetchRuns().then((recordedRuns) => {
+			const runsRequest: Promise<RunRecord[]> = fetchRuns().then((recordedRuns) => {
 				runs = recordedRuns;
 				return recordedRuns;
 			});
@@ -46,7 +52,7 @@
 
 	$effect(() => {
 		refresh();
-		const timer = setInterval(() => {
+		const timer: ReturnType<typeof setInterval> = setInterval(() => {
 			if (!document.hidden) refresh();
 		}, POLL_MS);
 		return () => clearInterval(timer);

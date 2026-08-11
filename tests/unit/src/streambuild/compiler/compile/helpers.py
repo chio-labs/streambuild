@@ -152,7 +152,7 @@ def realized_source_view(realized_project: RealizedProject) -> AdapterMaterializ
 def write_registry_pipeline_project(
     *, project_dir: Path, source_contents: str, model_contents: str
 ) -> Path:
-    pipeline_root: Path = project_dir / "pipelines" / "orders"
+    pipeline_root: Path = project_dir / "pipelines" / "pl__orders"
     pipeline_root.mkdir(parents=True, exist_ok=True)
     (project_dir / "streambuild_project.toml").write_text(
         'name = "test_project"\ndefault_target = "test"\n\n'
@@ -176,7 +176,7 @@ def write_registry_pipeline_project(
 def build_sql_file_pipeline(
     tmp_path: Path, sql_relative_path: str, sql_contents: str
 ) -> LoadedPipeline:
-    pipeline_root: Path = tmp_path / "pipelines" / "shop"
+    pipeline_root: Path = tmp_path / "pipelines" / "pl__shop"
     sql_file_path: Path = pipeline_root / sql_relative_path
     sql_file_path.parent.mkdir(parents=True)
     sql_file_path.write_text(sql_contents, encoding="utf-8")
@@ -229,7 +229,7 @@ def build_missing_source_ref_pipeline(transform_query: str) -> LoadedPipeline:
 
     return LoadedPipeline(
         pipeline=pipeline,
-        file_path=Path("tests/fixtures/basic_project/pipelines/orders"),
+        file_path=Path("tests/fixtures/basic_project/pipelines/pl__orders"),
     )
 
 
@@ -257,7 +257,7 @@ def build_inline_sql_pipeline(transform_query: str) -> LoadedPipeline:
 
     return LoadedPipeline(
         pipeline=pipeline,
-        file_path=Path("tests/fixtures/basic_project/pipelines/orders"),
+        file_path=Path("tests/fixtures/basic_project/pipelines/pl__orders"),
     )
 
 
@@ -299,5 +299,5 @@ def build_invalid_storage_expression_pipeline(
 
     return LoadedPipeline(
         pipeline=pipeline,
-        file_path=Path("tests/fixtures/basic_project/pipelines/orders"),
+        file_path=Path("tests/fixtures/basic_project/pipelines/pl__orders"),
     )

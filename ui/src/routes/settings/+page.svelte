@@ -1,12 +1,14 @@
 <script lang="ts">
 	import LockIcon from '@lucide/svelte/icons/lock';
-	import AppTopbar from '$lib/components/app-topbar.svelte';
-	import FactRow from '$lib/components/fact-row.svelte';
-	import { getProject, CAN_EXECUTE_BUILD } from '$lib/api';
-	import { app } from '$lib/api/store.svelte';
+	import AppTopbar from '$lib/presentation/components/app-topbar.svelte';
+	import FactRow from '$lib/presentation/components/fact-row.svelte';
+	import { CAN_EXECUTE_BUILD } from '$lib/api/constants';
+	import { getApp } from '$lib/api/main/project/get-app';
+	import { getProject } from '$lib/api/main/project/get-project';
 	import type { Project } from '$lib/domain/types';
 
 	const project: Project = getProject();
+	const app = getApp();
 </script>
 
 <AppTopbar title="Settings" />

@@ -45,3 +45,12 @@ class LoadModelDescriptionTestCase:
     description: str
     contents: str
     expected_description: str | None
+
+
+@dataclass(frozen=True)
+class GlobalNameCollisionTestCase:
+    description: str
+    pipeline_name: str
+    source_names: tuple[str, ...]
+    model_names: tuple[str, ...]
+    expected_error_fragment: str

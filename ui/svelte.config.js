@@ -7,6 +7,9 @@ const config = {
 		runes: ({ filename }) => (filename.split(/[/\\]/).includes('node_modules') ? undefined : true)
 	},
 	kit: {
+		alias: {
+			'$ui-kit': './src/ui-kit'
+		},
 		// SPA mode: static build, client-side routing, data fetched from the
 		// Python (FastAPI) Hub API at /api. No Node server in production —
 		// the built assets are served by the Python package.

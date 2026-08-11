@@ -41,7 +41,7 @@ sources/
 macros/
   common.py
 pipelines/
-  orders/
+  pl__orders/
     pipeline.toml
     order_totals.sql
 audits/
@@ -67,8 +67,17 @@ password = "${ENV:CLICKHOUSE_PASSWORD}"
 pipeline_mode = "direct"
 run_presumed_failed_after = "10m"
 
+[build]
+max_pipelines = 20
+
 [targets.dev]
 database = "analytics"
+
+[targets.prod]
+database = "analytics_prod"
+
+[targets.prod.build]
+max_pipelines = 10
 ```
 
 Developer-specific target and connection overrides belong in the gitignored
@@ -106,6 +115,46 @@ sources:
 StreamBuild owns managed Kafka landing objects. It validates but never mutates adopted source
 tables.
 
+## Pipelines
+
+Each direct child of `pipelines/` is a pipeline. Its directory name is its logical name:
+
+```text
+pipelines/
+  pl__orders/
+    staging/
+      orders_clean.sql
+    order_totals.sql
+```
+
+Nested directories organize models but do not change pipeline identity. Pipeline, source, and model
+names share one namespace and must be unique.
+
+Pipeline names must start with `pl__` by default. Configure or disable the prefix with:
+
+```toml
+[naming]
+pipeline_prefix = "custom__" # Use "" to allow unprefixed names.
+```
+
+For a stricter rule, configure a naming macro:
+
+```toml
+[naming]
+pipeline_naming_macro = "pipeline_name"
+```
+
+```python
+from streambuild.compiler.macros.models import PipelineNamingContext
+
+def pipeline_name(ctx: PipelineNamingContext) -> str:
+    return ctx.name if ctx.source_name is None else f"pl__{ctx.source_name}"
+```
+
+The optional macro receives an immutable context containing the pipeline name, source, sorted model
+names, relative directory, and mode. It returns the required directory name. A mismatch fails
+discovery; compile, plan, and build never rename files.
+
 ## Models
 
 ```sql
@@ -142,12 +191,28 @@ stb dev                      # local UI at 127.0.0.1:8000
 Select a model or pipeline with repeatable selectors:
 
 ```bash
-stb plan --select pipeline:orders
+stb plan --select pipeline:pl__orders
 stb build --select order_totals --start-time 2026-08-01T00:00:00Z
 ```
 
-Protected pipelines require their exact configured `--confirm` value even with
-`--auto-approve`.
+An optional `[build].max_pipelines` is an absolute limit on the distinct pipelines in the final
+expanded build scope. A target-specific `[targets.<name>.build].max_pipelines` replaces the project
+default and requires that default to be configured. The limit cannot be authored in
+`streambuild_local.toml`; local-only targets inherit the committed project default.
+
+Direct pipelines can declare an operator gate in `pipeline.toml`:
+
+```toml
+mode = "direct"
+
+[protection]
+warning = "Interrupts protected order processing."
+confirmation = "DEPLOY_ORDERS"
+```
+
+Every protected pipeline in a build requires its exact configured `--confirm` value, even with
+`--auto-approve`. Interactive builds prompt for each missing confirmation. Virtual pipelines cannot
+declare `[protection]`.
 
 ## Deployments
 
