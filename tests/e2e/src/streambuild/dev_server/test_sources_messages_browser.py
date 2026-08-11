@@ -43,6 +43,7 @@ def test_given_managed_kafka_source_when_navigating_inventory_then_live_facts_re
     assert document_response is not None
     assert document_response.status == 200
     source_link: Locator = page.get_by_role("link", name=test_case.source_name, exact=True)
+    expect(source_link).to_be_visible(timeout=30_000)
     source_row: Locator = page.get_by_role("row").filter(has=source_link)
     source_cells: Locator = source_row.get_by_role("cell")
     expect(source_cells.nth(1)).to_have_text(test_case.expected_kind)
