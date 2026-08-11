@@ -4,127 +4,52 @@
 	import MaximizeIcon from '@lucide/svelte/icons/maximize';
 	import PlayIcon from '@lucide/svelte/icons/play';
 	import RotateIcon from '@lucide/svelte/icons/rotate-ccw';
-	import AppTopbar from '$lib/components/app-topbar.svelte';
-	import { app } from '$lib/api/store.svelte';
-	import NodeFieldsPopover from '$lib/components/lineage/node-fields-popover.svelte';
-	import GraphFilters, { emptyFilters, filterCount } from '$lib/components/lineage/graph-filters.svelte';
-	import type { GraphFilterState, NodeKindFilter } from '$lib/components/lineage/graph-filters.svelte';
-	import GraphInspector from '$lib/components/graph/graph-inspector.svelte';
-	import LineageCanvas from '$lib/components/lineage/lineage-canvas.svelte';
-	import EdgeLegend from '$lib/components/lineage/edge-legend.svelte';
-	import RunPanel from '$lib/components/run-panel.svelte';
-	import { getProject } from '$lib/api';
-	import { buildLogicalGraph, buildPhysicalGraph, modelByName } from '$lib/domain/derive';
-	import { DEFAULT_FIT, type FitOptions } from '$lib/lineage/flow-controller.svelte';
-	import { nodeFields } from '$lib/lineage/node-fields.svelte';
-	import type { Graph, GraphMode, GraphNode, ModelStatus, Project } from '$lib/domain/types';
+	import AppTopbar from '$lib/presentation/components/app-topbar.svelte';
+	import { getApp } from '$lib/api/main/project/get-app';
+	import NodeFieldsPopover from '$lib/presentation/components/lineage/node-fields-popover.svelte';
+	import GraphFilters from '$lib/presentation/components/lineage/graph-filters.svelte';
+	import GraphInspector from '$lib/presentation/components/graph/graph-inspector.svelte';
+	import LineageCanvas from '$lib/presentation/components/lineage/lineage-canvas.svelte';
+	import EdgeLegend from '$lib/presentation/components/lineage/edge-legend.svelte';
+	import RunPanel from '$lib/presentation/components/run-panel.svelte';
+	import { getProject } from '$lib/api/main/project/get-project';
+	import { DEFAULT_FIT, type FitOptions } from '$lib/presentation/components/lineage/flow-controller.svelte';
+	import { createLineageView } from '$lib/lineage-view/main/create-lineage-view';
+	import type { LineageViewTypes } from '$lib/lineage-view/types';
 
-	const project: Project = getProject();
-
-	// Mode lives in the URL so a physical view is shareable — same principle as
-	// selection on the Plan page: every surface is just a link constructor.
-	const mode = $derived<GraphMode>(
-		page.url.searchParams.get('mode') === 'physical' ? 'physical' : 'logical'
-	);
+	const project = getProject();
+	const app = getApp();
+	const lineageView = createLineageView();
+	const snapshot = $derived(lineageView.snapshot(page.url, project, app.deployments));
+	const mode = $derived(snapshot.mode);
+	const filters = $derived(snapshot.filters);
+	const showDeployments = $derived(snapshot.showDeployments);
+	const fullGraph = $derived(snapshot.fullGraph);
+	const graph = $derived(snapshot.graph);
+	const counts = $derived(snapshot.counts);
 	let inspectorWidth = $state<number>(460);
 
-	// Filters live in the URL, so a filtered lineage view is shareable and other
-	// pages can deep-link into one (e.g. /lineage?pipeline=order_events).
-	//
-	// The URL is the ONLY source of truth — same lesson as the Plan page. A local
-	// mirror synced back by a guarded $effect cannot work: `replaceState` from
-	// $app/navigation is shallow routing and never updates `page.url`, so the
-	// guard always compared against a stale search string and reset the filters
-	// right after every change. Deriving from `page.url` and navigating with
-	// `goto` removes the mirror, the guard, and the race together.
-	const filters = $derived.by((): GraphFilterState => {
-		const params = page.url.searchParams;
-		return {
-			search: params.get('q') ?? '',
-			pipelines: new Set(params.getAll('pipeline')),
-			kinds: new Set(params.getAll('kind') as NodeKindFilter[]),
-			statuses: new Set(params.getAll('status') as ModelStatus[]),
-			anchorsOnly: params.get('anchors') === '1'
-		};
-	});
-
-	function setFilters(next: GraphFilterState): void {
-		const url = new URL(page.url);
-		for (const key of ['q', 'pipeline', 'kind', 'status', 'anchors']) url.searchParams.delete(key);
-		if (next.search.trim()) url.searchParams.set('q', next.search.trim());
-		for (const value of next.pipelines) url.searchParams.append('pipeline', value);
-		for (const value of next.kinds) url.searchParams.append('kind', value);
-		for (const value of next.statuses) url.searchParams.append('status', value);
-		if (next.anchorsOnly) url.searchParams.set('anchors', '1');
-		void goto(url, { replaceState: true, noScroll: true, keepFocus: true });
+	function setFilters(next: LineageViewTypes['filters']): void {
+		void goto(lineageView.filtersUrl(page.url, next), {
+			replaceState: true,
+			noScroll: true,
+			keepFocus: true
+		});
 	}
-
-	// Deployment relations are off by default: on a busy target they multiply
-	// every model by its retained deployments, which buries the shape of the
-	// graph. Turned on, they are the only view that shows what is orphaned.
-	const showDeployments = $derived(page.url.searchParams.get('deployments') === '1');
 
 	function setShowDeployments(next: boolean): void {
-		const url = new URL(page.url);
-		if (next) url.searchParams.set('deployments', '1');
-		else url.searchParams.delete('deployments');
-		void goto(url, { replaceState: true, noScroll: true, keepFocus: true });
+		void goto(lineageView.deploymentsUrl(page.url, next), {
+			replaceState: true,
+			noScroll: true,
+			keepFocus: true
+		});
 	}
-
-	const fullGraph = $derived<Graph>(
-		mode === 'logical'
-			? buildLogicalGraph(project)
-			: buildPhysicalGraph(project, showDeployments ? app.deployments : [])
-	);
-
-	function nodeKind(node: Graph['nodes'][number]): NodeKindFilter {
-		if (node.logicalType === 'source') return 'source';
-		if (node.logicalType === 'view') return 'view';
-		return modelByName(project, node.logicalName)?.isAggregate ? 'aggregate' : 'table';
-	}
-
-	function matches(node: Graph['nodes'][number]): boolean {
-		const needle: string = filters.search.trim().toLowerCase();
-		if (
-			needle &&
-			!`${node.label} ${node.logicalName} ${node.sublabel ?? ''}`.toLowerCase().includes(needle)
-		) {
-			return false;
-		}
-		if (filters.pipelines.size) {
-			const pipeline: string | undefined = modelByName(project, node.logicalName)?.pipeline;
-			// Sources have no pipeline of their own — keep one that feeds a selected
-			// pipeline, otherwise the subgraph would start mid-air.
-			const feedsSelected: boolean =
-				node.logicalType === 'source' &&
-				project.pipelines.some(
-					(candidate) =>
-						filters.pipelines.has(candidate.name) && candidate.sourceName === node.logicalName
-				);
-			if (!feedsSelected && (!pipeline || !filters.pipelines.has(pipeline))) return false;
-		}
-		if (filters.kinds.size && !filters.kinds.has(nodeKind(node))) return false;
-		if (filters.statuses.size && !filters.statuses.has(node.status)) return false;
-		if (filters.anchorsOnly && node.anchor !== 'eligible') return false;
-		return true;
-	}
-
-	/** Filtering narrows the rendered subgraph; edges survive only if both ends do. */
-	const graph = $derived.by((): Graph => {
-		if (filterCount(filters) === 0) return fullGraph;
-		const kept = new Set(fullGraph.nodes.filter(matches).map((node) => node.id));
-		return {
-			nodes: fullGraph.nodes.filter((node) => kept.has(node.id)),
-			edges: fullGraph.edges.filter((edge) => kept.has(edge.source) && kept.has(edge.target))
-		};
-	});
 
 	let selectedId = $state<string | null>(null);
 	let selectedIds = $state<Set<string>>(new Set());
 	let fitView = $state<((options?: FitOptions) => void) | undefined>();
 	let runOpen = $state<boolean>(false);
 
-	/** The graph selection seeds the run panel's --select flags (models only). */
 	const runSelection = $derived.by((): string[] => {
 		return [
 			...new Set(
@@ -134,11 +59,6 @@
 			)
 		];
 	});
-	// Lanes is the default: it fits the viewport ~30% larger than boxes on the
-	// same graph, and its bounding box stays near viewport aspect because lane
-	// width is pinned to the deepest chain while pipeline count grows downward.
-	// Boxes pad every group and then pack them side by side, so they sprawl
-	// horizontally along the axis there is least room on.
 	const groupMode = $derived.by((): 'none' | 'boxes' | 'lanes' => {
 		const groupParam: string | null = page.url.searchParams.get('group');
 		return groupParam === 'boxes' ? 'boxes' : groupParam === 'none' ? 'none' : 'lanes';
@@ -146,7 +66,7 @@
 	let cyclicPairs = $state<[string, string][]>([]);
 	let canvas = $state<{ relayout: () => void; clearSelection: () => void } | undefined>();
 
-	const selectedNode = $derived<GraphNode | null>(
+	const selectedNode = $derived<LineageViewTypes['node'] | null>(
 		selectedId ? (graph.nodes.find((node) => node.id === selectedId) ?? null) : null
 	);
 
@@ -157,20 +77,21 @@
 	}
 
 	function setGroupMode(next: 'none' | 'boxes' | 'lanes'): void {
-		const url = new URL(page.url);
-		if (next === 'lanes') url.searchParams.delete('group');
-		else url.searchParams.set('group', next);
-		void goto(url, { replaceState: true, noScroll: true, keepFocus: true });
+		void goto(lineageView.groupUrl(page.url, next), {
+			replaceState: true,
+			noScroll: true,
+			keepFocus: true
+		});
 	}
 
-	function setMode(next: GraphMode): void {
-		const url = new URL(page.url);
-		if (next === 'logical') url.searchParams.delete('mode');
-		else url.searchParams.set('mode', next);
-		void goto(url, { replaceState: true, noScroll: true, keepFocus: true });
+	function setMode(next: LineageViewTypes['mode']): void {
+		void goto(lineageView.modeUrl(page.url, next), {
+			replaceState: true,
+			noScroll: true,
+			keepFocus: true
+		});
 	}
 
-	// ── inspector resize ──────────────────────────────────────────────────────
 	let resizing = $state<boolean>(false);
 
 	function startResize(event: PointerEvent): void {
@@ -187,21 +108,6 @@
 	function endResize(): void {
 		resizing = false;
 	}
-
-	// ── status counts ─────────────────────────────────────────────────────────
-	const counts = $derived.by(() => {
-		let fresh = 0;
-		let lagging = 0;
-		let stalled = 0;
-		let drift = 0;
-		for (const node of graph.nodes) {
-			if (node.status === 'fresh') fresh += 1;
-			if (node.status === 'lagging') lagging += 1;
-			if (node.status === 'stalled') stalled += 1;
-			if (node.status === 'drift') drift += 1;
-		}
-		return { fresh, lagging, stalled, drift };
-	});
 </script>
 
 <AppTopbar title="Lineage" />

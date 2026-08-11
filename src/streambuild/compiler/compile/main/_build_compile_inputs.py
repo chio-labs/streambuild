@@ -26,6 +26,7 @@ from streambuild.compiler.discovery.models import (
     KafkaLandingStep,
     LoadedPipeline,
     Project,
+    ProjectNaming,
     TransformStep,
     ViewStep,
 )
@@ -97,6 +98,9 @@ def build_compile_inputs(
         macro_context=macro_context,
         sources_by_name=sources_by_name,
         project=project,
+        project_naming=(
+            ProjectNaming() if effective_configuration is None else effective_configuration.naming
+        ),
         default_mode=(
             PipelineMode.DIRECT
             if effective_configuration is None

@@ -1,0 +1,72 @@
+import { describe, expect, it, vi } from 'vitest';
+
+import type { BuildFeed, RunEventFeed } from '$lib/api/types';
+import type { RunDetailController, RunDetailSnapshot } from '$lib/run-presentation/types';
+
+type RunDetailMocks = {
+	consumeRunDetail: ReturnType<typeof vi.fn>;
+	schedule: ReturnType<typeof vi.fn>;
+	stop: ReturnType<typeof vi.fn>;
+};
+
+const mocks: RunDetailMocks = vi.hoisted((): RunDetailMocks => ({
+	consumeRunDetail: vi.fn(),
+	schedule: vi.fn(),
+	stop: vi.fn()
+}));
+
+vi.mock('$lib/run-presentation/main/_consume-run-detail', () => ({
+	consumeRunDetail: mocks.consumeRunDetail
+}));
+vi.mock('$lib/run-presentation/_resources/run-detail-polling.resource', () => ({
+	createRunDetailPollingResource: vi.fn(() => ({ schedule: mocks.schedule, stop: mocks.stop }))
+}));
+
+import { createRunDetailState } from '$lib/run-presentation/_state/run-detail.state.svelte';
+
+const FEED: RunEventFeed = {
+	found: true,
+	events: [
+		{
+			sequence: 1,
+			emittedAt: '2026-08-11 00:00:00',
+			event: 'run_started',
+			stepId: null,
+			phase: null,
+			displayCommand: 'stb build orders'
+		}
+	],
+	hasMore: false,
+	status: 'running',
+	lastSignalAt: '2026-08-11 00:00:00',
+	lastSignalAgeSeconds: 0
+};
+
+const OWNERSHIP: BuildFeed = {
+	running: true,
+	invocationId: 'run-1',
+	currentInvocationId: 'run-1',
+	command: 'stb build orders',
+	exitCode: null,
+	events: [],
+	stderr: '',
+	forceAvailable: false
+};
+
+describe('run detail state', () => {
+	it('given an initial active snapshot when started then the view is populated and polling continues', async () => {
+		const snapshot: RunDetailSnapshot = { feed: FEED, ownership: OWNERSHIP, record: null };
+		mocks.consumeRunDetail.mockResolvedValueOnce(snapshot);
+		const navigate: ReturnType<typeof vi.fn<(invocationId: string) => Promise<void>>> = vi.fn<
+			(invocationId: string) => Promise<void>
+		>(() => Promise.resolve());
+		const controller: RunDetailController = createRunDetailState(navigate);
+
+		controller.start('run-1', true);
+		await vi.waitFor((): void => expect(controller.view.initialLoading).toBe(false));
+
+		expect(controller.view.commandLine).toBe('stb build orders');
+		expect(controller.view.events).toEqual(FEED.events);
+		expect(mocks.schedule).toHaveBeenCalledWith(1_200);
+	});
+});

@@ -525,7 +525,7 @@ def write_source_mode_plan_project(
     """Write one registry-backed plan project for a managed or adopted source mode."""
 
     pipelines_root: Path = project_dir / "pipelines"
-    pipeline_dir: Path = pipelines_root / "orders"
+    pipeline_dir: Path = pipelines_root / "pl__orders"
     pipeline_dir.mkdir(parents=True)
     (project_dir / "streambuild_project.toml").write_text(
         'name = "source_mode_project"\ndefault_target = "test"\n\n'
@@ -556,7 +556,7 @@ def write_audit_project_files(project_dir: Path) -> None:
 
     write_managed_source_project(project_dir=project_dir)
     write_pipeline_file(
-        project_dir / "pipelines" / "order_events" / "order_items.sql",
+        project_dir / "pipelines" / "pl__order_events" / "order_items.sql",
         """
         MODEL (
           order_by ["order_id"]
@@ -593,7 +593,7 @@ def write_backfill_audit_project_files(project_dir: Path) -> None:
 
     write_managed_source_project(project_dir=project_dir, replay_boundary_mode="timestamp")
     write_pipeline_file(
-        project_dir / "pipelines" / "order_events" / "orders_enriched.sql",
+        project_dir / "pipelines" / "pl__order_events" / "orders_enriched.sql",
         """
         MODEL (
           order_by ["order_id"]
@@ -629,7 +629,7 @@ def write_generic_audit_project_files(project_dir: Path) -> None:
 
     write_managed_source_project(project_dir=project_dir)
     write_pipeline_file(
-        project_dir / "pipelines" / "order_events" / "order_items.sql",
+        project_dir / "pipelines" / "pl__order_events" / "order_items.sql",
         """
         MODEL (
           order_by ["order_id"],
@@ -668,7 +668,7 @@ def write_multi_audit_project_files(project_dir: Path) -> None:
 
     write_managed_source_project(project_dir=project_dir)
     write_pipeline_file(
-        project_dir / "pipelines" / "order_events" / "order_items.sql",
+        project_dir / "pipelines" / "pl__order_events" / "order_items.sql",
         """
         MODEL (
           order_by ["order_id"]
@@ -953,7 +953,7 @@ def write_sql_test_semantics_project(
     """Write one three-model project used to prove SQL-test comparison semantics."""
 
     write_managed_source_project(project_dir=project_dir)
-    pipeline_dir: Path = project_dir / "pipelines" / "order_events"
+    pipeline_dir: Path = project_dir / "pipelines" / "pl__order_events"
     pipeline_dir.mkdir(parents=True)
     model_name: str
     model_sql: str
@@ -1160,7 +1160,7 @@ def write_direct_build_project(
 ) -> None:
     """Write a managed Kafka direct-mode project with one replayable model."""
 
-    pipeline_root: Path = project_root / "pipelines" / "orders"
+    pipeline_root: Path = project_root / "pipelines" / "pl__orders"
     source_root: Path = project_root / "sources"
     audit_root: Path = project_root / "audits"
     pipeline_root.mkdir(parents=True, exist_ok=True)
@@ -1194,7 +1194,7 @@ def write_direct_build_project(
 def write_direct_selected_graph_project(*, project_root: Path) -> None:
     """Write the selected-rebuild fan-in graph with replay lineage on every model."""
 
-    pipeline_root: Path = project_root / "pipelines" / "orders"
+    pipeline_root: Path = project_root / "pipelines" / "pl__orders"
     source_root: Path = project_root / "sources"
     pipeline_root.mkdir(parents=True, exist_ok=True)
     source_root.mkdir(parents=True, exist_ok=True)
@@ -1222,7 +1222,7 @@ def write_direct_selected_graph_project(*, project_root: Path) -> None:
 def write_virtual_fan_in_project(*, project_root: Path) -> None:
     """Write a virtual fan-in graph driven by one adopted replay source."""
 
-    pipeline_root: Path = project_root / "pipelines" / "orders"
+    pipeline_root: Path = project_root / "pipelines" / "pl__orders"
     source_root: Path = project_root / "sources"
     pipeline_root.mkdir(parents=True, exist_ok=True)
     source_root.mkdir(parents=True, exist_ok=True)
@@ -1257,7 +1257,7 @@ def write_virtual_fan_in_project(*, project_root: Path) -> None:
 def write_direct_view_project(*, project_root: Path) -> None:
     """Write a terminal ordinary view over two adopted input relations."""
 
-    pipeline_root: Path = project_root / "pipelines" / "consumer"
+    pipeline_root: Path = project_root / "pipelines" / "pl__consumer"
     source_root: Path = project_root / "sources"
     pipeline_root.mkdir(parents=True, exist_ok=True)
     source_root.mkdir(parents=True, exist_ok=True)
@@ -1295,7 +1295,7 @@ def write_direct_view_project(*, project_root: Path) -> None:
 def write_virtual_environment_view_project(*, project_root: Path) -> None:
     """Write a custom table feeding a multi-upstream terminal view."""
 
-    pipeline_root: Path = project_root / "pipelines" / "consumer"
+    pipeline_root: Path = project_root / "pipelines" / "pl__consumer"
     source_root: Path = project_root / "sources"
     pipeline_root.mkdir(parents=True, exist_ok=True)
     source_root.mkdir(parents=True, exist_ok=True)
@@ -1342,7 +1342,7 @@ def write_virtual_environment_view_model(
 ) -> None:
     """Write one authored query revision for the terminal view."""
 
-    (project_root / "pipelines" / "consumer" / "customer_orders.sql").write_text(
+    (project_root / "pipelines" / "pl__consumer" / "customer_orders.sql").write_text(
         f"MODEL (kind view, relation_name {relation_name});\n"
         "SELECT orders.order_id::String AS order_id, "
         f"{customer_name_expression} AS customer_name\n"
@@ -1356,7 +1356,7 @@ def write_virtual_environment_view_model(
 def write_virtual_environment_table_model(*, project_root: Path, relation_name: str) -> None:
     """Write one effective relation-name revision for the replayable table model."""
 
-    (project_root / "pipelines" / "consumer" / "orders_enriched.sql").write_text(
+    (project_root / "pipelines" / "pl__consumer" / "orders_enriched.sql").write_text(
         f'MODEL (relation_name {relation_name}, engine "MergeTree()", '
         'order_by ["order_id"]);\n'
         "SELECT order_id::String AS order_id, customer_id::UInt64 AS customer_id, "
@@ -1371,7 +1371,7 @@ def write_direct_aggregate_project(*, project_root: Path) -> None:
     """Write an alpha-to-aggregate-beta direct rebuild project."""
 
     write_direct_selected_graph_project(project_root=project_root)
-    pipeline_root: Path = project_root / "pipelines" / "orders"
+    pipeline_root: Path = project_root / "pipelines" / "pl__orders"
     (pipeline_root / "gamma.sql").unlink()
     (pipeline_root / "delta.sql").unlink()
     (pipeline_root / "beta.sql").write_text(
@@ -1400,7 +1400,7 @@ def write_direct_adopted_source_project(
 ) -> None:
     """Write a direct project driven by one adopted source relation."""
 
-    pipeline_root: Path = project_root / "pipelines" / "orders"
+    pipeline_root: Path = project_root / "pipelines" / "pl__orders"
     source_root: Path = project_root / "sources"
     audit_root: Path = project_root / "audits"
     pipeline_root.mkdir(parents=True, exist_ok=True)

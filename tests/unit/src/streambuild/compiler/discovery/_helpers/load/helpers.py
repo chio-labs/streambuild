@@ -34,6 +34,9 @@ def write_project_configuration_and_source(*, project_dir: Path) -> None:
         [defaults]
         pipeline_mode = \"virtual\"
 
+        [naming]
+        pipeline_prefix = ""
+
         [targets.dev]
         database = "analytics"
         """,

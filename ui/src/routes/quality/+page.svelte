@@ -2,14 +2,18 @@
 	import { onMount } from 'svelte';
 	import PlayIcon from '@lucide/svelte/icons/play';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
-	import AppTopbar from '$lib/components/app-topbar.svelte';
-	import SqlBlock from '$lib/components/sql-block.svelte';
-	import SchedulerStatus from './scheduler-status.svelte';
-	import { auditSchedulerStore } from './state.svelte';
-	import { auditScheduleColor, auditScheduleLabel } from './utils';
-	import { getProject, runCheck } from '$lib/api';
-	import { auditCounts, testCounts } from '$lib/domain/derive';
-	import { formatAgo, formatDuration, formatInteger } from '$lib/domain/format';
+	import AppTopbar from '$lib/presentation/components/app-topbar.svelte';
+	import SqlBlock from '$lib/presentation/components/sql-block.svelte';
+	import AuditScheduleCell from '$lib/quality-monitoring/components/audit-schedule-cell.svelte';
+	import SchedulerStatus from '$lib/quality-monitoring/components/scheduler-status.svelte';
+	import { createAuditSchedulerState } from '$lib/quality-monitoring/main/create-audit-scheduler-state.svelte';
+	import { getProject } from '$lib/api/main/project/get-project';
+	import { runCheck } from '$lib/api/main/quality/run-check';
+	import { auditCounts } from '$lib/domain/main/quality/audit-counts';
+	import { testCounts } from '$lib/domain/main/quality/test-counts';
+	import { formatAgo } from '$lib/formatting/main/format-ago';
+	import { formatDuration } from '$lib/formatting/main/format-duration';
+	import { formatInteger } from '$lib/formatting/main/format-integer';
 	import type { Audit, CellValue, Project, QualityDriftReason, SqlTest } from '$lib/domain/types';
 
 	const project: Project = getProject();
@@ -19,7 +23,7 @@
 	// Only `build` writes.
 	const audits = $derived(auditCounts(project.audits));
 	const tests = $derived(testCounts(project.tests));
-	const scheduler = auditSchedulerStore;
+	const scheduler = createAuditSchedulerState();
 	const auditScheduleByName = $derived(
 		new Map((scheduler.payload?.audits ?? []).map((item) => [item.name, item]))
 	);
@@ -66,14 +70,6 @@
 		return reasons.map((reason) => DRIFT_LABEL[reason]).join(', ');
 	}
 
-	function missingScheduleLabel(): string {
-		if (!scheduler.payload) return scheduler.error ? 'schedule unavailable' : 'loading schedule…';
-		if (!scheduler.payload.enabled) return 'scheduler disabled';
-		if (scheduler.payload.health.state === 'running') return 'scheduler running';
-		if (scheduler.payload.health.state === 'backing_off') return 'retry pending';
-		return 'schedule unavailable';
-	}
-
 	const visibleAudits = $derived(project.audits.filter(auditVisible));
 	const visibleTests = $derived(project.tests.filter(testVisible));
 
@@ -86,12 +82,12 @@
 		runningCheck = name;
 		runError = null;
 		try {
-			const outcome = await runCheck('audit', name);
+			const outcome: Awaited<ReturnType<typeof runCheck>> = await runCheck('audit', name);
 			if (outcome.deferredUntil) {
 				runError = `Audit is warming up until ${outcome.deferredUntil} UTC`;
 				return;
 			}
-			const audit = project.audits.find((item) => item.name === name);
+			const audit: Audit | undefined = project.audits.find((item) => item.name === name);
 			if (audit) {
 					audit.result = {
 					passed: outcome.passed,
@@ -114,8 +110,8 @@
 		runningCheck = name;
 		runError = null;
 		try {
-			const outcome = await runCheck('test', name);
-			const test = project.tests.find((item) => item.name === name);
+			const outcome: Awaited<ReturnType<typeof runCheck>> = await runCheck('test', name);
+			const test: SqlTest | undefined = project.tests.find((item) => item.name === name);
 			if (test) {
 					test.result = {
 					passed: outcome.passed,
@@ -267,19 +263,12 @@
 									>{#if index < audit.referencedModels.length - 1}, {/if}
 								{/each}
 							</span>
-							<span
-								class="w-[108px] shrink-0 truncate text-right font-mono text-[10.5px] sm:w-[138px]"
-								style:color={schedule ? auditScheduleColor(schedule.state) : 'var(--sb-text-faint)'}
-								title={schedule?.scheduledFor ?? undefined}
-							>
-								{#if !audit.policy.scheduled}
-									manual
-								{:else if schedule && scheduler.payload?.warehouseNow}
-									{auditScheduleLabel(schedule, scheduler.payload.warehouseNow)}
-								{:else}
-									{missingScheduleLabel()}
-								{/if}
-							</span>
+							<AuditScheduleCell
+								scheduled={audit.policy.scheduled}
+								{schedule}
+								payload={scheduler.payload}
+								error={scheduler.error}
+							/>
 							<span class="hidden w-[92px] shrink-0 text-right font-mono text-[11px] sm:block">
 								{#if !audit.result}
 									<span class="text-[var(--sb-text-faint)]">not run</span>

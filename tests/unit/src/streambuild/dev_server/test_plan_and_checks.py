@@ -43,7 +43,7 @@ from tests.unit.src.streambuild.dev_server.helpers import (
             selectors=("orders_clean",),
             expected_status=200,
             expected_entry_names=("orders_clean",),
-            expected_command="stb build --database analytics --select orders_clean",
+            expected_command="stb build --select orders_clean",
             expected_replay_root_rows=(1000,),
             expected_sql_changes=("baseline_unavailable",),
         ),
@@ -52,7 +52,7 @@ from tests.unit.src.streambuild.dev_server.helpers import (
             selectors=("pipeline:order_events",),
             expected_status=200,
             expected_entry_names=("orders_clean",),
-            expected_command="stb build --database analytics --select pipeline:order_events",
+            expected_command="stb build --select pipeline:order_events",
             expected_replay_root_rows=(1000,),
             expected_sql_changes=("baseline_unavailable",),
         ),
@@ -117,6 +117,8 @@ def test_given_protected_pipeline_when_planning_then_returns_confirmation_requir
     write_dev_server_project(project_dir=tmp_path)
     (tmp_path / "pipelines" / "order_events" / "pipeline.toml").write_text(
         """
+mode = "direct"
+
 [protection]
 warning = "Interrupts protected order events."
 confirmation = "DEPLOY_ORDER_EVENTS"
@@ -135,7 +137,7 @@ confirmation = "DEPLOY_ORDER_EVENTS"
     "test_case",
     [
         DevRefactorTestCase(
-            description="preview and build command share resolved dev context",
+            description="preview hides the dev context retained by the build process",
             expected_value=("local", "analytics"),
         )
     ],
@@ -179,7 +181,17 @@ def test_given_resolved_dev_context_when_planning_then_preview_and_build_command
     assert response.status_code == 200
     assert response.json()["command"] == expected_command
     assert (context.selected_target, context.database) == test_case.expected_value
-    assert shlex.split(expected_command) == ["stb", *expected_argv[1:-2]]
+    assert shlex.split(expected_command) == ["stb", "build", "--select", "orders_clean"]
+    assert expected_argv[1:7] == [
+        "build",
+        "--target",
+        "local",
+        "--database",
+        "analytics",
+        "--select",
+    ]
+    assert "--target" not in expected_command
+    assert "--database" not in expected_command
     assert "secret-value" not in expected_command
     assert "variable-secret" not in expected_command
     assert all("variable-secret" not in argument for argument in expected_argv)
@@ -556,7 +568,7 @@ def test_given_active_run_scope_when_starting_build_then_only_overlap_conflicts(
     client: TestClient = build_state_test_client(project_dir=tmp_path)
     launch_payload: dict[str, object] = {
         "invocationId": "new-run",
-        "command": "stb build --database analytics --select orders_clean",
+        "command": "stb build --select orders_clean",
         "status": "starting",
     }
     with (
@@ -582,3 +594,41 @@ def test_given_active_run_scope_when_starting_build_then_only_overlap_conflicts(
     assert response.status_code == test_case.expected_status
     assert start_build.called is test_case.expected_started
     assert test_case.expected_detail_fragment in response.text
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DevRefactorTestCase(
+            description="build above pipeline limit rejects before process launch",
+            expected_value="Build affects 2 pipelines, exceeding max_pipelines=1",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_build_exceeding_pipeline_limit_when_starting_then_rejects_before_launch(
+    test_case: DevRefactorTestCase,
+    tmp_path: Path,
+) -> None:
+    write_dev_server_project(project_dir=tmp_path)
+    (tmp_path / "pipelines" / "second_pipeline").mkdir()
+    (tmp_path / "pipelines" / "second_pipeline" / "second_model.sql").write_text(
+        'MODEL (order_by ["order_id"]);\n'
+        'SELECT order_id::String AS order_id FROM __source("orders")\n',
+        encoding="utf-8",
+    )
+    project_path: Path = tmp_path / "streambuild_project.toml"
+    project_path.write_text(
+        project_path.read_text(encoding="utf-8") + "\n[build]\nmax_pipelines = 1\n",
+        encoding="utf-8",
+    )
+    client: TestClient = build_state_test_client(project_dir=tmp_path)
+
+    with patch(
+        "streambuild.dev_server.classes.build_process.BuildProcessManager.start"
+    ) as start_build:
+        response: Response = client.post("/api/build", json={"selectors": []})
+
+    assert response.status_code == 400
+    assert str(test_case.expected_value) in response.text
+    start_build.assert_not_called()

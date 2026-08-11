@@ -84,7 +84,7 @@ from tests.integration.src.streambuild.executor.backfill.helpers import (
             expected_output_fragments=(
                 "Audit Results",
                 "Warnings",
-                "pipelines/order_events/order_items.sql  [order items order id not null]",
+                "pipelines/pl__order_events/order_items.sql  [order items order id not null]",
                 "failing rows: 1",
                 "Result: PASS (0 errors, 1 warnings)",
             ),

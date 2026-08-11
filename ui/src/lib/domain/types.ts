@@ -14,18 +14,10 @@
 // ─── replay ──────────────────────────────────────────────────────────────────
 
 /** Boundary modes. `landed_at` is managed-source only; `cursor` is adopted only. */
-export type ReplayBoundaryMode = 'offsets' | 'timestamp' | 'landed_at' | 'cursor';
+type ReplayBoundaryMode = 'offsets' | 'timestamp' | 'landed_at' | 'cursor';
 
 /** The five normalized replay column roles. */
 export type ReplayRole = 'partition' | 'offset' | 'timestamp' | 'landed_at' | 'cursor';
-
-export const REPLAY_COLUMN_BY_ROLE: Record<ReplayRole, string> = {
-	partition: '_replay_partition',
-	offset: '_replay_offset',
-	timestamp: '_replay_timestamp',
-	landed_at: '_replay_landed_at',
-	cursor: '_replay_cursor'
-};
 
 /**
  * Why a model is or isn't a replay anchor. A model can anchor when it preserves
@@ -34,23 +26,14 @@ export const REPLAY_COLUMN_BY_ROLE: Record<ReplayRole, string> = {
  */
 export type AnchorState = 'eligible' | 'aggregate' | 'mutable_ref' | 'never' | 'lineage_loss' | 'view';
 
-export const ANCHOR_REASON: Record<AnchorState, string> = {
-	eligible: 'Replay anchor — a replay can start here',
-	aggregate: 'Not an anchor: aggregate model, replay predicates go on its input',
-	mutable_ref: 'Not an anchor: has a mutable side reference',
-	never: 'Not an anchor: MODEL() sets replay_anchor never',
-	lineage_loss: 'Not an anchor: replay lineage columns are not projected through',
-	view: 'Terminal views take no part in replay'
-};
-
 // ─── sources ─────────────────────────────────────────────────────────────────
 
 /** `kafka` = StreamBuild owns the landing objects. `stream_table` = adopted, never mutated. */
-export type SourceKind = 'kafka' | 'stream_table';
+type SourceKind = 'kafka' | 'stream_table';
 
 export type ManagedRelationKind = 'kafka_engine' | 'landing_mv' | 'landing_table';
 
-export type ManagedRelation = {
+type ManagedRelation = {
 	kind: ManagedRelationKind;
 	name: string;
 	/** Rendered DDL for this managed object, straight from the compiler. */
@@ -67,7 +50,7 @@ export type PartitionState = {
 	newestEventAt: string;
 };
 
-export type SourceLiveState = {
+type SourceLiveState = {
 	rowsPerSecond: number;
 	/**
 	 * Server-evaluated against the source's configured freshness policy
@@ -114,16 +97,10 @@ export type Source = {
 // ─── models ──────────────────────────────────────────────────────────────────
 
 /** `table` creates a table + the MV that writes it. `view` is a terminal query view. */
-export type ModelKind = 'table' | 'view';
+type ModelKind = 'table' | 'view';
 
 /** Typed graph edges. Exactly one `driving_input` per table model. */
 export type RefType = 'driving_input' | 'reference' | 'mutable_reference';
-
-export const REF_TYPE_LABEL: Record<RefType, string> = {
-	driving_input: 'driving input',
-	reference: 'reference',
-	mutable_reference: 'mutable reference'
-};
 
 export type ModelRef = {
 	/** Logical name — a source name or another model name. */
@@ -142,7 +119,7 @@ export type Column = {
 	description: string | null;
 };
 
-export type StorageSpec = {
+type StorageSpec = {
 	/** null for terminal views — storage fields are rejected on views. */
 	engine: string | null;
 	orderBy: string[];
@@ -155,20 +132,12 @@ export type StorageSpec = {
  * How StreamBuild regards a live relation. `unmanaged` and `conflicted` mean a
  * build would touch something it doesn't own — the Plan page makes both loud.
  */
-export type OwnershipState =
+type OwnershipState =
 	| 'direct'
 	| 'unmanaged'
 	| 'conflicted'
 	| 'absent'
 	| 'virtual_environment';
-
-export const OWNERSHIP_LABEL: Record<OwnershipState, string> = {
-	direct: 'owned by StreamBuild (direct)',
-	unmanaged: 'not owned by StreamBuild',
-	conflicted: 'owned by another mode',
-	absent: 'does not exist yet',
-	virtual_environment: 'owned by a virtual environment'
-};
 
 /**
  * Freshness relative to the source, plus `drift` for code/warehouse mismatch.
@@ -176,7 +145,7 @@ export const OWNERSHIP_LABEL: Record<OwnershipState, string> = {
  */
 export type ModelStatus = 'fresh' | 'lagging' | 'stalled' | 'drift' | 'source';
 
-export type ModelActivity = {
+type ModelActivity = {
 	state: 'moving' | 'idle' | 'stalled' | 'unknown';
 	source: 'query_views_log' | 'part_log' | 'system_parts' | 'unavailable';
 	sourceAvailable: boolean;
@@ -188,7 +157,7 @@ export type ModelActivity = {
 	detail: string;
 };
 
-export type SqlArtifacts = {
+type SqlArtifacts = {
 	/** The authored .sql file including its MODEL() header. */
 	authored: string;
 	/** Resolved SELECT after macro expansion and ref resolution. */
@@ -198,7 +167,7 @@ export type SqlArtifacts = {
 	viewDdl: string | null;
 };
 
-export type ModelLiveState = {
+type ModelLiveState = {
 	rows: number;
 	diskBytes: number;
 	parts: number;
@@ -241,7 +210,7 @@ export type Model = {
 
 // ─── pipelines ───────────────────────────────────────────────────────────────
 
-export type PipelineMode = 'direct' | 'virtual';
+type PipelineMode = 'direct' | 'virtual';
 
 export type Pipeline = {
 	name: string;
@@ -267,7 +236,7 @@ export type Pipeline = {
 
 // ─── checks ──────────────────────────────────────────────────────────────────
 
-export type Severity = 'error' | 'warning';
+type Severity = 'error' | 'warning';
 
 export type CellValue = string | number | null;
 
@@ -277,19 +246,19 @@ export type QualityDriftReason =
 	| 'execution_changed'
 	| 'schedule_changed';
 
-export type QualityIdentity = {
+type QualityIdentity = {
 	bindingKey: string;
 	definitionFingerprint: string;
 	executionFingerprint: string;
 };
 
-export type AuditPolicy = {
+type AuditPolicy = {
 	cadenceSeconds: number | null;
 	warmupSeconds: number;
 	scheduled: boolean;
 };
 
-export type AuditResult = {
+type AuditResult = {
 	passed: boolean;
 	failingRowCount: number;
 	sampleColumns: string[];
@@ -316,7 +285,7 @@ export type Audit = {
 };
 
 /** Results are a two-sided bag diff, which renders as expected-vs-actual. */
-export type SqlTestTargetResult = {
+type SqlTestTargetResult = {
 	targetModelName: string;
 	passed: boolean;
 	columns: string[];
@@ -324,7 +293,7 @@ export type SqlTestTargetResult = {
 	unexpectedRows: CellValue[][];
 };
 
-export type SqlTestResult = {
+type SqlTestResult = {
 	passed: boolean;
 	/** One diff per compared target — multi-target tests produce several. */
 	targets: SqlTestTargetResult[];
@@ -345,7 +314,7 @@ export type SqlTest = {
 
 // ─── macros ──────────────────────────────────────────────────────────────────
 
-export type Macro = {
+type Macro = {
 	name: string;
 	file: string;
 	signature: string;
@@ -382,164 +351,6 @@ export type Project = {
 	macros: Macro[];
 };
 
-// ─── graph (derived) ─────────────────────────────────────────────────────────
-
-export type GraphMode = 'logical' | 'physical';
-
-export type LogicalNodeType = 'source' | 'model' | 'view';
-
-/** Physical node types map 1:1 onto real ClickHouse objects. */
-export type PhysicalNodeType =
-	| 'kafka_engine'
-	| 'landing_mv'
-	| 'landing_table'
-	| 'adopted_table'
-	| 'model_mv'
-	| 'model_table'
-	| 'model_view';
-
-/** Why a physical relation exists in the warehouse, for the physical view. */
-export type RelationDeploymentState = 'active' | 'staged' | 'orphaned';
-
-export type NodeDeployment = {
-	deploymentId: string;
-	state: RelationDeploymentState;
-};
-
-export type GraphNode = {
-	id: string;
-	label: string;
-	/** Logical name this node belongs to, for cross-linking back to detail pages. */
-	logicalName: string;
-	logicalType: LogicalNodeType;
-	physicalType: PhysicalNodeType | null;
-	status: ModelStatus;
-	anchor: AnchorState | null;
-	kindLabel: string;
-	sublabel: string | null;
-	rows: number | null;
-	rowsPerSecond: number | null;
-	failingChecks: number;
-	warningChecks: number;
-	totalChecks: number;
-	drift: boolean;
-	/** Set only for deployment-suffixed relations in the physical view. */
-	deployment?: NodeDeployment | null;
-};
-
-export type GraphEdge = {
-	id: string;
-	source: string;
-	target: string;
-	type: RefType;
-	/** Unknown remains a visible driver; only measured stalls lose the driving hue. */
-	flowState: 'flowing' | 'stalled' | 'unknown';
-};
-
-export type Graph = { nodes: GraphNode[]; edges: GraphEdge[] };
-
-// ─── plan (derived) ──────────────────────────────────────────────────────────
-
-/** A selector is a bare model name or `pipeline:<name>`. Nothing else parses. */
-export type Selector = { kind: 'model' | 'pipeline'; name: string };
-
-export type PlanEntryReason = 'selected' | 'downstream_of_selected' | 'all_models';
-
-export type PlanSqlChangeStatus =
-	| 'first_baseline'
-	| 'query_changed'
-	| 'no_query_change'
-	| 'baseline_unavailable';
-
-export type PlanSqlChange = {
-	status: PlanSqlChangeStatus;
-	unifiedDiff: string | null;
-	warning: string | null;
-};
-
-export const PLAN_REASON_LABEL: Record<PlanEntryReason, string> = {
-	selected: 'selected',
-	downstream_of_selected: 'downstream of selection',
-	all_models: 'all models'
-};
-
-export type PlanEntry = {
-	modelName: string;
-	pipeline: string;
-	reason: PlanEntryReason;
-	relationNames: string[];
-	resourceKinds: ('table' | 'materialized_view' | 'view')[];
-	ownership: { relation: string; ownership: OwnershipState }[];
-	drivingInput: string | null;
-	isReplayRoot: boolean;
-	sqlChange: PlanSqlChange | null;
-};
-
-export type PlanAction = {
-	relationName: string;
-	action: 'drop' | 'create';
-	modelName: string;
-	resourceKind: 'table' | 'materialized_view' | 'view';
-};
-
-export type PlanReplayRoot = {
-	modelName: string;
-	drivingInputName: string;
-	drivingInputRelationName: string;
-	boundaryMode: ReplayBoundaryMode;
-	replayColumns: Partial<Record<ReplayRole, string>>;
-	propagatedModelNames: string[];
-	hasAggregateSemantics: boolean;
-	/**
-	 * Rows the replay of this root will read, counted against the landing table
-	 * with the same predicate the build uses. A count, not an estimate. null when
-	 * the anchor table does not exist yet.
-	 */
-	rowsToReplay: number | null;
-};
-
-export type PlanWarning = {
-	code: string;
-	message: string;
-	relatedModel: string | null;
-};
-
-export type PlanProtection = {
-	pipelineName: string;
-	warning: string;
-	confirmation: string;
-};
-
-export type PlanPrerequisite = {
-	name: string;
-	type: 'source' | 'model';
-	relationNames: string[];
-	present: boolean;
-	frameworkManaged: boolean;
-};
-
-export type ReplayWindow =
-	| { mode: 'full' }
-	| { mode: 'from'; startTime: string };
-
-export type Plan = {
-	adapter: string;
-	database: string;
-	/** What the user asked for. */
-	userScope: Selector[];
-	/** What will actually be rebuilt — always the full downstream closure. */
-	entries: PlanEntry[];
-	prerequisites: PlanPrerequisite[];
-	teardown: PlanAction[];
-	creation: PlanAction[];
-	replayRoots: PlanReplayRoot[];
-	warnings: PlanWarning[];
-	protections: PlanProtection[];
-	replayWindow: ReplayWindow;
-	plannedAt: string;
-	command: string;
-};
-
 // ─── reconstruction (derived) ────────────────────────────────────────────────
 
 /**
@@ -547,7 +358,7 @@ export type Plan = {
  * reconstruct. `truncating` is a standing latent condition: the next rebuild
  * silently drops the overhang. The CLI never tells you this.
  */
-export type ReconstructionState = 'matched' | 'truncating' | 'lossless' | 'unknown';
+type ReconstructionState = 'matched' | 'truncating' | 'lossless' | 'unknown';
 
 export type ReconstructionCoverage = {
 	modelName: string;
@@ -587,7 +398,7 @@ export type Deployment = {
 	bytes: number;
 };
 
-export type DeploymentModel = {
+type DeploymentModel = {
 	logicalName: string;
 	stagedRelation: string;
 	stagedRows: number;
@@ -599,7 +410,7 @@ export type DeploymentModel = {
 	isNew: boolean;
 };
 
-export type DeploymentPromotionPreview = {
+type DeploymentPromotionPreview = {
 	classification: 'initial_publish' | 'promotion';
 	additions: {
 		database: string;

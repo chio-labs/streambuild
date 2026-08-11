@@ -47,7 +47,7 @@ def prepare_lineage_browser_project(*, tmp_path: Path) -> Path:
 
 def prepare_catalog_pipeline_browser_project(*, tmp_path: Path) -> Path:
     project_dir: Path = prepare_lineage_browser_project(tmp_path=tmp_path)
-    (project_dir / "pipelines" / "moving_events" / "derived_moving_orders.sql").write_text(
+    (project_dir / "pipelines" / "pl__moving_events" / "derived_moving_orders.sql").write_text(
         'MODEL (\n  engine "MergeTree()",\n  order_by ["order_id"]\n);\n\n'
         "SELECT\n  order_id::String AS order_id,\n"
         "  _replay_timestamp::DateTime64(3) AS _replay_timestamp\n"

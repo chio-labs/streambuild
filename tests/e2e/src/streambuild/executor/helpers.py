@@ -245,7 +245,7 @@ def run_kafka_live_shadow_scenario(
 
 def prepare_external_source_e2e_project(*, tmp_path: Path) -> Path:
     project_dir: Path = tmp_path / "external_source_project"
-    pipeline_dir: Path = project_dir / "pipelines" / "orders"
+    pipeline_dir: Path = project_dir / "pipelines" / "pl__orders"
     pipeline_dir.mkdir(parents=True, exist_ok=True)
     _write_external_source_project_config(project_dir=project_dir)
     _write_external_source(
@@ -283,7 +283,7 @@ def prepare_external_source_offset_e2e_project(
     *, tmp_path: Path, virtual_environments: bool = True
 ) -> Path:
     project_dir: Path = tmp_path / "external_source_offset_project"
-    pipeline_dir: Path = project_dir / "pipelines" / "orders"
+    pipeline_dir: Path = project_dir / "pipelines" / "pl__orders"
     pipeline_dir.mkdir(parents=True, exist_ok=True)
     _write_external_source_project_config(
         project_dir=project_dir, virtual_environments=virtual_environments
@@ -324,7 +324,7 @@ FROM __ref("orders")
 
 def prepare_external_source_cursor_e2e_project(*, tmp_path: Path) -> Path:
     project_dir: Path = tmp_path / "external_source_cursor_project"
-    pipeline_dir: Path = project_dir / "pipelines" / "orders"
+    pipeline_dir: Path = project_dir / "pipelines" / "pl__orders"
     pipeline_dir.mkdir(parents=True, exist_ok=True)
     _write_external_source_project_config(project_dir=project_dir)
     _write_external_source(

@@ -44,6 +44,14 @@ class LineageApproximateActivityE2ETestCase:
 
 
 @dataclass(frozen=True)
+class RunCommandBoxE2ETestCase:
+    description: str
+    protected_model: str
+    expected_confirmation: str
+    expected_quoted_selector: str
+
+
+@dataclass(frozen=True)
 class PlanBrowserE2ETestCase:
     description: str
     selector: str
@@ -81,6 +89,7 @@ class MessageConsoleBrowserE2ETestCase:
 class CatalogPipelineBrowserE2ETestCase:
     description: str
     pipeline_name: str
+    source_name: str
     parent_model: str
     child_model: str
     expected_relation: str

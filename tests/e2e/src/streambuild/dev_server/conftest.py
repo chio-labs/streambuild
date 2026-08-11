@@ -79,6 +79,13 @@ def running_lineage_server(
         password=e2e_clickhouse_connection_settings.password,
         database=e2e_clickhouse_database,
     )
+    (project_dir / "pipelines" / "pl__moving_events" / "pipeline.toml").write_text(
+        'mode = "direct"\n\n'
+        "[protection]\n"
+        'warning = "Interrupts protected moving events."\n'
+        'confirmation = "DEPLOY_MOVING_EVENTS"\n',
+        encoding="utf-8",
+    )
     api_port: int = available_port()
     log_path: Path = Path(output_path) / "stb-dev.log"
     process: subprocess.Popen[str] = start_dev_process(
@@ -326,7 +333,7 @@ def running_complete_streaming_browser_server(
         '[targets.test]\ndatabase = "analytics"\n',
         encoding="utf-8",
     )
-    (project_dir / "pipelines" / "order_events" / "orders_enriched.sql").write_text(
+    (project_dir / "pipelines" / "pl__order_events" / "orders_enriched.sql").write_text(
         'MODEL (\n  engine "MergeTree()",\n'
         '  order_by ["order_id", "_replay_timestamp"]\n);\n\n'
         "SELECT\n  CAST(concat('enriched:', order_id) AS String) AS order_id,\n"

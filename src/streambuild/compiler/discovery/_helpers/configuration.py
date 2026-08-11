@@ -14,6 +14,7 @@ from streambuild.compiler.discovery.constants import (
     AUDIT_DEFAULT_WARMUP_KEY,
     AUDIT_SCHEDULER_KEYS,
     AUDIT_SEVERITIES,
+    BUILD_KEYS,
     DEFAULT_ADAPTER_NAME,
     DEFAULTS_KEYS,
     DEPLOYMENT_READINESS_KEYS,
@@ -25,12 +26,15 @@ from streambuild.compiler.discovery.constants import (
     LOCAL_CONFIG_FILE_NAME,
     LOCAL_CONFIG_KEYS,
     LOCAL_DEFAULTS_KEYS,
-    NAMING_KEYS,
+    LOCAL_TARGET_KEYS,
+    NAMING_PIPELINE_MACRO_KEY,
+    NAMING_PIPELINE_PREFIX_KEY,
     NAMING_TABLE_PREFIX_KEY,
     NAMING_VIEW_PREFIX_KEY,
     PIPELINE_MODE_KEY,
     PROJECT_CONFIG_FILE_NAME,
     PROJECT_CONFIG_KEYS,
+    PROJECT_NAMING_KEYS,
     RUN_UNRESPONSIVE_AFTER_SECONDS,
     SECONDS_BY_DURATION_UNIT,
     SOURCE_DEFAULT_KEYS,
@@ -43,6 +47,7 @@ from streambuild.compiler.discovery.models import (
     AuditSchedulerConfig,
     AuditSchedulerOverride,
     AuthoredProjectConfig,
+    BuildConfig,
     DeploymentReadinessDefaults,
     DiscoveredProjectFile,
     KafkaSourceDefaults,
@@ -178,6 +183,20 @@ def _parse_project_config(
         label="project",
         file_path=file_path,
     )
+    targets: tuple[tuple[str, ProjectTarget], ...] = _parse_project_targets(
+        payload=payload.get("targets"), file_path=file_path
+    )
+    build: BuildConfig = _parse_build_config(
+        payload=payload.get("build"),
+        label="build",
+        file_path=file_path,
+    )
+    if build.max_pipelines is None and any(
+        target.build.max_pipelines is not None for _, target in targets
+    ):
+        raise ProjectConfigError(
+            f"{file_path} target build limits require build.max_pipelines as a project default"
+        )
     return AuthoredProjectConfig(
         name=_require_project_name(
             mapping=payload,
@@ -202,7 +221,7 @@ def _parse_project_config(
             label="project.vars",
             file_path=file_path,
         ),
-        targets=_parse_project_targets(payload=payload.get("targets"), file_path=file_path),
+        targets=targets,
         defaults=_parse_project_defaults(payload=payload.get("defaults"), file_path=file_path),
         naming=_parse_project_naming(payload=payload.get("naming"), file_path=file_path),
         audit_scheduler=_parse_audit_scheduler_config(
@@ -210,6 +229,7 @@ def _parse_project_config(
             label="audit_scheduler",
             file_path=file_path,
         ),
+        build=build,
     )
 
 
@@ -320,8 +340,42 @@ def _parse_project_target(*, payload: object, label: str, file_path: Path) -> Pr
         payload=payload,
         label=label,
         file_path=file_path,
+        allowed_keys=TARGET_KEYS,
     )
     return ProjectTarget(
+        database=_optional_non_empty_string(
+            mapping=mapping,
+            key="database",
+            label=label,
+            file_path=file_path,
+        ),
+        connection=_parse_connection(payload=mapping.get("connection"), file_path=file_path),
+        variables=_parse_variables(
+            payload=mapping.get("vars"),
+            label=f"{label}.vars",
+            file_path=file_path,
+        ),
+        audit_scheduler=_parse_audit_scheduler_override(
+            payload=mapping.get("audit_scheduler"),
+            label=f"{label}.audit_scheduler",
+            file_path=file_path,
+        ),
+        build=_parse_build_config(
+            payload=mapping.get("build"),
+            label=f"{label}.build",
+            file_path=file_path,
+        ),
+    )
+
+
+def _parse_local_target(*, payload: object, label: str, file_path: Path) -> LocalProjectTarget:
+    mapping: dict[str, object] = _target_mapping(
+        payload=payload,
+        label=label,
+        file_path=file_path,
+        allowed_keys=LOCAL_TARGET_KEYS,
+    )
+    return LocalProjectTarget(
         database=_optional_non_empty_string(
             mapping=mapping,
             key="database",
@@ -342,21 +396,9 @@ def _parse_project_target(*, payload: object, label: str, file_path: Path) -> Pr
     )
 
 
-def _parse_local_target(*, payload: object, label: str, file_path: Path) -> LocalProjectTarget:
-    target: ProjectTarget = _parse_project_target(
-        payload=payload,
-        label=label,
-        file_path=file_path,
-    )
-    return LocalProjectTarget(
-        database=target.database,
-        connection=target.connection,
-        variables=target.variables,
-        audit_scheduler=target.audit_scheduler,
-    )
-
-
-def _target_mapping(*, payload: object, label: str, file_path: Path) -> dict[str, object]:
+def _target_mapping(
+    *, payload: object, label: str, file_path: Path, allowed_keys: frozenset[str]
+) -> dict[str, object]:
     mapping: dict[str, object] = _optional_mapping(
         payload=payload,
         label=label,
@@ -364,11 +406,33 @@ def _target_mapping(*, payload: object, label: str, file_path: Path) -> dict[str
     )
     _validate_allowed_keys(
         mapping=mapping,
-        allowed_keys=TARGET_KEYS,
+        allowed_keys=allowed_keys,
         label=label,
         file_path=file_path,
     )
     return mapping
+
+
+def _parse_build_config(*, payload: object, label: str, file_path: Path) -> BuildConfig:
+    mapping: dict[str, object] = _optional_mapping(
+        payload=payload,
+        label=label,
+        file_path=file_path,
+    )
+    _validate_allowed_keys(
+        mapping=mapping,
+        allowed_keys=BUILD_KEYS,
+        label=label,
+        file_path=file_path,
+    )
+    max_pipelines: object | None = mapping.get("max_pipelines")
+    if max_pipelines is not None and (
+        isinstance(max_pipelines, bool) or not isinstance(max_pipelines, int) or max_pipelines <= 0
+    ):
+        raise ProjectConfigError(f"{file_path} {label}.max_pipelines must be a positive integer")
+    return BuildConfig(
+        max_pipelines=max_pipelines if isinstance(max_pipelines, int) else None,
+    )
 
 
 def _parse_audit_scheduler_config(
@@ -637,12 +701,26 @@ def _parse_project_naming(*, payload: object, file_path: Path) -> ProjectNaming:
     )
     _validate_allowed_keys(
         mapping=mapping,
-        allowed_keys=NAMING_KEYS,
+        allowed_keys=PROJECT_NAMING_KEYS,
         label="naming",
         file_path=file_path,
     )
     defaults: ProjectNaming = ProjectNaming()
     return ProjectNaming(
+        pipeline_prefix=_optional_string_allowing_empty(
+            mapping=mapping,
+            key=NAMING_PIPELINE_PREFIX_KEY,
+            label="naming",
+            file_path=file_path,
+        )
+        if NAMING_PIPELINE_PREFIX_KEY in mapping
+        else defaults.pipeline_prefix,
+        pipeline_naming_macro=_optional_non_empty_string(
+            mapping=mapping,
+            key=NAMING_PIPELINE_MACRO_KEY,
+            label="naming",
+            file_path=file_path,
+        ),
         table_prefix=_optional_string_allowing_empty(
             mapping=mapping,
             key=NAMING_TABLE_PREFIX_KEY,

@@ -31,10 +31,13 @@ from tests.unit.src.streambuild.compiler.discovery._test_types import (
     MissingProjectConfigurationTestCase,
     MixedProjectConfigurationTestCase,
     ProjectAuditDefaultsTestCase,
+    ProjectBuildLimitResolutionTestCase,
     ProjectConfigurationErrorTestCase,
     ProjectDeploymentReadinessDefaultsTestCase,
     ProjectFreshnessDefaultTestCase,
     ProjectFreshnessErrorTestCase,
+    ProjectPipelineNamingDefaultTestCase,
+    ProjectPipelineNamingOverrideTestCase,
     ProjectRunSafetyDefaultTestCase,
     UnknownTargetTestCase,
 )
@@ -57,6 +60,73 @@ port = 8123
 [targets.dev]
 database = "dev_database"
 """
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ProjectPipelineNamingDefaultTestCase(
+            description="defaults to the pl__ pipeline prefix without a naming macro",
+            expected_pipeline_prefix="pl__",
+            expected_pipeline_naming_macro=None,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_no_pipeline_naming_configuration_when_loading_then_default_prefix_is_pl(
+    test_case: ProjectPipelineNamingDefaultTestCase,
+    tmp_path: Path,
+) -> None:
+    write_project_toml(
+        project_dir=tmp_path,
+        contents='name = "analytics"\ndefault_target = "dev"\n[targets.dev]\n',
+    )
+
+    loaded: LoadedProjectConfiguration = load_project_configuration(project_dir=tmp_path)
+
+    assert loaded.project.naming.pipeline_prefix == test_case.expected_pipeline_prefix
+    assert loaded.project.naming.pipeline_naming_macro == test_case.expected_pipeline_naming_macro
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ProjectPipelineNamingOverrideTestCase(
+            description="retains an empty prefix and a configured naming macro",
+            naming_toml='pipeline_prefix = ""\npipeline_naming_macro = "pipeline_name"',
+            expected_pipeline_prefix="",
+            expected_pipeline_naming_macro="pipeline_name",
+        ),
+        ProjectPipelineNamingOverrideTestCase(
+            description="retains a custom pipeline prefix",
+            naming_toml='pipeline_prefix = "custom__"',
+            expected_pipeline_prefix="custom__",
+            expected_pipeline_naming_macro=None,
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_pipeline_naming_overrides_when_loading_then_values_are_retained(
+    test_case: ProjectPipelineNamingOverrideTestCase,
+    tmp_path: Path,
+) -> None:
+    write_project_toml(
+        project_dir=tmp_path,
+        contents=f"""
+        name = "analytics"
+        default_target = "dev"
+
+        [naming]
+        {test_case.naming_toml}
+
+        [targets.dev]
+        """,
+    )
+
+    loaded: LoadedProjectConfiguration = load_project_configuration(project_dir=tmp_path)
+
+    assert loaded.project.naming.pipeline_prefix == test_case.expected_pipeline_prefix
+    assert loaded.project.naming.pipeline_naming_macro == test_case.expected_pipeline_naming_macro
 
 
 @pytest.mark.parametrize(
@@ -90,6 +160,74 @@ def test_given_run_safety_default_when_loading_then_duration_is_typed(
     loaded: LoadedProjectConfiguration = load_project_configuration(project_dir=tmp_path)
 
     assert loaded.project.defaults.run_presumed_failed_after_seconds == test_case.expected_seconds
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ProjectBuildLimitResolutionTestCase(
+            description="target overrides and local targets inherit the project limit",
+            expected_dev_limit=2,
+            expected_staging_limit=5,
+            expected_private_limit=5,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_project_and_target_build_limits_when_resolving_then_target_overrides_default(
+    test_case: ProjectBuildLimitResolutionTestCase,
+    tmp_path: Path,
+) -> None:
+    write_project_toml(
+        project_dir=tmp_path,
+        contents="""
+        name = "analytics"
+        default_target = "dev"
+
+        [build]
+        max_pipelines = 5
+
+        [targets.dev]
+        database = "dev_database"
+
+        [targets.dev.build]
+        max_pipelines = 2
+
+        [targets.staging]
+        database = "staging_database"
+        """,
+    )
+    write_local_toml(
+        project_dir=tmp_path,
+        contents="""
+        [targets.private]
+        database = "private_database"
+        """,
+    )
+    loaded: LoadedProjectConfiguration = load_project_configuration(project_dir=tmp_path)
+
+    dev: EffectiveProjectConfiguration = resolve_effective_project_configuration(
+        loaded=loaded,
+        selected_target="dev",
+        cli_variables={},
+        environment={},
+    )
+    staging: EffectiveProjectConfiguration = resolve_effective_project_configuration(
+        loaded=loaded,
+        selected_target="staging",
+        cli_variables={},
+        environment={},
+    )
+    private: EffectiveProjectConfiguration = resolve_effective_project_configuration(
+        loaded=loaded,
+        selected_target="private",
+        cli_variables={},
+        environment={},
+    )
+
+    assert dev.build.max_pipelines == test_case.expected_dev_limit
+    assert staging.build.max_pipelines == test_case.expected_staging_limit
+    assert private.build.max_pipelines == test_case.expected_private_limit
 
 
 @pytest.mark.parametrize(
@@ -350,6 +488,33 @@ def test_given_absent_local_toml_when_loading_then_returns_typed_defaults(
             expected_error_fragment="targets.dev contains unsupported keys: pipeline_mode",
         ),
         ProjectConfigurationErrorTestCase(
+            description="rejects a non-positive project build limit",
+            project_contents=(
+                'name = "analytics"\ndefault_target = "dev"\n'
+                "[build]\nmax_pipelines = 0\n[targets.dev]\n"
+            ),
+            expected_error_fragment="build.max_pipelines must be a positive integer",
+        ),
+        ProjectConfigurationErrorTestCase(
+            description="rejects a boolean target build limit",
+            project_contents=(
+                'name = "analytics"\ndefault_target = "dev"\n'
+                "[build]\nmax_pipelines = 5\n"
+                "[targets.dev.build]\nmax_pipelines = true\n"
+            ),
+            expected_error_fragment=("targets.dev.build.max_pipelines must be a positive integer"),
+        ),
+        ProjectConfigurationErrorTestCase(
+            description="rejects a target limit without a project default",
+            project_contents=(
+                'name = "analytics"\ndefault_target = "dev"\n'
+                "[targets.dev.build]\nmax_pipelines = 2\n"
+            ),
+            expected_error_fragment=(
+                "target build limits require build.max_pipelines as a project default"
+            ),
+        ),
+        ProjectConfigurationErrorTestCase(
             description="rejects the removed virtual environments setting",
             project_contents=(
                 'name = "analytics"\ndefault_target = "dev"\n'
@@ -501,7 +666,17 @@ def test_given_invalid_toml_contract_when_loading_then_rejects_with_field_contex
             expected_error_fragment=(
                 "streambuild_local.toml targets.private contains unsupported keys: pipeline_mode"
             ),
-        )
+        ),
+        LocalConfigurationErrorTestCase(
+            description="rejects a local build limit override",
+            local_contents="""
+            [targets.private.build]
+            max_pipelines = 100
+            """,
+            expected_error_fragment=(
+                "streambuild_local.toml targets.private contains unsupported keys: build"
+            ),
+        ),
     ],
     ids=lambda case: case.description,
 )

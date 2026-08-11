@@ -2,68 +2,28 @@
 	import { page } from '$app/state';
 	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
 	import ReplaceIcon from '@lucide/svelte/icons/replace';
-	import AppTopbar from '$lib/components/app-topbar.svelte';
-	import SqlBlock from '$lib/components/sql-block.svelte';
-	import type { SqlArtifact } from '$lib/components/sql-block.svelte';
-	import StatusPill from '$lib/components/status-pill.svelte';
-	import AnchorBadge from '$lib/components/anchor-badge.svelte';
-	import FactRow from '$lib/components/fact-row.svelte';
-	import SpanTrack from '$lib/components/span-track.svelte';
-	import { getProject } from '$lib/api';
-	import {
-		auditsForModel,
-		modelByName,
-		reconstructionCoverage,
-		rootSourceFor,
-		testsForModel
-	} from '$lib/domain/derive';
-	import {
-		formatAgo,
-		formatBytes,
-		formatDaySpan,
-		formatDuration,
-		formatInteger,
-		formatTimestamp
-	} from '$lib/domain/format';
-	import {
-		OWNERSHIP_LABEL,
-		REF_TYPE_LABEL,
-		type Model,
-		type Project,
-		type ReconstructionCoverage
-	} from '$lib/domain/types';
+	import AppTopbar from '$lib/presentation/components/app-topbar.svelte';
+	import SqlBlock from '$lib/presentation/components/sql-block.svelte';
+	import StatusPill from '$lib/presentation/components/status-pill.svelte';
+	import AnchorBadge from '$lib/presentation/components/anchor-badge.svelte';
+	import FactRow from '$lib/presentation/components/fact-row.svelte';
+	import SpanTrack from '$lib/presentation/components/span-track.svelte';
+	import { getProject } from '$lib/api/main/project/get-project';
+	import { createCatalogView } from '$lib/catalog-view/main/create-catalog-view';
+	import type { Project } from '$lib/domain/types';
 
 	const project: Project = getProject();
+	const catalogView = createCatalogView();
 	const modelName = $derived(page.params.name ?? '');
-	const model = $derived<Model | undefined>(modelByName(project, modelName));
-
-	const audits = $derived(model ? auditsForModel(project, model.name) : []);
-	const tests = $derived(model ? testsForModel(project, model.name) : []);
-	const source = $derived(model ? rootSourceFor(project, model) : undefined);
-	const coverage = $derived<ReconstructionCoverage | undefined>(
-		reconstructionCoverage(project).find((row) => row.modelName === modelName)
-	);
-
-	const artifacts = $derived.by((): SqlArtifact[] => {
-		if (!model) return [];
-		return [
-			{ label: 'Model', code: model.sql.authored },
-			{ label: 'Compiled', code: model.sql.compiled },
-			{ label: 'Table DDL', code: model.sql.tableDdl },
-			{
-				label: 'MV DDL',
-				code: model.sql.mvDdl
-			},
-			{ label: 'View DDL', code: model.sql.viewDdl }
-		];
-	});
-
-	const upstream = $derived(model?.refs ?? []);
-	const downstream = $derived(
-		project.models.filter((candidate) =>
-			candidate.refs.some((ref) => !ref.isSource && ref.name === modelName)
-		)
-	);
+	const view = $derived(catalogView.modelView(project, modelName));
+	const model = $derived(view.model);
+	const audits = $derived(view.audits);
+	const tests = $derived(view.tests);
+	const source = $derived(view.source);
+	const coverage = $derived(view.coverage);
+	const artifacts = $derived(view.artifacts);
+	const upstream = $derived(view.upstream);
+	const downstream = $derived(view.downstream);
 </script>
 
 <AppTopbar title={modelName}>
@@ -176,11 +136,11 @@
 								>
 								<span
 									class="ml-auto font-mono text-[10px]"
-									style:color={ref.type === 'mutable_reference'
+								style:color={ref.type === 'mutable_reference'
 										? 'var(--sb-warning)'
 										: ref.type === 'driving_input'
 											? 'var(--sb-secondary)'
-											: 'var(--sb-text-faint)'}>{REF_TYPE_LABEL[ref.type]}</span
+											: 'var(--sb-text-faint)'}>{catalogView.refTypeLabel[ref.type]}</span
 								>
 							</div>
 						{/each}
@@ -219,19 +179,19 @@
 					{#if model.kind === 'view'}
 						<p class="text-muted-foreground text-[11.5px]">No stored data.</p>
 					{:else}
-						<FactRow label="Rows" value={formatInteger(model.live.rows)} />
-						<FactRow label="Disk" value={formatBytes(model.live.diskBytes)} />
+						<FactRow label="Rows" value={catalogView.formatInteger(model.live.rows)} />
+						<FactRow label="Disk" value={catalogView.formatBytes(model.live.diskBytes)} />
 						<FactRow label="Parts" value={String(model.live.parts)} />
 						<FactRow
 							label="Newest row"
-							value={formatAgo(model.live.newestRowAt, project.capturedAt)}
-							title={formatTimestamp(model.live.newestRowAt)}
+							value={catalogView.formatAgo(model.live.newestRowAt, project.capturedAt)}
+							title={catalogView.formatTimestamp(model.live.newestRowAt)}
 						/>
 						<FactRow
 							label="Lag"
 							value={model.live.lagSeconds === null
 								? '—'
-								: formatDuration(model.live.lagSeconds)}
+								: catalogView.formatDuration(model.live.lagSeconds)}
 							tone={model.status === 'stalled'
 								? 'error'
 								: model.status === 'lagging'
@@ -254,7 +214,7 @@
 					{/each}
 					<FactRow
 						label="Ownership"
-						value={OWNERSHIP_LABEL[model.live.ownership]}
+					value={catalogView.ownershipLabel[model.live.ownership]}
 						tone={model.live.ownership === 'direct' ? 'default' : 'warning'}
 					/>
 				</div>
@@ -300,9 +260,9 @@
 					{#if model.live.recordedCoverage}
 						<FactRow
 							label="Coverage from"
-							value={formatTimestamp(model.live.recordedCoverage.from)}
+							value={catalogView.formatTimestamp(model.live.recordedCoverage.from)}
 						/>
-						<FactRow label="Coverage to" value={formatTimestamp(model.live.recordedCoverage.to)} />
+						<FactRow label="Coverage to" value={catalogView.formatTimestamp(model.live.recordedCoverage.to)} />
 					{/if}
 				</div>
 
@@ -323,7 +283,7 @@
 							<div class="flex flex-col gap-1.5 pb-2">
 								<div class="text-muted-foreground flex items-baseline gap-2 font-mono text-[10px]">
 									<span>source retains</span><span class="ml-auto"
-										>{formatDaySpan(coverage.retainedDays ?? 0)}</span
+										>{catalogView.formatDaySpan(coverage.retainedDays ?? 0)}</span
 									>
 								</div>
 								<SpanTrack
@@ -341,7 +301,7 @@
 								/>
 								<div class="text-muted-foreground flex items-baseline gap-2 font-mono text-[10px]">
 									<span>this model holds</span><span class="ml-auto"
-										>{formatDaySpan(coverage.heldDays ?? 0)}</span
+										>{catalogView.formatDaySpan(coverage.heldDays ?? 0)}</span
 									>
 								</div>
 								<SpanTrack
@@ -360,7 +320,7 @@
 							</div>
 							{#if coverage.state === 'truncating'}
 								<p class="text-[11.5px]" style:color="var(--sb-warning)">
-									{formatDaySpan(coverage.unreconstructableDays ?? 0)} more than {source.name} can
+									{catalogView.formatDaySpan(coverage.unreconstructableDays ?? 0)} more than {source.name} can
 									rebuild
 								</p>
 							{:else}
@@ -394,7 +354,7 @@
 							<span class="truncate font-mono text-[11px]">{audit.name}</span>
 							{#if audit.result && !audit.result.passed}
 								<span class="ml-auto shrink-0 font-mono text-[10px]" style:color="var(--sb-error)"
-									>{formatInteger(audit.result.failingRowCount)}</span
+									>{catalogView.formatInteger(audit.result.failingRowCount)}</span
 								>
 							{/if}
 						</div>
