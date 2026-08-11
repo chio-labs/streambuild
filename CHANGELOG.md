@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.19.0](https://github.com/chio-labs/streambuild/compare/v0.18.1...v0.19.0) (2026-08-11)
+
+
+### Features
+
+* add build safety guardrails ([193aa2a](https://github.com/chio-labs/streambuild/commit/193aa2a5b6d87a420f8ef754943a98d6ababda87))
+* add build safety guardrails ([10a328f](https://github.com/chio-labs/streambuild/commit/10a328fb26ab3decac4326d311e7b00501f3ab2a))
+* enforce global pipeline naming uniqueness ([0dc5b62](https://github.com/chio-labs/streambuild/commit/0dc5b624e8ce5b7233207b277d45a27606c75092))
+
+
+### Documentation
+
+* tighten pipeline naming guidance ([1c67487](https://github.com/chio-labs/streambuild/commit/1c67487e7f848ecfd6c91a6ce3da3ae8e52bc14d))
+
 ## [0.18.1](https://github.com/chio-labs/streambuild/compare/v0.18.0...v0.18.1) (2026-08-10)
 
 
