@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from streambuild.compiler.access.constants import ACCESS_POLICY_FILE_NAME
 from streambuild.compiler.discovery._helpers.project_inputs import (
     discover_pipeline_directories,
     read_discovered_files,
@@ -46,6 +47,11 @@ def discover_project_inputs(
     source_files: tuple[DiscoveredSourceFile, ...] = (
         () if loaded_project is None else loaded_project.source_files
     )
+    access_path: Path = project_dir / ACCESS_POLICY_FILE_NAME
+    access_files: tuple[DiscoveredProjectFile, ...] = read_discovered_files(
+        file_paths=(access_path,) if access_path.is_file() else (),
+        project_dir=project_dir,
+    )
     return DiscoveredProjectInputs(
         project_dir=project_dir,
         loaded_project=loaded_project,
@@ -55,4 +61,5 @@ def discover_project_inputs(
         test_files=test_files,
         audit_files=audit_files,
         macro_files=macro_files,
+        access_file=access_files[0] if access_files else None,
     )

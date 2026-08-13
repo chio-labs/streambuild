@@ -4,6 +4,11 @@ from importlib.metadata import version
 from pathlib import Path
 from typing import Any
 
+from streambuild.auth.types import (
+    AuthenticationMode,
+    AuthenticationSource,
+    UnknownUserPolicy,
+)
 from streambuild.dev_server.constants import (
     DEFAULT_DEV_SERVER_HOST,
     DEFAULT_DEV_SERVER_PORT,
@@ -23,6 +28,8 @@ def build_cli_parser() -> argparse.ArgumentParser:
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser] = parser.add_subparsers(
         dest="command", required=True
     )
+
+    _add_admin_parser(subparsers=subparsers)
 
     discover_parser: argparse.ArgumentParser = subparsers.add_parser(
         "discover",
@@ -468,6 +475,85 @@ def _add_dev_parser(*, subparsers: argparse._SubParsersAction) -> None:
         default=DEFAULT_DEV_SERVER_PORT,
         help="Port the dev server binds (default 8000)",
     )
+    dev_parser.add_argument(
+        "--auth-mode",
+        choices=tuple(AuthenticationMode),
+        help="Web authentication mode (default: disabled)",
+    )
+    dev_parser.add_argument(
+        "--control-store-url",
+        help="SQLite/PostgreSQL account control-store URL",
+    )
+    dev_parser.add_argument(
+        "--auth-username-header",
+        help="Trusted-proxy username header (default: X-Mustard-User)",
+    )
+    dev_parser.add_argument(
+        "--auth-display-name-header",
+        help="Optional trusted-proxy display-name header",
+    )
+    dev_parser.add_argument(
+        "--auth-email-header",
+        help="Optional trusted-proxy email header",
+    )
+    dev_parser.add_argument(
+        "--auth-unknown-user-policy",
+        choices=tuple(UnknownUserPolicy),
+        help="Trusted-proxy unknown-user policy (default: auto_provision)",
+    )
+    dev_parser.add_argument(
+        "--auth-default-role",
+        help="Role assigned to auto-provisioned proxy users (default: viewer)",
+    )
+    dev_parser.add_argument(
+        "--auth-session-ttl-seconds",
+        type=int,
+        help="Password session lifetime in seconds (default: 43200)",
+    )
+    dev_parser.add_argument(
+        "--auth-insecure-cookie",
+        action="store_true",
+        help="Allow password session cookies over plain HTTP (unsafe; loopback development only)",
+    )
+    dev_parser.add_argument(
+        "--auth-proxy-logout-url",
+        help="Optional upstream logout URL shown in trusted-proxy mode",
+    )
+
+
+def _add_admin_parser(*, subparsers: argparse._SubParsersAction) -> None:
+    admin_parser: argparse.ArgumentParser = subparsers.add_parser(
+        "admin",
+        help="Bootstrap and recover StreamBuild accounts",
+        description="Manage the account control store without a warehouse connection.",
+    )
+    admin_parser.add_argument("--project-dir", type=Path)
+    admin_parser.add_argument("--control-store-url")
+    commands: argparse._SubParsersAction[argparse.ArgumentParser] = admin_parser.add_subparsers(
+        dest="admin_command", required=True
+    )
+    commands.add_parser("migrate", help="Create or validate the account schema")
+
+    create_user: argparse.ArgumentParser = commands.add_parser(
+        "create-user", help="Create a proxy or password account"
+    )
+    create_user.add_argument("--username", required=True)
+    create_user.add_argument("--display-name")
+    create_user.add_argument("--email")
+    create_user.add_argument(
+        "--authentication-source",
+        required=True,
+        choices=(AuthenticationSource.PASSWORD, AuthenticationSource.TRUSTED_PROXY),
+    )
+    create_user.add_argument("--role", action="append")
+
+    for command in ("grant-role", "revoke-role"):
+        role_parser: argparse.ArgumentParser = commands.add_parser(command)
+        role_parser.add_argument("--username", required=True)
+        role_parser.add_argument("--role", required=True)
+    for command in ("enable-user", "disable-user", "reset-password"):
+        user_parser: argparse.ArgumentParser = commands.add_parser(command)
+        user_parser.add_argument("--username", required=True)
 
 
 def _add_clickhouse_args(

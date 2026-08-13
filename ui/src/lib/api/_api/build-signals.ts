@@ -1,4 +1,5 @@
 import { readApiResponse } from '$lib/api/_api/read-response';
+import { authenticatedFetch } from '$lib/auth/main/authenticated-fetch';
 
 export async function requestBuildCancellation(
 	invocationId: string
@@ -11,7 +12,7 @@ export async function requestBuildKill(invocationId: string): Promise<Record<str
 }
 
 async function signalBuild(path: string, invocationId: string): Promise<Record<string, unknown>> {
-	const response: Response = await fetch(path, {
+	const response: Response = await authenticatedFetch(path, {
 		method: 'POST',
 		headers: { 'content-type': 'application/json' },
 		body: JSON.stringify({ invocationId })

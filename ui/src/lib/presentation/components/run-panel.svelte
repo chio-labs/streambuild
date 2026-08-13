@@ -4,6 +4,7 @@
 	import XIcon from '@lucide/svelte/icons/x';
 	import { startBuild } from '$lib/api/main/build/start-build';
 	import { getProject } from '$lib/api/main/project/get-project';
+	import { canAnyPipeline } from '$lib/auth/main/can-any-pipeline';
 	import { protectedPipelinesForBuild } from '$lib/domain/main/protection/protected-pipelines-for-build';
 	import type { Project } from '$lib/domain/types';
 	import { openRun } from '$lib/presentation/main/_open-run';
@@ -33,6 +34,9 @@
 	let cmd = $state<string>('');
 	let userEdited = $state<boolean>(false);
 	let executing = $state<boolean>(false);
+	const buildAllowed = $derived(
+		canAnyPipeline('build.direct.run') || canAnyPipeline('deployment.create')
+	);
 	let executeError = $state<string | null>(null);
 	let commandInput = $state<HTMLInputElement>();
 	let commandInputRoot = $state<HTMLDivElement>();
@@ -404,7 +408,11 @@
 				</div>
 				<button
 					class="bg-primary flex shrink-0 items-center gap-1.5 rounded-[4px] px-3.5 py-2 font-mono text-[12px] font-medium text-white disabled:opacity-50"
-					disabled={parsed.error !== null || missingProtectedPipelines.length > 0 || executing}
+					disabled={parsed.error !== null ||
+						missingProtectedPipelines.length > 0 ||
+						executing ||
+						!buildAllowed}
+					title={buildAllowed ? undefined : 'Requires build.direct.run or deployment.create'}
 					onclick={() => void run()}
 				>
 					<PlayIcon size={13} /> {executing ? 'starting…' : 'Run'}

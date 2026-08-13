@@ -9,6 +9,7 @@ from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.dev_server._helpers.server.compile_runner import build_compile_outcome
 from streambuild.dev_server.exceptions import ProjectNotCompiledError
 from streambuild.dev_server.models import CompileOutcome
+from streambuild.dev_server.types import CompileAuthorizationGuard
 
 
 class DevServerState:
@@ -19,6 +20,7 @@ class DevServerState:
         self._compile_lock = threading.Lock()
         self._query_lock = threading.Lock()
         self._outcome: CompileOutcome | None = None
+        self._authorization_analysis: CompileAnalysis | None = None
 
     @property
     def query_lock(self) -> threading.Lock:
@@ -30,9 +32,14 @@ class DevServerState:
         """Recompile synchronously; concurrent reloads run one at a time."""
 
         with self._compile_lock:
-            outcome: CompileOutcome = build_compile_outcome(run_compile=self._run_compile)
-            self._outcome = outcome
-            return outcome
+            return self._reload_locked()
+
+    def reload_guarded(self, *, guard: CompileAuthorizationGuard) -> CompileOutcome:
+        """Authorize and recompile atomically against one held policy snapshot."""
+
+        with self._compile_lock:
+            _ = guard(analysis=self._authorization_analysis)
+            return self._reload_locked()
 
     def current(self) -> CompileOutcome:
         """Return the held outcome, compiling once on first access."""
@@ -40,6 +47,8 @@ class DevServerState:
         with self._compile_lock:
             if self._outcome is None:
                 self._outcome = build_compile_outcome(run_compile=self._run_compile)
+                if self._outcome.analysis is not None:
+                    self._authorization_analysis = self._outcome.analysis
             return self._outcome
 
     def current_analysis(self) -> CompileAnalysis:
@@ -51,3 +60,10 @@ class DevServerState:
                 "The project compile is failing; fix the reported error and reload"
             )
         return outcome.analysis
+
+    def _reload_locked(self) -> CompileOutcome:
+        outcome: CompileOutcome = build_compile_outcome(run_compile=self._run_compile)
+        self._outcome = outcome
+        if outcome.analysis is not None:
+            self._authorization_analysis = outcome.analysis
+        return outcome

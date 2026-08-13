@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import signal
 import sys
 from collections.abc import Callable, Mapping, Sequence
@@ -11,6 +12,7 @@ from types import FrameType
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.exceptions import AdapterError, AdapterWarehouseError
+from streambuild.cli.admin.main._run_admin import run_admin_command
 from streambuild.cli.entry._helpers.adapter_connection import (
     resolve_invocation_connection,
 )
@@ -103,6 +105,12 @@ def _main_with_dependencies(
     args: argparse.Namespace = parser.parse_args(argv_for_parse_args(argv))
     resolved_database: str | None = None
     try:
+        if args.command == CliCommand.ADMIN:
+            return run_admin_command(
+                args=args,
+                environment=os.environ if environment is None else environment,
+                working_directory=Path.cwd() if working_directory is None else working_directory,
+            )
         invocation: ResolvedCliInvocation = resolve_cli_invocation(
             args=args,
             environment=environment,

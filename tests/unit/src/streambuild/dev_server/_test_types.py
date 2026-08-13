@@ -47,6 +47,22 @@ class StateRouteErrorTestCase:
 
 
 @dataclass(frozen=True)
+class ReloadAuthorizationTestCase:
+    description: str
+    expected_denied_status: int
+    expected_allowed_status: int
+    expected_denied_reason: str
+
+
+@dataclass(frozen=True)
+class CapabilitiesTestCase:
+    description: str
+    expected_project: str
+    expected_target: str
+    expected_quality_pipelines: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class DevAppLifespanTestCase:
     description: str
     expected_status: int
@@ -391,3 +407,21 @@ class DeploymentDiffPayloadTestCase:
     expected_row_pairs: tuple[tuple[int | None, int | None], ...]
     expected_added_columns: tuple[tuple[str, ...], ...]
     expected_removed_columns: tuple[tuple[str, ...], ...]
+
+
+@dataclass(frozen=True)
+class SensorRoutesTestCase:
+    description: str
+    expected_sensor_names: tuple[str, ...]
+    expected_effective_statuses: tuple[str, ...]
+    expected_event_types: tuple[str | None, ...]
+
+
+@dataclass(frozen=True)
+class SensorRouteErrorTestCase:
+    description: str
+    method: str
+    path: str
+    body: dict[str, object] | None
+    expected_status_code: int
+    expected_detail_fragment: str

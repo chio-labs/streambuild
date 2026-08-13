@@ -10,11 +10,15 @@
 	import { formatDuration } from '$lib/formatting/main/format-duration';
 	import { formatTimestamp } from '$lib/formatting/main/format-timestamp';
 	import type { Project } from '$lib/domain/types';
+	import { can } from '$lib/auth/main/can';
+	import { canAnyPipeline } from '$lib/auth/main/can-any-pipeline';
 	import { buildRunPresentation } from '$lib/run-presentation/main/build-run-presentation';
 	import { createRunDetail } from '$lib/run-presentation/main/create-run-detail';
 	import type { RunDetailController, RunPresentation } from '$lib/run-presentation/types';
 
 	const project: Project = getProject();
+	const cancelAllowed = $derived(canAnyPipeline('build.cancel'));
+	const killAllowed = $derived(can('build.kill'));
 	const invocationId = $derived(page.params.id ?? '');
 	const detail: RunDetailController = createRunDetail(
 		async (nextInvocationId: string): Promise<void> => {
@@ -142,7 +146,8 @@
 		{#if ownedRunning && running}
 			<button
 				class="rounded border border-border px-2.5 py-1 font-mono text-[10.5px] text-[var(--sb-warning)]"
-				disabled={signalling}
+				disabled={signalling || !cancelAllowed}
+				title={cancelAllowed ? undefined : 'Requires the build.cancel permission'}
 				onclick={() => void detail.requestCancel()}>Cancel</button
 			>
 		{/if}
@@ -155,7 +160,8 @@
 			<button
 				class="rounded border px-2.5 py-1 font-mono text-[10.5px]"
 				style:color="var(--sb-error)"
-				disabled={signalling}
+				disabled={signalling || !killAllowed}
+				title={killAllowed ? undefined : 'Requires the target-scoped build.kill permission'}
 				onclick={() => void detail.requestKill()}>Force kill</button
 			>
 		{/if}

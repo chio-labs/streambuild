@@ -62,6 +62,22 @@ class AuditSchedulerOverride:
 
 
 @dataclass(frozen=True)
+class SensorAutomationConfig:
+    """Effective target-resolved sensor dispatcher configuration."""
+
+    enabled: bool = False
+    tick_retention_days: int = 0
+
+
+@dataclass(frozen=True)
+class SensorAutomationOverride:
+    """Optional authored sensor automation override at target scope."""
+
+    enabled: bool | None = None
+    tick_retention_days: int | None = None
+
+
+@dataclass(frozen=True)
 class BuildConfig:
     """Committed absolute limits applied before a build mutates its target."""
 
@@ -76,6 +92,7 @@ class ProjectTarget:
     connection: RawConnectionConfig = field(default_factory=RawConnectionConfig)
     variables: tuple[tuple[str, object], ...] = ()
     audit_scheduler: AuditSchedulerOverride = field(default_factory=AuditSchedulerOverride)
+    sensors: SensorAutomationOverride = field(default_factory=SensorAutomationOverride)
     build: BuildConfig = field(default_factory=BuildConfig)
 
     def __post_init__(self) -> None:
@@ -90,6 +107,7 @@ class LocalProjectTarget:
     connection: RawConnectionConfig = field(default_factory=RawConnectionConfig)
     variables: tuple[tuple[str, object], ...] = ()
     audit_scheduler: AuditSchedulerOverride = field(default_factory=AuditSchedulerOverride)
+    sensors: SensorAutomationOverride = field(default_factory=SensorAutomationOverride)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "variables", immutable_config_pairs(self.variables))
@@ -225,6 +243,7 @@ class AuthoredProjectConfig:
     defaults: ProjectDefaults = field(default_factory=ProjectDefaults)
     naming: ProjectNaming = field(default_factory=ProjectNaming)
     audit_scheduler: AuditSchedulerConfig = field(default_factory=AuditSchedulerConfig)
+    sensors: SensorAutomationConfig = field(default_factory=SensorAutomationConfig)
     build: BuildConfig = field(default_factory=BuildConfig)
 
     def __post_init__(self) -> None:
@@ -269,6 +288,7 @@ class EffectiveProjectConfiguration:
     defaults: ProjectDefaults
     naming: ProjectNaming = field(default_factory=ProjectNaming)
     audit_scheduler: AuditSchedulerConfig = field(default_factory=AuditSchedulerConfig)
+    sensors: SensorAutomationConfig = field(default_factory=SensorAutomationConfig)
     build: BuildConfig = field(default_factory=BuildConfig)
 
     def __post_init__(self) -> None:
@@ -512,3 +532,4 @@ class DiscoveredProjectInputs:
     test_files: tuple[DiscoveredProjectFile, ...]
     audit_files: tuple[DiscoveredProjectFile, ...]
     macro_files: tuple[DiscoveredProjectFile, ...]
+    access_file: DiscoveredProjectFile | None = None

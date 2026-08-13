@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import PlayIcon from '@lucide/svelte/icons/play';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import AppTopbar from '$lib/presentation/components/app-topbar.svelte';
@@ -9,6 +8,7 @@
 	import { createAuditSchedulerState } from '$lib/quality-monitoring/main/create-audit-scheduler-state.svelte';
 	import { getProject } from '$lib/api/main/project/get-project';
 	import { runCheck } from '$lib/api/main/quality/run-check';
+	import { canAnyPipeline } from '$lib/auth/main/can-any-pipeline';
 	import { auditCounts } from '$lib/domain/main/quality/audit-counts';
 	import { testCounts } from '$lib/domain/main/quality/test-counts';
 	import { formatAgo } from '$lib/formatting/main/format-ago';
@@ -28,7 +28,7 @@
 		new Map((scheduler.payload?.audits ?? []).map((item) => [item.name, item]))
 	);
 
-	onMount(scheduler.start);
+	$effect(() => scheduler.start());
 
 	type Filter = 'all' | 'failing' | 'passing';
 	let filter = $state<Filter>('all');
@@ -75,6 +75,8 @@
 
 	let runningCheck = $state<string | null>(null);
 	let runError = $state<string | null>(null);
+	const auditsAllowed = $derived(canAnyPipeline('quality.audit.run'));
+	const testsAllowed = $derived(canAnyPipeline('quality.test.run'));
 	let runningAll = $state<'audits' | 'tests' | null>(null);
 	let runAllProgress = $state<number>(0);
 
@@ -160,7 +162,8 @@
 <AppTopbar title="Quality">
 	<button
 		class="text-muted-foreground hover:text-foreground flex items-center gap-1.5 rounded-[4px] border border-border px-2.5 py-1.5 font-mono text-[11px] disabled:opacity-60"
-		disabled={runningAll !== null || runningCheck !== null}
+		disabled={runningAll !== null || runningCheck !== null || !auditsAllowed}
+		title={auditsAllowed ? undefined : 'Requires the quality.audit.run permission'}
 		onclick={() => void executeAllAudits()}
 	>
 		<PlayIcon size={11} />
@@ -170,7 +173,8 @@
 	</button>
 	<button
 		class="text-muted-foreground hover:text-foreground flex items-center gap-1.5 rounded-[4px] border border-border px-2.5 py-1.5 font-mono text-[11px] disabled:opacity-60"
-		disabled={runningAll !== null || runningCheck !== null}
+		disabled={runningAll !== null || runningCheck !== null || !testsAllowed}
+		title={testsAllowed ? undefined : 'Requires the quality.test.run permission'}
 		onclick={() => void executeAllTests()}
 	>
 		<PlayIcon size={11} />
@@ -304,7 +308,8 @@
 								<div class="flex items-center gap-2">
 									<button
 										class="text-muted-foreground hover:text-foreground flex items-center gap-1.5 rounded-[4px] border border-border px-2 py-1 font-mono text-[10.5px] disabled:opacity-60"
-										disabled={runningCheck !== null}
+										disabled={runningCheck !== null || !auditsAllowed}
+										title={auditsAllowed ? undefined : 'Requires the quality.audit.run permission'}
 										onclick={() => void executeAudit(audit.name)}
 									>
 										{runningCheck === audit.name ? 'running…' : 'run audit'}
@@ -439,7 +444,8 @@
 								<div class="flex items-center gap-2">
 									<button
 										class="text-muted-foreground hover:text-foreground flex items-center gap-1.5 rounded-[4px] border border-border px-2 py-1 font-mono text-[10.5px] disabled:opacity-60"
-										disabled={runningCheck !== null}
+										disabled={runningCheck !== null || !testsAllowed}
+										title={testsAllowed ? undefined : 'Requires the quality.test.run permission'}
 										onclick={() => void executeTest(test.name)}
 									>
 										{runningCheck === test.name ? 'running…' : 'run test'}

@@ -56,7 +56,7 @@ def run_deployment_promotion(
     sink: RunEventSink = RunEventSink(
         connection=connection, database=metadata_database, invocation_id=started[0]
     )
-    executed_logical_ids: tuple[str, ...] = _promotion_executed_logical_ids(
+    executed_logical_ids: tuple[str, ...] = promotion_executed_logical_ids(
         connection=connection,
         metadata_database=metadata_database,
         deployment_id=deployment_id,
@@ -241,7 +241,7 @@ def _start() -> tuple[str, str, int]:
     )
 
 
-def _promotion_executed_logical_ids(
+def promotion_executed_logical_ids(
     *, connection: AdapterConnection, metadata_database: str, deployment_id: str
 ) -> tuple[str, ...]:
     """Return model identities when persisted deployment mappings make them authoritative."""

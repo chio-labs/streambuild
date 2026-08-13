@@ -577,6 +577,80 @@ class AdapterRunEventRecord:
 
 
 @dataclass(frozen=True)
+class AdapterSensorCheckpointRecord:
+    """One append-only latest-wins sensor stream position."""
+
+    sensor_name: str
+    source: str
+    position_completed_at: str
+    position_result_id: str
+
+
+@dataclass(frozen=True)
+class AdapterSensorTickRecord:
+    """One persisted sensor evaluation attempt."""
+
+    tick_id: str
+    sensor_name: str
+    definition_fingerprint: str
+    kind: str
+    event_id: str | None
+    event_kind: str | None
+    attempt: int
+    status: str
+    started_at: str
+    completed_at: str | None
+    error_message: str | None
+    skip_reason: str | None
+    cursor: str | None
+
+
+@dataclass(frozen=True)
+class AdapterSensorStepRecord:
+    """One durable step marker keyed by sensor, event, and step key."""
+
+    sensor_name: str
+    event_id: str
+    step_key: str
+    policy: str
+    status: str
+    attempt: int
+    result_json: str | None
+    error_message: str | None
+
+
+@dataclass(frozen=True)
+class AdapterSensorOverrideRecord:
+    """One append-only operator override of a sensor's declared status."""
+
+    override_id: str
+    sensor_name: str
+    status: str
+    actor: str | None
+
+
+@dataclass(frozen=True)
+class AdapterSensorLeaseRecord:
+    """One warehouse-time dispatch lease claim."""
+
+    lease_name: str
+    owner_id: str
+    acquired_at: str
+    expires_at: str
+
+
+@dataclass(frozen=True)
+class AdapterSensorState:
+    """Sensor state records persisted in one batch."""
+
+    checkpoints: tuple[AdapterSensorCheckpointRecord, ...] = ()
+    ticks: tuple[AdapterSensorTickRecord, ...] = ()
+    steps: tuple[AdapterSensorStepRecord, ...] = ()
+    overrides: tuple[AdapterSensorOverrideRecord, ...] = ()
+    leases: tuple[AdapterSensorLeaseRecord, ...] = ()
+
+
+@dataclass(frozen=True)
 class AdapterCurrentQualityNode:
     """One current manifest node joined to persisted terminal history."""
 

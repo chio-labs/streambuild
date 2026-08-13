@@ -15,17 +15,24 @@ from tests.e2e.src.streambuild.conftest import (
     E2EKafkaConnectionSettings,
 )
 from tests.e2e.src.streambuild.dev_server.helpers import (
+    append_sensors_browser_automation,
     available_port,
     create_lineage_browser_source_tables,
+    post_json_url,
+    prepare_authorization_browser_project,
     prepare_catalog_pipeline_browser_project,
     prepare_lineage_browser_project,
+    provision_authorization_accounts,
     run_lineage_browser_build,
     seed_lineage_approximate_activity,
     seed_lineage_plan_replay_data,
     start_dev_process,
     stop_process,
+    wait_for_authenticated_status_api,
     wait_for_scheduled_result,
     wait_for_scheduler_api,
+    wait_for_sensor_dead_letter,
+    wait_for_sensor_first_dispatch,
     wait_for_state_api,
 )
 from tests.e2e.src.streambuild.executor.helpers import (
@@ -235,6 +242,58 @@ def running_deployment_browser_server(
             e2e_clickhouse_database,
             log_path,
         )
+    finally:
+        stop_process(process)
+
+
+@pytest.fixture
+def running_sensors_browser_server(
+    e2e_clickhouse_connection_settings: E2EClickHouseConnectionSettings,
+    e2e_clickhouse_client: Client,
+    e2e_clickhouse_database: str,
+    output_path: str,
+    tmp_path: Path,
+) -> Iterator[tuple[str, str, Path]]:
+    _ = write_scheduled_audit_project(
+        project_dir=tmp_path,
+        database=e2e_clickhouse_database,
+        audit_query=('SELECT order_id, line_total FROM __ref("order_items") WHERE line_total < 0'),
+    )
+    append_sensors_browser_automation(project_dir=tmp_path)
+    e2e_clickhouse_client.command(
+        build_order_items_ddl(
+            database=e2e_clickhouse_database,
+            columns=KEYED_ORDER_ITEMS_COLUMNS,
+            order_by=KEYED_ORDER_ITEMS_ORDER_BY,
+        )
+    )
+    e2e_clickhouse_client.insert(
+        table=f"{e2e_clickhouse_database}.tbl__order_items",
+        data=[["ord_001", -5.0]],
+        column_names=["order_id", "line_total"],
+    )
+    api_port: int = available_port()
+    log_path: Path = Path(output_path) / "stb-dev-sensors.log"
+    process: subprocess.Popen[str] = start_dev_process(
+        repository_root=Path(__file__).resolve().parents[5],
+        project_dir=tmp_path,
+        host=e2e_clickhouse_connection_settings.host,
+        port=e2e_clickhouse_connection_settings.port,
+        username=e2e_clickhouse_connection_settings.username,
+        password=e2e_clickhouse_connection_settings.password,
+        database=e2e_clickhouse_database,
+        api_port=api_port,
+        log_path=log_path,
+    )
+    try:
+        _ = wait_for_scheduler_api(process=process, api_port=api_port, log_path=log_path)
+        wait_for_sensor_first_dispatch(process=process, api_port=api_port, log_path=log_path)
+        _ = post_json_url(
+            f"http://127.0.0.1:{api_port}/api/checks/run",
+            {"kind": "audit", "name": "scheduled negative line totals"},
+        )
+        _ = wait_for_sensor_dead_letter(process=process, api_port=api_port, log_path=log_path)
+        yield (f"http://127.0.0.1:{api_port}", e2e_clickhouse_database, log_path)
     finally:
         stop_process(process)
 
@@ -602,6 +661,54 @@ def running_no_activity_log_lineage_server(
             process=process, api_port=api_port, log_path=log_path
         )
         yield f"http://127.0.0.1:{api_port}", state_payload, log_path
+    finally:
+        stop_process(process)
+
+
+@pytest.fixture
+def running_authorization_browser_server(
+    e2e_clickhouse_connection_settings: E2EClickHouseConnectionSettings,
+    e2e_clickhouse_client: Client,
+    e2e_clickhouse_database: str,
+    output_path: str,
+    tmp_path: Path,
+) -> Iterator[tuple[str, Path]]:
+    repository_root: Path = Path(__file__).resolve().parents[5]
+    project_dir: Path = prepare_authorization_browser_project(tmp_path=tmp_path)
+    create_lineage_browser_source_tables(
+        client=e2e_clickhouse_client, database=e2e_clickhouse_database
+    )
+    control_store_url: str = f"sqlite:///{tmp_path / 'control.db'}"
+    provision_authorization_accounts(
+        control_store_url=control_store_url,
+        project_name="lineage_browser_project",
+    )
+    api_port: int = available_port()
+    log_path: Path = Path(output_path) / "stb-dev-authorization.log"
+    process: subprocess.Popen[str] = start_dev_process(
+        repository_root=repository_root,
+        project_dir=project_dir,
+        host=e2e_clickhouse_connection_settings.host,
+        port=e2e_clickhouse_connection_settings.port,
+        username=e2e_clickhouse_connection_settings.username,
+        password=e2e_clickhouse_connection_settings.password,
+        database=e2e_clickhouse_database,
+        api_port=api_port,
+        log_path=log_path,
+        extra_args=(
+            "--auth-mode",
+            "trusted_proxy",
+            "--control-store-url",
+            control_store_url,
+            "--auth-unknown-user-policy",
+            "deny",
+        ),
+    )
+    try:
+        _ = wait_for_authenticated_status_api(
+            process=process, api_port=api_port, log_path=log_path, username="kevin"
+        )
+        yield f"http://127.0.0.1:{api_port}", log_path
     finally:
         stop_process(process)
 

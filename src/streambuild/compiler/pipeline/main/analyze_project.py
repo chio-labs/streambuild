@@ -3,6 +3,8 @@
 import time
 from pathlib import Path
 
+from streambuild.compiler.access.main._compile_access_policy import compile_access_policy
+from streambuild.compiler.access.models import CompiledAccessPolicy
 from streambuild.compiler.compile.main._assemble_project import assemble_project
 from streambuild.compiler.compile.main._build_compile_inputs import build_compile_inputs
 from streambuild.compiler.compile.models import (
@@ -18,6 +20,7 @@ from streambuild.compiler.graph.main._build_project_graph import (
     build_project_graph_from_compiled_project,
 )
 from streambuild.compiler.graph.models import ProjectGraph
+from streambuild.compiler.pipeline._helpers.sensor_names import reserved_sensor_names
 from streambuild.compiler.pipeline.main._realize_project import realize_project
 from streambuild.compiler.pipeline.models import (
     CompilationTimings,
@@ -31,6 +34,8 @@ from streambuild.compiler.sql_analysis.classes.sql_reference_rewriter import (
 from streambuild.diagnostics.main.attach_error_diagnostic import attach_error_diagnostic
 from streambuild.diagnostics.models import SourceLocation
 from streambuild.diagnostics.types import DiagnosticPhase
+from streambuild.sensors.main.compile_sensors import compile_sensors
+from streambuild.sensors.models import CompiledSensors
 
 
 def analyze_project(
@@ -64,6 +69,14 @@ def analyze_project(
         compile_inputs: CompileProjectInputs = build_compile_inputs(
             discovered_inputs=discovered_inputs,
             adapter_profile=adapter_profile,
+        )
+        access_policy: CompiledAccessPolicy | None = compile_access_policy(
+            source_file=discovered_inputs.access_file,
+            pipeline_names=frozenset(loaded.pipeline.name for loaded in compile_inputs.pipelines),
+        )
+        sensors: CompiledSensors | None = compile_sensors(
+            project_dir=pipelines_root.parent,
+            reserved_names=reserved_sensor_names(compile_inputs=compile_inputs),
         )
     except Exception as error:
         _ = attach_error_diagnostic(
@@ -151,6 +164,8 @@ def analyze_project(
             graph_ms=graph_ms,
             realization_ms=realization_ms,
         ),
+        access_policy=access_policy,
+        sensors=sensors,
     )
 
 

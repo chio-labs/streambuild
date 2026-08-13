@@ -11,14 +11,25 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from clickhouse_connect.driver.client import Client
+from playwright.sync_api import Page
+
+from streambuild.auth.classes.control_store import ControlStore
+from streambuild.auth.models import UserAccount
+from streambuild.auth.types import AuthenticationSource
 
 LINEAGE_BROWSER_PROJECT_DIR: Path = Path("tests/fixtures/lineage_browser_project")
 
 
-def read_json_url(url: str, *, timeout_seconds: float = 10) -> object:
+def read_json_url(
+    url: str,
+    *,
+    timeout_seconds: float = 10,
+    headers: dict[str, str] | None = None,
+) -> object:
+    request: Request = Request(url, headers=headers or {})  # noqa: S310 - loopback test server only
     try:
         with urlopen(  # noqa: S310 - loopback test server only
-            url, timeout=timeout_seconds
+            request, timeout=timeout_seconds
         ) as response:
             return json.loads(response.read().decode("utf-8"))
     except HTTPError as error:
@@ -160,6 +171,7 @@ def start_dev_process(
     database: str,
     api_port: int,
     log_path: Path,
+    extra_args: tuple[str, ...] = (),
 ) -> subprocess.Popen[str]:
     log_path.parent.mkdir(parents=True, exist_ok=True)
     with log_path.open("w", encoding="utf-8") as log_file:
@@ -183,6 +195,7 @@ def start_dev_process(
                 "127.0.0.1",
                 "--ui-port",
                 str(api_port),
+                *extra_args,
             ],
             cwd=repository_root,
             env={**os.environ, "PYTHONUNBUFFERED": "1"},
@@ -252,6 +265,123 @@ def wait_for_state_api(
         time.sleep(0.1)
 
 
+def wait_for_authenticated_status_api(
+    *,
+    process: subprocess.Popen[str],
+    api_port: int,
+    log_path: Path,
+    username: str,
+) -> dict[str, object]:
+    deadline: float = time.monotonic() + 30
+    while True:
+        try:
+            payload: object = read_json_url(
+                f"http://127.0.0.1:{api_port}/api/status",
+                timeout_seconds=1,
+                headers={"X-Mustard-User": username},
+            )
+            assert isinstance(payload, dict), "status payload is not an object"
+            status_payload: dict[str, object] = cast(dict[str, object], payload)
+            compile_payload: object = status_payload.get("compile")
+            assert isinstance(compile_payload, dict), "status payload has no compile object"
+            compile_state: object = cast(dict[str, object], compile_payload).get("state")
+            assert compile_state == "ok", "project compile is not servable"
+            return status_payload
+        except (AssertionError, OSError, RuntimeError):
+            pass
+        assert process.poll() is None, _process_failure(
+            message="stb dev exited before status API readiness",
+            process=process,
+            log_path=log_path,
+        )
+        assert time.monotonic() < deadline, _process_failure(
+            message="stb dev status API did not become ready before timeout",
+            process=process,
+            log_path=log_path,
+        )
+        time.sleep(0.1)
+
+
+def prepare_authorization_browser_project(*, tmp_path: Path) -> Path:
+    project_dir: Path = prepare_lineage_browser_project(tmp_path=tmp_path)
+    (project_dir / "access.yml").write_text(
+        "roles:\n"
+        "  reload_operator:\n"
+        "    description: Reload the project\n"
+        "    grants:\n"
+        "      - scope: project\n"
+        "        permissions: [project.reload]\n"
+        "  moving_operator:\n"
+        "    description: Operate the moving events pipeline\n"
+        "    grants:\n"
+        "      - pipelines: [pl__moving_events]\n"
+        "        permissions: [quality.audit.run, build.direct.run]\n",
+        encoding="utf-8",
+    )
+    return project_dir
+
+
+def provision_authorization_accounts(*, control_store_url: str, project_name: str) -> None:
+    """Create the admin/operator/viewer/stale/mismatch personas for browser tests."""
+
+    store: ControlStore = ControlStore(url=control_store_url)
+    try:
+        store.create_user(
+            username="kevin",
+            authentication_source=AuthenticationSource.TRUSTED_PROXY,
+            external_subject="kevin",
+            roles=("admin",),
+        )
+        assignments: tuple[tuple[str, str, str | None], ...] = (
+            ("alice", "reload_operator", None),
+            ("carol", "retired_role", None),
+            ("dave", "reload_operator", "prod"),
+        )
+        for username, role_name, target_name in assignments:
+            account: UserAccount = store.create_user(
+                username=username,
+                authentication_source=AuthenticationSource.TRUSTED_PROXY,
+                external_subject=username,
+                roles=("viewer",),
+            )
+            store.grant_project_role(
+                user_id=account.user_id,
+                project_name=project_name,
+                role_name=role_name,
+                target_name=target_name,
+                actor_user_id=None,
+            )
+        store.create_user(
+            username="bob",
+            authentication_source=AuthenticationSource.TRUSTED_PROXY,
+            external_subject="bob",
+            roles=("viewer",),
+        )
+    finally:
+        store.close()
+
+
+def browser_post_reload(*, page: Page) -> dict[str, object]:
+    """POST /api/reload from the authenticated page and summarize the decision."""
+
+    script: str = (
+        "async () => {"
+        "  const response = await fetch('/api/reload', {"
+        "    method: 'POST',"
+        "    headers: { 'X-StreamBuild-CSRF': 'trusted-proxy' }"
+        "  });"
+        "  const body = await response.json().catch(() => ({}));"
+        "  return {"
+        "    status: response.status,"
+        "    reason: body?.detail?.reason ?? null,"
+        "    permission: body?.detail?.permission ?? null,"
+        "    compileState: body?.compile?.state ?? null"
+        "  };"
+        "}"
+    )
+    return cast(dict[str, object], page.evaluate(script))
+
+
 def wait_for_scheduled_result(
     *,
     processes: tuple[subprocess.Popen[str], ...],
@@ -276,6 +406,109 @@ def wait_for_scheduled_result(
         )
         time.sleep(0.1)
     assert result_count == expected_count
+
+
+_SENSORS_BROWSER_SENSOR_SOURCE: str = '''
+from streambuild.events import AuditCompleted
+from streambuild.sensors import DefaultSensorStatus, SensorRetryPolicy, event_sensor
+
+
+@event_sensor(
+    on=AuditCompleted,
+    default_status=DefaultSensorStatus.RUNNING,
+    retry_policy=SensorRetryPolicy(max_attempts=1, backoff_seconds=0),
+)
+def flaky_alerts(ctx):
+    """Alert on audit completions; the demo webhook always fails."""
+
+    raise RuntimeError("simulated alert delivery failure")
+
+
+@event_sensor(on=AuditCompleted)
+def paused_watch(ctx):
+    """Stopped by default until an operator starts it."""
+'''
+
+
+def append_sensors_browser_automation(*, project_dir: Path) -> None:
+    """Enable the sensor dispatcher and author the browser test sensors."""
+
+    toml_path: Path = project_dir / "streambuild_project.toml"
+    toml_path.write_text(
+        toml_path.read_text(encoding="utf-8") + "\n[targets.test.sensors]\nenabled = true\n",
+        encoding="utf-8",
+    )
+    sensors_dir: Path = project_dir / "sensors"
+    sensors_dir.mkdir(parents=True, exist_ok=True)
+    (sensors_dir / "alerts.py").write_text(
+        _SENSORS_BROWSER_SENSOR_SOURCE.strip() + "\n", encoding="utf-8"
+    )
+
+
+def wait_for_sensor_first_dispatch(
+    *, process: subprocess.Popen[str], api_port: int, log_path: Path
+) -> None:
+    """Wait until the dispatcher holds the lease and has completed one pass."""
+
+    deadline: float = time.monotonic() + 60
+    while True:
+        try:
+            payload: dict[str, object] = cast(
+                dict[str, object], read_json_url(f"http://127.0.0.1:{api_port}/api/sensors")
+            )
+            health: dict[str, object] = cast(dict[str, object], payload["health"])
+            if health["leaseHeld"] is True and health["lastSuccessfulTick"] is not None:
+                return
+        except (OSError, RuntimeError):
+            pass
+        assert process.poll() is None, _process_failure(
+            message="stb dev exited before the first sensor dispatch",
+            process=process,
+            log_path=log_path,
+        )
+        assert time.monotonic() < deadline, _process_failure(
+            message="the sensor dispatcher never completed a pass before timeout",
+            process=process,
+            log_path=log_path,
+        )
+        time.sleep(0.5)
+
+
+def wait_for_sensor_dead_letter(
+    *, process: subprocess.Popen[str], api_port: int, log_path: Path
+) -> dict[str, object]:
+    """Wait until the dispatcher records one unresolved dead letter."""
+
+    deadline: float = time.monotonic() + 90
+    while True:
+        try:
+            payload: object = read_json_url(f"http://127.0.0.1:{api_port}/api/sensors/dead-letters")
+            letters: object = cast(dict[str, object], payload)["deadLetters"]
+            if isinstance(letters, list) and letters:
+                return cast(dict[str, object], letters[0])
+        except (OSError, RuntimeError):
+            pass
+        assert process.poll() is None, _process_failure(
+            message="stb dev exited before a dead letter was recorded",
+            process=process,
+            log_path=log_path,
+        )
+        assert time.monotonic() < deadline, _process_failure(
+            message=(
+                "no sensor dead letter was recorded before timeout; sensors payload: "
+                f"{_best_effort_sensors_payload(api_port=api_port)}"
+            ),
+            process=process,
+            log_path=log_path,
+        )
+        time.sleep(0.5)
+
+
+def _best_effort_sensors_payload(*, api_port: int) -> str:
+    try:
+        return json.dumps(read_json_url(f"http://127.0.0.1:{api_port}/api/sensors"))
+    except (OSError, RuntimeError) as error:
+        return f"<unavailable: {error}>"
 
 
 def stop_process(process: subprocess.Popen[str]) -> None:

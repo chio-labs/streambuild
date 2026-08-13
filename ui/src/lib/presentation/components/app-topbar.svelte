@@ -3,6 +3,7 @@
 	import MoonIcon from '@lucide/svelte/icons/moon';
 	import EyeIcon from '@lucide/svelte/icons/eye';
 	import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
+	import LogOutIcon from '@lucide/svelte/icons/log-out';
 	import { createTheme } from '$lib/presentation/main/_create-theme.svelte';
 	import { CAN_EXECUTE_BUILD } from '$lib/api/constants';
 	import { getApp } from '$lib/api/main/project/get-app';
@@ -10,6 +11,8 @@
 	import { refreshLiveState } from '$lib/api/main/project/refresh-live-state';
 	import { formatClock } from '$lib/formatting/main/format-clock';
 	import type { Project } from '$lib/domain/types';
+	import { getAuth } from '$lib/auth/main/get-auth';
+	import { logout } from '$lib/auth/main/logout';
 
 	type Props = {
 		title: string;
@@ -22,6 +25,7 @@
 	const project: Project = getProject();
 	const app = getApp();
 	const theme = createTheme();
+	const auth = getAuth();
 	const context = $derived(breadcrumb ?? `${project.name} / ${project.target}`);
 	// The warehouse read is a SNAPSHOT, so state when it was taken rather than
 	// implying a live feed. An absolute clock is also honest about the fact that
@@ -41,6 +45,11 @@
 		} finally {
 			refreshing = false;
 		}
+	}
+
+	async function signOut(): Promise<void> {
+		await logout();
+		window.location.assign('/login');
 	}
 </script>
 
@@ -84,6 +93,14 @@
 			<span class:animate-spin={refreshing}><RefreshCwIcon size={13} /></span>
 		</button>
 		{#if children}{@render children()}{/if}
+		{#if auth.user}
+			<span class="text-muted-foreground hidden font-mono text-[10.5px] lg:inline">{auth.user.username}</span>
+		{/if}
+		{#if auth.config?.mode === 'password'}
+			<button class="text-muted-foreground hover:text-foreground hover:bg-[var(--sb-hover)] grid h-7 w-7 place-items-center rounded-[4px] border border-border" aria-label="Sign out" title="Sign out" onclick={() => void signOut()}><LogOutIcon size={13} /></button>
+		{:else if auth.config?.proxyLogoutUrl}
+			<a class="text-muted-foreground hover:text-foreground hover:bg-[var(--sb-hover)] grid h-7 w-7 place-items-center rounded-[4px] border border-border" aria-label="Sign out" title="Sign out" href={auth.config.proxyLogoutUrl}><LogOutIcon size={13} /></a>
+		{/if}
 		<button
 			class="text-muted-foreground hover:text-foreground hover:bg-[var(--sb-hover)] grid h-7 w-7 place-items-center rounded-[4px] border border-border"
 			aria-label="Toggle theme"

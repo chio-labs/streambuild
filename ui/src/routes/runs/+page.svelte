@@ -9,8 +9,10 @@
 	import { formatDuration } from '$lib/formatting/main/format-duration';
 	import { formatTimestamp } from '$lib/formatting/main/format-timestamp';
 	import type { Project } from '$lib/domain/types';
+	import { canAnyPipeline } from '$lib/auth/main/can-any-pipeline';
 
 	const project: Project = getProject();
+	const cancelAllowed = $derived(canAnyPipeline('build.cancel'));
 
 	// Recorded CLI invocation history from `_streambuild_invocations`. Runs
 	// happen out-of-band in a shell, so poll while the page is visible — a
@@ -237,7 +239,7 @@
 									{/if}
 								{/if}
 								{#if ownedInvocationId === run.invocationId && run.status === 'running'}
-									<button class="mt-1 font-mono text-[10px] underline disabled:opacity-50" style:color="var(--sb-warning)" disabled={cancellingInvocationId !== null} onclick={() => void cancelOwned(run.invocationId)}>{cancellingInvocationId === run.invocationId ? 'Cancelling...' : 'Cancel'}</button>
+									<button class="mt-1 font-mono text-[10px] underline disabled:opacity-50" style:color="var(--sb-warning)" disabled={cancellingInvocationId !== null || !cancelAllowed} title={cancelAllowed ? undefined : 'Requires the build.cancel permission'} onclick={() => void cancelOwned(run.invocationId)}>{cancellingInvocationId === run.invocationId ? 'Cancelling...' : 'Cancel'}</button>
 								{/if}
 							</td>
 							<td class="hidden px-3 align-top lg:table-cell">

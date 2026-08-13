@@ -6,19 +6,28 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from httpx import Response
 
+from streambuild.auth.constants import CSRF_HEADER, TRUSTED_PROXY_CSRF_PROOF
 from streambuild.dev_server.classes.dev_server_state import DevServerState
 from streambuild.dev_server.main._create_dev_app import create_dev_app
 from tests.unit.src.streambuild.dev_server._test_types import (
+    CapabilitiesTestCase,
     DevAppLifespanTestCase,
+    ReloadAuthorizationTestCase,
     StateRouteErrorTestCase,
     StatusEndpointTestCase,
 )
 from tests.unit.src.streambuild.dev_server.helpers import (
     break_project_compile,
+    build_assigned_proxy_message_client,
+    build_assigned_proxy_quality_client,
+    build_assigned_proxy_reload_client,
     build_compile_callable,
     build_test_client,
     write_dev_server_project,
+    write_reload_access_policy,
 )
+
+_PROXY_PROOF_HEADERS: dict[str, str] = {CSRF_HEADER: TRUSTED_PROXY_CSRF_PROOF}
 
 
 @pytest.mark.parametrize(
@@ -80,6 +89,183 @@ def test_given_broken_project_when_reloading_then_reports_failure_location(
 @pytest.mark.parametrize(
     "test_case",
     [
+        ReloadAuthorizationTestCase(
+            description="project role grants reload while unassigned viewer is denied",
+            expected_denied_status=403,
+            expected_allowed_status=200,
+            expected_denied_reason="no_matching_assignment",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_compiled_reload_role_when_viewers_reload_then_current_assignment_is_enforced(
+    test_case: ReloadAuthorizationTestCase,
+    tmp_path: Path,
+) -> None:
+    client, store = build_assigned_proxy_reload_client(project_dir=tmp_path)
+    assert client.get("/api/status", headers={"X-Mustard-User": "alice"}).status_code == 200
+
+    denied: Response = client.post(
+        "/api/reload",
+        headers={"X-Mustard-User": "bob", **_PROXY_PROOF_HEADERS},
+    )
+    allowed: Response = client.post(
+        "/api/reload",
+        headers={"X-Mustard-User": "alice", **_PROXY_PROOF_HEADERS},
+    )
+
+    assert denied.status_code == test_case.expected_denied_status
+    assert denied.json()["detail"]["reason"] == test_case.expected_denied_reason
+    assert allowed.status_code == test_case.expected_allowed_status
+    store.close()
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ReloadAuthorizationTestCase(
+            description="pipeline quality role authorizes audit run before execution",
+            expected_denied_status=403,
+            expected_allowed_status=503,
+            expected_denied_reason="no_matching_assignment",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_pipeline_quality_role_when_running_audit_then_coverage_is_enforced(
+    test_case: ReloadAuthorizationTestCase,
+    tmp_path: Path,
+) -> None:
+    client, store = build_assigned_proxy_quality_client(project_dir=tmp_path)
+    body: dict[str, str] = {"kind": "audit", "name": "orders_clean.order_id.not_null.1"}
+
+    denied: Response = client.post(
+        "/api/checks/run",
+        json=body,
+        headers={"X-Mustard-User": "bob", **_PROXY_PROOF_HEADERS},
+    )
+    allowed: Response = client.post(
+        "/api/checks/run",
+        json=body,
+        headers={"X-Mustard-User": "alice", **_PROXY_PROOF_HEADERS},
+    )
+
+    assert denied.status_code == test_case.expected_denied_status
+    assert denied.json()["detail"]["reason"] == test_case.expected_denied_reason
+    assert denied.json()["detail"]["missingPipelines"] == ["order_events"]
+    assert allowed.status_code == test_case.expected_allowed_status
+    assert allowed.json() == {"detail": "no warehouse connection"}
+    store.close()
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CapabilitiesTestCase(
+            description="capabilities reflect assigned pipeline quality coverage",
+            expected_project="test_project",
+            expected_target="dev",
+            expected_quality_pipelines=("order_events",),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_assigned_quality_role_when_reading_capabilities_then_coverage_is_reported(
+    test_case: CapabilitiesTestCase,
+    tmp_path: Path,
+) -> None:
+    client, store = build_assigned_proxy_quality_client(project_dir=tmp_path)
+
+    alice: dict = client.get("/api/auth/capabilities", headers={"X-Mustard-User": "alice"}).json()
+    bob: dict = client.get("/api/auth/capabilities", headers={"X-Mustard-User": "bob"}).json()
+
+    assert alice["systemAdmin"] is False
+    assert alice["project"] == test_case.expected_project
+    assert alice["target"] == test_case.expected_target
+    assert alice["pipelinePermissions"]["quality.audit.run"] == list(
+        test_case.expected_quality_pipelines
+    )
+    assert alice["pipelinePermissions"]["quality.test.run"] == list(
+        test_case.expected_quality_pipelines
+    )
+    assert alice["staleRoles"] == []
+    assert bob["permissions"] == []
+    assert bob["pipelinePermissions"] == {}
+    store.close()
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ReloadAuthorizationTestCase(
+            description="raw message boundary requires the message-reader capability",
+            expected_denied_status=403,
+            expected_allowed_status=503,
+            expected_denied_reason="no_matching_assignment",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_message_reader_role_when_browsing_messages_then_boundary_is_enforced(
+    test_case: ReloadAuthorizationTestCase,
+    tmp_path: Path,
+) -> None:
+    client, store = build_assigned_proxy_message_client(project_dir=tmp_path)
+
+    denied: Response = client.post(
+        "/api/sources/orders/messages",
+        json={},
+        headers={"X-Mustard-User": "bob", **_PROXY_PROOF_HEADERS},
+    )
+    allowed: Response = client.post(
+        "/api/sources/orders/messages",
+        json={},
+        headers={"X-Mustard-User": "alice", **_PROXY_PROOF_HEADERS},
+    )
+    topics: Response = client.get("/api/topics", headers={"X-Mustard-User": "bob"})
+
+    assert denied.status_code == test_case.expected_denied_status
+    assert denied.json()["detail"]["reason"] == test_case.expected_denied_reason
+    assert allowed.status_code == test_case.expected_allowed_status
+    assert topics.status_code == 200
+    store.close()
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        StatusEndpointTestCase(
+            description="failed policy reload keeps prior policy usable for a retry",
+            break_compile=False,
+            expected_state="ok",
+            expected_warehouse_connected=False,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_invalid_candidate_policy_when_reloading_then_prior_policy_still_authorizes(
+    test_case: StatusEndpointTestCase,
+    tmp_path: Path,
+) -> None:
+    client, store = build_assigned_proxy_reload_client(project_dir=tmp_path)
+    alice_headers: dict[str, str] = {"X-Mustard-User": "alice", **_PROXY_PROOF_HEADERS}
+    assert client.get("/api/status", headers=alice_headers).status_code == 200
+    write_reload_access_policy(project_dir=tmp_path, permission="project.unknown")
+
+    failed: Response = client.post("/api/reload", headers=alice_headers)
+    write_reload_access_policy(project_dir=tmp_path, permission="project.reload")
+    recovered: Response = client.post("/api/reload", headers=alice_headers)
+
+    assert failed.status_code == 200
+    assert failed.json()["compile"]["state"] == "failing"
+    assert recovered.status_code == 200
+    assert recovered.json()["compile"]["state"] == test_case.expected_state
+    store.close()
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
         StateRouteErrorTestCase(
             description="state route reports a missing warehouse as unavailable",
             expected_status=503,
@@ -118,10 +304,18 @@ def test_given_dev_app_context_when_lifespan_exits_then_owned_resources_are_clos
     write_dev_server_project(project_dir=tmp_path)
     state: DevServerState = DevServerState(run_compile=build_compile_callable(project_dir=tmp_path))
     with (
-        patch("streambuild.dev_server.main._create_dev_app.AuditScheduler") as scheduler_class,
-        patch("streambuild.dev_server.main._create_dev_app.BuildProcessManager") as builds_class,
-        patch("streambuild.dev_server.main._create_dev_app.KafkaLagReader") as lag_reader_class,
-        patch("streambuild.dev_server.main._create_dev_app.KafkaTopicReader") as topic_reader_class,
+        patch(
+            "streambuild.dev_server._helpers.server.runtime_services.AuditScheduler"
+        ) as scheduler_class,
+        patch(
+            "streambuild.dev_server._helpers.server.runtime_services.BuildProcessManager"
+        ) as builds_class,
+        patch(
+            "streambuild.dev_server._helpers.server.runtime_services.KafkaLagReader"
+        ) as lag_reader_class,
+        patch(
+            "streambuild.dev_server._helpers.server.runtime_services.KafkaTopicReader"
+        ) as topic_reader_class,
     ):
         scheduler: MagicMock = scheduler_class.return_value
         builds: MagicMock = builds_class.return_value

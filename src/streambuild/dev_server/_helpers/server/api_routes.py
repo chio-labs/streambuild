@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from functools import partial
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.exceptions import AdapterError
+from streambuild.auth.classes.control_store import ControlStore
 from streambuild.cli.build.main.prepare_build_workflow import prepare_build_workflow
 from streambuild.cli.build.main.validate_build_pipeline_limit import validate_build_pipeline_limit
 from streambuild.cli.build.models import (
@@ -19,6 +21,7 @@ from streambuild.cli.build.models import (
     WorkflowPreparationOptions,
 )
 from streambuild.cli.entry.exceptions import CliUserError
+from streambuild.compiler.access.types import GrantScope, Permission
 from streambuild.compiler.compile.models import CompiledSource
 from streambuild.compiler.discovery.models import KafkaLandingStep
 from streambuild.compiler.pipeline.models import CompileAnalysis
@@ -47,6 +50,19 @@ from streambuild.dev_server._helpers.queries.runs_query import (
     read_run_events,
     read_runs,
 )
+from streambuild.dev_server._helpers.server.authorization_enforcement import (
+    build_access_policy_payload,
+    build_capabilities_payload,
+    is_system_admin,
+    require_check_authorization,
+    require_cleanup_authorization,
+    require_kill_authorization,
+    require_message_read_authorization,
+    require_operation_authorization,
+    require_prepared_build_authorization,
+    require_promotion_authorization,
+    require_run_cancel_authorization,
+)
 from streambuild.dev_server._helpers.server.checks_execution import (
     build_checks_status_payload,
     run_one_audit,
@@ -55,14 +71,17 @@ from streambuild.dev_server._helpers.server.checks_execution import (
 from streambuild.dev_server._helpers.server.compile_runner import build_status_payload
 from streambuild.dev_server._helpers.server.deployment_operations import (
     build_deployment_diff_payload,
+    promotion_executed_logical_ids,
     run_deployment_cleanup,
     run_deployment_promotion,
 )
+from streambuild.dev_server._helpers.server.sensor_routes import register_sensor_routes
 from streambuild.dev_server.classes.audit_scheduler import AuditScheduler
 from streambuild.dev_server.classes.build_process import BuildProcessManager, build_invocation
 from streambuild.dev_server.classes.dev_server_state import DevServerState
 from streambuild.dev_server.classes.kafka_lag_reader import KafkaLagReader
 from streambuild.dev_server.classes.kafka_topic_reader import KafkaTopicReader
+from streambuild.dev_server.classes.sensor_scheduler import SensorScheduler
 from streambuild.dev_server.exceptions import (
     BuildInProgressError,
     BuildStartError,
@@ -83,10 +102,12 @@ from streambuild.dev_server.models import (
     MessageFacetsRequest,
     MessageRecordRequest,
     MessagesQueryRequest,
+    OperationAuthorizationContext,
 )
 from streambuild.dev_server.types import (
     ActivityTone,
     AuditScheduleState,
+    CompileAuthorizationGuard,
     DevServerReporter,
     RunPresentationStatus,
 )
@@ -110,15 +131,20 @@ def register_api_routes(
     connection: AdapterConnection | None,
     project_dir: Path,
     builds: BuildProcessManager,
-    audit_scheduler: AuditScheduler,
-    kafka_lag_reader: KafkaLagReader,
-    kafka_topic_reader: KafkaTopicReader,
+    schedulers: tuple[AuditScheduler, SensorScheduler],
+    broker_readers: tuple[KafkaLagReader, KafkaTopicReader],
     reporter: DevServerReporter,
     execution_context: DevExecutionContext,
+    control_store: ControlStore,
 ) -> FastAPI:
     """Attach every /api route; handlers close over the shared server state."""
 
     database: str | None = execution_context.database
+    authorization_context: OperationAuthorizationContext = OperationAuthorizationContext(
+        store=control_store,
+        project_dir=project_dir,
+        selected_target=execution_context.selected_target,
+    )
 
     def read_status() -> dict[str, object]:
         connected: bool = connection is not None
@@ -129,8 +155,19 @@ def register_api_routes(
             warehouse_error=None if connected else "no warehouse connection",
         )
 
-    def reload_project() -> dict[str, object]:
-        outcome: CompileOutcome = state.reload()
+    def reload_project(request: Request) -> dict[str, object]:
+        guard: CompileAuthorizationGuard = partial(
+            require_operation_authorization,
+            request=request,
+            store=control_store,
+            project_dir=project_dir,
+            selected_target=execution_context.selected_target,
+            permission=Permission.PROJECT_RELOAD,
+            grant_scope=GrantScope.PROJECT,
+            affected_pipelines=(),
+            denial_message="Project reload is not permitted",
+        )
+        outcome: CompileOutcome = state.reload_guarded(guard=guard)
         reporter.report_reload(outcome=outcome)
         return build_status_payload(
             outcome=outcome,
@@ -163,7 +200,7 @@ def register_api_routes(
                     analysis=analysis,
                     connection=connection,
                     database=database,
-                    kafka_lag_reader=kafka_lag_reader,
+                    kafka_lag_reader=broker_readers[0],
                 )
         except AdapterError as error:
             raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
@@ -182,14 +219,95 @@ def register_api_routes(
         except ProjectNotCompiledError as error:
             raise HTTPException(status_code=_HTTP_CONFLICT, detail=str(error)) from error
 
+    def read_topics() -> dict[str, object]:
+        analysis: CompileAnalysis = _servable_analysis()
+        try:
+            with state.query_lock:
+                return build_topics_payload(
+                    analysis=analysis,
+                    connection=connection,
+                    database=database,
+                    topic_reader=broker_readers[1],
+                    kafka_lag_reader=broker_readers[0],
+                )
+        except AdapterError as error:
+            raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
+
+    app.get("/api/status")(read_status)
+    app.get("/api/state")(read_state)
+    _register_plan_route(
+        app=app,
+        state=state,
+        database=database,
+        execution_context=execution_context,
+        required_connection=_required_connection,
+        servable_analysis=_servable_analysis,
+    )
+    app.post("/api/reload")(reload_project)
+    _register_access_routes(
+        app=app,
+        servable_analysis=_servable_analysis,
+        authorization=authorization_context,
+    )
+    app.get("/api/definitions")(read_definitions)
+    app.get("/api/topics")(read_topics)
+    _register_deployment_routes(
+        app=app,
+        state=state,
+        database=database,
+        authorization=authorization_context,
+        required_connection=_required_connection,
+        servable_analysis=_servable_analysis,
+    )
+    _register_message_routes(
+        app=app,
+        state=state,
+        database=database,
+        authorization=authorization_context,
+        required_connection=_required_connection,
+        servable_analysis=_servable_analysis,
+    )
+    _ = register_sensor_routes(
+        app=app,
+        state=state,
+        database=database,
+        sensor_scheduler=schedulers[1],
+        authorization=authorization_context,
+        servable_analysis=_servable_analysis,
+    )
+    return _register_quality_routes(
+        app=app,
+        state=state,
+        database=database,
+        authorization=authorization_context,
+        builds=builds,
+        audit_scheduler=schedulers[0],
+        reporter=reporter,
+        required_connection=_required_connection,
+        servable_analysis=_servable_analysis,
+        presumed_failed_after_seconds=execution_context.run_presumed_failed_after_seconds,
+    )
+
+
+def _register_plan_route(
+    *,
+    app: FastAPI,
+    state: DevServerState,
+    database: str | None,
+    execution_context: DevExecutionContext,
+    required_connection: Callable[[], AdapterConnection],
+    servable_analysis: Callable[[], CompileAnalysis],
+) -> None:
+    """Attach the mode-aware plan preview route."""
+
     def read_plan(
         *,
         select: Annotated[list[str] | None, Query()] = None,
         start: Annotated[str | None, Query()] = None,
         deployment: Annotated[str | None, Query()] = None,
     ) -> dict[str, object]:
-        client: AdapterConnection = _required_connection()
-        analysis: CompileAnalysis = _servable_analysis()
+        client: AdapterConnection = required_connection()
+        analysis: CompileAnalysis = servable_analysis()
         try:
             if start is not None and not select:
                 raise CliUserError("--start-time requires at least one --select")
@@ -250,52 +368,32 @@ def register_api_routes(
         except AdapterError as error:
             raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
 
-    def read_topics() -> dict[str, object]:
-        analysis: CompileAnalysis = _servable_analysis()
-        try:
-            with state.query_lock:
-                return build_topics_payload(
-                    analysis=analysis,
-                    connection=connection,
-                    database=database,
-                    topic_reader=kafka_topic_reader,
-                    kafka_lag_reader=kafka_lag_reader,
-                )
-        except AdapterError as error:
-            raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
-
-    app.get("/api/status")(read_status)
-    app.get("/api/state")(read_state)
     app.get("/api/plan")(read_plan)
-    app.post("/api/reload")(reload_project)
-    app.get("/api/definitions")(read_definitions)
-    app.get("/api/topics")(read_topics)
-    _register_deployment_routes(
-        app=app,
-        state=state,
-        database=database,
-        project_dir=project_dir,
-        required_connection=_required_connection,
-    )
-    _register_message_routes(
-        app=app,
-        state=state,
-        database=database,
-        required_connection=_required_connection,
-        servable_analysis=_servable_analysis,
-    )
-    return _register_quality_routes(
-        app=app,
-        state=state,
-        database=database,
-        project_dir=project_dir,
-        builds=builds,
-        audit_scheduler=audit_scheduler,
-        reporter=reporter,
-        required_connection=_required_connection,
-        servable_analysis=_servable_analysis,
-        presumed_failed_after_seconds=execution_context.run_presumed_failed_after_seconds,
-    )
+
+
+def _register_access_routes(
+    *,
+    app: FastAPI,
+    servable_analysis: Callable[[], CompileAnalysis],
+    authorization: OperationAuthorizationContext,
+) -> FastAPI:
+    """Attach the capability and read-only compiled-policy routes."""
+
+    def read_capabilities(request: Request) -> dict[str, object]:
+        return build_capabilities_payload(
+            analysis=_optional_servable_analysis(servable_analysis=servable_analysis),
+            request=request,
+            context=authorization,
+        )
+
+    def read_access_policy() -> dict[str, object]:
+        return build_access_policy_payload(
+            analysis=_optional_servable_analysis(servable_analysis=servable_analysis)
+        )
+
+    app.get("/api/auth/capabilities")(read_capabilities)
+    app.get("/api/access-policy")(read_access_policy)
+    return app
 
 
 def _register_deployment_routes(
@@ -303,10 +401,13 @@ def _register_deployment_routes(
     app: FastAPI,
     state: DevServerState,
     database: str | None,
-    project_dir: Path,
+    authorization: OperationAuthorizationContext,
     required_connection: Callable[[], AdapterConnection],
+    servable_analysis: Callable[[], CompileAnalysis],
 ) -> FastAPI:
     """Attach the deployment inventory, detail and lifecycle routes."""
+
+    project_dir: Path = authorization.project_dir
 
     def read_deployments() -> dict[str, object]:
         client: AdapterConnection = required_connection()
@@ -359,8 +460,23 @@ def _register_deployment_routes(
         except ValueError as error:
             raise HTTPException(status_code=_HTTP_BAD_REQUEST, detail=str(error)) from error
 
-    def promote_deployment(*, deployment_id: str) -> dict[str, object]:
+    def promote_deployment(*, http_request: Request, deployment_id: str) -> dict[str, object]:
         client: AdapterConnection = required_connection()
+        if not is_system_admin(request=http_request):
+            analysis: CompileAnalysis = servable_analysis()
+            with state.query_lock:
+                logical_ids: tuple[str, ...] = promotion_executed_logical_ids(
+                    connection=client,
+                    metadata_database=database or "",
+                    deployment_id=deployment_id,
+                )
+            require_promotion_authorization(
+                analysis=analysis,
+                request=http_request,
+                context=authorization,
+                deployment_id=deployment_id,
+                logical_ids=logical_ids,
+            )
         try:
             with state.query_lock:
                 return run_deployment_promotion(
@@ -375,7 +491,14 @@ def _register_deployment_routes(
         except ValueError as error:
             raise HTTPException(status_code=_HTTP_BAD_REQUEST, detail=str(error)) from error
 
-    def cleanup_deployments(request: DeploymentCleanupRequest) -> dict[str, object]:
+    def cleanup_deployments(
+        *, http_request: Request, request: DeploymentCleanupRequest
+    ) -> dict[str, object]:
+        require_cleanup_authorization(
+            analysis=_optional_servable_analysis(servable_analysis=servable_analysis),
+            request=http_request,
+            context=authorization,
+        )
         client: AdapterConnection = required_connection()
         try:
             with state.query_lock:
@@ -404,10 +527,20 @@ def _register_message_routes(
     app: FastAPI,
     state: DevServerState,
     database: str | None,
+    authorization: OperationAuthorizationContext,
     required_connection: Callable[[], AdapterConnection],
     servable_analysis: Callable[[], CompileAnalysis],
 ) -> FastAPI:
     """Attach the warehouse-backed source message browsing routes."""
+
+    def _authorized_analysis(*, http_request: Request) -> CompileAnalysis:
+        analysis: CompileAnalysis = servable_analysis()
+        require_message_read_authorization(
+            analysis=analysis,
+            request=http_request,
+            context=authorization,
+        )
+        return analysis
 
     def _browsable_relation_name(*, analysis: CompileAnalysis, source_name: str) -> str:
         source: CompiledSource | None = next(
@@ -430,9 +563,11 @@ def _register_message_routes(
             )
         return analysis.realized_project.relation_name_by_logical_key[source.key]
 
-    def read_messages(*, name: str, request: MessagesQueryRequest) -> dict[str, object]:
+    def read_messages(
+        *, http_request: Request, name: str, request: MessagesQueryRequest
+    ) -> dict[str, object]:
+        analysis: CompileAnalysis = _authorized_analysis(http_request=http_request)
         client: AdapterConnection = required_connection()
-        analysis: CompileAnalysis = servable_analysis()
         relation_name: str = _browsable_relation_name(analysis=analysis, source_name=name)
         try:
             with state.query_lock:
@@ -452,9 +587,11 @@ def _register_message_routes(
         except AdapterError as error:
             raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
 
-    def read_message_record(*, name: str, request: MessageRecordRequest) -> dict[str, object]:
+    def read_message_record(
+        *, http_request: Request, name: str, request: MessageRecordRequest
+    ) -> dict[str, object]:
+        analysis: CompileAnalysis = _authorized_analysis(http_request=http_request)
         client: AdapterConnection = required_connection()
-        analysis: CompileAnalysis = servable_analysis()
         relation_name: str = _browsable_relation_name(analysis=analysis, source_name=name)
         try:
             with state.query_lock:
@@ -484,9 +621,11 @@ def _register_message_routes(
             )
         return record
 
-    def read_message_facets(*, name: str, request: MessageFacetsRequest) -> dict[str, object]:
+    def read_message_facets(
+        *, http_request: Request, name: str, request: MessageFacetsRequest
+    ) -> dict[str, object]:
+        analysis: CompileAnalysis = _authorized_analysis(http_request=http_request)
         client: AdapterConnection = required_connection()
-        analysis: CompileAnalysis = servable_analysis()
         relation_name: str = _browsable_relation_name(analysis=analysis, source_name=name)
         try:
             with state.query_lock:
@@ -517,7 +656,7 @@ def _register_quality_routes(
     app: FastAPI,
     state: DevServerState,
     database: str | None,
-    project_dir: Path,
+    authorization: OperationAuthorizationContext,
     builds: BuildProcessManager,
     audit_scheduler: AuditScheduler,
     reporter: DevServerReporter,
@@ -527,8 +666,9 @@ def _register_quality_routes(
 ) -> FastAPI:
     """Attach the checks, run-history, and build routes."""
 
-    def run_check(request: ChecksRunRequest) -> dict[str, object]:
-        client: AdapterConnection = required_connection()
+    project_dir: Path = authorization.project_dir
+
+    def run_check(*, http_request: Request, request: ChecksRunRequest) -> dict[str, object]:
         analysis: CompileAnalysis = servable_analysis()
         runners: dict[str, Callable[..., dict[str, object]]] = {
             "audit": run_one_audit,
@@ -540,6 +680,16 @@ def _register_quality_routes(
                 status_code=_HTTP_BAD_REQUEST,
                 detail="kind must be 'audit' or 'test'",
             )
+        _ = require_check_authorization(
+            analysis=analysis,
+            request=http_request,
+            store=authorization.store,
+            project_dir=project_dir,
+            selected_target=authorization.selected_target,
+            kind=request.kind,
+            name=request.name,
+        )
+        client: AdapterConnection = required_connection()
         try:
             with state.query_lock:
                 payload: dict[str, object] = runner(
@@ -646,7 +796,7 @@ def _register_quality_routes(
     return _register_build_routes(
         app=app,
         builds=builds,
-        project_dir=project_dir,
+        authorization=authorization,
         required_connection=required_connection,
         database=database or "",
         state=state,
@@ -659,7 +809,7 @@ def _register_build_routes(
     *,
     app: FastAPI,
     builds: BuildProcessManager,
-    project_dir: Path,
+    authorization: OperationAuthorizationContext,
     required_connection: Callable[[], AdapterConnection],
     database: str,
     state: DevServerState,
@@ -668,11 +818,14 @@ def _register_build_routes(
 ) -> FastAPI:
     """Attach the execute and live-feed routes."""
 
-    def start_build(request: BuildRunRequest) -> dict[str, object]:
+    project_dir: Path = authorization.project_dir
+
+    def start_build(*, http_request: Request, request: BuildRunRequest) -> dict[str, object]:
         try:
             with state.query_lock:
                 client: AdapterConnection = required_connection()
                 analysis: CompileAnalysis = servable_analysis()
+                needs_authorization: bool = not is_system_admin(request=http_request)
                 validate_build_pipeline_limit(
                     analysis=analysis,
                     selectors=tuple(request.selectors),
@@ -690,13 +843,14 @@ def _register_build_routes(
                         RunPresentationStatus.UNRESPONSIVE,
                     }
                 ]
-                blocking_run: dict[str, object] | None = None
-                if active_runs:
-                    preparation: (
-                        DirectWorkflowPreparation
-                        | MixedWorkflowPreparation
-                        | VirtualWorkflowPreparation
-                    ) = prepare_build_workflow(
+                preparation: (
+                    DirectWorkflowPreparation
+                    | MixedWorkflowPreparation
+                    | VirtualWorkflowPreparation
+                    | None
+                ) = None
+                if needs_authorization or active_runs:
+                    preparation = prepare_build_workflow(
                         analysis=analysis,
                         options=WorkflowPreparationOptions(
                             database=database,
@@ -710,6 +864,15 @@ def _register_build_routes(
                         client=client,
                         adapter_profile=analysis.adapter_profile,
                     )
+                if needs_authorization and preparation is not None:
+                    require_prepared_build_authorization(
+                        analysis=analysis,
+                        request=http_request,
+                        context=authorization,
+                        preparation=preparation,
+                    )
+                blocking_run: dict[str, object] | None = None
+                if active_runs and preparation is not None:
                     requested_writes, requested_reads = _preparation_logical_scopes(preparation)
                     blocking_run = next(
                         (
@@ -755,13 +918,35 @@ def _register_build_routes(
     def read_build_feed(*, after: Annotated[int, Query(ge=0)] = 0) -> dict[str, object]:
         return builds.feed(after=after)
 
-    def cancel_build(request: dict[str, str]) -> dict[str, object]:
+    def cancel_build(*, http_request: Request, request: dict[str, str]) -> dict[str, object]:
+        invocation_id: str = request.get("invocationId", "")
+        if not is_system_admin(request=http_request):
+            client: AdapterConnection = required_connection()
+            analysis: CompileAnalysis = servable_analysis()
+            with state.query_lock:
+                active_runs: list[dict[str, object]] = read_active_runs(
+                    connection=client,
+                    database=database,
+                    presumed_failed_after_seconds=presumed_failed_after_seconds,
+                )
+            require_run_cancel_authorization(
+                analysis=analysis,
+                request=http_request,
+                context=authorization,
+                invocation_id=invocation_id,
+                active_runs=active_runs,
+            )
         try:
-            return builds.cancel(invocation_id=request.get("invocationId", ""))
+            return builds.cancel(invocation_id=invocation_id)
         except BuildInProgressError as error:
             raise HTTPException(status_code=_HTTP_CONFLICT, detail=str(error)) from error
 
-    def kill_build(request: dict[str, str]) -> dict[str, object]:
+    def kill_build(*, http_request: Request, request: dict[str, str]) -> dict[str, object]:
+        require_kill_authorization(
+            analysis=_optional_servable_analysis(servable_analysis=servable_analysis),
+            request=http_request,
+            context=authorization,
+        )
         try:
             return builds.kill(invocation_id=request.get("invocationId", ""))
         except BuildInProgressError as error:
@@ -772,6 +957,15 @@ def _register_build_routes(
     app.post("/api/build/cancel")(cancel_build)
     app.post("/api/build/kill")(kill_build)
     return app
+
+
+def _optional_servable_analysis(
+    *, servable_analysis: Callable[[], CompileAnalysis]
+) -> CompileAnalysis | None:
+    try:
+        return servable_analysis()
+    except HTTPException:
+        return None
 
 
 def _blocking_run_message(*, run: dict[str, object], presumed_failed_after_seconds: int) -> str:
