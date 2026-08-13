@@ -7,8 +7,8 @@ import {
 	fetchDeadLetters,
 	requestDeadLetterRetry,
 	requestDeadLetterSkip
-} from '../../../../src/routes/sensors/_api/dead-letters';
-import type { DeadLettersPayload } from '../../../../src/routes/sensors/types';
+} from '../../../../src/lib/sensor-automation/_api/dead-letters';
+import type { DeadLettersPayload } from '../../../../src/lib/sensor-automation/types';
 
 describe('dead letters API', () => {
 	afterEach(() => vi.unstubAllGlobals());

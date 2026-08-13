@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import type { SensorsPayload, SensorsState } from '../../../../src/routes/sensors/types';
+import type { SensorsPayload, SensorsState } from '../../../../src/lib/sensor-automation/types';
 
 const requests = vi.hoisted(() => ({
 	fetchSensors: vi.fn(),
@@ -11,19 +11,19 @@ const requests = vi.hoisted(() => ({
 	requestDeadLetterSkip: vi.fn()
 }));
 
-vi.mock('../../../../src/routes/sensors/_api/sensor-collection', () => ({
+vi.mock('../../../../src/lib/sensor-automation/_api/sensor-collection', () => ({
 	fetchSensors: requests.fetchSensors,
 	fetchSensorTicks: requests.fetchSensorTicks
 }));
-vi.mock('../../../../src/routes/sensors/_api/sensor-status', () => ({
+vi.mock('../../../../src/lib/sensor-automation/_api/sensor-status', () => ({
 	requestSensorStatus: requests.requestSensorStatus
 }));
-vi.mock('../../../../src/routes/sensors/_api/dead-letters', () => ({
+vi.mock('../../../../src/lib/sensor-automation/_api/dead-letters', () => ({
 	fetchDeadLetters: requests.fetchDeadLetters,
 	requestDeadLetterRetry: requests.requestDeadLetterRetry,
 	requestDeadLetterSkip: requests.requestDeadLetterSkip
 }));
-vi.mock('../../../../src/routes/sensors/_resources/sensors-polling.resource', () => ({
+vi.mock('../../../../src/lib/sensor-automation/_resources/sensors-polling.resource', () => ({
 	createSensorsPollingResource: vi.fn((refresh: () => Promise<void>) => ({
 		start: () => {
 			void refresh();
@@ -33,7 +33,7 @@ vi.mock('../../../../src/routes/sensors/_resources/sensors-polling.resource', ()
 	}))
 }));
 
-import { createSensorsState } from '../../../../src/routes/sensors/_state/sensors.state.svelte';
+import { createSensorsState } from '../../../../src/lib/sensor-automation/main/create-sensors-state.svelte';
 
 const payload: SensorsPayload = {
 	sensors: [

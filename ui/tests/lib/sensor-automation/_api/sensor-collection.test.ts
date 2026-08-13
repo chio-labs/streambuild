@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { fetchSensors, fetchSensorTicks } from '../../../../src/routes/sensors/_api/sensor-collection';
-import type { SensorsPayload, SensorTicksPayload } from '../../../../src/routes/sensors/types';
+import { fetchSensors, fetchSensorTicks } from '../../../../src/lib/sensor-automation/_api/sensor-collection';
+import type { SensorsPayload, SensorTicksPayload } from '../../../../src/lib/sensor-automation/types';
 
 describe('sensor collection API', () => {
 	afterEach(() => vi.unstubAllGlobals());

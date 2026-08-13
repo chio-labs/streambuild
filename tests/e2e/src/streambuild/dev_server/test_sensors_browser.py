@@ -43,7 +43,8 @@ def test_given_authored_sensors_when_browsing_then_lifecycle_is_visible_and_oper
     expect(paused_row).to_contain_text("running")
     expect(paused_row).to_contain_text("(override)")
 
-    running_row.get_by_role("button", name=test_case.expected_running_sensor, exact=True).click()
+    running_row.get_by_role("link", name=test_case.expected_running_sensor, exact=True).click()
+    expect(page).to_have_url(f"{base_url}/sensors/{test_case.expected_running_sensor}")
     ticks_panel: Locator = page.get_by_test_id("sensor-ticks")
     expect(ticks_panel).to_be_visible()
     for status in test_case.expected_tick_statuses:
