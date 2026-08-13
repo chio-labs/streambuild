@@ -61,6 +61,17 @@
 		}
 		return current.eventType ?? 'event';
 	}
+
+	// Oldest to newest, capped so the strip stays one glanceable row. The API
+	// returns newest-first; the strip reads like a timeline, left to right.
+	const TIMELINE_CAPACITY = 60;
+	const timelineTicks = $derived(sensors.ticks.slice(0, TIMELINE_CAPACITY).reverse());
+
+	function timelineTitle(tick: SensorTick): string {
+		const detail: string = tickDetail(tick);
+		const suffix: string = detail === '' ? '' : ` · ${detail}`;
+		return `${tick.status} · attempt ${tick.attempt} · ${formatTimestamp(tick.startedAt)}${suffix}`;
+	}
 </script>
 
 {#snippet caption(text: string)}
@@ -213,7 +224,20 @@
 						No ticks recorded yet.
 					</div>
 				{:else}
-					<div class="pt-1.5">
+					<div class="flex items-end gap-[3px] pt-2" data-testid="tick-timeline">
+						{#each timelineTicks as tick (tick.tickId)}
+							<span
+								class="h-[18px] w-[7px] rounded-[1.5px]"
+								style:background={tickTone(tick.status)}
+								title={timelineTitle(tick)}
+							></span>
+						{/each}
+					</div>
+					<div class="text-[var(--sb-text-faint)] flex justify-between pt-1 font-mono text-[10px]">
+						<span>{formatTimestamp(timelineTicks[0]?.startedAt ?? '')}</span>
+						<span>{formatTimestamp(timelineTicks[timelineTicks.length - 1]?.startedAt ?? '')}</span>
+					</div>
+					<div class="pt-2.5">
 						{#each sensors.ticks as tick (tick.tickId)}
 							<div class="flex gap-3 border-b border-[var(--border-subtle)] py-[5px] font-mono text-[10.5px] last:border-b-0">
 								<span class="w-24 shrink-0" style:color={tickTone(tick.status)}>{tick.status}</span>
