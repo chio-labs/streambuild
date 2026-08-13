@@ -45,6 +45,10 @@
 		return sensor.effectiveStatus === 'running' ? 'stopped' : 'running';
 	}
 
+	function unresolvedFor(name: string) {
+		return sensors.deadLetters.filter((letter) => letter.sensorName === name);
+	}
+
 	const runningCount = $derived(
 		(sensors.payload?.sensors ?? []).filter((sensor) => sensor.effectiveStatus === 'running')
 			.length
@@ -88,7 +92,10 @@
 			<span style="color:var(--sb-success)">{runningCount} running</span>
 			{#if sensors.payload.deadLetterCount > 0}
 				<span>·</span>
-				<span style="color:var(--sb-error)">{sensors.payload.deadLetterCount} dead letters</span>
+				<span style="color:var(--sb-error)">
+					{sensors.payload.deadLetterCount}
+					{sensors.payload.deadLetterCount === 1 ? 'dead letter' : 'dead letters'}
+				</span>
 			{/if}
 		</div>
 	</div>
@@ -205,12 +212,70 @@
 						</td>
 					</tr>
 					{#if sensors.selectedSensor === sensor.name}
+						{@const letters = unresolvedFor(sensor.name)}
 						<tr>
 							<td colspan="5" class="px-4 pb-3">
 								<div
 									class="rounded-[4px] border border-[var(--border-subtle)] bg-[var(--sb-inset)] px-3 py-2"
 									data-testid="sensor-ticks"
 								>
+									{#if letters.length > 0}
+											<div class="flex items-center gap-2 pb-1">
+												<span class="text-[var(--sb-text-faint)] font-mono text-[10px] uppercase tracking-[0.14em]"
+													>Dead letters</span
+												>
+												<span class="text-[var(--sb-text-faint)] font-mono text-[10px]"
+													>{letters.length}</span
+												>
+												<input
+													class="ml-auto h-6 w-48 rounded-[4px] border border-border bg-background px-2 font-mono text-[10.5px] outline-none focus:border-[var(--primary)]"
+													placeholder="skip reason"
+													bind:value={skipReason}
+													aria-label="Skip reason"
+												/>
+											</div>
+											{#each letters as letter (letter.tickId)}
+												<div
+													class="flex items-center gap-3 py-[3px] font-mono text-[10.5px]"
+													data-testid={`dead-letter-${letter.eventId}`}
+												>
+													<span
+														class="text-[var(--sb-text-faint)] w-44 shrink-0 truncate"
+														title={letter.eventId}>{letter.eventId}</span
+													>
+													<span
+														class="min-w-0 flex-1 truncate"
+														style:color="var(--sb-error)"
+														title={letter.errorMessage ?? undefined}
+													>
+														{letter.errorMessage ?? ''}
+													</span>
+													<button
+														class="text-muted-foreground hover:text-foreground hover:bg-[var(--sb-hover)] rounded-[4px] border border-border px-2 py-[2px] disabled:opacity-50"
+														disabled={sensors.busy || !manageAllowed}
+														title={manageAllowed ? undefined : manageHint}
+														onclick={() =>
+															void sensors.retryDeadLetter(letter.sensorName, letter.eventId ?? '')}
+													>
+														Retry
+													</button>
+													<button
+														class="text-muted-foreground hover:text-foreground hover:bg-[var(--sb-hover)] rounded-[4px] border border-border px-2 py-[2px] disabled:opacity-50"
+														disabled={sensors.busy || !manageAllowed || skipReason.trim() === ''}
+														title={manageAllowed ? 'Requires a skip reason' : manageHint}
+														onclick={() =>
+															void sensors.skipDeadLetter(
+																letter.sensorName,
+																letter.eventId ?? '',
+																skipReason
+															)}
+													>
+														Skip
+													</button>
+												</div>
+											{/each}
+											<div class="pt-2"></div>
+										{/if}
 									<div class="text-[var(--sb-text-faint)] font-mono text-[10px] uppercase tracking-[0.14em]">
 										Tick history
 									</div>
@@ -253,66 +318,6 @@
 			</tbody>
 		</table>
 
-		<div class="flex items-center gap-2 border-y border-border px-4 py-2">
-			<span class="text-[var(--sb-text-faint)] font-mono text-[10px] uppercase tracking-[0.14em]"
-				>Dead letters</span
-			>
-			<span class="text-[var(--sb-text-faint)] font-mono text-[10px]"
-				>{sensors.payload.deadLetterCount}</span
-			>
-			{#if sensors.deadLetters.length > 0}
-				<input
-					class="ml-auto h-6 w-56 rounded-[4px] border border-border bg-background px-2 font-mono text-[10.5px] outline-none focus:border-[var(--primary)]"
-					placeholder="skip reason"
-					bind:value={skipReason}
-					aria-label="Skip reason"
-				/>
-			{/if}
-		</div>
-		{#if sensors.deadLetters.length === 0}
-			<div
-				class="text-[var(--sb-text-faint)] px-4 py-3 font-mono text-[11px]"
-				data-testid="dead-letters-empty"
-			>
-				No unresolved dead letters.
-			</div>
-		{:else}
-			{#each sensors.deadLetters as letter (letter.tickId)}
-				<div
-					class="flex items-center gap-3 border-b border-[var(--border-subtle)] px-4 py-2 font-mono text-[10.5px]"
-					data-testid={`dead-letter-${letter.eventId}`}
-				>
-					<span class="w-44 shrink-0 truncate text-[11.5px]">{letter.sensorName}</span>
-					<span class="text-[var(--sb-text-faint)] w-44 shrink-0 truncate" title={letter.eventId}
-						>{letter.eventId}</span
-					>
-					<span
-						class="min-w-0 flex-1 truncate"
-						style:color="var(--sb-error)"
-						title={letter.errorMessage ?? undefined}
-					>
-						{letter.errorMessage ?? ''}
-					</span>
-					<button
-						class="text-muted-foreground hover:text-foreground hover:bg-[var(--sb-hover)] rounded-[4px] border border-border px-2 py-[3px] disabled:opacity-50"
-						disabled={sensors.busy || !manageAllowed}
-						title={manageAllowed ? undefined : manageHint}
-						onclick={() => void sensors.retryDeadLetter(letter.sensorName, letter.eventId ?? '')}
-					>
-						Retry
-					</button>
-					<button
-						class="text-muted-foreground hover:text-foreground hover:bg-[var(--sb-hover)] rounded-[4px] border border-border px-2 py-[3px] disabled:opacity-50"
-						disabled={sensors.busy || !manageAllowed || skipReason.trim() === ''}
-						title={manageAllowed ? 'Requires a skip reason' : manageHint}
-						onclick={() =>
-							void sensors.skipDeadLetter(letter.sensorName, letter.eventId ?? '', skipReason)}
-					>
-						Skip
-					</button>
-				</div>
-			{/each}
-		{/if}
 	{:else if sensors.loading}
 		<div class="text-[var(--sb-text-faint)] px-4 py-3 font-mono text-[11px]">loading…</div>
 	{/if}
