@@ -56,7 +56,7 @@ def test_given_authored_sensors_when_browsing_then_lifecycle_is_visible_and_oper
 
     page.get_by_label("Skip reason", exact=True).fill("acknowledged in browser test")
     dead_letter_row.get_by_role("button", name="Skip", exact=True).click()
-    expect(page.get_by_test_id("dead-letters-empty")).to_be_visible()
+    expect(page.locator("div[data-testid^='dead-letter-']")).to_have_count(0)
 
 
 if __name__ == "__main__":
