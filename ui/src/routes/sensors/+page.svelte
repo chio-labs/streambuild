@@ -5,6 +5,7 @@
 	import { can } from '$lib/auth/main/can';
 	import { formatTimestamp } from '$lib/formatting/main/format-timestamp';
 	import { createSensorsState } from '$lib/sensor-automation/main/create-sensors-state.svelte';
+	import { tickTone } from '$lib/sensor-automation/main/tick-tone';
 	import type { SensorSummary } from '$lib/sensor-automation/types';
 
 	const sensors = createSensorsState();
@@ -13,18 +14,6 @@
 
 	const manageAllowed = $derived(can('automation.manage'));
 	const manageHint = 'Requires the target-scoped automation.manage permission';
-
-	const TICK_TONES: Record<string, string> = {
-		succeeded: 'var(--sb-success)',
-		skipped: 'var(--sb-warning)',
-		failed: 'var(--sb-error)',
-		dead_lettered: 'var(--sb-error)',
-		started: 'var(--sb-warning)'
-	};
-
-	function tickTone(status: string): string {
-		return TICK_TONES[status] ?? 'var(--sb-text-faint)';
-	}
 
 	function sourceLabel(sensor: SensorSummary): string {
 		if (sensor.kind === 'polling') {

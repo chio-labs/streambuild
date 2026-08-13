@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import datetime
 from typing import Annotated
 
 from fastapi import FastAPI, HTTPException, Query, Request
@@ -81,8 +82,24 @@ def register_sensor_routes(
         except AdapterError as error:
             raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
 
+    def _window_bound(*, name: str, value: str | None) -> str | None:
+        if value is None:
+            return None
+        try:
+            _ = datetime.fromisoformat(value)
+        except ValueError as error:
+            raise HTTPException(
+                status_code=_HTTP_BAD_REQUEST,
+                detail=f"{name} must be an ISO timestamp, received '{value}'",
+            ) from error
+        return value
+
     def read_sensor_ticks(
-        *, sensor_name: str, limit: Annotated[int, Query(ge=1, le=500)] = 50
+        *,
+        sensor_name: str,
+        limit: Annotated[int, Query(ge=1, le=500)] = 50,
+        after: Annotated[str | None, Query()] = None,
+        before: Annotated[str | None, Query()] = None,
     ) -> dict[str, object]:
         analysis: CompileAnalysis = servable_analysis()
         _require_sensor(analysis=analysis, sensor_name=sensor_name)
@@ -92,6 +109,8 @@ def register_sensor_routes(
                     repository=sensor_scheduler.repository,
                     sensor_name=sensor_name,
                     limit=limit,
+                    after=_window_bound(name="after", value=after),
+                    before=_window_bound(name="before", value=before),
                 )
         except AdapterError as error:
             raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error

@@ -5,8 +5,11 @@
 	import FactRow from '$lib/presentation/components/fact-row.svelte';
 	import { can } from '$lib/auth/main/can';
 	import { formatTimestamp } from '$lib/formatting/main/format-timestamp';
+	import TickTimeline from '$lib/sensor-automation/components/tick-timeline.svelte';
 	import { createSensorsState } from '$lib/sensor-automation/main/create-sensors-state.svelte';
-	import type { SensorSummary, SensorTick } from '$lib/sensor-automation/types';
+	import { describeTick } from '$lib/sensor-automation/main/describe-tick';
+	import { tickTone } from '$lib/sensor-automation/main/tick-tone';
+	import type { SensorSummary } from '$lib/sensor-automation/types';
 
 	const sensors = createSensorsState();
 	const sensorName = $derived(page.params.name ?? '');
@@ -29,13 +32,6 @@
 		sensors.deadLetters.filter((letter) => letter.sensorName === sensorName)
 	);
 
-	const TICK_TONES: Record<string, string> = {
-		succeeded: 'var(--sb-success)',
-		skipped: 'var(--sb-warning)',
-		failed: 'var(--sb-error)',
-		dead_lettered: 'var(--sb-error)',
-		started: 'var(--sb-warning)'
-	};
 	const FACT_TONES: Record<string, 'success' | 'warning' | 'error'> = {
 		succeeded: 'success',
 		skipped: 'warning',
@@ -44,33 +40,11 @@
 		started: 'warning'
 	};
 
-	function tickTone(status: string): string {
-		return TICK_TONES[status] ?? 'var(--sb-text-faint)';
-	}
-
-	function tickDetail(tick: SensorTick): string {
-		if (tick.errorMessage) return tick.errorMessage;
-		if (tick.skipReason) return `skipped: ${tick.skipReason}`;
-		if (tick.cursor) return `cursor: ${tick.cursor}`;
-		return '';
-	}
-
 	function sourceLabel(current: SensorSummary): string {
 		if (current.kind === 'polling') {
 			return `poll every ${current.minimumIntervalSeconds ?? 0}s`;
 		}
 		return current.eventType ?? 'event';
-	}
-
-	// Oldest to newest, capped so the strip stays one glanceable row. The API
-	// returns newest-first; the strip reads like a timeline, left to right.
-	const TIMELINE_CAPACITY = 60;
-	const timelineTicks = $derived(sensors.ticks.slice(0, TIMELINE_CAPACITY).reverse());
-
-	function timelineTitle(tick: SensorTick): string {
-		const detail: string = tickDetail(tick);
-		const suffix: string = detail === '' ? '' : ` · ${detail}`;
-		return `${tick.status} · attempt ${tick.attempt} · ${formatTimestamp(tick.startedAt)}${suffix}`;
 	}
 </script>
 
@@ -224,19 +198,7 @@
 						No ticks recorded yet.
 					</div>
 				{:else}
-					<div class="flex items-end gap-[3px] pt-2" data-testid="tick-timeline">
-						{#each timelineTicks as tick (tick.tickId)}
-							<span
-								class="h-[18px] w-[7px] rounded-[1.5px]"
-								style:background={tickTone(tick.status)}
-								title={timelineTitle(tick)}
-							></span>
-						{/each}
-					</div>
-					<div class="text-[var(--sb-text-faint)] flex justify-between pt-1 font-mono text-[10px]">
-						<span>{formatTimestamp(timelineTicks[0]?.startedAt ?? '')}</span>
-						<span>{formatTimestamp(timelineTicks[timelineTicks.length - 1]?.startedAt ?? '')}</span>
-					</div>
+					<TickTimeline {sensorName} seedTicks={sensors.ticks} />
 					<div class="pt-2.5">
 						{#each sensors.ticks as tick (tick.tickId)}
 							<div class="flex gap-3 border-b border-[var(--border-subtle)] py-[5px] font-mono text-[10.5px] last:border-b-0">
@@ -245,8 +207,8 @@
 								<span class="text-[var(--sb-text-faint)] w-36 shrink-0"
 									>{formatTimestamp(tick.startedAt)}</span
 								>
-								<span class="text-muted-foreground min-w-0 flex-1 truncate" title={tickDetail(tick)}
-									>{tickDetail(tick)}</span
+								<span class="text-muted-foreground min-w-0 flex-1 truncate" title={describeTick(tick)}
+									>{describeTick(tick)}</span
 								>
 							</div>
 						{/each}

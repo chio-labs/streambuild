@@ -197,10 +197,21 @@ class SensorStateRepository:
             resolved=any(tick.status in _RESOLVED_TICK_STATUSES for tick in ticks),
         )
 
-    def list_ticks(self, *, sensor_name: str, limit: int) -> tuple[SensorTickView, ...]:
+    def list_ticks(
+        self,
+        *,
+        sensor_name: str,
+        limit: int,
+        after: str | None = None,
+        before: str | None = None,
+    ) -> tuple[SensorTickView, ...]:
         rows: tuple[Mapping[str, object], ...] = self._query(
             queries.sensor_ticks_query(
-                database=self._database, sensor_name=sensor_name, limit=limit * 2
+                database=self._database,
+                sensor_name=sensor_name,
+                limit=limit * 2,
+                after=after,
+                before=before,
             )
         )
         ticks: tuple[SensorTickView, ...] = _reduce_ticks(rows)

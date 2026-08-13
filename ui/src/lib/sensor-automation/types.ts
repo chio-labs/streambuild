@@ -94,3 +94,22 @@ export type SensorsPollingResource = {
 	start: () => () => void;
 	stop: () => void;
 };
+
+export type TimelineAxisLabel = {
+	fraction: number;
+	text: string;
+};
+
+export type TickTimelineState = {
+	readonly ticks: SensorTick[];
+	readonly startMs: number;
+	readonly endMs: number;
+	readonly loading: boolean;
+	readonly error: string | null;
+	readonly ready: boolean;
+	initialize: (seedTicks: SensorTick[]) => void;
+	zoomAt: (fraction: number, deltaY: number) => void;
+	panBy: (fraction: number) => void;
+	reset: () => void;
+	stop: () => void;
+};

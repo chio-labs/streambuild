@@ -61,6 +61,14 @@ def test_given_authored_sensor_when_listing_then_definitions_are_served(
             expected_detail_fragment="Unknown sensor 'missing_sensor'",
         ),
         SensorRouteErrorTestCase(
+            description="tick windows require ISO timestamps",
+            method="GET",
+            path="/api/sensors/quality_alerts/ticks?after=not-a-time",
+            body=None,
+            expected_status_code=400,
+            expected_detail_fragment="after must be an ISO timestamp",
+        ),
+        SensorRouteErrorTestCase(
             description="unknown override statuses are rejected",
             method="POST",
             path="/api/sensors/quality_alerts/status",
