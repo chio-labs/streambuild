@@ -44,14 +44,21 @@ def build_sensors_payload(
 
 
 def build_sensor_ticks_payload(
-    *, repository: SensorStateRepository | None, sensor_name: str, limit: int
+    *,
+    repository: SensorStateRepository | None,
+    sensor_name: str,
+    limit: int,
+    after: str | None = None,
+    before: str | None = None,
 ) -> dict[str, object]:
-    """List recent ticks for one sensor, newest first."""
+    """List recent ticks for one sensor, newest first, optionally time-windowed."""
 
     if repository is None:
         return {"sensorName": sensor_name, "ticks": []}
     repository.ensure_ready()
-    ticks: tuple[SensorTickView, ...] = repository.list_ticks(sensor_name=sensor_name, limit=limit)
+    ticks: tuple[SensorTickView, ...] = repository.list_ticks(
+        sensor_name=sensor_name, limit=limit, after=after, before=before
+    )
     return {
         "sensorName": sensor_name,
         "ticks": [_tick_payload(tick=tick) for tick in ticks],

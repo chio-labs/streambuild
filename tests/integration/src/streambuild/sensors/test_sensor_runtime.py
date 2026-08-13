@@ -167,6 +167,17 @@ def test_given_new_observation_when_dispatching_then_event_reaches_the_handler(
     ticks: tuple[SensorTickView, ...] = repository.list_ticks(sensor_name="recorder", limit=10)
     assert tuple(tick.status for tick in ticks) == test_case.expected_tick_statuses[1:]
     assert tuple(tick.event_id for tick in ticks) == (test_case.expected_event_id,)
+    windowed: tuple[SensorTickView, ...] = repository.list_ticks(
+        sensor_name="recorder",
+        limit=10,
+        after=ticks[0].started_at,
+        before=ticks[0].started_at,
+    )
+    assert tuple(tick.tick_id for tick in windowed) == (ticks[0].tick_id,)
+    outside: tuple[SensorTickView, ...] = repository.list_ticks(
+        sensor_name="recorder", limit=10, before="2000-01-01 00:00:00.000"
+    )
+    assert outside == ()
 
 
 @pytest.mark.integration
