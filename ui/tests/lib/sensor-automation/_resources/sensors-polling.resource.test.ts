@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Mock } from 'vitest';
 
-import { createSensorsPollingResource } from '../../../../src/routes/sensors/_resources/sensors-polling.resource';
-import type { SensorsPollingResource } from '../../../../src/routes/sensors/types';
+import { createSensorsPollingResource } from '../../../../src/lib/sensor-automation/_resources/sensors-polling.resource';
+import type { SensorsPollingResource } from '../../../../src/lib/sensor-automation/types';
 
 describe('sensors polling resource', () => {
 	beforeEach(() => vi.useFakeTimers());
