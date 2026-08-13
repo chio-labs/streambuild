@@ -220,7 +220,7 @@
 									data-testid="sensor-ticks"
 								>
 									{#if letters.length > 0}
-											<div class="flex items-center gap-2 pb-1">
+											<div class="flex items-center gap-2">
 												<span class="text-[var(--sb-text-faint)] font-mono text-[10px] uppercase tracking-[0.14em]"
 													>Dead letters</span
 												>
@@ -233,6 +233,11 @@
 													bind:value={skipReason}
 													aria-label="Skip reason"
 												/>
+											</div>
+											<div class="text-[var(--sb-text-faint)] max-w-[640px] pb-1.5 pt-0.5 text-[10.5px]">
+												Each event below failed every retry, so this sensor's action never ran
+												for it. Retry re-attempts the handler without repeating completed steps;
+												Skip records your reason and drops the event.
 											</div>
 											{#each letters as letter (letter.tickId)}
 												<div
