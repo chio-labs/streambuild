@@ -1,4 +1,5 @@
 import { readApiResponse } from '$lib/api/main/response/read-api-response';
+import { authenticatedFetch } from '$lib/auth/main/authenticated-fetch';
 import type {
 	FacetsPayload,
 	MessageCursor,
@@ -13,7 +14,7 @@ export async function fetchMessages(
 	cursor: MessageCursor | null,
 	signal: AbortSignal
 ): Promise<MessagesPayload> {
-	const response: Response = await fetch(
+	const response: Response = await authenticatedFetch(
 		`/api/sources/${encodeURIComponent(sourceName)}/messages`,
 		{
 			method: 'POST',
@@ -30,7 +31,7 @@ export async function fetchMessageRecord(
 	partition: number,
 	offset: number
 ): Promise<MessageRecord> {
-	const response: Response = await fetch(
+	const response: Response = await authenticatedFetch(
 		`/api/sources/${encodeURIComponent(sourceName)}/messages/record`,
 		{
 			method: 'POST',
@@ -47,7 +48,7 @@ export async function fetchMessageFacets(
 	facetPath: (string | number)[],
 	signal: AbortSignal
 ): Promise<FacetsPayload> {
-	const response: Response = await fetch(
+	const response: Response = await authenticatedFetch(
 		`/api/sources/${encodeURIComponent(sourceName)}/messages/facets`,
 		{
 			method: 'POST',

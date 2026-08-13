@@ -48,6 +48,7 @@
 		"@fontsource-variable/space-grotesk": "^5.2.10",
 		"@fontsource/ibm-plex-mono": "^5.2.7",
 		"@xyflow/svelte": "^1.6.0",
-		"prismjs": "^1.30.0"
+		"prismjs": "^1.30.0",
+		"zod": "^4.4.3"
 	}
 }

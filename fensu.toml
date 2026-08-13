@@ -7,6 +7,7 @@ tooling = ["scripts"]
 rule_modules = [
   "scripts.fensu_policy.classes.workflow_authority_policy",
   "scripts.fensu_policy.rules.adapter_ownership",
+  "scripts.fensu_policy.rules.event_catalog_authority",
   "scripts.fensu_policy.rules.observability_authority",
   "scripts.fensu_policy.rules.sql_analysis_boundary",
   "scripts.fensu_policy.rules.workflow_authority",
@@ -19,6 +20,34 @@ require_cacheable = true
 
 [targets.python.evaluation]
 exclude = ["tests/e2e/fixtures/**"]
+
+[[targets.python.rule_exceptions]]
+rule = "FFR402"
+path = "src/streambuild/sensors/__init__.py"
+reason = "Authored project sensors import the public sensor API from streambuild.sensors, so this package initializer re-exports the closed authored surface exactly as the CHI-18 specification defines it."
+
+[[targets.python.rule_exceptions]]
+rule = "FFR402"
+path = "src/streambuild/events/__init__.py"
+reason = "Authored project sensors import derived event types from streambuild.events, so this package initializer re-exports the closed authored surface exactly as the CHI-18 specification defines it."
+
+[[targets.python.rule_exceptions]]
+rule = "FFS120"
+path = "src/streambuild/sensors/classes/event_sensor_context.py"
+symbols = ["EventSensorContext.step"]
+reason = "The authored durable-step API is ctx.step(key, fn, policy=...) with positional key and callable per the CHI-18 specification; keyword-only parameters would break the documented authored ergonomics."
+
+[[targets.python.rule_exceptions]]
+rule = "FFS120"
+path = "src/streambuild/sensors/classes/durable_step_runner.py"
+symbols = ["DurableStepRunner.run"]
+reason = "DurableStepRunner.run backs the authored ctx.step(key, fn, policy=...) signature, so its parameters mirror that positional authored contract."
+
+[[targets.python.rule_exceptions]]
+rule = "FFT104"
+path = "tests/e2e/src/streambuild/dev_server/helpers.py"
+symbols = ["wait_for_sensor_first_dispatch", "wait_for_sensor_dead_letter"]
+reason = "These wait_for_* helpers poll the dev server until sensor dispatch state is reached asynchronously. A bounded retry loop and its readiness condition are the wait itself, so they cannot be expressed branch-free."
 
 [[targets.python.rule_exceptions]]
 rule = "FFT104"

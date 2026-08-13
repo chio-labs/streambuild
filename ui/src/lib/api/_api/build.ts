@@ -1,5 +1,6 @@
 import { readApiResponse } from '$lib/api/_api/read-response';
 import type { BuildFeed, BuildStartResult, RunEventFeed } from '$lib/api/types';
+import { authenticatedFetch } from '$lib/auth/main/authenticated-fetch';
 
 export async function requestBuildStart(
 	selectors: string[],
@@ -7,7 +8,7 @@ export async function requestBuildStart(
 	confirmations: string[],
 	deploymentId: string | null = null
 ): Promise<BuildStartResult> {
-	const response: Response = await fetch('/api/build', {
+	const response: Response = await authenticatedFetch('/api/build', {
 		method: 'POST',
 		headers: { 'content-type': 'application/json' },
 		body: JSON.stringify({

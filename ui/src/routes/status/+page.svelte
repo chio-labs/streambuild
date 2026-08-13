@@ -5,11 +5,13 @@
 	import { getApp } from '$lib/api/main/project/get-app';
 	import { getProject } from '$lib/api/main/project/get-project';
 	import { reloadProject } from '$lib/api/main/project/reload-project';
+	import { can } from '$lib/auth/main/can';
 
 	const app = getApp();
 	const project = getProject();
 	const status = $derived(app.status);
 	const timingEntries = $derived(Object.entries(status?.timings ?? {}));
+	const reloadAllowed = $derived(can('project.reload'));
 </script>
 
 <AppTopbar title="Status" />
@@ -28,7 +30,8 @@
 				<span class="font-mono text-[13px]">{status?.state ?? 'unknown'}</span>
 				<button
 					class="text-muted-foreground hover:text-foreground ml-auto flex items-center gap-1.5 rounded-[4px] border border-border px-2 py-1 font-mono text-[10.5px] disabled:opacity-60"
-					disabled={app.reloading}
+					disabled={app.reloading || !reloadAllowed}
+					title={reloadAllowed ? undefined : 'Requires the project.reload permission'}
 					onclick={() => void reloadProject()}
 				>
 					<RotateIcon size={11} />
