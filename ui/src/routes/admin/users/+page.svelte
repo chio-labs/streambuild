@@ -257,21 +257,24 @@
 					{/if}
 				</div>
 
-				<div class="pt-5">{@render caption(`Project roles · ${projectName}`)}</div>
+				<div class="flex items-baseline gap-2 pt-5">
+					{@render caption('Project roles')}
+					<span class="text-[var(--sb-text-faint)] font-mono text-[10px]">{projectName}</span>
+				</div>
 				{#if users.state.assignments.length === 0}
 					<p class="text-[var(--sb-text-faint)] pt-2 font-mono text-[11px]">
 						No project roles assigned to {selectedUser.username}.
 					</p>
 				{:else}
-					<table class="sb-list w-full text-left">
+					<table class="mt-1 w-full text-left">
 						<tbody>
 							{#each users.state.assignments as assignment (assignment.assignmentId)}
 								<tr class="border-b border-[var(--border-subtle)]">
-									<td class="py-1.5 pr-2 font-mono text-[11px]">{assignment.role}</td>
-									<td class="text-muted-foreground py-1.5 pr-2 font-mono text-[10.5px]"
+									<td class="py-2 pr-3 font-mono text-[11px]">{assignment.role}</td>
+									<td class="text-muted-foreground py-2 pr-3 font-mono text-[10.5px]"
 										>{assignment.targetName ?? 'all targets'}</td
 									>
-									<td class="py-1.5 pr-2 font-mono text-[10.5px]">
+									<td class="py-2 pr-3 font-mono text-[10.5px]">
 										{#if policyRoleNames.includes(assignment.role)}
 											<span class="text-[var(--sb-success)]">active</span>
 										{:else}
@@ -282,7 +285,7 @@
 											>
 										{/if}
 									</td>
-									<td class="py-1.5 text-right">
+									<td class="py-2 text-right">
 										<button
 											class="text-muted-foreground hover:text-foreground hover:bg-[var(--sb-hover)] rounded-[4px] border border-border px-2 py-[3px] font-mono text-[10px]"
 											onclick={() =>
