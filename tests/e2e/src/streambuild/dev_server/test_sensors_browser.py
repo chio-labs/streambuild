@@ -37,7 +37,9 @@ def test_given_authored_sensors_when_browsing_then_lifecycle_is_visible_and_oper
 
     paused_row: Locator = page.get_by_test_id(f"sensor-row-{test_case.expected_paused_sensor}")
     expect(paused_row).to_contain_text("stopped")
-    paused_row.get_by_role("button", name="Start", exact=True).click()
+    paused_row.get_by_role(
+        "button", name=f"Toggle {test_case.expected_paused_sensor}", exact=True
+    ).click()
     expect(paused_row).to_contain_text("running")
     expect(paused_row).to_contain_text("(override)")
 
