@@ -77,7 +77,7 @@ def test_given_project_roles_when_operating_in_browser_then_effective_access_is_
     assert page.goto(f"{base_url}/admin/users", wait_until="networkidle") is not None
     expect(page.get_by_text("Compiled roles", exact=True)).to_be_visible()
     expect(page.get_by_text(test_case.expected_assigned_role).first).to_be_visible()
-    page.get_by_label("Project role user", exact=True).select_option(label="bob")
+    page.get_by_role("button", name="bob", exact=True).click()
     expect(page.get_by_text("No project roles assigned to bob.", exact=True)).to_be_visible()
     page.get_by_label("Project role name", exact=True).select_option(
         label=test_case.expected_assigned_role
