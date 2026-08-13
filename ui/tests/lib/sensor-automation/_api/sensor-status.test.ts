@@ -3,8 +3,8 @@ import { describe, expect, it, vi } from 'vitest';
 const authenticatedFetch = vi.hoisted(() => vi.fn());
 vi.mock('$lib/auth/main/authenticated-fetch', () => ({ authenticatedFetch }));
 
-import { requestSensorStatus } from '../../../../src/routes/sensors/_api/sensor-status';
-import type { SensorStatusResult } from '../../../../src/routes/sensors/types';
+import { requestSensorStatus } from '../../../../src/lib/sensor-automation/_api/sensor-status';
+import type { SensorStatusResult } from '../../../../src/lib/sensor-automation/types';
 
 describe('sensor status API', () => {
 	it('given a status change when requested then the exact payload is posted', async () => {
