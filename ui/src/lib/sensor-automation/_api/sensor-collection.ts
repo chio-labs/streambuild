@@ -9,10 +9,18 @@ export async function fetchSensors(signal?: AbortSignal): Promise<SensorsPayload
 
 export async function fetchSensorTicks(
 	sensorName: string,
-	signal?: AbortSignal
+	signal?: AbortSignal,
+	window?: { after: string; before: string; limit: number }
 ): Promise<SensorTicksPayload> {
+	const query: URLSearchParams = new URLSearchParams();
+	if (window) {
+		query.set('after', window.after);
+		query.set('before', window.before);
+		query.set('limit', String(window.limit));
+	}
+	const suffix: string = window ? `?${query.toString()}` : '';
 	const response: Response = await fetch(
-		`/api/sensors/${encodeURIComponent(sensorName)}/ticks`,
+		`/api/sensors/${encodeURIComponent(sensorName)}/ticks${suffix}`,
 		{ signal }
 	);
 	return readApiResponse<SensorTicksPayload>(response, 'sensor ticks');

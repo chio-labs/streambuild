@@ -146,10 +146,20 @@ def event_ticks_query(*, database: str, sensor_name: str, event_id: str) -> str:
     )
 
 
-def sensor_ticks_query(*, database: str, sensor_name: str, limit: int) -> str:
+def sensor_ticks_query(
+    *,
+    database: str,
+    sensor_name: str,
+    limit: int,
+    after: str | None = None,
+    before: str | None = None,
+) -> str:
+    after_clause: str = "" if after is None else f"AND started_at >= {timestamp_literal(after)} "
+    before_clause: str = "" if before is None else f"AND started_at <= {timestamp_literal(before)} "
     return (
         f"SELECT {_TICK_COLUMNS} FROM {database}.{METADATA_SENSOR_TICKS_TABLE_NAME} "
         f"WHERE sensor_name = {sql_literal(sensor_name)} "
+        f"{after_clause}{before_clause}"
         f"ORDER BY started_at DESC, tick_id DESC LIMIT {int(limit)}"
     )
 
