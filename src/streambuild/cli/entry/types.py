@@ -6,6 +6,7 @@ from enum import StrEnum
 class CliCommand(StrEnum):
     """One top-level `stb` subcommand as argparse reports it."""
 
+    ADMIN = "admin"
     DISCOVER = "discover"
     DEV = "dev"
     COMPILE = "compile"

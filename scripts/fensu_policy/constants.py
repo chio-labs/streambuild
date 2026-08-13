@@ -101,6 +101,7 @@ WORKFLOW_ASSEMBLER_PATHS: tuple[tuple[str, ...], ...] = (
     ("src", "streambuild", "executor", "reconcile", "_helpers", "workflow.py"),
     ("src", "streambuild", "executor", "observability", "_helpers", "workflow.py"),
     ("src", "streambuild", "executor", "auditing", "_helpers", "schedule_claim_workflow.py"),
+    ("src", "streambuild", "sensors", "_helpers", "workflow.py"),
 )
 RETIRED_ADAPTER_MUTATION_METHODS: tuple[str, ...] = (
     "command",
@@ -145,6 +146,8 @@ OBSERVABILITY_AUTHORITY_ALLOWED_PATH_PREFIXES: tuple[tuple[str, ...], ...] = (
     ("src", "streambuild", "executor", "workflow", "main", "_execute_observation_workflow.py"),
     ("src", "streambuild", "quality"),
     ("src", "streambuild", "dev_server"),
+    ("src", "streambuild", "sensors"),
+    ("src", "streambuild", "events"),
 )
 QUALITY_MODULE_PREFIX: tuple[str, ...] = ("streambuild", "quality")
 OBSERVABILITY_QUERY_CALL_NAMES: frozenset[str] = frozenset({"render_latest_node_status_query"})
@@ -153,8 +156,24 @@ OBSERVABILITY_TABLE_CONSTANT_NAMES: frozenset[str] = frozenset(
         "METADATA_INVOCATIONS_TABLE_NAME",
         "METADATA_NODE_RESULTS_TABLE_NAME",
         "METADATA_RUN_EVENTS_TABLE_NAME",
+        "METADATA_SENSOR_CHECKPOINTS_TABLE_NAME",
+        "METADATA_SENSOR_TICKS_TABLE_NAME",
+        "METADATA_SENSOR_STEPS_TABLE_NAME",
+        "METADATA_SENSOR_OVERRIDES_TABLE_NAME",
+        "METADATA_SENSOR_LEASES_TABLE_NAME",
     }
 )
 OBSERVABILITY_TABLE_NAMES: frozenset[str] = frozenset(
-    {"_streambuild_invocations", "_streambuild_node_results", "_streambuild_run_events"}
+    {
+        "_streambuild_invocations",
+        "_streambuild_node_results",
+        "_streambuild_run_events",
+        "_streambuild_sensor_checkpoints",
+        "_streambuild_sensor_ticks",
+        "_streambuild_sensor_steps",
+        "_streambuild_sensor_overrides",
+        "_streambuild_sensor_leases",
+    }
 )
+EVENT_CATALOG_PATH_PREFIX: tuple[str, ...] = ("src", "streambuild", "events")
+EVENT_CONSTRUCTION_CALL_NAMES: frozenset[str] = frozenset({"AuditCompleted(", "RunCompleted("})

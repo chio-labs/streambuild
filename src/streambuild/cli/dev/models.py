@@ -6,6 +6,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
+from streambuild.auth.models import AuthSettings
+
 
 @dataclass(frozen=True, repr=False)
 class DevCommandOptions:
@@ -22,3 +24,4 @@ class DevCommandOptions:
     connection_port: int | None = None
     connection_username: str | None = None
     connection_password: str | None = None
+    auth_settings: AuthSettings | None = None

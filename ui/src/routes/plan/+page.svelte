@@ -16,9 +16,11 @@
 	import { fetchPlan } from '$lib/api/main/planning/fetch-plan';
 	import { getProject } from '$lib/api/main/project/get-project';
 	import { fetchRuns } from '$lib/api/main/runs/fetch-runs';
+	import { canAnyPipeline } from '$lib/auth/main/can-any-pipeline';
 	import { createPlanView } from '$lib/plan-view/main/create-plan-view';
 	import type { PlanViewTypes } from '$lib/plan-view/types';
 	const project = getProject();
+	const buildAllowed = $derived(canAnyPipeline('build.direct.run') || canAnyPipeline('deployment.create'));
 	const planView = createPlanView();
 	const location = $derived(planView.readLocation(page.url));
 	const selectors = $derived(location.selectors);
@@ -84,8 +86,7 @@
 	let protectionConfirmations = $state<Record<string, string>>({});
 	const missingProtections = $derived(
 		(plan?.protections ?? []).filter(
-			(protection) =>
-				protectionConfirmations[protection.pipelineName] !== protection.confirmation
+			(protection) => protectionConfirmations[protection.pipelineName] !== protection.confirmation
 		)
 	);
 	const acceptedConfirmations = $derived(
@@ -711,8 +712,15 @@
 			</button>
 			<button
 				class="bg-primary flex shrink-0 items-center gap-1.5 rounded-[4px] px-3 py-1.5 font-mono text-[11px] font-medium text-white disabled:opacity-60"
-				title="Runs these options in the dev server's pinned context"
-				disabled={executing || planLoading || planError !== null || plan === null || missingProtections.length > 0}
+				title={buildAllowed
+					? "Runs these options in the dev server's pinned context"
+					: 'Requires build.direct.run or deployment.create'}
+				disabled={executing ||
+					planLoading ||
+					planError !== null ||
+					plan === null ||
+					missingProtections.length > 0 ||
+					!buildAllowed}
 				onclick={() => void execute()}
 			>
 				<PlayIcon size={12} /> {executing ? 'starting…' : 'Execute'}

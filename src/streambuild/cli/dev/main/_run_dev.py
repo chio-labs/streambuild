@@ -5,6 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.auth.main.default_control_store_url import default_control_store_url
+from streambuild.auth.models import AuthSettings
+from streambuild.auth.types import AuthenticationMode
 from streambuild.cli.dev.classes.dev_terminal_reporter import DevTerminalReporter
 from streambuild.cli.dev.models import DevCommandOptions
 from streambuild.cli.presentation.main._cli_style import cli_style
@@ -81,4 +84,9 @@ def run_dev(
         port=options.port,
         reporter=DevTerminalReporter(style=cli_style()),
         execution_context=execution_context,
+        auth_settings=options.auth_settings
+        or AuthSettings(
+            mode=AuthenticationMode.DISABLED,
+            control_store_url=default_control_store_url(project_dir=project_dir),
+        ),
     )

@@ -14,6 +14,8 @@ SENSITIVE_SOURCE_SETTING_FRAGMENTS: tuple[str, ...] = (
     "token",
 )
 STATIC_ASSETS_DIRECTORY_NAME: str = "static"
+CHECK_KIND_TEST: str = "test"
+CHECK_KIND_AUDIT: str = "audit"
 IDENTITY_DRIFT_STATUSES: frozenset[str] = frozenset(
     {"binding_changed", "definition_changed", "execution_changed"}
 )
