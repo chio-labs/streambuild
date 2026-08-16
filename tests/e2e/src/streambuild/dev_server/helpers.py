@@ -36,11 +36,13 @@ def read_json_url(
         raise RuntimeError(error.read().decode("utf-8")) from error
 
 
-def post_json_url(url: str, payload: dict[str, object]) -> object:
+def post_json_url(
+    url: str, payload: dict[str, object], *, headers: dict[str, str] | None = None
+) -> object:
     request: Request = Request(  # noqa: S310 - loopback test server only
         url,
         data=json.dumps(payload).encode("utf-8"),
-        headers={"content-type": "application/json"},
+        headers={"content-type": "application/json", **(headers or {})},
         method="POST",
     )
     try:
@@ -302,6 +304,30 @@ def wait_for_authenticated_status_api(
         time.sleep(0.1)
 
 
+def wait_for_auth_config_api(
+    *, process: subprocess.Popen[str], api_port: int, log_path: Path
+) -> dict[str, object]:
+    deadline: float = time.monotonic() + 30
+    while True:
+        try:
+            payload: object = read_json_url(
+                f"http://127.0.0.1:{api_port}/api/auth/config", timeout_seconds=1
+            )
+            assert isinstance(payload, dict), "auth config payload is not an object"
+            return cast(dict[str, object], payload)
+        except (AssertionError, OSError, RuntimeError):
+            pass
+        assert process.poll() is None, _process_failure(
+            message="stb dev exited before auth API readiness", process=process, log_path=log_path
+        )
+        assert time.monotonic() < deadline, _process_failure(
+            message="stb dev auth API did not become ready before timeout",
+            process=process,
+            log_path=log_path,
+        )
+        time.sleep(0.1)
+
+
 def prepare_authorization_browser_project(*, tmp_path: Path) -> Path:
     project_dir: Path = prepare_lineage_browser_project(tmp_path=tmp_path)
     (project_dir / "access.yml").write_text(
@@ -332,8 +358,21 @@ def provision_authorization_accounts(*, control_store_url: str, project_name: st
             external_subject="kevin",
             roles=("admin",),
         )
+        alice: UserAccount = store.create_user(
+            username="alice",
+            authentication_source=AuthenticationSource.TRUSTED_PROXY,
+            external_subject="alice",
+            roles=("viewer",),
+        )
+        for role_name in ("reload_operator", "moving_operator"):
+            store.grant_project_role(
+                user_id=alice.user_id,
+                project_name=project_name,
+                role_name=role_name,
+                target_name=None,
+                actor_user_id=None,
+            )
         assignments: tuple[tuple[str, str, str | None], ...] = (
-            ("alice", "reload_operator", None),
             ("carol", "retired_role", None),
             ("dave", "reload_operator", "prod"),
         )
@@ -357,6 +396,14 @@ def provision_authorization_accounts(*, control_store_url: str, project_name: st
             external_subject="bob",
             roles=("viewer",),
         )
+    finally:
+        store.close()
+
+
+def provision_password_account(*, control_store_url: str, username: str, password: str) -> None:
+    store: ControlStore = ControlStore(url=control_store_url)
+    try:
+        store.create_user(username=username, password=password, roles=("admin",))
     finally:
         store.close()
 

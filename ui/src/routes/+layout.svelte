@@ -1,5 +1,6 @@
 <script lang="ts">
 	import './layout.css';
+	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import { getAuth } from '$lib/auth/main/get-auth';
@@ -12,6 +13,14 @@
 	let { children } = $props();
 	const app = getApp();
 	const auth = getAuth();
+
+	$effect(() => {
+		if (auth.phase === 'unauthenticated' && page.url.pathname !== '/login') {
+			void goto('/login');
+		} else if (auth.phase === 'authenticated' && page.url.pathname === '/login') {
+			void goto('/');
+		}
+	});
 
 	onMount(async () => {
 		await initializeAuth();
@@ -27,7 +36,9 @@
 </svelte:head>
 
 {#if auth.phase === 'unauthenticated' && page.url.pathname !== '/login'}
-	{@const _redirect = window.location.assign('/login')}
+	<div class="text-muted-foreground grid h-screen place-items-center font-mono text-[13px]">
+		redirecting to sign in…
+	</div>
 {:else if page.url.pathname === '/login'}
 	{@render children()}
 {:else if auth.phase === 'error'}

@@ -150,3 +150,19 @@ class AuthorizationBrowserE2ETestCase:
     expected_stale_reason: str
     expected_allowed_state: str
     expected_assigned_role: str
+
+
+@dataclass(frozen=True)
+class PasswordAuthenticationBrowserE2ETestCase:
+    description: str
+    username: str
+    password: str
+    expected_session_ttl_seconds: int
+
+
+@dataclass(frozen=True)
+class TrustedProxyBrowserE2ETestCase:
+    description: str
+    spoofed_username: str
+    expected_username: str
+    expected_denied_reason: str
