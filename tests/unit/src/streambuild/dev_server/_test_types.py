@@ -55,6 +55,14 @@ class ReloadAuthorizationTestCase:
 
 
 @dataclass(frozen=True)
+class OperationAuthorizationRouteTestCase:
+    description: str
+    path: str
+    body: dict[str, object]
+    expected_allowed_status: int
+
+
+@dataclass(frozen=True)
 class CapabilitiesTestCase:
     description: str
     expected_project: str

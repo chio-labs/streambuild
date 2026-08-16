@@ -9,7 +9,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from streambuild.auth.constants import ADMIN_ROLE
+from streambuild.auth.constants import VIEWER_ROLE
 from streambuild.auth.exceptions import AuthConfigurationError
 from streambuild.auth.types import AuthenticationMode, AuthenticationSource, UnknownUserPolicy
 
@@ -47,10 +47,10 @@ class AuthSettings:
         if (
             self.mode == AuthenticationMode.TRUSTED_PROXY
             and self.unknown_user_policy == UnknownUserPolicy.AUTO_PROVISION
-            and self.default_role == ADMIN_ROLE
+            and self.default_role != VIEWER_ROLE
         ):
             raise AuthConfigurationError(
-                "Trusted-proxy auto-provisioning cannot grant the admin role"
+                "Trusted-proxy auto-provisioning default role must be 'viewer'"
             )
 
     def __repr__(self) -> str:

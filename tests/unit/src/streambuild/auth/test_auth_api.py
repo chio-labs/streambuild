@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 from httpx import Response
 
 from streambuild.auth.classes.control_store import ControlStore
+from streambuild.auth.exceptions import AuthConfigurationError
 from streambuild.auth.models import AuthSettings, UserAccount
 from streambuild.auth.types import AuthenticationMode, UnknownUserPolicy
 from tests.unit.src.streambuild.auth._test_types import AuthTestCase
@@ -238,6 +239,81 @@ def test_given_username_variants_when_login_keeps_failing_then_shared_limit_appl
 
 @pytest.mark.parametrize(
     "test_case",
+    [
+        AuthTestCase(
+            description="successful account login preserves IP failures", expected_result=429
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_ip_failures_when_one_login_succeeds_then_ip_limit_still_applies(
+    test_case: AuthTestCase, tmp_path: Path
+) -> None:
+    store: ControlStore = build_control_store(tmp_path=tmp_path)
+    store.create_user(
+        username="alice",
+        password="correct horse battery staple",
+        roles=("viewer",),
+    )
+    client: TestClient = build_auth_client(
+        settings=AuthSettings(
+            mode=AuthenticationMode.PASSWORD,
+            control_store_url="unused",
+            session_cookie_secure=False,
+        ),
+        store=store,
+    )
+    for index in range(19):
+        response: Response = client.post(
+            "/api/auth/login",
+            json={"username": f"unknown-{index}", "password": "incorrect password"},
+        )
+        assert response.status_code == 401
+    assert (
+        client.post(
+            "/api/auth/login",
+            json={"username": "alice", "password": "correct horse battery staple"},
+        ).status_code
+        == 200
+    )
+    assert (
+        client.post(
+            "/api/auth/login",
+            json={"username": "another-unknown", "password": "incorrect password"},
+        ).status_code
+        == 401
+    )
+
+    blocked: Response = client.post(
+        "/api/auth/login",
+        json={"username": "last-unknown", "password": "incorrect password"},
+    )
+
+    assert blocked.status_code == test_case.expected_result
+    store.close()
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        AuthTestCase(description="admin auto-provisioning role", expected_result="admin"),
+        AuthTestCase(description="unknown auto-provisioning role", expected_result="operator"),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_unsafe_proxy_default_role_when_configuring_then_configuration_is_rejected(
+    test_case: AuthTestCase,
+) -> None:
+    with pytest.raises(AuthConfigurationError, match="default role must be 'viewer'"):
+        AuthSettings(
+            mode=AuthenticationMode.TRUSTED_PROXY,
+            control_store_url="unused",
+            default_role=str(test_case.expected_result),
+        )
+
+
+@pytest.mark.parametrize(
+    "test_case",
     [AuthTestCase(description="account created and audited", expected_result=200)],
     ids=lambda case: case.description,
 )
@@ -269,6 +345,39 @@ def test_given_local_admin_when_managing_account_then_api_persists_and_audits(
     assert users.json()[0]["username"] == "alice"
     assert users.json()[0]["authenticationSources"] == ["password"]
     assert any(record["operation"] == "user.created" for record in audit.json())
+    store.close()
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [AuthTestCase(description="short initial password", expected_result=400)],
+    ids=lambda case: case.description,
+)
+def test_given_short_initial_password_when_creating_account_then_validation_is_returned(
+    test_case: AuthTestCase, tmp_path: Path
+) -> None:
+    store: ControlStore = build_control_store(tmp_path=tmp_path)
+    client: TestClient = build_auth_client(
+        settings=AuthSettings(
+            mode=AuthenticationMode.DISABLED,
+            control_store_url="unused",
+        ),
+        store=store,
+    )
+
+    response: Response = client.post(
+        "/api/admin/users",
+        json={
+            "username": "alice",
+            "authenticationSource": "password",
+            "password": "short",
+            "roles": ["viewer"],
+        },
+    )
+
+    assert response.status_code == test_case.expected_result
+    assert response.json()["detail"] == "Password must contain at least 12 characters"
+    assert store.list_users() == ()
     store.close()
 
 

@@ -61,7 +61,7 @@ def register_session_routes(
         if result is None:
             limiter.failed(ip_key=ip_key, user_key=user_key)
             raise HTTPException(status_code=401, detail="Invalid username or password")
-        limiter.succeeded(ip_key=ip_key, user_key=user_key)
+        limiter.succeeded(user_key=user_key)
         account, credentials = result
         authenticated: AuthenticatedRequest = AuthenticatedRequest(
             principal=account_principal(account=account, source=AuthenticationSource.PASSWORD),

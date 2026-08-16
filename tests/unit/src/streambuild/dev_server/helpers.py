@@ -314,6 +314,98 @@ def build_assigned_proxy_quality_client(*, project_dir: Path) -> tuple[TestClien
     return build_proxy_test_client(project_dir=project_dir, store=store), store
 
 
+def build_assigned_proxy_operations_client(*, project_dir: Path) -> tuple[TestClient, ControlStore]:
+    """Build viewer personas where Alice holds every authored operational grant."""
+
+    return _build_assigned_proxy_operations_client(
+        project_dir=project_dir,
+        connection=build_fake_state_connection(),
+        database="analytics",
+    )
+
+
+def build_assigned_proxy_operations_client_without_warehouse(
+    *, project_dir: Path
+) -> tuple[TestClient, ControlStore]:
+    """Build the operational personas without a warehouse connection."""
+
+    return _build_assigned_proxy_operations_client(
+        project_dir=project_dir,
+        connection=None,
+        database=None,
+    )
+
+
+def _build_assigned_proxy_operations_client(
+    *, project_dir: Path, connection: AdapterConnection | None, database: str | None
+) -> tuple[TestClient, ControlStore]:
+    write_dev_server_project(project_dir=project_dir)
+    write_sensor_file(project_dir=project_dir)
+    write_pipeline_file(
+        project_dir / "access.yml",
+        """roles:
+  operator:
+    grants:
+      - pipelines: [order_events]
+        permissions:
+          - build.direct.run
+          - deployment.create
+          - build.cancel
+          - deployment.promote
+      - scope: target
+        permissions:
+          - build.kill
+          - deployment.cleanup
+          - automation.manage
+""",
+    )
+    store: ControlStore = build_control_store(tmp_path=project_dir)
+    alice: UserAccount = store.create_user(
+        username="alice",
+        authentication_source=AuthenticationSource.TRUSTED_PROXY,
+        external_subject="alice",
+        roles=("viewer",),
+    )
+    store.create_user(
+        username="bob",
+        authentication_source=AuthenticationSource.TRUSTED_PROXY,
+        external_subject="bob",
+        roles=("viewer",),
+    )
+    store.grant_project_role(
+        user_id=alice.user_id,
+        project_name="test_project",
+        role_name="operator",
+        target_name=None,
+        actor_user_id=None,
+    )
+    state: DevServerState = DevServerState(
+        run_compile=build_compile_callable(project_dir=project_dir)
+    )
+    client: TestClient = TestClient(
+        create_dev_app(
+            state=state,
+            connection=connection,
+            database=database,
+            project_dir=project_dir,
+            auth_settings=AuthSettings(
+                mode=AuthenticationMode.TRUSTED_PROXY,
+                control_store_url="sqlite://",
+                unknown_user_policy=UnknownUserPolicy.DENY,
+            ),
+            control_store=store,
+        )
+    )
+    return client, store
+
+
+def proxy_proof_headers(*, username: str) -> dict[str, str]:
+    return {
+        "X-Mustard-User": username,
+        "X-StreamBuild-CSRF": "trusted-proxy",
+    }
+
+
 _STATIC_INDEX_CONTENTS: str = "<html>stb-dev-shell</html>"
 _STATIC_APP_SCRIPT_CONTENTS: str = "console.log('stb-app-script');"
 _STATIC_ROBOTS_CONTENTS: str = "User-agent: *"
@@ -578,13 +670,13 @@ def build_virtual_plan_preparation(deployment_id: str) -> VirtualWorkflowPrepara
 def build_mixed_plan_preparation(deployment_id: str) -> MixedWorkflowPreparation:
     return MixedWorkflowPreparation(
         virtual=build_virtual_plan_preparation(deployment_id),
-        direct=_build_direct_plan_preparation(),
+        direct=build_direct_plan_preparation(),
         plan_text="mixed",
         plan_json="{}",
     )
 
 
-def _build_direct_plan_preparation() -> DirectWorkflowPreparation:
+def build_direct_plan_preparation() -> DirectWorkflowPreparation:
     model_key: LogicalResourceKey = LogicalResourceKey("model", "orders_clean")
     operation: DirectRelationOperation = DirectRelationOperation(
         relation_name="tbl__orders_clean",

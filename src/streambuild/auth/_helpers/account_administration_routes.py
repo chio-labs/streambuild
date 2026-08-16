@@ -61,6 +61,8 @@ def register_account_administration_routes(
                 actor_user_id=actor.principal.user_id,
             )
             return user_payload(account=account)
+        except PasswordValidationError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
         except (AccountConflictError, AccountNotFoundError, AccountValidationError) as error:
             raise HTTPException(status_code=409, detail=str(error)) from error
 
