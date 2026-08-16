@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.21.0](https://github.com/chio-labs/streambuild/compare/v0.20.0...v0.21.0) (2026-08-16)
+
+
+### Features
+
+* add a tick timeline to the sensor detail page ([ce105ba](https://github.com/chio-labs/streambuild/commit/ce105baa82b37ce2d3f108122c21410b3ded1c66))
+* add authentication policy and durable sensors ([d516bce](https://github.com/chio-labs/streambuild/commit/d516bce8a046eee667ebad2d36dbc36bbb82f8bf))
+* align sensors and users pages with the list design language ([64d2120](https://github.com/chio-labs/streambuild/commit/64d212023511690bf88e9d81371b38ec72d167fe))
+* explain dead letters in the sensor detail panel ([0ff8783](https://github.com/chio-labs/streambuild/commit/0ff8783277c3157618d5ef56a9b862918acb211e))
+* give each sensor a dedicated detail page ([1a86ffb](https://github.com/chio-labs/streambuild/commit/1a86ffbe06a070b26ca8c7a9bdd4d168ef977f56))
+* make the tick timeline a zoomable time axis ([a5b15f7](https://github.com/chio-labs/streambuild/commit/a5b15f77af69af045765bc935e84aa0dc2672590))
+* move dead letters into the sensor detail panel ([f3cc663](https://github.com/chio-labs/streambuild/commit/f3cc66336f77ee3be1196c36abe8d13c1ab9be50))
+* redesign users and sensors pages ([9e2c9aa](https://github.com/chio-labs/streambuild/commit/9e2c9aa779f8b5042649f8e144531e01f32367e2))
+
+
+### Bug Fixes
+
+* harden authentication and authorization boundaries ([378733f](https://github.com/chio-labs/streambuild/commit/378733ff0b1446befa6eeb394b8b9a6df067b47d))
+
 ## [0.20.0](https://github.com/chio-labs/streambuild/compare/v0.19.1...v0.20.0) (2026-08-11)
 
 
