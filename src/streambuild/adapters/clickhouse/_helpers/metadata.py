@@ -17,6 +17,11 @@ from streambuild.adapter.constants import (
     METADATA_PUBLISH_HISTORY_TABLE_NAME,
     METADATA_RUN_EVENTS_TABLE_NAME,
     METADATA_SCHEMA_VERSIONS_TABLE_NAME,
+    METADATA_SENSOR_CHECKPOINTS_TABLE_NAME,
+    METADATA_SENSOR_LEASES_TABLE_NAME,
+    METADATA_SENSOR_OVERRIDES_TABLE_NAME,
+    METADATA_SENSOR_STEPS_TABLE_NAME,
+    METADATA_SENSOR_TICKS_TABLE_NAME,
     REPLAY_VALUE_KIND_INTEGER,
     REPLAY_VALUE_KIND_TIMESTAMP,
     VIRTUAL_OBJECT_STATE_KIND_DEPLOYMENT,
@@ -35,11 +40,17 @@ from streambuild.adapter.models import (
     AdapterPublishEventRecord,
     AdapterQueryResult,
     AdapterRunEventRecord,
+    AdapterSensorCheckpointRecord,
+    AdapterSensorLeaseRecord,
+    AdapterSensorOverrideRecord,
+    AdapterSensorState,
+    AdapterSensorStepRecord,
+    AdapterSensorTickRecord,
 )
 from streambuild.adapter.types import AdapterOptionalStateStatus, AdapterReplayBoundaryMode
 from streambuild.adapters.clickhouse.models import ClickHouseMetadataStatement
 
-_CURRENT_STATE_SCHEMA_VERSION: int = 3
+_CURRENT_STATE_SCHEMA_VERSION: int = 4
 _BOUNDARY_PART_COUNT: int = 2
 _DIRECT_FINGERPRINT_REQUIRED_COLUMNS: frozenset[str] = frozenset(
     {
@@ -67,6 +78,11 @@ def render_clickhouse_metadata_migration_statements(database: str) -> tuple[str,
         _render_invocations_table(database),
         _render_node_results_table(database),
         _render_run_events_table(database),
+        _render_sensor_checkpoints_table(database),
+        _render_sensor_ticks_table(database),
+        _render_sensor_steps_table(database),
+        _render_sensor_overrides_table(database),
+        _render_sensor_leases_table(database),
         _render_publish_history_lifecycle_columns(database),
     )
 
@@ -470,6 +486,221 @@ def _render_run_events_table(database: str) -> str:
         "    payload_json String\n"
         ") ENGINE = MergeTree\n"
         "ORDER BY (invocation_id, sequence)"
+    )
+
+
+def _render_sensor_checkpoints_table(database: str) -> str:
+    return (
+        f"CREATE TABLE IF NOT EXISTS {database}.{METADATA_SENSOR_CHECKPOINTS_TABLE_NAME} (\n"
+        "    sensor_name String,\n"
+        "    source LowCardinality(String),\n"
+        "    position_completed_at DateTime64(3, 'UTC'),\n"
+        "    position_result_id String,\n"
+        "    recorded_at DateTime64(3, 'UTC') DEFAULT now64(3, 'UTC')\n"
+        ") ENGINE = MergeTree\n"
+        "ORDER BY (sensor_name, source, position_completed_at, position_result_id)"
+    )
+
+
+def _render_sensor_ticks_table(database: str) -> str:
+    return (
+        f"CREATE TABLE IF NOT EXISTS {database}.{METADATA_SENSOR_TICKS_TABLE_NAME} (\n"
+        "    tick_id String,\n"
+        "    sensor_name String,\n"
+        "    definition_fingerprint String,\n"
+        "    kind LowCardinality(String),\n"
+        "    event_id Nullable(String),\n"
+        "    event_kind Nullable(String),\n"
+        "    attempt UInt32,\n"
+        "    status LowCardinality(String),\n"
+        "    started_at DateTime64(3, 'UTC'),\n"
+        "    completed_at Nullable(DateTime64(3, 'UTC')),\n"
+        "    error_message Nullable(String),\n"
+        "    skip_reason Nullable(String),\n"
+        "    cursor Nullable(String)\n"
+        ") ENGINE = MergeTree\n"
+        "ORDER BY (sensor_name, started_at, tick_id)"
+    )
+
+
+def _render_sensor_steps_table(database: str) -> str:
+    return (
+        f"CREATE TABLE IF NOT EXISTS {database}.{METADATA_SENSOR_STEPS_TABLE_NAME} (\n"
+        "    sensor_name String,\n"
+        "    event_id String,\n"
+        "    step_key String,\n"
+        "    policy LowCardinality(String),\n"
+        "    status LowCardinality(String),\n"
+        "    attempt UInt32,\n"
+        "    result_json Nullable(String),\n"
+        "    error_message Nullable(String),\n"
+        "    recorded_at DateTime64(3, 'UTC') DEFAULT now64(3, 'UTC')\n"
+        ") ENGINE = MergeTree\n"
+        "ORDER BY (sensor_name, event_id, step_key, recorded_at)"
+    )
+
+
+def _render_sensor_overrides_table(database: str) -> str:
+    return (
+        f"CREATE TABLE IF NOT EXISTS {database}.{METADATA_SENSOR_OVERRIDES_TABLE_NAME} (\n"
+        "    override_id String,\n"
+        "    sensor_name String,\n"
+        "    status LowCardinality(String),\n"
+        "    actor Nullable(String),\n"
+        "    changed_at DateTime64(3, 'UTC') DEFAULT now64(3, 'UTC')\n"
+        ") ENGINE = MergeTree\n"
+        "ORDER BY (sensor_name, changed_at, override_id)"
+    )
+
+
+def _render_sensor_leases_table(database: str) -> str:
+    return (
+        f"CREATE TABLE IF NOT EXISTS {database}.{METADATA_SENSOR_LEASES_TABLE_NAME} (\n"
+        "    lease_name String,\n"
+        "    owner_id String,\n"
+        "    acquired_at DateTime64(3, 'UTC'),\n"
+        "    expires_at DateTime64(3, 'UTC')\n"
+        ") ENGINE = MergeTree\n"
+        "ORDER BY (lease_name, acquired_at, owner_id)"
+    )
+
+
+def render_clickhouse_sensor_state_inserts(
+    *,
+    database: str,
+    state: AdapterSensorState,
+    include_migration: bool = False,
+) -> tuple[str, ...]:
+    """Render incremental sensor-state inserts, optionally preceded by the migration."""
+
+    statements: tuple[ClickHouseMetadataStatement, ...] = (
+        ClickHouseMetadataStatement(
+            table=f"{database}.{METADATA_SENSOR_CHECKPOINTS_TABLE_NAME}",
+            sql=(
+                f"INSERT INTO {database}.{METADATA_SENSOR_CHECKPOINTS_TABLE_NAME} "
+                "(sensor_name, source, position_completed_at, position_result_id) VALUES"
+            ),
+            rows=tuple(_sensor_checkpoint_row(record) for record in state.checkpoints),
+        ),
+        ClickHouseMetadataStatement(
+            table=f"{database}.{METADATA_SENSOR_TICKS_TABLE_NAME}",
+            sql=(
+                f"INSERT INTO {database}.{METADATA_SENSOR_TICKS_TABLE_NAME} "
+                "(tick_id, sensor_name, definition_fingerprint, kind, event_id, event_kind, "
+                "attempt, status, started_at, completed_at, error_message, skip_reason, "
+                "cursor) VALUES"
+            ),
+            rows=tuple(_sensor_tick_row(record) for record in state.ticks),
+        ),
+        ClickHouseMetadataStatement(
+            table=f"{database}.{METADATA_SENSOR_STEPS_TABLE_NAME}",
+            sql=(
+                f"INSERT INTO {database}.{METADATA_SENSOR_STEPS_TABLE_NAME} "
+                "(sensor_name, event_id, step_key, policy, status, attempt, result_json, "
+                "error_message) VALUES"
+            ),
+            rows=tuple(_sensor_step_row(record) for record in state.steps),
+        ),
+        ClickHouseMetadataStatement(
+            table=f"{database}.{METADATA_SENSOR_OVERRIDES_TABLE_NAME}",
+            sql=(
+                f"INSERT INTO {database}.{METADATA_SENSOR_OVERRIDES_TABLE_NAME} "
+                "(override_id, sensor_name, status, actor) VALUES"
+            ),
+            rows=tuple(_sensor_override_row(record) for record in state.overrides),
+        ),
+        ClickHouseMetadataStatement(
+            table=f"{database}.{METADATA_SENSOR_LEASES_TABLE_NAME}",
+            sql=(
+                f"INSERT INTO {database}.{METADATA_SENSOR_LEASES_TABLE_NAME} "
+                "(lease_name, owner_id, acquired_at, expires_at) VALUES"
+            ),
+            rows=tuple(_sensor_lease_row(record) for record in state.leases),
+        ),
+    )
+    inserts: tuple[str, ...] = tuple(
+        _render_insert_statement(statement) for statement in statements if statement.rows
+    )
+    if not include_migration:
+        return inserts
+    return (*render_clickhouse_metadata_migration_workflow(database), *inserts)
+
+
+def _sensor_checkpoint_row(record: AdapterSensorCheckpointRecord) -> dict[str, object]:
+    return {
+        "sensor_name": record.sensor_name,
+        "source": record.source,
+        "position_completed_at": record.position_completed_at,
+        "position_result_id": record.position_result_id,
+    }
+
+
+def _sensor_tick_row(record: AdapterSensorTickRecord) -> dict[str, object]:
+    return {
+        "tick_id": record.tick_id,
+        "sensor_name": record.sensor_name,
+        "definition_fingerprint": record.definition_fingerprint,
+        "kind": record.kind,
+        "event_id": record.event_id,
+        "event_kind": record.event_kind,
+        "attempt": record.attempt,
+        "status": record.status,
+        "started_at": record.started_at,
+        "completed_at": record.completed_at,
+        "error_message": record.error_message,
+        "skip_reason": record.skip_reason,
+        "cursor": record.cursor,
+    }
+
+
+def _sensor_step_row(record: AdapterSensorStepRecord) -> dict[str, object]:
+    return {
+        "sensor_name": record.sensor_name,
+        "event_id": record.event_id,
+        "step_key": record.step_key,
+        "policy": record.policy,
+        "status": record.status,
+        "attempt": record.attempt,
+        "result_json": record.result_json,
+        "error_message": record.error_message,
+    }
+
+
+def _sensor_override_row(record: AdapterSensorOverrideRecord) -> dict[str, object]:
+    return {
+        "override_id": record.override_id,
+        "sensor_name": record.sensor_name,
+        "status": record.status,
+        "actor": record.actor,
+    }
+
+
+def _sensor_lease_row(record: AdapterSensorLeaseRecord) -> dict[str, object]:
+    return {
+        "lease_name": record.lease_name,
+        "owner_id": record.owner_id,
+        "acquired_at": record.acquired_at,
+        "expires_at": record.expires_at,
+    }
+
+
+def render_clickhouse_sensor_retention_cleanup(
+    *, database: str, retention_days: int
+) -> tuple[str, ...]:
+    """Render bounded deletes for aged sensor ticks and steps; zero keeps everything."""
+
+    if retention_days <= 0:
+        return ()
+    horizon: str = f"now64(3, 'UTC') - INTERVAL {int(retention_days)} DAY"
+    return (
+        (
+            f"ALTER TABLE {database}.{METADATA_SENSOR_TICKS_TABLE_NAME} "
+            f"DELETE WHERE started_at < {horizon};"
+        ),
+        (
+            f"ALTER TABLE {database}.{METADATA_SENSOR_STEPS_TABLE_NAME} "
+            f"DELETE WHERE recorded_at < {horizon};"
+        ),
     )
 
 

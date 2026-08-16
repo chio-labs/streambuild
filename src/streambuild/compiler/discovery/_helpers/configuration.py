@@ -37,6 +37,7 @@ from streambuild.compiler.discovery.constants import (
     PROJECT_NAMING_KEYS,
     RUN_UNRESPONSIVE_AFTER_SECONDS,
     SECONDS_BY_DURATION_UNIT,
+    SENSORS_KEYS,
     SOURCE_DEFAULT_KEYS,
     TARGET_KEYS,
 )
@@ -61,6 +62,8 @@ from streambuild.compiler.discovery.models import (
     RawConnectionConfig,
     ReplayOnChangePolicy,
     ReplayOnChangeRule,
+    SensorAutomationConfig,
+    SensorAutomationOverride,
     SourceDefaults,
 )
 from streambuild.compiler.discovery.types import (
@@ -229,6 +232,11 @@ def _parse_project_config(
             label="audit_scheduler",
             file_path=file_path,
         ),
+        sensors=_parse_sensors_config(
+            payload=payload.get("sensors"),
+            label="sensors",
+            file_path=file_path,
+        ),
         build=build,
     )
 
@@ -360,6 +368,11 @@ def _parse_project_target(*, payload: object, label: str, file_path: Path) -> Pr
             label=f"{label}.audit_scheduler",
             file_path=file_path,
         ),
+        sensors=_parse_sensors_override(
+            payload=mapping.get("sensors"),
+            label=f"{label}.sensors",
+            file_path=file_path,
+        ),
         build=_parse_build_config(
             payload=mapping.get("build"),
             label=f"{label}.build",
@@ -391,6 +404,11 @@ def _parse_local_target(*, payload: object, label: str, file_path: Path) -> Loca
         audit_scheduler=_parse_audit_scheduler_override(
             payload=mapping.get("audit_scheduler"),
             label=f"{label}.audit_scheduler",
+            file_path=file_path,
+        ),
+        sensors=_parse_sensors_override(
+            payload=mapping.get("sensors"),
+            label=f"{label}.sensors",
             file_path=file_path,
         ),
     )
@@ -444,6 +462,52 @@ def _parse_audit_scheduler_config(
         file_path=file_path,
     )
     return AuditSchedulerConfig(enabled=bool(override.enabled))
+
+
+def _parse_sensors_config(
+    *, payload: object, label: str, file_path: Path
+) -> SensorAutomationConfig:
+    override: SensorAutomationOverride = _parse_sensors_override(
+        payload=payload,
+        label=label,
+        file_path=file_path,
+    )
+    return SensorAutomationConfig(
+        enabled=bool(override.enabled),
+        tick_retention_days=(
+            override.tick_retention_days if override.tick_retention_days is not None else 0
+        ),
+    )
+
+
+def _parse_sensors_override(
+    *, payload: object, label: str, file_path: Path
+) -> SensorAutomationOverride:
+    mapping: dict[str, object] = _optional_mapping(
+        payload=payload,
+        label=label,
+        file_path=file_path,
+    )
+    _validate_allowed_keys(
+        mapping=mapping,
+        allowed_keys=SENSORS_KEYS,
+        label=label,
+        file_path=file_path,
+    )
+    enabled: object | None = mapping.get("enabled")
+    if enabled is not None and not isinstance(enabled, bool):
+        raise ProjectConfigError(f"{file_path} {label}.enabled must be a boolean")
+    retention: object | None = mapping.get("tick_retention_days")
+    if retention is not None and (
+        isinstance(retention, bool) or not isinstance(retention, int) or retention < 0
+    ):
+        raise ProjectConfigError(
+            f"{file_path} {label}.tick_retention_days must be a non-negative integer"
+        )
+    return SensorAutomationOverride(
+        enabled=enabled if isinstance(enabled, bool) else None,
+        tick_retention_days=retention if isinstance(retention, int) else None,
+    )
 
 
 def _parse_audit_scheduler_override(

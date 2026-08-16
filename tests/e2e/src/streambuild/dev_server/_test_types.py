@@ -106,6 +106,15 @@ class DeploymentBrowserE2ETestCase:
 
 
 @dataclass(frozen=True)
+class SensorsBrowserE2ETestCase:
+    description: str
+    expected_running_sensor: str
+    expected_paused_sensor: str
+    expected_dead_letter_fragment: str
+    expected_tick_statuses: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class QualityBrowserE2ETestCase:
     description: str
     expected_passing: int
@@ -131,3 +140,29 @@ class UnsafeReplayBrowserE2ETestCase:
     safe_selector: str
     expected_missing_column: str
     expected_preserved_row: str
+
+
+@dataclass(frozen=True)
+class AuthorizationBrowserE2ETestCase:
+    description: str
+    expected_denied_status: int
+    expected_denied_reason: str
+    expected_stale_reason: str
+    expected_allowed_state: str
+    expected_assigned_role: str
+
+
+@dataclass(frozen=True)
+class PasswordAuthenticationBrowserE2ETestCase:
+    description: str
+    username: str
+    password: str
+    expected_session_ttl_seconds: int
+
+
+@dataclass(frozen=True)
+class TrustedProxyBrowserE2ETestCase:
+    description: str
+    spoofed_username: str
+    expected_username: str
+    expected_denied_reason: str

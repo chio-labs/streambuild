@@ -1,0 +1,120 @@
+"""Behavior tests for the sensor observability and management routes."""
+
+from pathlib import Path
+
+import pytest
+from fastapi.testclient import TestClient
+from httpx import Response
+
+from tests.unit.src.streambuild.dev_server._test_types import (
+    SensorRouteErrorTestCase,
+    SensorRoutesTestCase,
+)
+from tests.unit.src.streambuild.dev_server.helpers import (
+    build_test_client,
+    write_dev_server_project,
+    write_sensor_file,
+)
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        SensorRoutesTestCase(
+            description="compiled sensors list with declared defaults and no warehouse",
+            expected_sensor_names=("quality_alerts",),
+            expected_effective_statuses=("stopped",),
+            expected_event_types=("AuditCompleted",),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_authored_sensor_when_listing_then_definitions_are_served(
+    test_case: SensorRoutesTestCase, tmp_path: Path
+) -> None:
+    write_dev_server_project(project_dir=tmp_path)
+    write_sensor_file(project_dir=tmp_path)
+    client: TestClient = build_test_client(project_dir=tmp_path)
+
+    response: Response = client.get("/api/sensors")
+
+    assert response.status_code == 200
+    payload: dict[str, object] = response.json()
+    sensors: list[dict[str, object]] = payload["sensors"]
+    assert tuple(str(sensor["name"]) for sensor in sensors) == (test_case.expected_sensor_names)
+    assert tuple(str(sensor["effectiveStatus"]) for sensor in sensors) == (
+        test_case.expected_effective_statuses
+    )
+    assert tuple(sensor.get("eventType") for sensor in sensors) == (test_case.expected_event_types)
+    assert payload["deadLetterCount"] == 0
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        SensorRouteErrorTestCase(
+            description="tick history for unknown sensors is not found",
+            method="GET",
+            path="/api/sensors/missing_sensor/ticks",
+            body=None,
+            expected_status_code=404,
+            expected_detail_fragment="Unknown sensor 'missing_sensor'",
+        ),
+        SensorRouteErrorTestCase(
+            description="tick windows require ISO timestamps",
+            method="GET",
+            path="/api/sensors/quality_alerts/ticks?after=not-a-time",
+            body=None,
+            expected_status_code=400,
+            expected_detail_fragment="after must be an ISO timestamp",
+        ),
+        SensorRouteErrorTestCase(
+            description="unknown override statuses are rejected",
+            method="POST",
+            path="/api/sensors/quality_alerts/status",
+            body={"status": "paused"},
+            expected_status_code=400,
+            expected_detail_fragment="Unknown sensor status 'paused'",
+        ),
+        SensorRouteErrorTestCase(
+            description="valid overrides without a warehouse are unavailable",
+            method="POST",
+            path="/api/sensors/quality_alerts/status",
+            body={"status": "running"},
+            expected_status_code=503,
+            expected_detail_fragment="no warehouse connection",
+        ),
+        SensorRouteErrorTestCase(
+            description="dead-letter retries for unknown sensors are not found",
+            method="POST",
+            path="/api/sensors/dead-letters/retry",
+            body={"sensorName": "missing_sensor", "eventId": "event-1"},
+            expected_status_code=404,
+            expected_detail_fragment="Unknown sensor 'missing_sensor'",
+        ),
+        SensorRouteErrorTestCase(
+            description="dead-letter skips require a reason",
+            method="POST",
+            path="/api/sensors/dead-letters/skip",
+            body={"sensorName": "quality_alerts", "eventId": "event-1", "reason": "  "},
+            expected_status_code=400,
+            expected_detail_fragment="requires a reason",
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_invalid_sensor_requests_when_calling_then_errors_are_structured(
+    test_case: SensorRouteErrorTestCase, tmp_path: Path
+) -> None:
+    write_dev_server_project(project_dir=tmp_path)
+    write_sensor_file(project_dir=tmp_path)
+    client: TestClient = build_test_client(project_dir=tmp_path)
+
+    response: Response = client.request(test_case.method, test_case.path, json=test_case.body)
+
+    assert response.status_code == test_case.expected_status_code
+    assert test_case.expected_detail_fragment in str(response.json()["detail"])
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-vv"])

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import sys
 from collections.abc import Callable
 from pathlib import Path
@@ -10,6 +11,10 @@ import uvicorn
 from fastapi import FastAPI
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.auth.constants import LOCALHOST_NAME
+from streambuild.auth.main.default_control_store_url import default_control_store_url
+from streambuild.auth.models import AuthSettings
+from streambuild.auth.types import AuthenticationMode
 from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.dev_server._helpers.server.static_assets import (
     register_static_assets,
@@ -33,9 +38,31 @@ def run_dev_server(
     port: int,
     reporter: DevServerReporter,
     execution_context: DevExecutionContext | None = None,
+    auth_settings: AuthSettings | None = None,
 ) -> int:
     """Compile once, serve the API and packaged UI, and block until shutdown."""
 
+    effective_auth_settings: AuthSettings = auth_settings or AuthSettings(
+        mode=AuthenticationMode.DISABLED,
+        control_store_url=default_control_store_url(project_dir=project_dir),
+    )
+    if effective_auth_settings.mode == AuthenticationMode.DISABLED and not _is_loopback_bind(host):
+        print(
+            "stb dev: disabled authentication may only bind to a loopback address; "
+            "configure --auth-mode for shared access.",
+            file=sys.stderr,
+        )
+        return 1
+    if (
+        effective_auth_settings.mode == AuthenticationMode.PASSWORD
+        and not effective_auth_settings.session_cookie_secure
+        and not _is_loopback_bind(host)
+    ):
+        print(
+            "stb dev: insecure password cookies may only be used on a loopback address.",
+            file=sys.stderr,
+        )
+        return 1
     assets_root: Path = static_assets_root()
     if not static_assets_present(assets_root=assets_root):
         print(
@@ -54,6 +81,7 @@ def run_dev_server(
         project_dir=project_dir,
         reporter=reporter,
         execution_context=execution_context,
+        auth_settings=effective_auth_settings,
     )
     app = register_static_assets(app=app, assets_root=assets_root)
     reporter.report_startup(
@@ -62,3 +90,12 @@ def run_dev_server(
     uvicorn.run(app, host=host, port=port, log_level="warning")
     reporter.report_shutdown()
     return 0
+
+
+def _is_loopback_bind(host: str) -> bool:
+    if host == LOCALHOST_NAME:
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False

@@ -16,10 +16,12 @@
 		MessageFilterDocument
 	} from '$lib/message-browser/types';
 	import AppTopbar from '$lib/presentation/components/app-topbar.svelte';
+	import { can } from '$lib/auth/main/can';
 
 	const project: Project = getProject();
 	const sourceName = $derived(page.params.name ?? '');
 	const source = $derived(sourceByName(project, sourceName));
+	const messagesAllowed = $derived(can('source.messages.read'));
 	const browser: MessageBrowserState = createMessageBrowserState(page.params.name ?? '');
 
 	function updateDocumentUrl(document: MessageFilterDocument): void {
@@ -40,6 +42,15 @@
 		<div class="px-[18px] py-10 text-center">
 			<p class="text-muted-foreground text-[13px]">No source named <code>{sourceName}</code>.</p>
 			<a href="/sources" class="text-primary mt-2 inline-block font-mono text-[11.5px]">← Back to sources</a>
+		</div>
+	{:else if !messagesAllowed}
+		<div class="px-[18px] py-10 text-center">
+			<p class="text-muted-foreground text-[13px]">
+				Browsing raw source messages requires the <code>source.messages.read</code> permission.
+			</p>
+			<a href="/sources/{sourceName}" class="text-primary mt-2 inline-block font-mono text-[11.5px]"
+				>← Back to {sourceName}</a
+			>
 		</div>
 	{:else}
 		<div class="flex items-center gap-2.5 border-b border-border px-[18px] py-2.5">

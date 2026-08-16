@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from pathlib import Path
 
 from pydantic import BaseModel
 
+from streambuild.auth.classes.control_store import ControlStore
 from streambuild.compiler.discovery.constants import DEFAULT_RUN_PRESUMED_FAILED_AFTER_SECONDS
 from streambuild.compiler.pipeline.models import CompilationTimings, CompileAnalysis
 from streambuild.dev_server.types import CompileStateKind
@@ -49,6 +51,15 @@ class CompileOutcome:
     analysis: CompileAnalysis | None = None
     timings: CompilationTimings | None = None
     error: CompileErrorInfo | None = None
+
+
+@dataclass(frozen=True)
+class OperationAuthorizationContext:
+    """Shared control-plane inputs for route-level operation authorization."""
+
+    store: ControlStore
+    project_dir: Path
+    selected_target: str | None
 
 
 class ChecksRunRequest(BaseModel):
@@ -171,6 +182,20 @@ class DeploymentCleanupRequest(BaseModel):
     """Janitor apply request from the development UI."""
 
     retentionDays: int = 7
+
+
+class SensorStatusRequest(BaseModel):
+    """POST /api/sensors/{name}/status body."""
+
+    status: str
+
+
+class SensorDeadLetterActionRequest(BaseModel):
+    """POST /api/sensors/dead-letters/{retry,skip} body."""
+
+    sensorName: str
+    eventId: str
+    reason: str | None = None
 
 
 @dataclass(frozen=True)

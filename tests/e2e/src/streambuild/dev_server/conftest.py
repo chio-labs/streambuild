@@ -9,23 +9,35 @@ from kafka import KafkaProducer
 from kafka.admin import KafkaAdminClient
 from playwright.sync_api import ConsoleMessage, Error, Page, Request, Response
 
+from scripts.browser_e2e_support.classes.header_replacing_reverse_proxy import (
+    HeaderReplacingReverseProxy,
+)
 from streambuild.compiler.compile.models import CompiledPipeline
 from tests.e2e.src.streambuild.conftest import (
     E2EClickHouseConnectionSettings,
     E2EKafkaConnectionSettings,
 )
 from tests.e2e.src.streambuild.dev_server.helpers import (
+    append_sensors_browser_automation,
     available_port,
     create_lineage_browser_source_tables,
+    post_json_url,
+    prepare_authorization_browser_project,
     prepare_catalog_pipeline_browser_project,
     prepare_lineage_browser_project,
+    provision_authorization_accounts,
+    provision_password_account,
     run_lineage_browser_build,
     seed_lineage_approximate_activity,
     seed_lineage_plan_replay_data,
     start_dev_process,
     stop_process,
+    wait_for_auth_config_api,
+    wait_for_authenticated_status_api,
     wait_for_scheduled_result,
     wait_for_scheduler_api,
+    wait_for_sensor_dead_letter,
+    wait_for_sensor_first_dispatch,
     wait_for_state_api,
 )
 from tests.e2e.src.streambuild.executor.helpers import (
@@ -235,6 +247,58 @@ def running_deployment_browser_server(
             e2e_clickhouse_database,
             log_path,
         )
+    finally:
+        stop_process(process)
+
+
+@pytest.fixture
+def running_sensors_browser_server(
+    e2e_clickhouse_connection_settings: E2EClickHouseConnectionSettings,
+    e2e_clickhouse_client: Client,
+    e2e_clickhouse_database: str,
+    output_path: str,
+    tmp_path: Path,
+) -> Iterator[tuple[str, str, Path]]:
+    _ = write_scheduled_audit_project(
+        project_dir=tmp_path,
+        database=e2e_clickhouse_database,
+        audit_query=('SELECT order_id, line_total FROM __ref("order_items") WHERE line_total < 0'),
+    )
+    append_sensors_browser_automation(project_dir=tmp_path)
+    e2e_clickhouse_client.command(
+        build_order_items_ddl(
+            database=e2e_clickhouse_database,
+            columns=KEYED_ORDER_ITEMS_COLUMNS,
+            order_by=KEYED_ORDER_ITEMS_ORDER_BY,
+        )
+    )
+    e2e_clickhouse_client.insert(
+        table=f"{e2e_clickhouse_database}.tbl__order_items",
+        data=[["ord_001", -5.0]],
+        column_names=["order_id", "line_total"],
+    )
+    api_port: int = available_port()
+    log_path: Path = Path(output_path) / "stb-dev-sensors.log"
+    process: subprocess.Popen[str] = start_dev_process(
+        repository_root=Path(__file__).resolve().parents[5],
+        project_dir=tmp_path,
+        host=e2e_clickhouse_connection_settings.host,
+        port=e2e_clickhouse_connection_settings.port,
+        username=e2e_clickhouse_connection_settings.username,
+        password=e2e_clickhouse_connection_settings.password,
+        database=e2e_clickhouse_database,
+        api_port=api_port,
+        log_path=log_path,
+    )
+    try:
+        _ = wait_for_scheduler_api(process=process, api_port=api_port, log_path=log_path)
+        wait_for_sensor_first_dispatch(process=process, api_port=api_port, log_path=log_path)
+        _ = post_json_url(
+            f"http://127.0.0.1:{api_port}/api/checks/run",
+            {"kind": "audit", "name": "scheduled negative line totals"},
+        )
+        _ = wait_for_sensor_dead_letter(process=process, api_port=api_port, log_path=log_path)
+        yield (f"http://127.0.0.1:{api_port}", e2e_clickhouse_database, log_path)
     finally:
         stop_process(process)
 
@@ -602,6 +666,133 @@ def running_no_activity_log_lineage_server(
             process=process, api_port=api_port, log_path=log_path
         )
         yield f"http://127.0.0.1:{api_port}", state_payload, log_path
+    finally:
+        stop_process(process)
+
+
+@pytest.fixture
+def running_authorization_browser_server(
+    e2e_clickhouse_connection_settings: E2EClickHouseConnectionSettings,
+    e2e_clickhouse_client: Client,
+    e2e_clickhouse_database: str,
+    output_path: str,
+    tmp_path: Path,
+) -> Iterator[tuple[str, Path, Client, str]]:
+    repository_root: Path = Path(__file__).resolve().parents[5]
+    project_dir: Path = prepare_authorization_browser_project(tmp_path=tmp_path)
+    create_lineage_browser_source_tables(
+        client=e2e_clickhouse_client, database=e2e_clickhouse_database
+    )
+    e2e_clickhouse_client.command(
+        f"INSERT INTO {e2e_clickhouse_database}.browser_moving_events "
+        "(order_id, event_timestamp) VALUES ('authorized-build', now64(3))"
+    )
+    control_store_url: str = f"sqlite:///{tmp_path / 'control.db'}"
+    provision_authorization_accounts(
+        control_store_url=control_store_url,
+        project_name="lineage_browser_project",
+    )
+    api_port: int = available_port()
+    log_path: Path = Path(output_path) / "stb-dev-authorization.log"
+    process: subprocess.Popen[str] = start_dev_process(
+        repository_root=repository_root,
+        project_dir=project_dir,
+        host=e2e_clickhouse_connection_settings.host,
+        port=e2e_clickhouse_connection_settings.port,
+        username=e2e_clickhouse_connection_settings.username,
+        password=e2e_clickhouse_connection_settings.password,
+        database=e2e_clickhouse_database,
+        api_port=api_port,
+        log_path=log_path,
+        extra_args=(
+            "--auth-mode",
+            "trusted_proxy",
+            "--control-store-url",
+            control_store_url,
+            "--auth-unknown-user-policy",
+            "deny",
+        ),
+    )
+    try:
+        _ = wait_for_authenticated_status_api(
+            process=process, api_port=api_port, log_path=log_path, username="kevin"
+        )
+        yield (
+            f"http://127.0.0.1:{api_port}",
+            log_path,
+            e2e_clickhouse_client,
+            e2e_clickhouse_database,
+        )
+    finally:
+        stop_process(process)
+
+
+@pytest.fixture
+def running_header_replacing_proxy(
+    running_authorization_browser_server: tuple[str, Path, Client, str],
+) -> Iterator[tuple[str, Path]]:
+    upstream_url, log_path, _client, _database = running_authorization_browser_server
+    upstream_port: int = int(upstream_url.rpartition(":")[2])
+    proxy: HeaderReplacingReverseProxy = HeaderReplacingReverseProxy(
+        upstream_port=upstream_port, username="bob"
+    )
+    proxy.start()
+    try:
+        yield proxy.base_url, log_path
+    finally:
+        proxy.close()
+
+
+@pytest.fixture
+def running_password_browser_server(
+    e2e_clickhouse_connection_settings: E2EClickHouseConnectionSettings,
+    e2e_clickhouse_client: Client,
+    e2e_clickhouse_database: str,
+    output_path: str,
+    tmp_path: Path,
+) -> Iterator[tuple[str, Path, int]]:
+    repository_root: Path = Path(__file__).resolve().parents[5]
+    project_dir: Path = prepare_lineage_browser_project(tmp_path=tmp_path)
+    create_lineage_browser_source_tables(
+        client=e2e_clickhouse_client, database=e2e_clickhouse_database
+    )
+    control_store_url: str = f"sqlite:///{tmp_path / 'password-control.db'}"
+    password: str = "correct horse battery staple"
+    provision_password_account(
+        control_store_url=control_store_url,
+        username="alice",
+        password=password,
+    )
+    session_ttl_seconds: int = 5
+    api_port: int = available_port()
+    log_path: Path = Path(output_path) / "stb-dev-password-auth.log"
+    connection: E2EClickHouseConnectionSettings = e2e_clickhouse_connection_settings
+    process: subprocess.Popen[str] = start_dev_process(
+        repository_root=repository_root,
+        project_dir=project_dir,
+        host=connection.host,
+        port=connection.port,
+        username=connection.username,
+        password=connection.password,
+        database=e2e_clickhouse_database,
+        api_port=api_port,
+        log_path=log_path,
+        extra_args=(
+            "--auth-mode",
+            "password",
+            "--control-store-url",
+            control_store_url,
+            "--auth-session-ttl-seconds",
+            str(session_ttl_seconds),
+            "--auth-insecure-cookie",
+        ),
+    )
+    try:
+        config: dict[str, object] = wait_for_auth_config_api(
+            process=process, api_port=api_port, log_path=log_path
+        )
+        assert config["mode"] == "password"
+        yield f"http://127.0.0.1:{api_port}", log_path, session_ttl_seconds
     finally:
         stop_process(process)
 

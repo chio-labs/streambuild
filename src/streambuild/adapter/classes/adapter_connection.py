@@ -26,6 +26,7 @@ from streambuild.adapter.models import (
     AdapterRelationCleanupRequest,
     AdapterReplayCoverageRequest,
     AdapterRunEventRecord,
+    AdapterSensorState,
     AdapterStableView,
     AdapterTable,
     AdapterView,
@@ -137,6 +138,24 @@ class AdapterConnection(ABC):
         include_migration: bool = False,
     ) -> tuple[str, ...]:
         """Render incremental run-event inserts when supported."""
+
+        return ()
+
+    def render_sensor_state(
+        self,
+        *,
+        database: str,
+        state: AdapterSensorState,
+        include_migration: bool = False,
+    ) -> tuple[str, ...]:
+        """Render incremental sensor-state inserts when supported."""
+
+        return ()
+
+    def render_sensor_retention_cleanup(
+        self, *, database: str, retention_days: int
+    ) -> tuple[str, ...]:
+        """Render tick and step retention deletes when supported."""
 
         return ()
 

@@ -35,6 +35,9 @@ from streambuild.adapters.clickhouse._helpers.replay import (
     render_clickhouse_replay_coverage_query,
 )
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
+from streambuild.auth.classes.control_store import ControlStore
+from streambuild.auth.models import AuthSettings, UserAccount
+from streambuild.auth.types import AuthenticationMode, AuthenticationSource, UnknownUserPolicy
 from streambuild.cli.build.models import (
     DirectWorkflowPreparation,
     MixedWorkflowPreparation,
@@ -83,6 +86,7 @@ from streambuild.dev_server.models import (
     KafkaTopicsSnapshot,
     MessagesQueryRequest,
 )
+from tests.unit.src.streambuild.auth.helpers import build_control_store
 from tests.unit.src.streambuild.compiler.discovery._helpers.load.helpers import (
     write_pipeline_file,
     write_project_configuration_and_source,
@@ -150,6 +154,21 @@ def write_dev_server_project(*, project_dir: Path) -> None:
     )
 
 
+_QUALITY_ALERTS_SENSOR: str = '''
+from streambuild.events import AuditCompleted
+from streambuild.sensors import event_sensor
+
+
+@event_sensor(on=AuditCompleted)
+def quality_alerts(ctx):
+    """Alert on audit transitions."""
+'''
+
+
+def write_sensor_file(*, project_dir: Path) -> None:
+    write_pipeline_file(project_dir / "sensors" / "quality.py", _QUALITY_ALERTS_SENSOR)
+
+
 def build_compile_callable(*, project_dir: Path) -> Callable[[], CompileAnalysis]:
     def run_compile() -> CompileAnalysis:
         return analyze_project(
@@ -175,6 +194,218 @@ def build_test_client(*, project_dir: Path) -> TestClient:
     return TestClient(create_dev_app(state=state, project_dir=project_dir))
 
 
+def build_proxy_test_client(*, project_dir: Path, store: ControlStore) -> TestClient:
+    state: DevServerState = DevServerState(
+        run_compile=build_compile_callable(project_dir=project_dir)
+    )
+    return TestClient(
+        create_dev_app(
+            state=state,
+            project_dir=project_dir,
+            auth_settings=AuthSettings(
+                mode=AuthenticationMode.TRUSTED_PROXY,
+                control_store_url="sqlite://",
+                unknown_user_policy=UnknownUserPolicy.DENY,
+            ),
+            control_store=store,
+        )
+    )
+
+
+def build_assigned_proxy_reload_client(*, project_dir: Path) -> tuple[TestClient, ControlStore]:
+    write_dev_server_project(project_dir=project_dir)
+    write_reload_access_policy(project_dir=project_dir, permission="project.reload")
+    store: ControlStore = build_control_store(tmp_path=project_dir)
+    alice: UserAccount = store.create_user(
+        username="alice",
+        authentication_source=AuthenticationSource.TRUSTED_PROXY,
+        external_subject="alice",
+        roles=("viewer",),
+    )
+    store.create_user(
+        username="bob",
+        authentication_source=AuthenticationSource.TRUSTED_PROXY,
+        external_subject="bob",
+        roles=("viewer",),
+    )
+    store.grant_project_role(
+        user_id=alice.user_id,
+        project_name="test_project",
+        role_name="operator",
+        target_name="dev",
+        actor_user_id=None,
+    )
+    return build_proxy_test_client(project_dir=project_dir, store=store), store
+
+
+def write_reload_access_policy(*, project_dir: Path, permission: str) -> None:
+    write_pipeline_file(
+        project_dir / "access.yml",
+        f"""roles:
+  operator:
+    grants: [{{scope: project, permissions: [{permission}]}}]
+""",
+    )
+
+
+def build_assigned_proxy_message_client(*, project_dir: Path) -> tuple[TestClient, ControlStore]:
+    write_dev_server_project(project_dir=project_dir)
+    write_pipeline_file(
+        project_dir / "access.yml",
+        """roles:
+  message_reader:
+    grants: [{scope: project, permissions: [source.messages.read]}]
+""",
+    )
+    store: ControlStore = build_control_store(tmp_path=project_dir)
+    alice: UserAccount = store.create_user(
+        username="alice",
+        authentication_source=AuthenticationSource.TRUSTED_PROXY,
+        external_subject="alice",
+        roles=("viewer",),
+    )
+    store.create_user(
+        username="bob",
+        authentication_source=AuthenticationSource.TRUSTED_PROXY,
+        external_subject="bob",
+        roles=("viewer",),
+    )
+    store.grant_project_role(
+        user_id=alice.user_id,
+        project_name="test_project",
+        role_name="message_reader",
+        target_name=None,
+        actor_user_id=None,
+    )
+    return build_proxy_test_client(project_dir=project_dir, store=store), store
+
+
+def build_assigned_proxy_quality_client(*, project_dir: Path) -> tuple[TestClient, ControlStore]:
+    write_dev_server_project(project_dir=project_dir)
+    write_pipeline_file(
+        project_dir / "access.yml",
+        """roles:
+  quality_operator:
+    grants:
+      - pipelines: [order_events]
+        permissions: [quality.audit.run, quality.test.run]
+""",
+    )
+    store: ControlStore = build_control_store(tmp_path=project_dir)
+    alice: UserAccount = store.create_user(
+        username="alice",
+        authentication_source=AuthenticationSource.TRUSTED_PROXY,
+        external_subject="alice",
+        roles=("viewer",),
+    )
+    store.create_user(
+        username="bob",
+        authentication_source=AuthenticationSource.TRUSTED_PROXY,
+        external_subject="bob",
+        roles=("viewer",),
+    )
+    store.grant_project_role(
+        user_id=alice.user_id,
+        project_name="test_project",
+        role_name="quality_operator",
+        target_name=None,
+        actor_user_id=None,
+    )
+    return build_proxy_test_client(project_dir=project_dir, store=store), store
+
+
+def build_assigned_proxy_operations_client(*, project_dir: Path) -> tuple[TestClient, ControlStore]:
+    """Build viewer personas where Alice holds every authored operational grant."""
+
+    return _build_assigned_proxy_operations_client(
+        project_dir=project_dir,
+        connection=build_fake_state_connection(),
+        database="analytics",
+    )
+
+
+def build_assigned_proxy_operations_client_without_warehouse(
+    *, project_dir: Path
+) -> tuple[TestClient, ControlStore]:
+    """Build the operational personas without a warehouse connection."""
+
+    return _build_assigned_proxy_operations_client(
+        project_dir=project_dir,
+        connection=None,
+        database=None,
+    )
+
+
+def _build_assigned_proxy_operations_client(
+    *, project_dir: Path, connection: AdapterConnection | None, database: str | None
+) -> tuple[TestClient, ControlStore]:
+    write_dev_server_project(project_dir=project_dir)
+    write_sensor_file(project_dir=project_dir)
+    write_pipeline_file(
+        project_dir / "access.yml",
+        """roles:
+  operator:
+    grants:
+      - pipelines: [order_events]
+        permissions:
+          - build.direct.run
+          - deployment.create
+          - build.cancel
+          - deployment.promote
+      - scope: target
+        permissions:
+          - build.kill
+          - deployment.cleanup
+          - automation.manage
+""",
+    )
+    store: ControlStore = build_control_store(tmp_path=project_dir)
+    alice: UserAccount = store.create_user(
+        username="alice",
+        authentication_source=AuthenticationSource.TRUSTED_PROXY,
+        external_subject="alice",
+        roles=("viewer",),
+    )
+    store.create_user(
+        username="bob",
+        authentication_source=AuthenticationSource.TRUSTED_PROXY,
+        external_subject="bob",
+        roles=("viewer",),
+    )
+    store.grant_project_role(
+        user_id=alice.user_id,
+        project_name="test_project",
+        role_name="operator",
+        target_name=None,
+        actor_user_id=None,
+    )
+    state: DevServerState = DevServerState(
+        run_compile=build_compile_callable(project_dir=project_dir)
+    )
+    client: TestClient = TestClient(
+        create_dev_app(
+            state=state,
+            connection=connection,
+            database=database,
+            project_dir=project_dir,
+            auth_settings=AuthSettings(
+                mode=AuthenticationMode.TRUSTED_PROXY,
+                control_store_url="sqlite://",
+                unknown_user_policy=UnknownUserPolicy.DENY,
+            ),
+            control_store=store,
+        )
+    )
+    return client, store
+
+
+def proxy_proof_headers(*, username: str) -> dict[str, str]:
+    return {
+        "X-Mustard-User": username,
+        "X-StreamBuild-CSRF": "trusted-proxy",
+    }
+
+
 _STATIC_INDEX_CONTENTS: str = "<html>stb-dev-shell</html>"
 _STATIC_APP_SCRIPT_CONTENTS: str = "console.log('stb-app-script');"
 _STATIC_ROBOTS_CONTENTS: str = "User-agent: *"
@@ -185,6 +416,18 @@ def write_static_assets_build(*, assets_root: Path) -> None:
     (assets_root / "index.html").write_text(_STATIC_INDEX_CONTENTS)
     (assets_root / "_app" / "app.js").write_text(_STATIC_APP_SCRIPT_CONTENTS)
     (assets_root / "robots.txt").write_text(_STATIC_ROBOTS_CONTENTS)
+
+
+_UNSAFE_HTTP_METHODS: frozenset[str] = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+
+
+def registered_mutation_routes(*, client: TestClient) -> frozenset[tuple[str, str]]:
+    routes: set[tuple[str, str]] = set()
+    for route in client.app.routes:  # type: ignore[union-attr]
+        methods: frozenset[str] = frozenset(getattr(route, "methods", None) or ())
+        path: str = str(getattr(route, "path", ""))
+        routes.update((method, path) for method in methods & _UNSAFE_HTTP_METHODS)
+    return frozenset(routes)
 
 
 def build_static_test_client(*, assets_root: Path) -> TestClient:
@@ -427,13 +670,13 @@ def build_virtual_plan_preparation(deployment_id: str) -> VirtualWorkflowPrepara
 def build_mixed_plan_preparation(deployment_id: str) -> MixedWorkflowPreparation:
     return MixedWorkflowPreparation(
         virtual=build_virtual_plan_preparation(deployment_id),
-        direct=_build_direct_plan_preparation(),
+        direct=build_direct_plan_preparation(),
         plan_text="mixed",
         plan_json="{}",
     )
 
 
-def _build_direct_plan_preparation() -> DirectWorkflowPreparation:
+def build_direct_plan_preparation() -> DirectWorkflowPreparation:
     model_key: LogicalResourceKey = LogicalResourceKey("model", "orders_clean")
     operation: DirectRelationOperation = DirectRelationOperation(
         relation_name="tbl__orders_clean",

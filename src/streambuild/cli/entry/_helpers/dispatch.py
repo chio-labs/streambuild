@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Mapping
 from pathlib import Path
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.auth.main.default_control_store_url import default_control_store_url
+from streambuild.auth.models import AuthSettings
+from streambuild.auth.types import AuthenticationMode, UnknownUserPolicy
 from streambuild.cli.build.models import BuildCommandOptions
 from streambuild.cli.dev.models import DevCommandOptions
 from streambuild.cli.entry._helpers.compiler_profile import build_compiler_adapter_profile
+from streambuild.cli.entry.constants import TRUE_ENV_VALUES
 from streambuild.cli.entry.exceptions import CliUserError
 from streambuild.cli.entry.models import (
     CliEntrypointHandlers,
@@ -57,6 +62,55 @@ def dispatch_cli_command(
             or invocation.loaded_project.effective_configuration is None
             else invocation.loaded_project.effective_configuration.target_name
         )
+        project_dir: Path = invocation.project_dir or _require_pipelines_root(invocation).parent
+        environment: Mapping[str, str] = invocation.connection.environment or {}
+        auth_settings: AuthSettings = AuthSettings(
+            mode=AuthenticationMode(
+                getattr(args, "auth_mode", None)
+                or environment.get("STREAMBUILD_AUTH_MODE", AuthenticationMode.DISABLED)
+            ),
+            control_store_url=(
+                getattr(args, "control_store_url", None)
+                or environment.get("STREAMBUILD_CONTROL_STORE_URL")
+                or default_control_store_url(project_dir=project_dir)
+            ),
+            username_header=(
+                getattr(args, "auth_username_header", None)
+                or environment.get("STREAMBUILD_AUTH_USERNAME_HEADER", "X-Mustard-User")
+            ),
+            display_name_header=(
+                getattr(args, "auth_display_name_header", None)
+                or environment.get("STREAMBUILD_AUTH_DISPLAY_NAME_HEADER")
+            ),
+            email_header=(
+                getattr(args, "auth_email_header", None)
+                or environment.get("STREAMBUILD_AUTH_EMAIL_HEADER")
+            ),
+            unknown_user_policy=UnknownUserPolicy(
+                getattr(args, "auth_unknown_user_policy", None)
+                or environment.get(
+                    "STREAMBUILD_AUTH_UNKNOWN_USER_POLICY",
+                    UnknownUserPolicy.AUTO_PROVISION,
+                )
+            ),
+            default_role=(
+                getattr(args, "auth_default_role", None)
+                or environment.get("STREAMBUILD_AUTH_DEFAULT_ROLE", "viewer")
+            ),
+            session_ttl_seconds=int(
+                getattr(args, "auth_session_ttl_seconds", None)
+                or environment.get("STREAMBUILD_AUTH_SESSION_TTL_SECONDS", 43200)
+            ),
+            session_cookie_secure=(
+                not bool(getattr(args, "auth_insecure_cookie", False))
+                and environment.get("STREAMBUILD_AUTH_INSECURE_COOKIE", "").casefold()
+                not in TRUE_ENV_VALUES
+            ),
+            proxy_logout_url=(
+                getattr(args, "auth_proxy_logout_url", None)
+                or environment.get("STREAMBUILD_AUTH_PROXY_LOGOUT_URL")
+            ),
+        )
         return handlers.run_dev(
             options=DevCommandOptions(
                 pipelines_root=_require_pipelines_root(invocation),
@@ -70,6 +124,7 @@ def dispatch_cli_command(
                 connection_port=invocation.connection.port,
                 connection_username=invocation.connection.username,
                 connection_password=invocation.connection.password,
+                auth_settings=auth_settings,
             ),
             client=client,
             observation_client=observation_connection,

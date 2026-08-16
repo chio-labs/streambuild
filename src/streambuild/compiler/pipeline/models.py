@@ -10,6 +10,7 @@ from streambuild.adapter.models import (
     AdapterTable,
     AdapterView,
 )
+from streambuild.compiler.access.models import CompiledAccessPolicy
 from streambuild.compiler.compile.models import (
     CompiledProject,
     CompileProjectInputs,
@@ -20,6 +21,7 @@ from streambuild.compiler.compile.models import (
 from streambuild.compiler.discovery.models import DiscoveredProjectInputs
 from streambuild.compiler.graph.models import ProjectGraph
 from streambuild.diagnostics.models import CompilerDiagnostic
+from streambuild.sensors.models import CompiledSensors
 
 
 @dataclass(frozen=True)
@@ -76,3 +78,5 @@ class CompileAnalysis:
     graph: ProjectGraph
     diagnostics: tuple[CompilerDiagnostic, ...]
     timings: CompilationTimings
+    access_policy: CompiledAccessPolicy | None = None
+    sensors: CompiledSensors | None = None

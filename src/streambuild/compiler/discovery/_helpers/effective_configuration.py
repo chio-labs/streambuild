@@ -22,6 +22,7 @@ from streambuild.compiler.discovery.models import (
     ProjectNaming,
     ProjectTarget,
     RawConnectionConfig,
+    SensorAutomationConfig,
 )
 
 
@@ -108,6 +109,26 @@ def resolve_effective_project_configuration(
                     else project.audit_scheduler.enabled
                 )
             )
+        ),
+        sensors=SensorAutomationConfig(
+            enabled=(
+                local_target.sensors.enabled
+                if local_target.sensors.enabled is not None
+                else (
+                    project_target.sensors.enabled
+                    if project_target.sensors.enabled is not None
+                    else project.sensors.enabled
+                )
+            ),
+            tick_retention_days=(
+                local_target.sensors.tick_retention_days
+                if local_target.sensors.tick_retention_days is not None
+                else (
+                    project_target.sensors.tick_retention_days
+                    if project_target.sensors.tick_retention_days is not None
+                    else project.sensors.tick_retention_days
+                )
+            ),
         ),
         build=BuildConfig(
             max_pipelines=(

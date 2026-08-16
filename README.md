@@ -253,6 +253,45 @@ materialized-view activity. If both logs are unavailable, recent `system.parts` 
 shown as approximate evidence because background merges can also modify parts. Missing evidence is
 reported as unknown rather than stalled.
 
+### Authentication
+
+Local `stb dev` uses explicit disabled authentication and a deterministic local administrator.
+Shared servers choose either trusted-proxy or password authentication at runtime.
+
+Apache/PAM, GSSAPI, OIDC proxies, and similar upstreams use trusted-proxy mode:
+
+```bash
+stb dev \
+  --auth-mode trusted_proxy \
+  --auth-username-header X-Mustard-User \
+  --control-store-url sqlite:////var/lib/streambuild/control.db
+```
+
+The proxy must replace the configured identity header with its authenticated user. A new valid
+proxy identity is atomically provisioned as `viewer`; a missing identity returns `401`. Operators
+own the network trust boundary and may use loopback binding, firewalling, or accepted on-premises
+network trust.
+
+Standalone password mode uses the packaged `/login` page and server-side sessions:
+
+```bash
+stb dev --auth-mode password --control-store-url postgresql+psycopg://user:password@db/streambuild
+```
+
+Bootstrap the first account without a ClickHouse connection:
+
+```bash
+stb admin --control-store-url sqlite:////var/lib/streambuild/control.db create-user \
+  --username kevinl --authentication-source trusted_proxy --role admin
+```
+
+For password accounts, the command securely reads the password from an interactive prompt or
+standard input. Existing administrators manage accounts in the Users UI; the CLI remains the
+break-glass recovery path. Control-store URLs and authentication runtime settings can instead use
+the `STREAMBUILD_CONTROL_STORE_URL`, `STREAMBUILD_AUTH_MODE`, and related `STREAMBUILD_AUTH_*`
+environment variables shown by `stb dev --help`. Account state never belongs in ClickHouse or
+`streambuild_project.toml`.
+
 ## Guarantees
 
 - `stb compile` is connection-free and writes disposable artifacts under `target/`.

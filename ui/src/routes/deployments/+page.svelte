@@ -7,6 +7,7 @@
 	import { formatBytes } from '$lib/formatting/main/format-bytes';
 	import { formatCompact } from '$lib/formatting/main/format-compact';
 	import type { Deployment, DeploymentState } from '$lib/domain/types';
+	import { can } from '$lib/auth/main/can';
 
 	// Deployments are grouped by lifecycle state rather than listed flat: the
 	// question is always "what is live, what is waiting, what is dead weight",
@@ -60,6 +61,7 @@
 	let cleaning = $state<boolean>(false);
 	let cleanupError = $state<string | null>(null);
 	let cleanupSummary = $state<string | null>(null);
+	const cleanupAllowed = $derived(can('deployment.cleanup'));
 
 	// Retention matches the janitor's own default; anything newer is protected
 	// as a rollback target, so this only ever removes what is already dead.
@@ -122,8 +124,10 @@
 						<button
 							class="rounded-[3px] border border-border px-2.5 py-1 font-mono text-[10.5px] transition-colors disabled:opacity-50 hover:bg-[var(--sb-hover)]"
 							onclick={() => void cleanup()}
-							disabled={cleaning}
-							title="Remove deployments outside the {CLEANUP_RETENTION_DAYS} day retention window"
+							disabled={cleaning || !cleanupAllowed}
+							title={cleanupAllowed
+								? `Remove deployments outside the ${CLEANUP_RETENTION_DAYS} day retention window`
+								: 'Requires the target-scoped deployment.cleanup permission'}
 						>
 							{cleaning ? 'cleaning…' : 'Clean up'}
 						</button>

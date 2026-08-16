@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Protocol
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from streambuild.compiler.pipeline.models import CompileAnalysis
     from streambuild.dev_server.models import CompileOutcome
 
 
@@ -29,6 +30,13 @@ class RunPresentationStatus(StrEnum):
     RUNNING = "running"
     UNRESPONSIVE = "unresponsive"
     PRESUMED_FAILED = "presumed_failed"
+
+
+class CompileAuthorizationGuard(Protocol):
+    """Authorize a reload against the held successful analysis."""
+
+    def __call__(self, *, analysis: CompileAnalysis | None) -> object:
+        """Raise before compilation when the operation is denied."""
 
 
 class DevServerReporter(Protocol):
@@ -81,6 +89,16 @@ class Freshness(StrEnum):
     FRESH = "fresh"
     LAGGING = "lagging"
     STALLED = "stalled"
+
+
+class SensorSchedulerState(StrEnum):
+    """Current lifecycle disposition of the hosted sensor dispatcher."""
+
+    DISABLED = "disabled"
+    IDLE = "idle"
+    RUNNING = "running"
+    STANDBY = "standby"
+    BACKING_OFF = "backing_off"
 
 
 class AuditScheduleState(StrEnum):
