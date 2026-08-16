@@ -38,9 +38,8 @@ class LoginAttemptLimiter:
             self._active_attempts(key=ip_key).append(now)
             self._active_attempts(key=user_key).append(now)
 
-    def succeeded(self, *, ip_key: str, user_key: str) -> None:
+    def succeeded(self, *, user_key: str) -> None:
         with self._lock:
-            self._attempts.pop(ip_key, None)
             self._attempts.pop(user_key, None)
 
     def _active_attempts(self, *, key: str) -> deque[datetime]:
