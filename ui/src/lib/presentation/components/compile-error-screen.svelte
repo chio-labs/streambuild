@@ -3,8 +3,10 @@
 	import TriangleAlertIcon from '@lucide/svelte/icons/triangle-alert';
 	import { getApp } from '$lib/api/main/project/get-app';
 	import { reloadProject } from '$lib/api/main/project/reload-project';
+	import { can } from '$lib/auth/main/can';
 
 	const app = getApp();
+	const reloadAllowed = $derived(can('project.reload'));
 	const error = $derived(app.status?.error ?? null);
 	const location = $derived(
 		error?.path ? `${error.path}:${error.line ?? 1}:${error.column ?? 1}` : null
@@ -36,7 +38,8 @@
 		<div class="flex items-center gap-3 pt-4">
 			<button
 				class="bg-primary flex items-center gap-1.5 rounded-[4px] px-3 py-1.5 font-mono text-[12px] text-white disabled:opacity-60"
-				disabled={app.reloading}
+				disabled={app.reloading || !reloadAllowed}
+				title={reloadAllowed ? undefined : 'Requires the project.reload permission'}
 				onclick={() => void reloadProject()}
 			>
 				<RotateIcon size={12} />

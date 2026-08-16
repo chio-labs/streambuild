@@ -41,3 +41,4 @@ DISPLAY_NAME_BY_COMMAND: Mapping[CliCommand, str] = {
 
 METADATA_TABLE_NAME_PREFIX: str = "streambuild_"
 AFFIRMATIVE_RESPONSES: frozenset[str] = frozenset({"y", "yes"})
+TRUE_ENV_VALUES: frozenset[str] = frozenset({"1", "true", "yes"})

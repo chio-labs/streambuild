@@ -8,3 +8,9 @@ class ScheduledBatchFailureTestCase:
     scheduled_for: str
     expected_status: str
     expected_result_count: int
+
+
+@dataclass(frozen=True)
+class AuthBindTestCase:
+    description: str
+    expected_result: object

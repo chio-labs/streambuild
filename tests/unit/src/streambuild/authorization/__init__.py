@@ -1,0 +1,1 @@
+"""Operational authorization unit tests."""
