@@ -5,6 +5,10 @@ from streambuild.auth.classes.control_store import ControlStore
 from streambuild.auth.models import ProjectRoleAssignment, SessionCredentials, UserAccount
 from streambuild.auth.types import AuthenticationSource
 from tests.integration.src.streambuild.auth._test_types import PostgresControlStoreTestCase
+from tests.integration.src.streambuild.auth.helpers import (
+    concurrently_provision_proxy_identity,
+    concurrently_revoke_admin_roles,
+)
 
 
 @pytest.mark.integration
@@ -77,6 +81,66 @@ def test_given_postgres_store_when_using_accounts_then_matches_sqlite_contract(
             project_name="analytics",
             include_revoked=True,
         ) == (revoked,)
+        store.close()
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        PostgresControlStoreTestCase(
+            description="concurrent administrator removal preserves one administrator",
+            expected_username="admin-a",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_two_postgres_admins_when_revoked_concurrently_then_last_admin_is_protected(
+    test_case: PostgresControlStoreTestCase,
+) -> None:
+    with PostgresContainer("postgres:16-alpine") as postgres:
+        store: ControlStore = ControlStore(url=postgres.get_connection_url(driver="psycopg"))
+        first: UserAccount = store.create_user(
+            username=test_case.expected_username, roles=("admin",)
+        )
+        second: UserAccount = store.create_user(username="admin-b", roles=("admin",))
+
+        outcomes: tuple[str, str] = concurrently_revoke_admin_roles(
+            store=store, user_ids=(first.user_id, second.user_id)
+        )
+
+        assert sorted(outcomes) == ["protected", "revoked"]
+        admin_role_counts: tuple[int, ...] = tuple(
+            account.roles.count("admin") for account in store.list_users()
+        )
+        assert sum(admin_role_counts) == 1
+        store.close()
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        PostgresControlStoreTestCase(
+            description="concurrent proxy provisioning resolves one identity",
+            expected_username="alice",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_unknown_proxy_identity_when_provisioned_concurrently_then_one_account_is_returned(
+    test_case: PostgresControlStoreTestCase,
+) -> None:
+    with PostgresContainer("postgres:16-alpine") as postgres:
+        store: ControlStore = ControlStore(url=postgres.get_connection_url(driver="psycopg"))
+
+        first, second = concurrently_provision_proxy_identity(
+            store=store, username=test_case.expected_username
+        )
+
+        assert first.user_id == second.user_id
+        assert first.username == test_case.expected_username
+        assert store.list_users() == (first,)
         store.close()
 
 

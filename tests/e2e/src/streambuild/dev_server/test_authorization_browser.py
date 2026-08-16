@@ -1,7 +1,9 @@
+from collections.abc import Sequence
 from pathlib import Path
 from urllib.parse import urlparse
 
 import pytest
+from clickhouse_connect.driver.client import Client
 from playwright.sync_api import ConsoleMessage, Error, Locator, Page, Request, Response, expect
 
 from tests.e2e.src.streambuild.dev_server._test_types import AuthorizationBrowserE2ETestCase
@@ -26,11 +28,11 @@ from tests.e2e.src.streambuild.dev_server.helpers import browser_post_reload
 )
 def test_given_project_roles_when_operating_in_browser_then_effective_access_is_enforced(
     test_case: AuthorizationBrowserE2ETestCase,
-    running_authorization_browser_server: tuple[str, Path],
+    running_authorization_browser_server: tuple[str, Path, Client, str],
     browser_diagnostics: tuple[list[ConsoleMessage], list[Error], list[Request], list[Response]],
     page: Page,
 ) -> None:
-    base_url, _log_path = running_authorization_browser_server
+    base_url, _log_path, clickhouse_client, database = running_authorization_browser_server
     _console_messages, page_errors, _failed_requests, _responses = browser_diagnostics
 
     # Unassigned viewer: full read visibility, disabled control, denied mutation.
@@ -101,6 +103,27 @@ def test_given_project_roles_when_operating_in_browser_then_effective_access_is_
     expect(page.get_by_role("button", name="reload", exact=True)).to_be_enabled()
     bob_allowed: dict[str, object] = browser_post_reload(page=page)
     assert bob_allowed["status"] == 200
+
+    # A non-admin pipeline grant crosses the real authorization boundary and
+    # executes the real child-process build against ClickHouse.
+    page.set_extra_http_headers({"X-Mustard-User": "alice"})
+    assert page.goto(f"{base_url}/plan?select=moving_orders", wait_until="networkidle") is not None
+    execute: Locator = page.get_by_role("button", name="Execute", exact=True)
+    expect(execute).to_be_enabled(timeout=30_000)
+    with page.expect_response(
+        lambda response: (
+            urlparse(response.url).path == "/api/build" and response.request.method == "POST"
+        )
+    ) as build_info:
+        execute.click()
+    assert build_info.value.status == 200
+    expect(page.get_by_text("succeeded", exact=True).first).to_be_visible(timeout=120_000)
+    built_rows: list[Sequence[object]] = list(
+        clickhouse_client.query(
+            f"SELECT order_id FROM {database}.tbl__moving_orders ORDER BY order_id"
+        ).result_rows
+    )
+    assert built_rows == [("authorized-build",)]
 
     assert page_errors == []
 
