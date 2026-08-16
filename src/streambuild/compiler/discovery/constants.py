@@ -89,6 +89,7 @@ PROJECT_CONFIG_KEYS: frozenset[str] = frozenset(
         "defaults",
         "naming",
         "audit_scheduler",
+        "sensors",
         "build",
     }
 )
@@ -96,11 +97,12 @@ LOCAL_CONFIG_KEYS: frozenset[str] = frozenset(
     {"target", "adapter", "defaults", "connection", "vars", "targets"}
 )
 TARGET_KEYS: frozenset[str] = frozenset(
-    {"database", "connection", "vars", "audit_scheduler", "build"}
+    {"database", "connection", "vars", "audit_scheduler", "sensors", "build"}
 )
 LOCAL_TARGET_KEYS: frozenset[str] = TARGET_KEYS - {"build"}
 BUILD_KEYS: frozenset[str] = frozenset({"max_pipelines"})
 AUDIT_SCHEDULER_KEYS: frozenset[str] = frozenset({"enabled"})
+SENSORS_KEYS: frozenset[str] = frozenset({"enabled", "tick_retention_days"})
 DEFAULTS_KEYS: frozenset[str] = frozenset(
     {
         "managed_source_ttl",

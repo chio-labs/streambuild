@@ -32,6 +32,7 @@ from streambuild.adapter.models import (
     AdapterRelationCleanupRequest,
     AdapterReplayCoverageRequest,
     AdapterRunEventRecord,
+    AdapterSensorState,
     AdapterStableView,
     AdapterTable,
     AdapterView,
@@ -55,6 +56,8 @@ from streambuild.adapters.clickhouse._helpers.metadata import (
     render_clickhouse_metadata_migration_workflow,
     render_clickhouse_metadata_state,
     render_clickhouse_run_event_inserts,
+    render_clickhouse_sensor_retention_cleanup,
+    render_clickhouse_sensor_state_inserts,
 )
 from streambuild.adapters.clickhouse._helpers.readiness import compare_clickhouse_readiness
 from streambuild.adapters.clickhouse._helpers.rendering import (
@@ -292,6 +295,28 @@ class ClickHouseConnection(AdapterConnection):
 
         return render_clickhouse_run_event_inserts(
             database=database, events=events, include_migration=include_migration
+        )
+
+    def render_sensor_state(
+        self,
+        *,
+        database: str,
+        state: AdapterSensorState,
+        include_migration: bool = False,
+    ) -> tuple[str, ...]:
+        """Render incremental sensor-state inserts for durable automation."""
+
+        return render_clickhouse_sensor_state_inserts(
+            database=database, state=state, include_migration=include_migration
+        )
+
+    def render_sensor_retention_cleanup(
+        self, *, database: str, retention_days: int
+    ) -> tuple[str, ...]:
+        """Render bounded ClickHouse deletes for aged sensor ticks and steps."""
+
+        return render_clickhouse_sensor_retention_cleanup(
+            database=database, retention_days=retention_days
         )
 
     def load_direct_fingerprints(

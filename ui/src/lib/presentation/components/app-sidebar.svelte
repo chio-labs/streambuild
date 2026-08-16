@@ -1,59 +1,28 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import ActivityIcon from '@lucide/svelte/icons/activity';
-	import NetworkIcon from '@lucide/svelte/icons/network';
-	import WorkflowIcon from '@lucide/svelte/icons/workflow';
-	import LibraryIcon from '@lucide/svelte/icons/library';
-	import RadioIcon from '@lucide/svelte/icons/radio';
-	import ListTreeIcon from '@lucide/svelte/icons/list-tree';
-	import ReplaceIcon from '@lucide/svelte/icons/replace';
-	import ShieldCheckIcon from '@lucide/svelte/icons/shield-check';
-	import HistoryIcon from '@lucide/svelte/icons/history';
-	import LayersIcon from '@lucide/svelte/icons/layers';
 	import ServerIcon from '@lucide/svelte/icons/server';
 	import SettingsIcon from '@lucide/svelte/icons/settings';
-	import type { Icon as IconType } from '@lucide/svelte';
+	import UsersIcon from '@lucide/svelte/icons/users';
 	import { getApp } from '$lib/api/main/project/get-app';
 	import { getProject } from '$lib/api/main/project/get-project';
 	import { prefetchRuns } from '$lib/api/main/runs/prefetch-runs';
 	import type { Project } from '$lib/domain/types';
+	import { SIDEBAR_NAV_GROUPS } from '$lib/presentation/constants';
 	import { navigateToRuns } from '$lib/presentation/main/_navigate-to-runs';
-
-	type NavItem = { label: string; href: string; icon: typeof IconType };
-	type NavGroup = { section: string; items: NavItem[] };
+	import type { SidebarNavItem } from '$lib/presentation/types';
+	import { getAuth } from '$lib/auth/main/get-auth';
 
 	const project: Project = getProject();
 	const app = getApp();
+	const auth = getAuth();
 
 	// Two sections only. There is no scheduler — Runs is recorded CLI invocation
 	// history from `_streambuild_invocations`, not orchestration.
-	const groups: NavGroup[] = [
-		{
-			section: 'Flow',
-			items: [
-				{ label: 'Overview', href: '/', icon: ActivityIcon },
-				{ label: 'Lineage', href: '/lineage', icon: NetworkIcon },
-				{ label: 'Pipelines', href: '/pipelines', icon: WorkflowIcon },
-				{ label: 'Catalog', href: '/catalog', icon: LibraryIcon },
-				{ label: 'Sources', href: '/sources', icon: RadioIcon },
-				{ label: 'Topics', href: '/topics', icon: ListTreeIcon }
-			]
-		},
-		{
-			section: 'Change',
-			items: [
-				{ label: 'Plan', href: '/plan', icon: ReplaceIcon },
-				{ label: 'Deployments', href: '/deployments', icon: LayersIcon },
-				{ label: 'Quality', href: '/quality', icon: ShieldCheckIcon },
-				{ label: 'Runs', href: '/runs', icon: HistoryIcon }
-			]
-		}
-	];
-
-	const footerItems: NavItem[] = [
+	const footerItems: SidebarNavItem[] = $derived([
 		{ label: 'Status', href: '/status', icon: ServerIcon },
-		{ label: 'Settings', href: '/settings', icon: SettingsIcon }
-	];
+		{ label: 'Settings', href: '/settings', icon: SettingsIcon },
+		...(auth.roles.includes('admin') ? [{ label: 'Users', href: '/admin/users', icon: UsersIcon }] : [])
+	]);
 
 	// Mode is per pipeline, so the project line reports the shape of the project
 	// rather than claiming one mode for everything in it.
@@ -69,11 +38,11 @@
 		return page.url.pathname.startsWith(href);
 	}
 
-	function prefetchNavItem(item: NavItem): void {
+	function prefetchNavItem(item: SidebarNavItem): void {
 		if (item.href === '/runs') void prefetchRuns();
 	}
 
-	async function navigateToPrefetchedItem(event: MouseEvent, item: NavItem): Promise<void> {
+	async function navigateToPrefetchedItem(event: MouseEvent, item: SidebarNavItem): Promise<void> {
 		if (item.href === '/runs') await navigateToRuns(event);
 	}
 </script>
@@ -113,7 +82,7 @@
 	</div>
 
 	<nav class="flex flex-1 flex-col gap-px">
-		{#each groups as group (group.section)}
+		{#each SIDEBAR_NAV_GROUPS as group (group.section)}
 			<div
 				class="text-[var(--sb-text-faint)] hidden px-3 pb-1 pt-3.5 font-mono text-[10px] uppercase tracking-[0.16em] md:block"
 			>

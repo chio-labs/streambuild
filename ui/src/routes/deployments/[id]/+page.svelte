@@ -15,6 +15,7 @@
 	import { formatCompact } from '$lib/formatting/main/format-compact';
 	import { formatInteger } from '$lib/formatting/main/format-integer';
 	import type { DeploymentDetail, Project } from '$lib/domain/types';
+	import { canAnyPipeline } from '$lib/auth/main/can-any-pipeline';
 	type DeploymentModel = DeploymentDetail['models'][number];
 	import type { Graph } from '$lib/lineage/types';
 	import type { DeploymentDetailPageData } from './+page';
@@ -31,6 +32,7 @@
 	let diffError = $state<string | null>(null);
 	let promoting = $state<boolean>(false);
 	let promoteError = $state<string | null>(null);
+	const promoteAllowed = $derived(canAnyPipeline('deployment.promote'));
 	let diffRequestGeneration = 0;
 	let promotionRequestGeneration = 0;
 
@@ -381,7 +383,8 @@
 							<button
 								class="bg-primary text-primary-foreground w-full rounded-[3px] px-3 py-1.5 text-[12px] font-medium disabled:opacity-50"
 								onclick={() => void promote()}
-								disabled={promoting}
+								disabled={promoting || !promoteAllowed}
+								title={promoteAllowed ? undefined : 'Requires the deployment.promote permission'}
 							>
 								{promoting
 									? isInitialPublish
