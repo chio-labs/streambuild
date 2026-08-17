@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.21.1](https://github.com/chio-labs/streambuild/compare/v0.21.0...v0.21.1) (2026-08-17)
+
+
+### Bug Fixes
+
+* allow disabled authentication on shared bind addresses ([b511d93](https://github.com/chio-labs/streambuild/commit/b511d93ba56cdcefdead297d09066e1fecd959e8))
+* allow disabled authentication on shared bind addresses ([9c5bc48](https://github.com/chio-labs/streambuild/commit/9c5bc48662652284a9aea840d868d3f5aa80a15a))
+
 ## [0.21.0](https://github.com/chio-labs/streambuild/compare/v0.20.0...v0.21.0) (2026-08-16)
 
 
