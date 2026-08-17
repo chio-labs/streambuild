@@ -3,6 +3,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+import streambuild.dev_server.main.run_dev_server as run_dev_server_module
 from streambuild.auth.models import AuthSettings
 from streambuild.auth.types import AuthenticationMode
 from streambuild.dev_server.main.run_dev_server import _is_loopback_bind, run_dev_server
@@ -19,7 +20,7 @@ from tests.unit.src.streambuild.dev_server.main._test_types import AuthBindTestC
     ],
     ids=lambda case: case.description,
 )
-def test_given_bind_host_when_checking_disabled_auth_then_only_loopback_is_allowed(
+def test_given_bind_host_when_classifying_loopback_then_only_loopback_is_detected(
     test_case: AuthBindTestCase,
 ) -> None:
     assert (
@@ -33,12 +34,29 @@ def test_given_bind_host_when_checking_disabled_auth_then_only_loopback_is_allow
 
 @pytest.mark.parametrize(
     "test_case",
-    [AuthBindTestCase(description="disabled shared bind rejected", expected_result=1)],
+    [
+        AuthBindTestCase(
+            description="disabled shared bind starts and warns",
+            expected_result=(0, True),
+        )
+    ],
     ids=lambda case: case.description,
 )
-def test_given_disabled_auth_when_starting_on_shared_bind_then_startup_is_rejected(
-    test_case: AuthBindTestCase, tmp_path: Path
+def test_given_disabled_auth_when_starting_on_shared_bind_then_startup_proceeds_with_warning(
+    test_case: AuthBindTestCase,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
+    monkeypatch.setattr(run_dev_server_module, "static_assets_root", lambda: tmp_path)
+    monkeypatch.setattr(run_dev_server_module, "static_assets_present", lambda *, assets_root: True)
+    monkeypatch.setattr(run_dev_server_module, "DevServerState", MagicMock())
+    monkeypatch.setattr(run_dev_server_module, "create_dev_app", MagicMock())
+    monkeypatch.setattr(
+        run_dev_server_module, "register_static_assets", MagicMock(return_value=MagicMock())
+    )
+    monkeypatch.setattr(run_dev_server_module.uvicorn, "run", MagicMock())
+
     result: int = run_dev_server(
         run_compile=MagicMock(),
         connection=None,
@@ -54,7 +72,10 @@ def test_given_disabled_auth_when_starting_on_shared_bind_then_startup_is_reject
         ),
     )
 
-    assert result == test_case.expected_result
+    warned: bool = "authentication disabled; all clients have administrator access" in (
+        capsys.readouterr().err
+    )
+    assert (result, warned) == test_case.expected_result
 
 
 @pytest.mark.parametrize(
