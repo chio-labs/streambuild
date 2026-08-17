@@ -46,13 +46,11 @@ def run_dev_server(
         mode=AuthenticationMode.DISABLED,
         control_store_url=default_control_store_url(project_dir=project_dir),
     )
-    if effective_auth_settings.mode == AuthenticationMode.DISABLED and not _is_loopback_bind(host):
+    if effective_auth_settings.mode == AuthenticationMode.DISABLED:
         print(
-            "stb dev: disabled authentication may only bind to a loopback address; "
-            "configure --auth-mode for shared access.",
+            "stb dev: authentication disabled; all clients have administrator access.",
             file=sys.stderr,
         )
-        return 1
     if (
         effective_auth_settings.mode == AuthenticationMode.PASSWORD
         and not effective_auth_settings.session_cookie_secure
