@@ -14,6 +14,7 @@ from tests.unit.src.streambuild.compiler.sql_analysis._test_types import (
     ModelAnalysisOrderingTestCase,
     ModelCallCountTestCase,
     ModelLineageAnalysisTestCase,
+    ModelRawRelationTestCase,
     ModelReservedPlaceholderTestCase,
     ModelResolutionTestCase,
     ModelStorageAnalysisTestCase,
@@ -273,6 +274,28 @@ def test_given_storage_contract_when_analyzing_then_retains_canonical_reference_
             ),
         ),
         ModelResolutionTestCase(
+            description="treats union-scoped subquery CTE names as relations",
+            sql=(
+                "SELECT CAST(projected.order_id AS UInt64) AS order_id FROM ("
+                'WITH grouped AS (SELECT order_id FROM __ref("orders")), '
+                'flat AS (SELECT order_id FROM __ref("orders")) '
+                "SELECT order_id FROM grouped "
+                "UNION ALL SELECT order_id FROM flat"
+                ") AS projected"
+            ),
+            resolver={"orders": "tbl__orders"},
+            expected_fragments=(
+                f"FROM {ADAPTER_DATABASE_PLACEHOLDER}.tbl__orders), ",
+                "FROM grouped ",
+                "UNION ALL SELECT order_id FROM flat",
+            ),
+            expected_absent_fragments=(
+                f"{ADAPTER_DATABASE_PLACEHOLDER}.grouped",
+                f"{ADAPTER_DATABASE_PLACEHOLDER}.flat",
+                "__ref",
+            ),
+        ),
+        ModelResolutionTestCase(
             description="preserves authored aliases and layout around substituted reference spans",
             sql=(
                 "SELECT CAST(o.order_id AS UInt64) AS order_id\n"
@@ -332,6 +355,44 @@ def test_given_reserved_database_placeholder_when_canonicalizing_then_it_raises_
 ) -> None:
     with pytest.raises(SqlAnalysisError, match=test_case.expected_error_fragment):
         SqlModelAnalyzer(dialect="clickhouse").canonicalize_query(sql=test_case.sql)
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ModelRawRelationTestCase(
+            description="rejects one raw physical relation in the model FROM clause",
+            sql=("SELECT CAST(order_id AS UInt64) AS order_id FROM raw__orders"),
+            resolver={},
+            expected_error_fragment="must be referenced via __ref",
+        ),
+        ModelRawRelationTestCase(
+            description="rejects one raw physical relation joined beside a resolved reference",
+            sql=(
+                "SELECT CAST(o.order_id AS UInt64) AS order_id "
+                'FROM __ref("orders") AS o '
+                "JOIN raw__events AS e ON o.order_id = e.order_id"
+            ),
+            resolver={"orders": "tbl__orders"},
+            expected_error_fragment="must be referenced via __ref",
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_raw_model_relation_when_resolving_then_it_raises_an_error(
+    test_case: ModelRawRelationTestCase,
+) -> None:
+    analyzer: SqlModelAnalyzer = SqlModelAnalyzer(dialect="clickhouse")
+    analysis: SqlModelAnalysis = analyzer.analyze(
+        sql=test_case.sql,
+        engine="MergeTree()",
+        order_by=("order_id",),
+        partition_by=None,
+        ttl=None,
+    )
+
+    with pytest.raises(SqlAnalysisError, match=test_case.expected_error_fragment):
+        analyzer.resolve(analysis=analysis, resolver=test_case.resolver)
 
 
 @pytest.mark.parametrize(
