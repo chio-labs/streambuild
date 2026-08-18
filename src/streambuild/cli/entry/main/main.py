@@ -15,6 +15,7 @@ from streambuild.adapter.exceptions import AdapterError, AdapterWarehouseError
 from streambuild.cli.admin.main._run_admin import run_admin_command
 from streambuild.cli.entry._helpers.adapter_connection import (
     resolve_invocation_connection,
+    resolve_primary_connection,
 )
 from streambuild.cli.entry._helpers.dispatch import dispatch_cli_command
 from streambuild.cli.entry._helpers.entrypoint import (
@@ -118,13 +119,21 @@ def _main_with_dependencies(
         )
         validate_cli_command_mode(invocation=invocation)
         resolved_database = invocation.database
-        resolved_connection: ResolvedInvocationConnection = resolve_invocation_connection(
+        resolved_connection: ResolvedInvocationConnection
+        connection_factory: Callable[[], AdapterConnection] | None
+        observation_connection_factory: Callable[[], AdapterConnection] | None
+        (
+            resolved_connection,
+            connection_factory,
+            observation_connection_factory,
+        ) = resolve_primary_connection(
             invocation=invocation,
             provided_connection=adapter_connection,
+            resolver=resolve_invocation_connection,
         )
         observation_connection: ResolvedInvocationConnection | None = None
         try:
-            if adapter_connection is None and args.command in {CliCommand.BUILD, CliCommand.DEV}:
+            if adapter_connection is None and args.command == CliCommand.BUILD:
                 observation_connection = resolve_invocation_connection(
                     invocation=invocation, provided_connection=None
                 )
@@ -147,6 +156,8 @@ def _main_with_dependencies(
                 observation_connection=(
                     None if observation_connection is None else observation_connection.connection
                 ),
+                connection_factory=connection_factory,
+                observation_connection_factory=observation_connection_factory,
             )
         finally:
             if (

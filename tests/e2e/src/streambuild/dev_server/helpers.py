@@ -267,6 +267,34 @@ def wait_for_state_api(
         time.sleep(0.1)
 
 
+def wait_for_status_api(
+    *, process: subprocess.Popen[str], api_port: int, log_path: Path
+) -> dict[str, object]:
+    """Wait for the dev UI contract even when its warehouse is unavailable."""
+
+    deadline: float = time.monotonic() + 30
+    while True:
+        try:
+            payload: object = read_json_url(
+                f"http://127.0.0.1:{api_port}/api/status", timeout_seconds=1
+            )
+            assert isinstance(payload, dict), "status payload is not an object"
+            return cast(dict[str, object], payload)
+        except (AssertionError, OSError, RuntimeError):
+            pass
+        assert process.poll() is None, _process_failure(
+            message="stb dev exited before status API readiness",
+            process=process,
+            log_path=log_path,
+        )
+        assert time.monotonic() < deadline, _process_failure(
+            message="stb dev status API did not become ready before timeout",
+            process=process,
+            log_path=log_path,
+        )
+        time.sleep(0.1)
+
+
 def wait_for_authenticated_status_api(
     *,
     process: subprocess.Popen[str],

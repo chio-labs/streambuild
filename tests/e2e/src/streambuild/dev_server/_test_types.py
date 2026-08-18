@@ -2,6 +2,13 @@ from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
+class DevServerBrowserE2ETestCase:
+    description: str
+    expected_connected: bool
+    expected_compile_state: str
+
+
+@dataclass(frozen=True)
 class SchedulerProcessE2ETestCase:
     description: str
     expected_scheduler_state: str

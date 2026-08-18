@@ -6,6 +6,7 @@ type MockFunction = ReturnType<typeof vi.fn>;
 type RequestMocks = {
 	requestDeployments: MockFunction;
 	requestProjectReload: MockFunction;
+	requestWarehouseRefresh: MockFunction;
 	requestDefinitionsPayload: MockFunction;
 	requestStatePayload: MockFunction;
 	requestStatusPayload: MockFunction;
@@ -15,6 +16,7 @@ type RequestMocks = {
 const requests: RequestMocks = vi.hoisted(() => ({
 	requestDeployments: vi.fn(),
 	requestProjectReload: vi.fn(),
+	requestWarehouseRefresh: vi.fn(),
 	requestDefinitionsPayload: vi.fn(),
 	requestStatePayload: vi.fn(),
 	requestStatusPayload: vi.fn(),
@@ -25,7 +27,8 @@ vi.mock('$lib/api/_api/deployments', () => ({
 	requestDeployments: requests.requestDeployments
 }));
 vi.mock('$lib/api/_api/project-actions', () => ({
-	requestProjectReload: requests.requestProjectReload
+	requestProjectReload: requests.requestProjectReload,
+	requestWarehouseRefresh: requests.requestWarehouseRefresh
 }));
 vi.mock('$lib/api/_api/project', () => ({
 	requestDefinitionsPayload: requests.requestDefinitionsPayload,

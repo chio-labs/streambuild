@@ -29,6 +29,7 @@ from streambuild.dev_server.classes.kafka_lag_reader import KafkaLagReader
 from streambuild.dev_server.classes.kafka_topic_reader import KafkaTopicReader
 from streambuild.dev_server.classes.sensor_scheduler import SensorScheduler
 from streambuild.dev_server.classes.silent_reporter import SilentDevServerReporter
+from streambuild.dev_server.classes.warehouse_runtime import WarehouseRuntime
 from streambuild.dev_server.exceptions import DevConfigurationError
 from streambuild.dev_server.models import DevExecutionContext
 from streambuild.dev_server.types import DevServerReporter
@@ -73,12 +74,19 @@ def create_dev_app(
     owns_control_store: bool = authentication_runtime[2]
     if connection is not None and effective_database is not None:
         connection.validate_metadata_state(effective_database)
+    warehouse: WarehouseRuntime = WarehouseRuntime(
+        connection=connection,
+        observation_connection=observation_connection,
+        connection_factory=active_context.connection_factory,
+        observation_connection_factory=active_context.observation_connection_factory,
+        database=effective_database,
+        query_lock=state.query_lock,
+    )
     runtime_services: tuple[
         BuildProcessManager, KafkaLagReader, KafkaTopicReader, AuditScheduler, SensorScheduler
     ] = build_runtime_services(
         state=state,
-        connection=connection,
-        observation_connection=observation_connection,
+        warehouse=warehouse,
         database=effective_database,
         project_dir=effective_project_dir,
         reporter=active_reporter,
@@ -100,13 +108,14 @@ def create_dev_app(
         sensor_scheduler=sensor_scheduler,
         control_store=active_control_store,
         owns_control_store=owns_control_store,
+        warehouse=warehouse,
     )
     app: FastAPI = FastAPI(title="StreamBuild", docs_url=None, redoc_url=None, lifespan=lifespan)
     app = register_authentication_routes(app=app, service=authentication)
     return register_api_routes(
         app=app,
         state=state,
-        connection=connection,
+        warehouse=warehouse,
         project_dir=effective_project_dir,
         builds=builds,
         schedulers=(audit_scheduler, sensor_scheduler),
