@@ -1,5 +1,5 @@
 import { readApiResponse } from '$lib/api/_api/read-response';
-import type { BuildFeed, BuildStartResult, RunEventFeed } from '$lib/api/types';
+import type { BuildFeed, BuildStartResult, RunEventFeed, RunStatement } from '$lib/api/types';
 import { authenticatedFetch } from '$lib/auth/main/authenticated-fetch';
 
 export async function requestBuildStart(
@@ -34,4 +34,14 @@ export async function requestRunEvents(
 		`/api/runs/${encodeURIComponent(invocationId)}/events?after=${after}`
 	);
 	return readApiResponse<RunEventFeed>(response, 'run events');
+}
+
+export async function requestRunStatement(
+	invocationId: string,
+	statementSequence: number
+): Promise<RunStatement> {
+	const response: Response = await fetch(
+		`/api/runs/${encodeURIComponent(invocationId)}/statements/${statementSequence}`
+	);
+	return readApiResponse<RunStatement>(response, 'run statement');
 }
