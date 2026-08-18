@@ -21,9 +21,11 @@ from tests.unit.src.streambuild.executor.observability.classes._test_types impor
     RunEventStartupTimingsTestCase,
     RunStatementPersistenceTestCase,
     RunStatementRedactionTestCase,
+    RunStatementUnsupportedTestCase,
 )
 from tests.unit.src.streambuild.executor.observability.classes.helpers import (
     RunEventRecordingConnection,
+    UnsupportedRunStatementConnection,
     build_replay_statement,
 )
 
@@ -132,6 +134,34 @@ def test_given_complete_workflow_when_preparing_then_exact_sql_is_persisted_and_
     assert record.workflow_sha256 == test_case.workflow_sha256
     assert connection.statements[0] == test_case.expected_insert_marker
     assert test_case.expected_verify_fragment in connection.statements[1]
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        RunStatementUnsupportedTestCase(
+            description="an adapter without run-statement support skips persistence silently",
+            invocation_id="inv-unsupported",
+            workflow_sha256="a" * 64,
+            expected_executed_statements=(),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_adapter_without_run_statement_support_when_preparing_then_persistence_is_skipped(
+    test_case: RunStatementUnsupportedTestCase,
+) -> None:
+    connection: UnsupportedRunStatementConnection = UnsupportedRunStatementConnection()
+    sink: RunEventSink = RunEventSink(
+        connection=connection,
+        database="analytics",
+        invocation_id=test_case.invocation_id,
+    )
+    statement: WarehouseStatement = build_replay_statement()
+
+    sink.workflow_prepared(statements=(statement,), workflow_sha256=test_case.workflow_sha256)
+
+    assert tuple(connection.statements) == test_case.expected_executed_statements
 
 
 @pytest.mark.parametrize(

@@ -164,11 +164,11 @@ class RunEventSink:
     def workflow_prepared(
         self, *, statements: tuple[WarehouseStatement, ...], workflow_sha256: str
     ) -> None:
-        """Persist and verify the exact statement set before warehouse execution."""
+        """Persist and verify the statement set, skipping adapters that render none."""
 
         if not statements:
             return
-        self._workflow_revision += 1
+        next_revision: int = self._workflow_revision + 1
         redacted_sql: tuple[str, ...] = tuple(
             _redacted_statement_sql(statement.sql) for statement in statements
         )
@@ -190,7 +190,7 @@ class RunEventSink:
                 sql=persisted_sql,
                 sql_sha256=sha256(persisted_sql.encode()).hexdigest(),
                 workflow_sha256=persisted_workflow_sha256,
-                workflow_revision=self._workflow_revision,
+                workflow_revision=next_revision,
             )
             for statement, persisted_sql in zip(statements, redacted_sql, strict=True)
         )
@@ -200,7 +200,8 @@ class RunEventSink:
             include_migration=not self._migrated,
         )
         if not rendered:
-            raise AdapterWarehouseError("Adapter cannot persist run statements")
+            return
+        self._workflow_revision = next_revision
         observation_statements: tuple[WarehouseStatement, ...] = assemble_observation_workflow(
             rendered
         )
