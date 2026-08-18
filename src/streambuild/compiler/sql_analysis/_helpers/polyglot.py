@@ -182,6 +182,7 @@ def generate_sql_tree(*, tree: dict[str, Any], dialect: str, pretty: bool = Fals
 def build_resolved_query(
     *,
     tree: dict[str, Any],
+    authored_sql: str,
     dialect: str,
     references: tuple[SqlReference, ...],
     resolver: Mapping[str, str],
@@ -205,19 +206,73 @@ def build_resolved_query(
         canonical_sql=canonical_sql,
         database_placeholder=database_placeholder,
     )
-    database_template_tree: dict[str, Any] = deepcopy(resolved_tree)
-    qualify_query_relations(tree=database_template_tree, database=database_placeholder)
+    _reject_reserved_database_placeholder(
+        canonical_sql=authored_sql,
+        database_placeholder=database_placeholder,
+    )
+    database_template: str
+    database_template, relation_cache = _authored_database_template(
+        authored_sql=authored_sql,
+        references=references,
+        resolver=resolver,
+        relation_cache=relation_cache,
+        dialect=dialect,
+        database_placeholder=database_placeholder,
+    )
     return (
         SqlResolvedQuery(
             canonical_sql=canonical_sql,
-            database_template=generate_sql_tree(
-                tree=database_template_tree,
-                dialect=dialect,
-                pretty=True,
-            ),
+            database_template=database_template,
         ),
         relation_cache,
     )
+
+
+def _authored_database_template(
+    *,
+    authored_sql: str,
+    references: tuple[SqlReference, ...],
+    resolver: Mapping[str, str],
+    relation_cache: _RelationCache,
+    dialect: str,
+    database_placeholder: str,
+) -> tuple[str, _RelationCache]:
+    """Substitute reference spans in author bytes with qualified relations."""
+
+    pieces: list[str] = []
+    cursor: int = 0
+    reference: SqlReference
+    for reference in sorted(references, key=lambda item: item.span.start):
+        relation_text: str
+        relation_text, relation_cache = _template_relation_text(
+            target=resolver[reference.name],
+            dialect=dialect,
+            relation_cache=relation_cache,
+            database_placeholder=database_placeholder,
+        )
+        pieces.append(authored_sql[cursor : reference.span.start])
+        pieces.append(relation_text)
+        cursor = reference.span.end
+    pieces.append(authored_sql[cursor:])
+    return "".join(pieces), relation_cache
+
+
+def _template_relation_text(
+    *,
+    target: str,
+    dialect: str,
+    relation_cache: _RelationCache,
+    database_placeholder: str,
+) -> tuple[str, _RelationCache]:
+    """Generate one database-placeholder-qualified relation for a resolved target."""
+
+    cached_relation: _CachedRelation | None = relation_cache.get(target)
+    if cached_relation is None:
+        cached_relation = _parse_relation(target=target, dialect=dialect)
+        relation_cache = {**relation_cache, target: cached_relation}
+    relation_tree: dict[str, Any] = deepcopy(cached_relation[0])
+    qualify_query_relations(tree=relation_tree, database=database_placeholder)
+    return generate_sql_tree(tree=relation_tree, dialect=dialect), relation_cache
 
 
 def canonical_query_with_database_template(

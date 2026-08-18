@@ -247,7 +247,48 @@ def test_given_storage_contract_when_analyzing_then_retains_canonical_reference_
                 f"{ADAPTER_DATABASE_PLACEHOLDER}.staged",
                 "__source",
             ),
-        )
+        ),
+        ModelResolutionTestCase(
+            description="preserves authored ClickHouse function spellings in the executed template",
+            sql=(
+                "SELECT CAST(event_id AS UInt64) AS order_id, "
+                "CAST(startsWith(topic, 'races') AS Bool) AS is_race, "
+                "CAST(length(topic) AS UInt64) AS topic_length, "
+                "CAST(position(topic, '.') AS UInt64) AS dot_position "
+                "FROM __source(\"events\") WHERE startsWith(topic, 'races')"
+            ),
+            resolver={"events": "tbl_kafka__events"},
+            expected_fragments=(
+                f"FROM {ADAPTER_DATABASE_PLACEHOLDER}.tbl_kafka__events",
+                "CAST(startsWith(topic, 'races') AS Bool) AS is_race",
+                "CAST(length(topic) AS UInt64) AS topic_length",
+                "CAST(position(topic, '.') AS UInt64) AS dot_position",
+                "WHERE startsWith(topic, 'races')",
+            ),
+            expected_absent_fragments=(
+                "STARTS_WITH",
+                "LENGTH(",
+                "POSITION(",
+                "__source",
+            ),
+        ),
+        ModelResolutionTestCase(
+            description="preserves authored aliases and layout around substituted reference spans",
+            sql=(
+                "SELECT CAST(o.order_id AS UInt64) AS order_id\n"
+                'FROM __ref("orders") AS o\n'
+                'JOIN __source("events") AS e ON o.order_id = e.order_id'
+            ),
+            resolver={"orders": "tbl__orders", "events": "tbl_kafka__events"},
+            expected_fragments=(
+                f"FROM {ADAPTER_DATABASE_PLACEHOLDER}.tbl__orders AS o\n",
+                f"JOIN {ADAPTER_DATABASE_PLACEHOLDER}.tbl_kafka__events AS e ON",
+            ),
+            expected_absent_fragments=(
+                "__ref",
+                "__source",
+            ),
+        ),
     ],
     ids=lambda case: case.description,
 )
