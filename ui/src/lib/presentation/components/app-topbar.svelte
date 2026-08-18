@@ -5,6 +5,7 @@
 	import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
 	import RotateCcwIcon from '@lucide/svelte/icons/rotate-ccw';
 	import LogOutIcon from '@lucide/svelte/icons/log-out';
+	import TriangleAlertIcon from '@lucide/svelte/icons/triangle-alert';
 	import { createTheme } from '$lib/presentation/main/_create-theme.svelte';
 	import { CAN_EXECUTE_BUILD } from '$lib/api/constants';
 	import { getApp } from '$lib/api/main/project/get-app';
@@ -149,14 +150,24 @@
 	</div>
 {/if}
 
-{#if app.status?.warehouseError}
+{#if app.status && !connected}
 	<div
-		class="shrink-0 border-b px-[18px] py-2 font-mono text-[11px]"
-		style:border-color="color-mix(in srgb, var(--sb-warning) 35%, var(--border))"
-		style:background="color-mix(in srgb, var(--sb-warning) 7%, var(--background))"
+		class="flex shrink-0 items-start gap-3 border-b px-[18px] py-3 font-mono text-[11px]"
+		style:border-color="color-mix(in srgb, var(--sb-error) 45%, var(--border))"
+		style:background="color-mix(in srgb, var(--sb-error) 10%, var(--background))"
 	>
-		<span class="font-semibold" style:color="var(--sb-warning)">Warehouse unavailable.</span>
-		 {app.status.warehouseError} Automatic retry is active; Refresh snapshot retries now.
+		<TriangleAlertIcon size={15} class="mt-px shrink-0" color="var(--sb-error)" />
+		<div>
+			<div class="font-semibold" style:color="var(--sb-error)">Warehouse unavailable.</div>
+			<div class="mt-0.5 text-foreground">
+				Live ingest, freshness, catalog, deployment, and quality state cannot be read. Values shown
+				from definitions are not warehouse health results.
+			</div>
+			<div class="text-muted-foreground mt-1">
+				{app.status.warehouseError ?? 'The connection attempt has not completed.'} Automatic retry is
+				active; Refresh snapshot retries now.
+			</div>
+		</div>
 	</div>
 {/if}
 
