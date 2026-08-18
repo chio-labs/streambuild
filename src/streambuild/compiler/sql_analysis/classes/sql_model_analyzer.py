@@ -65,6 +65,7 @@ class SqlModelAnalyzer:
         resolved_query: SqlResolvedQuery
         resolved_query, self._relation_cache = build_resolved_query(
             tree=tree,
+            authored_sql=analysis.authored_sql,
             dialect=self._dialect,
             references=analysis.references,
             resolver=resolver,
