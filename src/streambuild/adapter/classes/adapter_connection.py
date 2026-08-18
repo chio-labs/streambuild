@@ -26,6 +26,7 @@ from streambuild.adapter.models import (
     AdapterRelationCleanupRequest,
     AdapterReplayCoverageRequest,
     AdapterRunEventRecord,
+    AdapterRunStatementRecord,
     AdapterSensorState,
     AdapterStableView,
     AdapterTable,
@@ -138,6 +139,17 @@ class AdapterConnection(ABC):
         include_migration: bool = False,
     ) -> tuple[str, ...]:
         """Render incremental run-event inserts when supported."""
+
+        return ()
+
+    def render_run_statements(
+        self,
+        *,
+        database: str,
+        statements: tuple[AdapterRunStatementRecord, ...],
+        include_migration: bool = False,
+    ) -> tuple[str, ...]:
+        """Render durable run-statement inserts when supported."""
 
         return ()
 

@@ -4,12 +4,23 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import threading
+from hashlib import sha256
 from typing import TextIO
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.adapter.models import AdapterRunEventRecord
+from streambuild.adapter.constants import (
+    METADATA_RUN_STATEMENTS_TABLE_NAME,
+    REDACTED_SECRET_PLACEHOLDER,
+)
+from streambuild.adapter.exceptions import AdapterWarehouseError
+from streambuild.adapter.models import (
+    AdapterQueryResult,
+    AdapterRunEventRecord,
+    AdapterRunStatementRecord,
+)
 from streambuild.cli.build.constants import STREAMBUILD_TOOL_VERSION
 from streambuild.executor.observability._helpers.payload import bounded_json
 from streambuild.executor.observability._helpers.workflow import assemble_observation_workflow
@@ -30,6 +41,19 @@ _STATEMENT_COMPLETED_KIND: str = "statement_completed"
 _RUN_HEARTBEAT_KIND: str = "run_heartbeat"
 _AUDIT_STARTED_KIND: str = "audit_started"
 _AUDIT_COMPLETED_KIND: str = "audit_completed"
+_KAFKA_ENGINE_PATTERN: re.Pattern[str] = re.compile(r"\bENGINE\s*=\s*Kafka\b", re.IGNORECASE)
+_QUOTED_SETTING_PATTERN: re.Pattern[str] = re.compile(
+    r"(?P<prefix>\b(?P<key>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*)"
+    r"'(?P<value>(?:\\.|''|[^'])*)'"
+)
+_SENSITIVE_SETTING_FRAGMENTS: tuple[str, ...] = (
+    "credential",
+    "password",
+    "private_key",
+    "sasl",
+    "secret",
+    "token",
+)
 
 
 class RunEventSink:
@@ -53,6 +77,7 @@ class RunEventSink:
         self._heartbeat_stop: threading.Event = threading.Event()
         self._heartbeat_thread: threading.Thread | None = None
         self._persistence_warning_emitted: bool = False
+        self._workflow_revision: int = 0
 
     def run_started(
         self,
@@ -133,6 +158,78 @@ class RunEventSink:
             phase=str(statement.phase),
             payload={"statementSequence": statement.sequence, "intent": str(statement.intent)},
         )
+
+    def workflow_prepared(
+        self, *, statements: tuple[WarehouseStatement, ...], workflow_sha256: str
+    ) -> None:
+        """Persist and verify the exact statement set before warehouse execution."""
+
+        if not statements:
+            return
+        self._workflow_revision += 1
+        redacted_sql: tuple[str, ...] = tuple(
+            _redacted_statement_sql(statement.sql) for statement in statements
+        )
+        persisted_workflow_sha256: str = (
+            workflow_sha256
+            if all(
+                persisted_sql == statement.sql
+                for statement, persisted_sql in zip(statements, redacted_sql, strict=True)
+            )
+            else sha256("\n".join(redacted_sql).encode()).hexdigest()
+        )
+        records: tuple[AdapterRunStatementRecord, ...] = tuple(
+            AdapterRunStatementRecord(
+                invocation_id=self._invocation_id,
+                statement_sequence=statement.sequence,
+                step_id=statement.step_id,
+                phase=str(statement.phase),
+                intent=str(statement.intent),
+                sql=persisted_sql,
+                sql_sha256=sha256(persisted_sql.encode()).hexdigest(),
+                workflow_sha256=persisted_workflow_sha256,
+                workflow_revision=self._workflow_revision,
+            )
+            for statement, persisted_sql in zip(statements, redacted_sql, strict=True)
+        )
+        rendered: tuple[str, ...] = self._connection.render_run_statements(
+            database=self._database,
+            statements=records,
+            include_migration=not self._migrated,
+        )
+        if not rendered:
+            raise AdapterWarehouseError("Adapter cannot persist run statements")
+        observation_statements: tuple[WarehouseStatement, ...] = assemble_observation_workflow(
+            rendered
+        )
+        _ = execute_observation_workflow(
+            statements=observation_statements,
+            connection=self._connection,
+        )
+        self._migrated = True
+        self._verify_workflow_statements(records=records)
+
+    def _verify_workflow_statements(
+        self, *, records: tuple[AdapterRunStatementRecord, ...]
+    ) -> None:
+        invocation_id: str = self._invocation_id.replace("\\", "\\\\").replace("'", "\\'")
+        result: AdapterQueryResult = self._connection.query(
+            "SELECT statement_sequence, toString(sql_sha256), toString(workflow_sha256) "
+            f"FROM `{self._database}`.`{METADATA_RUN_STATEMENTS_TABLE_NAME}` FINAL "
+            f"WHERE invocation_id = '{invocation_id}' ORDER BY statement_sequence"
+        )
+        observed: tuple[tuple[int, str, str], ...] = tuple(
+            (int(str(row[0])), str(row[1]), str(row[2])) for row in result.rows
+        )
+        expected: tuple[tuple[int, str, str], ...] = tuple(
+            (record.statement_sequence, record.sql_sha256, record.workflow_sha256)
+            for record in records
+        )
+        if observed != expected:
+            raise AdapterWarehouseError(
+                "Run statement persistence verification failed; warehouse execution was not "
+                f"started (expected {len(expected)} rows, observed {len(observed)} rows)"
+            )
 
     def audit_started(self, *, name: str) -> None:
         """One scheduled audit is about to execute."""
@@ -256,3 +353,22 @@ class RunEventSink:
                     pass
                 self._persistence_warning_emitted = True
             return
+
+
+def _redacted_statement_sql(sql: str) -> str:
+    """Remove credential-bearing Kafka settings from durable SQL text."""
+
+    if _KAFKA_ENGINE_PATTERN.search(sql) is None:
+        return sql
+
+    def replace_setting(match: re.Match[str]) -> str:
+        key: str = match.group("key")
+        value: str = match.group("value")
+        sensitive: bool = any(
+            fragment in key.lower() for fragment in _SENSITIVE_SETTING_FRAGMENTS
+        ) or (key.lower() == "kafka_broker_list" and "@" in value)
+        if not sensitive:
+            return match.group(0)
+        return f"{match.group('prefix')}'{REDACTED_SECRET_PLACEHOLDER}'"
+
+    return _QUOTED_SETTING_PATTERN.sub(replace_setting, sql)

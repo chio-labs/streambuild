@@ -715,7 +715,9 @@ def build_direct_plan_preparation() -> DirectWorkflowPreparation:
 
 
 def build_fake_state_connection(
-    *, fingerprints: AdapterDirectFingerprintSnapshot = _UNAVAILABLE_FINGERPRINTS
+    *,
+    fingerprints: AdapterDirectFingerprintSnapshot = _UNAVAILABLE_FINGERPRINTS,
+    additional_results: dict[str, AdapterQueryResult] | None = None,
 ) -> FakeAdapterConnection:
     catalog: CatalogSnapshot = CatalogSnapshot(
         identity=CatalogIdentity(adapter=AdapterIdentity(name="clickhouse"), database="analytics"),
@@ -912,6 +914,7 @@ def build_fake_state_connection(
             ),
         ),
     }
+    results.update(additional_results or {})
     return FakeAdapterConnection(
         catalog=catalog,
         results_by_query=results,

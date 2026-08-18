@@ -48,6 +48,7 @@ from streambuild.dev_server._helpers.queries.message_query import (
 from streambuild.dev_server._helpers.queries.runs_query import (
     read_active_runs,
     read_run_events,
+    read_run_statement,
     read_runs,
 )
 from streambuild.dev_server._helpers.server.authorization_enforcement import (
@@ -793,11 +794,25 @@ def _register_quality_routes(
         except AdapterError as error:
             raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
 
+    def read_one_run_statement(*, invocation_id: str, statement_sequence: int) -> dict[str, object]:
+        client: AdapterConnection = required_connection()
+        try:
+            with state.query_lock:
+                return read_run_statement(
+                    connection=client,
+                    database=database or "",
+                    invocation_id=invocation_id,
+                    statement_sequence=statement_sequence,
+                )
+        except AdapterError as error:
+            raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
+
     app.post("/api/checks/run")(run_check)
     app.get("/api/checks/status")(read_checks_status)
     app.get("/api/audit-scheduler")(read_audit_scheduler)
     app.get("/api/runs")(read_run_history)
     app.get("/api/runs/{invocation_id}/events")(read_one_run_events)
+    app.get("/api/runs/{invocation_id}/statements/{statement_sequence}")(read_one_run_statement)
     return _register_build_routes(
         app=app,
         builds=builds,

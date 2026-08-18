@@ -1,4 +1,8 @@
-from streambuild.adapter.models import AdapterRunEventRecord
+from streambuild.adapter.models import (
+    AdapterQueryResult,
+    AdapterRunEventRecord,
+    AdapterRunStatementRecord,
+)
 from streambuild.executor.workflow.models import WarehouseStatement
 from streambuild.executor.workflow.types import StatementIntent, WorkflowPhase
 from tests.unit.src.streambuild.cli.helpers import RecordingAdapterConnection
@@ -17,6 +21,32 @@ class RunEventRecordingConnection(RecordingAdapterConnection):
         self.run_events = (*getattr(self, "run_events", ()), *events)
         return tuple(
             f"INSERT_RUN_EVENT {database} {event.event_kind} {event.sequence};" for event in events
+        )
+
+    def render_run_statements(
+        self,
+        *,
+        database: str,
+        statements: tuple[AdapterRunStatementRecord, ...],
+        include_migration: bool = False,
+    ) -> tuple[str, ...]:
+        del include_migration
+        self.run_statements = statements
+        return (f"INSERT_RUN_STATEMENTS {database} {len(statements)};",)
+
+    def query(self, statement: str) -> AdapterQueryResult:
+        self.statements.append(statement)
+        if "_streambuild_run_statements" not in statement:
+            return AdapterQueryResult(rows=())
+        return AdapterQueryResult(
+            rows=tuple(
+                (
+                    record.statement_sequence,
+                    record.sql_sha256,
+                    record.workflow_sha256,
+                )
+                for record in self.run_statements
+            )
         )
 
 

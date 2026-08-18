@@ -1,6 +1,8 @@
 import io
 import json
 import time
+from dataclasses import replace
+from hashlib import sha256
 from typing import cast
 
 import pytest
@@ -89,6 +91,52 @@ def test_given_one_run_when_emitting_then_streams_jsonl_and_persists_rows(
     assert lines[0]["startTime"] == "2026-08-09T09:00:00Z"
     assert all(line["invocationId"] == "inv-1" for line in lines)
     assert tuple(connection.statements) == test_case.expected_persisted_markers
+
+
+def test_given_complete_workflow_when_preparing_then_exact_sql_is_persisted_and_verified() -> None:
+    connection: RunEventRecordingConnection = RunEventRecordingConnection()
+    sink: RunEventSink = RunEventSink(
+        connection=connection,
+        database="analytics",
+        invocation_id="inv-sql",
+    )
+    statement = build_replay_statement()
+
+    sink.workflow_prepared(statements=(statement,), workflow_sha256="a" * 64)
+
+    assert len(connection.run_statements) == 1
+    record = connection.run_statements[0]
+    assert record.invocation_id == "inv-sql"
+    assert record.statement_sequence == statement.sequence
+    assert record.sql == "INSERT INTO tbl SELECT 1;"
+    assert record.workflow_sha256 == "a" * 64
+    assert connection.statements[0] == "INSERT_RUN_STATEMENTS analytics 1;"
+    assert "_streambuild_run_statements" in connection.statements[1]
+
+
+def test_given_kafka_credentials_when_preparing_then_durable_sql_is_redacted() -> None:
+    connection: RunEventRecordingConnection = RunEventRecordingConnection()
+    sink: RunEventSink = RunEventSink(
+        connection=connection,
+        database="analytics",
+        invocation_id="inv-secret",
+    )
+    sql = (
+        "CREATE TABLE analytics.kafka__orders (id UInt64) ENGINE = Kafka "
+        "SETTINGS kafka_broker_list = 'user:broker-secret@kafka:9092', "
+        "kafka_sasl_password = 'setting-secret', kafka_format = 'JSONEachRow';"
+    )
+    statement = replace(build_replay_statement(), sql=sql)
+
+    sink.workflow_prepared(statements=(statement,), workflow_sha256="a" * 64)
+
+    record = connection.run_statements[0]
+    assert "broker-secret" not in record.sql
+    assert "setting-secret" not in record.sql
+    assert record.sql.count("'***'") == 2
+    assert "kafka_format = 'JSONEachRow'" in record.sql
+    assert record.sql_sha256 == sha256(record.sql.encode()).hexdigest()
+    assert record.sql_sha256 != sha256(sql.encode()).hexdigest()
 
 
 @pytest.mark.parametrize(

@@ -3,6 +3,7 @@
 import sys
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.exceptions import AdapterError
 from streambuild.adapter.models import AdapterInvocationRecord
 from streambuild.cli.build._helpers.confirmation import confirm_build
 from streambuild.cli.build._helpers.rendering import render_interrupted_build_message
@@ -141,7 +142,8 @@ def execute_virtual_build_command(
             connection=client,
             emitter=sink,
         )
-    except WorkflowExecutionError as error:
+    except (WorkflowExecutionError, AdapterError) as error:
+        cause: BaseException = error.cause if isinstance(error, WorkflowExecutionError) else error
         _persist_virtual_invocation(
             started=started,
             preparation=preparation,
@@ -150,11 +152,11 @@ def execute_virtual_build_command(
             outcome="failed",
             exit_code=1,
             materialized_outcome=None,
-            error_message=str(error.cause),
+            error_message=str(cause),
         )
         if sink is not None:
-            sink.run_completed(outcome="failed", exit_code=1, error_message=str(error.cause))
-        print(str(error.cause), file=sys.stderr)
+            sink.run_completed(outcome="failed", exit_code=1, error_message=str(cause))
+        print(str(cause), file=sys.stderr)
         return 1
     except KeyboardInterrupt:
         return _cancel_virtual_build(

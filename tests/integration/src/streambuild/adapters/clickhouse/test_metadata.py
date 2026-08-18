@@ -68,6 +68,7 @@ def test_given_legacy_node_results_table_when_migrating_then_reset_instruction_i
                 "_streambuild_invocations",
                 "_streambuild_node_results",
                 "_streambuild_run_events",
+                "_streambuild_run_statements",
                 "_streambuild_schema_versions",
                 "_streambuild_sensor_checkpoints",
                 "_streambuild_sensor_leases",
@@ -79,7 +80,7 @@ def test_given_legacy_node_results_table_when_migrating_then_reset_instruction_i
                 "_streambuild_virtual_publications",
                 "_streambuild_virtual_replay_boundaries",
             ),
-            expected_version_rows=((4,),),
+            expected_version_rows=((5,),),
         )
     ],
     ids=lambda case: case.description,
@@ -184,6 +185,7 @@ def test_given_v2_publication_rows_when_migrating_then_lifecycle_defaults_are_pr
                 "_streambuild_invocations",
                 "_streambuild_node_results",
                 "_streambuild_run_events",
+                "_streambuild_run_statements",
                 "_streambuild_schema_versions",
                 "_streambuild_sensor_checkpoints",
                 "_streambuild_sensor_leases",
@@ -195,7 +197,7 @@ def test_given_v2_publication_rows_when_migrating_then_lifecycle_defaults_are_pr
                 "_streambuild_virtual_publications",
                 "_streambuild_virtual_replay_boundaries",
             ),
-            expected_version_rows=((4,),),
+            expected_version_rows=((5,),),
         )
     ],
     ids=lambda case: case.description,

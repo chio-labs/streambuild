@@ -34,6 +34,8 @@ from tests.unit.src.streambuild.compiler.planner.helpers import (
 
 class _VirtualArtifactConnection(RecordingAdapterConnection):
     def query(self, statement: str) -> AdapterQueryResult:
+        if "_streambuild_run_statements" in statement:
+            return super().query(statement)
         self.statements.append(statement)
         rows: tuple[tuple[str, ...], ...] = {
             False: (),
@@ -57,6 +59,8 @@ class InterruptedBuildConnection(RecordingAdapterConnection):
     """A connection whose first workflow statement raises like a Ctrl+C."""
 
     def execute_workflow_sql(self, statement: str) -> AdapterMutationResult:
+        if statement.startswith("INSERT_RUN_STATEMENTS "):
+            return super().execute_workflow_sql(statement)
         raise KeyboardInterrupt
 
 

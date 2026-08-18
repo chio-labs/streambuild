@@ -10,6 +10,7 @@ from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.constants import (
     METADATA_INVOCATIONS_TABLE_NAME,
     METADATA_RUN_EVENTS_TABLE_NAME,
+    METADATA_RUN_STATEMENTS_TABLE_NAME,
 )
 from streambuild.compiler.discovery.constants import (
     DEFAULT_RUN_PRESUMED_FAILED_AFTER_SECONDS,
@@ -294,6 +295,46 @@ def read_run_events(
         "status": None if run is None else run["status"],
         "lastSignalAt": None if run is None else run["lastSignalAt"],
         "lastSignalAgeSeconds": None if run is None else run["lastSignalAgeSeconds"],
+    }
+
+
+def read_run_statement(
+    *,
+    connection: AdapterConnection,
+    database: str,
+    invocation_id: str,
+    statement_sequence: int,
+) -> dict[str, object]:
+    """Return one lazily requested SQL statement for a durable run."""
+
+    if not _table_exists(
+        connection=connection,
+        database=database,
+        table=METADATA_RUN_STATEMENTS_TABLE_NAME,
+    ):
+        return {"found": False}
+    invocation_literal: str = _sql_literal(invocation_id)
+    query: str = (
+        "SELECT step_id, phase, intent, sql, toString(sql_sha256) AS sql_sha256, "
+        "toString(workflow_sha256) AS workflow_sha256 "
+        f"FROM `{database}`.`{METADATA_RUN_STATEMENTS_TABLE_NAME}` FINAL "
+        f"WHERE invocation_id = '{invocation_literal}' "
+        f"AND statement_sequence = {int(statement_sequence)} LIMIT 1"
+    )
+    rows: tuple = connection.query(query).named_rows()
+    if not rows:
+        return {"found": False}
+    row: Mapping[str, object] = rows[0]
+    return {
+        "found": True,
+        "invocationId": invocation_id,
+        "statementSequence": statement_sequence,
+        "stepId": str(row["step_id"]),
+        "phase": str(row["phase"]),
+        "intent": str(row["intent"]),
+        "sql": str(row["sql"]),
+        "sqlSha256": str(row["sql_sha256"]),
+        "workflowSha256": str(row["workflow_sha256"]),
     }
 
 

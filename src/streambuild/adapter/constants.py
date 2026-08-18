@@ -13,6 +13,7 @@ METADATA_DIRECT_FINGERPRINTS_TABLE_NAME: str = "_streambuild_direct_fingerprints
 METADATA_INVOCATIONS_TABLE_NAME: str = "_streambuild_invocations"
 METADATA_NODE_RESULTS_TABLE_NAME: str = "_streambuild_node_results"
 METADATA_RUN_EVENTS_TABLE_NAME: str = "_streambuild_run_events"
+METADATA_RUN_STATEMENTS_TABLE_NAME: str = "_streambuild_run_statements"
 METADATA_SENSOR_CHECKPOINTS_TABLE_NAME: str = "_streambuild_sensor_checkpoints"
 METADATA_SENSOR_TICKS_TABLE_NAME: str = "_streambuild_sensor_ticks"
 METADATA_SENSOR_STEPS_TABLE_NAME: str = "_streambuild_sensor_steps"

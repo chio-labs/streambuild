@@ -25,6 +25,7 @@ from streambuild.adapter.models import (
     AdapterReadinessRootObservation,
     AdapterRelationCleanupRequest,
     AdapterReplayCoverageRequest,
+    AdapterRunStatementRecord,
     AdapterStableView,
     AdapterTable,
     AdapterView,
@@ -211,6 +212,7 @@ class RecordingAdapterConnection(AdapterConnection):
         self.workflow_mutation_statements: list[str] = []
         self.invocation_observations: list[AdapterInvocationRecord] = []
         self.node_result_observations: list[AdapterNodeResultRecord] = []
+        self.run_statements: tuple[AdapterRunStatementRecord, ...] = ()
 
     @property
     def adapter_identity(self) -> AdapterIdentity:
@@ -238,6 +240,17 @@ class RecordingAdapterConnection(AdapterConnection):
 
     def query(self, statement: str) -> AdapterQueryResult:
         self.statements.append(statement)
+        if "_streambuild_run_statements" in statement:
+            return AdapterQueryResult(
+                rows=tuple(
+                    (
+                        record.statement_sequence,
+                        record.sql_sha256,
+                        record.workflow_sha256,
+                    )
+                    for record in self.run_statements
+                )
+            )
         return AdapterQueryResult(rows=())
 
     def execute_workflow_sql(self, statement: str) -> AdapterMutationResult:
@@ -245,8 +258,21 @@ class RecordingAdapterConnection(AdapterConnection):
             self._required_artifact_path is not None and self._required_artifact_path.exists()
         )
         self.statements.append(statement)
+        if statement.startswith("INSERT_RUN_STATEMENTS "):
+            return AdapterMutationResult()
         self.workflow_mutation_statements.append(statement)
         return AdapterMutationResult()
+
+    def render_run_statements(
+        self,
+        *,
+        database: str,
+        statements: tuple[AdapterRunStatementRecord, ...],
+        include_migration: bool = False,
+    ) -> tuple[str, ...]:
+        del include_migration
+        self.run_statements = statements
+        return (f"INSERT_RUN_STATEMENTS {database} {len(statements)};",)
 
     def render_terminal_observations(
         self,
