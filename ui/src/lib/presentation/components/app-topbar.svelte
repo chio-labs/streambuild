@@ -3,16 +3,19 @@
 	import MoonIcon from '@lucide/svelte/icons/moon';
 	import EyeIcon from '@lucide/svelte/icons/eye';
 	import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
+	import RotateCcwIcon from '@lucide/svelte/icons/rotate-ccw';
 	import LogOutIcon from '@lucide/svelte/icons/log-out';
 	import { createTheme } from '$lib/presentation/main/_create-theme.svelte';
 	import { CAN_EXECUTE_BUILD } from '$lib/api/constants';
 	import { getApp } from '$lib/api/main/project/get-app';
 	import { getProject } from '$lib/api/main/project/get-project';
 	import { refreshLiveState } from '$lib/api/main/project/refresh-live-state';
+	import { reloadProject } from '$lib/api/main/project/reload-project';
 	import { formatClock } from '$lib/formatting/main/format-clock';
 	import type { Project } from '$lib/domain/types';
 	import { getAuth } from '$lib/auth/main/get-auth';
 	import { logout } from '$lib/auth/main/logout';
+	import { can } from '$lib/auth/main/can';
 
 	type Props = {
 		title: string;
@@ -33,6 +36,7 @@
 	// $derived so the 30s poll moves the clock instead of freezing it at mount.
 	const snapshotClock = $derived(formatClock(project.capturedAt));
 	const connected = $derived(app.status?.warehouseConnected ?? false);
+	const reloadAllowed = $derived(can('project.reload'));
 
 	// Polling runs every 30s; this forces a snapshot NOW — same fetch path, so
 	// everything on screen updates together.
@@ -50,6 +54,10 @@
 	async function signOut(): Promise<void> {
 		await logout();
 		window.location.assign('/login');
+	}
+
+	async function reloadDefinitions(): Promise<void> {
+		await reloadProject();
 	}
 </script>
 
@@ -84,13 +92,28 @@
 			{/if}
 		</span>
 		<button
-			class="text-muted-foreground hover:text-foreground hover:bg-[var(--sb-hover)] grid h-7 w-7 place-items-center rounded-[4px] border border-border disabled:opacity-60"
+			class="text-muted-foreground hover:text-foreground hover:bg-[var(--sb-hover)] flex h-7 items-center gap-1.5 rounded-[4px] border border-border px-2 disabled:opacity-60"
 			aria-label="Refresh snapshot"
-			title="Refresh the warehouse snapshot now"
+			title="Reconnect if necessary, then refresh the warehouse snapshot"
 			disabled={refreshing}
 			onclick={() => void forceRefresh()}
 		>
 			<span class:animate-spin={refreshing}><RefreshCwIcon size={13} /></span>
+			<span class="hidden font-mono text-[10.5px] xl:inline">Refresh snapshot</span>
+		</button>
+		<button
+			class="text-muted-foreground hover:text-foreground hover:bg-[var(--sb-hover)] flex h-7 items-center gap-1.5 rounded-[4px] border border-border px-2 disabled:opacity-60"
+			aria-label="Reload definitions"
+			title={reloadAllowed
+				? 'Reread project files and compile definitions without executing a build'
+				: 'Requires the project.reload permission'}
+			disabled={app.reloading || !reloadAllowed}
+			onclick={() => void reloadDefinitions()}
+		>
+			<span class:animate-spin={app.reloading}><RotateCcwIcon size={13} /></span>
+			<span class="hidden font-mono text-[10.5px] xl:inline">
+				{app.reloading ? 'Compiling…' : 'Reload definitions'}
+			</span>
 		</button>
 		{#if children}{@render children()}{/if}
 		{#if auth.user}
@@ -114,6 +137,28 @@
 		</button>
 	</div>
 </div>
+
+{#if app.status?.error && app.project}
+	<div
+		class="shrink-0 border-b px-[18px] py-2 font-mono text-[11px]"
+		style:border-color="color-mix(in srgb, var(--sb-error) 35%, var(--border))"
+		style:background="color-mix(in srgb, var(--sb-error) 7%, var(--background))"
+	>
+		<span class="font-semibold" style:color="var(--sb-error)">Definitions reload failed.</span>
+		 Showing the last successful compilation. {app.status.error.message}
+	</div>
+{/if}
+
+{#if app.status?.warehouseError}
+	<div
+		class="shrink-0 border-b px-[18px] py-2 font-mono text-[11px]"
+		style:border-color="color-mix(in srgb, var(--sb-warning) 35%, var(--border))"
+		style:background="color-mix(in srgb, var(--sb-warning) 7%, var(--background))"
+	>
+		<span class="font-semibold" style:color="var(--sb-warning)">Warehouse unavailable.</span>
+		 {app.status.warehouseError} Automatic retry is active; Refresh snapshot retries now.
+	</div>
+{/if}
 
 <style>
 	.conn-tick::after {

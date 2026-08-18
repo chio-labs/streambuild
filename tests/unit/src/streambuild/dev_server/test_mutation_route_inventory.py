@@ -33,6 +33,9 @@ _DECLARED_MUTATION_POLICIES: dict[tuple[str, str], str] = {
         "system-only: role.assign via require_admin"
     ),
     ("POST", "/api/reload"): "project.reload via reload_guarded operation authorization",
+    ("POST", "/api/warehouse/refresh"): (
+        "authenticated read recovery: reconnects without warehouse mutation"
+    ),
     ("POST", "/api/checks/run"): (
         "quality.test.run or quality.audit.run via require_check_authorization"
     ),

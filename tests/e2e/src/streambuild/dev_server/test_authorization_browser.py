@@ -38,7 +38,7 @@ def test_given_project_roles_when_operating_in_browser_then_effective_access_is_
     # Unassigned viewer: full read visibility, disabled control, denied mutation.
     page.set_extra_http_headers({"X-Mustard-User": "bob"})
     assert page.goto(f"{base_url}/status", wait_until="networkidle") is not None
-    reload_button: Locator = page.get_by_role("button", name="reload", exact=True)
+    reload_button: Locator = page.get_by_role("button", name="Reload definitions", exact=True)
     expect(reload_button).to_be_visible()
     expect(reload_button).to_be_disabled()
     bob_reload: dict[str, object] = browser_post_reload(page=page)
@@ -63,7 +63,7 @@ def test_given_project_roles_when_operating_in_browser_then_effective_access_is_
     # Assigned operator: enabled control and successful reload from the UI.
     page.set_extra_http_headers({"X-Mustard-User": "alice"})
     assert page.goto(f"{base_url}/status", wait_until="networkidle") is not None
-    alice_button: Locator = page.get_by_role("button", name="reload", exact=True)
+    alice_button: Locator = page.get_by_role("button", name="Reload definitions", exact=True)
     expect(alice_button).to_be_enabled()
     with page.expect_response(
         lambda response: urlparse(response.url).path == "/api/reload"
@@ -100,7 +100,7 @@ def test_given_project_roles_when_operating_in_browser_then_effective_access_is_
     # The assignment takes effect on Bob's next request without a server restart.
     page.set_extra_http_headers({"X-Mustard-User": "bob"})
     assert page.goto(f"{base_url}/status", wait_until="networkidle") is not None
-    expect(page.get_by_role("button", name="reload", exact=True)).to_be_enabled()
+    expect(page.get_by_role("button", name="Reload definitions", exact=True)).to_be_enabled()
     bob_allowed: dict[str, object] = browser_post_reload(page=page)
     assert bob_allowed["status"] == 200
 

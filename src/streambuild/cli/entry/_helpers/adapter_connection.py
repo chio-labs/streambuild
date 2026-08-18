@@ -1,6 +1,7 @@
 """Resolve connection ownership for one CLI invocation."""
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
+from functools import partial
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.exceptions import AdapterConfigurationError
@@ -11,6 +12,7 @@ from streambuild.cli.entry.models import (
     ResolvedCliInvocation,
     ResolvedInvocationConnection,
 )
+from streambuild.cli.entry.types import CliCommand
 from streambuild.compiler.discovery.main.interpolate_configuration_value import (
     interpolate_configuration_value,
 )
@@ -31,14 +33,44 @@ def resolve_invocation_connection(
             connection=provided_connection,
             close_after_command=False,
         )
-    config: AdapterConnectionConfig = _resolve_connection_config(invocation)
+    config: AdapterConnectionConfig = resolve_invocation_connection_config(invocation)
     return ResolvedInvocationConnection(
         connection=invocation.adapter.connect(config),
         close_after_command=True,
     )
 
 
-def _resolve_connection_config(invocation: ResolvedCliInvocation) -> AdapterConnectionConfig:
+def resolve_primary_connection(
+    *,
+    invocation: ResolvedCliInvocation,
+    provided_connection: AdapterConnection | None,
+    resolver: Callable[..., ResolvedInvocationConnection] = resolve_invocation_connection,
+) -> tuple[
+    ResolvedInvocationConnection,
+    Callable[[], AdapterConnection] | None,
+    Callable[[], AdapterConnection] | None,
+]:
+    """Defer dev connections while preserving eager ownership for finite commands."""
+
+    if invocation.args.command != CliCommand.DEV or provided_connection is not None:
+        return (
+            resolver(invocation=invocation, provided_connection=provided_connection),
+            None,
+            None,
+        )
+    config: AdapterConnectionConfig = resolve_invocation_connection_config(invocation)
+    factory: Callable[[], AdapterConnection] = partial(invocation.adapter.connect, config)
+    return (
+        ResolvedInvocationConnection(connection=None, close_after_command=False),
+        factory,
+        factory,
+    )
+
+
+def resolve_invocation_connection_config(
+    invocation: ResolvedCliInvocation,
+) -> AdapterConnectionConfig:
+    """Resolve adapter-owned connection settings without opening a connection."""
     if invocation.connection.raw_project_connection is None:
         return resolve_adapter_connection_config(
             host=invocation.connection.host,

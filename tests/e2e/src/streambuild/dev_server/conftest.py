@@ -2,6 +2,7 @@ import json
 import subprocess
 from collections.abc import Iterator, Sequence
 from pathlib import Path
+from typing import cast
 
 import pytest
 from clickhouse_connect.driver.client import Client
@@ -39,6 +40,7 @@ from tests.e2e.src.streambuild.dev_server.helpers import (
     wait_for_sensor_dead_letter,
     wait_for_sensor_first_dispatch,
     wait_for_state_api,
+    wait_for_status_api,
 )
 from tests.e2e.src.streambuild.executor.helpers import (
     E2E_KAFKA_TIMESTAMP_PROJECT_DIR,
@@ -67,6 +69,38 @@ from tests.integration.src.streambuild.cli.helpers import (
 )
 from tests.integration.src.streambuild.dev_server.helpers import write_scheduled_audit_project
 from tests.integration.src.streambuild.executor.backfill._test_types import ManagedSourceResources
+
+
+@pytest.fixture
+def running_disconnected_browser_server(
+    output_path: str,
+    tmp_path: Path,
+) -> Iterator[tuple[str, Path, Path]]:
+    repository_root: Path = Path(__file__).resolve().parents[5]
+    project_dir: Path = prepare_lineage_browser_project(tmp_path=tmp_path)
+    api_port: int = available_port()
+    log_path: Path = Path(output_path) / "stb-dev-disconnected.log"
+    process: subprocess.Popen[str] = start_dev_process(
+        repository_root=repository_root,
+        project_dir=project_dir,
+        host="127.0.0.1",
+        port=1,
+        username="default",
+        password="unavailable",
+        database="warehouse_unavailable",
+        api_port=api_port,
+        log_path=log_path,
+    )
+    try:
+        status: dict[str, object] = wait_for_status_api(
+            process=process, api_port=api_port, log_path=log_path
+        )
+        warehouse: object = status.get("warehouse")
+        assert isinstance(warehouse, dict)
+        assert cast(dict[str, object], warehouse).get("connected") is False
+        yield f"http://127.0.0.1:{api_port}", project_dir, log_path
+    finally:
+        stop_process(process)
 
 
 @pytest.fixture

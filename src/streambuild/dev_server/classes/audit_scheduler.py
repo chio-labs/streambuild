@@ -17,6 +17,7 @@ from streambuild.dev_server._helpers.queries.runs_query import (
 )
 from streambuild.dev_server.classes.build_process import BuildProcessManager
 from streambuild.dev_server.classes.dev_server_state import DevServerState
+from streambuild.dev_server.classes.warehouse_runtime import WarehouseRuntime
 from streambuild.dev_server.main._build_audit_scheduler_payload import (
     build_audit_scheduler_payload,
 )
@@ -36,7 +37,8 @@ class AuditScheduler:
         self,
         *,
         state: DevServerState,
-        connection: AdapterConnection | None,
+        warehouse: WarehouseRuntime | None = None,
+        connection: AdapterConnection | None = None,
         observation_connection: AdapterConnection | None = None,
         database: str | None,
         project_dir: Path,
@@ -44,8 +46,13 @@ class AuditScheduler:
         presumed_failed_after_seconds: int = DEFAULT_RUN_PRESUMED_FAILED_AFTER_SECONDS,
     ) -> None:
         self._state = state
-        self._connection = connection
-        self._observation_connection = observation_connection
+        self._warehouse = warehouse or WarehouseRuntime(
+            connection=connection,
+            observation_connection=observation_connection,
+            connection_factory=None,
+            observation_connection_factory=None,
+            database=database,
+        )
         self._database = database
         self._project_dir: Path = project_dir
         self._builds = builds
@@ -56,7 +63,7 @@ class AuditScheduler:
         self._thread: threading.Thread | None = None
         self._health_state: AuditScheduleState = (
             AuditScheduleState.IDLE
-            if connection is not None and database is not None
+            if self._warehouse.connection is not None and database is not None
             else AuditScheduleState.DISABLED
         )
         self._consecutive_errors = 0
@@ -106,7 +113,8 @@ class AuditScheduler:
             }
 
     def _tick_once(self) -> int:
-        if self._connection is None or self._database is None:
+        connection: AdapterConnection | None = self._warehouse.connection
+        if connection is None or self._database is None:
             self._record_success(state=AuditScheduleState.DISABLED)
             return 0
         if bool(self._builds.feed(after=0)["running"]):
@@ -133,7 +141,7 @@ class AuditScheduler:
                     return 0
                 payload: dict[str, object] = build_audit_scheduler_payload(
                     analysis=analysis,
-                    connection=self._connection,
+                    connection=connection,
                     database=self._database,
                     project_dir=self._project_dir,
                 )
@@ -162,8 +170,8 @@ class AuditScheduler:
                 self._set_running_audit_count(len(due))
                 result_count: int = execute_due_audits(
                     analysis=analysis,
-                    connection=self._connection,
-                    observation_connection=self._observation_connection,
+                    connection=connection,
+                    observation_connection=self._warehouse.observation_connection,
                     database=self._database,
                     project_dir=self._project_dir,
                     due=due,
@@ -183,15 +191,16 @@ class AuditScheduler:
             self._stop.wait(max(_POLL_SECONDS, self._seconds_until_attempt()))
 
     def _has_active_mutating_build(self) -> bool:
-        if self._connection is None or self._database is None:
+        connection: AdapterConnection | None = self._warehouse.connection
+        if connection is None or self._database is None:
             return False
         latest_applied_at: str | None = read_latest_applied_direct_build_at(
-            connection=self._connection,
+            connection=connection,
             database=self._database,
             project_identity=str(self._project_dir.resolve()),
         )
         for run in read_active_runs(
-            connection=self._connection,
+            connection=connection,
             database=self._database,
             presumed_failed_after_seconds=self._presumed_failed_after_seconds,
         ):
@@ -209,14 +218,15 @@ class AuditScheduler:
         return False
 
     def _has_active_scheduled_audit(self) -> bool:
-        if self._connection is None or self._database is None:
+        connection: AdapterConnection | None = self._warehouse.connection
+        if connection is None or self._database is None:
             return False
         return any(
             run["command"] == CliCommand.AUDIT
             and run["mode"] == QualityResultTrigger.SCHEDULED
             and run["status"] in {RunPresentationStatus.RUNNING, RunPresentationStatus.UNRESPONSIVE}
             for run in read_active_runs(
-                connection=self._connection,
+                connection=connection,
                 database=self._database,
                 presumed_failed_after_seconds=self._presumed_failed_after_seconds,
             )

@@ -69,3 +69,11 @@ class KafkaTopicsSnapshotTestCase:
     description: str
     metadata: tuple[dict, ...]
     expected_topics: tuple[tuple[str, int, int, bool], ...]
+
+
+@dataclass(frozen=True)
+class WarehouseRuntimeRecoveryTestCase:
+    description: str
+    failure_message: str
+    expected_attempts: int
+    expected_state: str

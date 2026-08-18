@@ -179,6 +179,9 @@ export type ServerStatus = {
 	error: CompileError | null;
 	warehouseConnected: boolean;
 	warehouseError: string | null;
+	warehouseState: string;
+	warehouseLastAttemptAt: string | null;
+	warehouseNextAttemptAt: string | null;
 };
 
 export type AppPhase = 'loading' | 'ready' | 'compile_failing' | 'unreachable';
