@@ -220,6 +220,17 @@ class RenderDeploymentLookbackTestCase:
 
 
 @dataclass(frozen=True)
+class RenderTemplateReplayTestCase:
+    description: str
+    mode: AdapterReplayBoundaryMode
+    query: str
+    database_template: str
+    boundary_column_type: str | None
+    expected_fragments: tuple[str, ...]
+    expected_absent_fragments: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class ClickHouseConnectionConfigErrorTestCase:
     description: str
     values: tuple[tuple[str, object], ...]

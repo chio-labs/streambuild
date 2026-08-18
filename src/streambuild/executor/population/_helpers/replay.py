@@ -118,6 +118,7 @@ def build_population_replay_requests(
         mode: AdapterReplayBoundaryMode = AdapterReplayBoundaryMode(root.replay_lineage_mode)
         replay_query: AdapterReplayQuery = build_adapter_replay_query(
             query=view.query,
+            database_template=view.database_template,
             source_relation_name=view.source_table_name,
             database=database,
             physical_relation_mappings=physical_mappings,

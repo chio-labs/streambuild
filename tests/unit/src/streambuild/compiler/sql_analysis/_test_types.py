@@ -4,6 +4,24 @@ from streambuild.compiler.sql_analysis.models import SqlNamedQuery, SqlRelationR
 
 
 @dataclass(frozen=True)
+class TemplateRewriteTestCase:
+    description: str
+    template: str
+    relation_rewrites: tuple[SqlRelationRewrite, ...]
+    predicate: str | None
+    prepend_ctes: tuple[SqlNamedQuery, ...]
+    expected_query: str
+    expected_aggregate_semantics: bool
+
+
+@dataclass(frozen=True)
+class TemplateRewriteErrorTestCase:
+    description: str
+    template: str
+    expected_error_fragment: str
+
+
+@dataclass(frozen=True)
 class ReferenceExtractionTestCase:
     description: str
     sql: str

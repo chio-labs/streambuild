@@ -217,6 +217,10 @@ class DesiredMaterializedView:
     def query(self) -> str:
         return self.spec.query
 
+    @property
+    def database_template(self) -> str | None:
+        return self.spec.database_template
+
 
 @dataclass(frozen=True)
 class DesiredView:
@@ -234,6 +238,10 @@ class DesiredView:
     @property
     def query(self) -> str:
         return self.spec.query
+
+    @property
+    def database_template(self) -> str | None:
+        return self.spec.database_template
 
 
 @dataclass(frozen=True)
