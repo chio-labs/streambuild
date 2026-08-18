@@ -4,6 +4,7 @@ import pytest
 
 from streambuild.adapter.models import AdapterInvocationRecord, AdapterNodeResultRecord
 from streambuild.compiler.quality.models import QualityNodeIdentity
+from streambuild.executor.observability.constants import MAX_OBSERVATION_ERROR_LENGTH
 from streambuild.executor.observability.main.build_node_result_record import (
     build_node_result_record,
 )
@@ -20,12 +21,12 @@ from tests.unit.src.streambuild.executor.observability.main._test_types import (
         BoundedNodeResultTestCase(
             description="replaces oversized payload and truncates concise error",
             payload_size=20_000,
-            error_size=3_000,
+            error_size=MAX_OBSERVATION_ERROR_LENGTH + 1_000,
             expected_payload_json=(
                 '{"missing_count":7,"original_bytes":20050,"payload_truncated":true,'
                 '"unexpected_count":9}'
             ),
-            expected_error_length=2_000,
+            expected_error_length=MAX_OBSERVATION_ERROR_LENGTH,
         )
     ],
     ids=lambda case: case.description,
