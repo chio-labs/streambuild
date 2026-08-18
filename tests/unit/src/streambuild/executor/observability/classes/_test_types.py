@@ -58,3 +58,11 @@ class RunStatementRedactionTestCase:
     expected_absent_fragments: tuple[str, ...]
     expected_redacted_count: int
     expected_present_fragment: str
+
+
+@dataclass(frozen=True)
+class RunStatementUnsupportedTestCase:
+    description: str
+    invocation_id: str
+    workflow_sha256: str
+    expected_executed_statements: tuple[str, ...]
