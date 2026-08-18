@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.22.1](https://github.com/chio-labs/streambuild/compare/v0.22.0...v0.22.1) (2026-08-18)
+
+
+### Bug Fixes
+
+* **observability:** persist full run errors and enlarge the error dialog ([8cc6896](https://github.com/chio-labs/streambuild/commit/8cc6896e2d106afa260a0dbd127bd3b6b3b3ad83))
+* **observability:** persist full run errors and enlarge the error dialog ([dc7a0a5](https://github.com/chio-labs/streambuild/commit/dc7a0a58451ffdb1a81448a944a4f57424ba2ef4))
+
 ## [0.22.0](https://github.com/chio-labs/streambuild/compare/v0.21.3...v0.22.0) (2026-08-18)
 
 
