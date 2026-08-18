@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.22.0](https://github.com/chio-labs/streambuild/compare/v0.21.3...v0.22.0) (2026-08-18)
+
+
+### Features
+
+* show executed SQL in run timelines ([4d3d10a](https://github.com/chio-labs/streambuild/commit/4d3d10ab3f744291079fabffd5b14411906d9466))
+* **ui:** expandable/modal error viewer for runs and deployments ([5c309d3](https://github.com/chio-labs/streambuild/commit/5c309d3dc87a7418744ee46f63bb81c984ef0e86))
+* **ui:** expandable/modal error viewer for runs and deployments (CHI-52) ([66ab83c](https://github.com/chio-labs/streambuild/commit/66ab83cb558f5ebf91c7fa88d65ab5bde8138464))
+
+
+### Bug Fixes
+
+* **observability:** skip run-statement persistence when the adapter renders none ([74b68d3](https://github.com/chio-labs/streambuild/commit/74b68d30777744a326920d56ecd7c7c94408ff4c))
+
 ## [0.21.3](https://github.com/chio-labs/streambuild/compare/v0.21.2...v0.21.3) (2026-08-18)
 
 
