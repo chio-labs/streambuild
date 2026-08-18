@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.22.2](https://github.com/chio-labs/streambuild/compare/v0.22.1...v0.22.2) (2026-08-18)
+
+
+### Bug Fixes
+
+* **compiler:** conjoin replay predicates into the outer WHERE clause ([fd1db10](https://github.com/chio-labs/streambuild/commit/fd1db10b04d86683db119997eca4541e6ccafa44))
+* **compiler:** preserve author bytes through replay and shadow SQL rewrites ([8f51d83](https://github.com/chio-labs/streambuild/commit/8f51d83a11762b7a13338492ed27bf8d541b1294))
+* **compiler:** preserve authored SQL bytes in executed database templ… ([312c716](https://github.com/chio-labs/streambuild/commit/312c716ce955bdf5de2b660791b9480cdd962d1f))
+* **compiler:** preserve authored SQL bytes in executed database templates ([48df829](https://github.com/chio-labs/streambuild/commit/48df8296a24bad6303af5d118a31a37239963b5f))
+* **compiler:** reject raw model relations and scope union CTE visibility ([dfa0945](https://github.com/chio-labs/streambuild/commit/dfa0945452d157c9f579e476cd6c18b83b9dd12b))
+
 ## [0.22.1](https://github.com/chio-labs/streambuild/compare/v0.22.0...v0.22.1) (2026-08-18)
 
 
