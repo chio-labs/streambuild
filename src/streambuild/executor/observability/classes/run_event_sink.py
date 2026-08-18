@@ -54,6 +54,8 @@ _SENSITIVE_SETTING_FRAGMENTS: tuple[str, ...] = (
     "secret",
     "token",
 )
+_KAFKA_BROKER_LIST_SETTING: str = "kafka_broker_list"
+_BROKER_USERINFO_SEPARATOR: str = "@"
 
 
 class RunEventSink:
@@ -364,9 +366,13 @@ def _redacted_statement_sql(sql: str) -> str:
     def replace_setting(match: re.Match[str]) -> str:
         key: str = match.group("key")
         value: str = match.group("value")
-        sensitive: bool = any(
-            fragment in key.lower() for fragment in _SENSITIVE_SETTING_FRAGMENTS
-        ) or (key.lower() == "kafka_broker_list" and "@" in value)
+        broker_list_with_userinfo: bool = (
+            key.lower() == _KAFKA_BROKER_LIST_SETTING and _BROKER_USERINFO_SEPARATOR in value
+        )
+        sensitive: bool = (
+            any(fragment in key.lower() for fragment in _SENSITIVE_SETTING_FRAGMENTS)
+            or broker_list_with_userinfo
+        )
         if not sensitive:
             return match.group(0)
         return f"{match.group('prefix')}'{REDACTED_SECRET_PLACEHOLDER}'"

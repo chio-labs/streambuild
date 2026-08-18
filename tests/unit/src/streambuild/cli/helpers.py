@@ -60,6 +60,8 @@ from streambuild.cli.repair_active_view.main._run_repair_active_view import run_
 from streambuild.cli.rollback.main._run_deployment_rollback import run_deployment_rollback
 from streambuild.cli.test.main._run_test import run_test
 
+_RUN_STATEMENTS_TABLE_MARKER: str = "_streambuild_run_statements"
+_RUN_STATEMENTS_INSERT_MARKER: str = "INSERT_RUN_STATEMENTS "
 _EMPTY_MANAGED_TABLE_STATE: InspectedManagedTableState = InspectedManagedTableState(
     active_bindings=(),
     physical_candidates=(),
@@ -240,27 +242,28 @@ class RecordingAdapterConnection(AdapterConnection):
 
     def query(self, statement: str) -> AdapterQueryResult:
         self.statements.append(statement)
-        if "_streambuild_run_statements" in statement:
-            return AdapterQueryResult(
-                rows=tuple(
-                    (
-                        record.statement_sequence,
-                        record.sql_sha256,
-                        record.workflow_sha256,
-                    )
-                    for record in self.run_statements
-                )
-            )
-        return AdapterQueryResult(rows=())
+        return {
+            True: AdapterQueryResult(rows=self._recorded_run_statement_rows()),
+            False: AdapterQueryResult(rows=()),
+        }[_RUN_STATEMENTS_TABLE_MARKER in statement]
+
+    def _recorded_run_statement_rows(self) -> tuple[tuple[object, ...], ...]:
+        return tuple(
+            (record.statement_sequence, record.sql_sha256, record.workflow_sha256)
+            for record in self.run_statements
+        )
 
     def execute_workflow_sql(self, statement: str) -> AdapterMutationResult:
         self.artifact_seen_before_execution = bool(
             self._required_artifact_path is not None and self._required_artifact_path.exists()
         )
         self.statements.append(statement)
-        if statement.startswith("INSERT_RUN_STATEMENTS "):
-            return AdapterMutationResult()
-        self.workflow_mutation_statements.append(statement)
+        self.workflow_mutation_statements.extend(
+            {
+                True: (),
+                False: (statement,),
+            }[statement.startswith(_RUN_STATEMENTS_INSERT_MARKER)]
+        )
         return AdapterMutationResult()
 
     def render_run_statements(
@@ -272,7 +275,7 @@ class RecordingAdapterConnection(AdapterConnection):
     ) -> tuple[str, ...]:
         del include_migration
         self.run_statements = statements
-        return (f"INSERT_RUN_STATEMENTS {database} {len(statements)};",)
+        return (f"{_RUN_STATEMENTS_INSERT_MARKER}{database} {len(statements)};",)
 
     def render_terminal_observations(
         self,
