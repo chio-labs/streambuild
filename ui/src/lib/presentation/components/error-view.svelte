@@ -64,7 +64,7 @@
 	</div>
 	<pre
 		class="text-foreground m-0 min-h-0 flex-1 overflow-auto bg-[var(--sb-inset)] p-3 font-mono text-[11.5px] leading-[1.6] {wrap
-			? 'whitespace-pre-wrap break-words'
+			? 'whitespace-pre-wrap'
 			: 'whitespace-pre'}"
 		style:max-height={maxHeight}>{capped.text}</pre>
 	{#if capped.isTruncated}
