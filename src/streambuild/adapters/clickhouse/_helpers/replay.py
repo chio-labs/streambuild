@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from streambuild.adapter.constants import (
+    ADAPTER_DATABASE_PLACEHOLDER,
     METADATA_DEPLOYMENT_WATERMARKS_TABLE_NAME,
     METADATA_DEPLOYMENTS_TABLE_NAME,
 )
@@ -25,7 +26,7 @@ from streambuild.adapters.clickhouse.models import (
 )
 from streambuild.compiler.sql_analysis.exceptions import SqlAnalysisError
 from streambuild.compiler.sql_analysis.main.build_insert_query import build_insert_query
-from streambuild.compiler.sql_analysis.main.rewrite_query import rewrite_query
+from streambuild.compiler.sql_analysis.main.rewrite_executed_query import rewrite_executed_query
 from streambuild.compiler.sql_analysis.models import (
     SqlNamedQuery,
     SqlQueryRewriteResult,
@@ -605,13 +606,11 @@ def _render_scalar_replay(
         source_name=request.relations.source,
         target_relation=f"{request.database}.{request.relations.anchor}",
     )
-    rewritten_query: str = _rewrite_replay_query(
-        sql=request.replay_query.query,
-        relation_rewrites=(source_rewrite,),
-    ).query
     if not boundary.cutoff_value:
         empty_query: str = _rewrite_replay_query(
-            sql=f"SELECT * FROM ({rewritten_query}) WHERE 0"
+            sql=request.replay_query.query,
+            relation_rewrites=(source_rewrite,),
+            predicate="0",
         ).query
         return _build_replay_insert(
             request=request,
@@ -624,6 +623,7 @@ def _render_scalar_replay(
         lower_bound_value=lower_bound_value,
         lower_bound_inclusive=request.window.lower_bound_inclusive,
     )
+    rewritten_query: str
     if request.replay_query.aggregate_semantics:
         physical_predicate: str = _scalar_boundary_predicate(
             column_name=f"anchor.{_physical_boundary_column(request)}",
@@ -632,12 +632,10 @@ def _render_scalar_replay(
             lower_bound_value=lower_bound_value,
             lower_bound_inclusive=request.window.lower_bound_inclusive,
         )
-        filtered_anchor: str = _rewrite_replay_query(
-            sql=(
-                f"SELECT anchor.* FROM {request.database}.{request.relations.anchor} AS anchor "
-                f"WHERE {physical_predicate}"
-            )
-        ).query
+        filtered_anchor: str = (
+            f"SELECT anchor.* FROM {request.database}.{request.relations.anchor} AS anchor "
+            f"WHERE {physical_predicate}"
+        )
         rewritten_query = _rewrite_replay_query(
             sql=request.replay_query.query,
             relation_rewrites=(
@@ -649,7 +647,8 @@ def _render_scalar_replay(
         ).query
     else:
         rewritten_query = _rewrite_replay_query(
-            sql=rewritten_query,
+            sql=request.replay_query.query,
+            relation_rewrites=(source_rewrite,),
             predicate=canonical_predicate,
         ).query
     return _build_replay_insert(request=request, query=rewritten_query)
@@ -736,7 +735,7 @@ def _render_offset_replay(
     )
     return _build_replay_insert(
         request=request,
-        query=_rewrite_replay_query(sql=wrapped_query).query,
+        query=wrapped_query,
     )
 
 
@@ -812,7 +811,7 @@ def _rewrite_replay_query(
     prepend_ctes: tuple[SqlNamedQuery, ...] = (),
 ) -> SqlQueryRewriteResult:
     try:
-        return rewrite_query(
+        return rewrite_executed_query(
             sql=sql,
             dialect="clickhouse",
             relation_rewrites=relation_rewrites,
@@ -825,13 +824,16 @@ def _rewrite_replay_query(
 
 def _build_replay_insert(*, request: AdapterReplayRequest, query: str) -> str:
     try:
-        return build_insert_query(
+        statement: str = build_insert_query(
             target_relation=f"{request.database}.{request.relations.target}",
             query=query,
             dialect="clickhouse",
         )
     except SqlAnalysisError as error:
         raise AdapterReplayError(f"Replay SQL could not be generated: {error}") from None
+    if ADAPTER_DATABASE_PLACEHOLDER in statement:
+        raise AdapterReplayError("Replay SQL leaked the adapter database placeholder")
+    return statement
 
 
 def _offset_frontier_cte(*, boundaries: tuple[AdapterReplayBoundary, ...], value_alias: str) -> str:
