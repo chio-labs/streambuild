@@ -82,6 +82,7 @@ from streambuild.dev_server.classes.dev_server_state import DevServerState
 from streambuild.dev_server.classes.kafka_lag_reader import KafkaLagReader
 from streambuild.dev_server.classes.kafka_topic_reader import KafkaTopicReader
 from streambuild.dev_server.classes.sensor_scheduler import SensorScheduler
+from streambuild.dev_server.classes.warehouse_runtime import WarehouseRuntime
 from streambuild.dev_server.exceptions import (
     BuildInProgressError,
     BuildStartError,
@@ -128,7 +129,7 @@ def register_api_routes(
     *,
     app: FastAPI,
     state: DevServerState,
-    connection: AdapterConnection | None,
+    warehouse: WarehouseRuntime,
     project_dir: Path,
     builds: BuildProcessManager,
     schedulers: tuple[AuditScheduler, SensorScheduler],
@@ -147,13 +148,15 @@ def register_api_routes(
     )
 
     def read_status() -> dict[str, object]:
-        connected: bool = connection is not None
+        warehouse_status: dict[str, object] = warehouse.status()
         return build_status_payload(
             outcome=state.current(),
-            warehouse_connected=connected,
-            warehouse_database=database,
-            warehouse_error=None if connected else "no warehouse connection",
+            warehouse_status=warehouse_status,
         )
+
+    def refresh_warehouse() -> dict[str, object]:
+        _ = warehouse.connect_now()
+        return read_status()
 
     def reload_project(request: Request) -> dict[str, object]:
         guard: CompileAuthorizationGuard = partial(
@@ -171,20 +174,19 @@ def register_api_routes(
         reporter.report_reload(outcome=outcome)
         return build_status_payload(
             outcome=outcome,
-            warehouse_connected=connection is not None,
-            warehouse_database=database,
-            warehouse_error=None,
+            warehouse_status=warehouse.status(),
         )
 
     def read_definitions() -> dict[str, object]:
-        outcome: CompileOutcome = state.current()
         try:
+            outcome: CompileOutcome = state.current_servable_outcome()
             analysis: CompileAnalysis = state.current_analysis()
         except ProjectNotCompiledError as error:
             raise HTTPException(status_code=_HTTP_CONFLICT, detail=str(error)) from error
         return build_definitions_payload(analysis=analysis, version_key=outcome.version_key)
 
     def read_state() -> dict[str, object]:
+        connection: AdapterConnection | None = warehouse.connection
         if connection is None or database is None:
             raise HTTPException(
                 status_code=_HTTP_SERVICE_UNAVAILABLE,
@@ -206,6 +208,7 @@ def register_api_routes(
             raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
 
     def _required_connection() -> AdapterConnection:
+        connection: AdapterConnection | None = warehouse.connection
         if connection is None or database is None:
             raise HTTPException(
                 status_code=_HTTP_SERVICE_UNAVAILABLE,
@@ -221,6 +224,7 @@ def register_api_routes(
 
     def read_topics() -> dict[str, object]:
         analysis: CompileAnalysis = _servable_analysis()
+        connection: AdapterConnection | None = warehouse.connection
         try:
             with state.query_lock:
                 return build_topics_payload(
@@ -234,6 +238,7 @@ def register_api_routes(
             raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
 
     app.get("/api/status")(read_status)
+    app.post("/api/warehouse/refresh")(refresh_warehouse)
     app.get("/api/state")(read_state)
     _register_plan_route(
         app=app,

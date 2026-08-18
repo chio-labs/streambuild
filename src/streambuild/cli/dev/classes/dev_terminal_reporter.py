@@ -30,6 +30,7 @@ class DevTerminalReporter:
         outcome: CompileOutcome,
         project_dir: Path,
         database: str | None,
+        warehouse_connected: bool,
         host: str,
         port: int,
     ) -> None:
@@ -40,6 +41,7 @@ class DevTerminalReporter:
             outcome=outcome,
             project_dir=project_dir,
             database=database,
+            warehouse_connected=warehouse_connected,
             host=host,
             port=port,
             tool_version=version("streambuild"),
