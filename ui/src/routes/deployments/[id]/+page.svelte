@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import AppTopbar from '$lib/presentation/components/app-topbar.svelte';
+	import ErrorPreview from '$lib/presentation/components/error-preview.svelte';
 	import LineageCanvas from '$lib/presentation/components/lineage/lineage-canvas.svelte';
 	import EdgeLegend from '$lib/presentation/components/lineage/edge-legend.svelte';
 	import FactRow from '$lib/presentation/components/fact-row.svelte';
@@ -10,14 +11,13 @@
 	import type { DeploymentDiff } from '$lib/api/types';
 	import { goto } from '$app/navigation';
 	import { refreshDeployments } from '$lib/api/main/project/refresh-deployments';
-	import { buildLogicalGraph } from '$lib/domain/main/graphs/build-logical-graph';
+	import { scopeDeploymentGraph } from '$lib/domain/main/graphs/scope-deployment-graph';
 	import { formatBytes } from '$lib/formatting/main/format-bytes';
 	import { formatCompact } from '$lib/formatting/main/format-compact';
 	import { formatInteger } from '$lib/formatting/main/format-integer';
 	import type { DeploymentDetail, Project } from '$lib/domain/types';
 	import { canAnyPipeline } from '$lib/auth/main/can-any-pipeline';
 	type DeploymentModel = DeploymentDetail['models'][number];
-	import type { Graph } from '$lib/lineage/types';
 	import type { DeploymentDetailPageData } from './+page';
 
 	let { data }: { data: DeploymentDetailPageData } = $props();
@@ -109,39 +109,9 @@
 	 * each node's sublabel replaced by its physical switchover. Reusing the
 	 * lineage canvas keeps one visual language for "what depends on what".
 	 */
-	const scoped = $derived.by((): Graph => {
-		const full: Graph = buildLogicalGraph(project);
-		const comparisonByModel = new Map<string, DeploymentModel>();
-		for (const model of deploymentModels) {
-			const name: string | undefined = modelByRelation.get(model.logicalName);
-			if (name !== undefined) comparisonByModel.set(name, model);
-		}
-
-		const keep = new Set<string>();
-		for (const node of full.nodes) {
-			if (node.logicalType !== 'source' && modelNames.has(node.logicalName)) keep.add(node.id);
-		}
-		for (const edge of full.edges) {
-			if (keep.has(edge.target)) keep.add(edge.source);
-		}
-
-		return {
-			nodes: full.nodes
-				.filter((node) => keep.has(node.id))
-				.map((node) => {
-					const comparison: DeploymentModel | undefined = comparisonByModel.get(node.logicalName);
-					if (comparison === undefined) return node;
-					return {
-						...node,
-						sublabel: comparison.isNew
-							? `new · ${exactRelationName(comparison.stagedRelation)}`
-							: `${exactRelationName(comparison.liveRelation)} → ${exactRelationName(comparison.stagedRelation)}`,
-						rows: comparison.stagedRows
-					};
-				}),
-			edges: full.edges.filter((edge) => keep.has(edge.source) && keep.has(edge.target))
-		};
-	});
+	const scoped: ReturnType<typeof scopeDeploymentGraph> = $derived(
+		scopeDeploymentGraph({ project, deploymentModels, modelByRelation, modelNames })
+	);
 
 	const totalStagedRows: number = $derived(
 		deploymentModels.reduce((total, model) => total + model.stagedRows, 0)
@@ -174,9 +144,7 @@
 
 <div class="min-h-0 flex-1 overflow-y-auto px-[18px] py-4">
 	{#if loadError !== null}
-		<div class="rounded-md border border-[var(--sb-border)] p-6 text-[13px]" style:color="var(--sb-error)">
-			{loadError}
-		</div>
+		<ErrorPreview text={loadError} title="Deployment failed to load" clamp="line-clamp-4" class="max-w-full" />
 	{:else if detail === null}
 		<div class="text-muted-foreground text-[13px]">loading deployment…</div>
 	{:else}
@@ -236,7 +204,9 @@
 				{:else}
 					<div class="max-h-[520px] overflow-y-auto">
 						{#if diffError !== null}
-							<div class="p-4 text-[12px]" style:color="var(--sb-error)">{diffError}</div>
+							<div class="p-4">
+								<ErrorPreview text={diffError} title="Diff failed" clamp="line-clamp-3" class="max-w-full" />
+							</div>
 						{:else if diff === null}
 							<div class="text-muted-foreground p-4 text-[12px]">comparing…</div>
 						{:else}
@@ -397,7 +367,9 @@
 											: 'Promote'}
 							</button>
 							{#if promoteError !== null}
-								<div class="pt-2 text-[11px]" style:color="var(--sb-error)">{promoteError}</div>
+								<div class="pt-2">
+									<ErrorPreview text={promoteError} title="Promote failed" clamp="line-clamp-3" class="max-w-full" />
+								</div>
 							{/if}
 							<div class="text-[var(--sb-text-faint)] pt-2 font-mono text-[10.5px]">
 								stb deployment promote {detail.deploymentId}
