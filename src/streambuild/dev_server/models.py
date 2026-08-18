@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
 from pydantic import BaseModel
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.auth.classes.control_store import ControlStore
 from streambuild.compiler.discovery.constants import DEFAULT_RUN_PRESUMED_FAILED_AFTER_SECONDS
 from streambuild.compiler.pipeline.models import CompilationTimings, CompileAnalysis
@@ -27,6 +28,8 @@ class DevExecutionContext:
     connection_username: str | None = None
     connection_password: str | None = None
     run_presumed_failed_after_seconds: int = DEFAULT_RUN_PRESUMED_FAILED_AFTER_SECONDS
+    connection_factory: Callable[[], AdapterConnection] | None = None
+    observation_connection_factory: Callable[[], AdapterConnection] | None = None
 
 
 @dataclass(frozen=True)

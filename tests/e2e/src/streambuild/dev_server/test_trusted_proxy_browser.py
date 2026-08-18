@@ -34,7 +34,7 @@ def test_given_spoofed_identity_when_proxying_then_proxy_replaces_header_before_
     assert response is not None
     assert response.status == 200
     expect(page.get_by_text(test_case.expected_username, exact=True)).to_be_visible()
-    reload_button: Locator = page.get_by_role("button", name="reload", exact=True)
+    reload_button: Locator = page.get_by_role("button", name="Reload definitions", exact=True)
     expect(reload_button).to_be_disabled()
     denied: dict[str, object] = browser_post_reload(page=page)
     assert denied["status"] == 403

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
@@ -31,6 +32,8 @@ def run_dev(
     options: DevCommandOptions,
     client: AdapterConnection | None,
     observation_client: AdapterConnection | None = None,
+    connection_factory: Callable[[], AdapterConnection] | None = None,
+    observation_connection_factory: Callable[[], AdapterConnection] | None = None,
     loaded_project: LoadedProject | None,
     adapter_profile: CompilerAdapterProfile,
 ) -> int:
@@ -55,6 +58,8 @@ def run_dev(
         connection_username=options.connection_username,
         connection_password=options.connection_password,
         run_presumed_failed_after_seconds=project_defaults.run_presumed_failed_after_seconds,
+        connection_factory=connection_factory,
+        observation_connection_factory=observation_connection_factory,
     )
 
     def run_compile() -> CompileAnalysis:

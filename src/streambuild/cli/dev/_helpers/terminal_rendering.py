@@ -21,6 +21,7 @@ def startup_lines(
     outcome: CompileOutcome,
     project_dir: Path,
     database: str | None,
+    warehouse_connected: bool = True,
     host: str,
     port: int,
     tool_version: str,
@@ -37,7 +38,9 @@ def startup_lines(
         ),
         *_compile_error_lines(style=style, outcome=outcome),
         _fact_line(
-            style=style, label="warehouse", value=_warehouse_value(style=style, database=database)
+            style=style,
+            label="warehouse",
+            value=_warehouse_value(style=style, database=database, connected=warehouse_connected),
         ),
         "",
         _fact_line(style=style, label="ui", value=base_url),
@@ -119,9 +122,11 @@ def _counted(*, count: int, noun: str) -> str:
     return f"{count} {noun}" if count == 1 else f"{count} {noun}s"
 
 
-def _warehouse_value(*, style: CliStyle, database: str | None) -> str:
+def _warehouse_value(*, style: CliStyle, database: str | None, connected: bool) -> str:
     if database is None:
         return style.warning("not connected")
+    if not connected:
+        return f"{style.warning('connecting')}{_SEPARATOR}{database}"
     return f"{style.passed('connected')}{_SEPARATOR}{database}"
 
 
