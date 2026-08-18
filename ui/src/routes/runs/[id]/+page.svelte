@@ -4,6 +4,7 @@
 	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
 	import RotateCcwIcon from '@lucide/svelte/icons/rotate-ccw';
 	import AppTopbar from '$lib/presentation/components/app-topbar.svelte';
+	import ErrorView from '$lib/presentation/components/error-view.svelte';
 	import LineageCanvas from '$lib/presentation/components/lineage/lineage-canvas.svelte';
 	import RunTimeline from '$lib/presentation/components/run-timeline.svelte';
 	import { getProject } from '$lib/api/main/project/get-project';
@@ -236,9 +237,7 @@
 
 		{#if stderr && outcome === 'failed'}
 			<div class="shrink-0 px-[18px] pt-3">
-				<pre
-					class="max-h-[200px] overflow-auto rounded-[4px] border p-3 font-mono text-[11px]"
-					style:border-color="color-mix(in srgb, var(--sb-error) 45%, var(--border))">{stderr}</pre>
+				<ErrorView text={stderr} maxHeight="240px" />
 			</div>
 		{/if}
 
