@@ -13,7 +13,7 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content>
+	<Dialog.Content class="w-auto min-w-[min(560px,92vw)] max-w-[80vw]">
 		<Dialog.Header>
 			<div class="min-w-0 flex-1">
 				<Dialog.Title class="text-[13px] font-medium text-[color:var(--sb-error)]"
@@ -33,7 +33,7 @@
 			</Dialog.Close>
 		</Dialog.Header>
 		<div class="flex min-h-0 flex-1 flex-col overflow-hidden p-3">
-			<ErrorView {text} maxHeight="72vh" />
+			<ErrorView {text} maxHeight="80vh" />
 		</div>
 	</Dialog.Content>
 </Dialog.Root>
