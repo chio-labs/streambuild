@@ -2,6 +2,7 @@ from textwrap import dedent
 
 import pytest
 
+from streambuild.adapter.constants import ADAPTER_DATABASE_PLACEHOLDER
 from streambuild.adapter.models import (
     AdapterDeploymentReplayRequest,
     AdapterPhysicalRelationMapping,
@@ -31,6 +32,7 @@ from tests.unit.src.streambuild.adapters.clickhouse._test_types import (
     RenderDeploymentLookbackTestCase,
     RenderOffsetReplayStatementTestCase,
     RenderScalarReplayBoundaryTestCase,
+    RenderTemplateReplayTestCase,
 )
 from tests.unit.src.streambuild.adapters.clickhouse.helpers import (
     normalize_clickhouse_sql,
@@ -768,3 +770,125 @@ def test_given_deployment_lookback_when_rendering_then_boundary_time_is_deployme
         normalized_statement.count(test_case.expected_root_filter_fragment)
         == test_case.expected_root_filter_count
     )
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        RenderTemplateReplayTestCase(
+            description="preserves author bytes through offset replay CTE merging",
+            mode=AdapterReplayBoundaryMode.OFFSETS,
+            query=(
+                "SELECT order_id, startsWith(topic, 'races') AS is_race, "
+                "_replay_partition, _replay_offset FROM raw__orders "
+                "WHERE status = 'open' OR status = 'held'"
+            ),
+            database_template=(
+                "SELECT order_id, startsWith(topic, 'races') AS is_race, "
+                "_replay_partition, _replay_offset "
+                f"FROM {ADAPTER_DATABASE_PLACEHOLDER}.raw__orders "
+                "WHERE status = 'open' OR status = 'held'"
+            ),
+            boundary_column_type=None,
+            expected_fragments=(
+                "INSERT INTO orders_demo.tbl__orders_enriched__dep",
+                "WITH cutoff_offsets AS (",
+                "filtered_replay_source AS (",
+                "FROM filtered_replay_source ",
+                "startsWith(topic, 'races') AS is_race",
+                "WHERE status = 'open' OR status = 'held'",
+            ),
+            expected_absent_fragments=(
+                "STARTS_WITH",
+                ADAPTER_DATABASE_PLACEHOLDER,
+            ),
+        ),
+        RenderTemplateReplayTestCase(
+            description="preserves author bytes through scalar replay predicate wrapping",
+            mode=AdapterReplayBoundaryMode.CURSOR,
+            query=(
+                "SELECT order_id, startsWith(topic, 'races') AS is_race, _replay_cursor "
+                "FROM raw__orders WHERE status = 'open' OR status = 'held'"
+            ),
+            database_template=(
+                "SELECT order_id, startsWith(topic, 'races') AS is_race, _replay_cursor "
+                f"FROM {ADAPTER_DATABASE_PLACEHOLDER}.raw__orders "
+                "WHERE status = 'open' OR status = 'held'"
+            ),
+            boundary_column_type="UInt64",
+            expected_fragments=(
+                "INSERT INTO orders_demo.tbl__orders_enriched__dep",
+                "WITH replay_cutoff AS (",
+                ") AS replay_source",
+                "FROM orders_demo.raw__orders ",
+                "startsWith(topic, 'races') AS is_race",
+                "WHERE status = 'open' OR status = 'held'",
+                "_replay_cursor <= (SELECT cutoff_value FROM replay_cutoff)",
+            ),
+            expected_absent_fragments=(
+                "STARTS_WITH",
+                ADAPTER_DATABASE_PLACEHOLDER,
+            ),
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_placeholder_template_when_rendering_replay_then_author_bytes_are_preserved(
+    test_case: RenderTemplateReplayTestCase,
+) -> None:
+    replay: AdapterReplayRequest = AdapterReplayRequest(
+        mode=test_case.mode,
+        database="orders_demo",
+        relations=AdapterReplayRelations(
+            root="tbl__orders_enriched",
+            source="raw__orders",
+            anchor="raw__orders",
+            target="tbl__orders_enriched__dep",
+        ),
+        replay_query=build_adapter_replay_query(
+            query=test_case.query,
+            database_template=test_case.database_template,
+            source_relation_name="raw__orders",
+            database="orders_demo",
+            physical_relation_mappings=(
+                AdapterPhysicalRelationMapping(
+                    logical_name="raw__orders",
+                    physical_name="raw__orders",
+                ),
+            ),
+        ),
+        boundaries=(),
+        columns=AdapterReplayColumns(
+            partition="_replay_partition",
+            offset="_replay_offset",
+            timestamp="_replay_timestamp",
+            landed_at="_replay_landed_at",
+            cursor="_replay_cursor",
+        ),
+        window=AdapterReplayWindow(
+            lower_bound_mode=AdapterReplayLowerBoundMode.ACTIVE_FRONTIER,
+            lower_bound_inclusive=True,
+            boundary_time="2026-04-08 13:00:00.000",
+            forced_start_time=None,
+            lookback_seconds=None,
+        ),
+        seed_mode=AdapterReplaySeedMode.NONE,
+        target_column_names=("order_id",),
+    )
+
+    rendered_statements: tuple[str, ...] = render_clickhouse_replay_from_deployment(
+        AdapterDeploymentReplayRequest(
+            replay=replay,
+            metadata_database="metadata",
+            deployment_id="dep-1",
+            boundary_column_type=test_case.boundary_column_type,
+            active_relation_name="tbl__orders_enriched",
+            active_column_names=replay.target_column_names,
+            anchor_column_names=("order_id", "_replay_partition", "_replay_offset"),
+        )
+    )
+
+    for expected_fragment in test_case.expected_fragments:
+        assert expected_fragment in rendered_statements[0]
+    for expected_absent_fragment in test_case.expected_absent_fragments:
+        assert expected_absent_fragment not in rendered_statements[0]
