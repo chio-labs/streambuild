@@ -33,6 +33,13 @@ class DirectCaptureValidationTestCase:
 
 
 @dataclass(frozen=True)
+class DirectPersistenceFailureTestCase:
+    description: str
+    selected_model_names: tuple[str, ...]
+    expected_error_fragment: str
+
+
+@dataclass(frozen=True)
 class DirectFingerprintPersistenceTestCase:
     description: str
     expected_warning_fragment: str

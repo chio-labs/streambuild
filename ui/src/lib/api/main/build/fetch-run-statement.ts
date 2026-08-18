@@ -1,4 +1,4 @@
-import { requestRunStatement } from '$lib/api/_api/build';
+import { requestRunStatement } from '$lib/api/_api/run-statement';
 import type { RunStatement } from '$lib/api/types';
 
 export async function fetchRunStatement(

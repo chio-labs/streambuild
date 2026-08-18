@@ -13,6 +13,7 @@ from streambuild.adapters.clickhouse._helpers.metadata import (
 from tests.unit.src.streambuild.adapters.clickhouse._test_types import (
     LatestNodeStatusQueryTestCase,
     RunEventInsertsTestCase,
+    RunStatementInsertsTestCase,
 )
 
 
@@ -114,7 +115,25 @@ def test_given_run_event_when_rendering_inserts_then_sql_is_exact(
     assert any(test_case.expected_values_fragment in statement for statement in rendered)
 
 
-def test_given_run_statements_when_rendering_then_exact_sql_and_hashes_are_inserted() -> None:
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        RunStatementInsertsTestCase(
+            description="renders exact run statement sql hashes and revision",
+            expected_statement_count=1,
+            expected_fragments=(
+                "INSERT INTO metadata._streambuild_run_statements",
+                "INSERT INTO orders SELECT 1;",
+                "'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'",
+                "workflow_revision",
+            ),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_run_statements_when_rendering_then_exact_sql_and_hashes_are_inserted(
+    test_case: RunStatementInsertsTestCase,
+) -> None:
     rendered: tuple[str, ...] = render_clickhouse_run_statement_inserts(
         database="metadata",
         statements=(
@@ -132,8 +151,5 @@ def test_given_run_statements_when_rendering_then_exact_sql_and_hashes_are_inser
         ),
     )
 
-    assert len(rendered) == 1
-    assert "INSERT INTO metadata._streambuild_run_statements" in rendered[0]
-    assert "INSERT INTO orders SELECT 1;" in rendered[0]
-    assert "'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'" in rendered[0]
-    assert "workflow_revision" in rendered[0]
+    assert len(rendered) == test_case.expected_statement_count
+    assert all(fragment in rendered[0] for fragment in test_case.expected_fragments)

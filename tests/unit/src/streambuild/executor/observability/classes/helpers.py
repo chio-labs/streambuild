@@ -36,17 +36,15 @@ class RunEventRecordingConnection(RecordingAdapterConnection):
 
     def query(self, statement: str) -> AdapterQueryResult:
         self.statements.append(statement)
-        if "_streambuild_run_statements" not in statement:
-            return AdapterQueryResult(rows=())
-        return AdapterQueryResult(
-            rows=tuple(
-                (
-                    record.statement_sequence,
-                    record.sql_sha256,
-                    record.workflow_sha256,
-                )
-                for record in self.run_statements
-            )
+        return {
+            True: AdapterQueryResult(rows=self._recorded_run_statement_rows()),
+            False: AdapterQueryResult(rows=()),
+        }["_streambuild_run_statements" in statement]
+
+    def _recorded_run_statement_rows(self) -> tuple[tuple[object, ...], ...]:
+        return tuple(
+            (record.statement_sequence, record.sql_sha256, record.workflow_sha256)
+            for record in self.run_statements
         )
 
 
