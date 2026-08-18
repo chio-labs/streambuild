@@ -48,6 +48,20 @@ class RunEventRecordingConnection(RecordingAdapterConnection):
         )
 
 
+class UnsupportedRunStatementConnection(RunEventRecordingConnection):
+    """Reports no durable run-statement support by rendering nothing."""
+
+    def render_run_statements(
+        self,
+        *,
+        database: str,
+        statements: tuple[AdapterRunStatementRecord, ...],
+        include_migration: bool = False,
+    ) -> tuple[str, ...]:
+        del database, statements, include_migration
+        return ()
+
+
 def build_replay_statement() -> WarehouseStatement:
     return WarehouseStatement(
         sequence=7,
