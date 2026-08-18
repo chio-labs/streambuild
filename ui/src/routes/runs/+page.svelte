@@ -1,5 +1,6 @@
 <script lang="ts">
 	import AppTopbar from '$lib/presentation/components/app-topbar.svelte';
+	import ErrorPreview from '$lib/presentation/components/error-preview.svelte';
 	import { cancelBuild } from '$lib/api/main/build/cancel-build';
 	import { fetchBuildFeed } from '$lib/api/main/build/fetch-build-feed';
 	import { getProject } from '$lib/api/main/project/get-project';
@@ -204,13 +205,12 @@
 										: `stb ${run.displayCommand ?? run.command}`}
 								</div>
 								{#if run.errorMessage}
-									<div
-										class="max-w-[480px] truncate pt-1 font-mono text-[10.5px]"
-										style:color="var(--sb-error)"
-										title={run.errorMessage}
-									>
-										{run.errorMessage}
-									</div>
+									<ErrorPreview
+										text={run.errorMessage}
+										title="Run error"
+										subtitle={`${run.command} · ${run.invocationId}`}
+										class="max-w-[480px] pt-1"
+									/>
 								{/if}
 							</td>
 							<td class="px-2 align-top sm:px-3">

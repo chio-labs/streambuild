@@ -32,6 +32,7 @@ from streambuild.adapter.models import (
     AdapterRelationCleanupRequest,
     AdapterReplayCoverageRequest,
     AdapterRunEventRecord,
+    AdapterRunStatementRecord,
     AdapterSensorState,
     AdapterStableView,
     AdapterTable,
@@ -56,6 +57,7 @@ from streambuild.adapters.clickhouse._helpers.metadata import (
     render_clickhouse_metadata_migration_workflow,
     render_clickhouse_metadata_state,
     render_clickhouse_run_event_inserts,
+    render_clickhouse_run_statement_inserts,
     render_clickhouse_sensor_retention_cleanup,
     render_clickhouse_sensor_state_inserts,
 )
@@ -295,6 +297,21 @@ class ClickHouseConnection(AdapterConnection):
 
         return render_clickhouse_run_event_inserts(
             database=database, events=events, include_migration=include_migration
+        )
+
+    def render_run_statements(
+        self,
+        *,
+        database: str,
+        statements: tuple[AdapterRunStatementRecord, ...],
+        include_migration: bool = False,
+    ) -> tuple[str, ...]:
+        """Render the durable SQL statement set for one run."""
+
+        return render_clickhouse_run_statement_inserts(
+            database=database,
+            statements=statements,
+            include_migration=include_migration,
         )
 
     def render_sensor_state(

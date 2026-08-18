@@ -55,6 +55,18 @@ export type RunEventFeed = {
 	lastSignalAgeSeconds: number | null;
 };
 
+export type RunStatement = {
+	found: boolean;
+	invocationId?: string;
+	statementSequence?: number;
+	stepId?: string;
+	phase?: string;
+	intent?: string;
+	sql?: string;
+	sqlSha256?: string;
+	workflowSha256?: string;
+};
+
 export type BuildFeed = {
 	running: boolean;
 	invocationId: string | null;

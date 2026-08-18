@@ -10,6 +10,13 @@ class RecordingWorkflowEmitter:
 
     def __init__(self) -> None:
         self.calls: list[str] = []
+        self.prepared_workflows: list[tuple[WarehouseStatement, ...]] = []
+
+    def workflow_prepared(
+        self, *, statements: tuple[WarehouseStatement, ...], workflow_sha256: str
+    ) -> None:
+        self.calls.append(f"prepared:{len(statements)}:{workflow_sha256}")
+        self.prepared_workflows.append(statements)
 
     def statement_started(self, statement: WarehouseStatement) -> None:
         self.calls.append(f"started:{statement.step_id}")
@@ -23,6 +30,14 @@ class RecordingWorkflowEmitter:
         elapsed_ms: int,
     ) -> None:
         self.calls.append(f"completed:{statement.step_id}:{error_message}")
+
+
+class FailingPreparationEmitter(RecordingWorkflowEmitter):
+    def workflow_prepared(
+        self, *, statements: tuple[WarehouseStatement, ...], workflow_sha256: str
+    ) -> None:
+        del statements, workflow_sha256
+        raise RuntimeError("statement persistence failed")
 
 
 class FailingMutationConnection(RecordingAdapterConnection):
