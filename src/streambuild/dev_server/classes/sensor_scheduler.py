@@ -7,9 +7,11 @@ from datetime import UTC, datetime
 from time import monotonic
 from uuid import uuid4
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.compiler.discovery.models import LoadedProject
 from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.dev_server.classes.dev_server_state import DevServerState
+from streambuild.dev_server.classes.warehouse_runtime import WarehouseRuntime
 from streambuild.dev_server.main._sensors_enabled import sensors_enabled
 from streambuild.dev_server.types import SensorSchedulerState
 from streambuild.sensors.classes.sensor_dispatcher import SensorDispatcher
@@ -28,11 +30,11 @@ class SensorScheduler:
         self,
         *,
         state: DevServerState,
-        repository: SensorStateRepository | None,
+        warehouse: WarehouseRuntime,
         database: str | None,
     ) -> None:
         self._state: DevServerState = state
-        self._repository: SensorStateRepository | None = repository
+        self._warehouse: WarehouseRuntime = warehouse
         self._database: str | None = database
         self._stop: threading.Event = threading.Event()
         self._tick_lock: threading.Lock = threading.Lock()
@@ -40,7 +42,7 @@ class SensorScheduler:
         self._thread: threading.Thread | None = None
         self._health_state: SensorSchedulerState = (
             SensorSchedulerState.IDLE
-            if repository is not None and database is not None
+            if warehouse.connection is not None and database is not None
             else SensorSchedulerState.DISABLED
         )
         self._consecutive_errors: int = 0
@@ -55,15 +57,19 @@ class SensorScheduler:
     def repository(self) -> SensorStateRepository | None:
         """The shared sensor state repository, if the warehouse is configured."""
 
-        return self._repository
+        connection: AdapterConnection | None = self._warehouse.connection
+        if connection is None or self._database is None:
+            return None
+        return SensorStateRepository(connection=connection, database=self._database)
 
     def build_dispatcher(self, *, analysis: CompileAnalysis) -> SensorDispatcher | None:
         """Build one dispatcher over the shared repository for the current compile."""
 
-        if self._repository is None:
+        repository: SensorStateRepository | None = self.repository
+        if repository is None:
             return None
         return SensorDispatcher(
-            repository=self._repository,
+            repository=repository,
             providers=(() if analysis.sensors is None else analysis.sensors.providers),
             dispatcher_id=self._dispatcher_id,
         )
@@ -111,7 +117,7 @@ class SensorScheduler:
             }
 
     def _tick_once(self) -> SensorDispatchSummary | None:
-        if self._repository is None or self._database is None:
+        if self.repository is None or self._database is None:
             self._record_success(state=SensorSchedulerState.DISABLED)
             return None
         if not self._tick_lock.acquire(blocking=False):
@@ -148,11 +154,12 @@ class SensorScheduler:
 
     def _maybe_apply_retention(self, *, analysis: CompileAnalysis) -> None:
         retention_days: int = _tick_retention_days(analysis=analysis)
-        if retention_days <= 0 or self._repository is None:
+        repository: SensorStateRepository | None = self.repository
+        if retention_days <= 0 or repository is None:
             return
         if monotonic() - self._retention_applied_at < _RETENTION_INTERVAL_SECONDS:
             return
-        self._repository.apply_tick_retention(retention_days=retention_days)
+        repository.apply_tick_retention(retention_days=retention_days)
         self._retention_applied_at = monotonic()
 
     def _run(self) -> None:

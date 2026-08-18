@@ -66,9 +66,7 @@ def _utc_now_iso() -> str:
 def build_status_payload(
     *,
     outcome: CompileOutcome,
-    warehouse_connected: bool,
-    warehouse_database: str | None,
-    warehouse_error: str | None,
+    warehouse_status: dict[str, object],
 ) -> dict[str, object]:
     """Build the cheap polled status payload."""
 
@@ -81,11 +79,7 @@ def build_status_payload(
             "timings": _timings_payload(outcome.timings),
             "error": _error_payload(outcome.error),
         },
-        "warehouse": {
-            "connected": warehouse_connected,
-            "database": warehouse_database,
-            "error": warehouse_error,
-        },
+        "warehouse": warehouse_status,
     }
 
 

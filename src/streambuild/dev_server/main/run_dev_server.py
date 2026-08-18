@@ -83,7 +83,12 @@ def run_dev_server(
     )
     app = register_static_assets(app=app, assets_root=assets_root)
     reporter.report_startup(
-        outcome=outcome, project_dir=project_dir, database=database, host=host, port=port
+        outcome=outcome,
+        project_dir=project_dir,
+        database=database,
+        warehouse_connected=connection is not None,
+        host=host,
+        port=port,
     )
     uvicorn.run(app, host=host, port=port, log_level="warning")
     reporter.report_shutdown()

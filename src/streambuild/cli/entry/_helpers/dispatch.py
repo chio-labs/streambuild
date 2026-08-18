@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import argparse
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
@@ -29,6 +29,8 @@ def dispatch_cli_command(
     handlers: CliEntrypointHandlers,
     adapter_connection: AdapterConnection | None,
     observation_connection: AdapterConnection | None = None,
+    connection_factory: Callable[[], AdapterConnection] | None = None,
+    observation_connection_factory: Callable[[], AdapterConnection] | None = None,
 ) -> int:
     args: argparse.Namespace = invocation.args
     adapter_profile: CompilerAdapterProfile = build_compiler_adapter_profile(invocation.adapter)
@@ -52,9 +54,6 @@ def dispatch_cli_command(
                 )
             ),
         )
-    client: AdapterConnection = _resolve_connection(
-        adapter_connection=adapter_connection,
-    )
     if args.command == CliCommand.DEV:
         effective_target: str | None = (
             None
@@ -126,11 +125,16 @@ def dispatch_cli_command(
                 connection_password=invocation.connection.password,
                 auth_settings=auth_settings,
             ),
-            client=client,
+            client=adapter_connection,
             observation_client=observation_connection,
+            connection_factory=connection_factory,
+            observation_connection_factory=observation_connection_factory,
             loaded_project=invocation.loaded_project,
             adapter_profile=adapter_profile,
         )
+    client: AdapterConnection = _resolve_connection(
+        adapter_connection=adapter_connection,
+    )
     if args.command == CliCommand.TEST:
         return handlers.run_test(
             pipelines_root=invocation.pipelines_root,

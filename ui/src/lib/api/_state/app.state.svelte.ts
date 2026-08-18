@@ -1,5 +1,8 @@
 import { requestDeployments } from '$lib/api/_api/deployments';
-import { requestProjectReload } from '$lib/api/_api/project-actions';
+import {
+	requestProjectReload,
+	requestWarehouseRefresh
+} from '$lib/api/_api/project-actions';
 import {
 	requestDefinitionsPayload,
 	requestStatePayload,
@@ -49,7 +52,7 @@ export function createAppState(): AppController {
 		try {
 			applyStatusPayload(await requestProjectReload());
 			if (app.status?.state === 'ok') await refreshDefinitionsAndState();
-			else app.phase = 'compile_failing';
+			else app.phase = app.project === null ? 'compile_failing' : 'ready';
 		} catch (error) {
 			app.phase = 'unreachable';
 			app.fetchError = String(error);
@@ -62,12 +65,20 @@ export function createAppState(): AppController {
 		if (app.project === null) return;
 		const requestGeneration: number = ++liveStateRequestGeneration;
 		try {
+			applyStatusPayload(await requestWarehouseRefresh());
+			if (!app.status?.warehouseConnected) {
+				const definitions: Record<string, unknown> = await requestDefinitionsPayload();
+				if (requestGeneration !== liveStateRequestGeneration) return;
+				mergeProject(definitions, {});
+				app.phase = 'ready';
+				return;
+			}
 			const [statusPayload, state]: [Record<string, unknown>, Record<string, unknown> | null] =
 				await Promise.all([requestStatusPayload(), requestStatePayload()]);
 			if (requestGeneration !== liveStateRequestGeneration) return;
 			applyStatusPayload(statusPayload);
 			if (app.status?.state !== 'ok') {
-				app.phase = 'compile_failing';
+				app.phase = app.project === null ? 'compile_failing' : 'ready';
 				return;
 			}
 			if (state === null) return;
@@ -115,6 +126,12 @@ export function createAppState(): AppController {
 
 	async function refreshDefinitionsAndState(): Promise<void> {
 		try {
+			if (!app.status?.warehouseConnected) {
+				mergeProject(await requestDefinitionsPayload(), {});
+				app.phase = 'ready';
+				app.fetchError = null;
+				return;
+			}
 			const [definitions, state]: [Record<string, unknown>, Record<string, unknown> | null] =
 				await Promise.all([requestDefinitionsPayload(), requestStatePayload()]);
 			mergeProject(definitions, state ?? {});
@@ -164,7 +181,10 @@ export function createAppState(): AppController {
 			timings: (compile.timings as Record<string, number> | null) ?? null,
 			error: (compile.error as CompileError | null) ?? null,
 			warehouseConnected: Boolean(warehouse.connected ?? false),
-			warehouseError: (warehouse.error as string | null) ?? null
+			warehouseError: (warehouse.error as string | null) ?? null,
+			warehouseState: String(warehouse.state ?? 'retrying'),
+			warehouseLastAttemptAt: (warehouse.lastAttemptAt as string | null) ?? null,
+			warehouseNextAttemptAt: (warehouse.nextAttemptAt as string | null) ?? null
 		};
 	}
 
