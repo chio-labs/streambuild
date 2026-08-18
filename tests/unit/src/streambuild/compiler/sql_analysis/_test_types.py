@@ -140,6 +140,14 @@ class ModelReservedPlaceholderTestCase:
 
 
 @dataclass(frozen=True)
+class ModelRawRelationTestCase:
+    description: str
+    sql: str
+    resolver: dict[str, str]
+    expected_error_fragment: str
+
+
+@dataclass(frozen=True)
 class ModelCallCountTestCase:
     description: str
     sql: str
