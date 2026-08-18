@@ -191,6 +191,7 @@ def build_resolved_query(
 ) -> tuple[SqlResolvedQuery, _RelationCache]:
     """Resolve and qualify one previously parsed model tree without reparsing it."""
 
+    _reject_raw_relations(node=tree, visible_ctes=frozenset())
     resolved_tree: dict[str, Any] = deepcopy(tree)
     actual_identities: tuple[_ReferenceIdentity, ...] = ()
     actual_identities, relation_cache = _rewrite_tree(
@@ -301,6 +302,32 @@ def canonical_query_with_database_template(
 def _reject_reserved_database_placeholder(*, canonical_sql: str, database_placeholder: str) -> None:
     if database_placeholder in canonical_sql:
         raise SqlAnalysisError("SQL contains the reserved adapter database placeholder")
+
+
+def _reject_raw_relations(*, node: Any, visible_ctes: frozenset[str]) -> None:
+    """Reject authored physical relations so models read only refs and CTEs."""
+
+    if isinstance(node, list):
+        item: Any
+        for item in node:
+            _reject_raw_relations(node=item, visible_ctes=visible_ctes)
+        return
+    if not isinstance(node, dict):
+        return
+    table_payload: Any = node.get(POLYGLOT_TABLE_KEY)
+    if isinstance(table_payload, dict) and POLYGLOT_SCHEMA_KEY in table_payload:
+        table_name: str | None = _identifier_name(table_payload.get(POLYGLOT_NAME_KEY))
+        if table_name is not None and table_name not in visible_ctes:
+            raise SqlAnalysisError(
+                f"Model relation '{table_name}' must be referenced via __ref(...) or __source(...)"
+            )
+        return
+    value: Any
+    for value in node.values():
+        if isinstance(value, dict):
+            _reject_raw_relations(node=value, visible_ctes=visible_ctes | _select_cte_names(value))
+        elif isinstance(value, list):
+            _reject_raw_relations(node=value, visible_ctes=visible_ctes)
 
 
 def _rewrite_tree(
@@ -517,15 +544,6 @@ def _qualify_node(*, node: Any, database: str, visible_ctes: frozenset[str]) -> 
         return
     if not isinstance(node, dict):
         return
-    select_payload: Any = node.get(POLYGLOT_SELECT_KEY)
-    if isinstance(select_payload, dict):
-        local_ctes: frozenset[str] = _select_cte_names(select_payload)
-        _qualify_node(
-            node=select_payload,
-            database=database,
-            visible_ctes=visible_ctes | local_ctes,
-        )
-        return
     table_payload: Any = node.get(POLYGLOT_TABLE_KEY)
     if isinstance(table_payload, dict) and POLYGLOT_SCHEMA_KEY in table_payload:
         table_name: str | None = _identifier_name(table_payload.get(POLYGLOT_NAME_KEY))
@@ -538,7 +556,13 @@ def _qualify_node(*, node: Any, database: str, visible_ctes: frozenset[str]) -> 
         return
     value: Any
     for value in node.values():
-        if isinstance(value, dict | list):
+        if isinstance(value, dict):
+            _qualify_node(
+                node=value,
+                database=database,
+                visible_ctes=visible_ctes | _select_cte_names(value),
+            )
+        elif isinstance(value, list):
             _qualify_node(node=value, database=database, visible_ctes=visible_ctes)
 
 
