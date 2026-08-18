@@ -41,6 +41,8 @@ def execute_direct_build_workflow(
 ) -> DirectRuntimeExecution:
     """Execute a direct template while retaining every exact adapter statement."""
 
+    prepared_statements: list[WarehouseStatement] = list(workflow.statements)
+    _emit_workflow_prepared(emitter=emitter, statements=tuple(prepared_statements))
     runtime_by_replay_step: dict[str, DirectRuntimeReplay] = {
         runtime.replay_step_id: runtime for runtime in workflow.runtime_replays
     }
@@ -65,6 +67,8 @@ def execute_direct_build_workflow(
                     capture=captures_by_model[runtime_replay.model_name],
                     client=connection,
                 )
+                prepared_statements[statement.sequence - 1] = statement
+                _emit_workflow_prepared(emitter=emitter, statements=tuple(prepared_statements))
             attempted.append(statement)
             step_execution: WorkflowExecutionResult = execute_warehouse_workflow(
                 statements=(statement,),
@@ -105,6 +109,18 @@ def execute_direct_build_workflow(
         workflow=_exact_workflow(workflow=workflow, statements=tuple(attempted)),
         execution=execution,
         captures=tuple(captures),
+    )
+
+
+def _emit_workflow_prepared(
+    *, emitter: WorkflowEventEmitter | None, statements: tuple[WarehouseStatement, ...]
+) -> None:
+    if emitter is None:
+        return
+    workflow_sql: str = "\n".join(statement.sql for statement in statements)
+    emitter.workflow_prepared(
+        statements=statements,
+        workflow_sha256=sha256(workflow_sql.encode("utf-8")).hexdigest(),
     )
 
 

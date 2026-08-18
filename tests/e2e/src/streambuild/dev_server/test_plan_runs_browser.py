@@ -193,6 +193,19 @@ def test_given_planned_model_when_executing_then_live_and_durable_run_surfaces_a
     expect(page.get_by_text("run started", exact=True)).to_be_visible()
     expect(page.get_by_text("run completed", exact=True)).to_be_visible()
     expect(page.get_by_role("link", name="Open in Plan", exact=True)).to_be_visible()
+    statement_row: Locator = page.locator("button[data-statement-sequence]").filter(
+        has_text=re.compile(rf"Replay source data.*{test_case.selector}")
+    ).first
+    expect(statement_row).to_be_visible()
+    with page.expect_response(
+        lambda response: "/statements/" in urlparse(response.url).path
+    ) as statement_info:
+        statement_row.click()
+    assert statement_info.value.status == 200
+    statement_payload: dict[str, object] = cast(dict[str, object], statement_info.value.json())
+    assert "runtime replay capture" not in str(statement_payload["sql"])
+    assert "INSERT INTO" in str(statement_payload["sql"])
+    expect(page.get_by_label("executed SQL", exact=True)).to_be_visible()
     build_feed_response: APIResponse = page.request.get(f"{base_url}/api/build/current?after=0")
     assert build_feed_response.status == 200
     build_feed: dict[str, object] = cast(dict[str, object], build_feed_response.json())

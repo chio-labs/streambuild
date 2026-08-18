@@ -51,6 +51,10 @@ from tests.unit.src.streambuild.executor.direct.main.helpers import (
     build_direct_execution_request_with_unrelated_pipeline,
     build_direct_execution_snapshot,
 )
+from tests.unit.src.streambuild.executor.workflow.helpers import (
+    FailingPreparationEmitter,
+    RecordingWorkflowEmitter,
+)
 
 
 @pytest.mark.parametrize(
@@ -120,9 +124,11 @@ def test_given_direct_plan_when_assembling_then_complete_exact_workflow_is_autho
         snapshot=build_direct_execution_snapshot(),
         plan_json=render_direct_plan_json(plan=request.plan, adapter_name="clickhouse"),
     )
+    emitter: RecordingWorkflowEmitter = RecordingWorkflowEmitter()
     runtime_execution: DirectRuntimeExecution = execute_direct_build_workflow(
         workflow=workflow,
         connection=connection,
+        emitter=emitter,
     )
     exact_workflow: BuildWorkflow = runtime_execution.workflow
     published: PublishedBuildWorkflow = publish_build_workflow(
@@ -165,6 +171,33 @@ def test_given_direct_plan_when_assembling_then_complete_exact_workflow_is_autho
     )
     assert connection.catalog_databases == []
     assert set(connection.workflow_mutation_statements) <= set(all_sql)
+    assert emitter.prepared_workflows[0] == workflow.statements
+    assert emitter.prepared_workflows[-1] == exact_workflow.statements
+
+
+def test_given_persistence_failure_when_executing_direct_build_then_warehouse_is_untouched(
+    tmp_path: Path,
+) -> None:
+    request: DirectBuildRequest = build_direct_execution_request(
+        project_root=tmp_path,
+        selected_model_names=("beta",),
+    )
+    connection: RecordingDirectBuildConnection = RecordingDirectBuildConnection()
+    workflow: DirectBuildWorkflow = assemble_direct_build_workflow(
+        request=request,
+        client=connection,
+        snapshot=build_direct_execution_snapshot(),
+        plan_json=render_direct_plan_json(plan=request.plan, adapter_name="clickhouse"),
+    )
+
+    with pytest.raises(RuntimeError, match="statement persistence failed"):
+        _ = execute_direct_build_workflow(
+            workflow=workflow,
+            connection=connection,
+            emitter=FailingPreparationEmitter(),
+        )
+
+    assert connection.workflow_mutation_statements == []
 
 
 @pytest.mark.parametrize(
