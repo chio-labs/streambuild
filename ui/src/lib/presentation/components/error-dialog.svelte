@@ -13,7 +13,7 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content>
+	<Dialog.Content class="w-auto min-w-[min(560px,92vw)] max-w-[80vw]">
 		<Dialog.Header>
 			<div class="min-w-0 flex-1">
 				<Dialog.Title class="text-[13px] font-medium text-[color:var(--sb-error)]"
