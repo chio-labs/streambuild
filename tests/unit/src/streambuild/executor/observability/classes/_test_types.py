@@ -38,3 +38,23 @@ class RunEventStartupTimingsTestCase:
     observability_ms: int
     planning_ms: int
     expected_total_ms: int
+
+
+@dataclass(frozen=True)
+class RunStatementPersistenceTestCase:
+    description: str
+    invocation_id: str
+    workflow_sha256: str
+    expected_sql: str
+    expected_insert_marker: str
+    expected_verify_fragment: str
+
+
+@dataclass(frozen=True)
+class RunStatementRedactionTestCase:
+    description: str
+    invocation_id: str
+    sql: str
+    expected_absent_fragments: tuple[str, ...]
+    expected_redacted_count: int
+    expected_present_fragment: str

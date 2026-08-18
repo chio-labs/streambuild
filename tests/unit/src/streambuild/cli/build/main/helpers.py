@@ -1,4 +1,5 @@
 import json
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 
@@ -34,14 +35,13 @@ from tests.unit.src.streambuild.compiler.planner.helpers import (
 
 class _VirtualArtifactConnection(RecordingAdapterConnection):
     def query(self, statement: str) -> AdapterQueryResult:
-        if "_streambuild_run_statements" in statement:
-            return super().query(statement)
-        self.statements.append(statement)
-        rows: tuple[tuple[str, ...], ...] = {
-            False: (),
-            True: (("2026-08-01 12:00:01.000",),),
-        }[statement.startswith("SELECT toString(any(boundary_time), 'UTC') AS boundary_time ")]
-        return AdapterQueryResult(rows=rows)
+        recorded: AdapterQueryResult = super().query(statement)
+        return AdapterQueryResult(
+            rows={
+                True: (("2026-08-01 12:00:01.000",),),
+                False: recorded.rows,
+            }[statement.startswith("SELECT toString(any(boundary_time), 'UTC') AS boundary_time ")]
+        )
 
 
 def run_scope_project_build(*, project_root: Path, json_output: bool, auto_approve: bool) -> int:
@@ -56,11 +56,17 @@ def run_scope_project_build(*, project_root: Path, json_output: bool, auto_appro
 
 
 class InterruptedBuildConnection(RecordingAdapterConnection):
-    """A connection whose first workflow statement raises like a Ctrl+C."""
+    """A connection whose workflow statements raise like a Ctrl+C after persistence."""
 
     def execute_workflow_sql(self, statement: str) -> AdapterMutationResult:
-        if statement.startswith("INSERT_RUN_STATEMENTS "):
-            return super().execute_workflow_sql(statement)
+        handlers: dict[bool, Callable[[str], AdapterMutationResult]] = {
+            True: super().execute_workflow_sql,
+            False: self._interrupt,
+        }
+        return handlers[statement.startswith("INSERT_RUN_STATEMENTS ")](statement)
+
+    def _interrupt(self, statement: str) -> AdapterMutationResult:
+        del statement
         raise KeyboardInterrupt
 
 

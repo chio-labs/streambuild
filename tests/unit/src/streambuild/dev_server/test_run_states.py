@@ -18,6 +18,7 @@ from tests.unit.src.streambuild.dev_server._test_types import (
     MissingRunDetailTestCase,
     RunDetailHistoryTestCase,
     RunDurationDerivationTestCase,
+    RunStatementReadTestCase,
     RunStatusDerivationTestCase,
 )
 from tests.unit.src.streambuild.dev_server.helpers import (
@@ -28,7 +29,23 @@ from tests.unit.src.streambuild.dev_server.helpers import (
 _WAREHOUSE_NOW: datetime = datetime(2026, 8, 7, 12, 0, tzinfo=UTC)
 
 
-def test_given_persisted_statement_when_reading_run_sql_then_exact_payload_is_returned() -> None:
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        RunStatementReadTestCase(
+            description="returns the exact persisted statement payload for one sequence",
+            invocation_id="inv-1",
+            statement_sequence=3,
+            row=("replay_orders", "replay", "mutation", "INSERT SELECT 1;", "a", "b"),
+            expected_sql="INSERT SELECT 1;",
+            expected_step_id="replay_orders",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_persisted_statement_when_reading_run_sql_then_exact_payload_is_returned(
+    test_case: RunStatementReadTestCase,
+) -> None:
     table_query = (
         "SELECT count() AS present FROM system.tables "
         "WHERE database = 'analytics' AND name = '_streambuild_run_statements'"
@@ -37,7 +54,8 @@ def test_given_persisted_statement_when_reading_run_sql_then_exact_payload_is_re
         "SELECT step_id, phase, intent, sql, toString(sql_sha256) AS sql_sha256, "
         "toString(workflow_sha256) AS workflow_sha256 "
         "FROM `analytics`.`_streambuild_run_statements` FINAL "
-        "WHERE invocation_id = 'inv-1' AND statement_sequence = 3 LIMIT 1"
+        f"WHERE invocation_id = '{test_case.invocation_id}' "
+        f"AND statement_sequence = {test_case.statement_sequence} LIMIT 1"
     )
     connection: FakeAdapterConnection = build_fake_state_connection(
         additional_results={
@@ -54,7 +72,7 @@ def test_given_persisted_statement_when_reading_run_sql_then_exact_payload_is_re
                     "sql_sha256",
                     "workflow_sha256",
                 ),
-                rows=(("replay_orders", "replay", "mutation", "INSERT SELECT 1;", "a", "b"),),
+                rows=(test_case.row,),
             ),
         }
     )
@@ -62,13 +80,13 @@ def test_given_persisted_statement_when_reading_run_sql_then_exact_payload_is_re
     payload: dict[str, object] = read_run_statement(
         connection=connection,
         database="analytics",
-        invocation_id="inv-1",
-        statement_sequence=3,
+        invocation_id=test_case.invocation_id,
+        statement_sequence=test_case.statement_sequence,
     )
 
     assert payload["found"] is True
-    assert payload["sql"] == "INSERT SELECT 1;"
-    assert payload["stepId"] == "replay_orders"
+    assert payload["sql"] == test_case.expected_sql
+    assert payload["stepId"] == test_case.expected_step_id
 
 
 @pytest.mark.parametrize(

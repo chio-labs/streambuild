@@ -85,6 +85,13 @@ class RunEventInsertsTestCase:
 
 
 @dataclass(frozen=True)
+class RunStatementInsertsTestCase:
+    description: str
+    expected_statement_count: int
+    expected_fragments: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class BuildInspectedManagedTableStateTestCase:
     description: str
     active_binding_rows: tuple[tuple[str, str], ...]

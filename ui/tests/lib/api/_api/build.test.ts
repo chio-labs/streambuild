@@ -1,11 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import {
-	requestBuildFeed,
-	requestBuildStart,
-	requestRunEvents,
-	requestRunStatement
-} from '$lib/api/_api/build';
+import { requestBuildFeed, requestBuildStart, requestRunEvents } from '$lib/api/_api/build';
 
 describe('build API', () => {
 	afterEach(() => vi.unstubAllGlobals());
@@ -24,7 +19,6 @@ describe('build API', () => {
 		);
 		await requestBuildFeed(17);
 		await requestRunEvents('run/id', 23);
-		await requestRunStatement('run/id', 7);
 
 		expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/build', {
 			method: 'POST',
@@ -38,6 +32,5 @@ describe('build API', () => {
 		});
 		expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/build/current?after=17');
 		expect(fetchMock).toHaveBeenNthCalledWith(3, '/api/runs/run%2Fid/events?after=23');
-		expect(fetchMock).toHaveBeenNthCalledWith(4, '/api/runs/run%2Fid/statements/7');
 	});
 });

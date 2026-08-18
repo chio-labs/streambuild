@@ -37,6 +37,7 @@ from tests.unit.src.streambuild.executor.direct.main._test_types import (
     DirectDistinctCaptureTestCase,
     DirectFingerprintMetadataTestCase,
     DirectFingerprintPersistenceTestCase,
+    DirectPersistenceFailureTestCase,
     DirectSourceScopeTestCase,
     DirectWorkflowTestCase,
 )
@@ -175,12 +176,24 @@ def test_given_direct_plan_when_assembling_then_complete_exact_workflow_is_autho
     assert emitter.prepared_workflows[-1] == exact_workflow.statements
 
 
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DirectPersistenceFailureTestCase(
+            description="statement persistence failure aborts before warehouse mutations",
+            selected_model_names=("beta",),
+            expected_error_fragment="statement persistence failed",
+        )
+    ],
+    ids=lambda case: case.description,
+)
 def test_given_persistence_failure_when_executing_direct_build_then_warehouse_is_untouched(
+    test_case: DirectPersistenceFailureTestCase,
     tmp_path: Path,
 ) -> None:
     request: DirectBuildRequest = build_direct_execution_request(
         project_root=tmp_path,
-        selected_model_names=("beta",),
+        selected_model_names=test_case.selected_model_names,
     )
     connection: RecordingDirectBuildConnection = RecordingDirectBuildConnection()
     workflow: DirectBuildWorkflow = assemble_direct_build_workflow(
@@ -190,7 +203,7 @@ def test_given_persistence_failure_when_executing_direct_build_then_warehouse_is
         plan_json=render_direct_plan_json(plan=request.plan, adapter_name="clickhouse"),
     )
 
-    with pytest.raises(RuntimeError, match="statement persistence failed"):
+    with pytest.raises(RuntimeError, match=test_case.expected_error_fragment):
         _ = execute_direct_build_workflow(
             workflow=workflow,
             connection=connection,
