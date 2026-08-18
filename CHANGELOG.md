@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.21.2](https://github.com/chio-labs/streambuild/compare/v0.21.1...v0.21.2) (2026-08-18)
+
+
+### Bug Fixes
+
+* keep the dev UI available through warehouse outages ([e9bc7dd](https://github.com/chio-labs/streambuild/commit/e9bc7dd6deebedeeb91f325c6afdf44fe983aa5c))
+* keep the dev UI available through warehouse outages ([6f8f4e5](https://github.com/chio-labs/streambuild/commit/6f8f4e53436a86560de1020bb5955e7bc3b91407))
+
 ## [0.21.1](https://github.com/chio-labs/streambuild/compare/v0.21.0...v0.21.1) (2026-08-17)
 
 
