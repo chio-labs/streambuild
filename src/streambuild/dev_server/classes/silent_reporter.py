@@ -17,6 +17,7 @@ class SilentDevServerReporter:
         outcome: CompileOutcome,
         project_dir: Path,
         database: str | None,
+        warehouse_connected: bool,
         host: str,
         port: int,
     ) -> None:

@@ -519,6 +519,54 @@ def test_given_project_default_target_when_starting_dev_then_effective_target_is
     "test_case",
     [
         CliDevRefactorTestCase(
+            description="dev defers warehouse connections until the server lifecycle starts",
+            expected_value=(True, True),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_unopened_warehouse_when_starting_dev_then_connection_factories_are_deferred(
+    test_case: CliDevRefactorTestCase,
+    tmp_path: Path,
+) -> None:
+    project_dir: Path = tmp_path / "project"
+    write_cli_target_project(project_root=project_dir, local_contents='target = "dev"')
+    captured: dict[str, object] = {}
+
+    def capture_dev_connections(**kwargs: object) -> int:
+        captured.update(kwargs)
+        return 0
+
+    exit_code: int = _main_with_dependencies(
+        argv=(
+            "stb",
+            "dev",
+            "--project-dir",
+            str(project_dir),
+            "--host",
+            "warehouse.invalid",
+            "--port",
+            "8123",
+            "--username",
+            "default",
+            "--password",
+            "secret",
+        ),
+        handlers=handlers_with_overrides(run_dev=capture_dev_connections),
+    )
+
+    assert exit_code == 0
+    assert captured["client"] is None
+    assert (
+        callable(captured["connection_factory"]),
+        callable(captured["observation_connection_factory"]),
+    ) == test_case.expected_value
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliDevRefactorTestCase(
             description="dev reload reuses resolved compilation context",
             expected_value={
                 "selected_target": "local",
