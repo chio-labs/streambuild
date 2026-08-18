@@ -22,3 +22,9 @@ class WorkflowExecutionTestCase:
 class WorkflowEmitterTestCase:
     description: str
     expected_calls: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class WorkflowPersistenceFailureTestCase:
+    description: str
+    expected_error_fragment: str
