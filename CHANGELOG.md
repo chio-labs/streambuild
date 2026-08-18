@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.21.3](https://github.com/chio-labs/streambuild/compare/v0.21.2...v0.21.3) (2026-08-18)
+
+
+### Bug Fixes
+
+* surface pending warehouse outages ([adede0c](https://github.com/chio-labs/streambuild/commit/adede0ca29ef803dfa19b9e32c49f4d2d191d110))
+* surface pending warehouse outages ([1130266](https://github.com/chio-labs/streambuild/commit/1130266ef82c08ef4be021c47c956fc154834975))
+
 ## [0.21.2](https://github.com/chio-labs/streambuild/compare/v0.21.1...v0.21.2) (2026-08-18)
 
 
