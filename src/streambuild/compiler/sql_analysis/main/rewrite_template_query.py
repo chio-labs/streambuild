@@ -6,9 +6,9 @@ from streambuild.compiler.sql_analysis._helpers.aggregates import aggregate_fact
 from streambuild.compiler.sql_analysis._helpers.polyglot import parse_sql_tree
 from streambuild.compiler.sql_analysis._helpers.query_rewriting import get_select_payload
 from streambuild.compiler.sql_analysis._helpers.scanning import (
+    append_template_predicate_impl,
     merge_template_ctes_impl,
     rewrite_template_relations_impl,
-    wrap_template_predicate_impl,
 )
 from streambuild.compiler.sql_analysis.models import (
     SqlAggregateFacts,
@@ -35,7 +35,7 @@ def rewrite_template_query(
         database_placeholder=database_placeholder,
     )
     if predicate is not None:
-        rewritten = wrap_template_predicate_impl(template=rewritten, predicate=predicate)
+        rewritten = append_template_predicate_impl(template=rewritten, predicate=predicate)
     rewritten = merge_template_ctes_impl(template=rewritten, named_queries=prepend_ctes)
     tree: dict[str, Any] = parse_sql_tree(sql=rewritten, dialect=dialect)
     _ = get_select_payload(tree)

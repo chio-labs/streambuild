@@ -36,6 +36,23 @@ from streambuild.compiler.sql_analysis.types import RefType, SqlRelationType
 _REFERENCE_CONTEXT: str = "SQL reference"
 _WITH_KEYWORD: str = "WITH"
 _RECURSIVE_KEYWORD: str = "RECURSIVE"
+_WHERE_KEYWORD: str = "WHERE"
+_PREDICATE_BOUNDARY_KEYWORDS: frozenset[str] = frozenset(
+    {
+        "GROUP",
+        "HAVING",
+        "WINDOW",
+        "QUALIFY",
+        "ORDER",
+        "LIMIT",
+        "OFFSET",
+        "SETTINGS",
+        "FORMAT",
+        "UNION",
+        "EXCEPT",
+        "INTERSECT",
+    }
+)
 
 
 def extract_references_impl(sql: str) -> tuple[SqlReference, ...]:
@@ -316,10 +333,54 @@ def rewrite_template_relations_impl(
     return rewritten
 
 
-def wrap_template_predicate_impl(*, template: str, predicate: str) -> str:
-    """Filter one template's output rows through a byte-preserving subquery wrap."""
+def append_template_predicate_impl(*, template: str, predicate: str) -> str:
+    """Conjoin one predicate into the outer WHERE clause byte-preservingly."""
 
-    return f"SELECT * FROM (\n{template}\n) AS replay_source\nWHERE {predicate}"
+    where_end: int | None
+    boundary: int
+    where_end, boundary = _outer_predicate_positions(template)
+    if where_end is None:
+        if boundary == len(template):
+            return f"{template}\nWHERE ({predicate})"
+        return f"{template[:boundary]}WHERE ({predicate})\n{template[boundary:]}"
+    segment: str = template[where_end:boundary]
+    tail: str = "" if boundary == len(template) else f"\n{template[boundary:]}"
+    return f"{template[:where_end]} ({segment.strip()}) AND ({predicate}){tail}"
+
+
+def _outer_predicate_positions(template: str) -> tuple[int | None, int]:
+    where_end: int | None = None
+    index: int = 0
+    depth: int = 0
+    while index < len(template):
+        index = skip_trivia(sql=template, start=index)
+        if index >= len(template):
+            break
+        character: str = template[index]
+        if character in SQL_QUOTE_CHARACTERS:
+            index = skip_quoted_text(sql=template, start=index)
+            continue
+        if character == SQL_OPEN_PARENTHESIS:
+            depth += 1
+            index += 1
+            continue
+        if character == SQL_CLOSE_PARENTHESIS:
+            depth = max(depth - 1, 0)
+            index += 1
+            continue
+        if not _is_identifier_start(character):
+            index += 1
+            continue
+        end: int = index + 1
+        while end < len(template) and _is_identifier_character(template[end]):
+            end += 1
+        word: str = template[index:end].upper()
+        if depth == 0 and word == _WHERE_KEYWORD and where_end is None:
+            where_end = end
+        elif depth == 0 and word in _PREDICATE_BOUNDARY_KEYWORDS:
+            return where_end, index
+        index = end
+    return where_end, len(template)
 
 
 def merge_template_ctes_impl(*, template: str, named_queries: tuple[SqlNamedQuery, ...]) -> str:

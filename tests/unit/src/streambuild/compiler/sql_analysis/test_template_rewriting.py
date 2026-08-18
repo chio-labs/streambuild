@@ -34,14 +34,34 @@ from tests.unit.src.streambuild.compiler.sql_analysis._test_types import (
             prepend_ctes=(SqlNamedQuery(name="replay_cutoff", query="SELECT 20 AS cutoff_value"),),
             expected_query=(
                 "WITH replay_cutoff AS (\nSELECT 20 AS cutoff_value\n)\n"
-                "SELECT * FROM (\n"
                 "SELECT order_id, startsWith(topic, 'races') AS is_race\n"
                 "FROM orders_demo.raw__orders\n"
-                "WHERE status = 'open' OR status = 'held'\n"
-                ") AS replay_source\n"
-                "WHERE _replay_cursor <= 20"
+                "WHERE (status = 'open' OR status = 'held') AND (_replay_cursor <= 20)"
             ),
             expected_aggregate_semantics=False,
+        ),
+        TemplateRewriteTestCase(
+            description="injects one missing WHERE clause ahead of grouping boundaries",
+            template=(
+                "SELECT topic, count() AS event_count\n"
+                f"FROM {ADAPTER_DATABASE_PLACEHOLDER}.raw__orders\n"
+                "GROUP BY topic"
+            ),
+            relation_rewrites=(
+                SqlRelationRewrite(
+                    source_name="raw__orders",
+                    target_relation="orders_demo.raw__orders",
+                ),
+            ),
+            predicate="_replay_cursor <= 20",
+            prepend_ctes=(),
+            expected_query=(
+                "SELECT topic, count() AS event_count\n"
+                "FROM orders_demo.raw__orders\n"
+                "WHERE (_replay_cursor <= 20)\n"
+                "GROUP BY topic"
+            ),
+            expected_aggregate_semantics=True,
         ),
         TemplateRewriteTestCase(
             description="replaces only boundary-safe placeholder-qualified relation tokens",

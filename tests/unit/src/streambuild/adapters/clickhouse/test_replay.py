@@ -819,10 +819,9 @@ def test_given_deployment_lookback_when_rendering_then_boundary_time_is_deployme
             expected_fragments=(
                 "INSERT INTO orders_demo.tbl__orders_enriched__dep",
                 "WITH replay_cutoff AS (",
-                ") AS replay_source",
                 "FROM orders_demo.raw__orders ",
                 "startsWith(topic, 'races') AS is_race",
-                "WHERE status = 'open' OR status = 'held'",
+                "WHERE (status = 'open' OR status = 'held') AND (_replay_cursor >=",
                 "_replay_cursor <= (SELECT cutoff_value FROM replay_cutoff)",
             ),
             expected_absent_fragments=(
