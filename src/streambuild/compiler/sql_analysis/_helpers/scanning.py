@@ -24,10 +24,35 @@ from streambuild.compiler.sql_analysis.constants import (
     VALID_REFERENCE_ARGUMENT_COUNTS,
 )
 from streambuild.compiler.sql_analysis.exceptions import SqlAnalysisError
-from streambuild.compiler.sql_analysis.models import SqlHeaderBlock, SqlReference, SqlSourceSpan
+from streambuild.compiler.sql_analysis.models import (
+    SqlHeaderBlock,
+    SqlNamedQuery,
+    SqlReference,
+    SqlRelationRewrite,
+    SqlSourceSpan,
+)
 from streambuild.compiler.sql_analysis.types import RefType, SqlRelationType
 
 _REFERENCE_CONTEXT: str = "SQL reference"
+_WITH_KEYWORD: str = "WITH"
+_RECURSIVE_KEYWORD: str = "RECURSIVE"
+_WHERE_KEYWORD: str = "WHERE"
+_PREDICATE_BOUNDARY_KEYWORDS: frozenset[str] = frozenset(
+    {
+        "GROUP",
+        "HAVING",
+        "WINDOW",
+        "QUALIFY",
+        "ORDER",
+        "LIMIT",
+        "OFFSET",
+        "SETTINGS",
+        "FORMAT",
+        "UNION",
+        "EXCEPT",
+        "INTERSECT",
+    }
+)
 
 
 def extract_references_impl(sql: str) -> tuple[SqlReference, ...]:
@@ -282,6 +307,133 @@ def _is_identifier_start(character: str) -> bool:
 
 def _is_identifier_character(character: str) -> bool:
     return character.isalnum() or character == SQL_IDENTIFIER_PREFIX
+
+
+def rewrite_template_relations_impl(
+    *,
+    template: str,
+    relation_rewrites: tuple[SqlRelationRewrite, ...],
+    database_placeholder: str,
+) -> str:
+    """Replace placeholder-qualified relation tokens with target relations."""
+
+    rewritten: str = template
+    rewrite: SqlRelationRewrite
+    for rewrite in relation_rewrites:
+        replacement: str = (
+            f"{database_placeholder}.{rewrite.target_relation}"
+            if rewrite.preserve_source_database
+            else rewrite.target_relation
+        )
+        rewritten = _replace_bounded_token(
+            template=rewritten,
+            token=f"{database_placeholder}.{rewrite.source_name}",
+            replacement=replacement,
+        )
+    return rewritten
+
+
+def append_template_predicate_impl(*, template: str, predicate: str) -> str:
+    """Conjoin one predicate into the outer WHERE clause byte-preservingly."""
+
+    where_end: int | None
+    boundary: int
+    where_end, boundary = _outer_predicate_positions(template)
+    if where_end is None:
+        if boundary == len(template):
+            return f"{template}\nWHERE ({predicate})"
+        return f"{template[:boundary]}WHERE ({predicate})\n{template[boundary:]}"
+    segment: str = template[where_end:boundary]
+    tail: str = "" if boundary == len(template) else f"\n{template[boundary:]}"
+    return f"{template[:where_end]} ({segment.strip()}) AND ({predicate}){tail}"
+
+
+def _outer_predicate_positions(template: str) -> tuple[int | None, int]:
+    where_end: int | None = None
+    index: int = 0
+    depth: int = 0
+    while index < len(template):
+        index = skip_trivia(sql=template, start=index)
+        if index >= len(template):
+            break
+        character: str = template[index]
+        if character in SQL_QUOTE_CHARACTERS:
+            index = skip_quoted_text(sql=template, start=index)
+            continue
+        if character == SQL_OPEN_PARENTHESIS:
+            depth += 1
+            index += 1
+            continue
+        if character == SQL_CLOSE_PARENTHESIS:
+            depth = max(depth - 1, 0)
+            index += 1
+            continue
+        if not _is_identifier_start(character):
+            index += 1
+            continue
+        end: int = index + 1
+        while end < len(template) and _is_identifier_character(template[end]):
+            end += 1
+        word: str = template[index:end].upper()
+        if depth == 0 and word == _WHERE_KEYWORD and where_end is None:
+            where_end = end
+        elif depth == 0 and word in _PREDICATE_BOUNDARY_KEYWORDS:
+            return where_end, index
+        index = end
+    return where_end, len(template)
+
+
+def merge_template_ctes_impl(*, template: str, named_queries: tuple[SqlNamedQuery, ...]) -> str:
+    """Prepend named CTEs into one template's leading WITH clause byte-preservingly."""
+
+    if not named_queries:
+        return template
+    rendered: str = ",\n".join(
+        f"{named_query.name} AS (\n{named_query.query}\n)" for named_query in named_queries
+    )
+    offset: int = skip_trivia(sql=template, start=0)
+    with_end: int | None = _consume_keyword(sql=template, start=offset, keyword=_WITH_KEYWORD)
+    if with_end is None:
+        return f"WITH {rendered}\n{template}"
+    trivia_end: int = skip_trivia(sql=template, start=with_end)
+    recursive_end: int | None = _consume_keyword(
+        sql=template, start=trivia_end, keyword=_RECURSIVE_KEYWORD
+    )
+    insertion_point: int = with_end if recursive_end is None else recursive_end
+    return f"{template[:insertion_point]} {rendered},{template[insertion_point:]}"
+
+
+def _consume_keyword(*, sql: str, start: int, keyword: str) -> int | None:
+    end: int = start + len(keyword)
+    if sql[start:end].upper() != keyword:
+        return None
+    if end < len(sql) and _is_identifier_character(sql[end]):
+        return None
+    return end
+
+
+def _replace_bounded_token(*, template: str, token: str, replacement: str) -> str:
+    pieces: list[str] = []
+    cursor: int = 0
+    while True:
+        index: int = template.find(token, cursor)
+        if index < 0:
+            break
+        end: int = index + len(token)
+        if _has_token_boundaries(template=template, start=index, end=end):
+            pieces.append(template[cursor:index])
+            pieces.append(replacement)
+        else:
+            pieces.append(template[cursor:end])
+        cursor = end
+    pieces.append(template[cursor:])
+    return "".join(pieces)
+
+
+def _has_token_boundaries(*, template: str, start: int, end: int) -> bool:
+    before_bounded: bool = start == 0 or not _is_identifier_character(template[start - 1])
+    after_bounded: bool = end == len(template) or not _is_identifier_character(template[end])
+    return before_bounded and after_bounded
 
 
 def skip_trivia(*, sql: str, start: int) -> int:

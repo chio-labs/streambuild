@@ -2,7 +2,6 @@
 
 from dataclasses import replace
 
-from streambuild.adapter.constants import ADAPTER_DATABASE_PLACEHOLDER
 from streambuild.adapter.models import (
     AdapterManagedSource,
     AdapterMaterializedView,
@@ -19,9 +18,11 @@ from streambuild.compiler.compile.models import (
     ObjectKey,
     ViewSpec,
 )
+from streambuild.compiler.planner._helpers.shadow_rewriting import (
+    rewrite_shadow_query,
+    rewrite_shadow_template,
+)
 from streambuild.compiler.planner.main.build_adapter_resource import build_adapter_resource
-from streambuild.compiler.sql_analysis.main.rewrite_query import rewrite_query
-from streambuild.compiler.sql_analysis.models import SqlQueryRewriteResult, SqlRelationRewrite
 
 
 def build_shadow_adapter_resource(
@@ -42,17 +43,20 @@ def build_shadow_adapter_resource(
             )
         )
     if isinstance(desired_object, DesiredView):
-        rewritten_query: str = _rewrite_query(
+        rewritten_query: str = rewrite_shadow_query(
             query=desired_object.query,
             physical_name_by_key=physical_name_by_key,
         )
-        database_template: str = _rewrite_query(
-            query=(
-                desired_object.query
-                if desired_object.spec.database_template is None
-                else desired_object.spec.database_template
-            ),
-            physical_name_by_key=physical_name_by_key,
+        database_template: str = (
+            rewrite_shadow_query(
+                query=desired_object.query,
+                physical_name_by_key=physical_name_by_key,
+            )
+            if desired_object.spec.database_template is None
+            else rewrite_shadow_template(
+                template=desired_object.spec.database_template,
+                physical_name_by_key=physical_name_by_key,
+            )
         )
         return build_adapter_resource(
             replace(
@@ -76,17 +80,20 @@ def build_shadow_adapter_resource(
             spec=MaterializedViewSpec(
                 source_table_name=source_name,
                 target_table_name=target_name,
-                query=_rewrite_query(
+                query=rewrite_shadow_query(
                     query=desired_object.query,
                     physical_name_by_key=physical_name_by_key,
                 ),
-                database_template=_rewrite_query(
-                    query=(
-                        desired_object.query
-                        if desired_object.spec.database_template is None
-                        else desired_object.spec.database_template
-                    ),
-                    physical_name_by_key=physical_name_by_key,
+                database_template=(
+                    rewrite_shadow_query(
+                        query=desired_object.query,
+                        physical_name_by_key=physical_name_by_key,
+                    )
+                    if desired_object.spec.database_template is None
+                    else rewrite_shadow_template(
+                        template=desired_object.spec.database_template,
+                        physical_name_by_key=physical_name_by_key,
+                    )
                 ),
             ),
         )
@@ -100,21 +107,3 @@ def _physical_table_name(*, logical_name: str, physical_name_by_key: dict[Object
         if key.object_type == DESIRED_OBJECT_TYPE_TABLE and key.name == logical_name:
             return physical_name
     return logical_name
-
-
-def _rewrite_query(*, query: str, physical_name_by_key: dict[ObjectKey, str]) -> str:
-    result: SqlQueryRewriteResult = rewrite_query(
-        sql=query,
-        dialect="clickhouse",
-        relation_rewrites=tuple(
-            SqlRelationRewrite(
-                source_name=key.name,
-                target_relation=physical_name,
-                source_databases=(None, ADAPTER_DATABASE_PLACEHOLDER),
-                preserve_source_database=True,
-            )
-            for key, physical_name in physical_name_by_key.items()
-            if key.object_type == DESIRED_OBJECT_TYPE_TABLE
-        ),
-    )
-    return result.query
