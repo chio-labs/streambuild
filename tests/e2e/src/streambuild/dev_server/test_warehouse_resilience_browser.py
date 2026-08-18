@@ -2,7 +2,17 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 import pytest
-from playwright.sync_api import ConsoleMessage, Error, Locator, Page, Request, Response, expect
+from playwright.sync_api import (
+    APIResponse,
+    ConsoleMessage,
+    Error,
+    Locator,
+    Page,
+    Request,
+    Response,
+    Route,
+    expect,
+)
 
 from tests.e2e.src.streambuild.dev_server._test_types import DevServerBrowserE2ETestCase
 
@@ -29,8 +39,24 @@ def test_given_unreachable_warehouse_when_using_ui_then_snapshot_and_definitions
     base_url, project_dir, _log_path = running_disconnected_browser_server
     _console_messages, page_errors, failed_requests, _responses = browser_diagnostics
 
+    def clear_pending_connection_error(route: Route) -> None:
+        response: APIResponse = route.fetch()
+        payload: dict[str, object] = response.json()
+        warehouse: object | None = payload.get("warehouse")
+        assert isinstance(warehouse, dict)
+        warehouse["error"] = None
+        route.fulfill(response=response, json=payload)
+
+    page.route("**/api/status", clear_pending_connection_error)
+
     assert page.goto(f"{base_url}/status", wait_until="networkidle") is not None
     expect(page.get_by_text("Warehouse unavailable.", exact=True)).to_be_visible()
+    expect(
+        page.get_by_text(
+            "Live ingest, freshness, catalog, deployment, and quality state cannot be read.",
+            exact=False,
+        )
+    ).to_be_visible()
     expect(page.get_by_text("Project compile", exact=True)).to_be_visible()
     refresh: Locator = page.get_by_role("button", name="Refresh snapshot", exact=True)
     reload_definitions: Locator = page.get_by_role("button", name="Reload definitions", exact=True)

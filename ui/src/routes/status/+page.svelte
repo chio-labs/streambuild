@@ -49,9 +49,9 @@
 			<FactRow label="database" value={project.database} />
 			<FactRow label="target" value={project.target} />
 			<FactRow label="snapshot" value={project.capturedAt} />
-			{#if status?.warehouseError}
+			{#if status && !status.warehouseConnected}
 				<div class="pt-2 font-mono text-[11px]" style:color="var(--sb-error)">
-					{status.warehouseError}
+					{status.warehouseError ?? 'The connection attempt has not completed.'}
 				</div>
 			{/if}
 		</div>
