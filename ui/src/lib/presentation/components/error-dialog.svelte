@@ -33,7 +33,7 @@
 			</Dialog.Close>
 		</Dialog.Header>
 		<div class="flex min-h-0 flex-1 flex-col overflow-hidden p-3">
-			<ErrorView {text} maxHeight="72vh" />
+			<ErrorView {text} maxHeight="80vh" />
 		</div>
 	</Dialog.Content>
 </Dialog.Root>
