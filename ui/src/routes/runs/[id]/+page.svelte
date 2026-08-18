@@ -4,11 +4,11 @@
 	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
 	import RotateCcwIcon from '@lucide/svelte/icons/rotate-ccw';
 	import AppTopbar from '$lib/presentation/components/app-topbar.svelte';
+	import ErrorView from '$lib/presentation/components/error-view.svelte';
 	import LineageCanvas from '$lib/presentation/components/lineage/lineage-canvas.svelte';
+	import RunTimeline from '$lib/presentation/components/run-timeline.svelte';
 	import { getProject } from '$lib/api/main/project/get-project';
-	import { formatCompact } from '$lib/formatting/main/format-compact';
 	import { formatDuration } from '$lib/formatting/main/format-duration';
-	import { formatTimestamp } from '$lib/formatting/main/format-timestamp';
 	import type { Project } from '$lib/domain/types';
 	import { can } from '$lib/auth/main/can';
 	import { canAnyPipeline } from '$lib/auth/main/can-any-pipeline';
@@ -25,7 +25,6 @@
 			await goto(`/runs/${nextInvocationId}?live=1`, { replaceState: true, noScroll: true });
 		}
 	);
-
 	$effect(() => {
 		const id: string = invocationId;
 		const live: boolean = page.url.searchParams.get('live') === '1';
@@ -238,70 +237,11 @@
 
 		{#if stderr && outcome === 'failed'}
 			<div class="shrink-0 px-[18px] pt-3">
-				<pre
-					class="max-h-[200px] overflow-auto rounded-[4px] border p-3 font-mono text-[11px]"
-					style:border-color="color-mix(in srgb, var(--sb-error) 45%, var(--border))">{stderr}</pre>
+				<ErrorView text={stderr} maxHeight="240px" />
 			</div>
 		{/if}
 
 		<!-- event timeline -->
-		<div class="min-h-0 flex-1 p-[18px]">
-			<div
-				class="text-[var(--sb-text-faint)] pb-2 font-mono text-[10px] uppercase tracking-[0.14em]"
-			>
-				Events {#if running}<span class="text-[var(--sb-secondary)]">· live</span>{/if}
-			</div>
-			<div class="overflow-hidden rounded-[4px] border border-border">
-				{#if timeline.length === 0 && ownedRunning}
-					<div class="flex items-center gap-3 px-3 py-1.5">
-						<span class="text-[var(--sb-text-faint)] w-[86px] shrink-0 font-mono text-[10.5px]">now</span>
-						<span class="w-[92px] shrink-0"><span class="sb-tag code">startup</span></span>
-						<span class="code min-w-0 flex-1 text-[11.5px]">Compile project and inspect warehouse</span>
-					</div>
-				{/if}
-				{#each timeline as event (event.sequence)}
-					<div
-						class="flex items-center gap-3 border-b border-[var(--border-subtle)] px-3 py-1.5 last:border-b-0"
-					>
-						<span class="text-[var(--sb-text-faint)] w-[86px] shrink-0 font-mono text-[10.5px]"
-							>{formatTimestamp(event.emittedAt).slice(11)}</span
-						>
-						<span class="w-[92px] shrink-0">
-							{#if event.phase}
-								<span class="sb-tag code">{event.phase}</span>
-							{:else}
-								<span
-									class="sb-tag code"
-									style:color={event.event === 'run_completed'
-										? outcomeColor
-										: 'var(--sb-secondary)'}>{event.event.replace('_', ' ')}</span
-								>
-							{/if}
-						</span>
-						<span
-							class="code min-w-0 flex-1 truncate text-[11.5px]"
-							title={event.stepId ?? undefined}>{eventLabels.get(event.sequence)}</span
-						>
-						{#if event.errorMessage}
-							<span
-								class="max-w-[320px] shrink-0 truncate font-mono text-[10.5px]"
-								style:color="var(--sb-error)"
-								title={event.errorMessage}>{event.errorMessage}</span
-							>
-						{/if}
-						{#if event.writtenRows !== null && event.writtenRows !== undefined}
-							<span class="shrink-0 font-mono text-[10.5px]" style:color="var(--sb-secondary)"
-								>{formatCompact(event.writtenRows)} rows</span
-							>
-						{/if}
-						{#if event.elapsedMs !== undefined}
-							<span class="text-[var(--sb-text-faint)] w-[64px] shrink-0 text-right font-mono text-[10.5px]"
-								>{event.elapsedMs} ms</span
-							>
-						{/if}
-					</div>
-				{/each}
-			</div>
-		</div>
+		<RunTimeline {invocationId} {timeline} {running} {ownedRunning} {outcomeColor} {eventLabels} />
 	{/if}
 </div>

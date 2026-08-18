@@ -1,23 +1,31 @@
 import io
 import json
 import time
+from dataclasses import replace
+from hashlib import sha256
 from typing import cast
 
 import pytest
 
+from streambuild.adapter.models import AdapterRunStatementRecord
 from streambuild.cli.build.constants import STREAMBUILD_TOOL_VERSION
 from streambuild.executor.observability.classes.run_event_sink import RunEventSink
 from streambuild.executor.observability.constants import RUN_DISPLAY_COMMAND_ENV_VAR
 from streambuild.executor.observability.models import RunStartupTimings
+from streambuild.executor.workflow.models import WarehouseStatement
 from tests.unit.src.streambuild.executor.observability.classes._test_types import (
     RunEventDisplayCommandTestCase,
     RunEventHeartbeatTestCase,
     RunEventScopeTestCase,
     RunEventSinkTestCase,
     RunEventStartupTimingsTestCase,
+    RunStatementPersistenceTestCase,
+    RunStatementRedactionTestCase,
+    RunStatementUnsupportedTestCase,
 )
 from tests.unit.src.streambuild.executor.observability.classes.helpers import (
     RunEventRecordingConnection,
+    UnsupportedRunStatementConnection,
     build_replay_statement,
 )
 
@@ -89,6 +97,110 @@ def test_given_one_run_when_emitting_then_streams_jsonl_and_persists_rows(
     assert lines[0]["startTime"] == "2026-08-09T09:00:00Z"
     assert all(line["invocationId"] == "inv-1" for line in lines)
     assert tuple(connection.statements) == test_case.expected_persisted_markers
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        RunStatementPersistenceTestCase(
+            description="exact workflow statement is persisted then verified before execution",
+            invocation_id="inv-sql",
+            workflow_sha256="a" * 64,
+            expected_sql="INSERT INTO tbl SELECT 1;",
+            expected_insert_marker="INSERT_RUN_STATEMENTS analytics 1;",
+            expected_verify_fragment="_streambuild_run_statements",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_complete_workflow_when_preparing_then_exact_sql_is_persisted_and_verified(
+    test_case: RunStatementPersistenceTestCase,
+) -> None:
+    connection: RunEventRecordingConnection = RunEventRecordingConnection()
+    sink: RunEventSink = RunEventSink(
+        connection=connection,
+        database="analytics",
+        invocation_id=test_case.invocation_id,
+    )
+    statement: WarehouseStatement = build_replay_statement()
+
+    sink.workflow_prepared(statements=(statement,), workflow_sha256=test_case.workflow_sha256)
+
+    assert len(connection.run_statements) == 1
+    record: AdapterRunStatementRecord = connection.run_statements[0]
+    assert record.invocation_id == test_case.invocation_id
+    assert record.statement_sequence == statement.sequence
+    assert record.sql == test_case.expected_sql
+    assert record.workflow_sha256 == test_case.workflow_sha256
+    assert connection.statements[0] == test_case.expected_insert_marker
+    assert test_case.expected_verify_fragment in connection.statements[1]
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        RunStatementUnsupportedTestCase(
+            description="an adapter without run-statement support skips persistence silently",
+            invocation_id="inv-unsupported",
+            workflow_sha256="a" * 64,
+            expected_executed_statements=(),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_adapter_without_run_statement_support_when_preparing_then_persistence_is_skipped(
+    test_case: RunStatementUnsupportedTestCase,
+) -> None:
+    connection: UnsupportedRunStatementConnection = UnsupportedRunStatementConnection()
+    sink: RunEventSink = RunEventSink(
+        connection=connection,
+        database="analytics",
+        invocation_id=test_case.invocation_id,
+    )
+    statement: WarehouseStatement = build_replay_statement()
+
+    sink.workflow_prepared(statements=(statement,), workflow_sha256=test_case.workflow_sha256)
+
+    assert tuple(connection.statements) == test_case.expected_executed_statements
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        RunStatementRedactionTestCase(
+            description="kafka credential settings are redacted before durable persistence",
+            invocation_id="inv-secret",
+            sql=(
+                "CREATE TABLE analytics.kafka__orders (id UInt64) ENGINE = Kafka "
+                "SETTINGS kafka_broker_list = 'user:broker-secret@kafka:9092', "
+                "kafka_sasl_password = 'setting-secret', kafka_format = 'JSONEachRow';"
+            ),
+            expected_absent_fragments=("broker-secret", "setting-secret"),
+            expected_redacted_count=2,
+            expected_present_fragment="kafka_format = 'JSONEachRow'",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_kafka_credentials_when_preparing_then_durable_sql_is_redacted(
+    test_case: RunStatementRedactionTestCase,
+) -> None:
+    connection: RunEventRecordingConnection = RunEventRecordingConnection()
+    sink: RunEventSink = RunEventSink(
+        connection=connection,
+        database="analytics",
+        invocation_id=test_case.invocation_id,
+    )
+    statement: WarehouseStatement = replace(build_replay_statement(), sql=test_case.sql)
+
+    sink.workflow_prepared(statements=(statement,), workflow_sha256="a" * 64)
+
+    record: AdapterRunStatementRecord = connection.run_statements[0]
+    assert all(fragment not in record.sql for fragment in test_case.expected_absent_fragments)
+    assert record.sql.count("'***'") == test_case.expected_redacted_count
+    assert test_case.expected_present_fragment in record.sql
+    assert record.sql_sha256 == sha256(record.sql.encode()).hexdigest()
+    assert record.sql_sha256 != sha256(test_case.sql.encode()).hexdigest()
 
 
 @pytest.mark.parametrize(

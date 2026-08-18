@@ -16,6 +16,7 @@ from streambuild.adapter.constants import (
     METADATA_OBJECT_STATE_TABLE_NAME,
     METADATA_PUBLISH_HISTORY_TABLE_NAME,
     METADATA_RUN_EVENTS_TABLE_NAME,
+    METADATA_RUN_STATEMENTS_TABLE_NAME,
     METADATA_SCHEMA_VERSIONS_TABLE_NAME,
     METADATA_SENSOR_CHECKPOINTS_TABLE_NAME,
     METADATA_SENSOR_LEASES_TABLE_NAME,
@@ -40,6 +41,7 @@ from streambuild.adapter.models import (
     AdapterPublishEventRecord,
     AdapterQueryResult,
     AdapterRunEventRecord,
+    AdapterRunStatementRecord,
     AdapterSensorCheckpointRecord,
     AdapterSensorLeaseRecord,
     AdapterSensorOverrideRecord,
@@ -50,7 +52,7 @@ from streambuild.adapter.models import (
 from streambuild.adapter.types import AdapterOptionalStateStatus, AdapterReplayBoundaryMode
 from streambuild.adapters.clickhouse.models import ClickHouseMetadataStatement
 
-_CURRENT_STATE_SCHEMA_VERSION: int = 4
+_CURRENT_STATE_SCHEMA_VERSION: int = 5
 _BOUNDARY_PART_COUNT: int = 2
 _DIRECT_FINGERPRINT_REQUIRED_COLUMNS: frozenset[str] = frozenset(
     {
@@ -78,6 +80,7 @@ def render_clickhouse_metadata_migration_statements(database: str) -> tuple[str,
         _render_invocations_table(database),
         _render_node_results_table(database),
         _render_run_events_table(database),
+        _render_run_statements_table(database),
         _render_sensor_checkpoints_table(database),
         _render_sensor_ticks_table(database),
         _render_sensor_steps_table(database),
@@ -489,6 +492,24 @@ def _render_run_events_table(database: str) -> str:
     )
 
 
+def _render_run_statements_table(database: str) -> str:
+    return (
+        f"CREATE TABLE IF NOT EXISTS {database}.{METADATA_RUN_STATEMENTS_TABLE_NAME} (\n"
+        "    invocation_id String,\n"
+        "    statement_sequence UInt64,\n"
+        "    step_id String,\n"
+        "    phase LowCardinality(String),\n"
+        "    intent LowCardinality(String),\n"
+        "    sql String,\n"
+        "    sql_sha256 FixedString(64),\n"
+        "    workflow_sha256 FixedString(64),\n"
+        "    workflow_revision UInt64,\n"
+        "    recorded_at DateTime64(3, 'UTC') DEFAULT now64(3, 'UTC')\n"
+        ") ENGINE = ReplacingMergeTree(workflow_revision)\n"
+        "ORDER BY (invocation_id, statement_sequence)"
+    )
+
+
 def _render_sensor_checkpoints_table(database: str) -> str:
     return (
         f"CREATE TABLE IF NOT EXISTS {database}.{METADATA_SENSOR_CHECKPOINTS_TABLE_NAME} (\n"
@@ -727,6 +748,45 @@ def render_clickhouse_run_event_inserts(
     if not include_migration:
         return inserts
     return (*render_clickhouse_metadata_migration_workflow(database), *inserts)
+
+
+def render_clickhouse_run_statement_inserts(
+    *,
+    database: str,
+    statements: tuple[AdapterRunStatementRecord, ...],
+    include_migration: bool = False,
+) -> tuple[str, ...]:
+    """Render one complete run statement set before warehouse execution."""
+
+    if not statements:
+        return ()
+    statement: ClickHouseMetadataStatement = ClickHouseMetadataStatement(
+        table=f"{database}.{METADATA_RUN_STATEMENTS_TABLE_NAME}",
+        sql=(
+            f"INSERT INTO {database}.{METADATA_RUN_STATEMENTS_TABLE_NAME} "
+            "(invocation_id, statement_sequence, step_id, phase, intent, sql, "
+            "sql_sha256, workflow_sha256, workflow_revision) VALUES"
+        ),
+        rows=tuple(_run_statement_row(record) for record in statements),
+    )
+    inserts: tuple[str, ...] = (_render_insert_statement(statement),)
+    if not include_migration:
+        return inserts
+    return (*render_clickhouse_metadata_migration_workflow(database), *inserts)
+
+
+def _run_statement_row(record: AdapterRunStatementRecord) -> dict[str, object]:
+    return {
+        "invocation_id": record.invocation_id,
+        "statement_sequence": record.statement_sequence,
+        "step_id": record.step_id,
+        "phase": record.phase,
+        "intent": record.intent,
+        "sql": record.sql,
+        "sql_sha256": record.sql_sha256,
+        "workflow_sha256": record.workflow_sha256,
+        "workflow_revision": record.workflow_revision,
+    }
 
 
 def _run_event_row(record: AdapterRunEventRecord) -> dict[str, object]:

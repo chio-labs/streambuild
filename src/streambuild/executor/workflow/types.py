@@ -36,6 +36,11 @@ class StatementIntent(StrEnum):
 class WorkflowEventEmitter(Protocol):
     """Receives step-granular progress while a warehouse workflow executes."""
 
+    def workflow_prepared(
+        self, *, statements: tuple[WarehouseStatement, ...], workflow_sha256: str
+    ) -> None:
+        """Persist the complete immutable workflow before execution begins."""
+
     def statement_started(self, statement: WarehouseStatement) -> None:
         """One statement is about to execute."""
 

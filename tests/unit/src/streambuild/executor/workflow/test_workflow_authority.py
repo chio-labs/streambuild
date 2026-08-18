@@ -12,9 +12,13 @@ from streambuild.executor.workflow.models import (
 from tests.unit.src.streambuild.cli.helpers import RecordingAdapterConnection
 from tests.unit.src.streambuild.executor.workflow._test_types import (
     WorkflowExecutionTestCase,
+    WorkflowPersistenceFailureTestCase,
     WorkflowPublicationTestCase,
 )
-from tests.unit.src.streambuild.executor.workflow.helpers import build_test_workflow
+from tests.unit.src.streambuild.executor.workflow.helpers import (
+    FailingPreparationEmitter,
+    build_test_workflow,
+)
 
 
 @pytest.mark.parametrize(
@@ -90,3 +94,33 @@ def test_given_published_workflow_when_executing_then_gateway_receives_exact_mut
     assert result.statement_results[1].mutation_result is not None
     assert test_case.expected_query_result_count == 1
     assert test_case.expected_mutation_result_count == 1
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        WorkflowPersistenceFailureTestCase(
+            description="persistence failure prevents any workflow statement dispatch",
+            expected_error_fragment="statement persistence failed",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_statement_persistence_failure_when_executing_then_no_workflow_sql_runs(
+    tmp_path: Path,
+    test_case: WorkflowPersistenceFailureTestCase,
+) -> None:
+    connection: RecordingAdapterConnection = RecordingAdapterConnection()
+    published: PublishedBuildWorkflow = publish_build_workflow(
+        target_dir=tmp_path,
+        workflow=build_test_workflow(plan_json='{"mode":"direct"}\n'),
+    )
+
+    with pytest.raises(RuntimeError, match=test_case.expected_error_fragment):
+        execute_build_workflow(
+            published_workflow=published,
+            connection=connection,
+            emitter=FailingPreparationEmitter(),
+        )
+
+    assert connection.statements == []

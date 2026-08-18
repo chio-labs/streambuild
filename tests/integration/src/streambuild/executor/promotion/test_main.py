@@ -96,6 +96,7 @@ def test_given_empty_inventory_when_resolving_publish_without_deployment_id_then
                 ("_streambuild_invocations", "MergeTree"),
                 ("_streambuild_node_results", "MergeTree"),
                 ("_streambuild_run_events", "MergeTree"),
+                ("_streambuild_run_statements", "ReplacingMergeTree"),
                 ("_streambuild_schema_versions", "MergeTree"),
                 ("_streambuild_sensor_checkpoints", "MergeTree"),
                 ("_streambuild_sensor_leases", "MergeTree"),

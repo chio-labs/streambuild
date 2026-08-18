@@ -1,13 +1,19 @@
 import pytest
 
-from streambuild.adapter.models import AdapterCurrentQualityNode, AdapterRunEventRecord
+from streambuild.adapter.models import (
+    AdapterCurrentQualityNode,
+    AdapterRunEventRecord,
+    AdapterRunStatementRecord,
+)
 from streambuild.adapters.clickhouse._helpers.metadata import (
     render_clickhouse_latest_node_status_query,
     render_clickhouse_run_event_inserts,
+    render_clickhouse_run_statement_inserts,
 )
 from tests.unit.src.streambuild.adapters.clickhouse._test_types import (
     LatestNodeStatusQueryTestCase,
     RunEventInsertsTestCase,
+    RunStatementInsertsTestCase,
 )
 
 
@@ -79,7 +85,7 @@ def test_given_current_manifest_nodes_when_rendering_status_query_then_all_ui_st
         RunEventInsertsTestCase(
             description="prepends the idempotent migration for the first event",
             include_migration=True,
-            expected_statement_count=18,
+            expected_statement_count=19,
             expected_insert_fragment="CREATE DATABASE IF NOT EXISTS metadata;",
             expected_values_fragment=("emitted_at DateTime64(3, 'UTC') DEFAULT now64(3, 'UTC')"),
         ),
@@ -107,3 +113,43 @@ def test_given_run_event_when_rendering_inserts_then_sql_is_exact(
     assert len(rendered) == test_case.expected_statement_count
     assert test_case.expected_insert_fragment in rendered[0]
     assert any(test_case.expected_values_fragment in statement for statement in rendered)
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        RunStatementInsertsTestCase(
+            description="renders exact run statement sql hashes and revision",
+            expected_statement_count=1,
+            expected_fragments=(
+                "INSERT INTO metadata._streambuild_run_statements",
+                "INSERT INTO orders SELECT 1;",
+                "'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'",
+                "workflow_revision",
+            ),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_run_statements_when_rendering_then_exact_sql_and_hashes_are_inserted(
+    test_case: RunStatementInsertsTestCase,
+) -> None:
+    rendered: tuple[str, ...] = render_clickhouse_run_statement_inserts(
+        database="metadata",
+        statements=(
+            AdapterRunStatementRecord(
+                invocation_id="inv-1",
+                statement_sequence=3,
+                step_id="replay_orders",
+                phase="replay",
+                intent="mutation",
+                sql="INSERT INTO orders SELECT 1;",
+                sql_sha256="a" * 64,
+                workflow_sha256="b" * 64,
+                workflow_revision=2,
+            ),
+        ),
+    )
+
+    assert len(rendered) == test_case.expected_statement_count
+    assert all(fragment in rendered[0] for fragment in test_case.expected_fragments)

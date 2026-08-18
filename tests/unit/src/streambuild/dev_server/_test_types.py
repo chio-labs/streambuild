@@ -237,6 +237,16 @@ class MissingRunDetailTestCase:
 
 
 @dataclass(frozen=True)
+class RunStatementReadTestCase:
+    description: str
+    invocation_id: str
+    statement_sequence: int
+    row: tuple[object, ...]
+    expected_sql: str
+    expected_step_id: str
+
+
+@dataclass(frozen=True)
 class MessageQuerySqlTestCase:
     description: str
     request_json: dict

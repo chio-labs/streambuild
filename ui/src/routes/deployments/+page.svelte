@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import AppTopbar from '$lib/presentation/components/app-topbar.svelte';
+	import ErrorPreview from '$lib/presentation/components/error-preview.svelte';
 	import { cleanupDeployments } from '$lib/api/main/deployments/cleanup-deployments';
 	import { getApp } from '$lib/api/main/project/get-app';
 	import { refreshDeployments } from '$lib/api/main/project/refresh-deployments';
@@ -91,7 +92,9 @@
 
 <div class="min-h-0 flex-1 overflow-y-auto px-[18px] py-4">
 	{#if cleanupError !== null}
-		<div class="pb-3 text-[12px]" style:color="var(--sb-error)">{cleanupError}</div>
+		<div class="pb-3">
+			<ErrorPreview text={cleanupError} title="Cleanup failed" clamp="line-clamp-3" class="max-w-full" />
+		</div>
 	{:else if cleanupSummary !== null}
 		<div class="text-muted-foreground pb-3 text-[12px]">{cleanupSummary}</div>
 	{/if}

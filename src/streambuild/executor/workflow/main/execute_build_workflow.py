@@ -19,6 +19,11 @@ def execute_build_workflow(
 ) -> WorkflowExecutionResult:
     """Execute the same workflow object carried by its publication capability."""
 
+    if emitter is not None:
+        emitter.workflow_prepared(
+            statements=published_workflow.workflow.statements,
+            workflow_sha256=published_workflow.workflow_sha256,
+        )
     return execute_warehouse_workflow(
         statements=published_workflow.workflow.statements,
         connection=connection,

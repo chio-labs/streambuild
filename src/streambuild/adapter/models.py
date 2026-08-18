@@ -577,6 +577,21 @@ class AdapterRunEventRecord:
 
 
 @dataclass(frozen=True)
+class AdapterRunStatementRecord:
+    """One display-safe warehouse statement durably associated with a run."""
+
+    invocation_id: str
+    statement_sequence: int
+    step_id: str
+    phase: str
+    intent: str
+    sql: str
+    sql_sha256: str
+    workflow_sha256: str
+    workflow_revision: int
+
+
+@dataclass(frozen=True)
 class AdapterSensorCheckpointRecord:
     """One append-only latest-wins sensor stream position."""
 
