@@ -4,6 +4,7 @@
 	import type { RunEvent, RunStatement } from '$lib/api/types';
 	import { formatCompact } from '$lib/formatting/main/format-compact';
 	import { formatTimestamp } from '$lib/formatting/main/format-timestamp';
+	import ErrorPreview from '$lib/presentation/components/error-preview.svelte';
 	import SqlBlock from '$lib/presentation/components/sql-block.svelte';
 
 	interface RunTimelineProps {
@@ -105,13 +106,6 @@
 					<span class="code min-w-0 flex-1 truncate text-[11.5px]" title={event.stepId ?? undefined}
 						>{eventLabels.get(event.sequence)}</span
 					>
-					{#if event.errorMessage}
-						<span
-							class="max-w-[320px] shrink-0 truncate font-mono text-[10.5px]"
-							style:color="var(--sb-error)"
-							title={event.errorMessage}>{event.errorMessage}</span
-						>
-					{/if}
 					{#if event.writtenRows !== null && event.writtenRows !== undefined}
 						<span class="shrink-0 font-mono text-[10.5px]" style:color="var(--sb-secondary)"
 							>{formatCompact(event.writtenRows)} rows</span
@@ -133,6 +127,16 @@
 						/>
 					{/if}
 				</button>
+				{#if event.errorMessage}
+					<div class="border-t border-[var(--border-subtle)] bg-[var(--sb-surface-low)] px-3 py-1.5">
+						<ErrorPreview
+							text={event.errorMessage}
+							title="Statement error"
+							subtitle={event.stepId ?? undefined}
+							class="w-full"
+						/>
+					</div>
+				{/if}
 				{#if event.statementSequence !== undefined && expandedStatementSequence === event.statementSequence}
 					<div class="border-t border-[var(--border-subtle)] bg-[var(--sb-surface-low)] p-3">
 						{#if statementLoading.has(event.statementSequence)}
