@@ -5,6 +5,7 @@ import { formatCompact } from '$lib/formatting/main/format-compact';
 import { formatDuration } from '$lib/formatting/main/format-duration';
 import { selectorToken } from '$lib/planning/main/selector-token';
 import { rootSourcesFor } from '$lib/domain/main/planning/root-sources-for';
+import { buildPlanCommand } from '$lib/plan-view/_helpers/build-command';
 import { parsePlanCommand } from '$lib/plan-view/_helpers/plan-command';
 import {
 	planLocationRequestKey,
@@ -26,6 +27,7 @@ export function createPlanView(): PlanViewFacade {
 		deploymentUrl: writePlanDeployment,
 		replayStartToken,
 		parseCommand: parsePlanCommand,
+		buildCommand: buildPlanCommand,
 		boundaryColumns: planBoundaryColumns,
 		rootSources: rootSourcesFor,
 		selectorToken,

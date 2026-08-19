@@ -2,6 +2,14 @@ import type { RunRecord } from '$lib/api/types';
 import type { Project, Source } from '$lib/domain/types';
 import type { Plan, PlanSqlChangeStatus, ReplayWindow, Selector } from '$lib/planning/types';
 
+export type BuildCommandParts = {
+	readonly selectors: Selector[];
+	readonly replayWindow: ReplayWindow;
+	readonly acceptedConfirmations: string[];
+	readonly plan: Plan | null;
+	readonly planLoading: boolean;
+};
+
 export type ParsedPlanLocation = {
 	readonly selectors: Selector[];
 	readonly replayWindow: ReplayWindow;
@@ -36,6 +44,7 @@ export type PlanViewFacade = {
 	deploymentUrl(url: URL, deploymentId: string): URL;
 	replayStartToken(replayWindow: ReplayWindow): string | null;
 	parseCommand(command: string): ParsedPlanCommand;
+	buildCommand(parts: BuildCommandParts): string;
 	boundaryColumns(root: Plan['replayRoots'][number]): string | null;
 	rootSources(project: Project, modelNames: string[]): Source[];
 	selectorToken(selector: Selector): string;
