@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.22.3](https://github.com/chio-labs/streambuild/compare/v0.22.2...v0.22.3) (2026-08-19)
+
+
+### Bug Fixes
+
+* **cli:** resolve --select as a global name list with pipeline/model sugar ([85aaa52](https://github.com/chio-labs/streambuild/commit/85aaa521f945c2e2c014490271d4f3626f3e7494))
+* sqlbuild-style --select (name lists + bare pipeline names) and safe selection ([1cc750f](https://github.com/chio-labs/streambuild/commit/1cc750f26b267348bb377db0613ea0e433d76e97))
+* **ui:** accept --select lists and bare pipeline names; generate one --select ([8c1f81d](https://github.com/chio-labs/streambuild/commit/8c1f81d901d7e5517346095e2f47568df3c1c9c9))
+
 ## [0.22.2](https://github.com/chio-labs/streambuild/compare/v0.22.1...v0.22.2) (2026-08-18)
 
 
