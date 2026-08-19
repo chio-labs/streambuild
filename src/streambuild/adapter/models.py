@@ -120,6 +120,8 @@ class AdapterMaterializedView:
     target_relation_name: str
     query: str
     database_template: str
+    refresh: str | None = None
+    append: bool = True
 
 
 @dataclass(frozen=True)
@@ -179,6 +181,8 @@ class AdapterModelRealizationRequest:
     partition_by: str | None = None
     ttl: str | None = None
     settings: tuple[tuple[str, str], ...] = ()
+    refresh: str | None = None
+    append: bool = True
 
 
 @dataclass(frozen=True)
