@@ -7,12 +7,13 @@ from streambuild.compiler.discovery.models import (
     DiscoveredSourceFile,
     ExternalTableSourceStep,
     KafkaLandingStep,
+    PostgresRefreshSourceStep,
 )
 
 
 def source_registry_by_name(
     source_files: tuple[DiscoveredSourceFile, ...],
-) -> dict[str, KafkaLandingStep | ExternalTableSourceStep]:
+) -> dict[str, KafkaLandingStep | ExternalTableSourceStep | PostgresRefreshSourceStep]:
     """Return retained sources keyed by their unique logical names."""
 
     return source_registry_by_name_impl(source_files)

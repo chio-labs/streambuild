@@ -54,6 +54,7 @@ from streambuild.compiler.compile.models import (
 from streambuild.compiler.discovery.models import (
     ExternalTableSourceStep,
     KafkaLandingStep,
+    PostgresRefreshSourceStep,
     ReplayBoundary,
 )
 from streambuild.compiler.discovery.types import BoundedReplayFallback
@@ -157,11 +158,18 @@ def _canonical_source_realization(
 def _source_request(
     *, source: CompiledSource, project: CompiledProject
 ) -> AdapterManagedSourceRealizationRequest | AdapterAdoptedSourceRealizationRequest:
-    authored_source: KafkaLandingStep | ExternalTableSourceStep = source.source
+    authored_source: KafkaLandingStep | ExternalTableSourceStep | PostgresRefreshSourceStep = (
+        source.source
+    )
     if isinstance(authored_source, ExternalTableSourceStep):
         return AdapterAdoptedSourceRealizationRequest(
             logical_name=source.key.name,
             relation_name=authored_source.table_name,
+        )
+    if isinstance(authored_source, PostgresRefreshSourceStep):
+        raise PipelineCompileError(
+            f"Source '{source.key.name}' is a Postgres refresh source, which cannot be "
+            "realized yet. Adapter support for refreshable materialized views is required."
         )
     settings: tuple[tuple[str, str], ...] = (
         ()

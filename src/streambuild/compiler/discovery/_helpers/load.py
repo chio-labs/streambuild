@@ -53,6 +53,7 @@ from streambuild.compiler.discovery.models import (
     Pipeline,
     PipelineNaming,
     PipelineProtection,
+    PostgresRefreshSourceStep,
     Project,
     ProjectNaming,
     ReplayOnChangePolicy,
@@ -112,18 +113,18 @@ def load_pipeline_directory(pipeline_dir: Path) -> LoadedPipeline:
         and effective.naming.pipeline_naming_macro is None
         else load_macro_registry(macro_files=discover_macro_files(project_dir=project_dir))
     )
-    sources_by_name: dict[str, KafkaLandingStep | ExternalTableSourceStep] = (
-        source_registry_by_name(
-            discover_source_registry(
-                project_dir=project_dir,
-                variables=dict(effective.variables),
-                environment={},
-                default_managed_source_ttl=effective.defaults.managed_source_ttl,
-                default_kafka_broker_list=effective.defaults.kafka_broker_list,
-                default_freshness=effective.defaults.freshness,
-                default_kafka_naming_macro=effective.defaults.sources.kafka.naming_macro,
-                macro_registry=macro_registry,
-            )
+    sources_by_name: dict[
+        str, KafkaLandingStep | ExternalTableSourceStep | PostgresRefreshSourceStep
+    ] = source_registry_by_name(
+        discover_source_registry(
+            project_dir=project_dir,
+            variables=dict(effective.variables),
+            environment={},
+            default_managed_source_ttl=effective.defaults.managed_source_ttl,
+            default_kafka_broker_list=effective.defaults.kafka_broker_list,
+            default_freshness=effective.defaults.freshness,
+            default_kafka_naming_macro=effective.defaults.sources.kafka.naming_macro,
+            macro_registry=macro_registry,
         )
     )
     config_path: Path = pipeline_dir / PIPELINE_CONFIG_FILE_NAME
@@ -177,7 +178,9 @@ def load_pipeline_directories(
     model_contents_by_path: Mapping[Path, str] | None = None,
     macro_registry: MacroRegistry | None = None,
     macro_context: MacroContext | None = None,
-    sources_by_name: Mapping[str, KafkaLandingStep | ExternalTableSourceStep],
+    sources_by_name: Mapping[
+        str, KafkaLandingStep | ExternalTableSourceStep | PostgresRefreshSourceStep
+    ],
     project_naming: ProjectNaming | None = None,
     default_mode: PipelineMode = PipelineMode.DIRECT,
 ) -> tuple[Pipeline, ...]:
@@ -198,7 +201,9 @@ def load_pipeline_directories(
     pipelines: list[Pipeline] = []
     draft: _PipelineDraft
     for draft in drafts:
-        pipeline_source: KafkaLandingStep | ExternalTableSourceStep | None
+        pipeline_source: (
+            KafkaLandingStep | ExternalTableSourceStep | PostgresRefreshSourceStep | None
+        )
         pipeline_source, source_names_by_transform = _infer_pipeline_source(
             draft=draft,
             transforms_by_name=transforms_by_name,
@@ -231,7 +236,7 @@ def load_pipeline_directories(
 def _validate_pipeline_name(
     *,
     draft: _PipelineDraft,
-    source: KafkaLandingStep | ExternalTableSourceStep | None,
+    source: KafkaLandingStep | ExternalTableSourceStep | PostgresRefreshSourceStep | None,
     project_naming: ProjectNaming,
     macro_registry: MacroRegistry | None,
 ) -> None:
@@ -425,9 +430,13 @@ def _infer_pipeline_source(
     *,
     draft: _PipelineDraft,
     transforms_by_name: Mapping[str, TransformStep],
-    sources_by_name: Mapping[str, KafkaLandingStep | ExternalTableSourceStep],
+    sources_by_name: Mapping[
+        str, KafkaLandingStep | ExternalTableSourceStep | PostgresRefreshSourceStep
+    ],
     source_names_by_transform: Mapping[str, str],
-) -> tuple[KafkaLandingStep | ExternalTableSourceStep | None, dict[str, str]]:
+) -> tuple[
+    KafkaLandingStep | ExternalTableSourceStep | PostgresRefreshSourceStep | None, dict[str, str]
+]:
     resolved_source_names: dict[str, str] = dict(source_names_by_transform)
     source_names: set[str] = set()
     transform: TransformStep
@@ -462,7 +471,9 @@ def _source_name_for_transform(
     *,
     transform: TransformStep,
     transforms_by_name: Mapping[str, TransformStep],
-    sources_by_name: Mapping[str, KafkaLandingStep | ExternalTableSourceStep],
+    sources_by_name: Mapping[
+        str, KafkaLandingStep | ExternalTableSourceStep | PostgresRefreshSourceStep
+    ],
     source_names_by_transform: Mapping[str, str],
     pipeline_dir: Path,
 ) -> tuple[str, tuple[str, ...]]:
