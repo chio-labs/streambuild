@@ -131,6 +131,30 @@ def test_given_last_admin_when_disabling_then_store_rejects_lockout(
 
 @pytest.mark.parametrize(
     "test_case",
+    [AuthTestCase(description="unlinked username still conflicts", expected_result=1)],
+    ids=lambda case: case.description,
+)
+def test_given_unlinked_username_when_provisioning_proxy_then_conflict_is_reported(
+    test_case: AuthTestCase, tmp_path: Path
+) -> None:
+    store: ControlStore = build_control_store(tmp_path=tmp_path)
+    store.create_user(username="alice", roles=("viewer",))
+
+    with pytest.raises(AccountConflictError, match="unlinked username"):
+        store.provision_proxy_user(
+            subject="alice",
+            username="alice",
+            display_name=None,
+            email=None,
+            default_role="viewer",
+        )
+
+    assert len(store.list_users()) == test_case.expected_result
+    store.close()
+
+
+@pytest.mark.parametrize(
+    "test_case",
     [AuthTestCase(description="orphan role rejected", expected_result=())],
     ids=lambda case: case.description,
 )
