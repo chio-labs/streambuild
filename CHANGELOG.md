@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.22.4](https://github.com/chio-labs/streambuild/compare/v0.22.3...v0.22.4) (2026-08-19)
+
+
+### Bug Fixes
+
+* **ui:** derive plan command locally and gate stale plan behind loading ([53fb74d](https://github.com/chio-labs/streambuild/commit/53fb74d1b11dbf1d6070ebef0483a9134013afd5))
+* **ui:** derive plan command locally and gate stale plan behind loading ([dbb58ab](https://github.com/chio-labs/streambuild/commit/dbb58ab893f378679b9f6dcce81cfccc2978e8b3))
+* **ui:** show loading spinner instead of compile flash on live run de… ([927d2d4](https://github.com/chio-labs/streambuild/commit/927d2d44f76d657e942910382b8cbd6729f35d22))
+* **ui:** show loading spinner instead of compile flash on live run detail ([7cfab36](https://github.com/chio-labs/streambuild/commit/7cfab36e434b8e50de245336bc6e30c40e9b3767))
+
 ## [0.22.3](https://github.com/chio-labs/streambuild/compare/v0.22.2...v0.22.3) (2026-08-19)
 
 
