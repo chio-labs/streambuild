@@ -1,10 +1,16 @@
 import json
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from threading import Barrier
+from typing import cast
 
 import clickhouse_connect
 from clickhouse_connect.driver.client import Client
+from docker.models.containers import Container
+from testcontainers.core.waiting_utils import wait_for
+from testcontainers.postgres import PostgresContainer
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import (
@@ -196,3 +202,75 @@ def connect_clickhouse(
             database=database,
         )
     )
+
+
+POSTGRES_IMAGE: str = "postgres:16-alpine"
+POSTGRES_USER: str = "streambuild"
+POSTGRES_PASSWORD: str = "streambuild"
+POSTGRES_DATABASE: str = "unicron"
+POSTGRES_SEED_SQL: str = (
+    "CREATE TABLE course (course_key text primary key, source text, country_normalised text);"
+    "INSERT INTO course VALUES "
+    "('keibago::10', 'keibago', 'JPN'), ('betfair::7', 'betfair', 'GBR');"
+)
+REFRESH_WAIT_SECONDS: int = 60
+
+
+@dataclass(frozen=True)
+class PostgresConnectionSettings:
+    """Connection identity for a Postgres reachable from sibling containers."""
+
+    container_host: str
+    container_port: int
+    database: str
+    user: str
+    password: str
+    table: str
+
+
+@contextmanager
+def start_postgres_container() -> Iterator[PostgresConnectionSettings]:
+    """Run Postgres with one seeded table and yield its container-network identity."""
+
+    container: PostgresContainer = PostgresContainer(
+        POSTGRES_IMAGE,
+        username=POSTGRES_USER,
+        password=POSTGRES_PASSWORD,
+        dbname=POSTGRES_DATABASE,
+    )
+    with container:
+        container.exec(
+            ["psql", "-U", POSTGRES_USER, "-d", POSTGRES_DATABASE, "-c", POSTGRES_SEED_SQL]
+        )
+        yield PostgresConnectionSettings(
+            container_host=_container_ip(container=container),
+            container_port=5432,
+            database=POSTGRES_DATABASE,
+            user=POSTGRES_USER,
+            password=POSTGRES_PASSWORD,
+            table="course",
+        )
+
+
+def _container_ip(*, container: PostgresContainer) -> str:
+    wrapped: Container = container.get_wrapped_container()
+    wrapped.reload()
+    attributes: dict[str, object] = dict(wrapped.attrs or {})
+    settings: dict[str, object] = cast(dict[str, object], attributes.get("NetworkSettings", {}))
+    networks: dict[str, dict[str, object]] = cast(
+        dict[str, dict[str, object]], settings.get("Networks", {})
+    )
+    addresses: list[str] = [str(network.get("IPAddress", "")) for network in networks.values()]
+    return str(max(addresses, key=len))
+
+
+def refreshed_rows(
+    *, client: Client, database: str, table: str, expected_count: int
+) -> Sequence[Sequence[object]]:
+    """Wait for a scheduled refresh to land, then return the refreshed rows."""
+
+    statement: str = (
+        f"SELECT course_key, country_normalised FROM {database}.{table} ORDER BY course_key"
+    )
+    wait_for(lambda: len(client.query(statement).result_rows) >= expected_count)
+    return client.query(statement).result_rows

@@ -29,7 +29,7 @@ export type AnchorState = 'eligible' | 'aggregate' | 'mutable_ref' | 'never' | '
 // ─── sources ─────────────────────────────────────────────────────────────────
 
 /** `kafka` = StreamBuild owns the landing objects. `stream_table` = adopted, never mutated. */
-type SourceKind = 'kafka' | 'stream_table';
+type SourceKind = 'kafka' | 'stream_table' | 'postgres';
 
 export type ManagedRelationKind = 'kafka_engine' | 'landing_mv' | 'landing_table';
 
@@ -80,6 +80,8 @@ export type Source = {
 	relationName: string;
 	/** Empty for adopted sources — StreamBuild creates nothing. */
 	managedRelations: ManagedRelation[];
+	/** Refresh cadence for scheduled sources the warehouse pulls. null = event driven. */
+	refresh: string | null;
 	/** ClickHouse TTL expression on the landing table. null = retained forever. */
 	ttl: string | null;
 	/** Parsed from `ttl` for arithmetic. null = infinite retention = lossless rebuilds. */

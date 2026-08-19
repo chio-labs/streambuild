@@ -23,6 +23,13 @@ export const REF_TYPE_LABEL: Record<RefType, string> = {
 	mutable_reference: 'mutable reference'
 };
 
+/** Name how a source is fed, so a scheduled pull is not mistaken for a stream. */
+export const SOURCE_KIND_LABEL: Record<string, string> = {
+	kafka: 'managed Kafka',
+	stream_table: 'adopted',
+	postgres: 'scheduled Postgres'
+};
+
 export const OWNERSHIP_LABEL: Record<string, string> = {
 	direct: 'owned by StreamBuild (direct)',
 	unmanaged: 'not owned by StreamBuild',
