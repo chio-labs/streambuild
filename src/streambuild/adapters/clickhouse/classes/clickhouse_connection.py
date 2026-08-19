@@ -29,6 +29,7 @@ from streambuild.adapter.models import (
     AdapterQueryResult,
     AdapterReadinessRequest,
     AdapterReadinessRootObservation,
+    AdapterRefreshState,
     AdapterRelationCleanupRequest,
     AdapterReplayCoverageRequest,
     AdapterRunEventRecord,
@@ -41,7 +42,10 @@ from streambuild.adapter.models import (
     InspectedManagedTableState,
 )
 from streambuild.adapters.clickhouse._helpers.errors import translate_driver_error
-from streambuild.adapters.clickhouse._helpers.inspection import load_clickhouse_catalog
+from streambuild.adapters.clickhouse._helpers.inspection import (
+    load_clickhouse_catalog,
+    load_clickhouse_refresh_states,
+)
 from streambuild.adapters.clickhouse._helpers.lifecycle import (
     load_clickhouse_deployment_inventory,
     render_clickhouse_relation_cleanup,
@@ -139,6 +143,11 @@ class ClickHouseConnection(AdapterConnection):
             adapter_identity=self.adapter_identity,
             database=database,
         )
+
+    def load_refresh_states(self, database: str) -> tuple[AdapterRefreshState, ...]:
+        """Report ClickHouse refreshable view state so stale relations stay visible."""
+
+        return load_clickhouse_refresh_states(connection=self, database=database)
 
     def metadata_columns(self, *, database: str, table: str) -> frozenset[str]:
         """Return available ClickHouse columns for one framework metadata table."""

@@ -28,3 +28,5 @@ MANAGED_SOURCE_KIND_KAFKA: str = "kafka"
 
 ADAPTER_SECRET_PLACEHOLDER_PREFIX: str = "__streambuild_secret__"
 ADAPTER_SECRET_PLACEHOLDER_SUFFIX: str = "__"
+
+REFRESHABLE_VIEW_SETTING: str = "allow_experimental_refreshable_materialized_view = 1"
