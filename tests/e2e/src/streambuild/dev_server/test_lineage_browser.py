@@ -111,9 +111,7 @@ def test_given_run_command_box_when_editing_then_completes_only_pinned_context_o
             expected_title="Lineage · StreamBuild",
             expected_logical_counts="6 nodes · 3 edges",
             expected_physical_counts="3 nodes · 2 edges",
-            expected_multi_command=(
-                "stb build --select idle_orders --select moving_orders --auto-approve"
-            ),
+            expected_multi_command="stb build --select idle_orders moving_orders --auto-approve",
             expected_model_only_command="stb build --select moving_orders --auto-approve",
             expected_moving_state="moving",
             expected_idle_state="idle",
