@@ -510,6 +510,15 @@ def test_given_executed_scope_when_planning_direct_then_relation_actions_are_dep
                 "Direct plan requires preserved upstream relations that do not exist: tbl__alpha"
             ),
         ),
+        DirectPlanRejectionTestCase(
+            description="a missing prerequisite names the pipeline that would build it",
+            selected_model_names=("beta",),
+            present_relation_names=("raw__orders",),
+            stable_binding_names=(),
+            expected_error_fragment=(
+                "tbl__alpha (built by pipeline pl__orders; add it to the selection)"
+            ),
+        ),
     ],
     ids=lambda case: case.description,
 )
