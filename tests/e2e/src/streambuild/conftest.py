@@ -17,9 +17,10 @@ from testcontainers.core.network import Network
 from testcontainers.core.wait_strategies import LogMessageWaitStrategy
 from testcontainers.kafka._redpanda import RedpandaContainer
 
+from scripts.service_containers.constants import CLICKHOUSE_IMAGE
+
 os.environ.setdefault("TESTCONTAINERS_RYUK_DISABLED", "true")
 
-CLICKHOUSE_IMAGE: str = "clickhouse/clickhouse-server:25.8"
 CLICKHOUSE_USERNAME: str = "streambuild"
 CLICKHOUSE_PASSWORD: str = "streambuild"
 KAFKA_NETWORK_ALIAS: str = "kafka"
