@@ -55,7 +55,8 @@
 		loadError,
 		pollError,
 		notFound,
-		initialLoading
+		initialLoading,
+		events
 	} = $derived(detail.view);
 	const {
 		startedEvent,
@@ -219,6 +220,16 @@
 							embedded
 						/>
 					</div>
+				</div>
+			{:else if ownedRunning && events.length === 0}
+				<div
+					class="text-muted-foreground grid h-full place-items-center px-6 text-center font-mono text-[11px]"
+					role="status"
+					aria-label="Loading run timeline"
+				>
+					<span class="flex items-center gap-2.5">
+						<RotateCcwIcon size={13} class="animate-spin" /> loading run timeline…
+					</span>
 				</div>
 			{:else if startedEvent === undefined && ownedRunning}
 				<div class="text-muted-foreground grid h-full place-items-center px-6 text-center font-mono text-[11px]">
