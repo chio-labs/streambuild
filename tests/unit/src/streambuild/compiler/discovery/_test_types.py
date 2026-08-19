@@ -275,3 +275,21 @@ class ProjectFreshnessErrorTestCase:
     description: str
     defaults_toml: str
     expected_error_fragment: str
+
+
+@dataclass(frozen=True)
+class PostgresSourceTestCase:
+    description: str
+    sources_yaml: str
+    expected_host: str
+    expected_port: int
+    expected_refresh: str
+    expected_password_env: str | None
+    expected_append: bool
+
+
+@dataclass(frozen=True)
+class PostgresSourceRejectionTestCase:
+    description: str
+    sources_yaml: str
+    expected_error_fragment: str

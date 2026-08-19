@@ -6,6 +6,7 @@ from streambuild.compiler.discovery.models import (
     ExternalTableSourceStep,
     KafkaLandingStep,
     LoadedPipeline,
+    PostgresRefreshSourceStep,
     ReplayBoundary,
     ReplayOnChangePolicy,
     TransformStep,
@@ -16,7 +17,9 @@ from streambuild.compiler.discovery.types import BoundedReplayFallback, ReplayLi
 def resolve_replay_lineage_mode(*, loaded_pipeline: LoadedPipeline) -> ReplayLineageMode:
     """Resolve lineage from the selected source-owned physical replay contract."""
 
-    source: KafkaLandingStep | ExternalTableSourceStep | None = loaded_pipeline.pipeline.source
+    source: KafkaLandingStep | ExternalTableSourceStep | PostgresRefreshSourceStep | None = (
+        loaded_pipeline.pipeline.source
+    )
     if source is None:
         raise PipelineCompileError(
             f"Pipeline '{loaded_pipeline.pipeline.name}' has no replay-driving source"
@@ -25,7 +28,7 @@ def resolve_replay_lineage_mode(*, loaded_pipeline: LoadedPipeline) -> ReplayLin
 
 
 def resolve_source_replay_lineage_mode(
-    *, source: KafkaLandingStep | ExternalTableSourceStep
+    *, source: KafkaLandingStep | ExternalTableSourceStep | PostgresRefreshSourceStep
 ) -> ReplayLineageMode:
     """Resolve replay lineage directly from one source-owned physical contract."""
 

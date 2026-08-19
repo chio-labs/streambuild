@@ -10,6 +10,7 @@ from types import MappingProxyType
 from streambuild.compiler.discovery.constants import (
     DEFAULT_ADAPTER_NAME,
     DEFAULT_PIPELINE_PREFIX,
+    DEFAULT_POSTGRES_PORT,
     DEFAULT_RUN_PRESUMED_FAILED_AFTER_SECONDS,
     DEFAULT_TABLE_PREFIX,
     DEFAULT_VIEW_PREFIX,
@@ -366,6 +367,28 @@ class ExternalTableSourceStep:
 
 
 @dataclass(frozen=True)
+class PostgresRefreshSourceStep:
+    """A scheduled pull from an external Postgres table, carrying no replay lineage."""
+
+    name: str
+    kind: SourceKind | str
+    host: str
+    database: str
+    table: str
+    user: str
+    refresh: str
+    port: int = DEFAULT_POSTGRES_PORT
+    password_env: str | None = None
+    append: bool = True
+    freshness: SourceFreshnessPolicy | None = None
+    name_origin: SourceNameOrigin | str = SourceNameOrigin.EXPLICIT
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "kind", SourceKind(self.kind))
+        object.__setattr__(self, "name_origin", SourceNameOrigin(self.name_origin))
+
+
+@dataclass(frozen=True)
 class ModelColumnSpec:
     """An authored MODEL(...) column declaration."""
 
@@ -462,7 +485,7 @@ class Pipeline:
     """A single authored streaming pipeline."""
 
     name: str
-    source: KafkaLandingStep | ExternalTableSourceStep | None
+    source: KafkaLandingStep | ExternalTableSourceStep | PostgresRefreshSourceStep | None
     transforms: Sequence[TransformStep | ViewStep] = field(default_factory=tuple)
     mode: PipelineMode | str = PipelineMode.DIRECT
     replay_on_change: ReplayOnChangePolicy | None = None
@@ -509,7 +532,7 @@ class DiscoveredSourceFile:
     """One retained standalone source declaration file and its parsed sources."""
 
     source_file: DiscoveredProjectFile
-    sources: tuple[KafkaLandingStep | ExternalTableSourceStep, ...]
+    sources: tuple[KafkaLandingStep | ExternalTableSourceStep | PostgresRefreshSourceStep, ...]
 
 
 @dataclass(frozen=True, repr=False)

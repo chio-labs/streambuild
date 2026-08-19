@@ -11,6 +11,7 @@ from streambuild.compiler.discovery.models import (
     ExternalTableSourceStep,
     KafkaLandingStep,
     LoadedPipeline,
+    PostgresRefreshSourceStep,
     Project,
     ProjectNaming,
 )
@@ -24,7 +25,9 @@ def load_discovered_pipelines(
     model_files: tuple[DiscoveredProjectFile, ...],
     macro_registry: MacroRegistry,
     macro_context: MacroContext,
-    sources_by_name: Mapping[str, KafkaLandingStep | ExternalTableSourceStep],
+    sources_by_name: Mapping[
+        str, KafkaLandingStep | ExternalTableSourceStep | PostgresRefreshSourceStep
+    ],
     project: Project | None,
     project_naming: ProjectNaming,
     default_mode: PipelineMode,

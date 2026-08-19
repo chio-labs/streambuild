@@ -23,6 +23,7 @@ class ReplayLineageMode(StrEnum):
 class SourceKind(StrEnum):
     KAFKA = "kafka"
     STREAM_TABLE = "stream_table"
+    POSTGRES = "postgres"
 
 
 class SourceNameOrigin(StrEnum):

@@ -30,10 +30,11 @@ from streambuild.compiler.discovery.models import (
     LoadedProject,
     ModelColumnSpec,
     PipelineProtection,
+    PostgresRefreshSourceStep,
     ReplayBoundary,
     SourceFreshnessPolicy,
 )
-from streambuild.compiler.discovery.types import ReplayAnchorMode
+from streambuild.compiler.discovery.types import ReplayAnchorMode, SourceKind
 from streambuild.compiler.graph.models import DependencyEdge
 from streambuild.compiler.graph.types import DependencyEdgeType
 from streambuild.compiler.pipeline.models import CompileAnalysis
@@ -141,7 +142,7 @@ def _freshness_payload(policy: SourceFreshnessPolicy | None) -> dict[str, object
 
 
 def _source_payload(*, analysis: CompileAnalysis, source: CompiledSource) -> dict[str, object]:
-    step: KafkaLandingStep | ExternalTableSourceStep = source.source
+    step: KafkaLandingStep | ExternalTableSourceStep | PostgresRefreshSourceStep = source.source
     relation_name: str = analysis.realized_project.relation_name_by_logical_key[source.key]
     database: str = _render_database(analysis)
     managed: list[dict[str, object]] = []
@@ -162,7 +163,9 @@ def _source_payload(*, analysis: CompileAnalysis, source: CompiledSource) -> dic
                 "format": resource.format,
                 "settings": redacted_source_settings(dict(resource.settings) or None),
             }
-    boundary: ReplayBoundary | None = step.replay_boundary
+    boundary: ReplayBoundary | None = (
+        None if isinstance(step, PostgresRefreshSourceStep) else step.replay_boundary
+    )
     return {
         "name": source.key.name,
         "nameOrigin": {
@@ -170,7 +173,13 @@ def _source_payload(*, analysis: CompileAnalysis, source: CompiledSource) -> dic
             "macro": getattr(step, "naming_macro", None),
             "macroFingerprint": getattr(step, "naming_macro_fingerprint", None),
         },
-        "kind": "kafka" if isinstance(step, KafkaLandingStep) else "stream_table",
+        "kind": (
+            SourceKind.KAFKA.value
+            if isinstance(step, KafkaLandingStep)
+            else SourceKind.POSTGRES.value
+            if isinstance(step, PostgresRefreshSourceStep)
+            else SourceKind.STREAM_TABLE.value
+        ),
         "boundaryMode": str(source.effective_replay_lineage_mode),
         "relationName": relation_name,
         "managedRelations": managed,

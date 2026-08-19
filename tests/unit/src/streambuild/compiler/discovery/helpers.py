@@ -5,6 +5,7 @@ from streambuild.compiler.discovery.models import (
     DiscoveredSourceFile,
     ExternalTableSourceStep,
     KafkaLandingStep,
+    PostgresRefreshSourceStep,
 )
 
 
@@ -36,8 +37,8 @@ def write_source_yml(*, project_dir: Path, relative_path: str, contents: str) ->
 
 def flatten_source_registry(
     source_files: tuple[DiscoveredSourceFile, ...],
-) -> tuple[KafkaLandingStep | ExternalTableSourceStep, ...]:
-    sources: list[KafkaLandingStep | ExternalTableSourceStep] = []
+) -> tuple[KafkaLandingStep | ExternalTableSourceStep | PostgresRefreshSourceStep, ...]:
+    sources: list[KafkaLandingStep | ExternalTableSourceStep | PostgresRefreshSourceStep] = []
     source_file: DiscoveredSourceFile
     for source_file in source_files:
         sources.extend(source_file.sources)
