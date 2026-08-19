@@ -98,9 +98,7 @@
 			.map((protection) => protection.confirmation)
 	);
 	const executionCommand = $derived(
-		plan === null
-			? 'preparing plan…'
-			: `${plan.command}${acceptedConfirmations.map((value) => ` --confirm ${value}`).join('')}`
+		planView.buildCommand({ selectors, replayWindow, acceptedConfirmations, plan, planLoading })
 	);
 	/** POST the planned options in the dev server's pinned context and follow the run live. */ async function execute(): Promise<void> {
 		executing = true;
@@ -277,7 +275,7 @@
 		>
 			{planError}
 		</div>
-	{:else if plan === null}
+	{:else if planLoading}
 		<div
 			role="status"
 			data-testid="plan-loading-state"
@@ -293,11 +291,11 @@
 				</div>
 			</div>
 		</div>
-	{:else}
+	{:else if plan !== null}
 	<PlanGraph {project} {plan} />
 	{/if}
 
-	{#if plan !== null}
+	{#if plan !== null && !planLoading}
 		<div class="border-b border-border bg-[var(--sb-surface-low)] px-[18px] py-3">
 			<div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
 				<span class="font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--sb-text-faint)]">
