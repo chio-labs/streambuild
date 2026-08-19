@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.23.0](https://github.com/chio-labs/streambuild/compare/v0.22.4...v0.23.0) (2026-08-19)
+
+
+### Features
+
+* **adapter:** prove refreshable views against clickhouse and report their state ([ea6a4e9](https://github.com/chio-labs/streambuild/commit/ea6a4e938cdd23872a9ba7077f8667fbd36a9432))
+* **adapter:** realize scheduled postgres sources as refreshable views ([0a206b4](https://github.com/chio-labs/streambuild/commit/0a206b42c7170fd1263e43ac52ef5f28e559a3f8))
+* **compiler:** discover scheduled postgres refresh sources ([ddafdd4](https://github.com/chio-labs/streambuild/commit/ddafdd4973920777813fd9836c3cdd7df24463f5))
+* scheduled Postgres refresh sources (CHI-56) ([c6f85d1](https://github.com/chio-labs/streambuild/commit/c6f85d172bac9ef048e6988f43c4273a29361a2b))
+
+
+### Bug Fixes
+
+* **auth:** resolve proxy identities that a competing writer just linked ([e40ebda](https://github.com/chio-labs/streambuild/commit/e40ebdad16692bd5562fc38d60ca39f773c3f04e))
+* **clickhouse:** test against the ClickHouse version production runs ([f8fe102](https://github.com/chio-labs/streambuild/commit/f8fe1024c3b6a37fcf7cfdad6bbd8a2ecc004b24))
+* **e2e:** expect the sqlbuild-style select list the run dialog builds ([c0fd059](https://github.com/chio-labs/streambuild/commit/c0fd059bff308c0d551b34d73ad294c7b1b184cd))
+* **ui:** never render a stale plan behind a plan error ([709379d](https://github.com/chio-labs/streambuild/commit/709379d2b31b79758633a0dc8317e7aaad8060ca))
+
 ## [0.22.4](https://github.com/chio-labs/streambuild/compare/v0.22.3...v0.22.4) (2026-08-19)
 
 
