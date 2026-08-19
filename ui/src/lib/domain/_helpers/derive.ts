@@ -558,6 +558,10 @@ function parseSelector(token: string): Selector | null {
 		const name: string = trimmed.slice('pipeline:'.length);
 		return name ? { kind: 'pipeline', name } : null;
 	}
+	if (trimmed.startsWith('model:')) {
+		const name: string = trimmed.slice('model:'.length);
+		return name ? { kind: 'model', name } : null;
+	}
 	return { kind: 'model', name: trimmed };
 }
 
@@ -598,10 +602,14 @@ function resolveClosure(project: Project, selectors: Selector[]): Closure {
 	}
 
 	for (const selector of selectors) {
+		// Names are globally unique across pipelines and models, so a bare token
+		// resolves to whichever it is; a bare pipeline name needs no pipeline: prefix.
 		if (selector.kind === 'pipeline') {
 			for (const model of modelsInPipeline(project, selector.name)) selected.add(model.name);
 		} else if (modelByName(project, selector.name)) {
 			selected.add(selector.name);
+		} else if (pipelineByName(project, selector.name)) {
+			for (const model of modelsInPipeline(project, selector.name)) selected.add(model.name);
 		}
 	}
 
