@@ -285,3 +285,27 @@ class RenderLifecycleMutationSqlTestCase:
     expected_binding_sql: tuple[str, ...]
     expected_cleanup_sql: tuple[str, ...]
     expected_inspection_count: int
+
+
+@dataclass(frozen=True)
+class RefreshRenderingTestCase:
+    description: str
+    refresh: str | None
+    append: bool
+    expected_fragments: tuple[str, ...]
+    forbidden_fragments: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class SecretRenderingTestCase:
+    description: str
+    environment: tuple[tuple[str, str], ...]
+    variable_name: str
+    expected_fragment: str
+
+
+@dataclass(frozen=True)
+class MissingSecretTestCase:
+    description: str
+    variable_name: str
+    expected_error_fragment: str
