@@ -7,6 +7,7 @@ import { selectorToken } from '$lib/planning/main/selector-token';
 import { rootSourcesFor } from '$lib/domain/main/planning/root-sources-for';
 import { buildPlanCommand } from '$lib/plan-view/_helpers/build-command';
 import { parsePlanCommand } from '$lib/plan-view/_helpers/plan-command';
+import { planStatusFor } from '$lib/plan-view/_helpers/plan-status';
 import {
 	planLocationRequestKey,
 	readPlanLocation,
@@ -28,6 +29,7 @@ export function createPlanView(): PlanViewFacade {
 		replayStartToken,
 		parseCommand: parsePlanCommand,
 		buildCommand: buildPlanCommand,
+		status: planStatusFor,
 		boundaryColumns: planBoundaryColumns,
 		rootSources: rootSourcesFor,
 		selectorToken,
