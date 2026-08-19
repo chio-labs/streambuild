@@ -7,5 +7,9 @@ export function parseSelector(token: string): Selector | null {
 		const name: string = trimmed.slice('pipeline:'.length);
 		return name ? { kind: 'pipeline', name } : null;
 	}
+	if (trimmed.startsWith('model:')) {
+		const name: string = trimmed.slice('model:'.length);
+		return name ? { kind: 'model', name } : null;
+	}
 	return { kind: 'model', name: trimmed };
 }

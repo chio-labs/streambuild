@@ -15,4 +15,16 @@ describe('plan command', () => {
 			startTime: '2026-08-10T12:00:00.000Z'
 		});
 	});
+
+	it('given one --select flag with several names when parsing then every name becomes a selector', () => {
+		const parsed: ReturnType<typeof parsePlanCommand> = parsePlanCommand(
+			'stb build --select orders pipeline:pl__payments revenue'
+		);
+
+		expect(parsed.selectors).toEqual([
+			{ kind: 'model', name: 'orders' },
+			{ kind: 'pipeline', name: 'pl__payments' },
+			{ kind: 'model', name: 'revenue' }
+		]);
+	});
 });

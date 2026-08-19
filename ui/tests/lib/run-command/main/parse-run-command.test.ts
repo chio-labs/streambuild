@@ -18,6 +18,20 @@ describe('parse run command', () => {
 		});
 	});
 
+	it('given one --select flag with several space-separated names when parsing then all names become selectors', () => {
+		const parsed: ParsedRunCommand = parseRunCommand(
+			'stb build --select alpha beta gamma --auto-approve',
+			'dev'
+		);
+
+		expect(parsed).toEqual({
+			selectors: ['alpha', 'beta', 'gamma'],
+			startTime: null,
+			confirmations: [],
+			error: null
+		});
+	});
+
 	it('given a pinned target override when parsing then the UI rejects the command for its dev target', () => {
 		const parsed: ParsedRunCommand = parseRunCommand('stb build --target=prod', 'local');
 
