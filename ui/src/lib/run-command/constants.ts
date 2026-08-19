@@ -1,7 +1,7 @@
 import type { RunCommandFlag } from '$lib/run-command/types';
 
 export const RUN_COMMAND_FLAGS: RunCommandFlag[] = [
-	{ flag: '--select', hint: '<model | pipeline:name>', description: 'Limit the rebuild scope' },
+	{ flag: '--select', hint: '<name…>', description: 'Limit the rebuild scope (space-separated)' },
 	{
 		flag: '--start-time',
 		hint: '<YYYY-MM-DDTHH:MM:SSZ>',

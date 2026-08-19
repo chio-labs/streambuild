@@ -23,9 +23,9 @@ export function parseRunCommand(raw: string, target: string): ParsedRunCommand {
 				`${pinnedFlag} is fixed by stb dev and cannot be overridden from the UI (target ${target})`
 			);
 		}
-		if (token === '--select' && tokens[index + 1]) {
-			selectors.push(tokens[index + 1]);
-			index += 2;
+		if (token === '--select' && tokens[index + 1] && !isFlag(tokens[index + 1])) {
+			const next: number = collectSelectValues(tokens, index + 1, selectors);
+			index = next;
 		} else if (token === '--start-time' && tokens[index + 1]) {
 			startTime = tokens[index + 1];
 			index += 2;
@@ -44,6 +44,19 @@ export function parseRunCommand(raw: string, target: string): ParsedRunCommand {
 		return commandError('--start-time requires --select');
 	}
 	return { selectors, startTime, confirmations, error: null };
+}
+
+function collectSelectValues(tokens: string[], start: number, selectors: string[]): number {
+	let index: number = start;
+	while (index < tokens.length && !isFlag(tokens[index])) {
+		selectors.push(tokens[index]);
+		index += 1;
+	}
+	return index;
+}
+
+function isFlag(token: string): boolean {
+	return token.startsWith('--');
 }
 
 function commandError(error: string): ParsedRunCommand {

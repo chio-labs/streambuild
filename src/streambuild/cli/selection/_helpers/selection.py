@@ -10,8 +10,10 @@ from streambuild.adapter.models import (
 )
 from streambuild.cli.entry.exceptions import CliUserError
 from streambuild.cli.selection.constants import (
+    MODEL_SELECTOR_NAMESPACE,
     PIPELINE_SELECTOR_NAMESPACE,
     SELECTOR_NAMESPACE_SEPARATOR,
+    UPSTREAM_SELECTOR_PREFIX,
 )
 from streambuild.compiler.compile.models import (
     CompiledModel,
@@ -47,37 +49,80 @@ def resolve_selected_logical_model_keys(
         for model in compiled_pipeline.models:
             model_key_by_name[model.key.name] = model.key
     selected_model_keys: set[LogicalResourceKey] = set()
-    selector: str
-    for selector in selectors:
-        if selector.startswith("+") or selector.endswith("+"):
-            raise CliUserError(
-                "Unsupported selector syntax '"
-                f"{selector}"
-                "'. StreamBuild selections already include required downstream closure, "
-                "so '+' is not supported."
+    raw_selector: str
+    for raw_selector in selectors:
+        token: str
+        for token in raw_selector.split():
+            selected_model_keys.update(
+                _resolve_selector_token(
+                    token=token,
+                    pipeline_model_keys=pipeline_model_keys,
+                    model_key_by_name=model_key_by_name,
+                )
             )
-        if SELECTOR_NAMESPACE_SEPARATOR not in selector:
-            model_key: LogicalResourceKey | None = model_key_by_name.get(selector)
-            if model_key is None:
-                raise CliUserError(f"Unknown selected model '{selector}'")
-            selected_model_keys.add(model_key)
-            continue
-
-        selector_kind: str
-        selector_value: str
-        selector_kind, selector_value = selector.split(SELECTOR_NAMESPACE_SEPARATOR, 1)
-        if selector_kind != PIPELINE_SELECTOR_NAMESPACE:
-            raise CliUserError(f"Unsupported selector namespace '{selector_kind}' in '{selector}'")
-        pipeline_keys: tuple[LogicalResourceKey, ...] | None = pipeline_model_keys.get(
-            selector_value
-        )
-        if pipeline_keys is None:
-            raise CliUserError(f"Unknown selected pipeline '{selector_value}'")
-        if not pipeline_keys:
-            raise CliUserError(f"Selected pipeline '{selector_value}' does not define any models")
-        selected_model_keys.update(pipeline_keys)
-
     return frozenset(selected_model_keys)
+
+
+def _resolve_selector_token(
+    *,
+    token: str,
+    pipeline_model_keys: dict[str, tuple[LogicalResourceKey, ...]],
+    model_key_by_name: dict[str, LogicalResourceKey],
+) -> frozenset[LogicalResourceKey]:
+    if token.startswith(UPSTREAM_SELECTOR_PREFIX) or token.endswith(UPSTREAM_SELECTOR_PREFIX):
+        raise CliUserError(
+            "Unsupported selector syntax '"
+            f"{token}"
+            "'. StreamBuild selections already include required downstream closure, "
+            "so '+' is not supported."
+        )
+    if SELECTOR_NAMESPACE_SEPARATOR not in token:
+        return _resolve_bare_selector(
+            token=token,
+            pipeline_model_keys=pipeline_model_keys,
+            model_key_by_name=model_key_by_name,
+        )
+    namespace: str
+    value: str
+    namespace, value = token.split(SELECTOR_NAMESPACE_SEPARATOR, 1)
+    if namespace == PIPELINE_SELECTOR_NAMESPACE:
+        return _resolve_pipeline_selector(value=value, pipeline_model_keys=pipeline_model_keys)
+    if namespace == MODEL_SELECTOR_NAMESPACE:
+        return _resolve_model_selector(value=value, model_key_by_name=model_key_by_name)
+    raise CliUserError(f"Unsupported selector namespace '{namespace}' in '{token}'")
+
+
+def _resolve_bare_selector(
+    *,
+    token: str,
+    pipeline_model_keys: dict[str, tuple[LogicalResourceKey, ...]],
+    model_key_by_name: dict[str, LogicalResourceKey],
+) -> frozenset[LogicalResourceKey]:
+    if token in pipeline_model_keys:
+        return _resolve_pipeline_selector(value=token, pipeline_model_keys=pipeline_model_keys)
+    if token in model_key_by_name:
+        return frozenset({model_key_by_name[token]})
+    raise CliUserError(f"Unknown selected model or pipeline '{token}'")
+
+
+def _resolve_pipeline_selector(
+    *, value: str, pipeline_model_keys: dict[str, tuple[LogicalResourceKey, ...]]
+) -> frozenset[LogicalResourceKey]:
+    pipeline_keys: tuple[LogicalResourceKey, ...] | None = pipeline_model_keys.get(value)
+    if pipeline_keys is None:
+        raise CliUserError(f"Unknown selected pipeline '{value}'")
+    if not pipeline_keys:
+        raise CliUserError(f"Selected pipeline '{value}' does not define any models")
+    return frozenset(pipeline_keys)
+
+
+def _resolve_model_selector(
+    *, value: str, model_key_by_name: dict[str, LogicalResourceKey]
+) -> frozenset[LogicalResourceKey]:
+    model_key: LogicalResourceKey | None = model_key_by_name.get(value)
+    if model_key is None:
+        raise CliUserError(f"Unknown selected model '{value}'")
+    return frozenset({model_key})
 
 
 def expand_included_keys(

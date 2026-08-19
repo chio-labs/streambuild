@@ -11,10 +11,14 @@ export function parsePlanCommand(command: string): ParsedPlanCommand {
 	let start: string | null = null;
 	let deploymentId: string | null = null;
 	for (let index: number = 0; index < tokens.length; index += 1) {
-		if (tokens[index] === '--select' && tokens[index + 1]) {
-			const parsed: Selector | null = parseSelector(tokens[index + 1]);
-			if (parsed) selectors.push(parsed);
-			index += 1;
+		if (tokens[index] === '--select' && tokens[index + 1] && !tokens[index + 1].startsWith('--')) {
+			let next: number = index + 1;
+			while (next < tokens.length && !tokens[next].startsWith('--')) {
+				const parsed: Selector | null = parseSelector(tokens[next]);
+				if (parsed) selectors.push(parsed);
+				next += 1;
+			}
+			index = next - 1;
 		} else if (tokens[index] === '--start-time' && tokens[index + 1]) {
 			start = tokens[index + 1];
 			index += 1;

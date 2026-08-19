@@ -570,10 +570,13 @@ def _add_clickhouse_args(
 def _add_select_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--select",
-        action="append",
+        "-s",
+        nargs="+",
+        action="extend",
         default=[],
         help=(
-            "Select models or pipelines, e.g. --select daily_revenue "
-            "or --select pipeline:pl__order_events (repeatable)"
+            "Select models or pipelines by globally unique name, e.g. "
+            "--select daily_revenue pl__order_events (space separated, repeatable). "
+            "Optional 'model:' and 'pipeline:' prefixes disambiguate but are not required."
         ),
     )

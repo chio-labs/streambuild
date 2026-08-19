@@ -263,9 +263,9 @@ def build_invocation(
             argv.extend(("--target", execution_context.selected_target))
         if execution_context.database is not None:
             argv.extend(("--database", execution_context.database))
-    for selector in selectors:
-        argv.extend(("--select", selector))
-        display_argv.extend(("--select", selector))
+    if selectors:
+        argv.extend(("--select", *selectors))
+        display_argv.extend(("--select", *selectors))
     if start_time is not None:
         argv.extend(("--start-time", start_time))
         display_argv.extend(("--start-time", start_time))
