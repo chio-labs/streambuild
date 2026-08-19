@@ -120,6 +120,8 @@ class AdapterMaterializedView:
     target_relation_name: str
     query: str
     database_template: str
+    refresh: str | None = None
+    append: bool = True
 
 
 @dataclass(frozen=True)
@@ -165,6 +167,18 @@ class AdapterSourceRealization:
 
 
 @dataclass(frozen=True)
+class AdapterRefreshState:
+    """The warehouse-reported refresh state of one scheduled relation."""
+
+    view_name: str
+    status: str
+    last_refresh_at: str | None
+    last_success_at: str | None
+    next_refresh_at: str | None
+    exception: str | None
+
+
+@dataclass(frozen=True)
 class AdapterModelRealizationRequest:
     """One semantically compiled logical model ready for adapter realization."""
 
@@ -179,6 +193,8 @@ class AdapterModelRealizationRequest:
     partition_by: str | None = None
     ttl: str | None = None
     settings: tuple[tuple[str, str], ...] = ()
+    refresh: str | None = None
+    append: bool = True
 
 
 @dataclass(frozen=True)

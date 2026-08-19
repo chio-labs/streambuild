@@ -14,10 +14,16 @@ from yaml import YAMLError
 
 from streambuild.compiler.discovery._helpers.interpolation import interpolate_config_value
 from streambuild.compiler.discovery.constants import (
+    BOOLEAN_FALSE_LITERALS,
+    BOOLEAN_TRUE_LITERALS,
+    DEFAULT_POSTGRES_PORT,
     FRESHNESS_DURATION_PATTERN,
     FRESHNESS_KEYS,
     INTERPOLATION_TOKEN_START,
     KAFKA_NAMING_MACRO_TOPIC_PARAMETER,
+    POSTGRES_FORBIDDEN_SOURCE_KEYS,
+    POSTGRES_SOURCE_REQUIRED_KEYS,
+    REFRESH_INTERVAL_PATTERN,
     REPLAY_BOUNDARY_COLUMN_KEYS,
     REPLAY_BOUNDARY_KEYS,
     SECONDS_BY_DURATION_UNIT,
@@ -31,6 +37,7 @@ from streambuild.compiler.discovery.models import (
     ExternalTableSourceStep,
     KafkaLandingStep,
     KafkaSettings,
+    PostgresRefreshSourceStep,
     ReplayBoundary,
     ReplayBoundaryColumns,
     SourceFreshnessPolicy,
@@ -150,13 +157,15 @@ def _duration_seconds(value: str) -> int:
 
 def source_registry_by_name(
     source_files: tuple[DiscoveredSourceFile, ...],
-) -> dict[str, KafkaLandingStep | ExternalTableSourceStep]:
+) -> dict[str, KafkaLandingStep | ExternalTableSourceStep | PostgresRefreshSourceStep]:
     """Index one validated source registry by project-wide source name."""
 
-    sources_by_name: dict[str, KafkaLandingStep | ExternalTableSourceStep] = {}
+    sources_by_name: dict[
+        str, KafkaLandingStep | ExternalTableSourceStep | PostgresRefreshSourceStep
+    ] = {}
     source_file: DiscoveredSourceFile
     for source_file in source_files:
-        source: KafkaLandingStep | ExternalTableSourceStep
+        source: KafkaLandingStep | ExternalTableSourceStep | PostgresRefreshSourceStep
         for source in source_file.sources:
             sources_by_name[source.name] = source
     return sources_by_name
@@ -168,7 +177,7 @@ def _validate_consistent_adopted_table_mappings(
     boundary_by_table_name: dict[str, ReplayBoundary] = {}
     source_file: DiscoveredSourceFile
     for source_file in source_files:
-        source: KafkaLandingStep | ExternalTableSourceStep
+        source: KafkaLandingStep | ExternalTableSourceStep | PostgresRefreshSourceStep
         for source in source_file.sources:
             if not isinstance(source, ExternalTableSourceStep):
                 continue
@@ -223,7 +232,7 @@ def _parse_source_file(
     default_freshness: SourceFreshnessPolicy | None,
     default_kafka_naming_macro: str | None,
     macro_registry: MacroRegistry | None,
-) -> tuple[KafkaLandingStep | ExternalTableSourceStep, ...]:
+) -> tuple[KafkaLandingStep | ExternalTableSourceStep | PostgresRefreshSourceStep, ...]:
     try:
         raw_payload: object = yaml.safe_load(source_file.contents)
     except YAMLError as error:
@@ -275,7 +284,7 @@ def _parse_source(
     default_freshness: SourceFreshnessPolicy | None,
     default_kafka_naming_macro: str | None,
     macro_registry: MacroRegistry | None,
-) -> KafkaLandingStep | ExternalTableSourceStep:
+) -> KafkaLandingStep | ExternalTableSourceStep | PostgresRefreshSourceStep:
     label: str = f"sources[{index}]"
     mapping: dict[str, object] = _mapping(
         value=value,
@@ -295,7 +304,8 @@ def _parse_source(
         kind: SourceKind = SourceKind(raw_kind)
     except ValueError as error:
         raise PipelineDiscoveryError(
-            f"Source file '{file_path}' {label}.kind must be 'kafka' or 'stream_table'"
+            f"Source file '{file_path}' {label}.kind must be one of "
+            f"{', '.join(repr(member.value) for member in SourceKind)}"
         ) from error
     freshness: SourceFreshnessPolicy | None = (
         parse_freshness_policy(
@@ -366,6 +376,16 @@ def _parse_source(
         environment=environment,
     )
     _validate_source_name(name=name, label=label, file_path=file_path)
+    if kind == SourceKind.POSTGRES:
+        return _parse_postgres_source(
+            mapping=mapping,
+            name=name,
+            label=label,
+            file_path=file_path,
+            variables=variables,
+            environment=environment,
+            freshness=freshness,
+        )
     return _parse_adopted_source(
         mapping=mapping,
         name=name,
@@ -477,6 +497,106 @@ def _parse_managed_kafka_source(
         name_origin=source_name.origin,
         naming_macro=source_name.macro_name,
         naming_macro_fingerprint=source_name.macro_fingerprint,
+    )
+
+
+def _parse_postgres_source(
+    *,
+    mapping: dict[str, object],
+    name: str,
+    label: str,
+    file_path: Path,
+    variables: Mapping[str, object],
+    environment: Mapping[str, str],
+    freshness: SourceFreshnessPolicy | None,
+) -> PostgresRefreshSourceStep:
+    """Parse a scheduled Postgres refresh source, which carries no replay lineage."""
+
+    present_forbidden: tuple[str, ...] = tuple(
+        key for key in POSTGRES_FORBIDDEN_SOURCE_KEYS if key in mapping
+    )
+    if present_forbidden:
+        raise PipelineDiscoveryError(
+            f"Source file '{file_path}' {label} is a Postgres source and must not declare "
+            f"streaming fields: {', '.join(present_forbidden)}"
+        )
+    required: dict[str, str] = {
+        key: _required_string(
+            mapping=mapping,
+            key=key,
+            field_path=label,
+            file_path=file_path,
+            variables=variables,
+            environment=environment,
+        )
+        for key in POSTGRES_SOURCE_REQUIRED_KEYS
+    }
+    refresh: str = _required_string(
+        mapping=mapping,
+        key="refresh",
+        field_path=label,
+        file_path=file_path,
+        variables=variables,
+        environment=environment,
+    )
+    if REFRESH_INTERVAL_PATTERN.match(refresh) is None:
+        raise PipelineDiscoveryError(
+            f"Source file '{file_path}' {label}.refresh must be an interval such as "
+            f"'5 MINUTE' or '1 HOUR', not '{refresh}'"
+        )
+    return PostgresRefreshSourceStep(
+        name=name,
+        kind=SourceKind.POSTGRES,
+        host=required["host"],
+        database=required["database"],
+        table=required["table"],
+        user=required["user"],
+        refresh=refresh,
+        port=_postgres_port(mapping=mapping, label=label, file_path=file_path),
+        password_env=_optional_string(
+            mapping=mapping,
+            key="password_env",
+            field_path=label,
+            file_path=file_path,
+            variables=variables,
+            environment=environment,
+        ),
+        append=_postgres_append(mapping=mapping, label=label, file_path=file_path),
+        freshness=freshness,
+    )
+
+
+def _postgres_port(*, mapping: dict[str, object], label: str, file_path: Path) -> int:
+    raw_port: object | None = mapping.get("port")
+    if raw_port is None:
+        return DEFAULT_POSTGRES_PORT
+    if isinstance(raw_port, bool):
+        raise PipelineDiscoveryError(
+            f"Source file '{file_path}' {label}.port must be a whole number, not '{raw_port}'"
+        )
+    if isinstance(raw_port, int):
+        return raw_port
+    if isinstance(raw_port, str) and raw_port.strip().isdigit():
+        return int(raw_port.strip())
+    raise PipelineDiscoveryError(
+        f"Source file '{file_path}' {label}.port must be a whole number, not '{raw_port}'"
+    )
+
+
+def _postgres_append(*, mapping: dict[str, object], label: str, file_path: Path) -> bool:
+    raw_append: object | None = mapping.get("append")
+    if raw_append is None:
+        return True
+    if isinstance(raw_append, bool):
+        return raw_append
+    if isinstance(raw_append, str):
+        normalized: str = raw_append.strip().lower()
+        if normalized in BOOLEAN_TRUE_LITERALS:
+            return True
+        if normalized in BOOLEAN_FALSE_LITERALS:
+            return False
+    raise PipelineDiscoveryError(
+        f"Source file '{file_path}' {label}.append must be a boolean, not '{raw_append}'"
     )
 
 
@@ -760,7 +880,7 @@ def _validate_unique_source_names(files: tuple[DiscoveredSourceFile, ...]) -> No
     paths_by_name: dict[str, Path] = {}
     source_file: DiscoveredSourceFile
     for source_file in files:
-        source: KafkaLandingStep | ExternalTableSourceStep
+        source: KafkaLandingStep | ExternalTableSourceStep | PostgresRefreshSourceStep
         for source in source_file.sources:
             existing_path: Path | None = paths_by_name.get(source.name)
             if existing_path is not None:

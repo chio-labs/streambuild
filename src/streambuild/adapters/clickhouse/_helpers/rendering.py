@@ -1,6 +1,15 @@
 """Render neutral adapter resources as ClickHouse SQL."""
 
-from streambuild.adapter.constants import ADAPTER_DATABASE_PLACEHOLDER, MANAGED_SOURCE_KIND_KAFKA
+import os
+import re
+
+from streambuild.adapter.constants import (
+    ADAPTER_DATABASE_PLACEHOLDER,
+    ADAPTER_SECRET_PLACEHOLDER_PREFIX,
+    ADAPTER_SECRET_PLACEHOLDER_SUFFIX,
+    MANAGED_SOURCE_KIND_KAFKA,
+    REFRESHABLE_VIEW_SETTING,
+)
 from streambuild.adapter.exceptions import AdapterCapabilityError
 from streambuild.adapter.models import (
     AdapterColumn,
@@ -14,6 +23,12 @@ from streambuild.adapter.models import (
 )
 from streambuild.adapters.clickhouse.main.database_scoped_consumer_group import (
     database_scoped_consumer_group,
+)
+
+_SECRET_PLACEHOLDER_PATTERN: re.Pattern[str] = re.compile(
+    re.escape(ADAPTER_SECRET_PLACEHOLDER_PREFIX)
+    + r"([A-Za-z_][A-Za-z0-9_]*)"
+    + re.escape(ADAPTER_SECRET_PLACEHOLDER_SUFFIX)
 )
 
 
@@ -37,6 +52,40 @@ def render_clickhouse_resource(
 ) -> str:
     """Render one neutral adapter resource as ClickHouse DDL."""
 
+    return _resolved_secrets(
+        sql=_render_resource(resource=resource, database=database, if_not_exists=if_not_exists)
+    )
+
+
+def _resolved_secrets(*, sql: str) -> str:
+    """Substitute credential placeholders from the environment at execution time."""
+
+    resolved: str = sql
+    match: re.Match[str] | None = _SECRET_PLACEHOLDER_PATTERN.search(resolved)
+    while match is not None:
+        variable_name: str = match.group(1)
+        secret: str | None = os.environ.get(variable_name)
+        if secret is None:
+            raise AdapterCapabilityError(
+                f"Credential environment variable '{variable_name}' is not set"
+            )
+        resolved = resolved.replace(match.group(0), secret)
+        match = _SECRET_PLACEHOLDER_PATTERN.search(resolved)
+    return resolved
+
+
+def _render_resource(
+    *,
+    resource: (
+        AdapterManagedSource
+        | AdapterTable
+        | AdapterMaterializedView
+        | AdapterView
+        | AdapterStableView
+    ),
+    database: str,
+    if_not_exists: bool,
+) -> str:
     if isinstance(resource, AdapterManagedSource):
         if resource.source_kind != MANAGED_SOURCE_KIND_KAFKA:
             raise AdapterCapabilityError(
@@ -132,11 +181,21 @@ def _render_materialized_view(
         f"{ADAPTER_DATABASE_PLACEHOLDER}.",
         f"{database}.",
     )
+    if resource.refresh is None:
+        return (
+            f"CREATE MATERIALIZED VIEW {'IF NOT EXISTS ' if if_not_exists else ''}"
+            f"{database}.{resource.name}\n"
+            f"TO {database}.{resource.target_relation_name} AS\n"
+            f"{rendered_query}"
+        )
+    append_clause: str = " APPEND" if resource.append else ""
     return (
         f"CREATE MATERIALIZED VIEW {'IF NOT EXISTS ' if if_not_exists else ''}"
         f"{database}.{resource.name}\n"
+        f"REFRESH EVERY {resource.refresh}{append_clause}\n"
         f"TO {database}.{resource.target_relation_name} AS\n"
-        f"{rendered_query}"
+        f"{rendered_query}\n"
+        f"SETTINGS {REFRESHABLE_VIEW_SETTING}"
     )
 
 

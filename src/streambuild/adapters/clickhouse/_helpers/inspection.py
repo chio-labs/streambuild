@@ -6,6 +6,8 @@ from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.exceptions import AdapterResultError
 from streambuild.adapter.models import (
     AdapterIdentity,
+    AdapterQueryResult,
+    AdapterRefreshState,
     CatalogColumn,
     CatalogIdentity,
     CatalogRelation,
@@ -132,3 +134,33 @@ def _decode_column_row(row: Mapping[str, object]) -> ClickHouseCatalogColumnRow:
 def _quoted_sql_string(value: str) -> str:
     escaped_value: str = value.replace("'", "''")
     return f"'{escaped_value}'"
+
+
+def load_clickhouse_refresh_states(
+    *, connection: AdapterConnection, database: str
+) -> tuple[AdapterRefreshState, ...]:
+    """Report the refresh state of every scheduled relation in one database."""
+
+    escaped_database: str = database.replace("\\", "\\\\").replace("'", "\\'")
+    result: AdapterQueryResult = connection.query(
+        "SELECT view, status, last_refresh_time, last_success_time, next_refresh_time, "
+        f"exception FROM system.view_refreshes WHERE database = '{escaped_database}' ORDER BY view"
+    )
+    return tuple(
+        AdapterRefreshState(
+            view_name=str(row[0]),
+            status=str(row[1]),
+            last_refresh_at=_optional_text(row[2]),
+            last_success_at=_optional_text(row[3]),
+            next_refresh_at=_optional_text(row[4]),
+            exception=_optional_text(row[5]),
+        )
+        for row in result.rows
+    )
+
+
+def _optional_text(value: object) -> str | None:
+    if value is None:
+        return None
+    text: str = str(value)
+    return text or None

@@ -19,6 +19,7 @@ from streambuild.compiler.discovery.models import (
     LoadedPipeline,
     LoadedProject,
     Pipeline,
+    PostgresRefreshSourceStep,
     ProjectNaming,
 )
 from streambuild.compiler.discovery.types import PipelineMode
@@ -30,9 +31,9 @@ def discover_pipelines(root: Path) -> list[LoadedPipeline]:
     loaded_project: LoadedProject | None = load_project_input_for_path(path=root)
     if loaded_project is None:
         return []
-    sources_by_name: dict[str, KafkaLandingStep | ExternalTableSourceStep] = (
-        source_registry_by_name(loaded_project.source_files)
-    )
+    sources_by_name: dict[
+        str, KafkaLandingStep | ExternalTableSourceStep | PostgresRefreshSourceStep
+    ] = source_registry_by_name(loaded_project.source_files)
     pipeline_directories: tuple[DiscoveredPipelineDirectory, ...] = discover_pipeline_directories(
         pipelines_root=root,
         project_dir=root.parent,

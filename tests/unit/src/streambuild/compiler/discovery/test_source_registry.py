@@ -13,13 +13,17 @@ from streambuild.compiler.discovery.models import (
     ExternalTableSourceStep,
     KafkaLandingStep,
     LoadedProject,
+    PostgresRefreshSourceStep,
     ReplayBoundary,
     SourceFreshnessPolicy,
 )
+from streambuild.compiler.discovery.types import SourceKind
 from tests.unit.src.streambuild.compiler.discovery._test_types import (
     KafkaBrokerDefaultTestCase,
     KafkaSourceNamingMacroErrorTestCase,
     KafkaSourceNamingMacroSuccessTestCase,
+    PostgresSourceRejectionTestCase,
+    PostgresSourceTestCase,
     ProjectKafkaBrokerDefaultTestCase,
     SourceBoundaryModeTestCase,
     SourceFreshnessTestCase,
@@ -121,13 +125,16 @@ def test_given_source_files_when_discovering_then_returns_stable_typed_registry(
         variables={"table_name": "orders_existing", "ttl_days": 14},
         environment={"BROKER_LIST": "redpanda:9092"},
     )
-    sources: tuple[KafkaLandingStep | ExternalTableSourceStep, ...] = flatten_source_registry(
-        source_files
+    sources: tuple[KafkaLandingStep | ExternalTableSourceStep | PostgresRefreshSourceStep, ...] = (
+        flatten_source_registry(source_files)
     )
 
     assert tuple(source.name for source in sources) == test_case.expected_source_names
     assert (
-        tuple(cast(ReplayBoundary, source.replay_boundary).mode for source in sources)
+        tuple(
+            cast(ReplayBoundary, cast(KafkaLandingStep, source).replay_boundary).mode
+            for source in sources
+        )
         == test_case.expected_boundary_modes
     )
     assert tuple(str(item.source_file.relative_path) for item in source_files) == (
@@ -590,8 +597,10 @@ def test_given_supported_source_mode_when_discovering_then_it_retains_boundary_c
         variables=dict(test_case.variables),
         environment={},
     )
-    source: KafkaLandingStep | ExternalTableSourceStep = source_files[0].sources[0]
-    boundary: ReplayBoundary = cast(ReplayBoundary, source.replay_boundary)
+    source: KafkaLandingStep | ExternalTableSourceStep | PostgresRefreshSourceStep = source_files[
+        0
+    ].sources[0]
+    boundary: ReplayBoundary = cast(ReplayBoundary, cast(KafkaLandingStep, source).replay_boundary)
 
     assert type(source).__name__ == test_case.expected_source_type_name
     assert boundary.mode == test_case.expected_mode
@@ -833,5 +842,141 @@ def test_given_freshness_config_when_discovering_then_returns_expected_policy(
         default_freshness=test_case.default_freshness,
     )
 
-    source: KafkaLandingStep | ExternalTableSourceStep = flatten_source_registry(registry)[0]
+    source: KafkaLandingStep | ExternalTableSourceStep | PostgresRefreshSourceStep = (
+        flatten_source_registry(registry)[0]
+    )
     assert source.freshness == test_case.expected_freshness
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        PostgresSourceTestCase(
+            description="a postgres source keeps its connection identity and refresh cadence",
+            sources_yaml="""
+            sources:
+              - name: unicron__course
+                kind: postgres
+                host: unicron-db.racing.mustard
+                database: unicron
+                table: course
+                user: readonly
+                password_env: UNICRON_READONLY_PASSWORD
+                refresh: 1 HOUR
+            """,
+            expected_host="unicron-db.racing.mustard",
+            expected_port=5432,
+            expected_refresh="1 HOUR",
+            expected_password_env="UNICRON_READONLY_PASSWORD",
+            expected_append=True,
+        ),
+        PostgresSourceTestCase(
+            description="an explicit port and append flag override the defaults",
+            sources_yaml="""
+            sources:
+              - name: unicron__entry
+                kind: postgres
+                host: pg.internal
+                port: 6543
+                database: unicron
+                table: entry
+                user: readonly
+                refresh: 5 MINUTE
+                append: false
+            """,
+            expected_host="pg.internal",
+            expected_port=6543,
+            expected_refresh="5 MINUTE",
+            expected_password_env=None,
+            expected_append=False,
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_postgres_source_when_discovering_then_refresh_identity_is_retained(
+    test_case: PostgresSourceTestCase,
+    tmp_path: Path,
+) -> None:
+    write_source_yml(
+        project_dir=tmp_path,
+        relative_path="unicron.yml",
+        contents=test_case.sources_yaml,
+    )
+
+    registry: tuple[DiscoveredSourceFile, ...] = discover_source_registry(
+        project_dir=tmp_path,
+        variables={},
+        environment={},
+    )
+    source: PostgresRefreshSourceStep = cast(
+        PostgresRefreshSourceStep, flatten_source_registry(registry)[0]
+    )
+
+    assert source.kind == SourceKind.POSTGRES
+    assert source.host == test_case.expected_host
+    assert source.port == test_case.expected_port
+    assert source.refresh == test_case.expected_refresh
+    assert source.password_env == test_case.expected_password_env
+    assert source.append is test_case.expected_append
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        PostgresSourceRejectionTestCase(
+            description="a postgres source rejects a refresh that is not an interval",
+            sources_yaml="""
+            sources:
+              - name: unicron__course
+                kind: postgres
+                host: pg.internal
+                database: unicron
+                table: course
+                user: readonly
+                refresh: hourly
+            """,
+            expected_error_fragment="refresh must be an interval",
+        ),
+        PostgresSourceRejectionTestCase(
+            description="a postgres source rejects streaming fields",
+            sources_yaml="""
+            sources:
+              - name: unicron__course
+                kind: postgres
+                host: pg.internal
+                database: unicron
+                table: course
+                user: readonly
+                refresh: 1 HOUR
+                topic: source.unicron.course
+            """,
+            expected_error_fragment="must not declare streaming fields",
+        ),
+        PostgresSourceRejectionTestCase(
+            description="a postgres source rejects a missing connection field",
+            sources_yaml="""
+            sources:
+              - name: unicron__course
+                kind: postgres
+                host: pg.internal
+                table: course
+                user: readonly
+                refresh: 1 HOUR
+            """,
+            expected_error_fragment="database",
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_invalid_postgres_source_when_discovering_then_reports_the_reason(
+    test_case: PostgresSourceRejectionTestCase,
+    tmp_path: Path,
+) -> None:
+    write_source_yml(
+        project_dir=tmp_path,
+        relative_path="unicron.yml",
+        contents=test_case.sources_yaml,
+    )
+
+    with pytest.raises(PipelineDiscoveryError, match=test_case.expected_error_fragment):
+        discover_source_registry(project_dir=tmp_path, variables={}, environment={})

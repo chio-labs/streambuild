@@ -63,3 +63,26 @@ class LegacyPublicationMigrationTestCase:
     description: str
     expected_operation: str
     expected_publication_id: str
+
+
+@dataclass(frozen=True)
+class RefreshableViewIntegrationTestCase:
+    description: str
+    refresh: str
+    append: bool
+    expected_row_count: int
+
+
+@dataclass(frozen=True)
+class RefreshStateIntegrationTestCase:
+    description: str
+    refresh: str
+    expected_statuses: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class PostgresRefreshEndToEndTestCase:
+    description: str
+    source_table: str
+    refresh: str
+    expected_rows: tuple[tuple[str, str], ...]

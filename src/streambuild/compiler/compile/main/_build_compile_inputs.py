@@ -25,6 +25,7 @@ from streambuild.compiler.discovery.models import (
     ExternalTableSourceStep,
     KafkaLandingStep,
     LoadedPipeline,
+    PostgresRefreshSourceStep,
     Project,
     ProjectNaming,
     TransformStep,
@@ -88,9 +89,9 @@ def build_compile_inputs(
         virtual_environments=virtual_environments,
         variables=dict(variables),
     )
-    sources_by_name: dict[str, KafkaLandingStep | ExternalTableSourceStep] = (
-        source_registry_by_name(discovered_inputs.source_files)
-    )
+    sources_by_name: dict[
+        str, KafkaLandingStep | ExternalTableSourceStep | PostgresRefreshSourceStep
+    ] = source_registry_by_name(discovered_inputs.source_files)
     pipelines: tuple[LoadedPipeline, ...] = load_discovered_pipelines(
         pipeline_directories=discovered_inputs.pipeline_directories,
         model_files=discovered_inputs.model_files,

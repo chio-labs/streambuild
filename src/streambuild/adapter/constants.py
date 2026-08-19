@@ -25,3 +25,8 @@ VIRTUAL_DEPLOYMENT_STATUS_INCOMPLETE: str = "incomplete"
 REPLAY_VALUE_KIND_INTEGER: str = "integer"
 REPLAY_VALUE_KIND_TIMESTAMP: str = "timestamp"
 MANAGED_SOURCE_KIND_KAFKA: str = "kafka"
+
+ADAPTER_SECRET_PLACEHOLDER_PREFIX: str = "__streambuild_secret__"
+ADAPTER_SECRET_PLACEHOLDER_SUFFIX: str = "__"
+
+REFRESHABLE_VIEW_SETTING: str = "allow_experimental_refreshable_materialized_view = 1"

@@ -138,7 +138,32 @@ SOURCE_KEYS: frozenset[str] = frozenset(
         "table_name",
         "replay_boundary",
         "freshness",
+        "host",
+        "port",
+        "database",
+        "table",
+        "user",
+        "password_env",
+        "refresh",
+        "append",
     }
+)
+POSTGRES_SOURCE_REQUIRED_KEYS: tuple[str, ...] = ("host", "database", "table", "user")
+REFRESH_INTERVAL_PATTERN: re.Pattern[str] = re.compile(
+    r"^\d+\s+(SECOND|MINUTE|HOUR|DAY)S?$", re.IGNORECASE
+)
+DEFAULT_POSTGRES_PORT: int = 5432
+BOOLEAN_TRUE_LITERALS: frozenset[str] = frozenset({"true", "yes", "1"})
+BOOLEAN_FALSE_LITERALS: frozenset[str] = frozenset({"false", "no", "0"})
+POSTGRES_FORBIDDEN_SOURCE_KEYS: tuple[str, ...] = (
+    "broker_list",
+    "topic",
+    "consumer_group",
+    "format",
+    "ttl",
+    "settings",
+    "table_name",
+    "replay_boundary",
 )
 REPLAY_BOUNDARY_KEYS: frozenset[str] = frozenset({"mode", "columns"})
 REPLAY_BOUNDARY_COLUMN_KEYS: frozenset[str] = frozenset(

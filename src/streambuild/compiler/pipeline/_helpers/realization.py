@@ -2,7 +2,11 @@
 
 from dataclasses import replace
 
-from streambuild.adapter.constants import MANAGED_SOURCE_KIND_KAFKA
+from streambuild.adapter.constants import (
+    ADAPTER_SECRET_PLACEHOLDER_PREFIX,
+    ADAPTER_SECRET_PLACEHOLDER_SUFFIX,
+    MANAGED_SOURCE_KIND_KAFKA,
+)
 from streambuild.adapter.models import (
     AdapterAdoptedSourceRealizationRequest,
     AdapterColumn,
@@ -54,6 +58,7 @@ from streambuild.compiler.compile.models import (
 from streambuild.compiler.discovery.models import (
     ExternalTableSourceStep,
     KafkaLandingStep,
+    PostgresRefreshSourceStep,
     ReplayBoundary,
 )
 from streambuild.compiler.discovery.types import BoundedReplayFallback
@@ -93,6 +98,9 @@ def build_realized_project(
         project=project,
         relation_names=relation_names,
     )
+    postgres_by_source_name: dict[str, PostgresRefreshSourceStep] = (
+        _postgres_refresh_by_source_name(project=project)
+    )
     model_realizations: dict[LogicalResourceKey, AdapterModelRealization] = {}
     resolved_queries: dict[LogicalResourceKey, str] = {}
     for model in project.models:
@@ -106,6 +114,7 @@ def build_realized_project(
                 resolved_query=resolved_query,
                 relation_names=relation_names,
                 relation_name_by_logical_name=relation_name_by_logical_name,
+                postgres_by_source_name=postgres_by_source_name,
             )
         )
         _validate_model_relation_name(
@@ -157,11 +166,18 @@ def _canonical_source_realization(
 def _source_request(
     *, source: CompiledSource, project: CompiledProject
 ) -> AdapterManagedSourceRealizationRequest | AdapterAdoptedSourceRealizationRequest:
-    authored_source: KafkaLandingStep | ExternalTableSourceStep = source.source
+    authored_source: KafkaLandingStep | ExternalTableSourceStep | PostgresRefreshSourceStep = (
+        source.source
+    )
     if isinstance(authored_source, ExternalTableSourceStep):
         return AdapterAdoptedSourceRealizationRequest(
             logical_name=source.key.name,
             relation_name=authored_source.table_name,
+        )
+    if isinstance(authored_source, PostgresRefreshSourceStep):
+        return AdapterAdoptedSourceRealizationRequest(
+            logical_name=source.key.name,
+            relation_name=_postgres_source_relation_sql(authored_source),
         )
     settings: tuple[tuple[str, str], ...] = (
         ()
@@ -195,7 +211,37 @@ def _relation_sql_by_logical_name(
     for source in project.sources:
         if isinstance(source.source, ExternalTableSourceStep):
             relation_sqls[source.key.name] = _external_source_relation_sql(source.source)
+        if isinstance(source.source, PostgresRefreshSourceStep):
+            relation_sqls[source.key.name] = _postgres_source_relation_sql(source.source)
     return relation_sqls
+
+
+def _postgres_source_relation_sql(source: PostgresRefreshSourceStep) -> str:
+    """Render the postgres table function, keeping any credential out of the artifact."""
+
+    password: str = (
+        ""
+        if source.password_env is None
+        else (
+            f"{ADAPTER_SECRET_PLACEHOLDER_PREFIX}"
+            f"{source.password_env}"
+            f"{ADAPTER_SECRET_PLACEHOLDER_SUFFIX}"
+        )
+    )
+    return (
+        f"postgresql('{source.host}:{source.port}', '{source.database}', "
+        f"'{source.table}', '{source.user}', '{password}')"
+    )
+
+
+def _postgres_refresh_by_source_name(
+    *, project: CompiledProject
+) -> dict[str, PostgresRefreshSourceStep]:
+    return {
+        source.key.name: source.source
+        for source in project.sources
+        if isinstance(source.source, PostgresRefreshSourceStep)
+    }
 
 
 def _external_source_relation_sql(source: ExternalTableSourceStep) -> str:
@@ -232,6 +278,7 @@ def _model_request(
     resolved_query: SqlResolvedQuery,
     relation_names: dict[LogicalResourceKey, str],
     relation_name_by_logical_name: dict[str, str],
+    postgres_by_source_name: dict[str, PostgresRefreshSourceStep],
 ) -> AdapterModelRealizationRequest | AdapterViewRealizationRequest:
     if isinstance(model, CompiledViewModel):
         return AdapterViewRealizationRequest(
@@ -246,6 +293,9 @@ def _model_request(
         () if model.transform.settings is None else tuple(sorted(model.transform.settings.items()))
     )
     source_relation_name: str = relation_name_by_logical_name[model.transform.source]
+    postgres_source: PostgresRefreshSourceStep | None = postgres_by_source_name.get(
+        model.transform.source
+    )
     return AdapterModelRealizationRequest(
         logical_name=model.key.name,
         target_relation_name=relation_names[model.key],
@@ -258,6 +308,8 @@ def _model_request(
         partition_by=model.transform.partition_by,
         ttl=model.transform.ttl,
         settings=settings,
+        refresh=None if postgres_source is None else postgres_source.refresh,
+        append=True if postgres_source is None else postgres_source.append,
     )
 
 
@@ -348,7 +400,7 @@ def _build_desired_state(
 def _source_desired_objects(
     *, source: CompiledSource, realization: AdapterSourceRealization
 ) -> tuple[DesiredObject, ...]:
-    if isinstance(source.source, ExternalTableSourceStep):
+    if isinstance(source.source, (ExternalTableSourceStep, PostgresRefreshSourceStep)):
         if realization.resources:
             raise PipelineCompileError(
                 f"Adapter claimed resources for adopted source '{source.key.name}'"

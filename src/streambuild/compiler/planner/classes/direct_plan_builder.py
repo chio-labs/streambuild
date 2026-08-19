@@ -29,6 +29,7 @@ from streambuild.compiler.compile.models import (
     LogicalResourceKey,
 )
 from streambuild.compiler.compile.types import LogicalResourceType
+from streambuild.compiler.discovery.models import PostgresRefreshSourceStep
 from streambuild.compiler.discovery.types import ReplayLineageMode
 from streambuild.compiler.graph.constants import ALL_DEPENDENCY_EDGE_TYPES
 from streambuild.compiler.graph.main.collect_reachable_keys import collect_reachable_keys
@@ -252,7 +253,18 @@ class DirectPlanBuilder:
     def _is_framework_managed_source(self, *, key: LogicalResourceKey) -> bool:
         if key.resource_type != LogicalResourceType.SOURCE:
             return False
+        if key.name in self._postgres_source_names():
+            return True
         return bool(self._realized_project.resources_by_logical_key[key])
+
+    def _postgres_source_names(self) -> frozenset[str]:
+        """Name every scheduled postgres source, which the warehouse refreshes itself."""
+
+        return frozenset(
+            source.key.name
+            for source in self._realized_project.project.sources
+            if isinstance(source.source, PostgresRefreshSourceStep)
+        )
 
     def _prerequisite_keys(self) -> tuple[LogicalResourceKey, ...]:
         prerequisite_keys: set[LogicalResourceKey] = set()
@@ -267,10 +279,16 @@ class DirectPlanBuilder:
     def _build_replay_roots(self) -> tuple[DirectReplayRoot, ...]:
         propagated_by_root: dict[LogicalResourceKey, list[LogicalResourceKey]] = {}
         model_key: LogicalResourceKey
+        postgres_source_names: frozenset[str] = self._postgres_source_names()
         for model_key in self._execution_scope:
             if not isinstance(self._model_by_key[model_key], CompiledTableModel):
                 continue
             root_key: LogicalResourceKey = self._replay_root_key(model_key=model_key)
+            driving_parent_key: LogicalResourceKey | None = self._driving_parent_by_key.get(
+                root_key
+            )
+            if driving_parent_key is not None and driving_parent_key.name in postgres_source_names:
+                continue
             propagated_by_root.setdefault(root_key, []).append(model_key)
         root_key: LogicalResourceKey
         return tuple(
@@ -424,16 +442,35 @@ class DirectPlanBuilder:
     def _reject_missing_prerequisites(
         self, *, prerequisites: tuple[DirectPrerequisite, ...]
     ) -> None:
-        missing_names: tuple[str, ...] = tuple(
-            prerequisite.relation_names[0]
+        missing: tuple[DirectPrerequisite, ...] = tuple(
+            prerequisite
             for prerequisite in prerequisites
             if not prerequisite.present and not prerequisite.framework_managed
         )
-        if missing_names:
+        if missing:
+            details: tuple[str, ...] = tuple(
+                self._missing_prerequisite_detail(prerequisite=item) for item in missing
+            )
             raise DirectPlanError(
                 "Direct plan requires preserved upstream relations that do not exist: "
-                f"{', '.join(missing_names)}"
+                f"{', '.join(details)}"
             )
+
+    def _missing_prerequisite_detail(self, *, prerequisite: DirectPrerequisite) -> str:
+        """Name the pipeline that would build a missing upstream so the fix is obvious."""
+
+        relation_name: str = prerequisite.relation_names[0]
+        pipeline_name: str | None = self._producing_pipeline_name(key=prerequisite.key)
+        if pipeline_name is None:
+            return relation_name
+        return f"{relation_name} (built by pipeline {pipeline_name}; add it to the selection)"
+
+    def _producing_pipeline_name(self, *, key: LogicalResourceKey) -> str | None:
+        compiled_pipeline: CompiledPipeline
+        for compiled_pipeline in self._realized_project.project.pipelines:
+            if any(model.key == key for model in compiled_pipeline.models):
+                return compiled_pipeline.pipeline.name
+        return None
 
     def _reject_incompatible_replay_inputs(
         self, *, replay_roots: tuple[DirectReplayRoot, ...]

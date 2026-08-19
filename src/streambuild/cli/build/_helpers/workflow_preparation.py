@@ -23,7 +23,12 @@ from streambuild.cli.plan.main._render_direct_plan_json import render_direct_pla
 from streambuild.cli.plan.main.render_direct_plan_text import render_direct_plan_text
 from streambuild.cli.plan.main.render_plan_result import render_plan_result
 from streambuild.cli.selection.main._selection import resolve_selected_logical_model_keys
-from streambuild.compiler.compile.models import CompilerAdapterProfile, LogicalResourceKey
+from streambuild.compiler.compile.models import (
+    CompiledTableModel,
+    CompilerAdapterProfile,
+    LogicalResourceKey,
+)
+from streambuild.compiler.discovery.models import PostgresRefreshSourceStep
 from streambuild.compiler.discovery.types import PipelineMode
 from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.executor.backfill.main.assemble_virtual_build_workflow import (
@@ -51,6 +56,7 @@ def prepare_build_workflow(
     """Return one complete workflow assembled from fresh connected inspection."""
 
     _validate_common_flags(options=options)
+    _reject_replayless_start_time(analysis=analysis, options=options)
     start_time_utc: str | None = _normalized_utc_start_time(options=options)
     selected_names_by_mode: dict[PipelineMode, tuple[str, ...]] = _selected_model_names_by_mode(
         analysis=analysis,
@@ -299,6 +305,40 @@ def _validate_common_flags(*, options: WorkflowPreparationOptions) -> None:
     if (options.full_refresh or options.start_time is not None) and not options.selectors:
         required_flag: str = "--full-refresh" if options.full_refresh else "--start-time"
         raise CliUserError(f"{required_flag} requires at least one --select")
+
+
+def _reject_replayless_start_time(
+    *, analysis: CompileAnalysis, options: WorkflowPreparationOptions
+) -> None:
+    """Refuse a replay window when every selected model is refreshed by the warehouse."""
+
+    if options.start_time is None or not options.selectors:
+        return
+    selected_keys: frozenset[LogicalResourceKey] = resolve_selected_logical_model_keys(
+        compiled_pipelines=analysis.compiled_project.pipelines,
+        selectors=options.selectors,
+    )
+    postgres_source_names: frozenset[str] = frozenset(
+        source.key.name
+        for source in analysis.compiled_project.sources
+        if isinstance(source.source, PostgresRefreshSourceStep)
+    )
+    if not postgres_source_names:
+        return
+    replayless_names: tuple[str, ...] = tuple(
+        sorted(
+            model.key.name
+            for model in analysis.compiled_project.models
+            if model.key in selected_keys
+            and isinstance(model, CompiledTableModel)
+            and model.transform.source in postgres_source_names
+        )
+    )
+    if replayless_names and len(replayless_names) == len(selected_keys):
+        raise CliUserError(
+            "--start-time is not available for scheduled postgres sources, which the "
+            f"warehouse refreshes in full: {', '.join(replayless_names)}"
+        )
 
 
 def _normalized_utc_start_time(*, options: WorkflowPreparationOptions) -> str | None:

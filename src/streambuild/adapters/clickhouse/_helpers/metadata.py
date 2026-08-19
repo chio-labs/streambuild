@@ -54,6 +54,28 @@ from streambuild.adapters.clickhouse.models import ClickHouseMetadataStatement
 
 _CURRENT_STATE_SCHEMA_VERSION: int = 5
 _BOUNDARY_PART_COUNT: int = 2
+_SNAPSHOT_FIELD_NAMES: tuple[str, ...] = (
+    "binding_key",
+    "definition_fingerprint",
+    "execution_fingerprint",
+    "status",
+    "severity",
+    "failure_count",
+    "completed_at",
+    "payload_json",
+    "error_message",
+    "cadence_seconds",
+    "warmup_seconds",
+    "result_id",
+)
+_SNAPSHOT_COLUMNS_SQL: str = ", ".join(
+    f"tupleElement(snapshot, {position}) AS {name}"
+    for position, name in enumerate(_SNAPSHOT_FIELD_NAMES, start=1)
+)
+_SNAPSHOT_TUPLE_SQL: str = f"tuple({', '.join(_SNAPSHOT_FIELD_NAMES)})"
+_LOGICAL_SNAPSHOT_TUPLE_SQL: str = (
+    f"tuple({', '.join(f'logical.{name}' for name in _SNAPSHOT_FIELD_NAMES)})"
+)
 _DIRECT_FINGERPRINT_REQUIRED_COLUMNS: frozenset[str] = frozenset(
     {
         "fingerprint_id",
@@ -1000,30 +1022,38 @@ def render_clickhouse_latest_node_status_query(
 
     manifest_sql: str = _manifest_nodes_sql(nodes)
     return (
-        f"WITH manifest_nodes AS ({manifest_sql}), logical_results AS ("
+        f"WITH manifest_nodes AS ({manifest_sql}), logical_snapshots AS ("
         "SELECT result.node_kind AS node_kind, result.node_name AS node_name, "
         "argMax(tuple(result.binding_key, result.definition_fingerprint, "
         "result.execution_fingerprint, result.status, result.severity, result.failure_count, "
         "result.completed_at, result.payload_json, result.error_message, result.cadence_seconds, "
         "result.warmup_seconds, result.result_id), "
-        "tuple(result.completed_at, result.result_id)) AS latest FROM "
+        "tuple(result.completed_at, result.result_id)) AS snapshot FROM "
         f"{database}.{METADATA_NODE_RESULTS_TABLE_NAME} AS result INNER JOIN "
         f"{database}.{METADATA_INVOCATIONS_TABLE_NAME} AS invocation ON "
         "invocation.invocation_id = result.invocation_id WHERE result.target_identity = "
         f"{_render_sql_literal(target_identity)} AND invocation.project_identity = "
         f"{_render_sql_literal(project_identity)} GROUP BY result.node_kind, result.node_name, "
         "result.binding_key, result.execution_fingerprint, "
-        "ifNull(toString(result.scheduled_for), result.result_id)), latest_results AS ("
-        "SELECT node_kind, node_name, argMax(latest, tuple(latest.7, latest.12)) AS latest "
-        "FROM logical_results GROUP BY node_kind, node_name), matching_results AS ("
+        "ifNull(toString(result.scheduled_for), result.result_id)), "
+        "logical_results AS ("
+        f"SELECT node_kind, node_name, {_SNAPSHOT_COLUMNS_SQL} FROM logical_snapshots), "
+        "latest_results AS ("
+        f"SELECT node_kind, node_name, {_SNAPSHOT_COLUMNS_SQL} FROM ("
+        f"SELECT node_kind, node_name, argMax({_SNAPSHOT_TUPLE_SQL}, "
+        "tuple(completed_at, result_id)) AS snapshot "
+        "FROM logical_results GROUP BY node_kind, node_name)), "
+        "matching_results AS ("
+        f"SELECT node_kind, node_name, {_SNAPSHOT_COLUMNS_SQL} FROM ("
         "SELECT logical.node_kind AS node_kind, logical.node_name AS node_name, "
-        "argMax(logical.latest, tuple(logical.latest.7, logical.latest.12)) AS latest "
+        f"argMax({_LOGICAL_SNAPSHOT_TUPLE_SQL}, "
+        "tuple(logical.completed_at, logical.result_id)) AS snapshot "
         "FROM logical_results AS logical INNER JOIN manifest_nodes AS manifest ON "
         "logical.node_kind = manifest.node_kind AND logical.node_name = manifest.node_name "
-        "WHERE logical.latest.1 = manifest.binding_key AND "
-        "logical.latest.2 = manifest.definition_fingerprint AND "
-        "logical.latest.3 = manifest.execution_fingerprint "
-        "GROUP BY logical.node_kind, logical.node_name) "
+        "WHERE logical.binding_key = manifest.binding_key AND "
+        "logical.definition_fingerprint = manifest.definition_fingerprint AND "
+        "logical.execution_fingerprint = manifest.execution_fingerprint "
+        "GROUP BY logical.node_kind, logical.node_name)) "
         "SELECT manifest.node_kind AS node_kind, manifest.node_name AS node_name, "
         "manifest.binding_key AS binding_key, "
         "manifest.definition_fingerprint AS definition_fingerprint, "
@@ -1031,33 +1061,39 @@ def render_clickhouse_latest_node_status_query(
         "manifest.cadence_seconds AS cadence_seconds, "
         "manifest.warmup_seconds AS warmup_seconds, "
         "multiIf(latest.node_name = '', 'never_run', matching.node_name != '' AND ("
-        "ifNull(matching.latest.10, 0) != ifNull(manifest.cadence_seconds, 0) OR "
-        "matching.latest.11 != manifest.warmup_seconds), 'schedule_changed', "
-        "matching.node_name != '', matching.latest.4, latest.latest.1 != manifest.binding_key, "
-        "'binding_changed', latest.latest.2 != manifest.definition_fingerprint, "
-        "'definition_changed', latest.latest.3 != manifest.execution_fingerprint, "
-        "'execution_changed', ifNull(latest.latest.10, 0) != "
-        "ifNull(manifest.cadence_seconds, 0) OR latest.latest.11 != manifest.warmup_seconds, "
-        "'schedule_changed', latest.latest.4) AS current_status, "
+        "ifNull(matching.cadence_seconds, 0) != ifNull(manifest.cadence_seconds, 0) OR "
+        "matching.warmup_seconds != manifest.warmup_seconds), 'schedule_changed', "
+        "matching.node_name != '', matching.status, "
+        "latest.binding_key != manifest.binding_key, "
+        "'binding_changed', latest.definition_fingerprint != manifest.definition_fingerprint, "
+        "'definition_changed', latest.execution_fingerprint != manifest.execution_fingerprint, "
+        "'execution_changed', ifNull(latest.cadence_seconds, 0) != "
+        "ifNull(manifest.cadence_seconds, 0) OR latest.warmup_seconds != "
+        "manifest.warmup_seconds, "
+        "'schedule_changed', latest.status) AS current_status, "
         "arrayFilter(reason -> reason != '', ["
         "if(matching.node_name = '' AND latest.node_name != '' AND "
-        "latest.latest.1 != manifest.binding_key, "
+        "latest.binding_key != manifest.binding_key, "
         "'binding_changed', ''), "
         "if(matching.node_name = '' AND latest.node_name != '' AND "
-        "latest.latest.2 != manifest.definition_fingerprint, "
+        "latest.definition_fingerprint != manifest.definition_fingerprint, "
         "'definition_changed', ''), "
         "if(matching.node_name = '' AND latest.node_name != '' AND "
-        "latest.latest.3 != manifest.execution_fingerprint, "
+        "latest.execution_fingerprint != manifest.execution_fingerprint, "
         "'execution_changed', ''), "
-        "if(ifNull(matching.latest.10, ifNull(latest.latest.10, 0)) != "
+        "if(ifNull(matching.cadence_seconds, ifNull(latest.cadence_seconds, 0)) != "
         "ifNull(manifest.cadence_seconds, 0) OR "
-        "ifNull(matching.latest.11, latest.latest.11) != manifest.warmup_seconds, "
+        "ifNull(matching.warmup_seconds, latest.warmup_seconds) != manifest.warmup_seconds, "
         "'schedule_changed', '')]) AS drift_reasons, "
-        "nullIf(if(matching.node_name != '', matching.latest.5, latest.latest.5), '') AS severity, "
-        "if(matching.node_name != '', matching.latest.6, latest.latest.6) AS failure_count, "
-        "if(matching.node_name != '', matching.latest.7, latest.latest.7) AS completed_at, "
-        "if(matching.node_name != '', matching.latest.8, latest.latest.8) AS payload_json, "
-        "nullIf(if(matching.node_name != '', matching.latest.9, latest.latest.9), '') "
+        "nullIf(if(matching.node_name != '', matching.severity, latest.severity), '') "
+        "AS severity, "
+        "if(matching.node_name != '', matching.failure_count, latest.failure_count) "
+        "AS failure_count, "
+        "if(matching.node_name != '', matching.completed_at, latest.completed_at) "
+        "AS completed_at, "
+        "if(matching.node_name != '', matching.payload_json, latest.payload_json) "
+        "AS payload_json, "
+        "nullIf(if(matching.node_name != '', matching.error_message, latest.error_message), '') "
         "AS error_message FROM manifest_nodes AS manifest "
         "LEFT JOIN latest_results AS latest ON latest.node_kind = manifest.node_kind AND "
         "latest.node_name = manifest.node_name LEFT JOIN matching_results AS matching ON "
