@@ -18,6 +18,7 @@ from testcontainers.core.container import DockerContainer
 # tests and rely on fixture cleanup instead.
 os.environ.setdefault("TESTCONTAINERS_RYUK_DISABLED", "true")
 
+CLICKHOUSE_IMAGE: str = "clickhouse/clickhouse-server:25.8"
 CLICKHOUSE_USERNAME: str = "streambuild"
 CLICKHOUSE_PASSWORD: str = "streambuild"
 CONTAINER_STARTUP_TIMEOUT_SECONDS: int = 90
@@ -145,7 +146,7 @@ def _wait_for_clickhouse_client(host: str, port: int) -> Client:
 @contextmanager
 def start_clickhouse_container(*, timezone_name: str) -> Iterator[ClickHouseConnectionSettings]:
     host_port: int = _reserve_host_port()
-    container: DockerContainer = DockerContainer("clickhouse/clickhouse-server:24.8")
+    container: DockerContainer = DockerContainer(CLICKHOUSE_IMAGE)
     container.with_bind_ports(8123, host_port)
     container.with_env("CLICKHOUSE_USER", CLICKHOUSE_USERNAME)
     container.with_env("CLICKHOUSE_PASSWORD", CLICKHOUSE_PASSWORD)
