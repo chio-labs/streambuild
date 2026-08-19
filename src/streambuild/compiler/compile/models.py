@@ -23,6 +23,7 @@ from streambuild.compiler.discovery.models import (
     KafkaLandingStep,
     LoadedPipeline,
     Pipeline,
+    PostgresRefreshSourceStep,
     Project,
     ReplayOnChangePolicy,
     TransformStep,
@@ -273,7 +274,7 @@ class CompiledSource:
     """One semantically compiled logical streaming source."""
 
     key: LogicalResourceKey
-    source: KafkaLandingStep | ExternalTableSourceStep
+    source: KafkaLandingStep | ExternalTableSourceStep | PostgresRefreshSourceStep
     effective_replay_lineage_mode: ReplayLineageMode
 
 
@@ -435,7 +436,7 @@ class CompileProjectInputs:
     pipelines: tuple[LoadedPipeline, ...]
     tests: tuple[LoadedSqlTest, ...]
     audits: tuple[LoadedSqlAudit, ...]
-    sources: tuple[KafkaLandingStep | ExternalTableSourceStep, ...] = ()
+    sources: tuple[KafkaLandingStep | ExternalTableSourceStep | PostgresRefreshSourceStep, ...] = ()
     virtual_environments: bool = False
     project_name: str | None = None
     target_name: str | None = None

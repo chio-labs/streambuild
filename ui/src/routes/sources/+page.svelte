@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { SOURCE_KIND_LABEL } from '$lib/domain/constants';
 	import AppTopbar from '$lib/presentation/components/app-topbar.svelte';
 	import Sparkline from '$lib/presentation/components/sparkline.svelte';
 	import { getProject } from '$lib/api/main/project/get-project';
@@ -51,7 +52,12 @@
 						</div>
 					</td>
 					<td class="px-3">
-						<span class="sb-tag">{source.kind === 'kafka' ? 'managed Kafka' : 'adopted'}</span>
+						<span class="sb-tag">{SOURCE_KIND_LABEL[source.kind]}</span>
+						{#if source.refresh !== null}
+							<div class="text-[var(--sb-text-faint)] code pt-0.5 text-[10.5px]">
+								refresh every {source.refresh}
+							</div>
+						{/if}
 					</td>
 					<td class="text-muted-foreground code px-3 text-[11px]"
 						>{source.topic ?? source.relationName}</td

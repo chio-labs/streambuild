@@ -96,7 +96,8 @@ function sourceFromServer(source: Payload, live: Payload): Source {
 	const buckets: number[] = (throughput?.buckets ?? []) as number[];
 	return {
 		name: source.name as string,
-		kind: source.kind === 'kafka' ? 'kafka' : 'stream_table',
+		kind: source.kind as Source['kind'],
+		refresh: (source.refresh ?? null) as string | null,
 		boundaryMode: source.boundaryMode as Source['boundaryMode'],
 		relationName: source.relationName as string,
 		managedRelations: ((source.managedRelations ?? []) as Payload[]).map((relation) => ({
