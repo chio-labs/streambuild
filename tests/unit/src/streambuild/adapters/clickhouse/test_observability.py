@@ -23,8 +23,8 @@ from tests.unit.src.streambuild.adapters.clickhouse._test_types import (
         LatestNodeStatusQueryTestCase(
             description="classifies current identity drift and never-run history",
             expected_current_status_fragment=(
-                "matching.node_name != '', matching.latest.4, "
-                "latest.latest.1 != manifest.binding_key, 'binding_changed'"
+                "matching.node_name != '', matching.status, "
+                "latest.binding_key != manifest.binding_key, 'binding_changed'"
             ),
             expected_node_values_fragment=(
                 "('audit', 'order ids are present', 'binding', "
