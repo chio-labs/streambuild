@@ -17,6 +17,8 @@ from testcontainers.core.network import Network
 from testcontainers.core.wait_strategies import LogMessageWaitStrategy
 from testcontainers.kafka._redpanda import RedpandaContainer
 
+from scripts.service_containers.constants import CLICKHOUSE_IMAGE
+
 os.environ.setdefault("TESTCONTAINERS_RYUK_DISABLED", "true")
 
 CLICKHOUSE_USERNAME: str = "streambuild"
@@ -142,7 +144,7 @@ def e2e_clickhouse_connection_settings(
     del e2e_kafka_connection_settings
     try:
         host_port: int = _reserve_host_port()
-        container: DockerContainer = DockerContainer("clickhouse/clickhouse-server:24.8")
+        container: DockerContainer = DockerContainer(CLICKHOUSE_IMAGE)
         container.with_bind_ports(8123, host_port)
         container.with_env("CLICKHOUSE_USER", CLICKHOUSE_USERNAME)
         container.with_env("CLICKHOUSE_PASSWORD", CLICKHOUSE_PASSWORD)
@@ -168,7 +170,7 @@ def e2e_clickhouse_connection_settings(
 def no_activity_log_clickhouse_connection_settings() -> Iterator[E2EClickHouseConnectionSettings]:
     try:
         host_port: int = _reserve_host_port()
-        container: DockerContainer = DockerContainer("clickhouse/clickhouse-server:24.8")
+        container: DockerContainer = DockerContainer(CLICKHOUSE_IMAGE)
         container.with_bind_ports(8123, host_port)
         container.with_env("CLICKHOUSE_USER", CLICKHOUSE_USERNAME)
         container.with_env("CLICKHOUSE_PASSWORD", CLICKHOUSE_PASSWORD)
@@ -200,7 +202,7 @@ def isolated_e2e_clickhouse_connection_settings(
     del isolated_e2e_kafka_connection_settings
     try:
         host_port: int = _reserve_host_port()
-        container: DockerContainer = DockerContainer("clickhouse/clickhouse-server:24.8")
+        container: DockerContainer = DockerContainer(CLICKHOUSE_IMAGE)
         container.with_bind_ports(8123, host_port)
         container.with_env("CLICKHOUSE_USER", CLICKHOUSE_USERNAME)
         container.with_env("CLICKHOUSE_PASSWORD", CLICKHOUSE_PASSWORD)

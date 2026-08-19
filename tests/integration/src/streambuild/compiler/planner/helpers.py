@@ -349,14 +349,15 @@ def _create_direct_raw_landing(
 def _create_suffixed_raw_landing(
     *, clickhouse_client: Client, clickhouse_database: str, compiled_pipeline: CompiledPipeline
 ) -> None:
+    source_raw_table: DesiredTable = require_managed_source(compiled_pipeline).raw_table
     clickhouse_client.command(
-        f"CREATE TABLE {clickhouse_database}.raw__orders__20260731T120000Z_depaaa "
-        "(kafka_key String, kafka_value String, kafka_topic String, "
-        "_replay_partition Int64, _replay_offset Int64, "
-        "_replay_timestamp DateTime64(3), kafka_header_keys Array(String), "
-        "kafka_header_values Array(String), "
-        "_replay_landed_at DateTime64(3)) "
-        "ENGINE = MergeTree ORDER BY (_replay_partition, _replay_offset)"
+        render_create_table_ddl(
+            table=replace(
+                source_raw_table,
+                key=replace(source_raw_table.key, name="raw__orders__20260731T120000Z_depaaa"),
+            ),
+            database=clickhouse_database,
+        )
     )
     source_materialized_view: DesiredMaterializedView = require_managed_source(
         compiled_pipeline

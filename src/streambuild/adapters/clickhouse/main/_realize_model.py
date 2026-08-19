@@ -46,6 +46,8 @@ def realize_clickhouse_model(
                 target_relation_name=request.target_relation_name,
                 query=request.resolved_query,
                 database_template=request.resolved_database_template,
+                refresh=request.refresh,
+                append=request.append,
             ),
         ),
     )

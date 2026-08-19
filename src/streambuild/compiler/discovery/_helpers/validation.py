@@ -13,6 +13,7 @@ from streambuild.compiler.discovery.models import (
     KafkaLandingStep,
     LoadedPipeline,
     LoadedProject,
+    PostgresRefreshSourceStep,
 )
 from streambuild.compiler.discovery.types import PipelineMode
 from streambuild.compiler.test_discovery.models import LoadedSqlTest
@@ -53,7 +54,7 @@ def _source_logical_names(
     logical_node_names: dict[str, Path] = {}
     source_file: DiscoveredSourceFile
     for source_file in source_files:
-        source: KafkaLandingStep | ExternalTableSourceStep
+        source: KafkaLandingStep | ExternalTableSourceStep | PostgresRefreshSourceStep
         for source in source_file.sources:
             logical_node_names[source.name] = source_file.source_file.file_path
     return logical_node_names

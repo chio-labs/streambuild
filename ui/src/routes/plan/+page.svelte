@@ -74,6 +74,7 @@
 			})
 			.catch((error: Error) => {
 				if (requestVersion !== planRequestVersion) return;
+				plan = null;
 				planError = error.message;
 			})
 			.finally(() => {
@@ -100,6 +101,7 @@
 	const executionCommand = $derived(
 		planView.buildCommand({ selectors, replayWindow, acceptedConfirmations, plan, planLoading })
 	);
+	const planStatus = $derived(planView.status({ planError, planLoading, plan }));
 	/** POST the planned options in the dev server's pinned context and follow the run live. */ async function execute(): Promise<void> {
 		executing = true;
 		executeError = null;
@@ -267,15 +269,21 @@
 	     selection just raised: what did I actually just point at. The tables
 	     below can say which models are in scope; only this says how wide the
 	     blast radius is and where it stops. -->
-	{#if planError}
+	{#if planStatus === 'error'}
 		<div
-			class="mx-[18px] my-3 rounded-[4px] border px-3 py-2 font-mono text-[12px]"
+			role="alert"
+			data-testid="plan-error-state"
+			class="mx-[18px] my-3 space-y-1.5 rounded-[4px] border px-3 py-2.5 font-mono text-[12px]"
 			style:border-color="color-mix(in srgb, var(--sb-error) 45%, var(--border))"
-			style:color="var(--sb-error)"
+			style:background="color-mix(in srgb, var(--sb-error) 6%, transparent)"
 		>
-			{planError}
+			<div class="font-semibold" style:color="var(--sb-error)">Cannot plan this selection</div>
+			<div class="text-foreground">{planError}</div>
+			<div class="text-[var(--sb-text-faint)] text-[11px]">
+				Nothing is planned, so no scope is shown below. Adjust the selection and re-plan.
+			</div>
 		</div>
-	{:else if planLoading}
+	{:else if planStatus === 'loading'}
 		<div
 			role="status"
 			data-testid="plan-loading-state"
@@ -291,11 +299,11 @@
 				</div>
 			</div>
 		</div>
-	{:else if plan !== null}
+	{:else if planStatus === 'ready' && plan !== null}
 	<PlanGraph {project} {plan} />
 	{/if}
 
-	{#if plan !== null && !planLoading}
+	{#if planStatus === 'ready' && plan !== null}
 		<div class="border-b border-border bg-[var(--sb-surface-low)] px-[18px] py-3">
 			<div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
 				<span class="font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--sb-text-faint)]">
@@ -322,7 +330,7 @@
 	{/if}
 
 	<!-- ── scope ───────────────────────────────────────────────────────────── -->
-	{#if plan !== null}
+	{#if planStatus === 'ready' && plan !== null}
 	<div class="grid grid-cols-1 gap-5 px-3 py-4 sm:px-[18px] xl:grid-cols-[minmax(0,1fr)_380px]">
 		<div class="flex min-w-0 flex-col gap-5">
 			<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">

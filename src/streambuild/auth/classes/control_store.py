@@ -349,9 +349,7 @@ class ControlStore:
         if existing is not None:
             return existing
         if self.get_user_by_username(username=username) is not None:
-            raise AccountConflictError(
-                f"Proxy identity '{subject}' conflicts with an existing unlinked username"
-            )
+            return self._provisioned_by_competing_writer(subject=subject)
         try:
             return self.create_user(
                 username=username,
@@ -362,13 +360,20 @@ class ControlStore:
                 roles=(default_role,),
             )
         except AccountConflictError:
-            raced: UserAccount | None = self.resolve_external_identity(
-                source=AuthenticationSource.TRUSTED_PROXY,
-                subject=subject,
+            return self._provisioned_by_competing_writer(subject=subject)
+
+    def _provisioned_by_competing_writer(self, *, subject: str) -> UserAccount:
+        """Resolve the identity a competing writer linked, or report a real conflict."""
+
+        raced: UserAccount | None = self.resolve_external_identity(
+            source=AuthenticationSource.TRUSTED_PROXY,
+            subject=subject,
+        )
+        if raced is None:
+            raise AccountConflictError(
+                f"Proxy identity '{subject}' conflicts with an existing unlinked username"
             )
-            if raced is None:
-                raise
-            return raced
+        return raced
 
     def authenticate_password(
         self,

@@ -2,6 +2,14 @@ import type { RunRecord } from '$lib/api/types';
 import type { Project, Source } from '$lib/domain/types';
 import type { Plan, PlanSqlChangeStatus, ReplayWindow, Selector } from '$lib/planning/types';
 
+export type PlanStatus = 'error' | 'loading' | 'ready' | 'empty';
+
+export type PlanStatusInput = {
+	readonly planError: string | null;
+	readonly planLoading: boolean;
+	readonly plan: Plan | null;
+};
+
 export type BuildCommandParts = {
 	readonly selectors: Selector[];
 	readonly replayWindow: ReplayWindow;
@@ -45,6 +53,7 @@ export type PlanViewFacade = {
 	replayStartToken(replayWindow: ReplayWindow): string | null;
 	parseCommand(command: string): ParsedPlanCommand;
 	buildCommand(parts: BuildCommandParts): string;
+	status(input: PlanStatusInput): PlanStatus;
 	boundaryColumns(root: Plan['replayRoots'][number]): string | null;
 	rootSources(project: Project, modelNames: string[]): Source[];
 	selectorToken(selector: Selector): string;

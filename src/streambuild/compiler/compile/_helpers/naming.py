@@ -14,6 +14,7 @@ from streambuild.compiler.discovery.models import (
     ExternalTableSourceStep,
     KafkaLandingStep,
     Pipeline,
+    PostgresRefreshSourceStep,
     Project,
     TransformStep,
     ViewStep,
@@ -88,7 +89,9 @@ def validate_compiled_project_relation_names(*, project: CompiledProject) -> Non
     owner_by_relation_name: dict[str, str] = {}
     adopted_owner_by_relation_name: dict[str, str] = {}
     for source in project.sources:
-        authored_source: KafkaLandingStep | ExternalTableSourceStep = source.source
+        authored_source: KafkaLandingStep | ExternalTableSourceStep | PostgresRefreshSourceStep = (
+            source.source
+        )
         if isinstance(authored_source, ExternalTableSourceStep):
             adopted_owner_by_relation_name.setdefault(
                 authored_source.table_name,

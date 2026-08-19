@@ -13,6 +13,8 @@ from clickhouse_connect.driver.client import Client
 from docker.errors import DockerException
 from testcontainers.core.container import DockerContainer
 
+from scripts.service_containers.constants import CLICKHOUSE_IMAGE
+
 # Docker Desktop under WSL can fail to report Ryuk's published port even when
 # regular containers start correctly. Disable Ryuk for these local integration
 # tests and rely on fixture cleanup instead.
@@ -145,7 +147,7 @@ def _wait_for_clickhouse_client(host: str, port: int) -> Client:
 @contextmanager
 def start_clickhouse_container(*, timezone_name: str) -> Iterator[ClickHouseConnectionSettings]:
     host_port: int = _reserve_host_port()
-    container: DockerContainer = DockerContainer("clickhouse/clickhouse-server:24.8")
+    container: DockerContainer = DockerContainer(CLICKHOUSE_IMAGE)
     container.with_bind_ports(8123, host_port)
     container.with_env("CLICKHOUSE_USER", CLICKHOUSE_USERNAME)
     container.with_env("CLICKHOUSE_PASSWORD", CLICKHOUSE_PASSWORD)
