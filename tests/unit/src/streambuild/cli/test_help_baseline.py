@@ -38,22 +38,22 @@ from tests.unit.src.streambuild.cli._test_types import CliHelpBaselineTestCase
         CliHelpBaselineTestCase(
             description="captures test help",
             argv=("test", "--help"),
-            expected_sha256="fed9d662ffbd1b0ce8eabb58991013053bff2a4320e29eca3efdf56427eee528",
+            expected_sha256="37f0e5549adba5d93cbc0f33ae4a84edabc665ba05e0e353801f482acfa9a77e",
         ),
         CliHelpBaselineTestCase(
             description="captures plan help",
             argv=("plan", "--help"),
-            expected_sha256="8949ad74580be08b495955e7373364e07623d2e7a7699d163a59e315d2155314",
+            expected_sha256="bbd45ea45cddc678ca201977c17f60463aa984ef6d2caef1b686ea7c9227ec6e",
         ),
         CliHelpBaselineTestCase(
             description="captures build help",
             argv=("build", "--help"),
-            expected_sha256="d57513c583dd72f8474a7d6c3f4136ff9dd6d91f5c55eab180c9465404e3bbbf",
+            expected_sha256="51aca75b964195a13d0ac34b2854e17999d9fbfb14d99eb456ebb56e768f3546",
         ),
         CliHelpBaselineTestCase(
             description="captures audit help",
             argv=("audit", "--help"),
-            expected_sha256="91cdd3fc5773d84c06b43d10b911128138c41c24acca4fa2c64cd1e87939932e",
+            expected_sha256="ddc5e002b64acbd64f6e91d4e4b5a0eb3dc7e404d62a4d7905d3de4532ec38d8",
         ),
         CliHelpBaselineTestCase(
             description="captures deployment help",
@@ -93,7 +93,7 @@ from tests.unit.src.streambuild.cli._test_types import CliHelpBaselineTestCase
         CliHelpBaselineTestCase(
             description="captures reconcile help",
             argv=("reconcile", "--help"),
-            expected_sha256="ef4fac7c26e3568743463a4912d21fc5659477840f583bf7a26421c2bc8dc650",
+            expected_sha256="0afbcccdc77e64c25ee8da07473e2533c197edac90e912c01cfc9c16d373691d",
         ),
         CliHelpBaselineTestCase(
             description="captures janitor help",

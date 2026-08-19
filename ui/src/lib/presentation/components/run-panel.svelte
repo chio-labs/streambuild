@@ -48,7 +48,7 @@
 	const commandErrorId = 'run-command-error';
 
 	const seed = $derived(
-		`stb build${selection.map((name) => ` --select ${name}`).join('')} --auto-approve`
+		`stb build${selection.length ? ` --select ${selection.join(' ')}` : ''} --auto-approve`
 	);
 
 	$effect(() => {
@@ -86,13 +86,27 @@
 	const matchCount = $derived.by((): number => {
 		const names = new Set<string>();
 		for (const selector of parsed.selectors) {
-			if (selector.startsWith('pipeline:')) {
-				const pipeline: Project['pipelines'][number] | undefined = project.pipelines.find(
-					(item) => item.name === selector.slice('pipeline:'.length)
-				);
-				for (const model of pipeline?.models ?? []) names.add(model);
-			} else if (project.models.some((model) => model.name === selector)) {
-				names.add(selector);
+			const isPipelinePrefix: boolean = selector.startsWith('pipeline:');
+			const bare: string = isPipelinePrefix
+				? selector.slice('pipeline:'.length)
+				: selector.startsWith('model:')
+					? selector.slice('model:'.length)
+					: selector;
+			const isModelPrefix: boolean = selector.startsWith('model:');
+			const model: Project['models'][number] | undefined = project.models.find(
+				(item) => item.name === bare
+			);
+			const pipeline: Project['pipelines'][number] | undefined = project.pipelines.find(
+				(item) => item.name === bare
+			);
+			if (!isPipelinePrefix && !isModelPrefix && model) {
+				names.add(bare);
+			} else if (isModelPrefix && model) {
+				names.add(bare);
+			} else if (pipeline) {
+				for (const name of pipeline.models) names.add(name);
+			} else if (model) {
+				names.add(bare);
 			}
 		}
 		return names.size;
