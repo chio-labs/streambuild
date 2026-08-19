@@ -23,14 +23,21 @@ from tests.unit.src.streambuild.adapters.clickhouse._test_types import (
             description="an appending refresh renders its cadence and target",
             refresh="1 HOUR",
             append=True,
-            expected_fragments=("REFRESH EVERY 1 HOUR APPEND", "TO analytics.pg__course AS"),
+            expected_fragments=(
+                "REFRESH EVERY 1 HOUR APPEND",
+                "TO analytics.pg__course AS",
+                "SETTINGS allow_experimental_refreshable_materialized_view = 1",
+            ),
             forbidden_fragments=(),
         ),
         RefreshRenderingTestCase(
             description="replace semantics omit the append clause",
             refresh="5 MINUTE",
             append=False,
-            expected_fragments=("REFRESH EVERY 5 MINUTE",),
+            expected_fragments=(
+                "REFRESH EVERY 5 MINUTE\n",
+                "SETTINGS allow_experimental_refreshable_materialized_view = 1",
+            ),
             forbidden_fragments=("APPEND",),
         ),
         RefreshRenderingTestCase(

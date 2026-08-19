@@ -8,6 +8,7 @@ from streambuild.adapter.constants import (
     ADAPTER_SECRET_PLACEHOLDER_PREFIX,
     ADAPTER_SECRET_PLACEHOLDER_SUFFIX,
     MANAGED_SOURCE_KIND_KAFKA,
+    REFRESHABLE_VIEW_SETTING,
 )
 from streambuild.adapter.exceptions import AdapterCapabilityError
 from streambuild.adapter.models import (
@@ -180,16 +181,21 @@ def _render_materialized_view(
         f"{ADAPTER_DATABASE_PLACEHOLDER}.",
         f"{database}.",
     )
-    refresh_clause: str = (
-        ""
-        if resource.refresh is None
-        else f"\nREFRESH EVERY {resource.refresh}{' APPEND' if resource.append else ''}"
-    )
+    if resource.refresh is None:
+        return (
+            f"CREATE MATERIALIZED VIEW {'IF NOT EXISTS ' if if_not_exists else ''}"
+            f"{database}.{resource.name}\n"
+            f"TO {database}.{resource.target_relation_name} AS\n"
+            f"{rendered_query}"
+        )
+    append_clause: str = " APPEND" if resource.append else ""
     return (
         f"CREATE MATERIALIZED VIEW {'IF NOT EXISTS ' if if_not_exists else ''}"
-        f"{database}.{resource.name}{refresh_clause}\n"
+        f"{database}.{resource.name}\n"
+        f"REFRESH EVERY {resource.refresh}{append_clause}\n"
         f"TO {database}.{resource.target_relation_name} AS\n"
-        f"{rendered_query}"
+        f"{rendered_query}\n"
+        f"SETTINGS {REFRESHABLE_VIEW_SETTING}"
     )
 
 

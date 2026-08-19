@@ -23,6 +23,7 @@ from streambuild.adapter.models import (
     AdapterQueryResult,
     AdapterReadinessRequest,
     AdapterReadinessRootObservation,
+    AdapterRefreshState,
     AdapterRelationCleanupRequest,
     AdapterReplayCoverageRequest,
     AdapterRunEventRecord,
@@ -52,6 +53,11 @@ class AdapterConnection(ABC):
     @abstractmethod
     def load_catalog(self, database: str) -> CatalogSnapshot:
         """Load one immutable catalog snapshot for a database."""
+
+    def load_refresh_states(self, database: str) -> tuple[AdapterRefreshState, ...]:
+        """Report scheduled refresh state; adapters without scheduled relations report none."""
+
+        return ()
 
     @abstractmethod
     def metadata_columns(self, *, database: str, table: str) -> frozenset[str]:

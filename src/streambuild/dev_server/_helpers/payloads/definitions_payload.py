@@ -187,6 +187,7 @@ def _source_payload(*, analysis: CompileAnalysis, source: CompiledSource) -> dic
         "kafka": kafka,
         "columnMapping": _boundary_columns_payload(boundary),
         "freshness": _freshness_payload(step.freshness),
+        "refresh": step.refresh if isinstance(step, PostgresRefreshSourceStep) else None,
     }
 
 
