@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.24.5](https://github.com/chio-labs/streambuild/compare/v0.24.4...v0.24.5) (2026-08-20)
+
+
+### Performance Improvements
+
+* **ui:** initialize the project in one request ([70d6124](https://github.com/chio-labs/streambuild/commit/70d6124462d0f160c9d9aa651c15207156871cd8))
+* **ui:** initialize the project in one request ([f7d3b01](https://github.com/chio-labs/streambuild/commit/f7d3b017a9475ea22302a939a42f7a3e53be5867))
+
 ## [0.24.4](https://github.com/chio-labs/streambuild/compare/v0.24.3...v0.24.4) (2026-08-20)
 
 
