@@ -450,3 +450,9 @@ class StateSnapshotTestCase:
     description: str
     request_count: int
     expected_build_count: int
+
+
+@dataclass(frozen=True)
+class ConnectionSettingsPayloadTestCase:
+    description: str
+    expected_settings: dict[str, str]
