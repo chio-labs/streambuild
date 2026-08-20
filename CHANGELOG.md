@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.24.0](https://github.com/chio-labs/streambuild/compare/v0.23.0...v0.24.0) (2026-08-20)
+
+
+### Features
+
+* **adapter:** send configured ClickHouse session settings ([0d672d4](https://github.com/chio-labs/streambuild/commit/0d672d4116ff99e47db33388eec6e47b3cc81600))
+
+
+### Bug Fixes
+
+* **cli:** stop claiming --start-time is virtual only ([e5c9582](https://github.com/chio-labs/streambuild/commit/e5c95828793c6fec55345769d36e62278667adc1))
+* **cli:** stop claiming --start-time is virtual only ([1416d75](https://github.com/chio-labs/streambuild/commit/1416d75bc2eb8fb4518e31ec31643253cb5869ea))
+* **compiler:** stop consuming the retained tree when resolving aliased refs ([18feb0d](https://github.com/chio-labs/streambuild/commit/18feb0da59fb6fa018a546658ac25cd09c592dc2))
+
+
+### Performance Improvements
+
+* **compiler:** collect every model tree fact in one traversal ([664b33f](https://github.com/chio-labs/streambuild/commit/664b33f7fb95a2f2085cc7dd702e29c0a56b31e4))
+* **compiler:** reach SQLBuild compile parity by removing unread analysis work ([65bce29](https://github.com/chio-labs/streambuild/commit/65bce29fb218f45ffb7169d8e64e912242a0922e))
+* **compiler:** resolve each model tree in one traversal ([fabf1e1](https://github.com/chio-labs/streambuild/commit/fabf1e112ecec5a8f3555e7025098f3e631d5139))
+* **compiler:** resolve references by substitution instead of rendering ([a703c01](https://github.com/chio-labs/streambuild/commit/a703c01afec5f5b356a7c22d05592deed2bd7fbc))
+* **compiler:** restore the dropped SQLBuild scanner skip and stop re-walking trees ([6e1ca2c](https://github.com/chio-labs/streambuild/commit/6e1ca2cb2a90b9a96178a7c7f1c400e78cb0b1ce))
+* **compiler:** restore the reference scanner skip and stop deep copying trees ([3716397](https://github.com/chio-labs/streambuild/commit/3716397ae1c2355e9ce66b40ee6a232177a8b332))
+* **compiler:** stop rendering canonical SQL that nothing reads ([39d8582](https://github.com/chio-labs/streambuild/commit/39d8582badc82104b4d8128e43d32acf9db53138))
+* **compiler:** walk each parsed model tree once per purpose ([a9df82f](https://github.com/chio-labs/streambuild/commit/a9df82f7da176690c63de455ef8209cb4ced820d))
+* **dev-server:** serve one background-refreshed warehouse overlay ([3c5e703](https://github.com/chio-labs/streambuild/commit/3c5e70343ec85afae776626077168645c266e057))
+* **dev-server:** serve one background-refreshed warehouse overlay ([2590c87](https://github.com/chio-labs/streambuild/commit/2590c87b0762dec18a3ba9fba71db808d447f788))
+
 ## [0.23.0](https://github.com/chio-labs/streambuild/compare/v0.22.4...v0.23.0) (2026-08-19)
 
 
