@@ -523,9 +523,8 @@ RECONCILE_OVERRIDE_QUERY: str = (
 )
 
 ACTIVE_BASELINE_QUERY: str = (
-    "SELECT\n"
-    "  CAST(kafka_key AS String) AS order_id,\n"
-    "  CAST(_replay_timestamp AS DateTime64(3)) AS _replay_timestamp\n"
+    "SELECT CAST(kafka_key AS String) AS order_id, "
+    "CAST(_replay_timestamp AS DateTime64(3)) AS _replay_timestamp "
     "FROM raw__orders"
 )
 

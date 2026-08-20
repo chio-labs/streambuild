@@ -4,7 +4,6 @@ from dataclasses import dataclass
 
 from streambuild.compiler.sql_analysis.types import (
     RefType,
-    SqlLineageConfidence,
     SqlQueryShape,
     SqlRelationType,
     SqlStorageExpressionKind,
@@ -63,26 +62,12 @@ class SqlOutputColumn:
 
 
 @dataclass(frozen=True)
-class SqlLineageSourceFact:
-    """One compact upstream column contributing to a model output."""
-
-    relation_name: str
-    column_name: str
-    confidence: SqlLineageConfidence | str
-
-    def __post_init__(self) -> None:
-        object.__setattr__(self, "confidence", SqlLineageConfidence(self.confidence))
-
-
-@dataclass(frozen=True)
 class SqlProjection:
-    """One strict outer projection and its compact lineage facts."""
+    """One strict outer projection and its authored source span."""
 
     index: int
-    sql: str
     output: SqlOutputColumn
     span: SqlSourceSpan
-    upstream: tuple[SqlLineageSourceFact, ...]
 
 
 @dataclass(frozen=True)
@@ -91,7 +76,6 @@ class SqlStorageExpression:
 
     kind: SqlStorageExpressionKind | str
     sql: str
-    canonical_sql: str
     referenced_column_names: tuple[str, ...]
 
     def __post_init__(self) -> None:
@@ -117,7 +101,6 @@ class SqlModelAnalysis:
     """Complete immutable SQL facts produced once for one authored model."""
 
     authored_sql: str
-    canonical_sql: str
     shape: SqlQueryShape | str
     projections: tuple[SqlProjection, ...]
     references: tuple[SqlReference, ...]

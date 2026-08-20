@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from streambuild.compiler.compile.models import (
     Column,
+    DesiredMaterializedView,
     DesiredState,
     DesiredTable,
+    DesiredView,
     ObjectKey,
     TableSpec,
 )
@@ -21,7 +23,13 @@ from streambuild.compiler.planner.constants import (
     TYPE_CHANGE_COLUMN_DIFFERENCE,
 )
 from streambuild.compiler.planner.exceptions import DeploymentPlanError
-from streambuild.compiler.planner.models import ActualState, ActualTable, PlannedObjectChange
+from streambuild.compiler.planner.models import (
+    ActualMaterializedView,
+    ActualState,
+    ActualTable,
+    ActualView,
+    PlannedObjectChange,
+)
 from streambuild.compiler.planner.types import (
     ActualObject,
     DesiredObject,
@@ -30,6 +38,7 @@ from streambuild.compiler.planner.types import (
     TableSchemaSeedCompatibility,
 )
 from streambuild.compiler.sql_analysis.exceptions import SqlAnalysisError
+from streambuild.compiler.sql_analysis.main._canonicalize_sql import canonicalize_sql
 from streambuild.compiler.sql_analysis.main._normalize_data_type import normalize_sql_data_type
 
 
@@ -174,7 +183,34 @@ def _classify_table_column_difference(
 def _specs_equal(*, desired_object: DesiredObject, actual_object: ActualObject) -> bool:
     if isinstance(desired_object, DesiredTable) and isinstance(actual_object, ActualTable):
         return _table_specs_equal(desired_spec=desired_object.spec, actual_spec=actual_object.spec)
-    return desired_object.spec == actual_object.spec
+    if desired_object.spec == actual_object.spec:
+        return True
+    if isinstance(desired_object, DesiredMaterializedView) and isinstance(
+        actual_object, ActualMaterializedView
+    ):
+        return (
+            desired_object.spec.source_table_name == actual_object.spec.source_table_name
+            and desired_object.spec.target_table_name == actual_object.spec.target_table_name
+            and _queries_equal(
+                desired_query=desired_object.spec.query, actual_query=actual_object.spec.query
+            )
+        )
+    if isinstance(desired_object, DesiredView) and isinstance(actual_object, ActualView):
+        return _queries_equal(
+            desired_query=desired_object.spec.query, actual_query=actual_object.spec.query
+        )
+    return False
+
+
+def _queries_equal(*, desired_query: str, actual_query: str) -> bool:
+    if desired_query == actual_query:
+        return True
+    try:
+        return canonicalize_sql(sql=desired_query, dialect="clickhouse") == canonicalize_sql(
+            sql=actual_query, dialect="clickhouse"
+        )
+    except SqlAnalysisError:
+        return False
 
 
 def _table_specs_equal(*, desired_spec: TableSpec, actual_spec: TableSpec) -> bool:

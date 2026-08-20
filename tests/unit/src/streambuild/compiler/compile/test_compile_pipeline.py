@@ -323,7 +323,7 @@ def test_given_inline_transform_sql_when_compiling_then_it_derives_expected_colu
             sql_relative_path="sql/prices.sql",
             sql_contents='SELECT CAST(kafka_value AS UInt64) AS order_id FROM __ref("orders")',
             expected_resolved_query=(
-                "SELECT\n  CAST(kafka_value AS UInt64) AS order_id\nFROM raw__orders"
+                "SELECT CAST(kafka_value AS UInt64) AS order_id FROM raw__orders"
             ),
         )
     ],
