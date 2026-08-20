@@ -52,7 +52,9 @@ def test_given_blocked_deployments_when_loading_pipeline_then_project_renders_be
 ) -> None:
     base_url, _state_payload, _database, _log_path = running_catalog_pipeline_browser_server
     held_routes: list[Route] = []
+    request_paths: list[str] = []
     deployments_pattern: str = "**/api/deployments"
+    page.on("request", lambda request: request_paths.append(urlparse(request.url).path))
     page.route(deployments_pattern, lambda route: held_routes.append(route))
 
     with page.expect_request(lambda request: urlparse(request.url).path == "/api/deployments"):
@@ -67,6 +69,15 @@ def test_given_blocked_deployments_when_loading_pipeline_then_project_renders_be
     expect(page.get_by_test_id("stream-tree").locator("[data-node-name]")).to_have_count(
         test_case.expected_tree_nodes
     )
+    assert request_paths.count("/api/bootstrap") == 1
+    assert not {
+        "/api/auth/config",
+        "/api/auth/me",
+        "/api/auth/capabilities",
+        "/api/status",
+        "/api/definitions",
+        "/api/state",
+    }.intersection(request_paths)
     assert len(held_routes) == 1
     held_routes[0].continue_()
     page.unroute(deployments_pattern)
@@ -100,8 +111,8 @@ def test_given_compiled_pipeline_when_navigating_catalog_then_identity_and_sql_r
     base_url, state_payload, database, _log_path = running_catalog_pipeline_browser_server
     console_messages, page_errors, failed_requests, responses = browser_diagnostics
     with page.expect_response(
-        lambda response: urlparse(response.url).path == "/api/definitions"
-    ) as definitions_info:
+        lambda response: urlparse(response.url).path == "/api/bootstrap"
+    ) as bootstrap_info:
         document_response: Response | None = page.goto(
             f"{base_url}/pipelines/{test_case.pipeline_name}",
             wait_until="domcontentloaded",
@@ -109,7 +120,8 @@ def test_given_compiled_pipeline_when_navigating_catalog_then_identity_and_sql_r
         )
     assert document_response is not None
     assert document_response.status == 200
-    definitions: dict[str, object] = definitions_info.value.json()
+    bootstrap: dict[str, object] = bootstrap_info.value.json()
+    definitions: dict[str, object] = cast(dict[str, object], bootstrap["definitions"])
     pipelines: list[dict[str, object]] = cast(list[dict[str, object]], definitions["pipelines"])
     pipeline_by_name: dict[str, dict[str, object]] = {str(item["name"]): item for item in pipelines}
     pipeline: dict[str, object] = pipeline_by_name[test_case.pipeline_name]
