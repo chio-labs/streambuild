@@ -463,3 +463,10 @@ class WarehouseRefreshSnapshotTestCase:
     description: str
     refresh_count: int
     expected_build_count: int
+
+
+@dataclass(frozen=True)
+class OverlayReaderTestCase:
+    description: str
+    read_count: int
+    expected_connection_count: int
