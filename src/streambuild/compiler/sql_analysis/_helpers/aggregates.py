@@ -21,11 +21,13 @@ from streambuild.compiler.sql_analysis.models import SqlAggregateFacts
 def aggregate_facts(*, tree: dict[str, Any], engine: str) -> SqlAggregateFacts:
     """Return query and engine aggregation facts without generic aliases."""
 
-    function_names: list[str] = _collect_aggregate_functions(node=tree, names=[])
+    function_names: list[str]
+    has_group_by: bool
+    function_names, has_group_by = _scanned_aggregate_facts(node=tree, names=[], has_group_by=False)
     engine_name: str = engine.partition("(")[0].strip()
     normalized_engine_name: str = engine_name.lower().removeprefix("replicated")
     return SqlAggregateFacts(
-        has_group_by=_contains_group_by(tree),
+        has_group_by=has_group_by,
         function_names=tuple(dict.fromkeys(function_names)),
         engine_name=engine_name,
         engine_has_aggregate_semantics=(
@@ -34,14 +36,19 @@ def aggregate_facts(*, tree: dict[str, Any], engine: str) -> SqlAggregateFacts:
     )
 
 
-def _collect_aggregate_functions(*, node: Any, names: list[str]) -> list[str]:
+def _scanned_aggregate_facts(
+    *, node: Any, names: list[str], has_group_by: bool
+) -> tuple[list[str], bool]:
     if isinstance(node, list):
         item: Any
         for item in node:
-            names = _collect_aggregate_functions(node=item, names=names)
-        return names
+            names, has_group_by = _scanned_aggregate_facts(
+                node=item, names=names, has_group_by=has_group_by
+            )
+        return names, has_group_by
     if not isinstance(node, dict):
-        return names
+        return names, has_group_by
+    has_group_by = has_group_by or node.get(POLYGLOT_GROUP_BY_KEY) is not None
     key: str
     payload: Any
     for key, payload in node.items():
@@ -49,8 +56,10 @@ def _collect_aggregate_functions(*, node: Any, names: list[str]) -> list[str]:
         if function_name is not None and _is_clickhouse_aggregate(function_name):
             names.append(function_name)
         if isinstance(payload, dict | list):
-            names = _collect_aggregate_functions(node=payload, names=names)
-    return names
+            names, has_group_by = _scanned_aggregate_facts(
+                node=payload, names=names, has_group_by=has_group_by
+            )
+    return names, has_group_by
 
 
 def _function_name(*, key: str, payload: Any) -> str | None:
@@ -87,13 +96,3 @@ def _is_clickhouse_aggregate(function_name: str) -> bool:
                 changed = True
                 break
     return base_name.lower() in CLICKHOUSE_AGGREGATE_FUNCTION_NAMES
-
-
-def _contains_group_by(node: Any) -> bool:
-    if isinstance(node, list):
-        return any(_contains_group_by(item) for item in node)
-    if not isinstance(node, dict):
-        return False
-    if node.get(POLYGLOT_GROUP_BY_KEY) is not None:
-        return True
-    return any(_contains_group_by(value) for value in node.values())
