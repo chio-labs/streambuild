@@ -189,7 +189,7 @@ def test_given_adapter_profile_when_analyzing_then_references_use_its_dialect(
             expected_parse_calls=2,
             expected_parse_one_calls=15,
             expected_analyze_calls=3,
-            expected_generate_calls=26,
+            expected_generate_calls=24,
         )
     ],
     ids=lambda case: case.description,

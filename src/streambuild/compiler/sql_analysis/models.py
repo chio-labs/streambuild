@@ -117,7 +117,6 @@ class SqlModelAnalysis:
     """Complete immutable SQL facts produced once for one authored model."""
 
     authored_sql: str
-    canonical_sql: str
     shape: SqlQueryShape | str
     projections: tuple[SqlProjection, ...]
     references: tuple[SqlReference, ...]

@@ -206,7 +206,6 @@ def build_deep_chain_assembler(*, model_count: int) -> SqlTestChainAssembler:
                 transform=transform,
                 sql_analysis=SqlModelAnalysis(
                     authored_sql=query,
-                    canonical_sql=query,
                     shape=SqlQueryShape.SELECT,
                     projections=(),
                     references=(
