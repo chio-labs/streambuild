@@ -147,14 +147,14 @@ def test_given_failing_refresh_when_reading_snapshot_then_last_good_overlay_surv
     "test_case",
     [
         WarehouseRefreshSnapshotTestCase(
-            description="a warehouse refresh keeps the held overlay so state stays cached",
-            refresh_count=3,
-            expected_build_count=1,
+            description="an explicit warehouse refresh discards the held overlay",
+            refresh_count=1,
+            expected_build_count=2,
         ),
     ],
     ids=lambda case: case.description,
 )
-def test_given_warehouse_refresh_when_reading_state_then_overlay_is_not_rebuilt(
+def test_given_explicit_warehouse_refresh_when_reading_state_then_overlay_is_rebuilt(
     test_case: WarehouseRefreshSnapshotTestCase,
     tmp_path: Path,
 ) -> None:
