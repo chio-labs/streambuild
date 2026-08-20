@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.24.3](https://github.com/chio-labs/streambuild/compare/v0.24.2...v0.24.3) (2026-08-20)
+
+
+### Performance Improvements
+
+* **dev-server:** build the warehouse overlay off the shared query lock ([63f504f](https://github.com/chio-labs/streambuild/commit/63f504fa4541d89b29e72f26510282dad238106b))
+* **dev-server:** build the warehouse overlay off the shared query lock ([8fc629b](https://github.com/chio-labs/streambuild/commit/8fc629bf32cc74b0721fca294c75dd9f417f3624))
+
 ## [0.24.2](https://github.com/chio-labs/streambuild/compare/v0.24.1...v0.24.2) (2026-08-20)
 
 
