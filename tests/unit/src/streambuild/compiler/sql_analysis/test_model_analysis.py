@@ -436,7 +436,7 @@ def test_given_direct_projection_when_analyzing_then_retains_compact_lineage(
             expected_parse_calls=1,
             expected_parse_one_calls=2,
             expected_analyze_calls=1,
-            expected_generate_calls=7,
+            expected_generate_calls=6,
         )
     ],
     ids=lambda case: case.description,

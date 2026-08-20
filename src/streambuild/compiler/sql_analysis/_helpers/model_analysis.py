@@ -62,10 +62,8 @@ def analyze_model_sql_impl(
         compact_analysis=compact_analysis,
         dialect=dialect,
     )
-    canonical_sql = generate_sql_tree(tree=tree, dialect=dialect, pretty=True)
     analysis: SqlModelAnalysis = SqlModelAnalysis(
         authored_sql=sql,
-        canonical_sql=canonical_sql,
         shape=SqlQueryShape.SELECT,
         projections=projections,
         references=extract_references_impl(sql),
