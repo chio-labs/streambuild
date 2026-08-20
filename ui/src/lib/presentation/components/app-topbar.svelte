@@ -46,7 +46,7 @@
 	async function forceRefresh(): Promise<void> {
 		refreshing = true;
 		try {
-			await refreshLiveState();
+			await refreshLiveState({ force: true });
 		} finally {
 			refreshing = false;
 		}

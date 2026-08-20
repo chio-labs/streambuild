@@ -211,6 +211,6 @@ export type AppController = {
 	readonly app: AppState;
 	initialize(): Promise<void>;
 	reload(): Promise<void>;
-	refreshLiveState(): Promise<void>;
+	refreshLiveState(options?: { force?: boolean }): Promise<void>;
 	refreshDeployments(): Promise<void>;
 };
