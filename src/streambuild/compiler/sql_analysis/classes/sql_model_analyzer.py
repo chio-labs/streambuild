@@ -25,7 +25,9 @@ class SqlModelAnalyzer:
 
     def __init__(self, *, dialect: str) -> None:
         self._dialect: str = dialect
-        self._tree_by_analysis: dict[SqlModelAnalysis, dict[str, Any]] = {}
+        self._resolution_by_analysis: dict[
+            SqlModelAnalysis, tuple[dict[str, Any], tuple[tuple[Any, Any], ...], str | None]
+        ] = {}
         self._relation_cache: dict[str, tuple[dict[str, Any], str | None, dict[str, str]]] = {}
         self._type_cache: ProjectionTypeCache = {}
 
@@ -42,7 +44,9 @@ class SqlModelAnalyzer:
 
         analysis: SqlModelAnalysis
         tree: dict[str, Any]
-        analysis, tree, self._type_cache = analyze_model_sql_impl(
+        reference_slots: tuple[tuple[Any, Any], ...]
+        raw_relation: str | None
+        analysis, tree, self._type_cache, reference_slots, raw_relation = analyze_model_sql_impl(
             sql=sql,
             engine=engine,
             order_by=order_by,
@@ -51,7 +55,7 @@ class SqlModelAnalyzer:
             dialect=self._dialect,
             type_cache=self._type_cache,
         )
-        self._tree_by_analysis[analysis] = tree
+        self._resolution_by_analysis[analysis] = (tree, reference_slots, raw_relation)
         return analysis
 
     def resolve(
@@ -62,12 +66,16 @@ class SqlModelAnalyzer:
     ) -> SqlResolvedQuery:
         """Resolve and qualify a previously analyzed model without reparsing it."""
 
-        tree: dict[str, Any] | None = self._tree_by_analysis.get(analysis)
-        if tree is None:
+        resolution: tuple[dict[str, Any], tuple[tuple[Any, Any], ...], str | None] | None = (
+            self._resolution_by_analysis.get(analysis)
+        )
+        if resolution is None:
             raise SqlAnalysisError("Model analysis does not belong to this compiler invocation")
         resolved_query: SqlResolvedQuery
         resolved_query, self._relation_cache = build_resolved_query(
-            tree=tree,
+            tree=resolution[0],
+            reference_slots=resolution[1],
+            raw_relation=resolution[2],
             authored_sql=analysis.authored_sql,
             dialect=self._dialect,
             references=analysis.references,

@@ -11,7 +11,6 @@ from streambuild.compiler.sql_analysis.constants import (
     POLYGLOT_ALIAS_VALUE_KEY,
     POLYGLOT_COMBINED_PARAMETERIZED_AGGREGATE_KEY,
     POLYGLOT_FUNCTION_KEY,
-    POLYGLOT_GROUP_BY_KEY,
     POLYGLOT_IDENTIFIER_KEY,
     POLYGLOT_NAME_KEY,
 )
@@ -27,12 +26,11 @@ _FUNCTION_NAME_KEYS: frozenset[str] = frozenset(
 _NESTED_PAYLOAD_TYPES: frozenset[type] = frozenset({dict, list})
 
 
-def aggregate_facts(*, tree: dict[str, Any], engine: str) -> SqlAggregateFacts:
+def build_aggregate_facts(
+    *, function_names: list[str], has_group_by: bool, engine: str
+) -> SqlAggregateFacts:
     """Return query and engine aggregation facts without generic aliases."""
 
-    function_names: list[str]
-    has_group_by: bool
-    function_names, _, has_group_by = _scanned_aggregate_facts(node=tree, names=[], keyed_names={})
     engine_name: str = engine.partition("(")[0].strip()
     normalized_engine_name: str = engine_name.lower().removeprefix("replicated")
     return SqlAggregateFacts(
@@ -45,46 +43,21 @@ def aggregate_facts(*, tree: dict[str, Any], engine: str) -> SqlAggregateFacts:
     )
 
 
-def _scanned_aggregate_facts(
-    *, node: Any, names: list[str], keyed_names: dict[str, str]
-) -> tuple[list[str], dict[str, str], bool]:
-    has_group_by: bool = False
-    nested_group_by: bool
-    if type(node) is list:
-        item: Any
-        for item in node:
-            if type(item) in _NESTED_PAYLOAD_TYPES:
-                names, keyed_names, nested_group_by = _scanned_aggregate_facts(
-                    node=item, names=names, keyed_names=keyed_names
-                )
-                if nested_group_by:
-                    has_group_by = True
-        return names, keyed_names, has_group_by
-    if type(node) is not dict:
-        return names, keyed_names, False
-    if node.get(POLYGLOT_GROUP_BY_KEY) is not None:
-        has_group_by = True
-    key: str
-    payload: Any
-    for key, payload in node.items():
-        if key in _FUNCTION_NAME_KEYS:
-            payload_name: str | None = _function_name(key=key, payload=payload)
-            if payload_name is not None and _is_clickhouse_aggregate(payload_name):
-                names.append(payload_name)
-        else:
-            keyed_name: str | None = keyed_names.get(key)
-            if keyed_name is None:
-                keyed_name = _keyed_function_name(key)
-                keyed_names[key] = keyed_name
-            if keyed_name:
-                names.append(keyed_name)
-        if type(payload) in _NESTED_PAYLOAD_TYPES:
-            names, keyed_names, nested_group_by = _scanned_aggregate_facts(
-                node=payload, names=names, keyed_names=keyed_names
-            )
-            if nested_group_by:
-                has_group_by = True
-    return names, keyed_names, has_group_by
+def aggregate_key_name(
+    *, key: str, payload: Any, keyed_names: dict[str, str]
+) -> tuple[str, dict[str, str]]:
+    """Return the aggregate function name one payload key contributes, if any."""
+
+    if key in _FUNCTION_NAME_KEYS:
+        payload_name: str | None = _function_name(key=key, payload=payload)
+        if payload_name is not None and _is_clickhouse_aggregate(payload_name):
+            return payload_name, keyed_names
+        return "", keyed_names
+    keyed_name: str | None = keyed_names.get(key)
+    if keyed_name is None:
+        keyed_name = _keyed_function_name(key)
+        keyed_names[key] = keyed_name
+    return keyed_name, keyed_names
 
 
 def _keyed_function_name(key: str) -> str:
