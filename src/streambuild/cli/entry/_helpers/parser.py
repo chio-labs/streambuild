@@ -286,7 +286,7 @@ def _add_build_parser(
     )
     build_parser.add_argument(
         "--start-time",
-        help="Replay selected virtual-environment models from a time (requires --select)",
+        help="Replay from a specific time, e.g. '2026-04-17T18:00:00' (requires --select)",
     )
     build_parser.add_argument(
         "--json",
