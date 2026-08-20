@@ -22,7 +22,7 @@ import {
 	createVisibilityResource,
 	type VisibilityResource
 } from '$lib/api/_resources/visibility.resource';
-import type { AppController, AppState, CompileError } from '$lib/api/types';
+import type { AppController, AppState, BootstrapPayload, CompileError } from '$lib/api/types';
 import type { Project } from '$lib/domain/types';
 
 export function createAppState(): AppController {
@@ -44,6 +44,21 @@ export function createAppState(): AppController {
 
 	async function initialize(): Promise<void> {
 		await refreshAll();
+		polling.start();
+		visibility.start();
+	}
+
+	function initializeFromBootstrap(payload: BootstrapPayload): void {
+		applyStatusPayload(payload.status);
+		if (app.status?.state !== 'ok' || payload.definitions === null) {
+			app.phase = 'compile_failing';
+		} else {
+			mergeProject(payload.definitions, payload.state ?? {});
+			app.phase = 'ready';
+			app.fetchError = null;
+			kafkaLagRetry.schedule(app.project);
+			void Promise.all([refreshDeployments(), refreshRecordedChecks()]);
+		}
 		polling.start();
 		visibility.start();
 	}
@@ -198,5 +213,12 @@ export function createAppState(): AppController {
 		};
 	}
 
-	return { app, initialize, reload, refreshLiveState, refreshDeployments };
+	return {
+		app,
+		initialize,
+		initializeFromBootstrap,
+		reload,
+		refreshLiveState,
+		refreshDeployments
+	};
 }

@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -12,6 +13,8 @@ from streambuild.dev_server.classes.dev_server_state import DevServerState
 from streambuild.dev_server.main._create_dev_app import create_dev_app
 from streambuild.dev_server.models import DevExecutionContext
 from tests.unit.src.streambuild.dev_server._test_types import (
+    BootstrapAuthorizationTestCase,
+    BootstrapEndpointTestCase,
     CapabilitiesTestCase,
     DevAppLifespanTestCase,
     ReloadAuthorizationTestCase,
@@ -30,6 +33,64 @@ from tests.unit.src.streambuild.dev_server.helpers import (
 )
 
 _PROXY_PROOF_HEADERS: dict[str, str] = {CSRF_HEADER: TRUSTED_PROXY_CSRF_PROOF}
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        BootstrapEndpointTestCase(
+            description="returns authentication and held project state in one response",
+            expected_auth_mode="disabled",
+            expected_compile_state="ok",
+            expected_has_definitions=True,
+            expected_has_state=False,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_compiled_project_when_reading_bootstrap_then_one_payload_initializes_the_ui(
+    test_case: BootstrapEndpointTestCase,
+    tmp_path: Path,
+) -> None:
+    write_dev_server_project(project_dir=tmp_path)
+    client: TestClient = build_test_client(project_dir=tmp_path)
+
+    response: Response = client.get("/api/bootstrap")
+    payload: dict[str, object] = response.json()
+    auth: dict[str, object] = cast(dict[str, object], payload["auth"])
+    config: dict[str, object] = cast(dict[str, object], auth["config"])
+    status: dict[str, object] = cast(dict[str, object], payload["status"])
+    compile_status: dict[str, object] = cast(dict[str, object], status["compile"])
+
+    assert response.status_code == 200
+    assert config["mode"] == test_case.expected_auth_mode
+    assert compile_status["state"] == test_case.expected_compile_state
+    assert (payload["definitions"] is not None) is test_case.expected_has_definitions
+    assert (payload["state"] is not None) is test_case.expected_has_state
+    assert auth["session"] is not None
+    assert auth["capabilities"] is not None
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        BootstrapAuthorizationTestCase(
+            description="rejects bootstrap when the trusted proxy supplies no identity",
+            expected_status=401,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_missing_identity_when_reading_bootstrap_then_project_data_is_not_exposed(
+    test_case: BootstrapAuthorizationTestCase,
+    tmp_path: Path,
+) -> None:
+    client, store = build_assigned_proxy_reload_client(project_dir=tmp_path)
+
+    response: Response = client.get("/api/bootstrap")
+
+    assert response.status_code == test_case.expected_status
+    store.close()
 
 
 @pytest.mark.parametrize(

@@ -4,11 +4,10 @@
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import { getAuth } from '$lib/auth/main/get-auth';
-	import { initializeAuth } from '$lib/auth/main/initialize-auth';
 	import AppSidebar from '$lib/presentation/components/app-sidebar.svelte';
 	import CompileErrorScreen from '$lib/presentation/components/compile-error-screen.svelte';
 	import { getApp } from '$lib/api/main/project/get-app';
-	import { initializeApp } from '$lib/api/main/project/initialize-app';
+	import { initializeBootstrap } from '$lib/api/main/project/initialize-bootstrap';
 
 	let { children } = $props();
 	const app = getApp();
@@ -23,8 +22,7 @@
 	});
 
 	onMount(async () => {
-		await initializeAuth();
-		if (auth.phase === 'authenticated') await initializeApp();
+		await initializeBootstrap();
 	});
 </script>
 
