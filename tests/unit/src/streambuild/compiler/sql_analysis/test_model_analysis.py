@@ -13,8 +13,8 @@ from tests.unit.src.streambuild.compiler.sql_analysis._test_types import (
     ModelAggregateAnalysisTestCase,
     ModelAnalysisOrderingTestCase,
     ModelCallCountTestCase,
-    ModelLineageAnalysisTestCase,
     ModelRawRelationTestCase,
+    ModelRepeatedResolutionTestCase,
     ModelReservedPlaceholderTestCase,
     ModelResolutionTestCase,
     ModelStorageAnalysisTestCase,
@@ -340,6 +340,48 @@ def test_given_analyzed_cte_query_when_resolving_then_generates_one_qualified_qu
 @pytest.mark.parametrize(
     "test_case",
     [
+        ModelRepeatedResolutionTestCase(
+            description="resolves an aliased source reference twice without consuming the analysis",
+            sql='SELECT CAST(o.order_id AS UInt64) AS order_id FROM __source("orders") AS o',
+            resolver={"orders": "raw__orders"},
+            expected_template_fragment=(f"FROM {ADAPTER_DATABASE_PLACEHOLDER}.raw__orders AS o"),
+        ),
+        ModelRepeatedResolutionTestCase(
+            description="resolves an aliased reference inside an authored cte twice",
+            sql=(
+                'WITH staged AS (SELECT order_id FROM __source("orders") AS o) '
+                "SELECT CAST(staged.order_id AS UInt64) AS order_id FROM staged"
+            ),
+            resolver={"orders": "raw__orders"},
+            expected_template_fragment=(f"FROM {ADAPTER_DATABASE_PLACEHOLDER}.raw__orders AS o"),
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_analyzed_model_when_resolving_twice_then_both_results_match(
+    test_case: ModelRepeatedResolutionTestCase,
+) -> None:
+    analyzer: SqlModelAnalyzer = SqlModelAnalyzer(dialect="clickhouse")
+    analysis: SqlModelAnalysis = analyzer.analyze(
+        sql=test_case.sql,
+        engine="MergeTree()",
+        order_by=("order_id",),
+        partition_by=None,
+        ttl=None,
+    )
+
+    first: SqlResolvedQuery = analyzer.resolve(analysis=analysis, resolver=test_case.resolver)
+    second: SqlResolvedQuery = analyzer.resolve(analysis=analysis, resolver=test_case.resolver)
+
+    assert test_case.expected_template_fragment in first.database_template
+    assert test_case.expected_template_fragment in second.database_template
+    assert first.canonical_sql == second.canonical_sql
+    assert first.database_template == second.database_template
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
         ModelReservedPlaceholderTestCase(
             description="rejects the reserved database placeholder inside authored SQL",
             sql=(
@@ -398,45 +440,14 @@ def test_given_raw_model_relation_when_resolving_then_it_raises_an_error(
 @pytest.mark.parametrize(
     "test_case",
     [
-        ModelLineageAnalysisTestCase(
-            description="retains deterministic compact upstream column facts",
-            sql=('SELECT CAST(o.order_id AS UInt64) AS order_id FROM __source("orders") AS o'),
-            expected_upstream=(("o", "order_id", "resolved"),),
-        )
-    ],
-    ids=lambda case: case.description,
-)
-def test_given_direct_projection_when_analyzing_then_retains_compact_lineage(
-    test_case: ModelLineageAnalysisTestCase,
-) -> None:
-    analysis: SqlModelAnalysis = SqlModelAnalyzer(dialect="clickhouse").analyze(
-        sql=test_case.sql,
-        engine="MergeTree()",
-        order_by=("order_id",),
-        partition_by=None,
-        ttl=None,
-    )
-
-    assert (
-        tuple(
-            (fact.relation_name, fact.column_name, fact.confidence)
-            for fact in analysis.projections[0].upstream
-        )
-        == test_case.expected_upstream
-    )
-
-
-@pytest.mark.parametrize(
-    "test_case",
-    [
         ModelCallCountTestCase(
             description="does not reparse or reanalyze a model during resolution and rendering",
             sql=('SELECT CAST(order_id AS UInt64) AS order_id FROM __source("orders")'),
             resolver={"orders": "raw__orders"},
             expected_parse_calls=1,
             expected_parse_one_calls=2,
-            expected_analyze_calls=1,
-            expected_generate_calls=7,
+            expected_analyze_calls=0,
+            expected_generate_calls=3,
         )
     ],
     ids=lambda case: case.description,

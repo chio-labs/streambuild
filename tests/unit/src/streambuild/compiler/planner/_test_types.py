@@ -307,3 +307,11 @@ class PlannerSettledPlanTestCase:
     description: str
     expected_rebuild_subtree_count: int
     expected_step_count: int
+
+
+@dataclass(frozen=True)
+class PlannerViewQueryClassificationTestCase:
+    description: str
+    desired_query: str
+    actual_query: str
+    expected_change_type: str

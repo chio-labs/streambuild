@@ -1,5 +1,7 @@
 """Locate outer SELECT projections without interpreting SQL semantics."""
 
+import re
+
 from streambuild.compiler.sql_analysis._helpers.scanning import (
     skip_block_comment,
     skip_line_comment,
@@ -22,6 +24,25 @@ from streambuild.compiler.sql_analysis.models import SqlSourceSpan
 
 _SELECT_KEYWORD: str = "select"
 _FROM_KEYWORD: str = "from"
+_SKIP_START_CHARACTERS: str = "".join(
+    sorted(
+        {
+            SQL_LINE_COMMENT[0],
+            SQL_HASH_COMMENT[0],
+            SQL_BLOCK_COMMENT_OPEN[0],
+            *SQL_QUOTE_CHARACTERS,
+        }
+    )
+)
+_DEPTH_CHARACTERS: str = SQL_OPEN_PARENTHESIS + SQL_CLOSE_PARENTHESIS
+_OUTER_SCAN_PATTERN: re.Pattern[str] = re.compile(
+    rf"\b{_SELECT_KEYWORD}\b|\b{_FROM_KEYWORD}\b"
+    rf"|[{re.escape(_SKIP_START_CHARACTERS + _DEPTH_CHARACTERS)}]",
+    re.IGNORECASE,
+)
+_SPLIT_SCAN_PATTERN: re.Pattern[str] = re.compile(
+    f"[{re.escape(_SKIP_START_CHARACTERS + _DEPTH_CHARACTERS + SQL_ARGUMENT_SEPARATOR)}]"
+)
 
 
 def outer_projection_spans(sql: str) -> tuple[SqlSourceSpan, ...]:
@@ -32,27 +53,32 @@ def outer_projection_spans(sql: str) -> tuple[SqlSourceSpan, ...]:
     depth: int = 0
     index: int = 0
     while index < len(sql):
-        skipped_index: int | None = _skipped_index(sql=sql, index=index)
-        if skipped_index is not None:
-            index = skipped_index
-            continue
-        character: str = sql[index]
-        if character == SQL_OPEN_PARENTHESIS:
-            depth += 1
-        elif character == SQL_CLOSE_PARENTHESIS:
-            depth -= 1
-        elif depth == 0 and _keyword_at(sql=sql, index=index, keyword=_SELECT_KEYWORD):
-            projection_start = index + len(_SELECT_KEYWORD)
-            index = projection_start
-            continue
-        elif (
-            depth == 0
-            and projection_start is not None
-            and _keyword_at(sql=sql, index=index, keyword=_FROM_KEYWORD)
-        ):
-            projection_end = index
+        outer_match: re.Match[str] | None = _OUTER_SCAN_PATTERN.search(sql, index)
+        if outer_match is None:
             break
-        index += 1
+        index = outer_match.start()
+        matched_end: int = outer_match.end()
+        if matched_end - index == 1:
+            skipped_index: int | None = _skipped_index(sql=sql, index=index)
+            if skipped_index is not None:
+                index = skipped_index
+                continue
+            character: str = sql[index]
+            if character == SQL_OPEN_PARENTHESIS:
+                depth += 1
+            elif character == SQL_CLOSE_PARENTHESIS:
+                depth -= 1
+            index += 1
+            continue
+        if depth == 0:
+            if matched_end - index == len(_SELECT_KEYWORD):
+                projection_start = matched_end
+                index = matched_end
+                continue
+            if projection_start is not None:
+                projection_end = index
+                break
+        index = matched_end
     if projection_start is None:
         raise SqlAnalysisError("Outer SELECT projection list could not be located")
     return _split_projection_spans(
@@ -127,6 +153,10 @@ def _split_projection_spans(*, sql: str, start: int, end: int) -> tuple[SqlSourc
     projection_start: int = start
     index: int = start
     while index < end:
+        split_match: re.Match[str] | None = _SPLIT_SCAN_PATTERN.search(sql, index, end)
+        if split_match is None:
+            break
+        index = split_match.start()
         skipped_index: int | None = _skipped_index(sql=sql, index=index)
         if skipped_index is not None:
             index = skipped_index

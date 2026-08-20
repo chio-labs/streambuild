@@ -197,7 +197,6 @@ def _sql_analysis(parsed_refs: tuple[ParsedRef, ...]) -> SqlModelAnalysis:
     )
     return SqlModelAnalysis(
         authored_sql="SELECT 1 AS id",
-        canonical_sql="SELECT 1 AS id",
         shape=SqlQueryShape.SELECT,
         projections=(),
         references=tuple(

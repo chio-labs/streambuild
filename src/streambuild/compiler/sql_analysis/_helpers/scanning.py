@@ -5,6 +5,7 @@ from __future__ import annotations
 from streambuild.compiler.sql_analysis.constants import (
     MODEL_REFERENCE_FUNCTION,
     PAIRED_QUOTE_CHARACTER_COUNT,
+    REFERENCE_FUNCTION_PREFIX,
     REFERENCE_FUNCTIONS,
     REFERENCE_TYPE_KEYWORD,
     REFERENCE_WITH_TYPE_ARGUMENT_COUNT,
@@ -34,6 +35,13 @@ from streambuild.compiler.sql_analysis.models import (
 from streambuild.compiler.sql_analysis.types import RefType, SqlRelationType
 
 _REFERENCE_CONTEXT: str = "SQL reference"
+_SKIP_SCAN_TOKENS: tuple[str, ...] = (
+    SQL_LINE_COMMENT,
+    SQL_HASH_COMMENT,
+    SQL_BLOCK_COMMENT_OPEN,
+    *sorted(SQL_QUOTE_CHARACTERS),
+)
+_REFERENCE_SCAN_TOKENS: tuple[str, ...] = (REFERENCE_FUNCTION_PREFIX, *_SKIP_SCAN_TOKENS)
 _WITH_KEYWORD: str = "WITH"
 _RECURSIVE_KEYWORD: str = "RECURSIVE"
 _WHERE_KEYWORD: str = "WHERE"
@@ -55,12 +63,26 @@ _PREDICATE_BOUNDARY_KEYWORDS: frozenset[str] = frozenset(
 )
 
 
+def _next_scan_position(*, sql: str, start: int, tokens: tuple[str, ...]) -> int:
+    """Return the next index that could begin a token, so plain text is skipped."""
+
+    positions: list[int] = []
+    for token in tokens:
+        position: int = sql.find(token, start)
+        if position >= 0:
+            positions.append(position)
+    return min(positions, default=len(sql))
+
+
 def extract_references_impl(sql: str) -> tuple[SqlReference, ...]:
     """Return logical relation references found outside comments and quoted text."""
 
     references: list[SqlReference] = []
     index: int = 0
     while index < len(sql):
+        index = _next_scan_position(sql=sql, start=index, tokens=_REFERENCE_SCAN_TOKENS)
+        if index >= len(sql):
+            break
         if sql.startswith(SQL_LINE_COMMENT, index) or sql.startswith(SQL_HASH_COMMENT, index):
             index = skip_line_comment(sql=sql, start=index)
             continue
@@ -83,8 +105,12 @@ def split_header_blocks(*, sql: str, keyword: str) -> tuple[SqlHeaderBlock, ...]
     """Split line-leading extension headers while ignoring SQL literals and comments."""
 
     starts: list[tuple[int, int, int]] = []
+    header_tokens: tuple[str, ...] = (keyword, *_SKIP_SCAN_TOKENS)
     index: int = 0
     while index < len(sql):
+        index = _next_scan_position(sql=sql, start=index, tokens=header_tokens)
+        if index >= len(sql):
+            break
         if sql.startswith(SQL_LINE_COMMENT, index) or sql.startswith(SQL_HASH_COMMENT, index):
             index = skip_line_comment(sql=sql, start=index)
             continue

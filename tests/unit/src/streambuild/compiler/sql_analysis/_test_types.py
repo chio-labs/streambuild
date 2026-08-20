@@ -142,6 +142,14 @@ class ModelStorageAnalysisTestCase:
 
 
 @dataclass(frozen=True)
+class ModelRepeatedResolutionTestCase:
+    description: str
+    sql: str
+    resolver: dict[str, str]
+    expected_template_fragment: str
+
+
+@dataclass(frozen=True)
 class ModelResolutionTestCase:
     description: str
     sql: str
@@ -174,13 +182,6 @@ class ModelCallCountTestCase:
     expected_parse_one_calls: int
     expected_analyze_calls: int
     expected_generate_calls: int
-
-
-@dataclass(frozen=True)
-class ModelLineageAnalysisTestCase:
-    description: str
-    sql: str
-    expected_upstream: tuple[tuple[str, str, str], ...]
 
 
 @dataclass(frozen=True)

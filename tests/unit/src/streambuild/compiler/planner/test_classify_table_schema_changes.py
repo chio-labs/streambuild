@@ -3,9 +3,11 @@ import pytest
 from streambuild.compiler.compile.models import (
     Column,
     DesiredTable,
+    DesiredView,
     ObjectKey,
     TableSpec,
     TableStorage,
+    ViewSpec,
 )
 from streambuild.compiler.planner._helpers.diff import (
     classify_object_change_type,
@@ -14,14 +16,16 @@ from streambuild.compiler.planner._helpers.diff import (
 )
 from streambuild.compiler.planner.constants import (
     PLANNED_CHANGE_TYPE_NO_OP,
+    PLANNED_CHANGE_TYPE_REBUILD,
     TABLE_SCHEMA_CHANGE_KIND_BREAKING,
     TABLE_SCHEMA_CHANGE_KIND_NON_BREAKING,
     TABLE_SCHEMA_SEED_COMPATIBILITY_NON_SEEDABLE,
     TABLE_SCHEMA_SEED_COMPATIBILITY_SEEDABLE,
 )
-from streambuild.compiler.planner.models import ActualTable
+from streambuild.compiler.planner.models import ActualTable, ActualView
 from tests.unit.src.streambuild.compiler.planner._test_types import (
     PlannerTableSchemaClassificationTestCase,
+    PlannerViewQueryClassificationTestCase,
 )
 
 
@@ -193,4 +197,37 @@ def test_given_table_column_changes_when_classifying_then_it_returns_expected_sc
     assert (
         classify_table_seed_compatibility(desired_object=desired_table, actual_object=actual_table)
         == test_case.expected_seed_compatibility
+    )
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        PlannerViewQueryClassificationTestCase(
+            description="treats a reformatted deployed query as unchanged",
+            desired_query="SELECT CAST(order_id AS UInt64) AS order_id FROM raw__orders",
+            actual_query=("SELECT\n  CAST(order_id AS UInt64) AS order_id\nFROM raw__orders"),
+            expected_change_type=PLANNED_CHANGE_TYPE_NO_OP,
+        ),
+        PlannerViewQueryClassificationTestCase(
+            description="treats a genuinely different deployed query as a change",
+            desired_query="SELECT CAST(order_id AS UInt64) AS order_id FROM raw__orders",
+            actual_query="SELECT CAST(order_id AS UInt64) AS order_id FROM raw__invoices",
+            expected_change_type=PLANNED_CHANGE_TYPE_REBUILD,
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_deployed_view_query_when_classifying_then_formatting_is_not_a_change(
+    test_case: PlannerViewQueryClassificationTestCase,
+) -> None:
+    key: ObjectKey = ObjectKey(name="vw__orders", object_type="view", database=None)
+    desired_view: DesiredView = DesiredView(
+        key=key, deps=(), spec=ViewSpec(query=test_case.desired_query)
+    )
+    actual_view: ActualView = ActualView(key=key, spec=ViewSpec(query=test_case.actual_query))
+
+    assert (
+        classify_object_change_type(desired_object=desired_view, actual_object=actual_view)
+        == test_case.expected_change_type
     )
