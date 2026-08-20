@@ -1375,3 +1375,16 @@ def sequenced_state_build(
         return builds.pop(0)()
 
     return build
+
+
+def write_connection_settings_project(*, project_dir: Path) -> None:
+    """Write a dev-server project whose target connection declares a nested settings table."""
+
+    write_dev_server_project(project_dir=project_dir)
+    configuration: Path = project_dir / "streambuild_project.toml"
+    configuration.write_text(
+        configuration.read_text(encoding="utf-8")
+        + '\n[targets.dev.connection]\nhost = "localhost"\n'
+        + '\n[targets.dev.connection.settings]\nmax_threads = "16"\n',
+        encoding="utf-8",
+    )
