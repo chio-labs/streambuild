@@ -65,6 +65,12 @@ class StateSnapshot:
                 return held
             return self._store(self._build())
 
+    def held(self) -> dict[str, object] | None:
+        """Return the held overlay without triggering a warehouse read."""
+
+        with self._lock:
+            return self._payload
+
     def refresh(self) -> dict[str, object]:
         """Rebuild now, replacing the held overlay."""
 

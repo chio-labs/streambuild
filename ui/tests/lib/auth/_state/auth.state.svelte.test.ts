@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const requests = vi.hoisted(() => ({
 	fetchAuthConfig: vi.fn(),
@@ -16,6 +16,8 @@ import { createAuthState } from '$lib/auth/_state/auth.state.svelte';
 import type { AuthController } from '$lib/auth/types';
 
 describe('auth state', () => {
+	beforeEach(() => vi.clearAllMocks());
+
 	it('given password auth without a session when initialized then login is required', async () => {
 		requests.fetchAuthConfig.mockResolvedValue({ mode: 'password', loginRequired: true, proxyLogoutUrl: null });
 		requests.fetchCurrentUser.mockResolvedValue(null);
@@ -24,5 +26,31 @@ describe('auth state', () => {
 		await controller.initialize();
 
 		expect(controller.auth.phase).toBe('unauthenticated');
+	});
+
+	it('given bootstrap authentication when initialized then no legacy authentication requests run', () => {
+		const controller: AuthController = createAuthState();
+
+		controller.initializeFromBootstrap(
+			{ mode: 'disabled', loginRequired: false, proxyLogoutUrl: null },
+			{
+				mode: 'disabled',
+				user: {
+					id: '00000000-0000-4000-8000-000000000001',
+					username: 'local',
+					displayName: 'Local user',
+					email: null,
+					authenticationSource: 'local'
+				},
+				roles: ['admin'],
+				csrfToken: null
+			},
+			null
+		);
+
+		expect(controller.auth.phase).toBe('authenticated');
+		expect(controller.auth.user?.username).toBe('local');
+		expect(requests.fetchAuthConfig).not.toHaveBeenCalled();
+		expect(requests.fetchCurrentUser).not.toHaveBeenCalled();
 	});
 });

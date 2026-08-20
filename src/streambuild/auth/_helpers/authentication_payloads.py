@@ -3,11 +3,22 @@
 from streambuild.auth.models import (
     AccountAuditRecord,
     AuthenticatedRequest,
+    AuthSettings,
     Principal,
     ProjectRoleAssignment,
     UserAccount,
 )
 from streambuild.auth.types import AuthenticationMode, AuthenticationSource
+
+
+def authentication_config_payload(*, settings: AuthSettings) -> dict[str, object]:
+    """Serialize browser-visible authentication configuration."""
+
+    return {
+        "mode": settings.mode,
+        "loginRequired": settings.mode == AuthenticationMode.PASSWORD,
+        "proxyLogoutUrl": settings.proxy_logout_url,
+    }
 
 
 def authenticated_payload(
