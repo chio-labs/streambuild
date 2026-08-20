@@ -2,8 +2,9 @@
 
 from typing import Any
 
-from streambuild.compiler.sql_analysis._helpers.aggregates import aggregate_facts
+from streambuild.compiler.sql_analysis._helpers.aggregates import build_aggregate_facts
 from streambuild.compiler.sql_analysis._helpers.polyglot import (
+    collect_tree_facts,
     generate_sql_tree,
     parse_sql_trees,
 )
@@ -38,7 +39,13 @@ def analyze_model_sql_impl(
     ttl: str | None,
     dialect: str,
     type_cache: ProjectionTypeCache,
-) -> tuple[SqlModelAnalysis, dict[str, Any], ProjectionTypeCache]:
+) -> tuple[
+    SqlModelAnalysis,
+    dict[str, Any],
+    ProjectionTypeCache,
+    tuple[tuple[Any, Any], ...],
+    str | None,
+]:
     """Parse and derive all compiler-critical facts for one model."""
 
     trees: tuple[dict[str, Any], ...] = parse_sql_trees(sql=sql, dialect=dialect)
@@ -54,6 +61,11 @@ def analyze_model_sql_impl(
             statement_sql=canonical_sql,
             is_set_operation=statement_type in _SET_OPERATION_KEYS,
         )
+    function_names: list[str]
+    has_group_by: bool
+    reference_slots: tuple[tuple[Any, Any], ...]
+    raw_relation: str | None
+    function_names, has_group_by, reference_slots, raw_relation = collect_tree_facts(tree=tree)
     projections: tuple[SqlProjection, ...]
     projections, type_cache = build_model_projections(
         select_payload=select_payload,
@@ -74,6 +86,8 @@ def analyze_model_sql_impl(
             output_columns=tuple(projection.output for projection in projections),
             dialect=dialect,
         ),
-        aggregate_facts=aggregate_facts(tree=tree, engine=engine),
+        aggregate_facts=build_aggregate_facts(
+            function_names=function_names, has_group_by=has_group_by, engine=engine
+        ),
     )
-    return analysis, tree, type_cache
+    return analysis, tree, type_cache, reference_slots, raw_relation
