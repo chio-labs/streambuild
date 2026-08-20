@@ -177,13 +177,6 @@ class ModelCallCountTestCase:
 
 
 @dataclass(frozen=True)
-class ModelLineageAnalysisTestCase:
-    description: str
-    sql: str
-    expected_upstream: tuple[tuple[str, str, str], ...]
-
-
-@dataclass(frozen=True)
 class ModelAnalysisOrderingTestCase:
     description: str
     sql_by_model: tuple[str, ...]

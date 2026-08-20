@@ -20,6 +20,7 @@ from streambuild.compiler.graph.main._build_project_graph import (
     build_project_graph_from_compiled_project,
 )
 from streambuild.compiler.graph.models import ProjectGraph
+from streambuild.compiler.pipeline._helpers.collection_tuning import deferred_cycle_collection
 from streambuild.compiler.pipeline._helpers.sensor_names import reserved_sensor_names
 from streambuild.compiler.pipeline.main._realize_project import realize_project
 from streambuild.compiler.pipeline.models import (
@@ -98,11 +99,12 @@ def analyze_project(
     )
     assembly_start: int = time.monotonic_ns()
     try:
-        compiled_project: CompiledProject = assemble_project(
-            inputs=compile_inputs,
-            reference_rewriter=reference_rewriter,
-            sql_analyzer=sql_analyzer,
-        )
+        with deferred_cycle_collection():
+            compiled_project: CompiledProject = assemble_project(
+                inputs=compile_inputs,
+                reference_rewriter=reference_rewriter,
+                sql_analyzer=sql_analyzer,
+            )
     except Exception as error:
         _ = attach_error_diagnostic(
             error=error,
@@ -132,11 +134,12 @@ def analyze_project(
     graph_ms: int = _elapsed_ms(graph_start)
     realization_start: int = time.monotonic_ns()
     try:
-        realized_project: RealizedProject = realize_project(
-            project=compiled_project,
-            adapter_profile=adapter_profile,
-            sql_analyzer=sql_analyzer,
-        )
+        with deferred_cycle_collection():
+            realized_project: RealizedProject = realize_project(
+                project=compiled_project,
+                adapter_profile=adapter_profile,
+                sql_analyzer=sql_analyzer,
+            )
     except Exception as error:
         _ = attach_error_diagnostic(
             error=error,

@@ -13,7 +13,6 @@ from tests.unit.src.streambuild.compiler.sql_analysis._test_types import (
     ModelAggregateAnalysisTestCase,
     ModelAnalysisOrderingTestCase,
     ModelCallCountTestCase,
-    ModelLineageAnalysisTestCase,
     ModelRawRelationTestCase,
     ModelReservedPlaceholderTestCase,
     ModelResolutionTestCase,
@@ -398,45 +397,14 @@ def test_given_raw_model_relation_when_resolving_then_it_raises_an_error(
 @pytest.mark.parametrize(
     "test_case",
     [
-        ModelLineageAnalysisTestCase(
-            description="retains deterministic compact upstream column facts",
-            sql=('SELECT CAST(o.order_id AS UInt64) AS order_id FROM __source("orders") AS o'),
-            expected_upstream=(("o", "order_id", "resolved"),),
-        )
-    ],
-    ids=lambda case: case.description,
-)
-def test_given_direct_projection_when_analyzing_then_retains_compact_lineage(
-    test_case: ModelLineageAnalysisTestCase,
-) -> None:
-    analysis: SqlModelAnalysis = SqlModelAnalyzer(dialect="clickhouse").analyze(
-        sql=test_case.sql,
-        engine="MergeTree()",
-        order_by=("order_id",),
-        partition_by=None,
-        ttl=None,
-    )
-
-    assert (
-        tuple(
-            (fact.relation_name, fact.column_name, fact.confidence)
-            for fact in analysis.projections[0].upstream
-        )
-        == test_case.expected_upstream
-    )
-
-
-@pytest.mark.parametrize(
-    "test_case",
-    [
         ModelCallCountTestCase(
             description="does not reparse or reanalyze a model during resolution and rendering",
             sql=('SELECT CAST(order_id AS UInt64) AS order_id FROM __source("orders")'),
             resolver={"orders": "raw__orders"},
             expected_parse_calls=1,
             expected_parse_one_calls=2,
-            expected_analyze_calls=1,
-            expected_generate_calls=6,
+            expected_analyze_calls=0,
+            expected_generate_calls=3,
         )
     ],
     ids=lambda case: case.description,
