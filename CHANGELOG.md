@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.24.4](https://github.com/chio-labs/streambuild/compare/v0.24.3...v0.24.4) (2026-08-20)
+
+
+### Performance Improvements
+
+* **ui:** render before secondary warehouse data loads ([4bc9ee6](https://github.com/chio-labs/streambuild/commit/4bc9ee65f065e4bb23b5c0f2169268a59c4a6d9c))
+* **ui:** render before secondary warehouse data loads ([9573fd3](https://github.com/chio-labs/streambuild/commit/9573fd3aa70c065f17e5f49743d8b049e6828761))
+
 ## [0.24.3](https://github.com/chio-labs/streambuild/compare/v0.24.2...v0.24.3) (2026-08-20)
 
 
