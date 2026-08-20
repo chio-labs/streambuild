@@ -36,7 +36,6 @@ from streambuild.dev_server._helpers.payloads.plan_payload import (
     count_replay_rows,
 )
 from streambuild.dev_server._helpers.payloads.state_payload import (
-    build_state_payload,
     build_topics_payload,
 )
 from streambuild.dev_server._helpers.queries.message_query import (
@@ -157,6 +156,7 @@ def register_api_routes(
 
     def refresh_warehouse() -> dict[str, object]:
         _ = warehouse.connect_now()
+        state.snapshot.invalidate()
         return read_status()
 
     def reload_project(request: Request) -> dict[str, object]:
@@ -187,24 +187,15 @@ def register_api_routes(
         return build_definitions_payload(analysis=analysis, version_key=outcome.version_key)
 
     def read_state() -> dict[str, object]:
-        connection: AdapterConnection | None = warehouse.connection
-        if connection is None or database is None:
+        if warehouse.connection is None or database is None:
             raise HTTPException(
                 status_code=_HTTP_SERVICE_UNAVAILABLE,
                 detail="no warehouse connection",
             )
         try:
-            analysis: CompileAnalysis = state.current_analysis()
+            return state.snapshot.current()
         except ProjectNotCompiledError as error:
             raise HTTPException(status_code=_HTTP_CONFLICT, detail=str(error)) from error
-        try:
-            with state.query_lock:
-                return build_state_payload(
-                    analysis=analysis,
-                    connection=connection,
-                    database=database,
-                    kafka_lag_reader=broker_readers[0],
-                )
         except AdapterError as error:
             raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
 
