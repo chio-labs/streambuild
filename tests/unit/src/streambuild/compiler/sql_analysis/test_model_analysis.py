@@ -14,6 +14,7 @@ from tests.unit.src.streambuild.compiler.sql_analysis._test_types import (
     ModelAnalysisOrderingTestCase,
     ModelCallCountTestCase,
     ModelRawRelationTestCase,
+    ModelRepeatedResolutionTestCase,
     ModelReservedPlaceholderTestCase,
     ModelResolutionTestCase,
     ModelStorageAnalysisTestCase,
@@ -334,6 +335,48 @@ def test_given_analyzed_cte_query_when_resolving_then_generates_one_qualified_qu
         assert expected_fragment in resolved_query.database_template
     for expected_absent_fragment in test_case.expected_absent_fragments:
         assert expected_absent_fragment not in resolved_query.database_template
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ModelRepeatedResolutionTestCase(
+            description="resolves an aliased source reference twice without consuming the analysis",
+            sql='SELECT CAST(o.order_id AS UInt64) AS order_id FROM __source("orders") AS o',
+            resolver={"orders": "raw__orders"},
+            expected_template_fragment=(f"FROM {ADAPTER_DATABASE_PLACEHOLDER}.raw__orders AS o"),
+        ),
+        ModelRepeatedResolutionTestCase(
+            description="resolves an aliased reference inside an authored cte twice",
+            sql=(
+                'WITH staged AS (SELECT order_id FROM __source("orders") AS o) '
+                "SELECT CAST(staged.order_id AS UInt64) AS order_id FROM staged"
+            ),
+            resolver={"orders": "raw__orders"},
+            expected_template_fragment=(f"FROM {ADAPTER_DATABASE_PLACEHOLDER}.raw__orders AS o"),
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_analyzed_model_when_resolving_twice_then_both_results_match(
+    test_case: ModelRepeatedResolutionTestCase,
+) -> None:
+    analyzer: SqlModelAnalyzer = SqlModelAnalyzer(dialect="clickhouse")
+    analysis: SqlModelAnalysis = analyzer.analyze(
+        sql=test_case.sql,
+        engine="MergeTree()",
+        order_by=("order_id",),
+        partition_by=None,
+        ttl=None,
+    )
+
+    first: SqlResolvedQuery = analyzer.resolve(analysis=analysis, resolver=test_case.resolver)
+    second: SqlResolvedQuery = analyzer.resolve(analysis=analysis, resolver=test_case.resolver)
+
+    assert test_case.expected_template_fragment in first.database_template
+    assert test_case.expected_template_fragment in second.database_template
+    assert first.canonical_sql == second.canonical_sql
+    assert first.database_template == second.database_template
 
 
 @pytest.mark.parametrize(
