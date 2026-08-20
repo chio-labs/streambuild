@@ -7,6 +7,7 @@ from starlette.responses import Response
 from streambuild.auth._helpers.authentication_payloads import (
     account_principal,
     authenticated_payload,
+    authentication_config_payload,
 )
 from streambuild.auth._helpers.request_authentication import authenticated_request
 from streambuild.auth._helpers.usernames import canonical_username
@@ -15,7 +16,6 @@ from streambuild.auth.classes.login_attempt_limiter import LoginAttemptLimiter
 from streambuild.auth.exceptions import AccountValidationError
 from streambuild.auth.models import (
     AuthenticatedRequest,
-    AuthSettings,
     LoginRequest,
     SessionCredentials,
     UserAccount,
@@ -29,12 +29,7 @@ def register_session_routes(
     """Register browser authentication lifecycle routes."""
 
     def read_auth_config() -> dict[str, object]:
-        settings: AuthSettings = service.settings
-        return {
-            "mode": settings.mode,
-            "loginRequired": settings.mode == AuthenticationMode.PASSWORD,
-            "proxyLogoutUrl": settings.proxy_logout_url,
-        }
+        return authentication_config_payload(settings=service.settings)
 
     def read_current_user(*, request: Request) -> dict[str, object]:
         return authenticated_payload(
