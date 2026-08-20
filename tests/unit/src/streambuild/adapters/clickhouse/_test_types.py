@@ -238,6 +238,29 @@ class ClickHouseConnectionConfigErrorTestCase:
 
 
 @dataclass(frozen=True)
+class ClickHouseConnectionSettingsTestCase:
+    description: str
+    values: tuple[tuple[str, object], ...]
+    expected_settings: tuple[tuple[str, str], ...]
+
+
+@dataclass(frozen=True)
+class ClickHouseConnectionDriverSettingsTestCase:
+    description: str
+    database: str | None
+    settings: tuple[tuple[str, str], ...]
+    expected_driver_settings: tuple[tuple[str, str], ...]
+
+
+@dataclass(frozen=True)
+class ClickHouseConnectionReprTestCase:
+    description: str
+    values: tuple[tuple[str, object], ...]
+    expected_fragments: tuple[str, ...]
+    expected_absent_fragments: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class ClickHouseManagedSourceRealizationTestCase:
     description: str
     expected_relation_name: str

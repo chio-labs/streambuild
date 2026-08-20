@@ -115,6 +115,7 @@ class ClickHouseAdapter(Adapter):
             username=username,
             password=password,
             database=database,
+            settings=_connection_settings(values.get("settings")),
         )
 
     def render_resource(
@@ -178,6 +179,7 @@ class ClickHouseAdapter(Adapter):
                     username=config.username,
                     password=config.password,
                     autogenerate_session_id=False,
+                    settings=dict(config.settings),
                 ),
             )
         return cast(
@@ -189,5 +191,35 @@ class ClickHouseAdapter(Adapter):
                 password=config.password,
                 database=config.database,
                 autogenerate_session_id=False,
+                settings=dict(config.settings),
             ),
         )
+
+
+def _connection_settings(value: object | None) -> tuple[tuple[str, str], ...]:
+    """Validate optional ClickHouse session settings into ordered name/value pairs."""
+
+    if value is None:
+        return ()
+    if not isinstance(value, Mapping):
+        raise AdapterConfigurationError(
+            "ClickHouse connection settings requires a table of setting values"
+        )
+    declared: Mapping[str, object] = cast(Mapping[str, object], value)
+    pairs: list[tuple[str, str]] = []
+    name: str
+    setting: object
+    for name, setting in declared.items():
+        if not name:
+            raise AdapterConfigurationError(
+                "ClickHouse connection settings requires non-empty setting names"
+            )
+        if isinstance(setting, bool):
+            pairs.append((name, "1" if setting else "0"))
+            continue
+        if not isinstance(setting, (str, int, float)):
+            raise AdapterConfigurationError(
+                f"ClickHouse connection setting {name} requires a string, number, or boolean value"
+            )
+        pairs.append((name, str(setting)))
+    return tuple(sorted(pairs))
