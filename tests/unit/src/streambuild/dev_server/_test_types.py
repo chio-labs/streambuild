@@ -456,3 +456,10 @@ class StateSnapshotTestCase:
 class ConnectionSettingsPayloadTestCase:
     description: str
     expected_settings: dict[str, str]
+
+
+@dataclass(frozen=True)
+class WarehouseRefreshSnapshotTestCase:
+    description: str
+    refresh_count: int
+    expected_build_count: int

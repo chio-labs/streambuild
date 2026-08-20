@@ -280,7 +280,7 @@ def test_given_logged_activity_when_using_lineage_then_live_semantics_remain_tru
     with page.expect_response(
         lambda response: urlparse(response.url).path == "/api/state"
     ) as polled_state_info:
-        page.clock.run_for(30_000)
+        page.get_by_role("button", name="Refresh snapshot").click()
     polled_state: dict[str, object] = polled_state_info.value.json()
     polled_models: dict[str, dict[str, object]] = cast(
         dict[str, dict[str, object]], polled_state["models"]

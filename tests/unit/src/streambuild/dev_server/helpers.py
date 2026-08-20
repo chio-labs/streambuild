@@ -80,6 +80,7 @@ from streambuild.dev_server._helpers.server.static_assets import register_static
 from streambuild.dev_server.classes.dev_server_state import DevServerState
 from streambuild.dev_server.classes.kafka_lag_reader import KafkaLagReader
 from streambuild.dev_server.classes.kafka_topic_reader import KafkaTopicReader
+from streambuild.dev_server.classes.state_snapshot import StateSnapshot
 from streambuild.dev_server.main._create_dev_app import create_dev_app
 from streambuild.dev_server.models import (
     KafkaLagSnapshot,
@@ -1388,3 +1389,25 @@ def write_connection_settings_project(*, project_dir: Path) -> None:
         + '\n[targets.dev.connection.settings]\nmax_threads = "16"\n',
         encoding="utf-8",
     )
+
+
+def build_snapshot_counting_client(*, project_dir: Path, calls: list[str]) -> TestClient:
+    """Build a client whose state overlay records every build it performs."""
+
+    write_dev_server_project(project_dir=project_dir)
+    state: DevServerState = DevServerState(
+        run_compile=build_compile_callable(project_dir=project_dir)
+    )
+    app: FastAPI = create_dev_app(
+        state=state,
+        connection=build_fake_state_connection(),
+        database="analytics",
+        project_dir=project_dir,
+    )
+
+    def build() -> dict[str, object]:
+        calls.append("build")
+        return {"capturedAt": f"build-{len(calls)}", "models": {}, "sources": {}}
+
+    state.attach_snapshot(StateSnapshot(build=build))
+    return TestClient(app)
