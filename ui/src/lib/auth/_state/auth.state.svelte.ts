@@ -40,6 +40,16 @@ export function createAuthState(): AuthController {
 		await refreshCapabilities();
 	}
 
+	function initializeFromBootstrap(
+		config: AuthState['config'],
+		payload: AuthPayload,
+		capabilities: AuthState['capabilities']
+	): void {
+		auth.config = config;
+		apply(payload);
+		auth.capabilities = capabilities;
+	}
+
 	async function refreshCapabilities(): Promise<void> {
 		try {
 			auth.capabilities = await fetchCapabilities();
@@ -69,5 +79,5 @@ export function createAuthState(): AuthController {
 		auth.error = null;
 	}
 
-	return { auth, initialize, login, logout, markUnauthenticated };
+	return { auth, initialize, initializeFromBootstrap, login, logout, markUnauthenticated };
 }
