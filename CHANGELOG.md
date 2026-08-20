@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.24.2](https://github.com/chio-labs/streambuild/compare/v0.24.1...v0.24.2) (2026-08-20)
+
+
+### Bug Fixes
+
+* **dev-server:** keep the state overlay across warehouse refreshes ([908bc3b](https://github.com/chio-labs/streambuild/commit/908bc3b026316ad96a47bf78dae6ac6b466c90e8))
+* **dev-server:** keep the state overlay across warehouse refreshes ([1a2a40c](https://github.com/chio-labs/streambuild/commit/1a2a40ccd82e37e7fdf7ba2d4fbd878853978e36))
+* **dev-server:** only force a snapshot rebuild on explicit refresh ([3efc5a5](https://github.com/chio-labs/streambuild/commit/3efc5a512f9ac63760f72b4417e0d84c3b09de8c))
+
 ## [0.24.1](https://github.com/chio-labs/streambuild/compare/v0.24.0...v0.24.1) (2026-08-20)
 
 
