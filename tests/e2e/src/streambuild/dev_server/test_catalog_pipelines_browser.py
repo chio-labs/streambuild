@@ -4,9 +4,21 @@ from urllib.parse import urlparse
 
 import pytest
 from clickhouse_connect.driver.client import Client
-from playwright.sync_api import ConsoleMessage, Error, Locator, Page, Request, Response, expect
+from playwright.sync_api import (
+    ConsoleMessage,
+    Error,
+    Locator,
+    Page,
+    Request,
+    Response,
+    Route,
+    expect,
+)
 
-from tests.e2e.src.streambuild.dev_server._test_types import CatalogPipelineBrowserE2ETestCase
+from tests.e2e.src.streambuild.dev_server._test_types import (
+    CatalogPipelineBrowserE2ETestCase,
+    SecondaryStatePerformanceE2ETestCase,
+)
 
 PARENT_AUTHORED_SQL: str = """MODEL (
   engine "MergeTree()",
@@ -18,6 +30,47 @@ SELECT
   _replay_timestamp::DateTime64(3) AS _replay_timestamp
 FROM __ref("moving_events")
 """
+
+
+@pytest.mark.e2e
+@pytest.mark.browser
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        SecondaryStatePerformanceE2ETestCase(
+            description="slow deployment inventory does not block project rendering",
+            pipeline_name="pl__moving_events",
+            expected_tree_nodes=3,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_blocked_deployments_when_loading_pipeline_then_project_renders_before_response(
+    test_case: SecondaryStatePerformanceE2ETestCase,
+    running_catalog_pipeline_browser_server: tuple[str, dict[str, object], str, Path],
+    page: Page,
+) -> None:
+    base_url, _state_payload, _database, _log_path = running_catalog_pipeline_browser_server
+    held_routes: list[Route] = []
+    deployments_pattern: str = "**/api/deployments"
+    page.route(deployments_pattern, lambda route: held_routes.append(route))
+
+    with page.expect_request(lambda request: urlparse(request.url).path == "/api/deployments"):
+        response: Response | None = page.goto(
+            f"{base_url}/pipelines/{test_case.pipeline_name}",
+            wait_until="domcontentloaded",
+            timeout=30_000,
+        )
+
+    assert response is not None
+    assert response.status == 200
+    expect(page.get_by_test_id("stream-tree").locator("[data-node-name]")).to_have_count(
+        test_case.expected_tree_nodes
+    )
+    assert len(held_routes) == 1
+    held_routes[0].continue_()
+    page.unroute(deployments_pattern)
+    page.wait_for_load_state("networkidle")
 
 
 @pytest.mark.e2e
