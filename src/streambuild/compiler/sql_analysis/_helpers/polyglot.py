@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Mapping
-from copy import deepcopy
 from typing import Any, cast
 
 import polyglot_sql
@@ -179,6 +178,18 @@ def generate_sql_tree(*, tree: dict[str, Any], dialect: str, pretty: bool = Fals
     return generated[0]
 
 
+def _copied_tree(node: Any) -> Any:
+    """Copy a parsed tree of plain containers, since deepcopy dominates resolve cost."""
+
+    if isinstance(node, dict):
+        return {key: _copied_tree(value) for key, value in node.items()}
+    if isinstance(node, list):
+        return [_copied_tree(item) for item in node]
+    if isinstance(node, tuple):
+        return tuple(_copied_tree(item) for item in node)
+    return node
+
+
 def build_resolved_query(
     *,
     tree: dict[str, Any],
@@ -192,7 +203,7 @@ def build_resolved_query(
     """Resolve and qualify one previously parsed model tree without reparsing it."""
 
     _reject_raw_relations(node=tree, visible_ctes=frozenset())
-    resolved_tree: dict[str, Any] = deepcopy(tree)
+    resolved_tree: dict[str, Any] = _copied_tree(tree)
     actual_identities: tuple[_ReferenceIdentity, ...] = ()
     actual_identities, relation_cache = _rewrite_tree(
         node=resolved_tree,
@@ -271,7 +282,7 @@ def _template_relation_text(
     if cached_relation is None:
         cached_relation = _parse_relation(target=target, dialect=dialect)
         relation_cache = {**relation_cache, target: cached_relation}
-    relation_tree: dict[str, Any] = deepcopy(cached_relation[0])
+    relation_tree: dict[str, Any] = _copied_tree(cached_relation[0])
     qualify_query_relations(tree=relation_tree, database=database_placeholder)
     return generate_sql_tree(tree=relation_tree, dialect=dialect), relation_cache
 
@@ -287,7 +298,7 @@ def canonical_query_with_database_template(
         canonical_sql=canonical_sql,
         database_placeholder=database_placeholder,
     )
-    database_template_tree: dict[str, Any] = deepcopy(tree)
+    database_template_tree: dict[str, Any] = _copied_tree(tree)
     qualify_query_relations(tree=database_template_tree, database=database_placeholder)
     return SqlResolvedQuery(
         canonical_sql=canonical_sql,
@@ -431,7 +442,7 @@ def _replacement(
     if cached_relation is None:
         cached_relation = _parse_relation(target=target, dialect=dialect)
         relation_cache = {**relation_cache, target: cached_relation}
-    return deepcopy(cached_relation[0]), updated_identities, relation_cache
+    return _copied_tree(cached_relation[0]), updated_identities, relation_cache
 
 
 def _reference_identity(expression: dict[str, Any]) -> _ReferenceIdentity | None:
