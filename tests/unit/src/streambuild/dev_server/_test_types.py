@@ -443,3 +443,10 @@ class SensorRouteErrorTestCase:
     body: dict[str, object] | None
     expected_status_code: int
     expected_detail_fragment: str
+
+
+@dataclass(frozen=True)
+class StateSnapshotTestCase:
+    description: str
+    request_count: int
+    expected_build_count: int
