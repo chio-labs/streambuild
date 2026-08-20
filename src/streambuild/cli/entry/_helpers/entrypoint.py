@@ -205,4 +205,5 @@ def resolve_adapter_connection_config(
             arg_name="password",
             env_var_name="STREAMBUILD_CLICKHOUSE_PASSWORD",
         ),
+        settings=() if project_connection is None else project_connection.settings,
     )
