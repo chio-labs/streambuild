@@ -17,6 +17,7 @@ from streambuild.compiler.sql_analysis.models import (
     SqlResolvedQuery,
     SqlStorageExpression,
 )
+from streambuild.compiler.sql_analysis.types import ProjectionTypeCache
 
 
 class SqlModelAnalyzer:
@@ -25,7 +26,8 @@ class SqlModelAnalyzer:
     def __init__(self, *, dialect: str) -> None:
         self._dialect: str = dialect
         self._tree_by_analysis: dict[SqlModelAnalysis, dict[str, Any]] = {}
-        self._relation_cache: dict[str, tuple[dict[str, Any], str]] = {}
+        self._relation_cache: dict[str, tuple[dict[str, Any], str | None, dict[str, str]]] = {}
+        self._type_cache: ProjectionTypeCache = {}
 
     def analyze(
         self,
@@ -40,13 +42,14 @@ class SqlModelAnalyzer:
 
         analysis: SqlModelAnalysis
         tree: dict[str, Any]
-        analysis, tree = analyze_model_sql_impl(
+        analysis, tree, self._type_cache = analyze_model_sql_impl(
             sql=sql,
             engine=engine,
             order_by=order_by,
             partition_by=partition_by,
             ttl=ttl,
             dialect=self._dialect,
+            type_cache=self._type_cache,
         )
         self._tree_by_analysis[analysis] = tree
         return analysis

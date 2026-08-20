@@ -44,8 +44,11 @@ from streambuild.compiler.sql_analysis.exceptions import SqlAnalysisError
 from streambuild.compiler.sql_analysis.models import SqlReference, SqlResolvedQuery
 from streambuild.compiler.sql_analysis.types import RefType, SqlRelationType
 
+_NESTED_NODE_TYPES: frozenset[type] = frozenset({dict, list, tuple})
+
 type _ReferenceIdentity = tuple[SqlRelationType, str, RefType | None]
-type _CachedRelation = tuple[dict[str, Any], str]
+type _RelationEdit = tuple[list[Any] | dict[str, Any], Any, Any, dict[str, Any]]
+type _CachedRelation = tuple[dict[str, Any], str | None, dict[str, str]]
 type _RelationCache = dict[str, _CachedRelation]
 
 _CANONICAL_TYPE_NAMES: dict[str, str] = {
@@ -107,10 +110,27 @@ def build_validated_relation_rewrite(
     _validate_reference_identities(references=references, actual_identities=actual_identities)
     if references:
         _ = generate_sql_tree(tree=tree, dialect=dialect)
-    canonical_relation_by_target: dict[str, str] = {
-        target: cached_relation[1] for target, cached_relation in relation_cache.items()
-    }
+    canonical_relation_by_target: dict[str, str] = {}
+    target: str
+    for target in tuple(relation_cache):
+        canonical_relation_by_target[target], relation_cache = _canonical_relation(
+            target=target, relation_cache=relation_cache, dialect=dialect
+        )
     return canonical_relation_by_target, relation_cache
+
+
+def _canonical_relation(
+    *, target: str, relation_cache: _RelationCache, dialect: str
+) -> tuple[str, _RelationCache]:
+    cached_relation: _CachedRelation | None = relation_cache.get(target)
+    if cached_relation is None:
+        cached_relation = _parse_relation(target=target, dialect=dialect)
+        relation_cache[target] = cached_relation
+    canonical_relation: str | None = cached_relation[1]
+    if canonical_relation is None:
+        canonical_relation = generate_sql_tree(tree=cached_relation[0], dialect=dialect)
+        relation_cache[target] = (cached_relation[0], canonical_relation, cached_relation[2])
+    return canonical_relation, relation_cache
 
 
 def parse_sql_trees(*, sql: str, dialect: str) -> tuple[dict[str, Any], ...]:
@@ -118,7 +138,7 @@ def parse_sql_trees(*, sql: str, dialect: str) -> tuple[dict[str, Any], ...]:
 
     try:
         expressions: list[Any] = polyglot_sql.parse(sql, dialect=dialect)
-        return tuple(expression.to_dict() for expression in expressions)
+        return tuple([expression.to_dict() for expression in expressions])
     except Exception as error:
         raise SqlAnalysisError(f"SQL could not be parsed with Polyglot: {error}") from None
 
@@ -181,16 +201,21 @@ def generate_sql_tree(*, tree: dict[str, Any], dialect: str, pretty: bool = Fals
 def _copied_tree(node: Any) -> Any:
     """Copy a parsed tree of plain containers, since deepcopy dominates resolve cost."""
 
-    if isinstance(node, dict):
-        return {key: _copied_tree(value) for key, value in node.items()}
-    if isinstance(node, list):
-        return [_copied_tree(item) for item in node]
-    if isinstance(node, tuple):
-        return tuple(_copied_tree(item) for item in node)
+    if type(node) is dict:
+        return {
+            key: _copied_tree(value) if type(value) in _NESTED_NODE_TYPES else value
+            for key, value in node.items()
+        }
+    if type(node) is list:
+        return [_copied_tree(item) if type(item) in _NESTED_NODE_TYPES else item for item in node]
+    if type(node) is tuple:
+        return tuple(
+            _copied_tree(item) if type(item) in _NESTED_NODE_TYPES else item for item in node
+        )
     return node
 
 
-def _resolved_copy(
+def _validated_resolution(
     *,
     node: Any,
     dialect: str,
@@ -198,66 +223,71 @@ def _resolved_copy(
     identities: tuple[_ReferenceIdentity, ...],
     relation_cache: _RelationCache,
     visible_ctes: frozenset[str],
-    validate: bool,
     deferred: SqlAnalysisError | None,
-) -> tuple[Any, tuple[_ReferenceIdentity, ...], _RelationCache, SqlAnalysisError | None]:
-    """Copy, validate and rewrite a parsed tree in one traversal."""
+    edits: list[_RelationEdit],
+) -> tuple[
+    tuple[_ReferenceIdentity, ...], _RelationCache, SqlAnalysisError | None, list[_RelationEdit]
+]:
+    """Validate references and raw relations in one traversal without copying."""
 
-    if isinstance(node, list):
-        copied_items: list[Any] = []
+    if type(node) is list:
         item: Any
         for item in node:
-            copied_item: Any
-            copied_item, identities, relation_cache, deferred = _resolved_copy(
-                node=item,
-                dialect=dialect,
-                resolver=resolver,
-                identities=identities,
-                relation_cache=relation_cache,
-                visible_ctes=visible_ctes,
-                validate=validate,
-                deferred=deferred,
-            )
-            copied_items.append(copied_item)
-        return copied_items, identities, relation_cache, deferred
-    if not isinstance(node, dict):
-        return node, identities, relation_cache, deferred
+            if type(item) in _NESTED_NODE_TYPES:
+                identities, relation_cache, deferred, edits = _validated_resolution(
+                    node=item,
+                    dialect=dialect,
+                    resolver=resolver,
+                    identities=identities,
+                    relation_cache=relation_cache,
+                    visible_ctes=visible_ctes,
+                    deferred=deferred,
+                    edits=edits,
+                )
+        return identities, relation_cache, deferred, edits
+    if type(node) is not dict:
+        return identities, relation_cache, deferred, edits
     table_payload: Any = node.get(POLYGLOT_TABLE_KEY)
-    if validate and isinstance(table_payload, dict) and POLYGLOT_SCHEMA_KEY in table_payload:
+    if isinstance(table_payload, dict) and POLYGLOT_SCHEMA_KEY in table_payload:
         table_name: str | None = _identifier_name(table_payload.get(POLYGLOT_NAME_KEY))
         if table_name is not None and table_name not in visible_ctes:
             raise SqlAnalysisError(
                 f"Model relation '{table_name}' must be referenced via __ref(...) or __source(...)"
             )
-        return _copied_tree(node), identities, relation_cache, deferred
-    copied: dict[str, Any] = {}
-    key: str
+        return identities, relation_cache, deferred, edits
     value: Any
-    for key, value in node.items():
+    for value in node.values():
+        if type(value) not in _NESTED_NODE_TYPES:
+            continue
         child_ctes: frozenset[str] = visible_ctes
-        if isinstance(value, dict):
-            child_ctes = visible_ctes | _select_cte_names(value)
-        copied[key], identities, relation_cache, deferred = _resolved_copy(
+        if type(value) is dict and POLYGLOT_WITH_KEY in value:
+            cte_names: frozenset[str] = _select_cte_names(value)
+            if cte_names:
+                child_ctes = visible_ctes | cte_names
+        identities, relation_cache, deferred, edits = _validated_resolution(
             node=value,
             dialect=dialect,
             resolver=resolver,
             identities=identities,
             relation_cache=relation_cache,
             visible_ctes=child_ctes,
-            validate=validate,
             deferred=deferred,
+            edits=edits,
         )
-    return _rewritten_relations(
-        node=copied,
-        dialect=dialect,
-        resolver=resolver,
-        identities=identities,
-        relation_cache=relation_cache,
-        deferred=deferred,
-    )
+    if POLYGLOT_FROM_KEY in node or POLYGLOT_JOINS_KEY in node:
+        return _validated_relations(
+            node=node,
+            dialect=dialect,
+            resolver=resolver,
+            identities=identities,
+            relation_cache=relation_cache,
+            deferred=deferred,
+            edits=edits,
+        )
+    return identities, relation_cache, deferred, edits
 
 
-def _rewritten_relations(
+def _validated_relations(
     *,
     node: dict[str, Any],
     dialect: str,
@@ -265,11 +295,16 @@ def _rewritten_relations(
     identities: tuple[_ReferenceIdentity, ...],
     relation_cache: _RelationCache,
     deferred: SqlAnalysisError | None,
-) -> tuple[dict[str, Any], tuple[_ReferenceIdentity, ...], _RelationCache, SqlAnalysisError | None]:
+    edits: list[_RelationEdit],
+) -> tuple[
+    tuple[_ReferenceIdentity, ...], _RelationCache, SqlAnalysisError | None, list[_RelationEdit]
+]:
     from_clause: Any = node.get(POLYGLOT_FROM_KEY)
     if isinstance(from_clause, dict):
         expressions: Any = from_clause.get(POLYGLOT_EXPRESSIONS_KEY)
         if isinstance(expressions, list):
+            index: int
+            expression: Any
             for index, expression in enumerate(expressions):
                 replacement: dict[str, Any] | None
                 replacement, identities, relation_cache, deferred = _deferred_replacement(
@@ -281,14 +316,15 @@ def _rewritten_relations(
                     deferred=deferred,
                 )
                 if replacement is not None:
-                    expressions[index] = replacement
+                    edits.append((expressions, index, expression, replacement))
     joins: Any = node.get(POLYGLOT_JOINS_KEY)
     if isinstance(joins, list):
         join: Any
         for join in joins:
             if isinstance(join, dict):
+                joined_expression: Any = join.get(POLYGLOT_ALIAS_VALUE_KEY)
                 replacement, identities, relation_cache, deferred = _deferred_replacement(
-                    expression=join.get(POLYGLOT_ALIAS_VALUE_KEY),
+                    expression=joined_expression,
                     dialect=dialect,
                     resolver=resolver,
                     identities=identities,
@@ -296,8 +332,8 @@ def _rewritten_relations(
                     deferred=deferred,
                 )
                 if replacement is not None:
-                    join[POLYGLOT_ALIAS_VALUE_KEY] = replacement
-    return node, identities, relation_cache, deferred
+                    edits.append((join, POLYGLOT_ALIAS_VALUE_KEY, joined_expression, replacement))
+    return identities, relation_cache, deferred, edits
 
 
 def _deferred_replacement(
@@ -341,23 +377,23 @@ def build_resolved_query(
 ) -> tuple[SqlResolvedQuery, _RelationCache]:
     """Resolve and qualify one previously parsed model tree without reparsing it."""
 
-    resolved_tree: dict[str, Any]
     actual_identities: tuple[_ReferenceIdentity, ...]
     deferred: SqlAnalysisError | None
-    resolved_tree, actual_identities, relation_cache, deferred = _resolved_copy(
+    edits: list[_RelationEdit] = []
+    actual_identities, relation_cache, deferred, edits = _validated_resolution(
         node=tree,
         dialect=dialect,
         resolver=resolver,
         identities=(),
         relation_cache=relation_cache,
         visible_ctes=frozenset(),
-        validate=True,
         deferred=None,
+        edits=edits,
     )
     if deferred is not None:
         raise deferred
     _validate_reference_identities(references=references, actual_identities=actual_identities)
-    canonical_sql: str = generate_sql_tree(tree=resolved_tree, dialect=dialect, pretty=True)
+    canonical_sql: str = _rendered_with_resolved_relations(tree=tree, edits=edits, dialect=dialect)
     _reject_reserved_database_placeholder(
         canonical_sql=canonical_sql,
         database_placeholder=database_placeholder,
@@ -382,6 +418,24 @@ def build_resolved_query(
         ),
         relation_cache,
     )
+
+
+def _rendered_with_resolved_relations(
+    *, tree: dict[str, Any], edits: list[_RelationEdit], dialect: str
+) -> str:
+    """Render the retained tree with relations resolved, then restore it unchanged."""
+
+    container: list[Any] | dict[str, Any]
+    slot: Any
+    original: Any
+    replacement: dict[str, Any]
+    for container, slot, _original, replacement in edits:
+        container[slot] = replacement
+    try:
+        return generate_sql_tree(tree=tree, dialect=dialect, pretty=True)
+    finally:
+        for container, slot, original, _replacement in edits:
+            container[slot] = original
 
 
 def _authored_database_template(
@@ -425,10 +479,15 @@ def _template_relation_text(
     cached_relation: _CachedRelation | None = relation_cache.get(target)
     if cached_relation is None:
         cached_relation = _parse_relation(target=target, dialect=dialect)
-        relation_cache = {**relation_cache, target: cached_relation}
+        relation_cache[target] = cached_relation
+    templated_relation: str | None = cached_relation[2].get(database_placeholder)
+    if templated_relation is not None:
+        return templated_relation, relation_cache
     relation_tree: dict[str, Any] = _copied_tree(cached_relation[0])
     qualify_query_relations(tree=relation_tree, database=database_placeholder)
-    return generate_sql_tree(tree=relation_tree, dialect=dialect), relation_cache
+    templated_relation = generate_sql_tree(tree=relation_tree, dialect=dialect)
+    cached_relation[2][database_placeholder] = templated_relation
+    return templated_relation, relation_cache
 
 
 def canonical_query_with_database_template(
@@ -585,7 +644,7 @@ def _replacement(
     cached_relation: _CachedRelation | None = relation_cache.get(target)
     if cached_relation is None:
         cached_relation = _parse_relation(target=target, dialect=dialect)
-        relation_cache = {**relation_cache, target: cached_relation}
+        relation_cache[target] = cached_relation
     return _copied_tree(cached_relation[0]), updated_identities, relation_cache
 
 
@@ -668,8 +727,7 @@ def _parse_relation(*, target: str, dialect: str) -> _CachedRelation:
         and cast(dict[str, Any], relation_payload).get(POLYGLOT_ALIAS_KEY) is not None
     ):
         raise SqlAnalysisError(f"Resolved relation '{target}' must not define its own alias")
-    canonical_relation: str = generate_sql_tree(tree=relation, dialect=dialect)
-    return relation, canonical_relation
+    return relation, None, {}
 
 
 def _validate_reference_identities(

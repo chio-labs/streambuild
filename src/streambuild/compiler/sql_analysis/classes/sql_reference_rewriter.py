@@ -16,7 +16,7 @@ class SqlReferenceRewriter:
 
     def __init__(self, *, dialect: str) -> None:
         self._dialect: str = dialect
-        self._relation_cache: dict[str, tuple[dict[str, Any], str]] = {}
+        self._relation_cache: dict[str, tuple[dict[str, Any], str | None, dict[str, str]]] = {}
 
     def rewrite(self, *, sql: str, resolver: dict[str, str]) -> str:
         """Replace logical relation calls while preserving authored surrounding text."""
