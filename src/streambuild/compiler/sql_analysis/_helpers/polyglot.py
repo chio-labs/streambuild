@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import Any, cast
 
 import polyglot_sql
 
+from streambuild.compiler.sql_analysis._helpers.aggregates import aggregate_key_name
 from streambuild.compiler.sql_analysis.constants import (
     CLICKHOUSE_AGGREGATE_STATE_TYPE_NAMES,
     CLICKHOUSE_NAMED_FIELD_TYPE_NAMES,
@@ -20,6 +22,7 @@ from streambuild.compiler.sql_analysis.constants import (
     POLYGLOT_EXPRESSIONS_KEY,
     POLYGLOT_FROM_KEY,
     POLYGLOT_FUNCTION_KEY,
+    POLYGLOT_GROUP_BY_KEY,
     POLYGLOT_JOINS_KEY,
     POLYGLOT_LEFT_KEY,
     POLYGLOT_LITERAL_KEY,
@@ -48,6 +51,7 @@ _NESTED_NODE_TYPES: frozenset[type] = frozenset({dict, list, tuple})
 
 type _ReferenceIdentity = tuple[SqlRelationType, str, RefType | None]
 type _RelationEdit = tuple[list[Any] | dict[str, Any], Any, Any, dict[str, Any]]
+type _ReferenceSlot = tuple[list[Any] | dict[str, Any], Any]
 type _CachedRelation = tuple[dict[str, Any], str | None, dict[str, str]]
 type _RelationCache = dict[str, _CachedRelation]
 
@@ -86,6 +90,17 @@ _CANONICAL_TYPE_NAMES: dict[str, str] = {
     "uuid": "UUID",
     "variant": "Variant",
 }
+
+
+@dataclass
+class _TreeScan:
+    """Mutable accumulator for the single model tree traversal."""
+
+    function_names: list[str]
+    keyed_names: dict[str, str]
+    reference_slots: list[_ReferenceSlot]
+    raw_relation: str | None
+    has_group_by: bool
 
 
 def build_validated_relation_rewrite(
@@ -215,125 +230,85 @@ def _copied_tree(node: Any) -> Any:
     return node
 
 
-def _validated_resolution(
-    *,
-    node: Any,
-    dialect: str,
-    resolver: Mapping[str, str],
-    identities: tuple[_ReferenceIdentity, ...],
-    relation_cache: _RelationCache,
-    visible_ctes: frozenset[str],
-    deferred: SqlAnalysisError | None,
-    edits: list[_RelationEdit],
-) -> tuple[
-    tuple[_ReferenceIdentity, ...], _RelationCache, SqlAnalysisError | None, list[_RelationEdit]
-]:
-    """Validate references and raw relations in one traversal without copying."""
+def collect_tree_facts(
+    *, tree: dict[str, Any]
+) -> tuple[list[str], bool, tuple[_ReferenceSlot, ...], str | None]:
+    """Collect aggregate, reference and raw-relation facts in one traversal."""
 
+    scan: _TreeScan = _scanned_tree_facts(
+        node=tree,
+        scan=_TreeScan(
+            function_names=[],
+            keyed_names={},
+            reference_slots=[],
+            raw_relation=None,
+            has_group_by=False,
+        ),
+        visible_ctes=frozenset(),
+    )
+    return (
+        scan.function_names,
+        scan.has_group_by,
+        tuple(scan.reference_slots),
+        scan.raw_relation,
+    )
+
+
+def _scanned_tree_facts(*, node: Any, scan: _TreeScan, visible_ctes: frozenset[str]) -> _TreeScan:
     if type(node) is list:
         item: Any
         for item in node:
             if type(item) in _NESTED_NODE_TYPES:
-                identities, relation_cache, deferred, edits = _validated_resolution(
-                    node=item,
-                    dialect=dialect,
-                    resolver=resolver,
-                    identities=identities,
-                    relation_cache=relation_cache,
-                    visible_ctes=visible_ctes,
-                    deferred=deferred,
-                    edits=edits,
-                )
-        return identities, relation_cache, deferred, edits
+                scan = _scanned_tree_facts(node=item, scan=scan, visible_ctes=visible_ctes)
+        return scan
     if type(node) is not dict:
-        return identities, relation_cache, deferred, edits
+        return scan
     table_payload: Any = node.get(POLYGLOT_TABLE_KEY)
     if isinstance(table_payload, dict) and POLYGLOT_SCHEMA_KEY in table_payload:
         table_name: str | None = _identifier_name(table_payload.get(POLYGLOT_NAME_KEY))
-        if table_name is not None and table_name not in visible_ctes:
-            raise SqlAnalysisError(
-                f"Model relation '{table_name}' must be referenced via __ref(...) or __source(...)"
+        if table_name is not None and table_name not in visible_ctes and scan.raw_relation is None:
+            scan.raw_relation = table_name
+        return scan
+    if node.get(POLYGLOT_GROUP_BY_KEY) is not None:
+        scan.has_group_by = True
+    key: str
+    payload: Any
+    for key, payload in node.items():
+        aggregate_name: str | None = scan.keyed_names.get(key)
+        if aggregate_name is None:
+            aggregate_name, scan.keyed_names = aggregate_key_name(
+                key=key, payload=payload, keyed_names=scan.keyed_names
             )
-        return identities, relation_cache, deferred, edits
-    value: Any
-    for value in node.values():
-        if type(value) not in _NESTED_NODE_TYPES:
+        if aggregate_name:
+            scan.function_names.append(aggregate_name)
+        if type(payload) not in _NESTED_NODE_TYPES:
             continue
         child_ctes: frozenset[str] = visible_ctes
-        if type(value) is dict and POLYGLOT_WITH_KEY in value:
-            cte_names: frozenset[str] = _select_cte_names(value)
+        if type(payload) is dict and POLYGLOT_WITH_KEY in payload:
+            cte_names: frozenset[str] = _select_cte_names(payload)
             if cte_names:
                 child_ctes = visible_ctes | cte_names
-        identities, relation_cache, deferred, edits = _validated_resolution(
-            node=value,
-            dialect=dialect,
-            resolver=resolver,
-            identities=identities,
-            relation_cache=relation_cache,
-            visible_ctes=child_ctes,
-            deferred=deferred,
-            edits=edits,
-        )
+        scan = _scanned_tree_facts(node=payload, scan=scan, visible_ctes=child_ctes)
     if POLYGLOT_FROM_KEY in node or POLYGLOT_JOINS_KEY in node:
-        return _validated_relations(
-            node=node,
-            dialect=dialect,
-            resolver=resolver,
-            identities=identities,
-            relation_cache=relation_cache,
-            deferred=deferred,
-            edits=edits,
-        )
-    return identities, relation_cache, deferred, edits
+        scan = _recorded_reference_slots(node=node, scan=scan)
+    return scan
 
 
-def _validated_relations(
-    *,
-    node: dict[str, Any],
-    dialect: str,
-    resolver: Mapping[str, str],
-    identities: tuple[_ReferenceIdentity, ...],
-    relation_cache: _RelationCache,
-    deferred: SqlAnalysisError | None,
-    edits: list[_RelationEdit],
-) -> tuple[
-    tuple[_ReferenceIdentity, ...], _RelationCache, SqlAnalysisError | None, list[_RelationEdit]
-]:
+def _recorded_reference_slots(*, node: dict[str, Any], scan: _TreeScan) -> _TreeScan:
     from_clause: Any = node.get(POLYGLOT_FROM_KEY)
     if isinstance(from_clause, dict):
         expressions: Any = from_clause.get(POLYGLOT_EXPRESSIONS_KEY)
         if isinstance(expressions, list):
             index: int
-            expression: Any
-            for index, expression in enumerate(expressions):
-                replacement: dict[str, Any] | None
-                replacement, identities, relation_cache, deferred = _deferred_replacement(
-                    expression=expression,
-                    dialect=dialect,
-                    resolver=resolver,
-                    identities=identities,
-                    relation_cache=relation_cache,
-                    deferred=deferred,
-                )
-                if replacement is not None:
-                    edits.append((expressions, index, expression, replacement))
+            for index in range(len(expressions)):
+                scan.reference_slots.append((expressions, index))
     joins: Any = node.get(POLYGLOT_JOINS_KEY)
     if isinstance(joins, list):
         join: Any
         for join in joins:
             if isinstance(join, dict):
-                joined_expression: Any = join.get(POLYGLOT_ALIAS_VALUE_KEY)
-                replacement, identities, relation_cache, deferred = _deferred_replacement(
-                    expression=joined_expression,
-                    dialect=dialect,
-                    resolver=resolver,
-                    identities=identities,
-                    relation_cache=relation_cache,
-                    deferred=deferred,
-                )
-                if replacement is not None:
-                    edits.append((join, POLYGLOT_ALIAS_VALUE_KEY, joined_expression, replacement))
-    return identities, relation_cache, deferred, edits
+                scan.reference_slots.append((join, POLYGLOT_ALIAS_VALUE_KEY))
+    return scan
 
 
 def _deferred_replacement(
@@ -368,6 +343,8 @@ def _deferred_replacement(
 def build_resolved_query(
     *,
     tree: dict[str, Any],
+    reference_slots: tuple[_ReferenceSlot, ...],
+    raw_relation: str | None,
     authored_sql: str,
     dialect: str,
     references: tuple[SqlReference, ...],
@@ -377,19 +354,28 @@ def build_resolved_query(
 ) -> tuple[SqlResolvedQuery, _RelationCache]:
     """Resolve and qualify one previously parsed model tree without reparsing it."""
 
-    actual_identities: tuple[_ReferenceIdentity, ...]
-    deferred: SqlAnalysisError | None
+    if raw_relation is not None:
+        raise SqlAnalysisError(
+            f"Model relation '{raw_relation}' must be referenced via __ref(...) or __source(...)"
+        )
+    actual_identities: tuple[_ReferenceIdentity, ...] = ()
+    deferred: SqlAnalysisError | None = None
     edits: list[_RelationEdit] = []
-    actual_identities, relation_cache, deferred, edits = _validated_resolution(
-        node=tree,
-        dialect=dialect,
-        resolver=resolver,
-        identities=(),
-        relation_cache=relation_cache,
-        visible_ctes=frozenset(),
-        deferred=None,
-        edits=edits,
-    )
+    container: list[Any] | dict[str, Any]
+    slot: Any
+    for container, slot in reference_slots:
+        expression: Any = container[slot]
+        replacement: dict[str, Any] | None
+        replacement, actual_identities, relation_cache, deferred = _deferred_replacement(
+            expression=expression,
+            dialect=dialect,
+            resolver=resolver,
+            identities=actual_identities,
+            relation_cache=relation_cache,
+            deferred=deferred,
+        )
+        if replacement is not None:
+            edits.append((container, slot, expression, replacement))
     if deferred is not None:
         raise deferred
     _validate_reference_identities(references=references, actual_identities=actual_identities)
