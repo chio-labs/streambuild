@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from pathlib import Path
+from typing import cast
 
 from streambuild.adapter.models import (
     AdapterManagedSource,
@@ -127,12 +129,24 @@ def _project_payload(analysis: CompileAnalysis) -> dict[str, object]:
             },
         },
         "connection": {
-            key: value
+            key: _serializable_connection_value(value)
             for key, value in effective.connection.values
             if key not in _CONNECTION_SECRET_KEYS
         },
         "auditScheduler": {"enabled": effective.audit_scheduler.enabled},
     }
+
+
+def _serializable_connection_value(value: object) -> object:
+    """Render frozen nested connection values as plain JSON-serializable data."""
+
+    if isinstance(value, Mapping):
+        nested: Mapping[str, object] = cast(Mapping[str, object], value)
+        return {str(key): _serializable_connection_value(item) for key, item in nested.items()}
+    if isinstance(value, (list, tuple)):
+        items: Sequence[object] = cast(Sequence[object], value)
+        return [_serializable_connection_value(item) for item in items]
+    return value
 
 
 def _freshness_payload(policy: SourceFreshnessPolicy | None) -> dict[str, object] | None:
