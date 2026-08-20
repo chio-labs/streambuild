@@ -31,6 +31,7 @@ from streambuild.dev_server.classes.sensor_scheduler import SensorScheduler
 from streambuild.dev_server.classes.silent_reporter import SilentDevServerReporter
 from streambuild.dev_server.classes.warehouse_runtime import WarehouseRuntime
 from streambuild.dev_server.exceptions import DevConfigurationError
+from streambuild.dev_server.main._register_bootstrap_route import register_bootstrap_route
 from streambuild.dev_server.models import DevExecutionContext
 from streambuild.dev_server.types import DevServerReporter
 
@@ -112,7 +113,7 @@ def create_dev_app(
     )
     app: FastAPI = FastAPI(title="StreamBuild", docs_url=None, redoc_url=None, lifespan=lifespan)
     app = register_authentication_routes(app=app, service=authentication)
-    return register_api_routes(
+    app = register_api_routes(
         app=app,
         state=state,
         warehouse=warehouse,
@@ -122,5 +123,14 @@ def create_dev_app(
         broker_readers=(kafka_lag_reader, kafka_topic_reader),
         execution_context=active_context,
         reporter=active_reporter,
+        control_store=active_control_store,
+    )
+    return register_bootstrap_route(
+        app=app,
+        authentication=authentication,
+        state=state,
+        warehouse=warehouse,
+        project_dir=effective_project_dir,
+        execution_context=active_context,
         control_store=active_control_store,
     )

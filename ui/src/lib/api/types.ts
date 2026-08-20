@@ -1,4 +1,5 @@
 import type { Deployment, Project } from '$lib/domain/types';
+import type { AuthConfig, AuthPayload, Capabilities } from '$lib/auth/types';
 
 export type BuildStartResult = {
 	invocationId: string;
@@ -210,7 +211,19 @@ export type AppState = {
 export type AppController = {
 	readonly app: AppState;
 	initialize(): Promise<void>;
+	initializeFromBootstrap(payload: BootstrapPayload): void;
 	reload(): Promise<void>;
 	refreshLiveState(options?: { force?: boolean }): Promise<void>;
 	refreshDeployments(): Promise<void>;
+};
+
+export type BootstrapPayload = {
+	auth: {
+		config: AuthConfig;
+		session: AuthPayload;
+		capabilities: Capabilities | null;
+	};
+	status: Record<string, unknown>;
+	definitions: Record<string, unknown> | null;
+	state: Record<string, unknown> | null;
 };

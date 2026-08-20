@@ -28,6 +28,11 @@ export type AuthState = {
 export type AuthController = {
 	readonly auth: AuthState;
 	initialize(): Promise<void>;
+	initializeFromBootstrap(
+		config: AuthConfig,
+		payload: AuthPayload,
+		capabilities: Capabilities | null
+	): void;
 	login(username: string, password: string): Promise<void>;
 	logout(): Promise<void>;
 	markUnauthenticated(): void;

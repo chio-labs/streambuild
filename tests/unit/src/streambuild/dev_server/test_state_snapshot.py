@@ -53,6 +53,29 @@ def test_given_repeated_requests_when_reading_snapshot_then_one_build_is_reused(
     "test_case",
     [
         StateSnapshotTestCase(
+            description="reading an empty held snapshot never triggers its builder",
+            request_count=1,
+            expected_build_count=0,
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_empty_snapshot_when_reading_held_value_then_no_warehouse_build_runs(
+    test_case: StateSnapshotTestCase,
+) -> None:
+    calls: list[str] = []
+    snapshot: StateSnapshot = StateSnapshot(build=recording_state_build(calls))
+
+    held: dict[str, object] | None = snapshot.held()
+
+    assert held is None
+    assert len(calls) == test_case.expected_build_count
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        StateSnapshotTestCase(
             description="rebuilds after invalidation so new definitions are picked up",
             request_count=2,
             expected_build_count=2,

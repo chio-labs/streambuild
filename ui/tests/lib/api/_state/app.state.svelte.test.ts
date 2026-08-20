@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { AppController } from '$lib/api/types';
+import type { AppController, BootstrapPayload } from '$lib/api/types';
 import type { Project } from '$lib/domain/types';
 
 type MockFunction = ReturnType<typeof vi.fn>;
@@ -115,5 +115,37 @@ describe('application state', () => {
 		await Promise.all([first, second]);
 
 		expect(requests.requestDeployments).toHaveBeenCalledOnce();
+	});
+
+	it('given bootstrap project data when initialized then legacy project requests are skipped', () => {
+		const controller: AppController = createAppState();
+		const bootstrap: BootstrapPayload = {
+			auth: {
+				config: { mode: 'disabled', loginRequired: false, proxyLogoutUrl: null },
+				session: {
+					mode: 'disabled',
+					user: {
+						id: '00000000-0000-4000-8000-000000000001',
+						username: 'local',
+						displayName: 'Local user',
+						email: null,
+						authenticationSource: 'local'
+					},
+					roles: ['admin'],
+					csrfToken: null
+				},
+				capabilities: null
+			},
+			status: { compile: { state: 'ok' }, warehouse: { connected: true } },
+			definitions: {},
+			state: {}
+		};
+
+		controller.initializeFromBootstrap(bootstrap);
+
+		expect(controller.app.phase).toBe('ready');
+		expect(requests.requestStatusPayload).not.toHaveBeenCalled();
+		expect(requests.requestDefinitionsPayload).not.toHaveBeenCalled();
+		expect(requests.requestStatePayload).not.toHaveBeenCalled();
 	});
 });

@@ -40,6 +40,21 @@ class StatusEndpointTestCase:
 
 
 @dataclass(frozen=True)
+class BootstrapEndpointTestCase:
+    description: str
+    expected_auth_mode: str
+    expected_compile_state: str
+    expected_has_definitions: bool
+    expected_has_state: bool
+
+
+@dataclass(frozen=True)
+class BootstrapAuthorizationTestCase:
+    description: str
+    expected_status: int
+
+
+@dataclass(frozen=True)
 class StateRouteErrorTestCase:
     description: str
     expected_status: int
