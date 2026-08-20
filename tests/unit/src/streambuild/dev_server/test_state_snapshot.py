@@ -3,12 +3,18 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from streambuild.compiler.pipeline.models import CompileAnalysis
+from streambuild.dev_server.classes.overlay_reader import OverlayReader
 from streambuild.dev_server.classes.state_snapshot import StateSnapshot
 from tests.unit.src.streambuild.dev_server._test_types import (
+    OverlayReaderTestCase,
     StateSnapshotTestCase,
     WarehouseRefreshSnapshotTestCase,
 )
 from tests.unit.src.streambuild.dev_server.helpers import (
+    FakeAdapterConnection,
+    build_compile_callable,
+    build_overlay_reader,
     build_snapshot_counting_client,
     failing_state_build,
     recording_state_build,
@@ -165,4 +171,87 @@ def test_given_explicit_warehouse_refresh_when_reading_state_then_overlay_is_reb
     _ = [client.post("/api/warehouse/refresh") for _ in range(test_case.refresh_count)]
     _ = client.get("/api/state")
 
+    assert len(calls) == test_case.expected_build_count
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        OverlayReaderTestCase(
+            description="repeated overlay reads reuse one private connection",
+            read_count=3,
+            expected_connection_count=1,
+        ),
+        OverlayReaderTestCase(
+            description="a single overlay read opens one private connection",
+            read_count=1,
+            expected_connection_count=1,
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_repeated_overlay_reads_when_building_then_one_connection_is_reused(
+    test_case: OverlayReaderTestCase,
+    tmp_path: Path,
+) -> None:
+    connections: list[FakeAdapterConnection] = []
+    reader: OverlayReader = build_overlay_reader(project_dir=tmp_path, connections=connections)
+    analysis: CompileAnalysis = build_compile_callable(project_dir=tmp_path)()
+
+    _ = [reader.read(analysis=analysis, database="analytics") for _ in range(test_case.read_count)]
+
+    assert len(connections) == test_case.expected_connection_count
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        OverlayReaderTestCase(
+            description="closing the reader reconnects on the next overlay read",
+            read_count=1,
+            expected_connection_count=2,
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_closed_overlay_reader_when_reading_again_then_a_new_connection_opens(
+    test_case: OverlayReaderTestCase,
+    tmp_path: Path,
+) -> None:
+    connections: list[FakeAdapterConnection] = []
+    reader: OverlayReader = build_overlay_reader(project_dir=tmp_path, connections=connections)
+    analysis: CompileAnalysis = build_compile_callable(project_dir=tmp_path)()
+
+    _ = reader.read(analysis=analysis, database="analytics")
+    reader.close()
+    _ = reader.read(analysis=analysis, database="analytics")
+
+    assert len(connections) == test_case.expected_connection_count
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        StateSnapshotTestCase(
+            description="closing the snapshot releases the connection it owns",
+            request_count=1,
+            expected_build_count=1,
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_snapshot_owning_a_connection_when_closed_then_it_is_released(
+    test_case: StateSnapshotTestCase,
+) -> None:
+    calls: list[str] = []
+    released: list[str] = []
+    snapshot: StateSnapshot = StateSnapshot(
+        build=recording_state_build(calls),
+        on_close=lambda: released.append("released"),
+    )
+
+    _ = snapshot.current()
+    snapshot.close()
+
+    assert released == ["released"]
     assert len(calls) == test_case.expected_build_count

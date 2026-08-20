@@ -80,6 +80,7 @@ from streambuild.dev_server._helpers.server.static_assets import register_static
 from streambuild.dev_server.classes.dev_server_state import DevServerState
 from streambuild.dev_server.classes.kafka_lag_reader import KafkaLagReader
 from streambuild.dev_server.classes.kafka_topic_reader import KafkaTopicReader
+from streambuild.dev_server.classes.overlay_reader import OverlayReader
 from streambuild.dev_server.classes.state_snapshot import StateSnapshot
 from streambuild.dev_server.main._create_dev_app import create_dev_app
 from streambuild.dev_server.models import (
@@ -1411,3 +1412,21 @@ def build_snapshot_counting_client(*, project_dir: Path, calls: list[str]) -> Te
 
     state.attach_snapshot(StateSnapshot(build=build))
     return TestClient(app)
+
+
+def build_overlay_reader(
+    *, project_dir: Path, connections: list[FakeAdapterConnection]
+) -> OverlayReader:
+    """Return an overlay reader recording every connection its factory opens."""
+
+    write_dev_server_project(project_dir=project_dir)
+
+    def connection_factory() -> AdapterConnection:
+        connection: FakeAdapterConnection = build_fake_state_connection()
+        connections.append(connection)
+        return connection
+
+    return OverlayReader(
+        connection_factory=connection_factory,
+        kafka_lag_reader=KafkaLagReader(),
+    )
