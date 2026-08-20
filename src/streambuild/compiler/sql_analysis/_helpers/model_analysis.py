@@ -4,7 +4,6 @@ from typing import Any
 
 from streambuild.compiler.sql_analysis._helpers.aggregates import aggregate_facts
 from streambuild.compiler.sql_analysis._helpers.polyglot import (
-    analyze_query_facts,
     generate_sql_tree,
     parse_sql_trees,
 )
@@ -23,7 +22,7 @@ from streambuild.compiler.sql_analysis.exceptions import (
     SqlStatementCountError,
 )
 from streambuild.compiler.sql_analysis.models import SqlModelAnalysis, SqlProjection
-from streambuild.compiler.sql_analysis.types import SqlQueryShape
+from streambuild.compiler.sql_analysis.types import ProjectionTypeCache, SqlQueryShape
 
 _SET_OPERATION_KEYS: frozenset[str] = frozenset(
     {POLYGLOT_UNION_KEY, POLYGLOT_INTERSECT_KEY, POLYGLOT_EXCEPT_KEY}
@@ -38,7 +37,8 @@ def analyze_model_sql_impl(
     partition_by: str | None,
     ttl: str | None,
     dialect: str,
-) -> tuple[SqlModelAnalysis, dict[str, Any]]:
+    type_cache: ProjectionTypeCache,
+) -> tuple[SqlModelAnalysis, dict[str, Any], ProjectionTypeCache]:
     """Parse and derive all compiler-critical facts for one model."""
 
     trees: tuple[dict[str, Any], ...] = parse_sql_trees(sql=sql, dialect=dialect)
@@ -54,13 +54,13 @@ def analyze_model_sql_impl(
             statement_sql=canonical_sql,
             is_set_operation=statement_type in _SET_OPERATION_KEYS,
         )
-    compact_analysis: dict[str, Any] = analyze_query_facts(sql=sql, dialect=dialect)
-    projections: tuple[SqlProjection, ...] = build_model_projections(
+    projections: tuple[SqlProjection, ...]
+    projections, type_cache = build_model_projections(
         select_payload=select_payload,
         sql=sql,
         spans=outer_projection_spans(sql),
-        compact_analysis=compact_analysis,
         dialect=dialect,
+        type_cache=type_cache,
     )
     analysis: SqlModelAnalysis = SqlModelAnalysis(
         authored_sql=sql,
@@ -76,4 +76,4 @@ def analyze_model_sql_impl(
         ),
         aggregate_facts=aggregate_facts(tree=tree, engine=engine),
     )
-    return analysis, tree
+    return analysis, tree, type_cache

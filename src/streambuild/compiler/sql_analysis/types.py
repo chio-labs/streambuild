@@ -27,9 +27,4 @@ class SqlStorageExpressionKind(StrEnum):
     TTL = "ttl"
 
 
-class SqlLineageConfidence(StrEnum):
-    """Confidence assigned by compact Polyglot column resolution."""
-
-    RESOLVED = "resolved"
-    HEURISTIC = "heuristic"
-    UNKNOWN = "unknown"
+type ProjectionTypeCache = dict[str, str]
