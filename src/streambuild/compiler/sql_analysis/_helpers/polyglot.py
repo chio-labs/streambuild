@@ -190,6 +190,36 @@ def _copied_tree(node: Any) -> Any:
     return node
 
 
+def _validated_copy(*, node: Any, visible_ctes: frozenset[str]) -> Any:
+    """Copy a parsed tree while rejecting authored physical relations in one pass."""
+
+    if isinstance(node, list):
+        return [_validated_copy(node=item, visible_ctes=visible_ctes) for item in node]
+    if not isinstance(node, dict):
+        return node
+    table_payload: Any = node.get(POLYGLOT_TABLE_KEY)
+    if isinstance(table_payload, dict) and POLYGLOT_SCHEMA_KEY in table_payload:
+        table_name: str | None = _identifier_name(table_payload.get(POLYGLOT_NAME_KEY))
+        if table_name is not None and table_name not in visible_ctes:
+            raise SqlAnalysisError(
+                f"Model relation '{table_name}' must be referenced via __ref(...) or __source(...)"
+            )
+        return _copied_tree(node)
+    copied: dict[str, Any] = {}
+    key: str
+    value: Any
+    for key, value in node.items():
+        if isinstance(value, dict):
+            copied[key] = _validated_copy(
+                node=value, visible_ctes=visible_ctes | _select_cte_names(value)
+            )
+        elif isinstance(value, list):
+            copied[key] = _validated_copy(node=value, visible_ctes=visible_ctes)
+        else:
+            copied[key] = value
+    return copied
+
+
 def build_resolved_query(
     *,
     tree: dict[str, Any],
@@ -202,8 +232,7 @@ def build_resolved_query(
 ) -> tuple[SqlResolvedQuery, _RelationCache]:
     """Resolve and qualify one previously parsed model tree without reparsing it."""
 
-    _reject_raw_relations(node=tree, visible_ctes=frozenset())
-    resolved_tree: dict[str, Any] = _copied_tree(tree)
+    resolved_tree: dict[str, Any] = _validated_copy(node=tree, visible_ctes=frozenset())
     actual_identities: tuple[_ReferenceIdentity, ...] = ()
     actual_identities, relation_cache = _rewrite_tree(
         node=resolved_tree,
