@@ -7,6 +7,7 @@ from collections.abc import Callable
 
 from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.dev_server._helpers.server.compile_runner import build_compile_outcome
+from streambuild.dev_server.classes.state_snapshot import StateSnapshot
 from streambuild.dev_server.exceptions import ProjectNotCompiledError
 from streambuild.dev_server.models import CompileOutcome
 from streambuild.dev_server.types import CompileAuthorizationGuard
@@ -22,6 +23,21 @@ class DevServerState:
         self._outcome: CompileOutcome | None = None
         self._servable_outcome: CompileOutcome | None = None
         self._authorization_analysis: CompileAnalysis | None = None
+        self._snapshot: StateSnapshot | None = None
+
+    @property
+    def snapshot(self) -> StateSnapshot:
+        """Return the attached warehouse overlay snapshot."""
+
+        snapshot: StateSnapshot | None = self._snapshot
+        if snapshot is None:
+            raise ProjectNotCompiledError("The warehouse overlay snapshot is not attached")
+        return snapshot
+
+    def attach_snapshot(self, snapshot: StateSnapshot) -> None:
+        """Attach the overlay snapshot once the warehouse services exist."""
+
+        self._snapshot = snapshot
 
     @property
     def query_lock(self) -> threading.Lock:
@@ -78,6 +94,8 @@ class DevServerState:
 
     def _reload_locked(self) -> CompileOutcome:
         outcome: CompileOutcome = build_compile_outcome(run_compile=self._run_compile)
+        if self._snapshot is not None:
+            self._snapshot.invalidate()
         self._outcome = outcome
         if outcome.analysis is not None:
             self._authorization_analysis = outcome.analysis
