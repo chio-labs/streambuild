@@ -360,26 +360,28 @@ def build_resolved_query(
         )
     actual_identities: tuple[_ReferenceIdentity, ...] = ()
     deferred: SqlAnalysisError | None = None
-    edits: list[_RelationEdit] = []
     container: list[Any] | dict[str, Any]
     slot: Any
     for container, slot in reference_slots:
-        expression: Any = container[slot]
-        replacement: dict[str, Any] | None
-        replacement, actual_identities, relation_cache, deferred = _deferred_replacement(
-            expression=expression,
+        _, actual_identities, relation_cache, deferred = _deferred_replacement(
+            expression=container[slot],
             dialect=dialect,
             resolver=resolver,
             identities=actual_identities,
             relation_cache=relation_cache,
             deferred=deferred,
         )
-        if replacement is not None:
-            edits.append((container, slot, expression, replacement))
     if deferred is not None:
         raise deferred
     _validate_reference_identities(references=references, actual_identities=actual_identities)
-    canonical_sql: str = _rendered_with_resolved_relations(tree=tree, edits=edits, dialect=dialect)
+    canonical_sql: str
+    canonical_sql, relation_cache = _authored_canonical_sql(
+        authored_sql=authored_sql,
+        references=references,
+        resolver=resolver,
+        relation_cache=relation_cache,
+        dialect=dialect,
+    )
     _reject_reserved_database_placeholder(
         canonical_sql=canonical_sql,
         database_placeholder=database_placeholder,
@@ -406,22 +408,31 @@ def build_resolved_query(
     )
 
 
-def _rendered_with_resolved_relations(
-    *, tree: dict[str, Any], edits: list[_RelationEdit], dialect: str
-) -> str:
-    """Render the retained tree with relations resolved, then restore it unchanged."""
+def _authored_canonical_sql(
+    *,
+    authored_sql: str,
+    references: tuple[SqlReference, ...],
+    resolver: Mapping[str, str],
+    relation_cache: _RelationCache,
+    dialect: str,
+) -> tuple[str, _RelationCache]:
+    """Substitute reference spans in author bytes with canonical resolved relations."""
 
-    container: list[Any] | dict[str, Any]
-    slot: Any
-    original: Any
-    replacement: dict[str, Any]
-    for container, slot, _original, replacement in edits:
-        container[slot] = replacement
-    try:
-        return generate_sql_tree(tree=tree, dialect=dialect, pretty=True)
-    finally:
-        for container, slot, original, _replacement in edits:
-            container[slot] = original
+    pieces: list[str] = []
+    cursor: int = 0
+    reference: SqlReference
+    for reference in sorted(references, key=lambda item: item.span.start):
+        relation_text: str
+        relation_text, relation_cache = _canonical_relation(
+            target=resolver[reference.name],
+            relation_cache=relation_cache,
+            dialect=dialect,
+        )
+        pieces.append(authored_sql[cursor : reference.span.start])
+        pieces.append(relation_text)
+        cursor = reference.span.end
+    pieces.append(authored_sql[cursor:])
+    return "".join(pieces), relation_cache
 
 
 def _authored_database_template(
