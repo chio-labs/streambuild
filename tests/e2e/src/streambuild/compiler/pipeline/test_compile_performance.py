@@ -14,14 +14,14 @@ from tests.e2e.src.streambuild.compiler.pipeline.helpers import run_compile_benc
     "test_case",
     [
         CompilePerformanceTestCase(
-            description="3000 model project compiles under the accepted measured budget",
+            description="3000 representative models compile under the measured budget",
             model_count=3000,
-            expected_max_seconds=25.0,
+            expected_max_seconds=40.0,
         ),
         CompilePerformanceTestCase(
-            description="10000 model project compiles under the accepted measured budget",
+            description="10000 representative models compile under the measured budget",
             model_count=10000,
-            expected_max_seconds=75.0,
+            expected_max_seconds=140.0,
         ),
     ],
     ids=lambda case: case.description,

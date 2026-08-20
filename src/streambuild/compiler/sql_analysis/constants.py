@@ -21,6 +21,7 @@ CLICKHOUSE_AGGREGATE_STATE_TYPE_NAMES: frozenset[str] = frozenset(
 )
 CLICKHOUSE_NAMED_FIELD_TYPE_NAMES: frozenset[str] = frozenset({"tuple", "nested"})
 
+REFERENCE_FUNCTION_PREFIX: str = "__"
 SOURCE_REFERENCE_FUNCTION: str = "__source"
 MODEL_REFERENCE_FUNCTION: str = "__ref"
 REFERENCE_FUNCTIONS: tuple[str, ...] = (
