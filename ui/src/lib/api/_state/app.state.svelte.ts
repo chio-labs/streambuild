@@ -35,9 +35,11 @@ export function createAppState(): AppController {
 		fetchError: null
 	});
 	let liveStateRequestGeneration: number = 0;
-	const polling: PollingResource = createPollingResource(refreshLiveState);
-	const visibility: VisibilityResource = createVisibilityResource(refreshLiveState);
-	const kafkaLagRetry: KafkaLagRetryResource = createKafkaLagRetryResource(refreshLiveState);
+	const polling: PollingResource = createPollingResource(() => refreshLiveState());
+	const visibility: VisibilityResource = createVisibilityResource(() => refreshLiveState());
+	const kafkaLagRetry: KafkaLagRetryResource = createKafkaLagRetryResource(() =>
+		refreshLiveState()
+	);
 
 	async function initialize(): Promise<void> {
 		await refreshAll();
@@ -61,11 +63,14 @@ export function createAppState(): AppController {
 		}
 	}
 
-	async function refreshLiveState(): Promise<void> {
+	// Polling reads the server's held snapshot. Only an explicit refresh reconnects
+	// and discards it, so routine polls never pay for a rebuild.
+	async function refreshLiveState(options?: { force?: boolean }): Promise<void> {
 		if (app.project === null) return;
 		const requestGeneration: number = ++liveStateRequestGeneration;
 		try {
-			applyStatusPayload(await requestWarehouseRefresh());
+			if (options?.force === true) applyStatusPayload(await requestWarehouseRefresh());
+			else applyStatusPayload(await requestStatusPayload());
 			if (!app.status?.warehouseConnected) {
 				const definitions: Record<string, unknown> = await requestDefinitionsPayload();
 				if (requestGeneration !== liveStateRequestGeneration) return;
