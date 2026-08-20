@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.24.1](https://github.com/chio-labs/streambuild/compare/v0.24.0...v0.24.1) (2026-08-20)
+
+
+### Bug Fixes
+
+* **dev-server:** serialize nested connection settings ([5834f79](https://github.com/chio-labs/streambuild/commit/5834f793f47aa7d6138cdea114028480709884d3))
+* **dev-server:** serialize nested connection settings ([2a527c3](https://github.com/chio-labs/streambuild/commit/2a527c38092ea85b3a446c447cfc83b2311c166c))
+
 ## [0.24.0](https://github.com/chio-labs/streambuild/compare/v0.23.0...v0.24.0) (2026-08-20)
 
 
