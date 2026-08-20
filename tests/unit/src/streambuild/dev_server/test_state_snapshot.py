@@ -1,8 +1,15 @@
+from pathlib import Path
+
 import pytest
+from fastapi.testclient import TestClient
 
 from streambuild.dev_server.classes.state_snapshot import StateSnapshot
-from tests.unit.src.streambuild.dev_server._test_types import StateSnapshotTestCase
+from tests.unit.src.streambuild.dev_server._test_types import (
+    StateSnapshotTestCase,
+    WarehouseRefreshSnapshotTestCase,
+)
 from tests.unit.src.streambuild.dev_server.helpers import (
+    build_snapshot_counting_client,
     failing_state_build,
     recording_state_build,
     sequenced_state_build,
@@ -133,4 +140,29 @@ def test_given_failing_refresh_when_reading_snapshot_then_last_good_overlay_surv
         _ = snapshot.refresh()
 
     assert snapshot.current()["capturedAt"] == "build-1"
+    assert len(calls) == test_case.expected_build_count
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        WarehouseRefreshSnapshotTestCase(
+            description="a warehouse refresh keeps the held overlay so state stays cached",
+            refresh_count=3,
+            expected_build_count=1,
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_warehouse_refresh_when_reading_state_then_overlay_is_not_rebuilt(
+    test_case: WarehouseRefreshSnapshotTestCase,
+    tmp_path: Path,
+) -> None:
+    calls: list[str] = []
+    client: TestClient = build_snapshot_counting_client(project_dir=tmp_path, calls=calls)
+    _ = client.get("/api/state")
+
+    _ = [client.post("/api/warehouse/refresh") for _ in range(test_case.refresh_count)]
+    _ = client.get("/api/state")
+
     assert len(calls) == test_case.expected_build_count
