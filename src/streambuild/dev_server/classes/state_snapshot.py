@@ -19,9 +19,11 @@ class StateSnapshot:
         *,
         build: Callable[[], dict[str, object]],
         refresh_seconds: float = _REFRESH_SECONDS,
+        on_close: Callable[[], None] | None = None,
     ) -> None:
         self._build = build
         self._refresh_seconds = refresh_seconds
+        self._on_close = on_close
         self._lock = threading.Lock()
         self._build_lock = threading.Lock()
         self._payload: dict[str, object] | None = None
@@ -40,12 +42,14 @@ class StateSnapshot:
         self._thread.start()
 
     def close(self) -> None:
-        """Stop refreshing and wait for the worker to finish."""
+        """Stop refreshing, wait for the worker, then release any owned resources."""
 
         self._stop.set()
         self._refresh_now.set()
         if self._thread is not None:
             self._thread.join()
+        if self._on_close is not None:
+            self._on_close()
 
     def current(self) -> dict[str, object]:
         """Return the held overlay, building it inline only before the first success."""
