@@ -190,34 +190,143 @@ def _copied_tree(node: Any) -> Any:
     return node
 
 
-def _validated_copy(*, node: Any, visible_ctes: frozenset[str]) -> Any:
-    """Copy a parsed tree while rejecting authored physical relations in one pass."""
+def _resolved_copy(
+    *,
+    node: Any,
+    dialect: str,
+    resolver: Mapping[str, str],
+    identities: tuple[_ReferenceIdentity, ...],
+    relation_cache: _RelationCache,
+    visible_ctes: frozenset[str],
+    validate: bool,
+    deferred: SqlAnalysisError | None,
+) -> tuple[Any, tuple[_ReferenceIdentity, ...], _RelationCache, SqlAnalysisError | None]:
+    """Copy, validate and rewrite a parsed tree in one traversal."""
 
     if isinstance(node, list):
-        return [_validated_copy(node=item, visible_ctes=visible_ctes) for item in node]
+        copied_items: list[Any] = []
+        item: Any
+        for item in node:
+            copied_item: Any
+            copied_item, identities, relation_cache, deferred = _resolved_copy(
+                node=item,
+                dialect=dialect,
+                resolver=resolver,
+                identities=identities,
+                relation_cache=relation_cache,
+                visible_ctes=visible_ctes,
+                validate=validate,
+                deferred=deferred,
+            )
+            copied_items.append(copied_item)
+        return copied_items, identities, relation_cache, deferred
     if not isinstance(node, dict):
-        return node
+        return node, identities, relation_cache, deferred
     table_payload: Any = node.get(POLYGLOT_TABLE_KEY)
-    if isinstance(table_payload, dict) and POLYGLOT_SCHEMA_KEY in table_payload:
+    if validate and isinstance(table_payload, dict) and POLYGLOT_SCHEMA_KEY in table_payload:
         table_name: str | None = _identifier_name(table_payload.get(POLYGLOT_NAME_KEY))
         if table_name is not None and table_name not in visible_ctes:
             raise SqlAnalysisError(
                 f"Model relation '{table_name}' must be referenced via __ref(...) or __source(...)"
             )
-        return _copied_tree(node)
+        return _copied_tree(node), identities, relation_cache, deferred
     copied: dict[str, Any] = {}
     key: str
     value: Any
     for key, value in node.items():
+        child_ctes: frozenset[str] = visible_ctes
         if isinstance(value, dict):
-            copied[key] = _validated_copy(
-                node=value, visible_ctes=visible_ctes | _select_cte_names(value)
-            )
-        elif isinstance(value, list):
-            copied[key] = _validated_copy(node=value, visible_ctes=visible_ctes)
-        else:
-            copied[key] = value
-    return copied
+            child_ctes = visible_ctes | _select_cte_names(value)
+        copied[key], identities, relation_cache, deferred = _resolved_copy(
+            node=value,
+            dialect=dialect,
+            resolver=resolver,
+            identities=identities,
+            relation_cache=relation_cache,
+            visible_ctes=child_ctes,
+            validate=validate,
+            deferred=deferred,
+        )
+    return _rewritten_relations(
+        node=copied,
+        dialect=dialect,
+        resolver=resolver,
+        identities=identities,
+        relation_cache=relation_cache,
+        deferred=deferred,
+    )
+
+
+def _rewritten_relations(
+    *,
+    node: dict[str, Any],
+    dialect: str,
+    resolver: Mapping[str, str],
+    identities: tuple[_ReferenceIdentity, ...],
+    relation_cache: _RelationCache,
+    deferred: SqlAnalysisError | None,
+) -> tuple[dict[str, Any], tuple[_ReferenceIdentity, ...], _RelationCache, SqlAnalysisError | None]:
+    from_clause: Any = node.get(POLYGLOT_FROM_KEY)
+    if isinstance(from_clause, dict):
+        expressions: Any = from_clause.get(POLYGLOT_EXPRESSIONS_KEY)
+        if isinstance(expressions, list):
+            for index, expression in enumerate(expressions):
+                replacement: dict[str, Any] | None
+                replacement, identities, relation_cache, deferred = _deferred_replacement(
+                    expression=expression,
+                    dialect=dialect,
+                    resolver=resolver,
+                    identities=identities,
+                    relation_cache=relation_cache,
+                    deferred=deferred,
+                )
+                if replacement is not None:
+                    expressions[index] = replacement
+    joins: Any = node.get(POLYGLOT_JOINS_KEY)
+    if isinstance(joins, list):
+        join: Any
+        for join in joins:
+            if isinstance(join, dict):
+                replacement, identities, relation_cache, deferred = _deferred_replacement(
+                    expression=join.get(POLYGLOT_ALIAS_VALUE_KEY),
+                    dialect=dialect,
+                    resolver=resolver,
+                    identities=identities,
+                    relation_cache=relation_cache,
+                    deferred=deferred,
+                )
+                if replacement is not None:
+                    join[POLYGLOT_ALIAS_VALUE_KEY] = replacement
+    return node, identities, relation_cache, deferred
+
+
+def _deferred_replacement(
+    *,
+    expression: Any,
+    dialect: str,
+    resolver: Mapping[str, str],
+    identities: tuple[_ReferenceIdentity, ...],
+    relation_cache: _RelationCache,
+    deferred: SqlAnalysisError | None,
+) -> tuple[
+    dict[str, Any] | None,
+    tuple[_ReferenceIdentity, ...],
+    _RelationCache,
+    SqlAnalysisError | None,
+]:
+    """Replace one relation, holding any failure until validation has finished."""
+
+    try:
+        replacement, identities, relation_cache = _replacement(
+            expression=expression,
+            dialect=dialect,
+            resolver=resolver,
+            identities=identities,
+            relation_cache=relation_cache,
+        )
+    except SqlAnalysisError as error:
+        return None, identities, relation_cache, deferred or error
+    return replacement, identities, relation_cache, deferred
 
 
 def build_resolved_query(
@@ -232,15 +341,21 @@ def build_resolved_query(
 ) -> tuple[SqlResolvedQuery, _RelationCache]:
     """Resolve and qualify one previously parsed model tree without reparsing it."""
 
-    resolved_tree: dict[str, Any] = _validated_copy(node=tree, visible_ctes=frozenset())
-    actual_identities: tuple[_ReferenceIdentity, ...] = ()
-    actual_identities, relation_cache = _rewrite_tree(
-        node=resolved_tree,
+    resolved_tree: dict[str, Any]
+    actual_identities: tuple[_ReferenceIdentity, ...]
+    deferred: SqlAnalysisError | None
+    resolved_tree, actual_identities, relation_cache, deferred = _resolved_copy(
+        node=tree,
         dialect=dialect,
         resolver=resolver,
-        actual_identities=actual_identities,
+        identities=(),
         relation_cache=relation_cache,
+        visible_ctes=frozenset(),
+        validate=True,
+        deferred=None,
     )
+    if deferred is not None:
+        raise deferred
     _validate_reference_identities(references=references, actual_identities=actual_identities)
     canonical_sql: str = generate_sql_tree(tree=resolved_tree, dialect=dialect, pretty=True)
     _reject_reserved_database_placeholder(
