@@ -142,6 +142,14 @@ class ModelStorageAnalysisTestCase:
 
 
 @dataclass(frozen=True)
+class ModelRepeatedResolutionTestCase:
+    description: str
+    sql: str
+    resolver: dict[str, str]
+    expected_template_fragment: str
+
+
+@dataclass(frozen=True)
 class ModelResolutionTestCase:
     description: str
     sql: str
