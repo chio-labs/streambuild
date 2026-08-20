@@ -293,3 +293,10 @@ class PostgresSourceRejectionTestCase:
     description: str
     sources_yaml: str
     expected_error_fragment: str
+
+
+@dataclass(frozen=True)
+class ProjectConnectionSettingsTestCase:
+    description: str
+    project_contents: str
+    expected_settings: tuple[tuple[str, str], ...]
