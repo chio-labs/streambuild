@@ -1344,3 +1344,34 @@ def build_fake_candidate_only_promotion_connection() -> FakeDeploymentConnection
             physical_candidates=(),
         ),
     )
+
+
+def recording_state_build(calls: list[str]) -> Callable[[], dict[str, object]]:
+    """Return a build that records every call and reports which build produced it."""
+
+    def build() -> dict[str, object]:
+        calls.append("build")
+        return {"capturedAt": f"build-{len(calls)}"}
+
+    return build
+
+
+def failing_state_build(calls: list[str]) -> Callable[[], dict[str, object]]:
+    """Return a build that records its call and then fails."""
+
+    def build() -> dict[str, object]:
+        calls.append("build")
+        raise RuntimeError("warehouse unavailable")
+
+    return build
+
+
+def sequenced_state_build(
+    builds: list[Callable[[], dict[str, object]]],
+) -> Callable[[], dict[str, object]]:
+    """Return a build that delegates to each supplied build in turn."""
+
+    def build() -> dict[str, object]:
+        return builds.pop(0)()
+
+    return build
