@@ -156,7 +156,6 @@ def register_api_routes(
 
     def refresh_warehouse() -> dict[str, object]:
         _ = warehouse.connect_now()
-        state.snapshot.invalidate()
         return read_status()
 
     def reload_project(request: Request) -> dict[str, object]:
