@@ -104,6 +104,13 @@ class CatalogPipelineBrowserE2ETestCase:
 
 
 @dataclass(frozen=True)
+class SecondaryStatePerformanceE2ETestCase:
+    description: str
+    pipeline_name: str
+    expected_tree_nodes: int
+
+
+@dataclass(frozen=True)
 class DeploymentBrowserE2ETestCase:
     description: str
     expected_changed_model: str

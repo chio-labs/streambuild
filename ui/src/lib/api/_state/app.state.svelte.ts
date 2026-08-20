@@ -35,6 +35,7 @@ export function createAppState(): AppController {
 		fetchError: null
 	});
 	let liveStateRequestGeneration: number = 0;
+	let deploymentsRequest: Promise<void> | null = null;
 	const polling: PollingResource = createPollingResource(() => refreshLiveState());
 	const visibility: VisibilityResource = createVisibilityResource(() => refreshLiveState());
 	const kafkaLagRetry: KafkaLagRetryResource = createKafkaLagRetryResource(() =>
@@ -98,11 +99,16 @@ export function createAppState(): AppController {
 	}
 
 	async function refreshDeployments(): Promise<void> {
-		try {
-			app.deployments = await requestDeployments();
-		} catch {
-			return;
-		}
+		if (deploymentsRequest !== null) return deploymentsRequest;
+		deploymentsRequest = requestDeployments()
+			.then((deployments) => {
+				app.deployments = deployments;
+			})
+			.catch(() => undefined)
+			.finally(() => {
+				deploymentsRequest = null;
+			});
+		return deploymentsRequest;
 	}
 
 	async function refreshRecordedChecks(): Promise<void> {
@@ -140,11 +146,10 @@ export function createAppState(): AppController {
 			const [definitions, state]: [Record<string, unknown>, Record<string, unknown> | null] =
 				await Promise.all([requestDefinitionsPayload(), requestStatePayload()]);
 			mergeProject(definitions, state ?? {});
-			await refreshDeployments();
-			await refreshRecordedChecks();
 			app.phase = 'ready';
 			app.fetchError = null;
 			kafkaLagRetry.schedule(app.project);
+			void Promise.all([refreshDeployments(), refreshRecordedChecks()]);
 		} catch (error) {
 			app.phase = 'unreachable';
 			app.fetchError = String(error);
