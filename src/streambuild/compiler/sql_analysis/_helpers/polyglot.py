@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Mapping
-from copy import deepcopy
+from dataclasses import dataclass
 from typing import Any, cast
 
 import polyglot_sql
 
+from streambuild.compiler.sql_analysis._helpers.aggregates import aggregate_key_name
 from streambuild.compiler.sql_analysis.constants import (
     CLICKHOUSE_AGGREGATE_STATE_TYPE_NAMES,
     CLICKHOUSE_NAMED_FIELD_TYPE_NAMES,
@@ -21,6 +22,7 @@ from streambuild.compiler.sql_analysis.constants import (
     POLYGLOT_EXPRESSIONS_KEY,
     POLYGLOT_FROM_KEY,
     POLYGLOT_FUNCTION_KEY,
+    POLYGLOT_GROUP_BY_KEY,
     POLYGLOT_JOINS_KEY,
     POLYGLOT_LEFT_KEY,
     POLYGLOT_LITERAL_KEY,
@@ -45,8 +47,12 @@ from streambuild.compiler.sql_analysis.exceptions import SqlAnalysisError
 from streambuild.compiler.sql_analysis.models import SqlReference, SqlResolvedQuery
 from streambuild.compiler.sql_analysis.types import RefType, SqlRelationType
 
+_NESTED_NODE_TYPES: frozenset[type] = frozenset({dict, list, tuple})
+
 type _ReferenceIdentity = tuple[SqlRelationType, str, RefType | None]
-type _CachedRelation = tuple[dict[str, Any], str]
+type _RelationEdit = tuple[list[Any] | dict[str, Any], Any, Any, dict[str, Any]]
+type _ReferenceSlot = tuple[list[Any] | dict[str, Any], Any]
+type _CachedRelation = tuple[dict[str, Any], str | None, dict[str, str]]
 type _RelationCache = dict[str, _CachedRelation]
 
 _CANONICAL_TYPE_NAMES: dict[str, str] = {
@@ -86,6 +92,17 @@ _CANONICAL_TYPE_NAMES: dict[str, str] = {
 }
 
 
+@dataclass
+class _TreeScan:
+    """Mutable accumulator for the single model tree traversal."""
+
+    function_names: list[str]
+    keyed_names: dict[str, str]
+    reference_slots: list[_ReferenceSlot]
+    raw_relation: str | None
+    has_group_by: bool
+
+
 def build_validated_relation_rewrite(
     *,
     sql: str,
@@ -108,10 +125,27 @@ def build_validated_relation_rewrite(
     _validate_reference_identities(references=references, actual_identities=actual_identities)
     if references:
         _ = generate_sql_tree(tree=tree, dialect=dialect)
-    canonical_relation_by_target: dict[str, str] = {
-        target: cached_relation[1] for target, cached_relation in relation_cache.items()
-    }
+    canonical_relation_by_target: dict[str, str] = {}
+    target: str
+    for target in tuple(relation_cache):
+        canonical_relation_by_target[target], relation_cache = _canonical_relation(
+            target=target, relation_cache=relation_cache, dialect=dialect
+        )
     return canonical_relation_by_target, relation_cache
+
+
+def _canonical_relation(
+    *, target: str, relation_cache: _RelationCache, dialect: str
+) -> tuple[str, _RelationCache]:
+    cached_relation: _CachedRelation | None = relation_cache.get(target)
+    if cached_relation is None:
+        cached_relation = _parse_relation(target=target, dialect=dialect)
+        relation_cache[target] = cached_relation
+    canonical_relation: str | None = cached_relation[1]
+    if canonical_relation is None:
+        canonical_relation = generate_sql_tree(tree=cached_relation[0], dialect=dialect)
+        relation_cache[target] = (cached_relation[0], canonical_relation, cached_relation[2])
+    return canonical_relation, relation_cache
 
 
 def parse_sql_trees(*, sql: str, dialect: str) -> tuple[dict[str, Any], ...]:
@@ -119,7 +153,7 @@ def parse_sql_trees(*, sql: str, dialect: str) -> tuple[dict[str, Any], ...]:
 
     try:
         expressions: list[Any] = polyglot_sql.parse(sql, dialect=dialect)
-        return tuple(expression.to_dict() for expression in expressions)
+        return tuple([expression.to_dict() for expression in expressions])
     except Exception as error:
         raise SqlAnalysisError(f"SQL could not be parsed with Polyglot: {error}") from None
 
@@ -179,9 +213,138 @@ def generate_sql_tree(*, tree: dict[str, Any], dialect: str, pretty: bool = Fals
     return generated[0]
 
 
+def _copied_tree(node: Any) -> Any:
+    """Copy a parsed tree of plain containers, since deepcopy dominates resolve cost."""
+
+    if type(node) is dict:
+        return {
+            key: _copied_tree(value) if type(value) in _NESTED_NODE_TYPES else value
+            for key, value in node.items()
+        }
+    if type(node) is list:
+        return [_copied_tree(item) if type(item) in _NESTED_NODE_TYPES else item for item in node]
+    if type(node) is tuple:
+        return tuple(
+            _copied_tree(item) if type(item) in _NESTED_NODE_TYPES else item for item in node
+        )
+    return node
+
+
+def collect_tree_facts(
+    *, tree: dict[str, Any]
+) -> tuple[list[str], bool, tuple[_ReferenceSlot, ...], str | None]:
+    """Collect aggregate, reference and raw-relation facts in one traversal."""
+
+    scan: _TreeScan = _scanned_tree_facts(
+        node=tree,
+        scan=_TreeScan(
+            function_names=[],
+            keyed_names={},
+            reference_slots=[],
+            raw_relation=None,
+            has_group_by=False,
+        ),
+        visible_ctes=frozenset(),
+    )
+    return (
+        scan.function_names,
+        scan.has_group_by,
+        tuple(scan.reference_slots),
+        scan.raw_relation,
+    )
+
+
+def _scanned_tree_facts(*, node: Any, scan: _TreeScan, visible_ctes: frozenset[str]) -> _TreeScan:
+    if type(node) is list:
+        item: Any
+        for item in node:
+            if type(item) in _NESTED_NODE_TYPES:
+                scan = _scanned_tree_facts(node=item, scan=scan, visible_ctes=visible_ctes)
+        return scan
+    if type(node) is not dict:
+        return scan
+    table_payload: Any = node.get(POLYGLOT_TABLE_KEY)
+    if isinstance(table_payload, dict) and POLYGLOT_SCHEMA_KEY in table_payload:
+        table_name: str | None = _identifier_name(table_payload.get(POLYGLOT_NAME_KEY))
+        if table_name is not None and table_name not in visible_ctes and scan.raw_relation is None:
+            scan.raw_relation = table_name
+        return scan
+    if node.get(POLYGLOT_GROUP_BY_KEY) is not None:
+        scan.has_group_by = True
+    key: str
+    payload: Any
+    for key, payload in node.items():
+        aggregate_name: str | None = scan.keyed_names.get(key)
+        if aggregate_name is None:
+            aggregate_name, scan.keyed_names = aggregate_key_name(
+                key=key, payload=payload, keyed_names=scan.keyed_names
+            )
+        if aggregate_name:
+            scan.function_names.append(aggregate_name)
+        if type(payload) not in _NESTED_NODE_TYPES:
+            continue
+        child_ctes: frozenset[str] = visible_ctes
+        if type(payload) is dict and POLYGLOT_WITH_KEY in payload:
+            cte_names: frozenset[str] = _select_cte_names(payload)
+            if cte_names:
+                child_ctes = visible_ctes | cte_names
+        scan = _scanned_tree_facts(node=payload, scan=scan, visible_ctes=child_ctes)
+    if POLYGLOT_FROM_KEY in node or POLYGLOT_JOINS_KEY in node:
+        scan = _recorded_reference_slots(node=node, scan=scan)
+    return scan
+
+
+def _recorded_reference_slots(*, node: dict[str, Any], scan: _TreeScan) -> _TreeScan:
+    from_clause: Any = node.get(POLYGLOT_FROM_KEY)
+    if isinstance(from_clause, dict):
+        expressions: Any = from_clause.get(POLYGLOT_EXPRESSIONS_KEY)
+        if isinstance(expressions, list):
+            index: int
+            for index in range(len(expressions)):
+                scan.reference_slots.append((expressions, index))
+    joins: Any = node.get(POLYGLOT_JOINS_KEY)
+    if isinstance(joins, list):
+        join: Any
+        for join in joins:
+            if isinstance(join, dict):
+                scan.reference_slots.append((join, POLYGLOT_ALIAS_VALUE_KEY))
+    return scan
+
+
+def _deferred_replacement(
+    *,
+    expression: Any,
+    dialect: str,
+    resolver: Mapping[str, str],
+    identities: tuple[_ReferenceIdentity, ...],
+    relation_cache: _RelationCache,
+    deferred: SqlAnalysisError | None,
+) -> tuple[
+    dict[str, Any] | None,
+    tuple[_ReferenceIdentity, ...],
+    _RelationCache,
+    SqlAnalysisError | None,
+]:
+    """Replace one relation, holding any failure until validation has finished."""
+
+    try:
+        replacement, identities, relation_cache = _replacement(
+            expression=expression,
+            dialect=dialect,
+            resolver=resolver,
+            identities=identities,
+            relation_cache=relation_cache,
+        )
+    except SqlAnalysisError as error:
+        return None, identities, relation_cache, deferred or error
+    return replacement, identities, relation_cache, deferred
+
+
 def build_resolved_query(
     *,
     tree: dict[str, Any],
+    reference_slots: tuple[_ReferenceSlot, ...],
+    raw_relation: str | None,
     authored_sql: str,
     dialect: str,
     references: tuple[SqlReference, ...],
@@ -191,18 +354,34 @@ def build_resolved_query(
 ) -> tuple[SqlResolvedQuery, _RelationCache]:
     """Resolve and qualify one previously parsed model tree without reparsing it."""
 
-    _reject_raw_relations(node=tree, visible_ctes=frozenset())
-    resolved_tree: dict[str, Any] = deepcopy(tree)
+    if raw_relation is not None:
+        raise SqlAnalysisError(
+            f"Model relation '{raw_relation}' must be referenced via __ref(...) or __source(...)"
+        )
     actual_identities: tuple[_ReferenceIdentity, ...] = ()
-    actual_identities, relation_cache = _rewrite_tree(
-        node=resolved_tree,
-        dialect=dialect,
-        resolver=resolver,
-        actual_identities=actual_identities,
-        relation_cache=relation_cache,
-    )
+    deferred: SqlAnalysisError | None = None
+    container: list[Any] | dict[str, Any]
+    slot: Any
+    for container, slot in reference_slots:
+        _, actual_identities, relation_cache, deferred = _deferred_replacement(
+            expression=container[slot],
+            dialect=dialect,
+            resolver=resolver,
+            identities=actual_identities,
+            relation_cache=relation_cache,
+            deferred=deferred,
+        )
+    if deferred is not None:
+        raise deferred
     _validate_reference_identities(references=references, actual_identities=actual_identities)
-    canonical_sql: str = generate_sql_tree(tree=resolved_tree, dialect=dialect, pretty=True)
+    canonical_sql: str
+    canonical_sql, relation_cache = _authored_canonical_sql(
+        authored_sql=authored_sql,
+        references=references,
+        resolver=resolver,
+        relation_cache=relation_cache,
+        dialect=dialect,
+    )
     _reject_reserved_database_placeholder(
         canonical_sql=canonical_sql,
         database_placeholder=database_placeholder,
@@ -227,6 +406,33 @@ def build_resolved_query(
         ),
         relation_cache,
     )
+
+
+def _authored_canonical_sql(
+    *,
+    authored_sql: str,
+    references: tuple[SqlReference, ...],
+    resolver: Mapping[str, str],
+    relation_cache: _RelationCache,
+    dialect: str,
+) -> tuple[str, _RelationCache]:
+    """Substitute reference spans in author bytes with canonical resolved relations."""
+
+    pieces: list[str] = []
+    cursor: int = 0
+    reference: SqlReference
+    for reference in sorted(references, key=lambda item: item.span.start):
+        relation_text: str
+        relation_text, relation_cache = _canonical_relation(
+            target=resolver[reference.name],
+            relation_cache=relation_cache,
+            dialect=dialect,
+        )
+        pieces.append(authored_sql[cursor : reference.span.start])
+        pieces.append(relation_text)
+        cursor = reference.span.end
+    pieces.append(authored_sql[cursor:])
+    return "".join(pieces), relation_cache
 
 
 def _authored_database_template(
@@ -270,10 +476,15 @@ def _template_relation_text(
     cached_relation: _CachedRelation | None = relation_cache.get(target)
     if cached_relation is None:
         cached_relation = _parse_relation(target=target, dialect=dialect)
-        relation_cache = {**relation_cache, target: cached_relation}
-    relation_tree: dict[str, Any] = deepcopy(cached_relation[0])
+        relation_cache[target] = cached_relation
+    templated_relation: str | None = cached_relation[2].get(database_placeholder)
+    if templated_relation is not None:
+        return templated_relation, relation_cache
+    relation_tree: dict[str, Any] = _copied_tree(cached_relation[0])
     qualify_query_relations(tree=relation_tree, database=database_placeholder)
-    return generate_sql_tree(tree=relation_tree, dialect=dialect), relation_cache
+    templated_relation = generate_sql_tree(tree=relation_tree, dialect=dialect)
+    cached_relation[2][database_placeholder] = templated_relation
+    return templated_relation, relation_cache
 
 
 def canonical_query_with_database_template(
@@ -287,7 +498,7 @@ def canonical_query_with_database_template(
         canonical_sql=canonical_sql,
         database_placeholder=database_placeholder,
     )
-    database_template_tree: dict[str, Any] = deepcopy(tree)
+    database_template_tree: dict[str, Any] = _copied_tree(tree)
     qualify_query_relations(tree=database_template_tree, database=database_placeholder)
     return SqlResolvedQuery(
         canonical_sql=canonical_sql,
@@ -418,8 +629,11 @@ def _replacement(
         )
         if inner is None:
             return None, identities, relation_cache
-        alias_payload[POLYGLOT_ALIAS_VALUE_KEY] = inner
-        return expression, identities, relation_cache
+        aliased_replacement: dict[str, Any] = {
+            **expression,
+            POLYGLOT_ALIAS_KEY: {**alias_payload, POLYGLOT_ALIAS_VALUE_KEY: inner},
+        }
+        return aliased_replacement, identities, relation_cache
     identity: _ReferenceIdentity | None = _reference_identity(expression)
     if identity is None:
         return None, identities, relation_cache
@@ -430,8 +644,8 @@ def _replacement(
     cached_relation: _CachedRelation | None = relation_cache.get(target)
     if cached_relation is None:
         cached_relation = _parse_relation(target=target, dialect=dialect)
-        relation_cache = {**relation_cache, target: cached_relation}
-    return deepcopy(cached_relation[0]), updated_identities, relation_cache
+        relation_cache[target] = cached_relation
+    return _copied_tree(cached_relation[0]), updated_identities, relation_cache
 
 
 def _reference_identity(expression: dict[str, Any]) -> _ReferenceIdentity | None:
@@ -513,8 +727,7 @@ def _parse_relation(*, target: str, dialect: str) -> _CachedRelation:
         and cast(dict[str, Any], relation_payload).get(POLYGLOT_ALIAS_KEY) is not None
     ):
         raise SqlAnalysisError(f"Resolved relation '{target}' must not define its own alias")
-    canonical_relation: str = generate_sql_tree(tree=relation, dialect=dialect)
-    return relation, canonical_relation
+    return relation, None, {}
 
 
 def _validate_reference_identities(

@@ -2,10 +2,7 @@
 
 from typing import Any
 
-from streambuild.compiler.sql_analysis._helpers.polyglot import (
-    generate_sql_tree,
-    parse_sql_tree,
-)
+from streambuild.compiler.sql_analysis._helpers.polyglot import parse_sql_tree
 from streambuild.compiler.sql_analysis.constants import POLYGLOT_COLUMN_KEY, POLYGLOT_NAME_KEY
 from streambuild.compiler.sql_analysis.exceptions import SqlStorageReferenceError
 from streambuild.compiler.sql_analysis.models import SqlOutputColumn, SqlStorageExpression
@@ -64,7 +61,6 @@ def _analyze_storage_expression(
     return SqlStorageExpression(
         kind=kind,
         sql=expression,
-        canonical_sql=generate_sql_tree(tree=tree, dialect=dialect),
         referenced_column_names=referenced_column_names,
     )
 

@@ -11,12 +11,6 @@ from streambuild.compiler.sql_analysis.constants import (
     POLYGLOT_ALIAS_KEY,
     POLYGLOT_ALIAS_VALUE_KEY,
     POLYGLOT_CAST_KEY,
-    POLYGLOT_COMPACT_COLUMN_KEY,
-    POLYGLOT_COMPACT_CONFIDENCE_KEY,
-    POLYGLOT_COMPACT_INDEX_KEY,
-    POLYGLOT_COMPACT_PROJECTIONS_KEY,
-    POLYGLOT_COMPACT_SOURCE_NAME_KEY,
-    POLYGLOT_COMPACT_UPSTREAM_KEY,
     POLYGLOT_DATA_TYPE_KEY,
     POLYGLOT_DOUBLE_COLON_SYNTAX_KEY,
     POLYGLOT_EXPRESSIONS_KEY,
@@ -32,12 +26,11 @@ from streambuild.compiler.sql_analysis.exceptions import (
     SqlUntypedProjectionError,
 )
 from streambuild.compiler.sql_analysis.models import (
-    SqlLineageSourceFact,
     SqlOutputColumn,
     SqlProjection,
     SqlSourceSpan,
 )
-from streambuild.compiler.sql_analysis.types import SqlLineageConfidence
+from streambuild.compiler.sql_analysis.types import ProjectionTypeCache
 
 _POLYGLOT_CUSTOM_DATA_TYPE: str = "custom"
 
@@ -47,15 +40,14 @@ def build_model_projections(
     select_payload: dict[str, Any],
     sql: str,
     spans: tuple[SqlSourceSpan, ...],
-    compact_analysis: dict[str, Any],
     dialect: str,
-) -> tuple[SqlProjection, ...]:
+    type_cache: ProjectionTypeCache,
+) -> tuple[tuple[SqlProjection, ...], ProjectionTypeCache]:
     """Validate and return strict typed outer projections."""
 
     expressions: Any = select_payload.get(POLYGLOT_EXPRESSIONS_KEY)
     if not isinstance(expressions, list) or len(expressions) != len(spans):
         raise SqlAnalysisError("Polyglot projection count did not match authored SQL")
-    compact_by_index: dict[int, dict[str, Any]] = _compact_projections(compact_analysis)
     projections: list[SqlProjection] = []
     seen_aliases: set[str] = set()
     expression: Any
@@ -83,19 +75,16 @@ def build_model_projections(
                 projection_sql=projection_sql,
                 span=span,
             )
-        authored_double_colon_type: str | None = outer_double_colon_type(
-            sql=sql,
-            projection_span=span,
+        authored_double_colon_type: str | None = (
+            outer_double_colon_type(sql=sql, projection_span=span)
+            if cast_payload.get(POLYGLOT_DOUBLE_COLON_SYNTAX_KEY) is True
+            else None
         )
-        if (
-            cast_payload.get(POLYGLOT_DOUBLE_COLON_SYNTAX_KEY) is True
-            and authored_double_colon_type is not None
-        ):
+        if authored_double_colon_type is not None:
             cast_payload[POLYGLOT_TO_KEY] = {
                 POLYGLOT_DATA_TYPE_KEY: _POLYGLOT_CUSTOM_DATA_TYPE,
                 POLYGLOT_NAME_KEY: authored_double_colon_type,
             }
-        projection_sql = generate_sql_tree(tree=expression_tree, dialect=dialect)
         if alias in seen_aliases:
             raise SqlDuplicateAliasError(alias=alias, span=span)
         seen_aliases.add(alias)
@@ -103,67 +92,43 @@ def build_model_projections(
         if not isinstance(type_payload, dict):
             raise SqlUntypedProjectionError(
                 column_index=index,
-                projection_sql=projection_sql,
+                projection_sql=generate_sql_tree(tree=expression_tree, dialect=dialect),
                 span=span,
             )
+        type_sql: str
+        type_sql, type_cache = _projection_type_sql(
+            type_payload=type_payload,
+            dialect=dialect,
+            type_cache=type_cache,
+        )
         projections.append(
             SqlProjection(
                 index=index,
-                sql=projection_sql,
-                output=SqlOutputColumn(
-                    name=alias,
-                    type=generate_sql_tree(
-                        tree={POLYGLOT_DATA_TYPE_KEY: type_payload},
-                        dialect=dialect,
-                    ),
-                ),
+                output=SqlOutputColumn(name=alias, type=type_sql),
                 span=span,
-                upstream=_upstream_facts(compact_by_index.get(index - 1)),
             )
         )
-    return tuple(projections)
+    return tuple(projections), type_cache
 
 
-def _compact_projections(compact_analysis: dict[str, Any]) -> dict[int, dict[str, Any]]:
-    projections: Any = compact_analysis.get(POLYGLOT_COMPACT_PROJECTIONS_KEY)
-    if not isinstance(projections, list):
-        return {}
-    indexed: dict[int, dict[str, Any]] = {}
-    projection: Any
-    for projection in projections:
-        if isinstance(projection, dict):
-            index: Any = projection.get(POLYGLOT_COMPACT_INDEX_KEY)
-            if isinstance(index, int):
-                indexed[index] = projection
-    return indexed
+def _projection_type_sql(
+    *,
+    type_payload: dict[str, Any],
+    dialect: str,
+    type_cache: ProjectionTypeCache,
+) -> tuple[str, ProjectionTypeCache]:
+    """Render one projection cast type, reusing renders of identical payloads."""
 
-
-def _upstream_facts(projection: dict[str, Any] | None) -> tuple[SqlLineageSourceFact, ...]:
-    if projection is None:
-        return ()
-    upstream: Any = projection.get(POLYGLOT_COMPACT_UPSTREAM_KEY)
-    if not isinstance(upstream, list):
-        return ()
-    facts: set[SqlLineageSourceFact] = set()
-    item: Any
-    for item in upstream:
-        if isinstance(item, dict):
-            relation_name: Any = item.get(POLYGLOT_COMPACT_SOURCE_NAME_KEY)
-            column_name: Any = item.get(POLYGLOT_COMPACT_COLUMN_KEY)
-            confidence: Any = item.get(POLYGLOT_COMPACT_CONFIDENCE_KEY)
-            if isinstance(relation_name, str) and isinstance(column_name, str):
-                facts.add(
-                    SqlLineageSourceFact(
-                        relation_name=relation_name,
-                        column_name=column_name,
-                        confidence=(
-                            SqlLineageConfidence.RESOLVED
-                            if confidence == SqlLineageConfidence.RESOLVED
-                            else SqlLineageConfidence.UNKNOWN
-                        ),
-                    )
-                )
-    return tuple(sorted(facts, key=lambda fact: (fact.relation_name, fact.column_name)))
+    key: str = repr(type_payload)
+    cached_type: str | None = type_cache.get(key)
+    if cached_type is not None:
+        return cached_type, type_cache
+    type_sql: str = generate_sql_tree(
+        tree={POLYGLOT_DATA_TYPE_KEY: type_payload},
+        dialect=dialect,
+    )
+    type_cache[key] = type_sql
+    return type_sql, type_cache
 
 
 def _is_outer_star(expression: dict[str, Any]) -> bool:
