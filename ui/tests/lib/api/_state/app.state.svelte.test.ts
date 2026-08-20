@@ -1,6 +1,7 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { AppController } from '$lib/api/types';
+import type { Project } from '$lib/domain/types';
 
 type MockFunction = ReturnType<typeof vi.fn>;
 type RequestMocks = {
@@ -53,8 +54,30 @@ vi.mock('$lib/api/_resources/visibility.resource', () => ({
 }));
 
 import { createAppState } from '$lib/api/_state/app.state.svelte';
+import { projectFromServer } from '$lib/api/_helpers/mapping';
+
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+	let resolvePromise: (value: T) => void = () => undefined;
+	const promise: Promise<T> = new Promise((resolve) => {
+		resolvePromise = resolve;
+	});
+	return { promise, resolve: resolvePromise };
+}
 
 describe('application state', () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		requests.requestStatusPayload.mockResolvedValue({
+			compile: { state: 'ok' },
+			warehouse: { connected: true }
+		});
+		requests.requestDefinitionsPayload.mockResolvedValue({});
+		requests.requestStatePayload.mockResolvedValue({});
+		requests.requestDeployments.mockResolvedValue([]);
+		requests.requestCheckStatuses.mockResolvedValue([]);
+		vi.mocked(projectFromServer).mockReturnValue({ audits: [], tests: [] } as unknown as Project);
+	});
+
 	it('given an unreachable status endpoint when initialized then the application records the failure', async () => {
 		requests.requestStatusPayload.mockRejectedValueOnce(new Error('backend offline'));
 		const controller: AppController = createAppState();
@@ -63,5 +86,34 @@ describe('application state', () => {
 
 		expect(controller.app.phase).toBe('unreachable');
 		expect(controller.app.fetchError).toContain('backend offline');
+	});
+
+	it('given slow secondary data when initialized then the application renders without waiting', async () => {
+		const deployments = deferred<[]>();
+		const checks = deferred<[]>();
+		requests.requestDeployments.mockReturnValue(deployments.promise);
+		requests.requestCheckStatuses.mockReturnValue(checks.promise);
+		const controller: AppController = createAppState();
+
+		await controller.initialize();
+
+		expect(controller.app.phase).toBe('ready');
+		expect(requests.requestDeployments).toHaveBeenCalledOnce();
+		expect(requests.requestCheckStatuses).toHaveBeenCalledOnce();
+		deployments.resolve([]);
+		checks.resolve([]);
+	});
+
+	it('given an active deployment refresh when another starts then one request serves both callers', async () => {
+		const deployments = deferred<[]>();
+		requests.requestDeployments.mockReturnValue(deployments.promise);
+		const controller: AppController = createAppState();
+
+		const first: Promise<void> = controller.refreshDeployments();
+		const second: Promise<void> = controller.refreshDeployments();
+		deployments.resolve([]);
+		await Promise.all([first, second]);
+
+		expect(requests.requestDeployments).toHaveBeenCalledOnce();
 	});
 });
