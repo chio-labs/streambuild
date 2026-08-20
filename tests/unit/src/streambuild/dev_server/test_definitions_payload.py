@@ -2,14 +2,17 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from httpx import Response
 
 from tests.unit.src.streambuild.dev_server._test_types import (
+    ConnectionSettingsPayloadTestCase,
     DefinitionsFieldTestCase,
     DevRefactorTestCase,
 )
 from tests.unit.src.streambuild.dev_server.helpers import (
     build_test_client,
     named_payload_item,
+    write_connection_settings_project,
     write_dev_server_project,
 )
 
@@ -98,3 +101,26 @@ confirmation = "DEPLOY_ORDER_EVENTS"
     pipeline: dict = named_payload_item(payload["pipelines"], "order_events")
     assert pipeline["protection"] == test_case.expected_value
     assert pipeline["directory"] == "pipelines/order_events"
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ConnectionSettingsPayloadTestCase(
+            description="nested connection settings serialize as plain JSON data",
+            expected_settings={"max_threads": "16"},
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_nested_connection_settings_when_reading_definitions_then_payload_serializes(
+    test_case: ConnectionSettingsPayloadTestCase,
+    tmp_path: Path,
+) -> None:
+    write_connection_settings_project(project_dir=tmp_path)
+    client: TestClient = build_test_client(project_dir=tmp_path)
+
+    response: Response = client.get("/api/definitions")
+
+    assert response.status_code == 200
+    assert response.json()["project"]["connection"]["settings"] == test_case.expected_settings
