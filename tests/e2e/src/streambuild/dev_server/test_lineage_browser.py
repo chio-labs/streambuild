@@ -134,14 +134,15 @@ def test_given_logged_activity_when_using_lineage_then_live_semantics_remain_tru
 
     assert browser_name == "chromium"
     with page.expect_response(
-        lambda response: urlparse(response.url).path == "/api/state"
-    ) as initial_state_info:
+        lambda response: urlparse(response.url).path == "/api/bootstrap"
+    ) as bootstrap_info:
         document_response: Response | None = page.goto(
             f"{base_url}/lineage?group=none",
             wait_until="domcontentloaded",
             timeout=30_000,
         )
-    initial_state: dict[str, object] = initial_state_info.value.json()
+    bootstrap: dict[str, object] = bootstrap_info.value.json()
+    initial_state: dict[str, object] = cast(dict[str, object], bootstrap["state"])
     initial_models: dict[str, dict[str, object]] = cast(
         dict[str, dict[str, object]], initial_state["models"]
     )
@@ -380,14 +381,15 @@ def test_given_missing_activity_logs_when_opening_lineage_then_evidence_remains_
     base_url, readiness_payload, _log_path = running_no_activity_log_lineage_server
     console_messages, page_errors, failed_requests, responses = browser_diagnostics
     with page.expect_response(
-        lambda response: urlparse(response.url).path == "/api/state"
-    ) as state_response_info:
+        lambda response: urlparse(response.url).path == "/api/bootstrap"
+    ) as bootstrap_info:
         document_response: Response | None = page.goto(
             f"{base_url}/lineage?group=none",
             wait_until="domcontentloaded",
             timeout=30_000,
         )
-    state_payload: dict[str, object] = state_response_info.value.json()
+    bootstrap: dict[str, object] = bootstrap_info.value.json()
+    state_payload: dict[str, object] = cast(dict[str, object], bootstrap["state"])
     models: dict[str, dict[str, object]] = cast(
         dict[str, dict[str, object]], state_payload["models"]
     )
