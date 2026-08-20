@@ -33,6 +33,7 @@ from tests.unit.src.streambuild.compiler.discovery._test_types import (
     ProjectAuditDefaultsTestCase,
     ProjectBuildLimitResolutionTestCase,
     ProjectConfigurationErrorTestCase,
+    ProjectConnectionSettingsTestCase,
     ProjectDeploymentReadinessDefaultsTestCase,
     ProjectFreshnessDefaultTestCase,
     ProjectFreshnessErrorTestCase,
@@ -965,3 +966,72 @@ def test_given_invalid_defaults_freshness_when_loading_then_it_raises_specific_e
 
     with pytest.raises(PipelineDiscoveryError, match=test_case.expected_error_fragment):
         load_project_configuration(project_dir=tmp_path)
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ProjectConnectionSettingsTestCase(
+            description="retains an interpolated target connection settings table",
+            project_contents="""
+            name = "analytics"
+            adapter = "clickhouse"
+            default_target = "uat"
+
+            [connection]
+            host = "project-host"
+            port = 8123
+            username = "project-user"
+            password = "project-secret"
+
+            [vars]
+            replay_threads = "8"
+
+            [targets.uat]
+            database = "analytics"
+
+            [targets.uat.connection.settings]
+            max_threads = "${replay_threads}"
+            max_memory_usage = 16000000000
+            """,
+            expected_settings=(
+                ("max_memory_usage", "16000000000"),
+                ("max_threads", "8"),
+            ),
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_target_connection_settings_when_resolving_then_nested_table_is_retained(
+    test_case: ProjectConnectionSettingsTestCase,
+    tmp_path: Path,
+) -> None:
+    write_project_toml(project_dir=tmp_path, contents=test_case.project_contents)
+    loaded: LoadedProjectConfiguration = load_project_configuration(project_dir=tmp_path)
+
+    effective: EffectiveProjectConfiguration = resolve_effective_project_configuration(
+        loaded=loaded,
+        selected_target=None,
+        cli_variables={},
+        environment={},
+    )
+    values: Mapping[str, object] = dict(effective.connection.values)
+    settings: Mapping[str, object] = cast(Mapping[str, object], values["settings"])
+    resolved: tuple[tuple[str, str], ...] = tuple(
+        sorted(
+            (
+                name,
+                str(
+                    interpolate_config_value(
+                        value=setting,
+                        variables=dict(effective.variables),
+                        environment={},
+                        field_path=f"connection.settings.{name}",
+                    )
+                ),
+            )
+            for name, setting in settings.items()
+        )
+    )
+
+    assert resolved == test_case.expected_settings
