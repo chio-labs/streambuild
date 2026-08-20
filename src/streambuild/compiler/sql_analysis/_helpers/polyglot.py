@@ -632,8 +632,11 @@ def _replacement(
         )
         if inner is None:
             return None, identities, relation_cache
-        alias_payload[POLYGLOT_ALIAS_VALUE_KEY] = inner
-        return expression, identities, relation_cache
+        aliased_replacement: dict[str, Any] = {
+            **expression,
+            POLYGLOT_ALIAS_KEY: {**alias_payload, POLYGLOT_ALIAS_VALUE_KEY: inner},
+        }
+        return aliased_replacement, identities, relation_cache
     identity: _ReferenceIdentity | None = _reference_identity(expression)
     if identity is None:
         return None, identities, relation_cache
