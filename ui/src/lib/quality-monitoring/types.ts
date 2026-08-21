@@ -4,6 +4,7 @@ export type AuditScheduleState =
 	| 'due'
 	| 'scheduled'
 	| 'warming_up'
+	| 'not_materialized'
 	| 'running'
 	| 'blocked'
 	| 'backing_off';
@@ -11,13 +12,14 @@ export type AuditScheduleState =
 export type AuditScheduleItem = {
 	name: string;
 	state: AuditScheduleState;
-	scheduledFor: string;
+	scheduledFor: string | null;
 	eligibleAt: string | null;
 	anchor: string | null;
 	cadenceSeconds: number | null;
 	warmupSeconds: number;
 	lastStatus: string;
 	referencedModels: string[];
+	missingRelations: string[];
 	blockedReason?: 'failed_build';
 };
 

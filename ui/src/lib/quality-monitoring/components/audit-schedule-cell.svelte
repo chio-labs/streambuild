@@ -29,7 +29,9 @@
 <span
 	class="w-[108px] shrink-0 truncate text-right font-mono text-[10.5px] sm:w-[138px]"
 	style:color={schedule ? auditScheduleColor(schedule.state) : 'var(--sb-text-faint)'}
-	title={schedule?.scheduledFor ?? undefined}
+	title={schedule?.missingRelations.length
+		? `Missing relations: ${schedule.missingRelations.join(', ')}`
+		: (schedule?.scheduledFor ?? undefined)}
 >
 	{#if !scheduled}
 		manual

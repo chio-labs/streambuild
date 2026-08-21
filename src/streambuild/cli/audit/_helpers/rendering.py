@@ -46,7 +46,7 @@ def render_sql_audit_run_result(
                 for audit_result in result.audit_results
                 if audit_result.severity == AuditSeverity.ERROR
                 and not audit_result.passed
-                and audit_result.deferred_until is None
+                and not audit_result.deferred
             ),
             project_dir=project_dir,
         )
@@ -60,7 +60,7 @@ def render_sql_audit_run_result(
                 for audit_result in result.audit_results
                 if audit_result.severity == AuditSeverity.WARNING
                 and not audit_result.passed
-                and audit_result.deferred_until is None
+                and not audit_result.deferred
             ),
             project_dir=project_dir,
         )
@@ -70,9 +70,7 @@ def render_sql_audit_run_result(
         _render_group(
             title="Deferred",
             audit_results=tuple(
-                audit_result
-                for audit_result in result.audit_results
-                if audit_result.deferred_until is not None
+                audit_result for audit_result in result.audit_results if audit_result.deferred
             ),
             project_dir=project_dir,
         )
@@ -100,6 +98,9 @@ def _render_group(
             lines.append(f"    description: {audit_result.description}")
         if audit_result.deferred_until is not None:
             lines.append(f"    eligible at: {audit_result.deferred_until} UTC")
+            continue
+        if audit_result.missing_relation_names:
+            lines.append(f"    missing relations: {', '.join(audit_result.missing_relation_names)}")
             continue
         lines.append(f"    failing rows: {audit_result.failing_row_count}")
         if audit_result.sample_rows:
@@ -136,6 +137,7 @@ def _audit_result_payload(*, audit_result: SqlAuditResult, project_dir: Path) ->
         "sample_column_names": list(audit_result.sample_column_names),
         "sample_rows": [list(row) for row in audit_result.sample_rows],
         "deferred_until": audit_result.deferred_until,
+        "missing_relation_names": list(audit_result.missing_relation_names),
     }
 
 

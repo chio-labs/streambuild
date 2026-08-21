@@ -18,7 +18,9 @@ class AuditWarmupStateTestCase:
     description: str
     warmup_seconds: int
     anchors_by_model: dict[str, str]
+    materialized_model_names: frozenset[str]
     warehouse_now: str
     expected_eligible: bool
     expected_anchor: str | None
     expected_eligible_at: str | None
+    expected_missing_model_names: tuple[str, ...]

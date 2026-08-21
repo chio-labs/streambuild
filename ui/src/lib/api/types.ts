@@ -150,11 +150,13 @@ export type CheckStatusRecord = {
 	completedAt: string | null;
 	payload: Record<string, unknown> | null;
 	errorMessage: string | null;
+	missingRelations: string[];
 };
 
 export type CheckRunResult = {
 	passed: boolean;
 	deferredUntil?: string | null;
+	missingRelations?: string[];
 	failingRowCount?: number;
 	sampleColumns?: string[];
 	sampleRows?: (string | number | null)[][];
