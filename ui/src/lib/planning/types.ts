@@ -34,6 +34,7 @@ type PlanReplayRoot = {
 	propagatedModelNames: string[];
 	hasAggregateSemantics: boolean;
 	rowsToReplay: number | null;
+	settings: Record<string, string>;
 };
 type PlanWarning = { code: string; message: string; relatedModel: string | null };
 type PlanProtection = { pipelineName: string; warning: string; confirmation: string };

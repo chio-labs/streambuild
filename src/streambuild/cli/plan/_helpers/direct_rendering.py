@@ -196,6 +196,7 @@ def _replay_root_payload(root: DirectReplayRoot) -> dict[str, object]:
         "replay_boundary_mode": str(root.replay_boundary_mode),
         "propagated_model_keys": [_logical_key_payload(key) for key in root.propagated_model_keys],
         "has_aggregate_semantics": root.has_aggregate_semantics,
+        "settings": dict(root.replay_settings),
     }
 
 

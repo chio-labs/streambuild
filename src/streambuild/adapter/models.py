@@ -388,6 +388,7 @@ class AdapterReplayRequest:
     window: AdapterReplayWindow
     seed_mode: AdapterReplaySeedMode
     target_column_names: tuple[str, ...]
+    settings: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True)

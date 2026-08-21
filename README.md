@@ -174,6 +174,28 @@ FROM __source("orders")
 Models must project explicit output types. Table models preserve replay lineage through normalized
 `_replay_*` columns. Terminal query views use `MODEL (kind view)`.
 
+Expensive replay roots can constrain adapter query settings without changing live materialized-view
+ingestion. Pipeline defaults apply first:
+
+```toml
+[execution.replay.settings]
+max_threads = 8
+max_block_size = 64
+```
+
+A table model can override individual settings for its own replay:
+
+```sql
+MODEL (
+  execution_settings (
+    replay (max_block_size 32)
+  )
+);
+```
+
+Effective replay settings are shown in plans and apply only to replay `INSERT ... SELECT`
+statements. They do not alter table storage settings, audits, or live ingestion.
+
 Python functions under `macros/` are available in model, test, and audit SQL as `@function_name()`.
 
 ## Workflow

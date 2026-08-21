@@ -163,6 +163,13 @@ class DesiredTable:
     bounded_replay_fallback: BoundedReplayFallback = BoundedReplayFallback(
         BoundedReplayFallback.FULL
     )
+    replay_settings: Mapping[str, str] | None = field(default=None, compare=False)
+
+    def __post_init__(self) -> None:
+        if self.replay_settings is not None:
+            object.__setattr__(
+                self, "replay_settings", MappingProxyType(dict(self.replay_settings))
+            )
 
     @property
     def name(self) -> str:

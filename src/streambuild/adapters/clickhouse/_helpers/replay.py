@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from streambuild.adapter.constants import (
     ADAPTER_DATABASE_PLACEHOLDER,
     METADATA_DEPLOYMENT_WATERMARKS_TABLE_NAME,
@@ -21,6 +23,7 @@ from streambuild.adapter.types import (
     AdapterReplayLowerBoundMode,
     AdapterReplaySeedMode,
 )
+from streambuild.adapters.clickhouse.constants import CLICKHOUSE_BOOLEAN_SETTING_VALUES
 from streambuild.adapters.clickhouse.models import (
     ClickHouseReplayOffsetFrontier,
 )
@@ -833,7 +836,22 @@ def _build_replay_insert(*, request: AdapterReplayRequest, query: str) -> str:
         raise AdapterReplayError(f"Replay SQL could not be generated: {error}") from None
     if ADAPTER_DATABASE_PLACEHOLDER in statement:
         raise AdapterReplayError("Replay SQL leaked the adapter database placeholder")
+    if request.settings:
+        statement = f"{statement}\nSETTINGS {_render_replay_settings(request.settings)}"
     return statement
+
+
+def _render_replay_settings(settings: tuple[tuple[str, str], ...]) -> str:
+    return ", ".join(f"{name} = {_render_replay_setting_value(value)}" for name, value in settings)
+
+
+def _render_replay_setting_value(value: str) -> str:
+    if (
+        re.fullmatch(r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)", value)
+        or value.lower() in CLICKHOUSE_BOOLEAN_SETTING_VALUES
+    ):
+        return value.lower()
+    return f"'{value.replace(chr(39), chr(39) * 2)}'"
 
 
 def _offset_frontier_cte(*, boundaries: tuple[AdapterReplayBoundary, ...], value_alias: str) -> str:

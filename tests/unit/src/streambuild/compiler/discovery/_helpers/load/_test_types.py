@@ -75,3 +75,10 @@ class InvalidPipelineModeTestCase:
     description: str
     configured_mode: str
     expected_error_fragment: str
+
+
+@dataclass(frozen=True)
+class PipelineExecutionSettingsTestCase:
+    description: str
+    pipeline_config_contents: str
+    expected_replay_settings: dict[str, str]
