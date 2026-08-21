@@ -58,6 +58,11 @@ def compile_model(
         partition_by=transform.partition_by,
         ttl=transform.ttl,
     )
+    if sql_analyzer.uses_prewhere(analysis=sql_analysis):
+        raise PipelineCompileError(
+            f"Transform '{transform.name}' uses PREWHERE, which ClickHouse does not allow in "
+            "materialized views; use WHERE instead"
+        )
     output_columns: tuple[Column, ...] = tuple(
         Column(name=column.name, type=column.type) for column in sql_analysis.output_columns
     )

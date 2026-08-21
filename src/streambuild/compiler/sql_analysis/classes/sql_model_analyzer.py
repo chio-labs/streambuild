@@ -85,6 +85,16 @@ class SqlModelAnalyzer:
         )
         return resolved_query
 
+    def uses_prewhere(self, *, analysis: SqlModelAnalysis) -> bool:
+        """Return whether an analyzed query contains a PREWHERE clause."""
+
+        resolution: tuple[dict[str, Any], tuple[tuple[Any, Any], ...], str | None] | None = (
+            self._resolution_by_analysis.get(analysis)
+        )
+        if resolution is None:
+            raise SqlAnalysisError("Model analysis does not belong to this compiler invocation")
+        return _contains_key(value=resolution[0], key="prewhere")
+
     def canonicalize_query(self, *, sql: str) -> SqlResolvedQuery:
         """Generate canonical and adapter-template forms of a generated query."""
 
@@ -111,3 +121,11 @@ class SqlModelAnalyzer:
             output_columns=output_columns,
             dialect=self._dialect,
         )
+
+
+def _contains_key(*, value: Any, key: str) -> bool:
+    if isinstance(value, dict):
+        return key in value or any(_contains_key(value=child, key=key) for child in value.values())
+    if isinstance(value, list):
+        return any(_contains_key(value=child, key=key) for child in value)
+    return False
