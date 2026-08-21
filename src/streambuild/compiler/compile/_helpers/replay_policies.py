@@ -3,6 +3,7 @@
 from streambuild.compiler.compile.constants import LINEAGE_MODE_BY_REPLAY_BOUNDARY
 from streambuild.compiler.compile.exceptions import PipelineCompileError
 from streambuild.compiler.discovery.models import (
+    ExecutionSettings,
     ExternalTableSourceStep,
     KafkaLandingStep,
     LoadedPipeline,
@@ -66,6 +67,16 @@ def resolve_replay_on_change(
     if loaded_pipeline.project is not None:
         return loaded_pipeline.project.replay_on_change
     return None
+
+
+def resolve_execution_settings(
+    *, loaded_pipeline: LoadedPipeline, transform: TransformStep
+) -> ExecutionSettings:
+    """Merge pipeline replay defaults with model-level overrides."""
+
+    replay: dict[str, str] = dict(loaded_pipeline.pipeline.execution_settings.replay or {})
+    replay.update(transform.execution_settings.replay or {})
+    return ExecutionSettings(replay=replay or None)
 
 
 def resolve_bounded_replay_fallback(

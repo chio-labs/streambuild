@@ -8,6 +8,7 @@ from pathlib import Path
 from streambuild.compiler.compile._helpers.naming import resolve_model_relation_name
 from streambuild.compiler.compile._helpers.replay_policies import (
     resolve_bounded_replay_fallback,
+    resolve_execution_settings,
     resolve_replay_lineage_mode,
     resolve_replay_on_change,
 )
@@ -113,6 +114,13 @@ def _compile_models(
                     and loaded_pipeline.project is not None
                     and loaded_pipeline.project.model_ttl is not None
                     else model
+                )
+                transform = replace(
+                    transform,
+                    execution_settings=resolve_execution_settings(
+                        loaded_pipeline=loaded_pipeline,
+                        transform=transform,
+                    ),
                 )
                 compiled_model = compile_model(
                     transform=transform,
