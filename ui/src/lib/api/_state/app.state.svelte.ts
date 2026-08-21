@@ -87,8 +87,11 @@ export function createAppState(): AppController {
 		try {
 			if (options?.force === true) applyStatusPayload(await requestWarehouseRefresh());
 			else applyStatusPayload(await requestStatusPayload());
+			const versionKey: string = app.status?.versionKey ?? '';
 			if (!app.status?.warehouseConnected) {
-				const definitions: Record<string, unknown> = await requestDefinitionsPayload();
+				const definitions: Record<string, unknown> = await requestDefinitionsPayload(
+					versionKey
+				);
 				if (requestGeneration !== liveStateRequestGeneration) return;
 				mergeProject(definitions, {});
 				app.phase = 'ready';
@@ -103,7 +106,9 @@ export function createAppState(): AppController {
 				return;
 			}
 			if (state === null) return;
-			const definitions: Record<string, unknown> = await requestDefinitionsPayload();
+			const definitions: Record<string, unknown> = await requestDefinitionsPayload(
+				app.status.versionKey
+			);
 			if (requestGeneration !== liveStateRequestGeneration) return;
 			mergeProject(definitions, state);
 			await refreshRecordedChecks();
@@ -152,14 +157,18 @@ export function createAppState(): AppController {
 
 	async function refreshDefinitionsAndState(): Promise<void> {
 		try {
+			const versionKey: string = app.status?.versionKey ?? '';
 			if (!app.status?.warehouseConnected) {
-				mergeProject(await requestDefinitionsPayload(), {});
+				mergeProject(await requestDefinitionsPayload(versionKey), {});
 				app.phase = 'ready';
 				app.fetchError = null;
 				return;
 			}
 			const [definitions, state]: [Record<string, unknown>, Record<string, unknown> | null] =
-				await Promise.all([requestDefinitionsPayload(), requestStatePayload()]);
+				await Promise.all([
+					requestDefinitionsPayload(versionKey),
+					requestStatePayload()
+				]);
 			mergeProject(definitions, state ?? {});
 			app.phase = 'ready';
 			app.fetchError = null;

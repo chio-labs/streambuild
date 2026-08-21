@@ -48,11 +48,17 @@
 	</div>
 {:else if auth.phase === 'loading'}
 	<div class="text-muted-foreground grid h-screen place-items-center font-mono text-[13px]">authenticating…</div>
-{:else if app.phase === 'ready'}
+{:else if app.phase === 'ready' || app.phase === 'loading'}
 	<div class="flex h-screen overflow-hidden">
 		<AppSidebar />
 		<div class="flex min-w-0 flex-1 flex-col">
-			{@render children()}
+			{#if app.phase === 'ready'}
+				{@render children()}
+			{:else}
+				<div class="text-muted-foreground grid flex-1 place-items-center font-mono text-[13px]">
+					loading project…
+				</div>
+			{/if}
 		</div>
 	</div>
 {:else if app.phase === 'compile_failing'}
@@ -63,9 +69,5 @@
 			<div>stb dev is not reachable</div>
 			<div class="text-[var(--sb-text-faint)] text-[11px]">{app.fetchError}</div>
 		</div>
-	</div>
-{:else}
-	<div class="text-muted-foreground grid h-screen place-items-center font-mono text-[13px]">
-		loading project…
 	</div>
 {/if}
