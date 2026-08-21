@@ -612,6 +612,42 @@ def test_given_recorded_history_when_reading_checks_status_then_maps_names(
 @pytest.mark.parametrize(
     "test_case",
     [
+        DevRefactorTestCase(
+            description="unmaterialized audit is explicitly deferred in Quality",
+            expected_value={
+                "status": "deferred",
+                "missingRelations": ["orders_clean"],
+            },
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_unmaterialized_relation_when_reading_quality_then_missing_relation_is_reported(
+    test_case: DevRefactorTestCase,
+    tmp_path: Path,
+) -> None:
+    write_dev_server_project(project_dir=tmp_path)
+    client: TestClient = build_state_test_client(project_dir=tmp_path)
+
+    with (
+        patch(
+            "streambuild.dev_server._helpers.server.checks_execution.load_model_anchors",
+            return_value={},
+        ),
+        patch(
+            "streambuild.dev_server._helpers.server.checks_execution.load_materialized_model_names",
+            return_value=frozenset(),
+        ),
+    ):
+        payload: list[dict[str, object]] = client.get("/api/checks/status").json()
+
+    expected: dict[str, object] = cast(dict[str, object], test_case.expected_value)
+    assert {key: payload[0][key] for key in expected} == expected
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
         RunEventsFeedTestCase(
             description="serves one recorded run timeline with parsed payloads",
             invocation_id="inv-42",
