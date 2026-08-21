@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.25.1](https://github.com/chio-labs/streambuild/compare/v0.25.0...v0.25.1) (2026-08-21)
+
+
+### Bug Fixes
+
+* **compile:** reject prewhere in table models ([6b52b2a](https://github.com/chio-labs/streambuild/commit/6b52b2aac8658618d0342fca95990f2b2d499436))
+* **compile:** reject prewhere in table models ([0535ee3](https://github.com/chio-labs/streambuild/commit/0535ee3eeae0108a9a874fe9879af6bb5f7512db))
+* **replay:** filter non-lineage roots at source ([eb3cb12](https://github.com/chio-labs/streambuild/commit/eb3cb12af4d368d79b9a612ad5bb9da1fda60bb7))
+* **replay:** filter non-lineage roots at source ([78c94de](https://github.com/chio-labs/streambuild/commit/78c94deeb900d5f5fb40694b9ec22f75f97234d9))
+
 ## [0.25.0](https://github.com/chio-labs/streambuild/compare/v0.24.5...v0.25.0) (2026-08-21)
 
 
