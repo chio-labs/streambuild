@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 from clickhouse_connect.driver.exceptions import ClickHouseError, StreamFailureError
 from clickhouse_connect.driver.summary import QuerySummary
@@ -36,6 +36,7 @@ from streambuild.adapter.models import (
     AdapterRunStatementRecord,
     AdapterSensorState,
     AdapterStableView,
+    AdapterStatementProgress,
     AdapterTable,
     AdapterView,
     CatalogSnapshot,
@@ -105,6 +106,7 @@ _NODE_RESULT_REQUIRED_COLUMNS: frozenset[str] = frozenset(
         "warmup_seconds",
     }
 )
+_QUERY_ID_SETTING: str = "query_id"
 
 
 class ClickHouseConnection(AdapterConnection):
@@ -165,8 +167,24 @@ class ClickHouseConnection(AdapterConnection):
     def query(self, statement: str) -> AdapterQueryResult:
         """Execute a ClickHouse query and normalize the returned rows."""
 
+        return self._query(statement=statement, query_id=None)
+
+    def execute_workflow_query(self, *, statement: str, query_id: str | None) -> AdapterQueryResult:
+        """Execute a workflow query with a ClickHouse query ID."""
+
+        return self._query(statement=statement, query_id=query_id)
+
+    def _query(self, *, statement: str, query_id: str | None) -> AdapterQueryResult:
+        settings: dict[str, str] | None = (
+            None if query_id is None else {_QUERY_ID_SETTING: query_id}
+        )
+
         try:
-            raw_result: RawClickHouseQueryResult = self._raw_client.query(statement)
+            raw_result: RawClickHouseQueryResult = (
+                self._raw_client.query(query=statement)
+                if settings is None
+                else self._raw_client.query(query=statement, settings=settings)
+            )
         except (ClickHouseError, StreamFailureError) as error:
             raise translate_driver_error(error) from error
         result_rows: Sequence[Sequence[object]] = raw_result.result_rows
@@ -178,8 +196,28 @@ class ClickHouseConnection(AdapterConnection):
     def execute_workflow_sql(self, statement: str) -> AdapterMutationResult:
         """Execute exact workflow SQL and preserve ClickHouse mutation evidence."""
 
+        return self._execute_workflow_sql(statement=statement, query_id=None)
+
+    def execute_workflow_mutation(
+        self, *, statement: str, query_id: str | None
+    ) -> AdapterMutationResult:
+        """Execute workflow SQL with a ClickHouse query ID."""
+
+        return self._execute_workflow_sql(statement=statement, query_id=query_id)
+
+    def _execute_workflow_sql(
+        self, *, statement: str, query_id: str | None
+    ) -> AdapterMutationResult:
+        settings: dict[str, str] | None = (
+            None if query_id is None else {_QUERY_ID_SETTING: query_id}
+        )
+
         try:
-            summary: object = self._raw_client.command(statement)
+            summary: object = (
+                self._raw_client.command(cmd=statement)
+                if settings is None
+                else self._raw_client.command(cmd=statement, settings=settings)
+            )
         except (ClickHouseError, StreamFailureError) as error:
             raise translate_driver_error(error) from error
         if (
@@ -188,6 +226,34 @@ class ClickHouseConnection(AdapterConnection):
         ):
             return AdapterMutationResult()
         return AdapterMutationResult(written_rows=summary.written_rows)
+
+    def load_statement_progress(self, *, query_id: str) -> AdapterStatementProgress | None:
+        """Read one active query snapshot from ClickHouse system.processes."""
+
+        query_id_literal: str = query_id.replace("\\", "\\\\").replace("'", "\\'")
+        result: AdapterQueryResult = self.query(
+            "SELECT elapsed, read_rows, read_bytes, total_rows_approx, memory_usage, "
+            "Settings AS settings FROM system.processes "
+            f"WHERE query_id = '{query_id_literal}' LIMIT 1"
+        )
+        rows: tuple[Mapping[str, object], ...] = result.named_rows()
+        if not rows:
+            return None
+        row: Mapping[str, object] = rows[0]
+        raw_settings: object = row["settings"]
+        settings: tuple[tuple[str, str], ...] = (
+            tuple(sorted((str(name), str(value)) for name, value in raw_settings.items()))
+            if isinstance(raw_settings, Mapping)
+            else ()
+        )
+        return AdapterStatementProgress(
+            elapsed_seconds=float(str(row["elapsed"])),
+            read_rows=int(str(row["read_rows"])),
+            read_bytes=int(str(row["read_bytes"])),
+            total_rows_approx=int(str(row["total_rows_approx"])),
+            memory_usage_bytes=int(str(row["memory_usage"])),
+            settings=settings,
+        )
 
     def capture_warehouse_timestamp(self) -> str:
         """Capture ClickHouse server time as an exact UTC DateTime64(3) string."""
