@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
 from streambuild.adapter.exceptions import AdapterWarehouseError
+from streambuild.adapter.models import AdapterStatementProgress
 from streambuild.adapter.types import AdapterReplayBoundaryMode
 
 
@@ -26,6 +27,18 @@ class ConnectionQueryNormalizationTestCase:
     raw_result_rows: list[list[object]]
     expected_column_names: tuple[str, ...]
     expected_rows: tuple[tuple[object, ...], ...]
+
+
+@dataclass(frozen=True)
+class ClickHouseWorkflowCorrelationTestCase:
+    description: str
+    expected_query_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class ClickHouseStatementProgressTestCase:
+    description: str
+    expected_progress: AdapterStatementProgress
 
 
 @dataclass(frozen=True)

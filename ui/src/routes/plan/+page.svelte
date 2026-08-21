@@ -13,15 +13,27 @@
 	import PlanGraph from '$lib/presentation/components/plan/plan-graph.svelte';
 	import ReplayWindowControl from '$lib/presentation/components/plan/replay-window.svelte';
 	import { startBuild } from '$lib/api/main/build/start-build';
-	import { fetchPlan } from '$lib/api/main/planning/fetch-plan';
 	import { getProject } from '$lib/api/main/project/get-project';
 	import { fetchRuns } from '$lib/api/main/runs/fetch-runs';
 	import { canAnyPipeline } from '$lib/auth/main/can-any-pipeline';
 	import { createPlanView } from '$lib/plan-view/main/create-plan-view';
+	import { createPlanLoader } from '$lib/plan-view/main/create-plan-loader.svelte';
 	import type { PlanViewTypes } from '$lib/plan-view/types';
 	const project = getProject();
 	const buildAllowed = $derived(canAnyPipeline('build.direct.run') || canAnyPipeline('deployment.create'));
 	const planView = createPlanView();
+	const planLoader = createPlanLoader({
+		onLoaded(next, request): void {
+			if (request.deploymentId === null && next.deploymentId !== null) {
+				planRequestKey = planView.locationRequestKey(planView.deploymentUrl(page.url, next.deploymentId));
+				void goto(planView.deploymentUrl(page.url, next.deploymentId), {
+					replaceState: true,
+					noScroll: true,
+					keepFocus: true
+				});
+			}
+		}
+	});
 	const location = $derived(planView.readLocation(page.url));
 	const selectors = $derived(location.selectors);
 	const replayWindow = $derived(location.replayWindow);
@@ -33,8 +45,6 @@
 	): void {
 		const nextUrl: URL = planView.selectionUrl(page.url, nextSelectors, nextWindow, nextDeploymentId);
 		if (planView.locationRequestKey(nextUrl) === planView.locationRequestKey(page.url)) return;
-		planRequestVersion += 1;
-		planLoading = true;
 		void goto(nextUrl, {
 			replaceState: true,
 			noScroll: true,
@@ -47,40 +57,23 @@
 	function setReplayWindow(next: PlanViewTypes['replayWindow']): void {
 		applySelection(selectors, selectors.length === 0 ? { mode: 'full' } : next);
 	}
-	let plan = $state<PlanViewTypes['plan'] | null>(null);
-	let planError = $state<string | null>(null);
-	let planLoading = $state<boolean>(true);
+	const plan = $derived(planLoader.plan);
+	const planError = $derived(planLoader.error);
+	const planLoading = $derived(planLoader.loading);
+	const replayCountsLoading = $derived(planLoader.replayCountsLoading);
 	let planRequestKey = $state<string>('');
-	let planRequestVersion: number = 0;
-	function requestKey(tokens: string[], start: string | null, deployment: string | null): string {
-		return `${tokens.join(',')}|${start ?? ''}|${deployment ?? ''}`;
-	}
-	function requestPlan(tokens: string[], start: string | null, deployment: string | null): void {
-		const requestVersion: number = ++planRequestVersion;
-		planLoading = true;
-		fetchPlan(tokens, start, deployment)
-			.then((next) => {
-				if (requestVersion !== planRequestVersion) return;
-				plan = next;
-				planError = null;
-				if (deployment === null && next.deploymentId !== null) {
-					planRequestKey = requestKey(tokens, start, next.deploymentId);
-					void goto(planView.deploymentUrl(page.url, next.deploymentId), {
-						replaceState: true,
-						noScroll: true,
-						keepFocus: true
-					});
-				}
-			})
-			.catch((error: Error) => {
-				if (requestVersion !== planRequestVersion) return;
-				plan = null;
-				planError = error.message;
-			})
-			.finally(() => {
-				if (requestVersion !== planRequestVersion) return;
-				planLoading = false;
-			});
+	function requestPlan(
+		tokens: string[],
+		start: string | null,
+		deployment: string | null,
+		includeReplayCounts: boolean = false
+	): void {
+		planLoader.request({
+			selectors: tokens,
+			startTime: start,
+			deploymentId: deployment,
+			includeReplayCounts
+		});
 	}
 	let executing = $state<boolean>(false);
 	let executeError = $state<string | null>(null);
@@ -126,6 +119,12 @@
 		const start: string | null = planView.replayStartToken(replayWindow);
 		requestPlan(tokens, start, deploymentId);
 	}
+	function loadExactReplayCounts(): void {
+		const tokens: string[] = selectors.map(planView.selectorToken);
+		const start: string | null = planView.replayStartToken(replayWindow);
+		requestPlan(tokens, start, deploymentId, true);
+	}
+	$effect(() => () => planLoader.stop());
 	$effect(() => {
 		const tokens: string[] = selectors.map(planView.selectorToken);
 		const start: string | null = planView.replayStartToken(replayWindow);
@@ -133,7 +132,7 @@
 			applySelection(selectors, { mode: 'full' });
 			return;
 		}
-		const key: string = requestKey(tokens, start, deploymentId);
+		const key: string = planView.locationRequestKey(page.url);
 		if (key === planRequestKey) return;
 		planRequestKey = key;
 		requestPlan(tokens, start, deploymentId);
@@ -567,10 +566,19 @@
 			<!-- replay roots: where the rebuild reads from and what bounds it -->
 			{#if plan?.replayRoots.length}
 				<div class="rounded-[4px] border border-border p-3">
-					<div
-						class="text-[var(--sb-text-faint)] pb-1.5 font-mono text-[10px] uppercase tracking-[0.14em]"
-					>
-						Replay roots
+					<div class="flex items-center pb-1.5">
+						<div class="font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--sb-text-faint)]">
+							Replay roots
+						</div>
+						{#if plan.replayRoots.some((root) => root.rowsToReplay === null)}
+							<button
+								class="text-primary ml-auto font-mono text-[10px] hover:underline disabled:opacity-50"
+								disabled={replayCountsLoading}
+								onclick={loadExactReplayCounts}
+							>
+								{replayCountsLoading ? 'Counting…' : 'Load exact counts'}
+							</button>
+						{/if}
 					</div>
 					{#each plan.replayRoots as root (root.modelName)}
 						<div class="border-b border-[var(--border-subtle)] py-1.5 last:border-b-0">

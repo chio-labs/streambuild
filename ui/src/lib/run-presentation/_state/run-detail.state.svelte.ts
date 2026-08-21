@@ -31,6 +31,7 @@ export function createRunDetailState(
 		forceAvailable: false,
 		signalling: false,
 		lastSignalAgeSeconds: null,
+		statementProgress: null,
 		record: null,
 		commandLine: 'build',
 		loadError: null,
@@ -77,6 +78,7 @@ export function createRunDetailState(
 			forceAvailable: false,
 			signalling: false,
 			lastSignalAgeSeconds: null,
+			statementProgress: null,
 			record: null,
 			commandLine: 'build',
 			loadError: null,
@@ -104,6 +106,7 @@ export function createRunDetailState(
 			view.events = combinedEvents;
 			view.status = feed.status ?? 'running';
 			view.lastSignalAgeSeconds = feed.lastSignalAgeSeconds;
+			view.statementProgress = feed.statementProgress;
 			view.running = view.status === 'running' || view.status === 'unresponsive';
 			const ownership: BuildFeed = initial?.ownership ?? (await fetchBuildFeed(0));
 			if (!isActive(generation)) return;

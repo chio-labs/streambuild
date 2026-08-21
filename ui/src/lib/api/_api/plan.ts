@@ -1,14 +1,19 @@
 import { readApiResponse } from '$lib/api/_api/read-response';
 
-export async function requestPlan(
-	selectors: string[],
-	startTime: string | null,
-	deploymentId: string | null = null
-): Promise<Record<string, unknown>> {
+type PlanRequestOptions = {
+	selectors: string[];
+	startTime: string | null;
+	deploymentId?: string | null;
+	includeReplayCounts?: boolean;
+	signal?: AbortSignal;
+};
+
+export async function requestPlan(options: PlanRequestOptions): Promise<Record<string, unknown>> {
 	const params: URLSearchParams = new URLSearchParams();
-	for (const selector of selectors) params.append('select', selector);
-	if (startTime !== null) params.set('start', startTime);
-	if (deploymentId !== null) params.set('deployment', deploymentId);
-	const response: Response = await fetch(`/api/plan?${params}`);
+	for (const selector of options.selectors) params.append('select', selector);
+	if (options.startTime !== null) params.set('start', options.startTime);
+	if (options.deploymentId) params.set('deployment', options.deploymentId);
+	if (options.includeReplayCounts) params.set('counts', 'true');
+	const response: Response = await fetch(`/api/plan?${params}`, { signal: options.signal });
 	return readApiResponse<Record<string, unknown>>(response, 'plan request');
 }

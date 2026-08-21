@@ -15,6 +15,9 @@ from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.compiler.quality.main.require_quality_identity import require_quality_identity
 from streambuild.executor.auditing.main.deferred_audit_result import deferred_audit_result
 from streambuild.executor.auditing.main.execute_sql_audits import execute_sql_audits
+from streambuild.executor.auditing.main.load_materialized_model_names import (
+    load_materialized_model_names,
+)
 from streambuild.executor.auditing.main.load_model_anchors import load_model_anchors
 from streambuild.executor.auditing.main.resolve_audit_warmup_states import (
     resolve_audit_warmup_states,
@@ -165,6 +168,14 @@ def _execute_selected_audits(
     warmup_states: dict[str, AuditWarmupState] = resolve_audit_warmup_states(
         audits=selected_audits,
         anchors_by_model=anchors_by_model,
+        materialized_model_names=load_materialized_model_names(
+            client=client,
+            database=database,
+            relation_name_by_model={
+                model.key.name: analysis.realized_project.relation_name_by_logical_key[model.key]
+                for model in analysis.compiled_project.models
+            },
+        ),
         warehouse_now=client.capture_warehouse_timestamp(),
     )
     executable_audits: tuple[LoadedSqlAudit, ...] = tuple(
@@ -215,7 +226,7 @@ def _audit_node_results(
     for audit, audit_result in zip(audits, result.audit_results, strict=True):
         status: str = (
             "deferred"
-            if audit_result.deferred_until is not None
+            if audit_result.deferred
             else (
                 "error"
                 if audit_result.error_message is not None
@@ -242,6 +253,7 @@ def _audit_node_results(
                     "sample_column_names": list(audit_result.sample_column_names),
                     "sample_rows": [list(row) for row in audit_result.sample_rows[:5]],
                     "eligible_at": audit_result.deferred_until,
+                    "missing_relations": list(audit_result.missing_relation_names),
                 },
                 error_message=audit_result.error_message,
             )

@@ -27,14 +27,17 @@ def execute_warehouse_workflow(
     for statement in statements:
         query_result: AdapterQueryResult | None = None
         mutation_result: AdapterMutationResult | None = None
-        if emitter is not None:
-            emitter.statement_started(statement)
+        query_id: str | None = None if emitter is None else emitter.statement_started(statement)
         started_ns: int = time.monotonic_ns()
         try:
             if statement.intent == StatementIntent.MUTATION:
-                mutation_result = connection.execute_workflow_sql(statement.sql)
+                mutation_result = connection.execute_workflow_mutation(
+                    statement=statement.sql, query_id=query_id
+                )
             else:
-                query_result = connection.query(statement.sql)
+                query_result = connection.execute_workflow_query(
+                    statement=statement.sql, query_id=query_id
+                )
         except AdapterError as error:
             _emit_completed(
                 emitter=emitter,

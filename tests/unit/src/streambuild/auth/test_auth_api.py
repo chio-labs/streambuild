@@ -1,4 +1,6 @@
+import sqlite3
 from pathlib import Path
+from unittest.mock import Mock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -162,6 +164,109 @@ def test_given_password_mode_when_logging_in_then_cookie_and_csrf_protect_sessio
     assert rejected_logout.status_code == 403
     assert logout.status_code == 200
     assert client.get("/api/protected").status_code == 401
+    store.close()
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        AuthTestCase(
+            description="ordinary request fan-out reuses one resolved session", expected_result=1
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_active_password_session_when_requests_fan_out_then_resolution_is_cached(
+    test_case: AuthTestCase, tmp_path: Path
+) -> None:
+    store: ControlStore = build_control_store(tmp_path=tmp_path)
+    account: UserAccount = store.create_user(
+        username="alice",
+        password="correct horse battery staple",
+        roles=("viewer",),
+    )
+    client: TestClient = build_auth_client(
+        settings=AuthSettings(
+            mode=AuthenticationMode.PASSWORD,
+            control_store_url="unused",
+            session_cookie_secure=False,
+        ),
+        store=store,
+    )
+    client.post(
+        "/api/auth/login",
+        json={"username": "alice", "password": "correct horse battery staple"},
+    )
+
+    with patch.object(store, "resolve_session", wraps=store.resolve_session) as resolved:
+        resolver: Mock = resolved
+        first: Response = client.get("/api/auth/me")
+        second: Response = client.get("/api/auth/me")
+
+        assert first.status_code == 200
+        assert second.status_code == 200
+        assert resolver.call_count == test_case.expected_result
+
+        store.grant_role(user_id=account.user_id, role_name="admin", actor_user_id=None)
+        changed: Response = client.get("/api/auth/me")
+
+        assert changed.json()["roles"] == ["admin", "viewer"]
+        assert resolver.call_count == 2
+
+        token: str = client.cookies["streambuild_session"]
+        store.revoke_session(token=token)
+        assert client.get("/api/protected").status_code == 401
+        assert resolver.call_count == 3
+    store.close()
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        AuthTestCase(
+            description="recent session activity does not rewrite last seen", expected_result=200
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_recent_password_session_when_reading_pages_then_last_seen_is_not_rewritten(
+    test_case: AuthTestCase, tmp_path: Path
+) -> None:
+    store: ControlStore = build_control_store(tmp_path=tmp_path)
+    store.create_user(
+        username="alice",
+        password="correct horse battery staple",
+        roles=("viewer",),
+    )
+    client: TestClient = build_auth_client(
+        settings=AuthSettings(
+            mode=AuthenticationMode.PASSWORD,
+            control_store_url="unused",
+            session_cookie_secure=False,
+        ),
+        store=store,
+    )
+    login: Response = client.post(
+        "/api/auth/login",
+        json={"username": "alice", "password": "correct horse battery staple"},
+    )
+    database_path: Path = tmp_path / "control.db"
+    with sqlite3.connect(database_path) as connection:
+        before: str = str(
+            connection.execute("SELECT last_seen_at FROM streambuild_sessions").fetchone()[0]
+        )
+
+    first: Response = client.get("/api/protected")
+    second: Response = client.get("/api/protected")
+    with sqlite3.connect(database_path) as connection:
+        after: str = str(
+            connection.execute("SELECT last_seen_at FROM streambuild_sessions").fetchone()[0]
+        )
+
+    assert login.status_code == test_case.expected_result
+    assert first.status_code == test_case.expected_result
+    assert second.status_code == test_case.expected_result
+    assert after == before
     store.close()
 
 

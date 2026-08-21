@@ -68,7 +68,7 @@ describe('application state', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		requests.requestStatusPayload.mockResolvedValue({
-			compile: { state: 'ok' },
+			compile: { state: 'ok', versionKey: 'version-1' },
 			warehouse: { connected: true }
 		});
 		requests.requestDefinitionsPayload.mockResolvedValue({});
@@ -115,6 +115,27 @@ describe('application state', () => {
 		await Promise.all([first, second]);
 
 		expect(requests.requestDeployments).toHaveBeenCalledOnce();
+	});
+
+	it('given overlapping live triggers when the version is unchanged then one status request reuses definitions', async () => {
+		const controller: AppController = createAppState();
+		await controller.initialize();
+		vi.clearAllMocks();
+		const status = deferred<Record<string, unknown>>();
+		requests.requestStatusPayload.mockReturnValue(status.promise);
+		requests.requestStatePayload.mockResolvedValue({});
+
+		const timerRefresh: Promise<void> = controller.refreshLiveState();
+		const visibilityRefresh: Promise<void> = controller.refreshLiveState();
+		status.resolve({
+			compile: { state: 'ok', versionKey: 'version-1' },
+			warehouse: { connected: true }
+		});
+		await Promise.all([timerRefresh, visibilityRefresh]);
+
+		expect(requests.requestStatusPayload).toHaveBeenCalledOnce();
+		expect(requests.requestStatePayload).toHaveBeenCalledOnce();
+		expect(requests.requestDefinitionsPayload).not.toHaveBeenCalled();
 	});
 
 	it('given bootstrap project data when initialized then legacy project requests are skipped', () => {

@@ -61,4 +61,6 @@ def test_given_password_mode_when_session_changes_then_browser_follows_full_life
     assert logout_info.value.status == 200
     expect(page).to_have_url(re.compile(r"/login$"))
     assert page_errors == []
-    assert failed_requests == []
+    assert {(urlparse(request.url).path, request.failure) for request in failed_requests} <= {
+        ("/api/definitions", "net::ERR_ABORTED")
+    }

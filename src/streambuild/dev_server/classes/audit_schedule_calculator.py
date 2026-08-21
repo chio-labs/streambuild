@@ -13,12 +13,18 @@ from streambuild.dev_server._helpers.queries.runs_query import (
 from streambuild.dev_server._helpers.server.checks_execution import build_checks_status_payload
 from streambuild.dev_server.constants import IDENTITY_DRIFT_STATUSES
 from streambuild.dev_server.types import AuditScheduleState
+from streambuild.executor.auditing.main.load_materialized_model_names import (
+    load_materialized_model_names,
+)
 from streambuild.executor.auditing.main.load_model_anchors import load_model_anchors
 from streambuild.executor.auditing.main.resolve_audit_warmup_states import (
     resolve_audit_warmup_states,
 )
 from streambuild.executor.auditing.models import AuditWarmupState
 from streambuild.executor.auditing.types import QualityResultStatus
+from streambuild.executor.observability.main.logical_project_identity import (
+    logical_project_identity,
+)
 from streambuild.executor.observability.types import MaterializationOutcome
 
 
@@ -58,9 +64,20 @@ class AuditScheduleCalculator:
             model_names=self._referenced_model_names(audits),
             virtual_environments=self._analysis.compile_inputs.virtual_environments,
         )
+        materialized_model_names: frozenset[str] = load_materialized_model_names(
+            client=self._connection,
+            database=self._database,
+            relation_name_by_model={
+                model.key.name: self._analysis.realized_project.relation_name_by_logical_key[
+                    model.key
+                ]
+                for model in self._analysis.compiled_project.models
+            },
+        )
         warmup_states: dict[str, AuditWarmupState] = resolve_audit_warmup_states(
             audits=audits,
             anchors_by_model=anchors,
+            materialized_model_names=materialized_model_names,
             warehouse_now=warehouse_now,
         )
         status_by_name: dict[str, dict[str, object]] = {
@@ -87,12 +104,14 @@ class AuditScheduleCalculator:
             read_latest_direct_build_materialization(
                 connection=self._connection,
                 database=self._database,
-                project_identity=str(self._project_dir.resolve()),
+                project_identity=logical_project_identity(project_dir=self._project_dir),
             )
             == MaterializationOutcome.FAILED
         )
         if blocked_by_failed_build:
             for audit_state in audit_states:
+                if audit_state["state"] == AuditScheduleState.NOT_MATERIALIZED:
+                    continue
                 audit_state["state"] = AuditScheduleState.BLOCKED
                 audit_state["blockedReason"] = "failed_build"
         due_count: int = sum(1 for item in audit_states if item["state"] == AuditScheduleState.DUE)
@@ -127,8 +146,11 @@ class AuditScheduleCalculator:
             None if status is None else self._optional_string(status.get("completedAt"))
         )
         status_value: str = "never_run" if status is None else str(status["status"])
-        if not warmup.eligible:
-            scheduled_for: datetime = eligible_at
+        if warmup.missing_model_names:
+            scheduled_for: datetime | None = None
+            state: AuditScheduleState = AuditScheduleState.NOT_MATERIALIZED
+        elif not warmup.eligible:
+            scheduled_for = eligible_at
             state: AuditScheduleState = AuditScheduleState.WARMING_UP
         elif completed_at_value is None:
             scheduled_for = (
@@ -165,13 +187,16 @@ class AuditScheduleCalculator:
         return {
             "name": audit.name or audit.file_path.stem,
             "state": state,
-            "scheduledFor": self._render_timestamp(scheduled_for),
+            "scheduledFor": (
+                None if scheduled_for is None else self._render_timestamp(scheduled_for)
+            ),
             "eligibleAt": warmup.eligible_at,
             "anchor": warmup.anchor,
             "cadenceSeconds": audit.cadence_seconds,
             "warmupSeconds": audit.warmup_seconds,
             "lastStatus": status_value,
             "referencedModels": list(audit.referenced_model_names),
+            "missingRelations": list(warmup.missing_model_names),
         }
 
     @staticmethod

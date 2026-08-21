@@ -4,7 +4,7 @@
 	import AppTopbar from '$lib/presentation/components/app-topbar.svelte';
 	import SqlBlock from '$lib/presentation/components/sql-block.svelte';
 	import AuditScheduleCell from '$lib/quality-monitoring/components/audit-schedule-cell.svelte';
-	import SchedulerStatus from '$lib/quality-monitoring/components/scheduler-status.svelte';
+	import QualityAutomation from '$lib/quality-monitoring/components/quality-automation.svelte';
 	import { createAuditSchedulerState } from '$lib/quality-monitoring/main/create-audit-scheduler-state.svelte';
 	import { getProject } from '$lib/api/main/project/get-project';
 	import { runCheck } from '$lib/api/main/quality/run-check';
@@ -32,6 +32,12 @@
 
 	type Filter = 'all' | 'failing' | 'passing';
 	let filter = $state<Filter>('all');
+	type QualityView = 'current' | 'history';
+	let qualityView = $state<QualityView>('current');
+
+	function showView(view: QualityView): void {
+		qualityView = view;
+	}
 
 	// Collapsed by default — the list is far easier to scan, and the row already
 	// carries the outcome. Expand is opt-in.
@@ -183,31 +189,52 @@
 </AppTopbar>
 
 <div class="min-h-0 flex-1 overflow-y-auto">
-	<div class="flex items-center gap-2.5 border-b border-border px-[18px] py-2.5">
-		{#each [['all', 'All'], ['failing', 'Failing'], ['passing', 'Passing']] as [key, label] (key)}
+	<div class="flex items-center gap-2.5 overflow-x-auto border-b border-border px-[18px] py-2.5">
+		{#each [['current', 'Current state'], ['history', 'Cycle history']] as [key, label] (key)}
 			<button
-				aria-pressed={filter === key}
-				class="rounded-[4px] border px-2.5 py-1.5 font-mono text-[11px] transition-colors {filter ===
-				key
+				aria-pressed={qualityView === key}
+				class="shrink-0 rounded-[4px] border px-2.5 py-1.5 font-mono text-[11px] transition-colors {qualityView === key
 					? 'border-primary text-foreground bg-[var(--sidebar-accent)]'
 					: 'text-muted-foreground hover:text-foreground border-border'}"
-				onclick={() => (filter = key as Filter)}
+				onclick={() => showView(key as QualityView)}
 			>
 				{label}
 			</button>
 		{/each}
-		<span class="text-muted-foreground ml-auto font-mono text-[11px]">
-			audits {audits.passing}/{audits.total}
-			{#if audits.warning}· <span style:color="var(--sb-warning)">{audits.warning} warn</span>{/if}
-			{#if audits.failing}· <span style:color="var(--sb-error)">{audits.failing} fail</span>{/if}
-			· tests {tests.passing}/{tests.total}
-			{#if tests.failing}· <span style:color="var(--sb-error)">{tests.failing} fail</span>{/if}
-		</span>
+		{#if qualityView === 'current'}
+			<div class="ml-1 flex items-center gap-1 border-l border-border pl-3">
+				{#each [['all', 'All'], ['failing', 'Failing'], ['passing', 'Passing']] as [key, label] (key)}
+					<button
+						aria-pressed={filter === key}
+						class="rounded-[4px] px-2 py-1 font-mono text-[10.5px] transition-colors {filter === key
+							? 'bg-[var(--sidebar-accent)] text-foreground'
+							: 'text-muted-foreground hover:text-foreground'}"
+						onclick={() => (filter = key as Filter)}
+					>
+						{label}
+					</button>
+				{/each}
+			</div>
+			<span class="text-muted-foreground ml-auto shrink-0 font-mono text-[11px]">
+				audits {audits.passing}/{audits.total}
+				{#if audits.warning}· <span style:color="var(--sb-warning)">{audits.warning} warn</span>{/if}
+				{#if audits.failing}· <span style:color="var(--sb-error)">{audits.failing} fail</span>{/if}
+				· tests {tests.passing}/{tests.total}
+				{#if tests.failing}· <span style:color="var(--sb-error)">{tests.failing} fail</span>{/if}
+			</span>
+		{/if}
 	</div>
 
 	<div class="flex flex-col gap-6 p-[18px]">
-		<SchedulerStatus payload={scheduler.payload} loading={scheduler.loading} error={scheduler.error} />
+		<QualityAutomation
+			view={qualityView}
+			payload={scheduler.payload}
+			loading={scheduler.loading}
+			error={scheduler.error}
+			capturedAt={project.capturedAt}
+		/>
 
+		{#if qualityView === 'current'}
 		<!-- ── audits ──────────────────────────────────────────────────────── -->
 		<div>
 			<div
@@ -551,5 +578,6 @@
 				{/each}
 			</div>
 		</div>
+		{/if}
 	</div>
 </div>

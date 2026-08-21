@@ -30,6 +30,7 @@ from streambuild.adapter.models import (
     AdapterRunStatementRecord,
     AdapterSensorState,
     AdapterStableView,
+    AdapterStatementProgress,
     AdapterTable,
     AdapterView,
     CatalogSnapshot,
@@ -79,6 +80,26 @@ class AdapterConnection(ABC):
     @abstractmethod
     def execute_workflow_sql(self, statement: str) -> AdapterMutationResult:
         """Execute exact workflow mutation SQL and return warehouse evidence."""
+
+    def execute_workflow_query(self, *, statement: str, query_id: str | None) -> AdapterQueryResult:
+        """Execute a workflow query with optional adapter-specific correlation."""
+
+        del query_id
+        return self.query(statement)
+
+    def execute_workflow_mutation(
+        self, *, statement: str, query_id: str | None
+    ) -> AdapterMutationResult:
+        """Execute a workflow mutation with optional adapter-specific correlation."""
+
+        del query_id
+        return self.execute_workflow_sql(statement)
+
+    def load_statement_progress(self, *, query_id: str) -> AdapterStatementProgress | None:
+        """Return ephemeral telemetry when the adapter exposes active-query progress."""
+
+        del query_id
+        return None
 
     @abstractmethod
     def capture_warehouse_timestamp(self) -> str:

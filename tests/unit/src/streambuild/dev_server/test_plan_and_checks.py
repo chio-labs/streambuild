@@ -48,7 +48,7 @@ from tests.unit.src.streambuild.dev_server.helpers import (
             expected_status=200,
             expected_entry_names=("orders_clean",),
             expected_command="stb build --select orders_clean",
-            expected_replay_root_rows=(1000,),
+            expected_replay_root_rows=(None,),
             expected_sql_changes=("baseline_unavailable",),
         ),
         PlanEndpointTestCase(
@@ -57,7 +57,7 @@ from tests.unit.src.streambuild.dev_server.helpers import (
             expected_status=200,
             expected_entry_names=("orders_clean",),
             expected_command="stb build --select pipeline:order_events",
-            expected_replay_root_rows=(1000,),
+            expected_replay_root_rows=(None,),
             expected_sql_changes=("baseline_unavailable",),
         ),
         PlanEndpointTestCase(
@@ -433,9 +433,21 @@ def test_given_non_utc_warehouse_when_planning_then_replay_count_keeps_utc_start
         )
     )
 
-    response: object = client.get(
+    structural: object = client.get(
         "/api/plan",
         params={"select": "orders_clean", "start": "2026-08-01T12:00:00Z"},
+    )
+    assert structural.status_code == 200
+    assert structural.json()["replayRoots"][0]["rowsToReplay"] is None
+    assert captured == {}
+
+    response: object = client.get(
+        "/api/plan",
+        params={
+            "select": "orders_clean",
+            "start": "2026-08-01T12:00:00Z",
+            "counts": "true",
+        },
     )
 
     assert response.status_code == 200
@@ -595,6 +607,42 @@ def test_given_recorded_history_when_reading_checks_status_then_maps_names(
     assert status["failureCount"] == test_case.expected_failure_count
     assert status["completedAt"] == test_case.expected_completed_at
     assert status["payload"]["sample_column_names"] == ["order_id"]
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DevRefactorTestCase(
+            description="unmaterialized audit is explicitly deferred in Quality",
+            expected_value={
+                "status": "deferred",
+                "missingRelations": ["orders_clean"],
+            },
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_unmaterialized_relation_when_reading_quality_then_missing_relation_is_reported(
+    test_case: DevRefactorTestCase,
+    tmp_path: Path,
+) -> None:
+    write_dev_server_project(project_dir=tmp_path)
+    client: TestClient = build_state_test_client(project_dir=tmp_path)
+
+    with (
+        patch(
+            "streambuild.dev_server._helpers.server.checks_execution.load_model_anchors",
+            return_value={},
+        ),
+        patch(
+            "streambuild.dev_server._helpers.server.checks_execution.load_materialized_model_names",
+            return_value=frozenset(),
+        ),
+    ):
+        payload: list[dict[str, object]] = client.get("/api/checks/status").json()
+
+    expected: dict[str, object] = cast(dict[str, object], test_case.expected_value)
+    assert {key: payload[0][key] for key in expected} == expected
 
 
 @pytest.mark.parametrize(

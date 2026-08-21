@@ -48,15 +48,14 @@ def test_given_real_kafka_message_when_models_land_then_lineage_renders_exact_ac
     base_url, topic, bootstrap_server, _log_path = running_complete_streaming_browser_server
     console_messages, page_errors, failed_requests, responses = browser_diagnostics
     with page.expect_response(
-        lambda response: urlparse(response.url).path == "/api/bootstrap"
-    ) as bootstrap_info:
+        lambda response: urlparse(response.url).path == "/api/state"
+    ) as state_info:
         document_response: Response | None = page.goto(
             f"{base_url}/lineage?group=none", wait_until="domcontentloaded", timeout=30_000
         )
     assert document_response is not None
     assert document_response.status == 200
-    bootstrap: dict[str, object] = bootstrap_info.value.json()
-    initial_state: dict[str, object] = cast(dict[str, object], bootstrap["state"])
+    initial_state: dict[str, object] = state_info.value.json()
     initial_models: dict[str, dict[str, object]] = cast(
         dict[str, dict[str, object]], initial_state["models"]
     )

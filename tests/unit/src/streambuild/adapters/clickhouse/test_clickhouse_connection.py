@@ -8,12 +8,19 @@ from streambuild.adapter.exceptions import (
     AdapterRelationNotFoundError,
     AdapterWarehouseError,
 )
-from streambuild.adapter.models import AdapterQueryResult, CatalogRelation, CatalogSnapshot
+from streambuild.adapter.models import (
+    AdapterQueryResult,
+    AdapterStatementProgress,
+    CatalogRelation,
+    CatalogSnapshot,
+)
 from streambuild.adapters.clickhouse.classes.clickhouse_connection import ClickHouseConnection
 from streambuild.adapters.clickhouse.types import RawClickHouseClient
 from tests.unit.src.streambuild.adapters.clickhouse._test_types import (
     CatalogInspectionTestCase,
     ClickHousePublishCapabilitiesTestCase,
+    ClickHouseStatementProgressTestCase,
+    ClickHouseWorkflowCorrelationTestCase,
     ConnectionQueryNormalizationTestCase,
     ConnectionTranslationTestCase,
 )
@@ -200,6 +207,75 @@ def test_given_driver_rows_when_querying_through_the_adapter_then_it_returns_neu
 
     assert result.column_names == test_case.expected_column_names
     assert result.rows == test_case.expected_rows
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ClickHouseWorkflowCorrelationTestCase(
+            description="correlates workflow queries and mutations with ClickHouse query IDs",
+            expected_query_ids=("query-123", "query-456"),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_workflow_query_id_when_executing_then_clickhouse_parameter_correlates_request(
+    test_case: ClickHouseWorkflowCorrelationTestCase,
+) -> None:
+    raw_client: StubRawClickHouseClient = StubRawClickHouseClient(
+        FakeRawClickHouseQueryResult(column_names=[], result_rows=[])
+    )
+    connection: ClickHouseConnection = ClickHouseConnection(cast(RawClickHouseClient, raw_client))
+
+    connection.execute_workflow_query(statement="SELECT 1", query_id="query-123")
+    connection.execute_workflow_mutation(statement="DROP TABLE test", query_id="query-456")
+
+    assert raw_client.query_settings == [
+        {"query_id": test_case.expected_query_ids[0]},
+        {"query_id": test_case.expected_query_ids[1]},
+    ]
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ClickHouseStatementProgressTestCase(
+            description="normalizes active ClickHouse process telemetry",
+            expected_progress=AdapterStatementProgress(
+                elapsed_seconds=12.5,
+                read_rows=1000,
+                read_bytes=2048,
+                total_rows_approx=5000,
+                memory_usage_bytes=4096,
+                settings=(("max_threads", "1"),),
+            ),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_active_clickhouse_process_when_loading_progress_then_telemetry_is_normalized(
+    test_case: ClickHouseStatementProgressTestCase,
+) -> None:
+    raw_client: StubRawClickHouseClient = StubRawClickHouseClient(
+        FakeRawClickHouseQueryResult(
+            column_names=[
+                "elapsed",
+                "read_rows",
+                "read_bytes",
+                "total_rows_approx",
+                "memory_usage",
+                "settings",
+            ],
+            result_rows=[[12.5, 1000, 2048, 5000, 4096, {"max_threads": "1"}]],
+        )
+    )
+    connection: ClickHouseConnection = ClickHouseConnection(cast(RawClickHouseClient, raw_client))
+
+    progress: AdapterStatementProgress | None = connection.load_statement_progress(
+        query_id="query-123"
+    )
+
+    assert progress == test_case.expected_progress
 
 
 @pytest.mark.parametrize(

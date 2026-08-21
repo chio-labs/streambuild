@@ -124,3 +124,29 @@ def test_given_nested_connection_settings_when_reading_definitions_then_payload_
 
     assert response.status_code == 200
     assert response.json()["project"]["connection"]["settings"] == test_case.expected_settings
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DevRefactorTestCase(
+            description="matching compile version returns not modified", expected_value=304
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_matching_definitions_etag_when_reading_then_payload_is_not_retransmitted(
+    test_case: DevRefactorTestCase,
+    tmp_path: Path,
+) -> None:
+    write_dev_server_project(project_dir=tmp_path)
+    client: TestClient = build_test_client(project_dir=tmp_path)
+    first: Response = client.get("/api/definitions")
+
+    cached: Response = client.get(
+        "/api/definitions", headers={"If-None-Match": first.headers["etag"]}
+    )
+
+    assert first.status_code == 200
+    assert cached.status_code == test_case.expected_value
+    assert cached.content == b""

@@ -7,11 +7,13 @@ import type {
 } from '$lib/topic-browser/types';
 
 let cachedPayload: TopicsPayload | null = null;
+let cachedAt: number | null = null;
 
 export function createTopicBrowserState(): TopicBrowserState {
 	let payload = $state<TopicsPayload | null>(cachedPayload);
 	let error = $state<string | null>(null);
 	let loading = $state<boolean>(false);
+	let updatedAt = $state<number | null>(cachedAt);
 	let generation: number = 0;
 	let controller: AbortController | null = null;
 
@@ -26,6 +28,8 @@ export function createTopicBrowserState(): TopicBrowserState {
 			if (current !== generation) return false;
 			payload = next;
 			cachedPayload = next;
+			updatedAt = Date.now();
+			cachedAt = updatedAt;
 			error = null;
 			return next.pendingBrokers.length > 0;
 		} catch (caught) {
@@ -65,6 +69,9 @@ export function createTopicBrowserState(): TopicBrowserState {
 		},
 		get loading() {
 			return loading;
+		},
+		get updatedAt() {
+			return updatedAt;
 		},
 		refresh,
 		start,

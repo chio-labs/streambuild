@@ -134,15 +134,14 @@ def test_given_logged_activity_when_using_lineage_then_live_semantics_remain_tru
 
     assert browser_name == "chromium"
     with page.expect_response(
-        lambda response: urlparse(response.url).path == "/api/bootstrap"
-    ) as bootstrap_info:
+        lambda response: urlparse(response.url).path == "/api/state"
+    ) as state_info:
         document_response: Response | None = page.goto(
             f"{base_url}/lineage?group=none",
             wait_until="domcontentloaded",
             timeout=30_000,
         )
-    bootstrap: dict[str, object] = bootstrap_info.value.json()
-    initial_state: dict[str, object] = cast(dict[str, object], bootstrap["state"])
+    initial_state: dict[str, object] = state_info.value.json()
     initial_models: dict[str, dict[str, object]] = cast(
         dict[str, dict[str, object]], initial_state["models"]
     )
@@ -352,7 +351,9 @@ def test_given_logged_activity_when_using_lineage_then_live_semantics_remain_tru
     )
     assert all(message.type != "error" for message in console_messages)
     assert page_errors == []
-    assert failed_requests == []
+    assert {(urlparse(request.url).path, request.failure) for request in failed_requests} <= {
+        ("/api/definitions", "net::ERR_ABORTED")
+    }
     assert all(response.status < 400 for response in responses)
 
 
@@ -381,15 +382,14 @@ def test_given_missing_activity_logs_when_opening_lineage_then_evidence_remains_
     base_url, readiness_payload, _log_path = running_no_activity_log_lineage_server
     console_messages, page_errors, failed_requests, responses = browser_diagnostics
     with page.expect_response(
-        lambda response: urlparse(response.url).path == "/api/bootstrap"
-    ) as bootstrap_info:
+        lambda response: urlparse(response.url).path == "/api/state"
+    ) as state_info:
         document_response: Response | None = page.goto(
             f"{base_url}/lineage?group=none",
             wait_until="domcontentloaded",
             timeout=30_000,
         )
-    bootstrap: dict[str, object] = bootstrap_info.value.json()
-    state_payload: dict[str, object] = cast(dict[str, object], bootstrap["state"])
+    state_payload: dict[str, object] = state_info.value.json()
     models: dict[str, dict[str, object]] = cast(
         dict[str, dict[str, object]], state_payload["models"]
     )

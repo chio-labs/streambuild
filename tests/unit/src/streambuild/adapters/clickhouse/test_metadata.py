@@ -373,7 +373,9 @@ def test_given_terminal_observations_when_building_inserts_then_rows_are_structu
         build_clickhouse_metadata_insert_statements(database="metadata", state=state)
     )
 
-    assert statements[4].rows == (invocation.__dict__,)
+    expected_invocation: dict[str, object] = dict(invocation.__dict__)
+    expected_invocation.pop("artifact_project_dir")
+    assert statements[4].rows == (expected_invocation,)
     assert statements[5].rows == (node_result.__dict__,)
     assert statements[4].rows[0]["invocation_id"] == test_case.expected_invocation_id
     assert statements[5].rows[0]["result_id"] == test_case.expected_result_id

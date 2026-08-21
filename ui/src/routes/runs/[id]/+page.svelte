@@ -7,6 +7,7 @@
 	import ErrorView from '$lib/presentation/components/error-view.svelte';
 	import LineageCanvas from '$lib/presentation/components/lineage/lineage-canvas.svelte';
 	import RunTimeline from '$lib/presentation/components/run-timeline.svelte';
+	import StatementProgress from '$lib/presentation/components/statement-progress.svelte';
 	import { getProject } from '$lib/api/main/project/get-project';
 	import { formatDuration } from '$lib/formatting/main/format-duration';
 	import type { Project } from '$lib/domain/types';
@@ -76,6 +77,14 @@
 		eventLabels,
 		durationSeconds
 	} = $derived(presentation);
+	const activeStatementLabel = $derived.by((): string => {
+		const progress: typeof detail.view.statementProgress = detail.view.statementProgress;
+		if (progress === null) return '';
+		const event: (typeof timeline)[number] | undefined = timeline.find(
+			(item) => item.event === 'statement_started' && item.statementSequence === progress.statementSequence
+		);
+		return (event === undefined ? null : eventLabels.get(event.sequence)) ?? progress.stepId ?? 'Warehouse statement';
+	});
 </script>
 
 <AppTopbar title="Run" breadcrumb={`${project.name} / runs / ${invocationId.slice(0, 8)}`} />
@@ -198,6 +207,14 @@
 					></div>
 				</div>
 			</div>
+		{/if}
+		{#if running && detail.view.statementProgress !== null}
+			<StatementProgress
+				progress={detail.view.statementProgress}
+				label={activeStatementLabel}
+				{totalStatements}
+				workerSignalAgeSeconds={lastSignalAgeSeconds}
+			/>
 		{/if}
 
 		<!-- the pipeline, growing as replays land -->

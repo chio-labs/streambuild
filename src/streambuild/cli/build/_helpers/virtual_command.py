@@ -21,6 +21,9 @@ from streambuild.executor.observability.classes.run_event_sink import RunEventSi
 from streambuild.executor.observability.main.build_invocation_record import (
     build_invocation_record,
 )
+from streambuild.executor.observability.main.logical_project_identity import (
+    logical_project_identity,
+)
 from streambuild.executor.observability.main.logical_resource_identities import (
     logical_resource_identities,
 )
@@ -54,6 +57,7 @@ def execute_virtual_build_command(
         connection=observation_client,
         database=preparation.preview.metadata_database,
         invocation_id=started[0],
+        project_identity=logical_project_identity(project_dir=options.pipelines_root.parent),
         jsonl_stream=sys.stdout if options.events_output else None,
     )
     try:

@@ -38,7 +38,8 @@ class AuditScheduleCalculationTestCase:
     materialization_outcome: str | None
     expected_scheduler_state: str
     expected_state: str
-    expected_scheduled_for: str
+    expected_scheduled_for: str | None
+    expected_missing_relations: tuple[str, ...] = ()
     warehouse_now: str = "2026-08-08 12:00:00.000"
 
 
@@ -56,6 +57,7 @@ class AuditSchedulerActiveRunTestCase:
     active_runs: tuple[dict[str, object], ...]
     latest_applied_at: str | None
     expected_payload_reads: int
+    expected_latest_error: str | None
 
 
 @dataclass(frozen=True)
