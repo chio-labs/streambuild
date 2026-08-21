@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.25.0](https://github.com/chio-labs/streambuild/compare/v0.24.5...v0.25.0) (2026-08-21)
+
+
+### Features
+
+* **replay:** add phase-scoped execution settings ([83d746e](https://github.com/chio-labs/streambuild/commit/83d746e3e14da4d8a365bfc6ef0ac9e4c93d427d))
+* **replay:** add phase-scoped execution settings ([9e73293](https://github.com/chio-labs/streambuild/commit/9e73293331de4fffee201bf59ebab998d49abe35))
+
 ## [0.24.5](https://github.com/chio-labs/streambuild/compare/v0.24.4...v0.24.5) (2026-08-20)
 
 
