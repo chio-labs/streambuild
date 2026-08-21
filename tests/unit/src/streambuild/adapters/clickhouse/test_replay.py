@@ -27,11 +27,11 @@ from streambuild.compiler.planner.main.build_adapter_replay_query import (
     build_adapter_replay_query,
 )
 from tests.unit.src.streambuild.adapters.clickhouse._test_types import (
-    RenderAggregateOffsetPhysicalBoundaryTestCase,
     RenderAggregateScalarPhysicalBoundaryTestCase,
     RenderDeploymentLookbackTestCase,
     RenderOffsetReplayStatementTestCase,
     RenderScalarReplayBoundaryTestCase,
+    RenderSourceFilteredOffsetPhysicalBoundaryTestCase,
     RenderTemplateReplayTestCase,
 )
 from tests.unit.src.streambuild.adapters.clickhouse.helpers import (
@@ -356,11 +356,18 @@ def test_given_offset_replay_query_when_rendering_then_it_rewrites_anchor_and_re
 @pytest.mark.parametrize(
     "test_case",
     [
-        RenderAggregateOffsetPhysicalBoundaryTestCase(
+        RenderSourceFilteredOffsetPhysicalBoundaryTestCase(
             description=(
                 "filters every adopted aggregate source with its physical columns and "
                 "partition-specific inclusivity"
             ),
+            query=(
+                "SELECT CAST(count() AS UInt64) AS pair_count "
+                "FROM orders_existing AS left_orders "
+                "INNER JOIN orders_existing AS right_orders "
+                "ON left_orders.order_id = right_orders.order_id"
+            ),
+            filter_boundaries_at_source=False,
             expected_inclusive_cte_fragment=(
                 "0 AS _replay_partition, 10 AS cutoff_offset, TRUE AS cutoff_inclusive"
             ),
@@ -374,12 +381,30 @@ def test_given_offset_replay_query_when_rendering_then_it_rewrites_anchor_and_re
             expected_source_fragment="FROM orders_demo.orders_existing AS anchor",
             expected_occurrence_count=2,
             expected_absent_fragment="anchor._replay_offset",
-        )
+        ),
+        RenderSourceFilteredOffsetPhysicalBoundaryTestCase(
+            description="filters a non-lineage model at its preserved source",
+            query="SELECT CAST(order_id AS UInt64) AS order_id FROM orders_existing",
+            filter_boundaries_at_source=True,
+            expected_inclusive_cte_fragment=(
+                "0 AS _replay_partition, 10 AS cutoff_offset, TRUE AS cutoff_inclusive"
+            ),
+            expected_exclusive_cte_fragment=(
+                "1 AS _replay_partition, 20 AS cutoff_offset, FALSE AS cutoff_inclusive"
+            ),
+            expected_partition_predicate=(
+                "anchor.event_partition = cutoff_offsets._replay_partition"
+            ),
+            expected_offset_predicate="anchor.event_offset <= cutoff_offsets.cutoff_offset",
+            expected_source_fragment="FROM orders_demo.orders_existing AS anchor",
+            expected_occurrence_count=1,
+            expected_absent_fragment="replay_source._replay_partition",
+        ),
     ],
     ids=lambda case: case.description,
 )
-def test_given_repeated_adopted_aggregate_source_when_rendering_then_each_source_is_filtered(
-    test_case: RenderAggregateOffsetPhysicalBoundaryTestCase,
+def test_given_source_filtered_offset_replay_when_rendering_then_the_physical_input_is_filtered(
+    test_case: RenderSourceFilteredOffsetPhysicalBoundaryTestCase,
 ) -> None:
     rendered_statement: str = _render_offset_replay(
         request=AdapterReplayRequest(
@@ -392,12 +417,7 @@ def test_given_repeated_adopted_aggregate_source_when_rendering_then_each_source
                 target="tbl__order_pairs__dep",
             ),
             replay_query=build_adapter_replay_query(
-                query=(
-                    "SELECT CAST(count() AS UInt64) AS pair_count "
-                    "FROM orders_existing AS left_orders "
-                    "INNER JOIN orders_existing AS right_orders "
-                    "ON left_orders.order_id = right_orders.order_id"
-                ),
+                query=test_case.query,
                 source_relation_name="orders_existing",
                 database="orders_demo",
                 physical_relation_mappings=(
@@ -437,6 +457,7 @@ def test_given_repeated_adopted_aggregate_source_when_rendering_then_each_source
             ),
             seed_mode=AdapterReplaySeedMode.NONE,
             target_column_names=(),
+            filter_boundaries_at_source=test_case.filter_boundaries_at_source,
         ),
         lower_bound_rows=(ClickHouseReplayOffsetFrontier(partition=0, cutoff_offset="5"),),
     )
