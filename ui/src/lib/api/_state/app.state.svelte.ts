@@ -35,6 +35,10 @@ export function createAppState(): AppController {
 		fetchError: null
 	});
 	let liveStateRequestGeneration: number = 0;
+	let liveStateRequest: Promise<void> | null = null;
+	let liveStateController: AbortController | null = null;
+	let definitionsPayload: Record<string, unknown> | null = null;
+	let definitionsVersionKey: string | null = null;
 	let deploymentsRequest: Promise<void> | null = null;
 	const polling: PollingResource = createPollingResource(() => refreshLiveState());
 	const visibility: VisibilityResource = createVisibilityResource(() => refreshLiveState());
@@ -53,6 +57,8 @@ export function createAppState(): AppController {
 		if (app.status?.state !== 'ok' || payload.definitions === null) {
 			app.phase = 'compile_failing';
 		} else {
+			definitionsPayload = payload.definitions;
+			definitionsVersionKey = app.status.versionKey;
 			mergeProject(payload.definitions, payload.state ?? {});
 			app.phase = 'ready';
 			app.fetchError = null;
@@ -83,39 +89,70 @@ export function createAppState(): AppController {
 	// and discards it, so routine polls never pay for a rebuild.
 	async function refreshLiveState(options?: { force?: boolean }): Promise<void> {
 		if (app.project === null) return;
+		if (liveStateRequest !== null && options?.force !== true) return liveStateRequest;
+		if (options?.force === true) liveStateController?.abort();
 		const requestGeneration: number = ++liveStateRequestGeneration;
+		liveStateController = new AbortController();
+		const request: Promise<void> = refreshLiveStateRequest(
+			requestGeneration,
+			liveStateController.signal,
+			options?.force === true
+		);
+		const trackedRequest: Promise<void> = request.finally(() => {
+			if (liveStateRequest === trackedRequest) liveStateRequest = null;
+		});
+		liveStateRequest = trackedRequest;
+		return liveStateRequest;
+	}
+
+	async function refreshLiveStateRequest(
+		requestGeneration: number,
+		signal: AbortSignal,
+		force: boolean
+	): Promise<void> {
 		try {
-			if (options?.force === true) applyStatusPayload(await requestWarehouseRefresh());
-			else applyStatusPayload(await requestStatusPayload());
+			if (force) applyStatusPayload(await requestWarehouseRefresh(signal));
+			else applyStatusPayload(await requestStatusPayload(signal));
 			const versionKey: string = app.status?.versionKey ?? '';
+			if (app.status?.state !== 'ok') {
+				app.phase = app.project === null ? 'compile_failing' : 'ready';
+				return;
+			}
 			if (!app.status?.warehouseConnected) {
-				const definitions: Record<string, unknown> = await requestDefinitionsPayload(
-					versionKey
-				);
+				const definitions: Record<string, unknown> = await loadDefinitions(versionKey, signal);
 				if (requestGeneration !== liveStateRequestGeneration) return;
 				mergeProject(definitions, {});
 				app.phase = 'ready';
 				return;
 			}
-			const [statusPayload, state]: [Record<string, unknown>, Record<string, unknown> | null] =
-				await Promise.all([requestStatusPayload(), requestStatePayload()]);
+			const state: Record<string, unknown> | null = await requestStatePayload(signal);
 			if (requestGeneration !== liveStateRequestGeneration) return;
-			applyStatusPayload(statusPayload);
-			if (app.status?.state !== 'ok') {
-				app.phase = app.project === null ? 'compile_failing' : 'ready';
-				return;
-			}
 			if (state === null) return;
-			const definitions: Record<string, unknown> = await requestDefinitionsPayload(
-				app.status.versionKey
-			);
+			const definitions: Record<string, unknown> = await loadDefinitions(versionKey, signal);
 			if (requestGeneration !== liveStateRequestGeneration) return;
 			mergeProject(definitions, state);
 			await refreshRecordedChecks();
 			kafkaLagRetry.schedule(app.project);
-		} catch {
+		} catch (error) {
+			if (error instanceof Error && error.name === 'AbortError') return;
 			return;
 		}
+	}
+
+	async function loadDefinitions(
+		versionKey: string,
+		signal?: AbortSignal
+	): Promise<Record<string, unknown>> {
+		if (definitionsPayload !== null && definitionsVersionKey === versionKey) {
+			return definitionsPayload;
+		}
+		const definitions: Record<string, unknown> = await requestDefinitionsPayload(
+			versionKey,
+			signal
+		);
+		definitionsPayload = definitions;
+		definitionsVersionKey = versionKey;
+		return definitions;
 	}
 
 	async function refreshDeployments(): Promise<void> {
@@ -159,14 +196,14 @@ export function createAppState(): AppController {
 		try {
 			const versionKey: string = app.status?.versionKey ?? '';
 			if (!app.status?.warehouseConnected) {
-				mergeProject(await requestDefinitionsPayload(versionKey), {});
+				mergeProject(await loadDefinitions(versionKey), {});
 				app.phase = 'ready';
 				app.fetchError = null;
 				return;
 			}
 			const [definitions, state]: [Record<string, unknown>, Record<string, unknown> | null] =
 				await Promise.all([
-					requestDefinitionsPayload(versionKey),
+					loadDefinitions(versionKey),
 					requestStatePayload()
 				]);
 			mergeProject(definitions, state ?? {});

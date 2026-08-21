@@ -1,7 +1,7 @@
 import { readApiResponse } from '$lib/api/_api/read-response';
 
-export async function requestStatusPayload(): Promise<Record<string, unknown>> {
-	const response: Response = await fetch('/api/status');
+export async function requestStatusPayload(signal?: AbortSignal): Promise<Record<string, unknown>> {
+	const response: Response = await fetch('/api/status', { signal });
 	return readApiResponse<Record<string, unknown>>(response, 'status');
 }
 
@@ -28,8 +28,8 @@ export async function requestDefinitionsPayload(
 	return definitions;
 }
 
-export async function requestStatePayload(): Promise<Record<string, unknown> | null> {
-	const response: Response = await fetch('/api/state');
+export async function requestStatePayload(signal?: AbortSignal): Promise<Record<string, unknown> | null> {
+	const response: Response = await fetch('/api/state', { signal });
 	if (!response.ok) return null;
 	return readApiResponse<Record<string, unknown>>(response, 'state');
 }
