@@ -840,3 +840,15 @@ class AdapterMutationResult:
     """Warehouse-reported evidence for one executed mutation statement."""
 
     written_rows: int | None = None
+
+
+@dataclass(frozen=True)
+class AdapterStatementProgress:
+    """Ephemeral warehouse telemetry for one currently executing statement."""
+
+    elapsed_seconds: float
+    read_rows: int
+    read_bytes: int
+    total_rows_approx: int
+    memory_usage_bytes: int
+    settings: tuple[tuple[str, str], ...] = ()

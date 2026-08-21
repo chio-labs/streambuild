@@ -1,4 +1,4 @@
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from typing import cast
 
 from streambuild.adapter.models import (
@@ -44,12 +44,17 @@ class StubRawClickHouseClient:
     def __init__(self, result: FakeRawClickHouseQueryResult) -> None:
         self._result: FakeRawClickHouseQueryResult = result
         self.closed: bool = False
+        self.query_settings: list[Mapping[str, str] | None] = []
 
-    def command(self, statement: str) -> None:
-        del statement
+    def command(self, *, cmd: str, settings: Mapping[str, str] | None = None) -> None:
+        del cmd
+        self.query_settings.append(settings)
 
-    def query(self, statement: str) -> FakeRawClickHouseQueryResult:
-        del statement
+    def query(
+        self, *, query: str, settings: Mapping[str, str] | None = None
+    ) -> FakeRawClickHouseQueryResult:
+        del query
+        self.query_settings.append(settings)
         return self._result
 
     def close(self) -> None:
@@ -63,11 +68,11 @@ class SequencedRawClickHouseClient:
         self._results: Iterator[FakeRawClickHouseQueryResult] = iter(results)
         self.statements: list[str] = []
 
-    def command(self, statement: str) -> None:
-        del statement
+    def command(self, *, cmd: str) -> None:
+        del cmd
 
-    def query(self, statement: str) -> FakeRawClickHouseQueryResult:
-        self.statements.append(statement)
+    def query(self, *, query: str) -> FakeRawClickHouseQueryResult:
+        self.statements.append(query)
         return next(self._results)
 
     def close(self) -> None:
@@ -104,12 +109,12 @@ class FailingRawClickHouseClient:
     def __init__(self, error: Exception) -> None:
         self._error: Exception = error
 
-    def command(self, statement: str) -> None:
-        del statement
+    def command(self, *, cmd: str) -> None:
+        del cmd
         raise self._error
 
-    def query(self, statement: str) -> FakeRawClickHouseQueryResult:
-        del statement
+    def query(self, *, query: str) -> FakeRawClickHouseQueryResult:
+        del query
         raise self._error
 
     def close(self) -> None:

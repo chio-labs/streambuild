@@ -9,6 +9,7 @@ import sys
 import threading
 from hashlib import sha256
 from typing import TextIO
+from uuid import uuid4
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.constants import (
@@ -151,15 +152,21 @@ class RunEventSink:
             },
         )
 
-    def statement_started(self, statement: WarehouseStatement) -> None:
+    def statement_started(self, statement: WarehouseStatement) -> str:
         """WorkflowEventEmitter: one statement is about to execute."""
 
+        query_id: str = str(uuid4())
         self._emit(
             event_kind=_STATEMENT_STARTED_KIND,
             step_id=statement.step_id,
             phase=str(statement.phase),
-            payload={"statementSequence": statement.sequence, "intent": str(statement.intent)},
+            payload={
+                "statementSequence": statement.sequence,
+                "intent": str(statement.intent),
+                "queryId": query_id,
+            },
         )
+        return query_id
 
     def workflow_prepared(
         self, *, statements: tuple[WarehouseStatement, ...], workflow_sha256: str
