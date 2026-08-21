@@ -15,7 +15,8 @@ export async function requestDefinitionsPayload(
 		const stored: string | null = sessionStorage.getItem(cacheKey);
 		if (stored !== null) cached = JSON.parse(stored) as Record<string, unknown>;
 	}
-	const headers: HeadersInit | undefined = versionKey ? { 'If-None-Match': `"${versionKey}"` } : undefined;
+	const headers: HeadersInit | undefined =
+		versionKey && cached !== null ? { 'If-None-Match': `"${versionKey}"` } : undefined;
 	const response: Response = await fetch('/api/definitions', { headers, signal });
 	if (response.status === 304 && cached !== null) return cached;
 	const definitions: Record<string, unknown> = await readApiResponse<Record<string, unknown>>(
