@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.26.0](https://github.com/chio-labs/streambuild/compare/v0.25.1...v0.26.0) (2026-08-21)
+
+
+### Features
+
+* improve UI responsiveness and audit operations ([abadd65](https://github.com/chio-labs/streambuild/commit/abadd65a056581a0adb7e9f8904fcf8e9d0221d4))
+* show live run and audit cycle progress ([0aa14b5](https://github.com/chio-labs/streambuild/commit/0aa14b5592ab4f00592204872390a3716ab976ff))
+
+
+### Bug Fixes
+
+* **audits:** defer unmaterialized relations ([5ab6371](https://github.com/chio-labs/streambuild/commit/5ab6371cdbecd89b81d4d79544c19e588471705e))
+* **audits:** reconcile stale builds across releases ([c973de2](https://github.com/chio-labs/streambuild/commit/c973de2b74780eed8119028b4a0f0a6b611c8e36))
+* **ui:** defer project shell until bootstrap completes ([001286c](https://github.com/chio-labs/streambuild/commit/001286cf04f269cb088ba616dc393990e64ab378))
+* **ui:** prevent runs startup refresh loop ([1c1569b](https://github.com/chio-labs/streambuild/commit/1c1569b4368037cc9814606fbfd1a5b5e93b794c))
+* **ui:** require cached definitions for conditional reads ([2d2f38f](https://github.com/chio-labs/streambuild/commit/2d2f38fb42126b7a985a888d4491906b9f2c9826))
+
+
+### Performance Improvements
+
+* **auth:** cache resolved request identities ([995cb07](https://github.com/chio-labs/streambuild/commit/995cb07341c6e6a31850c0df398d9a4afa9fd5c3))
+* **plan:** isolate reads and defer replay counts ([ffaa5c5](https://github.com/chio-labs/streambuild/commit/ffaa5c5b9f10af4cdadacff9feec53797f89c9fd))
+* **ui:** deduplicate live refresh requests ([3f5467d](https://github.com/chio-labs/streambuild/commit/3f5467d964dd65b2877bcb5c09d885becef7a938))
+* **ui:** split auth and cache definitions ([e4a35cb](https://github.com/chio-labs/streambuild/commit/e4a35cba11cc3deb4f0302f906830b692527ec9f))
+* **ui:** standardize cached page navigation ([428fbed](https://github.com/chio-labs/streambuild/commit/428fbed691dcf24df8c0314384ac867689abba90))
+
 ## [0.25.1](https://github.com/chio-labs/streambuild/compare/v0.25.0...v0.25.1) (2026-08-21)
 
 
