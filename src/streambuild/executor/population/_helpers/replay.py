@@ -153,6 +153,7 @@ def build_population_replay_requests(
                         else AdapterReplaySeedMode.NONE
                     ),
                     target_column_names=tuple(column.name for column in root_table.columns),
+                    settings=tuple(sorted((root_table.replay_settings or {}).items())),
                 ),
             )
         )

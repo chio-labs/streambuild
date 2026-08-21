@@ -398,6 +398,17 @@ class ModelColumnSpec:
 
 
 @dataclass(frozen=True)
+class ExecutionSettings:
+    """Adapter query settings scoped by execution phase."""
+
+    replay: Mapping[str, str] | None = None
+
+    def __post_init__(self) -> None:
+        if self.replay is not None:
+            object.__setattr__(self, "replay", MappingProxyType(dict(self.replay)))
+
+
+@dataclass(frozen=True)
 class TransformStep:
     """A transform from one logical upstream node into a managed table."""
 
@@ -414,6 +425,7 @@ class TransformStep:
     partition_by: str | None = None
     ttl: str | None = None
     settings: Mapping[str, str] | None = None
+    execution_settings: ExecutionSettings = field(default_factory=ExecutionSettings)
     replay_anchor: ReplayAnchorMode | str = ReplayAnchorMode.AUTO
     replay_on_change: ReplayOnChangePolicy | None = None
     bounded_replay_fallback: BoundedReplayFallback | str | None = None
@@ -493,6 +505,7 @@ class Pipeline:
     naming: PipelineNaming = field(default_factory=PipelineNaming)
     protection: PipelineProtection | None = None
     audit_defaults: AuditDefaults = field(default_factory=AuditDefaults)
+    execution_settings: ExecutionSettings = field(default_factory=ExecutionSettings)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "transforms", tuple(self.transforms))

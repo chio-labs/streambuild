@@ -589,6 +589,13 @@
 									aggregate — a start time may not bound it
 								</div>
 							{/if}
+							{#if Object.keys(root.settings).length}
+								<div class="pt-0.5 font-mono text-[10px] text-[var(--sb-text-faint)]">
+									replay settings · {Object.entries(root.settings)
+										.map(([name, value]) => `${name}=${value}`)
+										.join(' · ')}
+								</div>
+							{/if}
 						</div>
 					{/each}
 				</div>

@@ -22,6 +22,7 @@ from tests.unit.src.streambuild.compiler.discovery._helpers.load._test_types imp
     LoadRegistryPipelineTestCase,
     LoadReplayPoliciesTestCase,
     MismatchedSourceTestCase,
+    PipelineExecutionSettingsTestCase,
     PipelineModeTestCase,
     PipelineProtectionTestCase,
     RemovedPipelineSurfaceTestCase,
@@ -84,6 +85,38 @@ def test_given_pipeline_mode_override_when_loading_then_it_overrides_project_def
     loaded: LoadedPipeline = load_pipeline_directory(pipeline_dir)
 
     assert loaded.pipeline.mode == test_case.expected_mode
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        PipelineExecutionSettingsTestCase(
+            description="loads replay settings under the pipeline execution phase",
+            pipeline_config_contents="""
+            [execution.replay.settings]
+            max_threads = 8
+            max_block_size = 64
+            """,
+            expected_replay_settings={"max_threads": "8", "max_block_size": "64"},
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_pipeline_replay_settings_when_loading_then_retains_phase_defaults(
+    test_case: PipelineExecutionSettingsTestCase,
+    tmp_path: Path,
+) -> None:
+    pipeline_dir: Path = write_registry_project(
+        project_dir=tmp_path,
+        pipeline_config_contents=test_case.pipeline_config_contents,
+        model_contents='MODEL (); SELECT order_id::UInt64 AS order_id FROM __source("orders")',
+    )
+
+    loaded: LoadedPipeline = load_pipeline_directory(pipeline_dir)
+
+    assert (
+        dict(loaded.pipeline.execution_settings.replay or {}) == test_case.expected_replay_settings
+    )
 
 
 @pytest.mark.parametrize(

@@ -30,10 +30,13 @@ from streambuild.compiler.discovery.constants import (
     AUDIT_DEFAULT_KEYS,
     AUDIT_DEFAULT_WARMUP_KEY,
     AUDIT_SEVERITIES,
+    EXECUTION_SETTING_NAME_PATTERN,
     FULL_REPLAY_POLICY_VALUE,
     NAMING_KEYS,
     PIPELINE_CONFIG_FILE_NAME,
     PIPELINE_CONFIG_KEYS,
+    PIPELINE_EXECUTION_KEYS,
+    PIPELINE_REPLAY_EXECUTION_KEYS,
     PROTECTION_CONFIRMATION_PATTERN,
     PROTECTION_CONFIRMATION_UNSAFE_PATTERN,
     PROTECTION_KEYS,
@@ -47,6 +50,7 @@ from streambuild.compiler.discovery.models import (
     DiscoveredPipelineDirectory,
     DiscoveredProjectFile,
     EffectiveProjectConfiguration,
+    ExecutionSettings,
     ExternalTableSourceStep,
     KafkaLandingStep,
     LoadedPipeline,
@@ -91,6 +95,7 @@ class _PipelineDraft:
     naming: PipelineNaming
     protection: PipelineProtection | None
     audit_defaults: AuditDefaults
+    execution_settings: ExecutionSettings
 
 
 def load_pipeline_directory(pipeline_dir: Path) -> LoadedPipeline:
@@ -228,6 +233,7 @@ def load_pipeline_directories(
                 naming=draft.naming,
                 protection=draft.protection,
                 audit_defaults=draft.audit_defaults,
+                execution_settings=draft.execution_settings,
             )
         )
     return tuple(pipelines)
@@ -369,6 +375,63 @@ def _load_pipeline_draft(
             value=pipeline_values.get("audit_defaults"),
             file_path=config_path,
         ),
+        execution_settings=_load_pipeline_execution_settings(
+            value=pipeline_values.get("execution"), file_path=config_path
+        ),
+    )
+
+
+def _load_pipeline_execution_settings(*, value: object, file_path: Path) -> ExecutionSettings:
+    if value is None:
+        return ExecutionSettings()
+    if not isinstance(value, dict):
+        raise PipelineDiscoveryError(
+            f"Pipeline config '{file_path}' must define execution as a mapping"
+        )
+    execution: dict[str, object] = cast(dict[str, object], value)
+    unknown_keys: tuple[str, ...] = tuple(sorted(set(execution) - PIPELINE_EXECUTION_KEYS))
+    if unknown_keys:
+        raise PipelineDiscoveryError(
+            f"Pipeline config '{file_path}' contains unsupported execution keys: "
+            f"{', '.join(unknown_keys)}"
+        )
+    replay: object = execution.get("replay")
+    if replay is None:
+        return ExecutionSettings()
+    if not isinstance(replay, dict):
+        raise PipelineDiscoveryError(
+            f"Pipeline config '{file_path}' must define execution.replay as a mapping"
+        )
+    replay_mapping: dict[str, object] = cast(dict[str, object], replay)
+    unknown_replay_keys: tuple[str, ...] = tuple(
+        sorted(set(replay_mapping) - PIPELINE_REPLAY_EXECUTION_KEYS)
+    )
+    if unknown_replay_keys:
+        raise PipelineDiscoveryError(
+            f"Pipeline config '{file_path}' contains unsupported execution.replay keys: "
+            f"{', '.join(unknown_replay_keys)}"
+        )
+    settings: object = replay_mapping.get("settings")
+    if not isinstance(settings, dict) or not settings:
+        raise PipelineDiscoveryError(
+            f"Pipeline config '{file_path}' must define execution.replay.settings as a "
+            "non-empty mapping"
+        )
+    invalid_names: tuple[str, ...] = tuple(
+        sorted(
+            str(name)
+            for name in settings
+            if not isinstance(name, str) or EXECUTION_SETTING_NAME_PATTERN.fullmatch(name) is None
+        )
+    )
+    if invalid_names:
+        raise PipelineDiscoveryError(
+            f"Pipeline config '{file_path}' contains invalid execution.replay.settings names: "
+            f"{', '.join(invalid_names)}"
+        )
+    setting_mapping: dict[str, object] = cast(dict[str, object], settings)
+    return ExecutionSettings(
+        replay={name: str(setting) for name, setting in setting_mapping.items()}
     )
 
 

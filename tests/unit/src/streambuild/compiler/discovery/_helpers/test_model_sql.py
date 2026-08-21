@@ -13,6 +13,7 @@ from streambuild.compiler.macros.models import MacroContext, MacroRegistry
 from tests.unit.src.streambuild.compiler.discovery._helpers._test_types import (
     InferTransformSourceErrorTestCase,
     LoadModelDescriptionTestCase,
+    LoadModelExecutionSettingsTestCase,
     LoadModelKindTestCase,
     LoadTransformFromSqlFileTestCase,
     ParseModelSqlHeaderErrorTestCase,
@@ -114,6 +115,21 @@ from tests.unit.src.streambuild.compiler.macros.helpers import (
             },
             expected_query='SELECT kafka_key::String AS order_id FROM __source("orders")',
         ),
+        ParseModelSqlHeaderTestCase(
+            description="accepts replay-scoped execution settings",
+            contents="""
+        MODEL (
+          execution_settings (
+            replay (max_threads 8, max_block_size 32),
+          ),
+        );
+        SELECT kafka_key::String AS order_id FROM __source("orders")
+        """,
+            expected_header_values={
+                "execution_settings": {"replay": {"max_threads": 8, "max_block_size": 32}}
+            },
+            expected_query='SELECT kafka_key::String AS order_id FROM __source("orders")',
+        ),
     ],
     ids=lambda case: case.description,
 )
@@ -175,6 +191,32 @@ def test_given_model_kind_when_loading_sql_then_returns_coherent_step(
 @pytest.mark.parametrize(
     "test_case",
     [
+        LoadModelExecutionSettingsTestCase(
+            description="normalizes replay execution settings as immutable strings",
+            contents=(
+                "MODEL (execution_settings (replay (max_threads 8, max_block_size 32))); "
+                'SELECT kafka_key::String AS order_id FROM __source("orders")'
+            ),
+            expected_replay_settings={"max_threads": "8", "max_block_size": "32"},
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_replay_execution_settings_when_loading_model_then_retains_them_by_phase(
+    test_case: LoadModelExecutionSettingsTestCase,
+    tmp_path: Path,
+) -> None:
+    model_path: Path = tmp_path / "model.sql"
+    model_path.write_text(test_case.contents, encoding="utf-8")
+
+    model: TransformStep = cast(TransformStep, load_transform_from_sql_file(file_path=model_path))
+
+    assert dict(model.execution_settings.replay or {}) == test_case.expected_replay_settings
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
         ParseModelSqlHeaderErrorTestCase(
             description="rejects the removed YAML-like key separator",
             contents='MODEL (engine: "MergeTree()"); SELECT 1::UInt8 AS value',
@@ -206,6 +248,31 @@ def test_given_yaml_like_model_header_when_parsing_then_it_raises_conversion_gui
 ) -> None:
     with pytest.raises(ValueError, match=test_case.expected_error_fragment):
         parse_model_sql(contents=test_case.contents, file_path=Path("orders.sql"))
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ParseModelSqlHeaderErrorTestCase(
+            description="rejects unsupported execution phases",
+            contents=(
+                "MODEL (execution_settings (audit (max_threads 8))); "
+                'SELECT kafka_key::String AS order_id FROM __source("orders")'
+            ),
+            expected_error_fragment="unsupported execution_settings keys: audit",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_unsupported_execution_phase_when_loading_model_then_it_fails_before_compile(
+    test_case: ParseModelSqlHeaderErrorTestCase,
+    tmp_path: Path,
+) -> None:
+    model_path: Path = tmp_path / "orders.sql"
+    model_path.write_text(test_case.contents, encoding="utf-8")
+
+    with pytest.raises(ValueError, match=test_case.expected_error_fragment):
+        load_transform_from_sql_file(file_path=model_path)
 
 
 @pytest.mark.parametrize(
