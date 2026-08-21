@@ -93,6 +93,7 @@ class ResolvedSession:
     """Active browser session and its authenticated principal."""
 
     principal: Principal
+    roles: tuple[str, ...]
     csrf_token: str
     expires_at: datetime
 
