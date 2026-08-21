@@ -13,6 +13,6 @@ describe('runs API', () => {
 		const runs: RunRecord[] = await requestRuns();
 
 		expect(runs).toEqual([]);
-		expect(fetchMock).toHaveBeenCalledWith('/api/runs');
+		expect(fetchMock).toHaveBeenCalledWith('/api/runs', { signal: undefined });
 	});
 });
