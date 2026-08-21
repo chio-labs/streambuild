@@ -48,7 +48,7 @@ from tests.unit.src.streambuild.dev_server.helpers import (
             expected_status=200,
             expected_entry_names=("orders_clean",),
             expected_command="stb build --select orders_clean",
-            expected_replay_root_rows=(1000,),
+            expected_replay_root_rows=(None,),
             expected_sql_changes=("baseline_unavailable",),
         ),
         PlanEndpointTestCase(
@@ -57,7 +57,7 @@ from tests.unit.src.streambuild.dev_server.helpers import (
             expected_status=200,
             expected_entry_names=("orders_clean",),
             expected_command="stb build --select pipeline:order_events",
-            expected_replay_root_rows=(1000,),
+            expected_replay_root_rows=(None,),
             expected_sql_changes=("baseline_unavailable",),
         ),
         PlanEndpointTestCase(
@@ -433,9 +433,21 @@ def test_given_non_utc_warehouse_when_planning_then_replay_count_keeps_utc_start
         )
     )
 
-    response: object = client.get(
+    structural: object = client.get(
         "/api/plan",
         params={"select": "orders_clean", "start": "2026-08-01T12:00:00Z"},
+    )
+    assert structural.status_code == 200
+    assert structural.json()["replayRoots"][0]["rowsToReplay"] is None
+    assert captured == {}
+
+    response: object = client.get(
+        "/api/plan",
+        params={
+            "select": "orders_clean",
+            "start": "2026-08-01T12:00:00Z",
+            "counts": "true",
+        },
     )
 
     assert response.status_code == 200
