@@ -914,6 +914,36 @@ def test_given_transform_without_source_ref_when_compiling_then_raises_value_err
 @pytest.mark.parametrize(
     "test_case",
     [
+        CompilePipelineInvalidTransformSqlTestCase(
+            description="rejects prewhere because generated materialized views do not support it",
+            transform_query=(
+                'SELECT CAST(order_id AS UInt64) AS order_id FROM __ref("orders") '
+                "PREWHERE order_id > 0"
+            ),
+            expected_error_type=PipelineCompileError,
+            expected_message_fragments=(
+                "uses PREWHERE, which ClickHouse does not allow in materialized views; "
+                "use WHERE instead",
+            ),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_transform_with_prewhere_when_compiling_then_it_raises_a_clear_error(
+    test_case: CompilePipelineInvalidTransformSqlTestCase,
+) -> None:
+    loaded_pipeline: LoadedPipeline = build_inline_sql_pipeline(test_case.transform_query)
+
+    with pytest.raises(test_case.expected_error_type) as error_info:
+        compile_test_pipeline(loaded_pipeline)
+
+    for expected_message_fragment in test_case.expected_message_fragments:
+        assert expected_message_fragment in str(error_info.value)
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
         CompilePipelineMissingRefTypeTestCase(
             description="raises value error when additional ref omits ref_type",
             transform_query=(
