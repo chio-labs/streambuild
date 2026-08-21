@@ -29,6 +29,9 @@ from streambuild.executor.observability.main.build_invocation_record import (
 from streambuild.executor.observability.main.build_node_result_record import (
     build_node_result_record,
 )
+from streambuild.executor.observability.main.logical_project_identity import (
+    logical_project_identity,
+)
 from streambuild.executor.observability.main.persist_terminal_observations import (
     persist_terminal_observations,
 )
@@ -230,7 +233,7 @@ def build_checks_status_payload(
         ]
     query: str = connection.render_latest_node_status_query(
         database=database,
-        project_identity=str(project_dir.resolve()),
+        project_identity=logical_project_identity(project_dir=project_dir),
         target_identity=database,
         nodes=tuple(nodes),
     )

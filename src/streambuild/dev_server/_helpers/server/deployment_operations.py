@@ -31,6 +31,9 @@ from streambuild.executor.observability.classes.run_event_sink import RunEventSi
 from streambuild.executor.observability.main.build_invocation_record import (
     build_invocation_record,
 )
+from streambuild.executor.observability.main.logical_project_identity import (
+    logical_project_identity,
+)
 from streambuild.executor.observability.main.persist_terminal_observations import (
     persist_terminal_observations,
 )
@@ -54,7 +57,10 @@ def run_deployment_promotion(
 
     started: tuple[str, str, int] = _start()
     sink: RunEventSink = RunEventSink(
-        connection=connection, database=metadata_database, invocation_id=started[0]
+        connection=connection,
+        database=metadata_database,
+        invocation_id=started[0],
+        project_identity=logical_project_identity(project_dir=project_dir),
     )
     executed_logical_ids: tuple[str, ...] = promotion_executed_logical_ids(
         connection=connection,

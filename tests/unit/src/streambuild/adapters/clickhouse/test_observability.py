@@ -31,7 +31,10 @@ from tests.unit.src.streambuild.adapters.clickhouse._test_types import (
                 "'current-fingerprint', 'execution', NULL, 0)"
             ),
             expected_target_fragment=("WHERE result.target_identity = 'analytics'"),
-            expected_project_fragment=("invocation.project_identity = '/project/current'"),
+            expected_project_fragment=(
+                "invocation.project_identity = 'current' OR "
+                "endsWith(invocation.project_identity, '/current')"
+            ),
             expected_logical_slot_fragment=(
                 "GROUP BY result.node_kind, result.node_name, result.binding_key, "
                 "result.execution_fingerprint, ifNull(toString(result.scheduled_for), "

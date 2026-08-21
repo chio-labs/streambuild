@@ -56,6 +56,7 @@ class AuditSchedulerActiveRunTestCase:
     active_runs: tuple[dict[str, object], ...]
     latest_applied_at: str | None
     expected_payload_reads: int
+    expected_latest_error: str | None
 
 
 @dataclass(frozen=True)

@@ -402,8 +402,9 @@ def test_given_cancelled_build_after_failure_when_reading_guard_then_latest_non_
     )
     materialization_query: str = (
         "SELECT materialized_outcome FROM `analytics`.`_streambuild_invocations` WHERE "
-        "project_identity = '/project' AND target_identity = 'analytics' AND command = 'build' "
-        "AND mode = 'direct' AND materialized_outcome IS NOT NULL "
+        "(project_identity = 'project' OR endsWith(project_identity, '/project')) AND "
+        "target_identity = 'analytics' AND command = 'build' AND mode = 'direct' "
+        "AND materialized_outcome IS NOT NULL "
         "ORDER BY completed_at DESC, invocation_id DESC LIMIT 1"
     )
     connection: FakeAdapterConnection = FakeAdapterConnection(
@@ -542,7 +543,7 @@ def test_given_old_terminal_run_when_reading_detail_then_status_is_not_limited_b
         "WHERE database = 'analytics' AND name = '_streambuild_invocations'"
     )
     invocation_query: str = (
-        "SELECT invocation_id, command, mode, outcome, exit_code, "
+        "SELECT invocation_id, project_identity, command, mode, outcome, exit_code, "
         "toString(started_at) AS started_at, toString(completed_at) AS completed_at, "
         "duration_ms, selected_node_count, error_message, summary_json, tool_version "
         "FROM `analytics`.`_streambuild_invocations` "
@@ -561,6 +562,7 @@ def test_given_old_terminal_run_when_reading_detail_then_status_is_not_limited_b
                 rows=(
                     (
                         test_case.invocation_id,
+                        "project",
                         "build",
                         "direct",
                         "succeeded",
@@ -576,6 +578,7 @@ def test_given_old_terminal_run_when_reading_detail_then_status_is_not_limited_b
                 ),
                 column_names=(
                     "invocation_id",
+                    "project_identity",
                     "command",
                     "mode",
                     "outcome",

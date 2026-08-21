@@ -1021,6 +1021,9 @@ def render_clickhouse_latest_node_status_query(
     """Join current manifest fingerprints to latest terminal result history."""
 
     manifest_sql: str = _manifest_nodes_sql(nodes)
+    logical_project_identity: str = project_identity.rsplit("/", maxsplit=1)[-1]
+    project_literal: str = _render_sql_literal(logical_project_identity)
+    project_suffix_literal: str = _render_sql_literal(f"/{logical_project_identity}")
     return (
         f"WITH manifest_nodes AS ({manifest_sql}), logical_snapshots AS ("
         "SELECT result.node_kind AS node_kind, result.node_name AS node_name, "
@@ -1032,8 +1035,9 @@ def render_clickhouse_latest_node_status_query(
         f"{database}.{METADATA_NODE_RESULTS_TABLE_NAME} AS result INNER JOIN "
         f"{database}.{METADATA_INVOCATIONS_TABLE_NAME} AS invocation ON "
         "invocation.invocation_id = result.invocation_id WHERE result.target_identity = "
-        f"{_render_sql_literal(target_identity)} AND invocation.project_identity = "
-        f"{_render_sql_literal(project_identity)} GROUP BY result.node_kind, result.node_name, "
+        f"{_render_sql_literal(target_identity)} AND (invocation.project_identity = "
+        f"{project_literal} OR endsWith(invocation.project_identity, {project_suffix_literal})) "
+        "GROUP BY result.node_kind, result.node_name, "
         "result.binding_key, result.execution_fingerprint, "
         "ifNull(toString(result.scheduled_for), result.result_id)), "
         "logical_results AS ("

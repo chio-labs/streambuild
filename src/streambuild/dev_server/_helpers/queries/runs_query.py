@@ -148,7 +148,7 @@ def read_latest_direct_build_materialization(
     query: str = (
         "SELECT materialized_outcome FROM "
         f"`{database}`.`{METADATA_INVOCATIONS_TABLE_NAME}` WHERE "
-        f"project_identity = '{_sql_literal(project_identity)}' AND "
+        f"{_project_identity_predicate(project_identity)} AND "
         f"target_identity = '{_sql_literal(database)}' AND command = 'build' AND mode = 'direct' "
         "AND materialized_outcome IS NOT NULL "
         "ORDER BY completed_at DESC, invocation_id DESC LIMIT 1"
@@ -174,7 +174,7 @@ def read_latest_applied_direct_build_at(
     query: str = (
         "SELECT toString(completed_at) AS completed_at FROM "
         f"`{database}`.`{METADATA_INVOCATIONS_TABLE_NAME}` WHERE "
-        f"project_identity = '{_sql_literal(project_identity)}' AND "
+        f"{_project_identity_predicate(project_identity)} AND "
         f"target_identity = '{_sql_literal(database)}' AND command = 'build' AND mode = 'direct' "
         "AND materialized_outcome = 'applied' "
         "ORDER BY completed_at DESC, invocation_id DESC LIMIT 1"
@@ -251,6 +251,7 @@ def _assemble_runs(
                 "contextLogicalIds": started.get("contextLogicalIds"),
                 "errorMessage": None if completed is None else completed.get("errorMessage"),
                 "toolVersion": str(started.get("toolVersion", "")),
+                "projectIdentity": started.get("projectIdentity"),
                 "lastActivity": _last_activity(events=events),
                 **_run_progress(events=events),
             }
@@ -412,7 +413,7 @@ def _terminal_runs(
     )
     limit_clause: str = "" if limit is None else f" LIMIT {limit}"
     query: str = (
-        "SELECT invocation_id, command, mode, outcome, exit_code, "
+        "SELECT invocation_id, project_identity, command, mode, outcome, exit_code, "
         "toString(started_at) AS started_at, toString(completed_at) AS completed_at, "
         "duration_ms, selected_node_count, error_message, summary_json, tool_version "
         f"FROM `{database}`.`{METADATA_INVOCATIONS_TABLE_NAME}`{where_clause} "
@@ -423,6 +424,7 @@ def _terminal_runs(
         invocation_id: str = str(row["invocation_id"])
         runs[invocation_id] = {
             "invocationId": invocation_id,
+            "projectIdentity": str(row["project_identity"]),
             "command": str(row["command"]),
             "displayCommand": None,
             "mode": str(row["mode"]),
@@ -528,6 +530,13 @@ def _event_streams(
 
 def _sql_literal(value: str) -> str:
     return value.replace("\\", "\\\\").replace("'", "\\'")
+
+
+def _project_identity_predicate(project_identity: str) -> str:
+    logical_identity: str = project_identity.rsplit("/", maxsplit=1)[-1]
+    literal: str = _sql_literal(logical_identity)
+    suffix: str = _sql_literal(f"/{logical_identity}")
+    return f"(project_identity = '{literal}' OR endsWith(project_identity, '{suffix}'))"
 
 
 def _table_exists(*, connection: AdapterConnection, database: str, table: str) -> bool:

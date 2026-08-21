@@ -62,6 +62,7 @@ def test_given_one_run_when_emitting_then_streams_jsonl_and_persists_rows(
         connection=connection,
         database="analytics",
         invocation_id="inv-1",
+        project_identity="orders",
         jsonl_stream=stream,
     )
 
@@ -91,6 +92,7 @@ def test_given_one_run_when_emitting_then_streams_jsonl_and_persists_rows(
     assert isinstance(lines[1]["queryId"], str)
     assert lines[1]["queryId"]
     assert lines[0]["command"] == "build"
+    assert lines[0]["projectIdentity"] == "orders"
     assert lines[0]["displayCommand"] == (
         "stb build --target test --select orders --start-time 2026-08-09T09:00:00Z"
     )
