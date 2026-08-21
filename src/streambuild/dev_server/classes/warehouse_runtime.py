@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from time import monotonic
 
@@ -12,6 +13,7 @@ from streambuild.adapter.classes.adapter_connection import AdapterConnection
 _INITIAL_RETRY_SECONDS: float = 1.0
 _MAX_RETRY_SECONDS: float = 30.0
 _HEALTH_CHECK_SECONDS: float = 10.0
+_READ_CONNECTION_LIMIT: int = 4
 
 
 class WarehouseRuntime:
@@ -39,6 +41,7 @@ class WarehouseRuntime:
         self._observation_healthy = observation_connection is not None
         self._lock = threading.RLock()
         self._attempt_lock = threading.Lock()
+        self._read_semaphore = threading.BoundedSemaphore(_READ_CONNECTION_LIMIT)
         self._stop = threading.Event()
         self._retry_now = threading.Event()
         self._thread: threading.Thread | None = None
@@ -126,6 +129,27 @@ class WarehouseRuntime:
                 "lastAttemptAt": self._last_attempt_at,
                 "nextAttemptAt": self._next_attempt_at,
             }
+
+    @contextmanager
+    def read_connection(self) -> Iterator[AdapterConnection | None]:
+        """Yield an isolated bounded read connection, falling back to the shared client."""
+
+        factory: Callable[[], AdapterConnection] | None = (
+            self._observation_connection_factory or self._connection_factory
+        )
+        if factory is None:
+            with self._query_lock:
+                yield self.observation_connection or self.connection
+            return
+        self._read_semaphore.acquire()
+        connection: AdapterConnection | None = None
+        try:
+            connection = factory()
+            yield connection
+        finally:
+            if connection is not None:
+                connection.close()
+            self._read_semaphore.release()
 
     def _run(self) -> None:
         while not self._stop.is_set():
