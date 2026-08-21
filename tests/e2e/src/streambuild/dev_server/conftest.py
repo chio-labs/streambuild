@@ -8,6 +8,7 @@ import pytest
 from clickhouse_connect.driver.client import Client
 from kafka import KafkaProducer
 from kafka.admin import KafkaAdminClient
+from kafka.errors import UnknownTopicOrPartitionError
 from playwright.sync_api import ConsoleMessage, Error, Page, Request, Response
 
 from scripts.browser_e2e_support.classes.header_replacing_reverse_proxy import (
@@ -480,7 +481,10 @@ def running_complete_streaming_browser_server(
             bootstrap_servers=e2e_kafka_connection_settings.bootstrap_server
         )
         try:
-            admin_client.delete_topics(topics=[topic])
+            try:
+                admin_client.delete_topics(topics=[topic])
+            except UnknownTopicOrPartitionError:
+                pass
         finally:
             admin_client.close()
 
