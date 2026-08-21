@@ -76,10 +76,6 @@
 				{#if presentation.etaSeconds !== null}<span>ETA {formatDuration(presentation.etaSeconds)}</span>{/if}
 			</div>
 		</div>
-	{:else}
-		<div class="px-3 py-2 font-mono text-[10.5px]" style:color="var(--sb-warning)">
-			Query telemetry is unavailable or stale. Worker heartbeat: {workerSignalAgeSeconds ?? 0}s ago.
-		</div>
 	{/if}
 
 	{#if settings.length > 0}
