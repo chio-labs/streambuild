@@ -48,18 +48,16 @@
 	</div>
 {:else if auth.phase === 'loading'}
 	<div class="text-muted-foreground grid h-screen place-items-center font-mono text-[13px]">authenticating…</div>
-{:else if app.phase === 'ready' || app.phase === 'loading'}
+{:else if app.phase === 'ready'}
 	<div class="flex h-screen overflow-hidden">
 		<AppSidebar />
 		<div class="flex min-w-0 flex-1 flex-col">
-			{#if app.phase === 'ready'}
-				{@render children()}
-			{:else}
-				<div class="text-muted-foreground grid flex-1 place-items-center font-mono text-[13px]">
-					loading project…
-				</div>
-			{/if}
+			{@render children()}
 		</div>
+	</div>
+{:else if app.phase === 'loading'}
+	<div class="text-muted-foreground grid h-screen place-items-center font-mono text-[13px]">
+		loading project…
 	</div>
 {:else if app.phase === 'compile_failing'}
 	<CompileErrorScreen />
