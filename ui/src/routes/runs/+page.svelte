@@ -1,12 +1,12 @@
 <script lang="ts">
 	import ClockIcon from '@lucide/svelte/icons/clock-3';
+	import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
 	import AppTopbar from '$lib/presentation/components/app-topbar.svelte';
 	import ErrorPreview from '$lib/presentation/components/error-preview.svelte';
 	import { cancelBuild } from '$lib/api/main/build/cancel-build';
 	import { fetchBuildFeed } from '$lib/api/main/build/fetch-build-feed';
 	import { getProject } from '$lib/api/main/project/get-project';
-	import { fetchRuns } from '$lib/api/main/runs/fetch-runs';
-	import type { RunRecord } from '$lib/api/types';
+	import type { BuildFeed, RunRecord } from '$lib/api/types';
 	import { formatAgo } from '$lib/formatting/main/format-ago';
 	import { formatDuration } from '$lib/formatting/main/format-duration';
 	import { formatTimestamp } from '$lib/formatting/main/format-timestamp';
@@ -15,28 +15,28 @@
 	import { createAuditSchedulerState } from '$lib/quality-monitoring/main/create-audit-scheduler-state.svelte';
 	import { runsInScope, type RunScope } from '$lib/run-presentation/main/runs-in-scope';
 	import { scheduledAuditRuns } from '$lib/run-presentation/main/scheduled-audit-runs';
+	import { createRunHistoryState } from '$lib/run-presentation/main/create-run-history-state.svelte';
 
 	const project: Project = getProject();
 	const cancelAllowed = $derived(canAnyPipeline('build.cancel'));
 	const scheduler = createAuditSchedulerState();
+	const history = createRunHistoryState();
 
 	// Recorded CLI invocation history from `_streambuild_invocations`. Runs
 	// happen out-of-band in a shell, so poll while the page is visible — a
 	// build finished in another terminal should appear without re-navigating.
-	let runs = $state<RunRecord[] | null>(null);
 	let loadError = $state<string | null>(null);
 	let ownedInvocationId = $state<string | null>(null);
 	let cancellingInvocationId = $state<string | null>(null);
 
 	const POLL_MS = 10_000;
 
-	async function refresh(): Promise<void> {
+	const runs = $derived(history.runs);
+	const visibleError = $derived(history.error ?? loadError);
+
+	async function refreshOwnership(): Promise<void> {
 		try {
-			const runsRequest: Promise<RunRecord[]> = fetchRuns().then((recordedRuns) => {
-				runs = recordedRuns;
-				return recordedRuns;
-			});
-			const [, ownership] = await Promise.all([runsRequest, fetchBuildFeed(0)]);
+			const ownership: BuildFeed = await fetchBuildFeed(0);
 			ownedInvocationId = ownership.running ? ownership.invocationId : null;
 			loadError = null;
 		} catch (error) {
@@ -50,7 +50,7 @@
 		cancellingInvocationId = invocationId;
 		try {
 			await cancelBuild(invocationId);
-			await refresh();
+			await Promise.all([history.refresh(), refreshOwnership()]);
 		} catch (error) {
 			loadError = error instanceof Error ? error.message : String(error);
 		} finally {
@@ -60,13 +60,15 @@
 
 	$effect(() => {
 		const stopScheduler: () => void = scheduler.start();
-		refresh();
+		const stopHistory: () => void = history.start();
+		void refreshOwnership();
 		const timer: ReturnType<typeof setInterval> = setInterval(() => {
-			if (!document.hidden) refresh();
+			if (!document.hidden) void Promise.all([history.refresh(), refreshOwnership()]);
 		}, POLL_MS);
 		return () => {
 			clearInterval(timer);
 			stopScheduler();
+			stopHistory();
 		};
 	});
 
@@ -161,7 +163,12 @@
 	}
 </script>
 
-<AppTopbar title="Runs" />
+<AppTopbar title="Runs">
+	<div class="text-[var(--sb-text-faint)] flex items-center gap-1.5 font-mono text-[10px]">
+		{#if history.refreshing}<RefreshCwIcon size={10} class="animate-spin" /> refreshing{/if}
+		{#if history.updatedAt !== null}updated {formatAgo(new Date(history.updatedAt).toISOString(), project.capturedAt)}{/if}
+	</div>
+</AppTopbar>
 
 <div class="flex min-h-0 flex-1 flex-col">
 	<a
@@ -234,9 +241,9 @@
 	</div>
 
 	<div class="min-h-0 flex-1 overflow-y-auto">
-		{#if loadError}
+		{#if visibleError && runs === null}
 			<div class="p-[18px]">
-				<p class="font-mono text-[12px]" style:color="var(--sb-error)">{loadError}</p>
+				<p class="font-mono text-[12px]" style:color="var(--sb-error)">{visibleError}</p>
 			</div>
 		{:else if runs === null}
 			<div class="text-muted-foreground p-[18px] font-mono text-[12px]">loading run history…</div>

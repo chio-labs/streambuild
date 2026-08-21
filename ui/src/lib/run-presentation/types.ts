@@ -53,6 +53,15 @@ export type StatementProgressPresentation = {
 	etaSeconds: number | null;
 };
 
+export type RunHistoryState = {
+	readonly runs: RunRecord[] | null;
+	readonly error: string | null;
+	readonly refreshing: boolean;
+	readonly updatedAt: number | null;
+	start(): () => void;
+	refresh(): Promise<void>;
+};
+
 export type RunDetailController = {
 	readonly view: RunDetailView;
 	start(invocationId: string, live: boolean): void;
