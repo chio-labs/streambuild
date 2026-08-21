@@ -54,6 +54,22 @@ export type RunEventFeed = {
 	status: RunStatus | null;
 	lastSignalAt: string | null;
 	lastSignalAgeSeconds: number | null;
+	statementProgress: {
+		found: boolean;
+		queryId: string;
+		statementSequence: number;
+		stepId: string | null;
+		phase: string | null;
+		observedAt: string;
+		elapsedSeconds?: number;
+		readRows?: number;
+		readBytes?: number;
+		totalRowsApprox?: number;
+		memoryUsageBytes?: number;
+		readRowsPerSecond?: number;
+		readBytesPerSecond?: number;
+		settings?: Record<string, string>;
+	} | null;
 };
 
 export type RunStatement = {
@@ -99,6 +115,13 @@ export type RunRecord = {
 	completedOperationCount: number | null;
 	totalStatements: number | null;
 	currentStep: string | null;
+	auditSummary: {
+		passed: number;
+		warning: number;
+		failed: number;
+		error: number;
+		total: number;
+	} | null;
 };
 
 export type QualityDriftReason =
@@ -127,11 +150,13 @@ export type CheckStatusRecord = {
 	completedAt: string | null;
 	payload: Record<string, unknown> | null;
 	errorMessage: string | null;
+	missingRelations: string[];
 };
 
 export type CheckRunResult = {
 	passed: boolean;
 	deferredUntil?: string | null;
+	missingRelations?: string[];
 	failingRowCount?: number;
 	sampleColumns?: string[];
 	sampleRows?: (string | number | null)[][];

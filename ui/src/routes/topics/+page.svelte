@@ -4,10 +4,13 @@
 	import { formatBytes } from '$lib/formatting/main/format-bytes';
 	import { formatCompact } from '$lib/formatting/main/format-compact';
 	import { formatInteger } from '$lib/formatting/main/format-integer';
+	import { formatAgo } from '$lib/formatting/main/format-ago';
+	import { getProject } from '$lib/api/main/project/get-project';
 	import { createTopicBrowserState } from '$lib/topic-browser/main/create-topic-browser-state.svelte';
 	import type { TopicItem } from '$lib/topic-browser/types';
 
 	const topicsStore = createTopicBrowserState();
+	const project = getProject();
 	let query = $state<string>('');
 	// Managed topics are the point of this page; the full cluster inventory is
 	// opt-in noise. Internal topics are a further cut within unmanaged ones.
@@ -43,7 +46,12 @@
 	);
 </script>
 
-<AppTopbar title="Topics" />
+<AppTopbar title="Topics">
+	<div class="text-[var(--sb-text-faint)] flex items-center gap-1.5 font-mono text-[10px]">
+		{#if loading}<RefreshCwIcon size={10} class="animate-spin" /> refreshing{/if}
+		{#if topicsStore.updatedAt !== null}updated {formatAgo(new Date(topicsStore.updatedAt).toISOString(), project.capturedAt)}{/if}
+	</div>
+</AppTopbar>
 
 <div class="min-h-0 flex-1 overflow-auto">
 	<div class="flex flex-col gap-3 px-[18px] py-3">

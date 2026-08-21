@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import hashlib
 import hmac
+import time
 from collections.abc import Mapping
+from threading import Lock
 
 from streambuild.auth._helpers.usernames import canonical_username
 from streambuild.auth.classes.control_store import ControlStore
@@ -18,6 +21,9 @@ from streambuild.auth.models import (
 )
 from streambuild.auth.types import AuthenticationMode, AuthenticationSource, UnknownUserPolicy
 
+_AUTHENTICATION_CACHE_TTL_SECONDS: float = 5.0
+_AUTHENTICATION_CACHE_MAX_ENTRIES: int = 1024
+
 
 class AuthenticationService:
     """Resolve every configured mechanism into one principal contract."""
@@ -25,6 +31,8 @@ class AuthenticationService:
     def __init__(self, *, settings: AuthSettings, store: ControlStore) -> None:
         self.settings = settings
         self.store = store
+        self._cache: dict[str, tuple[float, int, AuthenticatedRequest]] = {}
+        self._cache_lock: Lock = Lock()
 
     def authenticate(
         self,
@@ -68,14 +76,6 @@ class AuthenticationService:
         ):
             raise AuthorizationError("Missing or invalid CSRF token")
 
-    def roles_for(self, *, principal: Principal) -> tuple[str, ...]:
-        if principal.authentication_source == AuthenticationSource.LOCAL:
-            return (ADMIN_ROLE,)
-        account: UserAccount | None = self.store.get_user_by_id(user_id=principal.user_id)
-        if account is None or not account.is_active:
-            raise AuthorizationError("Account is disabled or no longer exists")
-        return account.roles
-
     def _authenticate_proxy(self, *, headers: Mapping[str, str]) -> AuthenticatedRequest:
         raw_username: str | None = headers.get(self.settings.username_header)
         if raw_username is None or not raw_username.strip():
@@ -87,6 +87,10 @@ class AuthenticationService:
         except ValueError as error:
             raise AuthenticationError(str(error)) from error
         subject: str = username
+        cache_key: str = f"proxy:{subject}"
+        cached: AuthenticatedRequest | None = self._cached(cache_key=cache_key)
+        if cached is not None:
+            return cached
         account: UserAccount | None = self.store.resolve_external_identity(
             source=AuthenticationSource.TRUSTED_PROXY,
             subject=subject,
@@ -107,23 +111,55 @@ class AuthenticationService:
             )
         if not account.is_active:
             raise AuthorizationError("Account is disabled")
-        return AuthenticatedRequest(
+        authenticated: AuthenticatedRequest = AuthenticatedRequest(
             principal=_principal(account=account, source=AuthenticationSource.TRUSTED_PROXY),
             roles=account.roles,
         )
+        self._remember(cache_key=cache_key, authenticated=authenticated)
+        return authenticated
 
     def _authenticate_session(self, *, cookies: Mapping[str, str]) -> AuthenticatedRequest:
         token: str | None = cookies.get(self.settings.session_cookie_name)
         if token is None:
             raise AuthenticationError("Authentication required")
+        cache_key: str = f"session:{hashlib.sha256(token.encode()).hexdigest()}"
+        cached: AuthenticatedRequest | None = self._cached(cache_key=cache_key)
+        if cached is not None:
+            return cached
         resolved: ResolvedSession | None = self.store.resolve_session(token=token)
         if resolved is None:
             raise AuthenticationError("Session is invalid or expired")
-        return AuthenticatedRequest(
+        authenticated: AuthenticatedRequest = AuthenticatedRequest(
             principal=resolved.principal,
-            roles=self.roles_for(principal=resolved.principal),
+            roles=resolved.roles,
             csrf_token=resolved.csrf_token,
         )
+        self._remember(cache_key=cache_key, authenticated=authenticated)
+        return authenticated
+
+    def _cached(self, *, cache_key: str) -> AuthenticatedRequest | None:
+        now: float = time.monotonic()
+        revision: int = self.store.authentication_revision
+        with self._cache_lock:
+            cached: tuple[float, int, AuthenticatedRequest] | None = self._cache.get(cache_key)
+            if cached is None:
+                return None
+            expires_at, cached_revision, authenticated = cached
+            if expires_at <= now or cached_revision != revision:
+                self._cache.pop(cache_key, None)
+                return None
+            return authenticated
+
+    def _remember(self, *, cache_key: str, authenticated: AuthenticatedRequest) -> None:
+        now: float = time.monotonic()
+        with self._cache_lock:
+            if len(self._cache) >= _AUTHENTICATION_CACHE_MAX_ENTRIES:
+                self._cache = {key: value for key, value in self._cache.items() if value[0] > now}
+            self._cache[cache_key] = (
+                now + _AUTHENTICATION_CACHE_TTL_SECONDS,
+                self.store.authentication_revision,
+                authenticated,
+            )
 
 
 def _optional_header(*, headers: Mapping[str, str], name: str | None) -> str | None:

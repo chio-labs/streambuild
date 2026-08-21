@@ -55,6 +55,10 @@
 			{@render children()}
 		</div>
 	</div>
+{:else if app.phase === 'loading'}
+	<div class="text-muted-foreground grid h-screen place-items-center font-mono text-[13px]">
+		loading project…
+	</div>
 {:else if app.phase === 'compile_failing'}
 	<CompileErrorScreen />
 {:else if app.phase === 'unreachable'}
@@ -63,9 +67,5 @@
 			<div>stb dev is not reachable</div>
 			<div class="text-[var(--sb-text-faint)] text-[11px]">{app.fetchError}</div>
 		</div>
-	</div>
-{:else}
-	<div class="text-muted-foreground grid h-screen place-items-center font-mono text-[13px]">
-		loading project…
 	</div>
 {/if}

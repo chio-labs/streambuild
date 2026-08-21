@@ -25,6 +25,13 @@ class WorkflowEmitterTestCase:
 
 
 @dataclass(frozen=True)
+class WorkflowQueryIdTestCase:
+    description: str
+    query_id: str
+    expected_query_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class WorkflowPersistenceFailureTestCase:
     description: str
     expected_error_fragment: str

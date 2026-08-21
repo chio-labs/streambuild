@@ -1,4 +1,10 @@
-import type { BuildFeed, RunEvent, RunEventFeed, RunRecord, RunStatus } from '$lib/api/types';
+import type {
+	BuildFeed,
+	RunEvent,
+	RunEventFeed,
+	RunRecord,
+	RunStatus
+} from '$lib/api/types';
 import type { Project } from '$lib/domain/types';
 import type { Graph } from '$lib/lineage/types';
 
@@ -31,12 +37,29 @@ export type RunDetailView = {
 	forceAvailable: boolean;
 	signalling: boolean;
 	lastSignalAgeSeconds: number | null;
+	statementProgress: RunEventFeed['statementProgress'];
 	record: RunRecord | null;
 	commandLine: string;
 	loadError: string | null;
 	pollError: string | null;
 	notFound: boolean;
 	initialLoading: boolean;
+};
+
+export type StatementProgressPresentation = {
+	position: string;
+	pendingStatements: number | null;
+	percentage: number | null;
+	etaSeconds: number | null;
+};
+
+export type RunHistoryState = {
+	readonly runs: RunRecord[] | null;
+	readonly error: string | null;
+	readonly refreshing: boolean;
+	readonly updatedAt: number | null;
+	start(): () => void;
+	refresh(): Promise<void>;
 };
 
 export type RunDetailController = {

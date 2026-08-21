@@ -110,6 +110,7 @@ class AuditScheduleState(StrEnum):
     DUE = "due"
     SCHEDULED = "scheduled"
     WARMING_UP = "warming_up"
+    NOT_MATERIALIZED = "not_materialized"
     RUNNING = "running"
     BLOCKED = "blocked"
     BACKING_OFF = "backing_off"

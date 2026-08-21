@@ -99,5 +99,40 @@ def test_given_established_connection_when_probe_fails_then_same_client_can_reco
     assert status["error"] is None
 
 
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        WarehouseRuntimeRecoveryTestCase(
+            description="read traffic receives an isolated bounded connection",
+            failure_message="",
+            expected_attempts=1,
+            expected_state="connected",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_read_connection_factory_when_reading_then_short_lived_client_is_closed(
+    test_case: WarehouseRuntimeRecoveryTestCase,
+) -> None:
+    primary_mock: MagicMock = MagicMock()
+    read_mock: MagicMock = MagicMock()
+    create_read: MagicMock = MagicMock(return_value=cast(AdapterConnection, read_mock))
+    runtime: WarehouseRuntime = WarehouseRuntime(
+        connection=cast(AdapterConnection, primary_mock),
+        observation_connection=None,
+        connection_factory=cast(Callable[[], AdapterConnection], create_read),
+        observation_connection_factory=None,
+        database="analytics",
+    )
+
+    with runtime.read_connection() as connection:
+        observed: AdapterConnection | None = connection
+
+    assert observed is read_mock
+    assert create_read.call_count == test_case.expected_attempts
+    read_mock.close.assert_called_once()
+    primary_mock.close.assert_not_called()
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-vv"])

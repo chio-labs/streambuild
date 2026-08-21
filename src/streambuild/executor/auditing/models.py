@@ -23,6 +23,13 @@ class SqlAuditResult:
     name: str | None = None
     error_message: str | None = None
     deferred_until: str | None = None
+    missing_relation_names: tuple[str, ...] = ()
+
+    @property
+    def deferred(self) -> bool:
+        """Return whether execution was deferred for warmup or materialization."""
+
+        return self.deferred_until is not None or bool(self.missing_relation_names)
 
 
 @dataclass(frozen=True)
@@ -38,7 +45,7 @@ class SqlAuditRunResult:
             for audit_result in self.audit_results
             if audit_result.severity == AuditSeverity.ERROR
             and not audit_result.passed
-            and audit_result.deferred_until is None
+            and not audit_result.deferred
         )
 
     @property
@@ -48,7 +55,7 @@ class SqlAuditRunResult:
             for audit_result in self.audit_results
             if audit_result.severity == AuditSeverity.WARNING
             and not audit_result.passed
-            and audit_result.deferred_until is None
+            and not audit_result.deferred
         )
 
 
@@ -59,3 +66,4 @@ class AuditWarmupState:
     eligible: bool
     anchor: str | None
     eligible_at: str | None
+    missing_model_names: tuple[str, ...] = ()
