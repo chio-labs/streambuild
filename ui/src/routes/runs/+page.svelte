@@ -1,6 +1,7 @@
 <script lang="ts">
 	import ClockIcon from '@lucide/svelte/icons/clock-3';
 	import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
+	import { onMount } from 'svelte';
 	import AppTopbar from '$lib/presentation/components/app-topbar.svelte';
 	import ErrorPreview from '$lib/presentation/components/error-preview.svelte';
 	import { cancelBuild } from '$lib/api/main/build/cancel-build';
@@ -58,7 +59,7 @@
 		}
 	}
 
-	$effect(() => {
+	onMount(() => {
 		const stopScheduler: () => void = scheduler.start();
 		const stopHistory: () => void = history.start();
 		void refreshOwnership();

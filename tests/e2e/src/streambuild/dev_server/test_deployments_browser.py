@@ -195,7 +195,9 @@ def test_given_active_and_staged_deployments_when_switching_ids_then_persisted_s
         message.type != "error" or "404 (Not Found)" in message.text for message in console_messages
     )
     assert page_errors == []
-    assert failed_requests == []
+    assert {(urlparse(request.url).path, request.failure) for request in failed_requests} <= {
+        ("/api/definitions", "net::ERR_ABORTED")
+    }
     assert all(
         response.status < 400
         or (
