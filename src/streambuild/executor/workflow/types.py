@@ -41,8 +41,8 @@ class WorkflowEventEmitter(Protocol):
     ) -> None:
         """Persist the complete immutable workflow before execution begins."""
 
-    def statement_started(self, statement: WarehouseStatement) -> None:
-        """One statement is about to execute."""
+    def statement_started(self, statement: WarehouseStatement) -> str | None:
+        """One statement is about to execute; optionally return its warehouse query ID."""
 
     def statement_completed(
         self,

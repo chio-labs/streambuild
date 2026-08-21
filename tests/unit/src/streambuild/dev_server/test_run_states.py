@@ -3,9 +3,12 @@ from typing import cast
 
 import pytest
 
-from streambuild.adapter.models import AdapterQueryResult
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.models import AdapterQueryResult, AdapterStatementProgress
 from streambuild.dev_server._helpers.queries.runs_query import (
     _assemble_runs,
+    _statement_progress,
+    _terminal_audit_summary,
     derive_run_duration_ms,
     derive_run_status,
     read_latest_direct_build_materialization,
@@ -27,6 +30,56 @@ from tests.unit.src.streambuild.dev_server.helpers import (
 )
 
 _WAREHOUSE_NOW: datetime = datetime(2026, 8, 7, 12, 0, tzinfo=UTC)
+
+
+class StatementProgressConnection:
+    def load_statement_progress(self, *, query_id: str) -> AdapterStatementProgress | None:
+        assert query_id == "query-123"
+        return AdapterStatementProgress(
+            elapsed_seconds=10.0,
+            read_rows=100,
+            read_bytes=200,
+            total_rows_approx=1000,
+            memory_usage_bytes=300,
+            settings=(("max_threads", "1"),),
+        )
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DevRefactorTestCase(
+            description="active query exposes normalized progress metrics",
+            expected_value={
+                "found": True,
+                "statementSequence": 4,
+                "readRowsPerSecond": 10.0,
+                "settings": {"max_threads": "1"},
+            },
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_active_query_when_reading_progress_then_metrics_are_exposed(
+    test_case: DevRefactorTestCase,
+) -> None:
+    payload: dict[str, object] | None = _statement_progress(
+        connection=cast(AdapterConnection, StatementProgressConnection()),
+        events=[
+            {
+                "event": "statement_started",
+                "statementSequence": 4,
+                "stepId": "replay_orders",
+                "phase": "replay",
+                "queryId": "query-123",
+            }
+        ],
+        observed_at="2026-08-07 12:00:00.000",
+    )
+
+    assert payload is not None
+    expected: dict[str, object] = cast(dict[str, object], test_case.expected_value)
+    assert {key: payload[key] for key in expected} == expected
 
 
 @pytest.mark.parametrize(
@@ -200,6 +253,140 @@ def test_given_active_event_stream_when_assembling_run_then_progress_is_exposed(
     "test_case",
     [
         DevRefactorTestCase(
+            description="active audit cycle exposes partial outcomes",
+            expected_value={
+                "passed": 1,
+                "warning": 0,
+                "failed": 0,
+                "error": 1,
+                "total": 2,
+            },
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_active_audit_cycle_when_assembling_run_then_partial_outcomes_are_exposed(
+    test_case: DevRefactorTestCase,
+) -> None:
+    runs: list[dict[str, object]] = _assemble_runs(
+        terminal_by_id={},
+        streams={
+            "audit-cycle": [
+                {
+                    "event": "run_started",
+                    "emittedAt": "2026-08-07 11:59:00.000",
+                    "command": "audit",
+                    "mode": "scheduled",
+                    "totalStatements": 4,
+                },
+                {
+                    "event": "audit_completed",
+                    "emittedAt": "2026-08-07 11:59:10.000",
+                    "stepId": "fresh_orders",
+                    "status": "passed",
+                },
+                {
+                    "event": "audit_completed",
+                    "emittedAt": "2026-08-07 11:59:20.000",
+                    "stepId": "valid_currency",
+                    "status": "error",
+                },
+            ]
+        },
+        warehouse_now=_WAREHOUSE_NOW,
+        limit=None,
+    )
+
+    assert runs[0]["auditSummary"] == test_case.expected_value
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DevRefactorTestCase(
+            description="completed audit cycle exposes durable outcome counts",
+            expected_value={
+                "passed": 126,
+                "warning": 4,
+                "failed": 0,
+                "error": 53,
+                "total": 183,
+            },
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_completed_audit_cycle_when_reading_summary_then_durable_counts_are_exposed(
+    test_case: DevRefactorTestCase,
+) -> None:
+    summary: dict[str, int] | None = _terminal_audit_summary(
+        command="audit",
+        mode="scheduled",
+        summary_json=(
+            '{"scheduled_count":183,"warning_failure_count":4,'
+            '"error_failure_count":0,"execution_error_count":53}'
+        ),
+    )
+
+    assert summary == test_case.expected_value
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DevRefactorTestCase(
+            description="durable audit summary wins over windowed events",
+            expected_value={
+                "passed": 126,
+                "warning": 4,
+                "failed": 0,
+                "error": 53,
+                "total": 183,
+            },
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_terminal_audit_cycle_when_events_are_windowed_then_durable_summary_wins(
+    test_case: DevRefactorTestCase,
+) -> None:
+    durable_summary: dict[str, int] = cast(dict[str, int], test_case.expected_value)
+    runs: list[dict[str, object]] = _assemble_runs(
+        terminal_by_id={
+            "audit-cycle": {
+                "invocationId": "audit-cycle",
+                "command": "audit",
+                "startedAt": "2026-08-07 11:00:00.000",
+                "lastSignalAt": "2026-08-07 11:01:00.000",
+                "auditSummary": durable_summary,
+            }
+        },
+        streams={
+            "audit-cycle": [
+                {
+                    "event": "run_started",
+                    "emittedAt": "2026-08-07 11:00:00.000",
+                    "command": "audit",
+                },
+                {
+                    "event": "audit_completed",
+                    "emittedAt": "2026-08-07 11:00:01.000",
+                    "stepId": "one-visible-event",
+                    "status": "passed",
+                },
+            ]
+        },
+        warehouse_now=_WAREHOUSE_NOW,
+        limit=None,
+    )
+
+    assert runs[0]["auditSummary"] == durable_summary
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DevRefactorTestCase(
             description="cancelled direct build cannot supersede failed materialization evidence",
             expected_value="failed",
         )
@@ -357,7 +544,7 @@ def test_given_old_terminal_run_when_reading_detail_then_status_is_not_limited_b
     invocation_query: str = (
         "SELECT invocation_id, command, mode, outcome, exit_code, "
         "toString(started_at) AS started_at, toString(completed_at) AS completed_at, "
-        "duration_ms, selected_node_count, error_message, tool_version "
+        "duration_ms, selected_node_count, error_message, summary_json, tool_version "
         "FROM `analytics`.`_streambuild_invocations` "
         f"WHERE invocation_id = '{test_case.invocation_id}' ORDER BY started_at DESC"
     )
@@ -383,6 +570,7 @@ def test_given_old_terminal_run_when_reading_detail_then_status_is_not_limited_b
                         60000,
                         1,
                         None,
+                        "{}",
                         "0.7.0",
                     ),
                 ),
@@ -397,6 +585,7 @@ def test_given_old_terminal_run_when_reading_detail_then_status_is_not_limited_b
                     "duration_ms",
                     "selected_node_count",
                     "error_message",
+                    "summary_json",
                     "tool_version",
                 ),
             ),

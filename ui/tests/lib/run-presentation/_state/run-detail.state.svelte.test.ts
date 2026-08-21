@@ -39,7 +39,16 @@ const FEED: RunEventFeed = {
 	hasMore: false,
 	status: 'running',
 	lastSignalAt: '2026-08-11 00:00:00',
-	lastSignalAgeSeconds: 0
+	lastSignalAgeSeconds: 0,
+	statementProgress: {
+		found: true,
+		queryId: 'query-1',
+		statementSequence: 1,
+		stepId: 'replay_orders',
+		phase: 'replay',
+		observedAt: '2026-08-11 00:00:00',
+		elapsedSeconds: 5
+	}
 };
 
 const OWNERSHIP: BuildFeed = {
@@ -67,6 +76,7 @@ describe('run detail state', () => {
 
 		expect(controller.view.commandLine).toBe('stb build orders');
 		expect(controller.view.events).toEqual(FEED.events);
+		expect(controller.view.statementProgress).toEqual(FEED.statementProgress);
 		expect(mocks.schedule).toHaveBeenCalledWith(1_200);
 	});
 });

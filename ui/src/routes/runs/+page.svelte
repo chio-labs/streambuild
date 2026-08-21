@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ClockIcon from '@lucide/svelte/icons/clock-3';
 	import AppTopbar from '$lib/presentation/components/app-topbar.svelte';
 	import ErrorPreview from '$lib/presentation/components/error-preview.svelte';
 	import { cancelBuild } from '$lib/api/main/build/cancel-build';
@@ -11,9 +12,13 @@
 	import { formatTimestamp } from '$lib/formatting/main/format-timestamp';
 	import type { Project } from '$lib/domain/types';
 	import { canAnyPipeline } from '$lib/auth/main/can-any-pipeline';
+	import { createAuditSchedulerState } from '$lib/quality-monitoring/main/create-audit-scheduler-state.svelte';
+	import { runsInScope, type RunScope } from '$lib/run-presentation/main/runs-in-scope';
+	import { scheduledAuditRuns } from '$lib/run-presentation/main/scheduled-audit-runs';
 
 	const project: Project = getProject();
 	const cancelAllowed = $derived(canAnyPipeline('build.cancel'));
+	const scheduler = createAuditSchedulerState();
 
 	// Recorded CLI invocation history from `_streambuild_invocations`. Runs
 	// happen out-of-band in a shell, so poll while the page is visible — a
@@ -54,24 +59,42 @@
 	}
 
 	$effect(() => {
+		const stopScheduler: () => void = scheduler.start();
 		refresh();
 		const timer: ReturnType<typeof setInterval> = setInterval(() => {
 			if (!document.hidden) refresh();
 		}, POLL_MS);
-		return () => clearInterval(timer);
+		return () => {
+			clearInterval(timer);
+			stopScheduler();
+		};
 	});
 
-	// Dagster-style status tabs: the one filter everyone reaches for first.
+	let scope = $state<RunScope>('builds');
 	type StatusFilter = 'all' | 'succeeded' | 'failed';
 	let statusFilter = $state<StatusFilter>('all');
 
-	const succeededCount = $derived((runs ?? []).filter((run) => run.status === 'succeeded').length);
+	const scopedRuns = $derived(runsInScope(runs ?? [], scope));
+	const auditCycles = $derived(scheduledAuditRuns(runs ?? []));
+	const latestAuditCycle = $derived(auditCycles[0] ?? null);
+	const automationDisplay = $derived.by(() => {
+		const payload: typeof scheduler.payload = scheduler.payload;
+		if (!payload) return null;
+		if (!payload.enabled) return { label: 'Disabled', color: 'var(--sb-text-faint)' };
+		if (payload.health.state === 'backing_off') return { label: 'Retrying', color: 'var(--sb-warning)' };
+		if (payload.state === 'blocked' || payload.health.state === 'blocked') {
+			return { label: 'Paused', color: 'var(--sb-warning)' };
+		}
+		if (payload.health.runningAuditCount) return { label: 'Running', color: 'var(--sb-secondary)' };
+		return { label: 'Active', color: 'var(--sb-success)' };
+	});
+	const succeededCount = $derived(scopedRuns.filter((run) => run.status === 'succeeded').length);
 	const failedCount = $derived(
-		(runs ?? []).filter((run) => run.status === 'failed' || run.status === 'presumed_failed').length
+		scopedRuns.filter((run) => run.status === 'failed' || run.status === 'presumed_failed').length
 	);
 
 	const visibleRuns = $derived(
-		(runs ?? []).filter((run) => {
+		scopedRuns.filter((run) => {
 			if (statusFilter === 'all') return true;
 			if (statusFilter === 'succeeded') return run.status === 'succeeded';
 			return run.status === 'failed' || run.status === 'presumed_failed';
@@ -115,39 +138,99 @@
 	}
 
 	const TAB_DEFS: { key: StatusFilter; label: string }[] = [
-		{ key: 'all', label: 'All runs' },
+		{ key: 'all', label: 'All' },
 		{ key: 'succeeded', label: 'Succeeded' },
 		{ key: 'failed', label: 'Failed' }
 	];
 
 	function tabCount(key: StatusFilter): number | null {
 		if (runs === null) return null;
-		if (key === 'all') return runs.length;
+		if (key === 'all') return scopedRuns.length;
 		if (key === 'succeeded') return succeededCount;
 		return failedCount;
+	}
+
+	const SCOPE_DEFS: { key: RunScope; label: string }[] = [
+		{ key: 'builds', label: 'Builds' },
+		{ key: 'other', label: 'Other operations' },
+		{ key: 'all', label: 'All history' }
+	];
+
+	function scopeCount(key: RunScope): number | null {
+		return runs === null ? null : runsInScope(runs, key).length;
 	}
 </script>
 
 <AppTopbar title="Runs" />
 
 <div class="flex min-h-0 flex-1 flex-col">
-	<!-- status tabs, dagster-style -->
-	<div class="flex shrink-0 items-center gap-1 border-b border-border px-[18px]">
-		{#each TAB_DEFS as tab (tab.key)}
+	<a
+		href="/quality"
+		class="hover:bg-[var(--sb-hover)] mx-[18px] mt-[18px] flex shrink-0 items-center gap-3 rounded-[4px] border border-border bg-[var(--sidebar-accent)]/20 px-3 py-2.5 transition-colors"
+	>
+		<ClockIcon size={13} class="text-muted-foreground" />
+		<div class="min-w-0">
+			<div class="flex items-baseline gap-2">
+				<span class="font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--sb-text-faint)]">
+					Audit automation
+				</span>
+				{#if automationDisplay}
+					<span class="text-xs" style:color={automationDisplay.color}>
+						{automationDisplay.label}
+					</span>
+				{:else if scheduler.loading}
+					<span class="text-muted-foreground text-xs">Loading…</span>
+				{:else}
+					<span class="text-xs" style:color="var(--sb-error)">Unavailable</span>
+				{/if}
+			</div>
+			<div class="text-[var(--sb-text-faint)] mt-0.5 truncate font-mono text-[10px]">
+				{#if latestAuditCycle?.auditSummary}
+					Latest cycle: {latestAuditCycle.auditSummary.passed}/{latestAuditCycle.auditSummary.total} passed
+					{#if latestAuditCycle.auditSummary.warning} · {latestAuditCycle.auditSummary.warning} warning{/if}
+					{#if latestAuditCycle.auditSummary.failed} · {latestAuditCycle.auditSummary.failed} failed{/if}
+					{#if latestAuditCycle.auditSummary.error} · {latestAuditCycle.auditSummary.error} errors{/if}
+				{:else if latestAuditCycle}
+					Latest cycle {formatAgo(latestAuditCycle.startedAt, project.capturedAt)}
+				{:else}
+					Scheduled audit cycles are managed in Quality
+				{/if}
+			</div>
+		</div>
+		<span class="text-primary ml-auto hidden font-mono text-[10.5px] sm:block">Open Quality →</span>
+	</a>
+
+	<div class="mt-3 flex shrink-0 items-center gap-1 overflow-x-auto border-b border-border px-[18px]">
+		{#each SCOPE_DEFS as item (item.key)}
 			<button
-				class="relative px-3 py-2.5 text-[12.5px] transition-colors {statusFilter === tab.key
+				class="relative shrink-0 px-3 py-2.5 text-[12.5px] transition-colors {scope === item.key
 					? 'text-foreground after:absolute after:inset-x-2 after:bottom-0 after:h-[2px] after:rounded-t after:bg-primary after:content-[\'\']'
 					: 'text-muted-foreground hover:text-foreground'}"
-				onclick={() => (statusFilter = tab.key)}
+				onclick={() => (scope = item.key)}
 			>
-				{tab.label}
-				{#if tabCount(tab.key) !== null}
-					<span class="text-[var(--sb-text-faint)] pl-1 font-mono text-[10.5px]"
-						>{tabCount(tab.key)}</span
-					>
+				{item.label}
+				{#if scopeCount(item.key) !== null}
+					<span class="pl-1 font-mono text-[10.5px] text-[var(--sb-text-faint)]">{scopeCount(item.key)}</span>
 				{/if}
 			</button>
 		{/each}
+		<div class="ml-auto flex shrink-0 items-center gap-1">
+			{#each TAB_DEFS as tab (tab.key)}
+				<button
+					class="rounded-[4px] px-2 py-1 font-mono text-[10.5px] transition-colors {statusFilter === tab.key
+						? 'bg-[var(--sidebar-accent)] text-foreground'
+						: 'text-muted-foreground hover:text-foreground'}"
+					onclick={() => (statusFilter = tab.key)}
+				>
+					{tab.label}
+					{#if tabCount(tab.key) !== null}
+						<span class="text-[var(--sb-text-faint)] pl-1 font-mono text-[10.5px]"
+							>{tabCount(tab.key)}</span
+						>
+					{/if}
+				</button>
+			{/each}
+		</div>
 	</div>
 
 	<div class="min-h-0 flex-1 overflow-y-auto">
@@ -164,7 +247,7 @@
 						No recorded runs. History appears after the first
 						<code class="code text-[12px]">stb build</code> against this database.
 					{:else}
-						No {statusFilter} runs.
+						No {statusFilter === 'all' ? '' : `${statusFilter} `}{scope === 'builds' ? 'builds' : scope === 'other' ? 'other operations' : 'runs'}.
 					{/if}
 				</p>
 			</div>
