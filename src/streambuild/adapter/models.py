@@ -389,6 +389,7 @@ class AdapterReplayRequest:
     seed_mode: AdapterReplaySeedMode
     target_column_names: tuple[str, ...]
     settings: tuple[tuple[str, str], ...] = ()
+    filter_boundaries_at_source: bool = False
 
 
 @dataclass(frozen=True)

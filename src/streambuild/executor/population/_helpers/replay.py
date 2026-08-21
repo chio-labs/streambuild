@@ -154,6 +154,9 @@ def build_population_replay_requests(
                     ),
                     target_column_names=tuple(column.name for column in root_table.columns),
                     settings=tuple(sorted((root_table.replay_settings or {}).items())),
+                    filter_boundaries_at_source=(
+                        root.root_key not in desired_state.replay_anchor_keys
+                    ),
                 ),
             )
         )
