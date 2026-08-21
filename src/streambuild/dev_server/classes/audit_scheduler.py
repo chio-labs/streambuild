@@ -24,6 +24,9 @@ from streambuild.dev_server.main._build_audit_scheduler_payload import (
 from streambuild.dev_server.main._execute_due_audits import execute_due_audits
 from streambuild.dev_server.main._scheduler_enabled import scheduler_enabled
 from streambuild.dev_server.types import AuditScheduleState, RunPresentationStatus
+from streambuild.executor.observability.main.logical_project_identity import (
+    logical_project_identity,
+)
 from streambuild.executor.observability.types import QualityResultTrigger
 
 _POLL_SECONDS: float = 10.0
@@ -117,22 +120,36 @@ class AuditScheduler:
         if connection is None or self._database is None:
             self._record_success(state=AuditScheduleState.DISABLED)
             return 0
-        if bool(self._builds.feed(after=0)["running"]):
-            self._record_success(state=AuditScheduleState.BLOCKED)
+        local_feed: dict[str, object] = self._builds.feed(after=0)
+        if bool(local_feed["running"]):
+            self._record_blocked(
+                warning=f"local build {local_feed.get('invocationId') or 'unknown'} is running"
+            )
             return 0
         if not self._tick_lock.acquire(blocking=False):
             return 0
         try:
             with self._state.query_lock:
-                if bool(self._builds.feed(after=0)["running"]):
-                    self._record_success(state=AuditScheduleState.BLOCKED)
+                local_feed = self._builds.feed(after=0)
+                if bool(local_feed["running"]):
+                    self._record_blocked(
+                        warning=(
+                            f"local build {local_feed.get('invocationId') or 'unknown'} is running"
+                        )
+                    )
                     return 0
                 analysis: CompileAnalysis = self._state.current_analysis()
                 if not scheduler_enabled(analysis):
                     self._record_success(state=AuditScheduleState.DISABLED)
                     return 0
-                if self._has_active_mutating_build():
-                    self._record_success(state=AuditScheduleState.BLOCKED)
+                blocking_build: dict[str, object] | None = self._blocking_mutating_build()
+                if blocking_build is not None:
+                    self._record_blocked(
+                        warning=(
+                            f"build {blocking_build.get('invocationId') or 'unknown'} is "
+                            f"{blocking_build['status']}"
+                        )
+                    )
                     return 0
                 if self._has_active_scheduled_audit():
                     self._record_blocked(
@@ -190,14 +207,15 @@ class AuditScheduler:
                 pass
             self._stop.wait(max(_POLL_SECONDS, self._seconds_until_attempt()))
 
-    def _has_active_mutating_build(self) -> bool:
+    def _blocking_mutating_build(self) -> dict[str, object] | None:
         connection: AdapterConnection | None = self._warehouse.connection
         if connection is None or self._database is None:
-            return False
+            return None
+        project_identity: str = logical_project_identity(project_dir=self._project_dir)
         latest_applied_at: str | None = read_latest_applied_direct_build_at(
             connection=connection,
             database=self._database,
-            project_identity=str(self._project_dir.resolve()),
+            project_identity=project_identity,
         )
         for run in read_active_runs(
             connection=connection,
@@ -206,16 +224,21 @@ class AuditScheduler:
         ):
             if run["command"] != CliCommand.BUILD:
                 continue
+            run_project_identity: object = run.get("projectIdentity")
+            if run_project_identity is not None and (
+                str(run_project_identity).rsplit("/", maxsplit=1)[-1] != project_identity
+            ):
+                continue
             if run["status"] in {
                 RunPresentationStatus.RUNNING,
                 RunPresentationStatus.UNRESPONSIVE,
             }:
-                return True
+                return run
             if run["status"] == RunPresentationStatus.PRESUMED_FAILED and (
                 latest_applied_at is None or str(run["startedAt"]) >= latest_applied_at
             ):
-                return True
-        return False
+                return run
+        return None
 
     def _has_active_scheduled_audit(self) -> bool:
         connection: AdapterConnection | None = self._warehouse.connection

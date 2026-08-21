@@ -12,7 +12,7 @@ def publish_observation_artifact(
     """Write combined and numbered SQL bytes before observation execution."""
 
     artifact_root: Path = (
-        Path(invocation.project_identity)
+        Path(invocation.artifact_project_dir or invocation.project_identity)
         / "target"
         / "run"
         / "observations"

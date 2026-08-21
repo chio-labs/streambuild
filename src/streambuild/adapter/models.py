@@ -556,6 +556,7 @@ class AdapterInvocationRecord:
     error_message: str | None
     summary_json: str
     tool_version: str
+    artifact_project_dir: str | None = None
 
 
 @dataclass(frozen=True)

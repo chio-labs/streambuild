@@ -68,11 +68,13 @@ class RunEventSink:
         connection: AdapterConnection,
         database: str,
         invocation_id: str,
+        project_identity: str | None = None,
         jsonl_stream: TextIO | None = None,
     ) -> None:
         self._connection: AdapterConnection = connection
         self._database: str = database
         self._invocation_id: str = invocation_id
+        self._project_identity: str | None = project_identity
         self._jsonl_stream: TextIO | None = jsonl_stream
         self._sequence: int = 0
         self._migrated: bool = False
@@ -114,6 +116,7 @@ class RunEventSink:
                 "totalStatements": total_statements,
                 "selectedNodeCount": selected_node_count,
                 "database": self._database,
+                "projectIdentity": self._project_identity,
                 "selectors": list(selectors),
                 "startTime": start_time,
                 "executedLogicalIds": list(executed_logical_ids),

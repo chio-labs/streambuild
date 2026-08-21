@@ -19,6 +19,9 @@ from streambuild.executor.auditing.main.resolve_audit_warmup_states import (
 )
 from streambuild.executor.auditing.models import AuditWarmupState
 from streambuild.executor.auditing.types import QualityResultStatus
+from streambuild.executor.observability.main.logical_project_identity import (
+    logical_project_identity,
+)
 from streambuild.executor.observability.types import MaterializationOutcome
 
 
@@ -87,7 +90,7 @@ class AuditScheduleCalculator:
             read_latest_direct_build_materialization(
                 connection=self._connection,
                 database=self._database,
-                project_identity=str(self._project_dir.resolve()),
+                project_identity=logical_project_identity(project_dir=self._project_dir),
             )
             == MaterializationOutcome.FAILED
         )

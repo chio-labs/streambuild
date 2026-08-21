@@ -25,27 +25,49 @@ from tests.unit.src.streambuild.dev_server.classes._test_types import (
             description="presumed failed build remains blocked without a later successful build",
             active_runs=(
                 {
+                    "invocationId": "blocked-build",
                     "command": "build",
                     "mode": "direct",
                     "status": "presumed_failed",
                     "startedAt": "2026-08-08 12:00:00.000",
+                    "projectIdentity": "/opt/streambuild-v1/project",
                 },
             ),
             latest_applied_at=None,
             expected_payload_reads=0,
+            expected_latest_error="build blocked-build is presumed_failed",
         ),
         AuditSchedulerActiveRunTestCase(
             description="later successful build recovers an older presumed failed build",
             active_runs=(
                 {
+                    "invocationId": "recovered-build",
                     "command": "build",
                     "mode": "direct",
                     "status": "presumed_failed",
                     "startedAt": "2026-08-08 11:00:00.000",
+                    "projectIdentity": "/opt/streambuild-v1/project",
                 },
             ),
             latest_applied_at="2026-08-08 12:00:00.000",
             expected_payload_reads=1,
+            expected_latest_error=None,
+        ),
+        AuditSchedulerActiveRunTestCase(
+            description="active build for another logical project does not block audits",
+            active_runs=(
+                {
+                    "invocationId": "unrelated-build",
+                    "command": "build",
+                    "mode": "direct",
+                    "status": "running",
+                    "startedAt": "2026-08-08 11:00:00.000",
+                    "projectIdentity": "another-project",
+                },
+            ),
+            latest_applied_at="2026-08-08 12:00:00.000",
+            expected_payload_reads=1,
+            expected_latest_error=None,
         ),
         AuditSchedulerActiveRunTestCase(
             description="expired scheduler heartbeat does not block recovery forever",
@@ -59,6 +81,7 @@ from tests.unit.src.streambuild.dev_server.classes._test_types import (
             ),
             latest_applied_at=None,
             expected_payload_reads=1,
+            expected_latest_error=None,
         ),
     ],
     ids=lambda case: case.description,
@@ -105,6 +128,7 @@ def test_given_active_run_history_when_ticking_then_scheduler_uses_recoverable_s
 
     assert result_count == 0
     assert build_payload.call_count == test_case.expected_payload_reads
+    assert scheduler.health()["latestError"] == test_case.expected_latest_error
 
 
 @pytest.mark.parametrize(

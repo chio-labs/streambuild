@@ -53,6 +53,7 @@ def execute_due_audits(
             connection=observation_connection,
             database=database,
             invocation_id=started[0],
+            project_identity=project_dir.name,
         )
     )
     if event_sink is not None:
