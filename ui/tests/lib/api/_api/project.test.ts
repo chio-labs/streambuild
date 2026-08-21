@@ -53,4 +53,23 @@ describe('project API', () => {
 			signal: undefined
 		});
 	});
+
+	it('given no cached definitions when a version is known then the complete payload is requested', async () => {
+		vi.stubGlobal('sessionStorage', {
+			getItem: () => null,
+			setItem: vi.fn()
+		});
+		const fetchMock: ReturnType<typeof vi.fn> = vi
+			.fn()
+			.mockResolvedValue(new Response('{"models":[]}'));
+		vi.stubGlobal('fetch', fetchMock);
+
+		const definitions: Record<string, unknown> = await requestDefinitionsPayload('version-1');
+
+		expect(definitions).toEqual({ models: [] });
+		expect(fetchMock).toHaveBeenCalledWith('/api/definitions', {
+			headers: undefined,
+			signal: undefined
+		});
+	});
 });
