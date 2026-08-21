@@ -17,6 +17,9 @@ from streambuild.compiler.testing.models import SqlTestCase
 from streambuild.dev_server.exceptions import DevServerError
 from streambuild.executor.auditing.main.deferred_audit_result import deferred_audit_result
 from streambuild.executor.auditing.main.execute_sql_audits import execute_sql_audits
+from streambuild.executor.auditing.main.load_materialized_model_names import (
+    load_materialized_model_names,
+)
 from streambuild.executor.auditing.main.load_model_anchors import load_model_anchors
 from streambuild.executor.auditing.main.resolve_audit_warmup_states import (
     resolve_audit_warmup_states,
@@ -54,7 +57,7 @@ _ERROR_STATUS: str = "error"
 
 
 def _audit_status(result: SqlAuditResult) -> str:
-    if result.deferred_until is not None:
+    if result.deferred:
         return "deferred"
     if result.error_message is not None:
         return _ERROR_STATUS
@@ -110,6 +113,11 @@ def run_one_audit(
             model_names=audit.referenced_model_names,
             virtual_environments=analysis.compile_inputs.virtual_environments,
         ),
+        materialized_model_names=load_materialized_model_names(
+            client=connection,
+            database=database,
+            relation_name_by_model=_model_resolver(analysis),
+        ),
         warehouse_now=connection.capture_warehouse_timestamp(),
     )
     state: AuditWarmupState = warmup_state[audit.name or audit.file_path.stem]
@@ -141,6 +149,7 @@ def run_one_audit(
         "sampleRows": [list(row) for row in result.sample_rows],
         "errorMessage": result.error_message,
         "deferredUntil": result.deferred_until,
+        "missingRelations": list(result.missing_relation_names),
     }
 
 
@@ -189,6 +198,30 @@ def build_checks_status_payload(
     """Last-known outcome per audit/test from the observability tables."""
 
     nodes: list[AdapterCurrentQualityNode] = []
+    model_resolver: dict[str, str] = _model_resolver(analysis)
+    audit_model_name_set: set[str] = set()
+    for audit in analysis.compiled_project.audits:
+        audit_model_name_set.update(audit.referenced_model_names)
+    audit_model_names: tuple[str, ...] = tuple(sorted(audit_model_name_set))
+    anchors_by_model: dict[str, str] = load_model_anchors(
+        client=connection,
+        metadata_database=database,
+        target_database=database,
+        model_names=audit_model_names,
+        virtual_environments=analysis.compile_inputs.virtual_environments,
+    )
+    materialized_model_names: frozenset[str] = load_materialized_model_names(
+        client=connection,
+        database=database,
+        relation_name_by_model=model_resolver,
+    )
+    missing_by_audit: dict[str, list[str]] = {}
+    for audit in analysis.compiled_project.audits:
+        missing_by_audit[audit.name or audit.file_path.stem] = [
+            model_name
+            for model_name in audit.referenced_model_names
+            if model_name not in anchors_by_model and model_name not in materialized_model_names
+        ]
     for audit in analysis.compiled_project.audits:
         identity: QualityNodeIdentity = require_quality_identity(audit.quality_identity)
         nodes.append(
@@ -221,13 +254,16 @@ def build_checks_status_payload(
             {
                 "kind": node.node_kind,
                 "name": node.node_name,
-                "status": _NEVER_RUN_STATUS,
+                "status": (
+                    "deferred" if missing_by_audit.get(node.node_name) else _NEVER_RUN_STATUS
+                ),
                 "driftReasons": [],
                 "severity": None,
                 "failureCount": 0,
                 "completedAt": None,
                 "payload": None,
                 "errorMessage": None,
+                "missingRelations": missing_by_audit.get(node.node_name, []),
             }
             for node in nodes
         ]
@@ -239,7 +275,12 @@ def build_checks_status_payload(
     )
     statuses: list[dict[str, object]] = []
     for row in connection.query(query).named_rows():
-        statuses.append(_status_row_payload(row=dict(row)))
+        row_payload: dict[str, object] = _status_row_payload(row=dict(row))
+        missing_relations: list[str] = missing_by_audit.get(str(row_payload["name"]), [])
+        if missing_relations:
+            row_payload["status"] = "deferred"
+        row_payload["missingRelations"] = missing_relations
+        statuses.append(row_payload)
     return statuses
 
 
@@ -285,7 +326,7 @@ def _persist_audit_observation(
     result: SqlAuditResult,
 ) -> None:
     hard_failure: bool = (
-        result.deferred_until is None
+        not result.deferred
         and (result.error_message is not None or not result.passed)
         and str(result.severity) != AuditSeverity.WARNING
     )
@@ -327,6 +368,7 @@ def _persist_audit_observation(
                     "sample_column_names": list(result.sample_column_names),
                     "sample_rows": [list(item) for item in result.sample_rows[:5]],
                     "eligible_at": result.deferred_until,
+                    "missing_relations": list(result.missing_relation_names),
                 },
                 error_message=result.error_message,
             ),

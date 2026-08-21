@@ -316,6 +316,7 @@ def _deferred_direct_audit_node_results(
     states: dict[str, AuditWarmupState] = resolve_audit_warmup_states(
         audits=audits,
         anchors_by_model=anchors_by_model,
+        materialized_model_names=frozenset(anchors_by_model),
         warehouse_now=invocation.completed_at,
     )
     return tuple(

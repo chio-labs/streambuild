@@ -48,6 +48,7 @@ def resolve_audit_warmup_states_impl(
     *,
     audits: tuple[LoadedSqlAudit, ...],
     anchors_by_model: dict[str, str],
+    materialized_model_names: frozenset[str],
     warehouse_now: str,
 ) -> dict[str, AuditWarmupState]:
     """Calculate warmup eligibility from the newest anchor across each audit's refs."""
@@ -56,12 +57,25 @@ def resolve_audit_warmup_states_impl(
     states: dict[str, AuditWarmupState] = {}
     for audit in audits:
         node_name: str = audit.name or audit.file_path.stem
+        missing_model_names: tuple[str, ...] = tuple(
+            model_name
+            for model_name in audit.referenced_model_names
+            if model_name not in anchors_by_model and model_name not in materialized_model_names
+        )
         anchors: tuple[str, ...] = tuple(
             anchors_by_model[model_name]
             for model_name in audit.referenced_model_names
             if model_name in anchors_by_model
         )
         anchor: str | None = max(anchors, default=None)
+        if missing_model_names:
+            states[node_name] = AuditWarmupState(
+                eligible=False,
+                anchor=anchor,
+                eligible_at=None,
+                missing_model_names=missing_model_names,
+            )
+            continue
         if anchor is None or audit.warmup_seconds == 0:
             states[node_name] = AuditWarmupState(
                 eligible=True,
@@ -92,6 +106,7 @@ def deferred_audit_result_impl(*, audit: LoadedSqlAudit, state: AuditWarmupState
         description=audit.description,
         name=audit.name,
         deferred_until=state.eligible_at,
+        missing_relation_names=state.missing_model_names,
     )
 
 
