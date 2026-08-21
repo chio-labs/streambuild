@@ -283,6 +283,7 @@ from tests.unit.src.streambuild.adapters.clickhouse.helpers import (
                 active_start_offsets.start_offset IS NULL
                 OR replay_source._replay_offset >= active_start_offsets.start_offset
               )
+            SETTINGS max_block_size = 32, max_threads = 8
             """
             ).strip(),
             replay_table_name_by_logical_name={
@@ -290,6 +291,7 @@ from tests.unit.src.streambuild.adapters.clickhouse.helpers import (
                 "tbl__region_lookup": "tbl__region_lookup__dep",
                 "tbl__customer_tier": "tbl__customer_tier",
             },
+            settings=(("max_block_size", "32"), ("max_threads", "8")),
         ),
     ],
     ids=lambda case: case.description,
@@ -341,6 +343,7 @@ def test_given_offset_replay_query_when_rendering_then_it_rewrites_anchor_and_re
             ),
             seed_mode=AdapterReplaySeedMode.NONE,
             target_column_names=(),
+            settings=test_case.settings,
         ),
         lower_bound_rows=(ClickHouseReplayOffsetFrontier(partition=0, cutoff_offset="9000"),),
     )
