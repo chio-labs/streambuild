@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.26.1](https://github.com/chio-labs/streambuild/compare/v0.26.0...v0.26.1) (2026-08-21)
+
+
+### Bug Fixes
+
+* **ui:** suppress transient telemetry warnings ([#136](https://github.com/chio-labs/streambuild/issues/136)) ([276a5e3](https://github.com/chio-labs/streambuild/commit/276a5e3dfd30eef9c1559fa6bb30817453babee6))
+
 ## [0.26.0](https://github.com/chio-labs/streambuild/compare/v0.25.1...v0.26.0) (2026-08-21)
 
 
