@@ -29,5 +29,28 @@ describe('project API', () => {
 			'/api/definitions',
 			'/api/state'
 		]);
+		expect(fetchMock.mock.calls[1][1]).toEqual({ headers: undefined, signal: undefined });
+	});
+
+	it('given cached definitions when the server returns not modified then the session copy is reused', async () => {
+		const storage: Map<string, string> = new Map([
+			['streambuild:definitions:version-1', '{"models":[{"name":"orders"}]}']
+		]);
+		vi.stubGlobal('sessionStorage', {
+			getItem: (key: string) => storage.get(key) ?? null,
+			setItem: (key: string, value: string) => storage.set(key, value)
+		});
+		const fetchMock: ReturnType<typeof vi.fn> = vi.fn(() =>
+			Promise.resolve(new Response(null, { status: 304 }))
+		);
+		vi.stubGlobal('fetch', fetchMock);
+
+		const definitions: Record<string, unknown> = await requestDefinitionsPayload('version-1');
+
+		expect(definitions).toEqual({ models: [{ name: 'orders' }] });
+		expect(fetchMock).toHaveBeenCalledWith('/api/definitions', {
+			headers: { 'If-None-Match': '"version-1"' },
+			signal: undefined
+		});
 	});
 });

@@ -8,6 +8,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.middleware.gzip import GZipMiddleware
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.auth.classes.authentication_service import AuthenticationService
@@ -112,6 +113,7 @@ def create_dev_app(
         warehouse=warehouse,
     )
     app: FastAPI = FastAPI(title="StreamBuild", docs_url=None, redoc_url=None, lifespan=lifespan)
+    app.add_middleware(GZipMiddleware, minimum_size=1000)
     app = register_authentication_routes(app=app, service=authentication)
     app = register_api_routes(
         app=app,

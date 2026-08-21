@@ -9,7 +9,8 @@ from pathlib import Path
 from time import monotonic_ns
 from typing import Annotated
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, HTTPException, Query, Request, Response
+from fastapi.responses import JSONResponse
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.exceptions import AdapterError
@@ -180,13 +181,19 @@ def register_api_routes(
             warehouse_status=warehouse.status(),
         )
 
-    def read_definitions() -> dict[str, object]:
+    def read_definitions(*, request: Request) -> Response:
         try:
             outcome: CompileOutcome = state.current_servable_outcome()
             analysis: CompileAnalysis = state.current_analysis()
         except ProjectNotCompiledError as error:
             raise HTTPException(status_code=_HTTP_CONFLICT, detail=str(error)) from error
-        return build_definitions_payload(analysis=analysis, version_key=outcome.version_key)
+        etag: str = f'"{outcome.version_key}"'
+        if request.headers.get("if-none-match") == etag:
+            return Response(status_code=304, headers={"ETag": etag})
+        return JSONResponse(
+            content=build_definitions_payload(analysis=analysis, version_key=outcome.version_key),
+            headers={"ETag": etag},
+        )
 
     def read_state() -> dict[str, object]:
         if warehouse.connection is None or database is None:
