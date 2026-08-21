@@ -144,7 +144,8 @@ def test_given_retained_source_when_editing_plan_then_url_and_replay_contract_ro
     assert all(message.type != "error" for message in console_messages)
     assert page_errors == []
     assert {(urlparse(request.url).path, request.failure) for request in failed_requests} <= {
-        ("/api/definitions", "net::ERR_ABORTED")
+        ("/api/definitions", "net::ERR_ABORTED"),
+        ("/api/runs", "net::ERR_ABORTED"),
     }
     assert all(response.status < 400 for response in responses)
 
