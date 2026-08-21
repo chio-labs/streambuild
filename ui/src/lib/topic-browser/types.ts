@@ -26,6 +26,7 @@ export type TopicBrowserState = {
 	readonly payload: TopicsPayload | null;
 	readonly error: string | null;
 	readonly loading: boolean;
+	readonly updatedAt: number | null;
 	refresh(): Promise<boolean>;
 	start(): () => void;
 	stop(): void;

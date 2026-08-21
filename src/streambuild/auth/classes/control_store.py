@@ -61,6 +61,7 @@ from streambuild.auth.types import AuthenticationSource
 
 _SCHEMA_VERSION: int = 1
 _DUMMY_PASSWORD_HASH: str = hash_password("streambuild dummy password verification")
+_SESSION_LAST_SEEN_WRITE_INTERVAL: timedelta = timedelta(minutes=1)
 
 _METADATA: MetaData = MetaData()
 _SCHEMA_VERSIONS: Table = Table(
@@ -162,6 +163,7 @@ class ControlStore:
 
     def __init__(self, *, url: str) -> None:
         self._url = url
+        self._authentication_revision: int = 0
         if url.startswith("sqlite:///"):
             path_value: str = url.removeprefix("sqlite:///")
             if path_value != SQLITE_MEMORY_PATH:
@@ -185,6 +187,12 @@ class ControlStore:
 
     def close(self) -> None:
         self._engine.dispose()
+
+    @property
+    def authentication_revision(self) -> int:
+        """Return the process-local generation for cached identity invalidation."""
+
+        return self._authentication_revision
 
     def bootstrap(self) -> None:
         """Create the current clean schema and reject incompatible state."""
@@ -307,6 +315,7 @@ class ControlStore:
             raise AccountConflictError(
                 f"User or external identity '{canonical}' already exists"
             ) from error
+        self._invalidate_authentication()
         account: UserAccount | None = self.get_user_by_id(user_id=user_id)
         if account is None:
             raise ControlStoreError("Created account could not be reloaded")
@@ -438,6 +447,7 @@ class ControlStore:
                 connection.execute(
                     select(
                         _SESSIONS.c.csrf_token,
+                        _SESSIONS.c.last_seen_at,
                         _SESSIONS.c.expires_at,
                         _SESSIONS.c.revoked_at,
                         *_USERS.c,
@@ -453,13 +463,15 @@ class ControlStore:
             expires_at: datetime = _as_utc(row["expires_at"])
             if expires_at <= now:
                 return None
-            connection.execute(
-                update(_SESSIONS)
-                .where(_SESSIONS.c.token_hash == token_hash)
-                .values(last_seen_at=now)
-            )
+            if now - _as_utc(row["last_seen_at"]) >= _SESSION_LAST_SEEN_WRITE_INTERVAL:
+                connection.execute(
+                    update(_SESSIONS)
+                    .where(_SESSIONS.c.token_hash == token_hash)
+                    .values(last_seen_at=now)
+                )
             return ResolvedSession(
                 principal=_principal_from_row(row=row, source=AuthenticationSource.PASSWORD),
+                roles=self._roles_for_user(connection=connection, user_id=UUID(str(row["id"]))),
                 csrf_token=str(row["csrf_token"]),
                 expires_at=expires_at,
             )
@@ -485,6 +497,7 @@ class ControlStore:
                 details={},
                 now=now,
             )
+        self._invalidate_authentication()
 
     def set_user_active(
         self,
@@ -518,6 +531,7 @@ class ControlStore:
                 details={},
                 now=now,
             )
+        self._invalidate_authentication()
         account: UserAccount | None = self.get_user_by_id(user_id=user_id)
         if account is None:
             raise AccountNotFoundError(f"User '{user_id}' was not found")
@@ -552,6 +566,7 @@ class ControlStore:
                 details={},
                 now=now,
             )
+        self._invalidate_authentication()
         account: UserAccount | None = self.get_user_by_id(user_id=user_id)
         if account is None:
             raise AccountNotFoundError(f"User '{user_id}' was not found")
@@ -604,6 +619,7 @@ class ControlStore:
                 details={"active": is_active},
                 now=now,
             )
+        self._invalidate_authentication()
         account: UserAccount | None = self.get_user_by_id(user_id=user_id)
         if account is None:
             raise AccountNotFoundError(f"User '{user_id}' was not found")
@@ -656,6 +672,7 @@ class ControlStore:
                 details={},
                 now=now,
             )
+        self._invalidate_authentication()
 
     def grant_role(
         self,
@@ -686,6 +703,7 @@ class ControlStore:
             raise AccountConflictError(
                 f"Role '{role_name}' is already assigned or does not exist"
             ) from error
+        self._invalidate_authentication()
         account: UserAccount | None = self.get_user_by_id(user_id=user_id)
         if account is None:
             raise AccountNotFoundError(f"User '{user_id}' was not found")
@@ -720,6 +738,7 @@ class ControlStore:
                 details={"role": role_name},
                 now=now,
             )
+        self._invalidate_authentication()
         account: UserAccount | None = self.get_user_by_id(user_id=user_id)
         if account is None:
             raise AccountNotFoundError(f"User '{user_id}' was not found")
@@ -959,13 +978,7 @@ class ControlStore:
 
     def _account_from_row(self, *, connection: Connection, row: RowMapping) -> UserAccount:
         user_id: UUID = UUID(str(row["id"]))
-        roles: tuple[str, ...] = tuple(
-            connection.execute(
-                select(_USER_ROLES.c.role_name)
-                .where(_USER_ROLES.c.user_id == str(user_id))
-                .order_by(_USER_ROLES.c.role_name)
-            ).scalars()
-        )
+        roles: tuple[str, ...] = self._roles_for_user(connection=connection, user_id=user_id)
         sources: tuple[AuthenticationSource, ...] = tuple(
             AuthenticationSource(value)
             for value in connection.execute(
@@ -996,6 +1009,18 @@ class ControlStore:
             roles=roles,
             authentication_sources=tuple(dict.fromkeys(all_sources)),
         )
+
+    def _roles_for_user(self, *, connection: Connection, user_id: UUID) -> tuple[str, ...]:
+        return tuple(
+            connection.execute(
+                select(_USER_ROLES.c.role_name)
+                .where(_USER_ROLES.c.user_id == str(user_id))
+                .order_by(_USER_ROLES.c.role_name)
+            ).scalars()
+        )
+
+    def _invalidate_authentication(self) -> None:
+        self._authentication_revision += 1
 
     def _is_last_admin(self, *, connection: Connection, user_id: UUID) -> bool:
         connection.execute(

@@ -18,6 +18,19 @@ from tests.unit.src.streambuild.dev_server.classes._test_types import (
     "test_case",
     [
         AuditScheduleCalculationTestCase(
+            description="unmaterialized model keeps audit out of the due batch",
+            status_payloads=(),
+            anchors_by_model={},
+            warmup_anchor=None,
+            eligible_at=None,
+            warmup_eligible=False,
+            materialization_outcome=None,
+            expected_scheduler_state="idle",
+            expected_state="not_materialized",
+            expected_scheduled_for=None,
+            expected_missing_relations=("orders",),
+        ),
+        AuditScheduleCalculationTestCase(
             description="first eligible audit is immediately due",
             status_payloads=(),
             anchors_by_model={"orders": "2026-08-08 11:00:00.000"},
@@ -150,6 +163,7 @@ def test_given_compiled_audit_state_when_calculating_schedule_then_due_slot_is_d
                     eligible=test_case.warmup_eligible,
                     anchor=test_case.warmup_anchor,
                     eligible_at=test_case.eligible_at,
+                    missing_model_names=test_case.expected_missing_relations,
                 )
             },
         ),
@@ -174,6 +188,7 @@ def test_given_compiled_audit_state_when_calculating_schedule_then_due_slot_is_d
     assert payload["state"] == test_case.expected_scheduler_state
     assert audit_payload["state"] == test_case.expected_state
     assert audit_payload["scheduledFor"] == test_case.expected_scheduled_for
+    assert audit_payload["missingRelations"] == list(test_case.expected_missing_relations)
 
 
 if __name__ == "__main__":

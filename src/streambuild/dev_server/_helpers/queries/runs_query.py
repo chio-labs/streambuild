@@ -12,6 +12,8 @@ from streambuild.adapter.constants import (
     METADATA_RUN_EVENTS_TABLE_NAME,
     METADATA_RUN_STATEMENTS_TABLE_NAME,
 )
+from streambuild.adapter.exceptions import AdapterError
+from streambuild.adapter.models import AdapterStatementProgress
 from streambuild.compiler.discovery.constants import (
     DEFAULT_RUN_PRESUMED_FAILED_AFTER_SECONDS,
     RUN_UNRESPONSIVE_AFTER_SECONDS,
@@ -27,6 +29,10 @@ _STATEMENT_STARTED_KIND: str = "statement_started"
 _STATEMENT_COMPLETED_KIND: str = "statement_completed"
 _AUDIT_STARTED_KIND: str = "audit_started"
 _AUDIT_COMPLETED_KIND: str = "audit_completed"
+_AUDIT_COMMAND: str = "audit"
+_SCHEDULED_MODE: str = "scheduled"
+_SCHEDULED_COUNT_KEY: str = "scheduled_count"
+_ERROR_COUNT_KEY: str = "error_count"
 _COMPLETED_OPERATION_KINDS: frozenset[str] = frozenset(
     {_STATEMENT_COMPLETED_KIND, _AUDIT_COMPLETED_KIND}
 )
@@ -142,7 +148,7 @@ def read_latest_direct_build_materialization(
     query: str = (
         "SELECT materialized_outcome FROM "
         f"`{database}`.`{METADATA_INVOCATIONS_TABLE_NAME}` WHERE "
-        f"project_identity = '{_sql_literal(project_identity)}' AND "
+        f"{_project_identity_predicate(project_identity)} AND "
         f"target_identity = '{_sql_literal(database)}' AND command = 'build' AND mode = 'direct' "
         "AND materialized_outcome IS NOT NULL "
         "ORDER BY completed_at DESC, invocation_id DESC LIMIT 1"
@@ -168,7 +174,7 @@ def read_latest_applied_direct_build_at(
     query: str = (
         "SELECT toString(completed_at) AS completed_at FROM "
         f"`{database}`.`{METADATA_INVOCATIONS_TABLE_NAME}` WHERE "
-        f"project_identity = '{_sql_literal(project_identity)}' AND "
+        f"{_project_identity_predicate(project_identity)} AND "
         f"target_identity = '{_sql_literal(database)}' AND command = 'build' AND mode = 'direct' "
         "AND materialized_outcome = 'applied' "
         "ORDER BY completed_at DESC, invocation_id DESC LIMIT 1"
@@ -199,7 +205,10 @@ def _assemble_runs(
             )
             if started is not None and started.get("displayCommand"):
                 terminal_runs[invocation_id]["displayCommand"] = str(started["displayCommand"])
-            terminal_runs[invocation_id].update(_run_progress(events=events))
+            progress: dict[str, object] = _run_progress(events=events)
+            if terminal_runs[invocation_id].get("auditSummary") is not None:
+                progress.pop("auditSummary")
+            terminal_runs[invocation_id].update(progress)
             continue
         started: dict[str, object] = events[0]
         completed: dict[str, object] | None = next(
@@ -242,6 +251,7 @@ def _assemble_runs(
                 "contextLogicalIds": started.get("contextLogicalIds"),
                 "errorMessage": None if completed is None else completed.get("errorMessage"),
                 "toolVersion": str(started.get("toolVersion", "")),
+                "projectIdentity": started.get("projectIdentity"),
                 "lastActivity": _last_activity(events=events),
                 **_run_progress(events=events),
             }
@@ -260,7 +270,8 @@ def read_run_events(
 ) -> dict[str, object]:
     """Return durable cursor events and the current derived run state."""
 
-    warehouse_now: datetime = _parse_timestamp(connection.capture_warehouse_timestamp())
+    warehouse_timestamp: str = connection.capture_warehouse_timestamp()
+    warehouse_now: datetime = _parse_timestamp(warehouse_timestamp)
     terminal_by_id: dict[str, dict[str, object]] = _terminal_runs(
         connection=connection,
         database=database,
@@ -295,7 +306,55 @@ def read_run_events(
         "status": None if run is None else run["status"],
         "lastSignalAt": None if run is None else run["lastSignalAt"],
         "lastSignalAgeSeconds": None if run is None else run["lastSignalAgeSeconds"],
+        "statementProgress": _statement_progress(
+            connection=connection,
+            events=status_streams.get(invocation_id, []),
+            observed_at=warehouse_timestamp,
+        ),
     }
+
+
+def _statement_progress(
+    *, connection: AdapterConnection, events: list[dict[str, object]], observed_at: str
+) -> dict[str, object] | None:
+    active: dict[str, object] | None = _active_statement(events=events)
+    if active is None or active.get("queryId") is None:
+        return None
+    query_id: str = str(active["queryId"])
+    try:
+        progress: AdapterStatementProgress | None = connection.load_statement_progress(
+            query_id=query_id
+        )
+    except AdapterError:
+        progress = None
+    payload: dict[str, object] = {
+        "found": progress is not None,
+        "queryId": query_id,
+        "statementSequence": int(str(active["statementSequence"])),
+        "stepId": active.get("stepId"),
+        "phase": active.get("phase"),
+        "observedAt": observed_at,
+    }
+    if progress is None:
+        return payload
+    elapsed_seconds: float = progress.elapsed_seconds
+    payload.update(
+        {
+            "elapsedSeconds": elapsed_seconds,
+            "readRows": progress.read_rows,
+            "readBytes": progress.read_bytes,
+            "totalRowsApprox": progress.total_rows_approx,
+            "memoryUsageBytes": progress.memory_usage_bytes,
+            "readRowsPerSecond": (
+                0.0 if elapsed_seconds <= 0 else progress.read_rows / elapsed_seconds
+            ),
+            "readBytesPerSecond": (
+                0.0 if elapsed_seconds <= 0 else progress.read_bytes / elapsed_seconds
+            ),
+            "settings": dict(progress.settings),
+        }
+    )
+    return payload
 
 
 def read_run_statement(
@@ -354,9 +413,9 @@ def _terminal_runs(
     )
     limit_clause: str = "" if limit is None else f" LIMIT {limit}"
     query: str = (
-        "SELECT invocation_id, command, mode, outcome, exit_code, "
+        "SELECT invocation_id, project_identity, command, mode, outcome, exit_code, "
         "toString(started_at) AS started_at, toString(completed_at) AS completed_at, "
-        "duration_ms, selected_node_count, error_message, tool_version "
+        "duration_ms, selected_node_count, error_message, summary_json, tool_version "
         f"FROM `{database}`.`{METADATA_INVOCATIONS_TABLE_NAME}`{where_clause} "
         f"ORDER BY started_at DESC{limit_clause}"
     )
@@ -365,6 +424,7 @@ def _terminal_runs(
         invocation_id: str = str(row["invocation_id"])
         runs[invocation_id] = {
             "invocationId": invocation_id,
+            "projectIdentity": str(row["project_identity"]),
             "command": str(row["command"]),
             "displayCommand": None,
             "mode": str(row["mode"]),
@@ -378,6 +438,11 @@ def _terminal_runs(
             "durationMs": int(str(row["duration_ms"])),
             "selectedNodeCount": int(str(row["selected_node_count"])),
             "errorMessage": row["error_message"],
+            "auditSummary": _terminal_audit_summary(
+                command=str(row["command"]),
+                mode=str(row["mode"]),
+                summary_json=row["summary_json"],
+            ),
             "toolVersion": str(row["tool_version"]),
             "lastActivity": None,
             "completedOperationCount": None,
@@ -467,6 +532,13 @@ def _sql_literal(value: str) -> str:
     return value.replace("\\", "\\\\").replace("'", "\\'")
 
 
+def _project_identity_predicate(project_identity: str) -> str:
+    logical_identity: str = project_identity.rsplit("/", maxsplit=1)[-1]
+    literal: str = _sql_literal(logical_identity)
+    suffix: str = _sql_literal(f"/{logical_identity}")
+    return f"(project_identity = '{literal}' OR endsWith(project_identity, '{suffix}'))"
+
+
 def _table_exists(*, connection: AdapterConnection, database: str, table: str) -> bool:
     query: str = (
         "SELECT count() AS present FROM system.tables "
@@ -511,7 +583,50 @@ def _run_progress(*, events: list[dict[str, object]]) -> dict[str, object]:
         "completedOperationCount": completed_count,
         "totalStatements": total_statements,
         "currentStep": _active_step(events=events),
+        "auditSummary": _event_audit_summary(events=events),
     }
+
+
+def _terminal_audit_summary(
+    *, command: str, mode: str, summary_json: object
+) -> dict[str, int] | None:
+    if command != _AUDIT_COMMAND or mode != _SCHEDULED_MODE:
+        return None
+    summary: dict[str, object] = _parsed_event_payload(summary_json)
+    if _SCHEDULED_COUNT_KEY not in summary and _ERROR_COUNT_KEY not in summary:
+        return None
+    if summary.get(_ERROR_COUNT_KEY) is not None:
+        error_count: int = int(str(summary[_ERROR_COUNT_KEY]))
+        return {
+            "passed": 0,
+            "warning": 0,
+            "failed": 0,
+            "error": error_count,
+            "total": error_count,
+        }
+    total: int = int(str(summary.get(_SCHEDULED_COUNT_KEY, 0)))
+    warning: int = int(str(summary.get("warning_failure_count", 0)))
+    failed: int = int(str(summary.get("error_failure_count", 0)))
+    error: int = int(str(summary.get("execution_error_count", 0)))
+    return {
+        "passed": max(total - warning - failed - error, 0),
+        "warning": warning,
+        "failed": failed,
+        "error": error,
+        "total": total,
+    }
+
+
+def _event_audit_summary(*, events: list[dict[str, object]]) -> dict[str, int] | None:
+    counts: dict[str, int] = {"passed": 0, "warning": 0, "failed": 0, "error": 0}
+    for event in events:
+        if event["event"] != _AUDIT_COMPLETED_KIND:
+            continue
+        status: str = str(event.get("status", ""))
+        if status in counts:
+            counts[status] += 1
+    total: int = sum(counts.values())
+    return None if total == 0 else {**counts, "total": total}
 
 
 def _active_step(*, events: list[dict[str, object]]) -> str | None:
@@ -549,6 +664,23 @@ def _active_step(*, events: list[dict[str, object]]) -> str | None:
                 if consumed:
                     continue
             return started_audit_key
+    return None
+
+
+def _active_statement(*, events: list[dict[str, object]]) -> dict[str, object] | None:
+    completed_statements: dict[int, int] = {}
+    for event in reversed(events):
+        event_kind: str = str(event["event"])
+        if event_kind == _STATEMENT_COMPLETED_KIND and event.get("statementSequence") is not None:
+            key: int = int(str(event["statementSequence"]))
+            completed_statements[key] = completed_statements.get(key, 0) + 1
+        elif event_kind == _STATEMENT_STARTED_KIND and event.get("statementSequence") is not None:
+            statement_key: int = int(str(event["statementSequence"]))
+            completed_statements, consumed = _consume_count(
+                counts=completed_statements, key=statement_key
+            )
+            if not consumed:
+                return event
     return None
 
 

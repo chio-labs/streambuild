@@ -11,14 +11,15 @@ describe('plan API', () => {
 		);
 		vi.stubGlobal('fetch', fetchMock);
 
-		await requestPlan(
-			['model:orders', 'source:events'],
-			'2026-08-10T12:00:00Z',
-			'20260811T120000Z_plan'
-		);
+		await requestPlan({
+			selectors: ['model:orders', 'source:events'],
+			startTime: '2026-08-10T12:00:00Z',
+			deploymentId: '20260811T120000Z_plan'
+		});
 
 		expect(fetchMock).toHaveBeenCalledWith(
-			'/api/plan?select=model%3Aorders&select=source%3Aevents&start=2026-08-10T12%3A00%3A00Z&deployment=20260811T120000Z_plan'
+			'/api/plan?select=model%3Aorders&select=source%3Aevents&start=2026-08-10T12%3A00%3A00Z&deployment=20260811T120000Z_plan',
+			{ signal: undefined }
 		);
 	});
 });

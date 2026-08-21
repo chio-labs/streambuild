@@ -36,7 +36,8 @@ export function createRunDetailSnapshotResource(): RunDetailSnapshotResource {
 							hasMore: false,
 							status: null,
 							lastSignalAt: null,
-							lastSignalAgeSeconds: null
+							lastSignalAgeSeconds: null,
+							statementProgress: null
 						},
 						ownership,
 						record: null

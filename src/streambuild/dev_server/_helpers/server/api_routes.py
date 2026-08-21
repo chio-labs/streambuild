@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import AbstractContextManager, contextmanager
 from functools import partial
 from pathlib import Path
+from time import monotonic_ns
 from typing import Annotated
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, HTTPException, Query, Request, Response
+from fastapi.responses import JSONResponse
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.exceptions import AdapterError
@@ -178,13 +181,19 @@ def register_api_routes(
             warehouse_status=warehouse.status(),
         )
 
-    def read_definitions() -> dict[str, object]:
+    def read_definitions(*, request: Request) -> Response:
         try:
             outcome: CompileOutcome = state.current_servable_outcome()
             analysis: CompileAnalysis = state.current_analysis()
         except ProjectNotCompiledError as error:
             raise HTTPException(status_code=_HTTP_CONFLICT, detail=str(error)) from error
-        return build_definitions_payload(analysis=analysis, version_key=outcome.version_key)
+        etag: str = f'"{outcome.version_key}"'
+        if request.headers.get("if-none-match") == etag:
+            return Response(status_code=304, headers={"ETag": etag})
+        return JSONResponse(
+            content=build_definitions_payload(analysis=analysis, version_key=outcome.version_key),
+            headers={"ETag": etag},
+        )
 
     def read_state() -> dict[str, object]:
         if warehouse.connection is None or database is None:
@@ -207,6 +216,16 @@ def register_api_routes(
                 detail="no warehouse connection",
             )
         return connection
+
+    @contextmanager
+    def _required_read_connection() -> Iterator[AdapterConnection]:
+        with warehouse.read_connection() as connection:
+            if connection is None or database is None:
+                raise HTTPException(
+                    status_code=_HTTP_SERVICE_UNAVAILABLE,
+                    detail="no warehouse read connection",
+                )
+            yield connection
 
     def _servable_analysis() -> CompileAnalysis:
         try:
@@ -234,10 +253,9 @@ def register_api_routes(
     app.get("/api/state")(read_state)
     _register_plan_route(
         app=app,
-        state=state,
         database=database,
         execution_context=execution_context,
-        required_connection=_required_connection,
+        read_connection=_required_read_connection,
         servable_analysis=_servable_analysis,
     )
     app.post("/api/reload")(reload_project)
@@ -289,10 +307,9 @@ def register_api_routes(
 def _register_plan_route(
     *,
     app: FastAPI,
-    state: DevServerState,
     database: str | None,
     execution_context: DevExecutionContext,
-    required_connection: Callable[[], AdapterConnection],
+    read_connection: Callable[[], AbstractContextManager[AdapterConnection]],
     servable_analysis: Callable[[], CompileAnalysis],
 ) -> None:
     """Attach the mode-aware plan preview route."""
@@ -302,13 +319,15 @@ def _register_plan_route(
         select: Annotated[list[str] | None, Query()] = None,
         start: Annotated[str | None, Query()] = None,
         deployment: Annotated[str | None, Query()] = None,
+        counts: Annotated[bool, Query()] = False,
     ) -> dict[str, object]:
-        client: AdapterConnection = required_connection()
         analysis: CompileAnalysis = servable_analysis()
+        request_started_ns: int = monotonic_ns()
         try:
             if start is not None and not select:
                 raise CliUserError("--start-time requires at least one --select")
-            with state.query_lock:
+            with read_connection() as client:
+                connection_acquired_ns: int = monotonic_ns()
                 planned_at: str = client.capture_warehouse_timestamp()
                 preparation: (
                     DirectWorkflowPreparation
@@ -336,17 +355,16 @@ def _register_plan_route(
                     deployment_id=resolved_deployment_id,
                     execution_context=execution_context,
                 )
-                replay_row_counts: dict[str, int | None] = (
-                    {}
-                    if direct is None
-                    else count_replay_rows(
+                planning_completed_ns: int = monotonic_ns()
+                replay_row_counts: dict[str, int | None] = {}
+                if counts and direct is not None:
+                    replay_row_counts = count_replay_rows(
                         connection=client,
                         database=direct.preview.database,
                         plan=direct.preview.plan,
                         start_time=direct.preview.effective_start_time,
                     )
-                )
-                return build_mode_aware_plan_payload(
+                payload: dict[str, object] = build_mode_aware_plan_payload(
                     preparation=preparation,
                     analysis=analysis,
                     selectors=tuple(select or ()),
@@ -354,6 +372,14 @@ def _register_plan_route(
                     command=command,
                     replay_row_counts=replay_row_counts,
                 )
+                completed_ns: int = monotonic_ns()
+                payload["timings"] = {
+                    "connectionWaitMs": (connection_acquired_ns - request_started_ns) // 1_000_000,
+                    "planningMs": (planning_completed_ns - connection_acquired_ns) // 1_000_000,
+                    "replayCountsMs": (completed_ns - planning_completed_ns) // 1_000_000,
+                    "totalMs": (completed_ns - request_started_ns) // 1_000_000,
+                }
+                return payload
         except (
             BackfillExecutionError,
             CliUserError,

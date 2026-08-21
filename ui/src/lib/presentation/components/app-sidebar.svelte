@@ -5,10 +5,8 @@
 	import UsersIcon from '@lucide/svelte/icons/users';
 	import { getApp } from '$lib/api/main/project/get-app';
 	import { getProject } from '$lib/api/main/project/get-project';
-	import { prefetchRuns } from '$lib/api/main/runs/prefetch-runs';
 	import type { Project } from '$lib/domain/types';
 	import { SIDEBAR_NAV_GROUPS } from '$lib/presentation/constants';
-	import { navigateToRuns } from '$lib/presentation/main/_navigate-to-runs';
 	import type { SidebarNavItem } from '$lib/presentation/types';
 	import { getAuth } from '$lib/auth/main/get-auth';
 
@@ -38,13 +36,6 @@
 		return page.url.pathname.startsWith(href);
 	}
 
-	function prefetchNavItem(item: SidebarNavItem): void {
-		if (item.href === '/runs') void prefetchRuns();
-	}
-
-	async function navigateToPrefetchedItem(event: MouseEvent, item: SidebarNavItem): Promise<void> {
-		if (item.href === '/runs') await navigateToRuns(event);
-	}
 </script>
 
 <aside
@@ -93,9 +84,6 @@
 				<a
 					href={item.href}
 					title={item.label}
-					onpointerenter={() => prefetchNavItem(item)}
-					onfocus={() => prefetchNavItem(item)}
-					onclick={(event) => void navigateToPrefetchedItem(event, item)}
 					class="relative flex items-center justify-center gap-2.5 rounded-md px-2 py-2 text-[13px] md:justify-start md:px-3 {isActive(
 						item.href
 					)

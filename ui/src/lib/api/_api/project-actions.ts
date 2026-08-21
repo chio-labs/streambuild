@@ -6,7 +6,10 @@ export async function requestProjectReload(): Promise<Record<string, unknown>> {
 	return readApiResponse<Record<string, unknown>>(response, 'project reload');
 }
 
-export async function requestWarehouseRefresh(): Promise<Record<string, unknown>> {
-	const response: Response = await authenticatedFetch('/api/warehouse/refresh', { method: 'POST' });
+export async function requestWarehouseRefresh(signal?: AbortSignal): Promise<Record<string, unknown>> {
+	const response: Response = await authenticatedFetch('/api/warehouse/refresh', {
+		method: 'POST',
+		signal
+	});
 	return readApiResponse<Record<string, unknown>>(response, 'warehouse refresh');
 }

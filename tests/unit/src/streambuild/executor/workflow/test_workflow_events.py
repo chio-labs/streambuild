@@ -5,9 +5,13 @@ from streambuild.executor.workflow.main._execute_warehouse_workflow import (
 )
 from streambuild.executor.workflow.models import WorkflowExecutionResult
 from tests.unit.src.streambuild.cli.helpers import RecordingAdapterConnection
-from tests.unit.src.streambuild.executor.workflow._test_types import WorkflowEmitterTestCase
+from tests.unit.src.streambuild.executor.workflow._test_types import (
+    WorkflowEmitterTestCase,
+    WorkflowQueryIdTestCase,
+)
 from tests.unit.src.streambuild.executor.workflow.helpers import (
     FailingMutationConnection,
+    QueryIdRecordingConnection,
     RecordingWorkflowEmitter,
     build_test_workflow,
     build_tolerant_failure_workflow,
@@ -43,6 +47,32 @@ def test_given_emitter_when_executing_workflow_then_narrates_every_statement(
 
     assert tuple(emitter.calls) == test_case.expected_calls
     assert len(result.statement_results) == 2
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        WorkflowQueryIdTestCase(
+            description="correlates every statement with the emitter query ID",
+            query_id="query-123",
+            expected_query_ids=("query-123", "query-123"),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_emitter_query_id_when_executing_workflow_then_every_statement_is_correlated(
+    test_case: WorkflowQueryIdTestCase,
+) -> None:
+    emitter: RecordingWorkflowEmitter = RecordingWorkflowEmitter(query_id=test_case.query_id)
+    connection: QueryIdRecordingConnection = QueryIdRecordingConnection()
+
+    execute_warehouse_workflow(
+        statements=build_test_workflow(plan_json='{"mode":"direct"}\n').statements,
+        connection=connection,
+        emitter=emitter,
+    )
+
+    assert tuple(connection.query_ids) == test_case.expected_query_ids
 
 
 @pytest.mark.parametrize(
