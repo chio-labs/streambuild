@@ -175,8 +175,10 @@ class RenderOffsetReplayStatementTestCase:
 
 
 @dataclass(frozen=True)
-class RenderAggregateOffsetPhysicalBoundaryTestCase:
+class RenderSourceFilteredOffsetPhysicalBoundaryTestCase:
     description: str
+    query: str
+    filter_boundaries_at_source: bool
     expected_inclusive_cte_fragment: str
     expected_exclusive_cte_fragment: str
     expected_partition_predicate: str

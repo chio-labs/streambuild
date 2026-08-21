@@ -131,7 +131,7 @@ def _render_deployment_scalar_replay(request: AdapterDeploymentReplayRequest) ->
     named_queries: tuple[SqlNamedQuery, ...] = (
         SqlNamedQuery(name="replay_cutoff", query=cutoff_cte),
     )
-    if replay.replay_query.aggregate_semantics:
+    if replay.replay_query.aggregate_semantics or replay.filter_boundaries_at_source:
         physical_predicate: str = _dynamic_scalar_predicate(
             column_name=f"anchor.{_physical_boundary_column(replay)}",
             upper_expression=upper_expression,
@@ -627,7 +627,7 @@ def _render_scalar_replay(
         lower_bound_inclusive=request.window.lower_bound_inclusive,
     )
     rewritten_query: str
-    if request.replay_query.aggregate_semantics:
+    if request.replay_query.aggregate_semantics or request.filter_boundaries_at_source:
         physical_predicate: str = _scalar_boundary_predicate(
             column_name=f"anchor.{_physical_boundary_column(request)}",
             boundary=boundary,
@@ -690,7 +690,7 @@ def _render_offset_replay(
         value_alias="cutoff_offset",
     )
     lower_bound_cte_sql: str = _lower_offset_frontier_cte(lower_bound_rows)
-    if request.replay_query.aggregate_semantics:
+    if request.replay_query.aggregate_semantics or request.filter_boundaries_at_source:
         return _render_aggregate_offset_replay(
             request=request,
             cutoff_cte_sql=cutoff_cte_sql,
