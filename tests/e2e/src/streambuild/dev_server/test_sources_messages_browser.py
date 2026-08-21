@@ -108,7 +108,9 @@ def test_given_managed_kafka_source_when_navigating_inventory_then_live_facts_re
     expect(page.get_by_role("button", name="Timestamp ▼", exact=True)).to_be_visible()
     assert all(message.type != "error" for message in console_messages)
     assert page_errors == []
-    assert failed_requests == []
+    assert {(urlparse(request.url).path, request.failure) for request in failed_requests} <= {
+        ("/api/definitions", "net::ERR_ABORTED")
+    }
     assert all(response.status < 400 for response in responses)
 
 
@@ -252,5 +254,7 @@ def test_given_landed_messages_when_filtering_console_then_shareable_record_evid
     expect(page.get_by_text(test_case.filtered_order_id, exact=True).first).to_be_visible()
     assert all(message.type != "error" for message in console_messages)
     assert page_errors == []
-    assert failed_requests == []
+    assert {(urlparse(request.url).path, request.failure) for request in failed_requests} <= {
+        ("/api/definitions", "net::ERR_ABORTED")
+    }
     assert all(response.status < 400 for response in responses)

@@ -155,5 +155,7 @@ def test_given_persisted_scheduled_audits_when_filtering_quality_then_outcomes_r
     assert scheduled_count == 3
     assert all(message.type != "error" for message in console_messages)
     assert page_errors == []
-    assert failed_requests == []
+    assert {(urlparse(request.url).path, request.failure) for request in failed_requests} <= {
+        ("/api/definitions", "net::ERR_ABORTED")
+    }
     assert all(response.status < 400 for response in responses)

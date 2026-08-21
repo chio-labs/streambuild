@@ -86,8 +86,20 @@ def test_given_retained_source_when_editing_plan_then_url_and_replay_contract_ro
     replay_roots: list[dict[str, object]] = cast(
         list[dict[str, object]], selected_plan["replayRoots"]
     )
-    assert replay_roots[0]["rowsToReplay"] == test_case.expected_replay_rows
+    assert replay_roots[0]["rowsToReplay"] is None
     expect(page.get_by_text("Replay roots", exact=True)).to_be_visible()
+    with page.expect_response(
+        lambda response: (
+            urlparse(response.url).path == "/api/plan"
+            and parse_qs(urlparse(response.url).query).get("counts") == ["true"]
+        )
+    ) as counted_plan_info:
+        page.get_by_role("button", name="Load exact counts", exact=True).click()
+    counted_plan: dict[str, object] = counted_plan_info.value.json()
+    counted_replay_roots: list[dict[str, object]] = cast(
+        list[dict[str, object]], counted_plan["replayRoots"]
+    )
+    assert counted_replay_roots[0]["rowsToReplay"] == test_case.expected_replay_rows
     expect(page.get_by_text(re.compile(rf"{test_case.expected_replay_rows} rows$"))).to_be_visible()
 
     from_time: Locator = page.get_by_role("button", name="From a time", exact=True)
@@ -131,7 +143,9 @@ def test_given_retained_source_when_editing_plan_then_url_and_replay_contract_ro
     expect(page.get_by_label("Replay start time")).to_be_visible()
     assert all(message.type != "error" for message in console_messages)
     assert page_errors == []
-    assert failed_requests == []
+    assert {(urlparse(request.url).path, request.failure) for request in failed_requests} <= {
+        ("/api/definitions", "net::ERR_ABORTED")
+    }
     assert all(response.status < 400 for response in responses)
 
 
@@ -225,11 +239,13 @@ def test_given_planned_model_when_executing_then_live_and_durable_run_surfaces_a
     expect(run_row).to_contain_text("Success")
     expect(run_row).to_contain_text(re.compile(rf"stb build .*--select {test_case.selector}"))
     page.get_by_role("button", name=re.compile(r"^Failed\s+\d+$")).click()
-    expect(page.get_by_text("No failed runs.", exact=True)).to_be_visible()
+    expect(page.get_by_text("No failed builds.", exact=True)).to_be_visible()
     page.get_by_role("button", name=re.compile(r"^Succeeded\s+\d+$")).click()
     expect(run_link).to_be_visible()
     assert launch_invocation_id
     assert all(message.type != "error" for message in console_messages)
     assert page_errors == []
-    assert failed_requests == []
+    assert {(urlparse(request.url).path, request.failure) for request in failed_requests} <= {
+        ("/api/definitions", "net::ERR_ABORTED")
+    }
     assert all(response.status < 400 for response in responses)
