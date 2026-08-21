@@ -2,6 +2,12 @@ from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
+class ReplayExecutionSettingsTestCase:
+    description: str
+    expected_settings: dict[str, str]
+
+
+@dataclass(frozen=True)
 class AnalyzeProjectTestCase:
     description: str
     expected_pipeline_names: tuple[str, ...]

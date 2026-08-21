@@ -13,6 +13,8 @@ from streambuild.compiler.discovery.constants import (
     ALLOWED_MODEL_KEYS,
     DEFAULT_SQL_MODEL_ENGINE,
     DEFAULT_SQL_MODEL_ORDER_BY,
+    EXECUTION_SETTING_NAME_PATTERN,
+    EXECUTION_SETTINGS_KEYS,
     MODEL_COLUMN_KEYS,
     MODEL_HEADER_PATTERN,
     SCHEMA_CHANGE_RULE_KEYS,
@@ -21,6 +23,7 @@ from streambuild.compiler.discovery.constants import (
 )
 from streambuild.compiler.discovery.exceptions import ModelHeaderSyntaxError, PipelineDiscoveryError
 from streambuild.compiler.discovery.models import (
+    ExecutionSettings,
     ModelColumnSpec,
     ReplayOnChangePolicy,
     ReplayOnChangeRule,
@@ -145,6 +148,9 @@ def _load_transform_from_sql_contents(
         ttl=_optional_string(header_values=header_values, key="ttl", file_path=file_path),
         settings=_optional_string_mapping(
             header_values=header_values, key="settings", file_path=file_path
+        ),
+        execution_settings=_optional_execution_settings(
+            header_values=header_values, file_path=file_path
         ),
         replay_anchor=_optional_replay_anchor(header_values=header_values, file_path=file_path),
         replay_on_change=_optional_replay_on_change(
@@ -466,6 +472,53 @@ def _optional_string_mapping(
             f"MODEL(...) in '{file_path}' must define '{key}' as a mapping when set"
         )
     return {map_key: str(map_value) for map_key, map_value in value.items()}
+
+
+def _optional_execution_settings(
+    *, header_values: dict[str, Any], file_path: Path
+) -> ExecutionSettings:
+    value: Any = header_values.get("execution_settings")
+    if value is None:
+        return ExecutionSettings()
+    if not isinstance(value, dict):
+        raise PipelineDiscoveryError(
+            f"MODEL(...) in '{file_path}' must define 'execution_settings' as a mapping"
+        )
+    unknown_keys: tuple[str, ...] = tuple(sorted(set(value) - EXECUTION_SETTINGS_KEYS))
+    if unknown_keys:
+        raise PipelineDiscoveryError(
+            f"MODEL(...) in '{file_path}' contains unsupported execution_settings keys: "
+            f"{', '.join(unknown_keys)}"
+        )
+    return ExecutionSettings(
+        replay=_execution_setting_mapping(
+            value=value.get("replay"),
+            label="execution_settings.replay",
+            file_path=file_path,
+        )
+    )
+
+
+def _execution_setting_mapping(*, value: Any, label: str, file_path: Path) -> dict[str, str] | None:
+    if value is None:
+        return None
+    if not isinstance(value, dict) or not value:
+        raise PipelineDiscoveryError(
+            f"MODEL(...) in '{file_path}' must define '{label}' as a non-empty mapping"
+        )
+    invalid_names: tuple[str, ...] = tuple(
+        sorted(
+            str(name)
+            for name in value
+            if not isinstance(name, str) or EXECUTION_SETTING_NAME_PATTERN.fullmatch(name) is None
+        )
+    )
+    if invalid_names:
+        raise PipelineDiscoveryError(
+            f"MODEL(...) in '{file_path}' contains invalid {label} setting names: "
+            f"{', '.join(invalid_names)}"
+        )
+    return {name: str(setting_value) for name, setting_value in value.items()}
 
 
 def _optional_replay_anchor(*, header_values: dict[str, Any], file_path: Path) -> ReplayAnchorMode:

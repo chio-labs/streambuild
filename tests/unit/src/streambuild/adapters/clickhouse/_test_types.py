@@ -171,6 +171,7 @@ class RenderOffsetReplayStatementTestCase:
     query: str
     replay_table_name_by_logical_name: dict[str, str]
     expected_statement: str
+    settings: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True)

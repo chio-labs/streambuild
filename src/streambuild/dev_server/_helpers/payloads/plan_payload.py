@@ -367,6 +367,7 @@ def _replay_root_payload(
         },
         "propagatedModelNames": [key.name for key in item.propagated_model_keys],
         "hasAggregateSemantics": item.has_aggregate_semantics,
+        "settings": dict(item.replay_settings),
         "rowsToReplay": rows_to_replay,
     }
 

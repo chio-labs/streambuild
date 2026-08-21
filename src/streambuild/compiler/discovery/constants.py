@@ -22,6 +22,7 @@ ALLOWED_MODEL_KEYS: frozenset[str] = frozenset(
         "partition_by",
         "ttl",
         "settings",
+        "execution_settings",
         "replay_anchor",
         "replay_on_change",
         "bounded_replay_fallback",
@@ -34,6 +35,7 @@ VIEW_FORBIDDEN_MODEL_KEYS: frozenset[str] = frozenset(
         "partition_by",
         "ttl",
         "settings",
+        "execution_settings",
         "replay_anchor",
         "replay_on_change",
         "bounded_replay_fallback",
@@ -60,8 +62,13 @@ PIPELINE_CONFIG_KEYS: frozenset[str] = frozenset(
         "naming",
         "protection",
         "audit_defaults",
+        "execution",
     }
 )
+EXECUTION_SETTING_NAME_PATTERN: re.Pattern[str] = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+EXECUTION_SETTINGS_KEYS: frozenset[str] = frozenset({"replay"})
+PIPELINE_EXECUTION_KEYS: frozenset[str] = frozenset({"replay"})
+PIPELINE_REPLAY_EXECUTION_KEYS: frozenset[str] = frozenset({"settings"})
 NAMING_KEYS: frozenset[str] = frozenset({"table_prefix", "view_prefix"})
 PROJECT_NAMING_KEYS: frozenset[str] = NAMING_KEYS | frozenset(
     {"pipeline_prefix", "pipeline_naming_macro"}

@@ -17,7 +17,11 @@ from streambuild.cli.entry._helpers.compiler_profile import build_compiler_adapt
 from streambuild.compiler.audit_discovery.models import LoadedSqlAudit
 from streambuild.compiler.compile.exceptions import PipelineCompileError
 from streambuild.compiler.compile.main._build_compile_inputs import build_compile_inputs
-from streambuild.compiler.compile.models import CompilerAdapterProfile, DesiredTable
+from streambuild.compiler.compile.models import (
+    CompiledTableModel,
+    CompilerAdapterProfile,
+    DesiredTable,
+)
 from streambuild.compiler.discovery._helpers.load import load_pipeline_directory
 from streambuild.compiler.discovery.exceptions import PipelineDiscoveryError
 from streambuild.compiler.discovery.main._discover_project_inputs import (
@@ -34,7 +38,10 @@ from streambuild.compiler.macros.main._expand_macro_calls import expand_macro_ca
 from streambuild.compiler.pipeline.main.analyze_project import analyze_project
 from streambuild.compiler.pipeline.models import CompileAnalysis
 from tests.unit.src.streambuild.compiler.audit_discovery.helpers import write_sql_audit_file
-from tests.unit.src.streambuild.compiler.discovery._helpers.load.helpers import write_pipeline_file
+from tests.unit.src.streambuild.compiler.discovery._helpers.load.helpers import (
+    write_pipeline_file,
+    write_registry_project,
+)
 from tests.unit.src.streambuild.compiler.discovery.helpers import write_project_toml
 from tests.unit.src.streambuild.compiler.pipeline._test_types import (
     AnalysisDialectTestCase,
@@ -46,6 +53,7 @@ from tests.unit.src.streambuild.compiler.pipeline._test_types import (
     PrivateMacroDiscoveryTestCase,
     ProjectSqlAnalysisCallCountTestCase,
     ReadOnceCompilationTestCase,
+    ReplayExecutionSettingsTestCase,
     ReplayPolicyModeErrorTestCase,
     SharedMacroRuntimeTestCase,
     SharedSourceRealizationTestCase,
@@ -62,6 +70,48 @@ from tests.unit.src.streambuild.compiler.pipeline.helpers import (
     write_source_model_name_collision,
 )
 from tests.unit.src.streambuild.compiler.test_discovery.helpers import model_payload
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ReplayExecutionSettingsTestCase(
+            description="model replay settings override pipeline defaults",
+            expected_settings={"max_threads": "8", "max_block_size": "32"},
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_pipeline_and_model_replay_settings_when_analyzing_then_model_values_win(
+    test_case: ReplayExecutionSettingsTestCase,
+    tmp_path: Path,
+) -> None:
+    pipeline_dir: Path = write_registry_project(
+        project_dir=tmp_path,
+        pipeline_config_contents="""
+        [execution.replay.settings]
+        max_threads = 8
+        max_block_size = 64
+        """,
+        model_contents="""
+        MODEL (
+          order_by ["order_id"],
+          execution_settings (replay (max_block_size 32)),
+        );
+        SELECT order_id::UInt64 AS order_id FROM __source("orders")
+        """,
+        pipeline_name="pl_orders",
+    )
+    loaded_project: LoadedProject | None = load_project_input_for_path(path=tmp_path)
+
+    analysis: CompileAnalysis = analyze_project(
+        pipelines_root=pipeline_dir.parent,
+        loaded_project=loaded_project,
+        adapter_profile=build_compiler_adapter_profile(ClickHouseAdapter()),
+    )
+    model: CompiledTableModel = cast(CompiledTableModel, analysis.compiled_project.models[0])
+
+    assert dict(model.transform.execution_settings.replay or {}) == test_case.expected_settings
 
 
 @pytest.mark.parametrize(

@@ -48,6 +48,13 @@ class LoadModelDescriptionTestCase:
 
 
 @dataclass(frozen=True)
+class LoadModelExecutionSettingsTestCase:
+    description: str
+    contents: str
+    expected_replay_settings: dict[str, str]
+
+
+@dataclass(frozen=True)
 class GlobalNameCollisionTestCase:
     description: str
     pipeline_name: str
