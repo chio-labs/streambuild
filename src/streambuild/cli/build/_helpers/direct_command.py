@@ -35,6 +35,9 @@ from streambuild.executor.observability.main.build_invocation_record import (
 from streambuild.executor.observability.main.build_node_result_record import (
     build_node_result_record,
 )
+from streambuild.executor.observability.main.logical_project_identity import (
+    logical_project_identity,
+)
 from streambuild.executor.observability.main.logical_resource_identities import (
     logical_resource_identities,
 )
@@ -255,6 +258,7 @@ def _build_event_sink(
         connection=client,
         database=preparation.preview.metadata_database,
         invocation_id=invocation_id,
+        project_identity=logical_project_identity(project_dir=options.pipelines_root.parent),
         jsonl_stream=sys.stdout if options.events_output else None,
     )
 
