@@ -476,6 +476,7 @@ class DirectReplayRoot:
     replay_boundary_mode: ReplayLineageMode | str
     propagated_model_keys: tuple[LogicalResourceKey, ...]
     has_aggregate_semantics: bool = False
+    replay_settings: tuple[tuple[str, str], ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(

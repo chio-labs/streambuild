@@ -541,6 +541,11 @@ def _desired_table(
         logical_model_name=logical_model_name,
         replay_on_change=None if model is None else model.replay_on_change,
         bounded_replay_fallback=replay_fallback,
+        replay_settings=(
+            None
+            if model is None or model.transform.execution_settings.replay is None
+            else dict(model.transform.execution_settings.replay)
+        ),
     )
 
 

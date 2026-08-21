@@ -306,6 +306,9 @@ class DirectPlanBuilder:
         propagated_model_keys: tuple[LogicalResourceKey, ...],
     ) -> DirectReplayRoot:
         driving_input_key: LogicalResourceKey = self._require_driving_parent(model_key=root_key)
+        root_model: CompiledModel = self._model_by_key[root_key]
+        if not isinstance(root_model, CompiledTableModel):
+            raise DirectPlanError(f"Replay root '{root_key.name}' is not a table model")
         return DirectReplayRoot(
             model_key=root_key,
             driving_input_key=driving_input_key,
@@ -316,6 +319,9 @@ class DirectPlanBuilder:
             replay_boundary_mode=self._replay_boundary_mode(model_key=root_key),
             propagated_model_keys=propagated_model_keys,
             has_aggregate_semantics=root_key in self._aggregate_model_keys,
+            replay_settings=tuple(
+                sorted((root_model.transform.execution_settings.replay or {}).items())
+            ),
         )
 
     def _reject_adopted_source_target_collisions(self) -> None:

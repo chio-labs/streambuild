@@ -79,6 +79,7 @@ from tests.unit.src.streambuild.cli.plan.main._test_types import (
                             {"resource_type": "model", "name": "orders_enriched"}
                         ],
                         "has_aggregate_semantics": False,
+                        "settings": {"max_block_size": "32"},
                     }
                 ],
                 "teardown": [
@@ -165,6 +166,7 @@ def test_given_direct_plan_when_serializing_then_preserves_complete_nested_ident
                 ),
                 replay_boundary_mode="offsets",
                 propagated_model_keys=(model_key,),
+                replay_settings=(("max_block_size", "32"),),
             ),
         ),
         teardown_operations=(

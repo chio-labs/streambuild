@@ -332,7 +332,8 @@ export function planFromServer(payload: Payload, adapter: string): Plan {
 			replayColumns: (root.replayColumns as Plan['replayRoots'][number]['replayColumns']) ?? {},
 			propagatedModelNames: (root.propagatedModelNames as string[]) ?? [],
 			hasAggregateSemantics: Boolean(root.hasAggregateSemantics),
-			rowsToReplay: (root.rowsToReplay as number | null) ?? null
+			rowsToReplay: (root.rowsToReplay as number | null) ?? null,
+			settings: (root.settings as Record<string, string>) ?? {}
 		})),
 		warnings: ((payload.warnings as Payload[]) ?? []).map((warning) => ({
 			code: (warning.code as string) ?? '',
