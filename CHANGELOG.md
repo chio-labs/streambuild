@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.26.14](https://github.com/chio-labs/streambuild/compare/v0.26.13...v0.26.14) (2026-08-22)
+
+
+### Bug Fixes
+
+* make sensor alerts immediately actionable ([#163](https://github.com/chio-labs/streambuild/issues/163)) ([e7a9b94](https://github.com/chio-labs/streambuild/commit/e7a9b94d7f185946cc5468f7fd8a2f2c87fb0468))
+
 ## [0.26.13](https://github.com/chio-labs/streambuild/compare/v0.26.12...v0.26.13) (2026-08-22)
 
 
