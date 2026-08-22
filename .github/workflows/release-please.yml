@@ -82,7 +82,7 @@ jobs:
             echo "Release Please reported a created PR without a number" >&2
             exit 1
           fi
-          head_sha="$(gh pr view "${release_pr}" --json headRefOid --jq .headRefOid)"
+          head_sha="$(git rev-parse HEAD)"
 
           workflows=(pull-request-metadata.yml version-guard.yml verify.yml)
           contexts=("Pull Request Metadata" "Block automatic 1.0 releases" "Verify")
