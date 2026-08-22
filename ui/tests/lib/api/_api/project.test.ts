@@ -72,4 +72,63 @@ describe('project API', () => {
 			signal: undefined
 		});
 	});
+
+	it('given definitions exceed browser storage when requested then the fetched payload is returned', async () => {
+		vi.stubGlobal('sessionStorage', {
+			getItem: () => null,
+			setItem: () => {
+				throw new DOMException('Storage quota exceeded', 'QuotaExceededError');
+			}
+		});
+		vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response('{"models":[{"name":"orders"}]}'))));
+
+		const definitions: Record<string, unknown> = await requestDefinitionsPayload('large-project');
+
+		expect(definitions).toEqual({ models: [{ name: 'orders' }] });
+	});
+
+	it('given malformed cached definitions when requested then a complete payload replaces them', async () => {
+		const setItem: ReturnType<typeof vi.fn> = vi.fn();
+		vi.stubGlobal('sessionStorage', {
+			getItem: () => '{invalid',
+			setItem
+		});
+		const fetchMock: ReturnType<typeof vi.fn> = vi.fn(() =>
+			Promise.resolve(new Response('{"models":[]}'))
+		);
+		vi.stubGlobal('fetch', fetchMock);
+
+		const definitions: Record<string, unknown> = await requestDefinitionsPayload('version-1');
+
+		expect(definitions).toEqual({ models: [] });
+		expect(fetchMock).toHaveBeenCalledWith('/api/definitions', {
+			headers: undefined,
+			signal: undefined
+		});
+		expect(setItem).toHaveBeenCalledWith('streambuild:definitions:version-1', '{"models":[]}');
+	});
+
+	it('given stale definition versions when caching a new version then only the current snapshot remains', async () => {
+		const storage: Map<string, string> = new Map([
+			['streambuild:definitions:old-version', '{"models":[{"name":"old"}]}'],
+			['unrelated', 'preserved']
+		]);
+		vi.stubGlobal('sessionStorage', {
+			get length() {
+				return storage.size;
+			},
+			getItem: (key: string) => storage.get(key) ?? null,
+			key: (index: number) => [...storage.keys()][index] ?? null,
+			removeItem: (key: string) => storage.delete(key),
+			setItem: (key: string, value: string) => storage.set(key, value)
+		});
+		vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response('{"models":[]}'))));
+
+		await requestDefinitionsPayload('new-version');
+
+		expect([...storage.entries()]).toEqual([
+			['unrelated', 'preserved'],
+			['streambuild:definitions:new-version', '{"models":[]}']
+		]);
+	});
 });
