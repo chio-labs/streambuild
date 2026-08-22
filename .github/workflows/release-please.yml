@@ -27,7 +27,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.release.outputs.tag_name }}
-        run: gh workflow run publish.yml --ref main -f "tag=${RELEASE_TAG}"
+        run: |
+          gh workflow run publish.yml --repo "${GITHUB_REPOSITORY}" --ref main \
+            -f "tag=${RELEASE_TAG}"
 
       - name: Resolve release branch
         id: release_branch
