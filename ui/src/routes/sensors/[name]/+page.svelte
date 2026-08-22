@@ -69,8 +69,23 @@
 			<div class="font-mono text-[11px]" style:color="var(--sb-error)">{sensors.error}</div>
 		{/if}
 		{#if sensors.actionError !== null}
-			<div class="font-mono text-[11px]" style:color="var(--sb-error)" data-testid="sensor-action-error">
+			<div
+				class="font-mono text-[11px]"
+				style:color="var(--sb-error)"
+				data-testid="sensor-action-error"
+				role="alert"
+			>
 				{sensors.actionError}
+			</div>
+		{/if}
+		{#if sensors.actionMessage !== null}
+			<div
+				class="font-mono text-[11px]"
+				style:color="var(--sb-success)"
+				data-testid="sensor-action-message"
+				role="status"
+			>
+				{sensors.actionMessage}
 			</div>
 		{/if}
 		{#if sensor !== null}
@@ -149,11 +164,13 @@
 						/>
 					</div>
 					<div class="text-[var(--sb-text-faint)] max-w-[640px] pb-1.5 pt-0.5 text-[10.5px]">
-						Each event below failed every retry, so this sensor's action never ran for it. Retry
-						re-attempts the handler without repeating completed steps; Skip records your reason and
-						drops the event.
+						Each event below exhausted its automatic retries and will not retry again on its own.
+						Later events continue normally. Retry runs the handler now without repeating completed
+						steps; Skip records your reason and resolves the event without running it.
 					</div>
 					{#each letters as letter (letter.tickId)}
+						{@const retrying = sensors.pendingDeadLetterAction?.eventId === letter.eventId && sensors.pendingDeadLetterAction.type === 'retry'}
+						{@const skipping = sensors.pendingDeadLetterAction?.eventId === letter.eventId && sensors.pendingDeadLetterAction.type === 'skip'}
 						<div
 							class="flex items-center gap-3 py-[3px] font-mono text-[10.5px]"
 							data-testid={`dead-letter-${letter.eventId}`}
@@ -171,20 +188,22 @@
 							<button
 								class="text-muted-foreground hover:text-foreground hover:bg-[var(--sb-hover)] rounded-[4px] border border-border px-2 py-[2px] disabled:opacity-50"
 								disabled={sensors.busy || !manageAllowed}
+								aria-busy={retrying}
 								title={manageAllowed ? undefined : manageHint}
 								onclick={() =>
 									void sensors.retryDeadLetter(letter.sensorName, letter.eventId ?? '')}
 							>
-								Retry
+								{retrying ? 'Retrying…' : 'Retry'}
 							</button>
 							<button
 								class="text-muted-foreground hover:text-foreground hover:bg-[var(--sb-hover)] rounded-[4px] border border-border px-2 py-[2px] disabled:opacity-50"
 								disabled={sensors.busy || !manageAllowed || skipReason.trim() === ''}
+								aria-busy={skipping}
 								title={manageAllowed ? 'Requires a skip reason' : manageHint}
 								onclick={() =>
 									void sensors.skipDeadLetter(letter.sensorName, letter.eventId ?? '', skipReason)}
 							>
-								Skip
+								{skipping ? 'Skipping…' : 'Skip'}
 							</button>
 						</div>
 					{/each}

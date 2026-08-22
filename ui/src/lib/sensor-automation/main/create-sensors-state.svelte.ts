@@ -7,7 +7,9 @@ import { fetchSensors, fetchSensorTicks } from '../_api/sensor-collection';
 import { requestSensorStatus } from '../_api/sensor-status';
 import { createSensorsPollingResource } from '../_resources/sensors-polling.resource';
 import type {
+	DeadLetterActionResult,
 	DeadLettersPayload,
+	PendingDeadLetterAction,
 	SensorsPayload,
 	SensorsPollingResource,
 	SensorsState,
@@ -23,7 +25,9 @@ export function createSensorsState(): SensorsState {
 	let loading = $state<boolean>(true);
 	let error = $state<string | null>(null);
 	let actionError = $state<string | null>(null);
+	let actionMessage = $state<string | null>(null);
 	let busy = $state<boolean>(false);
+	let pendingDeadLetterAction = $state<PendingDeadLetterAction | null>(null);
 	let refreshing: boolean = false;
 
 	async function refresh(): Promise<void> {
@@ -68,15 +72,19 @@ export function createSensorsState(): SensorsState {
 		}
 	}
 
-	async function act(action: () => Promise<unknown>): Promise<void> {
+	async function act<Result>(action: () => Promise<Result>): Promise<Result | null> {
+		if (busy) return null;
 		busy = true;
 		actionError = null;
+		actionMessage = null;
 		try {
-			await action();
+			const result: Result = await action();
 			refreshing = false;
 			await refresh();
+			return result;
 		} catch (caught) {
 			actionError = String(caught);
+			return null;
 		} finally {
 			busy = false;
 		}
@@ -87,7 +95,22 @@ export function createSensorsState(): SensorsState {
 	}
 
 	async function retryDeadLetter(sensorName: string, eventId: string): Promise<void> {
-		await act(() => requestDeadLetterRetry(sensorName, eventId));
+		if (busy) return;
+		pendingDeadLetterAction = { eventId, type: 'retry' };
+		try {
+			const result: DeadLetterActionResult | null = await act(() =>
+				requestDeadLetterRetry(sensorName, eventId)
+			);
+			if (result?.status === 'succeeded') {
+				actionMessage = 'Retry succeeded. The event is resolved.';
+			} else if (result?.status === 'skipped') {
+				actionMessage = 'Retry completed as skipped. The event is resolved.';
+			} else if (result !== null) {
+				actionError = 'Retry failed. The event remains in Dead letters.';
+			}
+		} finally {
+			pendingDeadLetterAction = null;
+		}
 	}
 
 	async function skipDeadLetter(
@@ -95,7 +118,18 @@ export function createSensorsState(): SensorsState {
 		eventId: string,
 		reason: string
 	): Promise<void> {
-		await act(() => requestDeadLetterSkip(sensorName, eventId, reason));
+		if (busy) return;
+		pendingDeadLetterAction = { eventId, type: 'skip' };
+		try {
+			const result: DeadLetterActionResult | null = await act(() =>
+				requestDeadLetterSkip(sensorName, eventId, reason)
+			);
+			if (result !== null) {
+				actionMessage = 'Event skipped and resolved.';
+			}
+		} finally {
+			pendingDeadLetterAction = null;
+		}
 	}
 
 	const polling: SensorsPollingResource = createSensorsPollingResource(refresh);
@@ -126,8 +160,14 @@ export function createSensorsState(): SensorsState {
 		get actionError() {
 			return actionError;
 		},
+		get actionMessage() {
+			return actionMessage;
+		},
 		get busy() {
 			return busy;
+		},
+		get pendingDeadLetterAction() {
+			return pendingDeadLetterAction;
 		},
 		start,
 		selectSensor,
