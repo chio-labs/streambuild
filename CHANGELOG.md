@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.26.10](https://github.com/chio-labs/streambuild/compare/v0.26.9...v0.26.10) (2026-08-22)
+
+
+### Bug Fixes
+
+* make audit warning alerts durable ([#155](https://github.com/chio-labs/streambuild/issues/155)) ([5908e6b](https://github.com/chio-labs/streambuild/commit/5908e6b1e1d0ab89d1328ea5b057ff56af81ebf4))
+
 ## [0.26.9](https://github.com/chio-labs/streambuild/compare/v0.26.8...v0.26.9) (2026-08-22)
 
 
