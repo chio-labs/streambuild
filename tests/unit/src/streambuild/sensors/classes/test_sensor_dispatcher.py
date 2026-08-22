@@ -144,13 +144,23 @@ from tests.unit.src.streambuild.sensors.helpers import (
             expected_summary=SensorDispatchSummary(evaluated=1, skipped=1),
         ),
         DispatcherScenarioTestCase(
-            description="target-filtered events advance without evaluation",
+            description="named event target is independent from physical target identity",
             sensor=build_loaded_sensor(declaration=prod_only_sensor),
             checkpoints={("prod_only_sensor", "node_results"): EPOCH_POSITION},
-            node_results=(build_node_result_observation(target_identity="staging"),),
+            node_results=(build_node_result_observation(target_identity="default"),),
+            expected_tick_statuses=("started", "succeeded"),
+            expected_advanced_count=1,
+            expected_summary=SensorDispatchSummary(evaluated=1, succeeded=1),
+        ),
+        DispatcherScenarioTestCase(
+            description="nonmatching named target advances without evaluation",
+            sensor=build_loaded_sensor(declaration=prod_only_sensor),
+            checkpoints={("prod_only_sensor", "node_results"): EPOCH_POSITION},
+            node_results=(build_node_result_observation(target_identity="default"),),
             expected_tick_statuses=(),
             expected_advanced_count=1,
             expected_summary=SensorDispatchSummary(),
+            event_target="uat",
         ),
         DispatcherScenarioTestCase(
             description="a lease held elsewhere skips the entire pass",
@@ -200,7 +210,9 @@ def test_given_scenario_when_dispatching_once_then_ticks_and_checkpoints_match(
         newest_position=test_case.newest_position,
         lease_acquired=test_case.lease_acquired,
     )
-    dispatcher: SensorDispatcher = SensorDispatcher(repository=repository)
+    dispatcher: SensorDispatcher = SensorDispatcher(
+        repository=repository, event_target=test_case.event_target
+    )
     registry: SensorRegistry = SensorRegistry(sensors={test_case.sensor.name: test_case.sensor})
 
     summary: SensorDispatchSummary = dispatcher.dispatch_once(registry=registry, target="prod")
@@ -236,7 +248,7 @@ def test_given_mixed_sensors_when_initializing_then_only_new_event_checkpoints_a
         checkpoints=test_case.checkpoints,
         newest_position=test_case.newest_position,
     )
-    dispatcher: SensorDispatcher = SensorDispatcher(repository=repository)
+    dispatcher: SensorDispatcher = SensorDispatcher(repository=repository, event_target="prod")
     registry: SensorRegistry = SensorRegistry(
         sensors={sensor.name: sensor for sensor in test_case.sensors}
     )
@@ -277,14 +289,13 @@ def test_given_dead_letter_when_retrying_then_event_is_rebuilt_and_re_evaluated(
         node_results=test_case.node_results,
         attempt_states=test_case.attempt_states,
     )
-    dispatcher: SensorDispatcher = SensorDispatcher(repository=repository)
+    dispatcher: SensorDispatcher = SensorDispatcher(repository=repository, event_target="prod")
     registry: SensorRegistry = SensorRegistry(sensors={test_case.sensor.name: test_case.sensor})
 
     status: SensorTickStatus = dispatcher.retry_dead_letter(
         registry=registry,
         sensor_name=test_case.sensor.name,
         event_id=test_case.event_id,
-        target="prod",
     )
 
     assert status is test_case.expected_status
@@ -327,7 +338,7 @@ def test_given_dead_letter_when_skipping_then_a_skipped_tick_resolves_it(
         node_results=test_case.node_results,
         attempt_states=test_case.attempt_states,
     )
-    dispatcher: SensorDispatcher = SensorDispatcher(repository=repository)
+    dispatcher: SensorDispatcher = SensorDispatcher(repository=repository, event_target="prod")
     registry: SensorRegistry = SensorRegistry(sensors={test_case.sensor.name: test_case.sensor})
 
     dispatcher.skip_dead_letter(

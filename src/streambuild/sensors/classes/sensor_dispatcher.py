@@ -62,12 +62,14 @@ class SensorDispatcher:
         self,
         *,
         repository: SensorStateRepository,
+        event_target: str,
         providers: tuple[DiscoveredProvider, ...] = (),
         dispatcher_id: str | None = None,
         batch_limit: int = DEFAULT_EVENT_BATCH_LIMIT,
         lease_ttl_seconds: float = DEFAULT_DISPATCH_LEASE_TTL_SECONDS,
     ) -> None:
         self._repository: SensorStateRepository = repository
+        self._event_target: str = event_target
         self._providers: tuple[DiscoveredProvider, ...] = providers
         self._dispatcher_id: str = dispatcher_id if dispatcher_id is not None else uuid4().hex
         self._batch_limit: int = batch_limit
@@ -93,7 +95,7 @@ class SensorDispatcher:
                 outcomes.extend(self._dispatch_event_sensor(sensor=sensor, target=target))
                 continue
             polling_outcome: SensorDeliveryOutcome | None = self._dispatch_polling_sensor(
-                sensor=sensor, target=target
+                sensor=sensor
             )
             if polling_outcome is not None:
                 outcomes.append(polling_outcome)
@@ -121,7 +123,7 @@ class SensorDispatcher:
                 self._initialize_checkpoint(sensor=sensor, source=source, target=target)
 
     def retry_dead_letter(
-        self, *, registry: SensorRegistry, sensor_name: str, event_id: str, target: str
+        self, *, registry: SensorRegistry, sensor_name: str, event_id: str
     ) -> SensorTickStatus:
         """Re-evaluate one dead-lettered event immediately; the outcome is recorded."""
 
@@ -135,7 +137,6 @@ class SensorDispatcher:
         evaluation: SensorEvaluation = self._evaluate_event(
             sensor=sensor,
             event=event,
-            target=target,
             attempt=state.failed_attempts + 1,
         )
         return evaluation.status
@@ -192,13 +193,14 @@ class SensorDispatcher:
                 events = events_from_node_result(
                     row=row,
                     previous_status=self._previous_status(row=row),
+                    target=self._event_target,
                 )
         else:
             invocation: InvocationObservation | None = self._repository.fetch_invocation(
                 invocation_id=event_id
             )
             if invocation is not None:
-                events = events_from_invocation(row=invocation)
+                events = events_from_invocation(row=invocation, target=self._event_target)
         for event in events:
             if event.id == event_id:
                 return event
@@ -224,9 +226,7 @@ class SensorDispatcher:
             for event in delivery.events:
                 if not matches_sensor(declaration=declaration, event=event):
                     continue
-                outcome: SensorDeliveryOutcome = self._deliver_event(
-                    sensor=sensor, event=event, target=target
-                )
+                outcome: SensorDeliveryOutcome = self._deliver_event(sensor=sensor, event=event)
                 outcomes.append(outcome)
                 if not outcome.resolved:
                     blocked = True
@@ -260,7 +260,9 @@ class SensorDispatcher:
                         completed_at=row.completed_at, result_id=row.result_id
                     ),
                     events=events_from_node_result(
-                        row=row, previous_status=self._previous_status(row=row)
+                        row=row,
+                        previous_status=self._previous_status(row=row),
+                        target=self._event_target,
                     ),
                 )
                 for row in self._repository.fetch_node_results_after(
@@ -272,7 +274,7 @@ class SensorDispatcher:
                 position=SensorStreamPosition(
                     completed_at=row.completed_at, result_id=row.invocation_id
                 ),
-                events=events_from_invocation(row=row),
+                events=events_from_invocation(row=row, target=self._event_target),
             )
             for row in self._repository.fetch_invocations_after(
                 position=position, target=target, limit=self._batch_limit
@@ -286,9 +288,7 @@ class SensorDispatcher:
             position=SensorStreamPosition(completed_at=row.completed_at, result_id=row.result_id),
         )
 
-    def _deliver_event(
-        self, *, sensor: LoadedSensor, event: SensorEvent, target: str
-    ) -> SensorDeliveryOutcome:
+    def _deliver_event(self, *, sensor: LoadedSensor, event: SensorEvent) -> SensorDeliveryOutcome:
         """Deliver one matched event; unresolved outcomes block the stream here."""
 
         state: TickAttemptState = self._repository.tick_attempt_state(
@@ -308,7 +308,6 @@ class SensorDispatcher:
         evaluation: SensorEvaluation = self._evaluate_event(
             sensor=sensor,
             event=event,
-            target=target,
             attempt=state.failed_attempts + 1,
         )
         return SensorDeliveryOutcome(
@@ -345,7 +344,6 @@ class SensorDispatcher:
         *,
         sensor: LoadedSensor,
         event: SensorEvent,
-        target: str,
         attempt: int,
     ) -> SensorEvaluation:
         tick_id: str = uuid4().hex
@@ -362,7 +360,7 @@ class SensorDispatcher:
         )
         context: EventSensorContext[SensorEvent] = EventSensorContext(
             event=event,
-            target=target,
+            target=self._event_target,
             steps=DurableStepRunner(
                 store=RepositoryStepStore(
                     repository=self._repository,
@@ -386,9 +384,7 @@ class SensorDispatcher:
         )
         return evaluation
 
-    def _dispatch_polling_sensor(
-        self, *, sensor: LoadedSensor, target: str
-    ) -> SensorDeliveryOutcome | None:
+    def _dispatch_polling_sensor(self, *, sensor: LoadedSensor) -> SensorDeliveryOutcome | None:
         declaration: object = sensor.declaration
         interval_seconds: float = (
             declaration.minimum_interval_seconds
@@ -414,7 +410,9 @@ class SensorDispatcher:
             evaluation=None,
         )
         context: PollingSensorContext = PollingSensorContext(
-            cursor=state.cursor, last_success_at=state.last_success_at, target=target
+            cursor=state.cursor,
+            last_success_at=state.last_success_at,
+            target=self._event_target,
         )
         evaluation: SensorEvaluation = evaluate_sensor_handler(
             sensor=sensor, context=context, providers=self._providers

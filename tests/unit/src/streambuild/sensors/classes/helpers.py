@@ -1,6 +1,8 @@
 from streambuild.events import AuditCompleted
 from streambuild.sensors import (
     DefaultSensorStatus,
+    EventSensorContext,
+    PollingSensorContext,
     PollingSensorResult,
     SensorRetryPolicy,
     SkipReason,
@@ -51,12 +53,14 @@ def stopped_sensor(ctx: object) -> None:
 
 
 @event_sensor(on=AuditCompleted, targets={"prod"}, default_status=DefaultSensorStatus.RUNNING)
-def prod_only_sensor(ctx: object) -> None:
-    """Only reacts to prod events."""
+def prod_only_sensor(ctx: EventSensorContext[AuditCompleted]) -> None:
+    assert ctx.event.target == "prod"
+    assert ctx.target == "prod"
 
 
 @polling_sensor(minimum_interval_seconds=60, default_status=DefaultSensorStatus.RUNNING)
-def polling_lag(ctx: object) -> PollingSensorResult:
+def polling_lag(ctx: PollingSensorContext) -> PollingSensorResult:
+    assert ctx.target == "prod"
     return PollingSensorResult(cursor="42")
 
 

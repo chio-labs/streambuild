@@ -6,7 +6,7 @@ from streambuild.events.models import InvocationObservation, RunCompleted
 from streambuild.events.types import ObservedCommand
 
 
-def events_from_invocation(*, row: InvocationObservation) -> tuple[RunCompleted, ...]:
+def events_from_invocation(*, row: InvocationObservation, target: str) -> tuple[RunCompleted, ...]:
     """Map one invocation row to its derived events, exhaustively by command."""
 
     try:
@@ -28,7 +28,7 @@ def events_from_invocation(*, row: InvocationObservation) -> tuple[RunCompleted,
                     mode=row.mode,
                     outcome=row.outcome,
                     exit_code=row.exit_code,
-                    target=row.target_identity,
+                    target=target,
                     deployment_id=row.deployment_id,
                     selected_node_count=row.selected_node_count,
                     error_message=row.error_message,
