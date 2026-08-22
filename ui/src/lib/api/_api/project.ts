@@ -12,8 +12,12 @@ export async function requestDefinitionsPayload(
 	const cacheKey: string | null = versionKey ? `streambuild:definitions:${versionKey}` : null;
 	let cached: Record<string, unknown> | null = null;
 	if (cacheKey !== null && typeof sessionStorage !== 'undefined') {
-		const stored: string | null = sessionStorage.getItem(cacheKey);
-		if (stored !== null) cached = JSON.parse(stored) as Record<string, unknown>;
+		try {
+			const stored: string | null = sessionStorage.getItem(cacheKey);
+			if (stored !== null) cached = JSON.parse(stored) as Record<string, unknown>;
+		} catch {
+			cached = null;
+		}
 	}
 	const headers: HeadersInit | undefined =
 		versionKey && cached !== null ? { 'If-None-Match': `"${versionKey}"` } : undefined;
@@ -24,9 +28,23 @@ export async function requestDefinitionsPayload(
 		'definitions'
 	);
 	if (cacheKey !== null && typeof sessionStorage !== 'undefined') {
-		sessionStorage.setItem(cacheKey, JSON.stringify(definitions));
+		try {
+			pruneDefinitionsCache(cacheKey);
+			sessionStorage.setItem(cacheKey, JSON.stringify(definitions));
+		} catch {
+			// Definitions caching is optional; browser storage quotas must not block startup.
+		}
 	}
 	return definitions;
+}
+
+function pruneDefinitionsCache(currentKey: string): void {
+	for (let index: number = sessionStorage.length - 1; index >= 0; index -= 1) {
+		const key: string | null = sessionStorage.key(index);
+		if (key?.startsWith('streambuild:definitions:') && key !== currentKey) {
+			sessionStorage.removeItem(key);
+		}
+	}
 }
 
 export async function requestStatePayload(signal?: AbortSignal): Promise<Record<string, unknown> | null> {
