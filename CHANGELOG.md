@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.26.9](https://github.com/chio-labs/streambuild/compare/v0.26.8...v0.26.9) (2026-08-22)
+
+
+### Bug Fixes
+
+* **ui:** keep sensor loading responsive ([#153](https://github.com/chio-labs/streambuild/issues/153)) ([a0d9799](https://github.com/chio-labs/streambuild/commit/a0d9799f4e3db1c99109ef742ba549f011b59328))
+
 ## [0.26.8](https://github.com/chio-labs/streambuild/compare/v0.26.7...v0.26.8) (2026-08-22)
 
 
