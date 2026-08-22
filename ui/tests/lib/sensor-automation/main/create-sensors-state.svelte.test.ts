@@ -151,6 +151,55 @@ describe('sensors state', () => {
 		expect(state.actionError).toContain('not permitted');
 	});
 
+	it('given a retry in progress when clicked again then one request runs with clear feedback', async () => {
+		let resolveRetry!: (result: { sensorName: string; eventId: string; status: string }) => void;
+		const retryRequest = new Promise<{ sensorName: string; eventId: string; status: string }>(
+			(resolve) => {
+				resolveRetry = resolve;
+			}
+		);
+		requests.fetchSensors
+			.mockResolvedValueOnce({ ...payload, deadLetterCount: 1 })
+			.mockResolvedValue(payload);
+		requests.fetchDeadLetters.mockResolvedValue({ deadLetters: [deadLetter] });
+		requests.requestDeadLetterRetry.mockReturnValue(retryRequest);
+		const state: SensorsState = createSensorsState();
+		state.start();
+		await vi.waitFor(() => expect(state.deadLetters).toEqual([deadLetter]));
+
+		const firstRetry: Promise<void> = state.retryDeadLetter('quality_alerts', 'event-1');
+		const duplicateRetry: Promise<void> = state.retryDeadLetter('quality_alerts', 'event-1');
+
+		expect(state.pendingDeadLetterAction).toEqual({ eventId: 'event-1', type: 'retry' });
+		expect(state.busy).toBe(true);
+		expect(requests.requestDeadLetterRetry).toHaveBeenCalledTimes(1);
+		resolveRetry({ sensorName: 'quality_alerts', eventId: 'event-1', status: 'succeeded' });
+		await Promise.all([firstRetry, duplicateRetry]);
+
+		expect(state.pendingDeadLetterAction).toBeNull();
+		expect(state.actionMessage).toBe('Retry succeeded. The event is resolved.');
+		expect(state.actionError).toBeNull();
+	});
+
+	it('given a manual retry still fails when completed then the dead letter outcome is explicit', async () => {
+		requests.fetchSensors.mockResolvedValue({ ...payload, deadLetterCount: 1 });
+		requests.fetchDeadLetters.mockResolvedValue({ deadLetters: [deadLetter] });
+		requests.requestDeadLetterRetry.mockResolvedValue({
+			sensorName: 'quality_alerts',
+			eventId: 'event-1',
+			status: 'failed'
+		});
+		const state: SensorsState = createSensorsState();
+		state.start();
+		await vi.waitFor(() => expect(state.deadLetters).toEqual([deadLetter]));
+
+		await state.retryDeadLetter('quality_alerts', 'event-1');
+
+		expect(state.actionMessage).toBeNull();
+		expect(state.actionError).toBe('Retry failed. The event remains in Dead letters.');
+		expect(state.deadLetters).toEqual([deadLetter]);
+	});
+
 	it('given a selected sensor when toggled then its tick history loads and clears', async () => {
 		requests.fetchSensors.mockResolvedValue(payload);
 		requests.fetchDeadLetters.mockResolvedValue({ deadLetters: [] });

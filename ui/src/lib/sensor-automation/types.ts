@@ -74,6 +74,11 @@ export type DeadLetterActionResult = {
 	status: string;
 };
 
+export type PendingDeadLetterAction = {
+	eventId: string;
+	type: 'retry' | 'skip';
+};
+
 export type SensorsState = {
 	readonly payload: SensorsPayload | null;
 	readonly deadLetters: SensorTick[];
@@ -82,7 +87,9 @@ export type SensorsState = {
 	readonly loading: boolean;
 	readonly error: string | null;
 	readonly actionError: string | null;
+	readonly actionMessage: string | null;
 	readonly busy: boolean;
+	readonly pendingDeadLetterAction: PendingDeadLetterAction | null;
 	start: () => () => void;
 	selectSensor: (name: string | null) => Promise<void>;
 	setStatus: (name: string, status: string) => Promise<void>;
