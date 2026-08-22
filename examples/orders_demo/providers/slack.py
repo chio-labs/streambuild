@@ -1,6 +1,7 @@
 """Providers resolve their settings from the environment via pydantic-settings."""
 
 from pydantic import SecretStr
+from pydantic_settings import SettingsConfigDict
 
 from streambuild.providers import Provider
 
@@ -11,6 +12,8 @@ class QualitySlack(Provider):
     Set QUALITY_SLACK_WEBHOOK_URL in the environment (or a .env loader) to
     override the placeholder; secrets never live in streambuild_project.toml.
     """
+
+    model_config = SettingsConfigDict(env_prefix="QUALITY_SLACK_")
 
     webhook_url: SecretStr = SecretStr("https://hooks.slack.example/services/demo")
 

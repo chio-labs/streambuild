@@ -64,7 +64,7 @@ def test_given_closed_enums_when_inventorying_then_every_member_is_classified(
             status=QualityResultStatus.WARNING,
             previous_status=None,
             expected_event_count=1,
-            expected_transitions=(AuditTransition.STILL_PASSING,),
+            expected_transitions=(AuditTransition.NEW_FAILURE,),
         ),
         NodeResultEventTestCase(
             description="audit failed maps to one AuditCompleted",
