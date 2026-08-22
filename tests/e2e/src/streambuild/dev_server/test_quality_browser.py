@@ -1,6 +1,6 @@
 from pathlib import Path
 from typing import cast
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 import pytest
 from clickhouse_connect.driver.client import Client
@@ -61,7 +61,9 @@ def test_given_persisted_scheduled_audits_when_filtering_quality_then_outcomes_r
         lambda response: urlparse(response.url).path == "/api/checks/status"
     ) as checks_info:
         document_response: Response | None = page.goto(
-            f"{base_url}/quality", wait_until="domcontentloaded", timeout=30_000
+            f"{base_url}/quality?audit={quote(warning_name)}",
+            wait_until="domcontentloaded",
+            timeout=30_000,
         )
     assert document_response is not None
     assert document_response.status == 200
@@ -89,8 +91,8 @@ def test_given_persisted_scheduled_audits_when_filtering_quality_then_outcomes_r
     warning_expand: Locator = page.get_by_role(
         "button", name=f"Expand audit {warning_name}", exact=True
     )
-    warning_expand.click()
     expect(warning_expand).to_have_attribute("aria-expanded", "true")
+    expect(warning_row).to_be_focused()
     expect(warning_row).to_contain_text("severity warning")
     expect(page.get_by_text("Violating rows — sample of 1", exact=True)).to_be_visible()
     expect(page.get_by_role("cell", name=test_case.expected_sample_key, exact=True)).to_be_visible()

@@ -25,6 +25,7 @@ class NodeResultObservation:
     failure_count: int
     completed_at: str
     scheduled_for: str | None
+    payload_json: str
     error_message: str | None
 
 
@@ -62,6 +63,8 @@ class AuditCompleted:
     invocation_id: str
     scheduled_for: str | None
     error_message: str | None
+    sample_column_names: tuple[str, ...] = ()
+    sample_rows: tuple[tuple[object, ...], ...] = ()
 
 
 @dataclass(frozen=True)
