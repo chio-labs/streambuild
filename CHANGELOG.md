@@ -39,9 +39,7 @@
 ### Bug Fixes
 
 * **compile:** reject prewhere in table models ([6b52b2a](https://github.com/chio-labs/streambuild/commit/6b52b2aac8658618d0342fca95990f2b2d499436))
-* **compile:** reject prewhere in table models ([0535ee3](https://github.com/chio-labs/streambuild/commit/0535ee3eeae0108a9a874fe9879af6bb5f7512db))
 * **replay:** filter non-lineage roots at source ([eb3cb12](https://github.com/chio-labs/streambuild/commit/eb3cb12af4d368d79b9a612ad5bb9da1fda60bb7))
-* **replay:** filter non-lineage roots at source ([78c94de](https://github.com/chio-labs/streambuild/commit/78c94deeb900d5f5fb40694b9ec22f75f97234d9))
 
 ## [0.25.0](https://github.com/chio-labs/streambuild/compare/v0.24.5...v0.25.0) (2026-08-21)
 
@@ -49,7 +47,6 @@
 ### Features
 
 * **replay:** add phase-scoped execution settings ([83d746e](https://github.com/chio-labs/streambuild/commit/83d746e3e14da4d8a365bfc6ef0ac9e4c93d427d))
-* **replay:** add phase-scoped execution settings ([9e73293](https://github.com/chio-labs/streambuild/commit/9e73293331de4fffee201bf59ebab998d49abe35))
 
 ## [0.24.5](https://github.com/chio-labs/streambuild/compare/v0.24.4...v0.24.5) (2026-08-20)
 
@@ -57,7 +54,6 @@
 ### Performance Improvements
 
 * **ui:** initialize the project in one request ([70d6124](https://github.com/chio-labs/streambuild/commit/70d6124462d0f160c9d9aa651c15207156871cd8))
-* **ui:** initialize the project in one request ([f7d3b01](https://github.com/chio-labs/streambuild/commit/f7d3b017a9475ea22302a939a42f7a3e53be5867))
 
 ## [0.24.4](https://github.com/chio-labs/streambuild/compare/v0.24.3...v0.24.4) (2026-08-20)
 
@@ -65,7 +61,6 @@
 ### Performance Improvements
 
 * **ui:** render before secondary warehouse data loads ([4bc9ee6](https://github.com/chio-labs/streambuild/commit/4bc9ee65f065e4bb23b5c0f2169268a59c4a6d9c))
-* **ui:** render before secondary warehouse data loads ([9573fd3](https://github.com/chio-labs/streambuild/commit/9573fd3aa70c065f17e5f49743d8b049e6828761))
 
 ## [0.24.3](https://github.com/chio-labs/streambuild/compare/v0.24.2...v0.24.3) (2026-08-20)
 
@@ -73,7 +68,6 @@
 ### Performance Improvements
 
 * **dev-server:** build the warehouse overlay off the shared query lock ([63f504f](https://github.com/chio-labs/streambuild/commit/63f504fa4541d89b29e72f26510282dad238106b))
-* **dev-server:** build the warehouse overlay off the shared query lock ([8fc629b](https://github.com/chio-labs/streambuild/commit/8fc629bf32cc74b0721fca294c75dd9f417f3624))
 
 ## [0.24.2](https://github.com/chio-labs/streambuild/compare/v0.24.1...v0.24.2) (2026-08-20)
 
@@ -81,7 +75,6 @@
 ### Bug Fixes
 
 * **dev-server:** keep the state overlay across warehouse refreshes ([908bc3b](https://github.com/chio-labs/streambuild/commit/908bc3b026316ad96a47bf78dae6ac6b466c90e8))
-* **dev-server:** keep the state overlay across warehouse refreshes ([1a2a40c](https://github.com/chio-labs/streambuild/commit/1a2a40ccd82e37e7fdf7ba2d4fbd878853978e36))
 * **dev-server:** only force a snapshot rebuild on explicit refresh ([3efc5a5](https://github.com/chio-labs/streambuild/commit/3efc5a512f9ac63760f72b4417e0d84c3b09de8c))
 
 ## [0.24.1](https://github.com/chio-labs/streambuild/compare/v0.24.0...v0.24.1) (2026-08-20)
@@ -90,7 +83,6 @@
 ### Bug Fixes
 
 * **dev-server:** serialize nested connection settings ([5834f79](https://github.com/chio-labs/streambuild/commit/5834f793f47aa7d6138cdea114028480709884d3))
-* **dev-server:** serialize nested connection settings ([2a527c3](https://github.com/chio-labs/streambuild/commit/2a527c38092ea85b3a446c447cfc83b2311c166c))
 
 ## [0.24.0](https://github.com/chio-labs/streambuild/compare/v0.23.0...v0.24.0) (2026-08-20)
 
@@ -103,7 +95,6 @@
 ### Bug Fixes
 
 * **cli:** stop claiming --start-time is virtual only ([e5c9582](https://github.com/chio-labs/streambuild/commit/e5c95828793c6fec55345769d36e62278667adc1))
-* **cli:** stop claiming --start-time is virtual only ([1416d75](https://github.com/chio-labs/streambuild/commit/1416d75bc2eb8fb4518e31ec31643253cb5869ea))
 * **compiler:** stop consuming the retained tree when resolving aliased refs ([18feb0d](https://github.com/chio-labs/streambuild/commit/18feb0da59fb6fa018a546658ac25cd09c592dc2))
 
 
@@ -118,7 +109,6 @@
 * **compiler:** stop rendering canonical SQL that nothing reads ([39d8582](https://github.com/chio-labs/streambuild/commit/39d8582badc82104b4d8128e43d32acf9db53138))
 * **compiler:** walk each parsed model tree once per purpose ([a9df82f](https://github.com/chio-labs/streambuild/commit/a9df82f7da176690c63de455ef8209cb4ced820d))
 * **dev-server:** serve one background-refreshed warehouse overlay ([3c5e703](https://github.com/chio-labs/streambuild/commit/3c5e70343ec85afae776626077168645c266e057))
-* **dev-server:** serve one background-refreshed warehouse overlay ([2590c87](https://github.com/chio-labs/streambuild/commit/2590c87b0762dec18a3ba9fba71db808d447f788))
 
 ## [0.23.0](https://github.com/chio-labs/streambuild/compare/v0.22.4...v0.23.0) (2026-08-19)
 
@@ -144,9 +134,7 @@
 ### Bug Fixes
 
 * **ui:** derive plan command locally and gate stale plan behind loading ([53fb74d](https://github.com/chio-labs/streambuild/commit/53fb74d1b11dbf1d6070ebef0483a9134013afd5))
-* **ui:** derive plan command locally and gate stale plan behind loading ([dbb58ab](https://github.com/chio-labs/streambuild/commit/dbb58ab893f378679b9f6dcce81cfccc2978e8b3))
-* **ui:** show loading spinner instead of compile flash on live run de… ([927d2d4](https://github.com/chio-labs/streambuild/commit/927d2d44f76d657e942910382b8cbd6729f35d22))
-* **ui:** show loading spinner instead of compile flash on live run detail ([7cfab36](https://github.com/chio-labs/streambuild/commit/7cfab36e434b8e50de245336bc6e30c40e9b3767))
+* **ui:** show loading spinner instead of compile flash on live run detail ([927d2d4](https://github.com/chio-labs/streambuild/commit/927d2d44f76d657e942910382b8cbd6729f35d22))
 
 ## [0.22.3](https://github.com/chio-labs/streambuild/compare/v0.22.2...v0.22.3) (2026-08-19)
 
@@ -164,8 +152,7 @@
 
 * **compiler:** conjoin replay predicates into the outer WHERE clause ([fd1db10](https://github.com/chio-labs/streambuild/commit/fd1db10b04d86683db119997eca4541e6ccafa44))
 * **compiler:** preserve author bytes through replay and shadow SQL rewrites ([8f51d83](https://github.com/chio-labs/streambuild/commit/8f51d83a11762b7a13338492ed27bf8d541b1294))
-* **compiler:** preserve authored SQL bytes in executed database templ… ([312c716](https://github.com/chio-labs/streambuild/commit/312c716ce955bdf5de2b660791b9480cdd962d1f))
-* **compiler:** preserve authored SQL bytes in executed database templates ([48df829](https://github.com/chio-labs/streambuild/commit/48df8296a24bad6303af5d118a31a37239963b5f))
+* **compiler:** preserve authored SQL bytes in executed database templates ([312c716](https://github.com/chio-labs/streambuild/commit/312c716ce955bdf5de2b660791b9480cdd962d1f))
 * **compiler:** reject raw model relations and scope union CTE visibility ([dfa0945](https://github.com/chio-labs/streambuild/commit/dfa0945452d157c9f579e476cd6c18b83b9dd12b))
 
 ## [0.22.1](https://github.com/chio-labs/streambuild/compare/v0.22.0...v0.22.1) (2026-08-18)
@@ -174,7 +161,6 @@
 ### Bug Fixes
 
 * **observability:** persist full run errors and enlarge the error dialog ([8cc6896](https://github.com/chio-labs/streambuild/commit/8cc6896e2d106afa260a0dbd127bd3b6b3b3ad83))
-* **observability:** persist full run errors and enlarge the error dialog ([dc7a0a5](https://github.com/chio-labs/streambuild/commit/dc7a0a58451ffdb1a81448a944a4f57424ba2ef4))
 
 ## [0.22.0](https://github.com/chio-labs/streambuild/compare/v0.21.3...v0.22.0) (2026-08-18)
 
@@ -182,7 +168,6 @@
 ### Features
 
 * show executed SQL in run timelines ([4d3d10a](https://github.com/chio-labs/streambuild/commit/4d3d10ab3f744291079fabffd5b14411906d9466))
-* **ui:** expandable/modal error viewer for runs and deployments ([5c309d3](https://github.com/chio-labs/streambuild/commit/5c309d3dc87a7418744ee46f63bb81c984ef0e86))
 * **ui:** expandable/modal error viewer for runs and deployments (CHI-52) ([66ab83c](https://github.com/chio-labs/streambuild/commit/66ab83cb558f5ebf91c7fa88d65ab5bde8138464))
 
 
@@ -196,7 +181,6 @@
 ### Bug Fixes
 
 * surface pending warehouse outages ([adede0c](https://github.com/chio-labs/streambuild/commit/adede0ca29ef803dfa19b9e32c49f4d2d191d110))
-* surface pending warehouse outages ([1130266](https://github.com/chio-labs/streambuild/commit/1130266ef82c08ef4be021c47c956fc154834975))
 
 ## [0.21.2](https://github.com/chio-labs/streambuild/compare/v0.21.1...v0.21.2) (2026-08-18)
 
@@ -204,7 +188,6 @@
 ### Bug Fixes
 
 * keep the dev UI available through warehouse outages ([e9bc7dd](https://github.com/chio-labs/streambuild/commit/e9bc7dd6deebedeeb91f325c6afdf44fe983aa5c))
-* keep the dev UI available through warehouse outages ([6f8f4e5](https://github.com/chio-labs/streambuild/commit/6f8f4e53436a86560de1020bb5955e7bc3b91407))
 
 ## [0.21.1](https://github.com/chio-labs/streambuild/compare/v0.21.0...v0.21.1) (2026-08-17)
 
@@ -212,7 +195,6 @@
 ### Bug Fixes
 
 * allow disabled authentication on shared bind addresses ([b511d93](https://github.com/chio-labs/streambuild/commit/b511d93ba56cdcefdead297d09066e1fecd959e8))
-* allow disabled authentication on shared bind addresses ([9c5bc48](https://github.com/chio-labs/streambuild/commit/9c5bc48662652284a9aea840d868d3f5aa80a15a))
 
 ## [0.21.0](https://github.com/chio-labs/streambuild/compare/v0.20.0...v0.21.0) (2026-08-16)
 
@@ -238,7 +220,6 @@
 
 ### Features
 
-* make plan UI mode aware ([cb9bba6](https://github.com/chio-labs/streambuild/commit/cb9bba6c034bd2bf2806acd81768e6430b282985))
 * make Plan UI mode aware ([370ba8b](https://github.com/chio-labs/streambuild/commit/370ba8b9a429f749dffc7166097bd1561c63be7f))
 
 ## [0.19.1](https://github.com/chio-labs/streambuild/compare/v0.19.0...v0.19.1) (2026-08-11)
@@ -254,7 +235,6 @@
 ### Features
 
 * add build safety guardrails ([193aa2a](https://github.com/chio-labs/streambuild/commit/193aa2a5b6d87a420f8ef754943a98d6ababda87))
-* add build safety guardrails ([10a328f](https://github.com/chio-labs/streambuild/commit/10a328fb26ab3decac4326d311e7b00501f3ab2a))
 * enforce global pipeline naming uniqueness ([0dc5b62](https://github.com/chio-labs/streambuild/commit/0dc5b624e8ce5b7233207b277d45a27606c75092))
 
 
@@ -269,7 +249,6 @@
 
 * align deployment inventory columns ([d40f82b](https://github.com/chio-labs/streambuild/commit/d40f82b86ac41978531c9bc91f9417c591fe611f))
 * preserve lineage activity and viewport ([c4a259c](https://github.com/chio-labs/streambuild/commit/c4a259c84880e492b60cb901a9bab0296774ea28))
-* preserve lineage activity and viewport ([27062dc](https://github.com/chio-labs/streambuild/commit/27062dc1278adcc8a7ddbf90d79cd226bb85450b))
 
 ## [0.18.0](https://github.com/chio-labs/streambuild/compare/v0.17.0...v0.18.0) (2026-08-10)
 
@@ -277,7 +256,6 @@
 ### Features
 
 * render Plan before warehouse planning ([3ed7c05](https://github.com/chio-labs/streambuild/commit/3ed7c052c4273e33e87d0cd73e177ede6382da7f))
-* render plan page before planning ([91fe307](https://github.com/chio-labs/streambuild/commit/91fe3071044a3bcf76693aef57d1d0c25ed8dd11))
 
 ## [0.17.0](https://github.com/chio-labs/streambuild/compare/v0.16.6...v0.17.0) (2026-08-09)
 
@@ -285,7 +263,6 @@
 ### Features
 
 * add lineage activity telemetry ([c390acd](https://github.com/chio-labs/streambuild/commit/c390acda03bb8c29906fa9b1bd799118daa4b08e))
-* add lineage activity telemetry ([be76937](https://github.com/chio-labs/streambuild/commit/be76937eabaa52a6ad647b8735a598aaea95ed56))
 
 ## [0.16.6](https://github.com/chio-labs/streambuild/compare/v0.16.5...v0.16.6) (2026-08-09)
 
@@ -293,7 +270,6 @@
 ### Bug Fixes
 
 * harden lineage rebuild safety ([518b3af](https://github.com/chio-labs/streambuild/commit/518b3af294e28de6c0bfe34d84d77a7fa5ea4c3e))
-* harden lineage rebuild safety ([40c022d](https://github.com/chio-labs/streambuild/commit/40c022dd2ee934364314469f4afbc51e6dc63065))
 * scope active build conflicts ([c73fabb](https://github.com/chio-labs/streambuild/commit/c73fabbad216a3c7cf0aa2dab63e6271b41ea046))
 
 
@@ -307,7 +283,6 @@
 ### Bug Fixes
 
 * clarify stalled run recovery ([013ea96](https://github.com/chio-labs/streambuild/commit/013ea96636336098c166e9a64342f18efba377cb))
-* clarify stalled run recovery ([330353a](https://github.com/chio-labs/streambuild/commit/330353a66989de57155137d49f123fd1affb5544))
 
 ## [0.16.4](https://github.com/chio-labs/streambuild/compare/v0.16.3...v0.16.4) (2026-08-09)
 
@@ -315,7 +290,6 @@
 ### Bug Fixes
 
 * align execution UI with runtime state ([600c683](https://github.com/chio-labs/streambuild/commit/600c683b1f03db35422634fdd55957b05c771d17))
-* align execution UI with runtime state ([01ec96d](https://github.com/chio-labs/streambuild/commit/01ec96d5fb9d775344c4e8b797800dcebc5e6a7e))
 
 ## [0.16.3](https://github.com/chio-labs/streambuild/compare/v0.16.2...v0.16.3) (2026-08-09)
 
@@ -339,21 +313,18 @@
 ### Bug Fixes
 
 * stabilize UI loading transitions ([5e0562e](https://github.com/chio-labs/streambuild/commit/5e0562e5c1868873a862245c50aadaaa4d755fca))
-* stabilize UI loading transitions ([fab7973](https://github.com/chio-labs/streambuild/commit/fab79733b5e4e20529981819a299d486feef9b15))
 
 ## [0.16.0](https://github.com/chio-labs/streambuild/compare/v0.15.0...v0.16.0) (2026-08-09)
 
 
 ### Features
 
-* improve UI loading and audit scheduling ([62b15f3](https://github.com/chio-labs/streambuild/commit/62b15f3ffbe68da55916326a4bfefefe4487e2f1))
 * improve UI loading and scheduler status ([e6b1446](https://github.com/chio-labs/streambuild/commit/e6b1446e5955747b19508e653b22588b7652a4a4))
 
 
 ### Bug Fixes
 
 * scope direct source preparation to selection ([28206e1](https://github.com/chio-labs/streambuild/commit/28206e1f219912d93c565528585ece6c5023dbfd))
-* scope direct source preparation to selection ([ec06a14](https://github.com/chio-labs/streambuild/commit/ec06a141e1f57651e9ab690d55a446d9f56ea7a5))
 
 ## [0.15.0](https://github.com/chio-labs/streambuild/compare/v0.14.1...v0.15.0) (2026-08-09)
 
@@ -361,7 +332,6 @@
 ### Features
 
 * scope Kafka consumer groups by target ([fc7f7c4](https://github.com/chio-labs/streambuild/commit/fc7f7c48b982d071b41270b48e5c6a2e2f39bc86))
-* scope Kafka consumer groups by target ([bbede77](https://github.com/chio-labs/streambuild/commit/bbede77019d6d8a609f18a7d8c6e321a395f2a81))
 
 ## [0.14.1](https://github.com/chio-labs/streambuild/compare/v0.14.0...v0.14.1) (2026-08-09)
 
@@ -369,7 +339,6 @@
 ### Bug Fixes
 
 * serialize immutable mappings in fingerprints ([3f6d68a](https://github.com/chio-labs/streambuild/commit/3f6d68a40b0ff87d610f18621a61f0fe12ccadc0))
-* serialize immutable mappings in fingerprints ([57c8d27](https://github.com/chio-labs/streambuild/commit/57c8d2732cab7858a797fe252e76cb242063e3f2))
 
 ## [0.14.0](https://github.com/chio-labs/streambuild/compare/v0.13.0...v0.14.0) (2026-08-09)
 
@@ -377,14 +346,11 @@
 ### Features
 
 * complete virtual deployment lifecycle ([acfbf58](https://github.com/chio-labs/streambuild/commit/acfbf5835b74113e65bf8135c01fd5e0ce1e0c30))
-* complete virtual deployment lifecycle ([3d5f971](https://github.com/chio-labs/streambuild/commit/3d5f97127d7cd8b3f226832a3980bcc67f825a84))
 * derive Kafka source names with macros ([e30223d](https://github.com/chio-labs/streambuild/commit/e30223d4ce955fb554ee0ebe7fd1103625944f63))
-* derive Kafka source names with macros ([0fd2861](https://github.com/chio-labs/streambuild/commit/0fd28618f538d44d3af18469e7f0afb89beee3b4))
 * expose deployment promote, cleanup and diff over the dev API ([71f3372](https://github.com/chio-labs/streambuild/commit/71f33723150ad89f1cdb195487cf0e0c9d03a2fb))
 * promote, clean up and diff deployments from the UI ([d8231f3](https://github.com/chio-labs/streambuild/commit/d8231f3c3d663e7cfd76697a0e52fef9ed351b56))
 * show deployment relations and orphans in the physical view ([e8e6414](https://github.com/chio-labs/streambuild/commit/e8e64142f007f6eee82ed80d68aea69fc8a9eeb3))
 * show the switchover model by model on the run page ([1a46901](https://github.com/chio-labs/streambuild/commit/1a469018c5356cd9a2972c313a604ba58f2d3a32))
-* show the switchover model by model on the run page ([3feb1aa](https://github.com/chio-labs/streambuild/commit/3feb1aa7e29354465cd56c2bdb87644396e94ae9))
 * surface virtual deployments in the dev UI ([5d64f69](https://github.com/chio-labs/streambuild/commit/5d64f692c71c25a8bebb5e339565315e6b49be3e))
 
 
@@ -399,7 +365,6 @@
 ### Features
 
 * add per-pipeline build modes ([95b892c](https://github.com/chio-labs/streambuild/commit/95b892cbf3d63b1f172eed1e16a697f1a203a409))
-* add per-pipeline build modes ([a189fa6](https://github.com/chio-labs/streambuild/commit/a189fa6353c42f1050a20bc709bc17f079fecabd))
 
 ## [0.12.4](https://github.com/chio-labs/streambuild/compare/v0.12.3...v0.12.4) (2026-08-08)
 
@@ -407,9 +372,7 @@
 ### Bug Fixes
 
 * label the overview source card row count as rows ([7570be8](https://github.com/chio-labs/streambuild/commit/7570be87610918b267a1ef0be960203e978a3d5f))
-* label the overview source card row count as rows ([3dd1b08](https://github.com/chio-labs/streambuild/commit/3dd1b0842de885895685e77cc84f703674123525))
 * reset offsets for fresh source landings ([6a61125](https://github.com/chio-labs/streambuild/commit/6a61125ea6452b936fe4cacb4bfe3f14c811dca1))
-* reset offsets for fresh source landings ([b9f43a4](https://github.com/chio-labs/streambuild/commit/b9f43a4ba454cddb4ff859bd9aa90ce650f91ba6))
 
 ## [0.12.3](https://github.com/chio-labs/streambuild/compare/v0.12.2...v0.12.3) (2026-08-08)
 
@@ -445,7 +408,6 @@
 ### Features
 
 * add source message browser and topics inventory ([40afebe](https://github.com/chio-labs/streambuild/commit/40afebe06d82645899671e5843d462efc28bf2f0))
-* add source message browser and topics inventory ([967af5c](https://github.com/chio-labs/streambuild/commit/967af5c6f9b46ad550dfdb4701566ff855d28733))
 
 ## [0.11.0](https://github.com/chio-labs/streambuild/compare/v0.10.0...v0.11.0) (2026-08-08)
 
@@ -453,13 +415,11 @@
 ### Features
 
 * add quality identities and audit scheduling ([d9b88ba](https://github.com/chio-labs/streambuild/commit/d9b88ba73c22302eb7f65ce9561d4270d097ff0a))
-* add quality identities and audit scheduling ([b165fab](https://github.com/chio-labs/streambuild/commit/b165fabc91c7a6449c0d2d344e595eb852f8f0ef))
 
 
 ### Bug Fixes
 
 * guard empty Release Please outputs ([32b9cb6](https://github.com/chio-labs/streambuild/commit/32b9cb691c53862aa87b7bdb43a720b715cecd79))
-* guard empty Release Please outputs ([f4357d3](https://github.com/chio-labs/streambuild/commit/f4357d35e5c00dbe48bd98d6bc33a07e2c9ea597))
 
 ## [0.10.0](https://github.com/chio-labs/streambuild/compare/v0.9.3...v0.10.0) (2026-08-08)
 
@@ -467,7 +427,6 @@
 ### Features
 
 * add pipeline safeguards and Kafka observability ([124f735](https://github.com/chio-labs/streambuild/commit/124f7353463e0ac487de9d56f7ce624d03d0908e))
-* add pipeline safeguards and Kafka observability ([4aefee4](https://github.com/chio-labs/streambuild/commit/4aefee4ac941d37d3d17caccd06ad6b7c94315cc))
 
 ## [0.9.3](https://github.com/chio-labs/streambuild/compare/v0.9.2...v0.9.3) (2026-08-07)
 
@@ -475,7 +434,6 @@
 ### Bug Fixes
 
 * keep release lockfile synchronized ([ac15b72](https://github.com/chio-labs/streambuild/commit/ac15b721cc476918052eeb73b3be0c835214601d))
-* keep release lockfile synchronized ([981f165](https://github.com/chio-labs/streambuild/commit/981f165c0d3ec40804776b9c71627acfa48aa346))
 
 ## [0.9.2](https://github.com/chio-labs/streambuild/compare/v0.9.1...v0.9.2) (2026-08-07)
 
@@ -501,13 +459,11 @@
 ### Features
 
 * improve CLI plan and error presentation ([74d1b62](https://github.com/chio-labs/streambuild/commit/74d1b6265c5eaf0dbe23f562e204c1679d7aa952))
-* improve CLI plan and error presentation ([863c744](https://github.com/chio-labs/streambuild/commit/863c744b420c8392f27da57e3a4828a9539798e8))
 
 
 ### Bug Fixes
 
 * package dev UI assets in distributions ([1cb9a84](https://github.com/chio-labs/streambuild/commit/1cb9a84576f6633edcd21a513334b619ef8a651a))
-* package dev UI assets in distributions ([96b2976](https://github.com/chio-labs/streambuild/commit/96b2976a3f29ce111267ca568076fdca1f191bbd))
 
 ## [0.8.0](https://github.com/chio-labs/streambuild/compare/v0.7.0...v0.8.0) (2026-08-07)
 
@@ -564,7 +520,6 @@
 ### Features
 
 * support bounded direct start times ([8468e83](https://github.com/chio-labs/streambuild/commit/8468e8312ed4761c059e480b7477d59682be1f77))
-* support bounded direct start times ([a23c85c](https://github.com/chio-labs/streambuild/commit/a23c85cc8d816a14db49970d53adaed8cd0b498d))
 
 ## [0.4.0](https://github.com/chio-labs/streambuild/compare/v0.3.0...v0.4.0) (2026-08-02)
 
