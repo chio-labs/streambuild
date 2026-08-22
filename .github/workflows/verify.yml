@@ -15,6 +15,63 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Classify verification scope
+    runs-on: ubuntu-latest
+    outputs:
+      integration: ${{ steps.scope.outputs.integration }}
+      e2e: ${{ steps.scope.outputs.e2e }}
+      browser: ${{ steps.scope.outputs.browser }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Select relevant suites
+        id: scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          write_scope() {
+            {
+              echo "integration=$1"
+              echo "e2e=$2"
+              echo "browser=$3"
+            } >> "${GITHUB_OUTPUT}"
+          }
+
+          if [[ "${EVENT_NAME}" != "pull_request" ]]; then
+            write_scope true true true
+            exit 0
+          fi
+
+          focused=true
+          browser=false
+          changed=false
+          while IFS= read -r -d '' path; do
+            changed=true
+            case "${path}" in
+              ui/*)
+                browser=true
+                ;;
+              tests/unit/*)
+                ;;
+              .github/*|docs/*|*.md|LICENSE)
+                ;;
+              *)
+                focused=false
+                ;;
+            esac
+          done < <(git diff --name-only -z "${BASE_SHA}" "${HEAD_SHA}")
+
+          if [[ "${changed}" != "true" || "${focused}" != "true" ]]; then
+            write_scope true true true
+            exit 0
+          fi
+
+          write_scope false false "${browser}"
+
   checks:
     name: Static, UI, and unit checks
     runs-on: ubuntu-latest
@@ -44,6 +101,8 @@ jobs:
 
   integration:
     name: ClickHouse integration tests
+    needs: changes
+    if: needs.changes.outputs.integration == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -62,6 +121,8 @@ jobs:
 
   e2e:
     name: Process and executor E2E tests
+    needs: changes
+    if: needs.changes.outputs.e2e == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -87,6 +148,8 @@ jobs:
 
   browser:
     name: Packaged Chromium E2E tests
+    needs: changes
+    if: needs.changes.outputs.browser == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -131,8 +194,26 @@ jobs:
 
   verify:
     name: Verify
-    needs: [checks, integration, e2e, browser]
+    if: always()
+    needs: [changes, checks, integration, e2e, browser]
     runs-on: ubuntu-latest
     steps:
       - name: Confirm all required verification jobs passed
-        run: echo "All required verification jobs passed"
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          CHECKS_RESULT: ${{ needs.checks.result }}
+          INTEGRATION_RESULT: ${{ needs.integration.result }}
+          E2E_RESULT: ${{ needs.e2e.result }}
+          BROWSER_RESULT: ${{ needs.browser.result }}
+        run: |
+          if [[ "${CHANGES_RESULT}" != "success" || "${CHECKS_RESULT}" != "success" ]]; then
+            echo "Required classification or static checks did not pass" >&2
+            exit 1
+          fi
+          for result in "${INTEGRATION_RESULT}" "${E2E_RESULT}" "${BROWSER_RESULT}"; do
+            if [[ "${result}" != "success" && "${result}" != "skipped" ]]; then
+              echo "A selected verification suite did not pass: ${result}" >&2
+              exit 1
+            fi
+          done
+          echo "All path-relevant verification jobs passed"
