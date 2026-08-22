@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.26.12](https://github.com/chio-labs/streambuild/compare/v0.26.11...v0.26.12) (2026-08-22)
+
+
+### Documentation
+
+* show full logo in readme ([#159](https://github.com/chio-labs/streambuild/issues/159)) ([dadc955](https://github.com/chio-labs/streambuild/commit/dadc955c1ee993404c1f08f6ece73e97b38c008a))
+
 ## [0.26.11](https://github.com/chio-labs/streambuild/compare/v0.26.10...v0.26.11) (2026-08-22)
 
 
