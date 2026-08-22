@@ -66,10 +66,11 @@ class SensorScheduler:
         """Build one dispatcher over the shared repository for the current compile."""
 
         repository: SensorStateRepository | None = self.repository
-        if repository is None:
+        if repository is None or self._database is None:
             return None
         return SensorDispatcher(
             repository=repository,
+            event_target=analysis.compiled_project.target_name or self._database,
             providers=(() if analysis.sensors is None else analysis.sensors.providers),
             dispatcher_id=self._dispatcher_id,
         )

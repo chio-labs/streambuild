@@ -136,7 +136,7 @@ def test_given_new_observation_when_dispatching_then_event_reaches_the_handler(
     repository: SensorStateRepository = SensorStateRepository(
         connection=sensor_warehouse_client, database=clickhouse_database
     )
-    dispatcher: SensorDispatcher = SensorDispatcher(repository=repository)
+    dispatcher: SensorDispatcher = SensorDispatcher(repository=repository, event_target="uat")
     seed_node_result(
         connection=sensor_warehouse_client,
         database=clickhouse_database,
@@ -164,6 +164,7 @@ def test_given_new_observation_when_dispatching_then_event_reaches_the_handler(
     assert tuple(str(event.transition) for event in handler.events) == (
         test_case.expected_transition,
     )
+    assert tuple(str(event.target) for event in handler.events) == ("uat",)
     ticks: tuple[SensorTickView, ...] = repository.list_ticks(sensor_name="recorder", limit=10)
     assert tuple(tick.status for tick in ticks) == test_case.expected_tick_statuses[1:]
     assert tuple(tick.event_id for tick in ticks) == (test_case.expected_event_id,)
@@ -210,7 +211,7 @@ def test_given_failed_attempt_when_dispatching_again_then_same_event_resumes_at_
     repository: SensorStateRepository = SensorStateRepository(
         connection=sensor_warehouse_client, database=clickhouse_database
     )
-    dispatcher: SensorDispatcher = SensorDispatcher(repository=repository)
+    dispatcher: SensorDispatcher = SensorDispatcher(repository=repository, event_target="uat")
     _ = dispatcher.dispatch_once(registry=registry, target=clickhouse_database)
     seed_node_result(
         connection=sensor_warehouse_client,
@@ -269,7 +270,7 @@ def test_given_poisoned_event_when_attempts_exhaust_then_dead_letter_unblocks_st
     repository: SensorStateRepository = SensorStateRepository(
         connection=sensor_warehouse_client, database=clickhouse_database
     )
-    dispatcher: SensorDispatcher = SensorDispatcher(repository=repository)
+    dispatcher: SensorDispatcher = SensorDispatcher(repository=repository, event_target="uat")
     _ = dispatcher.dispatch_once(registry=registry, target=clickhouse_database)
     seed_node_result(
         connection=sensor_warehouse_client,

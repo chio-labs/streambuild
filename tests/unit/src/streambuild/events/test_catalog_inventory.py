@@ -135,7 +135,7 @@ def test_given_every_kind_status_combination_when_deriving_then_decision_is_expl
     )
 
     events: tuple[AuditCompleted, ...] = events_from_node_result(
-        row=row, previous_status=test_case.previous_status
+        row=row, previous_status=test_case.previous_status, target="uat"
     )
 
     assert len(events) == test_case.expected_event_count

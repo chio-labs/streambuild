@@ -28,6 +28,7 @@ class DispatcherScenarioTestCase:
     polling_states: dict[str, PollingTickState] = field(default_factory=dict)
     newest_position: SensorStreamPosition | None = None
     lease_acquired: bool = True
+    event_target: str = "prod"
 
 
 @dataclass(frozen=True)
