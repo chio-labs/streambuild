@@ -17,7 +17,7 @@ from streambuild.sensors.models import (
     SensorTickView,
     StepMarker,
 )
-from streambuild.sensors.types import SensorOverrideStatus
+from streambuild.sensors.types import SensorOverrideStatus, SensorTickStatus
 from tests.integration.src.streambuild.sensors._test_types import (
     DeadLetterFlowTestCase,
     DispatchDeliveryTestCase,
@@ -32,6 +32,17 @@ from tests.integration.src.streambuild.sensors.helpers import (
     build_registry,
     seed_node_result,
 )
+
+_SAMPLE_PAYLOAD_JSON: str = (
+    '{"sample_column_names":["race_source_key","expected_runners","actual_runners"],'
+    '"sample_rows":[["1672326",13,12],["1672261",12,11]]}'
+)
+_SAMPLE_COLUMN_NAMES: tuple[str, ...] = (
+    "race_source_key",
+    "expected_runners",
+    "actual_runners",
+)
+_SAMPLE_ROWS: tuple[tuple[object, ...], ...] = (("1672326", 13, 12), ("1672261", 12, 11))
 
 
 @pytest.mark.integration
@@ -153,6 +164,7 @@ def test_given_new_observation_when_dispatching_then_event_reaches_the_handler(
         status="failed",
         completed_at="2024-01-01 00:00:02.000",
         target_identity=clickhouse_database,
+        payload_json=_SAMPLE_PAYLOAD_JSON,
     )
 
     summary: SensorDispatchSummary = dispatcher.dispatch_once(
@@ -165,6 +177,8 @@ def test_given_new_observation_when_dispatching_then_event_reaches_the_handler(
         test_case.expected_transition,
     )
     assert tuple(str(event.target) for event in handler.events) == ("uat",)
+    assert handler.events[0].sample_column_names == _SAMPLE_COLUMN_NAMES
+    assert handler.events[0].sample_rows == _SAMPLE_ROWS
     ticks: tuple[SensorTickView, ...] = repository.list_ticks(sensor_name="recorder", limit=10)
     assert tuple(tick.status for tick in ticks) == test_case.expected_tick_statuses[1:]
     assert tuple(tick.event_id for tick in ticks) == (test_case.expected_event_id,)
@@ -279,6 +293,7 @@ def test_given_poisoned_event_when_attempts_exhaust_then_dead_letter_unblocks_st
         status="failed",
         completed_at="2024-01-01 00:00:01.000",
         target_identity=clickhouse_database,
+        payload_json=_SAMPLE_PAYLOAD_JSON,
     )
 
     first: SensorDispatchSummary = dispatcher.dispatch_once(
@@ -298,6 +313,15 @@ def test_given_poisoned_event_when_attempts_exhaust_then_dead_letter_unblocks_st
     )
     assert checkpoint is not None
     assert checkpoint.result_id == "result-1"
+
+    retry_status: SensorTickStatus = dispatcher.retry_dead_letter(
+        registry=registry, sensor_name="poisoned", event_id="result-1"
+    )
+
+    assert str(retry_status) == "failed"
+    assert handler.calls == test_case.expected_handler_calls + 1
+    assert handler.events[-1].sample_column_names == _SAMPLE_COLUMN_NAMES
+    assert handler.events[-1].sample_rows == _SAMPLE_ROWS
 
     dispatcher.skip_dead_letter(
         registry=registry,

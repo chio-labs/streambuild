@@ -391,6 +391,7 @@ def _decode_node_result(row: Mapping[str, object]) -> NodeResultObservation:
         scheduled_for=(
             queries.timestamp_text(scheduled_for) if scheduled_for is not None else None
         ),
+        payload_json=str(row["payload_json"]),
         error_message=str(error_message) if error_message is not None else None,
     )
 

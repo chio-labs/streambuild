@@ -143,6 +143,7 @@ def register_sensor_routes(
         database=database,
         sensor_scheduler=sensor_scheduler,
         authorization=authorization,
+        isolated_connection=read_connection,
         servable_analysis=servable_analysis,
     )
 
@@ -154,6 +155,7 @@ def _register_sensor_action_routes(
     database: str | None,
     sensor_scheduler: SensorScheduler,
     authorization: OperationAuthorizationContext,
+    isolated_connection: Callable[[], AbstractContextManager[AdapterConnection]],
     servable_analysis: Callable[[], CompileAnalysis],
 ) -> FastAPI:
     """Attach the sensor override and dead-letter action routes."""
@@ -171,6 +173,17 @@ def _register_sensor_action_routes(
         if analysis.sensors is None:
             return SensorRegistry()
         return analysis.sensors.registry
+
+    @contextmanager
+    def _override_repository() -> Iterator[SensorStateRepository]:
+        _ = _required_repository()
+        if database is None:
+            raise HTTPException(
+                status_code=_HTTP_SERVICE_UNAVAILABLE,
+                detail="no warehouse connection",
+            )
+        with isolated_connection() as connection:
+            yield SensorStateRepository(connection=connection, database=database)
 
     def _require_sensor(*, analysis: CompileAnalysis, sensor_name: str) -> None:
         if sensor_name not in _registry(analysis=analysis).sensors:
@@ -194,9 +207,8 @@ def _register_sensor_action_routes(
         require_automation_authorization(
             analysis=analysis, request=http_request, context=authorization
         )
-        repository: SensorStateRepository = _required_repository()
         try:
-            with state.query_lock:
+            with _override_repository() as repository:
                 repository.ensure_ready()
                 repository.record_override(
                     sensor_name=sensor_name,

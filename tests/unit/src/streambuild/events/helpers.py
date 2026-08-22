@@ -12,6 +12,7 @@ def build_node_result_observation(
     target_identity: str = "prod",
     trigger: str = "scheduled",
     completed_at: str = "2024-01-01 00:00:01.000",
+    payload_json: str = "{}",
 ) -> NodeResultObservation:
     return NodeResultObservation(
         result_id=result_id,
@@ -26,6 +27,7 @@ def build_node_result_observation(
         failure_count=2,
         completed_at=completed_at,
         scheduled_for=None,
+        payload_json=payload_json,
         error_message=None,
     )
 
