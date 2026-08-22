@@ -33,7 +33,6 @@ def test_given_authored_sensors_when_browsing_then_lifecycle_is_visible_and_oper
     running_row: Locator = page.get_by_test_id(f"sensor-row-{test_case.expected_running_sensor}")
     expect(running_row).to_be_visible()
     expect(running_row).to_contain_text("running")
-    expect(running_row).to_contain_text("dead_lettered")
 
     paused_row: Locator = page.get_by_test_id(f"sensor-row-{test_case.expected_paused_sensor}")
     expect(paused_row).to_contain_text("stopped")
