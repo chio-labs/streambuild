@@ -18,15 +18,18 @@
 	import type { DeploymentDetail, Project } from '$lib/domain/types';
 	import { canAnyPipeline } from '$lib/auth/main/can-any-pipeline';
 	type DeploymentModel = DeploymentDetail['models'][number];
-	import type { DeploymentDetailPageData } from './+page';
-
-	let { data }: { data: DeploymentDetailPageData } = $props();
+	import { createDeploymentDetailState } from './state.svelte';
 
 	const project: Project = getProject();
 	const deploymentId: string = $derived(page.params.id ?? '');
+	const deployment = createDeploymentDetailState();
 
-	const detail: DeploymentDetail | null = $derived(data.initialDetail);
-	const loadError: string | null = $derived(data.initialError);
+	const detail: DeploymentDetail | null = $derived(
+		deployment.requestedId === deploymentId ? deployment.detail : null
+	);
+	const loadError: string | null = $derived(
+		deployment.requestedId === deploymentId ? deployment.error : null
+	);
 	let tab = $state<'graph' | 'diff'>('graph');
 	let diff = $state<DeploymentDiff | null>(null);
 	let diffError = $state<string | null>(null);
@@ -35,6 +38,11 @@
 	const promoteAllowed = $derived(canAnyPipeline('deployment.promote'));
 	let diffRequestGeneration = 0;
 	let promotionRequestGeneration = 0;
+
+	$effect(() => {
+		void deployment.load(deploymentId);
+		return deployment.cancel;
+	});
 
 	$effect(() => {
 		void deploymentId;
@@ -146,7 +154,31 @@
 	{#if loadError !== null}
 		<ErrorPreview text={loadError} title="Deployment failed to load" clamp="line-clamp-4" class="max-w-full" />
 	{:else if detail === null}
-		<div class="text-muted-foreground text-[13px]">loading deployment…</div>
+		<div class="flex items-center gap-2 pb-3">
+			<a href="/deployments" class="text-muted-foreground hover:text-foreground text-[12px]"
+				>← deployments</a
+			>
+		</div>
+		<div
+			role="status"
+			data-testid="deployment-loading-state"
+			class="text-muted-foreground flex items-center gap-2.5 rounded-[4px] border border-border bg-[var(--sb-surface-low)] px-3 py-4 font-mono text-[12px]"
+		>
+			<span class="h-3 w-3 shrink-0 animate-spin rounded-full border border-current border-t-transparent"></span>
+			<div>
+				<div class="text-foreground">Loading deployment snapshot…</div>
+				<div class="text-[var(--sb-text-faint)] pt-0.5 text-[10.5px]">
+					Reading staged relations and promotion state
+				</div>
+			</div>
+		</div>
+		<div class="mt-4 flex flex-col gap-4 lg:flex-row" aria-hidden="true">
+			<div class="h-[420px] min-w-0 flex-1 animate-pulse rounded-[4px] border border-border bg-[var(--sb-inset)]/35"></div>
+			<div class="flex w-full shrink-0 flex-col gap-4 lg:w-[320px]">
+				<div class="h-40 animate-pulse rounded-[4px] border border-border bg-[var(--sb-inset)]/35"></div>
+				<div class="h-32 animate-pulse rounded-[4px] border border-border bg-[var(--sb-inset)]/35"></div>
+			</div>
+		</div>
 	{:else}
 		<div class="flex items-center gap-2 pb-3">
 			<a href="/deployments" class="text-muted-foreground hover:text-foreground text-[12px]"
