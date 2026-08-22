@@ -21,6 +21,7 @@ from streambuild.compiler.discovery.constants import (
 from streambuild.dev_server.types import RunPresentationStatus
 
 _DEFAULT_RUNS_LIMIT: int = 100
+_SCHEDULED_RUNS_LIMIT: int = 25
 _RUN_EVENT_PAGE_SIZE: int = 500
 _RUN_EVENT_WINDOW_SIZE: int = 400
 _RUN_STARTED_KIND: str = "run_started"
@@ -86,20 +87,47 @@ def read_runs(
     """Return terminal and unterminated event streams with derived states."""
 
     warehouse_now: datetime = _parse_timestamp(connection.capture_warehouse_timestamp())
-    terminal_by_id: dict[str, dict[str, object]] = _terminal_runs(
-        connection=connection, database=database, limit=limit
-    )
-    streams: dict[str, list[dict[str, object]]] = _event_streams(
+    invocation_table_exists: bool = _table_exists(
         connection=connection,
         database=database,
-        limit=limit,
-        recent_limit=_RUN_EVENT_WINDOW_SIZE,
+        table=METADATA_INVOCATIONS_TABLE_NAME,
     )
+    terminal_by_id: dict[str, dict[str, object]] = (
+        {
+            **_terminal_runs(
+                connection=connection,
+                database=database,
+                limit=limit,
+                scheduled=False,
+            ),
+            **_terminal_runs(
+                connection=connection,
+                database=database,
+                limit=_SCHEDULED_RUNS_LIMIT,
+                scheduled=True,
+            ),
+        }
+        if invocation_table_exists
+        else {}
+    )
+    streams: dict[str, list[dict[str, object]]] = _run_started_streams(
+        connection=connection,
+        database=database,
+        invocation_ids=tuple(terminal_by_id),
+    )
+    active_streams: dict[str, list[dict[str, object]]] = _event_streams(
+        connection=connection,
+        database=database,
+        recent_limit=_RUN_EVENT_WINDOW_SIZE,
+        active_only=True,
+        exclude_terminal_invocations=invocation_table_exists,
+    )
+    streams.update(active_streams)
     return _assemble_runs(
         terminal_by_id=terminal_by_id,
         streams=streams,
         warehouse_now=warehouse_now,
-        limit=limit,
+        limit=None,
         presumed_failed_after_seconds=presumed_failed_after_seconds,
     )
 
@@ -199,16 +227,17 @@ def _assemble_runs(
     events: list[dict[str, object]]
     for invocation_id, events in streams.items():
         if invocation_id in terminal_runs:
-            terminal_runs[invocation_id]["lastSignalAt"] = events[-1]["emittedAt"]
             started: dict[str, object] | None = next(
                 (event for event in events if event["event"] == _RUN_STARTED_KIND), None
             )
             if started is not None and started.get("displayCommand"):
                 terminal_runs[invocation_id]["displayCommand"] = str(started["displayCommand"])
-            progress: dict[str, object] = _run_progress(events=events)
-            if terminal_runs[invocation_id].get("auditSummary") is not None:
-                progress.pop("auditSummary")
-            terminal_runs[invocation_id].update(progress)
+            if any(event["event"] != _RUN_STARTED_KIND for event in events):
+                terminal_runs[invocation_id]["lastSignalAt"] = events[-1]["emittedAt"]
+                progress: dict[str, object] = _run_progress(events=events)
+                if terminal_runs[invocation_id].get("auditSummary") is not None:
+                    progress.pop("auditSummary")
+                terminal_runs[invocation_id].update(progress)
             continue
         started: dict[str, object] = events[0]
         completed: dict[str, object] | None = next(
@@ -403,14 +432,20 @@ def _terminal_runs(
     database: str,
     invocation_id: str | None = None,
     limit: int | None = None,
+    scheduled: bool | None = None,
 ) -> dict[str, dict[str, object]]:
     if not _table_exists(
         connection=connection, database=database, table=METADATA_INVOCATIONS_TABLE_NAME
     ):
         return {}
-    where_clause: str = (
-        "" if invocation_id is None else f" WHERE invocation_id = '{_sql_literal(invocation_id)}'"
-    )
+    clauses: list[str] = []
+    if invocation_id is not None:
+        clauses.append(f"invocation_id = '{_sql_literal(invocation_id)}'")
+    if scheduled is True:
+        clauses.append("command = 'audit' AND mode = 'scheduled'")
+    elif scheduled is False:
+        clauses.append("NOT (command = 'audit' AND coalesce(mode, '') = 'scheduled')")
+    where_clause: str = "" if not clauses else f" WHERE {' AND '.join(clauses)}"
     limit_clause: str = "" if limit is None else f" LIMIT {limit}"
     query: str = (
         "SELECT invocation_id, project_identity, command, mode, outcome, exit_code, "
@@ -450,6 +485,29 @@ def _terminal_runs(
             "currentStep": None,
         }
     return runs
+
+
+def _run_started_streams(
+    *,
+    connection: AdapterConnection,
+    database: str,
+    invocation_ids: tuple[str, ...],
+) -> dict[str, list[dict[str, object]]]:
+    if not invocation_ids or not _table_exists(
+        connection=connection, database=database, table=METADATA_RUN_EVENTS_TABLE_NAME
+    ):
+        return {}
+    invocation_literals: str = ", ".join(
+        f"'{_sql_literal(invocation_id)}'" for invocation_id in invocation_ids
+    )
+    query: str = (
+        "SELECT invocation_id, sequence, toString(emitted_at) AS emitted_at, event_kind, "
+        "step_id, phase, payload_json "
+        f"FROM `{database}`.`{METADATA_RUN_EVENTS_TABLE_NAME}` "
+        f"WHERE invocation_id IN ({invocation_literals}) AND event_kind = '{_RUN_STARTED_KIND}' "
+        "ORDER BY invocation_id, sequence"
+    )
+    return _streams_from_rows(connection.query(query).named_rows())
 
 
 def _event_streams(
@@ -512,8 +570,14 @@ def _event_streams(
             f"WHERE recency <= {recent_limit} OR event_kind = 'run_started' "
             "ORDER BY invocation_id, sequence"
         )
+    return _streams_from_rows(connection.query(query).named_rows())
+
+
+def _streams_from_rows(
+    rows: tuple[Mapping[str, object], ...],
+) -> dict[str, list[dict[str, object]]]:
     streams: dict[str, list[dict[str, object]]] = {}
-    for row in connection.query(query).named_rows():
+    for row in rows:
         event_invocation_id: str = str(row["invocation_id"])
         streams.setdefault(event_invocation_id, []).append(
             {

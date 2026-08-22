@@ -141,7 +141,7 @@
 		<span class="text-muted-foreground shrink-0 font-mono text-[11px]">
 			{#if durationSeconds !== null}{formatDuration(durationSeconds)}{/if}
 			{#if statementSummary !== null}
-				· {statementSummary} statements
+				· {statementSummary} {record?.command === 'audit' || startedEvent?.command === 'audit' ? 'audits' : 'statements'}
 			{/if}
 		</span>
 		{#if retryHref}
@@ -270,6 +270,14 @@
 		{/if}
 
 		<!-- event timeline -->
-		<RunTimeline {invocationId} {timeline} {running} {ownedRunning} {outcomeColor} {eventLabels} />
+		<RunTimeline
+			{invocationId}
+			{timeline}
+			{running}
+			{ownedRunning}
+			{outcomeColor}
+			{eventLabels}
+			audits={project.audits}
+		/>
 	{/if}
 </div>
