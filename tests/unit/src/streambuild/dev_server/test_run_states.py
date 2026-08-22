@@ -74,6 +74,7 @@ def test_given_scheduled_cycles_fill_history_when_reading_runs_then_builds_remai
     terminal_calls: list[tuple[int | None, bool | None]] = []
     active_calls: list[dict[str, object]] = []
     started_invocations: list[tuple[str, ...]] = []
+    table_checks: list[str] = []
 
     terminal_payloads: dict[bool | None, dict[str, dict[str, object]]] = {
         False: {
@@ -105,13 +106,20 @@ def test_given_scheduled_cycles_fill_history_when_reading_runs_then_builds_remai
         invocation_id: str | None = None,
         limit: int | None = None,
         scheduled: bool | None = None,
+        table_exists: bool | None = None,
     ) -> dict[str, dict[str, object]]:
         del connection, database, invocation_id
+        assert table_exists is True
         terminal_calls.append((limit, scheduled))
         return terminal_payloads[scheduled]
 
     monkeypatch.setattr(runs_query, "_terminal_runs", terminal_runs)
-    monkeypatch.setattr(runs_query, "_table_exists", lambda **_: True)
+
+    def table_exists(**kwargs: object) -> bool:
+        table_checks.append(str(kwargs["table"]))
+        return True
+
+    monkeypatch.setattr(runs_query, "_table_exists", table_exists)
     monkeypatch.setattr(
         runs_query,
         "_run_started_streams",
@@ -131,6 +139,7 @@ def test_given_scheduled_cycles_fill_history_when_reading_runs_then_builds_remai
 
     assert {run["invocationId"] for run in runs} == test_case.expected_invocation_ids
     assert terminal_calls == list(test_case.expected_terminal_calls)
+    assert table_checks == ["_streambuild_invocations", "_streambuild_run_events"]
     assert started_invocations == [("build-run", "audit-cycle")]
     assert active_calls == [
         {
@@ -139,6 +148,7 @@ def test_given_scheduled_cycles_fill_history_when_reading_runs_then_builds_remai
             "recent_limit": 400,
             "active_only": True,
             "exclude_terminal_invocations": test_case.expected_exclude_terminal_invocations,
+            "table_exists": True,
         }
     ]
 
