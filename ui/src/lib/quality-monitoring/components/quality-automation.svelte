@@ -62,14 +62,14 @@
 			</div>
 		{:else}
 			<div class="overflow-hidden rounded-[4px] border border-border">
-				<table class="sb-list w-full text-left">
-					<thead>
-						<tr>
-							<th class="px-3 py-2 font-normal">Cycle</th>
-							<th class="px-3 py-2 font-normal">Outcome</th>
-							<th class="hidden px-3 py-2 font-normal md:table-cell">Audit results</th>
-							<th class="hidden px-3 py-2 font-normal lg:table-cell">Started</th>
-							<th class="hidden px-3 py-2 text-right font-normal xl:table-cell">Duration</th>
+				<table class="sb-list w-full text-left md:table-fixed">
+					<thead class="sticky top-0 z-10">
+						<tr class="text-[var(--sb-text-faint)] font-mono text-[10px] uppercase tracking-[0.12em]">
+							<th class="w-[120px] px-3 py-2.5 font-medium">Cycle</th>
+							<th class="w-[120px] px-3 py-2.5 font-medium">Outcome</th>
+							<th class="hidden px-3 py-2.5 font-medium md:table-cell">Audit results</th>
+							<th class="hidden w-[152px] px-3 py-2.5 font-medium whitespace-nowrap lg:table-cell">Started</th>
+							<th class="hidden w-[90px] px-3 py-2.5 text-right font-medium whitespace-nowrap xl:table-cell">Duration</th>
 						</tr>
 					</thead>
 					<tbody>
