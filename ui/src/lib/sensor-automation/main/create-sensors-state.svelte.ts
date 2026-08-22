@@ -31,10 +31,15 @@ export function createSensorsState(): SensorsState {
 		refreshing = true;
 		try {
 			const nextPayload: SensorsPayload = await fetchSensors();
-			const nextDeadLetters: DeadLettersPayload = await fetchDeadLetters();
 			payload = nextPayload;
-			deadLetters = nextDeadLetters.deadLetters;
 			error = null;
+			loading = false;
+			if (nextPayload.deadLetterCount === 0) {
+				deadLetters = [];
+			} else {
+				const nextDeadLetters: DeadLettersPayload = await fetchDeadLetters();
+				deadLetters = nextDeadLetters.deadLetters;
+			}
 			await refreshTicks();
 		} catch (caught) {
 			error = String(caught);
