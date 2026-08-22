@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.26.11](https://github.com/chio-labs/streambuild/compare/v0.26.10...v0.26.11) (2026-08-22)
+
+
+### Bug Fixes
+
+* expose named target to sensor events ([#157](https://github.com/chio-labs/streambuild/issues/157)) ([608614e](https://github.com/chio-labs/streambuild/commit/608614e8a8a0dde9dbeb929300acb7e5e04d6a32))
+
 ## [0.26.10](https://github.com/chio-labs/streambuild/compare/v0.26.9...v0.26.10) (2026-08-22)
 
 
