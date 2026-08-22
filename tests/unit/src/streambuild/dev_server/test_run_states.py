@@ -5,15 +5,18 @@ import pytest
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import AdapterQueryResult, AdapterStatementProgress
+from streambuild.dev_server._helpers.queries import runs_query
 from streambuild.dev_server._helpers.queries.runs_query import (
     _assemble_runs,
     _statement_progress,
     _terminal_audit_summary,
+    _terminal_runs,
     derive_run_duration_ms,
     derive_run_status,
     read_latest_direct_build_materialization,
     read_run_events,
     read_run_statement,
+    read_runs,
 )
 from streambuild.dev_server.types import RunPresentationStatus
 from tests.unit.src.streambuild.dev_server._test_types import (
@@ -21,8 +24,10 @@ from tests.unit.src.streambuild.dev_server._test_types import (
     MissingRunDetailTestCase,
     RunDetailHistoryTestCase,
     RunDurationDerivationTestCase,
+    RunHistoryQueryTestCase,
     RunStatementReadTestCase,
     RunStatusDerivationTestCase,
+    TerminalRunQueryTestCase,
 )
 from tests.unit.src.streambuild.dev_server.helpers import (
     FakeAdapterConnection,
@@ -30,6 +35,11 @@ from tests.unit.src.streambuild.dev_server.helpers import (
 )
 
 _WAREHOUSE_NOW: datetime = datetime(2026, 8, 7, 12, 0, tzinfo=UTC)
+
+
+class RunHistoryClockConnection:
+    def capture_warehouse_timestamp(self) -> str:
+        return "2026-08-07 12:00:00.000"
 
 
 class StatementProgressConnection:
@@ -43,6 +53,212 @@ class StatementProgressConnection:
             memory_usage_bytes=300,
             settings=(("max_threads", "1"),),
         )
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        RunHistoryQueryTestCase(
+            description="scheduled cycles do not displace recent builds",
+            expected_invocation_ids=frozenset({"build-run", "audit-cycle"}),
+            expected_terminal_calls=((100, False), (25, True)),
+            expected_exclude_terminal_invocations=True,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_scheduled_cycles_fill_history_when_reading_runs_then_builds_remain_visible(
+    monkeypatch: pytest.MonkeyPatch,
+    test_case: RunHistoryQueryTestCase,
+) -> None:
+    terminal_calls: list[tuple[int | None, bool | None]] = []
+    active_calls: list[dict[str, object]] = []
+    started_invocations: list[tuple[str, ...]] = []
+
+    terminal_payloads: dict[bool | None, dict[str, dict[str, object]]] = {
+        False: {
+            "build-run": {
+                "invocationId": "build-run",
+                "command": "build",
+                "mode": "direct",
+                "status": "succeeded",
+                "startedAt": "2026-08-07 11:00:00.000",
+                "lastSignalAt": "2026-08-07 11:01:00.000",
+            }
+        },
+        True: {
+            "audit-cycle": {
+                "invocationId": "audit-cycle",
+                "command": "audit",
+                "mode": "scheduled",
+                "status": "succeeded",
+                "startedAt": "2026-08-07 11:00:00.000",
+                "lastSignalAt": "2026-08-07 11:01:00.000",
+            }
+        },
+    }
+
+    def terminal_runs(
+        *,
+        connection: AdapterConnection,
+        database: str,
+        invocation_id: str | None = None,
+        limit: int | None = None,
+        scheduled: bool | None = None,
+    ) -> dict[str, dict[str, object]]:
+        del connection, database, invocation_id
+        terminal_calls.append((limit, scheduled))
+        return terminal_payloads[scheduled]
+
+    monkeypatch.setattr(runs_query, "_terminal_runs", terminal_runs)
+    monkeypatch.setattr(runs_query, "_table_exists", lambda **_: True)
+    monkeypatch.setattr(
+        runs_query,
+        "_run_started_streams",
+        lambda **kwargs: started_invocations.append(kwargs["invocation_ids"]) or {},
+    )
+    monkeypatch.setattr(
+        runs_query,
+        "_event_streams",
+        lambda **kwargs: active_calls.append(kwargs) or {},
+    )
+
+    connection: AdapterConnection = cast(AdapterConnection, RunHistoryClockConnection())
+    runs: list[dict[str, object]] = read_runs(
+        connection=connection,
+        database="analytics",
+    )
+
+    assert {run["invocationId"] for run in runs} == test_case.expected_invocation_ids
+    assert terminal_calls == list(test_case.expected_terminal_calls)
+    assert started_invocations == [("build-run", "audit-cycle")]
+    assert active_calls == [
+        {
+            "connection": connection,
+            "database": "analytics",
+            "recent_limit": 400,
+            "active_only": True,
+            "exclude_terminal_invocations": test_case.expected_exclude_terminal_invocations,
+        }
+    ]
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        RunHistoryQueryTestCase(
+            description="event-only metadata remains readable",
+            expected_invocation_ids=frozenset(),
+            expected_terminal_calls=(),
+            expected_exclude_terminal_invocations=False,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_no_invocation_table_when_reading_runs_then_active_events_remain_supported(
+    monkeypatch: pytest.MonkeyPatch,
+    test_case: RunHistoryQueryTestCase,
+) -> None:
+    active_calls: list[dict[str, object]] = []
+    monkeypatch.setattr(runs_query, "_table_exists", lambda **_: False)
+    monkeypatch.setattr(
+        runs_query,
+        "_terminal_runs",
+        lambda **_: pytest.fail("terminal runs must not be read without an invocation table"),
+    )
+    monkeypatch.setattr(runs_query, "_run_started_streams", lambda **_: {})
+    monkeypatch.setattr(
+        runs_query,
+        "_event_streams",
+        lambda **kwargs: active_calls.append(kwargs) or {},
+    )
+
+    read_runs(
+        connection=cast(AdapterConnection, RunHistoryClockConnection()),
+        database="analytics",
+    )
+
+    assert active_calls[0]["exclude_terminal_invocations"] is (
+        test_case.expected_exclude_terminal_invocations
+    )
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        TerminalRunQueryTestCase(
+            description="legacy null mode build remains visible",
+            invocation_id="legacy-build",
+            expected_command="build",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_null_mode_build_when_reading_terminal_operations_then_it_is_not_excluded(
+    test_case: TerminalRunQueryTestCase,
+) -> None:
+    invocation_table_query: str = (
+        "SELECT count() AS present FROM system.tables "
+        "WHERE database = 'analytics' AND name = '_streambuild_invocations'"
+    )
+    invocation_query: str = (
+        "SELECT invocation_id, project_identity, command, mode, outcome, exit_code, "
+        "toString(started_at) AS started_at, toString(completed_at) AS completed_at, "
+        "duration_ms, selected_node_count, error_message, summary_json, tool_version "
+        "FROM `analytics`.`_streambuild_invocations` "
+        "WHERE NOT (command = 'audit' AND coalesce(mode, '') = 'scheduled') "
+        "ORDER BY started_at DESC LIMIT 100"
+    )
+    connection: FakeAdapterConnection = FakeAdapterConnection(
+        catalog=build_fake_state_connection()._catalog,
+        warehouse_timestamp="2026-08-07 12:00:00.000",
+        results_by_query={
+            invocation_table_query: AdapterQueryResult(rows=((1,),), column_names=("present",)),
+            invocation_query: AdapterQueryResult(
+                rows=(
+                    (
+                        test_case.invocation_id,
+                        "project",
+                        "build",
+                        None,
+                        "succeeded",
+                        0,
+                        "2026-08-07 11:00:00.000",
+                        "2026-08-07 11:01:00.000",
+                        60000,
+                        1,
+                        None,
+                        "{}",
+                        "0.26.4",
+                    ),
+                ),
+                column_names=(
+                    "invocation_id",
+                    "project_identity",
+                    "command",
+                    "mode",
+                    "outcome",
+                    "exit_code",
+                    "started_at",
+                    "completed_at",
+                    "duration_ms",
+                    "selected_node_count",
+                    "error_message",
+                    "summary_json",
+                    "tool_version",
+                ),
+            ),
+        },
+    )
+
+    runs: dict[str, dict[str, object]] = _terminal_runs(
+        connection=connection,
+        database="analytics",
+        limit=100,
+        scheduled=False,
+    )
+
+    assert runs[test_case.invocation_id]["command"] == test_case.expected_command
 
 
 @pytest.mark.parametrize(

@@ -72,15 +72,15 @@ def test_given_persisted_scheduled_audits_when_filtering_quality_then_outcomes_r
     assert check_by_name[passing_name]["status"] == "passed"
     assert check_by_name[warning_name]["status"] == "warning"
     assert check_by_name[failing_name]["status"] == "failed"
-    expect(page.get_by_text(f"audits {test_case.expected_passing}/3", exact=False)).to_be_visible()
-    expect(page.get_by_text(f"{test_case.expected_warning} warn", exact=True)).to_be_visible()
-    expect(page.get_by_text(f"{test_case.expected_failing} fail", exact=True)).to_be_visible()
+    expect(page.get_by_role("button", name="Audits 1/3", exact=True)).to_be_visible()
+    expect(page.get_by_text(f"{test_case.expected_warning} warning", exact=True)).to_be_visible()
+    expect(page.get_by_text(f"{test_case.expected_failing} failed", exact=True)).to_be_visible()
 
     passing_row: Locator = page.locator(f'[data-quality-name="{passing_name}"]')
     warning_row: Locator = page.locator(f'[data-quality-name="{warning_name}"]')
     failing_row: Locator = page.locator(f'[data-quality-name="{failing_name}"]')
     expect(passing_row).to_contain_text("pass")
-    expect(passing_row).to_contain_text("error")
+    expect(passing_row).not_to_contain_text("error")
     expect(warning_row).to_contain_text("warning")
     expect(warning_row).to_contain_text("1 rows")
     expect(failing_row).to_contain_text("error")
@@ -91,6 +91,7 @@ def test_given_persisted_scheduled_audits_when_filtering_quality_then_outcomes_r
     )
     warning_expand.click()
     expect(warning_expand).to_have_attribute("aria-expanded", "true")
+    expect(warning_row).to_contain_text("severity warning")
     expect(page.get_by_text("Violating rows — sample of 1", exact=True)).to_be_visible()
     expect(page.get_by_role("cell", name=test_case.expected_sample_key, exact=True)).to_be_visible()
     expect(page.get_by_role("cell", name="-5", exact=True)).to_be_visible()
@@ -111,8 +112,8 @@ def test_given_persisted_scheduled_audits_when_filtering_quality_then_outcomes_r
     assert manual_payload["name"] == warning_name
     assert manual_payload["passed"] is True
     expect(warning_row).to_contain_text("pass")
-    expect(page.get_by_text("audits 2/3", exact=False)).to_be_visible()
-    expect(page.get_by_text("1 warn", exact=True)).to_have_count(0)
+    expect(page.get_by_role("button", name="Audits 2/3", exact=True)).to_be_visible()
+    expect(page.get_by_text("1 warning", exact=True)).to_have_count(0)
 
     page.get_by_role("button", name="Failing", exact=True).click()
     expect(page.get_by_role("button", name="Failing", exact=True)).to_have_attribute(
@@ -132,7 +133,7 @@ def test_given_persisted_scheduled_audits_when_filtering_quality_then_outcomes_r
     for audit_name in audit_names:
         expect(page.locator(f'[data-quality-name="{audit_name}"]')).to_have_count(1)
     page.reload(wait_until="domcontentloaded")
-    expect(page.get_by_text("audits 2/3", exact=False)).to_be_visible()
+    expect(page.get_by_role("button", name="Audits 2/3", exact=True)).to_be_visible()
     for audit_name in audit_names:
         expect(page.locator(f'[data-quality-name="{audit_name}"]')).to_have_count(1)
 
@@ -147,6 +148,15 @@ def test_given_persisted_scheduled_audits_when_filtering_quality_then_outcomes_r
     run_by_mode: dict[str, dict[str, object]] = {str(run["mode"]): run for run in runs_payload}
     assert run_by_mode["scheduled"]["outcome"] == "failed"
     assert run_by_mode["None"]["outcome"] == "succeeded"
+    scheduled_invocation_id: str = str(run_by_mode["scheduled"]["invocationId"])
+    page.goto(f"{base_url}/runs/{scheduled_invocation_id}", wait_until="domcontentloaded")
+    expect(page.get_by_text("3/3 audits", exact=False)).to_be_visible()
+    warning_event: Locator = page.locator(f'[data-audit-name="{warning_name}"]')
+    warning_event.click()
+    expect(warning_event).to_have_attribute("aria-expanded", "true")
+    expect(page.get_by_text("Current audit SQL", exact=True)).to_be_visible()
+    expect(page.get_by_text("severity warning", exact=True)).to_be_visible()
+    expect(page.get_by_text("1 failing row", exact=True)).to_be_visible()
     scheduled_count: int = int(
         e2e_clickhouse_client.query(
             f"SELECT count() FROM {database}._streambuild_node_results WHERE trigger = 'scheduled'"

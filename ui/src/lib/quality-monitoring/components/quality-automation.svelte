@@ -4,19 +4,14 @@
 	import { formatAgo } from '$lib/formatting/main/format-ago';
 	import { formatDuration } from '$lib/formatting/main/format-duration';
 	import { formatTimestamp } from '$lib/formatting/main/format-timestamp';
-	import SchedulerStatus from '$lib/quality-monitoring/components/scheduler-status.svelte';
-	import type { AuditSchedulerPayload } from '$lib/quality-monitoring/types';
 	import { scheduledAuditRuns } from '$lib/run-presentation/main/scheduled-audit-runs';
 
 	type Props = {
 		view: 'current' | 'history';
-		payload: AuditSchedulerPayload | null;
-		loading: boolean;
-		error: string | null;
 		capturedAt: string;
 	};
 
-	const { view, payload, loading, error, capturedAt }: Props = $props();
+	const { view, capturedAt }: Props = $props();
 	let cycleRuns = $state<RunRecord[] | null>(null);
 	let cycleLoadError = $state<string | null>(null);
 	let loadingCycles = false;
@@ -49,8 +44,6 @@
 		return parts.join(' · ');
 	}
 </script>
-
-<SchedulerStatus {payload} {loading} {error} />
 
 {#if view === 'history'}
 	<div>
