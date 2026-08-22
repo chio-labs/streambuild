@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from pathlib import Path
 from typing import cast
 from unittest.mock import MagicMock, patch
@@ -17,6 +18,7 @@ from tests.unit.src.streambuild.dev_server._test_types import (
     BootstrapEndpointTestCase,
     CapabilitiesTestCase,
     DevAppLifespanTestCase,
+    ReadConnectionRouteTestCase,
     ReloadAuthorizationTestCase,
     StateRouteErrorTestCase,
     StatusEndpointTestCase,
@@ -69,6 +71,51 @@ def test_given_compiled_project_when_reading_bootstrap_then_one_payload_initiali
     assert (payload["state"] is not None) is test_case.expected_has_state
     assert auth["session"] is not None
     assert auth["capabilities"] is not None
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ReadConnectionRouteTestCase(
+            description="run history avoids the primary execution connection",
+            path="/api/runs",
+            expected_status=200,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_isolated_read_factory_when_reading_route_then_primary_connection_is_avoided(
+    test_case: ReadConnectionRouteTestCase,
+    tmp_path: Path,
+) -> None:
+    write_dev_server_project(project_dir=tmp_path)
+    state: DevServerState = DevServerState(run_compile=build_compile_callable(project_dir=tmp_path))
+    primary_mock: MagicMock = MagicMock()
+    read_mock: MagicMock = MagicMock()
+    create_read: MagicMock = MagicMock(return_value=cast(AdapterConnection, read_mock))
+    client: TestClient = TestClient(
+        create_dev_app(
+            state=state,
+            connection=cast(AdapterConnection, primary_mock),
+            database="analytics",
+            project_dir=tmp_path,
+            execution_context=DevExecutionContext(
+                database="analytics",
+                observation_connection_factory=cast(Callable[[], AdapterConnection], create_read),
+            ),
+        )
+    )
+
+    with patch(
+        "streambuild.dev_server._helpers.server.api_routes.read_runs", return_value=[]
+    ) as read_runs_mock:
+        response: Response = client.get(test_case.path)
+
+    assert response.status_code == test_case.expected_status
+    assert create_read.call_count == 1
+    assert read_runs_mock.call_args.kwargs["connection"] is read_mock
+    read_mock.close.assert_called_once()
+    primary_mock.query.assert_not_called()
 
 
 @pytest.mark.parametrize(
