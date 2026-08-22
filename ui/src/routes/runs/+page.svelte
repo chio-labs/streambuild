@@ -1,5 +1,4 @@
 <script lang="ts">
-	import ClockIcon from '@lucide/svelte/icons/clock-3';
 	import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
 	import { onMount } from 'svelte';
 	import AppTopbar from '$lib/presentation/components/app-topbar.svelte';
@@ -13,14 +12,11 @@
 	import { formatTimestamp } from '$lib/formatting/main/format-timestamp';
 	import type { Project } from '$lib/domain/types';
 	import { canAnyPipeline } from '$lib/auth/main/can-any-pipeline';
-	import { createAuditSchedulerState } from '$lib/quality-monitoring/main/create-audit-scheduler-state.svelte';
 	import { runsInScope, type RunScope } from '$lib/run-presentation/main/runs-in-scope';
-	import { scheduledAuditRuns } from '$lib/run-presentation/main/scheduled-audit-runs';
 	import { createRunHistoryState } from '$lib/run-presentation/main/create-run-history-state.svelte';
 
 	const project: Project = getProject();
 	const cancelAllowed = $derived(canAnyPipeline('build.cancel'));
-	const scheduler = createAuditSchedulerState();
 	const history = createRunHistoryState();
 
 	// Recorded CLI invocation history from `_streambuild_invocations`. Runs
@@ -60,7 +56,6 @@
 	}
 
 	onMount(() => {
-		const stopScheduler: () => void = scheduler.start();
 		const stopHistory: () => void = history.start();
 		void refreshOwnership();
 		const timer: ReturnType<typeof setInterval> = setInterval(() => {
@@ -68,7 +63,6 @@
 		}, POLL_MS);
 		return () => {
 			clearInterval(timer);
-			stopScheduler();
 			stopHistory();
 		};
 	});
@@ -78,19 +72,6 @@
 	let statusFilter = $state<StatusFilter>('all');
 
 	const scopedRuns = $derived(runsInScope(runs ?? [], scope));
-	const auditCycles = $derived(scheduledAuditRuns(runs ?? []));
-	const latestAuditCycle = $derived(auditCycles[0] ?? null);
-	const automationDisplay = $derived.by(() => {
-		const payload: typeof scheduler.payload = scheduler.payload;
-		if (!payload) return null;
-		if (!payload.enabled) return { label: 'Disabled', color: 'var(--sb-text-faint)' };
-		if (payload.health.state === 'backing_off') return { label: 'Retrying', color: 'var(--sb-warning)' };
-		if (payload.state === 'blocked' || payload.health.state === 'blocked') {
-			return { label: 'Paused', color: 'var(--sb-warning)' };
-		}
-		if (payload.health.runningAuditCount) return { label: 'Running', color: 'var(--sb-secondary)' };
-		return { label: 'Active', color: 'var(--sb-success)' };
-	});
 	const succeededCount = $derived(scopedRuns.filter((run) => run.status === 'succeeded').length);
 	const failedCount = $derived(
 		scopedRuns.filter((run) => run.status === 'failed' || run.status === 'presumed_failed').length
@@ -172,43 +153,7 @@
 </AppTopbar>
 
 <div class="flex min-h-0 flex-1 flex-col">
-	<a
-		href="/quality"
-		class="hover:bg-[var(--sb-hover)] mx-[18px] mt-[18px] flex shrink-0 items-center gap-3 rounded-[4px] border border-border bg-[var(--sidebar-accent)]/20 px-3 py-2.5 transition-colors"
-	>
-		<ClockIcon size={13} class="text-muted-foreground" />
-		<div class="min-w-0">
-			<div class="flex items-baseline gap-2">
-				<span class="font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--sb-text-faint)]">
-					Audit automation
-				</span>
-				{#if automationDisplay}
-					<span class="text-xs" style:color={automationDisplay.color}>
-						{automationDisplay.label}
-					</span>
-				{:else if scheduler.loading}
-					<span class="text-muted-foreground text-xs">Loading…</span>
-				{:else}
-					<span class="text-xs" style:color="var(--sb-error)">Unavailable</span>
-				{/if}
-			</div>
-			<div class="text-[var(--sb-text-faint)] mt-0.5 truncate font-mono text-[10px]">
-				{#if latestAuditCycle?.auditSummary}
-					Latest cycle: {latestAuditCycle.auditSummary.passed}/{latestAuditCycle.auditSummary.total} passed
-					{#if latestAuditCycle.auditSummary.warning} · {latestAuditCycle.auditSummary.warning} warning{/if}
-					{#if latestAuditCycle.auditSummary.failed} · {latestAuditCycle.auditSummary.failed} failed{/if}
-					{#if latestAuditCycle.auditSummary.error} · {latestAuditCycle.auditSummary.error} errors{/if}
-				{:else if latestAuditCycle}
-					Latest cycle {formatAgo(latestAuditCycle.startedAt, project.capturedAt)}
-				{:else}
-					Scheduled audit cycles are managed in Quality
-				{/if}
-			</div>
-		</div>
-		<span class="text-primary ml-auto hidden font-mono text-[10.5px] sm:block">Open Quality →</span>
-	</a>
-
-	<div class="mt-3 flex shrink-0 items-center gap-1 overflow-x-auto border-b border-border px-[18px]">
+	<div class="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-border px-[18px]">
 		{#each SCOPE_DEFS as item (item.key)}
 			<button
 				class="relative shrink-0 px-3 py-2.5 text-[12.5px] transition-colors {scope === item.key
@@ -263,14 +208,14 @@
 			<!-- Column set follows Dagster's runs table (ID+tags / target / status /
 			     created / duration), except the selection column is named Command:
 			     "target" already means the dev/prod profile in StreamBuild. -->
-			<table class="sb-list w-full text-left">
-				<thead>
-					<tr>
-						<th class="w-[220px] px-3 py-2 font-normal sm:px-[18px]">ID</th>
-						<th class="hidden px-3 py-2 font-normal md:table-cell">Command</th>
-						<th class="px-2 py-2 font-normal sm:px-3">Status</th>
-						<th class="hidden px-3 py-2 font-normal lg:table-cell">Created at</th>
-						<th class="hidden px-3 py-2 pr-[18px] text-right font-normal xl:table-cell">Duration</th>
+			<table class="sb-list w-full text-left md:table-fixed">
+				<thead class="sticky top-0 z-10">
+					<tr class="text-[var(--sb-text-faint)] font-mono text-[10px] uppercase tracking-[0.12em]">
+						<th class="w-[180px] px-3 py-2.5 font-medium sm:px-[18px]">ID</th>
+						<th class="hidden px-3 py-2.5 font-medium md:table-cell">Command</th>
+						<th class="w-[136px] px-2 py-2.5 font-medium whitespace-nowrap sm:px-3">Status</th>
+						<th class="hidden w-[152px] px-3 py-2.5 font-medium whitespace-nowrap lg:table-cell">Created at</th>
+						<th class="hidden w-[90px] px-3 py-2.5 pr-[18px] text-right font-medium whitespace-nowrap xl:table-cell">Duration</th>
 					</tr>
 				</thead>
 				<tbody>

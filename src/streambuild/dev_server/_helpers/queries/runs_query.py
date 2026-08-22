@@ -92,6 +92,11 @@ def read_runs(
         database=database,
         table=METADATA_INVOCATIONS_TABLE_NAME,
     )
+    event_table_exists: bool = _table_exists(
+        connection=connection,
+        database=database,
+        table=METADATA_RUN_EVENTS_TABLE_NAME,
+    )
     terminal_by_id: dict[str, dict[str, object]] = (
         {
             **_terminal_runs(
@@ -99,12 +104,14 @@ def read_runs(
                 database=database,
                 limit=limit,
                 scheduled=False,
+                table_exists=True,
             ),
             **_terminal_runs(
                 connection=connection,
                 database=database,
                 limit=_SCHEDULED_RUNS_LIMIT,
                 scheduled=True,
+                table_exists=True,
             ),
         }
         if invocation_table_exists
@@ -114,6 +121,7 @@ def read_runs(
         connection=connection,
         database=database,
         invocation_ids=tuple(terminal_by_id),
+        table_exists=event_table_exists,
     )
     active_streams: dict[str, list[dict[str, object]]] = _event_streams(
         connection=connection,
@@ -121,6 +129,7 @@ def read_runs(
         recent_limit=_RUN_EVENT_WINDOW_SIZE,
         active_only=True,
         exclude_terminal_invocations=invocation_table_exists,
+        table_exists=event_table_exists,
     )
     streams.update(active_streams)
     return _assemble_runs(
@@ -433,9 +442,13 @@ def _terminal_runs(
     invocation_id: str | None = None,
     limit: int | None = None,
     scheduled: bool | None = None,
+    table_exists: bool | None = None,
 ) -> dict[str, dict[str, object]]:
-    if not _table_exists(
-        connection=connection, database=database, table=METADATA_INVOCATIONS_TABLE_NAME
+    if table_exists is False or (
+        table_exists is None
+        and not _table_exists(
+            connection=connection, database=database, table=METADATA_INVOCATIONS_TABLE_NAME
+        )
     ):
         return {}
     clauses: list[str] = []
@@ -492,9 +505,17 @@ def _run_started_streams(
     connection: AdapterConnection,
     database: str,
     invocation_ids: tuple[str, ...],
+    table_exists: bool | None = None,
 ) -> dict[str, list[dict[str, object]]]:
-    if not invocation_ids or not _table_exists(
-        connection=connection, database=database, table=METADATA_RUN_EVENTS_TABLE_NAME
+    if (
+        not invocation_ids
+        or table_exists is False
+        or (
+            table_exists is None
+            and not _table_exists(
+                connection=connection, database=database, table=METADATA_RUN_EVENTS_TABLE_NAME
+            )
+        )
     ):
         return {}
     invocation_literals: str = ", ".join(
@@ -521,9 +542,13 @@ def _event_streams(
     recent_limit: int | None = None,
     active_only: bool = False,
     exclude_terminal_invocations: bool = False,
+    table_exists: bool | None = None,
 ) -> dict[str, list[dict[str, object]]]:
-    if not _table_exists(
-        connection=connection, database=database, table=METADATA_RUN_EVENTS_TABLE_NAME
+    if table_exists is False or (
+        table_exists is None
+        and not _table_exists(
+            connection=connection, database=database, table=METADATA_RUN_EVENTS_TABLE_NAME
+        )
     ):
         return {}
     clauses: list[str] = []
