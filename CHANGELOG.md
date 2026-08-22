@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.26.13](https://github.com/chio-labs/streambuild/compare/v0.26.12...v0.26.13) (2026-08-22)
+
+
+### Bug Fixes
+
+* **ui:** clarify dead-letter retry progress ([#160](https://github.com/chio-labs/streambuild/issues/160)) ([796d270](https://github.com/chio-labs/streambuild/commit/796d270fd7796fcec2e9893ae328cfd2cd9ad32c))
+
 ## [0.26.12](https://github.com/chio-labs/streambuild/compare/v0.26.11...v0.26.12) (2026-08-22)
 
 
