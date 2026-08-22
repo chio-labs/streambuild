@@ -18,14 +18,17 @@ describe('deployments API', () => {
 			.mockResolvedValueOnce(new Response('{}'))
 			.mockResolvedValueOnce(new Response('{}'));
 		vi.stubGlobal('fetch', fetchMock);
+		const controller: AbortController = new AbortController();
 
 		const deployments: Deployment[] = await requestDeployments();
-		await requestDeployment('candidate/id');
+		await requestDeployment('candidate/id', controller.signal);
 		await requestDeploymentDiff('candidate/id', null);
 		await requestDeploymentDiff('candidate/id', 'base/id');
 
 		expect(deployments).toEqual([]);
-		expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/deployments/candidate%2Fid');
+		expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/deployments/candidate%2Fid', {
+			signal: controller.signal
+		});
 		expect(fetchMock).toHaveBeenNthCalledWith(3, '/api/deployments/candidate%2Fid/diff');
 		expect(fetchMock).toHaveBeenNthCalledWith(
 			4,

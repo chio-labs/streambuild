@@ -36,10 +36,13 @@ describe('run history scopes', () => {
 		expect(runsInScope(runs, 'builds').map((item) => item.invocationId)).toEqual(['build-direct']);
 	});
 
-	it('given mixed history when selecting other operations then automation is excluded', () => {
+	it('given mixed history when selecting other operations then all non-build operations are shown', () => {
 		const runs: RunRecord[] = [run('build', 'direct'), run('audit', 'scheduled'), run('audit', 'direct')];
 
-		expect(runsInScope(runs, 'other').map((item) => item.invocationId)).toEqual(['audit-direct']);
+		expect(runsInScope(runs, 'other').map((item) => item.invocationId)).toEqual([
+			'audit-scheduled',
+			'audit-direct'
+		]);
 	});
 
 	it('given scheduled and manual audits when reading cycles then only scheduled audits are returned', () => {

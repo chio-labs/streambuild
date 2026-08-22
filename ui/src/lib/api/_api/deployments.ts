@@ -10,8 +10,13 @@ export async function requestDeployments(): Promise<Deployment[]> {
 	return payload.deployments;
 }
 
-export async function requestDeployment(deploymentId: string): Promise<DeploymentDetail> {
-	const response: Response = await fetch(`/api/deployments/${encodeURIComponent(deploymentId)}`);
+export async function requestDeployment(
+	deploymentId: string,
+	signal?: AbortSignal
+): Promise<DeploymentDetail> {
+	const response: Response = await fetch(`/api/deployments/${encodeURIComponent(deploymentId)}`, {
+		signal
+	});
 	return readApiResponse<DeploymentDetail>(response, 'deployment');
 }
 
