@@ -327,6 +327,7 @@ environment variables shown by `stb dev --help`. Account state never belongs in 
 - [Documentation source](https://github.com/chio-labs/streambuild-docs)
 - [Runnable orders demo](examples/orders_demo/README.md)
 - [Changelog](CHANGELOG.md)
+- [Contributing](CONTRIBUTING.md)
 
 ## Development
 
