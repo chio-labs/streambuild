@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.26.7](https://github.com/chio-labs/streambuild/compare/v0.26.6...v0.26.7) (2026-08-22)
+
+
+### Bug Fixes
+
+* **ui:** improve run and deployment loading ([#149](https://github.com/chio-labs/streambuild/issues/149)) ([9f163b8](https://github.com/chio-labs/streambuild/commit/9f163b84010989d7154addaabd4f4d7974eeacdb))
+
 ## [0.26.6](https://github.com/chio-labs/streambuild/compare/v0.26.5...v0.26.6) (2026-08-22)
 
 
