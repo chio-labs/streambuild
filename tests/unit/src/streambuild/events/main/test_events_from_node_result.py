@@ -79,14 +79,14 @@ def test_given_previous_status_when_deriving_audit_event_then_transition_matches
     row: NodeResultObservation = build_node_result_observation(status=test_case.status)
 
     events: tuple[AuditCompleted, ...] = events_from_node_result(
-        row=row, previous_status=test_case.previous_status
+        row=row, previous_status=test_case.previous_status, target="uat"
     )
 
     assert len(events) == 1
     assert events[0].transition is test_case.expected_transition
     assert events[0].id == row.result_id
     assert events[0].audit_name == row.node_name
-    assert events[0].target == row.target_identity
+    assert events[0].target == "uat"
     assert events[0].previous_status is test_case.previous_status
 
 
@@ -126,7 +126,7 @@ def test_given_node_result_when_deriving_events_then_explicit_decisions_apply(
     )
 
     events: tuple[AuditCompleted, ...] = events_from_node_result(
-        row=row, previous_status=test_case.previous_status
+        row=row, previous_status=test_case.previous_status, target="uat"
     )
 
     assert len(events) == test_case.expected_event_count

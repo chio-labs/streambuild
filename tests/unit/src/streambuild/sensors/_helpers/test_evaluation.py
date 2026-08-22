@@ -52,7 +52,7 @@ def test_given_handler_when_evaluating_then_outcome_is_contained(
     test_case: EvaluationTestCase,
 ) -> None:
     events: tuple[AuditCompleted, ...] = events_from_node_result(
-        row=build_node_result_observation(), previous_status=None
+        row=build_node_result_observation(), previous_status=None, target="prod"
     )
     context: EventSensorContext[object] = EventSensorContext(event=events[0], target="prod")
 

@@ -49,8 +49,9 @@ def test_given_invocation_when_deriving_events_then_commands_map_exhaustively(
 ) -> None:
     row: InvocationObservation = build_invocation_observation(command=test_case.command)
 
-    events: tuple[RunCompleted, ...] = events_from_invocation(row=row)
+    events: tuple[RunCompleted, ...] = events_from_invocation(row=row, target="uat")
 
     assert len(events) == test_case.expected_event_count
     assert tuple(event.id for event in events) == (row.invocation_id,) * len(events)
     assert tuple(str(event.command) for event in events) == (test_case.command,) * len(events)
+    assert tuple(event.target for event in events) == ("uat",) * len(events)
