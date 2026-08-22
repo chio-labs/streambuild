@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.26.2](https://github.com/chio-labs/streambuild/compare/v0.26.1...v0.26.2) (2026-08-22)
+
+
+### Build System
+
+* **release:** standardize automated releases ([#138](https://github.com/chio-labs/streambuild/issues/138)) ([c8d1128](https://github.com/chio-labs/streambuild/commit/c8d11280a656fa7c70b7c6df1c9815467087c91e))
+
 ## [0.26.1](https://github.com/chio-labs/streambuild/compare/v0.26.0...v0.26.1) (2026-08-21)
 
 
