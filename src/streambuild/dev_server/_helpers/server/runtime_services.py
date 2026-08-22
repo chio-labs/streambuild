@@ -141,8 +141,9 @@ def build_dev_app_lifespan(
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         warehouse.start()
-        audit_scheduler.start()
+        sensor_scheduler.initialize_event_checkpoints()
         sensor_scheduler.start()
+        audit_scheduler.start()
         state.snapshot.start()
         _warm_broker_caches()
         yield

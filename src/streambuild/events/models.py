@@ -51,6 +51,7 @@ class AuditCompleted:
     id: str
     audit_name: str
     status: QualityResultStatus
+    previous_status: QualityResultStatus | None
     transition: AuditTransition
     severity: str | None
     failure_count: int

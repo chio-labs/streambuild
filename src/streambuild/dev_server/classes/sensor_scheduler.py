@@ -82,6 +82,25 @@ class SensorScheduler:
         self._thread = threading.Thread(target=self._run, name="streambuild-sensors", daemon=True)
         self._thread.start()
 
+    def initialize_event_checkpoints(self) -> None:
+        """Initialize new event streams before producers start."""
+
+        if self.repository is None or self._database is None:
+            return
+        with self._state.query_lock:
+            analysis: CompileAnalysis = self._state.current_analysis()
+            if not sensors_enabled(analysis):
+                return
+            if analysis.sensors is None or not analysis.sensors.registry.sensors:
+                return
+            dispatcher: SensorDispatcher | None = self.build_dispatcher(analysis=analysis)
+            if dispatcher is None:
+                return
+            dispatcher.initialize_event_checkpoints(
+                registry=analysis.sensors.registry,
+                target=self._database,
+            )
+
     def close(self) -> None:
         """Stop polling and wait briefly for the current tick."""
 

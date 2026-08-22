@@ -11,8 +11,8 @@ def compute_audit_transition(
 ) -> AuditTransition:
     """Compute the transition of one terminal audit status against the prior result."""
 
-    failing: bool = is_failing_status(status)
-    previously_failing: bool = previous_status is not None and is_failing_status(previous_status)
+    failing: bool = is_unhealthy_status(status)
+    previously_failing: bool = previous_status is not None and is_unhealthy_status(previous_status)
     if failing and previously_failing:
         return AuditTransition.STILL_FAILING
     if failing:
@@ -22,13 +22,11 @@ def compute_audit_transition(
     return AuditTransition.STILL_PASSING
 
 
-def is_failing_status(status: QualityResultStatus) -> bool:
-    """Classify one terminal status; warnings and deferrals never count as failures."""
+def is_unhealthy_status(status: QualityResultStatus) -> bool:
+    """Classify terminal audit health independently from command-blocking severity."""
 
     match status:
-        case QualityResultStatus.FAILED | QualityResultStatus.ERROR:
+        case QualityResultStatus.WARNING | QualityResultStatus.FAILED | QualityResultStatus.ERROR:
             return True
-        case (
-            QualityResultStatus.PASSED | QualityResultStatus.WARNING | QualityResultStatus.DEFERRED
-        ):
+        case QualityResultStatus.PASSED | QualityResultStatus.DEFERRED:
             return False

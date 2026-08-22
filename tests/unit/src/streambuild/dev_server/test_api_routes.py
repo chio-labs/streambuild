@@ -1,7 +1,7 @@
 from collections.abc import Callable
 from pathlib import Path
 from typing import cast
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 from fastapi import FastAPI
@@ -462,6 +462,9 @@ def test_given_dev_app_context_when_lifespan_exits_then_owned_resources_are_clos
             "streambuild.dev_server._helpers.server.runtime_services.AuditScheduler"
         ) as scheduler_class,
         patch(
+            "streambuild.dev_server._helpers.server.runtime_services.SensorScheduler"
+        ) as sensor_scheduler_class,
+        patch(
             "streambuild.dev_server._helpers.server.runtime_services.BuildProcessManager"
         ) as builds_class,
         patch(
@@ -472,6 +475,10 @@ def test_given_dev_app_context_when_lifespan_exits_then_owned_resources_are_clos
         ) as topic_reader_class,
     ):
         scheduler: MagicMock = scheduler_class.return_value
+        sensor_scheduler: MagicMock = sensor_scheduler_class.return_value
+        lifecycle: MagicMock = MagicMock()
+        lifecycle.attach_mock(sensor_scheduler, "sensors")
+        lifecycle.attach_mock(scheduler, "audits")
         builds: MagicMock = builds_class.return_value
         lag_reader: MagicMock = lag_reader_class.return_value
         topic_reader: MagicMock = topic_reader_class.return_value
@@ -482,8 +489,19 @@ def test_given_dev_app_context_when_lifespan_exits_then_owned_resources_are_clos
         with TestClient(app) as client:
             response: Response = client.get("/api/status")
             assert response.status_code == test_case.expected_status
+            sensor_scheduler.initialize_event_checkpoints.assert_called_once_with()
+            sensor_scheduler.start.assert_called_once_with()
             scheduler.start.assert_called_once_with()
+            lifecycle.assert_has_calls(
+                [
+                    call.sensors.initialize_event_checkpoints(),
+                    call.sensors.start(),
+                    call.audits.start(),
+                ],
+                any_order=False,
+            )
 
+        sensor_scheduler.close.assert_called_once_with()
         scheduler.close.assert_called_once_with()
         lag_reader.close.assert_called_once_with()
         topic_reader.close.assert_called_once_with()
