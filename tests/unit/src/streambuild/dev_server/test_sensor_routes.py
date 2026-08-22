@@ -13,6 +13,7 @@ from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.dev_server.classes.dev_server_state import DevServerState
 from streambuild.dev_server.main._create_dev_app import create_dev_app
 from streambuild.dev_server.models import DevExecutionContext
+from streambuild.sensors.classes.sensor_state_repository import SensorStateRepository
 from tests.unit.src.streambuild.dev_server._test_types import (
     ReadConnectionRouteTestCase,
     SensorRouteErrorTestCase,
@@ -70,6 +71,55 @@ def test_given_isolated_read_factory_when_reading_sensors_then_primary_connectio
     assert create_read.call_count == 1
     read_mock.close.assert_called_once()
     primary_mock.query.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ReadConnectionRouteTestCase(
+            description="sensor status writes avoid the primary execution connection",
+            path="/api/sensors/quality_alerts/status",
+            expected_status=200,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_isolated_connection_when_setting_sensor_status_then_primary_connection_is_avoided(
+    test_case: ReadConnectionRouteTestCase, tmp_path: Path
+) -> None:
+    write_dev_server_project(project_dir=tmp_path)
+    write_sensor_file(project_dir=tmp_path)
+    state: DevServerState = DevServerState(run_compile=build_compile_callable(project_dir=tmp_path))
+    primary_mock: MagicMock = MagicMock()
+    isolated_mock: MagicMock = MagicMock()
+    create_isolated: MagicMock = MagicMock(return_value=cast(AdapterConnection, isolated_mock))
+    client: TestClient = TestClient(
+        create_dev_app(
+            state=state,
+            connection=cast(AdapterConnection, primary_mock),
+            database="analytics",
+            project_dir=tmp_path,
+            execution_context=DevExecutionContext(
+                database="analytics",
+                observation_connection_factory=cast(
+                    Callable[[], AdapterConnection], create_isolated
+                ),
+            ),
+        )
+    )
+
+    with (
+        patch.object(SensorStateRepository, "ensure_ready"),
+        patch.object(SensorStateRepository, "record_override") as record_override,
+    ):
+        response: Response = client.post(test_case.path, json={"status": "running"})
+
+    assert response.status_code == test_case.expected_status
+    assert response.json() == {"sensorName": "quality_alerts", "status": "running"}
+    assert create_isolated.call_count == 1
+    isolated_mock.close.assert_called_once()
+    primary_mock.query.assert_not_called()
+    record_override.assert_called_once()
 
 
 @pytest.mark.parametrize(

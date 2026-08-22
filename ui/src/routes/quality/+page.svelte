@@ -43,6 +43,27 @@
 	// carries the outcome. Expand is opt-in.
 	let expandedAudit = $state<string | null>(null);
 	let expandedTest = $state<string | null>(null);
+	let revealedAudit = $state<string | null>(null);
+
+	function revealAudit(index: number): void {
+		requestAnimationFrame(() => {
+			const row: HTMLElement | null = document.getElementById(`quality-audit-${index}`);
+			row?.scrollIntoView({ block: 'center' });
+			row?.focus({ preventScroll: true });
+		});
+	}
+
+	$effect(() => {
+		const auditName: string | null = new URL(window.location.href).searchParams.get('audit');
+		if (auditName === null || revealedAudit === auditName) return;
+		const auditIndex: number = project.audits.findIndex((audit) => audit.name === auditName);
+		if (auditIndex === -1) return;
+		revealedAudit = auditName;
+		qualityView = 'audits';
+		filter = 'all';
+		expandedAudit = auditName;
+		revealAudit(auditIndex);
+	});
 
 	// A check that has never run is neither passing nor failing — it only shows
 	// under "All". Fabricating an outcome for it was worse than useless.
@@ -250,7 +271,9 @@
 					{@const failing = audit.result && !audit.result.passed}
 					{@const schedule = auditScheduleByName.get(audit.name)}
 					<div
+						id="quality-audit-{auditIndex}"
 						data-quality-name={audit.name}
+						tabindex="-1"
 						class="border-b border-[var(--border-subtle)] last:border-b-0"
 					>
 						<div

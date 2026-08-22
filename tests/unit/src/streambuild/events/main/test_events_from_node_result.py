@@ -8,6 +8,7 @@ from streambuild.events.types import AuditTransition
 from streambuild.executor.auditing.types import QualityResultStatus
 from tests.unit.src.streambuild.events.helpers import build_node_result_observation
 from tests.unit.src.streambuild.events.main._test_types import (
+    AuditSampleTestCase,
     AuditTransitionTestCase,
     NodeResultEventTestCase,
 )
@@ -88,6 +89,45 @@ def test_given_previous_status_when_deriving_audit_event_then_transition_matches
     assert events[0].audit_name == row.node_name
     assert events[0].target == "uat"
     assert events[0].previous_status is test_case.previous_status
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        AuditSampleTestCase(
+            description="persisted samples are exposed on the event",
+            payload_json=(
+                '{"sample_column_names":["race_source_key","expected_runners",'
+                '"actual_runners"],"sample_rows":[["1672326",13,12],'
+                '["1672261",12,11]]}'
+            ),
+            expected_column_names=(
+                "race_source_key",
+                "expected_runners",
+                "actual_runners",
+            ),
+            expected_rows=(("1672326", 13, 12), ("1672261", 12, 11)),
+        ),
+        AuditSampleTestCase(
+            description="malformed payloads produce an empty sample",
+            payload_json="not-json",
+            expected_column_names=(),
+            expected_rows=(),
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_audit_payload_when_deriving_event_then_sample_is_safe(
+    test_case: AuditSampleTestCase,
+) -> None:
+    row: NodeResultObservation = build_node_result_observation(payload_json=test_case.payload_json)
+
+    events: tuple[AuditCompleted, ...] = events_from_node_result(
+        row=row, previous_status=None, target="uat"
+    )
+
+    assert events[0].sample_column_names == test_case.expected_column_names
+    assert events[0].sample_rows == test_case.expected_rows
 
 
 @pytest.mark.parametrize(
