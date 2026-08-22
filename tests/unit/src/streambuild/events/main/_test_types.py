@@ -13,6 +13,14 @@ class AuditTransitionTestCase:
 
 
 @dataclass(frozen=True)
+class AuditSampleTestCase:
+    description: str
+    payload_json: str
+    expected_column_names: tuple[str, ...]
+    expected_rows: tuple[tuple[object, ...], ...]
+
+
+@dataclass(frozen=True)
 class NodeResultEventTestCase:
     description: str
     node_kind: str

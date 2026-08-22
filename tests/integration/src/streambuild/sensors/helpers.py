@@ -53,9 +53,11 @@ class AlwaysFailingHandler:
 
     def __init__(self) -> None:
         self.calls: int = 0
+        self.events: list[AuditCompleted] = []
 
-    def __call__(self, ctx: object) -> None:
+    def __call__(self, ctx: EventSensorContext[AuditCompleted]) -> None:
         self.calls += 1
+        self.events.append(ctx.event)
         raise RuntimeError("poisoned event")
 
 
@@ -111,6 +113,7 @@ def seed_node_result(
     completed_at: str,
     target_identity: str,
     binding_key: str = "binding-orders",
+    payload_json: str = "{}",
 ) -> None:
     invocation: AdapterInvocationRecord = AdapterInvocationRecord(
         invocation_id=f"inv-{result_id}",
@@ -148,7 +151,7 @@ def seed_node_result(
         severity="error",
         failure_count=1,
         completed_at=completed_at,
-        payload_json="{}",
+        payload_json=payload_json,
         error_message=None,
     )
     rendered: tuple[str, ...] = connection.render_terminal_observations(

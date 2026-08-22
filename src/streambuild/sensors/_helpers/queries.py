@@ -16,7 +16,8 @@ from streambuild.adapter.constants import (
 
 _NODE_RESULT_COLUMNS: str = (
     "result_id, invocation_id, node_kind, node_name, binding_key, target_identity, "
-    "trigger, status, severity, failure_count, completed_at, scheduled_for, error_message"
+    "trigger, status, severity, failure_count, completed_at, scheduled_for, payload_json, "
+    "error_message"
 )
 _INVOCATION_COLUMNS: str = (
     "invocation_id, command, mode, outcome, exit_code, target_identity, deployment_id, "
