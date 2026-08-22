@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.26.6](https://github.com/chio-labs/streambuild/compare/v0.26.5...v0.26.6) (2026-08-22)
+
+
+### Bug Fixes
+
+* **ui:** tolerate definitions cache limits ([#146](https://github.com/chio-labs/streambuild/issues/146)) ([8b57aa1](https://github.com/chio-labs/streambuild/commit/8b57aa10cd4d10527b4e31fc0c373c2c85d66e8b))
+
 ## [0.26.5](https://github.com/chio-labs/streambuild/compare/v0.26.4...v0.26.5) (2026-08-22)
 
 
