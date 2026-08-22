@@ -99,6 +99,27 @@ class SensorDispatcher:
                 outcomes.append(polling_outcome)
         return summarize_outcomes(outcomes=tuple(outcomes), lease_acquired=True)
 
+    def initialize_event_checkpoints(self, *, registry: SensorRegistry, target: str) -> None:
+        """Checkpoint newly enabled event sensors without evaluating their handlers."""
+
+        self._repository.ensure_ready()
+        overrides: dict[str, SensorOverrideStatus] = self._repository.override_statuses()
+        for sensor in registry.ordered():
+            if sensor.kind is not SensorKind.EVENT:
+                continue
+            status: SensorOverrideStatus = effective_sensor_status(
+                sensor=sensor, overrides=overrides
+            )
+            if status is not SensorOverrideStatus.RUNNING:
+                continue
+            declaration: EventSensorDeclaration = event_declaration_of(sensor)
+            source: str = event_source_for(declaration.event_type)
+            checkpoint: SensorStreamPosition | None = self._repository.read_checkpoint(
+                sensor_name=sensor.name, source=source
+            )
+            if checkpoint is None:
+                self._initialize_checkpoint(sensor=sensor, source=source, target=target)
+
     def retry_dead_letter(
         self, *, registry: SensorRegistry, sensor_name: str, event_id: str, target: str
     ) -> SensorTickStatus:

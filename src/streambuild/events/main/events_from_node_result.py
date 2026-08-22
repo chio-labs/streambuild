@@ -37,6 +37,7 @@ def _audit_events(
                     id=row.result_id,
                     audit_name=row.node_name,
                     status=row.status,
+                    previous_status=previous_status,
                     transition=compute_audit_transition(
                         status=row.status, previous_status=previous_status
                     ),

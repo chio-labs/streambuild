@@ -47,9 +47,21 @@ from tests.unit.src.streambuild.events.main._test_types import (
             expected_transition=AuditTransition.STILL_PASSING,
         ),
         AuditTransitionTestCase(
-            description="warning counts as passing for transitions",
+            description="warning after a failure is still failing",
             status=QualityResultStatus.WARNING,
             previous_status=QualityResultStatus.FAILED,
+            expected_transition=AuditTransition.STILL_FAILING,
+        ),
+        AuditTransitionTestCase(
+            description="first warning without history is a new failure",
+            status=QualityResultStatus.WARNING,
+            previous_status=None,
+            expected_transition=AuditTransition.NEW_FAILURE,
+        ),
+        AuditTransitionTestCase(
+            description="pass after a warning is a recovery",
+            status=QualityResultStatus.PASSED,
+            previous_status=QualityResultStatus.WARNING,
             expected_transition=AuditTransition.RECOVERED,
         ),
         AuditTransitionTestCase(
@@ -75,6 +87,7 @@ def test_given_previous_status_when_deriving_audit_event_then_transition_matches
     assert events[0].id == row.result_id
     assert events[0].audit_name == row.node_name
     assert events[0].target == row.target_identity
+    assert events[0].previous_status is test_case.previous_status
 
 
 @pytest.mark.parametrize(
