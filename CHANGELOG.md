@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.26.3](https://github.com/chio-labs/streambuild/compare/v0.26.2...v0.26.3) (2026-08-22)
+
+
+### Bug Fixes
+
+* **release:** satisfy protected release merges ([#140](https://github.com/chio-labs/streambuild/issues/140)) ([f302d4c](https://github.com/chio-labs/streambuild/commit/f302d4cf608bcb5693baaf735fe8eb4ba210c3d1))
+
 ## [0.26.2](https://github.com/chio-labs/streambuild/compare/v0.26.1...v0.26.2) (2026-08-22)
 
 
