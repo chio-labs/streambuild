@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.26.8](https://github.com/chio-labs/streambuild/compare/v0.26.7...v0.26.8) (2026-08-22)
+
+
+### Bug Fixes
+
+* **ui:** keep history reads responsive ([#151](https://github.com/chio-labs/streambuild/issues/151)) ([5179374](https://github.com/chio-labs/streambuild/commit/517937411cae093281646a481307d2f7e59506c0))
+
 ## [0.26.7](https://github.com/chio-labs/streambuild/compare/v0.26.6...v0.26.7) (2026-08-22)
 
 
