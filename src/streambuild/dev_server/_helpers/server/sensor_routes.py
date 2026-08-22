@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import AbstractContextManager, contextmanager
 from datetime import datetime
 from typing import Annotated
 
 from fastapi import FastAPI, HTTPException, Query, Request
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.exceptions import AdapterError
 from streambuild.auth.main.read_authenticated_request import read_authenticated_request
 from streambuild.compiler.pipeline.models import CompileAnalysis
@@ -45,6 +47,7 @@ def register_sensor_routes(
     database: str | None,
     sensor_scheduler: SensorScheduler,
     authorization: OperationAuthorizationContext,
+    read_connection: Callable[[], AbstractContextManager[AdapterConnection]],
     servable_analysis: Callable[[], CompileAnalysis],
 ) -> FastAPI:
     """Attach the sensor observability and management routes."""
@@ -63,6 +66,14 @@ def register_sensor_routes(
             return SensorRegistry()
         return analysis.sensors.registry
 
+    @contextmanager
+    def _read_repository(*, analysis: CompileAnalysis) -> Iterator[SensorStateRepository | None]:
+        if database is None or not _registry(analysis=analysis).sensors:
+            yield None
+            return
+        with read_connection() as connection:
+            yield SensorStateRepository(connection=connection, database=database)
+
     def _require_sensor(*, analysis: CompileAnalysis, sensor_name: str) -> None:
         if sensor_name not in _registry(analysis=analysis).sensors:
             raise HTTPException(
@@ -73,10 +84,10 @@ def register_sensor_routes(
     def read_sensors() -> dict[str, object]:
         analysis: CompileAnalysis = servable_analysis()
         try:
-            with state.query_lock:
+            with _read_repository(analysis=analysis) as repository:
                 return build_sensors_payload(
                     analysis=analysis,
-                    repository=sensor_scheduler.repository,
+                    repository=repository,
                     health=sensor_scheduler.health(),
                 )
         except AdapterError as error:
@@ -104,9 +115,9 @@ def register_sensor_routes(
         analysis: CompileAnalysis = servable_analysis()
         _require_sensor(analysis=analysis, sensor_name=sensor_name)
         try:
-            with state.query_lock:
+            with _read_repository(analysis=analysis) as repository:
                 return build_sensor_ticks_payload(
-                    repository=sensor_scheduler.repository,
+                    repository=repository,
                     sensor_name=sensor_name,
                     limit=limit,
                     after=_window_bound(name="after", value=after),
@@ -116,10 +127,10 @@ def register_sensor_routes(
             raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
 
     def read_dead_letters() -> dict[str, object]:
-        _ = servable_analysis()
+        analysis: CompileAnalysis = servable_analysis()
         try:
-            with state.query_lock:
-                return build_dead_letters_payload(repository=sensor_scheduler.repository)
+            with _read_repository(analysis=analysis) as repository:
+                return build_dead_letters_payload(repository=repository)
         except AdapterError as error:
             raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
 

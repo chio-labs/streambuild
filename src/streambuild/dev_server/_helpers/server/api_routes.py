@@ -300,6 +300,7 @@ def register_api_routes(
         database=database,
         sensor_scheduler=schedulers[1],
         authorization=authorization_context,
+        read_connection=connections.read,
         servable_analysis=_servable_analysis,
     )
     return _register_quality_routes(

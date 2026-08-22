@@ -1,6 +1,10 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { SensorsPayload, SensorsState } from '../../../../src/lib/sensor-automation/types';
+import type {
+	DeadLettersPayload,
+	SensorsPayload,
+	SensorsState
+} from '../../../../src/lib/sensor-automation/types';
 
 const requests = vi.hoisted(() => ({
 	fetchSensors: vi.fn(),
@@ -64,11 +68,27 @@ const payload: SensorsPayload = {
 		leaseHeld: true
 	}
 };
+const deadLetter = {
+	tickId: 'dead-1',
+	sensorName: 'quality_alerts',
+	definitionFingerprint: 'abc',
+	kind: 'event',
+	eventId: 'event-1',
+	eventKind: 'AuditCompleted',
+	attempt: 3,
+	status: 'dead_lettered',
+	startedAt: '2024-01-01 00:00:01.000',
+	completedAt: '2024-01-01 00:00:02.000',
+	errorMessage: 'delivery failed',
+	skipReason: null,
+	cursor: null
+};
 
 describe('sensors state', () => {
-	it('given sensors and dead letters when started then the facade exposes both', async () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it('given no dead letters when started then the collection renders without fetching details', async () => {
 		requests.fetchSensors.mockResolvedValue(payload);
-		requests.fetchDeadLetters.mockResolvedValue({ deadLetters: [] });
 		const state: SensorsState = createSensorsState();
 
 		state.start();
@@ -77,6 +97,25 @@ describe('sensors state', () => {
 		expect(state.payload).toEqual(payload);
 		expect(state.deadLetters).toEqual([]);
 		expect(state.error).toBeNull();
+		expect(requests.fetchDeadLetters).not.toHaveBeenCalled();
+	});
+
+	it('given slow dead letters when started then the sensor collection renders first', async () => {
+		let resolveDeadLetters!: (payload: DeadLettersPayload) => void;
+		const deadLettersRequest = new Promise<DeadLettersPayload>((resolve) => {
+			resolveDeadLetters = resolve;
+		});
+		requests.fetchSensors.mockResolvedValue({ ...payload, deadLetterCount: 1 });
+		requests.fetchDeadLetters.mockReturnValue(deadLettersRequest);
+		const state: SensorsState = createSensorsState();
+
+		state.start();
+		await vi.waitFor(() => expect(state.payload).not.toBeNull());
+
+		expect(state.loading).toBe(false);
+		expect(state.deadLetters).toEqual([]);
+		resolveDeadLetters({ deadLetters: [deadLetter] });
+		await vi.waitFor(() => expect(state.deadLetters).toEqual([deadLetter]));
 	});
 
 	it('given a status change when applied then the collection is refreshed', async () => {
