@@ -14,6 +14,13 @@ class DevRefactorTestCase:
 
 
 @dataclass(frozen=True)
+class ReadConnectionRouteTestCase:
+    description: str
+    path: str
+    expected_status: int
+
+
+@dataclass(frozen=True)
 class BuildConflictScopeTestCase:
     description: str
     executed_logical_ids: tuple[str, ...]

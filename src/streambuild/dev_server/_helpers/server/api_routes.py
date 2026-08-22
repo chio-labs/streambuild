@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator
 from contextlib import AbstractContextManager, contextmanager
+from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
 from time import monotonic_ns
@@ -128,6 +129,12 @@ _HTTP_BAD_GATEWAY: int = 502
 _HTTP_SERVICE_UNAVAILABLE: int = 503
 
 
+@dataclass(frozen=True)
+class _RouteConnections:
+    required: Callable[[], AdapterConnection]
+    read: Callable[[], AbstractContextManager[AdapterConnection]]
+
+
 def register_api_routes(
     *,
     app: FastAPI,
@@ -233,6 +240,11 @@ def register_api_routes(
         except ProjectNotCompiledError as error:
             raise HTTPException(status_code=_HTTP_CONFLICT, detail=str(error)) from error
 
+    connections: _RouteConnections = _RouteConnections(
+        required=_required_connection,
+        read=_required_read_connection,
+    )
+
     def read_topics() -> dict[str, object]:
         analysis: CompileAnalysis = _servable_analysis()
         connection: AdapterConnection | None = warehouse.connection
@@ -271,7 +283,7 @@ def register_api_routes(
         state=state,
         database=database,
         authorization=authorization_context,
-        required_connection=_required_connection,
+        connections=connections,
         servable_analysis=_servable_analysis,
     )
     _register_message_routes(
@@ -298,7 +310,7 @@ def register_api_routes(
         builds=builds,
         audit_scheduler=schedulers[0],
         reporter=reporter,
-        required_connection=_required_connection,
+        connections=connections,
         servable_analysis=_servable_analysis,
         presumed_failed_after_seconds=execution_context.run_presumed_failed_after_seconds,
     )
@@ -425,7 +437,7 @@ def _register_deployment_routes(
     state: DevServerState,
     database: str | None,
     authorization: OperationAuthorizationContext,
-    required_connection: Callable[[], AdapterConnection],
+    connections: _RouteConnections,
     servable_analysis: Callable[[], CompileAnalysis],
 ) -> FastAPI:
     """Attach the deployment inventory, detail and lifecycle routes."""
@@ -433,9 +445,8 @@ def _register_deployment_routes(
     project_dir: Path = authorization.project_dir
 
     def read_deployments() -> dict[str, object]:
-        client: AdapterConnection = required_connection()
         try:
-            with state.query_lock:
+            with connections.read() as client:
                 return build_deployments_payload(
                     connection=client,
                     database=database or "",
@@ -445,9 +456,8 @@ def _register_deployment_routes(
             raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
 
     def read_one_deployment(*, deployment_id: str) -> dict[str, object]:
-        client: AdapterConnection = required_connection()
         try:
-            with state.query_lock:
+            with connections.read() as client:
                 payload: dict[str, object] | None = build_deployment_detail_payload(
                     connection=client,
                     database=database or "",
@@ -468,10 +478,9 @@ def _register_deployment_routes(
     def read_deployment_diff(
         *, deployment_id: str, against: Annotated[str | None, Query()] = None
     ) -> dict[str, object]:
-        client: AdapterConnection = required_connection()
         comparison: str = deployment_id if against is None else f"{against}:{deployment_id}"
         try:
-            with state.query_lock:
+            with connections.read() as client:
                 return build_deployment_diff_payload(
                     connection=client,
                     database=database or "",
@@ -484,7 +493,7 @@ def _register_deployment_routes(
             raise HTTPException(status_code=_HTTP_BAD_REQUEST, detail=str(error)) from error
 
     def promote_deployment(*, http_request: Request, deployment_id: str) -> dict[str, object]:
-        client: AdapterConnection = required_connection()
+        client: AdapterConnection = connections.required()
         if not is_system_admin(request=http_request):
             analysis: CompileAnalysis = servable_analysis()
             with state.query_lock:
@@ -522,7 +531,7 @@ def _register_deployment_routes(
             request=http_request,
             context=authorization,
         )
-        client: AdapterConnection = required_connection()
+        client: AdapterConnection = connections.required()
         try:
             with state.query_lock:
                 return run_deployment_cleanup(
@@ -683,7 +692,7 @@ def _register_quality_routes(
     builds: BuildProcessManager,
     audit_scheduler: AuditScheduler,
     reporter: DevServerReporter,
-    required_connection: Callable[[], AdapterConnection],
+    connections: _RouteConnections,
     servable_analysis: Callable[[], CompileAnalysis],
     presumed_failed_after_seconds: int,
 ) -> FastAPI:
@@ -712,7 +721,7 @@ def _register_quality_routes(
             kind=request.kind,
             name=request.name,
         )
-        client: AdapterConnection = required_connection()
+        client: AdapterConnection = connections.required()
         try:
             with state.query_lock:
                 payload: dict[str, object] = runner(
@@ -741,7 +750,7 @@ def _register_quality_routes(
         return payload
 
     def read_checks_status() -> list[dict[str, object]]:
-        client: AdapterConnection = required_connection()
+        client: AdapterConnection = connections.required()
         analysis: CompileAnalysis = servable_analysis()
         try:
             with state.query_lock:
@@ -755,7 +764,7 @@ def _register_quality_routes(
             raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
 
     def read_audit_scheduler() -> dict[str, object]:
-        client: AdapterConnection = required_connection()
+        client: AdapterConnection = connections.required()
         health: dict[str, object] = audit_scheduler.health()
         if health["state"] in {
             AuditScheduleState.RUNNING,
@@ -784,9 +793,8 @@ def _register_quality_routes(
             raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
 
     def read_run_history() -> list[dict[str, object]]:
-        client: AdapterConnection = required_connection()
         try:
-            with state.query_lock:
+            with connections.read() as client:
                 return read_runs(
                     connection=client,
                     database=database or "",
@@ -798,9 +806,8 @@ def _register_quality_routes(
     def read_one_run_events(
         *, invocation_id: str, after: Annotated[int, Query(ge=0)] = 0
     ) -> dict[str, object]:
-        client: AdapterConnection = required_connection()
         try:
-            with state.query_lock:
+            with connections.read() as client:
                 return read_run_events(
                     connection=client,
                     database=database or "",
@@ -812,9 +819,8 @@ def _register_quality_routes(
             raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
 
     def read_one_run_statement(*, invocation_id: str, statement_sequence: int) -> dict[str, object]:
-        client: AdapterConnection = required_connection()
         try:
-            with state.query_lock:
+            with connections.read() as client:
                 return read_run_statement(
                     connection=client,
                     database=database or "",
@@ -834,7 +840,7 @@ def _register_quality_routes(
         app=app,
         builds=builds,
         authorization=authorization,
-        required_connection=required_connection,
+        required_connection=connections.required,
         database=database or "",
         state=state,
         servable_analysis=servable_analysis,
