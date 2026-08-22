@@ -9,7 +9,7 @@ from streambuild.executor.auditing.types import QualityResultStatus
 
 
 def events_from_node_result(
-    *, row: NodeResultObservation, previous_status: QualityResultStatus | None
+    *, row: NodeResultObservation, previous_status: QualityResultStatus | None, target: str
 ) -> tuple[AuditCompleted, ...]:
     """Map one node result row to its derived events, exhaustively by node kind."""
 
@@ -17,11 +17,11 @@ def events_from_node_result(
         case QualityNodeKind.TEST:
             return ()
         case QualityNodeKind.AUDIT:
-            return _audit_events(row=row, previous_status=previous_status)
+            return _audit_events(row=row, previous_status=previous_status, target=target)
 
 
 def _audit_events(
-    *, row: NodeResultObservation, previous_status: QualityResultStatus | None
+    *, row: NodeResultObservation, previous_status: QualityResultStatus | None, target: str
 ) -> tuple[AuditCompleted, ...]:
     match row.status:
         case QualityResultStatus.DEFERRED:
@@ -43,7 +43,7 @@ def _audit_events(
                     ),
                     severity=row.severity,
                     failure_count=row.failure_count,
-                    target=row.target_identity,
+                    target=target,
                     trigger=row.trigger,
                     completed_at=row.completed_at,
                     binding_key=row.binding_key,

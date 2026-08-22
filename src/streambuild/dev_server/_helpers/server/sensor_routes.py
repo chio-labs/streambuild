@@ -227,7 +227,6 @@ def _register_sensor_action_routes(
                     registry=_registry(analysis=analysis),
                     sensor_name=request.sensorName,
                     event_id=request.eventId,
-                    target=database or "",
                 )
         except SensorError as error:
             raise HTTPException(status_code=_HTTP_BAD_REQUEST, detail=str(error)) from error
