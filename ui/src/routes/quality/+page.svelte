@@ -3,8 +3,10 @@
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import AppTopbar from '$lib/presentation/components/app-topbar.svelte';
 	import SqlBlock from '$lib/presentation/components/sql-block.svelte';
+	import AuditPolicySummary from '$lib/quality-monitoring/components/audit-policy-summary.svelte';
 	import AuditScheduleCell from '$lib/quality-monitoring/components/audit-schedule-cell.svelte';
 	import QualityAutomation from '$lib/quality-monitoring/components/quality-automation.svelte';
+	import SchedulerStatus from '$lib/quality-monitoring/components/scheduler-status.svelte';
 	import { createAuditSchedulerState } from '$lib/quality-monitoring/main/create-audit-scheduler-state.svelte';
 	import { getProject } from '$lib/api/main/project/get-project';
 	import { runCheck } from '$lib/api/main/quality/run-check';
@@ -12,8 +14,6 @@
 	import { auditCounts } from '$lib/domain/main/quality/audit-counts';
 	import { testCounts } from '$lib/domain/main/quality/test-counts';
 	import { formatAgo } from '$lib/formatting/main/format-ago';
-	import { formatDuration } from '$lib/formatting/main/format-duration';
-	import { formatInteger } from '$lib/formatting/main/format-integer';
 	import type { Audit, CellValue, Project, QualityDriftReason, SqlTest } from '$lib/domain/types';
 
 	const project: Project = getProject();
@@ -32,8 +32,8 @@
 
 	type Filter = 'all' | 'failing' | 'passing';
 	let filter = $state<Filter>('all');
-	type QualityView = 'current' | 'history';
-	let qualityView = $state<QualityView>('current');
+	type QualityView = 'audits' | 'tests' | 'history';
+	let qualityView = $state<QualityView>('audits');
 
 	function showView(view: QualityView): void {
 		qualityView = view;
@@ -189,19 +189,22 @@
 </AppTopbar>
 
 <div class="min-h-0 flex-1 overflow-y-auto">
-	<div class="flex items-center gap-2.5 overflow-x-auto border-b border-border px-[18px] py-2.5">
-		{#each [['current', 'Current state'], ['history', 'Cycle history']] as [key, label] (key)}
+	<div class="px-[18px] pt-[18px]">
+		<SchedulerStatus payload={scheduler.payload} loading={scheduler.loading} error={scheduler.error} />
+	</div>
+	<div class="mt-3 flex items-center gap-2.5 overflow-x-auto border-b border-border px-[18px]">
+		{#each [['audits', `Audits ${audits.passing}/${audits.total}`], ['tests', `Tests ${tests.passing}/${tests.total}`], ['history', 'Cycle history']] as [key, label] (key)}
 			<button
 				aria-pressed={qualityView === key}
-				class="shrink-0 rounded-[4px] border px-2.5 py-1.5 font-mono text-[11px] transition-colors {qualityView === key
-					? 'border-primary text-foreground bg-[var(--sidebar-accent)]'
-					: 'text-muted-foreground hover:text-foreground border-border'}"
+				class="relative shrink-0 px-3 py-2.5 font-mono text-[11px] transition-colors {qualityView === key
+					? 'text-foreground after:absolute after:inset-x-2 after:bottom-0 after:h-[2px] after:rounded-t after:bg-primary after:content-[\'\']'
+					: 'text-muted-foreground hover:text-foreground'}"
 				onclick={() => showView(key as QualityView)}
 			>
 				{label}
 			</button>
 		{/each}
-		{#if qualityView === 'current'}
+		{#if qualityView === 'audits' || qualityView === 'tests'}
 			<div class="ml-1 flex items-center gap-1 border-l border-border pl-3">
 				{#each [['all', 'All'], ['failing', 'Failing'], ['passing', 'Passing']] as [key, label] (key)}
 					<button
@@ -215,28 +218,27 @@
 					</button>
 				{/each}
 			</div>
-			<span class="text-muted-foreground ml-auto shrink-0 font-mono text-[11px]">
-				audits {audits.passing}/{audits.total}
-				{#if audits.warning}· <span style:color="var(--sb-warning)">{audits.warning} warn</span>{/if}
-				{#if audits.failing}· <span style:color="var(--sb-error)">{audits.failing} fail</span>{/if}
-				· tests {tests.passing}/{tests.total}
-				{#if tests.failing}· <span style:color="var(--sb-error)">{tests.failing} fail</span>{/if}
-			</span>
+			{#if qualityView === 'audits'}
+				<span class="text-muted-foreground ml-auto shrink-0 font-mono text-[11px]">
+					{audits.passing} passing
+					{#if audits.warning}· <span style:color="var(--sb-warning)">{audits.warning} warning</span>{/if}
+					{#if audits.failing}· <span style:color="var(--sb-error)">{audits.failing} failed</span>{/if}
+				</span>
+			{:else}
+				<span class="text-muted-foreground ml-auto shrink-0 font-mono text-[11px]">
+					{tests.passing} passing · {tests.total - tests.passing - tests.failing} not run
+					{#if tests.failing}· <span style:color="var(--sb-error)">{tests.failing} failed</span>{/if}
+				</span>
+			{/if}
 		{/if}
 	</div>
 
 	<div class="flex flex-col gap-6 p-[18px]">
-		<QualityAutomation
-			view={qualityView}
-			payload={scheduler.payload}
-			loading={scheduler.loading}
-			error={scheduler.error}
-			capturedAt={project.capturedAt}
-		/>
+		<QualityAutomation view={qualityView === 'history' ? 'history' : 'current'} capturedAt={project.capturedAt} />
 
-		{#if qualityView === 'current'}
-		<!-- ── audits ──────────────────────────────────────────────────────── -->
-		<div>
+		{#if qualityView === 'audits'}
+			<!-- ── audits ──────────────────────────────────────────────────────── -->
+			<div>
 			<div
 				class="text-[var(--sb-text-faint)] flex items-baseline gap-2 pb-2 font-mono text-[10px] uppercase tracking-[0.14em]"
 			>
@@ -281,12 +283,13 @@
 									<span class="text-[var(--sb-text-faint)]">singular</span>
 								{/if}
 							</span>
-							<span
-								class="hidden w-[64px] shrink-0 font-mono text-[10.5px] md:block"
-								style:color={audit.severity === 'warning'
-									? 'var(--sb-warning)'
-									: 'var(--sb-text-faint)'}>{audit.severity}</span
-							>
+							<span class="hidden w-[64px] shrink-0 font-mono text-[10.5px] md:block">
+								{#if failing}
+									<span style:color={audit.severity === 'warning' ? 'var(--sb-warning)' : 'var(--sb-error)'}>
+										{audit.severity}
+									</span>
+								{/if}
+							</span>
 							<span class="hidden w-[170px] shrink-0 truncate font-mono text-[11px] xl:block">
 								{#each audit.referencedModels as model, index (model)}
 									<a href="/catalog/{model}" class="text-primary hover:underline"
@@ -307,7 +310,7 @@
 									<span style:color="var(--sb-warning)">warming up</span>
 								{:else if failing}
 									<span style:color={audit.severity === 'warning' ? 'var(--sb-warning)' : 'var(--sb-error)'}
-										>{formatInteger(audit.result.failingRowCount)} rows</span
+										>{audit.result.failingRowCount.toLocaleString()} rows</span
 									>
 								{:else}
 									<span style:color="var(--sb-success)">pass</span>
@@ -328,10 +331,12 @@
 								id="audit-panel-{auditIndex}"
 								class="flex flex-col gap-3 border-t border-[var(--border-subtle)] px-3 py-3"
 							>
-								<div class="text-[var(--sb-text-faint)] flex gap-4 font-mono text-[10.5px]">
-									<span>{audit.policy.scheduled ? `every ${formatDuration(audit.policy.cadenceSeconds ?? 0)}` : 'manual/build only'}</span>
-									<span>warmup {formatDuration(audit.policy.warmupSeconds)}</span>
-								</div>
+								<AuditPolicySummary
+									severity={audit.severity}
+									scheduled={audit.policy.scheduled}
+									cadenceSeconds={audit.policy.cadenceSeconds}
+									warmupSeconds={audit.policy.warmupSeconds}
+								/>
 								<div class="flex items-center gap-2">
 									<button
 										class="text-muted-foreground hover:text-foreground flex items-center gap-1.5 rounded-[4px] border border-border px-2 py-1 font-mono text-[10.5px] disabled:opacity-60"
@@ -357,7 +362,7 @@
 										<div
 											class="text-[var(--sb-text-faint)] pb-1.5 font-mono text-[10px] uppercase tracking-[0.14em]"
 										>
-											Violating rows — sample of {formatInteger(audit.result.failingRowCount)}
+											Violating rows — sample of {audit.result.failingRowCount.toLocaleString()}
 										</div>
 										<div class="overflow-x-auto rounded-[3px] border border-border">
 											<table class="w-full text-left">
@@ -402,8 +407,9 @@
 			</div>
 		</div>
 
-		<!-- ── tests ───────────────────────────────────────────────────────── -->
-		<div>
+		{:else if qualityView === 'tests'}
+			<!-- ── tests ───────────────────────────────────────────────────────── -->
+			<div>
 			<div
 				class="text-[var(--sb-text-faint)] flex items-baseline gap-2 pb-2 font-mono text-[10px] uppercase tracking-[0.14em]"
 			>

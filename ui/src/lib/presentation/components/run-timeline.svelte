@@ -2,6 +2,7 @@
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 	import { fetchRunStatement } from '$lib/api/main/build/fetch-run-statement';
 	import type { RunEvent, RunStatement } from '$lib/api/types';
+	import type { Audit } from '$lib/domain/types';
 	import { formatCompact } from '$lib/formatting/main/format-compact';
 	import { formatTimestamp } from '$lib/formatting/main/format-timestamp';
 	import ErrorPreview from '$lib/presentation/components/error-preview.svelte';
@@ -14,24 +15,36 @@
 		ownedRunning: boolean;
 		outcomeColor: string;
 		eventLabels: Map<number, string>;
+		audits: Audit[];
 	}
 
-	const { invocationId, timeline, running, ownedRunning, outcomeColor, eventLabels }: RunTimelineProps =
+	const { invocationId, timeline, running, ownedRunning, outcomeColor, eventLabels, audits }: RunTimelineProps =
 		$props();
 
-	let expandedStatementSequence = $state<number | null>(null);
+	let expandedEventSequence = $state<number | null>(null);
 	let runStatements = $state<Record<number, RunStatement>>({});
 	let statementLoading = $state<Set<number>>(new Set());
 	let statementErrors = $state<Record<number, string>>({});
 
-	async function toggleStatement(event: RunEvent): Promise<void> {
+	function expandable(event: RunEvent): boolean {
+		return event.statementSequence !== undefined || event.event === 'audit_completed';
+	}
+
+	function auditFor(event: RunEvent): Audit | undefined {
+		return event.event === 'audit_completed'
+			? audits.find((audit: Audit) => audit.name === event.stepId)
+			: undefined;
+	}
+
+	async function toggleEvent(event: RunEvent): Promise<void> {
+		if (!expandable(event)) return;
 		const sequence: number | undefined = event.statementSequence;
-		if (sequence === undefined) return;
-		if (expandedStatementSequence === sequence) {
-			expandedStatementSequence = null;
+		if (expandedEventSequence === event.sequence) {
+			expandedEventSequence = null;
 			return;
 		}
-		expandedStatementSequence = sequence;
+		expandedEventSequence = event.sequence;
+		if (sequence === undefined) return;
 		if (runStatements[sequence] || statementLoading.has(sequence)) return;
 		const requestedInvocationId: string = invocationId;
 		statementLoading = new Set(statementLoading).add(sequence);
@@ -54,7 +67,7 @@
 
 	$effect(() => {
 		void invocationId;
-		expandedStatementSequence = null;
+		expandedEventSequence = null;
 		runStatements = {};
 		statementLoading = new Set();
 		statementErrors = {};
@@ -78,15 +91,20 @@
 				<button
 					type="button"
 					data-statement-sequence={event.statementSequence}
-					aria-expanded={event.statementSequence === undefined
+					data-audit-name={event.event === 'audit_completed' ? event.stepId : undefined}
+					aria-expanded={!expandable(event)
 						? undefined
-						: expandedStatementSequence === event.statementSequence}
-					title={event.statementSequence === undefined ? undefined : 'Show executed SQL'}
+						: expandedEventSequence === event.sequence}
+					title={!expandable(event)
+						? undefined
+						: event.statementSequence === undefined
+							? 'Show audit details'
+							: 'Show executed SQL'}
 					class="flex w-full items-center gap-3 px-3 py-1.5 text-left {event.statementSequence ===
-					undefined
+					undefined && event.event !== 'audit_completed'
 						? 'cursor-default'
 						: 'hover:bg-[var(--sb-hover)]'}"
-					onclick={() => void toggleStatement(event)}
+					onclick={() => void toggleEvent(event)}
 				>
 					<span class="text-[var(--sb-text-faint)] w-[86px] shrink-0 font-mono text-[10.5px]"
 						>{formatTimestamp(event.emittedAt).slice(11)}</span
@@ -117,11 +135,11 @@
 							>{event.elapsedMs} ms</span
 						>
 					{/if}
-					{#if event.statementSequence !== undefined}
+					{#if expandable(event)}
 						<ChevronDownIcon
 							size={13}
-							class="text-muted-foreground shrink-0 transition-transform {expandedStatementSequence ===
-							event.statementSequence
+							class="text-muted-foreground shrink-0 transition-transform {expandedEventSequence ===
+							event.sequence
 								? 'rotate-180'
 								: ''}"
 						/>
@@ -131,13 +149,13 @@
 					<div class="border-t border-[var(--border-subtle)] bg-[var(--sb-surface-low)] px-3 py-1.5">
 						<ErrorPreview
 							text={event.errorMessage}
-							title="Statement error"
+							title={event.event === 'audit_completed' ? 'Audit error' : 'Statement error'}
 							subtitle={event.stepId ?? undefined}
 							class="w-full"
 						/>
 					</div>
 				{/if}
-				{#if event.statementSequence !== undefined && expandedStatementSequence === event.statementSequence}
+				{#if event.statementSequence !== undefined && expandedEventSequence === event.sequence}
 					<div class="border-t border-[var(--border-subtle)] bg-[var(--sb-surface-low)] p-3">
 						{#if statementLoading.has(event.statementSequence)}
 							<div class="text-muted-foreground font-mono text-[11px]">loading SQL…</div>
@@ -156,6 +174,43 @@
 						{:else}
 							<div class="text-muted-foreground font-mono text-[11px]">
 								SQL was not recorded for this run.
+							</div>
+						{/if}
+					</div>
+				{:else if event.event === 'audit_completed' && expandedEventSequence === event.sequence}
+					{@const audit = auditFor(event)}
+					<div class="flex flex-col gap-3 border-t border-[var(--border-subtle)] bg-[var(--sb-surface-low)] p-3">
+						<div class="flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[10.5px]">
+							<span style:color={event.status === 'passed' ? 'var(--sb-success)' : event.status === 'warning' ? 'var(--sb-warning)' : 'var(--sb-error)'}>
+								{event.status ?? 'unknown'}
+							</span>
+							<span class="text-[var(--sb-text-faint)]">
+								{formatCompact(event.failureCount ?? 0)} failing {event.failureCount === 1 ? 'row' : 'rows'}
+							</span>
+							{#if audit && event.status !== 'passed'}
+								<span class="text-[var(--sb-text-faint)]">severity {audit.severity}</span>
+							{/if}
+						</div>
+						{#if audit?.description}
+							<p class="text-muted-foreground text-[12px] leading-relaxed">{audit.description}</p>
+						{/if}
+						{#if audit?.referencedModels.length}
+							<div class="flex flex-wrap items-center gap-1.5 font-mono text-[10.5px]">
+								<span class="text-[var(--sb-text-faint)]">models</span>
+								{#each audit.referencedModels as model (model)}
+									<a href="/catalog/{model}" class="text-primary hover:underline">{model}</a>
+								{/each}
+							</div>
+						{/if}
+						{#if audit}
+							<SqlBlock
+								artifacts={[{ label: 'Current audit SQL', code: audit.sql }]}
+								maxHeight="320px"
+								caption={`${audit.file} · current project definition`}
+							/>
+						{:else}
+							<div class="text-muted-foreground font-mono text-[11px]">
+								This audit is not present in the current project definition.
 							</div>
 						{/if}
 					</div>
