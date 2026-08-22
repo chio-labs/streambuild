@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.26.5](https://github.com/chio-labs/streambuild/compare/v0.26.4...v0.26.5) (2026-08-22)
+
+
+### Bug Fixes
+
+* **ui:** refine quality and run history ([#144](https://github.com/chio-labs/streambuild/issues/144)) ([7bf59e6](https://github.com/chio-labs/streambuild/commit/7bf59e6d59071e41a92b77235f41e0a8240a261d))
+
 ## [0.26.4](https://github.com/chio-labs/streambuild/compare/v0.26.3...v0.26.4) (2026-08-22)
 
 
