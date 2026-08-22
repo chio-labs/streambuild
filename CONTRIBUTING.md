@@ -34,6 +34,8 @@ Descriptions must remain below 2,000 characters and contain `Why`, `Changes`, an
 
 Normal pull requests are squash-merged after required checks pass. Intermediate branch commits remain visible on the pull request, while `main` receives one canonical commit and Release Please produces one changelog entry.
 
+Verification is path-aware and fail-closed. Static, UI, and unit checks always run. Pull requests confined to `ui/` skip ClickHouse integration and process E2E but retain packaged Chromium; unit-test-only and repository-metadata-only changes skip all three expensive suites. Backend, dependency, packaging, mixed, and unknown paths run the full suite. Manual and release verification always run every suite.
+
 ## Releases
 
 Release Please derives version bumps and changelog sections from the squash commit:
