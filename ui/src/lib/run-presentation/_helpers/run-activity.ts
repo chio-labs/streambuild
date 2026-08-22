@@ -8,8 +8,9 @@ export function buildRunActivity(input: RunPresentationInput): RunActivityPresen
 	const startedEvent: RunEvent | undefined = input.events.find(
 		(event: RunEvent) => event.event === 'run_started'
 	);
-	const completedStatements: RunEvent[] = input.events.filter(
-		(event: RunEvent) => event.event === 'statement_completed'
+	const auditRun: boolean = (startedEvent?.command ?? input.record?.command) === 'audit';
+	const completedStatements: RunEvent[] = input.events.filter((event: RunEvent) =>
+		auditRun ? event.event === 'audit_completed' : event.event === 'statement_completed'
 	);
 	const recordedTotal: number = startedEvent?.totalStatements ?? 0;
 	const totalStatements: number | null = recordedTotal > 0 ? recordedTotal : null;

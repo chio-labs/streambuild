@@ -262,6 +262,21 @@ class RunStatementReadTestCase:
 
 
 @dataclass(frozen=True)
+class RunHistoryQueryTestCase:
+    description: str
+    expected_invocation_ids: frozenset[str]
+    expected_terminal_calls: tuple[tuple[int | None, bool | None], ...]
+    expected_exclude_terminal_invocations: bool
+
+
+@dataclass(frozen=True)
+class TerminalRunQueryTestCase:
+    description: str
+    invocation_id: str
+    expected_command: str
+
+
+@dataclass(frozen=True)
 class MessageQuerySqlTestCase:
     description: str
     request_json: dict
