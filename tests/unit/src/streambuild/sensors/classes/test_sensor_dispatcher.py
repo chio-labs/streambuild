@@ -14,6 +14,7 @@ from tests.unit.src.streambuild.events.helpers import build_node_result_observat
 from tests.unit.src.streambuild.sensors.classes._test_types import (
     DeadLetterActionTestCase,
     DispatcherScenarioTestCase,
+    EventCheckpointInitializationTestCase,
 )
 from tests.unit.src.streambuild.sensors.classes.helpers import (
     EPOCH_POSITION,
@@ -209,6 +210,41 @@ def test_given_scenario_when_dispatching_once_then_ticks_and_checkpoints_match(
         test_case.expected_tick_statuses
     )
     assert len(repository.advanced) == test_case.expected_advanced_count
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        EventCheckpointInitializationTestCase(
+            description="only new running event sensors receive startup checkpoints",
+            sensors=(
+                build_loaded_sensor(declaration=succeeding_sensor),
+                build_loaded_sensor(declaration=succeeding_sensor, name="existing_event_sensor"),
+                build_loaded_sensor(declaration=polling_lag),
+            ),
+            checkpoints={("existing_event_sensor", "node_results"): EPOCH_POSITION},
+            newest_position=ROW_POSITION,
+            expected_advanced=(("succeeding_sensor", "node_results", ROW_POSITION),),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_mixed_sensors_when_initializing_then_only_new_event_checkpoints_advance(
+    test_case: EventCheckpointInitializationTestCase,
+) -> None:
+    repository: FakeSensorStateRepository = FakeSensorStateRepository(
+        checkpoints=test_case.checkpoints,
+        newest_position=test_case.newest_position,
+    )
+    dispatcher: SensorDispatcher = SensorDispatcher(repository=repository)
+    registry: SensorRegistry = SensorRegistry(
+        sensors={sensor.name: sensor for sensor in test_case.sensors}
+    )
+
+    dispatcher.initialize_event_checkpoints(registry=registry, target="prod")
+
+    assert tuple(repository.advanced) == test_case.expected_advanced
+    assert repository.recorded_ticks == []
 
 
 @pytest.mark.parametrize(

@@ -31,6 +31,15 @@ class DispatcherScenarioTestCase:
 
 
 @dataclass(frozen=True)
+class EventCheckpointInitializationTestCase:
+    description: str
+    sensors: tuple[LoadedSensor, ...]
+    checkpoints: dict[tuple[str, str], SensorStreamPosition]
+    newest_position: SensorStreamPosition
+    expected_advanced: tuple[tuple[str, str, SensorStreamPosition], ...]
+
+
+@dataclass(frozen=True)
 class DeadLetterActionTestCase:
     description: str
     sensor: LoadedSensor
