@@ -1,20 +1,75 @@
 """Behavior tests for the sensor observability and management routes."""
 
+from collections.abc import Callable
 from pathlib import Path
+from typing import cast
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 from httpx import Response
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.dev_server.classes.dev_server_state import DevServerState
+from streambuild.dev_server.main._create_dev_app import create_dev_app
+from streambuild.dev_server.models import DevExecutionContext
 from tests.unit.src.streambuild.dev_server._test_types import (
+    ReadConnectionRouteTestCase,
     SensorRouteErrorTestCase,
     SensorRoutesTestCase,
 )
 from tests.unit.src.streambuild.dev_server.helpers import (
+    build_compile_callable,
     build_test_client,
     write_dev_server_project,
     write_sensor_file,
 )
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ReadConnectionRouteTestCase(
+            description="sensor inventory avoids the primary execution connection",
+            path="/api/sensors",
+            expected_status=200,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_isolated_read_factory_when_reading_sensors_then_primary_connection_is_avoided(
+    test_case: ReadConnectionRouteTestCase,
+    tmp_path: Path,
+) -> None:
+    write_dev_server_project(project_dir=tmp_path)
+    write_sensor_file(project_dir=tmp_path)
+    state: DevServerState = DevServerState(run_compile=build_compile_callable(project_dir=tmp_path))
+    primary_mock: MagicMock = MagicMock()
+    read_mock: MagicMock = MagicMock()
+    create_read: MagicMock = MagicMock(return_value=cast(AdapterConnection, read_mock))
+    client: TestClient = TestClient(
+        create_dev_app(
+            state=state,
+            connection=cast(AdapterConnection, primary_mock),
+            database="analytics",
+            project_dir=tmp_path,
+            execution_context=DevExecutionContext(
+                database="analytics",
+                observation_connection_factory=cast(Callable[[], AdapterConnection], create_read),
+            ),
+        )
+    )
+
+    with patch(
+        "streambuild.dev_server._helpers.server.sensor_routes.build_sensors_payload",
+        return_value={"sensors": [], "deadLetterCount": 0, "health": {}},
+    ):
+        response: Response = client.get(test_case.path)
+
+    assert response.status_code == test_case.expected_status
+    assert create_read.call_count == 1
+    read_mock.close.assert_called_once()
+    primary_mock.query.assert_not_called()
 
 
 @pytest.mark.parametrize(
