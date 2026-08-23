@@ -21,6 +21,7 @@ from streambuild.dev_server.classes.kafka_topic_reader import KafkaTopicReader
 from streambuild.dev_server.classes.overlay_reader import OverlayReader
 from streambuild.dev_server.classes.sensor_scheduler import SensorScheduler
 from streambuild.dev_server.classes.state_snapshot import StateSnapshot
+from streambuild.dev_server.classes.warehouse_health_reader import WarehouseHealthReader
 from streambuild.dev_server.classes.warehouse_runtime import WarehouseRuntime
 from streambuild.dev_server.exceptions import ProjectNotCompiledError
 from streambuild.dev_server.models import DevExecutionContext
@@ -86,6 +87,7 @@ def build_state_snapshot(
             kafka_lag_reader=kafka_lag_reader,
         )
     )
+    warehouse_health_reader: WarehouseHealthReader = WarehouseHealthReader()
 
     def build_shared(*, analysis: CompileAnalysis, target: str) -> dict[str, object]:
         connection: AdapterConnection | None = warehouse.connection
@@ -97,6 +99,7 @@ def build_state_snapshot(
                 connection=connection,
                 database=target,
                 kafka_lag_reader=kafka_lag_reader,
+                warehouse_health_reader=warehouse_health_reader,
             )
 
     def build() -> dict[str, object]:

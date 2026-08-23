@@ -15,6 +15,7 @@
 	import { formatRate } from '$lib/formatting/main/format-rate';
 	import { formatTimestamp } from '$lib/formatting/main/format-timestamp';
 	import type { Project } from '$lib/domain/types';
+	import WarehouseHealthSummary from '$lib/warehouse-health/components/warehouse-health-summary.svelte';
 
 	const project: Project = getProject();
 
@@ -204,8 +205,10 @@
 			</div>
 		</div>
 
+		<WarehouseHealthSummary health={project.warehouseHealth} referenceTime={project.capturedAt} />
+
 		<!-- ── freshness + quality ─────────────────────────────────────────── -->
-		<div class="grid gap-5" style:grid-template-columns="minmax(0,1fr) 420px">
+		<div class="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_420px]">
 			<div>
 				<div
 					class="text-[var(--sb-text-faint)] flex items-baseline gap-2 pb-2 font-mono text-[10px] uppercase tracking-[0.14em]"

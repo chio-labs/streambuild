@@ -9,6 +9,14 @@ class DevServerBrowserE2ETestCase:
 
 
 @dataclass(frozen=True)
+class WarehouseHealthBrowserE2ETestCase:
+    description: str
+    expected_adapter: str
+    expected_capacity_heading: str
+    expected_table_heading: str
+
+
+@dataclass(frozen=True)
 class SchedulerProcessE2ETestCase:
     description: str
     expected_scheduler_state: str

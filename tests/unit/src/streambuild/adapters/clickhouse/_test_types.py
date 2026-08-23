@@ -348,3 +348,23 @@ class MissingSecretTestCase:
     description: str
     variable_name: str
     expected_error_fragment: str
+
+
+@dataclass(frozen=True)
+class ClickHouseWarehouseHealthTestCase:
+    description: str
+    disk_rows: tuple[tuple[object, ...], ...]
+    metric_rows: tuple[tuple[object, ...], ...]
+    expected_disk_statuses: tuple[str, ...]
+    expected_total_bytes: tuple[int | None, ...]
+    expected_availability: str
+    expected_status: str
+    expected_memory_basis: str
+    expected_table_name: str
+    expected_query_count: int
+
+
+@dataclass(frozen=True)
+class ClickHouseOptionalHealthFailureTestCase:
+    description: str
+    expected_warning: str

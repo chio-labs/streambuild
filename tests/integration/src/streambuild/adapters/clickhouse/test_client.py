@@ -2,10 +2,16 @@ import pytest
 from clickhouse_connect.driver.client import Client
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.adapter.models import CatalogRelation, CatalogSnapshot
+from streambuild.adapter.models import (
+    AdapterWarehouseHealth,
+    AdapterWarehouseTable,
+    CatalogRelation,
+    CatalogSnapshot,
+)
 from tests.integration.src.streambuild.adapters.clickhouse._test_types import (
     ClickHouseCatalogIntegrationTestCase,
     ClickHouseClientIntegrationTestCase,
+    ClickHouseWarehouseHealthIntegrationTestCase,
     ClickHouseWarehouseTimestampIntegrationTestCase,
 )
 
@@ -69,6 +75,51 @@ def test_given_real_clickhouse_when_capturing_warehouse_time_then_returns_utc_mi
     fractional_seconds: str = warehouse_timestamp.rsplit(".", 1)[1]
 
     assert len(fractional_seconds) == test_case.expected_fractional_digits
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ClickHouseWarehouseHealthIntegrationTestCase(
+            description="reads real capacity activity and project-scoped table footprint",
+            table_name="warehouse_health_rows",
+            expected_minimum_rows=2,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_real_clickhouse_project_when_reading_health_then_snapshot_is_bounded_and_usable(
+    test_case: ClickHouseWarehouseHealthIntegrationTestCase,
+    managed_clickhouse_client: AdapterConnection,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    clickhouse_client.command(
+        f"CREATE TABLE {clickhouse_database}.{test_case.table_name} "
+        "(id UInt64) ENGINE = MergeTree ORDER BY id"
+    )
+    clickhouse_client.command(
+        f"INSERT INTO {clickhouse_database}.{test_case.table_name} VALUES (1), (2)"
+    )
+
+    health: AdapterWarehouseHealth = managed_clickhouse_client.load_warehouse_health(
+        clickhouse_database
+    )
+
+    assert health.tables is not None
+    tables_by_name: dict[str, AdapterWarehouseTable] = {item.name: item for item in health.tables}
+    table: AdapterWarehouseTable = tables_by_name[test_case.table_name]
+    assert str(health.availability) in {"available", "partial"}
+    assert str(health.status) in {"healthy", "warning", "critical"}
+    assert health.version
+    assert health.uptime_seconds is not None
+    assert health.disks
+    assert health.activity is not None
+    assert table.rows is not None
+    assert table.rows >= test_case.expected_minimum_rows
+    assert table.active_parts is not None
+    assert table.active_parts >= 1
 
 
 @pytest.mark.integration

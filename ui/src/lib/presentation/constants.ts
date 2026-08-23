@@ -9,6 +9,7 @@ import RadioIcon from '@lucide/svelte/icons/radio';
 import ReplaceIcon from '@lucide/svelte/icons/replace';
 import ShieldCheckIcon from '@lucide/svelte/icons/shield-check';
 import WorkflowIcon from '@lucide/svelte/icons/workflow';
+import ServerCogIcon from '@lucide/svelte/icons/server-cog';
 import type { SidebarNavGroup } from './types';
 
 export const SIDEBAR_NAV_GROUPS: SidebarNavGroup[] = [
@@ -16,6 +17,7 @@ export const SIDEBAR_NAV_GROUPS: SidebarNavGroup[] = [
 		section: 'Flow',
 		items: [
 			{ label: 'Overview', href: '/', icon: ActivityIcon },
+			{ label: 'Warehouse', href: '/warehouse-health', icon: ServerCogIcon },
 			{ label: 'Lineage', href: '/lineage', icon: NetworkIcon },
 			{ label: 'Pipelines', href: '/pipelines', icon: WorkflowIcon },
 			{ label: 'Catalog', href: '/catalog', icon: LibraryIcon },
