@@ -3,17 +3,29 @@
 </p>
 
 <p align="center">
-  Declarative ClickHouse streaming pipelines with replay-aware builds and staged deployments.
+  Declarative SQL streaming pipelines for ClickHouse, with replay-aware builds and staged deployments.
 </p>
 
-StreamBuild compiles typed SQL models into ClickHouse tables and materialized views, plans the
-affected graph, and rebuilds it from retained streaming history.
+<p align="center">
+  <a href="https://pypi.org/project/streambuild/"><img src="https://img.shields.io/pypi/v/streambuild" alt="PyPI"></a>
+  <a href="https://github.com/chio-labs/streambuild/actions/workflows/verify.yml"><img src="https://github.com/chio-labs/streambuild/actions/workflows/verify.yml/badge.svg" alt="Verification"></a>
+  <a href="https://pypi.org/project/streambuild/"><img src="https://img.shields.io/pypi/pyversions/streambuild" alt="Python versions"></a>
+  <a href="https://github.com/chio-labs/streambuild/blob/main/LICENSE"><img src="https://img.shields.io/github/license/chio-labs/streambuild" alt="License"></a>
+</p>
 
-- **Direct mode** rebuilds selected live relations immediately.
-- **Virtual mode** builds deployment-specific relations for review, audit, promotion, and rollback.
-- **Mixed mode** stages virtual pipelines before applying direct pipelines in one invocation.
+StreamBuild lets data teams define continuously updating ClickHouse pipelines in typed SQL, inspect
+the affected graph before making changes, and rebuild it from retained streaming history when logic
+changes.
 
-StreamBuild currently targets ClickHouse. It supports managed Kafka landing and adopted external
+It brings dbt-style authoring and deployment workflows to streaming workloads:
+
+- **Declarative models** compile into ClickHouse tables and materialized views.
+- **Replay-aware builds** reconstruct affected models from retained stream history.
+- **Safe planning** shows the graph and warehouse operations before execution.
+- **Staged deployments** support review, audit, promotion, and graph-level rollback.
+- **Built-in observability** covers sources, lag, lineage, runs, quality checks, and sensors.
+
+StreamBuild currently targets ClickHouse and supports managed Kafka landing or adopted external
 stream tables.
 
 ## Install
@@ -25,12 +37,51 @@ pip install streambuild
 stb --help
 ```
 
-For repository development:
+## Quickstart
+
+The included orders demo runs locally with synthetic events, Redpanda, and ClickHouse. It requires
+Docker, `curl`, and [`uv`](https://docs.astral.sh/uv/):
 
 ```bash
-uv sync
-uv run stb --help
+git clone https://github.com/chio-labs/streambuild.git
+cd streambuild
+uv tool install --upgrade streambuild
+
+docker compose -f examples/orders_demo/docker/compose.yml up -d --build
+
+until docker compose -f examples/orders_demo/docker/compose.yml \
+  exec -T redpanda rpk cluster health >/dev/null 2>&1; do sleep 1; done
+until curl --fail --silent http://localhost:18123/ping >/dev/null; do sleep 1; done
+curl --fail --silent --user clickhouse:clickhouse http://localhost:18123/ \
+  --data-binary 'CREATE DATABASE IF NOT EXISTS orders_demo'
+
+stb plan --project-dir examples/orders_demo
+stb build --project-dir examples/orders_demo
+stb dev --project-dir examples/orders_demo
 ```
+
+Open `http://127.0.0.1:8000` to inspect the live model graph, retained source messages, runs,
+quality checks, and Kafka lag. See the [orders demo](examples/orders_demo/README.md) for the model
+DAG and staged deployment walkthrough.
+
+## How it works
+
+```text
+Kafka or an adopted stream table
+              |
+              v
+      retained landing data
+              |
+              v
+ typed SQL models -> ClickHouse tables and materialized views
+              |
+              v
+ plan -> build or stage -> audit -> promote
+```
+
+StreamBuild follows `__source()` and `__ref()` dependencies to compile the model graph. Live
+materialized views keep it current; retained replay columns let a later build reconstruct the
+affected scope after SQL changes.
 
 ## Project
 
@@ -48,9 +99,6 @@ audits/
 tests/
 ```
 
-Each direct child of `pipelines/` is a pipeline. SQL filenames define logical model names, and
-StreamBuild infers pipeline sources by following `__source()` and `__ref()` dependencies.
-
 Minimal configuration:
 
 ```toml
@@ -65,19 +113,9 @@ password = "${ENV:CLICKHOUSE_PASSWORD}"
 
 [defaults]
 pipeline_mode = "direct"
-run_presumed_failed_after = "10m"
-
-[build]
-max_pipelines = 20
 
 [targets.dev]
 database = "analytics"
-
-[targets.prod]
-database = "analytics_prod"
-
-[targets.prod.build]
-max_pipelines = 10
 ```
 
 Developer-specific target and connection overrides belong in the gitignored
@@ -97,23 +135,9 @@ sources:
       mode: offsets
 ```
 
-Adopted ClickHouse source:
-
-```yaml
-sources:
-  - name: orders
-    kind: stream_table
-    table_name: orders_existing
-    replay_boundary:
-      mode: offsets
-      columns:
-        _replay_partition: event_partition
-        _replay_offset: event_offset
-        _replay_timestamp: event_time
-```
-
 StreamBuild owns managed Kafka landing objects. It validates but never mutates adopted source
-tables.
+tables. See the [pipeline documentation](https://docs.streambuild.dev/concepts/pipelines)
+for adopted stream-table configuration.
 
 ## Pipelines
 
@@ -129,31 +153,6 @@ pipelines/
 
 Nested directories organize models but do not change pipeline identity. Pipeline, source, and model
 names share one namespace and must be unique.
-
-Pipeline names must start with `pl__` by default. Configure or disable the prefix with:
-
-```toml
-[naming]
-pipeline_prefix = "custom__" # Use "" to allow unprefixed names.
-```
-
-For a stricter rule, configure a naming macro:
-
-```toml
-[naming]
-pipeline_naming_macro = "pipeline_name"
-```
-
-```python
-from streambuild.compiler.macros.models import PipelineNamingContext
-
-def pipeline_name(ctx: PipelineNamingContext) -> str:
-    return ctx.name if ctx.source_name is None else f"pl__{ctx.source_name}"
-```
-
-The optional macro receives an immutable context containing the pipeline name, source, sorted model
-names, relative directory, and mode. It returns the required directory name. A mismatch fails
-discovery; compile, plan, and build never rename files.
 
 ## Models
 
@@ -173,28 +172,6 @@ FROM __source("orders")
 
 Models must project explicit output types. Table models preserve replay lineage through normalized
 `_replay_*` columns. Terminal query views use `MODEL (kind view)`.
-
-Expensive replay roots can constrain adapter query settings without changing live materialized-view
-ingestion. Pipeline defaults apply first:
-
-```toml
-[execution.replay.settings]
-max_threads = 8
-max_block_size = 64
-```
-
-A table model can override individual settings for its own replay:
-
-```sql
-MODEL (
-  execution_settings (
-    replay (max_block_size 32)
-  )
-);
-```
-
-Effective replay settings are shown in plans and apply only to replay `INSERT ... SELECT`
-statements. They do not alter table storage settings, audits, or live ingestion.
 
 Python functions under `macros/` are available in model, test, and audit SQL as `@function_name()`.
 
@@ -217,24 +194,16 @@ stb plan --select pipeline:pl__orders
 stb build --select order_totals --start-time 2026-08-01T00:00:00Z
 ```
 
-An optional `[build].max_pipelines` is an absolute limit on the distinct pipelines in the final
-expanded build scope. A target-specific `[targets.<name>.build].max_pipelines` replaces the project
-default and requires that default to be configured. The limit cannot be authored in
-`streambuild_local.toml`; local-only targets inherit the committed project default.
+`stb compile` is offline. `stb plan` reads warehouse state but cannot mutate it. `stb build` replans
+immediately before execution so an approved command never relies on a stale plan.
 
-Direct pipelines can declare an operator gate in `pipeline.toml`:
+## Build modes
 
-```toml
-mode = "direct"
-
-[protection]
-warning = "Interrupts protected order processing."
-confirmation = "DEPLOY_ORDERS"
-```
-
-Every protected pipeline in a build requires its exact configured `--confirm` value, even with
-`--auto-approve`. Interactive builds prompt for each missing confirmation. Virtual pipelines cannot
-declare `[protection]`.
+| Mode | Behavior | Best for |
+| --- | --- | --- |
+| **Direct** | Rebuilds selected live relations immediately | Development and explicitly controlled live changes |
+| **Virtual** | Builds deployment-specific relations before promotion | Review, validation, and production releases |
+| **Mixed** | Stages virtual pipelines before applying direct pipelines | Projects containing both deployment strategies |
 
 ## Deployments
 
@@ -255,64 +224,24 @@ publication's bindings, not a historical data snapshot.
 
 ## Development UI
 
-`stb dev` serves one resolved project and target. The UI provides:
+`stb dev` serves a warehouse-backed interface for one resolved project and target. It provides:
+
+![StreamBuild lineage view showing the orders demo pipeline](https://raw.githubusercontent.com/chio-labs/streambuild/main/.github/streambuild-ui.png)
 
 - overview, lineage, pipeline, catalog, source, topic, and message inspection
 - connected plan previews and protected-pipeline confirmation
 - direct, virtual, and mixed build execution
 - deployment inventory, diff, promotion, and cleanup
 - durable run timelines, statement progress, cancellation, and stale-run recovery guidance
-- audit history and scheduler health
+- quality history, scheduler health, sensors, and dead-letter recovery
 
 Run observability is warehouse-backed. A silent run becomes `unresponsive` after 45 seconds and
 `presumed_failed` after `[defaults].run_presumed_failed_after` (default `10m`). A new build is blocked
 until that safety window expires to prevent overlapping warehouse writes.
 
-Lineage activity is separate from replay freshness. StreamBuild prefers ClickHouse
-`system.query_views_log`, then insert-only `system.part_log` evidence. Enable the `query_views_log`
-and `part_log` server log sections and set `log_query_views = 1` for ingestion users to get exact
-materialized-view activity. If both logs are unavailable, recent `system.parts` modification time is
-shown as approximate evidence because background merges can also modify parts. Missing evidence is
-reported as unknown rather than stalled.
-
-### Authentication
-
-Local `stb dev` uses explicit disabled authentication and a deterministic local administrator.
-Shared servers choose either trusted-proxy or password authentication at runtime.
-
-Apache/PAM, GSSAPI, OIDC proxies, and similar upstreams use trusted-proxy mode:
-
-```bash
-stb dev \
-  --auth-mode trusted_proxy \
-  --auth-username-header X-Mustard-User \
-  --control-store-url sqlite:////var/lib/streambuild/control.db
-```
-
-The proxy must replace the configured identity header with its authenticated user. A new valid
-proxy identity is atomically provisioned as `viewer`; a missing identity returns `401`. Operators
-own the network trust boundary and may use loopback binding, firewalling, or accepted on-premises
-network trust.
-
-Standalone password mode uses the packaged `/login` page and server-side sessions:
-
-```bash
-stb dev --auth-mode password --control-store-url postgresql+psycopg://user:password@db/streambuild
-```
-
-Bootstrap the first account without a ClickHouse connection:
-
-```bash
-stb admin --control-store-url sqlite:////var/lib/streambuild/control.db create-user \
-  --username kevinl --authentication-source trusted_proxy --role admin
-```
-
-For password accounts, the command securely reads the password from an interactive prompt or
-standard input. Existing administrators manage accounts in the Users UI; the CLI remains the
-break-glass recovery path. Control-store URLs and authentication runtime settings can instead use
-the `STREAMBUILD_CONTROL_STORE_URL`, `STREAMBUILD_AUTH_MODE`, and related `STREAMBUILD_AUTH_*`
-environment variables shown by `stb dev --help`. Account state never belongs in ClickHouse or
-`streambuild_project.toml`.
+Shared installations support trusted-proxy or password authentication with project-scoped roles.
+See the [documentation](https://docs.streambuild.dev) for access control and
+operational configuration.
 
 ## Guarantees
 
@@ -324,7 +253,8 @@ environment variables shown by `stb dev --help`. Account state never belongs in 
 
 ## Documentation
 
-- [Documentation source](https://github.com/chio-labs/streambuild-docs)
+- [Documentation](https://docs.streambuild.dev)
+- [Quickstart guide](https://docs.streambuild.dev/quickstart)
 - [Runnable orders demo](examples/orders_demo/README.md)
 - [Changelog](CHANGELOG.md)
 - [Contributing](CONTRIBUTING.md)
@@ -341,34 +271,17 @@ make ui-verify
 make test
 ```
 
-Tests are split into independent unit, ClickHouse integration, non-browser E2E, and browser E2E
-lanes. Run them individually or use `make test-all` for the complete local suite:
+Run every verification lane with:
 
 ```bash
-make test
-make test-integration
-make test-e2e
-make test-browser
+make test-all
 ```
 
-Browser E2E tests exercise the packaged UI served by the real `stb dev` process, not Vite or
-browser-intercepted APIs. Docker must be running because the tests provision real ClickHouse and
-Redpanda containers on isolated networks. Install Chromium and its system dependencies before the
-first run:
+The integration and browser lanes provision real ClickHouse and Redpanda containers, so Docker must
+be running. Install Chromium and its system dependencies before the first browser run:
 
 ```bash
 uv run playwright install --with-deps chromium
 make ui-install ui-build
 make test-browser
 ```
-
-The browser lane is marker-owned, fixed to Chromium, and capped at two pytest workers to keep the
-real services within predictable resource limits. CI runs the same target in the required
-`Packaged Chromium E2E tests` job and treats Docker provisioning failures as failures rather than
-skips.
-
-Browser output is replaced under `test-results/` on each run. Every test records browser console,
-page, request, response, and `stb dev` process diagnostics in its output directory. Failed tests also
-retain a Playwright trace, video, and screenshot. CI uploads the complete directory as the
-`playwright-browser-artifacts` artifact for seven days; inspect a downloaded trace with
-`uv run playwright show-trace path/to/trace.zip`.
