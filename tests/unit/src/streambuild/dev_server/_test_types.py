@@ -150,6 +150,15 @@ class ViewFreshnessTestCase:
 
 
 @dataclass(frozen=True)
+class WarehouseHealthPayloadTestCase:
+    description: str
+    expected_status: str
+    expected_disk_status: str
+    expected_memory_basis: str
+    expected_table_name: str
+
+
+@dataclass(frozen=True)
 class ActivityPayloadTestCase:
     description: str
     capabilities: tuple[str, ...]

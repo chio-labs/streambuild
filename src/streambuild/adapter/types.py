@@ -55,6 +55,23 @@ class AdapterOptionalStateStatus(StrEnum):
     UNAVAILABLE = "unavailable"
 
 
+class AdapterWarehouseHealthAvailability(StrEnum):
+    """Completeness of one point-in-time warehouse diagnostic snapshot."""
+
+    AVAILABLE = "available"
+    PARTIAL = "partial"
+    UNAVAILABLE = "unavailable"
+
+
+class AdapterWarehouseHealthStatus(StrEnum):
+    """Highest measured warehouse resource severity."""
+
+    HEALTHY = "healthy"
+    WARNING = "warning"
+    CRITICAL = "critical"
+    UNKNOWN = "unknown"
+
+
 class AdapterResourceRenderer(Protocol):
     """Render one neutral resource request for an adapter."""
 

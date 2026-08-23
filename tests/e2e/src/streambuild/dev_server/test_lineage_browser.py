@@ -149,7 +149,7 @@ def test_given_logged_activity_when_using_lineage_then_live_semantics_remain_tru
 
     assert document_response is not None
     assert document_response.status == 200
-    assert set(initial_state) == {"capturedAt", "models", "sources"}
+    assert set(initial_state) == {"capturedAt", "warehouseHealth", "models", "sources"}
     assert set(initial_models) == {"idle_orders", "moving_orders", "stalled_orders"}
     assert set(initial_sources) == {"idle_events", "moving_events", "stalled_events"}
     assert set(cast(dict[str, object], readiness_payload["models"])) == set(initial_models)

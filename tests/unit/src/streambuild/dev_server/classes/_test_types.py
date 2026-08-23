@@ -79,3 +79,17 @@ class WarehouseRuntimeRecoveryTestCase:
     failure_message: str
     expected_attempts: int
     expected_state: str
+
+
+@dataclass(frozen=True)
+class WarehouseHealthRetentionTestCase:
+    description: str
+    expected_availability: str
+    expected_status: str
+    expected_stale: bool
+    expected_warning: str
+    first_measured_at: str
+    second_measured_at: str
+    second_database: str
+    expected_disk_count: int
+    expected_measured_at: str

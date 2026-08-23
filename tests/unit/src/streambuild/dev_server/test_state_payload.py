@@ -9,6 +9,11 @@ from httpx import Response
 from streambuild.adapter.models import (
     AdapterDirectFingerprintRecord,
     AdapterDirectFingerprintSnapshot,
+    AdapterWarehouseActivity,
+    AdapterWarehouseDisk,
+    AdapterWarehouseHealth,
+    AdapterWarehouseMemory,
+    AdapterWarehouseTable,
 )
 from streambuild.compiler.compile.main.build_model_storage_identity import (
     build_model_storage_identity,
@@ -21,6 +26,7 @@ from tests.unit.src.streambuild.dev_server._test_types import (
     StateFieldTestCase,
     UnconfiguredFreshnessTestCase,
     ViewFreshnessTestCase,
+    WarehouseHealthPayloadTestCase,
 )
 from tests.unit.src.streambuild.dev_server.helpers import (
     build_compile_callable,
@@ -154,8 +160,12 @@ def test_given_warehouse_reads_when_reading_state_then_assembles_expected_overla
     payload: dict = response.json()
 
     assert response.status_code == 200
-    assert set(payload) == {"capturedAt", "models", "sources"}
+    assert set(payload) == {"capturedAt", "warehouseHealth", "models", "sources"}
     assert isinstance(payload["capturedAt"], str)
+    assert payload["warehouseHealth"]["availability"] == "unavailable"
+    assert payload["warehouseHealth"]["status"] == "unknown"
+    assert payload["warehouseHealth"]["adapter"] == "clickhouse"
+    assert payload["warehouseHealth"]["database"] == "analytics"
     assert set(payload["models"]) == {"orders_clean"}
     assert set(payload["sources"]) == {"orders"}
     model: dict = payload["models"]["orders_clean"]
@@ -254,3 +264,90 @@ def test_given_query_only_view_when_reading_state_then_physical_freshness_is_unm
     assert view["freshness"] == test_case.expected_freshness
     assert view["lagSeconds"] == test_case.expected_lag_seconds
     assert view["newestRowAt"] == test_case.expected_newest_row_at
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        WarehouseHealthPayloadTestCase(
+            description="available diagnostics retain units labels and project table footprint",
+            expected_status="warning",
+            expected_disk_status="warning",
+            expected_memory_basis="server_rss_host",
+            expected_table_name="tbl__orders_clean",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_available_warehouse_health_when_reading_state_then_payload_is_truthful(
+    test_case: WarehouseHealthPayloadTestCase,
+    tmp_path: Path,
+) -> None:
+    write_dev_server_project(project_dir=tmp_path)
+    health: AdapterWarehouseHealth = AdapterWarehouseHealth(
+        availability="available",
+        status=test_case.expected_status,
+        version="25.8.1.1",
+        uptime_seconds=86400,
+        disks=(
+            AdapterWarehouseDisk(
+                name="default",
+                path="/data/clickhouse/",
+                disk_type="Local",
+                total_bytes=1000,
+                free_bytes=160,
+                unreserved_bytes=150,
+                keep_free_bytes=10,
+                status=test_case.expected_disk_status,
+            ),
+        ),
+        inode_total=1000,
+        inode_free=500,
+        inode_status="healthy",
+        memory=AdapterWarehouseMemory(
+            resident_bytes=300,
+            host_total_bytes=2000,
+            cgroup_used_bytes=None,
+            cgroup_limit_bytes=None,
+            basis=test_case.expected_memory_basis,
+            pressure_fraction=None,
+        ),
+        activity=AdapterWarehouseActivity(
+            active_queries=2,
+            active_merges=1,
+            incomplete_mutations=0,
+        ),
+        tables=(
+            AdapterWarehouseTable(
+                name=test_case.expected_table_name,
+                rows=900,
+                bytes_on_disk=2048,
+                active_parts=2,
+            ),
+        ),
+        collection_duration_ms=4,
+    )
+    client: TestClient = TestClient(
+        create_dev_app(
+            state=DevServerState(run_compile=build_compile_callable(project_dir=tmp_path)),
+            connection=build_fake_state_connection(warehouse_health=health),
+            database="analytics",
+            project_dir=tmp_path,
+        )
+    )
+
+    response: Response = client.get("/api/state")
+    payload: dict = response.json()["warehouseHealth"]
+
+    assert response.status_code == 200
+    assert payload["status"] == test_case.expected_status
+    assert payload["database"] == "analytics"
+    assert payload["disks"][0]["status"] == test_case.expected_disk_status
+    assert payload["memory"]["basis"] == test_case.expected_memory_basis
+    assert payload["memory"]["pressureFraction"] is None
+    assert payload["tables"][0]["name"] == test_case.expected_table_name
+    assert payload["activity"] == {
+        "activeQueries": 2,
+        "activeMerges": 1,
+        "incompleteMutations": 0,
+    }

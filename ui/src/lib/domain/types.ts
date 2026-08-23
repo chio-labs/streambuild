@@ -346,6 +346,7 @@ export type Project = {
 	};
 	/** Server clock at snapshot time — everything relative is computed from this. */
 	capturedAt: string;
+	warehouseHealth: import('$lib/warehouse-health/types').WarehouseHealth | null;
 	sources: Source[];
 	pipelines: Pipeline[];
 	models: Model[];
