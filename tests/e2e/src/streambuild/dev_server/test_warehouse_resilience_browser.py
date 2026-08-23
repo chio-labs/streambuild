@@ -79,6 +79,12 @@ def test_given_unreachable_warehouse_when_using_ui_then_snapshot_and_definitions
     assert reload_info.value.status == 200
     assert reload_info.value.json()["compile"]["state"] == test_case.expected_compile_state
     expect(page.get_by_text("Warehouse unavailable.", exact=True)).to_be_visible()
+
+    page.get_by_role("link", name="Warehouse", exact=True).click()
+    expect(page).to_have_url(f"{base_url}/warehouse-health")
+    expect(page.get_by_test_id("warehouse-health-page")).to_be_visible()
+    expect(page.get_by_text("Diagnostics unavailable", exact=True)).to_be_visible()
+    expect(page.get_by_text("HEALTHY", exact=True)).to_have_count(0)
     assert page_errors == []
     assert failed_requests == []
 

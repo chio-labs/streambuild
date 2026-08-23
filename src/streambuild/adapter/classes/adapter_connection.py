@@ -33,6 +33,7 @@ from streambuild.adapter.models import (
     AdapterStatementProgress,
     AdapterTable,
     AdapterView,
+    AdapterWarehouseHealth,
     CatalogSnapshot,
     InspectedManagedTableState,
 )
@@ -104,6 +105,28 @@ class AdapterConnection(ABC):
     @abstractmethod
     def capture_warehouse_timestamp(self) -> str:
         """Capture the active warehouse server's UTC millisecond timestamp."""
+
+    def load_warehouse_health(self, database: str) -> AdapterWarehouseHealth:
+        """Return optional adapter-neutral warehouse diagnostics."""
+
+        del database
+        return AdapterWarehouseHealth(
+            availability="unavailable",
+            status="unknown",
+            version=None,
+            uptime_seconds=None,
+            disks=(),
+            inode_total=None,
+            inode_free=None,
+            inode_status="unknown",
+            memory=None,
+            activity=None,
+            tables=(),
+            collection_duration_ms=0,
+            warnings=(
+                f"Adapter '{self.adapter_identity.name}' does not expose warehouse diagnostics",
+            ),
+        )
 
     @abstractmethod
     def render_ensure_database(self, database: str) -> str:

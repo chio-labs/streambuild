@@ -13,6 +13,7 @@ from streambuild.adapter.models import (
     AdapterDirectFingerprintRecord,
     AdapterDirectFingerprintSnapshot,
     AdapterManagedSource,
+    AdapterWarehouseHealth,
     CatalogSnapshot,
     InspectedManagedTableState,
 )
@@ -35,6 +36,7 @@ from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.dev_server._helpers.payloads.activity_payload import read_model_activity
 from streambuild.dev_server.classes.kafka_lag_reader import KafkaLagReader
 from streambuild.dev_server.classes.kafka_topic_reader import KafkaTopicReader
+from streambuild.dev_server.classes.warehouse_health_reader import WarehouseHealthReader
 from streambuild.dev_server.constants import THROUGHPUT_WINDOW_LADDER
 from streambuild.dev_server.models import (
     KafkaLagSnapshot,
@@ -67,6 +69,7 @@ def build_state_payload(
     connection: AdapterConnection,
     database: str,
     kafka_lag_reader: KafkaLagReader | None = None,
+    warehouse_health_reader: WarehouseHealthReader | None = None,
 ) -> dict[str, object]:
     """Read the warehouse once and assemble the complete live overlay."""
 
@@ -79,6 +82,10 @@ def build_state_payload(
                 reader=kafka_lag_reader,
             )
     captured_at: str = connection.capture_warehouse_timestamp()
+    health_reader: WarehouseHealthReader = warehouse_health_reader or WarehouseHealthReader()
+    warehouse_health: AdapterWarehouseHealth = health_reader.read(
+        connection=connection, database=database, measured_at=captured_at
+    )
     catalog: CatalogSnapshot = connection.load_catalog(database)
     active_bindings: tuple[tuple[str, str], ...] = _active_bindings(
         connection=connection, database=database
@@ -111,6 +118,12 @@ def build_state_payload(
     )
     return {
         "capturedAt": captured_at,
+        "warehouseHealth": _warehouse_health_payload(
+            health=warehouse_health,
+            captured_at=captured_at,
+            adapter_name=connection.adapter_identity.name,
+            database=database,
+        ),
         "models": _model_states(
             analysis=analysis,
             baselines=baselines,
@@ -128,6 +141,73 @@ def build_state_payload(
             captured_at=captured_at,
             kafka_lag_reader=kafka_lag_reader,
         ),
+    }
+
+
+def _warehouse_health_payload(
+    *, health: AdapterWarehouseHealth, captured_at: str, adapter_name: str, database: str
+) -> dict[str, object]:
+    memory: dict[str, object] | None = (
+        None
+        if health.memory is None
+        else {
+            "residentBytes": health.memory.resident_bytes,
+            "hostTotalBytes": health.memory.host_total_bytes,
+            "cgroupUsedBytes": health.memory.cgroup_used_bytes,
+            "cgroupLimitBytes": health.memory.cgroup_limit_bytes,
+            "basis": health.memory.basis,
+            "pressureFraction": health.memory.pressure_fraction,
+        }
+    )
+    activity: dict[str, int] | None = (
+        None
+        if health.activity is None
+        else {
+            "activeQueries": health.activity.active_queries,
+            "activeMerges": health.activity.active_merges,
+            "incompleteMutations": health.activity.incomplete_mutations,
+        }
+    )
+    return {
+        "availability": str(health.availability),
+        "status": str(health.status),
+        "adapter": adapter_name,
+        "database": database,
+        "version": health.version,
+        "uptimeSeconds": health.uptime_seconds,
+        "measuredAt": health.measured_at or captured_at,
+        "collectionDurationMs": health.collection_duration_ms,
+        "stale": health.stale,
+        "warnings": list(health.warnings),
+        "disks": [
+            {
+                "name": disk.name,
+                "path": disk.path,
+                "type": disk.disk_type,
+                "totalBytes": disk.total_bytes,
+                "freeBytes": disk.free_bytes,
+                "unreservedBytes": disk.unreserved_bytes,
+                "keepFreeBytes": disk.keep_free_bytes,
+                "status": str(disk.status),
+            }
+            for disk in health.disks
+        ],
+        "inodes": {
+            "total": health.inode_total,
+            "free": health.inode_free,
+            "status": str(health.inode_status),
+        },
+        "memory": memory,
+        "activity": activity,
+        "tables": [
+            {
+                "name": table.name,
+                "rows": table.rows,
+                "bytesOnDisk": table.bytes_on_disk,
+                "activeParts": table.active_parts,
+            }
+            for table in health.tables
+        ],
     }
 
 

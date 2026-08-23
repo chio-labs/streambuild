@@ -12,6 +12,8 @@ from streambuild.adapter.types import (
     AdapterReplayBoundaryMode,
     AdapterReplayLowerBoundMode,
     AdapterReplaySeedMode,
+    AdapterWarehouseHealthAvailability,
+    AdapterWarehouseHealthStatus,
 )
 
 
@@ -834,6 +836,82 @@ class AdapterQueryResult:
                 return ()
             raise AdapterResultError("Query result does not include column names")
         return tuple(dict(zip(self.column_names, row, strict=True)) for row in self.rows)
+
+
+@dataclass(frozen=True)
+class AdapterWarehouseDisk:
+    """Capacity and severity for one configured warehouse disk."""
+
+    name: str
+    path: str
+    disk_type: str
+    total_bytes: int
+    free_bytes: int
+    unreserved_bytes: int
+    keep_free_bytes: int
+    status: AdapterWarehouseHealthStatus | str
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "status", AdapterWarehouseHealthStatus(self.status))
+
+
+@dataclass(frozen=True)
+class AdapterWarehouseMemory:
+    """Truthfully labelled warehouse process and execution-boundary memory."""
+
+    resident_bytes: int | None
+    host_total_bytes: int | None
+    cgroup_used_bytes: int | None
+    cgroup_limit_bytes: int | None
+    basis: str
+    pressure_fraction: float | None
+
+
+@dataclass(frozen=True)
+class AdapterWarehouseActivity:
+    """Current bounded warehouse work counts."""
+
+    active_queries: int
+    active_merges: int
+    incomplete_mutations: int
+
+
+@dataclass(frozen=True)
+class AdapterWarehouseTable:
+    """Active physical footprint for one project-database table."""
+
+    name: str
+    rows: int
+    bytes_on_disk: int
+    active_parts: int
+
+
+@dataclass(frozen=True)
+class AdapterWarehouseHealth:
+    """Adapter-neutral point-in-time warehouse diagnostic snapshot."""
+
+    availability: AdapterWarehouseHealthAvailability | str
+    status: AdapterWarehouseHealthStatus | str
+    version: str | None
+    uptime_seconds: int | None
+    disks: tuple[AdapterWarehouseDisk, ...]
+    inode_total: int | None
+    inode_free: int | None
+    inode_status: AdapterWarehouseHealthStatus | str
+    memory: AdapterWarehouseMemory | None
+    activity: AdapterWarehouseActivity | None
+    tables: tuple[AdapterWarehouseTable, ...]
+    collection_duration_ms: int
+    warnings: tuple[str, ...] = ()
+    stale: bool = False
+    measured_at: str | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "availability", AdapterWarehouseHealthAvailability(self.availability)
+        )
+        object.__setattr__(self, "status", AdapterWarehouseHealthStatus(self.status))
+        object.__setattr__(self, "inode_status", AdapterWarehouseHealthStatus(self.inode_status))
 
 
 @dataclass(frozen=True)

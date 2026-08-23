@@ -24,6 +24,7 @@ from streambuild.adapter.models import (
     AdapterStableView,
     AdapterTable,
     AdapterView,
+    AdapterWarehouseHealth,
     CatalogColumn,
     CatalogIdentity,
     CatalogRelation,
@@ -136,6 +137,21 @@ _UNAVAILABLE_FINGERPRINTS: AdapterDirectFingerprintSnapshot = AdapterDirectFinge
     status="unavailable",
     baselines=(),
     warning="Direct SQL baselines unavailable in the test adapter",
+)
+_UNAVAILABLE_WAREHOUSE_HEALTH: AdapterWarehouseHealth = AdapterWarehouseHealth(
+    availability="unavailable",
+    status="unknown",
+    version=None,
+    uptime_seconds=None,
+    disks=(),
+    inode_total=None,
+    inode_free=None,
+    inode_status="unknown",
+    memory=None,
+    activity=None,
+    tables=(),
+    collection_duration_ms=0,
+    warnings=("Warehouse diagnostics are unavailable.",),
 )
 
 
@@ -465,11 +481,13 @@ class FakeAdapterConnection(AdapterConnection):
         results_by_query: dict[str, AdapterQueryResult],
         warehouse_timestamp: str,
         fingerprints: AdapterDirectFingerprintSnapshot = _UNAVAILABLE_FINGERPRINTS,
+        warehouse_health: AdapterWarehouseHealth = _UNAVAILABLE_WAREHOUSE_HEALTH,
     ) -> None:
         self._catalog = catalog
         self._results_by_query = results_by_query
         self._warehouse_timestamp = warehouse_timestamp
         self._fingerprints = fingerprints
+        self._warehouse_health = warehouse_health
 
     @property
     def adapter_identity(self) -> AdapterIdentity:
@@ -515,6 +533,10 @@ class FakeAdapterConnection(AdapterConnection):
     ) -> AdapterDirectFingerprintSnapshot:
         del database, logical_model_identities
         return self._fingerprints
+
+    def load_warehouse_health(self, database: str) -> AdapterWarehouseHealth:
+        del database
+        return self._warehouse_health
 
     def metadata_columns(self, *, database: str, table: str) -> frozenset[str]:
         del database, table
@@ -720,6 +742,7 @@ def build_fake_state_connection(
     *,
     fingerprints: AdapterDirectFingerprintSnapshot = _UNAVAILABLE_FINGERPRINTS,
     additional_results: dict[str, AdapterQueryResult] | None = None,
+    warehouse_health: AdapterWarehouseHealth = _UNAVAILABLE_WAREHOUSE_HEALTH,
 ) -> FakeAdapterConnection:
     catalog: CatalogSnapshot = CatalogSnapshot(
         identity=CatalogIdentity(adapter=AdapterIdentity(name="clickhouse"), database="analytics"),
@@ -922,6 +945,7 @@ def build_fake_state_connection(
         results_by_query=results,
         warehouse_timestamp=_STATE_WAREHOUSE_NOW,
         fingerprints=fingerprints,
+        warehouse_health=warehouse_health,
     )
 
 

@@ -39,6 +39,7 @@ from streambuild.adapter.models import (
     AdapterStatementProgress,
     AdapterTable,
     AdapterView,
+    AdapterWarehouseHealth,
     CatalogSnapshot,
     InspectedManagedTableState,
 )
@@ -75,6 +76,9 @@ from streambuild.adapters.clickhouse._helpers.replay import (
     render_clickhouse_replay_coverage_query,
     render_clickhouse_replay_from_capture,
     render_clickhouse_replay_from_deployment,
+)
+from streambuild.adapters.clickhouse.classes.warehouse_health_reader import (
+    ClickHouseWarehouseHealthReader,
 )
 from streambuild.adapters.clickhouse.constants import (
     CLICKHOUSE_ADAPTER_NAME,
@@ -150,6 +154,11 @@ class ClickHouseConnection(AdapterConnection):
         """Report ClickHouse refreshable view state so stale relations stay visible."""
 
         return load_clickhouse_refresh_states(connection=self, database=database)
+
+    def load_warehouse_health(self, database: str) -> AdapterWarehouseHealth:
+        """Read bounded ClickHouse system-table diagnostics."""
+
+        return ClickHouseWarehouseHealthReader(connection=self).read(database=database)
 
     def metadata_columns(self, *, database: str, table: str) -> frozenset[str]:
         """Return available ClickHouse columns for one framework metadata table."""
