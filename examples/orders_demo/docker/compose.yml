@@ -37,6 +37,7 @@ services:
   clickhouse:
     image: clickhouse/clickhouse-server:25.8
     environment:
+      CLICKHOUSE_DB: orders_demo
       CLICKHOUSE_USER: clickhouse
       CLICKHOUSE_PASSWORD: clickhouse
     ports:

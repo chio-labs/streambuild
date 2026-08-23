@@ -26,10 +26,16 @@ source (order_events)
   |     |     +-- avg_fulfillment_time (SummingMergeTree)
   |     |
   |     +-- order_items
+  |     |     |
+  |     |     +-- daily_revenue (SummingMergeTree)
+  |     |     |
+  |     |     +-- hourly_order_volume (SummingMergeTree)
+  |     |
+  |     +-- region_lookup
+  |     |
+  |     +-- enriched_orders
   |           |
-  |           +-- daily_revenue (SummingMergeTree)
-  |           |
-  |           +-- hourly_order_volume (SummingMergeTree)
+  |           +-- ref:region_lookup
   |
   +-- order_cancellations (filtered: cancelled/refunded only)
         |
@@ -39,7 +45,20 @@ source (order_events)
 ## Start The Stack
 
 ```bash
+uv tool install --upgrade streambuild
 docker compose -f examples/orders_demo/docker/compose.yml up -d --build
+
+until docker compose -f examples/orders_demo/docker/compose.yml \
+  exec -T redpanda rpk cluster health >/dev/null 2>&1; do
+  sleep 1
+done
+
+until curl --fail --silent http://localhost:18123/ping >/dev/null; do
+  sleep 1
+done
+
+curl --fail --silent --user clickhouse:clickhouse http://localhost:18123/ \
+  --data-binary 'CREATE DATABASE IF NOT EXISTS orders_demo'
 ```
 
 Services:
@@ -54,19 +73,19 @@ Services:
 Plan:
 
 ```bash
-uv run stb plan --project-dir examples/orders_demo
+stb plan --project-dir examples/orders_demo
 ```
 
 Build:
 
 ```bash
-uv run stb build --project-dir examples/orders_demo
+stb build --project-dir examples/orders_demo
 ```
 
 The demo uses `pipeline_mode = "direct"`, so the build applies immediately. Open the development UI:
 
 ```bash
-uv run stb dev --project-dir examples/orders_demo
+stb dev --project-dir examples/orders_demo
 ```
 
 The UI shows the model graph, live catalog state, source throughput and lag, runs, quality checks,
@@ -76,29 +95,29 @@ To try staged deployment commands, change `[defaults].pipeline_mode` to `"virtua
 then list and inspect deployments:
 
 ```bash
-uv run stb deployment list --project-dir examples/orders_demo
-uv run stb deployment show <deployment-id> --project-dir examples/orders_demo
-uv run stb deployment diff <deployment-id> --project-dir examples/orders_demo
+stb deployment list --project-dir examples/orders_demo
+stb deployment show <deployment-id> --project-dir examples/orders_demo
+stb deployment diff <deployment-id> --project-dir examples/orders_demo
 ```
 
 Audit a staged deployment:
 
 ```bash
-uv run stb deployment audit <deployment-id> --project-dir examples/orders_demo
+stb deployment audit <deployment-id> --project-dir examples/orders_demo
 ```
 
 Promote:
 
 ```bash
-uv run stb deployment promote <deployment-id> --project-dir examples/orders_demo
+stb deployment promote <deployment-id> --project-dir examples/orders_demo
 ```
 
 After publishing another deployment, compare it with the active graph or roll the complete graph
 back to the preceding publication:
 
 ```bash
-uv run stb deployment diff <from-id>:<to-id> --project-dir examples/orders_demo
-uv run stb deployment rollback --previous --project-dir examples/orders_demo
+stb deployment diff <from-id>:<to-id> --project-dir examples/orders_demo
+stb deployment rollback --previous --project-dir examples/orders_demo
 ```
 
 Rollback rebinds retained live deployment tables; it does not restore a historical data snapshot.
