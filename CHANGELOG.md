@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.27.0](https://github.com/chio-labs/streambuild/compare/v0.26.16...v0.27.0) (2026-08-23)
+
+
+### Features
+
+* add warehouse health diagnostics ([#170](https://github.com/chio-labs/streambuild/issues/170)) ([3e1e009](https://github.com/chio-labs/streambuild/commit/3e1e0095c4c1510e3204d1952930dd964537f54f))
+* rebuild deterministic commerce demo ([#169](https://github.com/chio-labs/streambuild/issues/169)) ([de48907](https://github.com/chio-labs/streambuild/commit/de48907fc828149743efab0f8083e70df73c9bd6))
+
 ## [0.26.16](https://github.com/chio-labs/streambuild/compare/v0.26.15...v0.26.16) (2026-08-23)
 
 
