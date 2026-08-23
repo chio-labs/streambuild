@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.adapter.models import AdapterWarehouseDisk, AdapterWarehouseHealth
+from streambuild.adapter.models import AdapterIdentity, AdapterWarehouseDisk, AdapterWarehouseHealth
 from streambuild.dev_server.classes.warehouse_health_reader import WarehouseHealthReader
 from tests.unit.src.streambuild.dev_server.classes._test_types import (
     WarehouseHealthRetentionTestCase,
@@ -22,11 +22,26 @@ from tests.unit.src.streambuild.dev_server.classes._test_types import (
             expected_warning="Warehouse diagnostics are unavailable.",
             first_measured_at="2026-08-23 10:00:00.000",
             second_measured_at="2026-08-23 10:00:15.000",
-        )
+            second_database="analytics",
+            expected_disk_count=1,
+            expected_measured_at="2026-08-23 10:00:00.000",
+        ),
+        WarehouseHealthRetentionTestCase(
+            description="failed refresh does not reuse evidence from another target",
+            expected_availability="unavailable",
+            expected_status="unknown",
+            expected_stale=False,
+            expected_warning="Warehouse diagnostics are unavailable.",
+            first_measured_at="2026-08-23 10:00:00.000",
+            second_measured_at="2026-08-23 10:00:15.000",
+            second_database="other_analytics",
+            expected_disk_count=0,
+            expected_measured_at="2026-08-23 10:00:15.000",
+        ),
     ],
     ids=lambda case: case.description,
 )
-def test_given_usable_health_then_failed_refresh_when_reading_then_prior_evidence_is_stale(
+def test_given_usable_health_then_failed_refresh_when_reading_then_evidence_stays_target_scoped(
     test_case: WarehouseHealthRetentionTestCase,
 ) -> None:
     usable: AdapterWarehouseHealth = AdapterWarehouseHealth(
@@ -55,6 +70,7 @@ def test_given_usable_health_then_failed_refresh_when_reading_then_prior_evidenc
         collection_duration_ms=2,
     )
     connection: MagicMock = MagicMock(spec=AdapterConnection)
+    connection.adapter_identity = AdapterIdentity(name="clickhouse")
     connection.load_warehouse_health.side_effect = [
         usable,
         RuntimeError("provider detail must not escape"),
@@ -68,7 +84,7 @@ def test_given_usable_health_then_failed_refresh_when_reading_then_prior_evidenc
     )
     second: AdapterWarehouseHealth = reader.read(
         connection=cast(AdapterConnection, connection),
-        database="analytics",
+        database=test_case.second_database,
         measured_at=test_case.second_measured_at,
     )
 
@@ -76,6 +92,6 @@ def test_given_usable_health_then_failed_refresh_when_reading_then_prior_evidenc
     assert str(second.availability) == test_case.expected_availability
     assert str(second.status) == test_case.expected_status
     assert second.stale is test_case.expected_stale
-    assert second.disks == usable.disks
+    assert len(second.disks) == test_case.expected_disk_count
     assert second.warnings == (test_case.expected_warning,)
-    assert second.measured_at == test_case.first_measured_at
+    assert second.measured_at == test_case.expected_measured_at

@@ -149,7 +149,7 @@ _UNAVAILABLE_WAREHOUSE_HEALTH: AdapterWarehouseHealth = AdapterWarehouseHealth(
     inode_status="unknown",
     memory=None,
     activity=None,
-    tables=(),
+    tables=None,
     collection_duration_ms=0,
     warnings=("Warehouse diagnostics are unavailable.",),
 )

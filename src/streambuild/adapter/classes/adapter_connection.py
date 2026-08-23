@@ -121,7 +121,7 @@ class AdapterConnection(ABC):
             inode_status="unknown",
             memory=None,
             activity=None,
-            tables=(),
+            tables=None,
             collection_duration_ms=0,
             warnings=(
                 f"Adapter '{self.adapter_identity.name}' does not expose warehouse diagnostics",

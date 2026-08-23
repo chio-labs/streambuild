@@ -90,3 +90,6 @@ class WarehouseHealthRetentionTestCase:
     expected_warning: str
     first_measured_at: str
     second_measured_at: str
+    second_database: str
+    expected_disk_count: int
+    expected_measured_at: str

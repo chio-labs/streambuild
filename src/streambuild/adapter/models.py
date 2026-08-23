@@ -843,12 +843,12 @@ class AdapterWarehouseDisk:
     """Capacity and severity for one configured warehouse disk."""
 
     name: str
-    path: str
-    disk_type: str
-    total_bytes: int
-    free_bytes: int
-    unreserved_bytes: int
-    keep_free_bytes: int
+    path: str | None
+    disk_type: str | None
+    total_bytes: int | None
+    free_bytes: int | None
+    unreserved_bytes: int | None
+    keep_free_bytes: int | None
     status: AdapterWarehouseHealthStatus | str
 
     def __post_init__(self) -> None:
@@ -871,9 +871,9 @@ class AdapterWarehouseMemory:
 class AdapterWarehouseActivity:
     """Current bounded warehouse work counts."""
 
-    active_queries: int
-    active_merges: int
-    incomplete_mutations: int
+    active_queries: int | None
+    active_merges: int | None
+    incomplete_mutations: int | None
 
 
 @dataclass(frozen=True)
@@ -881,9 +881,9 @@ class AdapterWarehouseTable:
     """Active physical footprint for one project-database table."""
 
     name: str
-    rows: int
-    bytes_on_disk: int
-    active_parts: int
+    rows: int | None
+    bytes_on_disk: int | None
+    active_parts: int | None
 
 
 @dataclass(frozen=True)
@@ -900,7 +900,7 @@ class AdapterWarehouseHealth:
     inode_status: AdapterWarehouseHealthStatus | str
     memory: AdapterWarehouseMemory | None
     activity: AdapterWarehouseActivity | None
-    tables: tuple[AdapterWarehouseTable, ...]
+    tables: tuple[AdapterWarehouseTable, ...] | None
     collection_duration_ms: int
     warnings: tuple[str, ...] = ()
     stale: bool = False
