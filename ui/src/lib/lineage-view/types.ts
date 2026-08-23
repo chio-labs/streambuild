@@ -16,6 +16,7 @@ export type LineageCounts = {
 	readonly lagging: number;
 	readonly stalled: number;
 	readonly drift: number;
+	readonly unknown: number;
 };
 
 export type LineageViewSnapshot = {
