@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.26.15](https://github.com/chio-labs/streambuild/compare/v0.26.14...v0.26.15) (2026-08-23)
+
+
+### Documentation
+
+* tighten readme logo framing ([#165](https://github.com/chio-labs/streambuild/issues/165)) ([7a06917](https://github.com/chio-labs/streambuild/commit/7a06917db6d1203c0818570b61b55e005ab534ec))
+
 ## [0.26.14](https://github.com/chio-labs/streambuild/compare/v0.26.13...v0.26.14) (2026-08-22)
 
 
