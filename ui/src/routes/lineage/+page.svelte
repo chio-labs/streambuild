@@ -237,6 +237,12 @@
 				><span class="h-1.5 w-1.5 rounded-[2px] bg-[var(--sb-stale)]"></span>{counts.drift} drift</span
 			>
 		{/if}
+		{#if counts.unknown}
+			<span class="flex items-center gap-1.5"
+				><span class="h-1.5 w-1.5 rounded-[2px] bg-[var(--sb-text-faint)]"></span>{counts.unknown}
+				unknown</span
+			>
+		{/if}
 	</div>
 
 	<div class="flex min-h-0 flex-1 flex-col overflow-y-auto md:flex-row md:overflow-hidden">

@@ -17,7 +17,11 @@ from streambuild.compiler.compile.models import CompiledModel
 from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.dev_server.classes.dev_server_state import DevServerState
 from streambuild.dev_server.main._create_dev_app import create_dev_app
-from tests.unit.src.streambuild.dev_server._test_types import StateFieldTestCase
+from tests.unit.src.streambuild.dev_server._test_types import (
+    StateFieldTestCase,
+    UnconfiguredFreshnessTestCase,
+    ViewFreshnessTestCase,
+)
 from tests.unit.src.streambuild.dev_server.helpers import (
     build_compile_callable,
     build_fake_state_connection,
@@ -170,3 +174,83 @@ def test_given_warehouse_reads_when_reading_state_then_assembles_expected_overla
     assert source["partitions"][0]["maxOffset"] == test_case.expected_partition_max_offset
     assert len(source["throughput"]["buckets"]) == test_case.expected_bucket_count
     assert sum(source["throughput"]["buckets"]) == 300
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        UnconfiguredFreshnessTestCase(
+            description="missing policy leaves source and model freshness unconfigured",
+            expected_source_freshness=None,
+            expected_model_freshness=None,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_no_freshness_policy_when_reading_state_then_freshness_is_unconfigured(
+    test_case: UnconfiguredFreshnessTestCase,
+    tmp_path: Path,
+) -> None:
+    write_dev_server_project(project_dir=tmp_path)
+    source_path: Path = tmp_path / "sources" / "orders.yml"
+    source_path.write_text(
+        source_path.read_text(encoding="utf-8").replace(
+            "    freshness:\n      warn_after: 1h\n      error_after: 4h\n",
+            "",
+        ),
+        encoding="utf-8",
+    )
+    client: TestClient = TestClient(
+        create_dev_app(
+            state=DevServerState(run_compile=build_compile_callable(project_dir=tmp_path)),
+            connection=build_fake_state_connection(),
+            database="analytics",
+            project_dir=tmp_path,
+        )
+    )
+
+    response: Response = client.get("/api/state")
+    payload: dict = response.json()
+
+    assert response.status_code == 200
+    assert payload["sources"]["orders"]["freshness"] == test_case.expected_source_freshness
+    assert payload["models"]["orders_clean"]["freshness"] == test_case.expected_model_freshness
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ViewFreshnessTestCase(
+            description="query-only view has no physical freshness measurements",
+            expected_freshness=None,
+            expected_lag_seconds=None,
+            expected_newest_row_at=None,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_query_only_view_when_reading_state_then_physical_freshness_is_unmeasured(
+    test_case: ViewFreshnessTestCase,
+    tmp_path: Path,
+) -> None:
+    write_dev_server_project(project_dir=tmp_path)
+    (tmp_path / "pipelines" / "order_events" / "orders_summary.sql").write_text(
+        "MODEL (\n  kind view,\n);\n\n"
+        'SELECT order_id::String AS order_id FROM __ref("orders_clean")\n',
+        encoding="utf-8",
+    )
+    client: TestClient = TestClient(
+        create_dev_app(
+            state=DevServerState(run_compile=build_compile_callable(project_dir=tmp_path)),
+            connection=build_fake_state_connection(),
+            database="analytics",
+            project_dir=tmp_path,
+        )
+    )
+
+    response: Response = client.get("/api/state")
+    assert response.status_code == 200, response.text
+    view: dict = response.json()["models"]["orders_summary"]
+    assert view["freshness"] == test_case.expected_freshness
+    assert view["lagSeconds"] == test_case.expected_lag_seconds
+    assert view["newestRowAt"] == test_case.expected_newest_row_at

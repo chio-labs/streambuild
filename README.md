@@ -39,30 +39,24 @@ stb --help
 
 ## Quickstart
 
-The included orders demo runs locally with synthetic events, Redpanda, and ClickHouse. It requires
-Docker, `curl`, and [`uv`](https://docs.astral.sh/uv/):
+The included deterministic commerce demo runs locally with Redpanda and ClickHouse. It requires
+Docker with Compose, Node.js 20.19 or newer, npm, and [`uv`](https://docs.astral.sh/uv/):
 
 ```bash
 git clone https://github.com/chio-labs/streambuild.git
 cd streambuild
-uv tool install --upgrade streambuild
+make ui-install ui-build
+uv tool install --editable .
 
-docker compose -f examples/orders_demo/docker/compose.yml up -d --build
-
-until docker compose -f examples/orders_demo/docker/compose.yml \
-  exec -T redpanda rpk cluster health >/dev/null 2>&1; do sleep 1; done
-until curl --fail --silent http://localhost:18123/ping >/dev/null; do sleep 1; done
-curl --fail --silent --user clickhouse:clickhouse http://localhost:18123/ \
-  --data-binary 'CREATE DATABASE IF NOT EXISTS orders_demo'
-
-stb plan --project-dir examples/orders_demo
-stb build --project-dir examples/orders_demo
-stb dev --project-dir examples/orders_demo
+cd examples/orders_demo
+cp .env.example .env
+make start
+make dev
 ```
 
-Open `http://127.0.0.1:8000` to inspect the live model graph, retained source messages, runs,
-quality checks, and Kafka lag. See the [orders demo](examples/orders_demo/README.md) for the model
-DAG and staged deployment walkthrough.
+Open `http://127.0.0.1:8000` to inspect three Kafka partitions, retained messages, replay-safe model
+facts, tests, audits, and Kafka lag. See the [commerce events demo](examples/orders_demo/README.md)
+for its fixed event contract and controlled warning/recovery walkthrough.
 
 ## How it works
 

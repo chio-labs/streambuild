@@ -67,10 +67,11 @@
 		lagging: 'Lagging',
 		stalled: 'Stalled',
 		drift: 'Drift',
+		unknown: 'Unknown',
 		source: 'Source'
 	};
 
-	const STATUS_ORDER: ModelStatus[] = ['fresh', 'lagging', 'stalled', 'drift'];
+	const STATUS_ORDER: ModelStatus[] = ['fresh', 'lagging', 'stalled', 'drift', 'unknown'];
 
 	function toggle<T>(set: Set<T>, value: T): Set<T> {
 		const next: Set<T> = new Set(set);
