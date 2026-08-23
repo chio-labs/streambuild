@@ -1,65 +1,55 @@
-# Orders Demo
+# Commerce Events Demo
 
-A runnable local `streambuild` demo using synthetic e-commerce order events.
+A local StreamBuild V2 demo built around one fixed commerce-event contract. Redpanda retains the
+events, ClickHouse serves the pipeline, and the bundled producer has no external dependencies or
+network side effects beyond the local Kafka broker.
 
-- Redpanda for Kafka-compatible ingestion
-- ClickHouse for storage and execution
-- Fake producer generating order lifecycle events (no external API)
+Every producer message has the same keys and stable types:
 
-## Layout
-
-- `docker/compose.yml`: Redpanda, Redpanda Console, and ClickHouse
-- `producer/fake_orders_producer.py`: generates synthetic order events
-- `streambuild_project.toml`: project defaults, target, and ClickHouse connection config
-- `sources/order_events.yml`: managed Kafka source and replay boundary
-- `pipelines/pl__order_events/`: models for the order transform graph
-
-## Model DAG
-
-```
-source (order_events)
-  |
-  +-- orders (landing table, parse JSON)
-  |     |
-  |     +-- order_status_changes
-  |     |     |
-  |     |     +-- avg_fulfillment_time (SummingMergeTree)
-  |     |
-  |     +-- order_items
-  |     |     |
-  |     |     +-- daily_revenue (SummingMergeTree)
-  |     |     |
-  |     |     +-- hourly_order_volume (SummingMergeTree)
-  |     |
-  |     +-- region_lookup
-  |     |
-  |     +-- enriched_orders
-  |           |
-  |           +-- ref:region_lookup
-  |
-  +-- order_cancellations (filtered: cancelled/refunded only)
-        |
-        +-- daily_cancellation_rates (SummingMergeTree)
+```text
+event_id, event_type, schema_version, order_id, customer_id, product, category,
+quantity, unit_price_cents, currency, status, region_code, event_at
 ```
 
-## Start The Stack
+Quantities and prices are JSON numbers. Prices stay in integer cents through storage and
+aggregation. The regular producer uses monotonic deterministic IDs and a durable pending-event
+checkpoint; the one-shot injector uses a separate unique namespace. Producer state is stored in a
+disposable Compose volume so a restart continues in-flight order lifecycles.
+
+## Pipeline
+
+```text
+commerce_event_stream source
+  -> commerce_events (typed envelope, 7-day TTL)
+       -> order_events (validated lifecycle with deterministic region labels)
+            -> order_event_facts (append-only additive rows)
+                 -> commerce_kpis (terminal view deduplicating replay before deriving KPIs)
+```
+
+Region labels are rendered by the same tested macro used in production SQL, avoiding a mutable side
+table in the primary ingestion path. The terminal view explicitly keeps the highest replay offset
+for each event before deriving non-additive values from the append-only facts. Kafka retention and
+event models are bounded to seven days after landing. Source freshness warns after 30 seconds and
+errors after two minutes.
+
+## Workflow
+
+Prerequisites: Docker with Compose, Node.js 20.19 or newer, npm, and the repository's `stb`
+environment with generated UI assets installed:
 
 ```bash
-uv tool install --upgrade streambuild
-docker compose -f examples/orders_demo/docker/compose.yml up -d --build
-
-until docker compose -f examples/orders_demo/docker/compose.yml \
-  exec -T redpanda rpk cluster health >/dev/null 2>&1; do
-  sleep 1
-done
-
-until curl --fail --silent http://localhost:18123/ping >/dev/null; do
-  sleep 1
-done
-
-curl --fail --silent --user clickhouse:clickhouse http://localhost:18123/ \
-  --data-binary 'CREATE DATABASE IF NOT EXISTS orders_demo'
+make ui-install ui-build
+uv tool install --editable .
+cd examples/orders_demo
+cp .env.example .env
+make start
 ```
+
+`make start` builds the producer image, waits for healthy Redpanda and ClickHouse services, creates
+`source.order_events.live` with three partitions, starts the producer, and applies the StreamBuild
+project. The Compose project identity defaults to `streambuild-orders-demo`; every published port is
+bound to `127.0.0.1`. The shared `redpanda.localhost:19092` broker name resolves to loopback for
+host-side Topics and lag reads and to the Redpanda container for ClickHouse ingestion.
 
 Services:
 
@@ -68,65 +58,61 @@ Services:
 - ClickHouse HTTP: `localhost:18123`
 - ClickHouse native: `localhost:19000`
 
-## Run Streambuild
-
-Plan:
+Use the local UI and scheduler in one terminal:
 
 ```bash
-stb plan --project-dir examples/orders_demo
+make dev
 ```
 
-Build:
+Run the focused SQL tests independently:
 
 ```bash
-stb build --project-dir examples/orders_demo
+stb test --project-dir .
 ```
 
-The demo uses `pipeline_mode = "direct"`, so the build applies immediately. Open the development UI:
+With `make dev` still running, verify the topic contract, logical event cardinality, region labels,
+model drift, view freshness, Kafka lag, all four SQL tests, and every audit:
 
 ```bash
-stb dev --project-dir examples/orders_demo
+make verify
+make verify-warning
 ```
 
-The UI shows the model graph, live catalog state, source throughput and lag, runs, quality checks,
-Kafka topics, and retained source messages.
+`make verify-warning` takes about 30 seconds and exercises the sampled warning, natural recovery,
+and both sensor deliveries end to end.
 
-To try staged deployment commands, change `[defaults].pipeline_mode` to `"virtual"`, build again,
-then list and inspect deployments:
+Reset all disposable broker and warehouse data, or stop while retaining it:
 
 ```bash
-stb deployment list --project-dir examples/orders_demo
-stb deployment show <deployment-id> --project-dir examples/orders_demo
-stb deployment diff <deployment-id> --project-dir examples/orders_demo
+make reset
+make stop
 ```
 
-Audit a staged deployment:
+## Warning And Recovery
+
+The `no_future_events` warning audit has a ten-second cadence. Its running sensor uses the honest
+`ConsoleNotifier` provider: it prints locally and never sends a webhook.
+
+With `make dev` running, inject one order 30 seconds into the future from another terminal:
 
 ```bash
-stb deployment audit <deployment-id> --project-dir examples/orders_demo
+make inject
 ```
 
-Promote:
+The console first prints a `WARNING` transition with one sample and an exact Quality link. Once the
+clock is within two seconds of the event timestamp, the same persisted row stops violating the audit
+and the console prints `RECOVERED`. Change
+`FUTURE_EVENT_SECONDS` in `.env` to adjust that bounded demonstration window.
+
+## Direct Commands
+
+The Make targets are wrappers around these project operations:
 
 ```bash
-stb deployment promote <deployment-id> --project-dir examples/orders_demo
+stb compile --project-dir .
+stb plan --project-dir .
+stb build --project-dir .
+stb audit --project-dir .
 ```
 
-After publishing another deployment, compare it with the active graph or roll the complete graph
-back to the preceding publication:
-
-```bash
-stb deployment diff <from-id>:<to-id> --project-dir examples/orders_demo
-stb deployment rollback --previous --project-dir examples/orders_demo
-```
-
-Rollback rebinds retained live deployment tables; it does not restore a historical data snapshot.
-
-## Producer Config
-
-Environment variables:
-
-- `KAFKA_BOOTSTRAP_SERVERS` default: `localhost:19092`
-- `KAFKA_TOPIC` default: `source.order_events.live`
-- `TICK_INTERVAL_SECONDS` default: `3`
-- `NEW_ORDERS_PER_TICK` default: `2`
+The project intentionally uses direct mode so a first run has no deployment or promotion step.

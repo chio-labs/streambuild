@@ -727,6 +727,7 @@ type FreshnessSummary = {
 	lagging: number;
 	stalled: number;
 	drift: number;
+	unknown: number;
 	total: number;
 	offenders: Model[];
 };
@@ -736,6 +737,7 @@ function freshnessSummary(project: Project): FreshnessSummary {
 	let lagging = 0;
 	let stalled = 0;
 	let drift = 0;
+	let unknown = 0;
 	const offenders: Model[] = [];
 
 	for (const model of project.models) {
@@ -752,9 +754,10 @@ function freshnessSummary(project: Project): FreshnessSummary {
 			drift += 1;
 			offenders.push(model);
 		}
+		if (model.status === 'unknown') unknown += 1;
 	}
 
-	return { fresh, lagging, stalled, drift, total: project.models.length, offenders };
+	return { fresh, lagging, stalled, drift, unknown, total: project.models.length, offenders };
 }
 
 function driftedModels(project: Project): Model[] {
@@ -771,15 +774,17 @@ function pipelineFreshness(project: Project, pipelineName: string): FreshnessSum
 	let lagging = 0;
 	let stalled = 0;
 	let drift = 0;
+	let unknown = 0;
 	const offenders: Model[] = [];
 	for (const model of models) {
 		if (model.status === 'fresh') fresh += 1;
 		if (model.status === 'lagging') lagging += 1;
 		if (model.status === 'stalled') stalled += 1;
 		if (model.status === 'drift') drift += 1;
-		if (model.status !== 'fresh') offenders.push(model);
+		if (model.status === 'unknown') unknown += 1;
+		if (model.status !== 'fresh' && model.status !== 'unknown') offenders.push(model);
 	}
-	return { fresh, lagging, stalled, drift, total: models.length, offenders };
+	return { fresh, lagging, stalled, drift, unknown, total: models.length, offenders };
 }
 
 function anchorCount(project: Project, pipelineName: string): number {

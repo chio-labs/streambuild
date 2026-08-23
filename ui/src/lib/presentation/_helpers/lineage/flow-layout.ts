@@ -267,7 +267,7 @@ function statusCounts(
 		const key: string | undefined = keyOf(node.id);
 		if (!key) continue;
 		const counts: Record<ModelStatus, number> =
-			byGroup.get(key) ?? { fresh: 0, lagging: 0, stalled: 0, drift: 0, source: 0 };
+			byGroup.get(key) ?? { fresh: 0, lagging: 0, stalled: 0, drift: 0, unknown: 0, source: 0 };
 		counts[node.status] += 1;
 		byGroup.set(key, counts);
 	}

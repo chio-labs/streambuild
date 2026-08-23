@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { planFromServer } from '$lib/api/_helpers/mapping';
+import { planFromServer, projectFromServer } from '$lib/api/_helpers/mapping';
+import type { Project } from '$lib/domain/types';
 import type { Plan } from '$lib/planning/types';
 
 describe('plan mapping', () => {
@@ -44,5 +45,29 @@ describe('plan mapping', () => {
 		expect(plan.phases[0]?.actions[0]?.logicalName).toBe('orders');
 		expect(plan.warnings[0]?.relatedModel).toBe('orders');
 		expect(plan.upperBoundary.continuesLive).toBe(true);
+	});
+});
+
+describe('project mapping', () => {
+	it('given unconfigured freshness when mapped then source and model freshness stay unknown', () => {
+		const project: Project = projectFromServer(
+			{
+				project: {},
+				sources: [{ name: 'orders' }],
+				pipelines: [],
+				models: [{ name: 'orders_clean', sql: {}, anchor: 'eligible' }],
+				audits: [],
+				tests: [],
+				macros: []
+			},
+			{
+				capturedAt: '2026-08-23T10:00:00Z',
+				sources: { orders: { freshness: null } },
+				models: { orders_clean: { freshness: null } }
+			}
+		);
+
+		expect(project.sources[0]?.live.freshness).toBeNull();
+		expect(project.models[0]?.status).toBe('unknown');
 	});
 });

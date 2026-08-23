@@ -20,7 +20,7 @@
 	const group = $derived(data as unknown as CollapsedGroupData);
 
 	const bars = $derived(
-		(['fresh', 'lagging', 'stalled', 'drift'] as ModelStatus[])
+		(['fresh', 'lagging', 'stalled', 'drift', 'unknown'] as ModelStatus[])
 			.map((status) => ({ status, count: group.statusCounts[status] ?? 0 }))
 			.filter((entry) => entry.count > 0)
 	);
@@ -29,7 +29,8 @@
 		fresh: 'var(--sb-success)',
 		lagging: 'var(--sb-warning)',
 		stalled: 'var(--sb-error)',
-		drift: 'var(--sb-stale)'
+		drift: 'var(--sb-stale)',
+		unknown: 'var(--sb-text-faint)'
 	};
 </script>
 

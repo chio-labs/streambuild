@@ -332,10 +332,14 @@ def test_given_one_analysis_when_writing_manifest_and_dag_then_artifacts_agree(
     [
         CompileCheckArtifactsTestCase(
             description="writes assembled tests and mirrored audits from the compiled project",
-            expected_test_path=("compiled/tests/order_items/line total computes correctly.sql"),
-            expected_audit_path=("compiled/audits/order_events/no_null_order_ids.sql"),
-            expected_test_target="order_items",
-            expected_audit_model="order_items",
+            expected_test_path=(
+                "compiled/tests/order_events/order events derive stable region labels.sql"
+            ),
+            expected_audit_path=(
+                "compiled/audits/order_events/no_future_events__orders_no_future_events.sql"
+            ),
+            expected_test_target="order_events",
+            expected_audit_model="order_events",
         )
     ],
     ids=lambda case: case.description,
@@ -350,8 +354,8 @@ def test_given_tests_and_audits_when_compiling_then_writes_static_check_artifact
 
     exit_code: int = compile_project(project_dir=project_dir, target_dir=target_dir)
     manifest: dict[str, object] = json.loads((target_dir / "manifest.json").read_text())
-    test_entry: dict[str, object] = manifest["tests"]["line total computes correctly"]
-    audit_entry: dict[str, object] = manifest["audits"]["no_null_order_ids"]
+    test_entry: dict[str, object] = manifest["tests"]["order events derive stable region labels"]
+    audit_entry: dict[str, object] = manifest["audits"]["orders_no_future_events"]
 
     assert exit_code == 0
     assert test_entry["path"] == test_case.expected_test_path
@@ -587,23 +591,23 @@ def test_given_existing_target_when_atomic_publication_fails_then_rolls_back_all
             description="removes model test and audit artifacts after authored inputs disappear",
             removed_relative_inputs=(
                 "pipelines/pl__order_events/artifact_leaf.sql",
-                "tests/order_events/test_line_total.sql",
-                "audits/order_events/no_null_order_ids.sql",
+                "tests/order_events/test_order_events.sql",
+                "audits/order_events/no_future_events.sql",
             ),
             expected_removed_artifacts=(
                 "compiled/models/pl__order_events/artifact_leaf.sql",
-                "compiled/tests/order_items/line total computes correctly.sql",
-                "compiled/audits/order_events/no_null_order_ids.sql",
+                "compiled/tests/order_events/order events derive stable region labels.sql",
+                "compiled/audits/order_events/no_future_events__orders_no_future_events.sql",
             ),
             expected_removed_manifest_names=(
                 "artifact_leaf",
-                "line total computes correctly",
-                "no_null_order_ids",
+                "order events derive stable region labels",
+                "orders_no_future_events",
             ),
             expected_removed_dag_node_ids=(
                 "model:artifact_leaf",
-                "test:line total computes correctly",
-                "audit:no_null_order_ids",
+                "test:order events derive stable region labels",
+                "audit:orders_no_future_events",
             ),
         )
     ],

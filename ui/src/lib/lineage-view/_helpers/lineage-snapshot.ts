@@ -63,13 +63,15 @@ function countStatuses(graph: Graph): LineageCounts {
 	let lagging: number = 0;
 	let stalled: number = 0;
 	let drift: number = 0;
+	let unknown: number = 0;
 	for (const node of graph.nodes) {
 		if (node.status === 'fresh') fresh += 1;
 		if (node.status === 'lagging') lagging += 1;
 		if (node.status === 'stalled') stalled += 1;
 		if (node.status === 'drift') drift += 1;
+		if (node.status === 'unknown') unknown += 1;
 	}
-	return { fresh, lagging, stalled, drift };
+	return { fresh, lagging, stalled, drift, unknown };
 }
 
 export function buildLineageSnapshot(
