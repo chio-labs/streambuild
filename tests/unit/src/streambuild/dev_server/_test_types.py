@@ -135,6 +135,21 @@ class StateFieldTestCase:
 
 
 @dataclass(frozen=True)
+class UnconfiguredFreshnessTestCase:
+    description: str
+    expected_source_freshness: str | None
+    expected_model_freshness: str | None
+
+
+@dataclass(frozen=True)
+class ViewFreshnessTestCase:
+    description: str
+    expected_freshness: str | None
+    expected_lag_seconds: float | None
+    expected_newest_row_at: str | None
+
+
+@dataclass(frozen=True)
 class ActivityPayloadTestCase:
     description: str
     capabilities: tuple[str, ...]

@@ -403,18 +403,16 @@ def test_given_executed_sql_test_when_running_test_command_then_runtime_bytes_ma
     "test_case",
     [
         CliTestSemanticsIntegrationTestCase(
-            description="runs every authored orders demo test including macro and assertion modes",
+            description="runs every focused commerce demo model and macro test",
             sql_test_content="",
             macro_file_contents="",
             expected_exit_code=0,
             expected_output_fragments=(
-                "line total computes correctly",
-                "null quantity yields null line total",
-                "line total with mock_rows macro",
-                "line total with nested fixture macros",
-                "macro line total expression handles nulls",
-                "assert line_total_is_never_negative",
-                "Results: 6 passed, 0 failed",
+                "order events derive stable region labels",
+                "order facts emit additive values",
+                "terminal kpis deduplicate facts before deriving rates",
+                "commerce expressions preserve integer money and safe rates",
+                "Results: 4 passed, 0 failed",
             ),
         )
     ],

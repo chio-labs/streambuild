@@ -1,3 +1,5 @@
+name: ${COMPOSE_PROJECT_NAME:-streambuild-orders-demo}
+
 services:
   redpanda:
     image: docker.redpanda.com/redpandadata/redpanda:v25.1.4
@@ -11,54 +13,113 @@ services:
       - --node-id=0
       - --check=false
       - --kafka-addr=internal://0.0.0.0:9092,external://0.0.0.0:19092
-      - --advertise-kafka-addr=internal://redpanda:9092,external://localhost:19092
+      - --advertise-kafka-addr=internal://redpanda:9092,external://redpanda.localhost:19092
       - --pandaproxy-addr=internal://0.0.0.0:8082,external://0.0.0.0:18082
-      - --advertise-pandaproxy-addr=internal://redpanda:8082,external://localhost:18082
+      - --advertise-pandaproxy-addr=internal://redpanda:8082,external://localhost:${REDPANDA_PROXY_PORT:-18082}
       - --rpc-addr=0.0.0.0:33145
       - --advertise-rpc-addr=redpanda:33145
     ports:
-      - "18082:18082"
-      - "19092:19092"
-      - "19644:9644"
+      - "127.0.0.1:${REDPANDA_PROXY_PORT:-18082}:18082"
+      - "127.0.0.1:19092:19092"
+      - "127.0.0.1:${REDPANDA_ADMIN_PORT:-19644}:9644"
     volumes:
       - redpanda_data:/var/lib/redpanda/data
+    networks:
+      default:
+        aliases:
+          - redpanda.localhost
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health --exit-when-healthy"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
     restart: unless-stopped
+
+  topic-init:
+    image: docker.redpanda.com/redpandadata/redpanda:v25.1.4
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -eu
+        partitions=$$(rpk topic list --brokers redpanda:9092 | \
+          awk -v topic="$${KAFKA_TOPIC}" '$$1 == topic {print $$2}')
+        if [ -z "$${partitions}" ]; then
+          rpk topic create "$${KAFKA_TOPIC}" \
+            --brokers redpanda:9092 \
+            --partitions 3 \
+            --topic-config retention.ms=604800000
+          partitions=3
+        fi
+        if [ "$${partitions}" -lt 3 ]; then
+          rpk topic add-partitions "$${KAFKA_TOPIC}" \
+            --brokers redpanda:9092 \
+            --num $$((3 - partitions))
+        fi
+        rpk topic alter-config "$${KAFKA_TOPIC}" \
+          --brokers redpanda:9092 \
+          --no-confirm \
+          --set retention.ms=604800000
+        partitions=$$(rpk topic list --brokers redpanda:9092 | \
+          awk -v topic="$${KAFKA_TOPIC}" '$$1 == topic {print $$2}')
+        test "$${partitions}" -eq 3
+    environment:
+      KAFKA_TOPIC: source.order_events.live
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    restart: "no"
 
   redpanda-console:
     image: docker.redpanda.com/redpandadata/console:v2.8.5
-    depends_on:
-      - redpanda
     environment:
       KAFKA_BROKERS: redpanda:9092
     ports:
-      - "18081:8080"
+      - "127.0.0.1:${REDPANDA_CONSOLE_PORT:-18081}:8080"
+    depends_on:
+      topic-init:
+        condition: service_completed_successfully
     restart: unless-stopped
 
   clickhouse:
     image: clickhouse/clickhouse-server:25.8
     environment:
       CLICKHOUSE_DB: orders_demo
-      CLICKHOUSE_USER: clickhouse
-      CLICKHOUSE_PASSWORD: clickhouse
+      CLICKHOUSE_USER: ${STREAMBUILD_CLICKHOUSE_USERNAME:-clickhouse}
+      CLICKHOUSE_PASSWORD: ${STREAMBUILD_CLICKHOUSE_PASSWORD:-clickhouse}
     ports:
-      - "18123:8123"
-      - "19000:9000"
+      - "127.0.0.1:${STREAMBUILD_CLICKHOUSE_PORT:-18123}:8123"
+      - "127.0.0.1:${CLICKHOUSE_NATIVE_PORT:-19000}:9000"
     volumes:
       - clickhouse_data:/var/lib/clickhouse
       - clickhouse_logs:/var/log/clickhouse-server
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --spider http://localhost:8123/ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
     restart: unless-stopped
 
   producer:
     build:
       context: ..
       dockerfile: producer/Dockerfile
-    depends_on:
-      - redpanda
     environment:
       KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
+      KAFKA_TOPIC: source.order_events.live
+      TICK_INTERVAL_SECONDS: ${TICK_INTERVAL_SECONDS:-3}
+      NEW_ORDERS_PER_TICK: ${NEW_ORDERS_PER_TICK:-2}
+      PRODUCER_RANDOM_SEED: ${PRODUCER_RANDOM_SEED:-86}
+      PRODUCER_STATE_PATH: /var/lib/orders-demo/state.json
+      FUTURE_EVENT_SECONDS: ${FUTURE_EVENT_SECONDS:-30}
+    volumes:
+      - producer_state:/var/lib/orders-demo
+    depends_on:
+      topic-init:
+        condition: service_completed_successfully
     restart: unless-stopped
 
 volumes:
   redpanda_data:
   clickhouse_data:
   clickhouse_logs:
+  producer_state:

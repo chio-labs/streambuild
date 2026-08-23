@@ -126,11 +126,11 @@ def write_artifact_leaf_model(*, project_dir: Path) -> None:
     (project_dir / "pipelines" / "pl__order_events" / "artifact_leaf.sql").write_text(
         """MODEL (
   engine "MergeTree()",
-  order_by ["region"],
+  order_by ["region_code"],
 );
 
-SELECT region::String AS region
-FROM __ref("region_lookup")
+SELECT region_code::String AS region_code
+FROM __ref("order_events")
 """,
         encoding="utf-8",
     )

@@ -6,9 +6,11 @@
 	import { getApp } from '$lib/api/main/project/get-app';
 	import { getProject } from '$lib/api/main/project/get-project';
 	import type { Project } from '$lib/domain/types';
+	import { projectPipelineMode } from '$lib/pipeline-view/main/project-pipeline-mode';
 
 	const project: Project = getProject();
 	const app = getApp();
+	const effectiveMode = projectPipelineMode(project);
 </script>
 
 <AppTopbar title="Settings" />
@@ -47,7 +49,12 @@
 			>
 				Mode
 			</div>
-			<FactRow label="Effective mode" value="direct" mono />
+			<FactRow label="Effective mode" value={effectiveMode} mono />
+			{#if effectiveMode === 'mixed'}
+				{#each project.pipelines as pipeline (pipeline.name)}
+					<FactRow label={pipeline.name} value={pipeline.mode} mono />
+				{/each}
+			{/if}
 		</div>
 
 		<div>

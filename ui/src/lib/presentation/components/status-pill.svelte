@@ -27,6 +27,11 @@
 			colour: 'var(--sb-stale)',
 			title: 'Definition changed since the last applied build — a rebuild is needed'
 		},
+		unknown: {
+			label: 'unknown',
+			colour: 'var(--sb-text-faint)',
+			title: 'No freshness policy is configured'
+		},
 		source: { label: 'source', colour: 'var(--sb-text-faint)', title: 'Stream source' }
 	};
 

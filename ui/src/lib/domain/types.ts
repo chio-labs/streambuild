@@ -143,9 +143,10 @@ type OwnershipState =
 
 /**
  * Freshness relative to the source, plus `drift` for code/warehouse mismatch.
- * `source` is used for source nodes on the graph.
+ * `unknown` means no freshness policy is configured; `source` is used for
+ * source nodes on the graph.
  */
-export type ModelStatus = 'fresh' | 'lagging' | 'stalled' | 'drift' | 'source';
+export type ModelStatus = 'fresh' | 'lagging' | 'stalled' | 'drift' | 'unknown' | 'source';
 
 type ModelActivity = {
 	state: 'moving' | 'idle' | 'stalled' | 'unknown';
