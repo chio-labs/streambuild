@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "streambuild"
 version = "0.26.15"
-description = "Declarative ClickHouse streaming pipeline planning tool"
+description = "Declarative SQL streaming pipelines for ClickHouse"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -20,6 +20,11 @@ dependencies = [
   "sqlalchemy>=2.0.43",
   "uvicorn>=0.30",
 ]
+
+[project.urls]
+Documentation = "https://docs.streambuild.dev"
+Issues = "https://github.com/chio-labs/streambuild/issues"
+Repository = "https://github.com/chio-labs/streambuild"
 
 [project.scripts]
 stb = "streambuild.cli.entry.main.main:main"
