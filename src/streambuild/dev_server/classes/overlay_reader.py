@@ -9,6 +9,7 @@ from streambuild.adapter.exceptions import AdapterError
 from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.dev_server._helpers.payloads.state_payload import build_state_payload
 from streambuild.dev_server.classes.kafka_lag_reader import KafkaLagReader
+from streambuild.dev_server.classes.warehouse_health_reader import WarehouseHealthReader
 
 
 class OverlayReader:
@@ -23,6 +24,7 @@ class OverlayReader:
         self._connection_factory = connection_factory
         self._kafka_lag_reader = kafka_lag_reader
         self._connection: AdapterConnection | None = None
+        self._warehouse_health_reader: WarehouseHealthReader = WarehouseHealthReader()
 
     def close(self) -> None:
         """Close the private connection so the snapshot releases it on shutdown."""
@@ -43,6 +45,7 @@ class OverlayReader:
                 connection=self._connection,
                 database=database,
                 kafka_lag_reader=self._kafka_lag_reader,
+                warehouse_health_reader=self._warehouse_health_reader,
             )
         except AdapterError:
             self.close()

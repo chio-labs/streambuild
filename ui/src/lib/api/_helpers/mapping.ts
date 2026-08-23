@@ -20,6 +20,7 @@ import type {
 	Source,
 	SqlTest
 } from '$lib/domain/types';
+import type { WarehouseHealth, WarehouseMemoryHealth } from '$lib/warehouse-health/types';
 import type { CheckStatusRecord } from '$lib/api/types';
 import type { Plan, PlanSqlChangeStatus } from '$lib/planning/types';
 
@@ -69,6 +70,7 @@ export function projectFromServer(definitions: Payload, state: Payload): Project
 			}
 		},
 		capturedAt: (state.capturedAt as string) ?? new Date().toISOString(),
+		warehouseHealth: warehouseHealthFromServer(state.warehouseHealth),
 		sources: (definitions.sources as Payload[]).map((source) =>
 			sourceFromServer(source, stateFor(state, 'sources', source.name as string))
 		),
@@ -81,6 +83,66 @@ export function projectFromServer(definitions: Payload, state: Payload): Project
 			file: macro.file as string,
 			signature: signatureFromSource(macro.source as string, macro.name as string),
 			description: (macro.description as string | null) ?? null
+		}))
+	};
+}
+
+function warehouseHealthFromServer(value: unknown): WarehouseHealth | null {
+	if (value === null || typeof value !== 'object') return null;
+	const health: Payload = value as Payload;
+	const inodes: Payload = (health.inodes ?? {}) as Payload;
+	const memory: Payload | null = (health.memory ?? null) as Payload | null;
+	const activity: Payload | null = (health.activity ?? null) as Payload | null;
+	return {
+		availability: health.availability as WarehouseHealth['availability'],
+		status: health.status as WarehouseHealth['status'],
+		adapter: String(health.adapter ?? ''),
+		database: String(health.database ?? ''),
+		version: (health.version as string | null) ?? null,
+		uptimeSeconds: (health.uptimeSeconds as number | null) ?? null,
+		measuredAt: String(health.measuredAt ?? ''),
+		collectionDurationMs: Number(health.collectionDurationMs ?? 0),
+		stale: Boolean(health.stale ?? false),
+		warnings: (health.warnings as string[]) ?? [],
+		disks: ((health.disks ?? []) as Payload[]).map((disk) => ({
+			name: String(disk.name ?? ''),
+			path: String(disk.path ?? ''),
+			type: String(disk.type ?? ''),
+			totalBytes: Number(disk.totalBytes ?? 0),
+			freeBytes: Number(disk.freeBytes ?? 0),
+			unreservedBytes: Number(disk.unreservedBytes ?? 0),
+			keepFreeBytes: Number(disk.keepFreeBytes ?? 0),
+			status: disk.status as WarehouseHealth['status']
+		})),
+		inodes: {
+			total: (inodes.total as number | null) ?? null,
+			free: (inodes.free as number | null) ?? null,
+			status: (inodes.status as WarehouseHealth['status']) ?? 'unknown'
+		},
+		memory:
+			memory === null
+				? null
+				: {
+						residentBytes: (memory.residentBytes as number | null) ?? null,
+						hostTotalBytes: (memory.hostTotalBytes as number | null) ?? null,
+						cgroupUsedBytes: (memory.cgroupUsedBytes as number | null) ?? null,
+						cgroupLimitBytes: (memory.cgroupLimitBytes as number | null) ?? null,
+						basis: memory.basis as WarehouseMemoryHealth['basis'],
+						pressureFraction: (memory.pressureFraction as number | null) ?? null
+					},
+		activity:
+			activity === null
+				? null
+				: {
+						activeQueries: Number(activity.activeQueries ?? 0),
+						activeMerges: Number(activity.activeMerges ?? 0),
+						incompleteMutations: Number(activity.incompleteMutations ?? 0)
+					},
+		tables: ((health.tables ?? []) as Payload[]).map((table) => ({
+			name: String(table.name ?? ''),
+			rows: Number(table.rows ?? 0),
+			bytesOnDisk: Number(table.bytesOnDisk ?? 0),
+			activeParts: Number(table.activeParts ?? 0)
 		}))
 	};
 }

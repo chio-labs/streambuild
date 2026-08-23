@@ -5,6 +5,8 @@ from streambuild.adapter.types import AdapterReplayBoundaryMode
 
 CLICKHOUSE_ADAPTER_NAME: str = "clickhouse"
 CLICKHOUSE_WRITTEN_ROWS_SUMMARY_KEY: str = "written_rows"
+CLICKHOUSE_CAPACITY_CRITICAL_AVAILABLE_FRACTION: float = 0.05
+CLICKHOUSE_CAPACITY_WARNING_AVAILABLE_FRACTION: float = 0.15
 CLICKHOUSE_DEFAULT_DATABASE: str = "default"
 CLICKHOUSE_SQL_ANALYSIS_DIALECT: str = "clickhouse"
 CLICKHOUSE_BOOLEAN_SETTING_VALUES: frozenset[str] = frozenset({"true", "false"})

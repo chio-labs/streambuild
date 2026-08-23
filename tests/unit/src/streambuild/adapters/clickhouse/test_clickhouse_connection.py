@@ -11,6 +11,7 @@ from streambuild.adapter.exceptions import (
 from streambuild.adapter.models import (
     AdapterQueryResult,
     AdapterStatementProgress,
+    AdapterWarehouseHealth,
     CatalogRelation,
     CatalogSnapshot,
 )
@@ -20,6 +21,7 @@ from tests.unit.src.streambuild.adapters.clickhouse._test_types import (
     CatalogInspectionTestCase,
     ClickHousePublishCapabilitiesTestCase,
     ClickHouseStatementProgressTestCase,
+    ClickHouseWarehouseHealthTestCase,
     ClickHouseWorkflowCorrelationTestCase,
     ConnectionQueryNormalizationTestCase,
     ConnectionTranslationTestCase,
@@ -88,6 +90,107 @@ def test_given_clickhouse_connection_when_reading_publish_capabilities_then_guar
         is test_case.expected_per_relation_atomic_replace
     )
     assert connection.capabilities.graph_atomic_publish is test_case.expected_graph_atomic_publish
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ClickHouseWarehouseHealthTestCase(
+            description="decodes bounded health and inclusive capacity thresholds",
+            disk_rows=(
+                ("critical", "/critical/", "Local", 100, 6, 5, 0),
+                ("warning", "/warning/", "Local", 100, 16, 15, 0),
+                ("healthy", "/healthy/", "Local", 100, 20, 16, 0),
+            ),
+            metric_rows=(
+                ("FilesystemMainPathTotalINodes", 1000),
+                ("FilesystemMainPathAvailableINodes", 400),
+                ("MemoryResident", 300),
+                ("OSMemoryTotal", 2000),
+                ("CGroupMemoryUsed", 500),
+                ("CGroupMemoryTotal", 1000),
+            ),
+            expected_disk_statuses=("critical", "warning", "healthy"),
+            expected_availability="available",
+            expected_status="critical",
+            expected_memory_basis="cgroup",
+            expected_table_name="tbl__orders",
+            expected_query_count=5,
+        ),
+        ClickHouseWarehouseHealthTestCase(
+            description="does not infer health without usable core disk capacity",
+            disk_rows=(("default", "/data/", "Local", 0, 0, 0, 0),),
+            metric_rows=(
+                ("FilesystemMainPathTotalINodes", 1000),
+                ("FilesystemMainPathAvailableINodes", 900),
+                ("MemoryResident", 300),
+                ("OSMemoryTotal", 2000),
+                ("CGroupMemoryUsed", 500),
+                ("CGroupMemoryTotal", 1000),
+            ),
+            expected_disk_statuses=("unknown",),
+            expected_availability="partial",
+            expected_status="unknown",
+            expected_memory_basis="cgroup",
+            expected_table_name="tbl__orders",
+            expected_query_count=5,
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_clickhouse_system_metrics_when_reading_health_then_snapshot_is_truthful_and_bounded(
+    test_case: ClickHouseWarehouseHealthTestCase,
+) -> None:
+    raw_client: SequencedRawClickHouseClient = SequencedRawClickHouseClient(
+        (
+            FakeRawClickHouseQueryResult(
+                column_names=[
+                    "name",
+                    "path",
+                    "type",
+                    "total_space",
+                    "free_space",
+                    "unreserved_space",
+                    "keep_free_space",
+                ],
+                result_rows=[list(row) for row in test_case.disk_rows],
+            ),
+            FakeRawClickHouseQueryResult(
+                column_names=["version", "uptime_seconds"],
+                result_rows=[["25.8.1.1", 86400]],
+            ),
+            FakeRawClickHouseQueryResult(
+                column_names=["metric", "value"],
+                result_rows=[list(row) for row in test_case.metric_rows],
+            ),
+            FakeRawClickHouseQueryResult(
+                column_names=["active_queries", "active_merges", "incomplete_mutations"],
+                result_rows=[[2, 1, 3]],
+            ),
+            FakeRawClickHouseQueryResult(
+                column_names=["table", "rows", "bytes_on_disk", "active_parts"],
+                result_rows=[["tbl__orders", 500000, 64000000, 12]],
+            ),
+        )
+    )
+    connection: ClickHouseConnection = ClickHouseConnection(cast(RawClickHouseClient, raw_client))
+
+    health: AdapterWarehouseHealth = connection.load_warehouse_health("analytics'o")
+
+    assert tuple(str(disk.status) for disk in health.disks) == test_case.expected_disk_statuses
+    assert str(health.availability) == test_case.expected_availability
+    assert str(health.status) == test_case.expected_status
+    assert health.memory is not None
+    assert health.memory.basis == test_case.expected_memory_basis
+    assert health.memory.pressure_fraction == 0.5
+    assert health.activity is not None
+    assert health.activity.active_queries == 2
+    assert health.tables[0].name == test_case.expected_table_name
+    assert len(raw_client.statements) == test_case.expected_query_count
+    assert "query_id != currentQueryID()" in raw_client.statements[3]
+    assert "database =" not in raw_client.statements[3]
+    assert "database = 'analytics''o'" in raw_client.statements[4]
+    assert "LIMIT 10" in raw_client.statements[4]
 
 
 @pytest.mark.parametrize(
