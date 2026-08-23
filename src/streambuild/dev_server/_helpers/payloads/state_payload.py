@@ -159,7 +159,7 @@ def _warehouse_health_payload(
             "pressureFraction": health.memory.pressure_fraction,
         }
     )
-    activity: dict[str, int] | None = (
+    activity: dict[str, int | None] | None = (
         None
         if health.activity is None
         else {
@@ -199,15 +199,19 @@ def _warehouse_health_payload(
         },
         "memory": memory,
         "activity": activity,
-        "tables": [
-            {
-                "name": table.name,
-                "rows": table.rows,
-                "bytesOnDisk": table.bytes_on_disk,
-                "activeParts": table.active_parts,
-            }
-            for table in health.tables
-        ],
+        "tables": (
+            None
+            if health.tables is None
+            else [
+                {
+                    "name": table.name,
+                    "rows": table.rows,
+                    "bytesOnDisk": table.bytes_on_disk,
+                    "activeParts": table.active_parts,
+                }
+                for table in health.tables
+            ]
+        ),
     }
 
 

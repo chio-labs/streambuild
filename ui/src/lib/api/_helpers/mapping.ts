@@ -106,12 +106,12 @@ function warehouseHealthFromServer(value: unknown): WarehouseHealth | null {
 		warnings: (health.warnings as string[]) ?? [],
 		disks: ((health.disks ?? []) as Payload[]).map((disk) => ({
 			name: String(disk.name ?? ''),
-			path: String(disk.path ?? ''),
-			type: String(disk.type ?? ''),
-			totalBytes: Number(disk.totalBytes ?? 0),
-			freeBytes: Number(disk.freeBytes ?? 0),
-			unreservedBytes: Number(disk.unreservedBytes ?? 0),
-			keepFreeBytes: Number(disk.keepFreeBytes ?? 0),
+			path: disk.path === null || disk.path === undefined ? null : String(disk.path),
+			type: disk.type === null || disk.type === undefined ? null : String(disk.type),
+			totalBytes: nullableNumber(disk.totalBytes),
+			freeBytes: nullableNumber(disk.freeBytes),
+			unreservedBytes: nullableNumber(disk.unreservedBytes),
+			keepFreeBytes: nullableNumber(disk.keepFreeBytes),
 			status: disk.status as WarehouseHealth['status']
 		})),
 		inodes: {
@@ -134,17 +134,24 @@ function warehouseHealthFromServer(value: unknown): WarehouseHealth | null {
 			activity === null
 				? null
 				: {
-						activeQueries: Number(activity.activeQueries ?? 0),
-						activeMerges: Number(activity.activeMerges ?? 0),
-						incompleteMutations: Number(activity.incompleteMutations ?? 0)
+						activeQueries: nullableNumber(activity.activeQueries),
+						activeMerges: nullableNumber(activity.activeMerges),
+						incompleteMutations: nullableNumber(activity.incompleteMutations)
 					},
-		tables: ((health.tables ?? []) as Payload[]).map((table) => ({
-			name: String(table.name ?? ''),
-			rows: Number(table.rows ?? 0),
-			bytesOnDisk: Number(table.bytesOnDisk ?? 0),
-			activeParts: Number(table.activeParts ?? 0)
-		}))
+		tables:
+			health.tables === null || health.tables === undefined
+				? null
+				: (health.tables as Payload[]).map((table) => ({
+						name: String(table.name ?? ''),
+						rows: nullableNumber(table.rows),
+						bytesOnDisk: nullableNumber(table.bytesOnDisk),
+						activeParts: nullableNumber(table.activeParts)
+					}))
 	};
+}
+
+function nullableNumber(value: unknown): number | null {
+	return value === null || value === undefined ? null : Number(value);
 }
 
 function stateFor(state: Payload, section: string, name: string): Payload {

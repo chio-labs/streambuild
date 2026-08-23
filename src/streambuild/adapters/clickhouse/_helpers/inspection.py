@@ -34,7 +34,7 @@ def load_clickhouse_catalog(
 ) -> CatalogSnapshot:
     """Load one fixed-query ClickHouse catalog snapshot."""
 
-    quoted_database: str = _quoted_sql_string(database)
+    quoted_database: str = quote_clickhouse_sql_string(database)
     timezone_rows: tuple[tuple[object, ...], ...] = connection.query("SELECT timezone()").rows
     if not timezone_rows:
         raise AdapterResultError("Could not determine ClickHouse server timezone")
@@ -131,8 +131,10 @@ def _decode_column_row(row: Mapping[str, object]) -> ClickHouseCatalogColumnRow:
     )
 
 
-def _quoted_sql_string(value: str) -> str:
-    escaped_value: str = value.replace("'", "''")
+def quote_clickhouse_sql_string(value: str) -> str:
+    """Quote one ClickHouse string literal without changing its value."""
+
+    escaped_value: str = value.replace("\\", "\\\\").replace("'", "''")
     return f"'{escaped_value}'"
 
 

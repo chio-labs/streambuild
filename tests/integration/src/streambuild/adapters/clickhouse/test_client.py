@@ -107,6 +107,7 @@ def test_given_real_clickhouse_project_when_reading_health_then_snapshot_is_boun
         clickhouse_database
     )
 
+    assert health.tables is not None
     tables_by_name: dict[str, AdapterWarehouseTable] = {item.name: item for item in health.tables}
     table: AdapterWarehouseTable = tables_by_name[test_case.table_name]
     assert str(health.availability) in {"available", "partial"}
@@ -115,7 +116,9 @@ def test_given_real_clickhouse_project_when_reading_health_then_snapshot_is_boun
     assert health.uptime_seconds is not None
     assert health.disks
     assert health.activity is not None
+    assert table.rows is not None
     assert table.rows >= test_case.expected_minimum_rows
+    assert table.active_parts is not None
     assert table.active_parts >= 1
 
 

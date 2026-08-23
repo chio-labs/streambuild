@@ -38,9 +38,7 @@
 			{#if health}
 				<WarehouseHealthStatus status={health.status} />
 				<span class="text-muted-foreground text-[11.5px]">
-					{health.stale
-						? 'Last usable evidence; the latest diagnostic refresh failed.'
-						: health.warnings[0] ?? 'Current bounded warehouse snapshot.'}
+					{health.stale ? 'Last usable evidence. ' : ''}{health.warnings[0] ?? 'Current bounded warehouse snapshot.'}
 				</span>
 			{:else}
 				<span class="text-muted-foreground text-[11.5px]">No warehouse diagnostics in this snapshot.</span>
@@ -65,7 +63,7 @@
 				<div class="border-b border-[var(--border-subtle)] px-3.5 py-2.5 sm:border-r sm:border-b-0 xl:border-r">
 					<div class="text-[var(--sb-text-faint)] font-mono text-[9.5px] uppercase">Server RSS</div>
 					<div class="pt-0.5 font-mono text-[13px]">{formatWarehouseBytes(health.memory?.residentBytes ?? null)}</div>
-					<div class="text-muted-foreground font-mono text-[9.5px]">{health.memory?.basis === 'cgroup' ? 'cgroup context' : 'host context'}</div>
+					<div class="text-muted-foreground font-mono text-[9.5px]">{health.memory === null ? 'context unavailable' : health.memory.basis === 'cgroup' ? 'cgroup context' : 'host context'}</div>
 				</div>
 				<div class="px-3.5 py-2.5">
 					<div class="text-[var(--sb-text-faint)] font-mono text-[9.5px] uppercase">Activity</div>

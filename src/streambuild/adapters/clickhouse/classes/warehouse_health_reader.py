@@ -15,9 +15,11 @@ from streambuild.adapter.models import (
     AdapterWarehouseTable,
 )
 from streambuild.adapter.types import AdapterWarehouseHealthStatus
+from streambuild.adapters.clickhouse._helpers.inspection import quote_clickhouse_sql_string
 from streambuild.adapters.clickhouse.constants import (
     CLICKHOUSE_CAPACITY_CRITICAL_AVAILABLE_FRACTION,
     CLICKHOUSE_CAPACITY_WARNING_AVAILABLE_FRACTION,
+    CLICKHOUSE_UNKNOWN_CAPACITY_BYTES,
 )
 
 
@@ -59,7 +61,7 @@ def _load_clickhouse_warehouse_health(
     inode_status: AdapterWarehouseHealthStatus = AdapterWarehouseHealthStatus.UNKNOWN
     memory: AdapterWarehouseMemory | None = None
     activity: AdapterWarehouseActivity | None = None
-    tables: tuple[AdapterWarehouseTable, ...] = ()
+    tables: tuple[AdapterWarehouseTable, ...] | None = None
 
     try:
         server_row: Mapping[str, object] | None = connection.query_one(
@@ -143,21 +145,29 @@ def _load_clickhouse_warehouse_health(
 def _read_disks(connection: AdapterConnection) -> tuple[AdapterWarehouseDisk, ...]:
     return connection.query_many(
         statement=(
-            "SELECT name, path, type, total_space, free_space, unreserved_space, "
-            "keep_free_space FROM system.disks ORDER BY name"
+            "SELECT name, path, type, is_broken, total_space, free_space, "
+            "unreserved_space, keep_free_space FROM system.disks ORDER BY name"
         ),
-        decode=lambda row: AdapterWarehouseDisk(
-            name=str(row["name"]),
-            path=str(row["path"]),
-            disk_type=str(row["type"]),
-            total_bytes=int(str(row["total_space"])),
-            free_bytes=int(str(row["free_space"])),
-            unreserved_bytes=int(str(row["unreserved_space"])),
-            keep_free_bytes=int(str(row["keep_free_space"])),
-            status=_capacity_status(
-                available=int(str(row["unreserved_space"])),
-                total=int(str(row["total_space"])),
-            ),
+        decode=_decode_disk,
+    )
+
+
+def _decode_disk(row: Mapping[str, object]) -> AdapterWarehouseDisk:
+    total_bytes: int | None = _capacity_bytes(row["total_space"])
+    unreserved_bytes: int | None = _capacity_bytes(row["unreserved_space"])
+    broken: bool = bool(int(str(row["is_broken"])))
+    return AdapterWarehouseDisk(
+        name=str(row["name"]),
+        path=str(row["path"]),
+        disk_type=str(row["type"]),
+        total_bytes=total_bytes,
+        free_bytes=_capacity_bytes(row["free_space"]),
+        unreserved_bytes=unreserved_bytes,
+        keep_free_bytes=_capacity_bytes(row["keep_free_space"]),
+        status=_capacity_status(
+            available=unreserved_bytes,
+            total=total_bytes,
+            broken=broken,
         ),
     )
 
@@ -188,11 +198,11 @@ def _activity_query() -> str:
 
 
 def _tables_query(database: str) -> str:
-    escaped_database: str = database.replace("'", "''")
+    quoted_database: str = quote_clickhouse_sql_string(database)
     return (
         "SELECT table, sum(rows) AS rows, sum(bytes_on_disk) AS bytes_on_disk, "
         "count() AS active_parts FROM system.parts "
-        f"WHERE active AND database = '{escaped_database}' GROUP BY table "
+        f"WHERE active AND database = {quoted_database} GROUP BY table "
         "ORDER BY bytes_on_disk DESC, table LIMIT 10"
     )
 
@@ -200,6 +210,13 @@ def _tables_query(database: str) -> str:
 def _integer_metric(*, metrics: Mapping[str, float], name: str) -> int | None:
     value: float | None = metrics.get(name)
     return None if value is None else int(value)
+
+
+def _capacity_bytes(value: object) -> int | None:
+    capacity_bytes: int = int(str(value))
+    if capacity_bytes == CLICKHOUSE_UNKNOWN_CAPACITY_BYTES:
+        return None
+    return capacity_bytes
 
 
 def _memory(metrics: Mapping[str, float]) -> AdapterWarehouseMemory | None:
@@ -223,7 +240,11 @@ def _memory(metrics: Mapping[str, float]) -> AdapterWarehouseMemory | None:
     )
 
 
-def _capacity_status(*, available: int | None, total: int | None) -> AdapterWarehouseHealthStatus:
+def _capacity_status(
+    *, available: int | None, total: int | None, broken: bool = False
+) -> AdapterWarehouseHealthStatus:
+    if broken:
+        return AdapterWarehouseHealthStatus.CRITICAL
     if available is None or total is None or total <= 0:
         return AdapterWarehouseHealthStatus.UNKNOWN
     available_fraction: float = available / total
@@ -267,7 +288,7 @@ def _unavailable(*, started_at: float) -> AdapterWarehouseHealth:
         inode_status="unknown",
         memory=None,
         activity=None,
-        tables=(),
+        tables=None,
         collection_duration_ms=_elapsed_ms(started_at),
         warnings=("Disk capacity is unavailable.",),
     )

@@ -129,6 +129,39 @@ describe('project mapping', () => {
 		expect(project.warehouseHealth?.activity?.activeQueries).toBe(0);
 	});
 
+	it('given missing optional warehouse measurements when mapped then they remain unknown', () => {
+		const project: Project = projectFromServer(
+			{
+				project: {},
+				sources: [],
+				pipelines: [],
+				models: [],
+				audits: [],
+				tests: [],
+				macros: []
+			},
+			{
+				capturedAt: '2026-08-23T10:00:00Z',
+				warehouseHealth: {
+					availability: 'partial',
+					status: 'unknown',
+					adapter: 'clickhouse',
+					database: 'analytics',
+					measuredAt: '2026-08-23T10:00:00Z',
+					disks: [{ name: 'remote', status: 'unknown' }],
+					inodes: { status: 'unknown' },
+					memory: null,
+					activity: {},
+					tables: null
+				}
+			}
+		);
+
+		expect(project.warehouseHealth?.disks[0]?.totalBytes).toBeNull();
+		expect(project.warehouseHealth?.activity?.activeQueries).toBeNull();
+		expect(project.warehouseHealth?.tables).toBeNull();
+	});
+
 	it('given no warehouse health when mapped then diagnostics remain unavailable', () => {
 		const project: Project = projectFromServer(
 			{

@@ -19,7 +19,9 @@
 	const health = $derived<WarehouseHealth | null>(project.warehouseHealth);
 
 	function availableFraction(disk: WarehouseDiskHealth): number | null {
-		return disk.totalBytes > 0 ? disk.unreservedBytes / disk.totalBytes : null;
+		return disk.totalBytes !== null && disk.totalBytes > 0 && disk.unreservedBytes !== null
+			? disk.unreservedBytes / disk.totalBytes
+			: null;
 	}
 </script>
 
@@ -47,7 +49,7 @@
 				</div>
 				{#if health.stale || health.warnings.length}
 					<div class="px-3.5 py-2.5 text-[11.5px]" style:color={health.stale ? 'var(--sb-warning)' : 'var(--muted-foreground)'}>
-						{health.stale ? 'Showing the last usable evidence because the latest diagnostic refresh failed.' : health.warnings.join(' ')}
+						{health.stale ? 'Showing the last usable evidence. ' : ''}{health.warnings.join(' ')}
 					</div>
 				{/if}
 			</section>
@@ -65,7 +67,7 @@
 							<div class="rounded-[4px] border border-border p-3.5">
 								<div class="flex items-center gap-2">
 									<span class="font-mono text-[12px] font-medium">{disk.name}</span>
-									<span class="text-muted-foreground font-mono text-[9.5px] uppercase">{disk.type}</span>
+									<span class="text-muted-foreground font-mono text-[9.5px] uppercase">{disk.type ?? 'unknown type'}</span>
 									<span class="ml-auto"><WarehouseHealthStatus status={disk.status} /></span>
 								</div>
 								<div class="mt-3 h-2 overflow-hidden rounded-[2px] bg-[var(--sb-hover)]">
@@ -82,7 +84,7 @@
 								</div>
 								<div class="text-muted-foreground mt-2 flex gap-3 font-mono text-[9.5px]">
 									<span>{available === null ? 'unknown available' : `${formatPercent(available)} available`}</span>
-									<span class="truncate" title={disk.path}>{disk.path}</span>
+									<span class="truncate" title={disk.path ?? undefined}>{disk.path ?? 'path unavailable'}</span>
 								</div>
 							</div>
 						{/each}
@@ -104,8 +106,10 @@
 					<div class="text-muted-foreground font-mono text-[10px]">ClickHouse server RSS</div>
 					{#if health.memory?.basis === 'cgroup'}
 						<div class="mt-2 font-mono text-[10.5px]">{formatWarehouseBytes(health.memory.cgroupUsedBytes)} / {formatWarehouseBytes(health.memory.cgroupLimitBytes)} cgroup</div>
-					{:else}
+					{:else if health.memory !== null}
 						<div class="mt-2 font-mono text-[10.5px]">{formatWarehouseBytes(health.memory?.hostTotalBytes ?? null)} host memory</div>
+					{:else}
+						<div class="mt-2 font-mono text-[10.5px]">memory context unavailable</div>
 					{/if}
 				</div>
 
@@ -134,11 +138,15 @@
 					<table class="sb-list w-full">
 						<thead><tr><th>Table</th><th class="text-right">Rows</th><th class="text-right">Disk</th><th class="text-right">Active parts</th></tr></thead>
 						<tbody>
-							{#each health.tables as table (table.name)}
-								<tr><td class="font-mono">{table.name}</td><td class="text-right font-mono">{formatInteger(table.rows)}</td><td class="text-right font-mono">{formatWarehouseBytes(table.bytesOnDisk)}</td><td class="text-right font-mono">{formatInteger(table.activeParts)}</td></tr>
-							{:else}
+							{#if health.tables === null}
+								<tr><td colspan="4" class="text-muted-foreground">Project table footprint is unavailable.</td></tr>
+							{:else if health.tables.length === 0}
 								<tr><td colspan="4" class="text-muted-foreground">No active MergeTree parts were reported for this project database.</td></tr>
-							{/each}
+							{:else}
+								{#each health.tables as table (table.name)}
+									<tr><td class="font-mono">{table.name}</td><td class="text-right font-mono">{table.rows === null ? '—' : formatInteger(table.rows)}</td><td class="text-right font-mono">{formatWarehouseBytes(table.bytesOnDisk)}</td><td class="text-right font-mono">{table.activeParts === null ? '—' : formatInteger(table.activeParts)}</td></tr>
+								{/each}
+							{/if}
 						</tbody>
 					</table>
 				</div>

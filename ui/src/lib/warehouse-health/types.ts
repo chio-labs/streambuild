@@ -2,12 +2,12 @@ export type WarehouseHealthStatus = 'healthy' | 'warning' | 'critical' | 'unknow
 
 export type WarehouseDiskHealth = {
 	name: string;
-	path: string;
-	type: string;
-	totalBytes: number;
-	freeBytes: number;
-	unreservedBytes: number;
-	keepFreeBytes: number;
+	path: string | null;
+	type: string | null;
+	totalBytes: number | null;
+	freeBytes: number | null;
+	unreservedBytes: number | null;
+	keepFreeBytes: number | null;
 	status: WarehouseHealthStatus;
 };
 
@@ -39,14 +39,14 @@ export type WarehouseHealth = {
 	};
 	memory: WarehouseMemoryHealth | null;
 	activity: {
-		activeQueries: number;
-		activeMerges: number;
-		incompleteMutations: number;
+		activeQueries: number | null;
+		activeMerges: number | null;
+		incompleteMutations: number | null;
 	} | null;
 	tables: {
 		name: string;
-		rows: number;
-		bytesOnDisk: number;
-		activeParts: number;
-	}[];
+		rows: number | null;
+		bytesOnDisk: number | null;
+		activeParts: number | null;
+	}[] | null;
 };

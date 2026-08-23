@@ -1,8 +1,10 @@
 from typing import cast
+from unittest.mock import MagicMock
 
 import pytest
 from clickhouse_connect.driver.exceptions import DatabaseError, OperationalError
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.exceptions import (
     AdapterAuthenticationError,
     AdapterRelationNotFoundError,
@@ -11,14 +13,20 @@ from streambuild.adapter.exceptions import (
 from streambuild.adapter.models import (
     AdapterQueryResult,
     AdapterStatementProgress,
+    AdapterWarehouseDisk,
     AdapterWarehouseHealth,
     CatalogRelation,
     CatalogSnapshot,
 )
 from streambuild.adapters.clickhouse.classes.clickhouse_connection import ClickHouseConnection
+from streambuild.adapters.clickhouse.classes.warehouse_health_reader import (
+    ClickHouseWarehouseHealthReader,
+)
+from streambuild.adapters.clickhouse.constants import CLICKHOUSE_UNKNOWN_CAPACITY_BYTES
 from streambuild.adapters.clickhouse.types import RawClickHouseClient
 from tests.unit.src.streambuild.adapters.clickhouse._test_types import (
     CatalogInspectionTestCase,
+    ClickHouseOptionalHealthFailureTestCase,
     ClickHousePublishCapabilitiesTestCase,
     ClickHouseStatementProgressTestCase,
     ClickHouseWarehouseHealthTestCase,
@@ -98,9 +106,9 @@ def test_given_clickhouse_connection_when_reading_publish_capabilities_then_guar
         ClickHouseWarehouseHealthTestCase(
             description="decodes bounded health and inclusive capacity thresholds",
             disk_rows=(
-                ("critical", "/critical/", "Local", 100, 6, 5, 0),
-                ("warning", "/warning/", "Local", 100, 16, 15, 0),
-                ("healthy", "/healthy/", "Local", 100, 20, 16, 0),
+                ("critical", "/critical/", "Local", 0, 100, 6, 5, 0),
+                ("warning", "/warning/", "Local", 0, 100, 16, 15, 0),
+                ("healthy", "/healthy/", "Local", 0, 100, 20, 16, 0),
             ),
             metric_rows=(
                 ("FilesystemMainPathTotalINodes", 1000),
@@ -111,6 +119,7 @@ def test_given_clickhouse_connection_when_reading_publish_capabilities_then_guar
                 ("CGroupMemoryTotal", 1000),
             ),
             expected_disk_statuses=("critical", "warning", "healthy"),
+            expected_total_bytes=(100, 100, 100),
             expected_availability="available",
             expected_status="critical",
             expected_memory_basis="cgroup",
@@ -118,8 +127,41 @@ def test_given_clickhouse_connection_when_reading_publish_capabilities_then_guar
             expected_query_count=5,
         ),
         ClickHouseWarehouseHealthTestCase(
-            description="does not infer health without usable core disk capacity",
-            disk_rows=(("default", "/data/", "Local", 0, 0, 0, 0),),
+            description="does not infer overall health from inodes when disk capacity is unknown",
+            disk_rows=(
+                (
+                    "remote",
+                    "s3://warehouse/",
+                    "ObjectStorage",
+                    0,
+                    CLICKHOUSE_UNKNOWN_CAPACITY_BYTES,
+                    CLICKHOUSE_UNKNOWN_CAPACITY_BYTES,
+                    CLICKHOUSE_UNKNOWN_CAPACITY_BYTES,
+                    0,
+                ),
+            ),
+            metric_rows=(
+                ("FilesystemMainPathTotalINodes", 1000),
+                ("FilesystemMainPathAvailableINodes", 50),
+                ("MemoryResident", 300),
+                ("OSMemoryTotal", 2000),
+                ("CGroupMemoryUsed", 500),
+                ("CGroupMemoryTotal", 1000),
+            ),
+            expected_disk_statuses=("unknown",),
+            expected_total_bytes=(None,),
+            expected_availability="partial",
+            expected_status="unknown",
+            expected_memory_basis="cgroup",
+            expected_table_name="tbl__orders",
+            expected_query_count=5,
+        ),
+        ClickHouseWarehouseHealthTestCase(
+            description="broken disk dominates a healthy configured disk",
+            disk_rows=(
+                ("broken", "/broken/", "Local", 1, 0, 0, 0, 0),
+                ("healthy", "/healthy/", "Local", 0, 100, 50, 50, 0),
+            ),
             metric_rows=(
                 ("FilesystemMainPathTotalINodes", 1000),
                 ("FilesystemMainPathAvailableINodes", 900),
@@ -128,9 +170,10 @@ def test_given_clickhouse_connection_when_reading_publish_capabilities_then_guar
                 ("CGroupMemoryUsed", 500),
                 ("CGroupMemoryTotal", 1000),
             ),
-            expected_disk_statuses=("unknown",),
-            expected_availability="partial",
-            expected_status="unknown",
+            expected_disk_statuses=("critical", "healthy"),
+            expected_total_bytes=(0, 100),
+            expected_availability="available",
+            expected_status="critical",
             expected_memory_basis="cgroup",
             expected_table_name="tbl__orders",
             expected_query_count=5,
@@ -148,6 +191,7 @@ def test_given_clickhouse_system_metrics_when_reading_health_then_snapshot_is_tr
                     "name",
                     "path",
                     "type",
+                    "is_broken",
                     "total_space",
                     "free_space",
                     "unreserved_space",
@@ -175,9 +219,10 @@ def test_given_clickhouse_system_metrics_when_reading_health_then_snapshot_is_tr
     )
     connection: ClickHouseConnection = ClickHouseConnection(cast(RawClickHouseClient, raw_client))
 
-    health: AdapterWarehouseHealth = connection.load_warehouse_health("analytics'o")
+    health: AdapterWarehouseHealth = connection.load_warehouse_health("analytics\\o'")
 
     assert tuple(str(disk.status) for disk in health.disks) == test_case.expected_disk_statuses
+    assert tuple(disk.total_bytes for disk in health.disks) == test_case.expected_total_bytes
     assert str(health.availability) == test_case.expected_availability
     assert str(health.status) == test_case.expected_status
     assert health.memory is not None
@@ -185,12 +230,60 @@ def test_given_clickhouse_system_metrics_when_reading_health_then_snapshot_is_tr
     assert health.memory.pressure_fraction == 0.5
     assert health.activity is not None
     assert health.activity.active_queries == 2
+    assert health.tables is not None
     assert health.tables[0].name == test_case.expected_table_name
     assert len(raw_client.statements) == test_case.expected_query_count
     assert "query_id != currentQueryID()" in raw_client.statements[3]
     assert "database =" not in raw_client.statements[3]
-    assert "database = 'analytics''o'" in raw_client.statements[4]
+    assert "database = 'analytics\\\\o'''" in raw_client.statements[4]
     assert "LIMIT 10" in raw_client.statements[4]
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ClickHouseOptionalHealthFailureTestCase(
+            description="failed project footprint remains unavailable rather than empty",
+            expected_warning="Project table footprint is unavailable.",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_project_footprint_failure_when_reading_health_then_table_evidence_is_unavailable(
+    test_case: ClickHouseOptionalHealthFailureTestCase,
+) -> None:
+    connection: MagicMock = MagicMock(spec=AdapterConnection)
+    connection.query_many.side_effect = [
+        (
+            AdapterWarehouseDisk(
+                name="default",
+                path="/data/",
+                disk_type="Local",
+                total_bytes=100,
+                free_bytes=50,
+                unreserved_bytes=50,
+                keep_free_bytes=0,
+                status="healthy",
+            ),
+        ),
+        (
+            {"metric": "FilesystemMainPathTotalINodes", "value": 100},
+            {"metric": "FilesystemMainPathAvailableINodes", "value": 50},
+        ),
+        AdapterWarehouseError("table probe failed"),
+    ]
+    connection.query_one.side_effect = [
+        {"version": "25.8.1.1", "uptime_seconds": 100},
+        {"active_queries": 0, "active_merges": 0, "incomplete_mutations": 0},
+    ]
+
+    health: AdapterWarehouseHealth = ClickHouseWarehouseHealthReader(
+        connection=cast(AdapterConnection, connection)
+    ).read(database="analytics")
+
+    assert str(health.availability) == "partial"
+    assert health.tables is None
+    assert test_case.expected_warning in health.warnings
 
 
 @pytest.mark.parametrize(
