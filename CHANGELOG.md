@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.26.16](https://github.com/chio-labs/streambuild/compare/v0.26.15...v0.26.16) (2026-08-23)
+
+
+### Bug Fixes
+
+* make the orders demo quickstart reliable ([#167](https://github.com/chio-labs/streambuild/issues/167)) ([aa1bd51](https://github.com/chio-labs/streambuild/commit/aa1bd51d3ef2e32501a3af88f775f5282e49c6f0))
+
 ## [0.26.15](https://github.com/chio-labs/streambuild/compare/v0.26.14...v0.26.15) (2026-08-23)
 
 
