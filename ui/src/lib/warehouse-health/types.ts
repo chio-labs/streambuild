@@ -1,0 +1,52 @@
+export type WarehouseHealthStatus = 'healthy' | 'warning' | 'critical' | 'unknown';
+
+export type WarehouseDiskHealth = {
+	name: string;
+	path: string | null;
+	type: string | null;
+	totalBytes: number | null;
+	freeBytes: number | null;
+	unreservedBytes: number | null;
+	keepFreeBytes: number | null;
+	status: WarehouseHealthStatus;
+};
+
+export type WarehouseMemoryHealth = {
+	residentBytes: number | null;
+	hostTotalBytes: number | null;
+	cgroupUsedBytes: number | null;
+	cgroupLimitBytes: number | null;
+	basis: 'cgroup' | 'server_rss_host';
+	pressureFraction: number | null;
+};
+
+export type WarehouseHealth = {
+	availability: 'available' | 'partial' | 'unavailable';
+	status: WarehouseHealthStatus;
+	adapter: string;
+	database: string;
+	version: string | null;
+	uptimeSeconds: number | null;
+	measuredAt: string;
+	collectionDurationMs: number;
+	stale: boolean;
+	warnings: string[];
+	disks: WarehouseDiskHealth[];
+	inodes: {
+		total: number | null;
+		free: number | null;
+		status: WarehouseHealthStatus;
+	};
+	memory: WarehouseMemoryHealth | null;
+	activity: {
+		activeQueries: number | null;
+		activeMerges: number | null;
+		incompleteMutations: number | null;
+	} | null;
+	tables: {
+		name: string;
+		rows: number | null;
+		bytesOnDisk: number | null;
+		activeParts: number | null;
+	}[] | null;
+};

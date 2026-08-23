@@ -15,6 +15,13 @@ class ClickHouseWarehouseTimestampIntegrationTestCase:
 
 
 @dataclass(frozen=True)
+class ClickHouseWarehouseHealthIntegrationTestCase:
+    description: str
+    table_name: str
+    expected_minimum_rows: int
+
+
+@dataclass(frozen=True)
 class ClickHouseCatalogIntegrationTestCase:
     description: str
     expected_relation_names: frozenset[str]

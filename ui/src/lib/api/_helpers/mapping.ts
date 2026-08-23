@@ -20,6 +20,7 @@ import type {
 	Source,
 	SqlTest
 } from '$lib/domain/types';
+import type { WarehouseHealth, WarehouseMemoryHealth } from '$lib/warehouse-health/types';
 import type { CheckStatusRecord } from '$lib/api/types';
 import type { Plan, PlanSqlChangeStatus } from '$lib/planning/types';
 
@@ -69,6 +70,7 @@ export function projectFromServer(definitions: Payload, state: Payload): Project
 			}
 		},
 		capturedAt: (state.capturedAt as string) ?? new Date().toISOString(),
+		warehouseHealth: warehouseHealthFromServer(state.warehouseHealth),
 		sources: (definitions.sources as Payload[]).map((source) =>
 			sourceFromServer(source, stateFor(state, 'sources', source.name as string))
 		),
@@ -83,6 +85,73 @@ export function projectFromServer(definitions: Payload, state: Payload): Project
 			description: (macro.description as string | null) ?? null
 		}))
 	};
+}
+
+function warehouseHealthFromServer(value: unknown): WarehouseHealth | null {
+	if (value === null || typeof value !== 'object') return null;
+	const health: Payload = value as Payload;
+	const inodes: Payload = (health.inodes ?? {}) as Payload;
+	const memory: Payload | null = (health.memory ?? null) as Payload | null;
+	const activity: Payload | null = (health.activity ?? null) as Payload | null;
+	return {
+		availability: health.availability as WarehouseHealth['availability'],
+		status: health.status as WarehouseHealth['status'],
+		adapter: String(health.adapter ?? ''),
+		database: String(health.database ?? ''),
+		version: (health.version as string | null) ?? null,
+		uptimeSeconds: (health.uptimeSeconds as number | null) ?? null,
+		measuredAt: String(health.measuredAt ?? ''),
+		collectionDurationMs: Number(health.collectionDurationMs ?? 0),
+		stale: Boolean(health.stale ?? false),
+		warnings: (health.warnings as string[]) ?? [],
+		disks: ((health.disks ?? []) as Payload[]).map((disk) => ({
+			name: String(disk.name ?? ''),
+			path: disk.path === null || disk.path === undefined ? null : String(disk.path),
+			type: disk.type === null || disk.type === undefined ? null : String(disk.type),
+			totalBytes: nullableNumber(disk.totalBytes),
+			freeBytes: nullableNumber(disk.freeBytes),
+			unreservedBytes: nullableNumber(disk.unreservedBytes),
+			keepFreeBytes: nullableNumber(disk.keepFreeBytes),
+			status: disk.status as WarehouseHealth['status']
+		})),
+		inodes: {
+			total: (inodes.total as number | null) ?? null,
+			free: (inodes.free as number | null) ?? null,
+			status: (inodes.status as WarehouseHealth['status']) ?? 'unknown'
+		},
+		memory:
+			memory === null
+				? null
+				: {
+						residentBytes: (memory.residentBytes as number | null) ?? null,
+						hostTotalBytes: (memory.hostTotalBytes as number | null) ?? null,
+						cgroupUsedBytes: (memory.cgroupUsedBytes as number | null) ?? null,
+						cgroupLimitBytes: (memory.cgroupLimitBytes as number | null) ?? null,
+						basis: memory.basis as WarehouseMemoryHealth['basis'],
+						pressureFraction: (memory.pressureFraction as number | null) ?? null
+					},
+		activity:
+			activity === null
+				? null
+				: {
+						activeQueries: nullableNumber(activity.activeQueries),
+						activeMerges: nullableNumber(activity.activeMerges),
+						incompleteMutations: nullableNumber(activity.incompleteMutations)
+					},
+		tables:
+			health.tables === null || health.tables === undefined
+				? null
+				: (health.tables as Payload[]).map((table) => ({
+						name: String(table.name ?? ''),
+						rows: nullableNumber(table.rows),
+						bytesOnDisk: nullableNumber(table.bytesOnDisk),
+						activeParts: nullableNumber(table.activeParts)
+					}))
+	};
+}
+
+function nullableNumber(value: unknown): number | null {
+	return value === null || value === undefined ? null : Number(value);
 }
 
 function stateFor(state: Payload, section: string, name: string): Payload {
