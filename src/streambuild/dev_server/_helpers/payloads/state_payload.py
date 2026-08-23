@@ -221,9 +221,10 @@ def _model_states(
     policy_by_model: dict[str, SourceFreshnessPolicy | None] = _policies_by_model(analysis)
     states: dict[str, dict[str, object]] = {}
     for model in analysis.compiled_project.models:
+        is_table: bool = isinstance(model, CompiledTableModel)
         relation_name: str = analysis.realized_project.relation_name_by_logical_key[model.key]
-        relation_stats: dict[str, int] = stats.get(relation_name, {})
-        extent: dict[str, object] = extents.get(relation_name, {})
+        relation_stats: dict[str, int] = stats.get(relation_name, {}) if is_table else {}
+        extent: dict[str, object] = extents.get(relation_name, {}) if is_table else {}
         newest: str | None = _optional_str(extent.get("newest"))
         drift_reasons: tuple[str, ...] = _drift_reasons(
             model=model,
@@ -240,7 +241,7 @@ def _model_states(
             "freshness": _freshness(
                 newest=newest,
                 captured_at=captured_at,
-                policy=policy_by_model.get(model.key.name),
+                policy=policy_by_model.get(model.key.name) if is_table else None,
             ),
             "activity": activity_by_relation.get(relation_name),
             "drift": bool(drift_reasons),

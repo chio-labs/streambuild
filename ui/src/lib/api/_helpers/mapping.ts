@@ -240,7 +240,7 @@ function modelFromServer(model: Payload, live: Payload): Model {
 function statusFromState(freshness: string | null, drift: boolean): ModelStatus {
 	if (drift) return 'drift';
 	if (freshness === 'lagging' || freshness === 'stalled') return freshness;
-	return 'fresh';
+	return freshness === 'fresh' ? 'fresh' : 'unknown';
 }
 
 function columnFromServer(column: Payload): Column {

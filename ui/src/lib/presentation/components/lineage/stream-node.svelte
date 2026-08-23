@@ -49,6 +49,7 @@
 		lagging: 'var(--sb-warning)',
 		stalled: 'var(--sb-error)',
 		drift: 'var(--sb-stale)',
+		unknown: 'var(--sb-text-faint)',
 		source: 'var(--sb-text-faint)'
 	};
 

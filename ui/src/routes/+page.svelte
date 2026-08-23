@@ -198,7 +198,7 @@
 					>
 						{showAllSources
 							? 'Show fewer'
-							: `Show ${hiddenSourceCount} more keeping up →`}
+							: `Show ${hiddenSourceCount} more sources →`}
 					</button>
 				{/if}
 			</div>
@@ -226,6 +226,9 @@
 						{#each Array(freshness.drift) as _, index (`d${index}`)}
 							<span class="flex-1 bg-[var(--sb-stale)]" title="drift"></span>
 						{/each}
+						{#each Array(freshness.unknown) as _, index (`u${index}`)}
+							<span class="flex-1 bg-[var(--sb-text-faint)]" title="unknown: no freshness policy"></span>
+						{/each}
 					</div>
 					<div class="flex flex-wrap gap-4 pt-2.5 font-mono text-[11px]">
 						<span class="flex items-center gap-1.5"
@@ -243,6 +246,10 @@
 						<span class="flex items-center gap-1.5"
 							><span class="h-1.5 w-1.5 rounded-[2px] bg-[var(--sb-stale)]"></span>{freshness.drift}
 							drift</span
+						>
+						<span class="flex items-center gap-1.5"
+							><span class="h-1.5 w-1.5 rounded-[2px] bg-[var(--sb-text-faint)]"></span>{freshness.unknown}
+							unknown</span
 						>
 					</div>
 

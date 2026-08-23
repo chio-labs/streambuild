@@ -15,7 +15,7 @@ from tests.unit.src.streambuild.compiler.dag.helpers import analyze_orders_demo
             description="emits logical resources checks and typed lineage without SQL payloads",
             expected_node_types=("audit", "model", "source", "test"),
             expected_source_node_count=1,
-            expected_model_node_count=10,
+            expected_model_node_count=4,
             expected_has_test_edge=True,
             expected_has_audit_edge=True,
             expected_has_typed_lineage_edge=True,

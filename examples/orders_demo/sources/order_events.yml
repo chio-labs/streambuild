@@ -1,6 +1,10 @@
 sources:
-  - name: order_events
+  - name: commerce_event_stream
     kind: kafka
     topic: source.order_events.live
+    ttl: "_replay_landed_at + INTERVAL 7 DAY"
+    freshness:
+      warn_after: 30s
+      error_after: 2m
     replay_boundary:
       mode: offsets

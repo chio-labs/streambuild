@@ -3,7 +3,7 @@ default_target = "demo"
 
 [defaults]
 pipeline_mode = "direct"
-kafka_broker_list = "redpanda:9092"
+kafka_broker_list = "redpanda.localhost:19092"
 
 [connection]
 host = "localhost"
@@ -13,3 +13,10 @@ password = "clickhouse"
 
 [targets.demo]
 database = "orders_demo"
+
+[audit_scheduler]
+enabled = true
+
+[sensors]
+enabled = true
+tick_retention_days = 7

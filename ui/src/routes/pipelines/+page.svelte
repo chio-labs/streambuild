@@ -136,6 +136,9 @@
 								{#each Array(row.freshness.drift) as _, index (`d${index}`)}
 									<span class="flex-1 bg-[var(--sb-stale)]"></span>
 								{/each}
+								{#each Array(row.freshness.unknown) as _, index (`u${index}`)}
+									<span class="flex-1 bg-[var(--sb-text-faint)]" title="unknown: no freshness policy"></span>
+								{/each}
 							</div>
 							<span class="text-muted-foreground code text-[11px]"
 								>{row.freshness.fresh}/{row.freshness.total}</span
