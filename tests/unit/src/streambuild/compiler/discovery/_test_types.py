@@ -307,3 +307,9 @@ class ProjectConnectionSettingsTestCase:
     description: str
     project_contents: str
     expected_settings: tuple[tuple[str, str], ...]
+
+
+@dataclass(frozen=True)
+class ProjectProductionTargetTestCase:
+    description: str
+    expected_production_target: bool

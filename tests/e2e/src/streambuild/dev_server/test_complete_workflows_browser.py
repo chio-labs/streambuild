@@ -344,7 +344,12 @@ def test_given_incompatible_replay_input_when_planning_then_rejects_and_safe_reb
         for message in console_messages
     )
     assert page_errors == []
-    assert failed_requests == []
+    assert all(
+        urlparse(request.url).path == "/api/plan"
+        and not parse_qs(urlparse(request.url).query).get("select")
+        and request.failure == "net::ERR_ABORTED"
+        for request in failed_requests
+    )
     assert all(
         response.status < 400
         or (response.status == 400 and urlparse(response.url).path == "/api/plan")

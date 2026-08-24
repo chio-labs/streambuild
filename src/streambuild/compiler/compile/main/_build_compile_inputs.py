@@ -51,6 +51,11 @@ def build_compile_inputs(
         if discovered_inputs.loaded_project is None
         else discovered_inputs.loaded_project.project
     )
+    effective_configuration: EffectiveProjectConfiguration | None = (
+        None
+        if discovered_inputs.loaded_project is None
+        else discovered_inputs.loaded_project.effective_configuration
+    )
     effective_target: CompilerTargetMetadata = CompilerTargetMetadata(
         default_database=(
             project.default_database
@@ -58,11 +63,9 @@ def build_compile_inputs(
             else adapter_profile.target_metadata.default_database
         ),
         default_schema=adapter_profile.target_metadata.default_schema,
-    )
-    effective_configuration: EffectiveProjectConfiguration | None = (
-        None
-        if discovered_inputs.loaded_project is None
-        else discovered_inputs.loaded_project.effective_configuration
+        production_target=(
+            False if effective_configuration is None else effective_configuration.production_target
+        ),
     )
     variables: tuple[tuple[str, object], ...] = (
         () if effective_configuration is None else effective_configuration.variables

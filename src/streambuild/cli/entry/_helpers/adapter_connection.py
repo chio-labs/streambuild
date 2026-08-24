@@ -8,6 +8,7 @@ from streambuild.adapter.exceptions import AdapterConfigurationError
 from streambuild.adapter.models import AdapterConnectionConfig
 from streambuild.cli.entry._helpers.entrypoint import resolve_adapter_connection_config
 from streambuild.cli.entry.constants import COMMANDS_WITHOUT_ADAPTER_CONNECTION
+from streambuild.cli.entry.exceptions import CliUserError
 from streambuild.cli.entry.models import (
     ResolvedCliInvocation,
     ResolvedInvocationConnection,
@@ -67,6 +68,37 @@ def resolve_primary_connection(
     )
 
 
+def resolve_observation_connection(
+    *,
+    invocation: ResolvedCliInvocation,
+    provided_primary_connection: AdapterConnection | None,
+    provided_observation_connection: AdapterConnection | None,
+    resolver: Callable[..., ResolvedInvocationConnection] = resolve_invocation_connection,
+) -> ResolvedInvocationConnection | None:
+    """Resolve the separate connection required by finite observed mutations."""
+
+    command: CliCommand = CliCommand(invocation.args.command)
+    observed_commands: frozenset[CliCommand] = frozenset(
+        {CliCommand.BUILD, CliCommand.DESTROY, CliCommand.RESET_TARGET}
+    )
+    if provided_primary_connection is None and command in observed_commands:
+        return resolver(invocation=invocation, provided_connection=None)
+    if provided_primary_connection is not None and command in observed_commands:
+        if provided_observation_connection is None:
+            display: str = "Build" if command == CliCommand.BUILD else "Destruction"
+            raise CliUserError(f"{display} requires a dedicated observation connection")
+        return ResolvedInvocationConnection(
+            connection=provided_observation_connection,
+            close_after_command=False,
+        )
+    if provided_primary_connection is not None and command == CliCommand.DEV:
+        return ResolvedInvocationConnection(
+            connection=provided_observation_connection,
+            close_after_command=False,
+        )
+    return None
+
+
 def resolve_invocation_connection_config(
     invocation: ResolvedCliInvocation,
 ) -> AdapterConnectionConfig:
@@ -103,9 +135,12 @@ def resolve_invocation_connection_config(
         for name, raw_value in raw_values.items()
     }
     try:
+        connection_database: str | None = (
+            None if CliCommand(invocation.args.command) == CliCommand.BUILD else invocation.database
+        )
         return invocation.adapter.build_connection_config(
             values=expanded_values,
-            database=invocation.database,
+            database=connection_database,
         )
     except AdapterConfigurationError as error:
         loaded_project: LoadedProject | None = invocation.loaded_project

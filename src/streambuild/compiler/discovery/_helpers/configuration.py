@@ -350,6 +350,9 @@ def _parse_project_target(*, payload: object, label: str, file_path: Path) -> Pr
         file_path=file_path,
         allowed_keys=TARGET_KEYS,
     )
+    production: object = mapping.get("production", False)
+    if not isinstance(production, bool):
+        raise ProjectConfigError(f"{file_path} {label}.production must be a boolean")
     return ProjectTarget(
         database=_optional_non_empty_string(
             mapping=mapping,
@@ -373,6 +376,7 @@ def _parse_project_target(*, payload: object, label: str, file_path: Path) -> Pr
             label=f"{label}.sensors",
             file_path=file_path,
         ),
+        production=production,
         build=_parse_build_config(
             payload=mapping.get("build"),
             label=f"{label}.build",

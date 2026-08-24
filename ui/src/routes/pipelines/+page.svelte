@@ -1,6 +1,10 @@
 <script lang="ts">
+	import { goto } from '$app/navigation';
 	import AppTopbar from '$lib/presentation/components/app-topbar.svelte';
+	import Button from '$ui-kit/button/button.svelte';
+	import Checkbox from '$ui-kit/checkbox/checkbox.svelte';
 	import { getProject } from '$lib/api/main/project/get-project';
+	import { can } from '$lib/auth/main/can';
 	import { modelsInPipeline } from '$lib/domain/main/lookups/models-in-pipeline';
 	import { sourceByName } from '$lib/domain/main/lookups/source-by-name';
 	import { anchorCount } from '$lib/domain/main/pipelines/anchor-count';
@@ -9,8 +13,12 @@
 	import { auditsForModel } from '$lib/domain/main/quality/audits-for-model';
 	import { formatRate } from '$lib/formatting/main/format-rate';
 	import type { Audit, Project } from '$lib/domain/types';
+	import DestructionDialog from './destruction-dialog.svelte';
+	import { createDestructionState } from './state.svelte';
+	import type { DestructionExecution } from '$lib/pipeline-view/types';
 
 	const project: Project = getProject();
+	const destruction = createDestructionState();
 
 	// A pipeline is the project's real top-level unit: `stb discover` returns
 	// nothing but pipeline names, and `pipeline:<name>` is one of only two
@@ -29,15 +37,74 @@
 			};
 		})
 	);
+	const selectablePipelineNames = $derived(
+		rows.filter((row) => can('pipeline.destroy', row.pipeline.name)).map((row) => row.pipeline.name)
+	);
+	const selectedCount = $derived(destruction.selected.size);
+	const allCurrentSelected = $derived(
+		selectablePipelineNames.length > 0 &&
+			selectablePipelineNames.every((name) => destruction.selected.has(name))
+	);
+	const someCurrentSelected = $derived(
+		!allCurrentSelected && selectablePipelineNames.some((name) => destruction.selected.has(name))
+	);
+	const resetAllowed = $derived(can('target.reset'));
+	const dependentPermissionsAvailable = $derived(
+		destruction.plan?.requiredDependentPipelines.every((name) => can('pipeline.destroy', name)) ??
+			true
+	);
+
+	function openDestroyPlan(): void {
+		void destruction.start('destroy_pipelines');
+	}
+
+	function openResetPlan(): void {
+		void destruction.start('reset_target');
+	}
+
+	function viewExecution(result: DestructionExecution): void {
+		void goto(`/runs/${encodeURIComponent(result.invocationId)}`);
+	}
 </script>
 
-<AppTopbar title="Pipelines" />
+<AppTopbar title="Pipelines">
+	<Button
+		variant="outline"
+		size="sm"
+		class="font-mono text-[10.5px]"
+		disabled={!resetAllowed}
+		title={resetAllowed ? 'Plan a reset of the entire target' : 'Requires the target.reset permission'}
+		onclick={openResetPlan}
+	>
+		Reset target
+	</Button>
+	<Button
+		variant="destructive"
+		size="sm"
+		class="font-mono text-[10.5px]"
+		disabled={selectedCount === 0}
+		title={selectedCount === 0 ? 'Select pipelines you have permission to destroy' : undefined}
+		onclick={openDestroyPlan}
+	>
+		Destroy{selectedCount > 0 ? ` (${selectedCount})` : ''}
+	</Button>
+</AppTopbar>
 
-<div class="min-h-0 flex-1 overflow-y-auto">
+<div class="min-h-0 flex-1 overflow-auto">
 	<table class="sb-list w-full text-left">
 		<thead>
 			<tr class="text-[var(--sb-text-faint)] font-mono text-[10px] uppercase tracking-[0.14em]">
-				<th class="px-[18px] py-2 font-normal">Pipeline</th>
+				<th class="w-10 py-2 pl-[18px] pr-1 font-normal">
+					<Checkbox
+						checked={allCurrentSelected}
+						indeterminate={someCurrentSelected}
+						disabled={selectablePipelineNames.length === 0}
+						aria-label="Select all destroyable pipelines in the current table"
+						onCheckedChange={(checked) =>
+							destruction.setCurrentPipelines(selectablePipelineNames, checked === true)}
+					/>
+				</th>
+				<th class="px-3 py-2 font-normal">Pipeline</th>
 				<th class="px-3 py-2 font-normal">Mode</th>
 				<th class="px-3 py-2 font-normal">Source</th>
 				<th class="px-3 py-2 font-normal">Boundary</th>
@@ -51,7 +118,18 @@
 		<tbody>
 			{#each rows as row (row.pipeline.name)}
 				<tr>
-					<td class="px-[18px]">
+					<td class="py-2 pl-[18px] pr-1">
+						<Checkbox
+							checked={destruction.selected.has(row.pipeline.name)}
+							disabled={!can('pipeline.destroy', row.pipeline.name)}
+							aria-label="Select {row.pipeline.name} for destruction"
+							title={can('pipeline.destroy', row.pipeline.name)
+								? undefined
+								: 'Requires the pipeline.destroy permission for this pipeline'}
+							onCheckedChange={() => destruction.togglePipeline(row.pipeline.name)}
+						/>
+					</td>
+					<td class="px-3">
 						<a
 							href="/pipelines/{row.pipeline.name}"
 							class="text-primary code text-[12.5px] font-medium hover:underline"
@@ -150,3 +228,9 @@
 		</tbody>
 	</table>
 </div>
+
+<DestructionDialog
+	state={destruction}
+	{dependentPermissionsAvailable}
+	onExecuted={viewExecution}
+/>

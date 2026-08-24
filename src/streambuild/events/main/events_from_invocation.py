@@ -20,6 +20,8 @@ def events_from_invocation(*, row: InvocationObservation, target: str) -> tuple[
             | ObservedCommand.BUILD
             | ObservedCommand.DEPLOYMENT_PROMOTE
             | ObservedCommand.JANITOR
+            | ObservedCommand.DESTROY_PIPELINES
+            | ObservedCommand.RESET_TARGET
         ):
             return (
                 RunCompleted(

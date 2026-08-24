@@ -1,19 +1,28 @@
 from datetime import UTC, datetime, timedelta
+from uuid import uuid4
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.adapter.constants import VIRTUAL_DEPLOYMENT_STATUS_INCOMPLETE
+from streambuild.adapter.constants import (
+    OWNERSHIP_EVENT_DROPPED,
+    VIRTUAL_DEPLOYMENT_STATUS_INCOMPLETE,
+)
 from streambuild.adapter.exceptions import AdapterResultError
 from streambuild.adapter.models import (
     AdapterBindingReplacementRequest,
     AdapterDeploymentInventory,
     AdapterDeploymentRecord,
+    AdapterOwnedResourceEvent,
+    AdapterOwnedResourceSnapshot,
     AdapterPreparedObjectMapping,
     AdapterPublishEventRecord,
     AdapterRelationCleanupRequest,
     AdapterStableBinding,
     AdapterStableBindingRemoval,
+    CatalogRelation,
+    CatalogSnapshot,
     InspectedManagedTableState,
 )
+from streambuild.adapter.types import AdapterOptionalStateStatus
 from streambuild.compiler.compile.constants import (
     DESIRED_OBJECT_TYPE_TABLE,
     DESIRED_OBJECT_TYPE_VIEW,
@@ -28,6 +37,7 @@ from streambuild.compiler.planner.main.logical_name_from_physical_name import (
     logical_name_from_physical_name,
 )
 from streambuild.executor.janitor._helpers.workflow import assemble_janitor_workflow
+from streambuild.executor.janitor.constants import JANITOR_VIEW_ENGINE
 from streambuild.executor.janitor.models import (
     JanitorApplyResult,
     JanitorPreviewCandidate,
@@ -115,7 +125,7 @@ def _preview_janitor(
         physical_object_names: tuple[str, ...] = tuple(
             sorted(mapping.physical_name for mapping in deployment.prepared_object_mappings)
         )
-        if not _physical_mappings_are_safe(deployment):
+        if not _physical_mappings_are_safe(deployment=deployment, database=database):
             candidates.append(
                 JanitorPreviewCandidate(
                     deployment_id=deployment.deployment_id,
@@ -227,6 +237,15 @@ def _apply_janitor(
         managed_table_state=managed_table_state,
     )
     inventory: AdapterDeploymentInventory = client.load_deployment_inventory(metadata_database)
+    cross_database_mapping_names: tuple[str, ...] = _cross_database_mapping_names(
+        inventory=inventory,
+        database=database,
+    )
+    if cross_database_mapping_names:
+        raise AdapterResultError(
+            "Janitor refuses cross-database physical cleanup without locks for every database: "
+            f"{cross_database_mapping_names!r}"
+        )
     _active_relation_names, obsolete_removals = _binding_activity(
         inventory=inventory,
         managed_table_state=managed_table_state,
@@ -234,6 +253,14 @@ def _apply_janitor(
     binding_request: AdapterBindingReplacementRequest = AdapterBindingReplacementRequest(
         bindings=(), removals=obsolete_removals
     )
+    cross_database_names: tuple[str, ...] = tuple(
+        sorted({removal.database for removal in obsolete_removals if removal.database != database})
+    )
+    if cross_database_names:
+        raise AdapterResultError(
+            "Janitor refuses cross-database binding cleanup without locks for every database: "
+            f"{cross_database_names!r}"
+        )
     deleted_deployment_ids: list[str] = []
     requested_object_names: list[str] = []
     candidate: JanitorPreviewCandidate
@@ -266,10 +293,48 @@ def _apply_janitor(
         raise AdapterResultError(
             f"Refusing to clean relations that became active: {tuple(sorted(newly_active_names))!r}"
         )
+    ownership: AdapterOwnedResourceSnapshot = client.load_owned_resources(
+        database=metadata_database,
+        target_database=database,
+    )
+    if ownership.status == AdapterOptionalStateStatus.UNAVAILABLE:
+        raise AdapterResultError(ownership.warning or "Owned-resource ledger is unavailable")
+    catalog: CatalogSnapshot = client.load_catalog(database)
+    by_name: dict[str, AdapterOwnedResourceEvent] = {
+        event.resource_name: event for event in ownership.resources
+    }
+    binding_events: tuple[AdapterOwnedResourceEvent, ...] = tuple(
+        _janitor_tombstone(
+            name=removal.logical_name,
+            database=removal.database,
+            kind="view",
+            existing=by_name.get(removal.logical_name),
+            catalog_relation=catalog.relation(removal.logical_name),
+        )
+        for removal in obsolete_removals
+    )
+    cleanup_events: tuple[AdapterOwnedResourceEvent, ...] = tuple(
+        _janitor_tombstone(
+            name=name,
+            database=database,
+            kind=(
+                "view"
+                if (relation := catalog.relation(name)) is not None
+                and relation.engine == JANITOR_VIEW_ENGINE
+                else "table"
+            ),
+            existing=by_name.get(name),
+            catalog_relation=relation,
+        )
+        for name in cleanup_request.relation_names
+    )
     statements: tuple[WarehouseStatement, ...] = assemble_janitor_workflow(
         client=client,
+        metadata_database=metadata_database,
         binding_request=binding_request,
         cleanup_request=cleanup_request,
+        binding_events=binding_events,
+        cleanup_events=cleanup_events,
     )
     _ = execute_warehouse_workflow(statements=statements, connection=client)
 
@@ -282,13 +347,56 @@ def _apply_janitor(
     )
 
 
-def _physical_mappings_are_safe(deployment: AdapterDeploymentRecord) -> bool:
+def _janitor_tombstone(
+    *,
+    name: str,
+    database: str,
+    kind: str,
+    existing: AdapterOwnedResourceEvent | None,
+    catalog_relation: CatalogRelation | None,
+) -> AdapterOwnedResourceEvent:
+    if catalog_relation is not None and (
+        existing is None or existing.catalog_fingerprint != catalog_relation.ownership_generation
+    ):
+        raise AdapterResultError(
+            f"Refusing to clean {database}.{name}: the live catalog generation is not "
+            "authoritatively owned"
+        )
+    return AdapterOwnedResourceEvent(
+        event_id=f"dropped_{uuid4().hex}",
+        event_type=OWNERSHIP_EVENT_DROPPED,
+        target_database=database,
+        resource_database=database,
+        resource_name=name,
+        resource_kind=kind if existing is None else existing.resource_kind,
+        pipeline_name="" if existing is None else existing.pipeline_name,
+        logical_resource_type="model" if existing is None else existing.logical_resource_type,
+        logical_resource_name=name if existing is None else existing.logical_resource_name,
+        resource_role="janitor_cleanup" if existing is None else existing.resource_role,
+        catalog_fingerprint=None if existing is None else existing.catalog_fingerprint,
+    )
+
+
+def _physical_mappings_are_safe(*, deployment: AdapterDeploymentRecord, database: str) -> bool:
     return all(
-        is_deployment_physical_name(mapping.physical_name)
+        mapping.logical_key.database in {None, database}
+        and is_deployment_physical_name(mapping.physical_name)
         and deployment_id_from_physical_name(mapping.physical_name) == deployment.deployment_id
         and logical_name_from_physical_name(mapping.physical_name) == mapping.logical_key.name
         for mapping in deployment.prepared_object_mappings
     )
+
+
+def _cross_database_mapping_names(
+    *, inventory: AdapterDeploymentInventory, database: str
+) -> tuple[str, ...]:
+    names: set[str] = set()
+    for deployment in inventory.deployments:
+        for mapping in deployment.prepared_object_mappings:
+            mapped_database: str | None = mapping.logical_key.database
+            if mapped_database not in {None, database}:
+                names.add(mapped_database)
+    return tuple(sorted(names))
 
 
 def _latest_publish_times(
@@ -329,7 +437,7 @@ def _rollback_deployment_ids(
         if deployment.deployment_id in published_rank_by_deployment
         and deployment.deployment_id not in active_deployment_ids
         and deployment.status != VIRTUAL_DEPLOYMENT_STATUS_INCOMPLETE
-        and _physical_mappings_are_safe(deployment)
+        and _physical_mappings_are_safe(deployment=deployment, database=database)
         and _rollback_relations_are_available(
             deployment=deployment,
             database=database,

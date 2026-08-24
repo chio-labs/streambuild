@@ -11,6 +11,7 @@ class ClickHouseCatalogRelationRow:
     partition_key: str
     create_table_query: str
     as_select: str
+    uuid: str
 
 
 @dataclass(frozen=True)

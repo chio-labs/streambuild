@@ -108,7 +108,10 @@ def prepare_authored_e2e_project(
     )
     source_contents = source_contents.replace(
         "topic: source.order_events.created",
-        f"topic: source.order_events.created_{topic_suffix}",
+        (
+            f"topic: source.order_events.created_{topic_suffix}\n"
+            "    consumer_group: streambuild_order_events"
+        ),
     )
     source_file.write_text(source_contents, encoding="utf-8")
     return project_dir

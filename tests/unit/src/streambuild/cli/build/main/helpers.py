@@ -86,6 +86,35 @@ def build_mixed_scope_project_connection() -> RecordingAdapterConnection:
     return _VirtualArtifactConnection(relations=snapshot.catalog.relations)
 
 
+def record_failed_mixed_virtual_phase(
+    *, client: RecordingAdapterConnection, **_kwargs: object
+) -> int:
+    client.operation_events.append("virtual_phase_failed")
+    return 1
+
+
+def record_successful_mixed_virtual_phase(
+    *, client: RecordingAdapterConnection, **_kwargs: object
+) -> int:
+    client.operation_events.append("virtual_phase_succeeded")
+    print('{"phase": "virtual"}')
+    return 0
+
+
+def record_unexpected_mixed_direct_phase(
+    *, client: RecordingAdapterConnection, **_kwargs: object
+) -> int:
+    client.operation_events.append("direct_phase_unexpected")
+    return 0
+
+
+def record_failed_mixed_direct_phase(
+    *, client: RecordingAdapterConnection, **_kwargs: object
+) -> int:
+    client.operation_events.append("direct_phase_failed")
+    return 1
+
+
 def build_interrupted_scope_project_connection() -> InterruptedBuildConnection:
     """Build the settled connection variant that interrupts workflow execution."""
 

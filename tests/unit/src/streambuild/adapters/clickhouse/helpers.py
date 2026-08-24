@@ -1,7 +1,10 @@
 from collections.abc import Iterator, Mapping, Sequence
 from typing import cast
 
+from streambuild.adapter.exceptions import AdapterWarehouseError
 from streambuild.adapter.models import (
+    AdapterMutationResult,
+    AdapterQueryResult,
     CatalogSnapshot,
     InspectedManagedTableState,
 )
@@ -59,6 +62,36 @@ class StubRawClickHouseClient:
 
     def close(self) -> None:
         self.closed = True
+
+
+class RecordingTargetMutationLockConnection(ClickHouseConnection):
+    def __init__(self, *, owner_rows: tuple[tuple[object, ...], ...] = ()) -> None:
+        raw_client: StubRawClickHouseClient = StubRawClickHouseClient(
+            FakeRawClickHouseQueryResult(column_names=[], result_rows=[])
+        )
+        super().__init__(cast(RawClickHouseClient, raw_client))
+        self._owner_rows: tuple[tuple[object, ...], ...] = owner_rows
+        self.statements: list[str] = []
+
+    def _execute_workflow_sql(
+        self, *, statement: str, query_id: str | None
+    ) -> AdapterMutationResult:
+        del query_id
+        self.statements.append(statement)
+        return AdapterMutationResult()
+
+    def query(self, statement: str) -> AdapterQueryResult:
+        self.statements.append(statement)
+        return AdapterQueryResult(rows=self._owner_rows, column_names=("comment",))
+
+
+class ConflictingTargetMutationLockConnection(RecordingTargetMutationLockConnection):
+    def _execute_workflow_sql(
+        self, *, statement: str, query_id: str | None
+    ) -> AdapterMutationResult:
+        del query_id
+        self.statements.append(statement)
+        raise AdapterWarehouseError("table already exists")
 
 
 class SequencedRawClickHouseClient:

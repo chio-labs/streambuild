@@ -4,6 +4,7 @@ from streambuild.adapter.exceptions import AdapterAuthenticationError
 from streambuild.adapter.models import (
     AdapterDirectFingerprintRecord,
     AdapterMutationResult,
+    AdapterOwnedResourceSnapshot,
     AdapterQueryResult,
 )
 from streambuild.adapters.clickhouse._helpers.metadata import (
@@ -37,6 +38,12 @@ class RecordingDirectBuildConnection(RecordingAdapterConnection):
 
     def render_migrate_metadata_state(self, database: str) -> tuple[str, ...]:
         return render_clickhouse_metadata_migration_workflow(database)
+
+    def load_owned_resources(
+        self, *, database: str, target_database: str
+    ) -> AdapterOwnedResourceSnapshot:
+        del database, target_database
+        return AdapterOwnedResourceSnapshot(status="absent", resources=())
 
 
 class DistinctCaptureDirectBuildConnection(RecordingDirectBuildConnection):

@@ -315,6 +315,7 @@ def test_given_clickhouse_system_rows_when_loading_catalog_then_snapshot_is_comp
                     "partition_key",
                     "create_table_query",
                     "as_select",
+                    "uuid",
                 ],
                 result_rows=[
                     [
@@ -325,6 +326,7 @@ def test_given_clickhouse_system_rows_when_loading_catalog_then_snapshot_is_comp
                         "CREATE VIEW analytics.tbl__orders AS "
                         "SELECT * FROM analytics.tbl__orders__dep_a",
                         "SELECT * FROM analytics.tbl__orders__dep_a",
+                        "00000000-0000-0000-0000-000000000001",
                     ],
                     [
                         "tbl__orders__dep_a",
@@ -339,6 +341,7 @@ def test_given_clickhouse_system_rows_when_loading_catalog_then_snapshot_is_comp
                         "TTL updated_at + INTERVAL 30 DAY "
                         "SETTINGS index_granularity = 8192",
                         "",
+                        "00000000-0000-0000-0000-000000000002",
                     ],
                 ],
             ),
@@ -370,6 +373,7 @@ def test_given_clickhouse_system_rows_when_loading_catalog_then_snapshot_is_comp
     assert relation.settings == (("index_granularity", "8192"),)
     assert relation.columns[1].default_expression == "now64(3)"
     assert binding.stable_binding_name == "tbl__orders__dep_a"
+    assert binding.source_relation_names == ("tbl__orders__dep_a",)
     assert binding.source_relation_name == "tbl__orders__dep_a"
     assert binding.query_sql == "SELECT * FROM analytics.tbl__orders__dep_a"
     assert len(raw_client.statements) == test_case.expected_query_count

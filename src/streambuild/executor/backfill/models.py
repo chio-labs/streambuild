@@ -28,6 +28,8 @@ class BackfillBootstrapRequest:
     stabilization_seconds: float = 5.0
     confirmed_target_catalog: CatalogSnapshot | None = None
     confirmed_metadata_catalog: CatalogSnapshot | None = None
+    pipeline_name_by_logical_name: tuple[tuple[str, str], ...] = ()
+    ownership_identity_by_resource_name: tuple[tuple[str, str, str, str], ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "replay_lineage_mode", ReplayLineageMode(self.replay_lineage_mode))

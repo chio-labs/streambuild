@@ -9,6 +9,7 @@ from streambuild.auth.main.default_control_store_url import default_control_stor
 from streambuild.auth.models import AuthSettings
 from streambuild.auth.types import AuthenticationMode, UnknownUserPolicy
 from streambuild.cli.build.models import BuildCommandOptions
+from streambuild.cli.destruction.models import DestructionCommandOptions
 from streambuild.cli.dev.models import DevCommandOptions
 from streambuild.cli.entry._helpers.compiler_profile import build_compiler_adapter_profile
 from streambuild.cli.entry.constants import TRUE_ENV_VALUES
@@ -21,6 +22,7 @@ from streambuild.cli.entry.types import CliCommand, CliSubcommand
 from streambuild.cli.plan.models import PlanCommandOptions
 from streambuild.compiler.compile.models import CompilerAdapterProfile
 from streambuild.dev_server.constants import DEFAULT_DEV_SERVER_HOST, DEFAULT_DEV_SERVER_PORT
+from streambuild.executor.destruction.types import DestructionOperation
 
 
 def dispatch_cli_command(
@@ -165,6 +167,34 @@ def dispatch_cli_command(
                 auto_approve=bool(getattr(args, "auto_approve", False)),
                 events_output=bool(getattr(args, "events", False)),
                 confirmations=tuple(getattr(args, "confirm", [])),
+            ),
+            client=client,
+            observation_client=observation_connection,
+            loaded_project=invocation.loaded_project,
+            adapter_profile=adapter_profile,
+        )
+    if args.command in {CliCommand.DESTROY, CliCommand.RESET_TARGET}:
+        if observation_connection is None:
+            raise CliUserError("Destruction requires a dedicated observation connection")
+        project_dir: Path = invocation.project_dir or _require_pipelines_root(invocation).parent
+        return handlers.run_destruction(
+            options=DestructionCommandOptions(
+                operation=(
+                    DestructionOperation.DESTROY_PIPELINES
+                    if args.command == CliCommand.DESTROY
+                    else DestructionOperation.RESET_TARGET
+                ),
+                pipelines_root=_require_pipelines_root(invocation),
+                project_dir=project_dir,
+                selected_target=str(args.target),
+                database=invocation.database,
+                selectors=tuple(getattr(args, "select", ())),
+                control_store_url=(
+                    getattr(args, "control_store_url", None)
+                    or default_control_store_url(project_dir=project_dir)
+                ),
+                cli_variables=invocation.cli_variables,
+                environment=invocation.connection.environment,
             ),
             client=client,
             observation_client=observation_connection,

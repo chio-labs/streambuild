@@ -95,6 +95,7 @@ def test_given_empty_inventory_when_resolving_publish_without_deployment_id_then
                 ("_streambuild_direct_fingerprints", "MergeTree"),
                 ("_streambuild_invocations", "MergeTree"),
                 ("_streambuild_node_results", "MergeTree"),
+                ("_streambuild_owned_resources", "MergeTree"),
                 ("_streambuild_run_events", "MergeTree"),
                 ("_streambuild_run_statements", "ReplacingMergeTree"),
                 ("_streambuild_schema_versions", "MergeTree"),
@@ -235,6 +236,12 @@ def test_given_greenfield_staged_deployment_when_publishing_then_it_creates_stab
         "GROUP BY deployment_id, publication_id, published_at "
         "ORDER BY deployment_id, published_at"
     ).result_rows
+    stable_ownership_rows: Sequence[Sequence[object]] = clickhouse_client.query(
+        "SELECT event_type, resource_role FROM "
+        f"{clickhouse_database}._streambuild_owned_resources "
+        f"WHERE resource_name = '{test_case.expected_view_name}' "
+        "ORDER BY recorded_at DESC, event_id DESC LIMIT 1"
+    ).result_rows
 
     assert backfill_result.bootstrap.deployment_id == deployment_id
     assert publish_result.deployment_id == deployment_id
@@ -250,6 +257,7 @@ def test_given_greenfield_staged_deployment_when_publishing_then_it_creates_stab
     assert published_rows == [(order_id,) for order_id in test_case.expected_published_order_ids]
     assert full_layout_rows == list(test_case.expected_full_layout)
     assert publish_history_rows == list(test_case.expected_publish_history_rows)
+    assert stable_ownership_rows == [("owned", "stable_binding")]
 
 
 @pytest.mark.integration

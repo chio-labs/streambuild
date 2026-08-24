@@ -1,20 +1,25 @@
 import pytest
 
+from streambuild.executor.workflow.exceptions import WorkflowExecutionError
 from streambuild.executor.workflow.main._execute_warehouse_workflow import (
     execute_warehouse_workflow,
 )
 from streambuild.executor.workflow.models import WorkflowExecutionResult
 from tests.unit.src.streambuild.cli.helpers import RecordingAdapterConnection
 from tests.unit.src.streambuild.executor.workflow._test_types import (
+    WorkflowEmitterFailureTestCase,
     WorkflowEmitterTestCase,
     WorkflowQueryIdTestCase,
 )
 from tests.unit.src.streambuild.executor.workflow.helpers import (
+    FailingCompletedWorkflowEmitter,
     FailingMutationConnection,
+    FailingStartedWorkflowEmitter,
     QueryIdRecordingConnection,
     RecordingWorkflowEmitter,
     build_test_workflow,
     build_tolerant_failure_workflow,
+    build_two_mutation_workflow,
 )
 
 
@@ -104,3 +109,78 @@ def test_given_tolerated_failure_when_executing_then_completion_carries_the_erro
 
     assert tuple(emitter.calls) == test_case.expected_calls
     assert result.statement_results[1].error_message is not None
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        WorkflowEmitterFailureTestCase(
+            description="started event failure prevents the next mutation",
+            failed_step_id="mutation_two",
+            expected_partial_step_ids=("mutation_one",),
+            expected_dispatched_statements=("INSERT INTO events VALUES (1);",),
+            expected_error_fragment="statement started persistence failed",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_started_emitter_failure_when_executing_then_statement_is_not_dispatched(
+    test_case: WorkflowEmitterFailureTestCase,
+) -> None:
+    emitter: FailingStartedWorkflowEmitter = FailingStartedWorkflowEmitter(
+        failed_step_id=test_case.failed_step_id
+    )
+    connection: RecordingAdapterConnection = RecordingAdapterConnection()
+
+    with pytest.raises(WorkflowExecutionError) as captured:
+        execute_warehouse_workflow(
+            statements=build_two_mutation_workflow().statements,
+            connection=connection,
+            emitter=emitter,
+        )
+
+    assert isinstance(captured.value.partial_result, WorkflowExecutionResult)
+    partial: WorkflowExecutionResult = captured.value.partial_result
+    assert tuple(result.step_id for result in partial.statement_results) == (
+        test_case.expected_partial_step_ids
+    )
+    assert tuple(connection.statements) == test_case.expected_dispatched_statements
+    assert test_case.expected_error_fragment in str(captured.value.cause)
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        WorkflowEmitterFailureTestCase(
+            description="completed event failure retains the successful mutation prefix",
+            failed_step_id="mutation_one",
+            expected_partial_step_ids=("mutation_one",),
+            expected_dispatched_statements=("INSERT INTO events VALUES (1);",),
+            expected_error_fragment="statement completed persistence failed",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_successful_mutation_when_completion_emitter_fails_then_partial_includes_mutation(
+    test_case: WorkflowEmitterFailureTestCase,
+) -> None:
+    emitter: FailingCompletedWorkflowEmitter = FailingCompletedWorkflowEmitter(
+        failed_step_id=test_case.failed_step_id
+    )
+    connection: RecordingAdapterConnection = RecordingAdapterConnection()
+
+    with pytest.raises(WorkflowExecutionError) as captured:
+        execute_warehouse_workflow(
+            statements=build_two_mutation_workflow().statements,
+            connection=connection,
+            emitter=emitter,
+        )
+
+    assert isinstance(captured.value.partial_result, WorkflowExecutionResult)
+    partial: WorkflowExecutionResult = captured.value.partial_result
+    assert tuple(result.step_id for result in partial.statement_results) == (
+        test_case.expected_partial_step_ids
+    )
+    assert partial.statement_results[0].mutation_result is not None
+    assert tuple(connection.statements) == test_case.expected_dispatched_statements
+    assert test_case.expected_error_fragment in str(captured.value.cause)

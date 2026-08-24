@@ -20,6 +20,7 @@ from streambuild.adapter.models import (
     AdapterMetadataState,
     AdapterMutationResult,
     AdapterNodeResultRecord,
+    AdapterOwnedResourceSnapshot,
     AdapterQueryResult,
     AdapterReadinessRequest,
     AdapterReadinessRootObservation,
@@ -28,6 +29,7 @@ from streambuild.adapter.models import (
     AdapterRunStatementRecord,
     AdapterStableView,
     AdapterTable,
+    AdapterTargetMutationLock,
     AdapterView,
     CatalogIdentity,
     CatalogRelation,
@@ -47,6 +49,7 @@ from streambuild.cli.compile.main._run_compile import run_compile
 from streambuild.cli.deployment.main._run_deployment_diff import run_deployment_diff
 from streambuild.cli.deployment.main._run_deployment_list import run_deployment_list
 from streambuild.cli.deployment.main._run_deployment_show import run_deployment_show
+from streambuild.cli.destruction.main._run_destruction import run_destruction
 from streambuild.cli.dev.main._run_dev import run_dev
 from streambuild.cli.discover.main._run_discover import run_discover
 from streambuild.cli.doctor.main._run_doctor import run_doctor
@@ -215,6 +218,8 @@ class RecordingAdapterConnection(AdapterConnection):
         self.invocation_observations: list[AdapterInvocationRecord] = []
         self.node_result_observations: list[AdapterNodeResultRecord] = []
         self.run_statements: tuple[AdapterRunStatementRecord, ...] = ()
+        self.target_mutation_lock_events: list[tuple[str, str, str]] = []
+        self.operation_events: list[str] = []
 
     @property
     def adapter_identity(self) -> AdapterIdentity:
@@ -254,6 +259,7 @@ class RecordingAdapterConnection(AdapterConnection):
         )
 
     def execute_workflow_sql(self, statement: str) -> AdapterMutationResult:
+        self.operation_events.append("mutation")
         self.artifact_seen_before_execution = bool(
             self._required_artifact_path is not None and self._required_artifact_path.exists()
         )
@@ -326,6 +332,12 @@ class RecordingAdapterConnection(AdapterConnection):
         del database
         return self._deployment_inventory
 
+    def load_owned_resources(
+        self, *, database: str, target_database: str
+    ) -> AdapterOwnedResourceSnapshot:
+        del database, target_database
+        return AdapterOwnedResourceSnapshot(status="absent", resources=())
+
     def load_direct_fingerprints(
         self, *, database: str, logical_model_identities: tuple[str, ...]
     ) -> AdapterDirectFingerprintSnapshot:
@@ -359,6 +371,17 @@ class RecordingAdapterConnection(AdapterConnection):
         del request
         return ()
 
+    def acquire_target_mutation_lock(
+        self, *, database: str, owner_id: str
+    ) -> AdapterTargetMutationLock:
+        self.target_mutation_lock_events.append(("acquire", database, owner_id))
+        self.operation_events.append(f"acquire:{database}")
+        return AdapterTargetMutationLock(database=database, owner_id=owner_id)
+
+    def release_target_mutation_lock(self, lock: AdapterTargetMutationLock) -> None:
+        self.target_mutation_lock_events.append(("release", lock.database, lock.owner_id))
+        self.operation_events.append(f"release:{lock.database}")
+
     def close(self) -> None:
         self.closed = True
 
@@ -382,6 +405,7 @@ def handlers_with_overrides(**overrides: object) -> CliEntrypointHandlers:
             run_audit=run_audit,
             run_plan=run_plan,
             run_build=run_build,
+            run_destruction=run_destruction,
             run_deployment_diff=run_deployment_diff,
             run_deployment_list=run_deployment_list,
             run_deployment_show=run_deployment_show,

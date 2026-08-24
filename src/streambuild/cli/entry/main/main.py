@@ -15,8 +15,10 @@ from streambuild.adapter.exceptions import AdapterError, AdapterWarehouseError
 from streambuild.cli.admin.main._run_admin import run_admin_command
 from streambuild.cli.entry._helpers.adapter_connection import (
     resolve_invocation_connection,
+    resolve_observation_connection,
     resolve_primary_connection,
 )
+from streambuild.cli.entry._helpers.destruction import require_interactive_destruction
 from streambuild.cli.entry._helpers.dispatch import dispatch_cli_command
 from streambuild.cli.entry._helpers.entrypoint import (
     argv_for_parse_args,
@@ -39,6 +41,7 @@ from streambuild.compiler.compile.exceptions import TransformSqlContractError
 from streambuild.diagnostics.main.attach_error_diagnostic import attach_error_diagnostic
 from streambuild.diagnostics.main.render_error import render_error
 from streambuild.diagnostics.types import DiagnosticPhase
+from streambuild.executor.destruction.exceptions import DestructionError
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -48,6 +51,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     from streambuild.cli.deployment.main._run_deployment_diff import run_deployment_diff
     from streambuild.cli.deployment.main._run_deployment_list import run_deployment_list
     from streambuild.cli.deployment.main._run_deployment_show import run_deployment_show
+    from streambuild.cli.destruction.main._run_destruction import run_destruction
     from streambuild.cli.dev.main._run_dev import run_dev
     from streambuild.cli.discover.main._run_discover import run_discover
     from streambuild.cli.doctor.main._run_doctor import run_doctor
@@ -71,6 +75,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         run_audit=run_audit,
         run_plan=run_plan,
         run_build=run_build,
+        run_destruction=run_destruction,
         run_deployment_diff=run_deployment_diff,
         run_deployment_list=run_deployment_list,
         run_deployment_show=run_deployment_show,
@@ -104,8 +109,9 @@ def _main_with_dependencies(
 ) -> int:
     parser: argparse.ArgumentParser = build_cli_parser()
     args: argparse.Namespace = parser.parse_args(argv_for_parse_args(argv))
-    resolved_database: str | None = None
     try:
+        require_interactive_destruction(args=args)
+        resolved_database: str | None = None
         if args.command == CliCommand.ADMIN:
             return run_admin_command(
                 args=args,
@@ -133,22 +139,12 @@ def _main_with_dependencies(
         )
         observation_connection: ResolvedInvocationConnection | None = None
         try:
-            if adapter_connection is None and args.command == CliCommand.BUILD:
-                observation_connection = resolve_invocation_connection(
-                    invocation=invocation, provided_connection=None
-                )
-            if adapter_connection is not None and args.command == CliCommand.BUILD:
-                if observation_adapter_connection is None:
-                    raise CliUserError("Build requires a dedicated observation connection")
-                observation_connection = ResolvedInvocationConnection(
-                    connection=observation_adapter_connection,
-                    close_after_command=False,
-                )
-            if adapter_connection is not None and args.command == CliCommand.DEV:
-                observation_connection = ResolvedInvocationConnection(
-                    connection=observation_adapter_connection,
-                    close_after_command=False,
-                )
+            observation_connection = resolve_observation_connection(
+                invocation=invocation,
+                provided_primary_connection=adapter_connection,
+                provided_observation_connection=observation_adapter_connection,
+                resolver=resolve_invocation_connection,
+            )
             return dispatch_cli_command(
                 invocation=invocation,
                 handlers=handlers,
@@ -174,7 +170,7 @@ def _main_with_dependencies(
     except CliUserError as error:
         print(render_cli_user_error(error), file=sys.stderr)
         return 1
-    except (TransformSqlContractError, ValueError) as error:
+    except (DestructionError, TransformSqlContractError, ValueError) as error:
         print(render_error(error), file=sys.stderr)
         return 1
     except AdapterWarehouseError as error:
