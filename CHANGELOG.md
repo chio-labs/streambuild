@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.27.1](https://github.com/chio-labs/streambuild/compare/v0.27.0...v0.27.1) (2026-08-24)
+
+
+### Bug Fixes
+
+* drain sensor event backlogs ([#172](https://github.com/chio-labs/streambuild/issues/172)) ([960e404](https://github.com/chio-labs/streambuild/commit/960e4043ebdec9b19b933727432dc2adc9842bab))
+
 ## [0.27.0](https://github.com/chio-labs/streambuild/compare/v0.26.16...v0.27.0) (2026-08-23)
 
 
