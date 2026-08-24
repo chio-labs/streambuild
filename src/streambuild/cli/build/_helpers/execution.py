@@ -56,7 +56,11 @@ def execute_confirmed_direct_build(
     ):
         return None
     lock_context: AbstractContextManager[None] = (
-        target_mutation_lock(connection=client, database=preparation.request.database)
+        target_mutation_lock(
+            connection=client,
+            database=preparation.request.database,
+            ensure_database=True,
+        )
         if _acquire_target_mutation_lock
         else nullcontext()
     )

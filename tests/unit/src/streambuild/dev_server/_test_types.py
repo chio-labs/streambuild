@@ -26,7 +26,7 @@ class DestructionChallengeWhitespaceTestCase:
 class DestructionAuthorizationRouteTestCase:
     description: str
     expected_denied_status: int
-    expected_permission: str
+    expected_reason: str
     expected_allowed_status: int
     expected_plan_id: str
     expected_planner_call_count: int

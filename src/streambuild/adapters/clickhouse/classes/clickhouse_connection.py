@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from hashlib import sha256
 
 from clickhouse_connect.driver.exceptions import ClickHouseError, StreamFailureError
 from clickhouse_connect.driver.summary import QuerySummary
@@ -59,6 +60,7 @@ from streambuild.adapters.clickhouse._helpers.errors import translate_driver_err
 from streambuild.adapters.clickhouse._helpers.inspection import (
     clickhouse_catalog_resource_matches,
     load_clickhouse_catalog,
+    load_clickhouse_external_dependants,
     load_clickhouse_refresh_states,
 )
 from streambuild.adapters.clickhouse._helpers.lifecycle import (
@@ -164,6 +166,17 @@ class ClickHouseConnection(AdapterConnection):
             connection=self,
             adapter_identity=self.adapter_identity,
             database=database,
+        )
+
+    def load_external_dependants(
+        self, *, database: str, relation_names: tuple[str, ...]
+    ) -> tuple[str, ...]:
+        """Return database-qualified unmanaged dependants across ClickHouse."""
+
+        return load_clickhouse_external_dependants(
+            connection=self,
+            database=database,
+            relation_names=relation_names,
         )
 
     def load_refresh_states(self, database: str) -> tuple[AdapterRefreshState, ...]:
@@ -321,25 +334,69 @@ class ClickHouseConnection(AdapterConnection):
         return AdapterTargetMutationLock(database=database, owner_id=owner_id)
 
     def release_target_mutation_lock(self, lock: AdapterTargetMutationLock) -> None:
-        """Release a target lock only when the warehouse records the same owner."""
+        """Atomically exchange and verify the exact lock generation before release."""
 
-        exists: bool
+        release_name: str = (
+            f"{TARGET_MUTATION_LOCK_TABLE_NAME}_release_"
+            f"{sha256(lock.owner_id.encode()).hexdigest()[:16]}"
+        )
+        release_table: str = (
+            f"{_quote_clickhouse_identifier(lock.database)}."
+            f"{_quote_clickhouse_identifier(release_name)}"
+        )
+        owner_comment: str = f"{_TARGET_MUTATION_LOCK_COMMENT_PREFIX}{lock.owner_id}"
+        self._execute_workflow_sql(
+            statement=(
+                f"CREATE TABLE {release_table} (guard UInt8) ENGINE = TinyLog "
+                f"COMMENT {_quote_clickhouse_string(owner_comment)};"
+            ),
+            query_id=None,
+        )
+        lock_table: str = _qualified_lock_table(lock.database)
+        self._execute_workflow_sql(
+            statement=f"EXCHANGE TABLES {lock_table} AND {release_table};",
+            query_id=None,
+        )
+        marker_exists: bool
         current_owner: str | None
-        exists, current_owner = self._target_mutation_lock_state(database=lock.database)
-        if not exists or current_owner != lock.owner_id:
+        marker_exists, current_owner = self._target_mutation_lock_record(
+            database=lock.database,
+            table_name=release_name,
+        )
+        if not marker_exists or current_owner != lock.owner_id:
+            self._execute_workflow_sql(
+                statement=f"EXCHANGE TABLES {lock_table} AND {release_table};",
+                query_id=None,
+            )
+            self._execute_workflow_sql(
+                statement=f"DROP TABLE {release_table} SYNC;",
+                query_id=None,
+            )
             raise AdapterTargetMutationLockError(
                 f"Target mutation lock ownership changed for database '{lock.database}'"
             )
         self._execute_workflow_sql(
-            statement=f"DROP TABLE {_qualified_lock_table(lock.database)} SYNC;",
+            statement=f"DROP TABLE {release_table} SYNC;",
+            query_id=None,
+        )
+        self._execute_workflow_sql(
+            statement=f"DROP TABLE {lock_table} SYNC;",
             query_id=None,
         )
 
     def _target_mutation_lock_state(self, *, database: str) -> tuple[bool, str | None]:
+        return self._target_mutation_lock_record(
+            database=database,
+            table_name=TARGET_MUTATION_LOCK_TABLE_NAME,
+        )
+
+    def _target_mutation_lock_record(
+        self, *, database: str, table_name: str
+    ) -> tuple[bool, str | None]:
         result: AdapterQueryResult = self.query(
             "SELECT comment FROM system.tables "
             f"WHERE database = {_quote_clickhouse_string(database)} "
-            f"AND name = {_quote_clickhouse_string(TARGET_MUTATION_LOCK_TABLE_NAME)} LIMIT 1"
+            f"AND name = {_quote_clickhouse_string(table_name)} LIMIT 1"
         )
         if not result.rows:
             return False, None
@@ -355,6 +412,15 @@ class ClickHouseConnection(AdapterConnection):
         """Render exact ClickHouse database creation SQL."""
 
         return render_clickhouse_ensure_database(database)
+
+    def database_exists(self, database: str) -> bool:
+        """Return whether ClickHouse currently exposes the database namespace."""
+
+        result: AdapterQueryResult = self.query(
+            "SELECT count() FROM system.databases "
+            f"WHERE name = {_quote_clickhouse_string(database)}"
+        )
+        return bool(result.rows and int(str(result.rows[0][0])) == 1)
 
     def render_resource(
         self,

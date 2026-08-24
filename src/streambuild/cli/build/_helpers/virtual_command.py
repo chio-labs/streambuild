@@ -147,6 +147,7 @@ def execute_virtual_build_command(
             target_mutation_lock(
                 connection=client,
                 database=preparation.request.default_database,
+                ensure_database=True,
             )
             if _acquire_target_mutation_lock
             else nullcontext()

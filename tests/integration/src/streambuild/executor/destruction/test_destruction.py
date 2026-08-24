@@ -28,7 +28,10 @@ from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.executor.destruction.classes.in_memory_destruction_plan_store import (
     InMemoryDestructionPlanStore,
 )
-from streambuild.executor.destruction.exceptions import DestructionResourceError
+from streambuild.executor.destruction.exceptions import (
+    DestructionExternalDependencyError,
+    DestructionResourceError,
+)
 from streambuild.executor.destruction.main.assemble_destruction_workflow import (
     assemble_destruction_workflow,
 )
@@ -577,14 +580,14 @@ def test_given_drop_completion_event_failure_when_destroying_then_partial_eviden
     "test_case",
     [
         VirtualHistoryIntegrationTestCase(
-            description="pre-ledger virtual history is reset but not pipeline destroyed",
-            expected_reset_relation_names=("retired_binding", "retired_physical"),
+            description="live pre-ledger virtual history cannot authorize reset deletion",
+            expected_error_match="historical deployment metadata does not prove ownership",
             expected_destroy_excluded_names=("retired_binding", "retired_physical"),
         )
     ],
     ids=lambda case: case.description,
 )
-def test_given_preledger_virtual_history_when_planning_then_only_reset_includes_relations(
+def test_given_live_preledger_virtual_history_when_resetting_then_generation_is_required(
     test_case: VirtualHistoryIntegrationTestCase,
     clickhouse_connection_settings: ClickHouseConnectionSettings,
     clickhouse_database: str,
@@ -640,16 +643,17 @@ def test_given_preledger_virtual_history_when_planning_then_only_reset_includes_
             "'retired_physical', now64(3, 'UTC'));"
         )
 
-        reset: DestructionPlan = plan_destruction(
-            request=DestructionRequest(
-                operation="reset_target",
-                target="test",
-                database=clickhouse_database,
-                metadata_database=clickhouse_database,
-            ),
-            analysis=analysis,
-            connection=connection,
-        )
+        with pytest.raises(DestructionResourceError, match=test_case.expected_error_match):
+            plan_destruction(
+                request=DestructionRequest(
+                    operation="reset_target",
+                    target="test",
+                    database=clickhouse_database,
+                    metadata_database=clickhouse_database,
+                ),
+                analysis=analysis,
+                connection=connection,
+            )
         destroy: DestructionPlan = plan_destruction(
             request=DestructionRequest(
                 operation="destroy_pipelines",
@@ -662,11 +666,74 @@ def test_given_preledger_virtual_history_when_planning_then_only_reset_includes_
             connection=connection,
         )
 
-        reset_names: frozenset[str] = frozenset(relation.name for relation in reset.relations)
         destroy_names: frozenset[str] = frozenset(relation.name for relation in destroy.relations)
-        assert set(test_case.expected_reset_relation_names) <= reset_names
         assert set(test_case.expected_destroy_excluded_names).isdisjoint(destroy_names)
     finally:
+        connection.close()
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        OwnershipIntegrationTestCase(
+            description="qualified dependant in another database blocks destruction",
+            expected_error_match="external_reader",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_cross_database_dependant_when_planning_then_destruction_is_blocked(
+    test_case: OwnershipIntegrationTestCase,
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_database: str,
+    tmp_path: Path,
+) -> None:
+    project_root: Path = tmp_path / "cross-database-dependant-project"
+    write_direct_build_project(project_root=project_root)
+    connection: AdapterConnection = build_managed_clickhouse_client(
+        clickhouse_connection_settings,
+        database=clickhouse_database,
+    )
+    external_database: str = f"{clickhouse_database}_external"
+    try:
+        assert (
+            run_direct_build(
+                project_root=project_root,
+                database=clickhouse_database,
+                connection=connection,
+            )
+            == 0
+        )
+        connection.execute_workflow_sql(f"CREATE DATABASE {external_database};")
+        connection.execute_workflow_sql(
+            f"CREATE VIEW {external_database}.external_reader AS SELECT * FROM "
+            f"{clickhouse_database}.tbl__orders_enriched;"
+        )
+        loaded_project: LoadedProject | None = load_project_input_for_path(path=project_root)
+        analysis: CompileAnalysis = analyze_project(
+            pipelines_root=project_root / "pipelines",
+            loaded_project=loaded_project,
+            adapter_profile=build_compiler_adapter_profile(ClickHouseAdapter()),
+        )
+
+        with pytest.raises(
+            DestructionExternalDependencyError,
+            match=test_case.expected_error_match,
+        ):
+            plan_destruction(
+                request=DestructionRequest(
+                    operation="destroy_pipelines",
+                    target="test",
+                    database=clickhouse_database,
+                    metadata_database=clickhouse_database,
+                    pipeline_names=("pl__orders",),
+                ),
+                analysis=analysis,
+                connection=connection,
+            )
+    finally:
+        connection.execute_workflow_sql(f"DROP DATABASE IF EXISTS {external_database} SYNC;")
         connection.close()
 
 

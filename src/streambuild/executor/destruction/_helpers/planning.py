@@ -113,7 +113,14 @@ def plan_destruction(
         pipeline_names=affected,
         production_reset=(
             request.operation == DestructionOperation.RESET_TARGET
-            and request.target.casefold() in PRODUCTION_TARGET_NAMES
+            and (
+                request.target.casefold() in PRODUCTION_TARGET_NAMES
+                or getattr(
+                    getattr(analysis, "compiled_project", None),
+                    "production_target",
+                    False,
+                )
+            )
         ),
     )
     manifest_fingerprint: str = _fingerprint(_manifest_payload(analysis=analysis))
@@ -271,9 +278,19 @@ def _plan_relation_evidence(
     owned = _add_virtual_inventory_relations(
         owned=owned,
         inventory=inventory,
+        catalog=catalog,
+        ledger_relation_names=frozenset(ledger_by_name),
         database=request.database,
         affected_logical_names=affected_logical_names,
         current_object_identities=virtual_object_identities,
+        manifest_matched_relation_names=_manifest_matched_virtual_relations(
+            analysis=analysis,
+            inventory=inventory,
+            current_object_identities=virtual_object_identities,
+            connection=connection,
+            catalog=catalog,
+            database=request.database,
+        ),
         logical_pipeline_names=logical_pipeline_names,
         operation=DestructionOperation(request.operation),
     )
@@ -295,13 +312,22 @@ def _plan_relation_evidence(
         catalog=catalog,
         stats=stats,
     )
-    _validate_external_dependants(catalog=catalog, owned_relation_names=frozenset(owned))
+    _validate_external_dependants(
+        connection=connection,
+        database=request.database,
+        catalog=catalog,
+        owned_relation_names=frozenset(owned),
+    )
     _ = reverse_topologically_order_relations(relations)
     return affected_model_names, affected_source_names, relations, recorded_pipeline_names
 
 
 def _validate_external_dependants(
-    *, catalog: CatalogSnapshot, owned_relation_names: frozenset[str]
+    *,
+    connection: DestructionPlanningConnection,
+    database: str,
+    catalog: CatalogSnapshot,
+    owned_relation_names: frozenset[str],
 ) -> None:
     blocked_names: list[str] = []
     relation: CatalogRelation
@@ -309,7 +335,13 @@ def _validate_external_dependants(
         dependencies: frozenset[str] = _catalog_dependency_names(relation)
         if relation.name not in owned_relation_names and owned_relation_names & dependencies:
             blocked_names.append(relation.name)
-    blocked: tuple[str, ...] = tuple(sorted(blocked_names))
+    blocked_names.extend(
+        connection.load_external_dependants(
+            database=database,
+            relation_names=tuple(sorted(owned_relation_names)),
+        )
+    )
+    blocked: tuple[str, ...] = tuple(sorted(set(blocked_names)))
     if blocked:
         raise DestructionExternalDependencyError(blocked)
 
@@ -536,9 +568,12 @@ def _add_virtual_inventory_relations(
     *,
     owned: dict[str, OwnedRelation],
     inventory: AdapterDeploymentInventory,
+    catalog: CatalogSnapshot,
+    ledger_relation_names: frozenset[str],
     database: str,
     affected_logical_names: frozenset[str],
     current_object_identities: frozenset[tuple[str, str, str]],
+    manifest_matched_relation_names: frozenset[str],
     logical_pipeline_names: Mapping[str, str],
     operation: DestructionOperation,
 ) -> dict[str, OwnedRelation]:
@@ -563,6 +598,14 @@ def _add_virtual_inventory_relations(
                 continue
             if _excluded_metadata_relation(mapping.physical_name):
                 continue
+            _reject_live_unowned_history(
+                name=mapping.physical_name,
+                database=database,
+                owned=owned,
+                catalog=catalog,
+                ledger_relation_names=ledger_relation_names,
+                manifest_matched_relation_names=manifest_matched_relation_names,
+            )
             _add_owned_relation(
                 owned=owned,
                 name=mapping.physical_name,
@@ -584,6 +627,21 @@ def _add_virtual_inventory_relations(
                 continue
             if not reset_target and binding.logical_name not in owned:
                 continue
+            binding_relation: CatalogRelation | None = catalog.relation(binding.logical_name)
+            _reject_live_unowned_history(
+                name=binding.logical_name,
+                database=database,
+                owned=owned,
+                catalog=catalog,
+                ledger_relation_names=ledger_relation_names,
+                manifest_matched_relation_names=(
+                    manifest_matched_relation_names
+                    if binding_relation is not None
+                    and binding_relation.stable_binding_name == binding.physical_name
+                    and binding.physical_name in owned
+                    else frozenset()
+                ),
+            )
             logical_name: str = logical_name_by_published_name.get(
                 binding.logical_name,
                 binding.logical_name,
@@ -599,6 +657,14 @@ def _add_virtual_inventory_relations(
                 ownership=DestructionOwnership.PUBLISHED_STABLE_BINDING,
             )
             if reset_target and not _excluded_metadata_relation(binding.physical_name):
+                _reject_live_unowned_history(
+                    name=binding.physical_name,
+                    database=database,
+                    owned=owned,
+                    catalog=catalog,
+                    ledger_relation_names=ledger_relation_names,
+                    manifest_matched_relation_names=manifest_matched_relation_names,
+                )
                 owned = _add_owned_relation(
                     owned=owned,
                     name=binding.physical_name,
@@ -611,6 +677,73 @@ def _add_virtual_inventory_relations(
                     ownership=DestructionOwnership.VIRTUAL_PHYSICAL_MAPPING,
                 )
     return owned
+
+
+def _reject_live_unowned_history(
+    *,
+    name: str,
+    database: str,
+    owned: dict[str, OwnedRelation],
+    catalog: CatalogSnapshot,
+    ledger_relation_names: frozenset[str],
+    manifest_matched_relation_names: frozenset[str],
+) -> None:
+    if (
+        catalog.relation(name) is not None
+        and name not in owned
+        and name not in ledger_relation_names
+        and name not in manifest_matched_relation_names
+    ):
+        raise DestructionResourceError(
+            f"Refusing to destroy {database}.{name}: historical deployment metadata does not "
+            "prove ownership of the current catalog generation"
+        )
+
+
+def _manifest_matched_virtual_relations(
+    *,
+    analysis: CompileAnalysis,
+    inventory: AdapterDeploymentInventory,
+    current_object_identities: frozenset[tuple[str, str, str]],
+    connection: DestructionPlanningConnection,
+    catalog: CatalogSnapshot,
+    database: str,
+) -> frozenset[str]:
+    desired_by_name: dict[
+        str,
+        AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterView,
+    ] = {}
+    for resources in analysis.realized_project.resources_by_logical_key.values():
+        for resource in resources:
+            if isinstance(
+                resource,
+                (AdapterManagedSource, AdapterTable, AdapterMaterializedView, AdapterView),
+            ):
+                desired_by_name[resource.name] = resource
+    matched: set[str] = set()
+    for deployment in inventory.deployments:
+        for mapping in deployment.prepared_object_mappings:
+            identity: tuple[str, str, str] = (
+                mapping.logical_model_name,
+                mapping.logical_key.name,
+                DesiredObjectType(mapping.logical_key.object_type).value,
+            )
+            relation: CatalogRelation | None = catalog.relation(mapping.physical_name)
+            desired: (
+                AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterView | None
+            ) = desired_by_name.get(mapping.logical_key.name)
+            if (
+                identity in current_object_identities
+                and relation is not None
+                and desired is not None
+                and connection.catalog_resource_matches(
+                    resource=desired,
+                    relation=relation,
+                    database=database,
+                )
+            ):
+                matched.add(mapping.physical_name)
+    return frozenset(matched)
 
 
 def _add_owned_relation(

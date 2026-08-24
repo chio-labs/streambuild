@@ -248,6 +248,13 @@ def test_given_active_and_stale_deployments_when_applying_janitor_then_adapter_c
     assert connection.cleanup_requests == [test_case.expected_cleanup_request]
     assert connection.binding_requests == [test_case.expected_binding_request]
     assert tuple(connection.statements) == test_case.expected_statements
+    assert tuple(event.event_type for event in connection.ownership_events) == tuple(
+        "dropped"
+        for _ in (
+            *test_case.expected_binding_request.removals,
+            *test_case.expected_cleanup_request.relation_names,
+        )
+    )
     assert tuple(event[:2] for event in connection.target_mutation_lock_events) == (
         ("acquire", test_case.request.database),
         ("release", test_case.request.database),

@@ -135,9 +135,12 @@ def resolve_invocation_connection_config(
         for name, raw_value in raw_values.items()
     }
     try:
+        connection_database: str | None = (
+            None if CliCommand(invocation.args.command) == CliCommand.BUILD else invocation.database
+        )
         return invocation.adapter.build_connection_config(
             values=expanded_values,
-            database=invocation.database,
+            database=connection_database,
         )
     except AdapterConfigurationError as error:
         loaded_project: LoadedProject | None = invocation.loaded_project

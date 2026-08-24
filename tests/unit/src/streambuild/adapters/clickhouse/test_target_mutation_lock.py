@@ -129,8 +129,15 @@ def test_given_unrelated_create_failure_when_acquiring_then_original_error_is_pr
             description="lock still owned by releasing run",
             lock=AdapterTargetMutationLock(database="analytics", owner_id="run-123"),
             expected_statements=(
-                "SELECT comment FROM system.tables WHERE database = 'analytics' "
-                "AND name = '_streambuild_target_mutation_lock' LIMIT 1",
+                "CREATE TABLE `analytics`."
+                "`_streambuild_target_mutation_lock_release_272812a7ae467f0d` "
+                "(guard UInt8) ENGINE = TinyLog COMMENT 'streambuild-target-lock-v2:run-123';",
+                "EXCHANGE TABLES `analytics`.`_streambuild_target_mutation_lock` AND "
+                "`analytics`.`_streambuild_target_mutation_lock_release_272812a7ae467f0d`;",
+                "SELECT comment FROM system.tables WHERE database = 'analytics' AND name = "
+                "'_streambuild_target_mutation_lock_release_272812a7ae467f0d' LIMIT 1",
+                "DROP TABLE `analytics`."
+                "`_streambuild_target_mutation_lock_release_272812a7ae467f0d` SYNC;",
                 "DROP TABLE `analytics`.`_streambuild_target_mutation_lock` SYNC;",
             ),
         ),
@@ -158,8 +165,17 @@ def test_given_owned_lock_when_releasing_then_verifies_owner_before_drop(
             current_owner_id="other-run",
             expected_error_message="ownership changed",
             expected_statements=(
-                "SELECT comment FROM system.tables WHERE database = 'analytics' "
-                "AND name = '_streambuild_target_mutation_lock' LIMIT 1",
+                "CREATE TABLE `analytics`."
+                "`_streambuild_target_mutation_lock_release_272812a7ae467f0d` "
+                "(guard UInt8) ENGINE = TinyLog COMMENT 'streambuild-target-lock-v2:run-123';",
+                "EXCHANGE TABLES `analytics`.`_streambuild_target_mutation_lock` AND "
+                "`analytics`.`_streambuild_target_mutation_lock_release_272812a7ae467f0d`;",
+                "SELECT comment FROM system.tables WHERE database = 'analytics' AND name = "
+                "'_streambuild_target_mutation_lock_release_272812a7ae467f0d' LIMIT 1",
+                "EXCHANGE TABLES `analytics`.`_streambuild_target_mutation_lock` AND "
+                "`analytics`.`_streambuild_target_mutation_lock_release_272812a7ae467f0d`;",
+                "DROP TABLE `analytics`."
+                "`_streambuild_target_mutation_lock_release_272812a7ae467f0d` SYNC;",
             ),
         ),
     ],

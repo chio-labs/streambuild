@@ -39,6 +39,7 @@ def execute_mixed_build_command(
     with target_mutation_lock(
         connection=client,
         database=preparation.virtual.request.default_database,
+        ensure_database=True,
     ):
         if options.json_output:
             return _execute_json_build(

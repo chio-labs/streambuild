@@ -33,7 +33,7 @@ from tests.unit.src.streambuild.dev_server.helpers import (
         DestructionAuthorizationRouteTestCase(
             description="pipeline destroy scope permits only its assigned actor",
             expected_denied_status=403,
-            expected_permission="pipeline.destroy",
+            expected_reason="system_admin_required",
             expected_allowed_status=200,
             expected_plan_id="plan-1",
             expected_planner_call_count=1,
@@ -64,7 +64,7 @@ def test_given_destroy_permission_when_planning_then_http_boundary_enforces_scop
         )
 
     assert denied.status_code == test_case.expected_denied_status
-    assert denied.json()["detail"]["permission"] == test_case.expected_permission
+    assert denied.json()["detail"]["reason"] == test_case.expected_reason
     assert allowed.status_code == test_case.expected_allowed_status
     assert allowed.json()["planId"] == test_case.expected_plan_id
     assert planner.call_count == test_case.expected_planner_call_count

@@ -8,8 +8,15 @@ from hashlib import sha256
 from pathlib import Path
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.adapter.models import AdapterInvocationRecord, AdapterTargetMutationLock
+from streambuild.adapter.models import (
+    AdapterInvocationRecord,
+    AdapterMutationResult,
+    AdapterTargetMutationLock,
+)
 from streambuild.executor.destruction._helpers.drift import verify_destruction_drift
+from streambuild.executor.destruction._helpers.ordering import (
+    reverse_topologically_order_relations,
+)
 from streambuild.executor.destruction._helpers.workflow import assemble_destruction_workflow
 from streambuild.executor.destruction.constants import RESIDUAL_CATALOG_STATUS_OBSERVED
 from streambuild.executor.destruction.exceptions import (
@@ -20,6 +27,7 @@ from streambuild.executor.destruction.models import (
     DestructionExecutionResult,
     DestructionPlan,
     DestructionRecordingContext,
+    DestructionRelationEvidence,
 )
 from streambuild.executor.destruction.types import DestructionOperation, DestructionPlanStore
 from streambuild.executor.observability.classes.run_event_sink import RunEventSink
@@ -151,7 +159,7 @@ def execute_destruction(
             )
         execution_dispatched = True
         return _execute_recorded_plan(context=recording_context)
-    except Exception as error:
+    except (Exception, KeyboardInterrupt) as error:
         if recording_context is not None and statements and not execution_dispatched:
             try:
                 _ = _record_terminal(
@@ -177,6 +185,7 @@ def _execute_recorded_plan(*, context: DestructionRecordingContext) -> Destructi
     execution: WorkflowExecutionResult
     error_message: str | None = None
     failure_phase: str | None = None
+    interruption: KeyboardInterrupt | None = None
     try:
         execution = execute_warehouse_workflow(
             statements=context.statements,
@@ -190,13 +199,27 @@ def _execute_recorded_plan(*, context: DestructionRecordingContext) -> Destructi
             ) from error
         execution = error.partial_result
         _verify_completed_prefix(statements=context.statements, execution=execution)
+        recovery_error: str | None
         execution, recovery_error = _recover_pending_tombstones(
             statements=context.statements,
             execution=execution,
             connection=context.connection,
         )
+        if isinstance(error.cause, KeyboardInterrupt):
+            try:
+                execution, interrupted_recovery_error = _recover_interrupted_drop(
+                    context=context,
+                    execution=execution,
+                    failed_step_id=error.failed_step_id,
+                )
+                if interrupted_recovery_error is not None:
+                    recovery_error = interrupted_recovery_error
+            except Exception as interrupted_recovery_failure:
+                recovery_error = str(interrupted_recovery_failure)
         error_message = str(error)
         failure_phase = "warehouse_execution"
+        if isinstance(error.cause, KeyboardInterrupt):
+            interruption = error.cause
         if recovery_error is not None:
             error_message = (
                 f"{error_message}; ownership tombstone recovery failed: {recovery_error}"
@@ -228,7 +251,7 @@ def _execute_recorded_plan(*, context: DestructionRecordingContext) -> Destructi
         error_message = "Planned relations remain after destructive workflow completion"
         failure_phase = "residual_catalog"
 
-    return _record_terminal(
+    result: DestructionExecutionResult = _record_terminal(
         context=context,
         execution=execution,
         remaining=remaining,
@@ -236,6 +259,52 @@ def _execute_recorded_plan(*, context: DestructionRecordingContext) -> Destructi
         residual_catalog_error=residual_catalog_error,
         error_message=error_message,
         failure_phase=failure_phase,
+    )
+    if interruption is not None:
+        raise interruption
+    return result
+
+
+def _recover_interrupted_drop(
+    *,
+    context: DestructionRecordingContext,
+    execution: WorkflowExecutionResult,
+    failed_step_id: str,
+) -> tuple[WorkflowExecutionResult, str | None]:
+    prefix: str = "destroy_relation_"
+    if not failed_step_id.startswith(prefix):
+        return execution, None
+    relation_index: int = int(failed_step_id.removeprefix(prefix)) - 1
+    ordered_relations: tuple[DestructionRelationEvidence, ...] = (
+        reverse_topologically_order_relations(context.plan.relations)
+    )
+    relation: DestructionRelationEvidence = ordered_relations[relation_index]
+    remaining: tuple[str, ...] = _remaining_relations(
+        plan=context.plan,
+        connection=context.connection,
+    )
+    if relation.name in remaining:
+        return execution, None
+    failed_statement_index: int = next(
+        index
+        for index, statement in enumerate(context.statements)
+        if statement.step_id == failed_step_id
+    )
+    if len(execution.statement_results) != failed_statement_index:
+        return execution, "Interrupted DROP did not align with the confirmed workflow prefix"
+    synthetic_drop: WorkflowStatementResult = WorkflowStatementResult(
+        step_id=failed_step_id,
+        query_result=None,
+        mutation_result=AdapterMutationResult(),
+        error_message=None,
+    )
+    prefix_execution: WorkflowExecutionResult = WorkflowExecutionResult(
+        statement_results=(*execution.statement_results, synthetic_drop)
+    )
+    return _recover_pending_tombstones(
+        statements=context.statements,
+        execution=prefix_execution,
+        connection=context.connection,
     )
 
 

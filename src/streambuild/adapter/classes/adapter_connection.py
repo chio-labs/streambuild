@@ -136,6 +136,12 @@ class AdapterConnection(ABC):
     def render_ensure_database(self, database: str) -> str:
         """Render exact SQL that creates a database when needed."""
 
+    def database_exists(self, database: str) -> bool:
+        """Return whether the target database namespace already exists."""
+
+        del database
+        return True
+
     @abstractmethod
     def render_resource(
         self,
@@ -279,6 +285,16 @@ class AdapterConnection(ABC):
 
         del resource, relation, database
         return False
+
+    def load_external_dependants(
+        self, *, database: str, relation_names: tuple[str, ...]
+    ) -> tuple[str, ...]:
+        """Return qualified unmanaged relations that depend on target relations."""
+
+        del database, relation_names
+        raise AdapterCapabilityError(
+            f"Adapter '{self.adapter_identity.name}' cannot prove external dependency safety"
+        )
 
     @abstractmethod
     def load_deployment_inventory(self, database: str) -> AdapterDeploymentInventory:

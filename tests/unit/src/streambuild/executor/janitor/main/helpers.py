@@ -5,6 +5,7 @@ from streambuild.adapter.models import (
     AdapterDeploymentInventory,
     AdapterDeploymentRecord,
     AdapterMetadataObjectKey,
+    AdapterOwnedResourceEvent,
     AdapterPreparedObjectMapping,
     AdapterPublishEventRecord,
     AdapterRelationCleanupRequest,
@@ -36,6 +37,18 @@ class SequencedManagedStateAdapterConnection(RecordingAdapterConnection):
 
 
 class JanitorWorkflowRecordingAdapterConnection(RecordingAdapterConnection):
+    def __init__(
+        self,
+        *,
+        deployment_inventory: AdapterDeploymentInventory,
+        managed_table_state: InspectedManagedTableState,
+    ) -> None:
+        super().__init__(
+            deployment_inventory=deployment_inventory,
+            managed_table_state=managed_table_state,
+        )
+        self.ownership_events: list[AdapterOwnedResourceEvent] = []
+
     def render_replace_stable_bindings(
         self, request: AdapterBindingReplacementRequest
     ) -> tuple[str, ...]:
@@ -51,6 +64,13 @@ class JanitorWorkflowRecordingAdapterConnection(RecordingAdapterConnection):
             f"DROP TABLE IF EXISTS {request.database}.{relation_name} SYNC;"
             for relation_name in request.relation_names
         )
+
+    def render_owned_resource_events(
+        self, *, database: str, events: tuple[AdapterOwnedResourceEvent, ...]
+    ) -> tuple[str, ...]:
+        del database
+        self.ownership_events.extend(events)
+        return ()
 
 
 def unavailable_rollback_test_case() -> JanitorUnavailableRollbackTestCase:

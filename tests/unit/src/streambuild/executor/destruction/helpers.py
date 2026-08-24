@@ -67,6 +67,7 @@ class DestructionPlanningConnection:
         stats: tuple[tuple[str, int, int], ...] = (),
         owned_resources: AdapterOwnedResourceSnapshot | None = None,
         catalog_matches_resources: bool = True,
+        external_dependants: tuple[str, ...] = (),
     ) -> None:
         self.catalog = catalog
         self.inventory = inventory or AdapterDeploymentInventory(deployments=(), publish_events=())
@@ -75,6 +76,7 @@ class DestructionPlanningConnection:
             status="absent", resources=()
         )
         self.catalog_matches_resources = catalog_matches_resources
+        self.external_dependants = external_dependants
         self.catalog_databases: list[str] = []
         self.inventory_databases: list[str] = []
         self.queries: list[str] = []
@@ -98,6 +100,12 @@ class DestructionPlanningConnection:
     ) -> bool:
         del resource, database
         return relation is not None and self.catalog_matches_resources
+
+    def load_external_dependants(
+        self, *, database: str, relation_names: tuple[str, ...]
+    ) -> tuple[str, ...]:
+        del database, relation_names
+        return self.external_dependants
 
     def query(self, statement: str) -> AdapterQueryResult:
         self.queries.append(statement)
@@ -361,7 +369,6 @@ def _build_planning_fixture(
         (
             ("tbl__orders", "View"),
             ("tbl__orders__deployment_1", "MergeTree"),
-            ("old__orders__deployment_1", "MergeTree"),
             ("mv__orders", "MaterializedView"),
             ("vw__summary", "View"),
             ("kafka__events", "Kafka"),
@@ -393,6 +400,7 @@ def build_catalog(relations: tuple[tuple[str, str], ...]) -> CatalogSnapshot:
         "mv__orders": "tbl__orders",
         "mv__events": "raw__events",
     }
+    stable_binding_name_by_relation: dict[str, str] = {"tbl__orders": "tbl__orders__deployment_1"}
     return CatalogSnapshot(
         identity=CatalogIdentity(adapter=AdapterIdentity(name="clickhouse"), database="analytics"),
         warehouse_timezone="UTC",
@@ -403,6 +411,8 @@ def build_catalog(relations: tuple[tuple[str, str], ...]) -> CatalogSnapshot:
                 columns=(),
                 source_relation_names=source_names_by_relation.get(name, ()),
                 target_relation_name=target_name_by_relation.get(name),
+                stable_binding_name=stable_binding_name_by_relation.get(name),
+                ownership_generation=f"generation:{name}",
             )
             for name, engine in relations
         ),
@@ -525,6 +535,26 @@ class DestructionExecutionConnection(RecordingAdapterConnection):
 
     def _ignore_statement(self, statement: str) -> None:
         del statement
+
+
+class InterruptingDestructionExecutionConnection(DestructionExecutionConnection):
+    """Interrupt immediately after the first DROP reaches its catalog postcondition."""
+
+    def execute_workflow_mutation(
+        self, *, statement: str, query_id: str | None
+    ) -> AdapterMutationResult:
+        result: AdapterMutationResult = super().execute_workflow_mutation(
+            statement=statement,
+            query_id=query_id,
+        )
+        action: Callable[[], AdapterMutationResult] = {
+            False: lambda: result,
+            True: self._raise_interrupt,
+        }[statement.startswith("DROP ")]
+        return action()
+
+    def _raise_interrupt(self) -> AdapterMutationResult:
+        raise KeyboardInterrupt("injected destructive interruption")
 
 
 class DestructionObservationConnection(RecordingAdapterConnection):

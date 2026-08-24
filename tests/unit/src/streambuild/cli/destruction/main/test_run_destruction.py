@@ -22,12 +22,17 @@ from tests.unit.src.streambuild.cli.destruction.helpers import (
     destruction_account,
     destruction_options,
     destruction_plan,
+    use_process_local_plan_store_for_unit_tests,
 )
 from tests.unit.src.streambuild.cli.destruction.main._test_types import (
     DestructionAuthorizationTestCase,
     DestructionCancellationTestCase,
     DestructionReauthorizationTestCase,
     DestructionRunTestCase,
+)
+
+_USE_PROCESS_LOCAL_PLAN_STORE: object = pytest.fixture(autouse=True)(
+    use_process_local_plan_store_for_unit_tests
 )
 
 
@@ -70,6 +75,7 @@ def test_given_reviewed_plan_when_running_destruction_then_executes_frozen_actor
     input_mock: MagicMock = MagicMock(side_effect=("yes", "alpha"))
     control_store: MagicMock = MagicMock(spec=ControlStore)
     control_store.get_user_by_username.side_effect = (
+        destruction_account(),
         destruction_account(),
         destruction_account(),
     )
@@ -121,6 +127,7 @@ def test_given_reviewed_plan_when_running_destruction_then_executes_frozen_actor
     assert replanned is plan
     assert analyze_mock.call_count == test_case.expected_analysis_count_after_replan
     assert control_store.get_user_by_username.call_args_list == [
+        call(username="terminal-user"),
         call(username="terminal-user"),
         call(username="terminal-user"),
     ]

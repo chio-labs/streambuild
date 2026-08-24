@@ -24,6 +24,8 @@ from streambuild.adapters.clickhouse._helpers.catalog_parsing import (
     normalize_partition_key,
     parse_catalog_ddl_details,
     parse_catalog_query_details,
+    parse_catalog_relation_identities,
+    parse_catalog_target_identity,
     parse_sorting_key,
 )
 from streambuild.adapters.clickhouse.constants import (
@@ -41,6 +43,7 @@ from streambuild.adapters.clickhouse.models import (
     ClickHouseCatalogColumnRow,
     ClickHouseCatalogRelationRow,
 )
+from streambuild.compiler.sql_analysis.models import SqlRelationIdentity
 
 
 def load_clickhouse_catalog(
@@ -91,6 +94,36 @@ def load_clickhouse_catalog(
             for row in relation_rows
         ),
     )
+
+
+def load_clickhouse_external_dependants(
+    *, connection: AdapterConnection, database: str, relation_names: tuple[str, ...]
+) -> tuple[str, ...]:
+    """Scan all user databases for relations that depend on target-owned names."""
+
+    owned: frozenset[tuple[str, str]] = frozenset((database, name) for name in relation_names)
+    result: AdapterQueryResult = connection.query(
+        "SELECT database, name, as_select, create_table_query FROM system.tables "
+        "WHERE database NOT IN ('system', 'information_schema', 'INFORMATION_SCHEMA') "
+        "AND (as_select != '' OR create_table_query != '') ORDER BY database, name"
+    )
+    blocked: list[str] = []
+    for row in result.rows:
+        relation_database: str = str(row[0])
+        relation_name: str = str(row[1])
+        if relation_database == database or (relation_database, relation_name) in owned:
+            continue
+        sources: tuple[SqlRelationIdentity, ...] = parse_catalog_relation_identities(str(row[2]))
+        target: SqlRelationIdentity | None = parse_catalog_target_identity(str(row[3]))
+        dependencies: tuple[SqlRelationIdentity, ...] = (
+            sources if target is None else (*sources, target)
+        )
+        if any(
+            (dependency.database or relation_database, dependency.name) in owned
+            for dependency in dependencies
+        ):
+            blocked.append(f"{relation_database}.{relation_name}")
+    return tuple(blocked)
 
 
 def _build_catalog_relation(

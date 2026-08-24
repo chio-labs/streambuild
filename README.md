@@ -236,7 +236,20 @@ plan rather than being silently included. Standalone CLI execution also requires
 to be an active built-in administrator in the StreamBuild control store.
 
 UI plans and their review state are durable, actor-bound, and atomically single-use across server
-restarts and workers.
+restarts and workers. Standalone CLI plans use the same durable control-store representation.
+
+Classify production targets in committed project configuration so reset requires the additional
+exact `PRODUCTION` challenge even when the target has a non-standard name:
+
+```toml
+[targets.live]
+production = true
+```
+
+Ownership generations, external dependants in every ClickHouse database, and target/database drift
+are checked before execution. Historical deployment metadata alone never authorizes deletion of a
+live same-name relation. Target mutation locks remain fail-closed after a crashed owner; StreamBuild
+does not use an age-based automatic takeover that could overlap a long-running ClickHouse query.
 
 The Pipelines UI exposes the same planner and executor through multi-selection and the dedicated
 `pipeline.destroy` and `target.reset` permissions. Every generated statement, actor, challenge,

@@ -1,9 +1,15 @@
 from datetime import UTC, datetime
 from pathlib import Path
+from unittest.mock import MagicMock
 from uuid import UUID
+
+import pytest
 
 from streambuild.auth.models import UserAccount
 from streambuild.cli.destruction.models import DestructionCommandOptions
+from streambuild.executor.destruction.classes.in_memory_destruction_plan_store import (
+    InMemoryDestructionPlanStore,
+)
 from streambuild.executor.destruction.models import (
     DestructionPlan,
     DestructionRelationEvidence,
@@ -47,6 +53,13 @@ def destruction_options() -> DestructionCommandOptions:
         control_store_url="sqlite:////custom/control.db",
         cli_variables=(("resource_suffix", "_cli"),),
         environment={"RESOURCE_SCHEMA": "environment_schema"},
+    )
+
+
+def use_process_local_plan_store_for_unit_tests(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "streambuild.cli.destruction._helpers.execution.RelationalDestructionPlanStore",
+        MagicMock(return_value=InMemoryDestructionPlanStore()),
     )
 
 

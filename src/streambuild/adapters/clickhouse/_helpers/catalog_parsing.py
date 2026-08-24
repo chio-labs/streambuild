@@ -5,7 +5,7 @@ from streambuild.adapters.clickhouse.constants import CLICKHOUSE_VIEW_ENGINE, EM
 from streambuild.compiler.sql_analysis.exceptions import SqlAnalysisError
 from streambuild.compiler.sql_analysis.main.analyze_catalog_sql import analyze_catalog_sql
 from streambuild.compiler.sql_analysis.main.parse_expression_list import parse_expression_list
-from streambuild.compiler.sql_analysis.models import SqlCatalogAnalysis
+from streambuild.compiler.sql_analysis.models import SqlCatalogAnalysis, SqlRelationIdentity
 
 
 def parse_catalog_ddl_details(
@@ -63,6 +63,20 @@ def parse_catalog_query_details(
         else None
     )
     return analysis.canonical_sql, source_names, stable_binding_name
+
+
+def parse_catalog_relation_identities(value: str) -> tuple[SqlRelationIdentity, ...]:
+    """Return every database-aware physical source from catalog SQL."""
+
+    normalized: str = value.strip()
+    return () if not normalized else _analyze(normalized).source_relations
+
+
+def parse_catalog_target_identity(value: str) -> SqlRelationIdentity | None:
+    """Return a database-aware materialized target from catalog DDL."""
+
+    normalized: str = value.strip()
+    return None if not normalized else _analyze(normalized).target_relation
 
 
 def extract_source_relation_name(value: str) -> str | None:

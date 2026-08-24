@@ -97,6 +97,7 @@ class ProjectTarget:
     audit_scheduler: AuditSchedulerOverride = field(default_factory=AuditSchedulerOverride)
     sensors: SensorAutomationOverride = field(default_factory=SensorAutomationOverride)
     build: BuildConfig = field(default_factory=BuildConfig)
+    production: bool = False
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "variables", immutable_config_pairs(self.variables))
@@ -293,6 +294,7 @@ class EffectiveProjectConfiguration:
     audit_scheduler: AuditSchedulerConfig = field(default_factory=AuditSchedulerConfig)
     sensors: SensorAutomationConfig = field(default_factory=SensorAutomationConfig)
     build: BuildConfig = field(default_factory=BuildConfig)
+    production_target: bool = False
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "variables", immutable_config_pairs(self.variables))

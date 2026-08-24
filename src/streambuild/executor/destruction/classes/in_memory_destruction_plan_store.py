@@ -25,6 +25,9 @@ class InMemoryDestructionPlanStore:
         self._plans: dict[str, StoredDestructionPlan] = {}
         self._lock = Lock()
 
+    def close(self) -> None:
+        """Match the durable store lifecycle without external resources."""
+
     def save(self, *, plan: DestructionPlan, actor: str) -> None:
         with self._lock:
             if plan.plan_id in self._plans:

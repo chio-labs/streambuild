@@ -26,6 +26,7 @@ from tests.unit.src.streambuild.executor.destruction._test_types import (
 from tests.unit.src.streambuild.executor.destruction.helpers import (
     DestructionExecutionConnection,
     DestructionObservationConnection,
+    InterruptingDestructionExecutionConnection,
     build_execution_plan,
     build_execution_statements,
 )
@@ -187,6 +188,77 @@ def test_given_locked_drift_when_destroying_then_attempt_is_recorded_without_mut
     assert summary["pendingStatementSequences"] == list(test_case.expected_pending_sequences)
     assert test_case.expected_remaining_names is not None
     assert summary["remainingObjects"] == list(test_case.expected_remaining_names)
+    assert summary["residualCatalogStatus"] == test_case.expected_residual_status
+    assert summary["failurePhase"] == test_case.expected_failure_phase
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DestructionExecutionTestCase(
+            description="interrupt after DROP recovers ownership and terminal evidence",
+            expected_pending_sequences=(3, 4),
+            expected_remaining_names=("relation_two",),
+            expected_residual_status="observed",
+            expected_failure_phase="warehouse_execution",
+            expected_error_match="injected destructive interruption",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_interrupt_after_drop_when_destroying_then_terminal_state_is_recorded(
+    test_case: DestructionExecutionTestCase,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    plan: DestructionPlan = build_execution_plan(now=_NOW)
+    statements: tuple[WarehouseStatement, ...] = build_execution_statements()
+    store: InMemoryDestructionPlanStore = InMemoryDestructionPlanStore(clock=lambda: _NOW)
+    store.save(plan=plan, actor="actor-1")
+    reviewed_at: datetime = store.mark_reviewed(plan_id=plan.plan_id, actor="actor-1")
+    connection: InterruptingDestructionExecutionConnection = (
+        InterruptingDestructionExecutionConnection(
+            relation_names=tuple(relation.name for relation in plan.relations)
+        )
+    )
+    observation: DestructionObservationConnection = DestructionObservationConnection()
+    invocations: list[AdapterInvocationRecord] = []
+
+    def persist_terminal(
+        *,
+        client: AdapterConnection,
+        database: str,
+        invocation: AdapterInvocationRecord,
+        node_results: tuple[AdapterNodeResultRecord, ...],
+    ) -> str | None:
+        del client, database, node_results
+        invocations.append(invocation)
+        return None
+
+    monkeypatch.setattr(execution_module, "initialize_observability", lambda **_: None)
+    monkeypatch.setattr(execution_module, "assemble_destruction_workflow", lambda **_: statements)
+    monkeypatch.setattr(execution_module, "persist_terminal_observations", persist_terminal)
+
+    with pytest.raises(KeyboardInterrupt, match=test_case.expected_error_match):
+        execute_destruction(
+            frozen_plan=plan,
+            actor_id="actor-1",
+            actor_name="Alice",
+            challenge_responses=plan.challenges,
+            reviewed_at=reviewed_at,
+            store=store,
+            connection=connection,
+            observation_connection=observation,
+            project_dir=tmp_path,
+            replan=lambda: plan,
+        )
+
+    assert connection.drop_names == ["relation_one"]
+    assert connection.tombstone_names == ["relation_one"]
+    assert len(invocations) == 1
+    summary: dict[str, object] = json.loads(invocations[0].summary_json)
+    assert summary["pendingStatementSequences"] == list(test_case.expected_pending_sequences)
+    assert summary["remainingObjects"] == list(test_case.expected_remaining_names or ())
     assert summary["residualCatalogStatus"] == test_case.expected_residual_status
     assert summary["failurePhase"] == test_case.expected_failure_phase
 

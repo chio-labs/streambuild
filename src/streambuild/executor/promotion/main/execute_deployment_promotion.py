@@ -14,6 +14,7 @@ from streambuild.executor.promotion._helpers.metadata import build_publish_metad
 from streambuild.executor.promotion._helpers.resolution import resolve_publish_deployment_id
 from streambuild.executor.promotion._helpers.views import build_publish_binding_request
 from streambuild.executor.promotion._helpers.workflow import assemble_publish_workflow
+from streambuild.executor.promotion.exceptions import PublishExecutionError
 from streambuild.executor.promotion.models import PublishedView, PublishRequest, PublishResult
 from streambuild.executor.workflow.main._execute_warehouse_workflow import (
     execute_warehouse_workflow,
@@ -45,6 +46,20 @@ def execute_publish(
             default_database=request.default_database,
             deployment_id=resolved_deployment_id,
         )
+        cross_database_names: tuple[str, ...] = tuple(
+            sorted(
+                {
+                    item.database
+                    for item in (*binding_request.bindings, *binding_request.removals)
+                    if item.database != request.default_database
+                }
+            )
+        )
+        if cross_database_names:
+            raise PublishExecutionError(
+                "Publish refuses cross-database bindings without locks for every database: "
+                f"{cross_database_names!r}"
+            )
         published_views: tuple[PublishedView, ...] = tuple(
             PublishedView(
                 view_name=binding.logical_name,

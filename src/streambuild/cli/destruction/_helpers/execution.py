@@ -6,6 +6,8 @@ from uuid import UUID
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.auth.classes.control_store import ControlStore
+from streambuild.auth.constants import SQLITE_MEMORY_URLS
+from streambuild.auth.main.default_control_store_url import default_control_store_url
 from streambuild.auth.models import UserAccount
 from streambuild.cli.destruction._helpers.authorization import require_same_destruction_admin
 from streambuild.cli.destruction._helpers.rendering import (
@@ -25,9 +27,10 @@ from streambuild.compiler.discovery.main.load_project_input_for_path import (
 from streambuild.compiler.discovery.models import LoadedProject
 from streambuild.compiler.pipeline.main.analyze_project import analyze_project
 from streambuild.compiler.pipeline.models import CompileAnalysis
-from streambuild.executor.destruction.classes.in_memory_destruction_plan_store import (
-    InMemoryDestructionPlanStore,
+from streambuild.executor.destruction.classes.relational_destruction_plan_store import (
+    RelationalDestructionPlanStore,
 )
+from streambuild.executor.destruction.exceptions import DestructionDriftError
 from streambuild.executor.destruction.main.execute_destruction import execute_destruction
 from streambuild.executor.destruction.main.plan_destruction import plan_destruction
 from streambuild.executor.destruction.models import (
@@ -73,51 +76,72 @@ def run_authorized_destruction(
     plan: DestructionPlan = plan_destruction(
         request=request, analysis=analysis, connection=planning_connection
     )
-    store: InMemoryDestructionPlanStore = InMemoryDestructionPlanStore()
-    store.save(plan=plan, actor=actor_id)
-    print(render_destruction_plan(plan))
-    if not confirm_destruction_review():
-        print("Destruction cancelled.")
-        return 1
-    reviewed_at: datetime = store.mark_reviewed(plan_id=plan.plan_id, actor=actor_id)
-    responses: tuple[str, ...] = read_destruction_challenges(plan)
-
-    def replan() -> DestructionPlan:
-        fresh_analysis: CompileAnalysis = _analyze(
-            options=options,
-            loaded_project=load_project_input_for_path(
-                path=options.project_dir,
-                selected_target=options.selected_target,
-                cli_variables=dict(options.cli_variables),
-                environment={} if options.environment is None else options.environment,
-            ),
-            adapter_profile=adapter_profile,
-        )
-        return plan_destruction(
-            request=request,
-            analysis=fresh_analysis,
-            connection=planning_connection,
-        )
-
-    account = require_same_destruction_admin(
-        store=control_store,
-        os_username=os_username,
-        expected_user_id=creator_user_id,
+    plan_store_url: str = (
+        default_control_store_url(project_dir=options.project_dir)
+        if options.control_store_url in SQLITE_MEMORY_URLS
+        else options.control_store_url
     )
-    result: DestructionExecutionResult = execute_destruction(
-        frozen_plan=plan,
-        actor_id=actor_id,
-        actor_name=account.username,
-        challenge_responses=responses,
-        reviewed_at=reviewed_at,
-        store=store,
-        connection=client,
-        observation_connection=observation_client,
-        project_dir=options.project_dir,
-        replan=replan,
-    )
-    print_destruction_result(result)
-    return 0 if result.outcome == DESTRUCTION_SUCCESS_OUTCOME else 1
+    store: RelationalDestructionPlanStore = RelationalDestructionPlanStore(url=plan_store_url)
+    try:
+        store.save(plan=plan, actor=actor_id)
+        print(render_destruction_plan(plan))
+        if not confirm_destruction_review():
+            print("Destruction cancelled.")
+            return 1
+        reviewed_at: datetime = store.mark_reviewed(plan_id=plan.plan_id, actor=actor_id)
+        responses: tuple[str, ...] = read_destruction_challenges(plan)
+
+        def replan() -> DestructionPlan:
+            _ = require_same_destruction_admin(
+                store=control_store,
+                os_username=os_username,
+                expected_user_id=creator_user_id,
+            )
+            fresh_analysis: CompileAnalysis = _analyze(
+                options=options,
+                loaded_project=load_project_input_for_path(
+                    path=options.project_dir,
+                    selected_target=options.selected_target,
+                    cli_variables=dict(options.cli_variables),
+                    environment={} if options.environment is None else options.environment,
+                ),
+                adapter_profile=adapter_profile,
+            )
+            fresh_database: str = resolve_default_database(
+                loaded_pipelines=list(fresh_analysis.compile_inputs.pipelines),
+                override=options.database,
+            )
+            if fresh_database != request.database:
+                raise DestructionDriftError(
+                    "Destruction target physical database changed after plan review"
+                )
+            return plan_destruction(
+                request=request,
+                analysis=fresh_analysis,
+                connection=planning_connection,
+            )
+
+        account = require_same_destruction_admin(
+            store=control_store,
+            os_username=os_username,
+            expected_user_id=creator_user_id,
+        )
+        result: DestructionExecutionResult = execute_destruction(
+            frozen_plan=plan,
+            actor_id=actor_id,
+            actor_name=account.username,
+            challenge_responses=responses,
+            reviewed_at=reviewed_at,
+            store=store,
+            connection=client,
+            observation_connection=observation_client,
+            project_dir=options.project_dir,
+            replan=replan,
+        )
+        print_destruction_result(result)
+        return 0 if result.outcome == DESTRUCTION_SUCCESS_OUTCOME else 1
+    finally:
+        store.close()
 
 
 def _analyze(

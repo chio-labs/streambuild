@@ -29,7 +29,7 @@ def execute_warehouse_workflow(
         mutation_result: AdapterMutationResult | None = None
         try:
             query_id: str | None = None if emitter is None else emitter.statement_started(statement)
-        except Exception as error:
+        except (Exception, KeyboardInterrupt) as error:
             raise WorkflowExecutionError(
                 failed_step_id=statement.step_id,
                 partial_result=WorkflowExecutionResult(statement_results=tuple(results)),
@@ -45,6 +45,12 @@ def execute_warehouse_workflow(
                 query_result = connection.execute_workflow_query(
                     statement=statement.sql, query_id=query_id
                 )
+        except KeyboardInterrupt as error:
+            raise WorkflowExecutionError(
+                failed_step_id=statement.step_id,
+                partial_result=WorkflowExecutionResult(statement_results=tuple(results)),
+                cause=error,
+            ) from error
         except AdapterError as error:
             try:
                 _emit_completed(
@@ -91,7 +97,7 @@ def execute_warehouse_workflow(
                 written_rows=None if mutation_result is None else mutation_result.written_rows,
                 started_ns=started_ns,
             )
-        except Exception as error:
+        except (Exception, KeyboardInterrupt) as error:
             raise WorkflowExecutionError(
                 failed_step_id=statement.step_id,
                 partial_result=WorkflowExecutionResult(statement_results=tuple(results)),

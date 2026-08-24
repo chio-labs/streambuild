@@ -338,7 +338,7 @@ def build_assigned_proxy_quality_client(*, project_dir: Path) -> tuple[TestClien
 
 
 def build_assigned_proxy_operations_client(*, project_dir: Path) -> tuple[TestClient, ControlStore]:
-    """Build viewer personas where Alice holds every authored operational grant."""
+    """Build operational personas where administrator Alice holds authored grants."""
 
     return _build_assigned_proxy_operations_client(
         project_dir=project_dir,
@@ -389,7 +389,7 @@ def _build_assigned_proxy_operations_client(
         username="alice",
         authentication_source=AuthenticationSource.TRUSTED_PROXY,
         external_subject="alice",
-        roles=("viewer",),
+        roles=("admin",),
     )
     store.create_user(
         username="bob",

@@ -61,6 +61,10 @@ class DestructionPlanningConnection(Protocol):
         database: str,
     ) -> bool: ...
 
+    def load_external_dependants(
+        self, *, database: str, relation_names: tuple[str, ...]
+    ) -> tuple[str, ...]: ...
+
     def query(self, statement: str) -> AdapterQueryResult: ...
 
 
