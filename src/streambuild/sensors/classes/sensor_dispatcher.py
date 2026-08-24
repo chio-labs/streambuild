@@ -53,6 +53,11 @@ from streambuild.sensors.types import (
 _EPOCH_POSITION: SensorStreamPosition = SensorStreamPosition(
     completed_at="1970-01-01 00:00:00.000", result_id=""
 )
+_LEASE_TIMEOUT_BUFFER_SECONDS: float = 10.0
+
+
+def _position_key(position: SensorStreamPosition) -> tuple[str, str]:
+    return position.completed_at, position.result_id
 
 
 class SensorDispatcher:
@@ -67,6 +72,7 @@ class SensorDispatcher:
         dispatcher_id: str | None = None,
         batch_limit: int = DEFAULT_EVENT_BATCH_LIMIT,
         lease_ttl_seconds: float = DEFAULT_DISPATCH_LEASE_TTL_SECONDS,
+        maximum_event_age_seconds: float | None = None,
     ) -> None:
         self._repository: SensorStateRepository = repository
         self._event_target: str = event_target
@@ -74,6 +80,7 @@ class SensorDispatcher:
         self._dispatcher_id: str = dispatcher_id if dispatcher_id is not None else uuid4().hex
         self._batch_limit: int = batch_limit
         self._lease_ttl_seconds: float = lease_ttl_seconds
+        self._maximum_event_age_seconds: float | None = maximum_event_age_seconds
 
     def dispatch_once(self, *, registry: SensorRegistry, target: str) -> SensorDispatchSummary:
         """Evaluate every running sensor once against new observations."""
@@ -92,8 +99,15 @@ class SensorDispatcher:
             if status is not SensorOverrideStatus.RUNNING:
                 continue
             if sensor.kind is SensorKind.EVENT:
-                outcomes.extend(self._dispatch_event_sensor(sensor=sensor, target=target))
+                event_outcomes, lease_held = self._dispatch_event_sensor(
+                    sensor=sensor, target=target
+                )
+                outcomes.extend(event_outcomes)
+                if not lease_held:
+                    return summarize_outcomes(outcomes=tuple(outcomes), lease_acquired=False)
                 continue
+            if not self._renew_dispatch_lease(sensor=sensor):
+                return summarize_outcomes(outcomes=tuple(outcomes), lease_acquired=False)
             polling_outcome: SensorDeliveryOutcome | None = self._dispatch_polling_sensor(
                 sensor=sensor
             )
@@ -211,7 +225,7 @@ class SensorDispatcher:
 
     def _dispatch_event_sensor(
         self, *, sensor: LoadedSensor, target: str
-    ) -> tuple[SensorDeliveryOutcome, ...]:
+    ) -> tuple[tuple[SensorDeliveryOutcome, ...], bool]:
         declaration: EventSensorDeclaration = event_declaration_of(sensor)
         source: str = event_source_for(declaration.event_type)
         checkpoint: SensorStreamPosition | None = self._repository.read_checkpoint(
@@ -219,24 +233,110 @@ class SensorDispatcher:
         )
         if checkpoint is None:
             self._initialize_checkpoint(sensor=sensor, source=source, target=target)
-            return ()
+            return (), True
+        stream_head: SensorStreamPosition | None = self._newest_position(
+            source=source, target=target
+        )
+        if stream_head is None:
+            return (), True
         outcomes: list[SensorDeliveryOutcome] = []
-        for delivery in self._deliveries_after(source=source, position=checkpoint, target=target):
-            blocked: bool = False
-            for event in delivery.events:
-                if not matches_sensor(declaration=declaration, event=event):
-                    continue
-                outcome: SensorDeliveryOutcome = self._deliver_event(sensor=sensor, event=event)
-                outcomes.append(outcome)
-                if not outcome.resolved:
-                    blocked = True
-                    break
-            if blocked:
-                break
-            self._repository.advance_checkpoint(
-                sensor_name=sensor.name, source=source, position=delivery.position
+        current_position: SensorStreamPosition = checkpoint
+        advanced_position: SensorStreamPosition | None = None
+        while True:
+            warehouse_now: str | None = (
+                self._repository.warehouse_now()
+                if self._event_age_limit(declaration=declaration) is not None
+                else None
             )
-        return tuple(outcomes)
+            deliveries: tuple[SensorEventDelivery, ...] = self._deliveries_after(
+                source=source,
+                position=current_position,
+                target=target,
+            )
+            deliveries = tuple(
+                delivery
+                for delivery in deliveries
+                if _position_key(delivery.position) <= _position_key(stream_head)
+            )
+            if not deliveries:
+                break
+            for delivery in deliveries:
+                blocked: bool = False
+                for event in delivery.events:
+                    if not matches_sensor(declaration=declaration, event=event):
+                        continue
+                    if warehouse_now is not None and self._event_is_expired(
+                        declaration=declaration,
+                        event=event,
+                        warehouse_now=warehouse_now,
+                    ):
+                        continue
+                    if not self._renew_dispatch_lease(sensor=sensor):
+                        if advanced_position is not None:
+                            self._repository.advance_checkpoint(
+                                sensor_name=sensor.name,
+                                source=source,
+                                position=advanced_position,
+                            )
+                        return tuple(outcomes), False
+                    outcome: SensorDeliveryOutcome = self._deliver_event(sensor=sensor, event=event)
+                    outcomes.append(outcome)
+                    if not outcome.resolved:
+                        blocked = True
+                        break
+                if blocked:
+                    if advanced_position is not None:
+                        self._repository.advance_checkpoint(
+                            sensor_name=sensor.name,
+                            source=source,
+                            position=advanced_position,
+                        )
+                    return tuple(outcomes), True
+                advanced_position = delivery.position
+            current_position = deliveries[-1].position
+            if len(deliveries) < self._batch_limit:
+                break
+        if advanced_position is not None:
+            self._repository.advance_checkpoint(
+                sensor_name=sensor.name,
+                source=source,
+                position=advanced_position,
+            )
+        return tuple(outcomes), True
+
+    def _newest_position(self, *, source: str, target: str) -> SensorStreamPosition | None:
+        if source == NODE_RESULTS_EVENT_SOURCE:
+            return self._repository.newest_node_result_position(target=target)
+        return self._repository.newest_invocation_position(target=target)
+
+    def _event_age_limit(self, *, declaration: EventSensorDeclaration) -> float | None:
+        return (
+            declaration.maximum_event_age_seconds
+            if declaration.maximum_event_age_seconds is not None
+            else self._maximum_event_age_seconds
+        )
+
+    def _event_is_expired(
+        self,
+        *,
+        declaration: EventSensorDeclaration,
+        event: SensorEvent,
+        warehouse_now: str,
+    ) -> bool:
+        maximum_age: float | None = self._event_age_limit(declaration=declaration)
+        if maximum_age is None:
+            return False
+        expires_at: str = shift_timestamp_text(value=event.completed_at, seconds=maximum_age)
+        return timestamp_is_before(value=expires_at, other=warehouse_now)
+
+    def _renew_dispatch_lease(self, *, sensor: LoadedSensor) -> bool:
+        return self._repository.acquire_dispatch_lease(
+            owner_id=self._dispatcher_id,
+            ttl_seconds=max(
+                self._lease_ttl_seconds,
+                sensor.timeout_seconds + _LEASE_TIMEOUT_BUFFER_SECONDS,
+            ),
+        )
 
     def _initialize_checkpoint(self, *, sensor: LoadedSensor, source: str, target: str) -> None:
         newest: SensorStreamPosition | None

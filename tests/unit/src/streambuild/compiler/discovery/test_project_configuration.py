@@ -40,6 +40,7 @@ from tests.unit.src.streambuild.compiler.discovery._test_types import (
     ProjectPipelineNamingDefaultTestCase,
     ProjectPipelineNamingOverrideTestCase,
     ProjectRunSafetyDefaultTestCase,
+    SensorEventAgeResolutionTestCase,
     UnknownTargetTestCase,
 )
 from tests.unit.src.streambuild.compiler.discovery.helpers import (
@@ -229,6 +230,59 @@ def test_given_project_and_target_build_limits_when_resolving_then_target_overri
     assert dev.build.max_pipelines == test_case.expected_dev_limit
     assert staging.build.max_pipelines == test_case.expected_staging_limit
     assert private.build.max_pipelines == test_case.expected_private_limit
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        SensorEventAgeResolutionTestCase(
+            description="target age overrides the project sensor default",
+            expected_dev_seconds=1800,
+            expected_staging_seconds=7200,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_sensor_event_age_when_resolving_then_target_overrides_project_default(
+    test_case: SensorEventAgeResolutionTestCase,
+    tmp_path: Path,
+) -> None:
+    write_project_toml(
+        project_dir=tmp_path,
+        contents="""
+        name = "analytics"
+        default_target = "dev"
+
+        [sensors]
+        maximum_event_age = "2h"
+
+        [targets.dev]
+        database = "dev_database"
+
+        [targets.dev.sensors]
+        maximum_event_age = "30m"
+
+        [targets.staging]
+        database = "staging_database"
+        """,
+    )
+    loaded: LoadedProjectConfiguration = load_project_configuration(project_dir=tmp_path)
+
+    dev: EffectiveProjectConfiguration = resolve_effective_project_configuration(
+        loaded=loaded,
+        selected_target="dev",
+        cli_variables={},
+        environment={},
+    )
+    staging: EffectiveProjectConfiguration = resolve_effective_project_configuration(
+        loaded=loaded,
+        selected_target="staging",
+        cli_variables={},
+        environment={},
+    )
+
+    assert dev.sensors.maximum_event_age_seconds == test_case.expected_dev_seconds
+    assert staging.sensors.maximum_event_age_seconds == test_case.expected_staging_seconds
 
 
 @pytest.mark.parametrize(

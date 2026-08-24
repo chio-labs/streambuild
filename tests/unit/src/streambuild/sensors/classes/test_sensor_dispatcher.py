@@ -2,11 +2,13 @@
 
 import pytest
 
+from streambuild.events.models import NodeResultObservation
 from streambuild.sensors.classes.sensor_dispatcher import SensorDispatcher
 from streambuild.sensors.models import (
     PollingTickState,
     SensorDispatchSummary,
     SensorRegistry,
+    SensorStreamPosition,
     TickAttemptState,
 )
 from streambuild.sensors.types import SensorOverrideStatus, SensorTickStatus
@@ -15,12 +17,16 @@ from tests.unit.src.streambuild.sensors.classes._test_types import (
     DeadLetterActionTestCase,
     DispatcherScenarioTestCase,
     EventCheckpointInitializationTestCase,
+    LeaseLossTestCase,
+    MultiBatchDrainTestCase,
+    StreamHeadBoundTestCase,
 )
 from tests.unit.src.streambuild.sensors.classes.helpers import (
     EPOCH_POSITION,
     ROW_POSITION,
     backoff_sensor,
     failing_sensor,
+    fresh_events_sensor,
     polling_lag,
     prod_only_sensor,
     skipping_sensor,
@@ -163,6 +169,23 @@ from tests.unit.src.streambuild.sensors.helpers import (
             event_target="uat",
         ),
         DispatcherScenarioTestCase(
+            description="expired retry advances without stale handler evaluation",
+            sensor=build_loaded_sensor(declaration=fresh_events_sensor),
+            checkpoints={("fresh_events_sensor", "node_results"): EPOCH_POSITION},
+            node_results=(build_node_result_observation(),),
+            attempt_states={
+                ("fresh_events_sensor", "result-1"): TickAttemptState(
+                    failed_attempts=1,
+                    last_failed_at="2024-01-01 00:00:02.000",
+                    last_error_message="RuntimeError: slack unavailable",
+                    resolved=False,
+                )
+            },
+            expected_tick_statuses=(),
+            expected_advanced_count=1,
+            expected_summary=SensorDispatchSummary(),
+        ),
+        DispatcherScenarioTestCase(
             description="a lease held elsewhere skips the entire pass",
             sensor=build_loaded_sensor(declaration=succeeding_sensor),
             checkpoints={("succeeding_sensor", "node_results"): EPOCH_POSITION},
@@ -222,6 +245,154 @@ def test_given_scenario_when_dispatching_once_then_ticks_and_checkpoints_match(
         test_case.expected_tick_statuses
     )
     assert len(repository.advanced) == test_case.expected_advanced_count
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        MultiBatchDrainTestCase(
+            description="five results drain through two-row pages",
+            result_count=5,
+            batch_limit=2,
+            expected_result_id="result-5",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_more_results_than_one_batch_when_dispatching_then_drains_to_one_checkpoint(
+    test_case: MultiBatchDrainTestCase,
+) -> None:
+    rows: tuple[NodeResultObservation, ...] = tuple(
+        build_node_result_observation(
+            result_id=f"result-{index}",
+            completed_at=f"2024-01-01 00:00:0{index}.000",
+        )
+        for index in range(1, test_case.result_count + 1)
+    )
+    repository: FakeSensorStateRepository = FakeSensorStateRepository(
+        checkpoints={("succeeding_sensor", "node_results"): EPOCH_POSITION},
+        node_results=rows,
+        newest_position=SensorStreamPosition(
+            completed_at=rows[-1].completed_at,
+            result_id=rows[-1].result_id,
+        ),
+    )
+    dispatcher: SensorDispatcher = SensorDispatcher(
+        repository=repository,
+        event_target="prod",
+        batch_limit=test_case.batch_limit,
+    )
+    registry: SensorRegistry = SensorRegistry(
+        sensors={"succeeding_sensor": build_loaded_sensor(declaration=succeeding_sensor)}
+    )
+
+    summary: SensorDispatchSummary = dispatcher.dispatch_once(registry=registry, target="prod")
+
+    assert summary == SensorDispatchSummary(evaluated=5, succeeded=5)
+    assert tuple(position.result_id for _, _, position in repository.advanced) == (
+        test_case.expected_result_id,
+    )
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        StreamHeadBoundTestCase(
+            description="a result after the captured head waits for the next pass",
+            batch_limit=1,
+            stream_head=ROW_POSITION,
+            expected_result_id="result-1",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_new_results_arrive_during_dispatch_when_draining_then_stops_at_initial_head(
+    test_case: StreamHeadBoundTestCase,
+) -> None:
+    rows: tuple[NodeResultObservation, ...] = (
+        build_node_result_observation(result_id="result-1", completed_at="2024-01-01 00:00:01.000"),
+        build_node_result_observation(result_id="result-2", completed_at="2024-01-01 00:00:02.000"),
+    )
+    repository: FakeSensorStateRepository = FakeSensorStateRepository(
+        checkpoints={("succeeding_sensor", "node_results"): EPOCH_POSITION},
+        node_results=rows,
+        newest_position=test_case.stream_head,
+    )
+    dispatcher: SensorDispatcher = SensorDispatcher(
+        repository=repository,
+        event_target="prod",
+        batch_limit=test_case.batch_limit,
+    )
+    registry: SensorRegistry = SensorRegistry(
+        sensors={"succeeding_sensor": build_loaded_sensor(declaration=succeeding_sensor)}
+    )
+
+    summary: SensorDispatchSummary = dispatcher.dispatch_once(registry=registry, target="prod")
+
+    assert summary == SensorDispatchSummary(evaluated=1, succeeded=1)
+    assert tuple(position.result_id for _, _, position in repository.advanced) == (
+        test_case.expected_result_id,
+    )
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        LeaseLossTestCase(
+            description="renewal loss after two results aborts remaining sensors",
+            result_count=3,
+            batch_limit=2,
+            lease_results=(True, True, True, False),
+            expected_result_id="result-2",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_lease_is_lost_when_draining_then_checkpoints_and_stops_other_sensors(
+    test_case: LeaseLossTestCase,
+) -> None:
+    rows: tuple[NodeResultObservation, ...] = tuple(
+        build_node_result_observation(
+            result_id=f"result-{index}",
+            completed_at=f"2024-01-01 00:00:0{index}.000",
+        )
+        for index in range(1, test_case.result_count + 1)
+    )
+    repository: FakeSensorStateRepository = FakeSensorStateRepository(
+        checkpoints={
+            ("first_sensor", "node_results"): EPOCH_POSITION,
+            ("second_sensor", "node_results"): EPOCH_POSITION,
+        },
+        node_results=rows,
+        newest_position=SensorStreamPosition(
+            completed_at=rows[-1].completed_at,
+            result_id=rows[-1].result_id,
+        ),
+        lease_results=test_case.lease_results,
+    )
+    dispatcher: SensorDispatcher = SensorDispatcher(
+        repository=repository,
+        event_target="prod",
+        batch_limit=test_case.batch_limit,
+    )
+    registry: SensorRegistry = SensorRegistry(
+        sensors={
+            "first_sensor": build_loaded_sensor(declaration=succeeding_sensor, name="first_sensor"),
+            "second_sensor": build_loaded_sensor(
+                declaration=succeeding_sensor, name="second_sensor"
+            ),
+        }
+    )
+
+    summary: SensorDispatchSummary = dispatcher.dispatch_once(registry=registry, target="prod")
+
+    assert summary == SensorDispatchSummary(
+        lease_acquired=False,
+        evaluated=2,
+        succeeded=2,
+    )
+    assert tuple(sensor_name for sensor_name, _, _ in repository.advanced) == ("first_sensor",)
+    assert repository.advanced[0][2].result_id == test_case.expected_result_id
 
 
 @pytest.mark.parametrize(

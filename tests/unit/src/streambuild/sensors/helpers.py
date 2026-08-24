@@ -1,3 +1,5 @@
+from bisect import bisect_right
+from collections.abc import Iterator
 from pathlib import Path
 
 from streambuild.adapter.models import AdapterSensorStepRecord, AdapterSensorTickRecord
@@ -52,6 +54,7 @@ class FakeSensorStateRepository(SensorStateRepository):
         polling_states: dict[str, PollingTickState] | None = None,
         newest_position: SensorStreamPosition | None = None,
         lease_acquired: bool = True,
+        lease_results: tuple[bool, ...] = (),
         step_markers: dict[tuple[str, str, str], StepMarker] | None = None,
     ) -> None:
         self._checkpoints: dict[tuple[str, str], SensorStreamPosition] = dict(checkpoints or {})
@@ -63,6 +66,7 @@ class FakeSensorStateRepository(SensorStateRepository):
         self._polling_states: dict[str, PollingTickState] = dict(polling_states or {})
         self._newest_position: SensorStreamPosition | None = newest_position
         self._lease_acquired: bool = lease_acquired
+        self._lease_results: Iterator[bool] = iter((*lease_results, lease_acquired))
         self._step_markers: dict[tuple[str, str, str], StepMarker] = dict(step_markers or {})
         self._node_results_by_id: dict[str, NodeResultObservation] = {
             row.result_id: row for row in node_results
@@ -83,7 +87,7 @@ class FakeSensorStateRepository(SensorStateRepository):
         return FAKE_WAREHOUSE_NOW
 
     def acquire_dispatch_lease(self, *, owner_id: str, ttl_seconds: float) -> bool:
-        return self._lease_acquired
+        return next(self._lease_results, self._lease_acquired)
 
     def override_statuses(self) -> dict[str, SensorOverrideStatus]:
         return dict(self._overrides)
@@ -112,7 +116,11 @@ class FakeSensorStateRepository(SensorStateRepository):
     def fetch_node_results_after(
         self, *, position: SensorStreamPosition, target: str, limit: int
     ) -> tuple[NodeResultObservation, ...]:
-        return self._node_results
+        keys: tuple[tuple[str, str], ...] = tuple(
+            (row.completed_at, row.result_id) for row in self._node_results
+        )
+        start: int = bisect_right(keys, (position.completed_at, position.result_id))
+        return self._node_results[start : start + limit]
 
     def fetch_node_result(self, *, result_id: str) -> NodeResultObservation | None:
         return self._node_results_by_id.get(result_id)
@@ -120,7 +128,11 @@ class FakeSensorStateRepository(SensorStateRepository):
     def fetch_invocations_after(
         self, *, position: SensorStreamPosition, target: str, limit: int
     ) -> tuple[InvocationObservation, ...]:
-        return self._invocations
+        keys: tuple[tuple[str, str], ...] = tuple(
+            (row.completed_at, row.invocation_id) for row in self._invocations
+        )
+        start: int = bisect_right(keys, (position.completed_at, position.result_id))
+        return self._invocations[start : start + limit]
 
     def fetch_invocation(self, *, invocation_id: str) -> InvocationObservation | None:
         return self._invocations_by_id.get(invocation_id)
