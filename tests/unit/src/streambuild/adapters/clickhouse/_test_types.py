@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 
 from streambuild.adapter.exceptions import AdapterWarehouseError
-from streambuild.adapter.models import AdapterStatementProgress
+from streambuild.adapter.models import AdapterStatementProgress, AdapterTargetMutationLock
 from streambuild.adapter.types import AdapterReplayBoundaryMode
 
 
@@ -368,3 +368,44 @@ class ClickHouseWarehouseHealthTestCase:
 class ClickHouseOptionalHealthFailureTestCase:
     description: str
     expected_warning: str
+
+
+@dataclass(frozen=True)
+class TargetMutationLockAcquireTestCase:
+    description: str
+    database: str
+    owner_id: str
+    expected_lock: AdapterTargetMutationLock
+    expected_statements: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class TargetMutationLockConflictTestCase:
+    description: str
+    database: str
+    current_owner_id: str
+    requested_owner_id: str
+    expected_error_message: str
+    expected_statements: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class TargetMutationLockReleaseTestCase:
+    description: str
+    lock: AdapterTargetMutationLock
+    expected_statements: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class TargetMutationLockOwnershipChangeTestCase:
+    description: str
+    lock: AdapterTargetMutationLock
+    current_owner_id: str
+    expected_error_message: str
+    expected_statements: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class OwnershipMetadataTestCase:
+    description: str
+    expected_fragment: str

@@ -259,6 +259,14 @@ class AdapterRelationCleanupRequest:
 
 
 @dataclass(frozen=True)
+class AdapterTargetMutationLock:
+    """Exclusive warehouse-backed ownership of one target mutation slot."""
+
+    database: str
+    owner_id: str
+
+
+@dataclass(frozen=True)
 class AdapterReadinessRootRequest:
     """One staged root whose live and candidate relations must be compared."""
 
@@ -439,6 +447,36 @@ class AdapterDirectFingerprintSnapshot:
 
     status: AdapterOptionalStateStatus | str
     baselines: tuple[AdapterDirectFingerprintRecord, ...]
+    warning: str | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "status", AdapterOptionalStateStatus(self.status))
+
+
+@dataclass(frozen=True)
+class AdapterOwnedResourceEvent:
+    """One authoritative latest-wins ownership event for a warehouse relation."""
+
+    event_id: str
+    event_type: str
+    target_database: str
+    resource_database: str
+    resource_name: str
+    resource_kind: str
+    pipeline_name: str
+    logical_resource_type: str
+    logical_resource_name: str
+    resource_role: str
+    catalog_fingerprint: str | None = None
+    recorded_at: str | None = None
+
+
+@dataclass(frozen=True)
+class AdapterOwnedResourceSnapshot:
+    """Availability and latest still-owned resource events for one target."""
+
+    status: AdapterOptionalStateStatus | str
+    resources: tuple[AdapterOwnedResourceEvent, ...]
     warning: str | None = None
 
     def __post_init__(self) -> None:
@@ -749,9 +787,16 @@ class CatalogRelation:
     settings: tuple[tuple[str, str], ...] = ()
     definition_sql: str | None = None
     query_sql: str | None = None
-    source_relation_name: str | None = None
+    source_relation_names: tuple[str, ...] = ()
     target_relation_name: str | None = None
     stable_binding_name: str | None = None
+    ownership_generation: str | None = None
+
+    @property
+    def source_relation_name(self) -> str | None:
+        """Return the first physical source when one exists."""
+
+        return self.source_relation_names[0] if self.source_relation_names else None
 
 
 @dataclass(frozen=True)

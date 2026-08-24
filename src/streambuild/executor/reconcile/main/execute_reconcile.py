@@ -13,12 +13,14 @@ from streambuild.executor.reconcile.models import ReconcilePreview, ReconcileRes
 from streambuild.executor.workflow.main._execute_warehouse_workflow import (
     execute_warehouse_workflow,
 )
+from streambuild.executor.workflow.main.target_mutation_lock import target_mutation_lock
 from streambuild.executor.workflow.models import WarehouseStatement
 
 
 def execute_reconcile(
     *,
     client: AdapterConnection,
+    target_database: str,
     metadata_database: str,
     desired_state: DesiredState,
     actual_state: ActualState,
@@ -34,17 +36,18 @@ def execute_reconcile(
         selected_model_keys=selected_model_keys,
     )
     if apply:
-        metadata_state: AdapterMetadataState = build_reconcile_metadata_state(preview)
-        statements: tuple[WarehouseStatement, ...] = assemble_reconcile_workflow(
-            client=client,
-            database=preview.database,
-            metadata_state=metadata_state,
-        )
-        _ = execute_warehouse_workflow(statements=statements, connection=client)
-        return ReconcileResult(
-            database=preview.database,
-            reconcile_id=preview.reconcile_id,
-            reconciled_records=preview.eligible_records,
-            rejected_targets=preview.rejected_targets,
-        )
+        with target_mutation_lock(connection=client, database=target_database):
+            metadata_state: AdapterMetadataState = build_reconcile_metadata_state(preview)
+            statements: tuple[WarehouseStatement, ...] = assemble_reconcile_workflow(
+                client=client,
+                database=preview.database,
+                metadata_state=metadata_state,
+            )
+            _ = execute_warehouse_workflow(statements=statements, connection=client)
+            return ReconcileResult(
+                database=preview.database,
+                reconcile_id=preview.reconcile_id,
+                reconciled_records=preview.eligible_records,
+                rejected_targets=preview.rejected_targets,
+            )
     return preview

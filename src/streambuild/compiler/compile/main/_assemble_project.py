@@ -93,6 +93,7 @@ def assemble_project(
         macro_context=inputs.macro_context,
         project_name=inputs.project_name,
         target_name=inputs.target_name,
+        production_target=inputs.effective_target.production_target,
     )
     validate_compiled_project_relation_names(project=project)
     return project

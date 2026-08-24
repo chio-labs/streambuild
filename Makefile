@@ -73,6 +73,7 @@ ui-build:
 
 ui-verify:
 	cd ui && npm run check
+	cd ui && npm run test -- --run
 	cd ui && npm run verify:lanes
 	cd ui && npm run verify:lineage-activity
 	cd ui && npm run verify:run-timeline

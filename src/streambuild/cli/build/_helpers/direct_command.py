@@ -63,6 +63,7 @@ def execute_direct_build_command(
     started: tuple[str, str, int],
     confirmation_required: bool = True,
     startup_timings: RunStartupTimings | None = None,
+    _acquire_target_mutation_lock: bool = True,
 ) -> int:
     """Confirm, execute, and audit one prepared direct build."""
 
@@ -95,6 +96,7 @@ def execute_direct_build_command(
             client=client,
             emitter=sink,
             confirmation_required=confirmation_required,
+            _acquire_target_mutation_lock=_acquire_target_mutation_lock,
         )
     except (AdapterError, OSError) as error:
         failed_invocation: AdapterInvocationRecord = _build_invocation(

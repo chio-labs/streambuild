@@ -1,0 +1,1 @@
+"""Destruction CLI unit tests."""

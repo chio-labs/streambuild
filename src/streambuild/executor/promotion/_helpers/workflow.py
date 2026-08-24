@@ -1,7 +1,11 @@
 """Assemble the exact deployment-promotion workflow statements."""
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.adapter.models import AdapterBindingReplacementRequest, AdapterMetadataState
+from streambuild.adapter.models import (
+    AdapterBindingReplacementRequest,
+    AdapterMetadataState,
+    AdapterOwnedResourceEvent,
+)
 from streambuild.executor.workflow.models import WarehouseStatement
 from streambuild.executor.workflow.types import StatementIntent, WorkflowPhase
 
@@ -12,6 +16,7 @@ def assemble_publish_workflow(
     metadata_database: str,
     binding_request: AdapterBindingReplacementRequest,
     metadata_state: AdapterMetadataState,
+    ownership_events: tuple[AdapterOwnedResourceEvent, ...] = (),
 ) -> tuple[WarehouseStatement, ...]:
     """Return publish mutations in existing lifecycle order."""
 
@@ -21,17 +26,33 @@ def assemble_publish_workflow(
         database=metadata_database,
         state=metadata_state,
     )
-    binding_statements: tuple[WarehouseStatement, ...] = _build_named_statements(
-        sql_statements=binding_sql,
-        step_ids=_binding_step_ids(binding_request=binding_request),
-        sequence_start=1,
-        phase=WorkflowPhase.STABILIZATION,
-    )
     migration_statements: tuple[WarehouseStatement, ...] = _build_statements(
         sql_statements=migration_sql,
-        sequence_start=len(binding_statements) + 1,
+        sequence_start=1,
         step_prefix="migrate_metadata",
-        phase=WorkflowPhase.FINALIZATION,
+        phase=WorkflowPhase.PREPARATION,
+    )
+    interleaved_sql: list[str] = []
+    interleaved_ids: list[str] = []
+    step_ids: tuple[str, ...] = _binding_step_ids(binding_request=binding_request)
+    for index, sql in enumerate(binding_sql):
+        interleaved_sql.append(sql)
+        interleaved_ids.append(step_ids[index])
+        if index < len(ownership_events):
+            rendered_events: tuple[str, ...] = client.render_owned_resource_events(
+                database=metadata_database,
+                events=(ownership_events[index],),
+            )
+            interleaved_sql.extend(rendered_events)
+            interleaved_ids.extend(
+                f"record_binding_ownership_{index + 1}_{event_index}"
+                for event_index in range(1, len(rendered_events) + 1)
+            )
+    binding_statements: tuple[WarehouseStatement, ...] = _build_named_statements(
+        sql_statements=tuple(interleaved_sql),
+        step_ids=tuple(interleaved_ids),
+        sequence_start=len(migration_statements) + 1,
+        phase=WorkflowPhase.STABILIZATION,
     )
     persistence_statements: tuple[WarehouseStatement, ...] = _build_statements(
         sql_statements=persistence_sql,
@@ -39,7 +60,7 @@ def assemble_publish_workflow(
         step_prefix="persist_publish_event",
         phase=WorkflowPhase.FINALIZATION,
     )
-    return (*binding_statements, *migration_statements, *persistence_statements)
+    return (*migration_statements, *binding_statements, *persistence_statements)
 
 
 def _build_statements(

@@ -8,6 +8,70 @@ from streambuild.dev_server.types import RunPresentationStatus
 
 
 @dataclass(frozen=True)
+class DestructionRequestValidationTestCase:
+    description: str
+    field: str
+    value: object
+    expected_error_fragment: str
+
+
+@dataclass(frozen=True)
+class DestructionChallengeWhitespaceTestCase:
+    description: str
+    responses: list[str]
+    expected_responses: list[str]
+
+
+@dataclass(frozen=True)
+class DestructionAuthorizationRouteTestCase:
+    description: str
+    expected_denied_status: int
+    expected_reason: str
+    expected_allowed_status: int
+    expected_plan_id: str
+    expected_planner_call_count: int
+
+
+@dataclass(frozen=True)
+class DestructionClosureAuthorizationRouteTestCase:
+    description: str
+    dependent_pipeline: str
+    expected_status: int
+    expected_permission: str
+    expected_authorization_call_count: int
+    expected_planner_call_count: int
+
+
+@dataclass(frozen=True)
+class DestructionResetRouteTestCase:
+    description: str
+    expected_status: int
+    expected_managed_sources_included: bool
+
+
+@dataclass(frozen=True)
+class DestructionReviewGateRouteTestCase:
+    description: str
+    expected_status: int
+    expected_detail_fragment: str
+
+
+@dataclass(frozen=True)
+class DestructionActorBindingRouteTestCase:
+    description: str
+    expected_status: int
+
+
+@dataclass(frozen=True)
+class DestructionRestartRouteTestCase:
+    description: str
+    expected_plan_id: str
+    expected_reviewed_status: int
+    expected_reloaded_status: int
+    expected_mismatched_review_status: int
+
+
+@dataclass(frozen=True)
 class DevRefactorTestCase:
     description: str
     expected_value: object

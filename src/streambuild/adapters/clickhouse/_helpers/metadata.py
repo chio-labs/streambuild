@@ -14,6 +14,7 @@ from streambuild.adapter.constants import (
     METADATA_INVOCATIONS_TABLE_NAME,
     METADATA_NODE_RESULTS_TABLE_NAME,
     METADATA_OBJECT_STATE_TABLE_NAME,
+    METADATA_OWNED_RESOURCES_TABLE_NAME,
     METADATA_PUBLISH_HISTORY_TABLE_NAME,
     METADATA_RUN_EVENTS_TABLE_NAME,
     METADATA_RUN_STATEMENTS_TABLE_NAME,
@@ -23,6 +24,7 @@ from streambuild.adapter.constants import (
     METADATA_SENSOR_OVERRIDES_TABLE_NAME,
     METADATA_SENSOR_STEPS_TABLE_NAME,
     METADATA_SENSOR_TICKS_TABLE_NAME,
+    OWNERSHIP_EVENT_DROPPED,
     REPLAY_VALUE_KIND_INTEGER,
     REPLAY_VALUE_KIND_TIMESTAMP,
     VIRTUAL_OBJECT_STATE_KIND_DEPLOYMENT,
@@ -38,6 +40,8 @@ from streambuild.adapter.models import (
     AdapterMetadataState,
     AdapterNodeResultRecord,
     AdapterObjectStateRecord,
+    AdapterOwnedResourceEvent,
+    AdapterOwnedResourceSnapshot,
     AdapterPublishEventRecord,
     AdapterQueryResult,
     AdapterRunEventRecord,
@@ -52,7 +56,7 @@ from streambuild.adapter.models import (
 from streambuild.adapter.types import AdapterOptionalStateStatus, AdapterReplayBoundaryMode
 from streambuild.adapters.clickhouse.models import ClickHouseMetadataStatement
 
-_CURRENT_STATE_SCHEMA_VERSION: int = 5
+_CURRENT_STATE_SCHEMA_VERSION: int = 6
 _BOUNDARY_PART_COUNT: int = 2
 _SNAPSHOT_FIELD_NAMES: tuple[str, ...] = (
     "binding_key",
@@ -88,6 +92,22 @@ _DIRECT_FINGERPRINT_REQUIRED_COLUMNS: frozenset[str] = frozenset(
         "applied_at",
     }
 )
+_OWNED_RESOURCE_REQUIRED_COLUMNS: frozenset[str] = frozenset(
+    {
+        "event_id",
+        "event_type",
+        "target_database",
+        "resource_database",
+        "resource_name",
+        "resource_kind",
+        "pipeline_name",
+        "logical_resource_type",
+        "logical_resource_name",
+        "resource_role",
+        "catalog_fingerprint",
+        "recorded_at",
+    }
+)
 
 
 def render_clickhouse_metadata_migration_statements(database: str) -> tuple[str, ...]:
@@ -108,6 +128,7 @@ def render_clickhouse_metadata_migration_statements(database: str) -> tuple[str,
         _render_sensor_steps_table(database),
         _render_sensor_overrides_table(database),
         _render_sensor_leases_table(database),
+        _render_owned_resources_table(database),
         _render_publish_history_lifecycle_columns(database),
     )
 
@@ -445,6 +466,144 @@ def _render_direct_fingerprints_table(database: str) -> str:
         "    tool_version String,\n"
         "    applied_at DateTime64(3, 'UTC')\n"
         ") ENGINE = MergeTree ORDER BY (logical_model_identity, applied_at, fingerprint_id)"
+    )
+
+
+def _render_owned_resources_table(database: str) -> str:
+    return (
+        f"CREATE TABLE IF NOT EXISTS {database}.{METADATA_OWNED_RESOURCES_TABLE_NAME} (\n"
+        "    event_id String,\n"
+        "    event_type LowCardinality(String),\n"
+        "    target_database String,\n"
+        "    resource_database String,\n"
+        "    resource_name String,\n"
+        "    resource_kind LowCardinality(String),\n"
+        "    pipeline_name String,\n"
+        "    logical_resource_type LowCardinality(String),\n"
+        "    logical_resource_name String,\n"
+        "    resource_role LowCardinality(String),\n"
+        "    catalog_fingerprint String,\n"
+        "    recorded_at DateTime64(6, 'UTC') DEFAULT now64(6, 'UTC')\n"
+        ") ENGINE = MergeTree\n"
+        "ORDER BY (target_database, resource_database, resource_name, recorded_at, event_id)"
+    )
+
+
+def load_clickhouse_owned_resources(
+    *, connection: AdapterConnection, database: str, target_database: str
+) -> AdapterOwnedResourceSnapshot:
+    """Load latest still-owned resource events, preserving explicit absence."""
+
+    try:
+        columns: frozenset[str] = connection.metadata_columns(
+            database=database,
+            table=METADATA_OWNED_RESOURCES_TABLE_NAME,
+        )
+        if not columns:
+            return AdapterOwnedResourceSnapshot(status="absent", resources=())
+        if not _OWNED_RESOURCE_REQUIRED_COLUMNS <= columns:
+            return AdapterOwnedResourceSnapshot(
+                status="unavailable",
+                resources=(),
+                warning="Owned-resource ledger has an incompatible schema",
+            )
+        result: AdapterQueryResult = connection.query(
+            _latest_owned_resources_query(database=database, target_database=target_database)
+        )
+    except AdapterWarehouseError as error:
+        return AdapterOwnedResourceSnapshot(
+            status="unavailable",
+            resources=(),
+            warning=f"Owned-resource ledger unavailable: {error}",
+        )
+    return AdapterOwnedResourceSnapshot(
+        status="available",
+        resources=tuple(
+            AdapterOwnedResourceEvent(
+                event_id=str(row[0]),
+                event_type=str(row[1]),
+                target_database=str(row[2]),
+                resource_database=str(row[3]),
+                resource_name=str(row[4]),
+                resource_kind=str(row[5]),
+                pipeline_name=str(row[6]),
+                logical_resource_type=str(row[7]),
+                logical_resource_name=str(row[8]),
+                resource_role=str(row[9]),
+                catalog_fingerprint=str(row[10]),
+                recorded_at=str(row[11]),
+            )
+            for row in result.rows
+        ),
+    )
+
+
+def _latest_owned_resources_query(*, database: str, target_database: str) -> str:
+    table: str = f"{database}.{METADATA_OWNED_RESOURCES_TABLE_NAME}"
+    target: str = _render_sql_literal(target_database)
+    return (
+        "SELECT latest.1, latest.2, target_database, resource_database, resource_name, "
+        "latest.3, latest.4, latest.5, latest.6, latest.7, latest.8, latest.9 FROM ("
+        "SELECT target_database, resource_database, resource_name, "
+        "argMax(tuple(event_id, event_type, resource_kind, pipeline_name, "
+        "logical_resource_type, logical_resource_name, resource_role, catalog_fingerprint, "
+        "recorded_at), tuple(recorded_at, event_id)) AS latest "
+        f"FROM {table} WHERE target_database = {target} "
+        "GROUP BY target_database, resource_database, resource_name) "
+        "WHERE latest.2 = 'owned' ORDER BY resource_database, resource_name"
+    )
+
+
+def render_clickhouse_owned_resource_events(
+    *, database: str, events: tuple[AdapterOwnedResourceEvent, ...]
+) -> tuple[str, ...]:
+    """Render one fail-closed append for each ownership transition."""
+
+    return tuple(_owned_resource_event_sql(database=database, event=event) for event in events)
+
+
+def _owned_resource_event_sql(*, database: str, event: AdapterOwnedResourceEvent) -> str:
+    columns: str = (
+        "event_id, event_type, target_database, resource_database, resource_name, "
+        "resource_kind, pipeline_name, logical_resource_type, logical_resource_name, "
+        "resource_role, catalog_fingerprint, recorded_at"
+    )
+    values: tuple[str, ...] = (
+        event.event_id,
+        event.event_type,
+        event.target_database,
+        event.resource_database,
+        event.resource_name,
+        event.resource_kind,
+        event.pipeline_name,
+        event.logical_resource_type,
+        event.logical_resource_name,
+        event.resource_role,
+    )
+    literals: str = ", ".join(_render_sql_literal(value) for value in values)
+    recorded_at: str = (
+        "now64(6, 'UTC')"
+        if event.recorded_at is None
+        else f"toDateTime64({_render_sql_literal(event.recorded_at)}, 6, 'UTC')"
+    )
+    if event.event_type == OWNERSHIP_EVENT_DROPPED:
+        fingerprint: str = _render_sql_literal(event.catalog_fingerprint or "")
+        return (
+            f"INSERT INTO {database}.{METADATA_OWNED_RESOURCES_TABLE_NAME} ({columns}) "
+            f"VALUES ({literals}, {fingerprint}, {recorded_at});"
+        )
+    zero_uuid: str = "00000000-0000-0000-0000-000000000000"
+    fingerprint = (
+        f"if(toString(any(uuid)) != '{zero_uuid}', toString(any(uuid)), "
+        "lower(hex(SHA256(any(create_table_query)))))"
+    )
+    return (
+        f"INSERT INTO {database}.{METADATA_OWNED_RESOURCES_TABLE_NAME} ({columns})\n"
+        f"SELECT {literals}, {fingerprint}, {recorded_at}\n"
+        "FROM system.tables "
+        f"WHERE database = {_render_sql_literal(event.resource_database)} "
+        f"AND name = {_render_sql_literal(event.resource_name)}\n"
+        "HAVING throwIf(count() != 1, 'Owned resource is absent or ambiguous') = 0;"
     )
 
 

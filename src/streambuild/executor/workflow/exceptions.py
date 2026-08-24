@@ -8,8 +8,10 @@ class WorkflowValidationError(ValueError):
 class WorkflowExecutionError(RuntimeError):
     """Raised with completed statement evidence when one workflow statement fails."""
 
-    def __init__(self, *, failed_step_id: str, partial_result: object, cause: Exception) -> None:
+    def __init__(
+        self, *, failed_step_id: str, partial_result: object, cause: BaseException
+    ) -> None:
         super().__init__(str(cause))
         self.failed_step_id: str = failed_step_id
         self.partial_result: object = partial_result
-        self.cause: Exception = cause
+        self.cause: BaseException = cause

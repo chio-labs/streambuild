@@ -216,6 +216,46 @@ stb deployment rollback --previous
 Promotion and rollback switch stable views one relation at a time. Rollback restores a retained
 publication's bindings, not a historical data snapshot.
 
+## Destructive Operations
+
+StreamBuild can destroy selected deployed pipelines while retaining their authored definitions,
+managed sources, and replay data. A target reset additionally removes managed source and replay
+relations, but preserves every `_streambuild_*` metadata table, account and authorization state,
+Kafka offsets, and the reset's own run evidence.
+
+```bash
+stb destroy --target uat --select pipeline:pl__orders pipeline:pl__reporting
+stb reset-target --target uat
+```
+
+Both commands require an interactive terminal. They print a frozen impact plan, require a separate
+review decision, and then prompt for exact pipeline-name challenges from that plan. There is no
+non-interactive approval option or administrator bypass. Execution locks the target, replans, and
+rejects manifest or warehouse drift before the first drop. Unselected downstream pipelines block a
+plan rather than being silently included. Standalone CLI execution also requires the local OS user
+to be an active built-in administrator in the StreamBuild control store.
+
+UI plans and their review state are durable, actor-bound, and atomically single-use across server
+restarts and workers. Standalone CLI plans use the same durable control-store representation.
+
+Classify production targets in committed project configuration so reset requires the additional
+exact `PRODUCTION` challenge even when the target has a non-standard name:
+
+```toml
+[targets.live]
+production = true
+```
+
+Ownership generations, external dependants in every ClickHouse database, and target/database drift
+are checked before execution. Historical deployment metadata alone never authorizes deletion of a
+live same-name relation. Target mutation locks remain fail-closed after a crashed owner; StreamBuild
+does not use an age-based automatic takeover that could overlap a long-running ClickHouse query.
+
+The Pipelines UI exposes the same planner and executor through multi-selection and the dedicated
+`pipeline.destroy` and `target.reset` permissions. Every generated statement, actor, challenge,
+result, and observed remaining object after a partial failure is retained in Runs. A failed residual
+catalog read is recorded as unavailable rather than as an empty target.
+
 ## Development UI
 
 `stb dev` serves a warehouse-backed interface for one resolved project and target. It provides:
@@ -226,6 +266,7 @@ publication's bindings, not a historical data snapshot.
 - connected plan previews and protected-pipeline confirmation
 - direct, virtual, and mixed build execution
 - deployment inventory, diff, promotion, and cleanup
+- frozen bulk pipeline destruction and target reset plans with typed confirmation
 - durable run timelines, statement progress, cancellation, and stale-run recovery guidance
 - quality history, scheduler health, sensors, and dead-letter recovery
 

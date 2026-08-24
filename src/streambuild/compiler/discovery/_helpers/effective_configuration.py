@@ -75,6 +75,7 @@ def resolve_effective_project_configuration(
             field_path=f"{loaded.project_source.file_path} adapter",
         ),
         target_name=target_name,
+        production_target=project_target.production,
         database=database,
         connection=RawConnectionConfig(
             values=tuple(

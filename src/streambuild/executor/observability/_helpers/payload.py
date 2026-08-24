@@ -27,6 +27,12 @@ def bounded_json(payload: dict[str, object]) -> str:
     )
 
 
+def complete_json(payload: dict[str, object]) -> str:
+    """Serialize evidence that must remain complete regardless of payload size."""
+
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
+
+
 def concise_error(error_message: str | None) -> str | None:
     """Bound one persisted error without altering the command's rendered diagnostics."""
 

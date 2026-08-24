@@ -22,6 +22,7 @@ PIPELINE_PERMISSIONS: frozenset[Permission] = frozenset(
         Permission.DEPLOYMENT_CREATE,
         Permission.BUILD_CANCEL,
         Permission.DEPLOYMENT_PROMOTE,
+        Permission.PIPELINE_DESTROY,
     }
 )
 PROJECT_PERMISSIONS: frozenset[Permission] = frozenset(
@@ -38,6 +39,7 @@ TARGET_PERMISSIONS: frozenset[Permission] = frozenset(
         Permission.SOURCE_MESSAGES_READ,
         Permission.BUILD_KILL,
         Permission.DEPLOYMENT_CLEANUP,
+        Permission.TARGET_RESET,
         Permission.AUTOMATION_MANAGE,
     }
 )

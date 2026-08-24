@@ -486,6 +486,7 @@ def _terminal_runs(
             "durationMs": int(str(row["duration_ms"])),
             "selectedNodeCount": int(str(row["selected_node_count"])),
             "errorMessage": row["error_message"],
+            "summary": _parsed_event_payload(row["summary_json"]),
             "auditSummary": _terminal_audit_summary(
                 command=str(row["command"]),
                 mode=str(row["mode"]),

@@ -37,6 +37,16 @@ from tests.unit.src.streambuild.events.main._test_types import InvocationEventTe
             expected_event_count=1,
         ),
         InvocationEventTestCase(
+            description="pipeline destruction completes as a run event",
+            command="destroy pipelines",
+            expected_event_count=1,
+        ),
+        InvocationEventTestCase(
+            description="target reset completes as a run event",
+            command="reset target",
+            expected_event_count=1,
+        ),
+        InvocationEventTestCase(
             description="unrecognized historical commands produce no events",
             command="mystery",
             expected_event_count=0,

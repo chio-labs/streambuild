@@ -281,6 +281,20 @@ def prepare_virtual_build_workflow(
         created_at=preview.created_at,
         confirmed_target_catalog=preview.target_catalog,
         confirmed_metadata_catalog=preview.metadata_catalog,
+        pipeline_name_by_logical_name=tuple(
+            sorted(
+                (model.key.name, model.pipeline_name)
+                for model in analysis.realized_project.project.models
+            )
+        )
+        + tuple(
+            sorted(
+                (pipeline.source.key.name, pipeline.pipeline.name)
+                for pipeline in analysis.realized_project.project.pipelines
+                if pipeline.source is not None
+            )
+        ),
+        ownership_identity_by_resource_name=_ownership_identities(analysis=analysis),
     )
     workflow: BuildWorkflow = assemble_virtual_build_workflow(
         request=request,
@@ -297,6 +311,27 @@ def prepare_virtual_build_workflow(
             execution_model_keys=preview.execution_logical_model_keys,
         ),
     )
+
+
+def _ownership_identities(*, analysis: CompileAnalysis) -> tuple[tuple[str, str, str, str], ...]:
+    pipeline_by_logical_name: dict[str, str] = {
+        model.key.name: model.pipeline_name for model in analysis.realized_project.project.models
+    }
+    for pipeline in analysis.realized_project.project.pipelines:
+        if pipeline.source is not None:
+            pipeline_by_logical_name[pipeline.source.key.name] = pipeline.pipeline.name
+    identities: list[tuple[str, str, str, str]] = []
+    for key, resources in analysis.realized_project.resources_by_logical_key.items():
+        for resource in resources:
+            identities.append(
+                (
+                    resource.name,
+                    str(key.resource_type),
+                    key.name,
+                    pipeline_by_logical_name.get(key.name, ""),
+                )
+            )
+    return tuple(sorted(identities))
 
 
 def _validate_common_flags(*, options: WorkflowPreparationOptions) -> None:

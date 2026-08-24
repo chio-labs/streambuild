@@ -10,6 +10,7 @@ import type {
 } from '$lib/run-presentation/types';
 
 type ModelRunState = { state: 'running' | 'done' | 'failed'; rows: number | null };
+type RunGraphOperation = 'build' | 'promotion' | 'destruction';
 
 export function buildRunGraph(input: RunGraphInput): RunGraphPresentation {
 	const modelStates: Map<string, ModelRunState> = buildModelStates(input.project, input.events);
@@ -30,13 +31,17 @@ export function buildRunGraph(input: RunGraphInput): RunGraphPresentation {
 	const mutedIds: Set<string> = new Set(
 		runGraph.nodes.filter((node: GraphNode) => contextIds.has(node.id)).map((node: GraphNode) => node.id)
 	);
-	const isPromotion: boolean =
-		(input.startedEvent?.command ?? input.record?.command ?? input.commandLine) ===
-		'deployment promote';
+	const command: string = input.startedEvent?.command ?? input.record?.command ?? input.commandLine;
+	const operation: RunGraphOperation =
+		command === 'deployment promote'
+			? 'promotion'
+			: command === 'destroy pipelines' || command === 'reset target'
+				? 'destruction'
+				: 'build';
 	return {
 		runGraph,
 		mutedIds,
-		notes: buildNotes(runGraph, modelStates, input.running, input.outcome, isPromotion),
+		notes: buildNotes(runGraph, modelStates, input.running, input.outcome, operation, executedIds),
 		recordedScopeCount,
 		missingScopeCount: recordedScopeCount - runGraph.nodes.length
 	};
@@ -83,10 +88,18 @@ function buildNotes(
 	modelStates: Map<string, ModelRunState>,
 	running: boolean,
 	outcome: string,
-	isPromotion: boolean
+	operation: RunGraphOperation,
+	executedIds: Set<string>
 ): Map<string, RunNodeNote> {
 	const notes: Map<string, RunNodeNote> = new Map();
 	for (const node of runGraph.nodes) {
+		if (operation === 'destruction' && executedIds.has(node.id)) {
+			notes.set(node.id, {
+				text: running ? 'removing…' : outcome === 'succeeded' ? 'removed' : 'incomplete',
+				tone: running || outcome === 'succeeded' ? 'info' : 'warn'
+			});
+			continue;
+		}
 		const state: ModelRunState | undefined = modelStates.get(node.logicalName);
 		if (state === undefined) continue;
 		if (state.state === 'failed') {
@@ -94,11 +107,11 @@ function buildNotes(
 		} else if (state.state === 'running') {
 			notes.set(node.id, {
 				text: running
-					? isPromotion
+					? operation === 'promotion'
 						? 'switching…'
 						: 'rebuilding…'
 					: outcome === 'succeeded'
-						? isPromotion
+						? operation === 'promotion'
 							? 'switched'
 							: 'rebuilt'
 						: 'incomplete',
@@ -108,7 +121,7 @@ function buildNotes(
 			notes.set(node.id, {
 				text:
 					state.rows === null
-						? isPromotion
+						? operation === 'promotion'
 							? 'switched'
 							: 'rebuilt'
 						: `${formatCompact(state.rows)} rows`,

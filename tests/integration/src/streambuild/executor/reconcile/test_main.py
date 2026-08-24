@@ -59,6 +59,7 @@ def test_given_compatible_live_objects_when_applying_reconcile_then_persists_bas
             ReconcileResult,
             execute_reconcile(
                 client=managed_client,
+                target_database=clickhouse_database,
                 metadata_database=clickhouse_database,
                 desired_state=desired_state,
                 actual_state=actual_state,

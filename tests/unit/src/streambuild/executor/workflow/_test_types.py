@@ -32,6 +32,22 @@ class WorkflowQueryIdTestCase:
 
 
 @dataclass(frozen=True)
+class WorkflowEmitterFailureTestCase:
+    description: str
+    failed_step_id: str
+    expected_partial_step_ids: tuple[str, ...]
+    expected_dispatched_statements: tuple[str, ...]
+    expected_error_fragment: str
+
+
+@dataclass(frozen=True)
 class WorkflowPersistenceFailureTestCase:
     description: str
     expected_error_fragment: str
+
+
+@dataclass(frozen=True)
+class TargetMutationLockTestCase:
+    description: str
+    database: str
+    expected_events: tuple[str, ...]

@@ -45,7 +45,7 @@ def persist_direct_fingerprints(
         )
         _ = execute_observation_workflow(statements=statements, connection=connection)
     except (AdapterError, WorkflowExecutionError) as error:
-        cause: Exception = error.cause if isinstance(error, WorkflowExecutionError) else error
+        cause: BaseException = error.cause if isinstance(error, WorkflowExecutionError) else error
         return f"Direct SQL baseline was not recorded: {cause}"
     return None
 

@@ -91,6 +91,7 @@ def resolve_cli_invocation(
             variables=project_config.variables,
             environment=resolved_env,
         ),
+        cli_variables=tuple(cli_variables.items()),
     )
 
 
