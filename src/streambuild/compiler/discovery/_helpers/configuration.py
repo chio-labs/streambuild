@@ -477,6 +477,7 @@ def _parse_sensors_config(
         tick_retention_days=(
             override.tick_retention_days if override.tick_retention_days is not None else 0
         ),
+        maximum_event_age_seconds=override.maximum_event_age_seconds,
     )
 
 
@@ -504,9 +505,19 @@ def _parse_sensors_override(
         raise ProjectConfigError(
             f"{file_path} {label}.tick_retention_days must be a non-negative integer"
         )
+    maximum_event_age: object | None = mapping.get("maximum_event_age")
     return SensorAutomationOverride(
         enabled=enabled if isinstance(enabled, bool) else None,
         tick_retention_days=retention if isinstance(retention, int) else None,
+        maximum_event_age_seconds=(
+            parse_duration_seconds(
+                value=maximum_event_age,
+                field_path=f"{file_path} {label}.maximum_event_age",
+                allow_zero=False,
+            )
+            if maximum_event_age is not None
+            else None
+        ),
     )
 
 

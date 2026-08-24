@@ -68,6 +68,7 @@ class SensorAutomationConfig:
 
     enabled: bool = False
     tick_retention_days: int = 0
+    maximum_event_age_seconds: int | None = None
 
 
 @dataclass(frozen=True)
@@ -76,6 +77,7 @@ class SensorAutomationOverride:
 
     enabled: bool | None = None
     tick_retention_days: int | None = None
+    maximum_event_age_seconds: int | None = None
 
 
 @dataclass(frozen=True)

@@ -58,6 +58,7 @@ class EventSensorDeclaration:
     name: str
     targets: frozenset[str] | None
     triggers: frozenset[str] | None
+    maximum_event_age_seconds: float | None
     default_status: DefaultSensorStatus
     retry_policy: SensorRetryPolicy
     timeout_seconds: float

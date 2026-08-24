@@ -109,7 +109,7 @@ TARGET_KEYS: frozenset[str] = frozenset(
 LOCAL_TARGET_KEYS: frozenset[str] = TARGET_KEYS - {"build"}
 BUILD_KEYS: frozenset[str] = frozenset({"max_pipelines"})
 AUDIT_SCHEDULER_KEYS: frozenset[str] = frozenset({"enabled"})
-SENSORS_KEYS: frozenset[str] = frozenset({"enabled", "tick_retention_days"})
+SENSORS_KEYS: frozenset[str] = frozenset({"enabled", "tick_retention_days", "maximum_event_age"})
 DEFAULTS_KEYS: frozenset[str] = frozenset(
     {
         "managed_source_ttl",
