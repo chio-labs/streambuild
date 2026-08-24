@@ -16,6 +16,7 @@ def event_sensor(
     name: str | None = None,
     targets: Iterable[str] | None = None,
     triggers: Iterable[str] | None = None,
+    maximum_event_age_seconds: float | None = None,
     default_status: DefaultSensorStatus = DefaultSensorStatus.STOPPED,
     retry_policy: SensorRetryPolicy | None = None,
     timeout_seconds: float = DEFAULT_SENSOR_TIMEOUT_SECONDS,
@@ -24,6 +25,8 @@ def event_sensor(
 
     if timeout_seconds <= 0:
         raise SensorError("event_sensor timeout_seconds must be positive")
+    if maximum_event_age_seconds is not None and maximum_event_age_seconds <= 0:
+        raise SensorError("event_sensor maximum_event_age_seconds must be positive")
 
     def decorate(function: SensorFunction) -> EventSensorDeclaration:
         sensor_name: str = name if name is not None else str(getattr(function, "__name__", ""))
@@ -35,6 +38,7 @@ def event_sensor(
             name=sensor_name,
             targets=frozenset(targets) if targets is not None else None,
             triggers=frozenset(triggers) if triggers is not None else None,
+            maximum_event_age_seconds=maximum_event_age_seconds,
             default_status=DefaultSensorStatus(default_status),
             retry_policy=retry_policy if retry_policy is not None else SensorRetryPolicy(),
             timeout_seconds=timeout_seconds,
