@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.28.0](https://github.com/chio-labs/streambuild/compare/v0.27.2...v0.28.0) (2026-08-24)
+
+
+### Features
+
+* add recorded pipeline destruction and target reset ([#178](https://github.com/chio-labs/streambuild/issues/178)) ([46c465e](https://github.com/chio-labs/streambuild/commit/46c465e5ee8712ef39cd7dc3f2ab5447f60170e2))
+
 ## [0.27.2](https://github.com/chio-labs/streambuild/compare/v0.27.1...v0.27.2) (2026-08-24)
 
 
