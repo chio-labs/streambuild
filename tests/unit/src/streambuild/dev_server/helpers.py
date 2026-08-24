@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import cast
 from unittest.mock import MagicMock
@@ -17,6 +18,8 @@ from streambuild.adapter.models import (
     AdapterMaterializedView,
     AdapterMetadataObjectKey,
     AdapterMutationResult,
+    AdapterOwnedResourceEvent,
+    AdapterOwnedResourceSnapshot,
     AdapterPreparedObjectMapping,
     AdapterPublishEventRecord,
     AdapterQueryResult,
@@ -89,6 +92,8 @@ from streambuild.dev_server.models import (
     KafkaTopicsSnapshot,
     MessagesQueryRequest,
 )
+from streambuild.executor.destruction.models import DestructionPlan
+from streambuild.executor.destruction.types import DestructionOperation
 from tests.unit.src.streambuild.auth.helpers import build_control_store
 from tests.unit.src.streambuild.compiler.discovery._helpers.load.helpers import (
     write_pipeline_file,
@@ -333,7 +338,7 @@ def build_assigned_proxy_quality_client(*, project_dir: Path) -> tuple[TestClien
 
 
 def build_assigned_proxy_operations_client(*, project_dir: Path) -> tuple[TestClient, ControlStore]:
-    """Build viewer personas where Alice holds every authored operational grant."""
+    """Build operational personas where administrator Alice holds authored grants."""
 
     return _build_assigned_proxy_operations_client(
         project_dir=project_dir,
@@ -370,10 +375,12 @@ def _build_assigned_proxy_operations_client(
           - deployment.create
           - build.cancel
           - deployment.promote
+          - pipeline.destroy
       - scope: target
         permissions:
           - build.kill
           - deployment.cleanup
+          - target.reset
           - automation.manage
 """,
     )
@@ -382,7 +389,7 @@ def _build_assigned_proxy_operations_client(
         username="alice",
         authentication_source=AuthenticationSource.TRUSTED_PROXY,
         external_subject="alice",
-        roles=("viewer",),
+        roles=("admin",),
     )
     store.create_user(
         username="bob",
@@ -422,6 +429,54 @@ def proxy_proof_headers(*, username: str) -> dict[str, str]:
         "X-Mustard-User": username,
         "X-StreamBuild-CSRF": "trusted-proxy",
     }
+
+
+def build_pipeline_destruction_route_plan() -> DestructionPlan:
+    now: datetime = datetime.now(tz=UTC)
+    return DestructionPlan(
+        plan_id="plan-1",
+        operation=DestructionOperation.DESTROY_PIPELINES,
+        target="dev",
+        database="analytics",
+        metadata_database="analytics",
+        requested_pipeline_names=("order_events",),
+        included_dependent_pipeline_names=(),
+        affected_pipeline_names=("order_events",),
+        affected_model_names=("orders_clean",),
+        affected_source_names=(),
+        relations=(),
+        challenges=("order_events",),
+        preserves_sources=True,
+        preserves_replay_data=True,
+        manifest_fingerprint="a" * 64,
+        plan_fingerprint="b" * 64,
+        created_at=now,
+        expires_at=now + timedelta(minutes=15),
+    )
+
+
+def build_target_reset_route_plan() -> DestructionPlan:
+    now: datetime = datetime.now(tz=UTC)
+    return DestructionPlan(
+        plan_id="plan-1",
+        operation=DestructionOperation.RESET_TARGET,
+        target="dev",
+        database="analytics",
+        metadata_database="analytics",
+        requested_pipeline_names=(),
+        included_dependent_pipeline_names=(),
+        affected_pipeline_names=("order_events",),
+        affected_model_names=("orders_clean",),
+        affected_source_names=(),
+        relations=(),
+        challenges=("order_events",),
+        preserves_sources=False,
+        preserves_replay_data=False,
+        manifest_fingerprint="a" * 64,
+        plan_fingerprint="b" * 64,
+        created_at=now,
+        expires_at=now + timedelta(minutes=15),
+    )
 
 
 _STATIC_INDEX_CONTENTS: str = "<html>stb-dev-shell</html>"
@@ -528,6 +583,12 @@ class FakeAdapterConnection(AdapterConnection):
     def load_deployment_inventory(self, database: str) -> AdapterDeploymentInventory:
         return AdapterDeploymentInventory(deployments=(), publish_events=())
 
+    def load_owned_resources(
+        self, *, database: str, target_database: str
+    ) -> AdapterOwnedResourceSnapshot:
+        del database, target_database
+        return AdapterOwnedResourceSnapshot(status="absent", resources=())
+
     def load_direct_fingerprints(
         self, *, database: str, logical_model_identities: tuple[str, ...]
     ) -> AdapterDirectFingerprintSnapshot:
@@ -563,7 +624,19 @@ class FakeAdapterConnection(AdapterConnection):
         return f"CREATE DATABASE IF NOT EXISTS `{database}`"
 
     def render_migrate_metadata_state(self, database: str) -> tuple[str, ...]:
-        raise NotImplementedError
+        return (f"CREATE DATABASE IF NOT EXISTS `{database}`;",)
+
+    def render_owned_resource_events(
+        self, *, database: str, events: tuple[AdapterOwnedResourceEvent, ...]
+    ) -> tuple[str, ...]:
+        del database, events
+        return ()
+
+    def catalog_resource_matches(
+        self, *, resource: object, relation: object, database: str
+    ) -> bool:
+        del resource, database
+        return relation is not None
 
     def render_persist_metadata_state(self, *, database: str, state: object) -> tuple[str, ...]:
         raise NotImplementedError

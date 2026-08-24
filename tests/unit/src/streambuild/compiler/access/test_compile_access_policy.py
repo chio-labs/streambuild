@@ -49,13 +49,13 @@ def test_given_no_access_file_when_compiling_then_policy_is_absent(
     description: Operate ingestion
     grants:
       - pipelines: [reporting, ingestion]
-        permissions: [deployment.create, build.direct.run]
+        permissions: [deployment.create, build.direct.run, pipeline.destroy]
       - scope: target
-        permissions: [deployment.cleanup]
+        permissions: [deployment.cleanup, target.reset]
 """,
             pipeline_names=frozenset({"ingestion", "reporting"}),
             expected_pipeline_names=("ingestion", "reporting"),
-            expected_permissions=("build.direct.run", "deployment.create"),
+            expected_permissions=("build.direct.run", "deployment.create", "pipeline.destroy"),
             expected_scope="target",
         )
     ],

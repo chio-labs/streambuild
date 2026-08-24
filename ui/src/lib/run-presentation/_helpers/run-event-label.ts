@@ -79,6 +79,7 @@ export function labelRunEvent(event: RunEvent, context: RunEventLabelContext): s
 		if (stepId.startsWith(prefix)) return `${label} · ${stepId.slice(prefix.length)}`;
 	}
 	const numbered: [string, string][] = [
+		['destroy_relation_', 'Remove physical resource'],
 		['remove_obsolete_binding_', 'Remove obsolete binding'],
 		['cleanup_relation_', 'Delete retained relation'],
 		['record_direct_fingerprint_', 'Record build fingerprint'],

@@ -16,6 +16,8 @@ class Permission(StrEnum):
     BUILD_KILL = "build.kill"
     DEPLOYMENT_PROMOTE = "deployment.promote"
     DEPLOYMENT_CLEANUP = "deployment.cleanup"
+    PIPELINE_DESTROY = "pipeline.destroy"
+    TARGET_RESET = "target.reset"
     AUTOMATION_MANAGE = "automation.manage"
     ACCOUNT_MANAGE = "account.manage"
     ROLE_ASSIGN = "role.assign"

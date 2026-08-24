@@ -19,6 +19,7 @@ class CliEntrypointHandlers:
     run_audit: Callable[..., int]
     run_plan: Callable[..., int]
     run_build: Callable[..., int]
+    run_destruction: Callable[..., int]
     run_deployment_diff: Callable[..., int]
     run_deployment_list: Callable[..., int]
     run_deployment_show: Callable[..., int]
@@ -63,6 +64,7 @@ class ResolvedCliInvocation:
     adapter: Adapter
     loaded_project: LoadedProject | None
     connection: CliConnectionOptions
+    cli_variables: tuple[tuple[str, object], ...] = ()
 
 
 @dataclass(frozen=True)

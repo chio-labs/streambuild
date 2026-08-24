@@ -1,3 +1,5 @@
+from collections.abc import Callable
+
 from streambuild.adapter.exceptions import AdapterError
 from streambuild.adapter.models import AdapterMutationResult, AdapterQueryResult
 from streambuild.executor.workflow.models import BuildWorkflow, WarehouseStatement
@@ -40,6 +42,59 @@ class FailingPreparationEmitter(RecordingWorkflowEmitter):
     ) -> None:
         del statements, workflow_sha256
         raise RuntimeError("statement persistence failed")
+
+
+class FailingStartedWorkflowEmitter(RecordingWorkflowEmitter):
+    def __init__(self, *, failed_step_id: str) -> None:
+        super().__init__()
+        self._failed_step_id: str = failed_step_id
+
+    def statement_started(self, statement: WarehouseStatement) -> str | None:
+        action: Callable[[WarehouseStatement], str | None] = {
+            True: self._fail_started,
+            False: super().statement_started,
+        }[statement.step_id == self._failed_step_id]
+        return action(statement)
+
+    def _fail_started(self, statement: WarehouseStatement) -> str | None:
+        del statement
+        raise RuntimeError("statement started persistence failed")
+
+
+class FailingCompletedWorkflowEmitter(RecordingWorkflowEmitter):
+    def __init__(self, *, failed_step_id: str) -> None:
+        super().__init__()
+        self._failed_step_id: str = failed_step_id
+
+    def statement_completed(
+        self,
+        *,
+        statement: WarehouseStatement,
+        error_message: str | None,
+        written_rows: int | None,
+        elapsed_ms: int,
+    ) -> None:
+        action: Callable[..., None] = {
+            True: self._fail_completed,
+            False: super().statement_completed,
+        }[statement.step_id == self._failed_step_id]
+        action(
+            statement=statement,
+            error_message=error_message,
+            written_rows=written_rows,
+            elapsed_ms=elapsed_ms,
+        )
+
+    def _fail_completed(
+        self,
+        *,
+        statement: WarehouseStatement,
+        error_message: str | None,
+        written_rows: int | None,
+        elapsed_ms: int,
+    ) -> None:
+        del statement, error_message, written_rows, elapsed_ms
+        raise RuntimeError("statement completed persistence failed")
 
 
 class FailingMutationConnection(RecordingAdapterConnection):
@@ -109,6 +164,29 @@ def build_test_workflow(*, plan_json: str) -> BuildWorkflow:
                 phase=WorkflowPhase.REALIZATION,
                 intent=StatementIntent.MUTATION,
                 sql="INSERT INTO events VALUES (1);",
+            ),
+        ),
+    )
+
+
+def build_two_mutation_workflow() -> BuildWorkflow:
+    return BuildWorkflow(
+        mode=WorkflowMode.DIRECT,
+        plan_json='{"mode":"direct"}\n',
+        statements=(
+            WarehouseStatement(
+                sequence=1,
+                step_id="mutation_one",
+                phase=WorkflowPhase.REALIZATION,
+                intent=StatementIntent.MUTATION,
+                sql="INSERT INTO events VALUES (1);",
+            ),
+            WarehouseStatement(
+                sequence=2,
+                step_id="mutation_two",
+                phase=WorkflowPhase.REALIZATION,
+                intent=StatementIntent.MUTATION,
+                sql="INSERT INTO events VALUES (2);",
             ),
         ),
     )

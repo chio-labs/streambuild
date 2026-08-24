@@ -39,6 +39,7 @@ from tests.unit.src.streambuild.compiler.discovery._test_types import (
     ProjectFreshnessErrorTestCase,
     ProjectPipelineNamingDefaultTestCase,
     ProjectPipelineNamingOverrideTestCase,
+    ProjectProductionTargetTestCase,
     ProjectRunSafetyDefaultTestCase,
     SensorEventAgeResolutionTestCase,
     UnknownTargetTestCase,
@@ -62,6 +63,39 @@ port = 8123
 [targets.dev]
 database = "dev_database"
 """
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ProjectProductionTargetTestCase(
+            description="committed target production status survives effective resolution",
+            expected_production_target=True,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_committed_production_target_when_resolving_then_classification_is_retained(
+    test_case: ProjectProductionTargetTestCase,
+    tmp_path: Path,
+) -> None:
+    write_project_toml(
+        project_dir=tmp_path,
+        contents=(
+            'name = "analytics"\ndefault_target = "live"\n'
+            '[targets.live]\ndatabase = "analytics_live"\nproduction = true\n'
+        ),
+    )
+    loaded: LoadedProjectConfiguration = load_project_configuration(project_dir=tmp_path)
+
+    effective: EffectiveProjectConfiguration = resolve_effective_project_configuration(
+        loaded=loaded,
+        selected_target="live",
+        cli_variables={},
+        environment={},
+    )
+
+    assert effective.production_target is test_case.expected_production_target
 
 
 @pytest.mark.parametrize(
@@ -730,6 +764,16 @@ def test_given_invalid_toml_contract_when_loading_then_rejects_with_field_contex
             """,
             expected_error_fragment=(
                 "streambuild_local.toml targets.private contains unsupported keys: build"
+            ),
+        ),
+        LocalConfigurationErrorTestCase(
+            description="rejects local production classification",
+            local_contents="""
+            [targets.private]
+            production = true
+            """,
+            expected_error_fragment=(
+                "streambuild_local.toml targets.private contains unsupported keys: production"
             ),
         ),
     ],

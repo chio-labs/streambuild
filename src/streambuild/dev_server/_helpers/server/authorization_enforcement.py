@@ -7,7 +7,7 @@ from fastapi import HTTPException, Request
 from streambuild.auth.classes.control_store import ControlStore
 from streambuild.auth.constants import ADMIN_ROLE
 from streambuild.auth.main.read_authenticated_request import read_authenticated_request
-from streambuild.auth.models import AuthenticatedRequest
+from streambuild.auth.models import AuthenticatedRequest, UserAccount
 from streambuild.authorization.main.authorize_operation import authorize_operation
 from streambuild.authorization.main.effective_capabilities import effective_capabilities
 from streambuild.authorization.models import (
@@ -30,6 +30,7 @@ from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.compiler.testing.models import SqlTestCase
 from streambuild.dev_server.constants import CHECK_KIND_TEST
 from streambuild.dev_server.models import OperationAuthorizationContext
+from streambuild.executor.destruction.types import DestructionOperation
 
 _HTTP_FORBIDDEN: int = 403
 _MODEL_IDENTITY_PREFIX: str = f"{LogicalResourceType.MODEL}:"
@@ -187,14 +188,23 @@ def build_capabilities_payload(
             policy=None if analysis is None else analysis.access_policy,
         ),
     )
+    destructive_permissions: frozenset[Permission] = frozenset(
+        {Permission.PIPELINE_DESTROY, Permission.TARGET_RESET}
+    )
+    visible_permissions: tuple[Permission, ...] = tuple(
+        permission
+        for permission in capabilities.permissions
+        if capabilities.system_admin or permission not in destructive_permissions
+    )
     return {
         "systemAdmin": capabilities.system_admin,
         "project": capabilities.project_name,
         "target": capabilities.target_name,
-        "permissions": [permission.value for permission in capabilities.permissions],
+        "permissions": [permission.value for permission in visible_permissions],
         "pipelinePermissions": {
             permission.value: list(pipelines)
             for permission, pipelines in capabilities.pipeline_permissions
+            if capabilities.system_admin or permission not in destructive_permissions
         },
         "staleRoles": list(capabilities.stale_roles),
     }
@@ -390,6 +400,46 @@ def require_cleanup_authorization(
         grant_scope=GrantScope.TARGET,
         affected_pipelines=(),
         denial_message="Deployment cleanup is not permitted",
+    )
+
+
+def require_destruction_authorization(
+    *,
+    analysis: CompileAnalysis,
+    request: Request,
+    context: OperationAuthorizationContext,
+    operation: DestructionOperation | str,
+    affected_pipelines: tuple[str, ...],
+) -> None:
+    """Require the dedicated permission for an exact destructive-operation scope."""
+
+    authenticated: AuthenticatedRequest = read_authenticated_request(request=request)
+    account: UserAccount | None = context.store.get_user_by_id(
+        user_id=authenticated.principal.user_id
+    )
+    if account is None or not account.is_active or ADMIN_ROLE not in account.roles:
+        raise HTTPException(
+            status_code=_HTTP_FORBIDDEN,
+            detail={
+                "message": "Destructive operations require an active system administrator",
+                "reason": "system_admin_required",
+            },
+        )
+    reset_target: bool = DestructionOperation(operation) == DestructionOperation.RESET_TARGET
+    _ = require_operation_authorization(
+        analysis=analysis,
+        request=request,
+        store=context.store,
+        project_dir=context.project_dir,
+        selected_target=context.selected_target,
+        permission=Permission.TARGET_RESET if reset_target else Permission.PIPELINE_DESTROY,
+        grant_scope=GrantScope.TARGET if reset_target else None,
+        affected_pipelines=() if reset_target else affected_pipelines,
+        denial_message=(
+            "Resetting this target is not permitted"
+            if reset_target
+            else "Destroying these pipelines is not permitted"
+        ),
     )
 
 

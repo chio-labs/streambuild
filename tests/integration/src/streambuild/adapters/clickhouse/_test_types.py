@@ -93,3 +93,20 @@ class PostgresRefreshEndToEndTestCase:
     source_table: str
     refresh: str
     expected_rows: tuple[tuple[str, str], ...]
+
+
+@dataclass(frozen=True)
+class TargetMutationLockIntegrationTestCase:
+    description: str
+    initial_owner_id: str
+    competing_owner_id: str
+    expected_initial_owner_id: str
+    expected_reacquired_owner_id: str
+    expected_error_message: str
+
+
+@dataclass(frozen=True)
+class MissingTargetMutationLockIntegrationTestCase:
+    description: str
+    expected_table_count_while_locked: int
+    expected_table_count_after_release: int

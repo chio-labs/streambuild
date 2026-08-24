@@ -413,6 +413,7 @@ class CompilerTargetMetadata:
 
     default_database: str | None
     default_schema: str | None
+    production_target: bool = False
 
 
 @dataclass(frozen=True)
@@ -463,3 +464,4 @@ class CompiledProject:
     macro_context: MacroContext | None = None
     project_name: str | None = None
     target_name: str | None = None
+    production_target: bool = False

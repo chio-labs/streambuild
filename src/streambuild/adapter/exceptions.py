@@ -47,3 +47,7 @@ class AdapterDatabaseNotFoundError(AdapterWarehouseError):
 
 class AdapterRelationNotFoundError(AdapterWarehouseError):
     """Raised when the warehouse reports that a referenced relation is missing."""
+
+
+class AdapterTargetMutationLockError(AdapterWarehouseError):
+    """Raised when exclusive target mutation ownership cannot be acquired or released."""

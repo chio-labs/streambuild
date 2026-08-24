@@ -70,12 +70,14 @@ class RunEventSink:
         invocation_id: str,
         project_identity: str | None = None,
         jsonl_stream: TextIO | None = None,
+        strict_persistence: bool = False,
     ) -> None:
         self._connection: AdapterConnection = connection
         self._database: str = database
         self._invocation_id: str = invocation_id
         self._project_identity: str | None = project_identity
         self._jsonl_stream: TextIO | None = jsonl_stream
+        self._strict_persistence: bool = strict_persistence
         self._sequence: int = 0
         self._migrated: bool = False
         self._lock: threading.Lock = threading.Lock()
@@ -83,6 +85,12 @@ class RunEventSink:
         self._heartbeat_thread: threading.Thread | None = None
         self._persistence_warning_emitted: bool = False
         self._workflow_revision: int = 0
+        self._operation_evidence: dict[str, object] | None = None
+
+    def set_operation_evidence(self, evidence: dict[str, object] | None) -> None:
+        """Set complete operation evidence for the next run boundary event."""
+
+        self._operation_evidence = evidence
 
     def run_started(
         self,
@@ -131,19 +139,24 @@ class RunEventSink:
                         "totalMs": startup_timings.total_ms,
                     }
                 ),
+                "operationEvidence": self._operation_evidence,
             },
+            complete_payload=True,
         )
         self._heartbeat_stop.clear()
         self._heartbeat_thread = threading.Thread(target=self._heartbeat_loop, daemon=True)
         self._heartbeat_thread.start()
 
-    def run_completed(self, *, outcome: str, exit_code: int, error_message: str | None) -> None:
+    def run_completed(
+        self,
+        *,
+        outcome: str,
+        exit_code: int,
+        error_message: str | None,
+    ) -> None:
         """The run reached a terminal state; closes the event stream."""
 
-        self._heartbeat_stop.set()
-        heartbeat_thread: threading.Thread | None = self._heartbeat_thread
-        if heartbeat_thread is not None and heartbeat_thread is not threading.current_thread():
-            heartbeat_thread.join(timeout=HEARTBEAT_INTERVAL_SECONDS)
+        self.stop()
         self._emit(
             event_kind=_RUN_COMPLETED_KIND,
             step_id=None,
@@ -152,8 +165,18 @@ class RunEventSink:
                 "outcome": outcome,
                 "exitCode": exit_code,
                 "errorMessage": error_message,
+                "operationEvidence": self._operation_evidence,
             },
+            complete_payload=self._operation_evidence is not None,
         )
+
+    def stop(self) -> None:
+        """Stop the heartbeat without requiring a terminal event write."""
+
+        self._heartbeat_stop.set()
+        heartbeat_thread: threading.Thread | None = self._heartbeat_thread
+        if heartbeat_thread is not None and heartbeat_thread is not threading.current_thread():
+            heartbeat_thread.join(timeout=HEARTBEAT_INTERVAL_SECONDS)
 
     def statement_started(self, statement: WarehouseStatement) -> str:
         """WorkflowEventEmitter: one statement is about to execute."""
@@ -210,6 +233,10 @@ class RunEventSink:
             include_migration=not self._migrated,
         )
         if not rendered:
+            if self._strict_persistence:
+                raise AdapterWarehouseError(
+                    "Adapter did not provide durable run-statement persistence"
+                )
             return
         self._workflow_revision = next_revision
         observation_statements: tuple[WarehouseStatement, ...] = assemble_observation_workflow(
@@ -301,6 +328,7 @@ class RunEventSink:
         step_id: str | None,
         phase: str | None,
         payload: dict[str, object],
+        complete_payload: bool = False,
     ) -> None:
         with self._lock:
             self._sequence += 1
@@ -312,7 +340,7 @@ class RunEventSink:
                 phase=phase,
                 payload_json=(
                     json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
-                    if event_kind == _RUN_STARTED_KIND
+                    if complete_payload
                     else bounded_json(payload)
                 ),
             )
@@ -356,6 +384,10 @@ class RunEventSink:
             self._migrated = True
             self._persistence_warning_emitted = False
         except Exception as error:
+            if self._strict_persistence:
+                raise AdapterWarehouseError(
+                    f"Required run-event persistence failed: {error}"
+                ) from error
             if not self._persistence_warning_emitted:
                 try:
                     print(

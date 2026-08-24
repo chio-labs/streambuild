@@ -79,6 +79,9 @@ from streambuild.dev_server._helpers.server.deployment_operations import (
     run_deployment_cleanup,
     run_deployment_promotion,
 )
+from streambuild.dev_server._helpers.server.destruction_routes import (
+    register_destruction_routes,
+)
 from streambuild.dev_server._helpers.server.sensor_routes import register_sensor_routes
 from streambuild.dev_server.classes.audit_scheduler import AuditScheduler
 from streambuild.dev_server.classes.build_process import BuildProcessManager, build_invocation
@@ -103,6 +106,7 @@ from streambuild.dev_server.models import (
     ChecksRunRequest,
     CompileOutcome,
     DeploymentCleanupRequest,
+    DevControlStores,
     DevExecutionContext,
     MessageFacetsRequest,
     MessageRecordRequest,
@@ -146,11 +150,12 @@ def register_api_routes(
     broker_readers: tuple[KafkaLagReader, KafkaTopicReader],
     reporter: DevServerReporter,
     execution_context: DevExecutionContext,
-    control_store: ControlStore,
+    control_stores: DevControlStores,
 ) -> FastAPI:
     """Attach every /api route; handlers close over the shared server state."""
 
     database: str | None = execution_context.database
+    control_store: ControlStore = control_stores.accounts
     authorization_context: OperationAuthorizationContext = OperationAuthorizationContext(
         store=control_store,
         project_dir=project_dir,
@@ -285,6 +290,16 @@ def register_api_routes(
         authorization=authorization_context,
         connections=connections,
         servable_analysis=_servable_analysis,
+    )
+    _ = register_destruction_routes(
+        app=app,
+        state=state,
+        warehouse=warehouse,
+        database=database,
+        project_dir=project_dir,
+        authorization=authorization_context,
+        servable_analysis=_servable_analysis,
+        store=control_stores.destruction_plans,
     )
     _register_message_routes(
         app=app,

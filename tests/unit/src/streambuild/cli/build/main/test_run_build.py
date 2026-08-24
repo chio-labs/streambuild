@@ -15,6 +15,7 @@ from tests.unit.src.streambuild.cli.build.main._test_types import (
     CliBuildGateTestCase,
     CliBuildInterruptTestCase,
     CliMixedBuildTestCase,
+    CliMixedFailureTestCase,
     CliProtectedBuildTestCase,
     CliRejectedPipelineLimitTestCase,
     CliRunScopeTestCase,
@@ -26,6 +27,10 @@ from tests.unit.src.streambuild.cli.build.main.helpers import (
     build_mixed_scope_project_connection,
     build_scope_project_connection,
     publish_scope_project_virtual_workflow,
+    record_failed_mixed_direct_phase,
+    record_failed_mixed_virtual_phase,
+    record_successful_mixed_virtual_phase,
+    record_unexpected_mixed_direct_phase,
     run_scope_project_build,
     run_scope_project_build_with_connection,
     run_scope_project_virtual_build,
@@ -147,6 +152,7 @@ confirmation = "{test_case.confirmation}"
     [
         CliBuildInterruptTestCase(
             description="a Ctrl+C during execution persists a cancelled invocation",
+            expected_lock_database="analytics",
             expected_exit_code=130,
             expected_invocation_outcome="cancelled",
             expected_stderr_fragment="Cancelled  Build interrupted and recorded as cancelled.",
@@ -178,6 +184,10 @@ def test_given_interrupted_execution_when_building_then_cancelled_invocation_is_
     assert test_case.expected_stderr_fragment in captured.err
     assert connection.invocation_observations[0].outcome == test_case.expected_invocation_outcome
     assert execution_payload["status"] == test_case.expected_execution_status
+    assert tuple(event[:2] for event in connection.target_mutation_lock_events) == (
+        ("acquire", test_case.expected_lock_database),
+        ("release", test_case.expected_lock_database),
+    )
 
 
 @pytest.mark.parametrize(
@@ -268,6 +278,9 @@ def test_given_fixed_virtual_identity_when_publishing_then_plan_and_steps_are_ex
     [
         CliMixedBuildTestCase(
             description="runs virtual staging before direct application",
+            expected_lock_database="analytics",
+            expected_virtual_reset_event="virtual_offset_reset",
+            expected_direct_reset_event="direct_offset_reset",
             expected_exit_code=0,
             expected_mode="mixed",
             expected_execution_order=("virtual", "direct"),
@@ -288,7 +301,15 @@ def test_given_mixed_pipeline_modes_when_building_then_virtual_runs_before_direc
     connection: RecordingAdapterConnection = build_mixed_scope_project_connection()
     monkeypatch.setattr(
         "streambuild.cli.build._helpers.virtual_command.reset_fresh_landing_offsets",
-        lambda **_kwargs: (),
+        lambda **_kwargs: (
+            connection.operation_events.append(test_case.expected_virtual_reset_event) or ()
+        ),
+    )
+    monkeypatch.setattr(
+        "streambuild.cli.build._helpers.execution.reset_fresh_landing_offsets",
+        lambda **_kwargs: (
+            connection.operation_events.append(test_case.expected_direct_reset_event) or ()
+        ),
     )
 
     exit_code: int = run_scope_project_build_with_connection(
@@ -306,6 +327,119 @@ def test_given_mixed_pipeline_modes_when_building_then_virtual_runs_before_direc
         test_case.expected_direct_phase_fragment
     )
     assert test_case.expected_completion_fragment in output
+    assert tuple(event[:2] for event in connection.target_mutation_lock_events) == (
+        ("acquire", test_case.expected_lock_database),
+        ("release", test_case.expected_lock_database),
+    )
+    acquire_index: int = connection.operation_events.index(
+        f"acquire:{test_case.expected_lock_database}"
+    )
+    release_index: int = connection.operation_events.index(
+        f"release:{test_case.expected_lock_database}"
+    )
+    assert (
+        acquire_index
+        < connection.operation_events.index(test_case.expected_virtual_reset_event)
+        < connection.operation_events.index(test_case.expected_direct_reset_event)
+        < release_index
+    )
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliMixedFailureTestCase(
+            description="virtual phase failure releases the mixed target lock",
+            json_output=False,
+            expected_lock_database="analytics",
+            expected_exit_code=1,
+            expected_operation_events=(
+                "acquire:analytics",
+                "virtual_phase_failed",
+                "release:analytics",
+            ),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_virtual_phase_failure_when_building_mixed_then_lock_releases_and_direct_skips(
+    test_case: CliMixedFailureTestCase,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    write_mixed_scope_project(project_root=tmp_path)
+    connection: RecordingAdapterConnection = build_mixed_scope_project_connection()
+    monkeypatch.setattr(
+        "streambuild.cli.build.main._execute_mixed_build.execute_virtual_build_command",
+        record_failed_mixed_virtual_phase,
+    )
+    monkeypatch.setattr(
+        "streambuild.cli.build.main._execute_mixed_build.execute_direct_build_command",
+        record_unexpected_mixed_direct_phase,
+    )
+
+    exit_code: int = run_scope_project_build_with_connection(
+        project_root=tmp_path,
+        json_output=test_case.json_output,
+        auto_approve=True,
+        connection=connection,
+    )
+
+    assert exit_code == test_case.expected_exit_code
+    assert connection.operation_events == list(test_case.expected_operation_events)
+    assert tuple(event[:2] for event in connection.target_mutation_lock_events) == (
+        ("acquire", test_case.expected_lock_database),
+        ("release", test_case.expected_lock_database),
+    )
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliMixedFailureTestCase(
+            description="JSON direct phase failure releases the mixed target lock",
+            json_output=True,
+            expected_lock_database="analytics",
+            expected_exit_code=1,
+            expected_operation_events=(
+                "acquire:analytics",
+                "virtual_phase_succeeded",
+                "direct_phase_failed",
+                "release:analytics",
+            ),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_direct_phase_failure_when_building_mixed_json_then_lock_releases(
+    test_case: CliMixedFailureTestCase,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    write_mixed_scope_project(project_root=tmp_path)
+    connection: RecordingAdapterConnection = build_mixed_scope_project_connection()
+    monkeypatch.setattr(
+        "streambuild.cli.build.main._execute_mixed_build.execute_virtual_build_command",
+        record_successful_mixed_virtual_phase,
+    )
+    monkeypatch.setattr(
+        "streambuild.cli.build.main._execute_mixed_build.execute_direct_build_command",
+        record_failed_mixed_direct_phase,
+    )
+
+    exit_code: int = run_scope_project_build_with_connection(
+        project_root=tmp_path,
+        json_output=test_case.json_output,
+        auto_approve=True,
+        connection=connection,
+    )
+
+    assert exit_code == test_case.expected_exit_code
+    assert connection.operation_events == list(test_case.expected_operation_events)
+    assert tuple(event[:2] for event in connection.target_mutation_lock_events) == (
+        ("acquire", test_case.expected_lock_database),
+        ("release", test_case.expected_lock_database),
+    )
 
 
 @pytest.mark.parametrize(
@@ -447,6 +581,9 @@ def test_given_mixed_pipeline_modes_when_emitting_events_then_each_phase_has_exa
     [
         CliMixedBuildTestCase(
             description="emits one mixed JSON document",
+            expected_lock_database="analytics",
+            expected_virtual_reset_event="virtual_offset_reset",
+            expected_direct_reset_event="direct_offset_reset",
             expected_exit_code=0,
             expected_mode="mixed",
             expected_execution_order=("virtual", "direct"),
@@ -464,6 +601,7 @@ def test_given_mixed_pipeline_modes_when_building_json_then_it_emits_one_documen
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     write_mixed_scope_project(project_root=tmp_path)
+    connection: RecordingAdapterConnection = build_mixed_scope_project_connection()
     monkeypatch.setattr(
         "streambuild.cli.build._helpers.virtual_command.reset_fresh_landing_offsets",
         lambda **_kwargs: (),
@@ -473,7 +611,7 @@ def test_given_mixed_pipeline_modes_when_building_json_then_it_emits_one_documen
         project_root=tmp_path,
         json_output=True,
         auto_approve=True,
-        connection=build_mixed_scope_project_connection(),
+        connection=connection,
     )
 
     payload: dict[str, object] = json.loads(capsys.readouterr().out)
@@ -482,3 +620,7 @@ def test_given_mixed_pipeline_modes_when_building_json_then_it_emits_one_documen
     assert payload["execution_order"] == list(test_case.expected_execution_order)
     assert isinstance(payload[test_case.expected_virtual_phase_fragment], dict)
     assert isinstance(payload[test_case.expected_direct_phase_fragment], dict)
+    assert tuple(event[:2] for event in connection.target_mutation_lock_events) == (
+        ("acquire", test_case.expected_lock_database),
+        ("release", test_case.expected_lock_database),
+    )

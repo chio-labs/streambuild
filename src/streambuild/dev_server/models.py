@@ -5,14 +5,18 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from typing import ClassVar, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.auth.classes.control_store import ControlStore
 from streambuild.compiler.discovery.constants import DEFAULT_RUN_PRESUMED_FAILED_AFTER_SECONDS
 from streambuild.compiler.pipeline.models import CompilationTimings, CompileAnalysis
 from streambuild.dev_server.types import CompileStateKind
+from streambuild.executor.destruction.classes.relational_destruction_plan_store import (
+    RelationalDestructionPlanStore,
+)
 
 
 @dataclass(frozen=True, repr=False)
@@ -63,6 +67,20 @@ class OperationAuthorizationContext:
     store: ControlStore
     project_dir: Path
     selected_target: str | None
+
+
+@dataclass(frozen=True)
+class DevControlStores:
+    """Durable control-plane stores and their application ownership."""
+
+    accounts: ControlStore
+    destruction_plans: RelationalDestructionPlanStore
+    owns_accounts: bool
+
+    def close(self) -> None:
+        self.destruction_plans.close()
+        if self.owns_accounts:
+            self.accounts.close()
 
 
 class ChecksRunRequest(BaseModel):
@@ -185,6 +203,26 @@ class DeploymentCleanupRequest(BaseModel):
     """Janitor apply request from the development UI."""
 
     retentionDays: int = 7
+
+
+class DestructionPlanRequest(BaseModel):
+    """Create one immutable destructive-operation impact plan."""
+
+    model_config: ClassVar[ConfigDict] = ConfigDict(extra="forbid")
+
+    operation: Literal["destroy_pipelines", "reset_target"]
+    pipelineNames: list[str] = Field(default_factory=list)  # noqa: N815 - wire format
+    includedDependentPipelineNames: list[str] = Field(  # noqa: N815 - wire format
+        default_factory=list
+    )
+
+
+class DestructionExecutionRequest(BaseModel):
+    """Exact manually entered responses for one reviewed frozen plan."""
+
+    model_config: ClassVar[ConfigDict] = ConfigDict(extra="forbid")
+
+    responses: list[str]
 
 
 class SensorStatusRequest(BaseModel):

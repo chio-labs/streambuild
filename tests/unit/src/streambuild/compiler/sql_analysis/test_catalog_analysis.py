@@ -5,6 +5,7 @@ from streambuild.compiler.sql_analysis.main.analyze_catalog_sql import analyze_c
 from streambuild.compiler.sql_analysis.main.parse_expression_list import parse_expression_list
 from streambuild.compiler.sql_analysis.models import SqlCatalogAnalysis
 from tests.unit.src.streambuild.compiler.sql_analysis._test_types import (
+    CatalogPhysicalSourcesTestCase,
     CatalogSqlAnalysisTestCase,
     SqlExpressionListTestCase,
     SqlStringLiteralTestCase,
@@ -268,6 +269,46 @@ def test_given_catalog_sql_when_analyzing_then_returns_expected_semantic_facts(
     assert target_relation == test_case.expected_target_relation
     assert result.ttl == test_case.expected_ttl
     assert result.settings == test_case.expected_settings
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CatalogPhysicalSourcesTestCase(
+            description="resolves referenced ctes joins and set branches",
+            sql=(
+                "WITH unused AS (SELECT * FROM ignored), "
+                "left_side AS (SELECT * FROM raw_left JOIN lookup_left USING (id)), "
+                "right_side AS (SELECT * FROM raw_right) "
+                "SELECT * FROM left_side JOIN right_side USING (id) "
+                "JOIN direct_side USING (id) "
+                "UNION ALL SELECT * FROM union_side"
+            ),
+            expected_sources=(
+                (None, "raw_left"),
+                (None, "lookup_left"),
+                (None, "raw_right"),
+                (None, "direct_side"),
+                (None, "union_side"),
+            ),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_ctes_joins_and_set_query_when_analyzing_then_all_physical_sources_are_returned(
+    test_case: CatalogPhysicalSourcesTestCase,
+) -> None:
+    result: SqlCatalogAnalysis = analyze_catalog_sql(
+        sql=test_case.sql,
+        dialect="clickhouse",
+    )
+
+    sources: tuple[tuple[str | None, str], ...] = tuple(
+        (source.database, source.name) for source in result.source_relations
+    )
+
+    assert sources == test_case.expected_sources
+    assert result.first_source == result.source_relations[0]
 
 
 @pytest.mark.parametrize(

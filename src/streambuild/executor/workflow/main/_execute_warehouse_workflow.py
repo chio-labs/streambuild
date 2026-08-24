@@ -27,7 +27,14 @@ def execute_warehouse_workflow(
     for statement in statements:
         query_result: AdapterQueryResult | None = None
         mutation_result: AdapterMutationResult | None = None
-        query_id: str | None = None if emitter is None else emitter.statement_started(statement)
+        try:
+            query_id: str | None = None if emitter is None else emitter.statement_started(statement)
+        except (Exception, KeyboardInterrupt) as error:
+            raise WorkflowExecutionError(
+                failed_step_id=statement.step_id,
+                partial_result=WorkflowExecutionResult(statement_results=tuple(results)),
+                cause=error,
+            ) from error
         started_ns: int = time.monotonic_ns()
         try:
             if statement.intent == StatementIntent.MUTATION:
@@ -38,14 +45,27 @@ def execute_warehouse_workflow(
                 query_result = connection.execute_workflow_query(
                     statement=statement.sql, query_id=query_id
                 )
+        except KeyboardInterrupt as error:
+            raise WorkflowExecutionError(
+                failed_step_id=statement.step_id,
+                partial_result=WorkflowExecutionResult(statement_results=tuple(results)),
+                cause=error,
+            ) from error
         except AdapterError as error:
-            _emit_completed(
-                emitter=emitter,
-                statement=statement,
-                error_message=str(error),
-                written_rows=None,
-                started_ns=started_ns,
-            )
+            try:
+                _emit_completed(
+                    emitter=emitter,
+                    statement=statement,
+                    error_message=str(error),
+                    written_rows=None,
+                    started_ns=started_ns,
+                )
+            except Exception as emitter_error:
+                raise WorkflowExecutionError(
+                    failed_step_id=statement.step_id,
+                    partial_result=WorkflowExecutionResult(statement_results=tuple(results)),
+                    cause=emitter_error,
+                ) from emitter_error
             if not statement.continue_on_error:
                 raise WorkflowExecutionError(
                     failed_step_id=statement.step_id,
@@ -61,13 +81,6 @@ def execute_warehouse_workflow(
                 )
             )
             continue
-        _emit_completed(
-            emitter=emitter,
-            statement=statement,
-            error_message=None,
-            written_rows=None if mutation_result is None else mutation_result.written_rows,
-            started_ns=started_ns,
-        )
         results.append(
             WorkflowStatementResult(
                 step_id=statement.step_id,
@@ -76,6 +89,20 @@ def execute_warehouse_workflow(
                 error_message=None,
             )
         )
+        try:
+            _emit_completed(
+                emitter=emitter,
+                statement=statement,
+                error_message=None,
+                written_rows=None if mutation_result is None else mutation_result.written_rows,
+                started_ns=started_ns,
+            )
+        except (Exception, KeyboardInterrupt) as error:
+            raise WorkflowExecutionError(
+                failed_step_id=statement.step_id,
+                partial_result=WorkflowExecutionResult(statement_results=tuple(results)),
+                cause=error,
+            ) from error
     return WorkflowExecutionResult(statement_results=tuple(results))
 
 

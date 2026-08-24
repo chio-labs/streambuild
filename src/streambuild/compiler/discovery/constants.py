@@ -104,9 +104,9 @@ LOCAL_CONFIG_KEYS: frozenset[str] = frozenset(
     {"target", "adapter", "defaults", "connection", "vars", "targets"}
 )
 TARGET_KEYS: frozenset[str] = frozenset(
-    {"database", "connection", "vars", "audit_scheduler", "sensors", "build"}
+    {"database", "connection", "vars", "audit_scheduler", "sensors", "build", "production"}
 )
-LOCAL_TARGET_KEYS: frozenset[str] = TARGET_KEYS - {"build"}
+LOCAL_TARGET_KEYS: frozenset[str] = TARGET_KEYS - {"build", "production"}
 BUILD_KEYS: frozenset[str] = frozenset({"max_pipelines"})
 AUDIT_SCHEDULER_KEYS: frozenset[str] = frozenset({"enabled"})
 SENSORS_KEYS: frozenset[str] = frozenset({"enabled", "tick_retention_days", "maximum_event_age"})
