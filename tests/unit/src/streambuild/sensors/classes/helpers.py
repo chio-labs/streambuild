@@ -26,6 +26,15 @@ def succeeding_sensor(ctx: object) -> None:
 
 @event_sensor(
     on=AuditCompleted,
+    maximum_event_age_seconds=60,
+    default_status=DefaultSensorStatus.RUNNING,
+)
+def fresh_events_sensor(ctx: object) -> None:
+    """React only to events that are still operationally current."""
+
+
+@event_sensor(
+    on=AuditCompleted,
     default_status=DefaultSensorStatus.RUNNING,
     retry_policy=SensorRetryPolicy(max_attempts=2, backoff_seconds=0),
 )

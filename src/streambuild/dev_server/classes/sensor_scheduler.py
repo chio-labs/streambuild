@@ -73,6 +73,7 @@ class SensorScheduler:
             event_target=analysis.compiled_project.target_name or self._database,
             providers=(() if analysis.sensors is None else analysis.sensors.providers),
             dispatcher_id=self._dispatcher_id,
+            maximum_event_age_seconds=_maximum_event_age_seconds(analysis=analysis),
         )
 
     def start(self) -> None:
@@ -224,3 +225,10 @@ def _tick_retention_days(*, analysis: CompileAnalysis) -> int:
     if loaded_project is None or loaded_project.effective_configuration is None:
         return 0
     return loaded_project.effective_configuration.sensors.tick_retention_days
+
+
+def _maximum_event_age_seconds(*, analysis: CompileAnalysis) -> int | None:
+    loaded_project: LoadedProject | None = analysis.discovered_inputs.loaded_project
+    if loaded_project is None or loaded_project.effective_configuration is None:
+        return None
+    return loaded_project.effective_configuration.sensors.maximum_event_age_seconds

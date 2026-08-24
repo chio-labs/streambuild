@@ -129,6 +129,15 @@ def resolve_effective_project_configuration(
                     else project.sensors.tick_retention_days
                 )
             ),
+            maximum_event_age_seconds=(
+                local_target.sensors.maximum_event_age_seconds
+                if local_target.sensors.maximum_event_age_seconds is not None
+                else (
+                    project_target.sensors.maximum_event_age_seconds
+                    if project_target.sensors.maximum_event_age_seconds is not None
+                    else project.sensors.maximum_event_age_seconds
+                )
+            ),
         ),
         build=BuildConfig(
             max_pipelines=(
