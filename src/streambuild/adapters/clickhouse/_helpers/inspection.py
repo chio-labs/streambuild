@@ -111,7 +111,7 @@ def load_clickhouse_external_dependants(
     for row in result.rows:
         relation_database: str = str(row[0])
         relation_name: str = str(row[1])
-        if relation_database == database or (relation_database, relation_name) in owned:
+        if (relation_database, relation_name) in owned:
             continue
         sources: tuple[SqlRelationIdentity, ...] = parse_catalog_relation_identities(str(row[2]))
         target: SqlRelationIdentity | None = parse_catalog_target_identity(str(row[3]))

@@ -732,6 +732,29 @@ def test_given_cross_database_dependant_when_planning_then_destruction_is_blocke
                 analysis=analysis,
                 connection=connection,
             )
+        connection.execute_workflow_sql(f"DROP VIEW {external_database}.external_reader SYNC;")
+        connection.execute_workflow_sql(
+            f"CREATE TABLE {external_database}.tbl__orders_enriched "
+            "(order_id String) ENGINE = MergeTree ORDER BY order_id;"
+        )
+        connection.execute_workflow_sql(
+            f"CREATE VIEW {clickhouse_database}.external_name_reader AS SELECT * FROM "
+            f"{external_database}.tbl__orders_enriched;"
+        )
+
+        allowed: DestructionPlan = plan_destruction(
+            request=DestructionRequest(
+                operation="destroy_pipelines",
+                target="test",
+                database=clickhouse_database,
+                metadata_database=clickhouse_database,
+                pipeline_names=("pl__orders",),
+            ),
+            analysis=analysis,
+            connection=connection,
+        )
+
+        assert "external_name_reader" not in {relation.name for relation in allowed.relations}
     finally:
         connection.execute_workflow_sql(f"DROP DATABASE IF EXISTS {external_database} SYNC;")
         connection.close()

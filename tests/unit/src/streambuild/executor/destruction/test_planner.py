@@ -709,6 +709,55 @@ def test_given_live_preledger_history_when_resetting_then_external_reuse_is_refu
     "test_case",
     [
         OwnershipLedgerBehaviorTestCase(
+            description="corrupt current mapping cannot adopt arbitrary matching name",
+            expected_value="historical deployment metadata does not prove ownership",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_noncanonical_virtual_mapping_when_resetting_then_live_relation_is_refused(
+    test_case: OwnershipLedgerBehaviorTestCase,
+) -> None:
+    fixture: PlanningFixture = build_planning_fixture()
+    deployment: AdapterDeploymentRecord = fixture.connection.inventory.deployments[0]
+    mapping: AdapterPreparedObjectMapping = deployment.prepared_object_mappings[0]
+    fixture.connection.inventory = replace(
+        fixture.connection.inventory,
+        deployments=(
+            replace(
+                deployment,
+                prepared_object_mappings=(
+                    replace(mapping, physical_name="customer_data"),
+                    *deployment.prepared_object_mappings[1:],
+                ),
+            ),
+        ),
+    )
+    fixture.connection.catalog = replace(
+        fixture.connection.catalog,
+        relations=(
+            *fixture.connection.catalog.relations,
+            CatalogRelation(name="customer_data", engine="MergeTree", columns=()),
+        ),
+    )
+
+    with pytest.raises(DestructionResourceError, match=test_case.expected_value):
+        plan_destruction(
+            request=DestructionRequest(
+                operation="reset_target",
+                target="uat",
+                database="analytics",
+                metadata_database="metadata",
+            ),
+            analysis=fixture.analysis,
+            connection=fixture.connection,
+        )
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        OwnershipLedgerBehaviorTestCase(
             description="committed production classification adds production challenge",
             expected_value="PRODUCTION",
         )
@@ -768,6 +817,7 @@ def test_given_unmanaged_join_dependant_when_planning_then_destruction_is_blocke
             ),
         ),
     )
+    fixture.connection.external_dependants = (test_case.expected_error_value,)
 
     with pytest.raises(DestructionExternalDependencyError) as raised:
         plan_destruction(
@@ -994,6 +1044,7 @@ def test_given_other_pipeline_binding_when_destroying_dependency_then_binding_bl
             ),
         ),
     )
+    fixture.connection.external_dependants = (test_case.expected_value,)
 
     with pytest.raises(DestructionExternalDependencyError) as raised:
         plan_destruction(

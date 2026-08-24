@@ -766,6 +766,16 @@ def test_given_invalid_toml_contract_when_loading_then_rejects_with_field_contex
                 "streambuild_local.toml targets.private contains unsupported keys: build"
             ),
         ),
+        LocalConfigurationErrorTestCase(
+            description="rejects local production classification",
+            local_contents="""
+            [targets.private]
+            production = true
+            """,
+            expected_error_fragment=(
+                "streambuild_local.toml targets.private contains unsupported keys: production"
+            ),
+        ),
     ],
     ids=lambda case: case.description,
 )

@@ -38,6 +38,9 @@ from streambuild.compiler.graph.constants import ALL_DEPENDENCY_EDGE_TYPES
 from streambuild.compiler.graph.main.collect_reachable_keys import collect_reachable_keys
 from streambuild.compiler.graph.types import GraphTraversalDirection
 from streambuild.compiler.pipeline.models import CompileAnalysis
+from streambuild.compiler.planner.main.build_deployment_physical_name import (
+    build_deployment_physical_name,
+)
 from streambuild.executor.destruction._helpers.ordering import (
     reverse_topologically_order_relations,
 )
@@ -315,7 +318,6 @@ def _plan_relation_evidence(
     _validate_external_dependants(
         connection=connection,
         database=request.database,
-        catalog=catalog,
         owned_relation_names=frozenset(owned),
     )
     _ = reverse_topologically_order_relations(relations)
@@ -326,24 +328,14 @@ def _validate_external_dependants(
     *,
     connection: DestructionPlanningConnection,
     database: str,
-    catalog: CatalogSnapshot,
     owned_relation_names: frozenset[str],
 ) -> None:
-    blocked_names: list[str] = []
-    relation: CatalogRelation
-    for relation in catalog.relations:
-        dependencies: frozenset[str] = _catalog_dependency_names(relation)
-        if relation.name not in owned_relation_names and owned_relation_names & dependencies:
-            blocked_names.append(relation.name)
-    blocked_names.extend(
-        connection.load_external_dependants(
-            database=database,
-            relation_names=tuple(sorted(owned_relation_names)),
-        )
+    blocked: tuple[str, ...] = connection.load_external_dependants(
+        database=database,
+        relation_names=tuple(sorted(owned_relation_names)),
     )
-    blocked: tuple[str, ...] = tuple(sorted(set(blocked_names)))
     if blocked:
-        raise DestructionExternalDependencyError(blocked)
+        raise DestructionExternalDependencyError(tuple(sorted(set(blocked))))
 
 
 def _catalog_dependency_names(relation: CatalogRelation) -> frozenset[str]:
@@ -734,6 +726,11 @@ def _manifest_matched_virtual_relations(
             ) = desired_by_name.get(mapping.logical_key.name)
             if (
                 identity in current_object_identities
+                and mapping.physical_name
+                == build_deployment_physical_name(
+                    logical_name=mapping.logical_key.name,
+                    deployment_id=deployment.deployment_id,
+                )
                 and relation is not None
                 and desired is not None
                 and connection.catalog_resource_matches(

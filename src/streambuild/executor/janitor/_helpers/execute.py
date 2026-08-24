@@ -125,7 +125,7 @@ def _preview_janitor(
         physical_object_names: tuple[str, ...] = tuple(
             sorted(mapping.physical_name for mapping in deployment.prepared_object_mappings)
         )
-        if not _physical_mappings_are_safe(deployment):
+        if not _physical_mappings_are_safe(deployment=deployment, database=database):
             candidates.append(
                 JanitorPreviewCandidate(
                     deployment_id=deployment.deployment_id,
@@ -237,6 +237,15 @@ def _apply_janitor(
         managed_table_state=managed_table_state,
     )
     inventory: AdapterDeploymentInventory = client.load_deployment_inventory(metadata_database)
+    cross_database_mapping_names: tuple[str, ...] = _cross_database_mapping_names(
+        inventory=inventory,
+        database=database,
+    )
+    if cross_database_mapping_names:
+        raise AdapterResultError(
+            "Janitor refuses cross-database physical cleanup without locks for every database: "
+            f"{cross_database_mapping_names!r}"
+        )
     _active_relation_names, obsolete_removals = _binding_activity(
         inventory=inventory,
         managed_table_state=managed_table_state,
@@ -368,13 +377,26 @@ def _janitor_tombstone(
     )
 
 
-def _physical_mappings_are_safe(deployment: AdapterDeploymentRecord) -> bool:
+def _physical_mappings_are_safe(*, deployment: AdapterDeploymentRecord, database: str) -> bool:
     return all(
-        is_deployment_physical_name(mapping.physical_name)
+        mapping.logical_key.database in {None, database}
+        and is_deployment_physical_name(mapping.physical_name)
         and deployment_id_from_physical_name(mapping.physical_name) == deployment.deployment_id
         and logical_name_from_physical_name(mapping.physical_name) == mapping.logical_key.name
         for mapping in deployment.prepared_object_mappings
     )
+
+
+def _cross_database_mapping_names(
+    *, inventory: AdapterDeploymentInventory, database: str
+) -> tuple[str, ...]:
+    names: set[str] = set()
+    for deployment in inventory.deployments:
+        for mapping in deployment.prepared_object_mappings:
+            mapped_database: str | None = mapping.logical_key.database
+            if mapped_database not in {None, database}:
+                names.add(mapped_database)
+    return tuple(sorted(names))
 
 
 def _latest_publish_times(
@@ -415,7 +437,7 @@ def _rollback_deployment_ids(
         if deployment.deployment_id in published_rank_by_deployment
         and deployment.deployment_id not in active_deployment_ids
         and deployment.status != VIRTUAL_DEPLOYMENT_STATUS_INCOMPLETE
-        and _physical_mappings_are_safe(deployment)
+        and _physical_mappings_are_safe(deployment=deployment, database=database)
         and _rollback_relations_are_available(
             deployment=deployment,
             database=database,
