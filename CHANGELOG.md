@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.27.2](https://github.com/chio-labs/streambuild/compare/v0.27.1...v0.27.2) (2026-08-24)
+
+
+### Refactoring
+
+* **release:** centralize auto-merge ([#176](https://github.com/chio-labs/streambuild/issues/176)) ([7e5e79a](https://github.com/chio-labs/streambuild/commit/7e5e79a01a15537e39f65740c5eafc477d967194))
+
 ## [0.27.1](https://github.com/chio-labs/streambuild/compare/v0.27.0...v0.27.1) (2026-08-24)
 
 
