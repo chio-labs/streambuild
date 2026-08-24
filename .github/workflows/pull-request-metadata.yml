@@ -99,3 +99,23 @@ jobs:
 
           print(f"Pull request metadata is valid for {branch}.")
           PY
+
+      - name: Validate release pull request contents
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_METADATA_PATH: ${{ runner.temp }}/pull-request.json
+        run: |
+          branch="$(jq -r '.pull_request.head.ref // .head.ref' "${PR_METADATA_PATH}")"
+          if [[ ! "${branch}" =~ ^release-please-- ]]; then
+            exit 0
+          fi
+          pull_request="$(jq -r '.pull_request.number // .number' "${PR_METADATA_PATH}")"
+          unexpected_files="$(gh api --paginate \
+            "repos/${GITHUB_REPOSITORY}/pulls/${pull_request}/files" \
+            --jq '.[].filename' | grep -Ev \
+            '^(\.release-please-manifest\.json|CHANGELOG\.md|pyproject\.toml|uv\.lock)$' || true)"
+          if [[ -n "${unexpected_files}" ]]; then
+            echo "Release pull request contains non-metadata changes:" >&2
+            echo "${unexpected_files}" >&2
+            exit 1
+          fi
