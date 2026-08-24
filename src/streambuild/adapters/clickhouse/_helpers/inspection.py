@@ -1,25 +1,42 @@
 """Assemble a neutral catalog snapshot from ClickHouse system tables."""
 
 from collections.abc import Mapping
+from hashlib import sha256
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.constants import ADAPTER_DATABASE_PLACEHOLDER
 from streambuild.adapter.exceptions import AdapterResultError
 from streambuild.adapter.models import (
     AdapterIdentity,
+    AdapterManagedSource,
+    AdapterMaterializedView,
     AdapterQueryResult,
     AdapterRefreshState,
+    AdapterTable,
+    AdapterView,
     CatalogColumn,
     CatalogIdentity,
     CatalogRelation,
     CatalogSnapshot,
 )
 from streambuild.adapters.clickhouse._helpers.catalog_parsing import (
+    normalize_catalog_query,
     normalize_partition_key,
     parse_catalog_ddl_details,
     parse_catalog_query_details,
     parse_sorting_key,
 )
-from streambuild.adapters.clickhouse.constants import EMPTY_DEFAULT_EXPRESSIONS
+from streambuild.adapters.clickhouse.constants import (
+    CLICKHOUSE_DEFAULT_INDEX_GRANULARITY,
+    CLICKHOUSE_KAFKA_ENGINE,
+    CLICKHOUSE_MATERIALIZED_VIEW_ENGINE,
+    CLICKHOUSE_VIEW_ENGINE,
+    CLICKHOUSE_ZERO_UUID,
+    EMPTY_DEFAULT_EXPRESSIONS,
+)
+from streambuild.adapters.clickhouse.main.database_scoped_consumer_group import (
+    database_scoped_consumer_group,
+)
 from streambuild.adapters.clickhouse.models import (
     ClickHouseCatalogColumnRow,
     ClickHouseCatalogRelationRow,
@@ -40,7 +57,8 @@ def load_clickhouse_catalog(
         raise AdapterResultError("Could not determine ClickHouse server timezone")
     relation_rows: tuple[ClickHouseCatalogRelationRow, ...] = connection.query_many(
         statement=(
-            "SELECT name, engine, sorting_key, partition_key, create_table_query, as_select "
+            "SELECT name, engine, sorting_key, partition_key, create_table_query, as_select, "
+            "toString(uuid) AS uuid "
             f"FROM system.tables WHERE database = {quoted_database} ORDER BY name"
         ),
         decode=_decode_relation_row,
@@ -85,9 +103,9 @@ def _build_catalog_relation(
     target_relation_name: str | None
     ttl, settings, target_relation_name = parse_catalog_ddl_details(row.create_table_query)
     query_sql: str | None
-    source_relation_name: str | None
+    source_relation_names: tuple[str, ...]
     stable_binding_name: str | None
-    query_sql, source_relation_name, stable_binding_name = parse_catalog_query_details(
+    query_sql, source_relation_names, stable_binding_name = parse_catalog_query_details(
         engine=row.engine,
         value=row.as_select,
     )
@@ -101,9 +119,13 @@ def _build_catalog_relation(
         settings=settings,
         definition_sql=row.create_table_query,
         query_sql=query_sql,
-        source_relation_name=source_relation_name,
+        source_relation_names=source_relation_names,
         target_relation_name=target_relation_name,
         stable_binding_name=stable_binding_name,
+        ownership_generation=_ownership_generation(
+            uuid=row.uuid,
+            definition_sql=row.create_table_query,
+        ),
     )
 
 
@@ -115,6 +137,7 @@ def _decode_relation_row(row: Mapping[str, object]) -> ClickHouseCatalogRelation
         partition_key=str(row["partition_key"]),
         create_table_query=str(row["create_table_query"]),
         as_select=str(row["as_select"]),
+        uuid=str(row["uuid"]),
     )
 
 
@@ -136,6 +159,75 @@ def quote_clickhouse_sql_string(value: str) -> str:
 
     escaped_value: str = value.replace("\\", "\\\\").replace("'", "''")
     return f"'{escaped_value}'"
+
+
+def _ownership_generation(*, uuid: str, definition_sql: str) -> str:
+    if uuid and uuid != CLICKHOUSE_ZERO_UUID:
+        return uuid
+    return sha256(definition_sql.encode()).hexdigest()
+
+
+def clickhouse_catalog_resource_matches(
+    *,
+    resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterView,
+    relation: CatalogRelation,
+    database: str,
+) -> bool:
+    """Compare every structural field available through the ClickHouse catalog."""
+
+    expected_columns: tuple[tuple[str, str, str | None], ...] = (
+        tuple((column.name, column.type, column.default_expression) for column in resource.columns)
+        if isinstance(resource, (AdapterManagedSource, AdapterTable))
+        else ()
+    )
+    actual_columns: tuple[tuple[str, str, str | None], ...] = tuple(
+        (column.name, column.type, column.default_expression) for column in relation.columns
+    )
+    if expected_columns and expected_columns != actual_columns:
+        return False
+    if isinstance(resource, AdapterManagedSource):
+        expected_settings: dict[str, str] = {
+            "kafka_broker_list": resource.broker_list,
+            "kafka_topic_list": resource.topic,
+            "kafka_group_name": database_scoped_consumer_group(
+                consumer_group=resource.consumer_group,
+                database=database,
+            ),
+            "kafka_format": resource.format,
+            **dict(resource.settings),
+        }
+        actual_settings: dict[str, str] = {
+            name: value.strip().strip("'") for name, value in relation.settings
+        }
+        return relation.engine == CLICKHOUSE_KAFKA_ENGINE and actual_settings == expected_settings
+    if isinstance(resource, AdapterTable):
+        expected_engine: str = resource.engine.strip().removesuffix("()")
+        actual_settings: tuple[tuple[str, str], ...] = tuple(
+            setting
+            for setting in relation.settings
+            if setting != CLICKHOUSE_DEFAULT_INDEX_GRANULARITY or resource.settings
+        )
+        return (
+            relation.engine == expected_engine
+            and resource.order_by == relation.order_by
+            and resource.partition_by == relation.partition_by
+            and resource.ttl == relation.ttl
+            and resource.settings == actual_settings
+        )
+    expected_query: str | None = normalize_catalog_query(
+        resource.database_template.replace(
+            f"{ADAPTER_DATABASE_PLACEHOLDER}.",
+            f"{database}.",
+        )
+    )
+    if isinstance(resource, AdapterMaterializedView):
+        return (
+            relation.engine == CLICKHOUSE_MATERIALIZED_VIEW_ENGINE
+            and relation.source_relation_name == resource.source_relation_name
+            and relation.target_relation_name == resource.target_relation_name
+            and relation.query_sql == expected_query
+        )
+    return relation.engine == CLICKHOUSE_VIEW_ENGINE and relation.query_sql == expected_query
 
 
 def load_clickhouse_refresh_states(

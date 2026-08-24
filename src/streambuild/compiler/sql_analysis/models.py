@@ -163,11 +163,17 @@ class SqlCatalogAnalysis:
 
     canonical_sql: str
     query_sql: str | None
-    first_source: SqlRelationIdentity | None
+    source_relations: tuple[SqlRelationIdentity, ...]
     direct_source: SqlRelationIdentity | None
     target_relation: SqlRelationIdentity | None
     ttl: str | None
     settings: tuple[tuple[str, str], ...]
+
+    @property
+    def first_source(self) -> SqlRelationIdentity | None:
+        """Return the first physical source when one exists."""
+
+        return self.source_relations[0] if self.source_relations else None
 
 
 @dataclass(frozen=True)

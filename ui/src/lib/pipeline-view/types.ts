@@ -23,3 +23,44 @@ export type PipelineViewFacade = {
 	formatTimestamp(value: string | null): string;
 	refTypeLabel: Readonly<Record<ModelRef['type'], string>>;
 };
+
+export type DestructionOperation = 'destroy_pipelines' | 'reset_target';
+
+export type DestructionResource = {
+	name: string;
+	kind: string;
+	logicalName: string;
+	pipelineName: string | null;
+	exists: boolean;
+	bytes: number | null;
+	activeParts: number | null;
+};
+
+export type DestructionPlan = {
+	planId: string;
+	planFingerprint: string;
+	operation: DestructionOperation;
+	target: string;
+	database: string;
+	selectedPipelines: string[];
+	includedDependentPipelines: string[];
+	affectedPipelines: string[];
+	requiredDependentPipelines: string[];
+	blocked: boolean;
+	models: string[];
+	resources: DestructionResource[];
+	managedSourcesIncluded: boolean;
+	retainedReplayDataIncluded: boolean;
+	estimatedBytes: number;
+	challengeValues: string[];
+	expiresAt: string;
+};
+
+export type ReviewedDestructionPlan = DestructionPlan & {
+	reviewedAt: string;
+};
+
+export type DestructionExecution = {
+	invocationId: string;
+	status: string;
+};

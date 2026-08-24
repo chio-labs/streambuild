@@ -23,3 +23,12 @@ class ObservationArtifactTestCase:
 class StartInvocationTestCase:
     description: str
     expected_invocation_id: str
+
+
+@dataclass(frozen=True)
+class CompleteDestructionSummaryTestCase:
+    description: str
+    command: str
+    remaining_object_count: int
+    expected_actor: str
+    expected_payload_truncated: bool

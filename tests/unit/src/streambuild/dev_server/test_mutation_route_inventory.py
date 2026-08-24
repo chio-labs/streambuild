@@ -48,6 +48,15 @@ _DECLARED_MUTATION_POLICIES: dict[tuple[str, str], str] = {
         "deployment.promote via require_promotion_authorization"
     ),
     ("POST", "/api/deployments/cleanup"): ("deployment.cleanup via require_cleanup_authorization"),
+    ("POST", "/api/destruction/plans"): (
+        "pipeline.destroy or target.reset via require_destruction_authorization"
+    ),
+    ("POST", "/api/destruction/plans/{plan_id}/review"): (
+        "creator-bound pipeline.destroy or target.reset review gate"
+    ),
+    ("POST", "/api/destruction/plans/{plan_id}/execute"): (
+        "creator-bound exact challenge plus current destruction authorization"
+    ),
     ("POST", "/api/sources/{name}/messages"): (
         "source.messages.read via require_message_read_authorization"
     ),

@@ -30,6 +30,7 @@ from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.compiler.testing.models import SqlTestCase
 from streambuild.dev_server.constants import CHECK_KIND_TEST
 from streambuild.dev_server.models import OperationAuthorizationContext
+from streambuild.executor.destruction.types import DestructionOperation
 
 _HTTP_FORBIDDEN: int = 403
 _MODEL_IDENTITY_PREFIX: str = f"{LogicalResourceType.MODEL}:"
@@ -390,6 +391,34 @@ def require_cleanup_authorization(
         grant_scope=GrantScope.TARGET,
         affected_pipelines=(),
         denial_message="Deployment cleanup is not permitted",
+    )
+
+
+def require_destruction_authorization(
+    *,
+    analysis: CompileAnalysis,
+    request: Request,
+    context: OperationAuthorizationContext,
+    operation: DestructionOperation | str,
+    affected_pipelines: tuple[str, ...],
+) -> None:
+    """Require the dedicated permission for an exact destructive-operation scope."""
+
+    reset_target: bool = DestructionOperation(operation) == DestructionOperation.RESET_TARGET
+    _ = require_operation_authorization(
+        analysis=analysis,
+        request=request,
+        store=context.store,
+        project_dir=context.project_dir,
+        selected_target=context.selected_target,
+        permission=Permission.TARGET_RESET if reset_target else Permission.PIPELINE_DESTROY,
+        grant_scope=GrantScope.TARGET if reset_target else None,
+        affected_pipelines=() if reset_target else affected_pipelines,
+        denial_message=(
+            "Resetting this target is not permitted"
+            if reset_target
+            else "Destroying these pipelines is not permitted"
+        ),
     )
 
 

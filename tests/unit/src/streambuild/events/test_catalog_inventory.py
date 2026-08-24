@@ -26,7 +26,15 @@ from tests.unit.src.streambuild.events.helpers import build_node_result_observat
             expected_node_kinds=frozenset({"audit", "test"}),
             expected_statuses=frozenset({"passed", "warning", "failed", "error", "deferred"}),
             expected_commands=frozenset(
-                {"audit", "test", "build", "deployment promote", "janitor"}
+                {
+                    "audit",
+                    "test",
+                    "build",
+                    "deployment promote",
+                    "janitor",
+                    "destroy pipelines",
+                    "reset target",
+                }
             ),
             expected_transitions=frozenset(
                 {"new_failure", "still_failing", "recovered", "still_passing"}

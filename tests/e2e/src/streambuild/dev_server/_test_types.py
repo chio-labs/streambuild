@@ -75,6 +75,15 @@ class PlanBrowserE2ETestCase:
 
 
 @dataclass(frozen=True)
+class DestructionBrowserE2ETestCase:
+    description: str
+    pipeline_name: str
+    expected_model_name: str
+    expected_relation_name: str
+    expected_invocation_id: str
+
+
+@dataclass(frozen=True)
 class BuildRunBrowserE2ETestCase:
     description: str
     selector: str

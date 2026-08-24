@@ -65,6 +65,7 @@ def run_reconcile(
         ReconcilePreview,
         execute_reconcile(
             client=client,
+            target_database=resolved_database,
             metadata_database=resolved_metadata_database,
             desired_state=desired_state,
             actual_state=actual_state,
@@ -81,6 +82,7 @@ def run_reconcile(
         ReconcileResult,
         execute_reconcile(
             client=client,
+            target_database=resolved_database,
             metadata_database=resolved_metadata_database,
             desired_state=desired_state,
             actual_state=actual_state,

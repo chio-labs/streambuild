@@ -7,7 +7,6 @@ from pathlib import Path
 from fastapi import FastAPI
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.auth.classes.control_store import ControlStore
 from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.dev_server._helpers.payloads.state_payload import (
     build_state_payload,
@@ -24,7 +23,7 @@ from streambuild.dev_server.classes.state_snapshot import StateSnapshot
 from streambuild.dev_server.classes.warehouse_health_reader import WarehouseHealthReader
 from streambuild.dev_server.classes.warehouse_runtime import WarehouseRuntime
 from streambuild.dev_server.exceptions import ProjectNotCompiledError
-from streambuild.dev_server.models import DevExecutionContext
+from streambuild.dev_server.models import DevControlStores, DevExecutionContext
 from streambuild.dev_server.types import DevServerReporter
 
 
@@ -122,8 +121,7 @@ def build_dev_app_lifespan(
     kafka_topic_reader: KafkaTopicReader,
     audit_scheduler: AuditScheduler,
     sensor_scheduler: SensorScheduler,
-    control_store: ControlStore,
-    owns_control_store: bool,
+    control_stores: DevControlStores,
     warehouse: WarehouseRuntime,
 ) -> Callable[[FastAPI], AbstractAsyncContextManager[None]]:
     """Start schedulers and warm caches on startup; close everything on shutdown."""
@@ -143,21 +141,22 @@ def build_dev_app_lifespan(
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-        warehouse.start()
-        sensor_scheduler.initialize_event_checkpoints()
-        sensor_scheduler.start()
-        audit_scheduler.start()
-        state.snapshot.start()
-        _warm_broker_caches()
-        yield
-        state.snapshot.close()
-        sensor_scheduler.close()
-        audit_scheduler.close()
-        kafka_lag_reader.close()
-        kafka_topic_reader.close()
-        builds.close()
-        warehouse.close()
-        if owns_control_store:
-            control_store.close()
+        try:
+            warehouse.start()
+            sensor_scheduler.initialize_event_checkpoints()
+            sensor_scheduler.start()
+            audit_scheduler.start()
+            state.snapshot.start()
+            _warm_broker_caches()
+            yield
+        finally:
+            state.snapshot.close()
+            sensor_scheduler.close()
+            audit_scheduler.close()
+            kafka_lag_reader.close()
+            kafka_topic_reader.close()
+            builds.close()
+            warehouse.close()
+            control_stores.close()
 
     return lifespan

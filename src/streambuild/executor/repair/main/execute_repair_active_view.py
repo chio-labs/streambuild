@@ -11,6 +11,7 @@ from streambuild.executor.repair.models import RepairActiveViewRequest, RepairAc
 from streambuild.executor.workflow.main._execute_warehouse_workflow import (
     execute_warehouse_workflow,
 )
+from streambuild.executor.workflow.main.target_mutation_lock import target_mutation_lock
 from streambuild.executor.workflow.models import WarehouseStatement
 
 
@@ -28,17 +29,18 @@ def execute_repair_active_view(
         raise AdapterCapabilityError(
             f"Adapter '{client.adapter_identity.name}' does not support stable logical bindings"
         )
-    binding: AdapterStableBinding = AdapterStableBinding(
-        database=request.default_database,
-        logical_name=request.table_name,
-        physical_name=target_table_name,
-    )
-    statements: tuple[WarehouseStatement, ...] = assemble_repair_workflow(
-        binding=binding,
-        client=client,
-    )
-    _ = execute_warehouse_workflow(statements=statements, connection=client)
-    return RepairActiveViewResult(
-        table_name=request.table_name,
-        target_table_name=target_table_name,
-    )
+    with target_mutation_lock(connection=client, database=request.default_database):
+        binding: AdapterStableBinding = AdapterStableBinding(
+            database=request.default_database,
+            logical_name=request.table_name,
+            physical_name=target_table_name,
+        )
+        statements: tuple[WarehouseStatement, ...] = assemble_repair_workflow(
+            binding=binding,
+            client=client,
+        )
+        _ = execute_warehouse_workflow(statements=statements, connection=client)
+        return RepairActiveViewResult(
+            table_name=request.table_name,
+            target_table_name=target_table_name,
+        )

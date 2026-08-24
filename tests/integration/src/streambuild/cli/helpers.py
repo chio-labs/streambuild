@@ -28,6 +28,8 @@ from streambuild.adapter.models import (
     AdapterMetadataState,
     AdapterMutationResult,
     AdapterNodeResultRecord,
+    AdapterOwnedResourceEvent,
+    AdapterOwnedResourceSnapshot,
     AdapterQueryResult,
     AdapterReadinessRequest,
     AdapterReadinessRootObservation,
@@ -36,7 +38,9 @@ from streambuild.adapter.models import (
     AdapterReplayRequest,
     AdapterStableView,
     AdapterTable,
+    AdapterTargetMutationLock,
     AdapterView,
+    CatalogRelation,
     CatalogSnapshot,
     InspectedManagedTableState,
 )
@@ -255,6 +259,43 @@ class RecordingDelegatingConnection(AdapterConnection):
 
     def render_cleanup_relations(self, request: AdapterRelationCleanupRequest) -> tuple[str, ...]:
         return self._delegate.render_cleanup_relations(request)
+
+    def load_owned_resources(
+        self, *, database: str, target_database: str
+    ) -> AdapterOwnedResourceSnapshot:
+        return self._delegate.load_owned_resources(
+            database=database,
+            target_database=target_database,
+        )
+
+    def render_owned_resource_events(
+        self, *, database: str, events: tuple[AdapterOwnedResourceEvent, ...]
+    ) -> tuple[str, ...]:
+        return self._delegate.render_owned_resource_events(database=database, events=events)
+
+    def catalog_resource_matches(
+        self,
+        *,
+        resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterView,
+        relation: CatalogRelation,
+        database: str,
+    ) -> bool:
+        return self._delegate.catalog_resource_matches(
+            resource=resource,
+            relation=relation,
+            database=database,
+        )
+
+    def acquire_target_mutation_lock(
+        self, *, database: str, owner_id: str
+    ) -> AdapterTargetMutationLock:
+        return self._delegate.acquire_target_mutation_lock(
+            database=database,
+            owner_id=owner_id,
+        )
+
+    def release_target_mutation_lock(self, lock: AdapterTargetMutationLock) -> None:
+        self._delegate.release_target_mutation_lock(lock)
 
     def close(self) -> None:
         self._delegate.close()

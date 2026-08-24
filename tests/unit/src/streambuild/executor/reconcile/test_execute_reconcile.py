@@ -4,11 +4,11 @@ from typing import cast
 
 import pytest
 
-from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.compiler.compile.models import DesiredState
 from streambuild.compiler.planner.models import ActualState, ObjectStateRecord
 from streambuild.executor.reconcile.main.execute_reconcile import execute_reconcile
 from streambuild.executor.reconcile.models import ReconcilePreview, ReconcileResult
+from tests.unit.src.streambuild.cli.helpers import RecordingAdapterConnection
 from tests.unit.src.streambuild.executor.reconcile._test_types import (
     ApplyReconcileWorkflowTestCase,
     ExecuteReconcileTestCase,
@@ -51,11 +51,13 @@ def test_given_desired_and_actual_states_when_reconciling_then_classifies_target
     desired_state: DesiredState
     actual_state: ActualState
     desired_state, actual_state = test_case.build_states()
+    connection: RecordingAdapterConnection = RecordingAdapterConnection()
 
     result: ReconcilePreview = cast(
         ReconcilePreview,
         execute_reconcile(
-            client=cast(AdapterConnection, object()),
+            client=connection,
+            target_database="analytics",
             metadata_database="metadata",
             desired_state=desired_state,
             actual_state=actual_state,
@@ -72,6 +74,7 @@ def test_given_desired_and_actual_states_when_reconciling_then_classifies_target
         == test_case.expected_rejected_reason_groups
     )
     assert result.reconcile_id.startswith(test_case.expected_reconcile_id_prefix)
+    assert connection.target_mutation_lock_events == []
 
 
 @pytest.mark.parametrize(
@@ -79,6 +82,7 @@ def test_given_desired_and_actual_states_when_reconciling_then_classifies_target
     [
         ApplyReconcileWorkflowTestCase(
             description="executes metadata migration and exact reconcile persistence SQL",
+            expected_lock_database="analytics",
             expected_migration_statement="CREATE DATABASE IF NOT EXISTS metadata;",
             expected_object_names=("tbl__orders", "mv__orders"),
             expected_reconcile_id_prefix="reconcile_",
@@ -107,6 +111,7 @@ def test_given_matching_state_when_applying_reconcile_then_exact_workflow_sql_re
         ReconcileResult,
         execute_reconcile(
             client=connection,
+            target_database=test_case.expected_lock_database,
             metadata_database="metadata",
             desired_state=desired_state,
             actual_state=actual_state,
@@ -174,6 +179,10 @@ def test_given_matching_state_when_applying_reconcile_then_exact_workflow_sql_re
         test_case.expected_migration_statement,
         expected_persistence_statement,
     ]
+    assert tuple(event[:2] for event in connection.target_mutation_lock_events) == (
+        ("acquire", test_case.expected_lock_database),
+        ("release", test_case.expected_lock_database),
+    )
     assert tuple(record.key.name for record in result.reconciled_records) == (
         test_case.expected_object_names
     )

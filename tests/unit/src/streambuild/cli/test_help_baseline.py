@@ -13,7 +13,7 @@ from tests.unit.src.streambuild.cli._test_types import CliHelpBaselineTestCase
         CliHelpBaselineTestCase(
             description="captures root help",
             argv=("--help",),
-            expected_sha256="cec3d8178a6bdff09bdeff9415f278e06606a1568902c7d6fb89a19b9241edbc",
+            expected_sha256="94ba224d61d0905367f0b6fd06f63b89ae76e96dcc9672bf18226d907eab120e",
         ),
         CliHelpBaselineTestCase(
             description="captures admin help",
@@ -49,6 +49,16 @@ from tests.unit.src.streambuild.cli._test_types import CliHelpBaselineTestCase
             description="captures build help",
             argv=("build", "--help"),
             expected_sha256="43c66251840b298c9458a9fc567982f3eb388ae082d494ffaea1795378de88c4",
+        ),
+        CliHelpBaselineTestCase(
+            description="captures destroy help",
+            argv=("destroy", "--help"),
+            expected_sha256="e592734b892461602c2b8fa8ff1d5c02e5fb57391bd23d2179573836b41111cf",
+        ),
+        CliHelpBaselineTestCase(
+            description="captures reset target help",
+            argv=("reset-target", "--help"),
+            expected_sha256="c4fa3e2b305b9b4c93b132ffa3c6fde059324ef037407a2ac2e1e6a8e08b7c4c",
         ),
         CliHelpBaselineTestCase(
             description="captures audit help",

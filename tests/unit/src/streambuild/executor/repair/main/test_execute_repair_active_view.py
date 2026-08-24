@@ -46,6 +46,10 @@ def test_given_repair_target_when_rebinding_then_exact_workflow_sql_reaches_gate
     )
 
     assert connection.statements == [test_case.expected_statement]
+    assert tuple(event[:2] for event in connection.target_mutation_lock_events) == (
+        ("acquire", test_case.request.default_database),
+        ("release", test_case.request.default_database),
+    )
     assert result == test_case.expected_result
 
 

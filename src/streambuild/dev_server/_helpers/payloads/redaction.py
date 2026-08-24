@@ -1,4 +1,4 @@
-"""Redact credential-bearing source values before they leave the process."""
+"""Redact credential-bearing source values before they enter API payloads."""
 
 from __future__ import annotations
 

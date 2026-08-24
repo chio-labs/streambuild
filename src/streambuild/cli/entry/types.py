@@ -13,6 +13,8 @@ class CliCommand(StrEnum):
     TEST = "test"
     PLAN = "plan"
     BUILD = "build"
+    DESTROY = "destroy"
+    RESET_TARGET = "reset-target"
     DEPLOYMENT = "deployment"
     AUDIT = "audit"
     RECONCILE = "reconcile"

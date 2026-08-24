@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+from contextlib import AbstractContextManager, nullcontext
 from pathlib import Path
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
@@ -32,6 +33,7 @@ from streambuild.executor.direct.models import (
 from streambuild.executor.kafka_admin.main.reset_fresh_landing_offsets import (
     reset_fresh_landing_offsets,
 )
+from streambuild.executor.workflow.main.target_mutation_lock import target_mutation_lock
 from streambuild.executor.workflow.models import BuildWorkflow, WorkflowExecutionResult
 from streambuild.executor.workflow.types import WorkflowEventEmitter
 
@@ -43,6 +45,7 @@ def execute_confirmed_direct_build(
     client: AdapterConnection,
     emitter: WorkflowEventEmitter | None = None,
     confirmation_required: bool = True,
+    _acquire_target_mutation_lock: bool = True,
 ) -> DirectBuildExecutionResult | None:
     """Show the destructive plan, require confirmation, then build."""
 
@@ -52,65 +55,71 @@ def execute_confirmed_direct_build(
         protection_requirements=preparation.protection_requirements,
     ):
         return None
-    _reset_fresh_landing_offsets_for_direct_build(preparation=preparation)
-    try:
-        runtime_execution: DirectRuntimeExecution = execute_direct_build_workflow(
-            workflow=preparation.workflow,
-            connection=client,
-            emitter=emitter,
+    lock_context: AbstractContextManager[None] = (
+        target_mutation_lock(connection=client, database=preparation.request.database)
+        if _acquire_target_mutation_lock
+        else nullcontext()
+    )
+    with lock_context:
+        _reset_fresh_landing_offsets_for_direct_build(preparation=preparation)
+        try:
+            runtime_execution: DirectRuntimeExecution = execute_direct_build_workflow(
+                workflow=preparation.workflow,
+                connection=client,
+                emitter=emitter,
+            )
+        except DirectWorkflowExecutionError as error:
+            artifact_warning: str | None = _publish_direct_build_artifact(
+                target_dir=options.pipelines_root.parent / "target",
+                workflow=error.workflow,
+                execution_json=render_direct_execution_json(
+                    request=preparation.request,
+                    status="cancelled" if isinstance(error.cause, KeyboardInterrupt) else "failed",
+                    captures=error.captures,
+                    execution=error.partial_result,
+                    failed_step_id=error.failed_step_id,
+                    error_message=str(error.cause),
+                    audit_result=None,
+                ),
+            )
+            _print_optional_warning(artifact_warning)
+            applied_model_names: frozenset[str] = _applied_model_names(
+                request=preparation.request,
+                workflow=preparation.workflow,
+                execution=error.partial_result,
+            )
+            fingerprint_warning: str | None = persist_direct_fingerprints(
+                request=preparation.request,
+                connection=client,
+                applied_model_names=applied_model_names,
+            )
+            _print_optional_warning(fingerprint_warning)
+            raise error.cause from error
+        result: DirectBuildExecutionResult = build_direct_execution_result(
+            request=preparation.request,
+            execution=runtime_execution.execution,
+            captures=runtime_execution.captures,
         )
-    except DirectWorkflowExecutionError as error:
-        artifact_warning: str | None = _publish_direct_build_artifact(
+        artifact_warning = _publish_direct_build_artifact(
             target_dir=options.pipelines_root.parent / "target",
-            workflow=error.workflow,
+            workflow=runtime_execution.workflow,
             execution_json=render_direct_execution_json(
                 request=preparation.request,
-                status="cancelled" if isinstance(error.cause, KeyboardInterrupt) else "failed",
-                captures=error.captures,
-                execution=error.partial_result,
-                failed_step_id=error.failed_step_id,
-                error_message=str(error.cause),
-                audit_result=None,
+                status="failed" if result.audit_result.error_failure_count else "succeeded",
+                captures=runtime_execution.captures,
+                execution=runtime_execution.execution,
+                failed_step_id=None,
+                error_message=None,
+                audit_result=result.audit_result,
             ),
         )
         _print_optional_warning(artifact_warning)
-        applied_model_names: frozenset[str] = _applied_model_names(
-            request=preparation.request,
-            workflow=preparation.workflow,
-            execution=error.partial_result,
-        )
-        fingerprint_warning: str | None = persist_direct_fingerprints(
+        fingerprint_warning = persist_direct_fingerprints(
             request=preparation.request,
             connection=client,
-            applied_model_names=applied_model_names,
         )
         _print_optional_warning(fingerprint_warning)
-        raise error.cause from error
-    result: DirectBuildExecutionResult = build_direct_execution_result(
-        request=preparation.request,
-        execution=runtime_execution.execution,
-        captures=runtime_execution.captures,
-    )
-    artifact_warning = _publish_direct_build_artifact(
-        target_dir=options.pipelines_root.parent / "target",
-        workflow=runtime_execution.workflow,
-        execution_json=render_direct_execution_json(
-            request=preparation.request,
-            status="failed" if result.audit_result.error_failure_count else "succeeded",
-            captures=runtime_execution.captures,
-            execution=runtime_execution.execution,
-            failed_step_id=None,
-            error_message=None,
-            audit_result=result.audit_result,
-        ),
-    )
-    _print_optional_warning(artifact_warning)
-    fingerprint_warning = persist_direct_fingerprints(
-        request=preparation.request,
-        connection=client,
-    )
-    _print_optional_warning(fingerprint_warning)
-    return result
+        return result
 
 
 def _publish_direct_build_artifact(

@@ -6,10 +6,12 @@ from streambuild.adapter.models import (
     AdapterInvocationRecord,
     AdapterMetadataState,
     AdapterNodeResultRecord,
+    AdapterOwnedResourceEvent,
 )
 from streambuild.adapters.clickhouse._helpers.metadata import (
     build_clickhouse_metadata_insert_statements,
     render_clickhouse_metadata_migration_statements,
+    render_clickhouse_owned_resource_events,
 )
 from streambuild.adapters.clickhouse.models import ClickHouseMetadataStatement
 from streambuild.compiler.planner.main.build_adapter_metadata_state import (
@@ -17,6 +19,7 @@ from streambuild.compiler.planner.main.build_adapter_metadata_state import (
 )
 from tests.unit.src.streambuild.adapters.clickhouse._test_types import (
     MetadataStateInsertStatementTestCase,
+    OwnershipMetadataTestCase,
     RenderMetadataStateDdlTestCase,
     TerminalObservationInsertTestCase,
 )
@@ -379,3 +382,64 @@ def test_given_terminal_observations_when_building_inserts_then_rows_are_structu
     assert statements[5].rows == (node_result.__dict__,)
     assert statements[4].rows[0]["invocation_id"] == test_case.expected_invocation_id
     assert statements[5].rows[0]["result_id"] == test_case.expected_result_id
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        OwnershipMetadataTestCase(
+            description="owned and dropped events are fail closed",
+            expected_fragment="throwIf(count() != 1",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_owned_and_dropped_events_when_rendering_then_writes_are_fail_closed(
+    test_case: OwnershipMetadataTestCase,
+) -> None:
+    owned: AdapterOwnedResourceEvent = AdapterOwnedResourceEvent(
+        event_id="owned-1",
+        event_type="owned",
+        target_database="analytics",
+        resource_database="analytics",
+        resource_name="tbl__orders",
+        resource_kind="table",
+        pipeline_name="orders",
+        logical_resource_type="model",
+        logical_resource_name="orders",
+        resource_role="model_table",
+    )
+    dropped: AdapterOwnedResourceEvent = replace(
+        owned,
+        event_id="dropped-1",
+        event_type="dropped",
+        catalog_fingerprint="generation-1",
+    )
+
+    owned_sql, dropped_sql = render_clickhouse_owned_resource_events(
+        database="metadata",
+        events=(owned, dropped),
+    )
+
+    assert "FROM system.tables" in owned_sql
+    assert test_case.expected_fragment in owned_sql
+    assert "VALUES" in dropped_sql
+    assert "generation-1" in dropped_sql
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        OwnershipMetadataTestCase(
+            description="migration preserves the ownership ledger",
+            expected_fragment="metadata._streambuild_owned_resources",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_metadata_migration_when_rendering_then_owned_ledger_is_preserved(
+    test_case: OwnershipMetadataTestCase,
+) -> None:
+    rendered: tuple[str, ...] = render_clickhouse_metadata_migration_statements("metadata")
+
+    assert any(test_case.expected_fragment in statement for statement in rendered)

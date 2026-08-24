@@ -189,6 +189,12 @@ class ControlStore:
         self._engine.dispose()
 
     @property
+    def url(self) -> str:
+        """Return the configured URL for cooperating control-store components."""
+
+        return self._url
+
+    @property
     def authentication_revision(self) -> int:
         """Return the process-local generation for cached identity invalidation."""
 

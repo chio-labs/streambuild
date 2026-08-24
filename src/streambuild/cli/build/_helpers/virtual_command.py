@@ -1,6 +1,7 @@
 """Execute one confirmed virtual-environment build command."""
 
 import sys
+from contextlib import AbstractContextManager, nullcontext
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.exceptions import AdapterError
@@ -36,6 +37,7 @@ from streambuild.executor.population.main.plan_population_sources import (
 )
 from streambuild.executor.workflow.exceptions import WorkflowExecutionError
 from streambuild.executor.workflow.main.execute_build_workflow import execute_build_workflow
+from streambuild.executor.workflow.main.target_mutation_lock import target_mutation_lock
 from streambuild.executor.workflow.models import PublishedBuildWorkflow, WorkflowExecutionResult
 
 _SIGINT_EXIT_CODE: int = 130
@@ -50,6 +52,7 @@ def execute_virtual_build_command(
     started: tuple[str, str, int],
     confirmation_required: bool = True,
     startup_timings: RunStartupTimings | None = None,
+    _acquire_target_mutation_lock: bool = True,
 ) -> int:
     """Confirm and populate one prepared isolated virtual deployment."""
 
@@ -140,12 +143,21 @@ def execute_virtual_build_command(
             pass
         return 1
     try:
-        _reset_fresh_landing_offsets_for_virtual_build(preparation=preparation)
-        execution: WorkflowExecutionResult = execute_build_workflow(
-            published_workflow=published_workflow,
-            connection=client,
-            emitter=sink,
+        lock_context: AbstractContextManager[None] = (
+            target_mutation_lock(
+                connection=client,
+                database=preparation.request.default_database,
+            )
+            if _acquire_target_mutation_lock
+            else nullcontext()
         )
+        with lock_context:
+            _reset_fresh_landing_offsets_for_virtual_build(preparation=preparation)
+            execution: WorkflowExecutionResult = execute_build_workflow(
+                published_workflow=published_workflow,
+                connection=client,
+                emitter=sink,
+            )
     except (WorkflowExecutionError, AdapterError) as error:
         cause: BaseException = error.cause if isinstance(error, WorkflowExecutionError) else error
         _persist_virtual_invocation(

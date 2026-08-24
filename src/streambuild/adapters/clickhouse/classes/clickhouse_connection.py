@@ -8,8 +8,16 @@ from clickhouse_connect.driver.exceptions import ClickHouseError, StreamFailureE
 from clickhouse_connect.driver.summary import QuerySummary
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.adapter.constants import METADATA_NODE_RESULTS_TABLE_NAME
-from streambuild.adapter.exceptions import AdapterResultError, AdapterWarehouseError
+from streambuild.adapter.constants import (
+    METADATA_NODE_RESULTS_TABLE_NAME,
+    TARGET_MUTATION_LOCK_TABLE_NAME,
+)
+from streambuild.adapter.exceptions import (
+    AdapterError,
+    AdapterResultError,
+    AdapterTargetMutationLockError,
+    AdapterWarehouseError,
+)
 from streambuild.adapter.models import (
     AdapterBindingReplacementRequest,
     AdapterCapabilities,
@@ -26,6 +34,8 @@ from streambuild.adapter.models import (
     AdapterMetadataState,
     AdapterMutationResult,
     AdapterNodeResultRecord,
+    AdapterOwnedResourceEvent,
+    AdapterOwnedResourceSnapshot,
     AdapterQueryResult,
     AdapterReadinessRequest,
     AdapterReadinessRootObservation,
@@ -38,13 +48,16 @@ from streambuild.adapter.models import (
     AdapterStableView,
     AdapterStatementProgress,
     AdapterTable,
+    AdapterTargetMutationLock,
     AdapterView,
     AdapterWarehouseHealth,
+    CatalogRelation,
     CatalogSnapshot,
     InspectedManagedTableState,
 )
 from streambuild.adapters.clickhouse._helpers.errors import translate_driver_error
 from streambuild.adapters.clickhouse._helpers.inspection import (
+    clickhouse_catalog_resource_matches,
     load_clickhouse_catalog,
     load_clickhouse_refresh_states,
 )
@@ -58,10 +71,12 @@ from streambuild.adapters.clickhouse._helpers.managed_tables import (
 )
 from streambuild.adapters.clickhouse._helpers.metadata import (
     load_clickhouse_direct_fingerprints,
+    load_clickhouse_owned_resources,
     render_clickhouse_direct_fingerprint_observations,
     render_clickhouse_latest_node_status_query,
     render_clickhouse_metadata_migration_workflow,
     render_clickhouse_metadata_state,
+    render_clickhouse_owned_resource_events,
     render_clickhouse_run_event_inserts,
     render_clickhouse_run_statement_inserts,
     render_clickhouse_sensor_retention_cleanup,
@@ -111,6 +126,7 @@ _NODE_RESULT_REQUIRED_COLUMNS: frozenset[str] = frozenset(
     }
 )
 _QUERY_ID_SETTING: str = "query_id"
+_TARGET_MUTATION_LOCK_COMMENT_PREFIX: str = "streambuild-target-lock-v2:"
 
 
 class ClickHouseConnection(AdapterConnection):
@@ -273,6 +289,67 @@ class ClickHouseConnection(AdapterConnection):
         if not result.rows:
             raise AdapterResultError("ClickHouse returned no warehouse timestamp")
         return str(result.rows[0][0])
+
+    def acquire_target_mutation_lock(
+        self, *, database: str, owner_id: str
+    ) -> AdapterTargetMutationLock:
+        """Acquire one target-wide lock using ClickHouse's atomic DDL namespace."""
+
+        table: str = _qualified_lock_table(database)
+        owner_comment: str = f"{_TARGET_MUTATION_LOCK_COMMENT_PREFIX}{owner_id}"
+        try:
+            self._execute_workflow_sql(
+                statement=(
+                    f"CREATE TABLE {table} (guard UInt8) ENGINE = TinyLog "
+                    f"COMMENT {_quote_clickhouse_string(owner_comment)};"
+                ),
+                query_id=None,
+            )
+        except AdapterError as error:
+            exists: bool
+            current_owner: str | None
+            try:
+                exists, current_owner = self._target_mutation_lock_state(database=database)
+            except AdapterError:
+                raise error from None
+            if not exists:
+                raise
+            owner_suffix: str = "" if current_owner is None else f" by '{current_owner}'"
+            raise AdapterTargetMutationLockError(
+                f"Target database '{database}' is already mutation-locked{owner_suffix}"
+            ) from error
+        return AdapterTargetMutationLock(database=database, owner_id=owner_id)
+
+    def release_target_mutation_lock(self, lock: AdapterTargetMutationLock) -> None:
+        """Release a target lock only when the warehouse records the same owner."""
+
+        exists: bool
+        current_owner: str | None
+        exists, current_owner = self._target_mutation_lock_state(database=lock.database)
+        if not exists or current_owner != lock.owner_id:
+            raise AdapterTargetMutationLockError(
+                f"Target mutation lock ownership changed for database '{lock.database}'"
+            )
+        self._execute_workflow_sql(
+            statement=f"DROP TABLE {_qualified_lock_table(lock.database)} SYNC;",
+            query_id=None,
+        )
+
+    def _target_mutation_lock_state(self, *, database: str) -> tuple[bool, str | None]:
+        result: AdapterQueryResult = self.query(
+            "SELECT comment FROM system.tables "
+            f"WHERE database = {_quote_clickhouse_string(database)} "
+            f"AND name = {_quote_clickhouse_string(TARGET_MUTATION_LOCK_TABLE_NAME)} LIMIT 1"
+        )
+        if not result.rows:
+            return False, None
+        comment: str = str(result.rows[0][0])
+        return (
+            True,
+            comment.removeprefix(_TARGET_MUTATION_LOCK_COMMENT_PREFIX)
+            if comment.startswith(_TARGET_MUTATION_LOCK_COMMENT_PREFIX)
+            else None,
+        )
 
     def render_ensure_database(self, database: str) -> str:
         """Render exact ClickHouse database creation SQL."""
@@ -444,6 +521,40 @@ class ClickHouseConnection(AdapterConnection):
             fingerprints=fingerprints,
         )
 
+    def load_owned_resources(
+        self, *, database: str, target_database: str
+    ) -> AdapterOwnedResourceSnapshot:
+        """Load the authoritative latest owned-resource set."""
+
+        return load_clickhouse_owned_resources(
+            connection=self,
+            database=database,
+            target_database=target_database,
+        )
+
+    def render_owned_resource_events(
+        self, *, database: str, events: tuple[AdapterOwnedResourceEvent, ...]
+    ) -> tuple[str, ...]:
+        """Render fail-closed ownership ledger appends."""
+
+        self.validate_metadata_state(database)
+        return render_clickhouse_owned_resource_events(database=database, events=events)
+
+    def catalog_resource_matches(
+        self,
+        *,
+        resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterView,
+        relation: CatalogRelation,
+        database: str,
+    ) -> bool:
+        """Compare a pre-ledger ClickHouse relation with its compiled desired resource."""
+
+        return clickhouse_catalog_resource_matches(
+            resource=resource,
+            relation=relation,
+            database=database,
+        )
+
     def load_deployment_inventory(self, database: str) -> AdapterDeploymentInventory:
         """Load persisted ClickHouse deployments and publish events."""
 
@@ -492,3 +603,15 @@ class ClickHouseConnection(AdapterConnection):
             self._raw_client.close()
         except (ClickHouseError, StreamFailureError) as error:
             raise translate_driver_error(error) from error
+
+
+def _qualified_lock_table(database: str) -> str:
+    return f"{_quote_clickhouse_identifier(database)}.`{TARGET_MUTATION_LOCK_TABLE_NAME}`"
+
+
+def _quote_clickhouse_identifier(value: str) -> str:
+    return f"`{value.replace('`', '``')}`"
+
+
+def _quote_clickhouse_string(value: str) -> str:
+    return "'" + value.replace("\\", "\\\\").replace("'", "''") + "'"

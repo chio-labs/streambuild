@@ -17,6 +17,7 @@ class CliBuildGateTestCase:
 @dataclass(frozen=True)
 class CliBuildInterruptTestCase:
     description: str
+    expected_lock_database: str
     expected_exit_code: int
     expected_invocation_outcome: str
     expected_stderr_fragment: str
@@ -53,12 +54,24 @@ class CliVirtualBuildArtifactTestCase:
 @dataclass(frozen=True)
 class CliMixedBuildTestCase:
     description: str
+    expected_lock_database: str
+    expected_virtual_reset_event: str
+    expected_direct_reset_event: str
     expected_exit_code: int
     expected_mode: str
     expected_execution_order: tuple[str, str]
     expected_virtual_phase_fragment: str
     expected_direct_phase_fragment: str
     expected_completion_fragment: str
+
+
+@dataclass(frozen=True)
+class CliMixedFailureTestCase:
+    description: str
+    json_output: bool
+    expected_lock_database: str
+    expected_exit_code: int
+    expected_operation_events: tuple[str, ...]
 
 
 @dataclass(frozen=True)

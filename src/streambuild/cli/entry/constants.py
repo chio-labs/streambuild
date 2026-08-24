@@ -15,6 +15,8 @@ COMMANDS_REQUIRING_PIPELINES_ROOT: frozenset[CliCommand] = frozenset(
         CliCommand.TEST,
         CliCommand.PLAN,
         CliCommand.BUILD,
+        CliCommand.DESTROY,
+        CliCommand.RESET_TARGET,
         CliCommand.DEPLOYMENT,
         CliCommand.RECONCILE,
         CliCommand.AUDIT,
@@ -36,7 +38,9 @@ VIRTUAL_ENVIRONMENT_ONLY_COMMANDS: frozenset[CliCommand] = frozenset(
 
 DISPLAY_NAME_BY_COMMAND: Mapping[CliCommand, str] = {
     CliCommand.AUDIT: "audit",
+    CliCommand.DESTROY: "destroy",
     CliCommand.REPAIR: "repair active-view",
+    CliCommand.RESET_TARGET: "reset-target",
 }
 
 METADATA_TABLE_NAME_PREFIX: str = "streambuild_"

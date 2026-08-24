@@ -229,6 +229,13 @@ class CatalogSqlAnalysisTestCase:
 
 
 @dataclass(frozen=True)
+class CatalogPhysicalSourcesTestCase:
+    description: str
+    sql: str
+    expected_sources: tuple[tuple[str | None, str], ...]
+
+
+@dataclass(frozen=True)
 class SqlExpressionListTestCase:
     description: str
     sql: str

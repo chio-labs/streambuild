@@ -129,6 +129,8 @@ def build_cli_parser() -> argparse.ArgumentParser:
 
     build_parser: argparse.ArgumentParser = _add_build_parser(subparsers=subparsers)
 
+    _add_destruction_parsers(subparsers=subparsers)
+
     _add_deployment_parser(subparsers=subparsers)
 
     audit_parser: argparse.ArgumentParser = subparsers.add_parser(
@@ -317,6 +319,56 @@ def _add_build_parser(
         help="Confirm a protected pipeline (repeat for multiple protected pipelines)",
     )
     return build_parser
+
+
+def _add_destruction_parsers(
+    *, subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]"
+) -> None:
+    destroy_parser: argparse.ArgumentParser = subparsers.add_parser(
+        "destroy",
+        help="Permanently destroy selected pipelines",
+        description=(
+            "Permanently destroy selected pipeline-owned warehouse objects after "
+            "interactive review and exact typed challenges."
+        ),
+    )
+    _add_destruction_common_args(parser=destroy_parser)
+    destroy_parser.add_argument(
+        "--select",
+        "-s",
+        nargs="+",
+        action="extend",
+        required=True,
+        default=[],
+        metavar="pipeline:NAME",
+        help=("Select pipelines by explicit pipeline-prefixed name, e.g. --select pipeline:orders"),
+    )
+
+    reset_parser: argparse.ArgumentParser = subparsers.add_parser(
+        "reset-target",
+        help="Permanently reset every pipeline in a target",
+        description=(
+            "Permanently reset all pipeline-owned objects and managed source replay data "
+            "for a target after interactive review and exact typed challenges."
+        ),
+    )
+    _add_destruction_common_args(parser=reset_parser)
+
+
+def _add_destruction_common_args(*, parser: argparse.ArgumentParser) -> None:
+    _add_project_dir_arg(parser=parser)
+    _add_clickhouse_args(parser=parser)
+    parser.add_argument("--target", required=True, help="Named project target to destroy")
+    parser.add_argument(
+        "--control-store-url",
+        help="SQLite/PostgreSQL account control-store URL",
+    )
+    parser.add_argument(
+        "--vars",
+        type=_parse_cli_vars,
+        default={},
+        help="Project variable overrides as one JSON object",
+    )
 
 
 def _add_deployment_parser(

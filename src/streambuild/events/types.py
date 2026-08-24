@@ -28,3 +28,5 @@ class ObservedCommand(StrEnum):
     BUILD = "build"
     DEPLOYMENT_PROMOTE = "deployment promote"
     JANITOR = "janitor"
+    DESTROY_PIPELINES = "destroy pipelines"
+    RESET_TARGET = "reset target"

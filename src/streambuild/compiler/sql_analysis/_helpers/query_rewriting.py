@@ -436,7 +436,7 @@ def analyze_catalog_tree(*, tree: dict[str, Any], dialect: str) -> SqlCatalogAna
         return SqlCatalogAnalysis(
             canonical_sql=canonical_sql,
             query_sql=None,
-            first_source=None,
+            source_relations=(),
             direct_source=None,
             target_relation=None,
             ttl=ttl,
@@ -502,7 +502,7 @@ def _view_analysis(
     return SqlCatalogAnalysis(
         canonical_sql=canonical_sql,
         query_sql=query_sql,
-        first_source=_first_catalog_relation(node=query_tree, visible_ctes={}),
+        source_relations=_catalog_relations(node=query_tree, visible_ctes={}),
         direct_source=_direct_relation(query_tree),
         target_relation=target_relation,
         ttl=None,
@@ -514,7 +514,7 @@ def _query_analysis(*, canonical_sql: str, query_tree: dict[str, Any]) -> SqlCat
     return SqlCatalogAnalysis(
         canonical_sql=canonical_sql,
         query_sql=canonical_sql,
-        first_source=_first_catalog_relation(node=query_tree, visible_ctes={}),
+        source_relations=_catalog_relations(node=query_tree, visible_ctes={}),
         direct_source=_direct_relation(query_tree),
         target_relation=None,
         ttl=None,
@@ -609,112 +609,153 @@ def _is_direct_binding_select(select_payload: dict[str, Any]) -> bool:
     return not any(select_payload.get(key) for key in _DIRECT_BINDING_TRANSFORM_KEYS)
 
 
-def _first_catalog_relation(
+def _catalog_relations(
     *,
     node: Any,
     visible_ctes: dict[str, Any],
     resolving_ctes: frozenset[str] = frozenset(),
-) -> SqlRelationIdentity | None:
+) -> tuple[SqlRelationIdentity, ...]:
     if isinstance(node, list):
+        relations: list[SqlRelationIdentity] = []
         item: Any
         for item in node:
-            relation: SqlRelationIdentity | None = _first_catalog_relation(
-                node=item,
-                visible_ctes=visible_ctes,
-                resolving_ctes=resolving_ctes,
+            relations.extend(
+                _catalog_relations(
+                    node=item,
+                    visible_ctes=visible_ctes,
+                    resolving_ctes=resolving_ctes,
+                )
             )
-            if relation is not None:
-                return relation
-        return None
+        return _unique_relation_identities(relations)
     if not isinstance(node, dict):
-        return None
+        return ()
     select_payload: Any = node.get(POLYGLOT_SELECT_KEY)
     if isinstance(select_payload, dict):
-        return _first_select_relation(
+        return _select_relations(
             select_payload=select_payload,
             visible_ctes=visible_ctes,
             resolving_ctes=resolving_ctes,
         )
+    scoped_ctes: dict[str, Any] = {
+        **visible_ctes,
+        **_cte_bodies(_select_ctes(node)),
+    }
+    relations = []
+    key: str
     value: Any
-    for value in node.values():
-        relation = _first_catalog_relation(
-            node=value,
-            visible_ctes=visible_ctes,
-            resolving_ctes=resolving_ctes,
+    for key, value in node.items():
+        if key == POLYGLOT_WITH_KEY:
+            continue
+        relations.extend(
+            _catalog_relations(
+                node=value,
+                visible_ctes=scoped_ctes,
+                resolving_ctes=resolving_ctes,
+            )
         )
-        if relation is not None:
-            return relation
-    return None
+    return _unique_relation_identities(relations)
 
 
-def _first_select_relation(
+def _select_relations(
     *,
     select_payload: dict[str, Any],
     visible_ctes: dict[str, Any],
     resolving_ctes: frozenset[str],
-) -> SqlRelationIdentity | None:
+) -> tuple[SqlRelationIdentity, ...]:
     ctes: list[Any] = _select_ctes(select_payload)
     scoped_ctes: dict[str, Any] = {**visible_ctes, **_cte_bodies(ctes)}
+    relations: list[SqlRelationIdentity] = []
     from_payload: Any = select_payload.get(POLYGLOT_FROM_KEY)
     from_expressions: Any = (
         from_payload.get(POLYGLOT_EXPRESSIONS_KEY) if isinstance(from_payload, dict) else None
     )
-    relation: SqlRelationIdentity | None = _first_relation_slot(
-        relations=from_expressions,
-        visible_ctes=scoped_ctes,
-        resolving_ctes=resolving_ctes,
+    relations.extend(
+        _relation_slot_relations(
+            relation_nodes=from_expressions,
+            visible_ctes=scoped_ctes,
+            resolving_ctes=resolving_ctes,
+        )
     )
-    if relation is not None:
-        return relation
     joins: Any = select_payload.get(POLYGLOT_JOINS_KEY)
     if isinstance(joins, list):
         join: Any
         for join in joins:
             target: Any = join.get(POLYGLOT_ALIAS_VALUE_KEY) if isinstance(join, dict) else None
-            relation = _first_relation_slot(
-                relations=[target],
-                visible_ctes=scoped_ctes,
-                resolving_ctes=resolving_ctes,
+            relations.extend(
+                _relation_slot_relations(
+                    relation_nodes=[target],
+                    visible_ctes=scoped_ctes,
+                    resolving_ctes=resolving_ctes,
+                )
             )
-            if relation is not None:
-                return relation
-    return None
+            if isinstance(join, dict):
+                relations.extend(
+                    _catalog_relations(
+                        node={
+                            key: value
+                            for key, value in join.items()
+                            if key != POLYGLOT_ALIAS_VALUE_KEY
+                        },
+                        visible_ctes=scoped_ctes,
+                        resolving_ctes=resolving_ctes,
+                    )
+                )
+    relations.extend(
+        _catalog_relations(
+            node={
+                key: value
+                for key, value in select_payload.items()
+                if key not in {POLYGLOT_WITH_KEY, POLYGLOT_FROM_KEY, POLYGLOT_JOINS_KEY}
+            },
+            visible_ctes=scoped_ctes,
+            resolving_ctes=resolving_ctes,
+        )
+    )
+    return _unique_relation_identities(relations)
 
 
-def _first_relation_slot(
+def _relation_slot_relations(
     *,
-    relations: Any,
+    relation_nodes: Any,
     visible_ctes: dict[str, Any],
     resolving_ctes: frozenset[str],
-) -> SqlRelationIdentity | None:
-    if not isinstance(relations, list):
-        return None
-    relation: Any
-    for relation in relations:
-        if not isinstance(relation, dict):
+) -> tuple[SqlRelationIdentity, ...]:
+    if not isinstance(relation_nodes, list):
+        return ()
+    relations: list[SqlRelationIdentity] = []
+    relation_node: Any
+    for relation_node in relation_nodes:
+        if not isinstance(relation_node, dict):
             continue
-        table_payload: Any = relation.get(POLYGLOT_TABLE_KEY)
+        table_payload: Any = relation_node.get(POLYGLOT_TABLE_KEY)
         if isinstance(table_payload, dict):
             identity: SqlRelationIdentity = _table_identity(table_payload)
             if identity.database is not None or identity.name not in visible_ctes:
-                return identity
+                relations.append(identity)
+                continue
             if identity.name not in resolving_ctes:
-                nested: SqlRelationIdentity | None = _first_catalog_relation(
-                    node=visible_ctes[identity.name],
-                    visible_ctes=visible_ctes,
-                    resolving_ctes=resolving_ctes | {identity.name},
+                relations.extend(
+                    _catalog_relations(
+                        node=visible_ctes[identity.name],
+                        visible_ctes=visible_ctes,
+                        resolving_ctes=resolving_ctes | {identity.name},
+                    )
                 )
-                if nested is not None:
-                    return nested
             continue
-        nested: SqlRelationIdentity | None = _first_catalog_relation(
-            node=relation,
-            visible_ctes=visible_ctes,
-            resolving_ctes=resolving_ctes,
+        relations.extend(
+            _catalog_relations(
+                node=relation_node,
+                visible_ctes=visible_ctes,
+                resolving_ctes=resolving_ctes,
+            )
         )
-        if nested is not None:
-            return nested
-    return None
+    return _unique_relation_identities(relations)
+
+
+def _unique_relation_identities(
+    relations: Iterable[SqlRelationIdentity],
+) -> tuple[SqlRelationIdentity, ...]:
+    return tuple(dict.fromkeys(relations))
 
 
 def _cte_bodies(ctes: Iterable[Any]) -> dict[str, Any]:

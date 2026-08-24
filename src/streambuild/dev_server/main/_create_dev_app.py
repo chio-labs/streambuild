@@ -13,6 +13,8 @@ from fastapi.middleware.gzip import GZipMiddleware
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.auth.classes.authentication_service import AuthenticationService
 from streambuild.auth.classes.control_store import ControlStore
+from streambuild.auth.constants import SQLITE_MEMORY_URLS
+from streambuild.auth.main.default_control_store_url import default_control_store_url
 from streambuild.auth.main.register_authentication_routes import register_authentication_routes
 from streambuild.auth.models import AuthSettings
 from streambuild.dev_server._helpers.server.api_routes import register_api_routes
@@ -33,8 +35,11 @@ from streambuild.dev_server.classes.silent_reporter import SilentDevServerReport
 from streambuild.dev_server.classes.warehouse_runtime import WarehouseRuntime
 from streambuild.dev_server.exceptions import DevConfigurationError
 from streambuild.dev_server.main._register_bootstrap_route import register_bootstrap_route
-from streambuild.dev_server.models import DevExecutionContext
+from streambuild.dev_server.models import DevControlStores, DevExecutionContext
 from streambuild.dev_server.types import DevServerReporter
+from streambuild.executor.destruction.classes.relational_destruction_plan_store import (
+    RelationalDestructionPlanStore,
+)
 
 
 def create_dev_app(
@@ -100,6 +105,21 @@ def create_dev_app(
     audit_scheduler: AuditScheduler = runtime_services[3]
     sensor_scheduler: SensorScheduler = runtime_services[4]
 
+    destruction_store_url: str = (
+        default_control_store_url(project_dir=effective_project_dir)
+        if active_control_store.url in SQLITE_MEMORY_URLS
+        else active_control_store.url
+    )
+    try:
+        control_stores: DevControlStores = DevControlStores(
+            accounts=active_control_store,
+            destruction_plans=RelationalDestructionPlanStore(url=destruction_store_url),
+            owns_accounts=owns_control_store,
+        )
+    except Exception:
+        if owns_control_store:
+            active_control_store.close()
+        raise
     lifespan: Callable[[FastAPI], AbstractAsyncContextManager[None]] = build_dev_app_lifespan(
         state=state,
         database=effective_database,
@@ -108,8 +128,7 @@ def create_dev_app(
         kafka_topic_reader=kafka_topic_reader,
         audit_scheduler=audit_scheduler,
         sensor_scheduler=sensor_scheduler,
-        control_store=active_control_store,
-        owns_control_store=owns_control_store,
+        control_stores=control_stores,
         warehouse=warehouse,
     )
     app: FastAPI = FastAPI(title="StreamBuild", docs_url=None, redoc_url=None, lifespan=lifespan)
@@ -125,7 +144,7 @@ def create_dev_app(
         broker_readers=(kafka_lag_reader, kafka_topic_reader),
         execution_context=active_context,
         reporter=active_reporter,
-        control_store=active_control_store,
+        control_stores=control_stores,
     )
     return register_bootstrap_route(
         app=app,

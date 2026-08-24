@@ -20,6 +20,8 @@ from streambuild.adapter.models import (
     AdapterMetadataState,
     AdapterMutationResult,
     AdapterNodeResultRecord,
+    AdapterOwnedResourceEvent,
+    AdapterOwnedResourceSnapshot,
     AdapterQueryResult,
     AdapterReadinessRequest,
     AdapterReadinessRootObservation,
@@ -32,8 +34,10 @@ from streambuild.adapter.models import (
     AdapterStableView,
     AdapterStatementProgress,
     AdapterTable,
+    AdapterTargetMutationLock,
     AdapterView,
     AdapterWarehouseHealth,
+    CatalogRelation,
     CatalogSnapshot,
     InspectedManagedTableState,
 )
@@ -244,6 +248,38 @@ class AdapterConnection(ABC):
         del database, fingerprints
         return ()
 
+    def load_owned_resources(
+        self, *, database: str, target_database: str
+    ) -> AdapterOwnedResourceSnapshot:
+        """Load latest authoritative relation ownership when supported."""
+
+        del database, target_database
+        return AdapterOwnedResourceSnapshot(
+            status="unavailable",
+            resources=(),
+            warning=f"Adapter '{self.adapter_identity.name}' does not expose resource ownership",
+        )
+
+    def render_owned_resource_events(
+        self, *, database: str, events: tuple[AdapterOwnedResourceEvent, ...]
+    ) -> tuple[str, ...]:
+        """Render required authoritative ownership and dropped events."""
+
+        del database, events
+        return ()
+
+    def catalog_resource_matches(
+        self,
+        *,
+        resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterView,
+        relation: CatalogRelation,
+        database: str,
+    ) -> bool:
+        """Return whether a pre-ledger catalog relation exactly matches a desired resource."""
+
+        del resource, relation, database
+        return False
+
     @abstractmethod
     def load_deployment_inventory(self, database: str) -> AdapterDeploymentInventory:
         """Load persisted deployments and publish events for lifecycle cleanup."""
@@ -285,6 +321,24 @@ class AdapterConnection(ABC):
     @abstractmethod
     def render_cleanup_relations(self, request: AdapterRelationCleanupRequest) -> tuple[str, ...]:
         """Render guarded SQL that removes requested physical relations."""
+
+    def acquire_target_mutation_lock(
+        self, *, database: str, owner_id: str
+    ) -> AdapterTargetMutationLock:
+        """Acquire exclusive cross-process mutation ownership for one target."""
+
+        del database, owner_id
+        raise AdapterCapabilityError(
+            f"Adapter '{self.adapter_identity.name}' cannot lock target mutations"
+        )
+
+    def release_target_mutation_lock(self, lock: AdapterTargetMutationLock) -> None:
+        """Release target mutation ownership held by the exact lock owner."""
+
+        del lock
+        raise AdapterCapabilityError(
+            f"Adapter '{self.adapter_identity.name}' cannot lock target mutations"
+        )
 
     @abstractmethod
     def close(self) -> None:

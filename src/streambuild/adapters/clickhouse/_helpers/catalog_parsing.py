@@ -47,20 +47,22 @@ def normalize_catalog_query(value: str) -> str | None:
 
 def parse_catalog_query_details(
     *, engine: str, value: str
-) -> tuple[str | None, str | None, str | None]:
-    """Return canonical SQL, first source, and a valid direct stable binding."""
+) -> tuple[str | None, tuple[str, ...], str | None]:
+    """Return canonical SQL, physical sources, and a valid direct stable binding."""
 
     normalized: str = value.strip()
     if not normalized:
-        return None, None, None
+        return None, (), None
     analysis: SqlCatalogAnalysis = _analyze(normalized)
-    source_name: str | None = None if analysis.first_source is None else analysis.first_source.name
+    source_names: tuple[str, ...] = tuple(
+        dict.fromkeys(source.name for source in analysis.source_relations)
+    )
     stable_binding_name: str | None = (
         analysis.direct_source.name
         if engine == CLICKHOUSE_VIEW_ENGINE and analysis.direct_source is not None
         else None
     )
-    return analysis.canonical_sql, source_name, stable_binding_name
+    return analysis.canonical_sql, source_names, stable_binding_name
 
 
 def extract_source_relation_name(value: str) -> str | None:
