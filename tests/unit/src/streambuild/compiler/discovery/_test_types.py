@@ -135,6 +135,13 @@ class ProjectBuildLimitResolutionTestCase:
 
 
 @dataclass(frozen=True)
+class SensorEventAgeResolutionTestCase:
+    description: str
+    expected_dev_seconds: int
+    expected_staging_seconds: int
+
+
+@dataclass(frozen=True)
 class LegacyProjectConfigurationTestCase:
     description: str
     expected_error_fragment: str
