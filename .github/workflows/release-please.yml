@@ -104,17 +104,3 @@ jobs:
             echo "${unexpected_files}" >&2
             exit 1
           fi
-
-      - name: Request release pull request auto-merge
-        if: steps.release.outputs.prs_created == 'true'
-        env:
-          GH_TOKEN: ${{ steps.delivery-token.outputs.token }}
-          RELEASE_PRS: ${{ steps.release.outputs.prs }}
-        run: |
-          release_pr="$(jq -r '.[0].number // empty' <<< "${RELEASE_PRS}")"
-          if [[ -z "${release_pr}" ]]; then
-            echo "Release Please reported a created PR without a number" >&2
-            exit 1
-          fi
-          gh pr merge "${release_pr}" --repo "${GITHUB_REPOSITORY}" \
-            --auto --squash --match-head-commit "$(git rev-parse HEAD)"
