@@ -24,7 +24,12 @@ from streambuild.compiler.compile.models import (
     CompiledViewModel,
     LogicalResourceKey,
 )
-from streambuild.compiler.discovery.models import ModelRetentionPolicy
+from streambuild.compiler.discovery.models import (
+    KafkaLandingStep,
+    KafkaRetentionPolicy,
+    ModelRetentionPolicy,
+)
+from streambuild.compiler.discovery.types import KafkaRetentionOrigin
 from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.compiler.pipeline.types import AdapterResource
 from streambuild.compiler.testing.models import SqlTestCase
@@ -46,6 +51,9 @@ def build_manifest_json(
             for audit in analysis.compiled_project.audits
         },
         "metadata": {"manifest_version": 1, "tool": "streambuild"},
+        "dependencies": {
+            "model_reference_scope": str(analysis.compiled_project.model_reference_scope)
+        },
         "macros": {
             name: {
                 "file": macro.relative_path.as_posix(),
@@ -100,6 +108,10 @@ def _source_entry(*, source: CompiledSource, analysis: CompileAnalysis) -> dict[
     resources: tuple[AdapterResource, ...] = analysis.realized_project.resources_by_logical_key[
         source.key
     ]
+    landing_table: AdapterTable | None = next(
+        (resource for resource in resources if isinstance(resource, AdapterTable)),
+        None,
+    )
     return {
         "logical_key": f"source:{source.key.name}",
         "name": source.key.name,
@@ -110,6 +122,8 @@ def _source_entry(*, source: CompiledSource, analysis: CompileAnalysis) -> dict[
         },
         "relation_name": analysis.realized_project.relation_name_by_logical_key[source.key],
         "replay_lineage_mode": source.effective_replay_lineage_mode,
+        "retention": _source_retention_entry(source),
+        "ttl": None if landing_table is None else landing_table.ttl,
         "resources": tuple(
             {
                 "kind": _resource_kind(resource),
@@ -121,6 +135,27 @@ def _source_entry(*, source: CompiledSource, analysis: CompileAnalysis) -> dict[
             }
             for resource in resources
         ),
+    }
+
+
+def _source_retention_entry(source: CompiledSource) -> dict[str, object] | None:
+    if not isinstance(source.source, KafkaLandingStep):
+        return None
+    value: KafkaRetentionPolicy | bool | None = source.source.kafka.retention
+    origin: KafkaRetentionOrigin | str | None = source.source.kafka.retention_origin
+    if origin is None:
+        return None
+    if value is False:
+        return {"origin": str(origin), "status": "disabled"}
+    if not isinstance(value, KafkaRetentionPolicy):
+        return None
+    return {
+        "origin": str(origin),
+        "status": "applied",
+        "duration_seconds": value.duration_seconds,
+        "timestamp": str(value.timestamp),
+        "fallback": str(value.fallback),
+        "cap_at": None if value.cap_at is None else str(value.cap_at),
     }
 
 

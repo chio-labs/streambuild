@@ -59,6 +59,7 @@ def load_project_input_for_path(
         naming=effective.naming,
         audit_defaults=effective.defaults.audits,
         audit_scheduler=effective.audit_scheduler,
+        dependencies=effective.dependencies,
     )
     return LoadedProject(
         project=project,

@@ -27,6 +27,26 @@ def copy_orders_demo(*, project_dir: Path) -> None:
     _ = copytree(Path("examples/orders_demo"), project_dir)
 
 
+def write_typed_source_retention(*, project_dir: Path) -> None:
+    (project_dir / "streambuild_project.toml").write_text(
+        """name = "basic_project"
+default_target = "test"
+
+[defaults]
+pipeline_mode = "virtual"
+
+[defaults.sources.kafka.retention]
+duration = "12h"
+timestamp = "broker"
+cap_at = "landed"
+
+[targets.test]
+database = "analytics"
+""",
+        encoding="utf-8",
+    )
+
+
 def write_adopted_source(*, project_dir: Path) -> None:
     (project_dir / "sources" / "orders.yml").write_text(
         """sources:
@@ -73,6 +93,27 @@ def write_invalid_reference_model(*, project_dir: Path) -> None:
 );
 
 SELECT CAST(1 AS UInt64) AS order_id FROM __ref("orders)
+""",
+        encoding="utf-8",
+    )
+
+
+def write_cross_pipeline_model_reference(*, project_dir: Path) -> None:
+    project_path: Path = project_dir / "streambuild_project.toml"
+    project_path.write_text(
+        project_path.read_text(encoding="utf-8")
+        + '\n[dependencies]\nmodel_reference_scope = "pipeline"\n',
+        encoding="utf-8",
+    )
+    pipeline_dir: Path = project_dir / "pipelines" / "pl__consumer"
+    pipeline_dir.mkdir()
+    (pipeline_dir / "beta.sql").write_text(
+        """MODEL (
+  engine "MergeTree()",
+  order_by ["order_id"],
+);
+
+SELECT order_id::UInt64 AS order_id FROM __ref("orders_enriched")
 """,
         encoding="utf-8",
     )

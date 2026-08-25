@@ -51,3 +51,29 @@ class CrossModeRelationshipTestCase:
     upstream_mode: str
     downstream_mode: str
     expected_error_fragment: str
+
+
+@dataclass(frozen=True)
+class ModelReferenceScopeSuccessTestCase:
+    description: str
+    dependencies_toml: str
+    upstream_pipeline: str
+    downstream_pipeline: str
+    downstream_query: str
+    expected_model_name: str
+    expected_upstream_name: str
+    expected_edge_type: str
+    source_yaml: str = """sources:
+  - name: orders
+    kind: kafka
+    broker_list: kafka:9092
+    topic: source.orders
+    replay_boundary: {mode: offsets}
+"""
+
+
+@dataclass(frozen=True)
+class ModelReferenceScopeErrorTestCase:
+    description: str
+    downstream_model_sql: str
+    expected_error_fragment: str
