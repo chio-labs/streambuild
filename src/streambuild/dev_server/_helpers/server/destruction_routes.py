@@ -139,7 +139,7 @@ def _register_destruction_plan_routes(
                 affected_pipelines=plan.affected_pipeline_names,
             )
             store.save(plan=plan, actor=str(actor.principal.user_id))
-            return _plan_payload(plan)
+            return _plan_payload(plan=plan)
         except DestructionDependencyError as error:
             with state.query_lock:
                 blocked_plan: DestructionPlan = plan_destruction(
@@ -164,7 +164,7 @@ def _register_destruction_plan_routes(
                 affected_pipelines=blocked_plan.affected_pipeline_names,
             )
             return {
-                **_plan_payload(blocked_plan),
+                **_plan_payload(plan=blocked_plan),
                 "selectedPipelines": list(requested_names),
                 "requiredDependentPipelines": list(error.dependent_pipeline_names),
                 "blocked": True,
@@ -189,8 +189,13 @@ def _register_destruction_plan_routes(
 
     def read_plan(*, http_request: Request, plan_id: str) -> dict[str, object]:
         actor: AuthenticatedRequest = _actor(http_request)
+        actor_id: str = str(actor.principal.user_id)
         try:
-            plan: DestructionPlan = store.get(plan_id=plan_id, actor=str(actor.principal.user_id))
+            plan: DestructionPlan = store.get(plan_id=plan_id, actor=actor_id)
+            try:
+                reviewed_at: datetime | None = store.reviewed_at(plan_id=plan_id, actor=actor_id)
+            except DestructionPlanNotReviewedError:
+                reviewed_at = None
         except DestructionPlanExpiredError as error:
             raise HTTPException(status_code=_HTTP_GONE, detail=str(error)) from error
         except DestructionPlanNotFoundError as error:
@@ -204,7 +209,7 @@ def _register_destruction_plan_routes(
             operation=plan.operation.value,
             affected_pipelines=plan.affected_pipeline_names,
         )
-        return _plan_payload(plan)
+        return _plan_payload(plan=plan, reviewed_at=reviewed_at)
 
     def review_plan(*, http_request: Request, plan_id: str) -> dict[str, object]:
         actor: AuthenticatedRequest = _actor(http_request)
@@ -227,7 +232,7 @@ def _register_destruction_plan_routes(
             raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
         except DestructionDriftError as error:
             raise HTTPException(status_code=_HTTP_CONFLICT, detail=str(error)) from error
-        return {**_plan_payload(plan), "reviewedAt": reviewed_at.isoformat()}
+        return _plan_payload(plan=plan, reviewed_at=reviewed_at)
 
     app.post("/api/destruction/plans")(create_plan)
     app.get("/api/destruction/plans/{plan_id}")(read_plan)
@@ -385,7 +390,9 @@ def _actor(request: Request) -> AuthenticatedRequest:
     return read_authenticated_request(request=request)
 
 
-def _plan_payload(plan: DestructionPlan) -> dict[str, object]:
+def _plan_payload(
+    *, plan: DestructionPlan, reviewed_at: datetime | None = None
+) -> dict[str, object]:
     return {
         "planId": plan.plan_id,
         "planFingerprint": plan.plan_fingerprint,
@@ -416,6 +423,7 @@ def _plan_payload(plan: DestructionPlan) -> dict[str, object]:
         "estimatedBytes": plan.estimated_bytes,
         "challengeValues": list(plan.challenges),
         "expiresAt": plan.expires_at.isoformat(),
+        "reviewedAt": None if reviewed_at is None else reviewed_at.isoformat(),
     }
 
 
