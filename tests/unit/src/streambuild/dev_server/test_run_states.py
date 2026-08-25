@@ -13,6 +13,7 @@ from streambuild.dev_server._helpers.queries.runs_query import (
     _terminal_runs,
     derive_run_duration_ms,
     derive_run_status,
+    read_destruction_recovery_run,
     read_latest_direct_build_materialization,
     read_run_events,
     read_run_statement,
@@ -350,6 +351,103 @@ def test_given_old_failed_destruction_when_reading_exact_run_then_complete_summa
     assert run["command"] == test_case.expected_command
     assert run["summary"] == {
         "operationKind": "destroy_pipelines",
+        "originalSelection": ["orders"],
+        "includedDependentPipelines": [],
+    }
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        TerminalRunQueryTestCase(
+            description="event-only failed destruction retains recoverable intent",
+            invocation_id="event-only-destruction",
+            expected_command="destroy pipelines",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_event_only_failure_when_recovering_then_complete_evidence_is_returned(
+    test_case: TerminalRunQueryTestCase,
+) -> None:
+    invocation_table_query: str = (
+        "SELECT count() AS present FROM system.tables "
+        "WHERE database = 'analytics' AND name = '_streambuild_invocations'"
+    )
+    event_table_query: str = (
+        "SELECT count() AS present FROM system.tables "
+        "WHERE database = 'analytics' AND name = '_streambuild_run_events'"
+    )
+    columns: str = (
+        "invocation_id, sequence, toString(emitted_at) AS emitted_at, event_kind, "
+        "step_id, phase, payload_json"
+    )
+    event_query: str = (
+        f"SELECT {columns} FROM (SELECT {columns}, "
+        "row_number() OVER (PARTITION BY invocation_id ORDER BY sequence DESC) AS recency "
+        "FROM `analytics`.`_streambuild_run_events` "
+        f"WHERE invocation_id = '{test_case.invocation_id}') "
+        "WHERE recency <= 1 OR event_kind = 'run_started' ORDER BY invocation_id, sequence"
+    )
+    operation_evidence: str = (
+        '"operationEvidence":{"operationKind":"destroy_pipelines",'
+        '"target":"uat","database":"analytics","originalSelection":["orders"],'
+        '"includedDependentPipelines":[]}'
+    )
+    connection: FakeAdapterConnection = FakeAdapterConnection(
+        catalog=build_fake_state_connection()._catalog,
+        warehouse_timestamp="2026-08-07 12:00:00.000",
+        results_by_query={
+            invocation_table_query: AdapterQueryResult(rows=((0,),), column_names=("present",)),
+            event_table_query: AdapterQueryResult(rows=((1,),), column_names=("present",)),
+            event_query: AdapterQueryResult(
+                rows=(
+                    (
+                        test_case.invocation_id,
+                        1,
+                        "2026-08-07 11:00:00.000",
+                        "run_started",
+                        None,
+                        None,
+                        f'{{"command":"{test_case.expected_command}","mode":"destructive",'
+                        f'"projectIdentity":"project","database":"analytics",{operation_evidence}}}',
+                    ),
+                    (
+                        test_case.invocation_id,
+                        2,
+                        "2026-08-07 11:01:00.000",
+                        "run_completed",
+                        None,
+                        None,
+                        f'{{"outcome":"failed","exitCode":1,{operation_evidence}}}',
+                    ),
+                ),
+                column_names=(
+                    "invocation_id",
+                    "sequence",
+                    "emitted_at",
+                    "event_kind",
+                    "step_id",
+                    "phase",
+                    "payload_json",
+                ),
+            ),
+        },
+    )
+
+    run: dict[str, object] | None = read_destruction_recovery_run(
+        connection=connection,
+        database="analytics",
+        invocation_id=test_case.invocation_id,
+    )
+
+    assert run is not None
+    assert run["command"] == test_case.expected_command
+    assert run["outcome"] == "failed"
+    assert run["summary"] == {
+        "operationKind": "destroy_pipelines",
+        "target": "uat",
+        "database": "analytics",
         "originalSelection": ["orders"],
         "includedDependentPipelines": [],
     }

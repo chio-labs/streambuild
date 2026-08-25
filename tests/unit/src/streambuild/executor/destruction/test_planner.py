@@ -119,7 +119,17 @@ def test_given_finite_override_when_planning_then_it_replaces_server_drop_limit(
     fixture: PlanningFixture = build_planning_fixture()
     fixture.connection.relation_drop_size_limit = test_case.server_limit
     fixture.connection.relation_drop_size_server_limit = test_case.server_limit
-    fixture.connection.destruction_relation_drop_size_limit = test_case.override_limit
+    analysis: CompileAnalysis = cast(
+        CompileAnalysis,
+        SimpleNamespace(
+            realized_project=fixture.analysis.realized_project,
+            graph=fixture.analysis.graph,
+            compiled_project=SimpleNamespace(
+                production_target=False,
+                destruction_relation_drop_size_limit=test_case.override_limit,
+            ),
+        ),
+    )
 
     plan: DestructionPlan = plan_destruction(
         request=DestructionRequest(
@@ -129,7 +139,7 @@ def test_given_finite_override_when_planning_then_it_replaces_server_drop_limit(
             metadata_database="metadata",
             pipeline_names=("alpha",),
         ),
-        analysis=fixture.analysis,
+        analysis=analysis,
         connection=fixture.connection,
         now=_NOW,
     )
@@ -155,7 +165,17 @@ def test_given_drop_limit_change_when_planning_then_fingerprint_and_payload_chan
     test_case: DestructionFrozenDropLimitTestCase,
 ) -> None:
     fixture: PlanningFixture = build_planning_fixture()
-    fixture.connection.relation_drop_size_limit = test_case.first_limit
+    first_analysis: CompileAnalysis = cast(
+        CompileAnalysis,
+        SimpleNamespace(
+            realized_project=fixture.analysis.realized_project,
+            graph=fixture.analysis.graph,
+            compiled_project=SimpleNamespace(
+                production_target=False,
+                destruction_relation_drop_size_limit=test_case.first_limit,
+            ),
+        ),
+    )
     first: DestructionPlan = plan_destruction(
         request=DestructionRequest(
             operation="destroy_pipelines",
@@ -164,11 +184,21 @@ def test_given_drop_limit_change_when_planning_then_fingerprint_and_payload_chan
             metadata_database="metadata",
             pipeline_names=("alpha",),
         ),
-        analysis=fixture.analysis,
+        analysis=first_analysis,
         connection=fixture.connection,
         now=_NOW,
     )
-    fixture.connection.relation_drop_size_limit = test_case.second_limit
+    second_analysis: CompileAnalysis = cast(
+        CompileAnalysis,
+        SimpleNamespace(
+            realized_project=fixture.analysis.realized_project,
+            graph=fixture.analysis.graph,
+            compiled_project=SimpleNamespace(
+                production_target=False,
+                destruction_relation_drop_size_limit=test_case.second_limit,
+            ),
+        ),
+    )
     second: DestructionPlan = plan_destruction(
         request=DestructionRequest(
             operation="destroy_pipelines",
@@ -177,7 +207,7 @@ def test_given_drop_limit_change_when_planning_then_fingerprint_and_payload_chan
             metadata_database="metadata",
             pipeline_names=("alpha",),
         ),
-        analysis=fixture.analysis,
+        analysis=second_analysis,
         connection=fixture.connection,
         now=_NOW,
     )
@@ -870,7 +900,10 @@ def test_given_classified_production_target_when_resetting_then_production_chall
         SimpleNamespace(
             realized_project=fixture.analysis.realized_project,
             graph=fixture.analysis.graph,
-            compiled_project=SimpleNamespace(production_target=True),
+            compiled_project=SimpleNamespace(
+                production_target=True,
+                destruction_relation_drop_size_limit=None,
+            ),
         ),
     )
 

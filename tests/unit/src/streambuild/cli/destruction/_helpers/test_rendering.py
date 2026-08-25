@@ -1,4 +1,5 @@
 import builtins
+from dataclasses import replace
 from unittest.mock import MagicMock
 
 import pytest
@@ -32,6 +33,9 @@ from tests.unit.src.streambuild.cli.destruction.helpers import destruction_plan
                 "Affected models: orders",
                 "Preserves managed sources: yes",
                 "Estimated active-part bytes: 2048",
+                "Effective relation DROP limit: 107374182400 bytes",
+                "ClickHouse server default DROP limit: 50000000000 bytes",
+                "StreamBuild destruction DROP override: 107374182400 bytes",
                 "Irreversible: yes",
                 "Recreation: authored definitions remain",
                 "- analytics.tbl__orders",
@@ -50,7 +54,12 @@ def test_given_frozen_plan_when_rendering_then_complete_evidence_is_printed(
     test_case: DestructionRenderingTestCase,
 ) -> None:
     # Given: A frozen plan containing warehouse evidence.
-    plan: DestructionPlan = destruction_plan()
+    plan: DestructionPlan = replace(
+        destruction_plan(),
+        relation_drop_size_limit=107_374_182_400,
+        relation_drop_size_server_limit=50_000_000_000,
+        relation_drop_size_override=107_374_182_400,
+    )
 
     # When: The operator-facing plan is rendered.
     rendered: str = render_destruction_plan(plan)

@@ -488,6 +488,7 @@ def _operation_evidence(
         "relationDropSizeLimit": plan.relation_drop_size_limit,
         "relationDropSizeServerLimit": plan.relation_drop_size_server_limit,
         "relationDropSizeOverride": plan.relation_drop_size_override,
+        "relationDropSizePolicyObserved": plan.relation_drop_size_policy_observed,
         "managedSourcesIncluded": not plan.preserves_sources,
         "retainedReplayDataIncluded": not plan.preserves_replay_data,
         "kafkaOffsetsReset": False,
