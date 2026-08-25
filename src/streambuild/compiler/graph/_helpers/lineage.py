@@ -8,10 +8,13 @@ from streambuild.compiler.compile.models import (
     LogicalResourceKey,
     ParsedRef,
 )
-from streambuild.compiler.discovery.types import RefType
+from streambuild.compiler.discovery.models import TransformStep, ViewStep
+from streambuild.compiler.discovery.types import ModelReferenceScope, RefType
 from streambuild.compiler.graph.exceptions import GraphInputError
 from streambuild.compiler.graph.models import DependencyEdge
 from streambuild.compiler.graph.types import DependencyEdgeType
+from streambuild.compiler.sql_analysis.models import SqlSourceSpan
+from streambuild.diagnostics.models import SourceLocation
 
 
 def build_lineage_upstream_edges(
@@ -105,6 +108,52 @@ def validate_pipeline_mode_boundaries(
                 f"in {upstream_mode} pipeline '{upstream_model.pipeline_name}'. Relations "
                 "between direct and virtual pipelines are not allowed."
             )
+
+
+def validate_model_reference_scope(*, project: CompiledProject) -> None:
+    """Reject model edges crossing pipeline ownership when the project requires isolation."""
+
+    if project.model_reference_scope == ModelReferenceScope.PROJECT:
+        return
+    model_by_name: dict[str, CompiledModel] = {model.key.name: model for model in project.models}
+    downstream_model: CompiledModel
+    for downstream_model in project.models:
+        parsed_ref: ParsedRef
+        for parsed_ref in downstream_model.parsed_refs:
+            upstream_model: CompiledModel | None = model_by_name.get(parsed_ref.name)
+            if (
+                upstream_model is None
+                or upstream_model.pipeline_name == downstream_model.pipeline_name
+            ):
+                continue
+            raise GraphInputError(
+                f"Model '{downstream_model.key.name}' in pipeline "
+                f"'{downstream_model.pipeline_name}' references model "
+                f"'{upstream_model.key.name}' in pipeline '{upstream_model.pipeline_name}', but "
+                "dependencies.model_reference_scope is 'pipeline'.",
+                location=_reference_location(model=downstream_model, parsed_ref=parsed_ref),
+            )
+
+
+def _reference_location(*, model: CompiledModel, parsed_ref: ParsedRef) -> SourceLocation | None:
+    if isinstance(model, CompiledTableModel):
+        step: TransformStep | ViewStep = model.transform
+    elif isinstance(model, CompiledViewModel):
+        step = model.view
+    else:
+        return None
+    if step.source_file_path is None or parsed_ref.span is None:
+        return None
+    span: SqlSourceSpan = parsed_ref.span
+    return SourceLocation(
+        path=step.source_file_path,
+        line=step.source_line + span.line - 1,
+        column=(step.source_column + span.column - 1 if span.line == 1 else span.column),
+        end_line=step.source_line + span.end_line - 1,
+        end_column=(
+            step.source_column + span.end_column - 1 if span.end_line == 1 else span.end_column
+        ),
+    )
 
 
 def _model_upstream_edges(

@@ -46,6 +46,9 @@ def build_manifest_json(
             for audit in analysis.compiled_project.audits
         },
         "metadata": {"manifest_version": 1, "tool": "streambuild"},
+        "dependencies": {
+            "model_reference_scope": str(analysis.compiled_project.model_reference_scope)
+        },
         "macros": {
             name: {
                 "file": macro.relative_path.as_posix(),

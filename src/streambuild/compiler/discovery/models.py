@@ -21,6 +21,7 @@ from streambuild.compiler.discovery.main._immutable_config_pairs import immutabl
 from streambuild.compiler.discovery.types import (
     BoundedReplayFallback,
     KafkaRetentionReference,
+    ModelReferenceScope,
     PipelineMode,
     ReplayAnchorMode,
     ReplayBoundaryMode,
@@ -102,6 +103,20 @@ class UiConfig:
     """Committed browser presentation settings."""
 
     timezone: str = "UTC"
+
+
+@dataclass(frozen=True)
+class ProjectDependencies:
+    """Committed project dependency-boundary policy."""
+
+    model_reference_scope: ModelReferenceScope | str = ModelReferenceScope.PROJECT
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "model_reference_scope",
+            ModelReferenceScope(self.model_reference_scope),
+        )
 
 
 @dataclass(frozen=True, repr=False)
@@ -307,6 +322,7 @@ class AuthoredProjectConfig:
     sensors: SensorAutomationConfig = field(default_factory=SensorAutomationConfig)
     build: BuildConfig = field(default_factory=BuildConfig)
     ui: UiConfig = field(default_factory=UiConfig)
+    dependencies: ProjectDependencies = field(default_factory=ProjectDependencies)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "variables", immutable_config_pairs(self.variables))
@@ -354,6 +370,7 @@ class EffectiveProjectConfiguration:
     build: BuildConfig = field(default_factory=BuildConfig)
     destruction: DestructionConfig = field(default_factory=DestructionConfig)
     ui: UiConfig = field(default_factory=UiConfig)
+    dependencies: ProjectDependencies = field(default_factory=ProjectDependencies)
     production_target: bool = False
 
     def __post_init__(self) -> None:
@@ -549,6 +566,7 @@ class Project:
     naming: ProjectNaming = field(default_factory=ProjectNaming)
     audit_defaults: AuditDefaults = field(default_factory=AuditDefaults)
     audit_scheduler: AuditSchedulerConfig = field(default_factory=AuditSchedulerConfig)
+    dependencies: ProjectDependencies = field(default_factory=ProjectDependencies)
 
     def __post_init__(self) -> None:
         if self.bounded_replay_fallback is not None:

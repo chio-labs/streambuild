@@ -149,6 +149,7 @@ def resolve_effective_project_configuration(
         ),
         destruction=project_target.destruction,
         ui=project.ui,
+        dependencies=project.dependencies,
     )
 
 

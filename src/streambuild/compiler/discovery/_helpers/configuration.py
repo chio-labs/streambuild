@@ -24,6 +24,7 @@ from streambuild.compiler.discovery.constants import (
     BUILD_KEYS,
     DEFAULT_ADAPTER_NAME,
     DEFAULTS_KEYS,
+    DEPENDENCIES_KEYS,
     DEPLOYMENT_READINESS_KEYS,
     DESTRUCTION_KEYS,
     FULL_REPLAY_POLICY_VALUE,
@@ -70,6 +71,7 @@ from streambuild.compiler.discovery.models import (
     LocalProjectTarget,
     ModelDefaults,
     ProjectDefaults,
+    ProjectDependencies,
     ProjectNaming,
     ProjectTarget,
     RawConnectionConfig,
@@ -82,6 +84,7 @@ from streambuild.compiler.discovery.models import (
 )
 from streambuild.compiler.discovery.types import (
     BoundedReplayFallback,
+    ModelReferenceScope,
     PipelineMode,
     ReplayOnChangeMode,
 )
@@ -256,6 +259,9 @@ def _parse_project_config(
         ),
         build=build,
         ui=_parse_ui_config(payload=payload.get("ui"), file_path=file_path),
+        dependencies=_parse_dependencies_config(
+            payload=payload.get("dependencies"), file_path=file_path
+        ),
     )
 
 
@@ -538,6 +544,28 @@ def _parse_ui_config(*, payload: object, file_path: Path) -> UiConfig:
             f"{file_path} ui.timezone must be a valid IANA timezone such as 'Europe/London'"
         ) from error
     return UiConfig(timezone=timezone)
+
+
+def _parse_dependencies_config(*, payload: object, file_path: Path) -> ProjectDependencies:
+    mapping: dict[str, object] = _optional_mapping(
+        payload=payload,
+        label="dependencies",
+        file_path=file_path,
+    )
+    _validate_allowed_keys(
+        mapping=mapping,
+        allowed_keys=DEPENDENCIES_KEYS,
+        label="dependencies",
+        file_path=file_path,
+    )
+    value: object = mapping.get("model_reference_scope", ModelReferenceScope.PROJECT)
+    try:
+        scope: ModelReferenceScope = ModelReferenceScope(value)
+    except (TypeError, ValueError) as error:
+        raise ProjectConfigError(
+            f"{file_path} dependencies.model_reference_scope must be 'project' or 'pipeline'"
+        ) from error
+    return ProjectDependencies(model_reference_scope=scope)
 
 
 def _parse_audit_scheduler_config(
