@@ -135,6 +135,12 @@ class ProjectBuildLimitResolutionTestCase:
 
 
 @dataclass(frozen=True)
+class ProjectDestructionLimitResolutionTestCase:
+    description: str
+    expected_limit_bytes: int
+
+
+@dataclass(frozen=True)
 class SensorEventAgeResolutionTestCase:
     description: str
     expected_dev_seconds: int

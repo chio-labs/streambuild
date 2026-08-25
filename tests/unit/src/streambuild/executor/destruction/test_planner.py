@@ -40,6 +40,8 @@ from tests.unit.src.streambuild.executor.destruction._test_types import (
     DestructionClosureTestCase,
     DestructionDependencyTestCase,
     DestructionDropLimitTestCase,
+    DestructionDropOverrideTestCase,
+    DestructionFrozenDropLimitTestCase,
     DuplicateSelectionTestCase,
     OwnershipLedgerBehaviorTestCase,
     PipelineDestructionPlanTestCase,
@@ -97,6 +99,94 @@ def test_given_oversized_relation_when_planning_then_drop_limit_blocks_before_mu
 
     assert f"{test_case.limit:,} bytes" in str(raised.value)
     assert all(fragment in str(raised.value) for fragment in test_case.expected_resource_fragments)
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DestructionDropOverrideTestCase(
+            description="finite destruction override permits relations above the server default",
+            server_limit=1_024,
+            override_limit=8_192,
+            expected_effective_limit=8_192,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_finite_override_when_planning_then_it_replaces_server_drop_limit(
+    test_case: DestructionDropOverrideTestCase,
+) -> None:
+    fixture: PlanningFixture = build_planning_fixture()
+    fixture.connection.relation_drop_size_limit = test_case.server_limit
+    fixture.connection.relation_drop_size_server_limit = test_case.server_limit
+    fixture.connection.destruction_relation_drop_size_limit = test_case.override_limit
+
+    plan: DestructionPlan = plan_destruction(
+        request=DestructionRequest(
+            operation="destroy_pipelines",
+            target="uat",
+            database="analytics",
+            metadata_database="metadata",
+            pipeline_names=("alpha",),
+        ),
+        analysis=fixture.analysis,
+        connection=fixture.connection,
+        now=_NOW,
+    )
+
+    assert plan.relation_drop_size_limit == test_case.expected_effective_limit
+    assert plan.relation_drop_size_server_limit == test_case.server_limit
+    assert plan.relation_drop_size_override == test_case.override_limit
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DestructionFrozenDropLimitTestCase(
+            description="effective drop limit participates in frozen identity",
+            first_limit=8_192,
+            second_limit=16_384,
+            expected_fingerprint_changed=True,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_drop_limit_change_when_planning_then_fingerprint_and_payload_change(
+    test_case: DestructionFrozenDropLimitTestCase,
+) -> None:
+    fixture: PlanningFixture = build_planning_fixture()
+    fixture.connection.relation_drop_size_limit = test_case.first_limit
+    first: DestructionPlan = plan_destruction(
+        request=DestructionRequest(
+            operation="destroy_pipelines",
+            target="uat",
+            database="analytics",
+            metadata_database="metadata",
+            pipeline_names=("alpha",),
+        ),
+        analysis=fixture.analysis,
+        connection=fixture.connection,
+        now=_NOW,
+    )
+    fixture.connection.relation_drop_size_limit = test_case.second_limit
+    second: DestructionPlan = plan_destruction(
+        request=DestructionRequest(
+            operation="destroy_pipelines",
+            target="uat",
+            database="analytics",
+            metadata_database="metadata",
+            pipeline_names=("alpha",),
+        ),
+        analysis=fixture.analysis,
+        connection=fixture.connection,
+        now=_NOW,
+    )
+
+    assert first.relation_drop_size_limit == test_case.first_limit
+    assert second.relation_drop_size_limit == test_case.second_limit
+    assert (
+        first.plan_fingerprint != second.plan_fingerprint
+    ) is test_case.expected_fingerprint_changed
 
 
 @pytest.mark.parametrize(

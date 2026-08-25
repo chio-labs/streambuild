@@ -91,11 +91,22 @@ def plan_destruction(
     affected_model_names: tuple[str, ...]
     affected_source_names: tuple[str, ...]
     relations: tuple[DestructionRelationEvidence, ...]
+    relation_drop_size_connection_limit: int | None = connection.load_relation_drop_size_limit()
+    relation_drop_size_server_limit: int | None = (
+        connection.load_relation_drop_size_server_default()
+    )
+    relation_drop_size_override: int | None = connection.destruction_relation_drop_size_limit
+    relation_drop_size_limit: int | None = (
+        relation_drop_size_override
+        if relation_drop_size_override is not None
+        else relation_drop_size_connection_limit
+    )
     affected_model_names, affected_source_names, relations = _plan_relation_evidence(
         request=request,
         analysis=analysis,
         connection=connection,
         affected_pipeline_names=affected,
+        relation_drop_size_limit=relation_drop_size_limit,
     )
     challenges: tuple[str, ...] = build_destruction_challenges(
         pipeline_names=affected,
@@ -124,6 +135,9 @@ def plan_destruction(
         relations=relations,
         challenges=challenges,
         manifest_fingerprint=manifest_fingerprint,
+        relation_drop_size_limit=relation_drop_size_limit,
+        relation_drop_size_server_limit=relation_drop_size_server_limit,
+        relation_drop_size_override=relation_drop_size_override,
     )
     return _build_plan(
         request=request,
@@ -161,6 +175,7 @@ def _plan_relation_evidence(
     analysis: CompileAnalysis,
     connection: DestructionPlanningConnection,
     affected_pipeline_names: tuple[str, ...],
+    relation_drop_size_limit: int | None,
 ) -> tuple[
     tuple[str, ...],
     tuple[str, ...],
@@ -230,7 +245,7 @@ def _plan_relation_evidence(
         catalog=catalog,
         stats=stats,
     )
-    _validate_drop_size_limit(connection=connection, relations=relations)
+    _validate_drop_size_limit(limit=relation_drop_size_limit, relations=relations)
     _validate_external_dependants(
         connection=connection,
         database=request.database,
@@ -242,10 +257,9 @@ def _plan_relation_evidence(
 
 def _validate_drop_size_limit(
     *,
-    connection: DestructionPlanningConnection,
+    limit: int | None,
     relations: tuple[DestructionRelationEvidence, ...],
 ) -> None:
-    limit: int | None = connection.load_relation_drop_size_limit()
     if limit is None:
         return
     oversized: tuple[DestructionRelationEvidence, ...] = tuple(
@@ -311,6 +325,9 @@ def _build_plan(
         "preserves_sources": False,
         "preserves_replay_data": False,
         "manifest_fingerprint": parts.manifest_fingerprint,
+        "relation_drop_size_limit": parts.relation_drop_size_limit,
+        "relation_drop_size_server_limit": parts.relation_drop_size_server_limit,
+        "relation_drop_size_override": parts.relation_drop_size_override,
     }
     return DestructionPlan(
         plan_id=parts.plan_id or f"destruction_{uuid4().hex}",
@@ -331,6 +348,9 @@ def _build_plan(
         plan_fingerprint=_fingerprint(plan_payload),
         created_at=parts.created_at,
         expires_at=parts.created_at + parts.ttl,
+        relation_drop_size_limit=parts.relation_drop_size_limit,
+        relation_drop_size_server_limit=parts.relation_drop_size_server_limit,
+        relation_drop_size_override=parts.relation_drop_size_override,
     )
 
 

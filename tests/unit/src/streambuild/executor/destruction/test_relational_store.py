@@ -39,7 +39,12 @@ def test_given_reviewed_complete_plan_when_store_restarts_then_payload_and_revie
     test_case: DurableStoreTestCase,
 ) -> None:
     now: datetime = datetime(2026, 8, 24, 12, 0, tzinfo=UTC)
-    plan: DestructionPlan = build_complete_stored_destruction_plan(now=now)
+    plan: DestructionPlan = replace(
+        build_complete_stored_destruction_plan(now=now),
+        relation_drop_size_limit=107_374_182_400,
+        relation_drop_size_server_limit=50_000_000_000,
+        relation_drop_size_override=107_374_182_400,
+    )
     url: str = destruction_store_url(tmp_path=tmp_path)
     first: RelationalDestructionPlanStore = RelationalDestructionPlanStore(
         url=url, clock=MutableClock(now)

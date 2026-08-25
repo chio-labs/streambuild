@@ -78,7 +78,10 @@ class ClickHouseAdapter(Adapter):
             raw_client: RawClickHouseClient = self._open_raw_client(config)
         except (ClickHouseError, StreamFailureError) as error:
             raise translate_driver_error(error) from error
-        return ClickHouseConnection(raw_client)
+        return ClickHouseConnection(
+            raw_client,
+            destruction_relation_drop_size_limit=(config.destruction_relation_drop_size_limit),
+        )
 
     def build_connection_config(
         self,

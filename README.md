@@ -244,7 +244,17 @@ exact `PRODUCTION` challenge even when the target has a non-standard name:
 ```toml
 [targets.live]
 production = true
+
+[targets.live.destruction]
+max_table_size_to_drop = "100GiB"
 ```
+
+`max_table_size_to_drop` is an optional committed, target-scoped ClickHouse safety ceiling for
+each relation, not the aggregate plan size. It must be a finite positive byte-size string and cannot
+be overridden from `streambuild_local.toml`. StreamBuild applies it only to that target's reviewed
+destruction `DROP` statements, freezes the override and server default into each plan,
+and still relies on ClickHouse to enforce the ceiling when every `DROP` executes. Other StreamBuild
+queries continue to use the target connection and server defaults.
 
 Ownership generations, external dependants in every ClickHouse database, and target/database drift
 are checked before execution. Historical deployment metadata alone never authorizes deletion of a
@@ -254,7 +264,9 @@ does not use an age-based automatic takeover that could overlap a long-running C
 The Pipelines UI exposes the same planner and executor through multi-selection and the dedicated
 `pipeline.destroy` and `target.reset` permissions. Every generated statement, actor, challenge,
 result, and observed remaining object after a partial failure is retained in Runs. A failed residual
-catalog read is recorded as unavailable rather than as an empty target.
+catalog read is recorded as unavailable rather than as an empty target. Failed destructive Runs can
+create a fresh recovery plan from their recorded root selection; old SQL and historical derived
+closure are never replayed.
 
 ## Development UI
 

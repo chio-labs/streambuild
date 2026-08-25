@@ -7,6 +7,8 @@ import tomllib
 from pathlib import Path
 from typing import cast
 
+from pydantic import ByteSize, TypeAdapter, ValidationError
+
 from streambuild.compiler.discovery._helpers.source_registry import parse_freshness_policy
 from streambuild.compiler.discovery.constants import (
     AUDIT_DEFAULT_EVERY_KEY,
@@ -18,6 +20,7 @@ from streambuild.compiler.discovery.constants import (
     DEFAULT_ADAPTER_NAME,
     DEFAULTS_KEYS,
     DEPLOYMENT_READINESS_KEYS,
+    DESTRUCTION_KEYS,
     FULL_REPLAY_POLICY_VALUE,
     INTERPOLATION_TOKEN_START,
     KAFKA_SOURCE_DEFAULT_KEYS,
@@ -50,6 +53,7 @@ from streambuild.compiler.discovery.models import (
     AuthoredProjectConfig,
     BuildConfig,
     DeploymentReadinessDefaults,
+    DestructionConfig,
     DiscoveredProjectFile,
     KafkaSourceDefaults,
     LoadedProjectConfiguration,
@@ -71,6 +75,9 @@ from streambuild.compiler.discovery.types import (
     PipelineMode,
     ReplayOnChangeMode,
 )
+
+_BYTE_SIZE_ADAPTER: TypeAdapter[ByteSize] = TypeAdapter(ByteSize)
+_MAX_CLICKHOUSE_DROP_SIZE_BYTES: int = (1 << 64) - 1
 
 
 def load_project_configuration(*, project_dir: Path) -> LoadedProjectConfiguration:
@@ -382,6 +389,11 @@ def _parse_project_target(*, payload: object, label: str, file_path: Path) -> Pr
             label=f"{label}.build",
             file_path=file_path,
         ),
+        destruction=_parse_destruction_config(
+            payload=mapping.get("destruction"),
+            label=f"{label}.destruction",
+            file_path=file_path,
+        ),
     )
 
 
@@ -455,6 +467,36 @@ def _parse_build_config(*, payload: object, label: str, file_path: Path) -> Buil
     return BuildConfig(
         max_pipelines=max_pipelines if isinstance(max_pipelines, int) else None,
     )
+
+
+def _parse_destruction_config(*, payload: object, label: str, file_path: Path) -> DestructionConfig:
+    mapping: dict[str, object] = _optional_mapping(
+        payload=payload,
+        label=label,
+        file_path=file_path,
+    )
+    _validate_allowed_keys(
+        mapping=mapping,
+        allowed_keys=DESTRUCTION_KEYS,
+        label=label,
+        file_path=file_path,
+    )
+    authored: object | None = mapping.get("max_table_size_to_drop")
+    if authored is None:
+        return DestructionConfig()
+    error_message: str = (
+        f"{file_path} {label}.max_table_size_to_drop must be a finite positive "
+        "byte-size string such as '100GiB'"
+    )
+    if not isinstance(authored, str):
+        raise ProjectConfigError(error_message)
+    try:
+        limit: int = int(_BYTE_SIZE_ADAPTER.validate_python(authored))
+    except ValidationError as error:
+        raise ProjectConfigError(error_message) from error
+    if limit <= 0 or limit > _MAX_CLICKHOUSE_DROP_SIZE_BYTES:
+        raise ProjectConfigError(error_message)
+    return DestructionConfig(max_table_size_to_drop_bytes=limit)
 
 
 def _parse_audit_scheduler_config(
