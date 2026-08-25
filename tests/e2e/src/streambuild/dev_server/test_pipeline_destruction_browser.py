@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import cast
 
 import pytest
-from playwright.sync_api import Locator, Page, Route, expect
+from playwright.sync_api import FloatRect, Locator, Page, Route, expect
 
 from tests.e2e.src.streambuild.dev_server._test_types import (
     DestructionBrowserE2ETestCase,
@@ -33,7 +33,7 @@ class DestructionRouteRecorder:
 
     def fulfill_execution(self, route: Route) -> None:
         self.request_bodies.append(cast(dict[str, object], route.request.post_data_json))
-        route.fulfill(json={"invocationId": self.invocation_id, "status": "succeeded"})
+        route.fulfill(status=202, json={"invocationId": self.invocation_id, "status": "starting"})
 
 
 @pytest.mark.e2e
@@ -68,7 +68,7 @@ def test_given_selected_pipeline_when_confirming_destruction_then_both_gates_are
         "affectedPipelines": [test_case.pipeline_name],
         "requiredDependentPipelines": [],
         "blocked": False,
-        "models": [test_case.expected_model_name],
+        "models": [test_case.expected_model_name, *(f"model_{index:03d}" for index in range(60))],
         "resources": [
             {
                 "name": test_case.expected_relation_name,
@@ -78,7 +78,19 @@ def test_given_selected_pipeline_when_confirming_destruction_then_both_gates_are
                 "exists": True,
                 "bytes": 4096,
                 "activeParts": 2,
-            }
+            },
+            *(
+                {
+                    "name": f"tbl__resource_{index:03d}",
+                    "kind": "table",
+                    "logicalName": f"resource_{index:03d}",
+                    "pipelineName": test_case.pipeline_name,
+                    "exists": True,
+                    "bytes": 0,
+                    "activeParts": 0,
+                }
+                for index in range(1, 31)
+            ),
         ],
         "managedSourcesIncluded": False,
         "retainedReplayDataIncluded": False,
@@ -96,6 +108,7 @@ def test_given_selected_pipeline_when_confirming_destruction_then_both_gates_are
     page.route("**/api/destruction/plans/plan-1", routes.fulfill_read)
     page.route("**/api/destruction/plans/plan-1/review", routes.fulfill_review)
     page.route("**/api/destruction/plans/plan-1/execute", routes.fulfill_execution)
+    page.set_viewport_size({"width": 1920, "height": 1080})
     page.goto(f"{base_url}/pipelines", wait_until="domcontentloaded")
 
     page.get_by_role("button", name=re.compile(r"^Virtual")).click()
@@ -109,6 +122,18 @@ def test_given_selected_pipeline_when_confirming_destruction_then_both_gates_are
     expect(page).to_have_url(f"{base_url}/destruction/plans/plan-1")
     expect(page.get_by_text("Frozen pipeline closure")).to_be_visible()
     expect(page.get_by_text(test_case.expected_relation_name, exact=True)).to_be_visible()
+    content_box: FloatRect | None = page.get_by_test_id("destruction-plan-content").bounding_box()
+    assert content_box is not None
+    assert content_box["width"] > 1600
+    expect(page.get_by_test_id("destruction-resource-row")).to_have_count(25)
+    expect(page.get_by_text("Showing 1-25 of 31 frozen resources", exact=True)).to_be_visible()
+    page.get_by_role("button", name="Next resource page").click()
+    expect(page.get_by_test_id("destruction-resource-row")).to_have_count(6)
+    expect(page.get_by_text("tbl__resource_025", exact=True)).to_be_visible()
+    page.get_by_role("button", name="Show all 61 models").click()
+    expect(page.get_by_text("model_059", exact=True)).to_be_visible()
+    page.get_by_role("button", name="Show fewer models").click()
+    expect(page.get_by_text("model_059", exact=True)).to_have_count(0)
     expect(page.get_by_role("button", name="Review frozen plan")).to_be_enabled()
     page.get_by_role("button", name="Review frozen plan").click()
 
@@ -127,7 +152,7 @@ def test_given_selected_pipeline_when_confirming_destruction_then_both_gates_are
     challenge.fill(test_case.pipeline_name)
     execute.click()
 
-    expect(page).to_have_url(f"{base_url}/runs/{test_case.expected_invocation_id}")
+    expect(page).to_have_url(f"{base_url}/runs/{test_case.expected_invocation_id}?live=1")
     assert routes.request_bodies == [
         {
             "operation": "destroy_pipelines",

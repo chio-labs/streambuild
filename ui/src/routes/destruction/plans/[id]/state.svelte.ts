@@ -1,8 +1,14 @@
-import type { DestructionExecution, DestructionPlan } from '$lib/pipeline-view/types';
+import type {
+	DestructionExecution,
+	DestructionPlan,
+	DestructionResource
+} from '$lib/pipeline-view/types';
 import { executeDestructionPlan } from '$lib/api/main/destruction/execute-destruction-plan';
 import { fetchDestructionPlan } from '$lib/api/main/destruction/fetch-destruction-plan';
 import { reviewDestructionPlan } from '$lib/api/main/destruction/review-destruction-plan';
-import type { DestructionPlanPageState } from './types';
+import type { DestructionPlanPageState, ResourcePageSize } from './types';
+
+const MODEL_PREVIEW_LIMIT: number = 48;
 
 export function createDestructionPlanPageState(): DestructionPlanPageState {
 	let plan = $state<DestructionPlan | null>(null);
@@ -12,6 +18,9 @@ export function createDestructionPlanPageState(): DestructionPlanPageState {
 	let reviewing = $state<boolean>(false);
 	let executing = $state<boolean>(false);
 	let error = $state<string | null>(null);
+	let modelsExpanded = $state<boolean>(false);
+	let resourcePage = $state<number>(1);
+	let resourcePageSize = $state<ResourcePageSize>(25);
 	let controller: AbortController | null = null;
 	let generation: number = 0;
 	const reviewed: boolean = $derived(plan?.reviewedAt !== null && plan?.reviewedAt !== undefined);
@@ -22,6 +31,27 @@ export function createDestructionPlanPageState(): DestructionPlanPageState {
 			plan.challengeValues.every((challenge, index) => responses[index] === challenge)
 		);
 	});
+	const visibleModels: readonly string[] = $derived(
+		plan === null || modelsExpanded ? (plan?.models ?? []) : plan.models.slice(0, MODEL_PREVIEW_LIMIT)
+	);
+	const resourcePageCount: number = $derived(
+		Math.max(1, Math.ceil((plan?.resources.length ?? 0) / resourcePageSize))
+	);
+	const resourceFirst: number = $derived(
+		plan === null || plan.resources.length === 0 ? 0 : (resourcePage - 1) * resourcePageSize + 1
+	);
+	const resourceLast: number = $derived(
+		Math.min(resourcePage * resourcePageSize, plan?.resources.length ?? 0)
+	);
+	const visibleResources: readonly DestructionResource[] = $derived(
+		plan?.resources.slice(resourceFirst === 0 ? 0 : resourceFirst - 1, resourceLast) ?? []
+	);
+	const existingResourceCount: number = $derived(
+		plan?.resources.filter((resource: DestructionResource) => resource.exists).length ?? 0
+	);
+	const absentResourceCount: number = $derived(
+		(plan?.resources.length ?? 0) - existingResourceCount
+	);
 
 	async function load(planId: string): Promise<void> {
 		controller?.abort();
@@ -31,6 +61,8 @@ export function createDestructionPlanPageState(): DestructionPlanPageState {
 		requestedId = planId;
 		plan = null;
 		responses = [];
+		modelsExpanded = false;
+		resourcePage = 1;
 		error = null;
 		loading = true;
 		try {
@@ -74,6 +106,19 @@ export function createDestructionPlanPageState(): DestructionPlanPageState {
 		);
 	}
 
+	function toggleModels(): void {
+		modelsExpanded = !modelsExpanded;
+	}
+
+	function setResourcePage(nextPage: number): void {
+		resourcePage = Math.min(Math.max(1, nextPage), resourcePageCount);
+	}
+
+	function setResourcePageSize(size: ResourcePageSize): void {
+		resourcePageSize = size;
+		resourcePage = 1;
+	}
+
 	async function execute(): Promise<DestructionExecution | null> {
 		if (plan === null || !canExecute) return null;
 		executing = true;
@@ -115,6 +160,43 @@ export function createDestructionPlanPageState(): DestructionPlanPageState {
 		},
 		get canExecute() {
 			return canExecute;
+		},
+		modelList: {
+			get expanded() {
+				return modelsExpanded;
+			},
+			get visible() {
+				return visibleModels;
+			},
+			toggle: toggleModels
+		},
+		resourceList: {
+			get page() {
+				return resourcePage;
+			},
+			get pageSize() {
+				return resourcePageSize;
+			},
+			get pageCount() {
+				return resourcePageCount;
+			},
+			get first() {
+				return resourceFirst;
+			},
+			get last() {
+				return resourceLast;
+			},
+			get visible() {
+				return visibleResources;
+			},
+			get existingCount() {
+				return existingResourceCount;
+			},
+			get absentCount() {
+				return absentResourceCount;
+			},
+			setPage: setResourcePage,
+			setPageSize: setResourcePageSize
 		},
 		load,
 		cancel,

@@ -123,6 +123,14 @@ class DestructionExecutionResult:
 
 
 @dataclass(frozen=True)
+class DestructionActor:
+    """Authenticated actor identity recorded with destructive execution evidence."""
+
+    actor_id: str
+    actor_name: str
+
+
+@dataclass(frozen=True)
 class DestructionRecordingContext:
     """Immutable identity and connections shared by destructive recording phases."""
 

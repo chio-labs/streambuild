@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { BuildFeed, RunEventFeed } from '$lib/api/types';
 import type { RunDetailController, RunDetailSnapshot } from '$lib/run-presentation/types';
@@ -63,6 +63,8 @@ const OWNERSHIP: BuildFeed = {
 };
 
 describe('run detail state', () => {
+	beforeEach(() => vi.clearAllMocks());
+
 	it('given an initial active snapshot when started then the view is populated and polling continues', async () => {
 		const snapshot: RunDetailSnapshot = { feed: FEED, ownership: OWNERSHIP, record: null };
 		mocks.consumeRunDetail.mockResolvedValueOnce(snapshot);
@@ -78,5 +80,29 @@ describe('run detail state', () => {
 		expect(controller.view.events).toEqual(FEED.events);
 		expect(controller.view.statementProgress).toEqual(FEED.statementProgress);
 		expect(mocks.schedule).toHaveBeenCalledWith(1_200);
+	});
+
+	it('given a just-launched live run without evidence when started then it polls through the launch grace period', async () => {
+		const snapshot: RunDetailSnapshot = {
+			feed: {
+				found: false,
+				events: [],
+				hasMore: false,
+				status: null,
+				lastSignalAt: null,
+				lastSignalAgeSeconds: null,
+				statementProgress: null
+			},
+			ownership: { ...OWNERSHIP, running: false, invocationId: null, currentInvocationId: null },
+			record: null
+		};
+		mocks.consumeRunDetail.mockResolvedValueOnce(snapshot);
+		const controller: RunDetailController = createRunDetailState(() => Promise.resolve());
+
+		controller.start('destruction-run-1', true);
+		await vi.waitFor((): void => expect(mocks.schedule).toHaveBeenCalledWith(1_200));
+
+		expect(controller.view.initialLoading).toBe(true);
+		expect(controller.view.notFound).toBe(false);
 	});
 });

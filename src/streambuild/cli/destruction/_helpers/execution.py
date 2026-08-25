@@ -34,6 +34,7 @@ from streambuild.executor.destruction.exceptions import DestructionDriftError
 from streambuild.executor.destruction.main.execute_destruction import execute_destruction
 from streambuild.executor.destruction.main.plan_destruction import plan_destruction
 from streambuild.executor.destruction.models import (
+    DestructionActor,
     DestructionExecutionResult,
     DestructionPlan,
     DestructionRequest,
@@ -128,8 +129,7 @@ def run_authorized_destruction(
         )
         result: DestructionExecutionResult = execute_destruction(
             frozen_plan=plan,
-            actor_id=actor_id,
-            actor_name=account.username,
+            actor=DestructionActor(actor_id=actor_id, actor_name=account.username),
             challenge_responses=responses,
             reviewed_at=reviewed_at,
             store=store,

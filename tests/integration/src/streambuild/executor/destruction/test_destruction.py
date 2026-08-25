@@ -41,6 +41,7 @@ from streambuild.executor.destruction.main.verify_destruction_drift import (
     verify_destruction_drift,
 )
 from streambuild.executor.destruction.models import (
+    DestructionActor,
     DestructionExecutionResult,
     DestructionPlan,
     DestructionRelationEvidence,
@@ -64,6 +65,8 @@ from tests.integration.src.streambuild.executor.destruction._test_types import (
     VirtualHistoryIntegrationTestCase,
 )
 from tests.integration.src.streambuild.executor.destruction.helpers import realized_relation_names
+
+_ACTOR: DestructionActor = DestructionActor(actor_id="integration", actor_name="integration")
 
 
 @pytest.mark.integration
@@ -157,8 +160,7 @@ def test_given_real_target_when_destroying_and_resetting_then_scope_and_evidence
         )
         destroy_result: DestructionExecutionResult = execute_destruction(
             frozen_plan=destroy_plan,
-            actor_id="integration",
-            actor_name="integration",
+            actor=_ACTOR,
             challenge_responses=destroy_plan.challenges,
             reviewed_at=destroy_reviewed_at,
             store=destroy_store,
@@ -217,8 +219,7 @@ def test_given_real_target_when_destroying_and_resetting_then_scope_and_evidence
         )
         reset_result: DestructionExecutionResult = execute_destruction(
             frozen_plan=reset_plan,
-            actor_id="integration",
-            actor_name="integration",
+            actor=_ACTOR,
             challenge_responses=reset_plan.challenges,
             reviewed_at=reset_reviewed_at,
             store=reset_store,
@@ -531,8 +532,7 @@ def test_given_drop_completion_event_failure_when_destroying_then_partial_eviden
 
         result: DestructionExecutionResult = execute_destruction(
             frozen_plan=plan,
-            actor_id="integration",
-            actor_name="integration",
+            actor=_ACTOR,
             challenge_responses=plan.challenges,
             reviewed_at=reviewed_at,
             store=store,

@@ -1,6 +1,8 @@
 from dataclasses import replace
 from pathlib import Path
-from unittest.mock import patch
+from threading import Event, Timer
+from time import monotonic
+from unittest.mock import PropertyMock, patch
 
 import pytest
 from fastapi import HTTPException
@@ -8,6 +10,7 @@ from fastapi.testclient import TestClient
 from httpx import Response
 
 from streambuild.auth.classes.control_store import ControlStore
+from streambuild.dev_server.classes.warehouse_runtime import WarehouseRuntime
 from streambuild.executor.destruction.exceptions import (
     DestructionDependencyError,
     DestructionResourceError,
@@ -15,6 +18,7 @@ from streambuild.executor.destruction.exceptions import (
 from streambuild.executor.destruction.models import DestructionPlan
 from tests.unit.src.streambuild.dev_server._test_types import (
     DestructionActorBindingRouteTestCase,
+    DestructionAsyncExecutionRouteTestCase,
     DestructionAuthorizationRouteTestCase,
     DestructionClosureAuthorizationRouteTestCase,
     DestructionResetRouteTestCase,
@@ -241,6 +245,84 @@ def test_given_unreviewed_plan_when_executing_then_server_review_gate_blocks(
 
     assert response.status_code == test_case.expected_status
     assert test_case.expected_detail_fragment in response.json()["detail"]
+    store.close()
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DestructionAsyncExecutionRouteTestCase(
+            description="accepted execution returns before the warehouse worker completes",
+            expected_status=202,
+            expected_execution_status="starting",
+            maximum_response_seconds=1,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_reviewed_plan_when_executing_then_api_returns_run_identity_before_completion(
+    tmp_path: Path,
+    test_case: DestructionAsyncExecutionRouteTestCase,
+) -> None:
+    client: TestClient
+    store: ControlStore
+    client, store = build_assigned_proxy_operations_client(project_dir=tmp_path)
+    headers: dict[str, str] = proxy_proof_headers(username="alice")
+    started: Event = Event()
+    release: Event = Event()
+    finished: Event = Event()
+    captured_invocation_ids: list[str] = []
+
+    def execute_worker(**kwargs: object) -> None:
+        captured_invocation_ids.append(str(kwargs["invocation_id"]))
+        started.set()
+        _ = release.wait(timeout=5)
+        finished.set()
+
+    with (
+        patch(
+            "streambuild.dev_server._helpers.server.destruction_routes.plan_destruction",
+            return_value=build_pipeline_destruction_route_plan(),
+        ),
+        patch(
+            "streambuild.dev_server._helpers.server.destruction_routes.execute_destruction",
+            side_effect=execute_worker,
+        ),
+        patch.object(
+            WarehouseRuntime,
+            "observation_connection",
+            new_callable=PropertyMock,
+            return_value=object(),
+        ),
+    ):
+        created: Response = client.post(
+            "/api/destruction/plans",
+            json={"operation": "destroy_pipelines", "pipelineNames": ["order_events"]},
+            headers=headers,
+        )
+        _ = client.post(
+            f"/api/destruction/plans/{created.json()['planId']}/review",
+            headers=headers,
+        )
+        timeout_release: Timer = Timer(2, release.set)
+        timeout_release.start()
+        request_started: float = monotonic()
+        response: Response = client.post(
+            f"/api/destruction/plans/{created.json()['planId']}/execute",
+            json={"responses": ["order_events"]},
+            headers=headers,
+        )
+        elapsed: float = monotonic() - request_started
+        timeout_release.cancel()
+
+        assert response.status_code == test_case.expected_status, response.text
+        assert started.wait(timeout=1)
+        release.set()
+        assert finished.wait(timeout=1)
+
+    assert response.json()["status"] == test_case.expected_execution_status
+    assert elapsed < test_case.maximum_response_seconds
+    assert captured_invocation_ids == [response.json()["invocationId"]]
     store.close()
 
 
