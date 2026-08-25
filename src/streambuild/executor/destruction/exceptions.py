@@ -27,7 +27,7 @@ class DestructionDependencyError(DestructionSelectionError):
     def __init__(self, dependent_pipeline_names: tuple[str, ...]) -> None:
         self.dependent_pipeline_names = dependent_pipeline_names
         super().__init__(
-            "Unselected downstream pipelines must be explicitly included: "
+            "Unselected dependent or shared-source pipelines must be explicitly included: "
             f"{dependent_pipeline_names!r}"
         )
 

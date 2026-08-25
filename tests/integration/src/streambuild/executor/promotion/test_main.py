@@ -257,7 +257,7 @@ def test_given_greenfield_staged_deployment_when_publishing_then_it_creates_stab
     assert published_rows == [(order_id,) for order_id in test_case.expected_published_order_ids]
     assert full_layout_rows == list(test_case.expected_full_layout)
     assert publish_history_rows == list(test_case.expected_publish_history_rows)
-    assert stable_ownership_rows == [("owned", "stable_binding")]
+    assert stable_ownership_rows == []
 
 
 @pytest.mark.integration

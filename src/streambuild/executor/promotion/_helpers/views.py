@@ -58,6 +58,18 @@ def build_publish_binding_request(
         raise PublishExecutionError(
             f"Deployment '{deployment_id}' is incomplete and cannot be published"
         )
+    existing_names: frozenset[str] = client.load_catalog(default_database).relation_names()
+    missing_names: tuple[str, ...] = tuple(
+        sorted(
+            mapping.physical_name
+            for mapping in deployment.prepared_object_mappings
+            if mapping.physical_name not in existing_names
+        )
+    )
+    if missing_names:
+        raise PublishExecutionError(
+            f"Deployment '{deployment_id}' is missing staged relations: {', '.join(missing_names)}"
+        )
     publish_mappings: tuple[AdapterPreparedObjectMapping, ...] = tuple(
         mapping
         for mapping in deployment.prepared_object_mappings
@@ -66,18 +78,6 @@ def build_publish_binding_request(
     if not publish_mappings:
         raise PublishExecutionError(
             f"Deployment '{deployment_id}' has no staged model relations to publish"
-        )
-    existing_names: frozenset[str] = client.load_catalog(default_database).relation_names()
-    missing_names: tuple[str, ...] = tuple(
-        sorted(
-            mapping.physical_name
-            for mapping in publish_mappings
-            if mapping.physical_name not in existing_names
-        )
-    )
-    if missing_names:
-        raise PublishExecutionError(
-            f"Deployment '{deployment_id}' is missing staged relations: {', '.join(missing_names)}"
         )
     ordered_mappings: tuple[AdapterPreparedObjectMapping, ...] = tuple(
         sorted(

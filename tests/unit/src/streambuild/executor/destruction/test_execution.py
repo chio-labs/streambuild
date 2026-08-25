@@ -39,7 +39,7 @@ _NOW: datetime = datetime(2026, 8, 24, 12, 0, tzinfo=UTC)
     [
         DestructionExecutionTestCase(
             description="workflow preparation failure retains the reviewed plan",
-            expected_pending_sequences=(1, 2, 3, 4),
+            expected_pending_sequences=(1, 2),
             expected_remaining_names=("relation_one", "relation_two"),
             expected_residual_status="not_mutated",
             expected_failure_phase="workflow_prepared",
@@ -126,7 +126,7 @@ def test_given_workflow_prepared_failure_when_destroying_then_plan_is_unconsumed
     [
         DestructionExecutionTestCase(
             description="locked drift rejection retains the reviewed plan and exact evidence",
-            expected_pending_sequences=(1, 2, 3, 4),
+            expected_pending_sequences=(1, 2),
             expected_remaining_names=("relation_one", "relation_two"),
             expected_residual_status="not_mutated",
             expected_failure_phase="locked_replan",
@@ -196,8 +196,8 @@ def test_given_locked_drift_when_destroying_then_attempt_is_recorded_without_mut
     "test_case",
     [
         DestructionExecutionTestCase(
-            description="interrupt after DROP recovers ownership and terminal evidence",
-            expected_pending_sequences=(3, 4),
+            description="interrupt after DROP reconciles catalog and terminal evidence",
+            expected_pending_sequences=(2,),
             expected_remaining_names=("relation_two",),
             expected_residual_status="observed",
             expected_failure_phase="warehouse_execution",
@@ -212,13 +212,20 @@ def test_given_interrupt_after_drop_when_destroying_then_terminal_state_is_recor
     tmp_path: Path,
 ) -> None:
     plan: DestructionPlan = build_execution_plan(now=_NOW)
+    plan = replace(
+        plan,
+        relations=(
+            replace(plan.relations[0], name="aaa_absent", exists=False),
+            *plan.relations,
+        ),
+    )
     statements: tuple[WarehouseStatement, ...] = build_execution_statements()
     store: InMemoryDestructionPlanStore = InMemoryDestructionPlanStore(clock=lambda: _NOW)
     store.save(plan=plan, actor="actor-1")
     reviewed_at: datetime = store.mark_reviewed(plan_id=plan.plan_id, actor="actor-1")
     connection: InterruptingDestructionExecutionConnection = (
         InterruptingDestructionExecutionConnection(
-            relation_names=tuple(relation.name for relation in plan.relations)
+            relation_names=tuple(relation.name for relation in plan.relations[1:])
         )
     )
     observation: DestructionObservationConnection = DestructionObservationConnection()
@@ -254,7 +261,7 @@ def test_given_interrupt_after_drop_when_destroying_then_terminal_state_is_recor
         )
 
     assert connection.drop_names == ["relation_one"]
-    assert connection.tombstone_names == ["relation_one"]
+    assert connection.tombstone_names == []
     assert len(invocations) == 1
     summary: dict[str, object] = json.loads(invocations[0].summary_json)
     assert summary["pendingStatementSequences"] == list(test_case.expected_pending_sequences)
@@ -267,16 +274,16 @@ def test_given_interrupt_after_drop_when_destroying_then_terminal_state_is_recor
     "test_case",
     [
         DestructionExecutionTestCase(
-            description="drop completion event failure recovers only its tombstone",
+            description="drop completion event failure retains the exact DROP prefix",
             expected_outcome="failed",
-            expected_completed_sequences=(1, 2),
-            expected_pending_sequences=(3, 4),
+            expected_completed_sequences=(1,),
+            expected_pending_sequences=(2,),
             expected_remaining_names=("relation_two",),
         )
     ],
     ids=lambda case: case.description,
 )
-def test_given_drop_completion_failure_when_destroying_then_tombstone_recovers_and_next_drop_stops(
+def test_given_drop_completion_failure_when_destroying_then_exact_prefix_and_residual_are_recorded(
     test_case: DestructionExecutionTestCase,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -329,7 +336,7 @@ def test_given_drop_completion_failure_when_destroying_then_tombstone_recovers_a
     assert result.remaining_relation_names == test_case.expected_remaining_names
     assert result.residual_catalog_status == "observed"
     assert connection.drop_names == ["relation_one"]
-    assert connection.tombstone_names == ["relation_one"]
+    assert connection.tombstone_names == []
     with pytest.raises(DestructionPlanNotFoundError):
         store.get(plan_id=plan.plan_id, actor="actor-1")
     assert len(invocations) == 1
@@ -348,7 +355,7 @@ def test_given_drop_completion_failure_when_destroying_then_tombstone_recovers_a
         DestructionExecutionTestCase(
             description="residual catalog failure records an unavailable null residual",
             expected_outcome="failed",
-            expected_completed_sequences=(1, 2, 3, 4),
+            expected_completed_sequences=(1, 2),
             expected_remaining_names=None,
             expected_residual_status="unavailable",
             expected_failure_phase="residual_catalog",
@@ -419,7 +426,7 @@ def test_given_residual_catalog_failure_after_drops_when_destroying_then_residua
         DestructionExecutionTestCase(
             description="run completion failure still persists the terminal invocation",
             expected_outcome="failed",
-            expected_completed_sequences=(1, 2, 3, 4),
+            expected_completed_sequences=(1, 2),
             expected_failure_phase="run_completed",
         )
     ],
@@ -603,7 +610,7 @@ def test_given_all_terminal_connections_fail_when_destroying_then_recording_erro
     assert len(attempts) == test_case.expected_terminal_attempt_count
     assert attempts == [observation, connection]
     assert connection.drop_names == ["relation_one", "relation_two"]
-    assert connection.tombstone_names == ["relation_one", "relation_two"]
+    assert connection.tombstone_names == []
 
 
 if __name__ == "__main__":

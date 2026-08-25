@@ -33,6 +33,14 @@ class DestructionAuthorizationRouteTestCase:
 
 
 @dataclass(frozen=True)
+class DestructionResourceConflictRouteTestCase:
+    description: str
+    conflict_message: str
+    expected_status: int
+    expected_reason: str
+
+
+@dataclass(frozen=True)
 class DestructionClosureAuthorizationRouteTestCase:
     description: str
     dependent_pipeline: str

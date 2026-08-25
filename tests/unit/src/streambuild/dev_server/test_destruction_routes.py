@@ -8,13 +8,17 @@ from fastapi.testclient import TestClient
 from httpx import Response
 
 from streambuild.auth.classes.control_store import ControlStore
-from streambuild.executor.destruction.exceptions import DestructionDependencyError
+from streambuild.executor.destruction.exceptions import (
+    DestructionDependencyError,
+    DestructionResourceError,
+)
 from streambuild.executor.destruction.models import DestructionPlan
 from tests.unit.src.streambuild.dev_server._test_types import (
     DestructionActorBindingRouteTestCase,
     DestructionAuthorizationRouteTestCase,
     DestructionClosureAuthorizationRouteTestCase,
     DestructionResetRouteTestCase,
+    DestructionResourceConflictRouteTestCase,
     DestructionRestartRouteTestCase,
     DestructionReviewGateRouteTestCase,
 )
@@ -68,6 +72,43 @@ def test_given_destroy_permission_when_planning_then_http_boundary_enforces_scop
     assert allowed.status_code == test_case.expected_allowed_status
     assert allowed.json()["planId"] == test_case.expected_plan_id
     assert planner.call_count == test_case.expected_planner_call_count
+    store.close()
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DestructionResourceConflictRouteTestCase(
+            description="recorded resource conflict returns a structured response",
+            conflict_message="recorded virtual resource is in another database",
+            expected_status=409,
+            expected_reason="resource_conflict",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_resource_conflict_when_planning_then_api_returns_actionable_conflict(
+    tmp_path: Path,
+    test_case: DestructionResourceConflictRouteTestCase,
+) -> None:
+    client: TestClient
+    store: ControlStore
+    client, store = build_assigned_proxy_operations_client(project_dir=tmp_path)
+    with patch(
+        "streambuild.dev_server._helpers.server.destruction_routes.plan_destruction",
+        side_effect=DestructionResourceError(test_case.conflict_message),
+    ):
+        response: Response = client.post(
+            "/api/destruction/plans",
+            json={"operation": "destroy_pipelines", "pipelineNames": ["order_events"]},
+            headers=proxy_proof_headers(username="alice"),
+        )
+
+    assert response.status_code == test_case.expected_status
+    assert response.json()["detail"] == {
+        "message": test_case.conflict_message,
+        "reason": test_case.expected_reason,
+    }
     store.close()
 
 

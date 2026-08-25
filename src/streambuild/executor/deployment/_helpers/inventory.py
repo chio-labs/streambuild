@@ -133,15 +133,17 @@ def _lifecycle_state(
     mapped_names: set[str],
     missing_names: tuple[str, ...],
 ) -> DeploymentLifecycleState:
-    if active_binding_names:
-        return DeploymentLifecycleState.ACTIVE
     if record is None:
         return DeploymentLifecycleState.METADATA_MISSING
     if record.status == VIRTUAL_DEPLOYMENT_STATUS_INCOMPLETE:
         return DeploymentLifecycleState.INCOMPLETE
+    if missing_names:
+        return DeploymentLifecycleState.PHYSICAL_MISSING
+    if active_binding_names:
+        return DeploymentLifecycleState.ACTIVE
     if publications:
         return DeploymentLifecycleState.SUPERSEDED
-    if not mapped_names or missing_names:
+    if not mapped_names:
         return DeploymentLifecycleState.PHYSICAL_MISSING
     return DeploymentLifecycleState.STAGED
 

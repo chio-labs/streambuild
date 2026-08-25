@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 from typing import cast
 
@@ -87,6 +88,12 @@ def test_given_selected_pipeline_when_confirming_destruction_then_both_gates_are
     page.route("**/api/destruction/plans/plan-1/review", routes.fulfill_review)
     page.route("**/api/destruction/plans/plan-1/execute", routes.fulfill_execution)
     page.goto(f"{base_url}/pipelines", wait_until="domcontentloaded")
+
+    page.get_by_role("button", name=re.compile(r"^Virtual")).click()
+    expect(page.get_by_text("No pipelines match this mode", exact=True)).to_be_visible()
+    expect(page.get_by_label(f"Select {test_case.pipeline_name} for destruction")).to_have_count(0)
+    page.get_by_role("button", name=re.compile(r"^Direct")).click()
+    expect(page.get_by_label(f"Select {test_case.pipeline_name} for destruction")).to_be_visible()
 
     page.get_by_label(f"Select {test_case.pipeline_name} for destruction").click()
     page.get_by_role("button", name="Destroy (1)").click()

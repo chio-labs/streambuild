@@ -80,6 +80,8 @@ class DestructionPlanningConnection:
         self.catalog_databases: list[str] = []
         self.inventory_databases: list[str] = []
         self.queries: list[str] = []
+        self.owned_resource_load_count: int = 0
+        self.catalog_match_count: int = 0
 
     def load_catalog(self, database: str) -> CatalogSnapshot:
         self.catalog_databases.append(database)
@@ -93,12 +95,14 @@ class DestructionPlanningConnection:
         self, *, database: str, target_database: str
     ) -> AdapterOwnedResourceSnapshot:
         del database, target_database
+        self.owned_resource_load_count += 1
         return self.owned_resources
 
     def catalog_resource_matches(
         self, *, resource: object, relation: object, database: str
     ) -> bool:
         del resource, database
+        self.catalog_match_count += 1
         return relation is not None and self.catalog_matches_resources
 
     def load_external_dependants(
@@ -207,6 +211,73 @@ def build_source_dependency_planning_fixture() -> PlanningFixture:
         target_name="uat",
         edge_maps_builder=_source_dependency_edges,
     )
+
+
+def build_transitive_source_dependency_planning_fixture() -> PlanningFixture:
+    fixture: PlanningFixture = build_source_dependency_planning_fixture()
+    original_project: SimpleNamespace = cast(
+        SimpleNamespace, fixture.analysis.realized_project.project
+    )
+    original_realized: SimpleNamespace = cast(SimpleNamespace, fixture.analysis.realized_project)
+    secondary_source_key: LogicalResourceKey = LogicalResourceKey("source", "secondary_events")
+    secondary_source: SimpleNamespace = SimpleNamespace(key=secondary_source_key)
+    original_beta: SimpleNamespace = original_project.pipelines[1]
+    beta: SimpleNamespace = SimpleNamespace(
+        pipeline=original_beta.pipeline,
+        source=secondary_source,
+    )
+    gamma: SimpleNamespace = SimpleNamespace(
+        pipeline=SimpleNamespace(name="gamma"),
+        source=secondary_source,
+    )
+    project_values: dict[str, object] = {
+        **vars(original_project),
+        "pipelines": (original_project.pipelines[0], beta, gamma),
+        "sources": (*original_project.sources, secondary_source),
+    }
+    project: SimpleNamespace = SimpleNamespace(**project_values)
+    resources_by_key: dict[LogicalResourceKey, tuple[object, ...]] = dict(
+        original_realized.resources_by_logical_key
+    )
+    resources_by_key[secondary_source_key] = (
+        AdapterTable(
+            name="raw__secondary_events",
+            columns=(AdapterColumn(name="payload", type="String"),),
+            engine="MergeTree()",
+            order_by=("tuple()",),
+        ),
+    )
+    relation_names_by_key: dict[LogicalResourceKey, str] = dict(
+        original_realized.relation_name_by_logical_key
+    )
+    relation_names_by_key[secondary_source_key] = "raw__secondary_events"
+    realized_values: dict[str, object] = {
+        **vars(original_realized),
+        "project": project,
+        "resources_by_logical_key": resources_by_key,
+        "relation_name_by_logical_key": relation_names_by_key,
+    }
+    realized: SimpleNamespace = SimpleNamespace(**realized_values)
+    upstream: dict[LogicalResourceKey, tuple[DependencyEdge, ...]] = dict(
+        fixture.analysis.graph.upstream_edges_by_key
+    )
+    downstream: dict[LogicalResourceKey, tuple[DependencyEdge, ...]] = dict(
+        fixture.analysis.graph.downstream_edges_by_key
+    )
+    upstream[secondary_source_key] = ()
+    downstream[secondary_source_key] = ()
+    graph: ProjectGraph = replace(
+        fixture.analysis.graph,
+        project=project,
+        upstream_edges_by_key=upstream,
+        downstream_edges_by_key=downstream,
+        ordered_keys=(*fixture.analysis.graph.ordered_keys, secondary_source_key),
+    )
+    analysis: CompileAnalysis = cast(
+        CompileAnalysis,
+        SimpleNamespace(realized_project=realized, graph=graph),
+    )
+    return PlanningFixture(analysis=analysis, connection=fixture.connection)
 
 
 def _build_planning_fixture(
@@ -658,8 +729,8 @@ def build_execution_plan(*, now: datetime) -> DestructionPlan:
             for name in ("relation_one", "relation_two")
         ),
         challenges=("DESTROY", "analytics"),
-        preserves_sources=True,
-        preserves_replay_data=True,
+        preserves_sources=False,
+        preserves_replay_data=False,
         manifest_fingerprint="m" * 64,
         plan_fingerprint="p" * 64,
         created_at=now,
@@ -670,9 +741,7 @@ def build_execution_plan(*, now: datetime) -> DestructionPlan:
 def build_execution_statements() -> tuple[WarehouseStatement, ...]:
     statement_values: tuple[tuple[str, str], ...] = (
         ("destroy_relation_0001", "DROP TABLE IF EXISTS `analytics`.`relation_one` SYNC;"),
-        ("record_dropped_relation_0001_0001", "RECORD_TOMBSTONE relation_one;"),
         ("destroy_relation_0002", "DROP TABLE IF EXISTS `analytics`.`relation_two` SYNC;"),
-        ("record_dropped_relation_0002_0001", "RECORD_TOMBSTONE relation_two;"),
     )
     return tuple(
         WarehouseStatement(
