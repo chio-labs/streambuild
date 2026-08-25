@@ -19,6 +19,7 @@ from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.executor.destruction.exceptions import (
     DestructionDependencyError,
     DestructionExternalDependencyError,
+    DestructionResourceError,
     DestructionSelectionError,
 )
 from streambuild.executor.destruction.main.build_destruction_challenges import (
@@ -38,6 +39,7 @@ from tests.unit.src.streambuild.executor.destruction._test_types import (
     DestructionChallengeTestCase,
     DestructionClosureTestCase,
     DestructionDependencyTestCase,
+    DestructionDropLimitTestCase,
     DuplicateSelectionTestCase,
     OwnershipLedgerBehaviorTestCase,
     PipelineDestructionPlanTestCase,
@@ -57,6 +59,44 @@ from tests.unit.src.streambuild.executor.destruction.helpers import (
 )
 
 _NOW: datetime = datetime(2026, 8, 24, 12, 0, tzinfo=UTC)
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DestructionDropLimitTestCase(
+            description="oversized existing relations block the complete plan",
+            limit=1024,
+            expected_resource_fragments=(
+                "analytics.tbl__orders__deployment_1 (2,048 bytes)",
+                "analytics.raw__events (4,096 bytes)",
+            ),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_oversized_relation_when_planning_then_drop_limit_blocks_before_mutation(
+    test_case: DestructionDropLimitTestCase,
+) -> None:
+    fixture: PlanningFixture = build_planning_fixture()
+    fixture.connection.relation_drop_size_limit = test_case.limit
+
+    with pytest.raises(DestructionResourceError) as raised:
+        plan_destruction(
+            request=DestructionRequest(
+                operation="destroy_pipelines",
+                target="uat",
+                database="analytics",
+                metadata_database="metadata",
+                pipeline_names=("alpha",),
+            ),
+            analysis=fixture.analysis,
+            connection=fixture.connection,
+            now=_NOW,
+        )
+
+    assert f"{test_case.limit:,} bytes" in str(raised.value)
+    assert all(fragment in str(raised.value) for fragment in test_case.expected_resource_fragments)
 
 
 @pytest.mark.parametrize(

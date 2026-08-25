@@ -129,6 +129,7 @@ _NODE_RESULT_REQUIRED_COLUMNS: frozenset[str] = frozenset(
 )
 _QUERY_ID_SETTING: str = "query_id"
 _TARGET_MUTATION_LOCK_COMMENT_PREFIX: str = "streambuild-target-lock-v2:"
+_MAX_TABLE_SIZE_TO_DROP_SETTING: str = "max_table_size_to_drop"
 
 
 class ClickHouseConnection(AdapterConnection):
@@ -167,6 +168,19 @@ class ClickHouseConnection(AdapterConnection):
             adapter_identity=self.adapter_identity,
             database=database,
         )
+
+    def load_relation_drop_size_limit(self) -> int | None:
+        """Return ClickHouse's effective table DROP safety limit."""
+
+        result: AdapterQueryResult = self.query(
+            f"SELECT value FROM system.settings WHERE name = '{_MAX_TABLE_SIZE_TO_DROP_SETTING}'"
+        )
+        if len(result.rows) != 1:
+            raise AdapterResultError(
+                f"Could not determine ClickHouse {_MAX_TABLE_SIZE_TO_DROP_SETTING}"
+            )
+        value: int = int(str(result.rows[0][0]))
+        return None if value == 0 else value
 
     def load_external_dependants(
         self, *, database: str, relation_names: tuple[str, ...]

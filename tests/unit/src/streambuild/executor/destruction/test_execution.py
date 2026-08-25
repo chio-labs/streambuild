@@ -18,7 +18,11 @@ from streambuild.executor.destruction.exceptions import (
     DestructionRecordingError,
 )
 from streambuild.executor.destruction.main.execute_destruction import execute_destruction
-from streambuild.executor.destruction.models import DestructionExecutionResult, DestructionPlan
+from streambuild.executor.destruction.models import (
+    DestructionActor,
+    DestructionExecutionResult,
+    DestructionPlan,
+)
 from streambuild.executor.workflow.models import WarehouseStatement
 from tests.unit.src.streambuild.executor.destruction._test_types import (
     DestructionExecutionTestCase,
@@ -32,6 +36,7 @@ from tests.unit.src.streambuild.executor.destruction.helpers import (
 )
 
 _NOW: datetime = datetime(2026, 8, 24, 12, 0, tzinfo=UTC)
+_ACTOR: DestructionActor = DestructionActor(actor_id="actor-1", actor_name="Alice")
 
 
 @pytest.mark.parametrize(
@@ -87,8 +92,7 @@ def test_given_workflow_prepared_failure_when_destroying_then_plan_is_unconsumed
     with pytest.raises(RuntimeError, match=test_case.expected_error_match):
         execute_destruction(
             frozen_plan=plan,
-            actor_id="actor-1",
-            actor_name="Alice",
+            actor=_ACTOR,
             challenge_responses=plan.challenges,
             reviewed_at=reviewed_at,
             store=store,
@@ -169,8 +173,7 @@ def test_given_locked_drift_when_destroying_then_attempt_is_recorded_without_mut
     with pytest.raises(DestructionDriftError, match=test_case.expected_error_match):
         execute_destruction(
             frozen_plan=plan,
-            actor_id="actor-1",
-            actor_name="Alice",
+            actor=_ACTOR,
             challenge_responses=plan.challenges,
             reviewed_at=reviewed_at,
             store=store,
@@ -249,8 +252,7 @@ def test_given_interrupt_after_drop_when_destroying_then_terminal_state_is_recor
     with pytest.raises(KeyboardInterrupt, match=test_case.expected_error_match):
         execute_destruction(
             frozen_plan=plan,
-            actor_id="actor-1",
-            actor_name="Alice",
+            actor=_ACTOR,
             challenge_responses=plan.challenges,
             reviewed_at=reviewed_at,
             store=store,
@@ -319,8 +321,7 @@ def test_given_drop_completion_failure_when_destroying_then_exact_prefix_and_res
 
     result: DestructionExecutionResult = execute_destruction(
         frozen_plan=plan,
-        actor_id="actor-1",
-        actor_name="Alice",
+        actor=_ACTOR,
         challenge_responses=plan.challenges,
         reviewed_at=reviewed_at,
         store=store,
@@ -397,8 +398,7 @@ def test_given_residual_catalog_failure_after_drops_when_destroying_then_residua
 
     result: DestructionExecutionResult = execute_destruction(
         frozen_plan=plan,
-        actor_id="actor-1",
-        actor_name="Alice",
+        actor=_ACTOR,
         challenge_responses=plan.challenges,
         reviewed_at=reviewed_at,
         store=store,
@@ -466,8 +466,7 @@ def test_given_run_completed_failure_when_destroying_then_terminal_invocation_is
 
     result: DestructionExecutionResult = execute_destruction(
         frozen_plan=plan,
-        actor_id="actor-1",
-        actor_name="Alice",
+        actor=_ACTOR,
         challenge_responses=plan.challenges,
         reviewed_at=reviewed_at,
         store=store,
@@ -535,8 +534,7 @@ def test_given_primary_terminal_failure_when_destroying_then_fallback_records_in
 
     result: DestructionExecutionResult = execute_destruction(
         frozen_plan=plan,
-        actor_id="actor-1",
-        actor_name="Alice",
+        actor=_ACTOR,
         challenge_responses=plan.challenges,
         reviewed_at=reviewed_at,
         store=store,
@@ -596,8 +594,7 @@ def test_given_all_terminal_connections_fail_when_destroying_then_recording_erro
     with pytest.raises(DestructionRecordingError, match=test_case.expected_error_match):
         execute_destruction(
             frozen_plan=plan,
-            actor_id="actor-1",
-            actor_name="Alice",
+            actor=_ACTOR,
             challenge_responses=plan.challenges,
             reviewed_at=reviewed_at,
             store=store,

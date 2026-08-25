@@ -60,6 +60,11 @@ class AdapterConnection(ABC):
     def load_catalog(self, database: str) -> CatalogSnapshot:
         """Load one immutable catalog snapshot for a database."""
 
+    def load_relation_drop_size_limit(self) -> int | None:
+        """Return the effective relation DROP byte limit, or none when unlimited/unsupported."""
+
+        return None
+
     def load_refresh_states(self, database: str) -> tuple[AdapterRefreshState, ...]:
         """Report scheduled refresh state; adapters without scheduled relations report none."""
 

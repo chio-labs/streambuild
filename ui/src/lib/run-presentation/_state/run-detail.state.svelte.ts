@@ -7,7 +7,7 @@ import { refreshLiveState } from '$lib/api/main/project/refresh-live-state';
 import { fetchRuns } from '$lib/api/main/runs/fetch-runs';
 import type { BuildFeed, RunEvent, RunEventFeed, RunRecord } from '$lib/api/types';
 import { createRunDetailPollingResource } from '$lib/run-presentation/_resources/run-detail-polling.resource';
-import { RUN_DETAIL_POLL_MS } from '$lib/run-presentation/constants';
+import { RUN_DETAIL_POLL_MS, RUN_LAUNCH_GRACE_MS } from '$lib/run-presentation/constants';
 import { consumeRunDetail } from '$lib/run-presentation/main/_consume-run-detail';
 import type {
 	RunDetailController,
@@ -42,6 +42,7 @@ export function createRunDetailState(
 	let activeGeneration: number = 0;
 	let invocationId: string = '';
 	let live: boolean = false;
+	let launchDeadlineMs: number = 0;
 	let cursor: number = 0;
 	const polling: RunDetailPollingResource = createRunDetailPollingResource(() =>
 		pollDurable(activeGeneration)
@@ -52,6 +53,7 @@ export function createRunDetailState(
 		const generation: number = activeGeneration;
 		invocationId = nextInvocationId;
 		live = nextLive;
+		launchDeadlineMs = nextLive ? Date.now() + RUN_LAUNCH_GRACE_MS : 0;
 		cursor = 0;
 		resetView();
 		void consumeRunDetail(invocationId).then(
@@ -137,6 +139,12 @@ export function createRunDetailState(
 						: await loadRunRecord(invocationId);
 			if (!isActive(generation)) return;
 			if (!feed.found && !view.owned && loadedRecord === null) {
+				if (live && Date.now() < launchDeadlineMs) {
+					view.initialLoading = true;
+					view.pollError = null;
+					polling.schedule(RUN_DETAIL_POLL_MS);
+					return;
+				}
 				view.notFound = true;
 				view.running = false;
 				view.loadError = null;

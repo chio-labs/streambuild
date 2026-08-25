@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
+import threading
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
+from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Request
 
@@ -43,18 +46,37 @@ from streambuild.executor.destruction.exceptions import (
 from streambuild.executor.destruction.main.execute_destruction import execute_destruction
 from streambuild.executor.destruction.main.plan_destruction import plan_destruction
 from streambuild.executor.destruction.models import (
-    DestructionExecutionResult,
+    DestructionActor,
     DestructionPlan,
     DestructionRequest,
 )
 from streambuild.executor.destruction.types import DestructionPlanStore
 
+_LOGGER: logging.Logger = logging.getLogger(__name__)
+_HTTP_ACCEPTED: int = 202
 _HTTP_BAD_REQUEST: int = 400
 _HTTP_NOT_FOUND: int = 404
 _HTTP_CONFLICT: int = 409
 _HTTP_GONE: int = 410
 _HTTP_BAD_GATEWAY: int = 502
 _HTTP_SERVICE_UNAVAILABLE: int = 503
+
+
+class _DestructionDispatchRegistry:
+    def __init__(self) -> None:
+        self._lock: threading.Lock = threading.Lock()
+        self._plan_ids: set[str] = set()
+
+    def reserve(self, *, plan_id: str) -> bool:
+        with self._lock:
+            if plan_id in self._plan_ids:
+                return False
+            self._plan_ids.add(plan_id)
+            return True
+
+    def release(self, *, plan_id: str) -> None:
+        with self._lock:
+            self._plan_ids.discard(plan_id)
 
 
 def register_destruction_routes(
@@ -253,6 +275,8 @@ def _register_destruction_execution_route(
 ) -> FastAPI:
     """Attach the reviewed frozen-plan execution route."""
 
+    dispatches: _DestructionDispatchRegistry = _DestructionDispatchRegistry()
+
     def execute_plan(
         *,
         http_request: Request,
@@ -272,34 +296,63 @@ def _register_destruction_execution_route(
                 authorization=authorization,
             )
             reviewed_at: datetime = store.reviewed_at(plan_id=plan_id, actor=actor_id)
+            challenge_responses: tuple[str, ...] = tuple(request.responses)
+            if challenge_responses != plan.challenges:
+                raise DestructionChallengeError(
+                    "Challenge responses must exactly match the frozen plan in order"
+                )
             observation_connection: AdapterConnection | None = warehouse.observation_connection
             if observation_connection is None:
                 raise HTTPException(
                     status_code=_HTTP_SERVICE_UNAVAILABLE,
                     detail="no warehouse observation connection",
                 )
-            with state.query_lock:
-                result: DestructionExecutionResult = execute_destruction(
-                    frozen_plan=plan,
-                    actor_id=actor_id,
-                    actor_name=actor.principal.username,
-                    challenge_responses=tuple(request.responses),
-                    reviewed_at=reviewed_at,
-                    store=store,
-                    connection=connection,
-                    observation_connection=observation_connection,
-                    project_dir=project_dir,
-                    replan=lambda: _fresh_plan(
-                        state=state,
-                        plan=plan,
-                        connection=connection,
-                        database=database,
-                        http_request=http_request,
-                        authorization=authorization,
-                    ),
+            if not dispatches.reserve(plan_id=plan_id):
+                raise DestructionPlanNotFoundError(
+                    f"Destruction plan {plan_id!r} is already executing"
                 )
-            state.snapshot.invalidate()
-            return _result_payload(result)
+            invocation_id: str = str(uuid4())
+
+            def run() -> None:
+                try:
+                    with state.query_lock:
+                        _ = execute_destruction(
+                            frozen_plan=plan,
+                            actor=DestructionActor(
+                                actor_id=actor_id,
+                                actor_name=actor.principal.username,
+                            ),
+                            challenge_responses=challenge_responses,
+                            reviewed_at=reviewed_at,
+                            store=store,
+                            connection=connection,
+                            observation_connection=observation_connection,
+                            project_dir=project_dir,
+                            replan=lambda: _fresh_plan(
+                                state=state,
+                                plan=plan,
+                                connection=connection,
+                                database=database,
+                                http_request=http_request,
+                                authorization=authorization,
+                            ),
+                            invocation_id=invocation_id,
+                        )
+                    state.snapshot.invalidate()
+                except (Exception, KeyboardInterrupt):
+                    _LOGGER.exception(
+                        "Background destruction execution failed for invocation %s",
+                        invocation_id,
+                    )
+                finally:
+                    dispatches.release(plan_id=plan_id)
+
+            threading.Thread(
+                target=run,
+                name=f"streambuild-destruction-{invocation_id}",
+                daemon=True,
+            ).start()
+            return {"invocationId": invocation_id, "status": "starting"}
         except DestructionPlanExpiredError as error:
             raise HTTPException(status_code=_HTTP_GONE, detail=str(error)) from error
         except DestructionPlanNotFoundError as error:
@@ -315,7 +368,7 @@ def _register_destruction_execution_route(
         except (AdapterError, DestructionRecordingError) as error:
             raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
 
-    app.post("/api/destruction/plans/{plan_id}/execute")(execute_plan)
+    app.post("/api/destruction/plans/{plan_id}/execute", status_code=_HTTP_ACCEPTED)(execute_plan)
     return app
 
 
@@ -424,21 +477,4 @@ def _plan_payload(
         "challengeValues": list(plan.challenges),
         "expiresAt": plan.expires_at.isoformat(),
         "reviewedAt": None if reviewed_at is None else reviewed_at.isoformat(),
-    }
-
-
-def _result_payload(result: DestructionExecutionResult) -> dict[str, object]:
-    return {
-        "invocationId": result.invocation_id,
-        "status": result.outcome,
-        "completedStatementSequences": list(result.completed_statement_sequences),
-        "pendingStatementSequences": list(result.pending_statement_sequences),
-        "remainingObjects": (
-            None
-            if result.remaining_relation_names is None
-            else list(result.remaining_relation_names)
-        ),
-        "residualCatalogStatus": result.residual_catalog_status,
-        "residualCatalogError": result.residual_catalog_error,
-        "error": result.error_message,
     }

@@ -65,6 +65,14 @@ class DestructionReviewGateRouteTestCase:
 
 
 @dataclass(frozen=True)
+class DestructionAsyncExecutionRouteTestCase:
+    description: str
+    expected_status: int
+    expected_execution_status: str
+    maximum_response_seconds: float
+
+
+@dataclass(frozen=True)
 class DestructionActorBindingRouteTestCase:
     description: str
     expected_status: int
