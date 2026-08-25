@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.31.0](https://github.com/chio-labs/streambuild/compare/v0.30.0...v0.31.0) (2026-08-25)
+
+
+### Features
+
+* **retention:** add schema-aware defaults ([#192](https://github.com/chio-labs/streambuild/issues/192)) ([c71824d](https://github.com/chio-labs/streambuild/commit/c71824db926a2152b39a422c851b96838eaf22ea))
+
 ## [0.30.0](https://github.com/chio-labs/streambuild/compare/v0.29.1...v0.30.0) (2026-08-25)
 
 
