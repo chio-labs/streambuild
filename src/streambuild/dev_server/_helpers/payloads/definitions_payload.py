@@ -105,6 +105,9 @@ def _project_payload(analysis: CompileAnalysis) -> dict[str, object]:
             "connection": {},
             "auditScheduler": {"enabled": False},
             "ui": {"timezone": "UTC"},
+            "dependencies": {
+                "modelReferenceScope": str(analysis.compiled_project.model_reference_scope)
+            },
         }
     return {
         "name": effective.name,
@@ -146,6 +149,9 @@ def _project_payload(analysis: CompileAnalysis) -> dict[str, object]:
         },
         "auditScheduler": {"enabled": effective.audit_scheduler.enabled},
         "ui": {"timezone": effective.ui.timezone},
+        "dependencies": {
+            "modelReferenceScope": str(analysis.compiled_project.model_reference_scope)
+        },
     }
 
 

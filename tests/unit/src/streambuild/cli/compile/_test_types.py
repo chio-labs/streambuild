@@ -33,6 +33,14 @@ class DerivedSourceManifestTestCase:
 
 
 @dataclass(frozen=True)
+class SourceRetentionManifestTestCase:
+    description: str
+    expected_ttl: str
+    expected_origin: str
+    expected_duration_seconds: int
+
+
+@dataclass(frozen=True)
 class StaticReplacementTestCase:
     description: str
     stale_relative_paths: tuple[str, ...]
@@ -56,6 +64,8 @@ class CompileArtifactIdentityTestCase:
     expected_manifest_models: tuple[str, ...]
     expected_dag_node_ids: tuple[str, ...]
     expected_edge: tuple[str, str, str]
+    expected_model_reference_scope: str
+    project_config_suffix: str
 
 
 @dataclass(frozen=True)

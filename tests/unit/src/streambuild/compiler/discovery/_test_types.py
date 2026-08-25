@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from streambuild.compiler.discovery.models import SourceFreshnessPolicy
-from streambuild.compiler.discovery.types import PipelineMode
+from streambuild.compiler.discovery.types import ModelReferenceScope, PipelineMode
 
 
 @dataclass(frozen=True)
@@ -92,6 +92,13 @@ class ProjectConfigurationErrorTestCase:
 
 
 @dataclass(frozen=True)
+class ProjectDependencyScopeTestCase:
+    description: str
+    dependencies_toml: str
+    expected_scope: ModelReferenceScope
+
+
+@dataclass(frozen=True)
 class EffectiveProjectConfigurationTestCase:
     description: str
     expected_name: str
@@ -104,6 +111,15 @@ class EffectiveProjectConfigurationTestCase:
     expected_managed_source_ttl: str
     expected_model_ttl: str
     expected_ui_timezone: str
+
+
+@dataclass(frozen=True)
+class TypedRetentionInterpolationTestCase:
+    description: str
+    expected_duration_seconds: int
+    expected_timestamp_column: str
+    expected_cap_at_column: str
+    expected_kafka_fallback: str
 
 
 @dataclass(frozen=True)
@@ -161,6 +177,13 @@ class SourceRegistryTestCase:
     expected_boundary_modes: tuple[str, ...]
     expected_relative_paths: tuple[str, ...]
     expected_managed_source_ttl: str
+
+
+@dataclass(frozen=True)
+class SourceRetentionInterpolationTestCase:
+    description: str
+    expected_duration_seconds: int
+    expected_fallback: str
 
 
 @dataclass(frozen=True)

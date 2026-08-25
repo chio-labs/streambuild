@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import tomllib
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Literal, cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -24,6 +25,7 @@ from streambuild.compiler.discovery.constants import (
     BUILD_KEYS,
     DEFAULT_ADAPTER_NAME,
     DEFAULTS_KEYS,
+    DEPENDENCIES_KEYS,
     DEPLOYMENT_READINESS_KEYS,
     DESTRUCTION_KEYS,
     FULL_REPLAY_POLICY_VALUE,
@@ -70,6 +72,7 @@ from streambuild.compiler.discovery.models import (
     LocalProjectTarget,
     ModelDefaults,
     ProjectDefaults,
+    ProjectDependencies,
     ProjectNaming,
     ProjectTarget,
     RawConnectionConfig,
@@ -82,6 +85,7 @@ from streambuild.compiler.discovery.models import (
 )
 from streambuild.compiler.discovery.types import (
     BoundedReplayFallback,
+    ModelReferenceScope,
     PipelineMode,
     ReplayOnChangeMode,
 )
@@ -256,6 +260,9 @@ def _parse_project_config(
         ),
         build=build,
         ui=_parse_ui_config(payload=payload.get("ui"), file_path=file_path),
+        dependencies=_parse_dependencies_config(
+            payload=payload.get("dependencies"), file_path=file_path
+        ),
     )
 
 
@@ -540,6 +547,28 @@ def _parse_ui_config(*, payload: object, file_path: Path) -> UiConfig:
     return UiConfig(timezone=timezone)
 
 
+def _parse_dependencies_config(*, payload: object, file_path: Path) -> ProjectDependencies:
+    mapping: dict[str, object] = _optional_mapping(
+        payload=payload,
+        label="dependencies",
+        file_path=file_path,
+    )
+    _validate_allowed_keys(
+        mapping=mapping,
+        allowed_keys=DEPENDENCIES_KEYS,
+        label="dependencies",
+        file_path=file_path,
+    )
+    value: object = mapping.get("model_reference_scope", ModelReferenceScope.PROJECT)
+    try:
+        scope: ModelReferenceScope = ModelReferenceScope(value)
+    except (TypeError, ValueError) as error:
+        raise ProjectConfigError(
+            f"{file_path} dependencies.model_reference_scope must be 'project' or 'pipeline'"
+        ) from error
+    return ProjectDependencies(model_reference_scope=scope)
+
+
 def _parse_audit_scheduler_config(
     *, payload: object, label: str, file_path: Path
 ) -> AuditSchedulerConfig:
@@ -694,12 +723,16 @@ def _parse_project_defaults(*, payload: object, file_path: Path) -> ProjectDefau
     models: ModelDefaults = _parse_model_defaults(
         payload=mapping.get("models"), file_path=file_path
     )
-    if managed_source_ttl is not None and sources.kafka.retention is not None:
+    if managed_source_ttl is not None and (
+        sources.kafka.retention is not None or sources.kafka.retention_template is not None
+    ):
         raise ProjectConfigError(
             f"{file_path} defaults.managed_source_ttl cannot be combined with "
             "defaults.sources.kafka.retention"
         )
-    if model_ttl is not None and models.retention is not None:
+    if model_ttl is not None and (
+        models.retention is not None or models.retention_template is not None
+    ):
         raise ProjectConfigError(
             f"{file_path} defaults.model_ttl cannot be combined with defaults.models.retention"
         )
@@ -811,6 +844,7 @@ def _parse_source_defaults(*, payload: object, file_path: Path) -> SourceDefault
         label="defaults.sources.kafka",
         file_path=file_path,
     )
+    retention_value: object = kafka_mapping.get("retention")
     return SourceDefaults(
         kafka=KafkaSourceDefaults(
             naming_macro=_optional_non_empty_string(
@@ -819,9 +853,16 @@ def _parse_source_defaults(*, payload: object, file_path: Path) -> SourceDefault
                 label="defaults.sources.kafka",
                 file_path=file_path,
             ),
-            retention=_project_kafka_retention(
-                value=kafka_mapping.get("retention"),
-                field_path=f"{file_path} defaults.sources.kafka.retention",
+            retention=(
+                None
+                if _contains_interpolation(retention_value)
+                else _project_kafka_retention(
+                    value=retention_value,
+                    field_path=f"{file_path} defaults.sources.kafka.retention",
+                )
+            ),
+            retention_template=(
+                retention_value if _contains_interpolation(retention_value) else None
             ),
         )
     )
@@ -839,10 +880,13 @@ def _parse_model_defaults(*, payload: object, file_path: Path) -> ModelDefaults:
         label="defaults.models",
         file_path=file_path,
     )
+    retention_value: object = mapping.get("retention")
+    if _contains_interpolation(retention_value):
+        return ModelDefaults(retention_template=retention_value)
     try:
         return ModelDefaults(
             retention=parse_model_retention(
-                value=mapping.get("retention"),
+                value=retention_value,
                 field_path=f"{file_path} defaults.models.retention",
             )
         )
@@ -857,6 +901,19 @@ def _project_kafka_retention(
         return parse_kafka_retention(value=value, field_path=field_path)
     except ValueError as error:
         raise ProjectConfigError(str(error)) from error
+
+
+def _contains_interpolation(value: object) -> bool:
+    if isinstance(value, str):
+        return INTERPOLATION_TOKEN_START in value
+    if isinstance(value, Mapping):
+        return any(
+            _contains_interpolation(key) or _contains_interpolation(item)
+            for key, item in value.items()
+        )
+    if isinstance(value, (list, tuple)):
+        return any(_contains_interpolation(item) for item in value)
+    return False
 
 
 def _parse_pipeline_mode(*, value: object, label: str, file_path: Path) -> PipelineMode:

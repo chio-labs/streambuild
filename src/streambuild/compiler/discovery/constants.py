@@ -102,6 +102,7 @@ PROJECT_CONFIG_KEYS: frozenset[str] = frozenset(
         "sensors",
         "build",
         "ui",
+        "dependencies",
     }
 )
 LOCAL_CONFIG_KEYS: frozenset[str] = frozenset(
@@ -123,6 +124,7 @@ LOCAL_TARGET_KEYS: frozenset[str] = TARGET_KEYS - {"build", "destruction", "prod
 BUILD_KEYS: frozenset[str] = frozenset({"max_pipelines"})
 DESTRUCTION_KEYS: frozenset[str] = frozenset({"max_table_size_to_drop"})
 UI_KEYS: frozenset[str] = frozenset({"timezone"})
+DEPENDENCIES_KEYS: frozenset[str] = frozenset({"model_reference_scope"})
 AUDIT_SCHEDULER_KEYS: frozenset[str] = frozenset({"enabled"})
 SENSORS_KEYS: frozenset[str] = frozenset({"enabled", "tick_retention_days", "maximum_event_age"})
 DEFAULTS_KEYS: frozenset[str] = frozenset(

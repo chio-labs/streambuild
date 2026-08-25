@@ -173,6 +173,7 @@ def load_pipeline_directory(pipeline_dir: Path) -> LoadedPipeline:
             naming=effective.naming,
             audit_defaults=effective.defaults.audits,
             audit_scheduler=effective.audit_scheduler,
+            dependencies=effective.dependencies,
         ),
     )
     validate_replay_policies_for_mode(

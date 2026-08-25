@@ -180,7 +180,7 @@ function sourceFromServer(source: Payload, live: Payload): Source {
 			ddl: (relation.ddl as string | null) ?? null
 		})),
 		ttl: (source.ttl as string | null) ?? null,
-		retentionDays: retentionDaysFromTtl((source.ttl as string | null) ?? null),
+		retentionDays: retentionDaysFromSource(source),
 		brokerList: (kafka?.brokerList as string) ?? null,
 		topic: (kafka?.topic as string) ?? null,
 		consumerGroup: (kafka?.consumerGroup as string) ?? null,
@@ -488,6 +488,14 @@ function retentionDaysFromTtl(ttl: string | null): number | null {
 	if (ttl === null) return null;
 	const match: RegExpMatchArray | null = ttl.match(/INTERVAL\s+(\d+)\s+DAY/i);
 	return match ? Number(match[1]) : null;
+}
+
+function retentionDaysFromSource(source: Payload): number | null {
+	const retention: Payload | null = (source.retention ?? null) as Payload | null;
+	const durationSeconds: number | null = nullableNumber(retention?.durationSeconds);
+	return durationSeconds === null
+		? retentionDaysFromTtl((source.ttl as string | null) ?? null)
+		: durationSeconds / 86_400;
 }
 
 /**
