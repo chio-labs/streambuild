@@ -17,6 +17,8 @@ class DestructionRouteRecorder:
         self.request_bodies: list[dict[str, object]] = []
         self.reviewed_at: str | None = None
         self.read_count: int = 0
+        self.recovery_request_bodies: list[object | None] = []
+        self.statement_read_count: int = 0
 
     def fulfill_plan(self, route: Route) -> None:
         self.request_bodies.append(cast(dict[str, object], route.request.post_data_json))
@@ -34,6 +36,79 @@ class DestructionRouteRecorder:
     def fulfill_execution(self, route: Route) -> None:
         self.request_bodies.append(cast(dict[str, object], route.request.post_data_json))
         route.fulfill(status=202, json={"invocationId": self.invocation_id, "status": "starting"})
+
+    def fulfill_run_events(self, route: Route) -> None:
+        route.fulfill(
+            json={
+                "found": True,
+                "events": [
+                    {
+                        "sequence": 1,
+                        "emittedAt": "2026-08-24 12:01:00",
+                        "event": "run_started",
+                        "stepId": None,
+                        "phase": None,
+                        "command": "destroy pipelines",
+                        "displayCommand": "stb destroy pipelines",
+                        "totalStatements": 31,
+                    },
+                    {
+                        "sequence": 2,
+                        "emittedAt": "2026-08-24 12:02:00",
+                        "event": "run_completed",
+                        "stepId": None,
+                        "phase": None,
+                        "outcome": "failed",
+                        "exitCode": 1,
+                        "errorMessage": "relation exceeds configured drop limit",
+                    },
+                ],
+                "hasMore": False,
+                "status": "failed",
+                "lastSignalAt": "2026-08-24 12:02:00",
+                "lastSignalAgeSeconds": 0,
+                "statementProgress": None,
+            }
+        )
+
+    def fulfill_runs(self, route: Route) -> None:
+        route.fulfill(
+            json=[
+                {
+                    "invocationId": self.invocation_id,
+                    "command": "destroy pipelines",
+                    "displayCommand": "stb destroy pipelines",
+                    "mode": "destructive",
+                    "status": "failed",
+                    "outcome": "failed",
+                    "exitCode": 1,
+                    "startedAt": "2026-08-24 12:01:00",
+                    "completedAt": "2026-08-24 12:02:00",
+                    "lastSignalAt": "2026-08-24 12:02:00",
+                    "lastSignalAgeSeconds": 0,
+                    "durationMs": 60_000,
+                    "selectedNodeCount": 1,
+                    "errorMessage": "relation exceeds configured drop limit",
+                    "toolVersion": "0.28.4",
+                    "lastActivity": "run_completed",
+                    "completedOperationCount": 1,
+                    "totalStatements": 31,
+                    "currentStep": None,
+                    "auditSummary": None,
+                }
+            ]
+        )
+
+    def fulfill_recovery(self, route: Route) -> None:
+        self.recovery_request_bodies.append(route.request.post_data_json)
+        route.fulfill(json={**self.plan_payload, "planId": "recovery-plan-1", "reviewedAt": None})
+
+    def fulfill_recovery_read(self, route: Route) -> None:
+        route.fulfill(json={**self.plan_payload, "planId": "recovery-plan-1", "reviewedAt": None})
+
+    def fulfill_statement_read(self, route: Route) -> None:
+        self.statement_read_count += 1
+        route.fulfill(status=500, json={"detail": "old SQL must not be read for recovery"})
 
 
 @pytest.mark.e2e
@@ -95,6 +170,9 @@ def test_given_selected_pipeline_when_confirming_destruction_then_both_gates_are
         "managedSourcesIncluded": False,
         "retainedReplayDataIncluded": False,
         "estimatedBytes": 4096,
+        "dropSizeLimitBytes": 107_374_182_400,
+        "dropSizeServerLimitBytes": 50_000_000_000,
+        "dropSizeOverrideBytes": 107_374_182_400,
         "challengeValues": [test_case.pipeline_name],
         "expiresAt": "2099-08-24T12:15:00+00:00",
         "reviewedAt": None,
@@ -108,6 +186,17 @@ def test_given_selected_pipeline_when_confirming_destruction_then_both_gates_are
     page.route("**/api/destruction/plans/plan-1", routes.fulfill_read)
     page.route("**/api/destruction/plans/plan-1/review", routes.fulfill_review)
     page.route("**/api/destruction/plans/plan-1/execute", routes.fulfill_execution)
+    page.route(
+        f"**/api/runs/{test_case.expected_invocation_id}/events?after=*",
+        routes.fulfill_run_events,
+    )
+    page.route("**/api/runs", routes.fulfill_runs)
+    page.route(
+        f"**/api/runs/{test_case.expected_invocation_id}/recovery-plan",
+        routes.fulfill_recovery,
+    )
+    page.route("**/api/destruction/plans/recovery-plan-1", routes.fulfill_recovery_read)
+    page.route("**/api/runs/*/statements/*", routes.fulfill_statement_read)
     page.set_viewport_size({"width": 1920, "height": 1080})
     page.goto(f"{base_url}/pipelines", wait_until="domcontentloaded")
 
@@ -153,6 +242,11 @@ def test_given_selected_pipeline_when_confirming_destruction_then_both_gates_are
     execute.click()
 
     expect(page).to_have_url(f"{base_url}/runs/{test_case.expected_invocation_id}?live=1")
+    recovery: Locator = page.get_by_role("button", name="Create recovery plan")
+    expect(recovery).to_be_visible()
+    recovery.click()
+    expect(page).to_have_url(f"{base_url}/destruction/plans/recovery-plan-1")
+    expect(page.get_by_role("button", name="Review frozen plan")).to_be_visible()
     assert routes.request_bodies == [
         {
             "operation": "destroy_pipelines",
@@ -163,6 +257,8 @@ def test_given_selected_pipeline_when_confirming_destruction_then_both_gates_are
         {"responses": [test_case.pipeline_name]},
     ]
     assert routes.read_count == 2
+    assert routes.recovery_request_bodies == [None]
+    assert routes.statement_read_count == 0
 
 
 if __name__ == "__main__":

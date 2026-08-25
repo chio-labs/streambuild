@@ -17,6 +17,7 @@ from streambuild.dev_server._helpers.queries.runs_query import (
     read_run_events,
     read_run_statement,
     read_runs,
+    read_terminal_run,
 )
 from streambuild.dev_server.types import RunPresentationStatus
 from tests.unit.src.streambuild.dev_server._test_types import (
@@ -269,6 +270,89 @@ def test_given_null_mode_build_when_reading_terminal_operations_then_it_is_not_e
     )
 
     assert runs[test_case.invocation_id]["command"] == test_case.expected_command
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        TerminalRunQueryTestCase(
+            description="exact failed destruction lookup is not history-list limited",
+            invocation_id="failed-destruction",
+            expected_command="destroy pipelines",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_old_failed_destruction_when_reading_exact_run_then_complete_summary_is_returned(
+    test_case: TerminalRunQueryTestCase,
+) -> None:
+    invocation_table_query: str = (
+        "SELECT count() AS present FROM system.tables "
+        "WHERE database = 'analytics' AND name = '_streambuild_invocations'"
+    )
+    invocation_query: str = (
+        "SELECT invocation_id, project_identity, command, mode, outcome, exit_code, "
+        "toString(started_at) AS started_at, toString(completed_at) AS completed_at, "
+        "duration_ms, selected_node_count, error_message, summary_json, tool_version "
+        "FROM `analytics`.`_streambuild_invocations` "
+        f"WHERE invocation_id = '{test_case.invocation_id}' ORDER BY started_at DESC"
+    )
+    connection: FakeAdapterConnection = FakeAdapterConnection(
+        catalog=build_fake_state_connection()._catalog,
+        warehouse_timestamp="2026-08-07 12:00:00.000",
+        results_by_query={
+            invocation_table_query: AdapterQueryResult(rows=((1,),), column_names=("present",)),
+            invocation_query: AdapterQueryResult(
+                rows=(
+                    (
+                        test_case.invocation_id,
+                        "project",
+                        test_case.expected_command,
+                        "destructive",
+                        "failed",
+                        1,
+                        "2026-08-07 11:00:00.000",
+                        "2026-08-07 11:01:00.000",
+                        60_000,
+                        1,
+                        "drop failed",
+                        '{"operationKind":"destroy_pipelines","originalSelection":["orders"],'
+                        '"includedDependentPipelines":[]}',
+                        "0.28.3",
+                    ),
+                ),
+                column_names=(
+                    "invocation_id",
+                    "project_identity",
+                    "command",
+                    "mode",
+                    "outcome",
+                    "exit_code",
+                    "started_at",
+                    "completed_at",
+                    "duration_ms",
+                    "selected_node_count",
+                    "error_message",
+                    "summary_json",
+                    "tool_version",
+                ),
+            ),
+        },
+    )
+
+    run: dict[str, object] | None = read_terminal_run(
+        connection=connection,
+        database="analytics",
+        invocation_id=test_case.invocation_id,
+    )
+
+    assert run is not None
+    assert run["command"] == test_case.expected_command
+    assert run["summary"] == {
+        "operationKind": "destroy_pipelines",
+        "originalSelection": ["orders"],
+        "includedDependentPipelines": [],
+    }
 
 
 @pytest.mark.parametrize(

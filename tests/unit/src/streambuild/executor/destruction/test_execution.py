@@ -58,7 +58,12 @@ def test_given_workflow_prepared_failure_when_destroying_then_plan_is_unconsumed
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    plan: DestructionPlan = build_execution_plan(now=_NOW)
+    plan: DestructionPlan = replace(
+        build_execution_plan(now=_NOW),
+        relation_drop_size_limit=107_374_182_400,
+        relation_drop_size_server_limit=50_000_000_000,
+        relation_drop_size_override=107_374_182_400,
+    )
     statements: tuple[WarehouseStatement, ...] = build_execution_statements()
     store: InMemoryDestructionPlanStore = InMemoryDestructionPlanStore(clock=lambda: _NOW)
     store.save(plan=plan, actor="actor-1")
@@ -112,17 +117,31 @@ def test_given_workflow_prepared_failure_when_destroying_then_plan_is_unconsumed
     )
     assert started_evidence["actor"] == {"id": "actor-1", "username": "Alice"}
     assert started_evidence["planId"] == plan.plan_id
+    assert started_evidence["operationKind"] == plan.operation.value
+    assert started_evidence["originalSelection"] == list(plan.requested_pipeline_names)
+    assert started_evidence["includedDependentPipelines"] == list(
+        plan.included_dependent_pipeline_names
+    )
     assert started_evidence["submittedChallenges"] == list(plan.challenges)
+    assert started_evidence["relationDropSizeLimit"] == 107_374_182_400
+    assert started_evidence["relationDropSizeServerLimit"] == 50_000_000_000
+    assert started_evidence["relationDropSizeOverride"] == 107_374_182_400
     assert started_evidence["completedStatementSequences"] == []
     assert started_evidence["pendingStatementSequences"] == list(
         test_case.expected_pending_sequences
     )
     summary: dict[str, object] = json.loads(invocations[0].summary_json)
     assert summary["completedStatementSequences"] == []
+    assert summary["operationKind"] == started_evidence["operationKind"]
+    assert summary["originalSelection"] == started_evidence["originalSelection"]
+    assert summary["includedDependentPipelines"] == started_evidence["includedDependentPipelines"]
     assert summary["pendingStatementSequences"] == list(test_case.expected_pending_sequences)
     assert summary["remainingObjects"] == list(test_case.expected_remaining_names or ())
     assert summary["residualCatalogStatus"] == test_case.expected_residual_status
     assert summary["failurePhase"] == test_case.expected_failure_phase
+    assert summary["relationDropSizeLimit"] == 107_374_182_400
+    assert summary["relationDropSizeServerLimit"] == 50_000_000_000
+    assert summary["relationDropSizeOverride"] == 107_374_182_400
 
 
 @pytest.mark.parametrize(

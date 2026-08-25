@@ -61,7 +61,18 @@ class AdapterConnection(ABC):
         """Load one immutable catalog snapshot for a database."""
 
     def load_relation_drop_size_limit(self) -> int | None:
-        """Return the effective relation DROP byte limit, or none when unlimited/unsupported."""
+        """Return the warehouse relation DROP byte limit, or none when unlimited/unsupported."""
+
+        return None
+
+    def load_relation_drop_size_server_default(self) -> int | None:
+        """Return the warehouse server's default relation DROP limit when available."""
+
+        return self.load_relation_drop_size_limit()
+
+    @property
+    def destruction_relation_drop_size_limit(self) -> int | None:
+        """Return a finite override reserved for reviewed destruction statements."""
 
         return None
 

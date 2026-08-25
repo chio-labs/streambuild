@@ -44,6 +44,22 @@ class DestructionDropLimitTestCase:
 
 
 @dataclass(frozen=True)
+class DestructionDropOverrideTestCase:
+    description: str
+    server_limit: int
+    override_limit: int
+    expected_effective_limit: int
+
+
+@dataclass(frozen=True)
+class DestructionFrozenDropLimitTestCase:
+    description: str
+    first_limit: int
+    second_limit: int
+    expected_fingerprint_changed: bool
+
+
+@dataclass(frozen=True)
 class DestructionClosureTestCase:
     description: str
     expected_requested_pipeline_names: tuple[str, ...]
