@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.33.0](https://github.com/chio-labs/streambuild/compare/v0.32.0...v0.33.0) (2026-08-25)
+
+
+### Features
+
+* add changed model selection and complete UI states ([#197](https://github.com/chio-labs/streambuild/issues/197)) ([4190da6](https://github.com/chio-labs/streambuild/commit/4190da6d76296f3260babfc2d4669052727886f6))
+
 ## [0.32.0](https://github.com/chio-labs/streambuild/compare/v0.31.0...v0.32.0) (2026-08-25)
 
 
