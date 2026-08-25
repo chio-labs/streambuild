@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.29.1](https://github.com/chio-labs/streambuild/compare/v0.29.0...v0.29.1) (2026-08-25)
+
+
+### Bug Fixes
+
+* **destruction:** reload reviewed safety policy ([#188](https://github.com/chio-labs/streambuild/issues/188)) ([5684228](https://github.com/chio-labs/streambuild/commit/568422867aad1e6fa42677b57503170d7eb69104))
+
 ## [0.29.0](https://github.com/chio-labs/streambuild/compare/v0.28.3...v0.29.0) (2026-08-25)
 
 
