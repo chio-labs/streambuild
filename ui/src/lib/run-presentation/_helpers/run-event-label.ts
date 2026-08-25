@@ -17,9 +17,21 @@ export function labelRunEvent(event: RunEvent, context: RunEventLabelContext): s
 			(event.failureCount ?? 0) > 0 ? ` · ${event.failureCount} failures` : '';
 		return `${stepId}${statusLabel}${failureLabel}`;
 	}
+	if (event.displayName) return event.displayName;
+	return labelRunStepId(stepId, context);
+}
+
+export function labelRunStepId(
+	stepId: string,
+	context: RunEventLabelContext | null = null
+): string {
 	const metadataStep: RegExpMatchArray | null = stepId.match(/^prepare_metadata_(\d+)$/);
 	if (metadataStep) {
-		return numberedLabel('Prepare metadata schema', metadataStep[1], context.metadataPreparationCount);
+		return numberedLabel(
+			'Prepare metadata schema',
+			metadataStep[1],
+			context?.metadataPreparationCount ?? 0
+		);
 	}
 	const persistenceStep: RegExpMatchArray | null = stepId.match(
 		/^persist_candidate_metadata_(\d+)$/
@@ -28,20 +40,32 @@ export function labelRunEvent(event: RunEvent, context: RunEventLabelContext): s
 		return numberedLabel(
 			'Record deployment metadata',
 			persistenceStep[1],
-			context.candidateMetadataCount
+			context?.candidateMetadataCount ?? 0
 		);
 	}
 	const migrationStep: RegExpMatchArray | null = stepId.match(/^migrate_metadata_(\d+)$/);
 	if (migrationStep) {
-		return numberedLabel('Prepare metadata schema', migrationStep[1], context.metadataMigrationCount);
+		return numberedLabel(
+			'Prepare metadata schema',
+			migrationStep[1],
+			context?.metadataMigrationCount ?? 0
+		);
 	}
 	const publicationStep: RegExpMatchArray | null = stepId.match(/^persist_publish_event_(\d+)$/);
 	if (publicationStep) {
-		return numberedLabel('Record publication', publicationStep[1], context.publicationCount);
+		return numberedLabel(
+			'Record publication',
+			publicationStep[1],
+			context?.publicationCount ?? 0
+		);
 	}
 	const reconcileStep: RegExpMatchArray | null = stepId.match(/^persist_reconcile_state_(\d+)$/);
 	if (reconcileStep) {
-		return numberedLabel('Record reconciled metadata', reconcileStep[1], context.reconcileCount);
+		return numberedLabel(
+			'Record reconciled metadata',
+			reconcileStep[1],
+			context?.reconcileCount ?? 0
+		);
 	}
 	const auditStep: RegExpMatchArray | null = stepId.match(/^audit_\d+_(.+)_(count|sample)$/);
 	if (auditStep) {
@@ -79,7 +103,7 @@ export function labelRunEvent(event: RunEvent, context: RunEventLabelContext): s
 		if (stepId.startsWith(prefix)) return `${label} · ${stepId.slice(prefix.length)}`;
 	}
 	const numbered: [string, string][] = [
-		['destroy_relation_', 'Remove physical resource'],
+		['destroy_relation_', 'Drop relation'],
 		['remove_obsolete_binding_', 'Remove obsolete binding'],
 		['cleanup_relation_', 'Delete retained relation'],
 		['record_direct_fingerprint_', 'Record build fingerprint'],

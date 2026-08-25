@@ -94,6 +94,13 @@ class DestructionConfig:
     max_table_size_to_drop_bytes: int | None = None
 
 
+@dataclass(frozen=True)
+class UiConfig:
+    """Committed browser presentation settings."""
+
+    timezone: str = "UTC"
+
+
 @dataclass(frozen=True, repr=False)
 class ProjectTarget:
     """One committed named target before local resolution."""
@@ -257,6 +264,7 @@ class AuthoredProjectConfig:
     audit_scheduler: AuditSchedulerConfig = field(default_factory=AuditSchedulerConfig)
     sensors: SensorAutomationConfig = field(default_factory=SensorAutomationConfig)
     build: BuildConfig = field(default_factory=BuildConfig)
+    ui: UiConfig = field(default_factory=UiConfig)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "variables", immutable_config_pairs(self.variables))
@@ -303,6 +311,7 @@ class EffectiveProjectConfiguration:
     sensors: SensorAutomationConfig = field(default_factory=SensorAutomationConfig)
     build: BuildConfig = field(default_factory=BuildConfig)
     destruction: DestructionConfig = field(default_factory=DestructionConfig)
+    ui: UiConfig = field(default_factory=UiConfig)
     production_target: bool = False
 
     def __post_init__(self) -> None:

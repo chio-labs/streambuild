@@ -28,6 +28,10 @@ def assemble_destruction_workflow(
                 step_id=f"destroy_relation_{relation_index:04d}",
                 phase=WorkflowPhase.TEARDOWN,
                 intent=StatementIntent.MUTATION,
+                display_name=(
+                    f"Drop {_drop_sql_kind(DestructionRelationKind(relation.kind)).lower()} "
+                    f"{relation.database}.{relation.name}"
+                ),
                 sql=(
                     f"DROP {_drop_sql_kind(DestructionRelationKind(relation.kind))} IF EXISTS "
                     f"{_quote_identifier(relation.database)}.{_quote_identifier(relation.name)} "

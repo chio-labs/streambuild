@@ -136,12 +136,21 @@
 
 	const SCOPE_DEFS: { key: RunScope; label: string }[] = [
 		{ key: 'builds', label: 'Builds' },
-		{ key: 'other', label: 'Other operations' },
+		{ key: 'audits', label: 'Audits' },
+		{ key: 'tests', label: 'Tests' },
+		{ key: 'deployments', label: 'Deployments' },
+		{ key: 'destruction', label: 'Destruction' },
+		{ key: 'maintenance', label: 'Maintenance' },
+		{ key: 'other', label: 'Other' },
 		{ key: 'all', label: 'All history' }
 	];
 
 	function scopeCount(key: RunScope): number | null {
 		return runs === null ? null : runsInScope(runs, key).length;
+	}
+
+	function scopeLabel(key: RunScope): string {
+		return SCOPE_DEFS.find((item) => item.key === key)?.label.toLowerCase() ?? 'runs';
 	}
 </script>
 
@@ -200,7 +209,7 @@
 						No recorded runs. History appears after the first
 						<code class="code text-[12px]">stb build</code> against this database.
 					{:else}
-						No {statusFilter === 'all' ? '' : `${statusFilter} `}{scope === 'builds' ? 'builds' : scope === 'other' ? 'other operations' : 'runs'}.
+						No {statusFilter === 'all' ? '' : `${statusFilter} `}{scopeLabel(scope)}.
 					{/if}
 				</p>
 			</div>

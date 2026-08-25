@@ -194,6 +194,10 @@ def test_given_associated_relations_when_rendering_then_only_drop_statements_are
     assert all(statement.sql.startswith("DROP ") for statement in statements)
     assert all(" SETTINGS " not in statement.sql for statement in statements)
     assert all(statement.step_id.startswith("destroy_relation_") for statement in statements)
+    assert all(
+        statement.display_name and statement.display_name.startswith("Drop ")
+        for statement in statements
+    )
 
 
 @pytest.mark.parametrize(
