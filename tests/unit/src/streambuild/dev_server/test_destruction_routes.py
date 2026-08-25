@@ -1,3 +1,5 @@
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
 from threading import Event, Timer
@@ -15,12 +17,18 @@ from streambuild.executor.destruction.exceptions import (
     DestructionDependencyError,
     DestructionResourceError,
 )
-from streambuild.executor.destruction.models import DestructionPlan
+from streambuild.executor.destruction.models import DestructionPlan, DestructionRequest
+from streambuild.executor.observability.main.logical_project_identity import (
+    logical_project_identity,
+)
 from tests.unit.src.streambuild.dev_server._test_types import (
     DestructionActorBindingRouteTestCase,
     DestructionAsyncExecutionRouteTestCase,
     DestructionAuthorizationRouteTestCase,
     DestructionClosureAuthorizationRouteTestCase,
+    DestructionRecoveryDependencyRouteTestCase,
+    DestructionRecoveryRejectionRouteTestCase,
+    DestructionRecoveryRouteTestCase,
     DestructionResetRouteTestCase,
     DestructionResourceConflictRouteTestCase,
     DestructionRestartRouteTestCase,
@@ -245,6 +253,255 @@ def test_given_unreviewed_plan_when_executing_then_server_review_gate_blocks(
 
     assert response.status_code == test_case.expected_status
     assert test_case.expected_detail_fragment in response.json()["detail"]
+    store.close()
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DestructionRecoveryRouteTestCase(
+            description="failed durable intent creates a fresh unreviewed plan",
+            invocation_id="failed-destruction-1",
+            expected_plan_id="plan-1",
+            expected_pipeline_names=("order_events",),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_failed_destruction_run_when_recovering_then_server_replans_recorded_intent(
+    tmp_path: Path,
+    test_case: DestructionRecoveryRouteTestCase,
+) -> None:
+    client: TestClient
+    store: ControlStore
+    client, store = build_assigned_proxy_operations_client(project_dir=tmp_path)
+    headers: dict[str, str] = proxy_proof_headers(username="alice")
+    run: dict[str, object] = {
+        "projectIdentity": logical_project_identity(project_dir=tmp_path),
+        "command": "destroy pipelines",
+        "mode": "destructive",
+        "outcome": "failed",
+        "summary": {
+            "operationKind": "destroy_pipelines",
+            "target": "dev",
+            "database": "analytics",
+            "originalSelection": ["order_events"],
+            "includedDependentPipelines": [],
+            "affectedPipelines": ["order_events", "historical_derived_scope"],
+            "planId": "consumed-plan",
+        },
+    }
+
+    @contextmanager
+    def read_connection(_: WarehouseRuntime) -> Iterator[object]:
+        yield object()
+
+    with (
+        patch.object(WarehouseRuntime, "read_connection", read_connection),
+        patch(
+            "streambuild.dev_server._helpers.server.destruction_routes.read_terminal_run",
+            return_value=run,
+        ),
+        patch(
+            "streambuild.dev_server._helpers.server.destruction_routes.plan_destruction",
+            return_value=build_pipeline_destruction_route_plan(),
+        ) as planner,
+    ):
+        response: Response = client.post(
+            f"/api/runs/{test_case.invocation_id}/recovery-plan",
+            headers=headers,
+            json={
+                "operation": "reset_target",
+                "pipelineNames": ["client_supplied_scope"],
+                "sql": "DROP TABLE everything",
+            },
+        )
+        stored: Response = client.get(
+            f"/api/destruction/plans/{test_case.expected_plan_id}",
+            headers=headers,
+        )
+
+    planned_request: DestructionRequest = planner.call_args.kwargs["request"]
+    assert response.status_code == 200
+    assert response.json()["planId"] == test_case.expected_plan_id
+    assert response.json()["reviewedAt"] is None
+    assert planned_request.pipeline_names == test_case.expected_pipeline_names
+    assert planned_request.included_dependent_pipeline_names == ()
+    assert stored.status_code == 200
+    store.close()
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DestructionRecoveryRejectionRouteTestCase(
+            description="a successful run is not recovery evidence",
+            mode="destructive",
+            outcome="succeeded",
+            command="destroy pipelines",
+            operation_kind="destroy_pipelines",
+            project_identity_kind="current",
+            target="dev",
+            included_dependant_pipelines=[],
+            expected_status=409,
+            expected_error_fragment="terminal failed destruction run",
+        ),
+        DestructionRecoveryRejectionRouteTestCase(
+            description="a command and operation mismatch fails closed",
+            mode="destructive",
+            outcome="failed",
+            command="build",
+            operation_kind="destroy_pipelines",
+            project_identity_kind="current",
+            target="dev",
+            included_dependant_pipelines=[],
+            expected_status=409,
+            expected_error_fragment="command and evidence disagree",
+        ),
+        DestructionRecoveryRejectionRouteTestCase(
+            description="another project cannot supply recovery intent",
+            mode="destructive",
+            outcome="failed",
+            command="destroy pipelines",
+            operation_kind="destroy_pipelines",
+            project_identity_kind="other",
+            target="dev",
+            included_dependant_pipelines=[],
+            expected_status=404,
+            expected_error_fragment="was not found",
+        ),
+        DestructionRecoveryRejectionRouteTestCase(
+            description="another target cannot supply recovery intent",
+            mode="destructive",
+            outcome="failed",
+            command="destroy pipelines",
+            operation_kind="destroy_pipelines",
+            project_identity_kind="current",
+            target="prod",
+            included_dependant_pipelines=[],
+            expected_status=409,
+            expected_error_fragment="differs from the active server",
+        ),
+        DestructionRecoveryRejectionRouteTestCase(
+            description="incomplete recorded scope fails closed",
+            mode="destructive",
+            outcome="failed",
+            command="destroy pipelines",
+            operation_kind="destroy_pipelines",
+            project_identity_kind="current",
+            target="dev",
+            included_dependant_pipelines=None,
+            expected_status=409,
+            expected_error_fragment="includedDependentPipelines",
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_invalid_durable_run_when_recovering_then_no_plan_is_created(
+    tmp_path: Path,
+    test_case: DestructionRecoveryRejectionRouteTestCase,
+) -> None:
+    client: TestClient
+    store: ControlStore
+    client, store = build_assigned_proxy_operations_client(project_dir=tmp_path)
+    headers: dict[str, str] = proxy_proof_headers(username="alice")
+    project_identities: dict[str, str] = {
+        "current": logical_project_identity(project_dir=tmp_path),
+        "other": "another-project",
+    }
+    run: dict[str, object] = {
+        "projectIdentity": project_identities[test_case.project_identity_kind],
+        "command": test_case.command,
+        "mode": test_case.mode,
+        "outcome": test_case.outcome,
+        "summary": {
+            "operationKind": test_case.operation_kind,
+            "target": test_case.target,
+            "database": "analytics",
+            "originalSelection": ["order_events"],
+            "includedDependentPipelines": test_case.included_dependant_pipelines,
+        },
+    }
+
+    @contextmanager
+    def read_connection(_: WarehouseRuntime) -> Iterator[object]:
+        yield object()
+
+    with (
+        patch.object(WarehouseRuntime, "read_connection", read_connection),
+        patch(
+            "streambuild.dev_server._helpers.server.destruction_routes.read_terminal_run",
+            return_value=run,
+        ),
+        patch(
+            "streambuild.dev_server._helpers.server.destruction_routes.plan_destruction"
+        ) as planner,
+    ):
+        response: Response = client.post(
+            "/api/runs/invalid-destruction/recovery-plan",
+            headers=headers,
+        )
+
+    assert response.status_code == test_case.expected_status
+    assert test_case.expected_error_fragment in response.text
+    planner.assert_not_called()
+    store.close()
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DestructionRecoveryDependencyRouteTestCase(
+            description="new dependency closure requires an interactive selection",
+            newly_required_pipelines=("new_consumer",),
+            expected_status=409,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_new_dependency_when_recovering_then_it_is_not_silently_included(
+    tmp_path: Path,
+    test_case: DestructionRecoveryDependencyRouteTestCase,
+) -> None:
+    client: TestClient
+    store: ControlStore
+    client, store = build_assigned_proxy_operations_client(project_dir=tmp_path)
+    run: dict[str, object] = {
+        "projectIdentity": logical_project_identity(project_dir=tmp_path),
+        "command": "destroy pipelines",
+        "mode": "destructive",
+        "outcome": "failed",
+        "summary": {
+            "operationKind": "destroy_pipelines",
+            "target": "dev",
+            "database": "analytics",
+            "originalSelection": ["order_events"],
+            "includedDependentPipelines": [],
+        },
+    }
+
+    @contextmanager
+    def read_connection(_: WarehouseRuntime) -> Iterator[object]:
+        yield object()
+
+    with (
+        patch.object(WarehouseRuntime, "read_connection", read_connection),
+        patch(
+            "streambuild.dev_server._helpers.server.destruction_routes.read_terminal_run",
+            return_value=run,
+        ),
+        patch(
+            "streambuild.dev_server._helpers.server.destruction_routes.plan_destruction",
+            side_effect=DestructionDependencyError(test_case.newly_required_pipelines),
+        ),
+    ):
+        response: Response = client.post(
+            "/api/runs/dependency-drift/recovery-plan",
+            headers=proxy_proof_headers(username="alice"),
+        )
+
+    assert response.status_code == test_case.expected_status
+    assert response.json()["detail"]["missingPipelines"] == list(test_case.newly_required_pipelines)
     store.close()
 
 

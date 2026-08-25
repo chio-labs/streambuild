@@ -435,6 +435,18 @@ def read_run_statement(
     }
 
 
+def read_terminal_run(
+    *, connection: AdapterConnection, database: str, invocation_id: str
+) -> dict[str, object] | None:
+    """Return one exact terminal run without applying the history-list limit."""
+
+    return _terminal_runs(
+        connection=connection,
+        database=database,
+        invocation_id=invocation_id,
+    ).get(invocation_id)
+
+
 def _terminal_runs(
     *,
     connection: AdapterConnection,

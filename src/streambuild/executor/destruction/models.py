@@ -90,6 +90,9 @@ class DestructionPlan:
     plan_fingerprint: str
     created_at: datetime
     expires_at: datetime
+    relation_drop_size_limit: int | None = None
+    relation_drop_size_server_limit: int | None = None
+    relation_drop_size_override: int | None = None
 
     @property
     def estimated_bytes(self) -> int:
@@ -163,3 +166,6 @@ class DestructionPlanParts:
     relations: tuple[DestructionRelationEvidence, ...]
     challenges: tuple[str, ...]
     manifest_fingerprint: str
+    relation_drop_size_limit: int | None
+    relation_drop_size_server_limit: int | None
+    relation_drop_size_override: int | None

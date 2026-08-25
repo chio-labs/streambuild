@@ -4,6 +4,7 @@ import pytest
 from streambuild.adapter.exceptions import AdapterConfigurationError
 from streambuild.adapter.models import AdapterConnectionConfig
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
+from streambuild.adapters.clickhouse.classes.clickhouse_connection import ClickHouseConnection
 from tests.unit.src.streambuild.adapters.clickhouse._test_types import (
     ClickHouseConnectionConfigErrorTestCase,
     ClickHouseConnectionDriverSettingsTestCase,
@@ -140,22 +141,28 @@ def test_given_declared_connection_settings_when_building_config_then_adapter_no
             description="forwards declared settings to the database-scoped driver client",
             database="analytics",
             settings=(("max_memory_usage", "16000000000"), ("max_threads", "8")),
+            destruction_relation_drop_size_limit=107_374_182_400,
             expected_driver_settings=(
                 ("max_memory_usage", "16000000000"),
                 ("max_threads", "8"),
             ),
+            expected_destruction_relation_drop_size_limit=107_374_182_400,
         ),
         ClickHouseConnectionDriverSettingsTestCase(
             description="forwards declared settings when no database is scoped",
             database=None,
             settings=(("max_threads", "8"),),
+            destruction_relation_drop_size_limit=None,
             expected_driver_settings=(("max_threads", "8"),),
+            expected_destruction_relation_drop_size_limit=None,
         ),
         ClickHouseConnectionDriverSettingsTestCase(
             description="sends no driver settings when the connection declares none",
             database="analytics",
             settings=(),
+            destruction_relation_drop_size_limit=107_374_182_400,
             expected_driver_settings=(),
+            expected_destruction_relation_drop_size_limit=107_374_182_400,
         ),
     ],
     ids=lambda case: case.description,
@@ -172,7 +179,7 @@ def test_given_connection_settings_when_connecting_then_driver_receives_them(
 
     monkeypatch.setattr(clickhouse_connect, "get_client", fake_get_client)
 
-    ClickHouseAdapter().connect(
+    connection: ClickHouseConnection = ClickHouseAdapter().connect(
         AdapterConnectionConfig(
             host="localhost",
             port=8123,
@@ -180,10 +187,15 @@ def test_given_connection_settings_when_connecting_then_driver_receives_them(
             password="secret",
             database=test_case.database,
             settings=test_case.settings,
+            destruction_relation_drop_size_limit=(test_case.destruction_relation_drop_size_limit),
         )
     )
 
     assert captured["settings"] == dict(test_case.expected_driver_settings)
+    assert (
+        connection.destruction_relation_drop_size_limit
+        == test_case.expected_destruction_relation_drop_size_limit
+    )
 
 
 @pytest.mark.parametrize(

@@ -52,6 +52,9 @@ class _SerializedPlan(BaseModel):
     plan_fingerprint: str
     created_at: datetime
     expires_at: datetime
+    relation_drop_size_limit: int | None = None
+    relation_drop_size_server_limit: int | None = None
+    relation_drop_size_override: int | None = None
 
 
 class _SerializedEnvelope(BaseModel):
@@ -107,6 +110,9 @@ def deserialize_destruction_plan(payload_json: str) -> DestructionPlan:
             plan_fingerprint=serialized.plan_fingerprint,
             created_at=created_at,
             expires_at=expires_at,
+            relation_drop_size_limit=serialized.relation_drop_size_limit,
+            relation_drop_size_server_limit=serialized.relation_drop_size_server_limit,
+            relation_drop_size_override=serialized.relation_drop_size_override,
         )
     except (ValidationError, TypeError, ValueError) as error:
         raise DestructionPlanCorruptError(

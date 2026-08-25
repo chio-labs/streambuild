@@ -1,6 +1,7 @@
 import json
 from collections import defaultdict
 from collections.abc import Callable, Sequence
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 
@@ -401,6 +402,7 @@ def test_given_second_drop_failure_when_destroying_then_catalog_has_exact_comple
             analysis=analysis,
             connection=connection,
         )
+        plan = replace(plan, relation_drop_size_override=107_374_182_400)
         statements: tuple[WarehouseStatement, ...] = assemble_destruction_workflow(
             plan=plan,
             connection=connection,
@@ -408,6 +410,7 @@ def test_given_second_drop_failure_when_destroying_then_catalog_has_exact_comple
         drops: tuple[WarehouseStatement, ...] = tuple(
             filter(lambda statement: statement.sql.startswith("DROP "), statements)
         )
+        assert all("max_table_size_to_drop = 107374182400" in drop.sql for drop in drops)
         original_mutation: Callable[..., AdapterMutationResult] = (
             connection.execute_workflow_mutation
         )

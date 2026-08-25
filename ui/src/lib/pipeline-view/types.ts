@@ -52,6 +52,9 @@ export type DestructionPlan = {
 	managedSourcesIncluded: boolean;
 	retainedReplayDataIncluded: boolean;
 	estimatedBytes: number;
+	dropSizeLimitBytes: number | null;
+	dropSizeServerLimitBytes: number | null;
+	dropSizeOverrideBytes: number | null;
 	challengeValues: string[];
 	expiresAt: string;
 	reviewedAt: string | null;

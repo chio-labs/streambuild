@@ -71,6 +71,7 @@ def test_given_clickhouse_drop_limit_when_reading_then_returns_effective_bytes(
     connection: ClickHouseConnection = ClickHouseConnection(cast(RawClickHouseClient, raw_client))
 
     assert connection.load_relation_drop_size_limit() == test_case.expected_limit
+    assert connection.load_relation_drop_size_server_default() == test_case.expected_limit
 
 
 @pytest.mark.parametrize(

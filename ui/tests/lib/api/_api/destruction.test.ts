@@ -22,6 +22,9 @@ const plan = {
 	managedSourcesIncluded: false,
 	retainedReplayDataIncluded: false,
 	estimatedBytes: 0,
+	dropSizeLimitBytes: 107_374_182_400,
+	dropSizeServerLimitBytes: 50_000_000_000,
+	dropSizeOverrideBytes: 107_374_182_400,
 	challengeValues: ['orders'],
 	expiresAt: '2026-08-24T12:15:00Z',
 	reviewedAt: null

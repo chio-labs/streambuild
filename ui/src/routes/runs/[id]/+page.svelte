@@ -16,6 +16,7 @@
 	import { buildRunPresentation } from '$lib/run-presentation/main/build-run-presentation';
 	import { createRunDetail } from '$lib/run-presentation/main/create-run-detail';
 	import type { RunDetailController, RunPresentation } from '$lib/run-presentation/types';
+	import DestructionRecoveryAction from './destruction-recovery-action.svelte';
 
 	const project: Project = getProject();
 	const cancelAllowed = $derived(canAnyPipeline('build.cancel'));
@@ -85,6 +86,10 @@
 		);
 		return (event === undefined ? null : eventLabels.get(event.sequence)) ?? progress.stepId ?? 'Warehouse statement';
 	});
+
+	async function openDestructionPlan(planId: string): Promise<void> {
+		await goto(`/destruction/plans/${encodeURIComponent(planId)}`);
+	}
 </script>
 
 <AppTopbar title="Run" breadcrumb={`${project.name} / runs / ${invocationId.slice(0, 8)}`} />
@@ -152,6 +157,12 @@
 				<RotateCcwIcon size={11} /> Open in Plan
 			</a>
 		{/if}
+		<DestructionRecoveryAction
+			{invocationId}
+			{outcome}
+			command={startedEvent?.command ?? record?.command ?? null}
+			onPlanCreated={openDestructionPlan}
+		/>
 		{#if ownedRunning && running}
 			<button
 				class="rounded border border-border px-2.5 py-1 font-mono text-[10.5px] text-[var(--sb-warning)]"

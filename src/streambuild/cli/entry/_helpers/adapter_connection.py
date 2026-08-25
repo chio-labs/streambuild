@@ -1,6 +1,7 @@
 """Resolve connection ownership for one CLI invocation."""
 
 from collections.abc import Callable, Mapping
+from dataclasses import replace
 from functools import partial
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
@@ -14,10 +15,11 @@ from streambuild.cli.entry.models import (
     ResolvedInvocationConnection,
 )
 from streambuild.cli.entry.types import CliCommand
+from streambuild.compiler.discovery.constants import DEFAULT_ADAPTER_NAME
 from streambuild.compiler.discovery.main.interpolate_configuration_value import (
     interpolate_configuration_value,
 )
-from streambuild.compiler.discovery.models import LoadedProject
+from streambuild.compiler.discovery.models import EffectiveProjectConfiguration, LoadedProject
 
 
 def resolve_invocation_connection(
@@ -104,13 +106,14 @@ def resolve_invocation_connection_config(
 ) -> AdapterConnectionConfig:
     """Resolve adapter-owned connection settings without opening a connection."""
     if invocation.connection.raw_project_connection is None:
-        return resolve_adapter_connection_config(
+        config: AdapterConnectionConfig = resolve_adapter_connection_config(
             host=invocation.connection.host,
             port=invocation.connection.port,
             username=invocation.connection.username,
             password=invocation.connection.password,
             project_connection=invocation.connection.project_connection,
         )
+        return _apply_destruction_policy(config=config, invocation=invocation)
     raw_values: dict[str, object] = dict(invocation.connection.raw_project_connection.values)
     cli_values: dict[str, object | None] = {
         "host": invocation.connection.host,
@@ -138,10 +141,11 @@ def resolve_invocation_connection_config(
         connection_database: str | None = (
             None if CliCommand(invocation.args.command) == CliCommand.BUILD else invocation.database
         )
-        return invocation.adapter.build_connection_config(
+        config = invocation.adapter.build_connection_config(
             values=expanded_values,
             database=connection_database,
         )
+        return _apply_destruction_policy(config=config, invocation=invocation)
     except AdapterConfigurationError as error:
         loaded_project: LoadedProject | None = invocation.loaded_project
         if loaded_project is None or loaded_project.configuration is None:
@@ -152,3 +156,22 @@ def resolve_invocation_connection_config(
         raise AdapterConfigurationError(
             f"Effective connection from {', '.join(project_sources)} is invalid: {error}"
         ) from error
+
+
+def _apply_destruction_policy(
+    *, config: AdapterConnectionConfig, invocation: ResolvedCliInvocation
+) -> AdapterConnectionConfig:
+    loaded: LoadedProject | None = invocation.loaded_project
+    effective: EffectiveProjectConfiguration | None = (
+        None if loaded is None else loaded.effective_configuration
+    )
+    limit: int | None = (
+        None if effective is None else effective.destruction.max_table_size_to_drop_bytes
+    )
+    if limit is None:
+        return config
+    if invocation.adapter.identity.name != DEFAULT_ADAPTER_NAME:
+        raise AdapterConfigurationError(
+            "Target destruction.max_table_size_to_drop requires the ClickHouse adapter"
+        )
+    return replace(config, destruction_relation_drop_size_limit=limit)

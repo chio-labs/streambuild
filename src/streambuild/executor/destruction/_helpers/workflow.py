@@ -31,7 +31,7 @@ def assemble_destruction_workflow(
                 sql=(
                     f"DROP {_drop_sql_kind(DestructionRelationKind(relation.kind))} IF EXISTS "
                     f"{_quote_identifier(relation.database)}.{_quote_identifier(relation.name)} "
-                    "SYNC;"
+                    f"SYNC{_drop_settings(plan=plan)};"
                 ),
             )
         )
@@ -46,3 +46,10 @@ def _drop_sql_kind(kind: DestructionRelationKind) -> str:
 
 def _quote_identifier(value: str) -> str:
     return f"`{value.replace('`', '``')}`"
+
+
+def _drop_settings(*, plan: DestructionPlan) -> str:
+    limit: int | None = plan.relation_drop_size_override
+    if limit is None:
+        return ""
+    return f" SETTINGS max_table_size_to_drop = {limit}"
