@@ -1558,8 +1558,13 @@ def test_given_required_retention_column_missing_when_compiling_then_fails_with_
     with pytest.raises(
         PipelineCompileError,
         match=test_case.expected_error_fragment,
-    ):
+    ) as error_info:
         compile_logical_project(tmp_path)
+
+    assert error_info.value.diagnostic is not None
+    assert error_info.value.diagnostic.resource_name == "events_table"
+    assert error_info.value.diagnostic.location is not None
+    assert error_info.value.diagnostic.location.path == pipeline_dir / "events_table.sql"
 
 
 @pytest.mark.parametrize(

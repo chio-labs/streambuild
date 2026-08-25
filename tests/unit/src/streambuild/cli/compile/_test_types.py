@@ -33,6 +33,14 @@ class DerivedSourceManifestTestCase:
 
 
 @dataclass(frozen=True)
+class SourceRetentionManifestTestCase:
+    description: str
+    expected_ttl: str
+    expected_origin: str
+    expected_duration_seconds: int
+
+
+@dataclass(frozen=True)
 class StaticReplacementTestCase:
     description: str
     stale_relative_paths: tuple[str, ...]

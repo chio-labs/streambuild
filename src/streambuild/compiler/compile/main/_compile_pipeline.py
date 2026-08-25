@@ -144,19 +144,20 @@ def _compile_models(
                         transform=transform,
                     ),
                 )
-        except TransformSqlContractError as error:
-            error.diagnostic = CompilerDiagnostic(
-                phase=DiagnosticPhase.COMPILATION,
-                severity=DiagnosticSeverity.ERROR,
-                code="STB-COMPILE-001",
-                message=str(error),
-                resource_name=model.name,
-                location=_transform_error_location(
-                    error=error,
-                    model=model,
-                    pipeline_file_path=loaded_pipeline.file_path,
-                ),
-            )
+        except (TransformSqlContractError, PipelineCompileError) as error:
+            if error.diagnostic is None:
+                error.diagnostic = CompilerDiagnostic(
+                    phase=DiagnosticPhase.COMPILATION,
+                    severity=DiagnosticSeverity.ERROR,
+                    code="STB-COMPILE-001",
+                    message=str(error),
+                    resource_name=model.name,
+                    location=_transform_error_location(
+                        error=error,
+                        model=model,
+                        pipeline_file_path=loaded_pipeline.file_path,
+                    ),
+                )
             raise
         compiled_models.append(compiled_model)
     return tuple(compiled_models)
@@ -164,7 +165,7 @@ def _compile_models(
 
 def _transform_error_location(
     *,
-    error: TransformSqlContractError,
+    error: TransformSqlContractError | PipelineCompileError,
     model: TransformStep | ViewStep,
     pipeline_file_path: Path,
 ) -> SourceLocation:

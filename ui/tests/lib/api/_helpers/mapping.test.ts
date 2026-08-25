@@ -49,6 +49,29 @@ describe('plan mapping', () => {
 });
 
 describe('project mapping', () => {
+	it('given sub-day typed source retention when mapped then it is not classified as lossless', () => {
+		const project: Project = projectFromServer(
+			{
+				project: {},
+				sources: [
+					{
+						name: 'orders',
+						ttl: 'ifNull(_replay_timestamp, _replay_landed_at) + INTERVAL 12 HOUR',
+						retention: { durationSeconds: 43_200 }
+					}
+				],
+				pipelines: [],
+				models: [],
+				audits: [],
+				tests: [],
+				macros: []
+			},
+			{ capturedAt: '2026-08-23T10:00:00Z', sources: { orders: {} } }
+		);
+
+		expect(project.sources[0]?.retentionDays).toBe(0.5);
+	});
+
 	it('given unconfigured freshness when mapped then source and model freshness stay unknown', () => {
 		const project: Project = projectFromServer(
 			{

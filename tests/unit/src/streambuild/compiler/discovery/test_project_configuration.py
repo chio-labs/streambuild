@@ -1,6 +1,6 @@
 from collections.abc import Mapping
 from pathlib import Path
-from typing import cast
+from typing import Literal, cast
 
 import pytest
 
@@ -17,7 +17,9 @@ from streambuild.compiler.discovery.models import (
     AuditDefaults,
     DeploymentReadinessDefaults,
     EffectiveProjectConfiguration,
+    KafkaRetentionPolicy,
     LoadedProjectConfiguration,
+    ModelRetentionPolicy,
     SourceFreshnessPolicy,
 )
 from streambuild.compiler.discovery.types import PipelineMode
@@ -43,6 +45,7 @@ from tests.unit.src.streambuild.compiler.discovery._test_types import (
     ProjectProductionTargetTestCase,
     ProjectRunSafetyDefaultTestCase,
     SensorEventAgeResolutionTestCase,
+    TypedRetentionInterpolationTestCase,
     UnknownTargetTestCase,
 )
 from tests.unit.src.streambuild.compiler.discovery.helpers import (
@@ -571,6 +574,75 @@ def test_given_project_and_local_toml_when_resolving_then_applies_locked_precede
     assert effective.ui.timezone == test_case.expected_ui_timezone
     assert loaded.project_source.contents.startswith('name = "analytics"')
     assert loaded.local_source is not None
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        TypedRetentionInterpolationTestCase(
+            description="typed retention resolves invocation variables and environment",
+            expected_duration_seconds=3 * 86_400,
+            expected_timestamp_column="kafka_timestamp",
+            expected_cap_at_column="ingested_at",
+            expected_kafka_fallback="landed",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_interpolated_typed_retention_when_resolving_then_policy_uses_precedence(
+    test_case: TypedRetentionInterpolationTestCase,
+    tmp_path: Path,
+) -> None:
+    write_project_toml(
+        project_dir=tmp_path,
+        contents="""
+        name = "analytics"
+        default_target = "dev"
+
+        [vars]
+        retention_duration = "1d"
+        model_timestamp = "event_at"
+
+        [defaults.sources.kafka.retention]
+        duration = "${retention_duration}"
+        timestamp = "broker"
+        fallback = "${ENV:RETENTION_FALLBACK}"
+
+        [defaults.models.retention]
+        duration = "${retention_duration}"
+        timestamp_column = "${model_timestamp}"
+        cap_at_column = "ingested_at"
+
+        [targets.dev]
+
+        [targets.dev.vars]
+        retention_duration = "2d"
+        """,
+    )
+    loaded: LoadedProjectConfiguration = load_project_configuration(project_dir=tmp_path)
+
+    effective: EffectiveProjectConfiguration = resolve_effective_project_configuration(
+        loaded=loaded,
+        selected_target="dev",
+        cli_variables={
+            "retention_duration": "3d",
+            "model_timestamp": "kafka_timestamp",
+        },
+        environment={"RETENTION_FALLBACK": "landed"},
+    )
+    model_retention: ModelRetentionPolicy | Literal[False] | None = (
+        effective.defaults.models.retention
+    )
+    kafka_retention: KafkaRetentionPolicy | Literal[False] | None = (
+        effective.defaults.sources.kafka.retention
+    )
+
+    assert model_retention is not None and model_retention is not False
+    assert kafka_retention is not None and kafka_retention is not False
+    assert model_retention.duration_seconds == test_case.expected_duration_seconds
+    assert model_retention.timestamp_column == test_case.expected_timestamp_column
+    assert model_retention.cap_at_column == test_case.expected_cap_at_column
+    assert str(kafka_retention.fallback) == test_case.expected_kafka_fallback
 
 
 @pytest.mark.parametrize(

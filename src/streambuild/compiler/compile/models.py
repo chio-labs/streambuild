@@ -356,9 +356,9 @@ class CompiledTableModel(CompiledModel):
     preserves_required_lineage: bool
     replay_anchor_eligible: bool
     effective_bounded_replay_fallback: BoundedReplayFallback
+    replay_on_change: ReplayOnChangePolicy | None = None
     retention: ModelRetentionResolution = field(default_factory=ModelRetentionResolution)
     retention_applied: bool = False
-    replay_on_change: ReplayOnChangePolicy | None = None
 
     @property
     def has_mutable_refs(self) -> bool:

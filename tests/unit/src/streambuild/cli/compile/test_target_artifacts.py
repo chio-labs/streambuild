@@ -17,6 +17,7 @@ from tests.unit.src.streambuild.cli.compile._test_types import (
     ExactCompileTargetTestCase,
     PublicationRollbackTestCase,
     RemovedStaticInputsTestCase,
+    SourceRetentionManifestTestCase,
     SourceSecretRedactionTestCase,
     StaticReplacementTestCase,
     ViewCompileTargetTestCase,
@@ -36,6 +37,7 @@ from tests.unit.src.streambuild.cli.compile.helpers import (
     write_invalid_model_header,
     write_invalid_reference_model,
     write_secret_source,
+    write_typed_source_retention,
     write_view_project,
 )
 
@@ -141,6 +143,41 @@ def test_given_adopted_source_when_compiling_then_omits_managed_source_candidate
     assert source_entry["relation_name"] == test_case.expected_relation_name
     assert len(source_entry["resources"]) == test_case.expected_source_resource_count
     assert not (target_dir / test_case.expected_forbidden_workflow_path).exists()
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        SourceRetentionManifestTestCase(
+            description="manifest records effective typed Kafka retention",
+            expected_ttl=(
+                "least(ifNull(_replay_timestamp, _replay_landed_at), "
+                "_replay_landed_at) + INTERVAL 12 HOUR"
+            ),
+            expected_origin="project",
+            expected_duration_seconds=43_200,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_typed_kafka_retention_when_compiling_then_manifest_records_policy_and_ttl(
+    test_case: SourceRetentionManifestTestCase,
+    tmp_path: Path,
+) -> None:
+    project_dir: Path = tmp_path / "project"
+    target_dir: Path = project_dir / "target"
+    copy_basic_project(project_dir=project_dir)
+    write_typed_source_retention(project_dir=project_dir)
+
+    exit_code: int = compile_project(project_dir=project_dir, target_dir=target_dir)
+    manifest: dict[str, object] = json.loads((target_dir / "manifest.json").read_text())
+    source_entry: dict[str, object] = manifest["sources"]["orders"]
+    retention: dict[str, object] = source_entry["retention"]
+
+    assert exit_code == 0
+    assert source_entry["ttl"] == test_case.expected_ttl
+    assert retention["origin"] == test_case.expected_origin
+    assert retention["duration_seconds"] == test_case.expected_duration_seconds
 
 
 @pytest.mark.parametrize(
