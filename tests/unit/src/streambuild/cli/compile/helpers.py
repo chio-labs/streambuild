@@ -78,6 +78,27 @@ SELECT CAST(1 AS UInt64) AS order_id FROM __ref("orders)
     )
 
 
+def write_cross_pipeline_model_reference(*, project_dir: Path) -> None:
+    project_path: Path = project_dir / "streambuild_project.toml"
+    project_path.write_text(
+        project_path.read_text(encoding="utf-8")
+        + '\n[dependencies]\nmodel_reference_scope = "pipeline"\n',
+        encoding="utf-8",
+    )
+    pipeline_dir: Path = project_dir / "pipelines" / "pl__consumer"
+    pipeline_dir.mkdir()
+    (pipeline_dir / "beta.sql").write_text(
+        """MODEL (
+  engine "MergeTree()",
+  order_by ["order_id"],
+);
+
+SELECT order_id::UInt64 AS order_id FROM __ref("orders_enriched")
+""",
+        encoding="utf-8",
+    )
+
+
 def write_empty_project(*, project_dir: Path) -> None:
     project_dir.mkdir(parents=True, exist_ok=True)
     (project_dir / "pipelines").mkdir()

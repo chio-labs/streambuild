@@ -223,6 +223,7 @@ class DefinitionsFieldTestCase:
     expected_driving_input: str
     expected_source_kind: str
     expected_managed_ddl_fragment: str
+    expected_model_reference_scope: str
 
 
 @dataclass(frozen=True)
