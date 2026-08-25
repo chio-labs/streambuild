@@ -1544,7 +1544,7 @@ wheels = [
 
 [[package]]
 name = "streambuild"
-version = "0.32.0"
+version = "0.33.0"
 source = { editable = "." }
 dependencies = [
     { name = "argon2-cffi" },
