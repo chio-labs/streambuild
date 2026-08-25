@@ -8,6 +8,7 @@ from typing import cast
 
 import pytest
 
+from streambuild.adapter.models import AdapterDirectFingerprintSnapshot
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from streambuild.cli.entry._helpers.compiler_profile import build_compiler_adapter_profile
 from streambuild.cli.plan.main._run_plan import run_plan
@@ -41,6 +42,9 @@ from tests.unit.src.streambuild.compiler.compile.helpers import build_realizatio
 from tests.unit.src.streambuild.compiler.planner.helpers import build_settled_direct_snapshot
 
 SELECTOR_PIPELINES_ROOT: Path = Path("tests/fixtures/selector_project/pipelines")
+_ABSENT_DIRECT_FINGERPRINTS: AdapterDirectFingerprintSnapshot = AdapterDirectFingerprintSnapshot(
+    status="absent", baselines=()
+)
 
 
 def compile_selector_project_pipelines() -> tuple[CompiledPipeline, ...]:
@@ -119,6 +123,9 @@ def run_scope_project_plan(
     start_time: str | None = None,
     virtual_environments: bool = False,
     deployment_id: str | None = None,
+    changed: bool = False,
+    include_missing_upstream: bool = False,
+    direct_fingerprints: AdapterDirectFingerprintSnapshot = _ABSENT_DIRECT_FINGERPRINTS,
 ) -> int:
     """Run `stb plan` against the direct scope project with a settled warehouse."""
 
@@ -140,12 +147,15 @@ def run_scope_project_plan(
             deployment_id=deployment_id,
             json_output=json_output,
             verbose=False,
+            changed=changed,
+            include_missing_upstream=include_missing_upstream,
         ),
         client=RecordingAdapterConnection(
             relations={
                 False: snapshot.catalog.relations,
                 True: (),
             }[virtual_environments],
+            direct_fingerprints=direct_fingerprints,
         ),
         loaded_project=load_project_input_for_path(path=project_root),
         adapter_profile=build_compiler_adapter_profile(ClickHouseAdapter()),

@@ -244,7 +244,7 @@ class StateFieldTestCase:
     description: str
     fingerprint_status: str
     definition_hash_builder: Callable[[CompiledModel], str]
-    identity_metadata_builder: Callable[[CompiledModel], str]
+    identity_metadata_builder: Callable[[dict[str, object]], str]
     expected_source_freshness: str
     expected_model_freshness: str
     expected_model_lag_seconds: float

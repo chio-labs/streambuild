@@ -102,6 +102,7 @@ def build_cli_parser() -> argparse.ArgumentParser:
     _add_project_dir_arg(parser=plan_parser)
     _add_clickhouse_args(parser=plan_parser)
     _add_select_args(plan_parser)
+    _add_changed_selection_args(parser=plan_parser)
     plan_parser.add_argument(
         "--deployment-id",
         help="Use a specific virtual deployment ID for exact workflow inspection",
@@ -277,6 +278,7 @@ def _add_build_parser(
     _add_project_dir_arg(parser=build_parser)
     _add_clickhouse_args(parser=build_parser)
     _add_select_args(build_parser)
+    _add_changed_selection_args(parser=build_parser)
     build_parser.add_argument(
         "--deployment-id",
         help="Use a specific virtual deployment ID (auto-generated if omitted)",
@@ -631,4 +633,17 @@ def _add_select_args(parser: argparse.ArgumentParser) -> None:
             "--select daily_revenue pl__order_events (space separated, repeatable). "
             "Optional 'model:' and 'pipeline:' prefixes disambiguate but are not required."
         ),
+    )
+
+
+def _add_changed_selection_args(*, parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--changed",
+        action="store_true",
+        help="Select direct models changed since their last applied build",
+    )
+    parser.add_argument(
+        "--include-missing-upstream",
+        action="store_true",
+        help="Also build absent project-owned upstream models required by the selection",
     )

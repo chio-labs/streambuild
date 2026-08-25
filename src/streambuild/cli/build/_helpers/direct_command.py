@@ -1,5 +1,6 @@
 """Execute one confirmed direct-mode build command."""
 
+import json
 import sys
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
@@ -18,12 +19,14 @@ from streambuild.cli.build.models import (
     DirectWorkflowPreparation,
 )
 from streambuild.compiler.audit_discovery.models import LoadedSqlAudit
+from streambuild.compiler.planner.types import DirectSelectionMode
 from streambuild.compiler.quality.main.require_quality_identity import require_quality_identity
 from streambuild.executor.auditing.main.resolve_audit_warmup_states import (
     resolve_audit_warmup_states,
 )
 from streambuild.executor.auditing.models import AuditWarmupState, SqlAuditResult, SqlAuditRunResult
 from streambuild.executor.auditing.types import AuditSeverity
+from streambuild.executor.direct.exceptions import DirectBuildError
 from streambuild.executor.direct.models import (
     DirectBuildExecutionResult,
     DirectBuildResult,
@@ -90,6 +93,35 @@ def execute_direct_build_command(
                 ),
                 startup_timings=startup_timings,
             )
+        if (
+            preparation.preview.plan.selection_mode == DirectSelectionMode.CHANGED
+            and not preparation.preview.plan.execution_scope
+        ):
+            invocation: AdapterInvocationRecord = _build_invocation(
+                started=started,
+                preparation=preparation,
+                options=options,
+                exit_code=0,
+                outcome="succeeded",
+                materialized_outcome=None,
+                audit_result=None,
+                error_message=None,
+            )
+            _persist_terminal_observations(
+                client=client,
+                database=preparation.preview.metadata_database,
+                invocation=invocation,
+                node_results=(),
+            )
+            if sink is not None:
+                sink.run_completed(outcome="succeeded", exit_code=0, error_message=None)
+            if not options.events_output:
+                print(
+                    json.dumps({"mode": "direct", "status": "no_op", "reason": "no_changes"})
+                    if options.json_output
+                    else "No changed models to build."
+                )
+            return 0
         execution: DirectBuildExecutionResult | None = execute_confirmed_direct_build(
             preparation=preparation,
             options=options,
@@ -98,7 +130,7 @@ def execute_direct_build_command(
             confirmation_required=confirmation_required,
             _acquire_target_mutation_lock=_acquire_target_mutation_lock,
         )
-    except (AdapterError, OSError) as error:
+    except (AdapterError, DirectBuildError, OSError) as error:
         failed_invocation: AdapterInvocationRecord = _build_invocation(
             started=started,
             preparation=preparation,
@@ -180,7 +212,7 @@ def execute_direct_build_command(
         execution_model_names=frozenset(
             key.name for key in preparation.preview.plan.execution_scope
         ),
-        full_build=not preparation.preview.plan.user_scope,
+        full_build=(preparation.preview.plan.selection_mode == DirectSelectionMode.ALL_MODELS),
     )
     selected_audits: tuple[LoadedSqlAudit, ...] = tuple(
         audit for audit in all_selected_audits if audit.warmup_seconds == 0

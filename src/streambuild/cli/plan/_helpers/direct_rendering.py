@@ -29,8 +29,12 @@ def render_direct_plan_json(*, plan: DirectPlan, adapter_name: str) -> str:
         "adapter": adapter_name,
         "database": plan.database,
         "start_time": plan.effective_start_time,
+        "selection_mode": str(plan.selection_mode),
         "user_scope": [_logical_key_payload(key) for key in plan.user_scope],
         "execution_scope": [_logical_key_payload(key) for key in plan.execution_scope],
+        "prerequisite_execution_scope": [
+            _logical_key_payload(key) for key in plan.prerequisite_execution_scope
+        ],
         "prerequisite_scope": [
             _prerequisite_payload(prerequisite) for prerequisite in plan.prerequisite_scope
         ],

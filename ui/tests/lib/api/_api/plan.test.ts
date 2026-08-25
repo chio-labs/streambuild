@@ -22,4 +22,23 @@ describe('plan API', () => {
 			{ signal: undefined }
 		);
 	});
+
+	it('given changed mode with missing upstream when requested then snake-case booleans are sent', async () => {
+		const fetchMock: ReturnType<typeof vi.fn> = vi.fn(() =>
+			Promise.resolve(new Response('{"steps":[]}'))
+		);
+		vi.stubGlobal('fetch', fetchMock);
+
+		await requestPlan({
+			selectors: [],
+			changed: true,
+			includeMissingUpstream: true,
+			startTime: null
+		});
+
+		expect(fetchMock).toHaveBeenCalledWith(
+			'/api/plan?changed=true&include_missing_upstream=true',
+			{ signal: undefined }
+		);
+	});
 });

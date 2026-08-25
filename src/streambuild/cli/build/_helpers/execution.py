@@ -11,7 +11,10 @@ from streambuild.cli.build._helpers.confirmation import confirm_build
 from streambuild.cli.build._helpers.execution_artifacts import render_direct_execution_json
 from streambuild.cli.build.models import BuildCommandOptions, DirectWorkflowPreparation
 from streambuild.cli.workflow_artifacts.main._publish_build_workflow import publish_build_workflow
-from streambuild.executor.direct.exceptions import DirectWorkflowExecutionError
+from streambuild.compiler.planner.main.find_direct_out_of_scope_consumers import (
+    find_direct_out_of_scope_consumers,
+)
+from streambuild.executor.direct.exceptions import DirectBuildError, DirectWorkflowExecutionError
 from streambuild.executor.direct.main.build_direct_execution_result import (
     build_direct_execution_result,
 )
@@ -65,6 +68,7 @@ def execute_confirmed_direct_build(
         else nullcontext()
     )
     with lock_context:
+        _reject_new_out_of_scope_consumers(preparation=preparation, client=client)
         _reset_fresh_landing_offsets_for_direct_build(preparation=preparation)
         try:
             runtime_execution: DirectRuntimeExecution = execute_direct_build_workflow(
@@ -124,6 +128,24 @@ def execute_confirmed_direct_build(
         )
         _print_optional_warning(fingerprint_warning)
         return result
+
+
+def _reject_new_out_of_scope_consumers(
+    *, preparation: DirectWorkflowPreparation, client: AdapterConnection
+) -> None:
+    if not preparation.request.plan.prerequisite_execution_scope:
+        return
+    consumers: tuple[str, ...] = find_direct_out_of_scope_consumers(
+        realized_project=preparation.request.realized_project,
+        catalog=client.load_catalog(preparation.request.database),
+        prerequisite_execution_scope=preparation.request.plan.prerequisite_execution_scope,
+        execution_scope=preparation.request.plan.execution_scope,
+    )
+    if consumers:
+        raise DirectBuildError(
+            "Direct build stopped because out-of-scope materialized views now consume rebuilt "
+            f"upstream models: {', '.join(consumers)}"
+        )
 
 
 def _publish_direct_build_artifact(

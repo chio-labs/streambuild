@@ -66,6 +66,17 @@ class CliPlanModeRoutingTestCase:
 
 
 @dataclass(frozen=True)
+class CliChangedPlanTestCase:
+    description: str
+    selectors: tuple[str, ...] = ()
+    changed: bool = True
+    include_missing_upstream: bool = False
+    expected_execution_scope: tuple[str, ...] = ()
+    expected_reasons: tuple[str, ...] = ()
+    expected_error_fragment: str = ""
+
+
+@dataclass(frozen=True)
 class CliDirectPlanFlagRejectionTestCase:
     description: str
     selectors: tuple[str, ...]

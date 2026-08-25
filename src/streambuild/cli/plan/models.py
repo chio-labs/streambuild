@@ -24,3 +24,5 @@ class PlanCommandOptions:
     start_time: str | None
     json_output: bool
     verbose: bool
+    changed: bool = False
+    include_missing_upstream: bool = False

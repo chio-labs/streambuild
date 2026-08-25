@@ -62,6 +62,22 @@ class DirectSqlChangeTestCase:
 
 
 @dataclass(frozen=True)
+class DirectSelectionScopeTestCase:
+    description: str
+    expected_user_scope: tuple[str, ...] = ()
+    expected_prerequisite_execution_scope: tuple[str, ...] = ()
+    expected_execution_scope: tuple[str, ...] = ()
+    expected_prerequisites: tuple[str, ...] = ()
+    expected_reasons: tuple[DirectPlanReason, ...] = ()
+
+
+@dataclass(frozen=True)
+class DirectFingerprintDriftTestCase:
+    description: str
+    expected_reasons: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class DirectModelInputReplayColumnsTestCase:
     description: str
     expected_replay_columns: tuple[str, str, str, str, str]

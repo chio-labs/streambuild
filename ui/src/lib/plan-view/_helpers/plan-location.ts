@@ -12,48 +12,58 @@ export function replayStartToken(replayWindow: ReplayWindow): string | null {
 }
 
 export function readPlanLocation(url: URL): ParsedPlanLocation {
-	const selectors: Selector[] = url.searchParams
+	const changed: boolean = url.searchParams.get('changed') === '1';
+	const selectors: Selector[] = (changed ? [] : url.searchParams
 		.getAll('select')
 		.map(parseSelector)
-		.filter((selector): selector is Selector => selector !== null);
+		.filter((selector): selector is Selector => selector !== null));
+	const includeMissingUpstream: boolean =
+		url.searchParams.get('include_missing_upstream') === '1' &&
+		(changed || selectors.length > 0);
 	const deploymentId: string | null = url.searchParams.get('deployment') || null;
 	const rawStart: string | null = url.searchParams.get('start');
-	if (!rawStart || selectors.length === 0) {
-		return { selectors, replayWindow: { mode: 'full' }, deploymentId };
+	if (!rawStart || (selectors.length === 0 && !changed)) {
+		return { selectors, changed, includeMissingUpstream, replayWindow: { mode: 'full' }, deploymentId };
 	}
 	const parsed: Date = parseUtc(rawStart);
 	const replayWindow: ReplayWindow = Number.isFinite(parsed.getTime())
 		? { mode: 'from', startTime: parsed.toISOString() }
 		: { mode: 'full' };
-	return { selectors, replayWindow, deploymentId };
+	return { selectors, changed, includeMissingUpstream, replayWindow, deploymentId };
 }
 
 export function planLocationRequestKey(url: URL): string {
 	const location: ParsedPlanLocation = readPlanLocation(url);
 	const tokens: string[] = location.selectors.map(selectorToken);
-	return `${tokens.join(',')}|${replayStartToken(location.replayWindow) ?? ''}|${location.deploymentId ?? ''}`;
+	return `${tokens.join(',')}|${location.changed ? 'changed' : ''}|${location.includeMissingUpstream ? 'include-missing-upstream' : ''}|${replayStartToken(location.replayWindow) ?? ''}|${location.deploymentId ?? ''}`;
 }
 
 export function shouldClearReplayStart(url: URL): boolean {
 	const rawStart: string | null = url.searchParams.get('start');
 	if (rawStart === null) return false;
-	const hasSelector: boolean = url.searchParams
+	const hasSelection: boolean = url.searchParams.get('changed') === '1' || url.searchParams
 		.getAll('select')
 		.some((token) => parseSelector(token) !== null);
 	const parsed: Date = parseUtc(rawStart);
-	return !hasSelector || !Number.isFinite(parsed.getTime());
+	return !hasSelection || !Number.isFinite(parsed.getTime());
 }
 
 export function writePlanSelection(
 	url: URL,
 	selectors: Selector[],
 	replayWindow?: ReplayWindow,
-	deploymentId: string | null = null
+	deploymentId: string | null = null,
+	changed: boolean = false,
+	includeMissingUpstream: boolean = false
 ): URL {
 	const nextUrl: URL = new URL(url);
 	nextUrl.searchParams.delete('select');
 	nextUrl.searchParams.delete('deployment');
-	for (const selector of selectors) nextUrl.searchParams.append('select', selectorToken(selector));
+	nextUrl.searchParams.delete('changed');
+	nextUrl.searchParams.delete('include_missing_upstream');
+	if (changed) nextUrl.searchParams.set('changed', '1');
+	else for (const selector of selectors) nextUrl.searchParams.append('select', selectorToken(selector));
+	if (includeMissingUpstream) nextUrl.searchParams.set('include_missing_upstream', '1');
 	if (replayWindow) {
 		const start: string | null = replayStartToken(replayWindow);
 		if (start === null) nextUrl.searchParams.delete('start');

@@ -15,6 +15,11 @@ from pathlib import Path
 from typing import IO
 from uuid import uuid4
 
+from streambuild.cli.build.constants import (
+    EXPECTED_BUILD_PIPELINE_SCOPE_ENV_VAR,
+    EXPECTED_BUILD_READ_SCOPE_ENV_VAR,
+    EXPECTED_BUILD_WRITE_SCOPE_ENV_VAR,
+)
 from streambuild.cli.entry.constants import DEV_CLI_VARIABLES_ENV_VAR
 from streambuild.dev_server.constants import CANCEL_GRACE_SECONDS, TERMINATE_GRACE_SECONDS
 from streambuild.dev_server.exceptions import BuildInProgressError, BuildStartError
@@ -56,14 +61,21 @@ class BuildProcessManager:
         project_dir: Path,
         selectors: tuple[str, ...],
         start_time: str | None,
+        changed: bool = False,
+        include_missing_upstream: bool = False,
         deployment_id: str | None = None,
         confirmations: tuple[str, ...] = (),
+        expected_write_scope: frozenset[str] | None = None,
+        expected_read_scope: frozenset[str] | None = None,
+        expected_pipeline_scope: frozenset[str] | None = None,
     ) -> dict[str, object]:
         """Spawn one build and return its stable launch identity immediately."""
 
         argv, command = build_invocation(
             selectors=selectors,
             start_time=start_time,
+            changed=changed,
+            include_missing_upstream=include_missing_upstream,
             deployment_id=deployment_id,
             confirmations=confirmations,
             execution_context=self._execution_context,
@@ -96,6 +108,9 @@ class BuildProcessManager:
                         execution_context=self._execution_context,
                         display_command=command,
                         invocation_id=launch_invocation_id,
+                        expected_write_scope=expected_write_scope,
+                        expected_read_scope=expected_read_scope,
+                        expected_pipeline_scope=expected_pipeline_scope,
                     ),
                 )
             except OSError as error:
@@ -250,8 +265,10 @@ def build_invocation(
     *,
     selectors: tuple[str, ...],
     start_time: str | None,
-    deployment_id: str | None = None,
     execution_context: DevExecutionContext | None,
+    changed: bool = False,
+    include_missing_upstream: bool = False,
+    deployment_id: str | None = None,
     confirmations: tuple[str, ...] = (),
 ) -> tuple[list[str], str]:
     """Build the executable argv and safe user-facing command from one source."""
@@ -266,6 +283,12 @@ def build_invocation(
     if selectors:
         argv.extend(("--select", *selectors))
         display_argv.extend(("--select", *selectors))
+    if changed:
+        argv.append("--changed")
+        display_argv.append("--changed")
+    if include_missing_upstream:
+        argv.append("--include-missing-upstream")
+        display_argv.append("--include-missing-upstream")
     if start_time is not None:
         argv.extend(("--start-time", start_time))
         display_argv.extend(("--start-time", start_time))
@@ -285,6 +308,9 @@ def _build_environment(
     execution_context: DevExecutionContext | None,
     display_command: str | None = None,
     invocation_id: str | None = None,
+    expected_write_scope: frozenset[str] | None = None,
+    expected_read_scope: frozenset[str] | None = None,
+    expected_pipeline_scope: frozenset[str] | None = None,
 ) -> dict[str, str]:
     environment: dict[str, str] = dict(
         os.environ
@@ -295,6 +321,17 @@ def _build_environment(
         environment[RUN_DISPLAY_COMMAND_ENV_VAR] = display_command
     if invocation_id is not None:
         environment[RUN_INVOCATION_ID_ENV_VAR] = invocation_id
+    environment.pop(EXPECTED_BUILD_WRITE_SCOPE_ENV_VAR, None)
+    environment.pop(EXPECTED_BUILD_READ_SCOPE_ENV_VAR, None)
+    environment.pop(EXPECTED_BUILD_PIPELINE_SCOPE_ENV_VAR, None)
+    if expected_write_scope is not None:
+        environment[EXPECTED_BUILD_WRITE_SCOPE_ENV_VAR] = json.dumps(sorted(expected_write_scope))
+    if expected_read_scope is not None:
+        environment[EXPECTED_BUILD_READ_SCOPE_ENV_VAR] = json.dumps(sorted(expected_read_scope))
+    if expected_pipeline_scope is not None:
+        environment[EXPECTED_BUILD_PIPELINE_SCOPE_ENV_VAR] = json.dumps(
+            sorted(expected_pipeline_scope)
+        )
     if execution_context is None:
         return environment
     if execution_context.cli_variables:
