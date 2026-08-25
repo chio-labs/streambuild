@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.30.0](https://github.com/chio-labs/streambuild/compare/v0.29.1...v0.30.0) (2026-08-25)
+
+
+### Features
+
+* **ui:** improve run history presentation ([#190](https://github.com/chio-labs/streambuild/issues/190)) ([0467d71](https://github.com/chio-labs/streambuild/commit/0467d71850f28b0549c73a8c1a79c4c859b3aa36))
+
 ## [0.29.1](https://github.com/chio-labs/streambuild/compare/v0.29.0...v0.29.1) (2026-08-25)
 
 
