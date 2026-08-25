@@ -24,6 +24,8 @@
 	// still match my code?
 	const freshness = $derived(freshnessSummary(project));
 	const drifted = $derived(driftedModels(project));
+	const visibleDrifted = $derived(drifted.slice(0, 24));
+	const hiddenDriftedCount = $derived(drifted.length - visibleDrifted.length);
 	const audits = $derived(auditCounts(project.audits));
 	const tests = $derived(testCounts(project.tests));
 
@@ -67,7 +69,7 @@
 		<div class="flex flex-col divide-y divide-[var(--border-subtle)] border-b border-border">
 			{#if drifted.length}
 				<div
-					class="flex items-center gap-2.5 px-[18px] py-2.5"
+					class="flex flex-wrap items-center gap-x-2.5 gap-y-1 px-[18px] py-2.5"
 					style:background="color-mix(in srgb, var(--sb-stale) 8%, transparent)"
 				>
 					<GitCompareIcon size={14} color="var(--sb-stale)" class="shrink-0" />
@@ -76,12 +78,21 @@
 						{drifted.length === 1 ? 'model changed' : 'models changed'} since the last applied build
 					</span>
 					<span class="text-muted-foreground font-mono text-[11px]">
-						{drifted.map((model) => model.name).join(' · ')}
+						{visibleDrifted.map((model) => model.name).join(' · ')}
 					</span>
+					{#if hiddenDriftedCount > 0}
+						<span class="text-muted-foreground shrink-0 font-mono text-[11px]">
+							+{hiddenDriftedCount} more
+						</span>
+					{/if}
 					<a
-						href="/plan?{drifted.map((model) => `select=${model.name}`).join('&')}"
+						href="/lineage?status=drift"
+						class="text-primary shrink-0 font-mono text-[11px] hover:underline">Review all</a
+					>
+					<a
+						href="/plan?changed=1&include_missing_upstream=1"
 						class="text-primary ml-auto shrink-0 font-mono text-[11px] hover:underline"
-						>Plan a rebuild →</a
+						>Plan changed + prerequisites</a
 					>
 				</div>
 			{/if}

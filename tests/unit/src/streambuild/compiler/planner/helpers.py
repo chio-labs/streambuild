@@ -109,6 +109,7 @@ from streambuild.compiler.planner.models import (
     PublishEventRecord,
     RootDeploymentInspection,
 )
+from streambuild.compiler.planner.types import DirectSelectionMode
 from streambuild.compiler.sql_analysis.classes.sql_model_analyzer import SqlModelAnalyzer
 from tests.unit.src.streambuild.compiler.compile.helpers import build_realization_analyzer
 
@@ -749,6 +750,8 @@ def plan_direct_scope(
     analysis: CompileAnalysis,
     snapshot: DirectWarehouseSnapshot,
     selected_model_names: tuple[str, ...],
+    selection_mode: DirectSelectionMode | None = None,
+    include_missing_upstream: bool = False,
 ) -> DirectPlan:
     """Plan the direct closure of the scope project for the named selection."""
 
@@ -758,6 +761,8 @@ def plan_direct_scope(
         snapshot=snapshot,
         database="analytics",
         selected_model_keys=direct_model_keys(analysis=analysis, names=selected_model_names),
+        selection_mode=selection_mode,
+        include_missing_upstream=include_missing_upstream,
     )
 
 

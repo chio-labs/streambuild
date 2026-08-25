@@ -18,7 +18,7 @@
 	import { canAnyPipeline } from '$lib/auth/main/can-any-pipeline';
 	import { createPlanView } from '$lib/plan-view/main/create-plan-view';
 	import { createPlanLoader } from '$lib/plan-view/main/create-plan-loader.svelte';
-	import type { PlanViewTypes } from '$lib/plan-view/types';
+	import { createPlanSelection } from '$lib/plan-view/main/create-plan-selection.svelte';
 	const project = getProject();
 	const buildAllowed = $derived(canAnyPipeline('build.direct.run') || canAnyPipeline('deployment.create'));
 	const planView = createPlanView();
@@ -34,29 +34,18 @@
 			}
 		}
 	});
-	const location = $derived(planView.readLocation(page.url));
+	const planSelection = createPlanSelection({
+		currentUrl: () => page.url,
+		navigate(nextUrl): void {
+			void goto(nextUrl, { replaceState: true, noScroll: true, keepFocus: true });
+		}
+	});
+	const location = $derived(planSelection.location);
 	const selectors = $derived(location.selectors);
+	const changed = $derived(location.changed);
+	const includeMissingUpstream = $derived(location.includeMissingUpstream);
 	const replayWindow = $derived(location.replayWindow);
 	const deploymentId = $derived(location.deploymentId);
-	function applySelection(
-		nextSelectors: PlanViewTypes['selector'][],
-		nextWindow?: PlanViewTypes['replayWindow'],
-		nextDeploymentId: string | null = null
-	): void {
-		const nextUrl: URL = planView.selectionUrl(page.url, nextSelectors, nextWindow, nextDeploymentId);
-		if (planView.locationRequestKey(nextUrl) === planView.locationRequestKey(page.url)) return;
-		void goto(nextUrl, {
-			replaceState: true,
-			noScroll: true,
-			keepFocus: true
-		});
-	}
-	function setSelectors(next: PlanViewTypes['selector'][]): void {
-		applySelection(next, next.length === 0 ? { mode: 'full' } : undefined);
-	}
-	function setReplayWindow(next: PlanViewTypes['replayWindow']): void {
-		applySelection(selectors, selectors.length === 0 ? { mode: 'full' } : next);
-	}
 	const plan = $derived(planLoader.plan);
 	const planError = $derived(planLoader.error);
 	const planLoading = $derived(planLoader.loading);
@@ -64,12 +53,16 @@
 	let planRequestKey = $state<string>('');
 	function requestPlan(
 		tokens: string[],
+		changedMode: boolean,
+		includeMissing: boolean,
 		start: string | null,
 		deployment: string | null,
 		includeReplayCounts: boolean = false
 	): void {
 		planLoader.request({
 			selectors: tokens,
+			changed: changedMode,
+			includeMissingUpstream: includeMissing,
 			startTime: start,
 			deploymentId: deployment,
 			includeReplayCounts
@@ -92,7 +85,15 @@
 			.map((protection) => protection.confirmation)
 	);
 	const executionCommand = $derived(
-		planView.buildCommand({ selectors, replayWindow, acceptedConfirmations, plan, planLoading })
+		planView.buildCommand({
+			selectors,
+			changed,
+			includeMissingUpstream,
+			replayWindow,
+			acceptedConfirmations,
+			plan,
+			planLoading
+		})
 	);
 	const planStatus = $derived(planView.status({ planError, planLoading, plan }));
 	/** POST the planned options in the dev server's pinned context and follow the run live. */ async function execute(): Promise<void> {
@@ -105,7 +106,9 @@
 				tokens,
 				start,
 				acceptedConfirmations,
-				plan?.deploymentId ?? null
+				plan?.deploymentId ?? null,
+				changed,
+				includeMissingUpstream
 			);
 			await goto(`/runs/${startResult.invocationId}?live=1`);
 		} catch (error) {
@@ -117,40 +120,28 @@
 	function replan(): void {
 		const tokens: string[] = selectors.map(planView.selectorToken);
 		const start: string | null = planView.replayStartToken(replayWindow);
-		requestPlan(tokens, start, deploymentId);
+		requestPlan(tokens, changed, includeMissingUpstream, start, deploymentId);
 	}
 	function loadExactReplayCounts(): void {
 		const tokens: string[] = selectors.map(planView.selectorToken);
 		const start: string | null = planView.replayStartToken(replayWindow);
-		requestPlan(tokens, start, deploymentId, true);
+		requestPlan(tokens, changed, includeMissingUpstream, start, deploymentId, true);
 	}
 	$effect(() => () => planLoader.stop());
 	$effect(() => {
 		const tokens: string[] = selectors.map(planView.selectorToken);
 		const start: string | null = planView.replayStartToken(replayWindow);
 		if (planView.shouldClearReplayStart(page.url)) {
-			applySelection(selectors, { mode: 'full' });
+			planSelection.apply(selectors, { mode: 'full' });
 			return;
 		}
 		const key: string = planView.locationRequestKey(page.url);
 		if (key === planRequestKey) return;
 		planRequestKey = key;
-		requestPlan(tokens, start, deploymentId);
+		requestPlan(tokens, changed, includeMissingUpstream, start, deploymentId);
 	});
-	const planEntries = $derived(plan?.entries ?? []);
-	const plannedModelNames = $derived(
-		Array.from(new Set((plan?.phases ?? []).flatMap((phase) => phase.modelNames)))
-	);
-	const plannedRelationNames = $derived(
-		Array.from(new Set((plan?.phases ?? []).flatMap((phase) => phase.relationNames)))
-	);
-	const hasDirectPhase = $derived((plan?.phases ?? []).some((phase) => phase.mode === 'direct'));
-	const rowsToReplay = $derived.by((): number | null => {
-		const roots: PlanViewTypes['plan']['replayRoots'] = plan?.replayRoots ?? [];
-		if (roots.length === 0 || roots.some((root) => root.rowsToReplay === null)) return null;
-		return roots.reduce((total, root) => total + (root.rowsToReplay ?? 0), 0);
-	});
-	let lastBuild = $state<PlanViewTypes['runRecord'] | null>(null);
+	const summary = $derived(planView.summary(plan));
+	let lastBuild = $state<Awaited<ReturnType<typeof fetchRuns>>[number] | null>(null);
 	$effect(() => {
 		fetchRuns()
 			.then((runs) => {
@@ -161,19 +152,8 @@
 				lastBuild = null;
 			});
 	});
-	const rootSources = $derived<PlanViewTypes['source'][]>(
-		planView.rootSources(project, plannedModelNames)
-	);
-	const selectedCount = $derived(
-		planEntries.filter((entry) => entry.reason === 'selected').length
-	);
-	const downstreamCount = $derived(
-		planEntries.filter((entry) => entry.reason === 'downstream_of_selected').length
-	);
-	const riskyOwnership = $derived(
-		planEntries.flatMap((entry) =>
-			entry.ownership.filter((item) => item.ownership !== 'direct' && item.ownership !== 'absent')
-		)
+	const rootSources = $derived<ReturnType<typeof planView.rootSources>>(
+		planView.rootSources(project, summary.plannedModelNames)
 	);
 	let copied = $state<boolean>(false);
 	async function copyCommand(): Promise<void> {
@@ -186,12 +166,29 @@
 	let pasted = $state<string>('');
 	let pasteOpen = $state<boolean>(false);
 	let replacedNote = $state<string>('');
+	let replaceFailed = $state<boolean>(false);
 	function previewPasted(): void {
 		const previousCount: number = selectors.length;
-		const parsed: ReturnType<typeof planView.parseCommand> = planView.parseCommand(pasted);
-		applySelection(parsed.selectors, parsed.replayWindow, parsed.deploymentId);
+		let parsed: ReturnType<typeof planView.parseCommand>;
+		try {
+			parsed = planView.parseCommand(pasted);
+		} catch (error) {
+			replacedNote = error instanceof Error ? error.message : String(error);
+			replaceFailed = true;
+			return;
+		}
+		replaceFailed = false;
+		planSelection.apply(
+			parsed.selectors,
+			parsed.replayWindow,
+			parsed.deploymentId,
+			parsed.changed,
+			parsed.includeMissingUpstream
+		);
 		replacedNote =
-			previousCount > 0
+			parsed.changed
+				? 'Loaded changed-model selection from the pasted command.'
+				: previousCount > 0
 				? `Replaced ${previousCount} ${previousCount === 1 ? 'selector' : 'selectors'} with ${parsed.selectors.length} from the pasted command.`
 				: `Loaded ${parsed.selectors.length} ${parsed.selectors.length === 1 ? 'selector' : 'selectors'} from the pasted command.`;
 		setTimeout(() => (replacedNote = ''), 6000);
@@ -254,11 +251,42 @@
 			labelledby="plan-selection-label"
 			{project}
 			{selectors}
-			onchange={setSelectors}
+			onchange={planSelection.setSelectors}
 		/>
+		<div class="flex flex-wrap items-center gap-x-4 gap-y-2 pt-2">
+			<button
+				type="button"
+				aria-pressed={changed}
+				class="rounded-[3px] border px-2.5 py-1 font-mono text-[10.5px] transition-colors {changed
+					? 'border-[var(--primary)] bg-[var(--sidebar-accent)] text-foreground'
+					: 'border-border text-muted-foreground hover:text-foreground'}"
+				onclick={() => planSelection.setChanged(!changed)}
+			>
+				Changed models only
+			</button>
+			<label class="text-muted-foreground flex items-center gap-1.5 font-mono text-[10.5px]">
+				<input
+					type="checkbox"
+					checked={includeMissingUpstream}
+					disabled={selectors.length === 0 && !changed}
+					onchange={(event) =>
+						planSelection.setIncludeMissingUpstream(event.currentTarget.checked)}
+					class="accent-primary h-3 w-3 disabled:opacity-50"
+				/>
+				Include missing upstream
+			</label>
+			<span class="text-[var(--sb-text-faint)] font-mono text-[10px]">
+				{changed
+					? 'Selecting a pipeline or model exits changed mode.'
+					: 'Missing upstream dependencies remain excluded unless enabled.'}
+			</span>
+		</div>
 
 		{#if replacedNote}
-			<p class="pt-2 font-mono text-[11px]" style:color="var(--sb-secondary)">{replacedNote}</p>
+			<p
+				class="pt-2 font-mono text-[11px]"
+				style:color={replaceFailed ? 'var(--sb-error)' : 'var(--sb-secondary)'}>{replacedNote}</p
+			>
 		{/if}
 
 	</div>
@@ -291,7 +319,11 @@
 			<RotateIcon size={13} class="animate-spin" />
 			<div>
 				<div class="text-foreground">
-					{selectors.length === 0 ? 'Planning all models…' : 'Planning selected scope…'}
+					{changed
+						? 'Planning changed models…'
+						: selectors.length === 0
+							? 'Planning all models…'
+							: 'Planning selected scope…'}
 				</div>
 				<div class="text-[var(--sb-text-faint)] pt-0.5 text-[10.5px]">
 					Reading the current warehouse state
@@ -339,7 +371,12 @@
 					>
 						You selected
 					</div>
-					{#if selectors.length === 0}
+					{#if changed}
+						<div class="font-mono text-[13px]">changed models</div>
+						<div class="text-muted-foreground pt-1 font-mono text-[10.5px]">
+							resolved from current SQL baselines
+						</div>
+					{:else if selectors.length === 0}
 						<div class="font-mono text-[13px]">no selector — all models</div>
 					{:else}
 						<div class="font-display text-[22px] font-semibold leading-none">
@@ -358,7 +395,7 @@
 
 				<div
 					class="rounded-[4px] border p-3"
-					style:border-color={hasDirectPhase
+					style:border-color={summary.hasDirectPhase
 						? 'color-mix(in srgb, var(--sb-error) 45%, var(--border))'
 						: 'color-mix(in srgb, var(--primary) 45%, var(--border))'}
 				>
@@ -372,19 +409,24 @@
 								: 'Runs in two phases'}
 					</div>
 					<div class="font-display text-[22px] font-semibold leading-none">
-						{plannedModelNames.length}
+						{summary.plannedModelNames.length}
 						<span class="text-muted-foreground text-[13px] font-normal">models</span>
 						<span class="text-muted-foreground text-[13px] font-normal"
-							>· {plannedRelationNames.length} relations</span
+							>· {summary.plannedRelationNames.length} relations</span
 						>
 					</div>
 					<div class="text-muted-foreground pt-2 font-mono text-[11px]">
 						{#if plan.mode !== 'direct'}
 							{plan.executionOrder.join(' → ')}
-						{:else if selectors.length === 0}
-							{planEntries.length} · all models
+						{:else if selectors.length === 0 && !changed}
+							{summary.planEntries.length} · all models
+						{:else if changed}
+							{summary.changedCount} changed · {summary.downstreamCount} downstream of changed models
 						{:else}
-							{selectedCount} selected · {downstreamCount} downstream of selection
+							{summary.selectedCount} selected · {summary.downstreamCount} downstream of selection
+						{/if}
+						{#if summary.missingUpstreamCount > 0}
+							· {summary.missingUpstreamCount} missing upstream
 						{/if}
 					</div>
 				</div>
@@ -435,7 +477,7 @@
 				</div>
 			</div>
 
-			{#if planEntries.length > 0}
+			{#if summary.planEntries.length > 0}
 			<div>
 				<div
 					class="text-[var(--sb-text-faint)] pb-2 font-mono text-[10px] uppercase tracking-[0.14em]"
@@ -443,7 +485,7 @@
 					Model SQL baselines
 				</div>
 				<div class="overflow-hidden rounded-[4px] border border-border">
-					{#each planEntries as entry (entry.modelName)}
+					{#each summary.planEntries as entry (entry.modelName)}
 						<div class="border-b border-[var(--border-subtle)] px-2.5 py-2 last:border-b-0">
 							<div class="flex items-center gap-2.5">
 								<span class="code truncate text-[11px]">{entry.modelName}</span>
@@ -486,7 +528,7 @@
 
 
 			<!-- destructive notice -->
-			{#if hasDirectPhase}
+			{#if summary.hasDirectPhase}
 			<div
 				class="flex items-start gap-2.5 rounded-[4px] border px-3 py-2.5"
 				style:border-color="color-mix(in srgb, var(--sb-error) 45%, var(--border))"
@@ -501,7 +543,7 @@
 			{/if}
 
 			<!-- teardown / creation -->
-			{#if hasDirectPhase}
+			{#if summary.hasDirectPhase}
 			<div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
 				<div>
 					<div
@@ -558,9 +600,9 @@
 				{project}
 				sources={rootSources}
 				window={replayWindow}
-				selectionSpecified={selectors.length > 0}
-				{rowsToReplay}
-				onchange={setReplayWindow}
+				selectionSpecified={selectors.length > 0 || changed}
+				rowsToReplay={summary.rowsToReplay}
+				onchange={planSelection.setReplayWindow}
 			/>
 
 			<!-- replay roots: where the rebuild reads from and what bounds it -->
@@ -633,7 +675,7 @@
 			{/if}
 
 			<!-- ownership hazards get their own loud block -->
-			{#if riskyOwnership.length}
+			{#if summary.riskyOwnership.length}
 				<div
 					class="rounded-[4px] border p-3"
 					style:border-color="color-mix(in srgb, var(--sb-error) 45%, var(--border))"
@@ -644,7 +686,7 @@
 					>
 						Ownership hazards
 					</div>
-					{#each riskyOwnership as item (item.relation)}
+					{#each summary.riskyOwnership as item (item.relation)}
 						<div class="border-b border-[var(--border-subtle)] py-1.5 last:border-b-0">
 							<div class="code text-[11px]">{item.relation}</div>
 							<div class="pt-0.5 font-mono text-[10px]" style:color="var(--sb-warning)">
@@ -736,11 +778,12 @@
 				title={buildAllowed
 					? "Runs these options in the dev server's pinned context"
 					: 'Requires build.direct.run or deployment.create'}
-				disabled={executing ||
+					disabled={executing ||
 					planLoading ||
 					planError !== null ||
 					plan === null ||
 					missingProtections.length > 0 ||
+					(changed && summary.plannedModelNames.length === 0) ||
 					!buildAllowed}
 				onclick={() => void execute()}
 			>

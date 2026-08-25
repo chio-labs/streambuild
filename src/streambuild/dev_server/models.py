@@ -97,6 +97,8 @@ class BuildRunRequest(BaseModel):
     startTime: str | None = None  # noqa: N815 - wire format is camelCase
     deploymentId: str | None = None  # noqa: N815 - wire format is camelCase
     confirmations: list[str] = []
+    changed: bool = False
+    includeMissingUpstream: bool = False  # noqa: N815 - wire format is camelCase
 
 
 class MessageQueryMode(BaseModel):

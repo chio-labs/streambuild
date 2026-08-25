@@ -115,12 +115,25 @@
 
 	{#if refreshing && deployments.length === 0}
 		<div class="text-muted-foreground p-6 font-mono text-[12px]">loading deployments…</div>
-	{:else if deployments.length === 0}
-		<div class="text-muted-foreground rounded-md border border-[var(--sb-border)] p-6 text-[13px]">
-			No deployments in this database. Virtual-mode pipelines create one on every build; a
-			direct-mode project has none by design.
-		</div>
 	{:else}
+		{#if inState('active').length === 0}
+			<div class="text-muted-foreground mb-3 rounded-[4px] border border-border px-3 py-2.5 text-[12px]">
+				<div class="font-mono text-[11.5px] font-medium text-foreground">No active deployments</div>
+				{#if deployments.length === 0 || deployments.length === problems.length}
+					<div class="pt-1 leading-relaxed">
+						Virtual builds create deployments here. Direct builds do not create deployments; find
+						them in <a href="/runs" class="text-primary hover:underline">Runs</a>.
+					</div>
+				{/if}
+				{#if problems.length > 0 && !showInvalid}
+					<div class="pt-1 font-mono text-[10.5px] text-[var(--sb-text-faint)]">
+						{problems.length} invalid {problems.length === 1 ? 'deployment is' : 'deployments are'}
+						hidden. Use Show invalid ({problems.length}) above to review.
+					</div>
+				{/if}
+			</div>
+		{/if}
+
 		{#each SECTIONS as section (section.state)}
 			{@const rows = inState(section.state)}
 			{#if rows.length > 0}

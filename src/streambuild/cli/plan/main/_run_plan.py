@@ -47,6 +47,8 @@ def run_plan(
             full_refresh=options.full_refresh,
             start_time=options.start_time,
             verbose=options.verbose,
+            changed=options.changed,
+            include_missing_upstream=options.include_missing_upstream,
         )
         preparation: (
             DirectWorkflowPreparation | MixedWorkflowPreparation | VirtualWorkflowPreparation

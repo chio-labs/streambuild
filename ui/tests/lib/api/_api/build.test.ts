@@ -33,4 +33,23 @@ describe('build API', () => {
 		expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/build/current?after=17');
 		expect(fetchMock).toHaveBeenNthCalledWith(3, '/api/runs/run%2Fid/events?after=23');
 	});
+
+	it('given changed mode with missing upstream when starting then optional camel-case fields are sent', async () => {
+		const fetchMock: ReturnType<typeof vi.fn> = vi.fn(() => Promise.resolve(new Response('{}')));
+		vi.stubGlobal('fetch', fetchMock);
+
+		await requestBuildStart([], null, [], null, true, true);
+
+		expect(fetchMock).toHaveBeenCalledWith('/api/build', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({
+				selectors: [],
+				changed: true,
+				includeMissingUpstream: true,
+				startTime: null,
+				confirmations: []
+			})
+		});
+	});
 });

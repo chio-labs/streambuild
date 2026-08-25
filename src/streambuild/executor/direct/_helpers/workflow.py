@@ -138,6 +138,8 @@ def _assemble_statements(
     realizations: tuple[PopulationRealization, ...],
     runtime_replays: tuple[DirectRuntimeReplay, ...],
 ) -> tuple[WarehouseStatement, ...]:
+    if not request.plan.execution_scope and not request.audits:
+        return ()
     rendered_realizations: tuple[tuple[PopulationRealization, str], ...] = tuple(
         (
             realization,

@@ -14,7 +14,9 @@ export function buildPlanCommand(parts: BuildCommandParts): string {
 	const resolved: boolean = !parts.planLoading && parts.plan !== null;
 	const deploymentId: string | null = resolved ? (parts.plan?.deploymentId ?? null) : null;
 	const segments: string[] = ['stb build'];
-	if (tokens.length > 0) segments.push(`--select ${tokens.join(' ')}`);
+	if (parts.changed) segments.push('--changed');
+	else if (tokens.length > 0) segments.push(`--select ${tokens.join(' ')}`);
+	if (parts.includeMissingUpstream) segments.push('--include-missing-upstream');
 	if (start !== null) segments.push(`--start-time ${start}`);
 	if (deploymentId !== null) segments.push(`--deployment-id ${deploymentId}`);
 	for (const value of parts.acceptedConfirmations) segments.push(`--confirm ${value}`);

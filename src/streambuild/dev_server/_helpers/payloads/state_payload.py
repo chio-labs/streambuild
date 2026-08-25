@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import datetime
-import json
 from dataclasses import dataclass, replace
-from hashlib import sha256
 from typing import cast
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
@@ -18,21 +16,16 @@ from streambuild.adapter.models import (
     InspectedManagedTableState,
 )
 from streambuild.adapter.types import AdapterOptionalStateStatus
-from streambuild.compiler.compile.main.build_model_storage_identity import (
-    build_model_storage_identity,
-)
-from streambuild.compiler.compile.models import (
-    CompiledModel,
-    CompiledSource,
-    CompiledTableModel,
-)
+from streambuild.compiler.compile.models import CompiledSource, CompiledTableModel
 from streambuild.compiler.discovery.constants import SECONDS_BY_DURATION_UNIT
 from streambuild.compiler.discovery.models import (
     KafkaLandingStep,
     KafkaSettings,
     SourceFreshnessPolicy,
 )
+from streambuild.compiler.discovery.types import PipelineMode
 from streambuild.compiler.pipeline.models import CompileAnalysis
+from streambuild.compiler.planner.classes.direct_model_fingerprint import DirectModelFingerprint
 from streambuild.dev_server._helpers.payloads.activity_payload import read_model_activity
 from streambuild.dev_server.classes.kafka_lag_reader import KafkaLagReader
 from streambuild.dev_server.classes.kafka_topic_reader import KafkaTopicReader
@@ -303,6 +296,10 @@ def _model_states(
     activity_by_relation: dict[str, dict[str, object]],
 ) -> dict[str, dict[str, object]]:
     policy_by_model: dict[str, SourceFreshnessPolicy | None] = _policies_by_model(analysis)
+    direct_model_names: set[str] = set()
+    for pipeline in analysis.compiled_project.pipelines:
+        if PipelineMode(pipeline.pipeline.mode) == PipelineMode.DIRECT:
+            direct_model_names.update(model.key.name for model in pipeline.models)
     states: dict[str, dict[str, object]] = {}
     for model in analysis.compiled_project.models:
         is_table: bool = isinstance(model, CompiledTableModel)
@@ -310,9 +307,14 @@ def _model_states(
         relation_stats: dict[str, int] = stats.get(relation_name, {}) if is_table else {}
         extent: dict[str, object] = extents.get(relation_name, {}) if is_table else {}
         newest: str | None = _optional_str(extent.get("newest"))
-        drift_reasons: tuple[str, ...] = _drift_reasons(
-            model=model,
-            baseline=baselines.get(model.key.name),
+        drift_reasons: tuple[str, ...] = (
+            DirectModelFingerprint.drift_reasons(
+                model=model,
+                realized_project=analysis.realized_project,
+                baseline=baselines.get(model.key.name),
+            )
+            if model.key.name in direct_model_names
+            else ()
         )
         states[model.key.name] = {
             "relationName": relation_name,
@@ -531,24 +533,6 @@ def _kafka_lag(
     return reader.read(kafka=kafka, database=database)
 
 
-def _drift_reasons(
-    *,
-    model: CompiledModel,
-    baseline: AdapterDirectFingerprintRecord | None,
-) -> tuple[str, ...]:
-    """Compare compiled identity against the last applied direct baseline."""
-
-    if not isinstance(model, CompiledTableModel) or baseline is None:
-        return ()
-    reasons: list[str] = []
-    if sha256(model.query.encode()).hexdigest() != baseline.definition_hash:
-        reasons.append("query")
-    baseline_storage: object = _baseline_storage(baseline)
-    if baseline_storage != build_model_storage_identity(model):
-        reasons.append("storage")
-    return tuple(reasons)
-
-
 def _fingerprint_baselines(
     *,
     analysis: CompileAnalysis,
@@ -568,16 +552,6 @@ def _fingerprint_baselines(
     return {
         record.logical_model_identity.removeprefix(prefix): record for record in snapshot.baselines
     }
-
-
-def _baseline_storage(baseline: AdapterDirectFingerprintRecord) -> object:
-    try:
-        metadata: object = json.loads(baseline.identity_metadata)
-    except (TypeError, ValueError):
-        return None
-    if not isinstance(metadata, dict):
-        return None
-    return metadata.get("storage")
 
 
 def _freshness(

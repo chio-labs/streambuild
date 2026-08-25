@@ -15,11 +15,9 @@ from streambuild.adapter.models import (
     AdapterWarehouseMemory,
     AdapterWarehouseTable,
 )
-from streambuild.compiler.compile.main.build_model_storage_identity import (
-    build_model_storage_identity,
-)
 from streambuild.compiler.compile.models import CompiledModel
 from streambuild.compiler.pipeline.models import CompileAnalysis
+from streambuild.compiler.planner.classes.direct_model_fingerprint import DirectModelFingerprint
 from streambuild.dev_server.classes.dev_server_state import DevServerState
 from streambuild.dev_server.main._create_dev_app import create_dev_app
 from tests.unit.src.streambuild.dev_server._test_types import (
@@ -31,6 +29,7 @@ from tests.unit.src.streambuild.dev_server._test_types import (
 from tests.unit.src.streambuild.dev_server.helpers import (
     build_compile_callable,
     build_fake_state_connection,
+    changed_storage_identity,
     write_dev_server_project,
 )
 
@@ -42,8 +41,8 @@ from tests.unit.src.streambuild.dev_server.helpers import (
             description="unavailable baseline does not report drift",
             fingerprint_status="unavailable",
             definition_hash_builder=lambda model: sha256(model.query.encode()).hexdigest(),
-            identity_metadata_builder=lambda model: json.dumps(
-                {"storage": build_model_storage_identity(model)},
+            identity_metadata_builder=lambda identity: json.dumps(
+                identity,
                 sort_keys=True,
                 separators=(",", ":"),
             ),
@@ -59,8 +58,8 @@ from tests.unit.src.streambuild.dev_server.helpers import (
             description="matching baseline does not report drift",
             fingerprint_status="available",
             definition_hash_builder=lambda model: sha256(model.query.encode()).hexdigest(),
-            identity_metadata_builder=lambda model: json.dumps(
-                {"storage": build_model_storage_identity(model)},
+            identity_metadata_builder=lambda identity: json.dumps(
+                identity,
                 sort_keys=True,
                 separators=(",", ":"),
             ),
@@ -76,8 +75,8 @@ from tests.unit.src.streambuild.dev_server.helpers import (
             description="changed query reports query drift",
             fingerprint_status="available",
             definition_hash_builder=lambda _model: sha256(b"previous query").hexdigest(),
-            identity_metadata_builder=lambda model: json.dumps(
-                {"storage": build_model_storage_identity(model)},
+            identity_metadata_builder=lambda identity: json.dumps(
+                identity,
                 sort_keys=True,
                 separators=(",", ":"),
             ),
@@ -93,16 +92,7 @@ from tests.unit.src.streambuild.dev_server.helpers import (
             description="changed MODEL storage reports storage drift",
             fingerprint_status="available",
             definition_hash_builder=lambda model: sha256(model.query.encode()).hexdigest(),
-            identity_metadata_builder=lambda model: json.dumps(
-                {
-                    "storage": {
-                        **(build_model_storage_identity(model) or {}),
-                        "ttl": "created_at + INTERVAL 1 DAY",
-                    }
-                },
-                sort_keys=True,
-                separators=(",", ":"),
-            ),
+            identity_metadata_builder=changed_storage_identity,
             expected_source_freshness="fresh",
             expected_model_freshness="lagging",
             expected_model_lag_seconds=7200.0,
@@ -112,10 +102,14 @@ from tests.unit.src.streambuild.dev_server.helpers import (
             expected_bucket_count=60,
         ),
         StateFieldTestCase(
-            description="baseline without storage reports storage drift",
+            description="baseline with null storage reports storage drift",
             fingerprint_status="available",
             definition_hash_builder=lambda model: sha256(model.query.encode()).hexdigest(),
-            identity_metadata_builder=lambda _model: "{}",
+            identity_metadata_builder=lambda identity: json.dumps(
+                {**identity, "storage": None},
+                sort_keys=True,
+                separators=(",", ":"),
+            ),
             expected_source_freshness="fresh",
             expected_model_freshness="lagging",
             expected_model_lag_seconds=7200.0,
@@ -134,12 +128,16 @@ def test_given_warehouse_reads_when_reading_state_then_assembles_expected_overla
     write_dev_server_project(project_dir=tmp_path)
     analysis: CompileAnalysis = build_compile_callable(project_dir=tmp_path)()
     model: CompiledModel = analysis.compiled_project.models[0]
+    desired_identity: dict[str, object] = DirectModelFingerprint.identity(
+        model=model,
+        realized_project=analysis.realized_project,
+    )
     baseline: AdapterDirectFingerprintRecord = AdapterDirectFingerprintRecord(
         fingerprint_id="fingerprint",
         logical_model_identity=f"analytics.{model.key.name}",
         definition_sql=model.query,
         definition_hash=test_case.definition_hash_builder(model),
-        identity_metadata=test_case.identity_metadata_builder(model),
+        identity_metadata=test_case.identity_metadata_builder(desired_identity),
         workflow_id="workflow",
         tool_version="test",
     )

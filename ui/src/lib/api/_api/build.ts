@@ -6,13 +6,17 @@ export async function requestBuildStart(
 	selectors: string[],
 	startTime: string | null,
 	confirmations: string[],
-	deploymentId: string | null = null
+	deploymentId: string | null = null,
+	changed: boolean = false,
+	includeMissingUpstream: boolean = false
 ): Promise<BuildStartResult> {
 	const response: Response = await authenticatedFetch('/api/build', {
 		method: 'POST',
 		headers: { 'content-type': 'application/json' },
 		body: JSON.stringify({
 			selectors,
+			...(changed ? { changed: true } : {}),
+			...(includeMissingUpstream ? { includeMissingUpstream: true } : {}),
 			startTime,
 			...(deploymentId === null ? {} : { deploymentId }),
 			confirmations

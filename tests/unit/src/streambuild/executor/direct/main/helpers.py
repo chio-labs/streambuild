@@ -12,6 +12,7 @@ from streambuild.adapters.clickhouse._helpers.metadata import (
 )
 from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.compiler.planner.models import DirectPlan, DirectWarehouseSnapshot
+from streambuild.compiler.planner.types import DirectSelectionMode
 from streambuild.executor.direct.models import DirectBuildRequest
 from tests.unit.src.streambuild.cli.helpers import RecordingAdapterConnection
 from tests.unit.src.streambuild.compiler.planner.helpers import (
@@ -116,12 +117,16 @@ class RecordingFingerprintConnection(RecordingDirectBuildConnection):
 
 
 def build_direct_execution_request(
-    *, project_root: Path, selected_model_names: tuple[str, ...]
+    *,
+    project_root: Path,
+    selected_model_names: tuple[str, ...],
+    selection_mode: DirectSelectionMode | None = None,
 ) -> DirectBuildRequest:
     write_direct_scope_project(project_root=project_root)
     return _analyze_direct_execution_request(
         project_root=project_root,
         selected_model_names=selected_model_names,
+        selection_mode=selection_mode,
     )
 
 
@@ -137,13 +142,17 @@ def build_direct_execution_request_with_unrelated_pipeline(
 
 
 def _analyze_direct_execution_request(
-    *, project_root: Path, selected_model_names: tuple[str, ...]
+    *,
+    project_root: Path,
+    selected_model_names: tuple[str, ...],
+    selection_mode: DirectSelectionMode | None = None,
 ) -> DirectBuildRequest:
     analysis: CompileAnalysis = analyze_direct_scope_project(project_root=project_root)
     plan: DirectPlan = plan_direct_scope(
         analysis=analysis,
         snapshot=_direct_prerequisite_snapshot(),
         selected_model_names=selected_model_names,
+        selection_mode=selection_mode,
     )
     return DirectBuildRequest(
         plan=plan,

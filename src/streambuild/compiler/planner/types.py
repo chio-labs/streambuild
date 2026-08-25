@@ -79,8 +79,18 @@ class DirectPlanReason(StrEnum):
     """Why one logical model is in the direct execution scope."""
 
     SELECTED = "selected"
+    CHANGED = "changed"
     DOWNSTREAM_OF_SELECTED = "downstream_of_selected"
+    MISSING_UPSTREAM = "missing_upstream"
     ALL_MODELS = "all_models"
+
+
+class DirectSelectionMode(StrEnum):
+    """How the roots of one direct plan were selected."""
+
+    ALL_MODELS = "all_models"
+    EXPLICIT = "explicit"
+    CHANGED = "changed"
 
 
 class DirectSqlBaselineStatus(StrEnum):

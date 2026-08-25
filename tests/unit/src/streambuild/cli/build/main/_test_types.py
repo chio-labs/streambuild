@@ -25,6 +25,14 @@ class CliBuildInterruptTestCase:
 
 
 @dataclass(frozen=True)
+class CliNoOpChangedBuildTestCase:
+    description: str
+    expected_exit_code: int
+    expected_output: str
+    expected_operation_events: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class CliProtectedBuildTestCase:
     description: str
     warning: str

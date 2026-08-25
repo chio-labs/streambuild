@@ -3,11 +3,16 @@ from pathlib import Path
 
 import pytest
 
+from streambuild.adapter.models import (
+    AdapterDirectFingerprintRecord,
+    AdapterDirectFingerprintSnapshot,
+)
 from streambuild.cli.plan.constants import DIRECT_MODE_LABEL, VIRTUAL_ENVIRONMENTS_MODE_LABEL
 from streambuild.cli.workflow_artifacts.main._publish_plan_workflow import publish_plan_workflow
 from streambuild.executor.workflow.models import BuildWorkflow
 from streambuild.executor.workflow.types import WorkflowMode
 from tests.unit.src.streambuild.cli.plan.main._test_types import (
+    CliChangedPlanTestCase,
     CliDirectPlanFlagRejectionTestCase,
     CliPlanDeploymentIdRejectionTestCase,
     CliPlanModeRoutingTestCase,
@@ -120,6 +125,183 @@ def test_given_direct_mode_when_planning_then_full_closure_is_reported(
 @pytest.mark.parametrize(
     "test_case",
     [
+        CliChangedPlanTestCase(
+            description="changed roots expand to their downstream closure",
+            expected_execution_scope=("beta", "gamma", "delta"),
+            expected_reasons=(
+                "changed",
+                "downstream_of_selected",
+                "downstream_of_selected",
+            ),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_changed_model_when_planning_then_changed_root_and_downstream_are_reported(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    test_case: CliChangedPlanTestCase,
+) -> None:
+    write_direct_scope_project(project_root=tmp_path)
+    fingerprints: AdapterDirectFingerprintSnapshot = AdapterDirectFingerprintSnapshot(
+        status="available",
+        baselines=(
+            AdapterDirectFingerprintRecord(
+                fingerprint_id="beta-old",
+                logical_model_identity="analytics.beta",
+                definition_sql="SELECT 0",
+                definition_hash="outdated",
+                identity_metadata="{}",
+                workflow_id="previous",
+                tool_version="0.32.0",
+            ),
+        ),
+    )
+
+    exit_code: int = run_scope_project_plan(
+        project_root=tmp_path,
+        json_output=True,
+        changed=True,
+        direct_fingerprints=fingerprints,
+    )
+
+    payload: dict[str, object] = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert payload["selection_mode"] == "changed"
+    assert tuple(item["model_key"]["name"] for item in payload["entries"]) == (
+        test_case.expected_execution_scope
+    )
+    assert tuple(item["reason"] for item in payload["entries"]) == test_case.expected_reasons
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliChangedPlanTestCase(
+            description="no changed models produce an empty direct plan",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_no_changed_models_when_planning_then_plan_is_a_no_op(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    test_case: CliChangedPlanTestCase,
+) -> None:
+    write_direct_scope_project(project_root=tmp_path)
+
+    exit_code: int = run_scope_project_plan(
+        project_root=tmp_path,
+        json_output=True,
+        changed=True,
+    )
+
+    payload: dict[str, object] = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert payload["selection_mode"] == "changed"
+    assert tuple(payload["execution_scope"]) == test_case.expected_execution_scope
+    assert payload["entries"] == []
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliChangedPlanTestCase(
+            description="virtual-only changed selection is rejected",
+            expected_error_fragment="--changed is only supported for direct models",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_virtual_models_when_selecting_changed_then_planning_is_rejected(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    test_case: CliChangedPlanTestCase,
+) -> None:
+    write_direct_scope_project(project_root=tmp_path, virtual_environments=True)
+
+    exit_code: int = run_scope_project_plan(
+        project_root=tmp_path,
+        json_output=True,
+        changed=True,
+        virtual_environments=True,
+    )
+
+    assert exit_code == 1
+    assert test_case.expected_error_fragment in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliChangedPlanTestCase(
+            description="changed and explicit selectors are mutually exclusive",
+            selectors=("alpha",),
+            expected_error_fragment="--changed cannot be combined with --select",
+        ),
+        CliChangedPlanTestCase(
+            description="missing-upstream expansion requires a selection mode",
+            changed=False,
+            include_missing_upstream=True,
+            expected_error_fragment=("--include-missing-upstream requires --changed or --select"),
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_incompatible_changed_selection_flags_when_planning_then_command_fails(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    test_case: CliChangedPlanTestCase,
+) -> None:
+    write_direct_scope_project(project_root=tmp_path)
+
+    exit_code: int = run_scope_project_plan(
+        project_root=tmp_path,
+        json_output=True,
+        selectors=test_case.selectors,
+        changed=test_case.changed,
+        include_missing_upstream=test_case.include_missing_upstream,
+    )
+
+    assert exit_code == 1
+    assert test_case.expected_error_fragment in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliChangedPlanTestCase(
+            description="unavailable fingerprints fail closed",
+            expected_error_fragment="Cannot select changed models: metadata denied",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_unavailable_fingerprints_when_selecting_changed_then_planning_is_rejected(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    test_case: CliChangedPlanTestCase,
+) -> None:
+    write_direct_scope_project(project_root=tmp_path)
+
+    exit_code: int = run_scope_project_plan(
+        project_root=tmp_path,
+        json_output=True,
+        changed=True,
+        direct_fingerprints=AdapterDirectFingerprintSnapshot(
+            status="unavailable",
+            baselines=(),
+            warning="metadata denied",
+        ),
+    )
+
+    assert exit_code == 1
+    assert test_case.expected_error_fragment in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
         CliPlanDeploymentIdRejectionTestCase(
             description="deployment identity is rejected in direct mode",
             deployment_id="20260802T120000Z_directinvalid",
@@ -162,7 +344,7 @@ def test_given_deployment_id_in_direct_mode_when_planning_then_command_fails(
             selectors=(),
             full_refresh=False,
             start_time="2026-01-01",
-            expected_error_fragment="--start-time requires at least one --select",
+            expected_error_fragment="--start-time requires --changed or at least one --select",
             expected_preserved_artifact=b'{"previous":"plan"}\n',
         ),
         CliDirectPlanFlagRejectionTestCase(
