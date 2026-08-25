@@ -18,6 +18,11 @@ class KafkaRetentionReference(StrEnum):
     LANDED = "landed"
 
 
+class KafkaRetentionOrigin(StrEnum):
+    SOURCE = "source"
+    PROJECT = "project"
+
+
 class ReplayAnchorMode(StrEnum):
     AUTO = "auto"
     NEVER = "never"

@@ -20,6 +20,7 @@ from streambuild.compiler.discovery.exceptions import ProjectSpecError
 from streambuild.compiler.discovery.main._immutable_config_pairs import immutable_config_pairs
 from streambuild.compiler.discovery.types import (
     BoundedReplayFallback,
+    KafkaRetentionOrigin,
     KafkaRetentionReference,
     PipelineMode,
     ReplayAnchorMode,
@@ -185,6 +186,7 @@ class KafkaSourceDefaults:
 
     naming_macro: str | None = None
     retention: KafkaRetentionPolicy | Literal[False] | None = None
+    retention_template: object | None = field(default=None, repr=False, compare=False)
 
 
 @dataclass(frozen=True)
@@ -206,13 +208,12 @@ class KafkaRetentionPolicy:
 
     duration_seconds: int
     timestamp: KafkaRetentionReference | str = KafkaRetentionReference.BROKER
-    fallback: KafkaRetentionReference | str | None = None
+    fallback: KafkaRetentionReference | str = KafkaRetentionReference.LANDED
     cap_at: KafkaRetentionReference | str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "timestamp", KafkaRetentionReference(self.timestamp))
-        if self.fallback is not None:
-            object.__setattr__(self, "fallback", KafkaRetentionReference(self.fallback))
+        object.__setattr__(self, "fallback", KafkaRetentionReference(self.fallback))
         if self.cap_at is not None:
             object.__setattr__(self, "cap_at", KafkaRetentionReference(self.cap_at))
 
@@ -222,6 +223,7 @@ class ModelDefaults:
     """Project- or pipeline-wide table-model defaults."""
 
     retention: ModelRetentionPolicy | Literal[False] | None = None
+    retention_template: object | None = field(default=None, repr=False, compare=False)
 
 
 @dataclass(frozen=True)
@@ -369,12 +371,17 @@ class KafkaSettings:
     consumer_group: str | None = None
     format: str = "JSONAsString"
     ttl: str | None = None
-    retention: KafkaRetentionPolicy | Literal[False] | None = None
     settings: Mapping[str, str] | None = None
+    retention: KafkaRetentionPolicy | Literal[False] | None = None
+    retention_origin: KafkaRetentionOrigin | str | None = None
 
     def __post_init__(self) -> None:
         if self.settings is not None:
             object.__setattr__(self, "settings", MappingProxyType(dict(self.settings)))
+        if self.retention_origin is not None:
+            object.__setattr__(
+                self, "retention_origin", KafkaRetentionOrigin(self.retention_origin)
+            )
 
 
 @dataclass(frozen=True, repr=False)
@@ -489,7 +496,6 @@ class TransformStep:
     sql_file: str | None = None
     partition_by: str | None = None
     ttl: str | None = None
-    retention: ModelRetentionPolicy | Literal[False] | None = None
     settings: Mapping[str, str] | None = None
     execution_settings: ExecutionSettings = field(default_factory=ExecutionSettings)
     replay_anchor: ReplayAnchorMode | str = ReplayAnchorMode.AUTO
@@ -498,6 +504,7 @@ class TransformStep:
     source_file_path: Path | None = None
     source_line: int = 1
     source_column: int = 1
+    retention: ModelRetentionPolicy | Literal[False] | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "order_by", tuple(self.order_by))
@@ -543,12 +550,12 @@ class Project:
     replay_on_change: ReplayOnChangePolicy | None = None
     bounded_replay_fallback: BoundedReplayFallback | str | None = None
     model_ttl: str | None = None
-    model_retention: ModelRetentionPolicy | Literal[False] | None = None
     default_database: str | None = None
     adapter: str = DEFAULT_ADAPTER_NAME
     naming: ProjectNaming = field(default_factory=ProjectNaming)
     audit_defaults: AuditDefaults = field(default_factory=AuditDefaults)
     audit_scheduler: AuditSchedulerConfig = field(default_factory=AuditSchedulerConfig)
+    model_retention: ModelRetentionPolicy | Literal[False] | None = None
 
     def __post_init__(self) -> None:
         if self.bounded_replay_fallback is not None:

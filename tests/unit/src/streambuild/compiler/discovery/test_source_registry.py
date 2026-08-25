@@ -29,6 +29,7 @@ from tests.unit.src.streambuild.compiler.discovery._test_types import (
     SourceFreshnessTestCase,
     SourceRegistryErrorTestCase,
     SourceRegistryTestCase,
+    SourceRetentionInterpolationTestCase,
 )
 from tests.unit.src.streambuild.compiler.discovery.helpers import (
     flatten_source_registry,
@@ -142,6 +143,50 @@ def test_given_source_files_when_discovering_then_returns_stable_typed_registry(
     )
     managed_source: KafkaLandingStep = cast(KafkaLandingStep, sources[0])
     assert managed_source.kafka.ttl == test_case.expected_managed_source_ttl
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        SourceRetentionInterpolationTestCase(
+            description="source typed retention interpolates variables and environment",
+            expected_duration_seconds=43_200,
+            expected_fallback="landed",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_interpolated_source_retention_when_discovering_then_policy_is_normalized(
+    test_case: SourceRetentionInterpolationTestCase,
+    tmp_path: Path,
+) -> None:
+    write_source_yml(
+        project_dir=tmp_path,
+        relative_path="events.yml",
+        contents="""
+        sources:
+          - name: events
+            kind: kafka
+            broker_list: kafka:9092
+            topic: source.events
+            retention:
+              duration: "${retention_duration}"
+              timestamp: broker
+              fallback: "${ENV:RETENTION_FALLBACK}"
+            replay_boundary: {mode: offsets}
+        """,
+    )
+
+    source_files: tuple[DiscoveredSourceFile, ...] = discover_source_registry(
+        project_dir=tmp_path,
+        variables={"retention_duration": "12h"},
+        environment={"RETENTION_FALLBACK": "landed"},
+    )
+    source: KafkaLandingStep = cast(KafkaLandingStep, flatten_source_registry(source_files)[0])
+
+    assert source.kafka.retention is not None and source.kafka.retention is not False
+    assert source.kafka.retention.duration_seconds == test_case.expected_duration_seconds
+    assert str(source.kafka.retention.fallback) == test_case.expected_fallback
 
 
 @pytest.mark.parametrize(
