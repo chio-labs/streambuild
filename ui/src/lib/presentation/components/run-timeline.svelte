@@ -7,6 +7,7 @@
 	import { formatTimestamp } from '$lib/formatting/main/format-timestamp';
 	import ErrorPreview from '$lib/presentation/components/error-preview.svelte';
 	import SqlBlock from '$lib/presentation/components/sql-block.svelte';
+	import { labelRunPhase } from '$lib/run-presentation/main/label-run-phase';
 
 	interface RunTimelineProps {
 		invocationId: string;
@@ -111,7 +112,7 @@
 					>
 					<span class="w-[92px] shrink-0">
 						{#if event.phase}
-							<span class="sb-tag code">{event.phase}</span>
+							<span class="sb-tag code">{labelRunPhase(event.phase)}</span>
 						{:else}
 							<span
 								class="sb-tag code"

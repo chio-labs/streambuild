@@ -36,13 +36,36 @@ describe('run history scopes', () => {
 		expect(runsInScope(runs, 'builds').map((item) => item.invocationId)).toEqual(['build-direct']);
 	});
 
-	it('given mixed history when selecting other operations then all non-build operations are shown', () => {
-		const runs: RunRecord[] = [run('build', 'direct'), run('audit', 'scheduled'), run('audit', 'direct')];
+	it('given known operations when selecting scopes then each command family is separate', () => {
+		const runs: RunRecord[] = [
+			run('audit', 'scheduled'),
+			run('test', 'direct'),
+			run('deployment promote', 'virtual'),
+			run('destroy pipelines', 'destructive'),
+			run('reset target', 'destructive'),
+			run('janitor', 'virtual')
+		];
 
-		expect(runsInScope(runs, 'other').map((item) => item.invocationId)).toEqual([
-			'audit-scheduled',
-			'audit-direct'
+		expect(runsInScope(runs, 'audits').map((item) => item.invocationId)).toEqual([
+			'audit-scheduled'
 		]);
+		expect(runsInScope(runs, 'tests').map((item) => item.invocationId)).toEqual(['test-direct']);
+		expect(runsInScope(runs, 'deployments').map((item) => item.invocationId)).toEqual([
+			'deployment promote-virtual'
+		]);
+		expect(runsInScope(runs, 'destruction').map((item) => item.invocationId)).toEqual([
+			'destroy pipelines-destructive',
+			'reset target-destructive'
+		]);
+		expect(runsInScope(runs, 'maintenance').map((item) => item.invocationId)).toEqual([
+			'janitor-virtual'
+		]);
+	});
+
+	it('given unknown historical commands when selecting other then known commands are excluded', () => {
+		const runs: RunRecord[] = [run('build', 'direct'), run('audit', 'direct'), run('mystery', 'direct')];
+
+		expect(runsInScope(runs, 'other').map((item) => item.invocationId)).toEqual(['mystery-direct']);
 	});
 
 	it('given scheduled and manual audits when reading cycles then only scheduled audits are returned', () => {
