@@ -6,6 +6,7 @@ from streambuild.cli.build.models import DirectBuildPreviewContext
 from streambuild.compiler.audit_discovery.models import LoadedSqlAudit
 from streambuild.compiler.compile.main.replace_refs import replace_refs
 from streambuild.compiler.compile.models import CompilerAdapterProfile
+from streambuild.compiler.planner.types import DirectSelectionMode
 from streambuild.compiler.sql_analysis.classes.sql_reference_rewriter import SqlReferenceRewriter
 from streambuild.executor.direct.models import DirectBuildAudit
 
@@ -17,10 +18,15 @@ def prepare_direct_build_audits(
 ) -> tuple[DirectBuildAudit, ...]:
     """Resolve selected direct audits before authoritative workflow construction."""
 
+    if (
+        preview.plan.selection_mode == DirectSelectionMode.CHANGED
+        and not preview.plan.execution_scope
+    ):
+        return ()
     audits: tuple[LoadedSqlAudit, ...] = select_direct_build_audits(
         audits=preview.analysis.compiled_project.audits,
         execution_model_names=frozenset(key.name for key in preview.plan.execution_scope),
-        full_build=not preview.plan.user_scope,
+        full_build=preview.plan.selection_mode == DirectSelectionMode.ALL_MODELS,
     )
     audits = tuple(audit for audit in audits if audit.warmup_seconds == 0)
     resolver: dict[str, str] = {

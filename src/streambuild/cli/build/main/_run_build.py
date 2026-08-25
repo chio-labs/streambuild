@@ -12,8 +12,7 @@ from streambuild.cli.build._helpers.rendering import render_interrupted_build_me
 from streambuild.cli.build._helpers.virtual_command import execute_virtual_build_command
 from streambuild.cli.build.exceptions import BuildPipelineLimitError
 from streambuild.cli.build.main._execute_mixed_build import execute_mixed_build_command
-from streambuild.cli.build.main.prepare_build_workflow import prepare_build_workflow
-from streambuild.cli.build.main.validate_build_pipeline_limit import validate_build_pipeline_limit
+from streambuild.cli.build.main._prepare_validated_build import prepare_validated_build
 from streambuild.cli.build.models import (
     BuildCommandOptions,
     DirectWorkflowPreparation,
@@ -85,7 +84,6 @@ def run_build(
             loaded_project=loaded_project,
             adapter_profile=adapter_profile,
         )
-        validate_build_pipeline_limit(analysis=analysis, selectors=options.selectors)
         compile_ms: int = (monotonic_ns() - compile_started_ns) // 1_000_000
         database: str = resolve_default_database(
             loaded_pipelines=list(analysis.compile_inputs.pipelines),
@@ -106,20 +104,23 @@ def run_build(
             full_refresh=options.full_refresh,
             start_time=options.start_time,
             verbose=options.verbose,
+            changed=options.changed,
+            include_missing_upstream=options.include_missing_upstream,
         )
         planning_started_ns: int = monotonic_ns()
         preparation: (
             DirectWorkflowPreparation | MixedWorkflowPreparation | VirtualWorkflowPreparation
-        ) = prepare_build_workflow(
+        ) = prepare_validated_build(
             analysis=analysis,
             options=preparation_options,
             client=client,
             adapter_profile=adapter_profile,
         )
+        planning_ms: int = (monotonic_ns() - planning_started_ns) // 1_000_000
         startup_timings: RunStartupTimings = RunStartupTimings(
             compile_ms=compile_ms,
             observability_ms=observability_ms,
-            planning_ms=(monotonic_ns() - planning_started_ns) // 1_000_000,
+            planning_ms=planning_ms,
         )
         if isinstance(preparation, MixedWorkflowPreparation):
             return execute_mixed_build_command(

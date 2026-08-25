@@ -115,7 +115,9 @@ from tests.integration.src.streambuild.conftest import ClickHouseConnectionSetti
             prompt_response="",
             expected_exit_code=1,
             expected_output_fragments=(),
-            expected_error_fragments=("--full-refresh requires at least one --select",),
+            expected_error_fragments=(
+                "--full-refresh requires --changed or at least one --select",
+            ),
             expected_deployment_status_rows=(),
         ),
         CliVirtualBuildIntegrationTestCase(

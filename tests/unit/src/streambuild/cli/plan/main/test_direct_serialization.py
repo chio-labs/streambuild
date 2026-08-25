@@ -32,8 +32,10 @@ from tests.unit.src.streambuild.cli.plan.main._test_types import (
                 "adapter": "clickhouse",
                 "database": "analytics",
                 "start_time": None,
+                "selection_mode": "explicit",
                 "user_scope": [{"resource_type": "model", "name": "orders_enriched"}],
                 "execution_scope": [{"resource_type": "model", "name": "orders_enriched"}],
+                "prerequisite_execution_scope": [],
                 "prerequisite_scope": [
                     {
                         "key": {"resource_type": "source", "name": "orders"},

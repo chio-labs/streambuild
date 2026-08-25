@@ -31,6 +31,7 @@ from streambuild.compiler.planner.types import (
     DirectPlanReason,
     DirectRelationAction,
     DirectResourceKind,
+    DirectSelectionMode,
     DirectSqlBaselineStatus,
     PlannedChangeType,
     RebuildExecutionMode,
@@ -510,5 +511,10 @@ class DirectPlan:
     replay_roots: tuple[DirectReplayRoot, ...]
     teardown_operations: tuple[DirectRelationOperation, ...]
     creation_operations: tuple[DirectRelationOperation, ...]
+    selection_mode: DirectSelectionMode | str = DirectSelectionMode.EXPLICIT
+    prerequisite_execution_scope: tuple[LogicalResourceKey, ...] = ()
     warnings: tuple[PlannerWarning, ...] = ()
     effective_start_time: str | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "selection_mode", DirectSelectionMode(self.selection_mode))

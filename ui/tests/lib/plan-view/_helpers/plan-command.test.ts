@@ -9,6 +9,8 @@ describe('plan command', () => {
 		);
 
 		expect(parsed.deploymentId).toBe('20260811T120000Z_plan');
+		expect(parsed.changed).toBe(false);
+		expect(parsed.includeMissingUpstream).toBe(false);
 		expect(parsed.selectors).toEqual([{ kind: 'model', name: 'orders' }]);
 		expect(parsed.replayWindow).toEqual({
 			mode: 'from',
@@ -26,5 +28,29 @@ describe('plan command', () => {
 			{ kind: 'pipeline', name: 'pl__payments' },
 			{ kind: 'model', name: 'revenue' }
 		]);
+	});
+
+	it('given changed and missing-upstream flags when parsed then both modes are retained', () => {
+		const parsed: ReturnType<typeof parsePlanCommand> = parsePlanCommand(
+			'stb build --changed --include-missing-upstream'
+		);
+
+		expect(parsed).toMatchObject({
+			selectors: [],
+			changed: true,
+			includeMissingUpstream: true
+		});
+	});
+
+	it('given changed and explicit selectors when parsed then the invalid command is rejected', () => {
+		expect(() => parsePlanCommand('stb build --select orders --changed')).toThrow(
+			'--changed cannot be combined with --select'
+		);
+	});
+
+	it('given missing-upstream without a selection when parsed then the invalid command is rejected', () => {
+		expect(() => parsePlanCommand('stb build --include-missing-upstream')).toThrow(
+			'--include-missing-upstream requires --changed or --select'
+		);
 	});
 });

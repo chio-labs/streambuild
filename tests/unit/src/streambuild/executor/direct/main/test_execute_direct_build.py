@@ -11,6 +11,7 @@ from streambuild.compiler.compile.main.build_model_storage_identity import (
     build_model_storage_identity,
 )
 from streambuild.compiler.compile.models import CompiledModel
+from streambuild.compiler.planner.types import DirectSelectionMode
 from streambuild.executor.direct.exceptions import DirectWorkflowExecutionError
 from streambuild.executor.direct.main.assemble_direct_build_workflow import (
     assemble_direct_build_workflow,
@@ -37,6 +38,7 @@ from tests.unit.src.streambuild.executor.direct.main._test_types import (
     DirectDistinctCaptureTestCase,
     DirectFingerprintMetadataTestCase,
     DirectFingerprintPersistenceTestCase,
+    DirectNoOpWorkflowTestCase,
     DirectPersistenceFailureTestCase,
     DirectSourceScopeTestCase,
     DirectWorkflowTestCase,
@@ -95,6 +97,36 @@ def test_given_selected_direct_closure_when_assembling_then_unrelated_sources_ar
     step_ids: set[str] = {statement.step_id for statement in workflow.statements}
     assert set(test_case.expected_source_step_ids) <= step_ids
     assert set(test_case.unexpected_source_step_ids).isdisjoint(step_ids)
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DirectNoOpWorkflowTestCase(
+            description="an empty changed plan creates no warehouse statements",
+            expected_statement_count=0,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_no_changed_models_when_assembling_then_workflow_is_empty(
+    test_case: DirectNoOpWorkflowTestCase,
+    tmp_path: Path,
+) -> None:
+    request: DirectBuildRequest = build_direct_execution_request(
+        project_root=tmp_path,
+        selected_model_names=(),
+        selection_mode=DirectSelectionMode.CHANGED,
+    )
+
+    workflow: DirectBuildWorkflow = assemble_direct_build_workflow(
+        request=request,
+        client=RecordingDirectBuildConnection(),
+        snapshot=build_direct_execution_snapshot(),
+        plan_json=render_direct_plan_json(plan=request.plan, adapter_name="clickhouse"),
+    )
+
+    assert len(workflow.statements) == test_case.expected_statement_count
 
 
 @pytest.mark.parametrize(

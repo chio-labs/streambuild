@@ -58,12 +58,23 @@ def prepare_build_workflow(
     _validate_common_flags(options=options)
     _reject_replayless_start_time(analysis=analysis, options=options)
     start_time_utc: str | None = _normalized_utc_start_time(options=options)
+    if options.changed:
+        _reject_direct_unsupported_flags(options=options)
+        return prepare_direct_build_workflow(
+            analysis=analysis,
+            options=options,
+            client=client,
+            adapter_profile=adapter_profile,
+            effective_start_time=start_time_utc,
+        )
     selected_names_by_mode: dict[PipelineMode, tuple[str, ...]] = _selected_model_names_by_mode(
         analysis=analysis,
         selectors=options.selectors,
     )
     selected_modes: frozenset[PipelineMode] = frozenset(selected_names_by_mode)
     if selected_modes == {PipelineMode.VIRTUAL}:
+        if options.include_missing_upstream:
+            raise CliUserError("--include-missing-upstream is only supported for direct models")
         return prepare_virtual_build_workflow(
             analysis=analysis,
             options=options,
@@ -83,6 +94,7 @@ def prepare_build_workflow(
         virtual_options: WorkflowPreparationOptions = replace(
             options,
             selectors=selected_names_by_mode[PipelineMode.VIRTUAL],
+            include_missing_upstream=False,
         )
         direct_options: WorkflowPreparationOptions = replace(
             options,
@@ -300,11 +312,19 @@ def prepare_virtual_build_workflow(
 
 
 def _validate_common_flags(*, options: WorkflowPreparationOptions) -> None:
+    if options.changed and options.selectors:
+        raise CliUserError("--changed cannot be combined with --select")
+    if options.include_missing_upstream and not (options.changed or options.selectors):
+        raise CliUserError("--include-missing-upstream requires --changed or --select")
     if options.full_refresh and options.start_time is not None:
         raise CliUserError("--full-refresh cannot be combined with --start-time")
-    if (options.full_refresh or options.start_time is not None) and not options.selectors:
+    if (
+        (options.full_refresh or options.start_time is not None)
+        and not options.selectors
+        and not options.changed
+    ):
         required_flag: str = "--full-refresh" if options.full_refresh else "--start-time"
-        raise CliUserError(f"{required_flag} requires at least one --select")
+        raise CliUserError(f"{required_flag} requires --changed or at least one --select")
 
 
 def _reject_replayless_start_time(

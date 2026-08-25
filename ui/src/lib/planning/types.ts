@@ -2,7 +2,12 @@ import type { ReplayRole } from '$lib/domain/types';
 
 type ReplayBoundaryMode = 'offsets' | 'timestamp' | 'landed_at' | 'cursor';
 type OwnershipState = 'direct' | 'unmanaged' | 'conflicted' | 'absent' | 'virtual_environment';
-type PlanEntryReason = 'selected' | 'downstream_of_selected' | 'all_models';
+type PlanEntryReason =
+	| 'selected'
+	| 'changed'
+	| 'downstream_of_selected'
+	| 'missing_upstream'
+	| 'all_models';
 type PlanSqlChange = {
 	status: PlanSqlChangeStatus;
 	unifiedDiff: string | null;

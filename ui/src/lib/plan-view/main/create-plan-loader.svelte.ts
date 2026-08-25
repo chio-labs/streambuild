@@ -3,6 +3,8 @@ import type { Plan } from '$lib/planning/types';
 
 type PlanLoadRequest = {
 	selectors: string[];
+	changed: boolean;
+	includeMissingUpstream: boolean;
 	startTime: string | null;
 	deploymentId: string | null;
 	includeReplayCounts: boolean;
