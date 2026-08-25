@@ -14,6 +14,7 @@ export type RunEvent = {
 	stepId: string | null;
 	phase: string | null;
 	command?: string;
+	mode?: string;
 	displayCommand?: string;
 	selectors?: string[];
 	startTime?: string | null;

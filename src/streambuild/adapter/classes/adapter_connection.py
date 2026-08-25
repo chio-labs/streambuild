@@ -70,12 +70,6 @@ class AdapterConnection(ABC):
 
         return self.load_relation_drop_size_limit()
 
-    @property
-    def destruction_relation_drop_size_limit(self) -> int | None:
-        """Return a finite override reserved for reviewed destruction statements."""
-
-        return None
-
     def load_refresh_states(self, database: str) -> tuple[AdapterRefreshState, ...]:
         """Report scheduled refresh state; adapters without scheduled relations report none."""
 

@@ -95,7 +95,9 @@ def plan_destruction(
     relation_drop_size_server_limit: int | None = (
         connection.load_relation_drop_size_server_default()
     )
-    relation_drop_size_override: int | None = connection.destruction_relation_drop_size_limit
+    relation_drop_size_override: int | None = (
+        analysis.compiled_project.destruction_relation_drop_size_limit
+    )
     relation_drop_size_limit: int | None = (
         relation_drop_size_override
         if relation_drop_size_override is not None
@@ -138,6 +140,7 @@ def plan_destruction(
         relation_drop_size_limit=relation_drop_size_limit,
         relation_drop_size_server_limit=relation_drop_size_server_limit,
         relation_drop_size_override=relation_drop_size_override,
+        relation_drop_size_policy_observed=True,
     )
     return _build_plan(
         request=request,
@@ -328,6 +331,7 @@ def _build_plan(
         "relation_drop_size_limit": parts.relation_drop_size_limit,
         "relation_drop_size_server_limit": parts.relation_drop_size_server_limit,
         "relation_drop_size_override": parts.relation_drop_size_override,
+        "relation_drop_size_policy_observed": parts.relation_drop_size_policy_observed,
     }
     return DestructionPlan(
         plan_id=parts.plan_id or f"destruction_{uuid4().hex}",
@@ -351,6 +355,7 @@ def _build_plan(
         relation_drop_size_limit=parts.relation_drop_size_limit,
         relation_drop_size_server_limit=parts.relation_drop_size_server_limit,
         relation_drop_size_override=parts.relation_drop_size_override,
+        relation_drop_size_policy_observed=parts.relation_drop_size_policy_observed,
     )
 
 

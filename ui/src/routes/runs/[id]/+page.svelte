@@ -161,6 +161,7 @@
 			{invocationId}
 			{outcome}
 			command={startedEvent?.command ?? record?.command ?? null}
+			mode={startedEvent?.mode ?? record?.mode ?? null}
 			onPlanCreated={openDestructionPlan}
 		/>
 		{#if ownedRunning && running}

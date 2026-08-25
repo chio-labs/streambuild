@@ -84,9 +84,9 @@
 				<div class="bg-popover p-3">
 					<div class="text-[var(--sb-text-faint)] font-mono text-[9px] uppercase tracking-[0.14em]">Drop safety</div>
 					<div class="mt-1 font-mono text-[12px]">
-						{plan.dropSizeLimitBytes === null ? 'unlimited' : `${displayBytes(plan.dropSizeLimitBytes)} effective`}
+						{!plan.dropSizePolicyObserved ? 'unknown · create a fresh plan' : plan.dropSizeLimitBytes === null ? 'unlimited' : `${displayBytes(plan.dropSizeLimitBytes)} effective`}
 					</div>
-					{#if plan.dropSizeOverrideBytes !== null}
+					{#if plan.dropSizePolicyObserved && plan.dropSizeOverrideBytes !== null}
 						<div class="text-[var(--sb-text-faint)] mt-1 font-mono text-[9.5px]">
 							{displayBytes(plan.dropSizeOverrideBytes)} StreamBuild override · {plan.dropSizeServerLimitBytes === null ? 'server unlimited' : `${displayBytes(plan.dropSizeServerLimitBytes)} server default`}
 						</div>
@@ -246,8 +246,8 @@
 				</div>
 
 				{#if !destruction.reviewed}
-					<p class="mt-3 text-[11.5px]">Review records that this exact frozen impact was presented. It does not authorize execution.</p>
-					<Button variant="outline" size="sm" class="mt-3 font-mono text-[11px]" disabled={destruction.reviewing} onclick={() => void destruction.review()}>
+					<p class="mt-3 text-[11.5px]">{plan.dropSizePolicyObserved ? 'Review records that this exact frozen impact was presented. It does not authorize execution.' : 'This legacy plan has no frozen DROP safety evidence and cannot be reviewed. Create a fresh plan.'}</p>
+					<Button variant="outline" size="sm" class="mt-3 font-mono text-[11px]" disabled={destruction.reviewing || !plan.dropSizePolicyObserved} onclick={() => void destruction.review()}>
 						{destruction.reviewing ? 'Recording review…' : 'Review frozen plan'}
 					</Button>
 				{:else}

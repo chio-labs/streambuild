@@ -55,6 +55,7 @@ export type DestructionPlan = {
 	dropSizeLimitBytes: number | null;
 	dropSizeServerLimitBytes: number | null;
 	dropSizeOverrideBytes: number | null;
+	dropSizePolicyObserved: boolean;
 	challengeValues: string[];
 	expiresAt: string;
 	reviewedAt: string | null;

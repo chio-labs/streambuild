@@ -94,6 +94,9 @@ def assemble_project(
         project_name=inputs.project_name,
         target_name=inputs.target_name,
         production_target=inputs.effective_target.production_target,
+        destruction_relation_drop_size_limit=(
+            inputs.effective_target.destruction_relation_drop_size_limit
+        ),
     )
     validate_compiled_project_relation_names(project=project)
     return project
