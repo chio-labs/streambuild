@@ -32,6 +32,7 @@ from streambuild.compiler.compile.constants import (
     REPLAY_TIMESTAMP_COLUMN_NAME,
 )
 from streambuild.compiler.compile.exceptions import PipelineCompileError
+from streambuild.compiler.compile.main._render_kafka_retention import render_kafka_retention
 from streambuild.compiler.compile.models import (
     Column,
     CompiledModel,
@@ -193,7 +194,11 @@ def _source_request(
         format=authored_source.kafka.format,
         project_name=project.project_name,
         target_name=project.target_name,
-        ttl=authored_source.kafka.ttl,
+        ttl=(
+            render_kafka_retention(policy=authored_source.kafka.retention)
+            if authored_source.kafka.retention not in (None, False)
+            else authored_source.kafka.ttl
+        ),
         settings=settings,
         naming_macro_fingerprint=authored_source.naming_macro_fingerprint,
     )

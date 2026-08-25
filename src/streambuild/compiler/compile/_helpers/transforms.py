@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
+from streambuild.compiler.compile._helpers.retention import render_model_retention
 from streambuild.compiler.compile._helpers.sql_contract import analyze_transform_model_sql
 from streambuild.compiler.compile.constants import (
     REPLAY_CURSOR_COLUMN_NAME,
@@ -18,11 +20,17 @@ from streambuild.compiler.compile.models import (
     CompiledTableModel,
     CompiledViewModel,
     LogicalResourceKey,
+    ModelRetentionResolution,
     ParsedRef,
 )
 from streambuild.compiler.compile.types import LogicalResourceType
 from streambuild.compiler.discovery.constants import DEFAULT_SQL_MODEL_ENGINE
-from streambuild.compiler.discovery.models import ReplayOnChangePolicy, TransformStep, ViewStep
+from streambuild.compiler.discovery.models import (
+    ModelRetentionPolicy,
+    ReplayOnChangePolicy,
+    TransformStep,
+    ViewStep,
+)
 from streambuild.compiler.discovery.types import (
     BoundedReplayFallback,
     ModelKind,
@@ -45,6 +53,7 @@ def compile_model(
     bounded_replay_fallback: BoundedReplayFallback,
     sql_analyzer: SqlModelAnalyzer,
     replay_on_change: ReplayOnChangePolicy | None = None,
+    model_retention: ModelRetentionResolution | None = None,
 ) -> CompiledTableModel:
     """Compile one authored transform into a logical model."""
 
@@ -66,6 +75,26 @@ def compile_model(
     output_columns: tuple[Column, ...] = tuple(
         Column(name=column.name, type=column.type) for column in sql_analysis.output_columns
     )
+    retention: ModelRetentionResolution = model_retention or ModelRetentionResolution()
+    retention_applied: bool = False
+    if isinstance(retention.value, ModelRetentionPolicy):
+        effective_ttl: str | None = render_model_retention(
+            policy=retention.value,
+            available_columns={column.name: column.type for column in output_columns},
+            model_name=transform.name,
+        )
+        if effective_ttl is not None:
+            retention_applied = True
+            transform = replace(transform, ttl=effective_ttl)
+            sql_analysis = analyze_transform_model_sql(
+                analyzer=sql_analyzer,
+                transform_name=transform.name,
+                query=query,
+                engine=transform.engine,
+                order_by=tuple(transform.order_by),
+                partition_by=transform.partition_by,
+                ttl=effective_ttl,
+            )
     parsed_refs: tuple[ParsedRef, ...] = tuple(
         ParsedRef(
             name=reference.name,
@@ -108,6 +137,8 @@ def compile_model(
         preserves_required_lineage=preserves_required_lineage,
         replay_anchor_eligible=replay_anchor_eligible,
         effective_bounded_replay_fallback=bounded_replay_fallback,
+        retention=retention,
+        retention_applied=retention_applied,
         replay_on_change=replay_on_change,
     )
 
