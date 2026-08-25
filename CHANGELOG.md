@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.32.0](https://github.com/chio-labs/streambuild/compare/v0.31.0...v0.32.0) (2026-08-25)
+
+
+### Features
+
+* harden retention and scope model references ([#194](https://github.com/chio-labs/streambuild/issues/194)) ([aa801fb](https://github.com/chio-labs/streambuild/commit/aa801fb080a45529fc337f5b1a3c97e188f28c80))
+
 ## [0.31.0](https://github.com/chio-labs/streambuild/compare/v0.30.0...v0.31.0) (2026-08-25)
 
 
