@@ -123,6 +123,9 @@ when_missing = "error"
 [ui]
 timezone = "Europe/London"
 
+[dependencies]
+model_reference_scope = "pipeline"
+
 [targets.dev]
 database = "analytics"
 ```
@@ -167,6 +170,11 @@ pipelines/
 
 Nested directories organize models but do not change pipeline identity. Pipeline, source, and model
 names share one namespace and must be unique.
+
+Projects default to `dependencies.model_reference_scope = "project"`, which permits model
+references across pipeline directories for compatibility. Set the committed policy to `"pipeline"`
+to keep model dependencies within their owning pipeline. Managed and adopted sources remain
+shareable across pipelines under either policy.
 
 ## Models
 

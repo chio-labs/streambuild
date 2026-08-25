@@ -32,6 +32,7 @@ from tests.unit.src.streambuild.cli.compile.helpers import (
     target_snapshot,
     write_adopted_source,
     write_artifact_leaf_model,
+    write_cross_pipeline_model_reference,
     write_empty_project,
     write_invalid_model,
     write_invalid_model_header,
@@ -340,6 +341,7 @@ def test_given_existing_static_target_when_generation_fails_then_preserves_previ
             expected_manifest_models=("orders_enriched",),
             expected_dag_node_ids=("source:orders", "model:orders_enriched"),
             expected_edge=("source:orders", "model:orders_enriched", "driving_input"),
+            expected_model_reference_scope="project",
         )
     ],
     ids=lambda case: case.description,
@@ -360,6 +362,9 @@ def test_given_one_analysis_when_writing_manifest_and_dag_then_artifacts_agree(
     assert tuple(node["id"] for node in dag["nodes"]) == test_case.expected_dag_node_ids
     assert tuple((edge["from_id"], edge["to_id"], edge["edge_type"]) for edge in dag["edges"]) == (
         test_case.expected_edge,
+    )
+    assert manifest["dependencies"]["model_reference_scope"] == (
+        test_case.expected_model_reference_scope
     )
     assert not any(path.startswith("compiled/workflows/") for path in manifest["artifacts"])
 
@@ -499,6 +504,43 @@ def test_given_malformed_reference_when_compiling_then_cli_renders_authored_sour
     project_dir: Path = tmp_path / "project"
     copy_basic_project(project_dir=project_dir)
     write_invalid_reference_model(project_dir=project_dir)
+
+    exit_code: int = main(("stb", "compile", "--project-dir", str(project_dir)))
+    stderr: str = capsys.readouterr().err
+
+    assert exit_code == test_case.expected_exit_code
+    assert tuple(fragment in stderr for fragment in test_case.expected_error_fragments) == (
+        True,
+        True,
+        True,
+        True,
+    )
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CompileDiagnosticOutputTestCase(
+            description="renders pipeline-scope graph errors at the authored reference",
+            expected_exit_code=1,
+            expected_error_fragments=(
+                "error [STB-GRAPH-001]",
+                "phase: graph",
+                "beta.sql:6:",
+                "references model 'orders_enriched'",
+            ),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_cross_pipeline_model_ref_when_compiling_then_cli_renders_graph_diagnostic(
+    test_case: CompileDiagnosticOutputTestCase,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    project_dir: Path = tmp_path / "project"
+    copy_basic_project(project_dir=project_dir)
+    write_cross_pipeline_model_reference(project_dir=project_dir)
 
     exit_code: int = main(("stb", "compile", "--project-dir", str(project_dir)))
     stderr: str = capsys.readouterr().err

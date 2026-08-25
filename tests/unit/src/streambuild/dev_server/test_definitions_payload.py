@@ -32,6 +32,7 @@ from tests.unit.src.streambuild.dev_server.helpers import (
             expected_driving_input="orders",
             expected_source_kind="kafka",
             expected_managed_ddl_fragment="CREATE",
+            expected_model_reference_scope="project",
         ),
     ],
     ids=lambda case: case.description,
@@ -64,6 +65,9 @@ def test_given_compiled_project_when_reading_definitions_then_serializes_expecte
         for relation in source["managedRelations"]
     )
     assert payload["project"]["database"] == "analytics"
+    assert payload["project"]["dependencies"]["modelReferenceScope"] == (
+        test_case.expected_model_reference_scope
+    )
 
 
 @pytest.mark.parametrize(
