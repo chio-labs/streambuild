@@ -657,6 +657,28 @@ def test_given_absent_local_toml_when_loading_then_returns_typed_defaults(
             ),
         ),
         ProjectConfigurationErrorTestCase(
+            description="rejects a non-positive typed retention duration",
+            project_contents=(
+                'name = "analytics"\ndefault_target = "dev"\n'
+                '[defaults.models.retention]\nduration = "0d"\n'
+                'timestamp_column = "event_at"\n[targets.dev]\n'
+            ),
+            expected_error_fragment=(
+                "defaults.models.retention.duration must be greater than zero"
+            ),
+        ),
+        ProjectConfigurationErrorTestCase(
+            description="rejects a qualified typed retention column",
+            project_contents=(
+                'name = "analytics"\ndefault_target = "dev"\n'
+                '[defaults.models.retention]\nduration = "7d"\n'
+                'timestamp_column = "events.event_at"\n[targets.dev]\n'
+            ),
+            expected_error_fragment=(
+                "defaults.models.retention.timestamp_column must be an unqualified column name"
+            ),
+        ),
+        ProjectConfigurationErrorTestCase(
             description="rejects a target-level project-wide mode",
             project_contents=(
                 'name = "analytics"\ndefault_target = "dev"\n'

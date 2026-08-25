@@ -18,7 +18,7 @@ from streambuild.compiler.discovery.types import (
     RetentionMissingBehavior,
 )
 
-_DATE_TYPE_NAME: str = "Date"
+_DATE_TYPE_NAMES: frozenset[str] = frozenset({"Date", "Date32"})
 _DATETIME_TYPE_PREFIX: str = "DateTime"
 
 
@@ -108,5 +108,5 @@ def _interval(duration_seconds: int) -> str:
 
 def _is_timestamp_type(column_type: str) -> bool:
     return not column_type.startswith("Nullable(") and (
-        column_type == _DATE_TYPE_NAME or column_type.startswith(_DATETIME_TYPE_PREFIX)
+        column_type in _DATE_TYPE_NAMES or column_type.startswith(_DATETIME_TYPE_PREFIX)
     )
