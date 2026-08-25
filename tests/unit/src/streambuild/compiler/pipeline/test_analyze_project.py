@@ -48,6 +48,7 @@ from tests.unit.src.streambuild.compiler.pipeline._test_types import (
     AnalyzeProjectTestCase,
     CompilationEntrypointsTestCase,
     CompiledAuditPolicyTestCase,
+    DestructionTargetMetadataTestCase,
     DuplicateProjectInputTestCase,
     ManagedSourceTtlPrecedenceTestCase,
     PrivateMacroDiscoveryTestCase,
@@ -70,6 +71,56 @@ from tests.unit.src.streambuild.compiler.pipeline.helpers import (
     write_source_model_name_collision,
 )
 from tests.unit.src.streambuild.compiler.test_discovery.helpers import model_payload
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DestructionTargetMetadataTestCase(
+            description="recompile reloads committed destruction safety policy",
+            initial_limit="100GiB",
+            fresh_limit="10GiB",
+            expected_initial_bytes=107_374_182_400,
+            expected_fresh_bytes=10_737_418_240,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_changed_destruction_policy_when_recompiling_then_fresh_limit_is_retained(
+    tmp_path: Path,
+    test_case: DestructionTargetMetadataTestCase,
+) -> None:
+    write_compilation_project(tmp_path)
+    config_path: Path = tmp_path / "streambuild_project.toml"
+    base_config: str = config_path.read_text()
+    config_path.write_text(
+        f"{base_config}\n[targets.test.destruction]\n"
+        f'max_table_size_to_drop = "{test_case.initial_limit}"\n'
+    )
+
+    initial: CompileAnalysis = analyze_project(
+        pipelines_root=tmp_path / "pipelines",
+        loaded_project=load_project_input_for_path(path=tmp_path),
+        adapter_profile=build_compiler_adapter_profile(ClickHouseAdapter()),
+    )
+    config_path.write_text(
+        f"{base_config}\n[targets.test.destruction]\n"
+        f'max_table_size_to_drop = "{test_case.fresh_limit}"\n'
+    )
+    fresh: CompileAnalysis = analyze_project(
+        pipelines_root=tmp_path / "pipelines",
+        loaded_project=load_project_input_for_path(path=tmp_path),
+        adapter_profile=build_compiler_adapter_profile(ClickHouseAdapter()),
+    )
+
+    assert (
+        initial.compiled_project.destruction_relation_drop_size_limit
+        == test_case.expected_initial_bytes
+    )
+    assert (
+        fresh.compiled_project.destruction_relation_drop_size_limit
+        == test_case.expected_fresh_bytes
+    )
 
 
 @pytest.mark.parametrize(

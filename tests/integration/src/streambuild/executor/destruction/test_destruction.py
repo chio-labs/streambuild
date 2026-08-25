@@ -1,7 +1,6 @@
 import json
 from collections import defaultdict
 from collections.abc import Callable, Sequence
-from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 
@@ -372,6 +371,11 @@ def test_given_second_drop_failure_when_destroying_then_catalog_has_exact_comple
 ) -> None:
     project_root: Path = tmp_path / "partial-project"
     write_direct_build_project(project_root=project_root)
+    project_config: Path = project_root / "streambuild_project.toml"
+    project_config.write_text(
+        project_config.read_text()
+        + '\n[targets.test.destruction]\nmax_table_size_to_drop = "100GiB"\n'
+    )
     connection: AdapterConnection = build_managed_clickhouse_client(
         clickhouse_connection_settings,
         database=clickhouse_database,
@@ -402,7 +406,6 @@ def test_given_second_drop_failure_when_destroying_then_catalog_has_exact_comple
             analysis=analysis,
             connection=connection,
         )
-        plan = replace(plan, relation_drop_size_override=107_374_182_400)
         statements: tuple[WarehouseStatement, ...] = assemble_destruction_workflow(
             plan=plan,
             connection=connection,

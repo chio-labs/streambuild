@@ -31,6 +31,18 @@ def render_destruction_plan(plan: DestructionPlan) -> str:
         f"Preserves managed sources: {_yes_no(plan.preserves_sources)}",
         f"Preserves replay data: {_yes_no(plan.preserves_replay_data)}",
         f"Estimated active-part bytes: {plan.estimated_bytes}",
+        (
+            "Effective relation DROP limit: "
+            f"{_drop_limit(plan=plan, value=plan.relation_drop_size_limit)}"
+        ),
+        (
+            "ClickHouse server default DROP limit: "
+            f"{_drop_limit(plan=plan, value=plan.relation_drop_size_server_limit)}"
+        ),
+        (
+            "StreamBuild destruction DROP override: "
+            f"{_drop_limit(plan=plan, value=plan.relation_drop_size_override)}"
+        ),
         "Irreversible: yes; dropped data cannot be restored by StreamBuild",
         (
             "Recreation: authored definitions remain and a later build can recreate "
@@ -88,6 +100,12 @@ def print_destruction_result(result: DestructionExecutionResult) -> None:
 
 def _values(values: tuple[str, ...]) -> str:
     return ", ".join(values) if values else "none"
+
+
+def _drop_limit(*, plan: DestructionPlan, value: int | None) -> str:
+    if not plan.relation_drop_size_policy_observed:
+        return "unknown; create a fresh plan"
+    return "unlimited" if value is None else f"{value} bytes"
 
 
 def _yes_no(value: bool) -> str:

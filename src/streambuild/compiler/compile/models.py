@@ -414,6 +414,7 @@ class CompilerTargetMetadata:
     default_database: str | None
     default_schema: str | None
     production_target: bool = False
+    destruction_relation_drop_size_limit: int | None = None
 
 
 @dataclass(frozen=True)
@@ -465,3 +466,4 @@ class CompiledProject:
     project_name: str | None = None
     target_name: str | None = None
     production_target: bool = False
+    destruction_relation_drop_size_limit: int | None = None

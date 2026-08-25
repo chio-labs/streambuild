@@ -8,14 +8,15 @@
 		invocationId: string;
 		outcome: string;
 		command: string | null;
+		mode: string | null;
 		onPlanCreated: (planId: string) => Promise<void>;
 	};
 
-	let { invocationId, outcome, command, onPlanCreated }: Props = $props();
+	let { invocationId, outcome, command, mode, onPlanCreated }: Props = $props();
 	let planning = $state<boolean>(false);
 	let error = $state<string | null>(null);
 	const operation: DestructionOperation | null = $derived(
-		destructionRecoveryOperation(outcome, command)
+		destructionRecoveryOperation(outcome, command, mode)
 	);
 
 	async function createRecovery(): Promise<void> {
