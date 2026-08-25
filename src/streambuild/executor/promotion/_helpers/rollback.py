@@ -8,6 +8,7 @@ from streambuild.adapter.models import (
     AdapterDeploymentRecord,
     AdapterPublishEventRecord,
     AdapterStableBinding,
+    CatalogSnapshot,
     InspectedActiveTableBinding,
     InspectedManagedTableState,
 )
@@ -65,6 +66,28 @@ def resolve_rollback_plan(*, request: RollbackRequest, client: AdapterConnection
         raise PublishExecutionError(
             f"Rollback target deployment '{target_event.deployment_id}' publication bindings "
             "do not match its deployment metadata"
+        )
+    mapping_databases: frozenset[str] = frozenset(
+        mapping.logical_key.database or request.default_database
+        for mapping in target_deployment.prepared_object_mappings
+    )
+    catalogs: dict[str, CatalogSnapshot] = {}
+    for database in sorted(mapping_databases):
+        catalogs[database] = client.load_catalog(database)
+    missing_relations: tuple[str, ...] = tuple(
+        sorted(
+            f"{mapping.logical_key.database or request.default_database}.{mapping.physical_name}"
+            for mapping in target_deployment.prepared_object_mappings
+            if mapping.physical_name
+            not in catalogs[
+                mapping.logical_key.database or request.default_database
+            ].relation_names()
+        )
+    )
+    if missing_relations:
+        raise PublishExecutionError(
+            f"Rollback target deployment '{target_event.deployment_id}' is missing retained "
+            f"relations: {', '.join(missing_relations)}"
         )
     return RollbackPlan(
         current_deployment_id=current_event.deployment_id,

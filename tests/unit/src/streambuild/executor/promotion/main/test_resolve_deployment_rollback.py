@@ -15,6 +15,7 @@ from tests.unit.src.streambuild.executor.promotion.main._test_types import (
 )
 from tests.unit.src.streambuild.executor.promotion.main.helpers import (
     rollback_active_state,
+    rollback_catalog_relations,
     rollback_deployment_inventory,
     rollback_mismatched_inventory,
     rollback_tied_inventory,
@@ -61,6 +62,7 @@ def test_given_publication_history_when_resolving_rollback_then_returns_expected
     connection: RecordingAdapterConnection = RecordingAdapterConnection(
         deployment_inventory=rollback_deployment_inventory(),
         managed_table_state=rollback_active_state(),
+        relations=rollback_catalog_relations(),
     )
 
     result: RollbackPlan = resolve_deployment_rollback(
@@ -110,6 +112,18 @@ def test_given_publication_history_when_resolving_rollback_then_returns_expected
             ),
             expected_error_fragment="requires an active published deployment",
         ),
+        RollbackResolutionErrorTestCase(
+            description="published target with a missing relation is invalid",
+            request=RollbackRequest(
+                deployment_id="20260727T100000Z_old111",
+                previous=False,
+                metadata_database="metadata",
+                default_database="analytics",
+            ),
+            managed_table_state=rollback_active_state(),
+            expected_error_fragment="missing retained relations",
+            relations=(rollback_catalog_relations()[0], *rollback_catalog_relations()[2:]),
+        ),
     ],
     ids=lambda case: case.description,
 )
@@ -119,6 +133,7 @@ def test_given_invalid_target_when_resolving_rollback_then_raises_clear_error(
     connection: RecordingAdapterConnection = RecordingAdapterConnection(
         deployment_inventory=rollback_deployment_inventory(),
         managed_table_state=test_case.managed_table_state,
+        relations=test_case.relations,
     )
 
     with pytest.raises(PublishExecutionError, match=test_case.expected_error_fragment):
@@ -175,6 +190,7 @@ def test_given_equal_publication_times_when_rolling_back_previous_then_uses_publ
     connection: RecordingAdapterConnection = RecordingAdapterConnection(
         deployment_inventory=test_case.inventory,
         managed_table_state=rollback_active_state(),
+        relations=rollback_catalog_relations(),
     )
 
     result: RollbackPlan = resolve_deployment_rollback(

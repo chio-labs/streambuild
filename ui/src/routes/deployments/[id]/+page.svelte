@@ -196,6 +196,13 @@
 				<span class="text-[var(--sb-text-faint)] text-[11.5px]">
 					nothing changes until this is {isInitialPublish ? 'published' : 'promoted'}
 				</span>
+			{:else if detail.state === 'physical_missing'}
+				<span class="text-[11.5px]" style:color="var(--sb-error)">
+					invalid · {detail.missingRelationNames.length} mapped relation{detail.missingRelationNames
+						.length === 1
+						? ''
+						: 's'} missing · promotion and rollback disabled
+				</span>
 			{/if}
 		</div>
 
