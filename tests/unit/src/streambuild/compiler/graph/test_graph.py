@@ -395,6 +395,13 @@ def test_given_allowed_model_reference_scope_when_building_graph_then_dependency
             ),
             expected_error_fragment=("dependencies.model_reference_scope is 'pipeline'"),
         ),
+        ModelReferenceScopeErrorTestCase(
+            description="pipeline scope rejects a cross-pipeline view reference",
+            downstream_model_sql=(
+                'MODEL (kind view); SELECT order_id::UInt64 AS order_id FROM __ref("alpha")'
+            ),
+            expected_error_fragment=("dependencies.model_reference_scope is 'pipeline'"),
+        ),
     ],
     ids=lambda case: case.description,
 )

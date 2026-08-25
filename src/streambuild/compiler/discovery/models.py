@@ -370,8 +370,8 @@ class EffectiveProjectConfiguration:
     build: BuildConfig = field(default_factory=BuildConfig)
     destruction: DestructionConfig = field(default_factory=DestructionConfig)
     ui: UiConfig = field(default_factory=UiConfig)
-    dependencies: ProjectDependencies = field(default_factory=ProjectDependencies)
     production_target: bool = False
+    dependencies: ProjectDependencies = field(default_factory=ProjectDependencies)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "variables", immutable_config_pairs(self.variables))
