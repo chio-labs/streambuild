@@ -632,6 +632,31 @@ def test_given_absent_local_toml_when_loading_then_returns_typed_defaults(
             expected_error_fragment="ui.timezone must be a valid IANA timezone",
         ),
         ProjectConfigurationErrorTestCase(
+            description="rejects legacy and typed model retention defaults together",
+            project_contents=(
+                'name = "analytics"\ndefault_target = "dev"\n'
+                '[defaults]\nmodel_ttl = "event_at + INTERVAL 7 DAY"\n'
+                '[defaults.models.retention]\nduration = "7d"\n'
+                'timestamp_column = "event_at"\n[targets.dev]\n'
+            ),
+            expected_error_fragment=(
+                "defaults.model_ttl cannot be combined with defaults.models.retention"
+            ),
+        ),
+        ProjectConfigurationErrorTestCase(
+            description="rejects legacy and typed Kafka retention defaults together",
+            project_contents=(
+                'name = "analytics"\ndefault_target = "dev"\n'
+                '[defaults]\nmanaged_source_ttl = "_replay_landed_at + INTERVAL 7 DAY"\n'
+                '[defaults.sources.kafka.retention]\nduration = "7d"\n'
+                "[targets.dev]\n"
+            ),
+            expected_error_fragment=(
+                "defaults.managed_source_ttl cannot be combined with "
+                "defaults.sources.kafka.retention"
+            ),
+        ),
+        ProjectConfigurationErrorTestCase(
             description="rejects a target-level project-wide mode",
             project_contents=(
                 'name = "analytics"\ndefault_target = "dev"\n'

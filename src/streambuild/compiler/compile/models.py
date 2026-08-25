@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
+from typing import Literal
 
 from streambuild.adapter.models import AdapterIdentity
 from streambuild.adapter.types import (
@@ -16,12 +17,17 @@ from streambuild.adapter.types import (
     AdapterSourceRealizer,
 )
 from streambuild.compiler.audit_discovery.models import LoadedSqlAudit
-from streambuild.compiler.compile.types import DesiredObjectType, LogicalResourceType
+from streambuild.compiler.compile.types import (
+    DesiredObjectType,
+    LogicalResourceType,
+    RetentionOrigin,
+)
 from streambuild.compiler.discovery.models import (
     DiscoveredProjectInputs,
     ExternalTableSourceStep,
     KafkaLandingStep,
     LoadedPipeline,
+    ModelRetentionPolicy,
     Pipeline,
     PostgresRefreshSourceStep,
     Project,
@@ -286,6 +292,18 @@ class CompiledSource:
 
 
 @dataclass(frozen=True)
+class ModelRetentionResolution:
+    """Effective typed retention choice and its authored scope."""
+
+    value: ModelRetentionPolicy | Literal[False] | None = None
+    origin: RetentionOrigin | str | None = None
+
+    def __post_init__(self) -> None:
+        if self.origin is not None:
+            object.__setattr__(self, "origin", RetentionOrigin(self.origin))
+
+
+@dataclass(frozen=True)
 class CompiledModel:
     """One semantically compiled logical model."""
 
@@ -338,6 +356,8 @@ class CompiledTableModel(CompiledModel):
     preserves_required_lineage: bool
     replay_anchor_eligible: bool
     effective_bounded_replay_fallback: BoundedReplayFallback
+    retention: ModelRetentionResolution = field(default_factory=ModelRetentionResolution)
+    retention_applied: bool = False
     replay_on_change: ReplayOnChangePolicy | None = None
 
     @property

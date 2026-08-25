@@ -7,12 +7,13 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
+from typing import Literal, cast
 
 import yaml
 from yaml import YAMLError
 
 from streambuild.compiler.discovery._helpers.interpolation import interpolate_config_value
+from streambuild.compiler.discovery._helpers.model_header import parse_kafka_retention
 from streambuild.compiler.discovery.constants import (
     BOOLEAN_FALSE_LITERALS,
     BOOLEAN_TRUE_LITERALS,
@@ -36,6 +37,7 @@ from streambuild.compiler.discovery.models import (
     DiscoveredSourceFile,
     ExternalTableSourceStep,
     KafkaLandingStep,
+    KafkaRetentionPolicy,
     KafkaSettings,
     PostgresRefreshSourceStep,
     ReplayBoundary,
@@ -57,12 +59,19 @@ class _ResolvedKafkaSourceName:
     macro_fingerprint: str | None = None
 
 
+@dataclass(frozen=True)
+class _ManagedSourceRetentionDefaults:
+    ttl: str | None
+    retention: KafkaRetentionPolicy | Literal[False] | None
+
+
 def discover_source_registry(
     *,
     project_dir: Path,
     variables: Mapping[str, object],
     environment: Mapping[str, str],
     default_managed_source_ttl: str | None = None,
+    default_managed_source_retention: KafkaRetentionPolicy | Literal[False] | None = None,
     default_kafka_broker_list: str | None = None,
     default_freshness: SourceFreshnessPolicy | None = None,
     default_kafka_naming_macro: str | None = None,
@@ -73,13 +82,17 @@ def discover_source_registry(
     sources_root: Path = project_dir / "sources"
     if not sources_root.is_dir():
         return ()
+    retention_defaults: _ManagedSourceRetentionDefaults = _ManagedSourceRetentionDefaults(
+        ttl=default_managed_source_ttl,
+        retention=default_managed_source_retention,
+    )
     discovered_files: tuple[DiscoveredSourceFile, ...] = tuple(
         _load_source_file(
             file_path=file_path,
             project_dir=project_dir,
             variables=variables,
             environment=environment,
-            default_managed_source_ttl=default_managed_source_ttl,
+            retention_defaults=retention_defaults,
             default_kafka_broker_list=default_kafka_broker_list,
             default_freshness=default_freshness,
             default_kafka_naming_macro=default_kafka_naming_macro,
@@ -195,7 +208,7 @@ def _load_source_file(
     project_dir: Path,
     variables: Mapping[str, object],
     environment: Mapping[str, str],
-    default_managed_source_ttl: str | None,
+    retention_defaults: _ManagedSourceRetentionDefaults,
     default_kafka_broker_list: str | None,
     default_freshness: SourceFreshnessPolicy | None,
     default_kafka_naming_macro: str | None,
@@ -213,7 +226,7 @@ def _load_source_file(
             source_file=source_file,
             variables=variables,
             environment=environment,
-            default_managed_source_ttl=default_managed_source_ttl,
+            retention_defaults=retention_defaults,
             default_kafka_broker_list=default_kafka_broker_list,
             default_freshness=default_freshness,
             default_kafka_naming_macro=default_kafka_naming_macro,
@@ -227,7 +240,7 @@ def _parse_source_file(
     source_file: DiscoveredProjectFile,
     variables: Mapping[str, object],
     environment: Mapping[str, str],
-    default_managed_source_ttl: str | None,
+    retention_defaults: _ManagedSourceRetentionDefaults,
     default_kafka_broker_list: str | None,
     default_freshness: SourceFreshnessPolicy | None,
     default_kafka_naming_macro: str | None,
@@ -262,7 +275,7 @@ def _parse_source_file(
             file_path=source_file.file_path,
             variables=variables,
             environment=environment,
-            default_managed_source_ttl=default_managed_source_ttl,
+            retention_defaults=retention_defaults,
             default_kafka_broker_list=default_kafka_broker_list,
             default_freshness=default_freshness,
             default_kafka_naming_macro=default_kafka_naming_macro,
@@ -279,7 +292,7 @@ def _parse_source(
     file_path: Path,
     variables: Mapping[str, object],
     environment: Mapping[str, str],
-    default_managed_source_ttl: str | None,
+    retention_defaults: _ManagedSourceRetentionDefaults,
     default_kafka_broker_list: str | None,
     default_freshness: SourceFreshnessPolicy | None,
     default_kafka_naming_macro: str | None,
@@ -363,7 +376,7 @@ def _parse_source(
             file_path=file_path,
             variables=variables,
             environment=environment,
-            default_managed_source_ttl=default_managed_source_ttl,
+            retention_defaults=retention_defaults,
             default_kafka_broker_list=default_kafka_broker_list,
             freshness=freshness,
         )
@@ -405,7 +418,7 @@ def _parse_managed_kafka_source(
     file_path: Path,
     variables: Mapping[str, object],
     environment: Mapping[str, str],
-    default_managed_source_ttl: str | None,
+    retention_defaults: _ManagedSourceRetentionDefaults,
     default_kafka_broker_list: str | None,
     freshness: SourceFreshnessPolicy | None,
 ) -> KafkaLandingStep:
@@ -459,6 +472,25 @@ def _parse_managed_kafka_source(
             f"Source file '{file_path}' {label}.broker_list must be a non-empty string "
             "or defaults.kafka_broker_list must be configured"
         )
+    explicit_ttl: str | None = _optional_string(
+        mapping=mapping,
+        key="ttl",
+        field_path=label,
+        file_path=file_path,
+        variables=variables,
+        environment=environment,
+    )
+    try:
+        explicit_retention: KafkaRetentionPolicy | Literal[False] | None = parse_kafka_retention(
+            value=mapping.get("retention"),
+            field_path=f"Source file '{file_path}' {label}.retention",
+        )
+    except ValueError as error:
+        raise PipelineDiscoveryError(str(error)) from error
+    if explicit_ttl is not None and explicit_retention is not None:
+        raise PipelineDiscoveryError(
+            f"Source file '{file_path}' {label} cannot combine ttl with typed retention"
+        )
     return KafkaLandingStep(
         name=source_name.name,
         kafka=KafkaSettings(
@@ -481,15 +513,16 @@ def _parse_managed_kafka_source(
                 environment=environment,
             )
             or "JSONAsString",
-            ttl=_optional_string(
-                mapping=mapping,
-                key="ttl",
-                field_path=label,
-                file_path=file_path,
-                variables=variables,
-                environment=environment,
-            )
-            or default_managed_source_ttl,
+            ttl=(
+                explicit_ttl
+                if explicit_ttl is not None
+                else (retention_defaults.ttl if explicit_retention is None else None)
+            ),
+            retention=(
+                explicit_retention
+                if explicit_retention is not None
+                else (retention_defaults.retention if explicit_ttl is None else None)
+            ),
             settings=settings or None,
         ),
         replay_boundary=replay_boundary,
@@ -612,7 +645,15 @@ def _parse_adopted_source(
 ) -> ExternalTableSourceStep:
     managed_fields: tuple[str, ...] = tuple(
         field
-        for field in ("broker_list", "topic", "consumer_group", "format", "ttl", "settings")
+        for field in (
+            "broker_list",
+            "topic",
+            "consumer_group",
+            "format",
+            "ttl",
+            "retention",
+            "settings",
+        )
         if mapping.get(field) is not None
     )
     if managed_fields:

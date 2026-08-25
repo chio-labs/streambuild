@@ -49,6 +49,7 @@ from streambuild.compiler.pipeline.models import RealizedProject
 from tests.unit.src.streambuild.compiler.compile._test_types import (
     CompileAdoptedSourceSharingTestCase,
     CompileModelNamingTestCase,
+    CompileModelRetentionTestCase,
     CompileModelTtlDefaultTestCase,
     CompilePipelineAdditionalRefDependencyTestCase,
     CompilePipelineAdoptedSourceTestCase,
@@ -71,6 +72,7 @@ from tests.unit.src.streambuild.compiler.compile._test_types import (
     CompilePipelineUnsupportedReplayBehaviorTestCase,
     CompileRelationCollisionTestCase,
     CompileRelationNameErrorTestCase,
+    CompileRetentionErrorTestCase,
 )
 from tests.unit.src.streambuild.compiler.compile.helpers import (
     build_inline_sql_pipeline,
@@ -1383,6 +1385,181 @@ def test_given_project_model_ttl_when_compiling_then_applies_model_precedence(
     model: CompiledTableModel = cast(CompiledTableModel, project.models[0])
 
     assert model.transform.ttl == test_case.expected_ttl
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CompileModelRetentionTestCase(
+            description="project typed retention applies to compatible model columns",
+            pipeline_defaults="",
+            model_retention_header="",
+            timestamp_projection=("CAST(_replay_timestamp AS DateTime64(3)) AS kafka_timestamp, "),
+            when_missing="error",
+            expected_ttl="least(kafka_timestamp, ingested_at) + INTERVAL 7 DAY",
+            expected_origin="project",
+            expected_applied=True,
+        ),
+        CompileModelRetentionTestCase(
+            description="pipeline typed retention overrides the project policy",
+            pipeline_defaults=(
+                '[defaults.models.retention]\nduration = "30d"\n'
+                'timestamp_column = "kafka_timestamp"\ncap_at_column = "ingested_at"\n'
+            ),
+            model_retention_header="",
+            timestamp_projection=("CAST(_replay_timestamp AS DateTime64(3)) AS kafka_timestamp, "),
+            when_missing="error",
+            expected_ttl="least(kafka_timestamp, ingested_at) + INTERVAL 30 DAY",
+            expected_origin="pipeline",
+            expected_applied=True,
+        ),
+        CompileModelRetentionTestCase(
+            description="model typed retention overrides pipeline and project policies",
+            pipeline_defaults=(
+                '[defaults.models.retention]\nduration = "30d"\n'
+                'timestamp_column = "kafka_timestamp"\ncap_at_column = "ingested_at"\n'
+            ),
+            model_retention_header=(
+                ', retention (duration "2d", timestamp_column kafka_timestamp, '
+                "cap_at_column ingested_at)"
+            ),
+            timestamp_projection=("CAST(_replay_timestamp AS DateTime64(3)) AS kafka_timestamp, "),
+            when_missing="error",
+            expected_ttl="least(kafka_timestamp, ingested_at) + INTERVAL 2 DAY",
+            expected_origin="model",
+            expected_applied=True,
+        ),
+        CompileModelRetentionTestCase(
+            description="explicit disabled retention blocks inherited policies",
+            pipeline_defaults="",
+            model_retention_header=", retention false",
+            timestamp_projection=("CAST(_replay_timestamp AS DateTime64(3)) AS kafka_timestamp, "),
+            when_missing="error",
+            expected_ttl=None,
+            expected_origin="model",
+            expected_applied=False,
+        ),
+        CompileModelRetentionTestCase(
+            description="skip policy leaves an incompatible model without retention",
+            pipeline_defaults="",
+            model_retention_header="",
+            timestamp_projection="",
+            when_missing="skip",
+            expected_ttl=None,
+            expected_origin="project",
+            expected_applied=False,
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_typed_retention_when_compiling_then_resolves_schema_aware_precedence(
+    test_case: CompileModelRetentionTestCase,
+    tmp_path: Path,
+) -> None:
+    write_project_toml(
+        project_dir=tmp_path,
+        contents=(
+            'name = "retention_defaults"\ndefault_target = "test"\n\n'
+            '[defaults.models.retention]\nduration = "7d"\n'
+            'timestamp_column = "kafka_timestamp"\ncap_at_column = "ingested_at"\n'
+            f'when_missing = "{test_case.when_missing}"\n\n[targets.test]\n'
+        ),
+    )
+    write_source_yml(
+        project_dir=tmp_path,
+        relative_path="events.yml",
+        contents=(
+            "sources:\n  - name: events\n    kind: kafka\n"
+            "    broker_list: kafka:9092\n    topic: source.events\n"
+            "    replay_boundary: {mode: offsets}\n"
+        ),
+    )
+    pipeline_dir: Path = tmp_path / "pipelines" / "pl__events"
+    write_pipeline_file(pipeline_dir / "pipeline.toml", test_case.pipeline_defaults)
+    write_pipeline_file(
+        pipeline_dir / "events_table.sql",
+        (
+            f"MODEL (order_by [_replay_timestamp]{test_case.model_retention_header}); "
+            f"SELECT {test_case.timestamp_projection}"
+            "CAST(_replay_landed_at AS DateTime64(3)) AS ingested_at, "
+            "CAST(_replay_partition AS Int32) AS _replay_partition, "
+            "CAST(_replay_offset AS Int64) AS _replay_offset, "
+            "CAST(_replay_timestamp AS DateTime64(3)) AS _replay_timestamp, "
+            "CAST(_replay_landed_at AS DateTime64(3)) AS _replay_landed_at "
+            'FROM __source("events")'
+        ),
+    )
+
+    project: CompiledProject = compile_logical_project(tmp_path)
+    model: CompiledTableModel = cast(CompiledTableModel, project.models[0])
+
+    assert model.transform.ttl == test_case.expected_ttl
+    assert str(model.retention.origin) == test_case.expected_origin
+    assert model.retention_applied is test_case.expected_applied
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CompileRetentionErrorTestCase(
+            description="required project retention timestamp is absent",
+            timestamp_projection="",
+            expected_error_fragment=(
+                "Model 'events_table' retention requires missing output columns: kafka_timestamp"
+            ),
+        ),
+        CompileRetentionErrorTestCase(
+            description="project retention timestamp has an incompatible type",
+            timestamp_projection="CAST('bad' AS String) AS kafka_timestamp, ",
+            expected_error_fragment=(
+                "Model 'events_table' retention columns must be non-null Date or DateTime "
+                r"values: kafka_timestamp \(String\)"
+            ),
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_required_retention_column_missing_when_compiling_then_fails_with_model_context(
+    test_case: CompileRetentionErrorTestCase,
+    tmp_path: Path,
+) -> None:
+    write_project_toml(
+        project_dir=tmp_path,
+        contents=(
+            'name = "retention_error"\ndefault_target = "test"\n\n'
+            '[defaults.models.retention]\nduration = "7d"\n'
+            'timestamp_column = "kafka_timestamp"\nwhen_missing = "error"\n\n'
+            "[targets.test]\n"
+        ),
+    )
+    write_source_yml(
+        project_dir=tmp_path,
+        relative_path="events.yml",
+        contents=(
+            "sources:\n  - name: events\n    kind: kafka\n"
+            "    broker_list: kafka:9092\n    topic: source.events\n"
+            "    replay_boundary: {mode: offsets}\n"
+        ),
+    )
+    pipeline_dir: Path = tmp_path / "pipelines" / "pl__events"
+    write_pipeline_file(
+        pipeline_dir / "events_table.sql",
+        (
+            "MODEL (order_by [_replay_timestamp]); SELECT "
+            f"{test_case.timestamp_projection}"
+            "CAST(_replay_partition AS Int32) AS _replay_partition, "
+            "CAST(_replay_offset AS Int64) AS _replay_offset, "
+            "CAST(_replay_timestamp AS DateTime64(3)) AS _replay_timestamp, "
+            "CAST(_replay_landed_at AS DateTime64(3)) AS _replay_landed_at "
+            'FROM __source("events")'
+        ),
+    )
+
+    with pytest.raises(
+        PipelineCompileError,
+        match=test_case.expected_error_fragment,
+    ):
+        compile_logical_project(tmp_path)
 
 
 @pytest.mark.parametrize(
