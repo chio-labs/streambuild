@@ -187,6 +187,25 @@ class CompileModelTtlDefaultTestCase:
 
 
 @dataclass(frozen=True)
+class CompileModelRetentionTestCase:
+    description: str
+    pipeline_defaults: str
+    model_retention_header: str
+    timestamp_projection: str
+    when_missing: str
+    expected_ttl: str | None
+    expected_origin: str
+    expected_applied: bool
+
+
+@dataclass(frozen=True)
+class CompileRetentionErrorTestCase:
+    description: str
+    timestamp_projection: str
+    expected_error_fragment: str
+
+
+@dataclass(frozen=True)
 class CompileRelationNameErrorTestCase:
     description: str
     relation_name: str

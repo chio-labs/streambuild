@@ -25,3 +25,7 @@ class ProjectConfigError(ProjectSpecError):
 
 class DurationParseError(ProjectSpecError):
     """Raised when a compact authored duration is invalid."""
+
+
+class RetentionConfigError(ProjectSpecError):
+    """Raised when a typed retention policy is invalid."""

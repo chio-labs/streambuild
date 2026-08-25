@@ -209,6 +209,47 @@ def write_managed_source_ttl_project(
     )
 
 
+def write_managed_source_retention_project(
+    *, project_dir: Path, source_retention_declaration: str
+) -> None:
+    _write(
+        project_dir / "streambuild_project.toml",
+        """
+        name = "managed_source_retention_project"
+        default_target = "test"
+
+        [defaults.sources.kafka.retention]
+        duration = "7d"
+        timestamp = "broker"
+        fallback = "landed"
+        cap_at = "landed"
+
+        [targets.test]
+        database = "analytics"
+        """,
+    )
+    _write(
+        project_dir / "sources" / "orders.yml",
+        f"""
+        sources:
+          - name: orders
+            kind: kafka
+            broker_list: kafka:9092
+            topic: source.orders
+            {source_retention_declaration}
+            replay_boundary: {{mode: offsets}}
+        """,
+    )
+    _write(
+        project_dir / "pipelines" / "pl__orders" / "orders_enriched.sql",
+        """
+        MODEL (order_by ["order_id"]);
+
+        SELECT CAST(kafka_value AS UInt64) AS order_id FROM __source("orders")
+        """,
+    )
+
+
 def write_policy_validation_project(
     *,
     project_dir: Path,

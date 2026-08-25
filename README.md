@@ -108,6 +108,18 @@ password = "${ENV:CLICKHOUSE_PASSWORD}"
 [defaults]
 pipeline_mode = "direct"
 
+[defaults.sources.kafka.retention]
+duration = "7d"
+timestamp = "broker"
+fallback = "landed"
+cap_at = "landed"
+
+[defaults.models.retention]
+duration = "7d"
+timestamp_column = "kafka_timestamp"
+cap_at_column = "ingested_at"
+when_missing = "error"
+
 [ui]
 timezone = "Europe/London"
 
@@ -135,6 +147,11 @@ sources:
 StreamBuild owns managed Kafka landing objects. It validates but never mutates adopted source
 tables. See the [pipeline documentation](https://docs.streambuild.dev/concepts/pipelines)
 for adopted stream-table configuration.
+
+Typed retention defaults are checked against each compiled schema. A pipeline can override the
+model default in `pipeline.toml` with `[defaults.models.retention]`; an individual table model can
+override it with `retention (...)` or opt out with `retention false`. Specific models and sources
+can continue to use free-form `ttl` expressions when adapter-specific behavior is required.
 
 ## Pipelines
 

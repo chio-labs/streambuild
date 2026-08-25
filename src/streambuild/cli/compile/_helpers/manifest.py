@@ -24,6 +24,7 @@ from streambuild.compiler.compile.models import (
     CompiledViewModel,
     LogicalResourceKey,
 )
+from streambuild.compiler.discovery.models import ModelRetentionPolicy
 from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.compiler.pipeline.types import AdapterResource
 from streambuild.compiler.testing.models import SqlTestCase
@@ -155,6 +156,7 @@ def _model_entry(*, model: CompiledModel, analysis: CompileAnalysis) -> dict[str
     entry.update(
         {
             "source": table_model.transform.source,
+            "retention": _model_retention_entry(table_model),
             "spec": {
                 "columns": tuple(
                     {
@@ -173,6 +175,24 @@ def _model_entry(*, model: CompiledModel, analysis: CompileAnalysis) -> dict[str
         }
     )
     return entry
+
+
+def _model_retention_entry(model: CompiledTableModel) -> dict[str, object] | None:
+    value: ModelRetentionPolicy | bool | None = model.retention.value
+    if model.retention.origin is None:
+        return None
+    if value is False:
+        return {"origin": str(model.retention.origin), "status": "disabled"}
+    if not isinstance(value, ModelRetentionPolicy):
+        return None
+    return {
+        "origin": str(model.retention.origin),
+        "status": "applied" if model.retention_applied else "skipped",
+        "duration_seconds": value.duration_seconds,
+        "timestamp_column": value.timestamp_column,
+        "cap_at_column": value.cap_at_column,
+        "when_missing": str(value.when_missing),
+    }
 
 
 def _audit_entry(*, audit: LoadedSqlAudit, analysis: CompileAnalysis) -> dict[str, object]:
