@@ -10,6 +10,7 @@ from streambuild.adapter.models import (
     AdapterPublishEventRecord,
     AdapterRelationCleanupRequest,
     AdapterStableBinding,
+    CatalogRelation,
     InspectedActiveTableBinding,
     InspectedManagedTableState,
     InspectedPhysicalTableCandidate,
@@ -42,10 +43,12 @@ class JanitorWorkflowRecordingAdapterConnection(RecordingAdapterConnection):
         *,
         deployment_inventory: AdapterDeploymentInventory,
         managed_table_state: InspectedManagedTableState,
+        relations: tuple[CatalogRelation, ...] = (),
     ) -> None:
         super().__init__(
             deployment_inventory=deployment_inventory,
             managed_table_state=managed_table_state,
+            relations=relations,
         )
         self.ownership_events: list[AdapterOwnedResourceEvent] = []
 
@@ -108,10 +111,16 @@ def unavailable_rollback_test_case() -> JanitorUnavailableRollbackTestCase:
             physical_candidates=tuple(
                 InspectedPhysicalTableCandidate(
                     database="analytics",
-                    logical_name="orders",
-                    physical_name=f"orders__{deployment_id}",
+                    logical_name=logical_name,
+                    physical_name=f"{logical_name}__{deployment_id}",
                 )
-                for deployment_id in (active_id, usable_id)
+                for logical_name, deployment_id in (
+                    ("orders", active_id),
+                    ("mv__orders", active_id),
+                    ("orders", missing_id),
+                    ("orders", usable_id),
+                    ("mv__orders", usable_id),
+                )
             ),
         ),
         request=JanitorRequest(
@@ -124,6 +133,15 @@ def unavailable_rollback_test_case() -> JanitorUnavailableRollbackTestCase:
         missing_deployment_id=missing_id,
         usable_deployment_id=usable_id,
         expected_usable_reason="retained as rollback point (minimum 1 deployments)",
+    )
+
+
+def catalog_relations_for_managed_state(
+    managed_table_state: InspectedManagedTableState,
+) -> tuple[CatalogRelation, ...]:
+    return tuple(
+        CatalogRelation(name=candidate.physical_name, engine="MergeTree", columns=())
+        for candidate in managed_table_state.physical_candidates
     )
 
 
@@ -145,6 +163,15 @@ def _rollback_retention_deployment(
                     name="orders",
                 ),
                 physical_name=f"orders__{deployment_id}",
+                logical_model_name="orders",
+            ),
+            AdapterPreparedObjectMapping(
+                logical_key=AdapterMetadataObjectKey(
+                    database=None,
+                    object_type="materialized_view",
+                    name="mv__orders",
+                ),
+                physical_name=f"mv__orders__{deployment_id}",
                 logical_model_name="orders",
             ),
         ),

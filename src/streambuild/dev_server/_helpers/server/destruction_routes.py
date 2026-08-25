@@ -37,6 +37,7 @@ from streambuild.executor.destruction.exceptions import (
     DestructionPlanNotFoundError,
     DestructionPlanNotReviewedError,
     DestructionRecordingError,
+    DestructionResourceError,
     DestructionSelectionError,
 )
 from streambuild.executor.destruction.main.execute_destruction import execute_destruction
@@ -175,6 +176,11 @@ def _register_destruction_plan_routes(
                     "message": str(error),
                     "blockingRelations": list(error.relation_names),
                 },
+            ) from error
+        except DestructionResourceError as error:
+            raise HTTPException(
+                status_code=_HTTP_CONFLICT,
+                detail={"message": str(error), "reason": "resource_conflict"},
             ) from error
         except (DestructionSelectionError, ValueError) as error:
             raise HTTPException(status_code=_HTTP_BAD_REQUEST, detail=str(error)) from error

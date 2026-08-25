@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import AppTopbar from '$lib/presentation/components/app-topbar.svelte';
+	import Button from '$ui-kit/button/button.svelte';
 	import ErrorPreview from '$lib/presentation/components/error-preview.svelte';
 	import { cleanupDeployments } from '$lib/api/main/deployments/cleanup-deployments';
 	import { getApp } from '$lib/api/main/project/get-app';
@@ -28,6 +29,7 @@
 	const app = getApp();
 	const deployments: Deployment[] = $derived(app.deployments);
 	let refreshing = $state<boolean>(true);
+	let showInvalid = $state<boolean>(false);
 	const POLL_MS: number = 30_000;
 
 	async function refreshInventory(): Promise<void> {
@@ -88,7 +90,19 @@
 	}
 </script>
 
-<AppTopbar title="Deployments" />
+<AppTopbar title="Deployments">
+	{#if problems.length > 0}
+		<Button
+			variant="outline"
+			size="sm"
+			class="font-mono text-[10.5px]"
+			aria-pressed={showInvalid}
+			onclick={() => (showInvalid = !showInvalid)}
+		>
+			{showInvalid ? 'Hide invalid' : `Show invalid (${problems.length})`}
+		</Button>
+	{/if}
+</AppTopbar>
 
 <div class="min-h-0 flex-1 overflow-y-auto px-[18px] py-4">
 	{#if cleanupError !== null}
@@ -199,23 +213,30 @@
 			{/if}
 		{/each}
 
-		{#if problems.length > 0}
+		{#if showInvalid && problems.length > 0}
 			<div class="flex items-baseline gap-2 pb-1.5 pt-5">
 				<span
 					class="font-mono text-[10px] uppercase tracking-[0.16em]"
-					style:color="var(--sb-error)">Needs attention</span
+					style:color="var(--sb-error)">Invalid</span
 				>
 				<span class="text-[var(--sb-text-faint)] text-[10.5px]">
-					metadata and warehouse evidence disagree
+					incomplete metadata or missing warehouse relations
 				</span>
 			</div>
 			<table class="sb-list w-full text-left">
 				<tbody>
 					{#each problems as deployment (deployment.deploymentId)}
 						<tr>
-							<td class="code py-2 pr-3 text-[12.5px]">{deployment.deploymentId}</td>
+							<td class="code py-2 pr-3 text-[12.5px]">
+								<a
+									href="/deployments/{deployment.deploymentId}"
+									class="text-primary hover:underline">{deployment.deploymentId}</a
+								>
+							</td>
 							<td class="px-3">
-								<span class="sb-tag code" style:color="var(--sb-error)">{deployment.state}</span>
+								<span class="sb-tag code" style:color="var(--sb-error)"
+									>{deployment.state.replaceAll('_', ' ')}</span
+								>
 							</td>
 							<td class="text-muted-foreground px-3 text-[11.5px]">
 								{deployment.missingRelationNames.length} missing relation{deployment

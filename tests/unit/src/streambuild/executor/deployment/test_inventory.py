@@ -16,6 +16,7 @@ from streambuild.executor.deployment.models import DeploymentInventory
 from tests.unit.src.streambuild.cli.helpers import RecordingAdapterConnection
 from tests.unit.src.streambuild.executor.deployment._test_types import (
     DeploymentInventoryTestCase,
+    PartialDeploymentInventoryTestCase,
 )
 
 
@@ -129,3 +130,81 @@ def test_given_authoritative_evidence_when_loading_inventory_then_classifies_dep
         )
         == test_case.expected_states
     )
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        PartialDeploymentInventoryTestCase(
+            description="active deployment with one deleted mapping is invalid",
+            expected_state="physical_missing",
+            expected_missing_logical_name="orders",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_active_partial_deployment_when_loading_inventory_then_it_is_physical_missing(
+    test_case: PartialDeploymentInventoryTestCase,
+) -> None:
+    deployment_id = "20260806T000100Z_partial"
+    existing_name = f"prices__{deployment_id}"
+    missing_name = f"orders__{deployment_id}"
+    client: RecordingAdapterConnection = RecordingAdapterConnection(
+        relations=(CatalogRelation(name=existing_name, engine="MergeTree", columns=()),),
+        managed_table_state=InspectedManagedTableState(
+            active_bindings=(
+                InspectedActiveTableBinding(
+                    database="analytics",
+                    logical_name="prices",
+                    physical_name=existing_name,
+                ),
+            ),
+            physical_candidates=(
+                InspectedPhysicalTableCandidate(
+                    database="analytics",
+                    logical_name="prices",
+                    physical_name=existing_name,
+                ),
+            ),
+        ),
+        deployment_inventory=AdapterDeploymentInventory(
+            deployments=(
+                AdapterDeploymentRecord(
+                    deployment_id=deployment_id,
+                    created_at="2026-08-06 00:01:00.000",
+                    status="published",
+                    replay_lineage_mode="offsets",
+                    selected_root_keys=(),
+                    warning_codes=(),
+                    prepared_object_mappings=tuple(
+                        AdapterPreparedObjectMapping(
+                            logical_key=AdapterMetadataObjectKey(None, "table", logical_name),
+                            physical_name=physical_name,
+                            logical_model_name=logical_name,
+                        )
+                        for logical_name, physical_name in (
+                            ("orders", missing_name),
+                            ("prices", existing_name),
+                        )
+                    ),
+                ),
+            ),
+            publish_events=(
+                AdapterPublishEventRecord(
+                    deployment_id=deployment_id,
+                    published_at="2026-08-06 00:02:00.000",
+                    logical_view_names=("orders", "prices"),
+                ),
+            ),
+        ),
+    )
+
+    inventory: DeploymentInventory = load_deployments(
+        client=client,
+        metadata_database="metadata",
+        default_database="analytics",
+    )
+
+    assert inventory.deployments[0].state.value == test_case.expected_state
+    assert inventory.deployments[0].missing_physical_relation_names == (missing_name,)
+    assert test_case.expected_missing_logical_name in missing_name

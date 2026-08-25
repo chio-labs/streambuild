@@ -5,6 +5,8 @@ import type {
 	ReviewedDestructionPlan
 } from '$lib/pipeline-view/types';
 
+export type PipelineModeFilter = 'all' | 'direct' | 'virtual';
+
 export type DestructionController = {
 	readonly selected: ReadonlySet<string>;
 	readonly open: boolean;

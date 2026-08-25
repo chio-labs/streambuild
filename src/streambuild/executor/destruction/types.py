@@ -9,13 +9,7 @@ from typing import TYPE_CHECKING, Protocol
 
 from streambuild.adapter.models import (
     AdapterDeploymentInventory,
-    AdapterManagedSource,
-    AdapterMaterializedView,
-    AdapterOwnedResourceSnapshot,
     AdapterQueryResult,
-    AdapterTable,
-    AdapterView,
-    CatalogRelation,
     CatalogSnapshot,
 )
 
@@ -48,18 +42,6 @@ class DestructionPlanningConnection(Protocol):
     def load_catalog(self, database: str) -> CatalogSnapshot: ...
 
     def load_deployment_inventory(self, database: str) -> AdapterDeploymentInventory: ...
-
-    def load_owned_resources(
-        self, *, database: str, target_database: str
-    ) -> AdapterOwnedResourceSnapshot: ...
-
-    def catalog_resource_matches(
-        self,
-        *,
-        resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterView,
-        relation: CatalogRelation,
-        database: str,
-    ) -> bool: ...
 
     def load_external_dependants(
         self, *, database: str, relation_names: tuple[str, ...]

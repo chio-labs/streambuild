@@ -1,6 +1,7 @@
 """Build the selectable publish deployment candidates for a target."""
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.adapter.constants import VIRTUAL_DEPLOYMENT_STATUS_INCOMPLETE
 from streambuild.adapter.models import (
     AdapterDeploymentInventory,
     AdapterDeploymentRecord,
@@ -31,12 +32,16 @@ def build_publish_deployment_candidates(
     persisted_deployment_ids: set[str] = {
         deployment.deployment_id
         for deployment in inventory.deployments
-        if _deployment_has_existing_mapping(deployment=deployment, existing_names=existing_names)
+        if _deployment_is_complete(deployment=deployment, existing_names=existing_names)
     }
+    recorded_deployment_ids: frozenset[str] = frozenset(
+        deployment.deployment_id for deployment in inventory.deployments
+    )
     inspected_deployment_ids: set[str] = {
         deployment_id_from_physical_name(candidate.physical_name)
         for candidate in inspected_state.physical_candidates
         if is_deployment_physical_name(candidate.physical_name)
+        and deployment_id_from_physical_name(candidate.physical_name) not in recorded_deployment_ids
     }
     all_deployment_ids: tuple[str, ...] = tuple(
         sorted(persisted_deployment_ids | inspected_deployment_ids)
@@ -59,9 +64,14 @@ def build_publish_deployment_candidates(
     )
 
 
-def _deployment_has_existing_mapping(
+def _deployment_is_complete(
     *, deployment: AdapterDeploymentRecord, existing_names: frozenset[str]
 ) -> bool:
-    return any(
-        mapping.physical_name in existing_names for mapping in deployment.prepared_object_mappings
+    return (
+        deployment.status != VIRTUAL_DEPLOYMENT_STATUS_INCOMPLETE
+        and bool(deployment.prepared_object_mappings)
+        and all(
+            mapping.physical_name in existing_names
+            for mapping in deployment.prepared_object_mappings
+        )
     )

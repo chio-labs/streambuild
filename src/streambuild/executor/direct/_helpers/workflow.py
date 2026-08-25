@@ -4,26 +4,18 @@ from __future__ import annotations
 
 import math
 from dataclasses import replace
-from uuid import uuid4
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.adapter.constants import OWNERSHIP_LOGICAL_RESOURCE_SOURCE
 from streambuild.adapter.models import (
     AdapterCapturedReplayRequest,
-    AdapterManagedSource,
     AdapterMaterializedView,
-    AdapterOwnedResourceEvent,
-    AdapterOwnedResourceSnapshot,
     AdapterReplayBoundary,
     AdapterReplayCoverageRequest,
     AdapterReplayLowerBound,
     AdapterReplayRequest,
-    AdapterStableView,
-    AdapterTable,
-    AdapterView,
     CatalogRelation,
 )
-from streambuild.adapter.types import AdapterOptionalStateStatus, AdapterReplayBoundaryMode
+from streambuild.adapter.types import AdapterReplayBoundaryMode
 from streambuild.compiler.compile.models import (
     DesiredKafkaTable,
     DesiredMaterializedView,
@@ -81,12 +73,6 @@ def assemble_direct_build_workflow(
         realized_project=request.realized_project,
         catalog=snapshot.catalog,
         database=request.database,
-    )
-    _validate_preledger_source_adoption(
-        request=request,
-        client=client,
-        snapshot=snapshot,
-        source_preparation=source_preparation,
     )
     population_plan: PopulationPlan = expand_population_plan(
         plan=build_direct_population_plan(
@@ -167,7 +153,6 @@ def _assemble_statements(
     preparation: tuple[WarehouseStatement, ...] = _preparation_statements(
         request=request,
         client=client,
-        source_preparation=source_preparation,
         source_realizations=source_realizations,
         start_sequence=1,
     )
@@ -212,32 +197,12 @@ def _preparation_statements(
     *,
     request: DirectBuildRequest,
     client: AdapterConnection,
-    source_preparation: PopulationSourcePreparation,
     source_realizations: tuple[PopulationRealization, ...],
     start_sequence: int,
 ) -> tuple[WarehouseStatement, ...]:
     rendered: list[tuple[str, str]] = [
         ("prepare_target_database", client.render_ensure_database(request.database))
     ]
-    rendered.extend(
-        (f"prepare_metadata_{index}", sql)
-        for index, sql in enumerate(
-            client.render_migrate_metadata_state(request.metadata_database), start=1
-        )
-    )
-    for resource in _resources_named(
-        request=request,
-        names=frozenset(source_preparation.preserved_relation_names),
-    ):
-        rendered.extend(
-            _ownership_rendered(
-                request=request,
-                client=client,
-                resource=resource,
-                database=request.database,
-                step_prefix="adopt_source",
-            )
-        )
     realization: PopulationRealization
     for realization in source_realizations:
         rendered.append(
@@ -250,15 +215,6 @@ def _preparation_statements(
                         if_not_exists=True,
                     )
                 ),
-            )
-        )
-        rendered.extend(
-            _ownership_rendered(
-                request=request,
-                client=client,
-                resource=realization.resource,
-                database=realization.database,
-                step_prefix="record_source",
             )
         )
     return _mutation_statements(
@@ -309,15 +265,6 @@ def _realization_statements(
                 definition_sql,
             )
         )
-        rendered.extend(
-            _ownership_rendered(
-                request=request,
-                client=client,
-                resource=realization.resource,
-                database=realization.database,
-                step_prefix="record_resource",
-            )
-        )
     landing_view: DesiredMaterializedView
     for landing_view in source_preparation.landing_views:
         built_resource: object = build_adapter_resource(landing_view)
@@ -336,15 +283,6 @@ def _realization_statements(
                         if_not_exists=True,
                     )
                 ),
-            )
-        )
-        rendered.extend(
-            _ownership_rendered(
-                request=request,
-                client=client,
-                resource=resource,
-                database=landing_view.key.database or request.database,
-                step_prefix="record_source",
             )
         )
     return _mutation_statements(
@@ -683,183 +621,3 @@ def _entry_relation_names(*, request: DirectBuildRequest) -> tuple[str, ...]:
     for entry in request.plan.entries:
         names.extend(entry.relation_names)
     return tuple(names)
-
-
-def _ownership_rendered(
-    *,
-    request: DirectBuildRequest,
-    client: AdapterConnection,
-    resource: (
-        AdapterManagedSource
-        | AdapterTable
-        | AdapterMaterializedView
-        | AdapterView
-        | AdapterStableView
-    ),
-    database: str,
-    step_prefix: str,
-) -> tuple[tuple[str, str], ...]:
-    event: AdapterOwnedResourceEvent = _owned_resource_event(
-        request=request,
-        resource=resource,
-        database=database,
-    )
-    return tuple(
-        (f"{step_prefix}_{_step_segment(resource.name)}_{index}", sql)
-        for index, sql in enumerate(
-            client.render_owned_resource_events(
-                database=request.metadata_database,
-                events=(event,),
-            ),
-            start=1,
-        )
-    )
-
-
-def _owned_resource_event(
-    *,
-    request: DirectBuildRequest,
-    resource: (
-        AdapterManagedSource
-        | AdapterTable
-        | AdapterMaterializedView
-        | AdapterView
-        | AdapterStableView
-    ),
-    database: str,
-) -> AdapterOwnedResourceEvent:
-    logical_type: str = ""
-    logical_name: str = ""
-    pipeline_name: str = ""
-    for key, resources in request.realized_project.resources_by_logical_key.items():
-        if any(candidate.name == resource.name for candidate in resources):
-            logical_type = str(key.resource_type)
-            logical_name = key.name
-            model: object | None = next(
-                (
-                    candidate
-                    for candidate in request.realized_project.project.models
-                    if candidate.key == key
-                ),
-                None,
-            )
-            if model is not None:
-                pipeline_name = model.pipeline_name
-            else:
-                pipeline_name = next(
-                    (
-                        pipeline.pipeline.name
-                        for pipeline in request.realized_project.project.pipelines
-                        if pipeline.source is not None and pipeline.source.key == key
-                    ),
-                    "",
-                )
-            break
-    return AdapterOwnedResourceEvent(
-        event_id=f"owned_{uuid4().hex}",
-        event_type="owned",
-        target_database=request.database,
-        resource_database=database,
-        resource_name=resource.name,
-        resource_kind=_ownership_kind(resource),
-        pipeline_name=pipeline_name,
-        logical_resource_type=logical_type,
-        logical_resource_name=logical_name,
-        resource_role=_ownership_role(resource=resource, logical_type=logical_type, virtual=False),
-    )
-
-
-def _ownership_kind(
-    resource: (
-        AdapterManagedSource
-        | AdapterTable
-        | AdapterMaterializedView
-        | AdapterView
-        | AdapterStableView
-    ),
-) -> str:
-    if isinstance(resource, (AdapterView, AdapterStableView)):
-        return "view"
-    if isinstance(resource, AdapterMaterializedView):
-        return "materialized_view"
-    if isinstance(resource, AdapterManagedSource):
-        return "managed_source"
-    return "table"
-
-
-def _ownership_role(
-    *,
-    resource: (
-        AdapterManagedSource
-        | AdapterTable
-        | AdapterMaterializedView
-        | AdapterView
-        | AdapterStableView
-    ),
-    logical_type: str,
-    virtual: bool,
-) -> str:
-    if logical_type == OWNERSHIP_LOGICAL_RESOURCE_SOURCE:
-        if isinstance(resource, AdapterManagedSource):
-            return "source_ingress"
-        if isinstance(resource, AdapterMaterializedView):
-            return "source_landing_view"
-        return "source_replay_table"
-    if virtual:
-        return "virtual_physical"
-    if isinstance(resource, AdapterMaterializedView):
-        return "model_materialized_view"
-    if isinstance(resource, (AdapterView, AdapterStableView)):
-        return "model_view"
-    return "model_table"
-
-
-def _resources_named(
-    *, request: DirectBuildRequest, names: frozenset[str]
-) -> tuple[AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterView, ...]:
-    matched: list[AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterView] = []
-    for resources in request.realized_project.resources_by_logical_key.values():
-        for resource in resources:
-            if resource.name in names:
-                matched.append(resource)
-    return tuple(matched)
-
-
-def _validate_preledger_source_adoption(
-    *,
-    request: DirectBuildRequest,
-    client: AdapterConnection,
-    snapshot: DirectWarehouseSnapshot,
-    source_preparation: PopulationSourcePreparation,
-) -> None:
-    owned_snapshot: AdapterOwnedResourceSnapshot = client.load_owned_resources(
-        database=request.metadata_database,
-        target_database=request.database,
-    )
-    if owned_snapshot.status == AdapterOptionalStateStatus.UNAVAILABLE:
-        raise DirectBuildError(owned_snapshot.warning or "Owned-resource ledger is unavailable")
-    owned_by_name: dict[str, AdapterOwnedResourceEvent] = {
-        event.resource_name: event for event in owned_snapshot.resources
-    }
-    for resource in _resources_named(
-        request=request,
-        names=frozenset(source_preparation.preserved_relation_names),
-    ):
-        relation: CatalogRelation | None = snapshot.catalog.relation(resource.name)
-        owned_event: AdapterOwnedResourceEvent | None = owned_by_name.get(resource.name)
-        if owned_event is not None:
-            if relation is None or relation.ownership_generation != owned_event.catalog_fingerprint:
-                raise DirectBuildError(
-                    f"Owned source relation '{resource.name}' is no longer the recorded "
-                    "catalog generation"
-                )
-            continue
-        if relation is None or not client.catalog_resource_matches(
-            resource=resource,
-            relation=relation,
-            database=request.database,
-        ):
-            raise DirectBuildError(
-                f"Cannot adopt pre-ledger source relation '{resource.name}' because its "
-                "catalog structure does not exactly match the compiled desired resource"
-            )

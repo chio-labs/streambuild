@@ -18,7 +18,7 @@ class OwnershipIntegrationTestCase:
 @dataclass(frozen=True)
 class VirtualHistoryIntegrationTestCase:
     description: str
-    expected_error_match: str
+    expected_reset_included_names: tuple[str, ...]
     expected_destroy_excluded_names: tuple[str, ...]
 
 
