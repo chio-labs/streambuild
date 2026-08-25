@@ -44,7 +44,12 @@ from streambuild.compiler.discovery.models import (
     ReplayBoundaryColumns,
     SourceFreshnessPolicy,
 )
-from streambuild.compiler.discovery.types import ReplayBoundaryMode, SourceKind, SourceNameOrigin
+from streambuild.compiler.discovery.types import (
+    KafkaRetentionOrigin,
+    ReplayBoundaryMode,
+    SourceKind,
+    SourceNameOrigin,
+)
 from streambuild.compiler.macros.models import LoadedMacro, MacroRegistry
 
 _SOURCE_NAME_PATTERN: re.Pattern[str] = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -482,7 +487,12 @@ def _parse_managed_kafka_source(
     )
     try:
         explicit_retention: KafkaRetentionPolicy | Literal[False] | None = parse_kafka_retention(
-            value=mapping.get("retention"),
+            value=interpolate_config_value(
+                value=mapping.get("retention"),
+                variables=variables,
+                environment=environment,
+                field_path=f"Source file '{file_path}' {label}.retention",
+            ),
             field_path=f"Source file '{file_path}' {label}.retention",
         )
     except ValueError as error:
@@ -522,6 +532,15 @@ def _parse_managed_kafka_source(
                 explicit_retention
                 if explicit_retention is not None
                 else (retention_defaults.retention if explicit_ttl is None else None)
+            ),
+            retention_origin=(
+                KafkaRetentionOrigin.SOURCE
+                if explicit_retention is not None
+                else (
+                    KafkaRetentionOrigin.PROJECT
+                    if explicit_ttl is None and retention_defaults.retention is not None
+                    else None
+                )
             ),
             settings=settings or None,
         ),

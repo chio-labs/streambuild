@@ -17,6 +17,7 @@ from tests.unit.src.streambuild.cli.compile._test_types import (
     ExactCompileTargetTestCase,
     PublicationRollbackTestCase,
     RemovedStaticInputsTestCase,
+    SourceRetentionManifestTestCase,
     SourceSecretRedactionTestCase,
     StaticReplacementTestCase,
     ViewCompileTargetTestCase,
@@ -31,11 +32,13 @@ from tests.unit.src.streambuild.cli.compile.helpers import (
     target_snapshot,
     write_adopted_source,
     write_artifact_leaf_model,
+    write_cross_pipeline_model_reference,
     write_empty_project,
     write_invalid_model,
     write_invalid_model_header,
     write_invalid_reference_model,
     write_secret_source,
+    write_typed_source_retention,
     write_view_project,
 )
 
@@ -141,6 +144,41 @@ def test_given_adopted_source_when_compiling_then_omits_managed_source_candidate
     assert source_entry["relation_name"] == test_case.expected_relation_name
     assert len(source_entry["resources"]) == test_case.expected_source_resource_count
     assert not (target_dir / test_case.expected_forbidden_workflow_path).exists()
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        SourceRetentionManifestTestCase(
+            description="manifest records effective typed Kafka retention",
+            expected_ttl=(
+                "least(ifNull(_replay_timestamp, _replay_landed_at), "
+                "_replay_landed_at) + INTERVAL 12 HOUR"
+            ),
+            expected_origin="project",
+            expected_duration_seconds=43_200,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_typed_kafka_retention_when_compiling_then_manifest_records_policy_and_ttl(
+    test_case: SourceRetentionManifestTestCase,
+    tmp_path: Path,
+) -> None:
+    project_dir: Path = tmp_path / "project"
+    target_dir: Path = project_dir / "target"
+    copy_basic_project(project_dir=project_dir)
+    write_typed_source_retention(project_dir=project_dir)
+
+    exit_code: int = compile_project(project_dir=project_dir, target_dir=target_dir)
+    manifest: dict[str, object] = json.loads((target_dir / "manifest.json").read_text())
+    source_entry: dict[str, object] = manifest["sources"]["orders"]
+    retention: dict[str, object] = source_entry["retention"]
+
+    assert exit_code == 0
+    assert source_entry["ttl"] == test_case.expected_ttl
+    assert retention["origin"] == test_case.expected_origin
+    assert retention["duration_seconds"] == test_case.expected_duration_seconds
 
 
 @pytest.mark.parametrize(
@@ -303,7 +341,18 @@ def test_given_existing_static_target_when_generation_fails_then_preserves_previ
             expected_manifest_models=("orders_enriched",),
             expected_dag_node_ids=("source:orders", "model:orders_enriched"),
             expected_edge=("source:orders", "model:orders_enriched", "driving_input"),
-        )
+            expected_model_reference_scope="project",
+            project_config_suffix="",
+        ),
+        CompileArtifactIdentityTestCase(
+            description="manifest records explicit pipeline model reference scope",
+            expected_manifest_sources=("orders",),
+            expected_manifest_models=("orders_enriched",),
+            expected_dag_node_ids=("source:orders", "model:orders_enriched"),
+            expected_edge=("source:orders", "model:orders_enriched", "driving_input"),
+            expected_model_reference_scope="pipeline",
+            project_config_suffix=('\n[dependencies]\nmodel_reference_scope = "pipeline"\n'),
+        ),
     ],
     ids=lambda case: case.description,
 )
@@ -314,6 +363,11 @@ def test_given_one_analysis_when_writing_manifest_and_dag_then_artifacts_agree(
     project_dir: Path = tmp_path / "project"
     target_dir: Path = project_dir / "target"
     copy_basic_project(project_dir=project_dir)
+    project_config_path: Path = project_dir / "streambuild_project.toml"
+    project_config_path.write_text(
+        project_config_path.read_text(encoding="utf-8") + test_case.project_config_suffix,
+        encoding="utf-8",
+    )
     _ = compile_project(project_dir=project_dir, target_dir=target_dir)
     manifest: dict[str, object] = json.loads((target_dir / "manifest.json").read_text())
     dag: dict[str, object] = json.loads((target_dir / "streambuild_dag.json").read_text())
@@ -323,6 +377,9 @@ def test_given_one_analysis_when_writing_manifest_and_dag_then_artifacts_agree(
     assert tuple(node["id"] for node in dag["nodes"]) == test_case.expected_dag_node_ids
     assert tuple((edge["from_id"], edge["to_id"], edge["edge_type"]) for edge in dag["edges"]) == (
         test_case.expected_edge,
+    )
+    assert manifest["dependencies"]["model_reference_scope"] == (
+        test_case.expected_model_reference_scope
     )
     assert not any(path.startswith("compiled/workflows/") for path in manifest["artifacts"])
 
@@ -462,6 +519,43 @@ def test_given_malformed_reference_when_compiling_then_cli_renders_authored_sour
     project_dir: Path = tmp_path / "project"
     copy_basic_project(project_dir=project_dir)
     write_invalid_reference_model(project_dir=project_dir)
+
+    exit_code: int = main(("stb", "compile", "--project-dir", str(project_dir)))
+    stderr: str = capsys.readouterr().err
+
+    assert exit_code == test_case.expected_exit_code
+    assert tuple(fragment in stderr for fragment in test_case.expected_error_fragments) == (
+        True,
+        True,
+        True,
+        True,
+    )
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CompileDiagnosticOutputTestCase(
+            description="renders pipeline-scope graph errors at the authored reference",
+            expected_exit_code=1,
+            expected_error_fragments=(
+                "error [STB-GRAPH-001]",
+                "phase: graph",
+                "beta.sql:6:",
+                "references model 'orders_enriched'",
+            ),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_cross_pipeline_model_ref_when_compiling_then_cli_renders_graph_diagnostic(
+    test_case: CompileDiagnosticOutputTestCase,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    project_dir: Path = tmp_path / "project"
+    copy_basic_project(project_dir=project_dir)
+    write_cross_pipeline_model_reference(project_dir=project_dir)
 
     exit_code: int = main(("stb", "compile", "--project-dir", str(project_dir)))
     stderr: str = capsys.readouterr().err

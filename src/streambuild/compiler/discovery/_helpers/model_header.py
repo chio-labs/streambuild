@@ -203,8 +203,8 @@ def parse_kafka_retention(
             allowed=frozenset({"broker"}),
             field_path=f"{field_path}.timestamp",
         ),
-        fallback=_optional_retention_choice(
-            value=mapping.get("fallback"),
+        fallback=_retention_choice(
+            value=mapping.get("fallback", "landed"),
             allowed=frozenset({"landed"}),
             field_path=f"{field_path}.fallback",
         ),

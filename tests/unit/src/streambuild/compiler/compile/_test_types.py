@@ -206,6 +206,13 @@ class CompileRetentionErrorTestCase:
 
 
 @dataclass(frozen=True)
+class ProgrammaticDependencyScopeTestCase:
+    description: str
+    configured_scope: str
+    expected_scope: str
+
+
+@dataclass(frozen=True)
 class CompileRelationNameErrorTestCase:
     description: str
     relation_name: str

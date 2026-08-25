@@ -651,6 +651,11 @@ def test_given_managed_source_ttl_when_analyzing_then_applies_source_over_projec
             ),
             expected_landing_ttl=("ifNull(_replay_timestamp, _replay_landed_at) + INTERVAL 2 DAY"),
         ),
+        ManagedSourceRetentionTestCase(
+            description="broker retention defaults to a safe landing fallback",
+            source_retention_declaration=("retention: {duration: 2d, timestamp: broker}"),
+            expected_landing_ttl=("ifNull(_replay_timestamp, _replay_landed_at) + INTERVAL 2 DAY"),
+        ),
     ],
     ids=lambda case: case.description,
 )
