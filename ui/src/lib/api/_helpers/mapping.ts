@@ -23,6 +23,7 @@ import type {
 import type { WarehouseHealth, WarehouseMemoryHealth } from '$lib/warehouse-health/types';
 import type { CheckStatusRecord } from '$lib/api/types';
 import type { Plan, PlanSqlChangeStatus } from '$lib/planning/types';
+import { configureTimeZone } from '$lib/formatting/main/configure-time-zone';
 
 type Payload = Record<string, unknown>;
 
@@ -39,15 +40,19 @@ export function projectFromServer(definitions: Payload, state: Payload): Project
 	const connection: Record<string, unknown> = (header.connection ?? {}) as Record<string, unknown>;
 	const naming: Payload = (header.naming ?? {}) as Payload;
 	const defaults: Payload = (header.defaults ?? {}) as Payload;
+	const ui: Payload = (header.ui ?? {}) as Payload;
 	const auditDefaults: Payload = (defaults.audits ?? {}) as Payload;
 	const models: Model[] = (definitions.models as Payload[]).map((model) =>
 		modelFromServer(model, stateFor(state, 'models', model.name as string))
 	);
+	const timeZone: string = (ui.timezone as string) ?? 'UTC';
+	configureTimeZone(timeZone);
 	return {
 		name: (header.name as string) ?? 'project',
 		target: (header.target as string) ?? '',
 		database: (header.database as string) ?? '',
 		adapter: (header.adapter as string) ?? 'clickhouse',
+		timeZone,
 		connection: {
 			host: String(connection.host ?? ''),
 			port: Number(connection.port ?? 0),

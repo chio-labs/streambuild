@@ -190,6 +190,7 @@ class RunEventSink:
                 "statementSequence": statement.sequence,
                 "intent": str(statement.intent),
                 "queryId": query_id,
+                "displayName": statement.display_name,
             },
         )
         return query_id
@@ -318,6 +319,7 @@ class RunEventSink:
                 "elapsedMs": elapsed_ms,
                 "writtenRows": written_rows,
                 "errorMessage": error_message,
+                "displayName": statement.display_name,
             },
         )
 

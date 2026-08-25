@@ -103,6 +103,7 @@ class EffectiveProjectConfigurationTestCase:
     expected_connection: tuple[tuple[str, object], ...]
     expected_managed_source_ttl: str
     expected_model_ttl: str
+    expected_ui_timezone: str
 
 
 @dataclass(frozen=True)

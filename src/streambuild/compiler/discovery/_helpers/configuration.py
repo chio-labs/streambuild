@@ -6,6 +6,7 @@ import re
 import tomllib
 from pathlib import Path
 from typing import cast
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import ByteSize, TypeAdapter, ValidationError
 
@@ -43,6 +44,7 @@ from streambuild.compiler.discovery.constants import (
     SENSORS_KEYS,
     SOURCE_DEFAULT_KEYS,
     TARGET_KEYS,
+    UI_KEYS,
 )
 from streambuild.compiler.discovery.exceptions import ProjectConfigError
 from streambuild.compiler.discovery.main._parse_duration_seconds import parse_duration_seconds
@@ -69,6 +71,7 @@ from streambuild.compiler.discovery.models import (
     SensorAutomationConfig,
     SensorAutomationOverride,
     SourceDefaults,
+    UiConfig,
 )
 from streambuild.compiler.discovery.types import (
     BoundedReplayFallback,
@@ -245,6 +248,7 @@ def _parse_project_config(
             file_path=file_path,
         ),
         build=build,
+        ui=_parse_ui_config(payload=payload.get("ui"), file_path=file_path),
     )
 
 
@@ -497,6 +501,36 @@ def _parse_destruction_config(*, payload: object, label: str, file_path: Path) -
     if limit <= 0 or limit > _MAX_CLICKHOUSE_DROP_SIZE_BYTES:
         raise ProjectConfigError(error_message)
     return DestructionConfig(max_table_size_to_drop_bytes=limit)
+
+
+def _parse_ui_config(*, payload: object, file_path: Path) -> UiConfig:
+    mapping: dict[str, object] = _optional_mapping(
+        payload=payload,
+        label="ui",
+        file_path=file_path,
+    )
+    _validate_allowed_keys(
+        mapping=mapping,
+        allowed_keys=UI_KEYS,
+        label="ui",
+        file_path=file_path,
+    )
+    timezone: str = (
+        _optional_non_empty_string(
+            mapping=mapping,
+            key="timezone",
+            label="ui",
+            file_path=file_path,
+        )
+        or "UTC"
+    )
+    try:
+        ZoneInfo(timezone)
+    except ZoneInfoNotFoundError as error:
+        raise ProjectConfigError(
+            f"{file_path} ui.timezone must be a valid IANA timezone such as 'Europe/London'"
+        ) from error
+    return UiConfig(timezone=timezone)
 
 
 def _parse_audit_scheduler_config(

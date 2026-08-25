@@ -102,6 +102,7 @@ def _project_payload(analysis: CompileAnalysis) -> dict[str, object]:
             "defaults": None,
             "connection": {},
             "auditScheduler": {"enabled": False},
+            "ui": {"timezone": "UTC"},
         }
     return {
         "name": effective.name,
@@ -134,6 +135,7 @@ def _project_payload(analysis: CompileAnalysis) -> dict[str, object]:
             if key not in _CONNECTION_SECRET_KEYS
         },
         "auditScheduler": {"enabled": effective.audit_scheduler.enabled},
+        "ui": {"timezone": effective.ui.timezone},
     }
 
 

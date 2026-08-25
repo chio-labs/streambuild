@@ -87,6 +87,7 @@
 				<span class="conn-tick bg-[var(--sb-secondary)] relative h-[7px] w-[7px] rounded-[2px]"
 				></span>
 				<b class="text-[var(--sb-secondary)] font-medium">connected</b> · snapshot {snapshotClock}
+				<span class="hidden xl:inline">{project.timeZone}</span>
 			{:else}
 				<span class="relative h-[7px] w-[7px] rounded-[2px] bg-[var(--sb-error)]"></span>
 				<b class="font-medium" style:color="var(--sb-error)">no warehouse</b>

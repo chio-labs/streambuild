@@ -17,6 +17,7 @@ class WarehouseStatement:
     intent: StatementIntent
     sql: str
     continue_on_error: bool = False
+    display_name: str | None = None
 
     def __post_init__(self) -> None:
         if not self.step_id or not self.step_id.replace("_", "").isalnum():
