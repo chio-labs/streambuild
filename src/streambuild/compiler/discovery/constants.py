@@ -21,6 +21,7 @@ ALLOWED_MODEL_KEYS: frozenset[str] = frozenset(
         "order_by",
         "partition_by",
         "ttl",
+        "retention",
         "settings",
         "execution_settings",
         "replay_anchor",
@@ -34,6 +35,7 @@ VIEW_FORBIDDEN_MODEL_KEYS: frozenset[str] = frozenset(
         "order_by",
         "partition_by",
         "ttl",
+        "retention",
         "settings",
         "execution_settings",
         "replay_anchor",
@@ -63,6 +65,7 @@ PIPELINE_CONFIG_KEYS: frozenset[str] = frozenset(
         "protection",
         "audit_defaults",
         "execution",
+        "defaults",
     }
 )
 EXECUTION_SETTING_NAME_PATTERN: re.Pattern[str] = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
@@ -135,11 +138,18 @@ DEFAULTS_KEYS: frozenset[str] = frozenset(
         "deployment_readiness",
         "run_presumed_failed_after",
         "sources",
+        "models",
     }
 )
 DEPLOYMENT_READINESS_KEYS: frozenset[str] = frozenset({"maximum_lag", "minimum_staged_row_ratio"})
 SOURCE_DEFAULT_KEYS: frozenset[str] = frozenset({"kafka"})
-KAFKA_SOURCE_DEFAULT_KEYS: frozenset[str] = frozenset({"naming_macro"})
+KAFKA_SOURCE_DEFAULT_KEYS: frozenset[str] = frozenset({"naming_macro", "retention"})
+MODEL_DEFAULT_KEYS: frozenset[str] = frozenset({"retention"})
+PIPELINE_DEFAULT_KEYS: frozenset[str] = frozenset({"models"})
+MODEL_RETENTION_KEYS: frozenset[str] = frozenset(
+    {"duration", "timestamp_column", "cap_at_column", "when_missing"}
+)
+KAFKA_RETENTION_KEYS: frozenset[str] = frozenset({"duration", "timestamp", "fallback", "cap_at"})
 KAFKA_NAMING_MACRO_TOPIC_PARAMETER: str = "topic"
 LOCAL_DEFAULTS_KEYS: frozenset[str] = frozenset({"pipeline_mode"})
 PIPELINE_MODE_KEY: str = "pipeline_mode"
@@ -153,6 +163,7 @@ SOURCE_KEYS: frozenset[str] = frozenset(
         "consumer_group",
         "format",
         "ttl",
+        "retention",
         "settings",
         "table_name",
         "replay_boundary",
@@ -180,6 +191,7 @@ POSTGRES_FORBIDDEN_SOURCE_KEYS: tuple[str, ...] = (
     "consumer_group",
     "format",
     "ttl",
+    "retention",
     "settings",
     "table_name",
     "replay_boundary",

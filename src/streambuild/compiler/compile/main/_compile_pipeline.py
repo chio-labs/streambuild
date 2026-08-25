@@ -12,6 +12,7 @@ from streambuild.compiler.compile._helpers.replay_policies import (
     resolve_replay_lineage_mode,
     resolve_replay_on_change,
 )
+from streambuild.compiler.compile._helpers.retention import effective_model_retention
 from streambuild.compiler.compile._helpers.transforms import (
     compile_model,
     compile_view,
@@ -111,6 +112,8 @@ def _compile_models(
                 transform: TransformStep = (
                     replace(model, ttl=loaded_pipeline.project.model_ttl)
                     if model.ttl is None
+                    and model.retention is None
+                    and loaded_pipeline.pipeline.model_retention is None
                     and loaded_pipeline.project is not None
                     and loaded_pipeline.project.model_ttl is not None
                     else model
@@ -135,6 +138,10 @@ def _compile_models(
                     ),
                     bounded_replay_fallback=resolve_bounded_replay_fallback(
                         loaded_pipeline=loaded_pipeline, transform=transform
+                    ),
+                    model_retention=effective_model_retention(
+                        loaded_pipeline=loaded_pipeline,
+                        transform=transform,
                     ),
                 )
         except TransformSqlContractError as error:

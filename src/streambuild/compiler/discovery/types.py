@@ -8,6 +8,16 @@ class PipelineMode(StrEnum):
     VIRTUAL = "virtual"
 
 
+class RetentionMissingBehavior(StrEnum):
+    ERROR = "error"
+    SKIP = "skip"
+
+
+class KafkaRetentionReference(StrEnum):
+    BROKER = "broker"
+    LANDED = "landed"
+
+
 class ReplayAnchorMode(StrEnum):
     AUTO = "auto"
     NEVER = "never"

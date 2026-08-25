@@ -133,3 +133,10 @@ class ManagedSourceTtlPrecedenceTestCase:
     project_default_ttl: str
     source_ttl_declaration: str
     expected_landing_ttl: str
+
+
+@dataclass(frozen=True)
+class ManagedSourceRetentionTestCase:
+    description: str
+    source_retention_declaration: str
+    expected_landing_ttl: str | None
