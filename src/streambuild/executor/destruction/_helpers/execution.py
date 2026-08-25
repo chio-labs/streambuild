@@ -24,6 +24,7 @@ from streambuild.executor.destruction.exceptions import (
     DestructionRecordingError,
 )
 from streambuild.executor.destruction.models import (
+    DestructionActor,
     DestructionExecutionResult,
     DestructionPlan,
     DestructionRecordingContext,
@@ -59,8 +60,7 @@ from streambuild.executor.workflow.models import (
 def execute_destruction(
     *,
     frozen_plan: DestructionPlan,
-    actor_id: str,
-    actor_name: str,
+    actor: DestructionActor,
     challenge_responses: tuple[str, ...],
     reviewed_at: datetime,
     store: DestructionPlanStore,
@@ -68,11 +68,12 @@ def execute_destruction(
     observation_connection: AdapterConnection,
     project_dir: Path,
     replan: Callable[[], DestructionPlan],
+    invocation_id: str | None = None,
 ) -> DestructionExecutionResult:
     """Record exact intent, consume once under the target lock, and execute."""
 
-    started: tuple[str, str, int] = start_invocation()
-    invocation_id: str = started[0]
+    started: tuple[str, str, int] = start_invocation(invocation_id=invocation_id)
+    execution_invocation_id: str = started[0]
     lock: AdapterTargetMutationLock | None = None
     sink: RunEventSink | None = None
     statements: tuple[WarehouseStatement, ...] = ()
@@ -86,10 +87,6 @@ def execute_destruction(
             connection=observation_connection,
             database=frozen_plan.metadata_database,
         )
-        lock = connection.acquire_target_mutation_lock(
-            database=frozen_plan.database,
-            owner_id=invocation_id,
-        )
         current_plan = frozen_plan
         statements = assemble_destruction_workflow(
             plan=current_plan,
@@ -98,14 +95,14 @@ def execute_destruction(
         sink = RunEventSink(
             connection=observation_connection,
             database=current_plan.metadata_database,
-            invocation_id=invocation_id,
+            invocation_id=execution_invocation_id,
             project_identity=logical_project_identity(project_dir=project_dir),
             strict_persistence=True,
         )
         recording_context = DestructionRecordingContext(
             plan=current_plan,
-            actor_id=actor_id,
-            actor_name=actor_name,
+            actor_id=actor.actor_id,
+            actor_name=actor.actor_name,
             reviewed_at=reviewed_at,
             confirmed_at=confirmed_at,
             challenge_responses=challenge_responses,
@@ -144,6 +141,11 @@ def execute_destruction(
         failure_phase = "workflow_prepared"
         sink.workflow_prepared(statements=statements, workflow_sha256=workflow_sha256)
 
+        failure_phase = "target_lock"
+        lock = connection.acquire_target_mutation_lock(
+            database=frozen_plan.database,
+            owner_id=execution_invocation_id,
+        )
         failure_phase = "locked_replan"
         _ = verify_destruction_drift(
             frozen_plan=frozen_plan,
@@ -153,7 +155,7 @@ def execute_destruction(
         consumed_plan: DestructionPlan = store.consume(
             plan_id=frozen_plan.plan_id,
             challenge_responses=challenge_responses,
-            actor=actor_id,
+            actor=actor.actor_id,
         )
         if consumed_plan.plan_fingerprint != current_plan.plan_fingerprint:
             raise DestructionConsistencyError(

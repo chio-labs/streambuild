@@ -30,6 +30,13 @@ class ConnectionQueryNormalizationTestCase:
 
 
 @dataclass(frozen=True)
+class ClickHouseDropLimitTestCase:
+    description: str
+    setting_value: int
+    expected_limit: int | None
+
+
+@dataclass(frozen=True)
 class ClickHouseWorkflowCorrelationTestCase:
     description: str
     expected_query_ids: tuple[str, ...]

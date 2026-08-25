@@ -8,4 +8,5 @@ export const RUN_OUTCOME_COLORS: Record<string, string> = {
 };
 
 export const RUN_DETAIL_POLL_MS: number = 1_200;
+export const RUN_LAUNCH_GRACE_MS: number = 60_000;
 export const RUN_SNAPSHOT_MAX_AGE_MS: number = 10_000;

@@ -117,8 +117,8 @@ def test_given_reviewed_plan_when_running_destruction_then_executes_frozen_actor
 
     # Then: Review and exact challenges are bound to getpass identity and a fresh compile.
     assert exit_code == test_case.expected_exit_code
-    assert execute_kwargs["actor_id"] == test_case.expected_actor_id
-    assert execute_kwargs["actor_name"] == test_case.expected_actor_name
+    assert execute_kwargs["actor"].actor_id == test_case.expected_actor_id
+    assert execute_kwargs["actor"].actor_name == test_case.expected_actor_name
     assert execute_kwargs["challenge_responses"] == test_case.expected_challenge_responses
     assert (
         execute_kwargs["store"].reviewed_at(plan_id=plan.plan_id, actor=test_case.expected_actor_id)

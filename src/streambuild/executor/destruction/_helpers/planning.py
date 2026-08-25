@@ -230,6 +230,7 @@ def _plan_relation_evidence(
         catalog=catalog,
         stats=stats,
     )
+    _validate_drop_size_limit(connection=connection, relations=relations)
     _validate_external_dependants(
         connection=connection,
         database=request.database,
@@ -237,6 +238,31 @@ def _plan_relation_evidence(
     )
     _ = reverse_topologically_order_relations(relations)
     return affected_model_names, affected_source_names, relations
+
+
+def _validate_drop_size_limit(
+    *,
+    connection: DestructionPlanningConnection,
+    relations: tuple[DestructionRelationEvidence, ...],
+) -> None:
+    limit: int | None = connection.load_relation_drop_size_limit()
+    if limit is None:
+        return
+    oversized: tuple[DestructionRelationEvidence, ...] = tuple(
+        relation
+        for relation in relations
+        if relation.exists and relation.total_bytes is not None and relation.total_bytes > limit
+    )
+    if not oversized:
+        return
+    details: str = ", ".join(
+        f"{relation.database}.{relation.name} ({relation.total_bytes:,} bytes)"
+        for relation in oversized
+    )
+    raise DestructionResourceError(
+        f"Warehouse relation DROP limit is {limit:,} bytes; oversized resources block "
+        f"destruction before mutation: {details}"
+    )
 
 
 def _validate_external_dependants(

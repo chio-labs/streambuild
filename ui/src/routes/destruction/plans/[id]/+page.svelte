@@ -2,6 +2,8 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
+	import ChevronLeftIcon from '@lucide/svelte/icons/chevron-left';
+	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import ShieldAlertIcon from '@lucide/svelte/icons/shield-alert';
 	import AppTopbar from '$lib/presentation/components/app-topbar.svelte';
 	import Button from '$ui-kit/button/button.svelte';
@@ -10,6 +12,7 @@
 	import { formatPlanTimestamp } from '$lib/pipeline-view/main/format-plan-timestamp';
 	import type { DestructionExecution, DestructionPlan } from '$lib/pipeline-view/types';
 	import { createDestructionPlanPageState } from './state.svelte';
+	import type { ResourcePageSize } from './types';
 
 	const planId: string = $derived(page.params.id ?? '');
 	const destruction = createDestructionPlanPageState();
@@ -34,7 +37,7 @@
 
 	async function execute(): Promise<void> {
 		const result: DestructionExecution | null = await destruction.execute();
-		if (result !== null) await goto(`/runs/${encodeURIComponent(result.invocationId)}`);
+		if (result !== null) await goto(`/runs/${encodeURIComponent(result.invocationId)}?live=1`);
 	}
 </script>
 
@@ -44,7 +47,7 @@
 	</Button>
 </AppTopbar>
 
-<div class="min-h-0 flex-1 overflow-y-auto">
+<div class="min-h-0 flex-1 overflow-y-auto bg-background">
 	{#if destruction.loading}
 		<div class="grid min-h-[420px] place-items-center px-6 text-center">
 			<div>
@@ -54,7 +57,7 @@
 			</div>
 		</div>
 	{:else if plan !== null}
-		<div class="mx-auto grid w-full max-w-[1480px] gap-4 p-4 sm:p-5">
+		<div class="grid min-h-full w-full content-start gap-4 p-4 sm:p-5" data-testid="destruction-plan-content">
 			<section class="flex items-start gap-3 rounded-md border border-border bg-[var(--sb-surface-low)] p-4">
 				<div class="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-destructive/10 text-destructive">
 					<ShieldAlertIcon size={17} />
@@ -111,19 +114,24 @@
 				</div>
 			</section>
 
-			<section class="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(270px,0.42fr)]" aria-label="Affected models and retention policy">
+			<section class="grid items-start gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(270px,0.42fr)]" aria-label="Affected models and retention policy">
 				<div class="rounded-md border border-border p-3">
 					<div class="flex items-baseline justify-between gap-2">
 						<h3 class="font-display text-[13px] font-semibold">Models</h3>
 						<span class="text-[var(--sb-text-faint)] font-mono text-[10px]">{plan.models.length}</span>
 					</div>
 					<div class="mt-2 flex flex-wrap gap-1">
-						{#each plan.models as model (model)}
+						{#each destruction.modelList.visible as model (model)}
 							<code class="rounded bg-muted px-1.5 py-0.5 text-[10.5px]">{model}</code>
 						{:else}
 							<span class="text-muted-foreground text-[11px]">No models are present in this plan.</span>
 						{/each}
 					</div>
+					{#if plan.models.length > destruction.modelList.visible.length || destruction.modelList.expanded}
+						<Button variant="outline" size="sm" class="mt-3 font-mono text-[10.5px]" onclick={() => destruction.modelList.toggle()}>
+							{destruction.modelList.expanded ? 'Show fewer models' : `Show all ${plan.models.length} models`}
+						</Button>
+					{/if}
 				</div>
 				<div class="rounded-md border border-border p-3">
 					<h3 class="font-display text-[13px] font-semibold">Data policy</h3>
@@ -135,9 +143,11 @@
 			</section>
 
 			<section aria-labelledby="resources-heading">
-				<div class="mb-2 flex items-baseline justify-between gap-3">
+				<div class="mb-2 flex flex-wrap items-baseline justify-between gap-3">
 					<h3 id="resources-heading" class="font-display text-[13px] font-semibold">Physical resources</h3>
-					<span class="text-[var(--sb-text-faint)] font-mono text-[10px]">{plan.resources.length} recorded</span>
+					<span class="text-[var(--sb-text-faint)] font-mono text-[10px]">
+						{plan.resources.length} recorded · {destruction.resourceList.existingCount} existing · {destruction.resourceList.absentCount} absent
+					</span>
 				</div>
 				<div class="overflow-hidden rounded-md border border-border">
 					<table class="sb-list w-full table-fixed text-left text-[11px]">
@@ -146,8 +156,8 @@
 							<tr><th class="w-[34%] px-3 py-2 font-normal">Resource</th><th class="w-[14%] px-3 py-2 font-normal">Kind</th><th class="px-3 py-2 font-normal">Logical / pipeline</th><th class="hidden w-[11%] px-3 py-2 text-right font-normal md:table-cell">Bytes</th><th class="hidden w-[8%] px-3 py-2 text-right font-normal lg:table-cell">Parts</th><th class="w-[9%] px-3 py-2 font-normal">State</th></tr>
 						</thead>
 						<tbody>
-							{#each plan.resources as resource (`${resource.kind}:${resource.name}`)}
-								<tr>
+							{#each destruction.resourceList.visible as resource (`${resource.kind}:${resource.name}`)}
+								<tr data-testid="destruction-resource-row">
 									<td class="break-all px-3 py-2 font-mono">{resource.name}</td>
 									<td class="break-words px-3 py-2 font-mono text-muted-foreground">{resource.kind.replaceAll('_', ' ')}</td>
 									<td class="px-3 py-2"><div class="break-all font-mono">{resource.logicalName}</div><div class="text-[var(--sb-text-faint)] break-all text-[10px]">{resource.pipelineName ?? 'target source'}</div></td>
@@ -160,6 +170,50 @@
 							{/each}
 						</tbody>
 					</table>
+					{#if plan.resources.length > 0}
+						<div class="flex flex-wrap items-center justify-between gap-3 border-t border-border bg-[var(--sb-surface-low)] px-3 py-2">
+							<span class="text-[var(--sb-text-faint)] font-mono text-[10px]">
+								Showing {destruction.resourceList.first}-{destruction.resourceList.last} of {plan.resources.length} frozen resources
+							</span>
+							<div class="flex flex-wrap items-center gap-2">
+								<label class="text-muted-foreground flex items-center gap-1.5 font-mono text-[10px]">
+									Rows
+									<select
+										class="h-7 rounded border border-border bg-background px-1.5 text-foreground outline-none focus:border-ring"
+										value={destruction.resourceList.pageSize}
+										onchange={(event) => destruction.resourceList.setPageSize(Number(event.currentTarget.value) as ResourcePageSize)}
+									>
+										<option value="25">25</option>
+										<option value="50">50</option>
+										<option value="100">100</option>
+									</select>
+								</label>
+								<Button
+									variant="outline"
+									size="sm"
+									class="h-7 px-2 font-mono text-[10px]"
+									aria-label="Previous resource page"
+									disabled={destruction.resourceList.page === 1}
+									onclick={() => destruction.resourceList.setPage(destruction.resourceList.page - 1)}
+								>
+									<ChevronLeftIcon size={12} /> Previous
+								</Button>
+								<span class="min-w-20 text-center font-mono text-[10px]">
+									Page {destruction.resourceList.page} of {destruction.resourceList.pageCount}
+								</span>
+								<Button
+									variant="outline"
+									size="sm"
+									class="h-7 px-2 font-mono text-[10px]"
+									aria-label="Next resource page"
+									disabled={destruction.resourceList.page === destruction.resourceList.pageCount}
+									onclick={() => destruction.resourceList.setPage(destruction.resourceList.page + 1)}
+								>
+									Next <ChevronRightIcon size={12} />
+								</Button>
+							</div>
+						</div>
+					{/if}
 				</div>
 			</section>
 
