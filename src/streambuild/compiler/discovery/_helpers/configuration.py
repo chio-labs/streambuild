@@ -5,11 +5,15 @@ from __future__ import annotations
 import re
 import tomllib
 from pathlib import Path
-from typing import cast
+from typing import Literal, cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import ByteSize, TypeAdapter, ValidationError
 
+from streambuild.compiler.discovery._helpers.model_header import (
+    parse_kafka_retention,
+    parse_model_retention,
+)
 from streambuild.compiler.discovery._helpers.source_registry import parse_freshness_policy
 from streambuild.compiler.discovery.constants import (
     AUDIT_DEFAULT_EVERY_KEY,
@@ -31,6 +35,7 @@ from streambuild.compiler.discovery.constants import (
     LOCAL_CONFIG_KEYS,
     LOCAL_DEFAULTS_KEYS,
     LOCAL_TARGET_KEYS,
+    MODEL_DEFAULT_KEYS,
     NAMING_PIPELINE_MACRO_KEY,
     NAMING_PIPELINE_PREFIX_KEY,
     NAMING_TABLE_PREFIX_KEY,
@@ -57,11 +62,13 @@ from streambuild.compiler.discovery.models import (
     DeploymentReadinessDefaults,
     DestructionConfig,
     DiscoveredProjectFile,
+    KafkaRetentionPolicy,
     KafkaSourceDefaults,
     LoadedProjectConfiguration,
     LocalProjectConfig,
     LocalProjectDefaults,
     LocalProjectTarget,
+    ModelDefaults,
     ProjectDefaults,
     ProjectNaming,
     ProjectTarget,
@@ -669,19 +676,36 @@ def _parse_project_defaults(*, payload: object, file_path: Path) -> ProjectDefau
             f"{file_path} defaults.run_presumed_failed_after must be longer than "
             f"{RUN_UNRESPONSIVE_AFTER_SECONDS}s"
         )
+    managed_source_ttl: str | None = _optional_non_empty_string(
+        mapping=mapping,
+        key="managed_source_ttl",
+        label="defaults",
+        file_path=file_path,
+    )
+    model_ttl: str | None = _optional_non_empty_string(
+        mapping=mapping,
+        key="model_ttl",
+        label="defaults",
+        file_path=file_path,
+    )
+    sources: SourceDefaults = _parse_source_defaults(
+        payload=mapping.get("sources"), file_path=file_path
+    )
+    models: ModelDefaults = _parse_model_defaults(
+        payload=mapping.get("models"), file_path=file_path
+    )
+    if managed_source_ttl is not None and sources.kafka.retention is not None:
+        raise ProjectConfigError(
+            f"{file_path} defaults.managed_source_ttl cannot be combined with "
+            "defaults.sources.kafka.retention"
+        )
+    if model_ttl is not None and models.retention is not None:
+        raise ProjectConfigError(
+            f"{file_path} defaults.model_ttl cannot be combined with defaults.models.retention"
+        )
     return ProjectDefaults(
-        managed_source_ttl=_optional_non_empty_string(
-            mapping=mapping,
-            key="managed_source_ttl",
-            label="defaults",
-            file_path=file_path,
-        ),
-        model_ttl=_optional_non_empty_string(
-            mapping=mapping,
-            key="model_ttl",
-            label="defaults",
-            file_path=file_path,
-        ),
+        managed_source_ttl=managed_source_ttl,
+        model_ttl=model_ttl,
         kafka_broker_list=_optional_non_empty_string(
             mapping=mapping,
             key="kafka_broker_list",
@@ -718,7 +742,8 @@ def _parse_project_defaults(*, payload: object, file_path: Path) -> ProjectDefau
             payload=mapping.get("deployment_readiness"),
             file_path=file_path,
         ),
-        sources=_parse_source_defaults(payload=mapping.get("sources"), file_path=file_path),
+        sources=sources,
+        models=models,
     )
 
 
@@ -793,9 +818,45 @@ def _parse_source_defaults(*, payload: object, file_path: Path) -> SourceDefault
                 key="naming_macro",
                 label="defaults.sources.kafka",
                 file_path=file_path,
-            )
+            ),
+            retention=_project_kafka_retention(
+                value=kafka_mapping.get("retention"),
+                field_path=f"{file_path} defaults.sources.kafka.retention",
+            ),
         )
     )
+
+
+def _parse_model_defaults(*, payload: object, file_path: Path) -> ModelDefaults:
+    mapping: dict[str, object] = _optional_mapping(
+        payload=payload,
+        label="defaults.models",
+        file_path=file_path,
+    )
+    _validate_allowed_keys(
+        mapping=mapping,
+        allowed_keys=MODEL_DEFAULT_KEYS,
+        label="defaults.models",
+        file_path=file_path,
+    )
+    try:
+        return ModelDefaults(
+            retention=parse_model_retention(
+                value=mapping.get("retention"),
+                field_path=f"{file_path} defaults.models.retention",
+            )
+        )
+    except ValueError as error:
+        raise ProjectConfigError(str(error)) from error
+
+
+def _project_kafka_retention(
+    *, value: object, field_path: str
+) -> KafkaRetentionPolicy | Literal[False] | None:
+    try:
+        return parse_kafka_retention(value=value, field_path=field_path)
+    except ValueError as error:
+        raise ProjectConfigError(str(error)) from error
 
 
 def _parse_pipeline_mode(*, value: object, label: str, file_path: Path) -> PipelineMode:

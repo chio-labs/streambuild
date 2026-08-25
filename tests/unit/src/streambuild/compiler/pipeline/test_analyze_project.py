@@ -50,6 +50,7 @@ from tests.unit.src.streambuild.compiler.pipeline._test_types import (
     CompiledAuditPolicyTestCase,
     DestructionTargetMetadataTestCase,
     DuplicateProjectInputTestCase,
+    ManagedSourceRetentionTestCase,
     ManagedSourceTtlPrecedenceTestCase,
     PrivateMacroDiscoveryTestCase,
     ProjectSqlAnalysisCallCountTestCase,
@@ -65,6 +66,7 @@ from tests.unit.src.streambuild.compiler.pipeline.helpers import (
     write_compilation_project,
     write_duplicate_test,
     write_macro_import_counter,
+    write_managed_source_retention_project,
     write_managed_source_ttl_project,
     write_policy_validation_project,
     write_shared_source_project,
@@ -624,6 +626,56 @@ def test_given_managed_source_ttl_when_analyzing_then_applies_source_over_projec
     assert standalone_source.kafka.ttl == test_case.expected_landing_ttl
     assert landing_table.ttl == test_case.expected_landing_ttl
     assert desired_landing_table.ttl == test_case.expected_landing_ttl
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ManagedSourceRetentionTestCase(
+            description="project Kafka retention uses broker time with safe landing fallback",
+            source_retention_declaration="",
+            expected_landing_ttl=(
+                "least(ifNull(_replay_timestamp, _replay_landed_at), "
+                "_replay_landed_at) + INTERVAL 7 DAY"
+            ),
+        ),
+        ManagedSourceRetentionTestCase(
+            description="source disabled retention overrides the project policy",
+            source_retention_declaration="retention: false",
+            expected_landing_ttl=None,
+        ),
+        ManagedSourceRetentionTestCase(
+            description="source typed retention overrides the project policy",
+            source_retention_declaration=(
+                "retention: {duration: 2d, timestamp: broker, fallback: landed}"
+            ),
+            expected_landing_ttl=("ifNull(_replay_timestamp, _replay_landed_at) + INTERVAL 2 DAY"),
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_typed_managed_source_retention_when_analyzing_then_renders_effective_ttl(
+    test_case: ManagedSourceRetentionTestCase,
+    tmp_path: Path,
+) -> None:
+    project_dir: Path = tmp_path / "project"
+    write_managed_source_retention_project(
+        project_dir=project_dir,
+        source_retention_declaration=test_case.source_retention_declaration,
+    )
+    loaded_project: LoadedProject | None = load_project_input_for_path(path=project_dir)
+
+    analysis: CompileAnalysis = analyze_project(
+        pipelines_root=project_dir / "pipelines",
+        loaded_project=loaded_project,
+        adapter_profile=build_compiler_adapter_profile(ClickHouseAdapter()),
+    )
+    source_resources: tuple[object, ...] = analysis.realized_project.resources_by_logical_key[
+        analysis.compiled_project.sources[0].key
+    ]
+    landing_table: AdapterTable = cast(AdapterTable, source_resources[1])
+
+    assert landing_table.ttl == test_case.expected_landing_ttl
 
 
 @pytest.mark.parametrize(

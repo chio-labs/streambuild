@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from streambuild.compiler.compile.main._extract_refs import extract_refs
 from streambuild.compiler.compile.models import ParsedRef
-from streambuild.compiler.discovery._helpers.model_header import parse_model_header
+from streambuild.compiler.discovery._helpers.model_header import (
+    parse_model_header,
+    parse_model_retention,
+)
 from streambuild.compiler.discovery.constants import (
     ALLOWED_MODEL_KEYS,
     DEFAULT_SQL_MODEL_ENGINE,
@@ -25,6 +28,7 @@ from streambuild.compiler.discovery.exceptions import ModelHeaderSyntaxError, Pi
 from streambuild.compiler.discovery.models import (
     ExecutionSettings,
     ModelColumnSpec,
+    ModelRetentionPolicy,
     ReplayOnChangePolicy,
     ReplayOnChangeRule,
     TransformStep,
@@ -128,6 +132,14 @@ def _load_transform_from_sql_contents(
             source_line=query_line,
             source_column=query_column,
         )
+    ttl: str | None = _optional_string(header_values=header_values, key="ttl", file_path=file_path)
+    retention: ModelRetentionPolicy | Literal[False] | None = _optional_model_retention(
+        header_values=header_values, file_path=file_path
+    )
+    if ttl is not None and retention is not None:
+        raise PipelineDiscoveryError(
+            f"SQL model '{file_path}' cannot combine ttl with typed retention"
+        )
     return TransformStep(
         name=file_path.stem,
         source=infer_transform_source(
@@ -145,7 +157,8 @@ def _load_transform_from_sql_contents(
         partition_by=_optional_string(
             header_values=header_values, key="partition_by", file_path=file_path
         ),
-        ttl=_optional_string(header_values=header_values, key="ttl", file_path=file_path),
+        ttl=ttl,
+        retention=retention,
         settings=_optional_string_mapping(
             header_values=header_values, key="settings", file_path=file_path
         ),
@@ -164,6 +177,18 @@ def _load_transform_from_sql_contents(
         source_line=query_line,
         source_column=query_column,
     )
+
+
+def _optional_model_retention(
+    *, header_values: dict[str, Any], file_path: Path
+) -> ModelRetentionPolicy | Literal[False] | None:
+    try:
+        return parse_model_retention(
+            value=header_values.get("retention"),
+            field_path=f"SQL model '{file_path}' retention",
+        )
+    except ValueError as error:
+        raise PipelineDiscoveryError(str(error)) from error
 
 
 def parse_model_sql(

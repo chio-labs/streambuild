@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import cast
+from typing import Literal, cast
 
 from streambuild.adapter.models import (
     AdapterManagedSource,
@@ -29,8 +29,10 @@ from streambuild.compiler.discovery.models import (
     EffectiveProjectConfiguration,
     ExternalTableSourceStep,
     KafkaLandingStep,
+    KafkaRetentionPolicy,
     LoadedProject,
     ModelColumnSpec,
+    ModelRetentionPolicy,
     PipelineProtection,
     PostgresRefreshSourceStep,
     ReplayBoundary,
@@ -117,6 +119,14 @@ def _project_payload(analysis: CompileAnalysis) -> dict[str, object]:
         "defaults": {
             "managedSourceTtl": effective.defaults.managed_source_ttl,
             "modelTtl": effective.defaults.model_ttl,
+            "sources": {
+                "kafka": {
+                    "retention": _kafka_retention_payload(
+                        effective.defaults.sources.kafka.retention
+                    )
+                }
+            },
+            "models": {"retention": _model_retention_payload(effective.defaults.models.retention)},
             "kafkaBrokerList": (
                 None
                 if effective.defaults.kafka_broker_list is None
@@ -157,12 +167,43 @@ def _freshness_payload(policy: SourceFreshnessPolicy | None) -> dict[str, object
     return {"warnAfter": policy.warn_after, "errorAfter": policy.error_after}
 
 
+def _model_retention_payload(
+    retention: ModelRetentionPolicy | Literal[False] | None,
+) -> dict[str, object] | None:
+    if retention is None:
+        return None
+    if retention is False:
+        return {"disabled": True}
+    return {
+        "durationSeconds": retention.duration_seconds,
+        "timestampColumn": retention.timestamp_column,
+        "capAtColumn": retention.cap_at_column,
+        "whenMissing": str(retention.when_missing),
+    }
+
+
+def _kafka_retention_payload(
+    retention: KafkaRetentionPolicy | Literal[False] | None,
+) -> dict[str, object] | None:
+    if retention is None:
+        return None
+    if retention is False:
+        return {"disabled": True}
+    return {
+        "durationSeconds": retention.duration_seconds,
+        "timestamp": str(retention.timestamp),
+        "fallback": None if retention.fallback is None else str(retention.fallback),
+        "capAt": None if retention.cap_at is None else str(retention.cap_at),
+    }
+
+
 def _source_payload(*, analysis: CompileAnalysis, source: CompiledSource) -> dict[str, object]:
     step: KafkaLandingStep | ExternalTableSourceStep | PostgresRefreshSourceStep = source.source
     relation_name: str = analysis.realized_project.relation_name_by_logical_key[source.key]
     database: str = _render_database(analysis)
     managed: list[dict[str, object]] = []
     kafka: dict[str, object] | None = None
+    source_ttl: str | None = None
     resource: object
     for resource in analysis.realized_project.resources_by_logical_key.get(source.key, ()):
         managed.append(
@@ -179,6 +220,8 @@ def _source_payload(*, analysis: CompileAnalysis, source: CompiledSource) -> dic
                 "format": resource.format,
                 "settings": redacted_source_settings(dict(resource.settings) or None),
             }
+        if isinstance(resource, AdapterTable):
+            source_ttl = resource.ttl
     boundary: ReplayBoundary | None = (
         None if isinstance(step, PostgresRefreshSourceStep) else step.replay_boundary
     )
@@ -199,7 +242,12 @@ def _source_payload(*, analysis: CompileAnalysis, source: CompiledSource) -> dic
         "boundaryMode": str(source.effective_replay_lineage_mode),
         "relationName": relation_name,
         "managedRelations": managed,
-        "ttl": step.kafka.ttl if isinstance(step, KafkaLandingStep) else None,
+        "ttl": source_ttl,
+        "retention": (
+            _kafka_retention_payload(step.kafka.retention)
+            if isinstance(step, KafkaLandingStep)
+            else None
+        ),
         "kafka": kafka,
         "columnMapping": _boundary_columns_payload(boundary),
         "freshness": _freshness_payload(step.freshness),
@@ -302,9 +350,29 @@ def _model_payload(
         "refs": refs,
         "columns": _column_payloads(model),
         "storage": _storage_payload(model),
+        "retention": _effective_model_retention_payload(model),
         "anchor": str(_anchor_reason(model)),
         "isAggregate": model.has_aggregate_semantics,
         "sql": _sql_payload(analysis=analysis, model=model, database=database),
+    }
+
+
+def _effective_model_retention_payload(model: CompiledModel) -> dict[str, object] | None:
+    if not isinstance(model, CompiledTableModel) or model.retention.origin is None:
+        return None
+    payload: dict[str, object] | None = _model_retention_payload(model.retention.value)
+    if payload is None:
+        return None
+    return {
+        **payload,
+        "origin": str(model.retention.origin),
+        "status": (
+            "disabled"
+            if model.retention.value is False
+            else "applied"
+            if model.retention_applied
+            else "skipped"
+        ),
     }
 
 

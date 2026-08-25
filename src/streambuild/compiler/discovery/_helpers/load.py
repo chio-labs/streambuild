@@ -8,7 +8,7 @@ import tomllib
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import cast
+from typing import Literal, cast
 
 from streambuild.compiler.discovery._helpers.configuration import (
     find_project_configuration_dir,
@@ -17,6 +17,7 @@ from streambuild.compiler.discovery._helpers.configuration import (
 from streambuild.compiler.discovery._helpers.effective_configuration import (
     resolve_effective_project_configuration,
 )
+from streambuild.compiler.discovery._helpers.model_header import parse_model_retention
 from streambuild.compiler.discovery._helpers.model_sql import load_transform_from_sql_file
 from streambuild.compiler.discovery._helpers.replay_policy_validation import (
     validate_replay_policies_for_mode,
@@ -32,9 +33,11 @@ from streambuild.compiler.discovery.constants import (
     AUDIT_SEVERITIES,
     EXECUTION_SETTING_NAME_PATTERN,
     FULL_REPLAY_POLICY_VALUE,
+    MODEL_DEFAULT_KEYS,
     NAMING_KEYS,
     PIPELINE_CONFIG_FILE_NAME,
     PIPELINE_CONFIG_KEYS,
+    PIPELINE_DEFAULT_KEYS,
     PIPELINE_EXECUTION_KEYS,
     PIPELINE_REPLAY_EXECUTION_KEYS,
     PROTECTION_CONFIRMATION_PATTERN,
@@ -54,6 +57,7 @@ from streambuild.compiler.discovery.models import (
     ExternalTableSourceStep,
     KafkaLandingStep,
     LoadedPipeline,
+    ModelRetentionPolicy,
     Pipeline,
     PipelineNaming,
     PipelineProtection,
@@ -96,6 +100,7 @@ class _PipelineDraft:
     protection: PipelineProtection | None
     audit_defaults: AuditDefaults
     execution_settings: ExecutionSettings
+    model_retention: ModelRetentionPolicy | Literal[False] | None
 
 
 def load_pipeline_directory(pipeline_dir: Path) -> LoadedPipeline:
@@ -126,6 +131,7 @@ def load_pipeline_directory(pipeline_dir: Path) -> LoadedPipeline:
             variables=dict(effective.variables),
             environment={},
             default_managed_source_ttl=effective.defaults.managed_source_ttl,
+            default_managed_source_retention=effective.defaults.sources.kafka.retention,
             default_kafka_broker_list=effective.defaults.kafka_broker_list,
             default_freshness=effective.defaults.freshness,
             default_kafka_naming_macro=effective.defaults.sources.kafka.naming_macro,
@@ -161,6 +167,7 @@ def load_pipeline_directory(pipeline_dir: Path) -> LoadedPipeline:
             replay_on_change=effective.defaults.replay_on_change,
             bounded_replay_fallback=effective.defaults.bounded_replay_fallback,
             model_ttl=effective.defaults.model_ttl,
+            model_retention=effective.defaults.models.retention,
             default_database=effective.database,
             adapter=effective.adapter,
             naming=effective.naming,
@@ -234,6 +241,7 @@ def load_pipeline_directories(
                 protection=draft.protection,
                 audit_defaults=draft.audit_defaults,
                 execution_settings=draft.execution_settings,
+                model_retention=draft.model_retention,
             )
         )
     return tuple(pipelines)
@@ -378,7 +386,47 @@ def _load_pipeline_draft(
         execution_settings=_load_pipeline_execution_settings(
             value=pipeline_values.get("execution"), file_path=config_path
         ),
+        model_retention=_load_pipeline_model_retention(
+            value=pipeline_values.get("defaults"), file_path=config_path
+        ),
     )
+
+
+def _load_pipeline_model_retention(
+    *, value: object, file_path: Path
+) -> ModelRetentionPolicy | Literal[False] | None:
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise PipelineDiscoveryError(
+            f"Pipeline config '{file_path}' must define defaults as a mapping"
+        )
+    defaults: dict[str, object] = cast(dict[str, object], value)
+    unknown_defaults: tuple[str, ...] = tuple(sorted(set(defaults) - PIPELINE_DEFAULT_KEYS))
+    if unknown_defaults:
+        raise PipelineDiscoveryError(
+            f"Pipeline config '{file_path}' contains unsupported defaults keys: "
+            f"{', '.join(unknown_defaults)}"
+        )
+    models_value: object = defaults.get("models")
+    if not isinstance(models_value, dict):
+        raise PipelineDiscoveryError(
+            f"Pipeline config '{file_path}' must define defaults.models as a mapping"
+        )
+    models: dict[str, object] = cast(dict[str, object], models_value)
+    unknown_models: tuple[str, ...] = tuple(sorted(set(models) - MODEL_DEFAULT_KEYS))
+    if unknown_models:
+        raise PipelineDiscoveryError(
+            f"Pipeline config '{file_path}' contains unsupported defaults.models keys: "
+            f"{', '.join(unknown_models)}"
+        )
+    try:
+        return parse_model_retention(
+            value=models.get("retention"),
+            field_path=f"Pipeline config '{file_path}' defaults.models.retention",
+        )
+    except ValueError as error:
+        raise PipelineDiscoveryError(str(error)) from error
 
 
 def _load_pipeline_execution_settings(*, value: object, file_path: Path) -> ExecutionSettings:

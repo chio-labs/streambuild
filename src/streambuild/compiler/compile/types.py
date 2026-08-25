@@ -15,3 +15,9 @@ class LogicalResourceType(StrEnum):
 
     SOURCE = "source"
     MODEL = "model"
+
+
+class RetentionOrigin(StrEnum):
+    MODEL = "model"
+    PIPELINE = "pipeline"
+    PROJECT = "project"

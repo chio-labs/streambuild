@@ -6,6 +6,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
+from typing import Literal
 
 from streambuild.compiler.discovery.constants import (
     DEFAULT_ADAPTER_NAME,
@@ -19,10 +20,12 @@ from streambuild.compiler.discovery.exceptions import ProjectSpecError
 from streambuild.compiler.discovery.main._immutable_config_pairs import immutable_config_pairs
 from streambuild.compiler.discovery.types import (
     BoundedReplayFallback,
+    KafkaRetentionReference,
     PipelineMode,
     ReplayAnchorMode,
     ReplayBoundaryMode,
     ReplayOnChangeMode,
+    RetentionMissingBehavior,
     SourceKind,
     SourceNameOrigin,
 )
@@ -181,6 +184,44 @@ class KafkaSourceDefaults:
     """Project-wide defaults for managed Kafka sources."""
 
     naming_macro: str | None = None
+    retention: KafkaRetentionPolicy | Literal[False] | None = None
+
+
+@dataclass(frozen=True)
+class ModelRetentionPolicy:
+    """Typed retention applied after a table model's output schema is known."""
+
+    duration_seconds: int
+    timestamp_column: str
+    cap_at_column: str | None = None
+    when_missing: RetentionMissingBehavior | str = RetentionMissingBehavior.ERROR
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "when_missing", RetentionMissingBehavior(self.when_missing))
+
+
+@dataclass(frozen=True)
+class KafkaRetentionPolicy:
+    """Typed retention over StreamBuild's fixed managed Kafka replay schema."""
+
+    duration_seconds: int
+    timestamp: KafkaRetentionReference | str = KafkaRetentionReference.BROKER
+    fallback: KafkaRetentionReference | str | None = None
+    cap_at: KafkaRetentionReference | str | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "timestamp", KafkaRetentionReference(self.timestamp))
+        if self.fallback is not None:
+            object.__setattr__(self, "fallback", KafkaRetentionReference(self.fallback))
+        if self.cap_at is not None:
+            object.__setattr__(self, "cap_at", KafkaRetentionReference(self.cap_at))
+
+
+@dataclass(frozen=True)
+class ModelDefaults:
+    """Project- or pipeline-wide table-model defaults."""
+
+    retention: ModelRetentionPolicy | Literal[False] | None = None
 
 
 @dataclass(frozen=True)
@@ -207,6 +248,7 @@ class ProjectDefaults:
         default_factory=DeploymentReadinessDefaults
     )
     sources: SourceDefaults = field(default_factory=SourceDefaults)
+    models: ModelDefaults = field(default_factory=ModelDefaults)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "pipeline_mode", PipelineMode(self.pipeline_mode))
@@ -327,6 +369,7 @@ class KafkaSettings:
     consumer_group: str | None = None
     format: str = "JSONAsString"
     ttl: str | None = None
+    retention: KafkaRetentionPolicy | Literal[False] | None = None
     settings: Mapping[str, str] | None = None
 
     def __post_init__(self) -> None:
@@ -446,6 +489,7 @@ class TransformStep:
     sql_file: str | None = None
     partition_by: str | None = None
     ttl: str | None = None
+    retention: ModelRetentionPolicy | Literal[False] | None = None
     settings: Mapping[str, str] | None = None
     execution_settings: ExecutionSettings = field(default_factory=ExecutionSettings)
     replay_anchor: ReplayAnchorMode | str = ReplayAnchorMode.AUTO
@@ -499,6 +543,7 @@ class Project:
     replay_on_change: ReplayOnChangePolicy | None = None
     bounded_replay_fallback: BoundedReplayFallback | str | None = None
     model_ttl: str | None = None
+    model_retention: ModelRetentionPolicy | Literal[False] | None = None
     default_database: str | None = None
     adapter: str = DEFAULT_ADAPTER_NAME
     naming: ProjectNaming = field(default_factory=ProjectNaming)
@@ -528,6 +573,7 @@ class Pipeline:
     protection: PipelineProtection | None = None
     audit_defaults: AuditDefaults = field(default_factory=AuditDefaults)
     execution_settings: ExecutionSettings = field(default_factory=ExecutionSettings)
+    model_retention: ModelRetentionPolicy | Literal[False] | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "transforms", tuple(self.transforms))
