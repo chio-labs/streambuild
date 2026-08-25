@@ -16,6 +16,7 @@ from typing import IO
 from uuid import uuid4
 
 from streambuild.cli.build.constants import (
+    EXPECTED_BUILD_PIPELINE_SCOPE_ENV_VAR,
     EXPECTED_BUILD_READ_SCOPE_ENV_VAR,
     EXPECTED_BUILD_WRITE_SCOPE_ENV_VAR,
 )
@@ -66,6 +67,7 @@ class BuildProcessManager:
         confirmations: tuple[str, ...] = (),
         expected_write_scope: frozenset[str] | None = None,
         expected_read_scope: frozenset[str] | None = None,
+        expected_pipeline_scope: frozenset[str] | None = None,
     ) -> dict[str, object]:
         """Spawn one build and return its stable launch identity immediately."""
 
@@ -108,6 +110,7 @@ class BuildProcessManager:
                         invocation_id=launch_invocation_id,
                         expected_write_scope=expected_write_scope,
                         expected_read_scope=expected_read_scope,
+                        expected_pipeline_scope=expected_pipeline_scope,
                     ),
                 )
             except OSError as error:
@@ -307,6 +310,7 @@ def _build_environment(
     invocation_id: str | None = None,
     expected_write_scope: frozenset[str] | None = None,
     expected_read_scope: frozenset[str] | None = None,
+    expected_pipeline_scope: frozenset[str] | None = None,
 ) -> dict[str, str]:
     environment: dict[str, str] = dict(
         os.environ
@@ -319,10 +323,15 @@ def _build_environment(
         environment[RUN_INVOCATION_ID_ENV_VAR] = invocation_id
     environment.pop(EXPECTED_BUILD_WRITE_SCOPE_ENV_VAR, None)
     environment.pop(EXPECTED_BUILD_READ_SCOPE_ENV_VAR, None)
+    environment.pop(EXPECTED_BUILD_PIPELINE_SCOPE_ENV_VAR, None)
     if expected_write_scope is not None:
         environment[EXPECTED_BUILD_WRITE_SCOPE_ENV_VAR] = json.dumps(sorted(expected_write_scope))
     if expected_read_scope is not None:
         environment[EXPECTED_BUILD_READ_SCOPE_ENV_VAR] = json.dumps(sorted(expected_read_scope))
+    if expected_pipeline_scope is not None:
+        environment[EXPECTED_BUILD_PIPELINE_SCOPE_ENV_VAR] = json.dumps(
+            sorted(expected_pipeline_scope)
+        )
     if execution_context is None:
         return environment
     if execution_context.cli_variables:

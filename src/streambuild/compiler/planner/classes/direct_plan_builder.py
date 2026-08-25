@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from difflib import unified_diff
-from hashlib import sha256
 
 from streambuild.adapter.models import (
     AdapterDirectFingerprintRecord,
@@ -36,6 +35,7 @@ from streambuild.compiler.graph.main.collect_reachable_keys import collect_reach
 from streambuild.compiler.graph.models import DependencyEdge, ProjectGraph
 from streambuild.compiler.graph.types import DependencyEdgeType, GraphTraversalDirection
 from streambuild.compiler.pipeline.models import RealizedProject
+from streambuild.compiler.planner.classes.direct_model_fingerprint import DirectModelFingerprint
 from streambuild.compiler.planner.exceptions import DirectPlanError
 from streambuild.compiler.planner.main.find_direct_out_of_scope_consumers import (
     find_direct_out_of_scope_consumers,
@@ -221,7 +221,7 @@ class DirectPlanBuilder:
 
     def _sql_change(self, *, model: CompiledModel) -> DirectSqlChange:
         current_sql: str = model.query
-        current_hash: str = sha256(current_sql.encode()).hexdigest()
+        current_hash: str = DirectModelFingerprint.query_hash(current_sql)
         if self._snapshot.fingerprints.status == AdapterOptionalStateStatus.UNAVAILABLE:
             return DirectSqlChange(
                 status=DirectSqlBaselineStatus.BASELINE_UNAVAILABLE,

@@ -1,6 +1,5 @@
 import json
 from dataclasses import replace
-from hashlib import sha256
 from pathlib import Path
 
 import pytest
@@ -348,7 +347,7 @@ def test_given_matching_direct_fingerprint_when_planning_then_selected_scope_sti
                     fingerprint_id="fingerprint-alpha",
                     logical_model_identity="analytics.alpha",
                     definition_sql=current_sql,
-                    definition_hash=sha256(current_sql.encode()).hexdigest(),
+                    definition_hash=DirectModelFingerprint.query_hash(current_sql),
                     identity_metadata="{}",
                     workflow_id="workflow-prior",
                     tool_version="test",
@@ -394,7 +393,7 @@ def test_given_changed_direct_fingerprint_when_planning_then_sql_diff_is_explana
                     fingerprint_id="fingerprint-alpha",
                     logical_model_identity="analytics.alpha",
                     definition_sql=previous_sql,
-                    definition_hash=sha256(previous_sql.encode()).hexdigest(),
+                    definition_hash=DirectModelFingerprint.query_hash(previous_sql),
                     identity_metadata="{}",
                     workflow_id="workflow-prior",
                     tool_version="test",
@@ -632,6 +631,7 @@ def test_given_active_sibling_when_including_missing_upstream_then_planning_is_r
                 snapshot.catalog.relations[0],
                 replace(
                     snapshot.catalog.relations[1],
+                    engine="MaterializedView",
                     source_relation_names=("tbl__alpha",),
                 ),
             ),
@@ -647,6 +647,50 @@ def test_given_active_sibling_when_including_missing_upstream_then_planning_is_r
         )
 
     assert test_case.expected_error_fragment in str(rejection.value)
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DirectSelectionScopeTestCase(
+            description="an ordinary view does not create materialized-view fanout",
+            expected_prerequisite_execution_scope=("alpha", "beta"),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_ordinary_view_consumer_when_including_upstream_then_plan_remains_safe(
+    direct_scope_analysis: CompileAnalysis, test_case: DirectSelectionScopeTestCase
+) -> None:
+    snapshot: DirectWarehouseSnapshot = build_direct_snapshot(
+        relation_names=("raw__orders", "view__reporting")
+    )
+    snapshot = replace(
+        snapshot,
+        catalog=replace(
+            snapshot.catalog,
+            relations=(
+                snapshot.catalog.relations[0],
+                replace(
+                    snapshot.catalog.relations[1],
+                    engine="View",
+                    source_relation_names=("tbl__alpha",),
+                ),
+            ),
+        ),
+    )
+
+    plan: DirectPlan = plan_direct_scope(
+        analysis=direct_scope_analysis,
+        snapshot=snapshot,
+        selected_model_names=("gamma",),
+        include_missing_upstream=True,
+    )
+
+    assert (
+        logical_key_names(plan.prerequisite_execution_scope)
+        == test_case.expected_prerequisite_execution_scope
+    )
 
 
 @pytest.mark.parametrize(
@@ -740,7 +784,7 @@ def test_given_changed_root_when_planning_then_reason_distinguishes_changed_and_
         DirectFingerprintDriftTestCase(
             description="ordinary view query changes participate in changed selection",
             expected_reasons=("query",),
-        )
+        ),
     ],
     ids=lambda case: case.description,
 )
@@ -752,13 +796,12 @@ def test_given_changed_direct_view_when_comparing_fingerprint_then_query_drift_i
     model: CompiledModel = analysis.compiled_project.models[0]
     identity: dict[str, object] = DirectModelFingerprint.identity(
         model=model,
-        realized_project=analysis.realized_project,
     )
     baseline: AdapterDirectFingerprintRecord = AdapterDirectFingerprintRecord(
         fingerprint_id="view-old",
         logical_model_identity="analytics.customer_orders",
         definition_sql="SELECT 0",
-        definition_hash=sha256(b"SELECT 0").hexdigest(),
+        definition_hash=DirectModelFingerprint.query_hash("SELECT 0"),
         identity_metadata=json.dumps(identity, sort_keys=True, separators=(",", ":")),
         workflow_id="previous",
         tool_version="0.32.0",
@@ -766,8 +809,30 @@ def test_given_changed_direct_view_when_comparing_fingerprint_then_query_drift_i
 
     reasons: tuple[str, ...] = DirectModelFingerprint.drift_reasons(
         model=model,
-        realized_project=analysis.realized_project,
         baseline=baseline,
+    )
+
+    assert reasons == test_case.expected_reasons
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DirectFingerprintDriftTestCase(
+            description="a model without an applied fingerprint is changed",
+            expected_reasons=("missing",),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_missing_fingerprint_when_comparing_model_then_missing_drift_is_reported(
+    direct_scope_analysis: CompileAnalysis, test_case: DirectFingerprintDriftTestCase
+) -> None:
+    model: CompiledModel = direct_scope_analysis.compiled_project.models[0]
+
+    reasons: tuple[str, ...] = DirectModelFingerprint.drift_reasons(
+        model=model,
+        baseline=None,
     )
 
     assert reasons == test_case.expected_reasons
@@ -788,17 +853,14 @@ def test_given_changed_relation_name_when_comparing_fingerprint_then_identity_dr
 ) -> None:
     model: CompiledModel = direct_scope_analysis.compiled_project.models[0]
     old_identity: dict[str, object] = {
-        **DirectModelFingerprint.identity(
-            model=model,
-            realized_project=direct_scope_analysis.realized_project,
-        ),
-        "relations": ["tbl__old_alpha", "mv__old_alpha"],
+        **DirectModelFingerprint.identity(model=model),
+        "relation_name": "old_alpha",
     }
     baseline: AdapterDirectFingerprintRecord = AdapterDirectFingerprintRecord(
         fingerprint_id="alpha-old",
         logical_model_identity="analytics.alpha",
         definition_sql=model.query,
-        definition_hash=sha256(model.query.encode()).hexdigest(),
+        definition_hash=DirectModelFingerprint.query_hash(model.query),
         identity_metadata=json.dumps(old_identity, sort_keys=True, separators=(",", ":")),
         workflow_id="previous",
         tool_version="0.32.0",
@@ -806,7 +868,6 @@ def test_given_changed_relation_name_when_comparing_fingerprint_then_identity_dr
 
     reasons: tuple[str, ...] = DirectModelFingerprint.drift_reasons(
         model=model,
-        realized_project=direct_scope_analysis.realized_project,
         baseline=baseline,
     )
 

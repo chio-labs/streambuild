@@ -1,3 +1,4 @@
+import json
 from collections.abc import Callable
 from dataclasses import replace
 from itertools import chain
@@ -9,6 +10,8 @@ from streambuild.adapter.models import (
     AdapterBindingReplacementRequest,
     AdapterCapabilities,
     AdapterDeploymentInventory,
+    AdapterDirectFingerprintRecord,
+    AdapterDirectFingerprintSnapshot,
     AdapterIdentity,
     AdapterManagedSource,
     AdapterMaterializedView,
@@ -92,6 +95,7 @@ from streambuild.compiler.discovery.types import (
 from streambuild.compiler.pipeline.main._realize_project import realize_project
 from streambuild.compiler.pipeline.main.analyze_project import analyze_project
 from streambuild.compiler.pipeline.models import CompileAnalysis, RealizedProject
+from streambuild.compiler.planner.classes.direct_model_fingerprint import DirectModelFingerprint
 from streambuild.compiler.planner.main.plan_direct_build import plan_direct_build
 from streambuild.compiler.planner.models import (
     ActualKafkaTable,
@@ -801,6 +805,38 @@ def build_settled_direct_snapshot() -> DirectWarehouseSnapshot:
     )
     return build_direct_snapshot(
         relation_names=(*DIRECT_SCOPE_SOURCE_RELATION_NAMES, *model_relation_names),
+    )
+
+
+def build_direct_fingerprint_snapshot(
+    *, analysis: CompileAnalysis, changed_model_names: tuple[str, ...] = ()
+) -> AdapterDirectFingerprintSnapshot:
+    """Build complete applied fingerprints with optional deterministic query drift."""
+
+    changed_names: frozenset[str] = frozenset(changed_model_names)
+    return AdapterDirectFingerprintSnapshot(
+        status="available",
+        baselines=tuple(
+            AdapterDirectFingerprintRecord(
+                fingerprint_id=f"{model.key.name}-baseline",
+                logical_model_identity=f"analytics.{model.key.name}",
+                definition_sql=model.query,
+                definition_hash={
+                    True: "outdated",
+                    False: DirectModelFingerprint.query_hash(model.query),
+                }[model.key.name in changed_names],
+                identity_metadata=json.dumps(
+                    DirectModelFingerprint.identity(
+                        model=model,
+                    ),
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ),
+                workflow_id="previous",
+                tool_version="0.32.0",
+            )
+            for model in analysis.compiled_project.models
+        ),
     )
 
 

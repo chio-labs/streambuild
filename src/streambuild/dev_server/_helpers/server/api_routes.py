@@ -968,9 +968,14 @@ def _register_build_routes(
                     )
                 expected_write_scope: frozenset[str] | None = None
                 expected_read_scope: frozenset[str] | None = None
+                expected_pipeline_scope: frozenset[str] | None = None
                 if preparation is not None:
                     expected_write_scope, expected_read_scope = PreparedBuildScope.resolve(
                         preparation
+                    )
+                    expected_pipeline_scope = PreparedBuildScope.pipeline_scope(
+                        preparation=preparation,
+                        analysis=analysis,
                     )
                 return builds.start(
                     project_dir=project_dir,
@@ -982,6 +987,7 @@ def _register_build_routes(
                     confirmations=tuple(request.confirmations),
                     expected_write_scope=expected_write_scope,
                     expected_read_scope=expected_read_scope,
+                    expected_pipeline_scope=expected_pipeline_scope,
                 )
         except BuildInProgressError as error:
             raise HTTPException(status_code=_HTTP_CONFLICT, detail=str(error)) from error

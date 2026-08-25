@@ -121,7 +121,6 @@ def _changed_direct_model_keys(
         if model.key in direct_model_keys
         and DirectModelFingerprint.drift_reasons(
             model=model,
-            realized_project=analysis.realized_project,
             baseline=baseline_by_identity.get(f"{database}.{model.key.name}"),
         )
     )

@@ -15,12 +15,14 @@ from streambuild.adapter.models import (
 )
 from streambuild.cli.build.classes.prepared_build_scope import PreparedBuildScope
 from streambuild.cli.build.constants import (
+    EXPECTED_BUILD_PIPELINE_SCOPE_ENV_VAR,
     EXPECTED_BUILD_READ_SCOPE_ENV_VAR,
     EXPECTED_BUILD_WRITE_SCOPE_ENV_VAR,
 )
 from streambuild.cli.build.models import WorkflowPreparationOptions
 from streambuild.cli.entry.constants import DEV_CLI_VARIABLES_ENV_VAR
 from streambuild.cli.entry.exceptions import CliUserError
+from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.dev_server.classes.build_process import _build_environment, build_invocation
 from streambuild.dev_server.classes.dev_server_state import DevServerState
 from streambuild.dev_server.exceptions import DevConfigurationError
@@ -368,6 +370,7 @@ def test_given_changed_plan_flags_when_planning_then_route_and_command_preserve_
                 True,
                 frozenset({"model:orders_clean"}),
                 frozenset({"source:orders"}),
+                frozenset({"model:orders_clean=order_events"}),
             ),
         )
     ],
@@ -420,6 +423,7 @@ def test_given_changed_build_flags_when_starting_then_process_receives_them(
         start_build.call_args.kwargs["include_missing_upstream"],
         start_build.call_args.kwargs["expected_write_scope"],
         start_build.call_args.kwargs["expected_read_scope"],
+        start_build.call_args.kwargs["expected_pipeline_scope"],
     ) == test_case.expected_value
 
 
@@ -436,15 +440,25 @@ def test_given_changed_build_flags_when_starting_then_process_receives_them(
 def test_given_authorized_scope_when_child_plan_changes_then_validation_is_rejected(
     test_case: DevRefactorTestCase,
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
+    write_dev_server_project(project_dir=tmp_path)
+    analysis: CompileAnalysis = build_compile_callable(project_dir=tmp_path)()
     monkeypatch.setenv(
         EXPECTED_BUILD_WRITE_SCOPE_ENV_VAR,
-        json.dumps(["model:other"]),
+        json.dumps(["model:orders_clean"]),
     )
     monkeypatch.setenv(EXPECTED_BUILD_READ_SCOPE_ENV_VAR, json.dumps([]))
+    monkeypatch.setenv(
+        EXPECTED_BUILD_PIPELINE_SCOPE_ENV_VAR,
+        json.dumps(["model:orders_clean=other_pipeline"]),
+    )
 
     with pytest.raises(CliUserError) as rejection:
-        PreparedBuildScope.validate_expected(build_direct_plan_preparation())
+        PreparedBuildScope.validate_expected(
+            preparation=build_direct_plan_preparation(),
+            analysis=analysis,
+        )
 
     assert str(test_case.expected_value) in str(rejection.value)
 
@@ -457,6 +471,7 @@ def test_given_authorized_scope_when_child_plan_changes_then_validation_is_rejec
             expected_value=(
                 ["model:orders_clean"],
                 ["source:orders"],
+                ["model:orders_clean=order_events"],
             ),
         )
     ],
@@ -469,11 +484,13 @@ def test_given_authorized_scopes_when_building_environment_then_child_receives_t
         execution_context=None,
         expected_write_scope=frozenset({"model:orders_clean"}),
         expected_read_scope=frozenset({"source:orders"}),
+        expected_pipeline_scope=frozenset({"model:orders_clean=order_events"}),
     )
 
     assert (
         json.loads(environment[EXPECTED_BUILD_WRITE_SCOPE_ENV_VAR]),
         json.loads(environment[EXPECTED_BUILD_READ_SCOPE_ENV_VAR]),
+        json.loads(environment[EXPECTED_BUILD_PIPELINE_SCOPE_ENV_VAR]),
     ) == test_case.expected_value
 
 

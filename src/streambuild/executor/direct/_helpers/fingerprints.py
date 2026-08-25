@@ -60,12 +60,11 @@ def _fingerprint_records(
             continue
         model: CompiledModel = model_by_name[entry.model_key.name]
         definition_sql: str = model.query
-        definition_hash: str = sha256(definition_sql.encode()).hexdigest()
+        definition_hash: str = DirectModelFingerprint.query_hash(definition_sql)
         logical_identity: str = f"{request.database}.{model.key.name}"
         identity_metadata: str = json.dumps(
             DirectModelFingerprint.identity(
                 model=model,
-                realized_project=request.realized_project,
             ),
             sort_keys=True,
             separators=(",", ":"),

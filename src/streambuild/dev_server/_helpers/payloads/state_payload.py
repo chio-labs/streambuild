@@ -92,7 +92,7 @@ def build_state_payload(
     extents: dict[str, dict[str, object]] = _extents(
         connection=connection, database=database, relation_names=lineage_relations
     )
-    baselines: dict[str, AdapterDirectFingerprintRecord] = _fingerprint_baselines(
+    baselines: dict[str, AdapterDirectFingerprintRecord] | None = _fingerprint_baselines(
         analysis=analysis,
         connection=connection,
         database=database,
@@ -289,7 +289,7 @@ def _extents(
 def _model_states(
     *,
     analysis: CompileAnalysis,
-    baselines: dict[str, AdapterDirectFingerprintRecord],
+    baselines: dict[str, AdapterDirectFingerprintRecord] | None,
     stats: dict[str, dict[str, int]],
     extents: dict[str, dict[str, object]],
     captured_at: str,
@@ -310,10 +310,9 @@ def _model_states(
         drift_reasons: tuple[str, ...] = (
             DirectModelFingerprint.drift_reasons(
                 model=model,
-                realized_project=analysis.realized_project,
                 baseline=baselines.get(model.key.name),
             )
-            if model.key.name in direct_model_names
+            if baselines is not None and model.key.name in direct_model_names
             else ()
         )
         states[model.key.name] = {
@@ -538,7 +537,7 @@ def _fingerprint_baselines(
     analysis: CompileAnalysis,
     connection: AdapterConnection,
     database: str,
-) -> dict[str, AdapterDirectFingerprintRecord]:
+) -> dict[str, AdapterDirectFingerprintRecord] | None:
     identities: tuple[str, ...] = tuple(
         f"{database}.{model.key.name}" for model in analysis.compiled_project.models
     )
@@ -547,7 +546,7 @@ def _fingerprint_baselines(
         logical_model_identities=identities,
     )
     if snapshot.status != AdapterOptionalStateStatus.AVAILABLE:
-        return {}
+        return None if snapshot.status == AdapterOptionalStateStatus.UNAVAILABLE else {}
     prefix: str = f"{database}."
     return {
         record.logical_model_identity.removeprefix(prefix): record for record in snapshot.baselines

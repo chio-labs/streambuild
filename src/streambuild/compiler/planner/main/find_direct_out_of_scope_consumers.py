@@ -5,6 +5,7 @@ from __future__ import annotations
 from streambuild.adapter.models import AdapterMaterializedView, CatalogSnapshot
 from streambuild.compiler.compile.models import LogicalResourceKey
 from streambuild.compiler.pipeline.models import RealizedProject
+from streambuild.compiler.planner.constants import CATALOG_MATERIALIZED_VIEW_ENGINE
 
 
 def find_direct_out_of_scope_consumers(
@@ -31,7 +32,8 @@ def find_direct_out_of_scope_consumers(
         sorted(
             relation.name
             for relation in catalog.relations
-            if relation.name not in in_scope_materialized_views
+            if relation.engine == CATALOG_MATERIALIZED_VIEW_ENGINE
+            and relation.name not in in_scope_materialized_views
             and rebuilt_relation_names.intersection(relation.source_relation_names)
         )
     )

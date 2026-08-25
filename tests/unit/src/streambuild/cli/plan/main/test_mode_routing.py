@@ -3,10 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from streambuild.adapter.models import (
-    AdapterDirectFingerprintRecord,
-    AdapterDirectFingerprintSnapshot,
-)
+from streambuild.adapter.models import AdapterDirectFingerprintSnapshot
 from streambuild.cli.plan.constants import DIRECT_MODE_LABEL, VIRTUAL_ENVIRONMENTS_MODE_LABEL
 from streambuild.cli.workflow_artifacts.main._publish_plan_workflow import publish_plan_workflow
 from streambuild.executor.workflow.models import BuildWorkflow
@@ -22,7 +19,11 @@ from tests.unit.src.streambuild.cli.plan.main.helpers import (
     fail_second_workflow_artifact_replace,
     run_scope_project_plan,
 )
-from tests.unit.src.streambuild.compiler.planner.helpers import write_direct_scope_project
+from tests.unit.src.streambuild.compiler.planner.helpers import (
+    analyze_direct_scope_project,
+    build_direct_fingerprint_snapshot,
+    write_direct_scope_project,
+)
 
 
 @pytest.mark.parametrize(
@@ -143,19 +144,9 @@ def test_given_changed_model_when_planning_then_changed_root_and_downstream_are_
     test_case: CliChangedPlanTestCase,
 ) -> None:
     write_direct_scope_project(project_root=tmp_path)
-    fingerprints: AdapterDirectFingerprintSnapshot = AdapterDirectFingerprintSnapshot(
-        status="available",
-        baselines=(
-            AdapterDirectFingerprintRecord(
-                fingerprint_id="beta-old",
-                logical_model_identity="analytics.beta",
-                definition_sql="SELECT 0",
-                definition_hash="outdated",
-                identity_metadata="{}",
-                workflow_id="previous",
-                tool_version="0.32.0",
-            ),
-        ),
+    fingerprints: AdapterDirectFingerprintSnapshot = build_direct_fingerprint_snapshot(
+        analysis=analyze_direct_scope_project(project_root=tmp_path),
+        changed_model_names=("beta",),
     )
 
     exit_code: int = run_scope_project_plan(
@@ -189,11 +180,15 @@ def test_given_no_changed_models_when_planning_then_plan_is_a_no_op(
     test_case: CliChangedPlanTestCase,
 ) -> None:
     write_direct_scope_project(project_root=tmp_path)
+    fingerprints: AdapterDirectFingerprintSnapshot = build_direct_fingerprint_snapshot(
+        analysis=analyze_direct_scope_project(project_root=tmp_path),
+    )
 
     exit_code: int = run_scope_project_plan(
         project_root=tmp_path,
         json_output=True,
         changed=True,
+        direct_fingerprints=fingerprints,
     )
 
     payload: dict[str, object] = json.loads(capsys.readouterr().out)

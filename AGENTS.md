@@ -41,5 +41,22 @@ revision will fail before tests start.
 - Use separate pull requests only for independently releasable changes, intentionally different
   delivery timing, or explicit user instruction.
 
+## Review Discipline
+
+- Treat review findings as hypotheses to validate against the supported product contract, ownership
+  boundary, and realistic execution paths before changing code.
+- Prioritize concrete correctness, authorization, data-loss, and mutation risks within systems the
+  project manages. Distinguish those from unsupported external misuse or purely theoretical states.
+- Keep fixes proportional. Prefer the smallest change that closes the demonstrated risk; do not add
+  cross-system scans, new adapter contracts, or broad defensive machinery without a product
+  requirement or evidence that the project owns that boundary.
+- Classify findings as in-scope blockers, related follow-ups, or unrelated observations. Do not
+  expand the active change merely because a reviewer or subagent found something worth considering.
+- For non-blocking or out-of-scope findings, recommend a focused Linear issue for separate
+  investigation instead of fixing them opportunistically. Create the issue only when authorized by
+  the user or the active workflow, and link it from the current work when it affects residual risk.
+- Ask for a short product decision when a proposed safeguard would expand supported behavior,
+  permissions, operational cost, or system ownership.
+
 The project interpreter is pinned by `.python-version`; do not substitute a
 cached prerelease interpreter when running verification.

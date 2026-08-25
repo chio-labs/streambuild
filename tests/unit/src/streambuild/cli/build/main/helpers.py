@@ -78,12 +78,15 @@ class InterruptedBuildConnection(RecordingAdapterConnection):
         raise KeyboardInterrupt
 
 
-def build_scope_project_connection() -> RecordingAdapterConnection:
+def build_scope_project_connection(
+    *, direct_fingerprints: AdapterDirectFingerprintSnapshot = _ABSENT_DIRECT_FINGERPRINTS
+) -> RecordingAdapterConnection:
     """Build the settled recording connection shared by direct command tests."""
 
     snapshot: DirectWarehouseSnapshot = _settled_scope_snapshot()
     return RecordingAdapterConnection(
         relations=snapshot.catalog.relations,
+        direct_fingerprints=direct_fingerprints,
     )
 
 

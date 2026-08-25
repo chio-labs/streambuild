@@ -42,7 +42,11 @@ from tests.unit.src.streambuild.cli.build.main.helpers import (
     write_mixed_scope_project,
 )
 from tests.unit.src.streambuild.cli.helpers import RecordingAdapterConnection
-from tests.unit.src.streambuild.compiler.planner.helpers import write_direct_scope_project
+from tests.unit.src.streambuild.compiler.planner.helpers import (
+    analyze_direct_scope_project,
+    build_direct_fingerprint_snapshot,
+    write_direct_scope_project,
+)
 
 
 @pytest.mark.parametrize(
@@ -598,7 +602,11 @@ def test_given_no_changed_models_when_building_then_command_is_an_operational_no
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     write_direct_scope_project(project_root=tmp_path)
-    connection: RecordingAdapterConnection = build_scope_project_connection()
+    connection: RecordingAdapterConnection = build_scope_project_connection(
+        direct_fingerprints=build_direct_fingerprint_snapshot(
+            analysis=analyze_direct_scope_project(project_root=tmp_path),
+        )
+    )
 
     exit_code: int = run_scope_project_build_with_connection(
         project_root=tmp_path,

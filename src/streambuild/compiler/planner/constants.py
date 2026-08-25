@@ -75,3 +75,4 @@ ENGINE_ARGUMENT_OPEN: str = "("
 EMPTY_TUPLE_EXPRESSION: str = "tuple()"
 BLANK_VALUES: tuple[object, ...] = (None, "")
 DEPLOYMENT_ID_PATTERN: str = r"\d{8}T\d{6}Z_[A-Za-z0-9]+"
+CATALOG_MATERIALIZED_VIEW_ENGINE: str = "MaterializedView"

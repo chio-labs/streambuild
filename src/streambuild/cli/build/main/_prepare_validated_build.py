@@ -36,5 +36,5 @@ def prepare_validated_build(
     )
     if dynamic_selection:
         validate_build_pipeline_limit(analysis=analysis, preparation=preparation)
-    PreparedBuildScope.validate_expected(preparation)
+    PreparedBuildScope.validate_expected(preparation=preparation, analysis=analysis)
     return preparation
