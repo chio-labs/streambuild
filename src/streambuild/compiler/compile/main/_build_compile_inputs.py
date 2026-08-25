@@ -66,6 +66,11 @@ def build_compile_inputs(
         production_target=(
             False if effective_configuration is None else effective_configuration.production_target
         ),
+        destruction_relation_drop_size_limit=(
+            None
+            if effective_configuration is None
+            else effective_configuration.destruction.max_table_size_to_drop_bytes
+        ),
     )
     variables: tuple[tuple[str, object], ...] = (
         () if effective_configuration is None else effective_configuration.variables

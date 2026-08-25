@@ -855,7 +855,6 @@ class AdapterConnectionConfig:
     password: str
     database: str | None = None
     settings: tuple[tuple[str, str], ...] = ()
-    destruction_relation_drop_size_limit: int | None = None
 
     def __repr__(self) -> str:
         """Render the configuration without exposing the password."""
@@ -863,9 +862,7 @@ class AdapterConnectionConfig:
         return (
             f"{type(self).__name__}(host={self.host!r}, port={self.port!r}, "
             f"username={self.username!r}, password={REDACTED_SECRET_PLACEHOLDER!r}, "
-            f"database={self.database!r}, settings={self.settings!r}, "
-            "destruction_relation_drop_size_limit="
-            f"{self.destruction_relation_drop_size_limit!r})"
+            f"database={self.database!r}, settings={self.settings!r})"
         )
 
 

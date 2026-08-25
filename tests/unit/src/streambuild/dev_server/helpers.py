@@ -452,6 +452,7 @@ def build_pipeline_destruction_route_plan() -> DestructionPlan:
         plan_fingerprint="b" * 64,
         created_at=now,
         expires_at=now + timedelta(minutes=15),
+        relation_drop_size_policy_observed=True,
     )
 
 
@@ -476,6 +477,7 @@ def build_target_reset_route_plan() -> DestructionPlan:
         plan_fingerprint="b" * 64,
         created_at=now,
         expires_at=now + timedelta(minutes=15),
+        relation_drop_size_policy_observed=True,
     )
 
 

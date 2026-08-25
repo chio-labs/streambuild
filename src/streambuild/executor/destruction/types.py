@@ -51,9 +51,6 @@ class DestructionPlanningConnection(Protocol):
 
     def load_relation_drop_size_server_default(self) -> int | None: ...
 
-    @property
-    def destruction_relation_drop_size_limit(self) -> int | None: ...
-
     def query(self, statement: str) -> AdapterQueryResult: ...
 
 

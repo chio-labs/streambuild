@@ -76,8 +76,11 @@ class DestructionAsyncExecutionRouteTestCase:
 class DestructionRecoveryRouteTestCase:
     description: str
     invocation_id: str
+    command: str
+    operation_kind: str
     expected_plan_id: str
     expected_pipeline_names: tuple[str, ...]
+    expected_included_pipeline_names: tuple[str, ...]
 
 
 @dataclass(frozen=True)

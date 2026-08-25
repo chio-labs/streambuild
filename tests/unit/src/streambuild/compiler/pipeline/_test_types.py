@@ -30,6 +30,15 @@ class AnalyzeProjectTestCase:
 
 
 @dataclass(frozen=True)
+class DestructionTargetMetadataTestCase:
+    description: str
+    initial_limit: str
+    fresh_limit: str
+    expected_initial_bytes: int
+    expected_fresh_bytes: int
+
+
+@dataclass(frozen=True)
 class AnalysisDialectTestCase:
     description: str
     dialect: str
