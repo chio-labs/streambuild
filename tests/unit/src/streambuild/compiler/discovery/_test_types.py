@@ -107,6 +107,15 @@ class EffectiveProjectConfigurationTestCase:
 
 
 @dataclass(frozen=True)
+class TypedRetentionInterpolationTestCase:
+    description: str
+    expected_duration_seconds: int
+    expected_timestamp_column: str
+    expected_cap_at_column: str
+    expected_kafka_fallback: str
+
+
+@dataclass(frozen=True)
 class ProjectAuditDefaultsTestCase:
     description: str
     expected_severity: str
@@ -161,6 +170,13 @@ class SourceRegistryTestCase:
     expected_boundary_modes: tuple[str, ...]
     expected_relative_paths: tuple[str, ...]
     expected_managed_source_ttl: str
+
+
+@dataclass(frozen=True)
+class SourceRetentionInterpolationTestCase:
+    description: str
+    expected_duration_seconds: int
+    expected_fallback: str
 
 
 @dataclass(frozen=True)

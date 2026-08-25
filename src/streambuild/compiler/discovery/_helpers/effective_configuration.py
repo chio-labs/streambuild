@@ -4,10 +4,16 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import replace
+from pathlib import Path
+from typing import Literal
 
 from streambuild.compiler.discovery._helpers.interpolation import (
     interpolate_config_value,
     resolve_variable_values,
+)
+from streambuild.compiler.discovery._helpers.model_header import (
+    parse_kafka_retention,
+    parse_model_retention,
 )
 from streambuild.compiler.discovery.exceptions import ProjectConfigError
 from streambuild.compiler.discovery.models import (
@@ -15,9 +21,11 @@ from streambuild.compiler.discovery.models import (
     AuthoredProjectConfig,
     BuildConfig,
     EffectiveProjectConfiguration,
+    KafkaRetentionPolicy,
     LoadedProjectConfiguration,
     LocalProjectConfig,
     LocalProjectTarget,
+    ModelRetentionPolicy,
     ProjectDefaults,
     ProjectNaming,
     ProjectTarget,
@@ -196,9 +204,76 @@ def _resolve_project_defaults(
                         f"{loaded.project_source.file_path} defaults.sources.kafka.naming_macro"
                     ),
                 ),
+                retention=_resolve_kafka_retention(
+                    defaults=defaults,
+                    variables=variables,
+                    environment=environment,
+                    file_path=loaded.project_source.file_path,
+                ),
+                retention_template=None,
             ),
         ),
+        models=replace(
+            defaults.models,
+            retention=_resolve_model_retention(
+                defaults=defaults,
+                variables=variables,
+                environment=environment,
+                file_path=loaded.project_source.file_path,
+            ),
+            retention_template=None,
+        ),
     )
+
+
+def _resolve_model_retention(
+    *,
+    defaults: ProjectDefaults,
+    variables: Mapping[str, object],
+    environment: Mapping[str, str],
+    file_path: Path,
+) -> ModelRetentionPolicy | Literal[False] | None:
+    template: object | None = defaults.models.retention_template
+    if template is None:
+        return defaults.models.retention
+    field_path: str = f"{file_path} defaults.models.retention"
+    try:
+        return parse_model_retention(
+            value=interpolate_config_value(
+                value=template,
+                variables=variables,
+                environment=environment,
+                field_path=field_path,
+            ),
+            field_path=field_path,
+        )
+    except ValueError as error:
+        raise ProjectConfigError(str(error)) from error
+
+
+def _resolve_kafka_retention(
+    *,
+    defaults: ProjectDefaults,
+    variables: Mapping[str, object],
+    environment: Mapping[str, str],
+    file_path: Path,
+) -> KafkaRetentionPolicy | Literal[False] | None:
+    template: object | None = defaults.sources.kafka.retention_template
+    if template is None:
+        return defaults.sources.kafka.retention
+    field_path: str = f"{file_path} defaults.sources.kafka.retention"
+    try:
+        return parse_kafka_retention(
+            value=interpolate_config_value(
+                value=template,
+                variables=variables,
+                environment=environment,
+                field_path=field_path,
+            ),
+            field_path=field_path,
+        )
+    except ValueError as error:
+        raise ProjectConfigError(str(error)) from error
 
 
 def _resolve_project_naming(

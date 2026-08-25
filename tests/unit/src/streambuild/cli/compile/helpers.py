@@ -27,6 +27,26 @@ def copy_orders_demo(*, project_dir: Path) -> None:
     _ = copytree(Path("examples/orders_demo"), project_dir)
 
 
+def write_typed_source_retention(*, project_dir: Path) -> None:
+    (project_dir / "streambuild_project.toml").write_text(
+        """name = "basic_project"
+default_target = "test"
+
+[defaults]
+pipeline_mode = "virtual"
+
+[defaults.sources.kafka.retention]
+duration = "12h"
+timestamp = "broker"
+cap_at = "landed"
+
+[targets.test]
+database = "analytics"
+""",
+        encoding="utf-8",
+    )
+
+
 def write_adopted_source(*, project_dir: Path) -> None:
     (project_dir / "sources" / "orders.yml").write_text(
         """sources:

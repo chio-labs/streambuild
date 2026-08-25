@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import tomllib
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Literal, cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -694,12 +695,16 @@ def _parse_project_defaults(*, payload: object, file_path: Path) -> ProjectDefau
     models: ModelDefaults = _parse_model_defaults(
         payload=mapping.get("models"), file_path=file_path
     )
-    if managed_source_ttl is not None and sources.kafka.retention is not None:
+    if managed_source_ttl is not None and (
+        sources.kafka.retention is not None or sources.kafka.retention_template is not None
+    ):
         raise ProjectConfigError(
             f"{file_path} defaults.managed_source_ttl cannot be combined with "
             "defaults.sources.kafka.retention"
         )
-    if model_ttl is not None and models.retention is not None:
+    if model_ttl is not None and (
+        models.retention is not None or models.retention_template is not None
+    ):
         raise ProjectConfigError(
             f"{file_path} defaults.model_ttl cannot be combined with defaults.models.retention"
         )
@@ -811,6 +816,7 @@ def _parse_source_defaults(*, payload: object, file_path: Path) -> SourceDefault
         label="defaults.sources.kafka",
         file_path=file_path,
     )
+    retention_value: object = kafka_mapping.get("retention")
     return SourceDefaults(
         kafka=KafkaSourceDefaults(
             naming_macro=_optional_non_empty_string(
@@ -819,9 +825,16 @@ def _parse_source_defaults(*, payload: object, file_path: Path) -> SourceDefault
                 label="defaults.sources.kafka",
                 file_path=file_path,
             ),
-            retention=_project_kafka_retention(
-                value=kafka_mapping.get("retention"),
-                field_path=f"{file_path} defaults.sources.kafka.retention",
+            retention=(
+                None
+                if _contains_interpolation(retention_value)
+                else _project_kafka_retention(
+                    value=retention_value,
+                    field_path=f"{file_path} defaults.sources.kafka.retention",
+                )
+            ),
+            retention_template=(
+                retention_value if _contains_interpolation(retention_value) else None
             ),
         )
     )
@@ -839,10 +852,13 @@ def _parse_model_defaults(*, payload: object, file_path: Path) -> ModelDefaults:
         label="defaults.models",
         file_path=file_path,
     )
+    retention_value: object = mapping.get("retention")
+    if _contains_interpolation(retention_value):
+        return ModelDefaults(retention_template=retention_value)
     try:
         return ModelDefaults(
             retention=parse_model_retention(
-                value=mapping.get("retention"),
+                value=retention_value,
                 field_path=f"{file_path} defaults.models.retention",
             )
         )
@@ -857,6 +873,19 @@ def _project_kafka_retention(
         return parse_kafka_retention(value=value, field_path=field_path)
     except ValueError as error:
         raise ProjectConfigError(str(error)) from error
+
+
+def _contains_interpolation(value: object) -> bool:
+    if isinstance(value, str):
+        return INTERPOLATION_TOKEN_START in value
+    if isinstance(value, Mapping):
+        return any(
+            _contains_interpolation(key) or _contains_interpolation(item)
+            for key, item in value.items()
+        )
+    if isinstance(value, (list, tuple)):
+        return any(_contains_interpolation(item) for item in value)
+    return False
 
 
 def _parse_pipeline_mode(*, value: object, label: str, file_path: Path) -> PipelineMode:
