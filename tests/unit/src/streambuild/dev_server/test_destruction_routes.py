@@ -71,6 +71,7 @@ def test_given_destroy_permission_when_planning_then_http_boundary_enforces_scop
     assert denied.json()["detail"]["reason"] == test_case.expected_reason
     assert allowed.status_code == test_case.expected_allowed_status
     assert allowed.json()["planId"] == test_case.expected_plan_id
+    assert allowed.json()["reviewedAt"] is None
     assert planner.call_count == test_case.expected_planner_call_count
     store.close()
 
@@ -328,6 +329,7 @@ def test_given_reviewed_plan_when_dev_app_is_reconstructed_then_http_plan_surviv
     assert reviewed.status_code == test_case.expected_reviewed_status
     assert reloaded.status_code == test_case.expected_reloaded_status
     assert reloaded.json()["planId"] == test_case.expected_plan_id
+    assert reloaded.json()["reviewedAt"] == reviewed.json()["reviewedAt"]
     assert mismatched_review.status_code == test_case.expected_mismatched_review_status
     store.close()
 

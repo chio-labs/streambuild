@@ -23,7 +23,8 @@ const plan = {
 	retainedReplayDataIncluded: false,
 	estimatedBytes: 0,
 	challengeValues: ['orders'],
-	expiresAt: '2026-08-24T12:15:00Z'
+	expiresAt: '2026-08-24T12:15:00Z',
+	reviewedAt: null
 };
 
 describe('destruction API', () => {

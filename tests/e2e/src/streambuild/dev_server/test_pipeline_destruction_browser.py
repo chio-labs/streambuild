@@ -15,6 +15,8 @@ class DestructionRouteRecorder:
         self.plan_payload: dict[str, object] = plan_payload
         self.invocation_id: str = invocation_id
         self.request_bodies: list[dict[str, object]] = []
+        self.reviewed_at: str | None = None
+        self.read_count: int = 0
 
     def fulfill_plan(self, route: Route) -> None:
         self.request_bodies.append(cast(dict[str, object], route.request.post_data_json))
@@ -22,7 +24,12 @@ class DestructionRouteRecorder:
 
     def fulfill_review(self, route: Route) -> None:
         self.request_bodies.append({})
-        route.fulfill(json={**self.plan_payload, "reviewedAt": "2026-08-24T12:01:00+00:00"})
+        self.reviewed_at = "2026-08-24T12:01:00+00:00"
+        route.fulfill(json={**self.plan_payload, "reviewedAt": self.reviewed_at})
+
+    def fulfill_read(self, route: Route) -> None:
+        self.read_count += 1
+        route.fulfill(json={**self.plan_payload, "reviewedAt": self.reviewed_at})
 
     def fulfill_execution(self, route: Route) -> None:
         self.request_bodies.append(cast(dict[str, object], route.request.post_data_json))
@@ -78,6 +85,7 @@ def test_given_selected_pipeline_when_confirming_destruction_then_both_gates_are
         "estimatedBytes": 4096,
         "challengeValues": [test_case.pipeline_name],
         "expiresAt": "2099-08-24T12:15:00+00:00",
+        "reviewedAt": None,
     }
     routes: DestructionRouteRecorder = DestructionRouteRecorder(
         plan_payload=plan_payload,
@@ -85,6 +93,7 @@ def test_given_selected_pipeline_when_confirming_destruction_then_both_gates_are
     )
 
     page.route("**/api/destruction/plans", routes.fulfill_plan)
+    page.route("**/api/destruction/plans/plan-1", routes.fulfill_read)
     page.route("**/api/destruction/plans/plan-1/review", routes.fulfill_review)
     page.route("**/api/destruction/plans/plan-1/execute", routes.fulfill_execution)
     page.goto(f"{base_url}/pipelines", wait_until="domcontentloaded")
@@ -97,6 +106,7 @@ def test_given_selected_pipeline_when_confirming_destruction_then_both_gates_are
 
     page.get_by_label(f"Select {test_case.pipeline_name} for destruction").click()
     page.get_by_role("button", name="Destroy (1)").click()
+    expect(page).to_have_url(f"{base_url}/destruction/plans/plan-1")
     expect(page.get_by_text("Frozen pipeline closure")).to_be_visible()
     expect(page.get_by_text(test_case.expected_relation_name, exact=True)).to_be_visible()
     expect(page.get_by_role("button", name="Review frozen plan")).to_be_enabled()
@@ -108,6 +118,13 @@ def test_given_selected_pipeline_when_confirming_destruction_then_both_gates_are
     expect(execute).to_be_disabled()
     challenge.fill(test_case.pipeline_name)
     expect(execute).to_be_enabled()
+    page.reload(wait_until="domcontentloaded")
+
+    challenge = page.get_by_label(f"Challenge 1: {test_case.pipeline_name}")
+    execute = page.get_by_role("button", name="Destroy pipelines", exact=True)
+    expect(challenge).to_have_value("")
+    expect(execute).to_be_disabled()
+    challenge.fill(test_case.pipeline_name)
     execute.click()
 
     expect(page).to_have_url(f"{base_url}/runs/{test_case.expected_invocation_id}")
@@ -120,6 +137,7 @@ def test_given_selected_pipeline_when_confirming_destruction_then_both_gates_are
         {},
         {"responses": [test_case.pipeline_name]},
     ]
+    assert routes.read_count == 2
 
 
 if __name__ == "__main__":
