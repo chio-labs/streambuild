@@ -173,6 +173,13 @@ class DurableStoreTestCase:
 
 
 @dataclass(frozen=True)
+class LegacyDestructionPlanTestCase:
+    description: str
+    expected_policy_observed: bool
+    expected_limit: int | None
+
+
+@dataclass(frozen=True)
 class DestructionWorkflowTestCase:
     description: str
     expected_first_sql: str

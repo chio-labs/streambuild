@@ -1,11 +1,13 @@
 from dataclasses import replace
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from typing import cast
 
 import pytest
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import CatalogRelation
+from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.executor.destruction.exceptions import DestructionDriftError
 from streambuild.executor.destruction.main.assemble_destruction_workflow import (
     assemble_destruction_workflow,
@@ -70,7 +72,17 @@ def test_given_mixed_owned_relations_when_assembling_workflow_then_order_is_depe
     test_case: DestructionWorkflowTestCase,
 ) -> None:
     fixture: PlanningFixture = build_planning_fixture()
-    fixture.connection.destruction_relation_drop_size_limit = 107_374_182_400
+    analysis: CompileAnalysis = cast(
+        CompileAnalysis,
+        SimpleNamespace(
+            realized_project=fixture.analysis.realized_project,
+            graph=fixture.analysis.graph,
+            compiled_project=SimpleNamespace(
+                production_target=False,
+                destruction_relation_drop_size_limit=107_374_182_400,
+            ),
+        ),
+    )
     relations_by_name: dict[str, CatalogRelation] = {
         relation.name: relation for relation in fixture.connection.catalog.relations
     }
@@ -88,7 +100,7 @@ def test_given_mixed_owned_relations_when_assembling_workflow_then_order_is_depe
             database="analytics",
             metadata_database="metadata",
         ),
-        analysis=fixture.analysis,
+        analysis=analysis,
         connection=fixture.connection,
         now=_NOW,
     )

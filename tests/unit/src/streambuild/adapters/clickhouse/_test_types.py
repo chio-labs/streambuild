@@ -33,7 +33,9 @@ class ConnectionQueryNormalizationTestCase:
 class ClickHouseDropLimitTestCase:
     description: str
     setting_value: int
+    server_default_value: int
     expected_limit: int | None
+    expected_server_default: int | None
 
 
 @dataclass(frozen=True)
@@ -272,9 +274,7 @@ class ClickHouseConnectionDriverSettingsTestCase:
     description: str
     database: str | None
     settings: tuple[tuple[str, str], ...]
-    destruction_relation_drop_size_limit: int | None
     expected_driver_settings: tuple[tuple[str, str], ...]
-    expected_destruction_relation_drop_size_limit: int | None
 
 
 @dataclass(frozen=True)

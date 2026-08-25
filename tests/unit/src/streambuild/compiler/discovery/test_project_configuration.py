@@ -292,6 +292,9 @@ def test_given_target_destruction_limit_when_resolving_then_bytes_are_target_sco
 
         [targets.uat.destruction]
         max_table_size_to_drop = "100GiB"
+
+        [targets.prod]
+        database = "analytics_prod"
         """,
     )
     loaded: LoadedProjectConfiguration = load_project_configuration(project_dir=tmp_path)
@@ -302,8 +305,15 @@ def test_given_target_destruction_limit_when_resolving_then_bytes_are_target_sco
         cli_variables={},
         environment={},
     )
+    production: EffectiveProjectConfiguration = resolve_effective_project_configuration(
+        loaded=loaded,
+        selected_target="prod",
+        cli_variables={},
+        environment={},
+    )
 
     assert effective.destruction.max_table_size_to_drop_bytes == test_case.expected_limit_bytes
+    assert production.destruction.max_table_size_to_drop_bytes is None
 
 
 @pytest.mark.parametrize(

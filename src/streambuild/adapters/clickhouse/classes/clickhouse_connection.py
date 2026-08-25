@@ -135,16 +135,8 @@ _MAX_TABLE_SIZE_TO_DROP_SETTING: str = "max_table_size_to_drop"
 class ClickHouseConnection(AdapterConnection):
     """A neutral adapter connection backed by the ClickHouse driver."""
 
-    def __init__(
-        self,
-        raw_client: RawClickHouseClient,
-        *,
-        destruction_relation_drop_size_limit: int | None = None,
-    ) -> None:
+    def __init__(self, raw_client: RawClickHouseClient) -> None:
         self._raw_client: RawClickHouseClient = raw_client
-        self._destruction_relation_drop_size_limit: int | None = (
-            destruction_relation_drop_size_limit
-        )
 
     @property
     def adapter_identity(self) -> AdapterIdentity:
@@ -197,12 +189,6 @@ class ClickHouseConnection(AdapterConnection):
             )
         value: int = int(str(result.rows[0][0]))
         return None if value == 0 else value
-
-    @property
-    def destruction_relation_drop_size_limit(self) -> int | None:
-        """Return the finite override reserved for destruction DROP statements."""
-
-        return self._destruction_relation_drop_size_limit
 
     def load_external_dependants(
         self, *, database: str, relation_names: tuple[str, ...]

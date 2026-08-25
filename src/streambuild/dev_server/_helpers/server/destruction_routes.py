@@ -20,7 +20,7 @@ from streambuild.adapter.exceptions import (
 from streambuild.auth.main.read_authenticated_request import read_authenticated_request
 from streambuild.auth.models import AuthenticatedRequest
 from streambuild.compiler.pipeline.models import CompileAnalysis
-from streambuild.dev_server._helpers.queries.runs_query import read_terminal_run
+from streambuild.dev_server._helpers.queries.runs_query import read_destruction_recovery_run
 from streambuild.dev_server._helpers.server.authorization_enforcement import (
     require_destruction_authorization,
 )
@@ -305,7 +305,7 @@ def _register_destruction_recovery_route(
                         status_code=_HTTP_SERVICE_UNAVAILABLE,
                         detail="no warehouse read connection",
                     )
-                run: dict[str, object] | None = read_terminal_run(
+                run: dict[str, object] | None = read_destruction_recovery_run(
                     connection=read_connection,
                     database=database,
                     invocation_id=invocation_id,
@@ -585,6 +585,10 @@ def _authorize_plan(
     http_request: Request,
     authorization: OperationAuthorizationContext,
 ) -> None:
+    if not plan.relation_drop_size_policy_observed:
+        raise DestructionDriftError(
+            "Destruction plan predates frozen DROP safety evidence; create a fresh plan"
+        )
     current_target: str = (
         analysis.compiled_project.target_name or authorization.selected_target or ""
     )
@@ -649,6 +653,7 @@ def _plan_payload(
         "dropSizeLimitBytes": plan.relation_drop_size_limit,
         "dropSizeServerLimitBytes": plan.relation_drop_size_server_limit,
         "dropSizeOverrideBytes": plan.relation_drop_size_override,
+        "dropSizePolicyObserved": plan.relation_drop_size_policy_observed,
         "challengeValues": list(plan.challenges),
         "expiresAt": plan.expires_at.isoformat(),
         "reviewedAt": None if reviewed_at is None else reviewed_at.isoformat(),
