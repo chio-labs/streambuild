@@ -6,6 +6,10 @@ from typing import cast
 import pytest
 from _pytest.capture import CaptureResult
 
+from streambuild.adapter.models import (
+    AdapterDirectFingerprintRecord,
+    AdapterDirectFingerprintSnapshot,
+)
 from streambuild.executor.backfill.models import BackfillDeploymentIdentity
 from streambuild.executor.observability.constants import RUN_INVOCATION_ID_ENV_VAR
 from streambuild.executor.workflow.models import PublishedBuildWorkflow
@@ -16,6 +20,7 @@ from tests.unit.src.streambuild.cli.build.main._test_types import (
     CliBuildInterruptTestCase,
     CliMixedBuildTestCase,
     CliMixedFailureTestCase,
+    CliNoOpChangedBuildTestCase,
     CliProtectedBuildTestCase,
     CliRejectedPipelineLimitTestCase,
     CliRunScopeTestCase,
@@ -37,7 +42,11 @@ from tests.unit.src.streambuild.cli.build.main.helpers import (
     write_mixed_scope_project,
 )
 from tests.unit.src.streambuild.cli.helpers import RecordingAdapterConnection
-from tests.unit.src.streambuild.compiler.planner.helpers import write_direct_scope_project
+from tests.unit.src.streambuild.compiler.planner.helpers import (
+    analyze_direct_scope_project,
+    build_direct_fingerprint_snapshot,
+    write_direct_scope_project,
+)
 
 
 @pytest.mark.parametrize(
@@ -519,6 +528,98 @@ def test_given_selection_within_pipeline_limit_when_running_then_build_proceeds(
     )
 
     assert exit_code == test_case.expected_exit_code
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliAllowedPipelineLimitTestCase(
+            description="one changed pipeline is not treated as an all-pipeline build",
+            project_max_pipelines=1,
+            selectors=(),
+            expected_exit_code=0,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_changed_scope_within_pipeline_limit_when_running_then_build_proceeds(
+    test_case: CliAllowedPipelineLimitTestCase,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    write_mixed_scope_project(project_root=tmp_path)
+    project_path: Path = tmp_path / "streambuild_project.toml"
+    project_path.write_text(
+        project_path.read_text(encoding="utf-8")
+        + f"\n[build]\nmax_pipelines = {test_case.project_max_pipelines}\n",
+        encoding="utf-8",
+    )
+    fingerprints: AdapterDirectFingerprintSnapshot = AdapterDirectFingerprintSnapshot(
+        status="available",
+        baselines=(
+            AdapterDirectFingerprintRecord(
+                fingerprint_id="beta-old",
+                logical_model_identity="analytics.beta",
+                definition_sql="SELECT 0",
+                definition_hash="outdated",
+                identity_metadata="{}",
+                workflow_id="previous",
+                tool_version="0.32.0",
+            ),
+        ),
+    )
+    monkeypatch.setattr(
+        "streambuild.cli.build._helpers.execution.reset_fresh_landing_offsets",
+        lambda **_kwargs: (),
+    )
+
+    exit_code: int = run_scope_project_build_with_connection(
+        project_root=tmp_path,
+        json_output=False,
+        auto_approve=True,
+        connection=build_mixed_scope_project_connection(direct_fingerprints=fingerprints),
+        changed=True,
+    )
+
+    assert exit_code == test_case.expected_exit_code
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliNoOpChangedBuildTestCase(
+            description="no changed models stop before target locking and mutation",
+            expected_exit_code=0,
+            expected_output="No changed models to build.",
+            expected_operation_events=(),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_no_changed_models_when_building_then_command_is_an_operational_no_op(
+    test_case: CliNoOpChangedBuildTestCase,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    write_direct_scope_project(project_root=tmp_path)
+    connection: RecordingAdapterConnection = build_scope_project_connection(
+        direct_fingerprints=build_direct_fingerprint_snapshot(
+            analysis=analyze_direct_scope_project(project_root=tmp_path),
+        )
+    )
+
+    exit_code: int = run_scope_project_build_with_connection(
+        project_root=tmp_path,
+        json_output=False,
+        auto_approve=True,
+        connection=connection,
+        changed=True,
+    )
+
+    assert exit_code == test_case.expected_exit_code
+    assert test_case.expected_output in capsys.readouterr().out
+    assert tuple(connection.operation_events) == test_case.expected_operation_events
+    assert connection.workflow_mutation_statements == []
 
 
 @pytest.mark.parametrize(

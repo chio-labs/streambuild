@@ -16,7 +16,7 @@ import {
 	writePlanDeployment,
 	writePlanSelection
 } from '$lib/plan-view/_helpers/plan-location';
-import { planBoundaryColumns } from '$lib/plan-view/_helpers/plan-presentation';
+import { planBoundaryColumns, summarizePlan } from '$lib/plan-view/_helpers/plan-presentation';
 import type { PlanViewFacade } from '$lib/plan-view/types';
 
 export function createPlanView(): PlanViewFacade {
@@ -30,6 +30,7 @@ export function createPlanView(): PlanViewFacade {
 		parseCommand: parsePlanCommand,
 		buildCommand: buildPlanCommand,
 		status: planStatusFor,
+		summary: summarizePlan,
 		boundaryColumns: planBoundaryColumns,
 		rootSources: rootSourcesFor,
 		selectorToken,

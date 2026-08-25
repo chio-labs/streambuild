@@ -1,3 +1,4 @@
+import json
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -99,6 +100,18 @@ from tests.unit.src.streambuild.compiler.discovery._helpers.load.helpers import 
     write_pipeline_file,
     write_project_configuration_and_source,
 )
+
+
+def changed_storage_identity(identity: dict[str, object]) -> str:
+    """Return fingerprint metadata with a deterministic storage-only change."""
+
+    storage: dict[str, object] = cast(dict[str, object], identity["storage"])
+    return json.dumps(
+        {**identity, "storage": {**storage, "ttl": "created_at + INTERVAL 1 DAY"}},
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
 
 _ORDERS_CLEAN_MODEL: str = """
 MODEL (

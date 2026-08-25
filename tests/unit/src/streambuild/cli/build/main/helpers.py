@@ -3,7 +3,11 @@ from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 
-from streambuild.adapter.models import AdapterMutationResult, AdapterQueryResult
+from streambuild.adapter.models import (
+    AdapterDirectFingerprintSnapshot,
+    AdapterMutationResult,
+    AdapterQueryResult,
+)
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from streambuild.cli.build._helpers.virtual_preview import build_virtual_build_preview
 from streambuild.cli.build.main._run_build import run_build
@@ -30,6 +34,10 @@ from tests.unit.src.streambuild.cli.helpers import RecordingAdapterConnection
 from tests.unit.src.streambuild.compiler.planner.helpers import (
     build_settled_direct_snapshot,
     write_direct_scope_project,
+)
+
+_ABSENT_DIRECT_FINGERPRINTS: AdapterDirectFingerprintSnapshot = AdapterDirectFingerprintSnapshot(
+    status="absent", baselines=()
 )
 
 
@@ -70,20 +78,28 @@ class InterruptedBuildConnection(RecordingAdapterConnection):
         raise KeyboardInterrupt
 
 
-def build_scope_project_connection() -> RecordingAdapterConnection:
+def build_scope_project_connection(
+    *, direct_fingerprints: AdapterDirectFingerprintSnapshot = _ABSENT_DIRECT_FINGERPRINTS
+) -> RecordingAdapterConnection:
     """Build the settled recording connection shared by direct command tests."""
 
     snapshot: DirectWarehouseSnapshot = _settled_scope_snapshot()
     return RecordingAdapterConnection(
         relations=snapshot.catalog.relations,
+        direct_fingerprints=direct_fingerprints,
     )
 
 
-def build_mixed_scope_project_connection() -> RecordingAdapterConnection:
+def build_mixed_scope_project_connection(
+    *, direct_fingerprints: AdapterDirectFingerprintSnapshot = _ABSENT_DIRECT_FINGERPRINTS
+) -> RecordingAdapterConnection:
     """Build a recording connection that captures virtual replay boundaries."""
 
     snapshot: DirectWarehouseSnapshot = _settled_scope_snapshot()
-    return _VirtualArtifactConnection(relations=snapshot.catalog.relations)
+    return _VirtualArtifactConnection(
+        relations=snapshot.catalog.relations,
+        direct_fingerprints=direct_fingerprints,
+    )
 
 
 def record_failed_mixed_virtual_phase(
@@ -144,6 +160,8 @@ def run_scope_project_build_with_connection(
     confirmations: tuple[str, ...] = (),
     events_output: bool = False,
     selectors: tuple[str, ...] = (),
+    changed: bool = False,
+    include_missing_upstream: bool = False,
 ) -> int:
     """Run a direct build with an observable recording connection."""
 
@@ -158,6 +176,8 @@ def run_scope_project_build_with_connection(
             auto_approve=auto_approve,
             confirmations=confirmations,
             events_output=events_output,
+            changed=changed,
+            include_missing_upstream=include_missing_upstream,
         ),
         client=connection,
         observation_client=connection,

@@ -6,6 +6,7 @@ import {
 	writePlanDeployment,
 	writePlanSelection
 } from '$lib/plan-view/_helpers/plan-location';
+import type { ParsedPlanLocation } from '$lib/plan-view/types';
 
 describe('plan location', () => {
 	it('given a planned deployment when selection changes then the stale deployment is removed', () => {
@@ -44,5 +45,51 @@ describe('plan location', () => {
 		);
 
 		expect(planLocationRequestKey(reordered)).toBe(planLocationRequestKey(current));
+	});
+
+	it('given changed mode and missing upstream when read then both flags are retained without selectors', () => {
+		const current: URL = new URL(
+			'https://example.test/plan?select=orders&changed=1&include_missing_upstream=1'
+		);
+
+		expect(readPlanLocation(current)).toMatchObject({
+			selectors: [],
+			changed: true,
+			includeMissingUpstream: true
+		});
+	});
+
+	it('given changed mode when a selection is written then the location uses both boolean fields', () => {
+		const next: URL = writePlanSelection(
+			new URL('https://example.test/plan?select=orders'),
+			[],
+			{ mode: 'full' },
+			null,
+			true,
+			true
+		);
+
+		expect(next.search).toBe('?changed=1&include_missing_upstream=1');
+		expect(planLocationRequestKey(next)).not.toBe(
+			planLocationRequestKey(new URL('https://example.test/plan'))
+		);
+	});
+
+	it('given changed plan flags when deployment is canonicalized then both are preserved', () => {
+		const next: URL = writePlanDeployment(
+			new URL('https://example.test/plan?changed=1&include_missing_upstream=1'),
+			'20260811T120000Z_plan'
+		);
+
+		expect(next.searchParams.get('changed')).toBe('1');
+		expect(next.searchParams.get('include_missing_upstream')).toBe('1');
+	});
+
+	it('given missing-upstream without a selection when read then the invalid flag is ignored', () => {
+		const location: ParsedPlanLocation = readPlanLocation(
+			new URL('https://example.test/plan?include_missing_upstream=1')
+		);
+
+		expect(location.includeMissingUpstream).toBe(false);
 	});
 });

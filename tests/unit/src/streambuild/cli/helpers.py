@@ -69,6 +69,9 @@ _EMPTY_MANAGED_TABLE_STATE: InspectedManagedTableState = InspectedManagedTableSt
     active_bindings=(),
     physical_candidates=(),
 )
+_ABSENT_DIRECT_FINGERPRINTS: AdapterDirectFingerprintSnapshot = AdapterDirectFingerprintSnapshot(
+    status="absent", baselines=()
+)
 _EMPTY_DEPLOYMENT_INVENTORY: AdapterDeploymentInventory = AdapterDeploymentInventory(
     deployments=(),
     publish_events=(),
@@ -187,6 +190,7 @@ class RecordingAdapterConnection(AdapterConnection):
         deployment_inventory: AdapterDeploymentInventory = _EMPTY_DEPLOYMENT_INVENTORY,
         observation_statements: tuple[str, ...] = (),
         required_artifact_path: Path | None = None,
+        direct_fingerprints: AdapterDirectFingerprintSnapshot = _ABSENT_DIRECT_FINGERPRINTS,
     ) -> None:
         self.statements: list[str] = []
         self.catalog_databases: list[str] = []
@@ -213,6 +217,7 @@ class RecordingAdapterConnection(AdapterConnection):
         self._deployment_inventory: AdapterDeploymentInventory = deployment_inventory
         self._observation_statements: tuple[str, ...] = observation_statements
         self._required_artifact_path: Path | None = required_artifact_path
+        self._direct_fingerprints: AdapterDirectFingerprintSnapshot = direct_fingerprints
         self.artifact_seen_before_execution: bool = False
         self.workflow_mutation_statements: list[str] = []
         self.invocation_observations: list[AdapterInvocationRecord] = []
@@ -342,7 +347,7 @@ class RecordingAdapterConnection(AdapterConnection):
         self, *, database: str, logical_model_identities: tuple[str, ...]
     ) -> AdapterDirectFingerprintSnapshot:
         del database, logical_model_identities
-        return AdapterDirectFingerprintSnapshot(status="absent", baselines=())
+        return self._direct_fingerprints
 
     def render_replay_coverage_query(self, request: AdapterReplayCoverageRequest) -> str:
         return render_clickhouse_replay_coverage_query(request)

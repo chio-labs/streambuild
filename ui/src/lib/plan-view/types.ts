@@ -12,6 +12,8 @@ export type PlanStatusInput = {
 
 export type BuildCommandParts = {
 	readonly selectors: Selector[];
+	readonly changed: boolean;
+	readonly includeMissingUpstream: boolean;
 	readonly replayWindow: ReplayWindow;
 	readonly acceptedConfirmations: string[];
 	readonly plan: Plan | null;
@@ -20,14 +22,31 @@ export type BuildCommandParts = {
 
 export type ParsedPlanLocation = {
 	readonly selectors: Selector[];
+	readonly changed: boolean;
+	readonly includeMissingUpstream: boolean;
 	readonly replayWindow: ReplayWindow;
 	readonly deploymentId: string | null;
 };
 
 export type ParsedPlanCommand = {
 	readonly selectors: Selector[];
+	readonly changed: boolean;
+	readonly includeMissingUpstream: boolean;
 	readonly replayWindow: ReplayWindow;
 	readonly deploymentId: string | null;
+};
+
+export type PlanSummary = {
+	readonly planEntries: Plan['entries'];
+	readonly plannedModelNames: string[];
+	readonly plannedRelationNames: string[];
+	readonly hasDirectPhase: boolean;
+	readonly rowsToReplay: number | null;
+	readonly selectedCount: number;
+	readonly changedCount: number;
+	readonly downstreamCount: number;
+	readonly missingUpstreamCount: number;
+	readonly riskyOwnership: Plan['entries'][number]['ownership'];
 };
 
 export type PlanViewTypes = {
@@ -47,13 +66,16 @@ export type PlanViewFacade = {
 		url: URL,
 		selectors: Selector[],
 		replayWindow?: ReplayWindow,
-		deploymentId?: string | null
+		deploymentId?: string | null,
+		changed?: boolean,
+		includeMissingUpstream?: boolean
 	): URL;
 	deploymentUrl(url: URL, deploymentId: string): URL;
 	replayStartToken(replayWindow: ReplayWindow): string | null;
 	parseCommand(command: string): ParsedPlanCommand;
 	buildCommand(parts: BuildCommandParts): string;
 	status(input: PlanStatusInput): PlanStatus;
+	summary(plan: Plan | null): PlanSummary;
 	boundaryColumns(root: Plan['replayRoots'][number]): string | null;
 	rootSources(project: Project, modelNames: string[]): Source[];
 	selectorToken(selector: Selector): string;

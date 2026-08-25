@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from difflib import unified_diff
-from hashlib import sha256
 
 from streambuild.adapter.models import (
     AdapterDirectFingerprintRecord,
@@ -36,7 +35,11 @@ from streambuild.compiler.graph.main.collect_reachable_keys import collect_reach
 from streambuild.compiler.graph.models import DependencyEdge, ProjectGraph
 from streambuild.compiler.graph.types import DependencyEdgeType, GraphTraversalDirection
 from streambuild.compiler.pipeline.models import RealizedProject
+from streambuild.compiler.planner.classes.direct_model_fingerprint import DirectModelFingerprint
 from streambuild.compiler.planner.exceptions import DirectPlanError
+from streambuild.compiler.planner.main.find_direct_out_of_scope_consumers import (
+    find_direct_out_of_scope_consumers,
+)
 from streambuild.compiler.planner.models import (
     DirectPlan,
     DirectPlanEntry,
@@ -51,6 +54,7 @@ from streambuild.compiler.planner.types import (
     DirectPlanReason,
     DirectRelationAction,
     DirectResourceKind,
+    DirectSelectionMode,
     DirectSqlBaselineStatus,
 )
 
@@ -74,6 +78,8 @@ class DirectPlanBuilder:
         snapshot: DirectWarehouseSnapshot,
         database: str,
         selected_model_keys: frozenset[LogicalResourceKey],
+        selection_mode: DirectSelectionMode,
+        include_missing_upstream: bool,
         effective_start_time: str | None = None,
     ) -> None:
         self._graph: ProjectGraph = graph
@@ -81,11 +87,24 @@ class DirectPlanBuilder:
         self._snapshot: DirectWarehouseSnapshot = snapshot
         self._database: str = database
         self._selected_model_keys: frozenset[LogicalResourceKey] = selected_model_keys
+        self._selection_mode: DirectSelectionMode = selection_mode
+        self._include_missing_upstream: bool = include_missing_upstream
         self._effective_start_time: str | None = effective_start_time
         self._model_by_key: dict[LogicalResourceKey, CompiledModel] = {
             model.key: model for model in realized_project.project.models
         }
-        self._execution_scope: tuple[LogicalResourceKey, ...] = self._resolve_execution_scope()
+        self._normal_execution_scope: tuple[LogicalResourceKey, ...] = (
+            self._resolve_normal_execution_scope()
+        )
+        self._prerequisite_execution_scope: tuple[LogicalResourceKey, ...] = (
+            self._resolve_prerequisite_execution_scope()
+        )
+        execution_keys: frozenset[LogicalResourceKey] = frozenset(
+            (*self._normal_execution_scope, *self._prerequisite_execution_scope)
+        )
+        self._execution_scope: tuple[LogicalResourceKey, ...] = _model_keys(
+            keys=tuple(key for key in self._graph.ordered_keys if key in execution_keys)
+        )
         self._executed_keys: frozenset[LogicalResourceKey] = frozenset(self._execution_scope)
         self._driving_parent_by_key: dict[LogicalResourceKey, LogicalResourceKey] = (
             self._resolve_driving_parents()
@@ -107,6 +126,7 @@ class DirectPlanBuilder:
         """Return the complete execution closure without consulting equality."""
 
         self._reject_adopted_source_target_collisions()
+        self._reject_out_of_scope_driving_consumers()
         prerequisites: tuple[DirectPrerequisite, ...] = self._build_prerequisites()
         self._reject_missing_prerequisites(prerequisites=prerequisites)
         entries: tuple[DirectPlanEntry, ...] = self._build_entries()
@@ -114,11 +134,13 @@ class DirectPlanBuilder:
         self._reject_incompatible_replay_inputs(replay_roots=replay_roots)
         return DirectPlan(
             database=self._database,
+            selection_mode=self._selection_mode,
             effective_start_time=self._effective_start_time,
             user_scope=tuple(
                 key for key in self._execution_scope if key in self._selected_model_keys
             ),
             execution_scope=self._execution_scope,
+            prerequisite_execution_scope=self._prerequisite_execution_scope,
             prerequisite_scope=prerequisites,
             entries=entries,
             replay_roots=replay_roots,
@@ -127,9 +149,11 @@ class DirectPlanBuilder:
             warnings=self._build_warnings(entries=entries),
         )
 
-    def _resolve_execution_scope(self) -> tuple[LogicalResourceKey, ...]:
-        if not self._selected_model_keys:
+    def _resolve_normal_execution_scope(self) -> tuple[LogicalResourceKey, ...]:
+        if self._selection_mode == DirectSelectionMode.ALL_MODELS:
             return _model_keys(keys=self._graph.ordered_keys)
+        if not self._selected_model_keys:
+            return ()
         return _model_keys(
             keys=collect_reachable_keys(
                 graph=self._graph,
@@ -138,6 +162,27 @@ class DirectPlanBuilder:
                 edge_types=ALL_DEPENDENCY_EDGE_TYPES,
             )
         )
+
+    def _resolve_prerequisite_execution_scope(self) -> tuple[LogicalResourceKey, ...]:
+        if not self._include_missing_upstream:
+            return ()
+        existing_names: frozenset[str] = self._snapshot.catalog.relation_names()
+        execution_keys: set[LogicalResourceKey] = set(self._normal_execution_scope)
+        added_keys: set[LogicalResourceKey] = set()
+        while True:
+            missing_model_keys: set[LogicalResourceKey] = set()
+            for model_key in execution_keys:
+                for edge in self._graph.upstream_edges_by_key.get(model_key, ()):
+                    upstream_key: LogicalResourceKey = edge.upstream_key
+                    if upstream_key in execution_keys or upstream_key not in self._model_by_key:
+                        continue
+                    if self._relation_name(key=upstream_key) not in existing_names:
+                        missing_model_keys.add(upstream_key)
+            if not missing_model_keys:
+                break
+            execution_keys.update(missing_model_keys)
+            added_keys.update(missing_model_keys)
+        return _model_keys(keys=tuple(key for key in self._graph.ordered_keys if key in added_keys))
 
     def _resolve_driving_parents(self) -> dict[LogicalResourceKey, LogicalResourceKey]:
         driving_parent_by_key: dict[LogicalResourceKey, LogicalResourceKey] = {}
@@ -176,7 +221,7 @@ class DirectPlanBuilder:
 
     def _sql_change(self, *, model: CompiledModel) -> DirectSqlChange:
         current_sql: str = model.query
-        current_hash: str = sha256(current_sql.encode()).hexdigest()
+        current_hash: str = DirectModelFingerprint.query_hash(current_sql)
         if self._snapshot.fingerprints.status == AdapterOptionalStateStatus.UNAVAILABLE:
             return DirectSqlChange(
                 status=DirectSqlBaselineStatus.BASELINE_UNAVAILABLE,
@@ -232,10 +277,16 @@ class DirectPlanBuilder:
         )
 
     def _plan_reason(self, *, model_key: LogicalResourceKey) -> DirectPlanReason:
-        if not self._selected_model_keys:
+        if self._selection_mode == DirectSelectionMode.ALL_MODELS:
             return DirectPlanReason.ALL_MODELS
+        if model_key in self._prerequisite_execution_scope:
+            return DirectPlanReason.MISSING_UPSTREAM
         if model_key in self._selected_model_keys:
-            return DirectPlanReason.SELECTED
+            return (
+                DirectPlanReason.CHANGED
+                if self._selection_mode == DirectSelectionMode.CHANGED
+                else DirectPlanReason.SELECTED
+            )
         return DirectPlanReason.DOWNSTREAM_OF_SELECTED
 
     def _build_prerequisites(self) -> tuple[DirectPrerequisite, ...]:
@@ -336,6 +387,22 @@ class DirectPlanBuilder:
             raise DirectPlanError(
                 "Direct mode refuses adopted source relations that collide with managed "
                 f"targets: {', '.join(collisions)}"
+            )
+
+    def _reject_out_of_scope_driving_consumers(self) -> None:
+        """Avoid replaying into live materialized views outside the requested scope."""
+
+        consumers: tuple[str, ...] = find_direct_out_of_scope_consumers(
+            realized_project=self._realized_project,
+            catalog=self._snapshot.catalog,
+            prerequisite_execution_scope=self._prerequisite_execution_scope,
+            execution_scope=self._execution_scope,
+        )
+        if consumers:
+            raise DirectPlanError(
+                "Direct plan cannot rebuild missing upstream models while out-of-scope "
+                f"materialized views consume them: {', '.join(consumers)}; include or remove "
+                "those consumers before retrying"
             )
 
     def _driving_input_replay_columns(

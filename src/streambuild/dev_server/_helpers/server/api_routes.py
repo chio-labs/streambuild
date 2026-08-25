@@ -16,6 +16,7 @@ from fastapi.responses import JSONResponse
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.exceptions import AdapterError
 from streambuild.auth.classes.control_store import ControlStore
+from streambuild.cli.build.classes.prepared_build_scope import PreparedBuildScope
 from streambuild.cli.build.main.prepare_build_workflow import prepare_build_workflow
 from streambuild.cli.build.main.validate_build_pipeline_limit import validate_build_pipeline_limit
 from streambuild.cli.build.models import (
@@ -122,9 +123,6 @@ from streambuild.dev_server.types import (
 )
 from streambuild.executor.backfill.exceptions import BackfillExecutionError
 from streambuild.executor.direct.exceptions import DirectBuildError
-from streambuild.executor.observability.main.logical_resource_identities import (
-    logical_resource_identities,
-)
 
 _HTTP_BAD_REQUEST: int = 400
 _HTTP_NOT_FOUND: int = 404
@@ -348,12 +346,14 @@ def _register_plan_route(
         start: Annotated[str | None, Query()] = None,
         deployment: Annotated[str | None, Query()] = None,
         counts: Annotated[bool, Query()] = False,
+        changed: Annotated[bool, Query()] = False,
+        include_missing_upstream: Annotated[bool, Query()] = False,
     ) -> dict[str, object]:
         analysis: CompileAnalysis = servable_analysis()
         request_started_ns: int = monotonic_ns()
         try:
-            if start is not None and not select:
-                raise CliUserError("--start-time requires at least one --select")
+            if start is not None and not select and not changed:
+                raise CliUserError("--start-time requires --changed or at least one --select")
             with read_connection() as client:
                 connection_acquired_ns: int = monotonic_ns()
                 planned_at: str = client.capture_warehouse_timestamp()
@@ -371,15 +371,20 @@ def _register_plan_route(
                         full_refresh=False,
                         start_time=start,
                         verbose=False,
+                        changed=changed,
+                        include_missing_upstream=include_missing_upstream,
                     ),
                     client=client,
                     adapter_profile=analysis.adapter_profile,
                 )
+                validate_build_pipeline_limit(analysis=analysis, preparation=preparation)
                 direct: DirectWorkflowPreparation | None = _direct_preparation(preparation)
                 resolved_deployment_id: str | None = _resolved_deployment_id(preparation)
                 _, command = build_invocation(
                     selectors=tuple(select or ()),
                     start_time=start,
+                    changed=changed,
+                    include_missing_upstream=include_missing_upstream,
                     deployment_id=resolved_deployment_id,
                     execution_context=execution_context,
                 )
@@ -885,10 +890,12 @@ def _register_build_routes(
                 client: AdapterConnection = required_connection()
                 analysis: CompileAnalysis = servable_analysis()
                 needs_authorization: bool = not is_system_admin(request=http_request)
-                validate_build_pipeline_limit(
-                    analysis=analysis,
-                    selectors=tuple(request.selectors),
-                )
+                dynamic_selection: bool = request.changed or request.includeMissingUpstream
+                if not dynamic_selection:
+                    validate_build_pipeline_limit(
+                        analysis=analysis,
+                        selectors=tuple(request.selectors),
+                    )
                 active_runs: list[dict[str, object]] = [
                     run
                     for run in read_active_runs(
@@ -908,7 +915,7 @@ def _register_build_routes(
                     | VirtualWorkflowPreparation
                     | None
                 ) = None
-                if needs_authorization or active_runs:
+                if needs_authorization or active_runs or dynamic_selection:
                     preparation = prepare_build_workflow(
                         analysis=analysis,
                         options=WorkflowPreparationOptions(
@@ -919,9 +926,16 @@ def _register_build_routes(
                             full_refresh=False,
                             start_time=request.startTime,
                             verbose=False,
+                            changed=request.changed,
+                            include_missing_upstream=request.includeMissingUpstream,
                         ),
                         client=client,
                         adapter_profile=analysis.adapter_profile,
+                    )
+                if dynamic_selection and preparation is not None:
+                    validate_build_pipeline_limit(
+                        analysis=analysis,
+                        preparation=preparation,
                     )
                 if needs_authorization and preparation is not None:
                     require_prepared_build_authorization(
@@ -952,12 +966,28 @@ def _register_build_routes(
                             presumed_failed_after_seconds=presumed_failed_after_seconds,
                         )
                     )
+                expected_write_scope: frozenset[str] | None = None
+                expected_read_scope: frozenset[str] | None = None
+                expected_pipeline_scope: frozenset[str] | None = None
+                if preparation is not None:
+                    expected_write_scope, expected_read_scope = PreparedBuildScope.resolve(
+                        preparation
+                    )
+                    expected_pipeline_scope = PreparedBuildScope.pipeline_scope(
+                        preparation=preparation,
+                        analysis=analysis,
+                    )
                 return builds.start(
                     project_dir=project_dir,
                     selectors=tuple(request.selectors),
                     start_time=request.startTime,
+                    changed=request.changed,
+                    include_missing_upstream=request.includeMissingUpstream,
                     deployment_id=request.deploymentId,
                     confirmations=tuple(request.confirmations),
+                    expected_write_scope=expected_write_scope,
+                    expected_read_scope=expected_read_scope,
+                    expected_pipeline_scope=expected_pipeline_scope,
                 )
         except BuildInProgressError as error:
             raise HTTPException(status_code=_HTTP_CONFLICT, detail=str(error)) from error
@@ -1069,27 +1099,7 @@ def _resolved_deployment_id(
 def _preparation_logical_scopes(
     preparation: DirectWorkflowPreparation | MixedWorkflowPreparation | VirtualWorkflowPreparation,
 ) -> tuple[frozenset[str], frozenset[str]]:
-    writes: set[str] = set()
-    reads: set[str] = set()
-    direct: DirectWorkflowPreparation | None = _direct_preparation(preparation)
-    if direct is not None:
-        writes.update(logical_resource_identities(direct.preview.plan.execution_scope))
-        reads.update(
-            logical_resource_identities(
-                tuple(item.key for item in direct.preview.plan.prerequisite_scope)
-            )
-        )
-    virtual: VirtualWorkflowPreparation | None = (
-        preparation.virtual
-        if isinstance(preparation, MixedWorkflowPreparation)
-        else preparation
-        if isinstance(preparation, VirtualWorkflowPreparation)
-        else None
-    )
-    if virtual is not None:
-        writes.update(logical_resource_identities(virtual.preview.run_execution_scope))
-        reads.update(logical_resource_identities(virtual.preview.run_context_scope))
-    return frozenset(writes), frozenset(reads)
+    return PreparedBuildScope.resolve(preparation)
 
 
 def _run_overlaps_requested_scope(

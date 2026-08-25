@@ -31,6 +31,8 @@ class BuildCommandOptions:
     start_time: str | None = None
     events_output: bool = False
     confirmations: tuple[str, ...] = ()
+    changed: bool = False
+    include_missing_upstream: bool = False
 
 
 @dataclass(frozen=True)
@@ -53,6 +55,8 @@ class WorkflowPreparationOptions:
     full_refresh: bool
     start_time: str | None
     verbose: bool
+    changed: bool = False
+    include_missing_upstream: bool = False
 
 
 @dataclass(frozen=True)

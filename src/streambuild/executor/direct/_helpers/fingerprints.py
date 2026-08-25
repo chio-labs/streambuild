@@ -8,10 +8,8 @@ from hashlib import sha256
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.exceptions import AdapterError
 from streambuild.adapter.models import AdapterDirectFingerprintRecord
-from streambuild.compiler.compile.main.build_model_storage_identity import (
-    build_model_storage_identity,
-)
 from streambuild.compiler.compile.models import CompiledModel
+from streambuild.compiler.planner.classes.direct_model_fingerprint import DirectModelFingerprint
 from streambuild.executor.direct._helpers.workflow import (
     assemble_direct_fingerprint_statements,
 )
@@ -62,15 +60,12 @@ def _fingerprint_records(
             continue
         model: CompiledModel = model_by_name[entry.model_key.name]
         definition_sql: str = model.query
-        definition_hash: str = sha256(definition_sql.encode()).hexdigest()
+        definition_hash: str = DirectModelFingerprint.query_hash(definition_sql)
         logical_identity: str = f"{request.database}.{model.key.name}"
         identity_metadata: str = json.dumps(
-            {
-                "pipeline": model.pipeline_name,
-                "kind": str(model.kind),
-                "relations": list(entry.relation_names),
-                "storage": build_model_storage_identity(model),
-            },
+            DirectModelFingerprint.identity(
+                model=model,
+            ),
             sort_keys=True,
             separators=(",", ":"),
         )

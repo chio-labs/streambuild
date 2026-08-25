@@ -15,6 +15,8 @@ function virtualPlan(deploymentId: string): Plan {
 function parts(overrides: Partial<BuildCommandParts>): BuildCommandParts {
 	return {
 		selectors: [],
+		changed: false,
+		includeMissingUpstream: false,
 		replayWindow: { mode: 'full' },
 		acceptedConfirmations: [],
 		plan: null,
@@ -92,5 +94,27 @@ describe('build plan command', () => {
 		expect(built).toBe(
 			'stb build --select orders --confirm drop-orders --confirm drop-lineitems'
 		);
+	});
+
+	it('given changed models with missing upstream enabled when built then both native flags are emitted', () => {
+		expect(
+			buildPlanCommand(
+				parts({
+					changed: true,
+					includeMissingUpstream: true
+				})
+			)
+		).toBe('stb build --changed --include-missing-upstream');
+	});
+
+	it('given changed mode and stale selectors when built then changed mode wins', () => {
+		expect(
+			buildPlanCommand(
+				parts({
+					selectors: [{ kind: 'model', name: 'orders' }],
+					changed: true
+				})
+			)
+		).toBe('stb build --changed');
 	});
 });

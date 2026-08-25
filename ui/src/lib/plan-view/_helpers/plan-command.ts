@@ -8,10 +8,16 @@ export function parsePlanCommand(command: string): ParsedPlanCommand {
 		.split(/\s+/)
 		.filter(Boolean);
 	const selectors: Selector[] = [];
+	let changed: boolean = false;
+	let includeMissingUpstream: boolean = false;
 	let start: string | null = null;
 	let deploymentId: string | null = null;
 	for (let index: number = 0; index < tokens.length; index += 1) {
-		if (tokens[index] === '--select' && tokens[index + 1] && !tokens[index + 1].startsWith('--')) {
+		if (tokens[index] === '--changed') {
+			changed = true;
+		} else if (tokens[index] === '--include-missing-upstream') {
+			includeMissingUpstream = true;
+		} else if (tokens[index] === '--select' && tokens[index + 1] && !tokens[index + 1].startsWith('--')) {
 			let next: number = index + 1;
 			while (next < tokens.length && !tokens[next].startsWith('--')) {
 				const parsed: Selector | null = parseSelector(tokens[next]);
@@ -27,6 +33,12 @@ export function parsePlanCommand(command: string): ParsedPlanCommand {
 			index += 1;
 		}
 	}
+	if (changed && selectors.length > 0) {
+		throw new Error('--changed cannot be combined with --select');
+	}
+	if (includeMissingUpstream && !changed && selectors.length === 0) {
+		throw new Error('--include-missing-upstream requires --changed or --select');
+	}
 	let replayWindow: ReplayWindow = { mode: 'full' };
 	if (start) {
 		const parsedDate: Date = new Date(start.endsWith('Z') ? start : `${start}Z`);
@@ -34,5 +46,11 @@ export function parsePlanCommand(command: string): ParsedPlanCommand {
 			replayWindow = { mode: 'from', startTime: parsedDate.toISOString() };
 		}
 	}
-	return { selectors, replayWindow, deploymentId };
+	return {
+		selectors,
+		changed,
+		includeMissingUpstream,
+		replayWindow,
+		deploymentId
+	};
 }

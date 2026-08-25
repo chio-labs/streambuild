@@ -1,5 +1,5 @@
+import json
 from dataclasses import replace
-from hashlib import sha256
 from pathlib import Path
 
 import pytest
@@ -11,6 +11,7 @@ from streambuild.adapter.models import (
     CatalogRelation,
 )
 from streambuild.compiler.compile.models import (
+    CompiledModel,
     DesiredState,
     ExternalSourceReplayConfig,
     ObjectKey,
@@ -18,6 +19,7 @@ from streambuild.compiler.compile.models import (
 from streambuild.compiler.compile.types import DesiredObjectType
 from streambuild.compiler.discovery.types import ReplayBoundaryMode, SourceKind
 from streambuild.compiler.pipeline.models import CompileAnalysis, RealizedProject
+from streambuild.compiler.planner.classes.direct_model_fingerprint import DirectModelFingerprint
 from streambuild.compiler.planner.exceptions import DirectPlanError
 from streambuild.compiler.planner.models import (
     DirectPlan,
@@ -26,14 +28,17 @@ from streambuild.compiler.planner.models import (
 from streambuild.compiler.planner.types import (
     DirectPlanReason,
     DirectResourceKind,
+    DirectSelectionMode,
     DirectSqlBaselineStatus,
 )
 from tests.unit.src.streambuild.compiler.planner._test_types import (
+    DirectFingerprintDriftTestCase,
     DirectModelInputReplayColumnsTestCase,
     DirectMutableWarningTestCase,
     DirectPlanRejectionTestCase,
     DirectReplayInputCompatibilityTestCase,
     DirectScopeTestCase,
+    DirectSelectionScopeTestCase,
     DirectSqlChangeTestCase,
     DirectUndeclaredRelationTestCase,
     DirectViewPlanTestCase,
@@ -49,6 +54,8 @@ from tests.unit.src.streambuild.compiler.planner.helpers import (
     without_catalog_columns,
     write_direct_multi_upstream_view_project,
     write_direct_mutable_scope_project,
+    write_direct_scope_project,
+    write_direct_view_only_project,
 )
 
 
@@ -340,7 +347,7 @@ def test_given_matching_direct_fingerprint_when_planning_then_selected_scope_sti
                     fingerprint_id="fingerprint-alpha",
                     logical_model_identity="analytics.alpha",
                     definition_sql=current_sql,
-                    definition_hash=sha256(current_sql.encode()).hexdigest(),
+                    definition_hash=DirectModelFingerprint.query_hash(current_sql),
                     identity_metadata="{}",
                     workflow_id="workflow-prior",
                     tool_version="test",
@@ -386,7 +393,7 @@ def test_given_changed_direct_fingerprint_when_planning_then_sql_diff_is_explana
                     fingerprint_id="fingerprint-alpha",
                     logical_model_identity="analytics.alpha",
                     definition_sql=previous_sql,
-                    definition_hash=sha256(previous_sql.encode()).hexdigest(),
+                    definition_hash=DirectModelFingerprint.query_hash(previous_sql),
                     identity_metadata="{}",
                     workflow_id="workflow-prior",
                     tool_version="test",
@@ -538,6 +545,333 @@ def test_given_missing_prerequisite_when_planning_direct_then_planning_is_reject
         )
 
     assert test_case.expected_error_fragment in str(rejection.value)
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DirectSelectionScopeTestCase(
+            description="missing ancestors execute without an unrelated downstream sibling",
+            expected_user_scope=("gamma",),
+            expected_prerequisite_execution_scope=("alpha", "beta"),
+            expected_execution_scope=("alpha", "beta", "gamma", "delta"),
+            expected_reasons=(
+                DirectPlanReason.MISSING_UPSTREAM,
+                DirectPlanReason.MISSING_UPSTREAM,
+                DirectPlanReason.SELECTED,
+                DirectPlanReason.DOWNSTREAM_OF_SELECTED,
+            ),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_missing_project_ancestors_when_including_upstream_then_executes_only_required_chain(
+    tmp_path: Path, test_case: DirectSelectionScopeTestCase
+) -> None:
+    write_direct_scope_project(project_root=tmp_path)
+    sibling_path: Path = tmp_path / "pipelines/pl__orders/epsilon.sql"
+    sibling_path.write_text(
+        'MODEL (order_by ["order_id"]);\nSELECT order_id::UInt64 AS order_id FROM __ref("alpha")\n',
+        encoding="utf-8",
+    )
+    analysis: CompileAnalysis = analyze_direct_scope_project(project_root=tmp_path)
+    snapshot: DirectWarehouseSnapshot = build_direct_snapshot(
+        relation_names=("kafka__orders", "raw__orders", "mv__orders")
+    )
+
+    plan: DirectPlan = plan_direct_scope(
+        analysis=analysis,
+        snapshot=snapshot,
+        selected_model_names=("gamma",),
+        include_missing_upstream=True,
+    )
+
+    assert logical_key_names(plan.user_scope) == test_case.expected_user_scope
+    assert (
+        logical_key_names(plan.prerequisite_execution_scope)
+        == test_case.expected_prerequisite_execution_scope
+    )
+    assert logical_key_names(plan.execution_scope) == test_case.expected_execution_scope
+    assert "epsilon" not in logical_key_names(plan.execution_scope)
+    assert tuple(entry.reason for entry in plan.entries) == test_case.expected_reasons
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DirectPlanRejectionTestCase(
+            description="active out-of-scope driving consumers block prerequisite replay",
+            selected_model_names=("gamma",),
+            present_relation_names=("raw__orders", "mv__stale_consumer"),
+            stable_binding_names=(),
+            expected_error_fragment=(
+                "out-of-scope materialized views consume them: mv__stale_consumer"
+            ),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_active_sibling_when_including_missing_upstream_then_planning_is_rejected(
+    tmp_path: Path, test_case: DirectPlanRejectionTestCase
+) -> None:
+    write_direct_scope_project(project_root=tmp_path)
+    (tmp_path / "pipelines/pl__orders/epsilon.sql").write_text(
+        'MODEL (order_by ["order_id"]);\nSELECT order_id::UInt64 AS order_id FROM __ref("alpha")\n',
+        encoding="utf-8",
+    )
+    analysis: CompileAnalysis = analyze_direct_scope_project(project_root=tmp_path)
+    snapshot: DirectWarehouseSnapshot = build_direct_snapshot(
+        relation_names=test_case.present_relation_names
+    )
+    snapshot = replace(
+        snapshot,
+        catalog=replace(
+            snapshot.catalog,
+            relations=(
+                snapshot.catalog.relations[0],
+                replace(
+                    snapshot.catalog.relations[1],
+                    engine="MaterializedView",
+                    source_relation_names=("tbl__alpha",),
+                ),
+            ),
+        ),
+    )
+
+    with pytest.raises(DirectPlanError) as rejection:
+        _ = plan_direct_scope(
+            analysis=analysis,
+            snapshot=snapshot,
+            selected_model_names=test_case.selected_model_names,
+            include_missing_upstream=True,
+        )
+
+    assert test_case.expected_error_fragment in str(rejection.value)
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DirectSelectionScopeTestCase(
+            description="an ordinary view does not create materialized-view fanout",
+            expected_prerequisite_execution_scope=("alpha", "beta"),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_ordinary_view_consumer_when_including_upstream_then_plan_remains_safe(
+    direct_scope_analysis: CompileAnalysis, test_case: DirectSelectionScopeTestCase
+) -> None:
+    snapshot: DirectWarehouseSnapshot = build_direct_snapshot(
+        relation_names=("raw__orders", "view__reporting")
+    )
+    snapshot = replace(
+        snapshot,
+        catalog=replace(
+            snapshot.catalog,
+            relations=(
+                snapshot.catalog.relations[0],
+                replace(
+                    snapshot.catalog.relations[1],
+                    engine="View",
+                    source_relation_names=("tbl__alpha",),
+                ),
+            ),
+        ),
+    )
+
+    plan: DirectPlan = plan_direct_scope(
+        analysis=direct_scope_analysis,
+        snapshot=snapshot,
+        selected_model_names=("gamma",),
+        include_missing_upstream=True,
+    )
+
+    assert (
+        logical_key_names(plan.prerequisite_execution_scope)
+        == test_case.expected_prerequisite_execution_scope
+    )
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DirectSelectionScopeTestCase(
+            description="existing model boundaries remain preserved",
+            expected_execution_scope=("gamma", "delta"),
+            expected_prerequisites=("alpha", "beta"),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_existing_upstream_boundary_when_including_upstream_then_preserves_it(
+    direct_scope_analysis: CompileAnalysis, test_case: DirectSelectionScopeTestCase
+) -> None:
+    snapshot: DirectWarehouseSnapshot = build_direct_snapshot(
+        relation_names=("raw__orders", "tbl__alpha", "tbl__beta")
+    )
+
+    plan: DirectPlan = plan_direct_scope(
+        analysis=direct_scope_analysis,
+        snapshot=snapshot,
+        selected_model_names=("gamma",),
+        include_missing_upstream=True,
+    )
+
+    assert plan.prerequisite_execution_scope == ()
+    assert logical_key_names(plan.execution_scope) == test_case.expected_execution_scope
+    assert (
+        tuple(item.key.name for item in plan.prerequisite_scope) == test_case.expected_prerequisites
+    )
+    assert all(item.present for item in plan.prerequisite_scope)
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DirectSelectionScopeTestCase(
+            description="an empty changed selection remains a no-op",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_changed_selection_with_no_roots_when_planning_then_plan_is_empty(
+    direct_scope_analysis: CompileAnalysis, test_case: DirectSelectionScopeTestCase
+) -> None:
+    plan: DirectPlan = plan_direct_scope(
+        analysis=direct_scope_analysis,
+        snapshot=build_settled_direct_snapshot(),
+        selected_model_names=(),
+        selection_mode=DirectSelectionMode.CHANGED,
+    )
+
+    assert plan.selection_mode == DirectSelectionMode.CHANGED
+    assert logical_key_names(plan.user_scope) == test_case.expected_user_scope
+    assert logical_key_names(plan.execution_scope) == test_case.expected_execution_scope
+    assert plan.entries == ()
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DirectSelectionScopeTestCase(
+            description="a changed root is distinct from downstream work",
+            expected_reasons=(
+                DirectPlanReason.CHANGED,
+                DirectPlanReason.DOWNSTREAM_OF_SELECTED,
+                DirectPlanReason.DOWNSTREAM_OF_SELECTED,
+            ),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_changed_root_when_planning_then_reason_distinguishes_changed_and_downstream(
+    direct_scope_analysis: CompileAnalysis, test_case: DirectSelectionScopeTestCase
+) -> None:
+    plan: DirectPlan = plan_direct_scope(
+        analysis=direct_scope_analysis,
+        snapshot=build_settled_direct_snapshot(),
+        selected_model_names=("beta",),
+        selection_mode=DirectSelectionMode.CHANGED,
+    )
+
+    assert tuple(entry.reason for entry in plan.entries) == test_case.expected_reasons
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DirectFingerprintDriftTestCase(
+            description="ordinary view query changes participate in changed selection",
+            expected_reasons=("query",),
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_changed_direct_view_when_comparing_fingerprint_then_query_drift_is_reported(
+    tmp_path: Path, test_case: DirectFingerprintDriftTestCase
+) -> None:
+    write_direct_view_only_project(project_root=tmp_path)
+    analysis: CompileAnalysis = analyze_direct_scope_project(project_root=tmp_path)
+    model: CompiledModel = analysis.compiled_project.models[0]
+    identity: dict[str, object] = DirectModelFingerprint.identity(
+        model=model,
+    )
+    baseline: AdapterDirectFingerprintRecord = AdapterDirectFingerprintRecord(
+        fingerprint_id="view-old",
+        logical_model_identity="analytics.customer_orders",
+        definition_sql="SELECT 0",
+        definition_hash=DirectModelFingerprint.query_hash("SELECT 0"),
+        identity_metadata=json.dumps(identity, sort_keys=True, separators=(",", ":")),
+        workflow_id="previous",
+        tool_version="0.32.0",
+    )
+
+    reasons: tuple[str, ...] = DirectModelFingerprint.drift_reasons(
+        model=model,
+        baseline=baseline,
+    )
+
+    assert reasons == test_case.expected_reasons
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DirectFingerprintDriftTestCase(
+            description="a model without an applied fingerprint is changed",
+            expected_reasons=("missing",),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_missing_fingerprint_when_comparing_model_then_missing_drift_is_reported(
+    direct_scope_analysis: CompileAnalysis, test_case: DirectFingerprintDriftTestCase
+) -> None:
+    model: CompiledModel = direct_scope_analysis.compiled_project.models[0]
+
+    reasons: tuple[str, ...] = DirectModelFingerprint.drift_reasons(
+        model=model,
+        baseline=None,
+    )
+
+    assert reasons == test_case.expected_reasons
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DirectFingerprintDriftTestCase(
+            description="physical relation changes participate in changed selection",
+            expected_reasons=("identity",),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_changed_relation_name_when_comparing_fingerprint_then_identity_drift_is_reported(
+    direct_scope_analysis: CompileAnalysis, test_case: DirectFingerprintDriftTestCase
+) -> None:
+    model: CompiledModel = direct_scope_analysis.compiled_project.models[0]
+    old_identity: dict[str, object] = {
+        **DirectModelFingerprint.identity(model=model),
+        "relation_name": "old_alpha",
+    }
+    baseline: AdapterDirectFingerprintRecord = AdapterDirectFingerprintRecord(
+        fingerprint_id="alpha-old",
+        logical_model_identity="analytics.alpha",
+        definition_sql=model.query,
+        definition_hash=DirectModelFingerprint.query_hash(model.query),
+        identity_metadata=json.dumps(old_identity, sort_keys=True, separators=(",", ":")),
+        workflow_id="previous",
+        tool_version="0.32.0",
+    )
+
+    reasons: tuple[str, ...] = DirectModelFingerprint.drift_reasons(
+        model=model,
+        baseline=baseline,
+    )
+
+    assert reasons == test_case.expected_reasons
 
 
 @pytest.mark.parametrize(

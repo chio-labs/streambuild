@@ -20,6 +20,12 @@ class DirectSourceScopeTestCase:
 
 
 @dataclass(frozen=True)
+class DirectNoOpWorkflowTestCase:
+    description: str
+    expected_statement_count: int
+
+
+@dataclass(frozen=True)
 class DirectDistinctCaptureTestCase:
     description: str
     expected_capture_models: tuple[str, ...]
