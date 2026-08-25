@@ -331,6 +331,7 @@ export type Project = {
 	target: string;
 	database: string;
 	adapter: string;
+	timeZone: string;
 	connection: { host: string; port: number; username: string; secure: boolean };
 	vars: Record<string, string | number | boolean>;
 	naming: { tablePrefix: string; viewPrefix: string };

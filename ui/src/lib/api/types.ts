@@ -12,6 +12,7 @@ export type RunEvent = {
 	emittedAt: string;
 	event: string;
 	stepId: string | null;
+	displayName?: string | null;
 	phase: string | null;
 	command?: string;
 	mode?: string;

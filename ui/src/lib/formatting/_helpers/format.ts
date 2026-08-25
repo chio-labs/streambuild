@@ -99,20 +99,46 @@ function formatAgo(instant: string | null, reference: string): string {
 }
 
 /** Wall-clock time only — for dense tables where the date is implied. */
+let displayTimeZone = 'UTC';
+
+function configureTimeZone(timeZone: string): void {
+	displayTimeZone = timeZone;
+}
+
+function zonedTimestampParts(instant: string): Record<string, string> {
+	return Object.fromEntries(
+		new Intl.DateTimeFormat('en-GB', {
+			timeZone: displayTimeZone,
+			year: 'numeric',
+			month: '2-digit',
+			day: '2-digit',
+			hour: '2-digit',
+			minute: '2-digit',
+			second: '2-digit',
+			hourCycle: 'h23'
+		})
+			.formatToParts(parseUtc(instant))
+			.map((part: Intl.DateTimeFormatPart): [string, string] => [part.type, part.value])
+	);
+}
+
 function formatClock(instant: string | null): string {
 	if (!instant) return '—';
-	return parseUtc(instant).toISOString().slice(11, 19);
+	const parts: Record<string, string> = zonedTimestampParts(instant);
+	return `${parts.hour}:${parts.minute}:${parts.second}`;
 }
 
 /** `2026-08-02 12:04:31` — no timezone suffix; the warehouse timezone is stated once. */
 function formatTimestamp(instant: string | null): string {
 	if (!instant) return '—';
-	return parseUtc(instant).toISOString().slice(0, 19).replace('T', ' ');
+	const parts: Record<string, string> = zonedTimestampParts(instant);
+	return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}:${parts.second}`;
 }
 
 function formatDate(instant: string | null): string {
 	if (!instant) return '—';
-	return parseUtc(instant).toISOString().slice(0, 10);
+	const parts: Record<string, string> = zonedTimestampParts(instant);
+	return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
 /** `2026-08-02T12:04` — the value shape an `<input type="datetime-local">` wants. */
@@ -158,6 +184,7 @@ export const domainFormatters = {
 	secondsBetween,
 	daysBetween,
 	formatAgo,
+	configureTimeZone,
 	formatClock,
 	formatTimestamp,
 	formatDate,

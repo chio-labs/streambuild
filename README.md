@@ -108,6 +108,9 @@ password = "${ENV:CLICKHOUSE_PASSWORD}"
 [defaults]
 pipeline_mode = "direct"
 
+[ui]
+timezone = "Europe/London"
+
 [targets.dev]
 database = "analytics"
 ```

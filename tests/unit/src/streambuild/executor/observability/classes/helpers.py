@@ -69,4 +69,5 @@ def build_replay_statement() -> WarehouseStatement:
         phase=WorkflowPhase.REPLAY,
         intent=StatementIntent.MUTATION,
         sql="INSERT INTO tbl SELECT 1;",
+        display_name="Replay orders",
     )

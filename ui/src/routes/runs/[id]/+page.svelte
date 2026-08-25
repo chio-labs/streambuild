@@ -14,6 +14,7 @@
 	import { can } from '$lib/auth/main/can';
 	import { canAnyPipeline } from '$lib/auth/main/can-any-pipeline';
 	import { buildRunPresentation } from '$lib/run-presentation/main/build-run-presentation';
+	import { labelRunStepId } from '$lib/run-presentation/main/label-run-step-id';
 	import { createRunDetail } from '$lib/run-presentation/main/create-run-detail';
 	import type { RunDetailController, RunPresentation } from '$lib/run-presentation/types';
 	import DestructionRecoveryAction from './destruction-recovery-action.svelte';
@@ -84,7 +85,10 @@
 		const event: (typeof timeline)[number] | undefined = timeline.find(
 			(item) => item.event === 'statement_started' && item.statementSequence === progress.statementSequence
 		);
-		return (event === undefined ? null : eventLabels.get(event.sequence)) ?? progress.stepId ?? 'Warehouse statement';
+		return (
+			(event === undefined ? null : eventLabels.get(event.sequence)) ??
+			(progress.stepId === null ? 'Warehouse statement' : labelRunStepId(progress.stepId))
+		);
 	});
 
 	async function openDestructionPlan(planId: string): Promise<void> {

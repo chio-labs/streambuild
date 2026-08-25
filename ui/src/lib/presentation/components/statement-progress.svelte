@@ -6,6 +6,7 @@
 	import { formatRate } from '$lib/formatting/main/format-rate';
 	import { buildStatementProgressPresentation } from '$lib/run-presentation/main/build-statement-progress-presentation';
 	import type { StatementProgressPresentation } from '$lib/run-presentation/types';
+	import { labelRunPhase } from '$lib/run-presentation/main/label-run-phase';
 	type StatementProgress = NonNullable<RunEventFeed['statementProgress']>;
 
 	type Props = {
@@ -24,7 +25,7 @@
 
 <section class="mx-[18px] mt-3 rounded-[4px] border border-border bg-[var(--sb-surface-low)]" aria-label="Active statement progress">
 	<div class="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-[var(--border-subtle)] px-3 py-2">
-		<span class="sb-tag code">{progress.phase ?? 'statement'}</span>
+		<span class="sb-tag code">{labelRunPhase(progress.phase)}</span>
 		<strong class="code min-w-0 flex-1 truncate text-[12px]" title={label}>
 			{presentation.position} {label}
 		</strong>

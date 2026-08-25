@@ -473,6 +473,7 @@ def test_given_deployment_readiness_defaults_when_loading_then_thresholds_are_ty
             ),
             expected_managed_source_ttl="_replay_landed_at + INTERVAL 14 DAY",
             expected_model_ttl="event_at + INTERVAL 14 DAY",
+            expected_ui_timezone="Europe/London",
         )
     ],
     ids=lambda case: case.description,
@@ -504,6 +505,9 @@ def test_given_project_and_local_toml_when_resolving_then_applies_locked_precede
         pipeline_mode = \"direct\"
         managed_source_ttl = "_replay_landed_at + INTERVAL ${ttl_days} DAY"
         model_ttl = "event_at + INTERVAL ${ttl_days} DAY"
+
+        [ui]
+        timezone = "Europe/London"
 
         [targets.dev]
         database = "dev_database"
@@ -564,6 +568,7 @@ def test_given_project_and_local_toml_when_resolving_then_applies_locked_precede
     assert effective.connection.values == test_case.expected_connection
     assert effective.defaults.managed_source_ttl == test_case.expected_managed_source_ttl
     assert effective.defaults.model_ttl == test_case.expected_model_ttl
+    assert effective.ui.timezone == test_case.expected_ui_timezone
     assert loaded.project_source.contents.startswith('name = "analytics"')
     assert loaded.local_source is not None
 
@@ -617,6 +622,14 @@ def test_given_absent_local_toml_when_loading_then_returns_typed_defaults(
             description="rejects a removed top-level version key",
             project_contents='name = "analytics"\ndefault_target = "dev"\nversion = 2\n',
             expected_error_fragment="unsupported keys: version",
+        ),
+        ProjectConfigurationErrorTestCase(
+            description="rejects an invalid UI timezone",
+            project_contents=(
+                'name = "analytics"\ndefault_target = "dev"\n'
+                '[ui]\ntimezone = "London"\n[targets.dev]\n'
+            ),
+            expected_error_fragment="ui.timezone must be a valid IANA timezone",
         ),
         ProjectConfigurationErrorTestCase(
             description="rejects a target-level project-wide mode",
