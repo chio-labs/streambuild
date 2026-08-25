@@ -26,6 +26,7 @@ from streambuild.adapters.clickhouse.constants import CLICKHOUSE_UNKNOWN_CAPACIT
 from streambuild.adapters.clickhouse.types import RawClickHouseClient
 from tests.unit.src.streambuild.adapters.clickhouse._test_types import (
     CatalogInspectionTestCase,
+    ClickHouseDropLimitTestCase,
     ClickHouseOptionalHealthFailureTestCase,
     ClickHousePublishCapabilitiesTestCase,
     ClickHouseStatementProgressTestCase,
@@ -40,6 +41,36 @@ from tests.unit.src.streambuild.adapters.clickhouse.helpers import (
     SequencedRawClickHouseClient,
     StubRawClickHouseClient,
 )
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ClickHouseDropLimitTestCase(
+            description="effective ClickHouse drop limit is exposed in bytes",
+            setting_value=50_000_000_000,
+            expected_limit=50_000_000_000,
+        ),
+        ClickHouseDropLimitTestCase(
+            description="zero ClickHouse drop limit is exposed as unlimited",
+            setting_value=0,
+            expected_limit=None,
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_clickhouse_drop_limit_when_reading_then_returns_effective_bytes(
+    test_case: ClickHouseDropLimitTestCase,
+) -> None:
+    raw_client: StubRawClickHouseClient = StubRawClickHouseClient(
+        FakeRawClickHouseQueryResult(
+            column_names=["value"],
+            result_rows=[[test_case.setting_value]],
+        )
+    )
+    connection: ClickHouseConnection = ClickHouseConnection(cast(RawClickHouseClient, raw_client))
+
+    assert connection.load_relation_drop_size_limit() == test_case.expected_limit
 
 
 @pytest.mark.parametrize(

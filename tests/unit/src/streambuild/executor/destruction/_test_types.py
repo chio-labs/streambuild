@@ -37,6 +37,13 @@ class WarehouseDependencyFailureTestCase:
 
 
 @dataclass(frozen=True)
+class DestructionDropLimitTestCase:
+    description: str
+    limit: int
+    expected_resource_fragments: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class DestructionClosureTestCase:
     description: str
     expected_requested_pipeline_names: tuple[str, ...]
