@@ -272,7 +272,9 @@ class ClickHouseConnectionDriverSettingsTestCase:
     description: str
     database: str | None
     settings: tuple[tuple[str, str], ...]
+    destruction_relation_drop_size_limit: int | None
     expected_driver_settings: tuple[tuple[str, str], ...]
+    expected_destruction_relation_drop_size_limit: int | None
 
 
 @dataclass(frozen=True)

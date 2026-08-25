@@ -147,6 +147,7 @@ def resolve_effective_project_configuration(
                 else project.build.max_pipelines
             )
         ),
+        destruction=project_target.destruction,
     )
 
 
