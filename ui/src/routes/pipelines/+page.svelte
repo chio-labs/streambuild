@@ -15,10 +15,17 @@
 	import type { Audit, Project } from '$lib/domain/types';
 	import DestructionDialog from './destruction-dialog.svelte';
 	import { createDestructionState } from './state.svelte';
+	import type { PipelineModeFilter } from './types';
 	import type { DestructionExecution } from '$lib/pipeline-view/types';
 
 	const project: Project = getProject();
 	const destruction = createDestructionState();
+	const modeFilters: { value: PipelineModeFilter; label: string }[] = [
+		{ value: 'all', label: 'All' },
+		{ value: 'direct', label: 'Direct' },
+		{ value: 'virtual', label: 'Virtual' }
+	];
+	let modeFilter = $state<PipelineModeFilter>('all');
 
 	// A pipeline is the project's real top-level unit: `stb discover` returns
 	// nothing but pipeline names, and `pipeline:<name>` is one of only two
@@ -37,8 +44,18 @@
 			};
 		})
 	);
+	const filteredRows = $derived(
+		modeFilter === 'all' ? rows : rows.filter((row) => row.pipeline.mode === modeFilter)
+	);
+	const modeCounts = $derived({
+		all: rows.length,
+		direct: rows.filter((row) => row.pipeline.mode === 'direct').length,
+		virtual: rows.filter((row) => row.pipeline.mode === 'virtual').length
+	});
 	const selectablePipelineNames = $derived(
-		rows.filter((row) => can('pipeline.destroy', row.pipeline.name)).map((row) => row.pipeline.name)
+		filteredRows
+			.filter((row) => can('pipeline.destroy', row.pipeline.name))
+			.map((row) => row.pipeline.name)
 	);
 	const selectedCount = $derived(destruction.selected.size);
 	const allCurrentSelected = $derived(
@@ -91,6 +108,35 @@
 </AppTopbar>
 
 <div class="min-h-0 flex-1 overflow-auto">
+	<div class="flex items-center gap-2 border-b border-border px-[18px] py-2">
+		<span class="text-[var(--sb-text-faint)] font-mono text-[10px] uppercase tracking-[0.14em]">
+			Mode
+		</span>
+		<div
+			class="flex overflow-hidden rounded-[3px] border border-border"
+			role="group"
+			aria-label="Filter pipelines by mode"
+		>
+			{#each modeFilters as filter, index (filter.value)}
+				<button
+					type="button"
+					aria-pressed={modeFilter === filter.value}
+					class="px-2.5 py-1 font-mono text-[10.5px] transition-colors {index > 0
+						? 'border-l border-border'
+						: ''} {modeFilter === filter.value
+						? 'bg-[var(--sb-hover)] text-foreground'
+						: 'text-muted-foreground hover:text-foreground'}"
+					onclick={() => (modeFilter = filter.value)}
+				>
+					{filter.label}
+					<span class="text-[var(--sb-text-faint)] pl-1">{modeCounts[filter.value]}</span>
+				</button>
+			{/each}
+		</div>
+		<span class="text-[var(--sb-text-faint)] ml-auto font-mono text-[10.5px]">
+			{filteredRows.length} shown
+		</span>
+	</div>
 	<table class="sb-list w-full text-left">
 		<thead>
 			<tr class="text-[var(--sb-text-faint)] font-mono text-[10px] uppercase tracking-[0.14em]">
@@ -116,7 +162,7 @@
 			</tr>
 		</thead>
 		<tbody>
-			{#each rows as row (row.pipeline.name)}
+			{#each filteredRows as row (row.pipeline.name)}
 				<tr>
 					<td class="py-2 pl-[18px] pr-1">
 						<Checkbox
@@ -225,6 +271,13 @@
 					</td>
 				</tr>
 			{/each}
+			{#if filteredRows.length === 0}
+				<tr>
+					<td colspan="10" class="text-[var(--sb-text-faint)] px-[18px] py-8 text-center font-mono text-[11px]">
+						No pipelines match this mode
+					</td>
+				</tr>
+			{/if}
 		</tbody>
 	</table>
 </div>

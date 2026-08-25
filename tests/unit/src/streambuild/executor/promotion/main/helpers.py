@@ -99,6 +99,21 @@ def rollback_active_state() -> InspectedManagedTableState:
     )
 
 
+def rollback_catalog_relations() -> tuple[CatalogRelation, ...]:
+    relations: list[CatalogRelation] = []
+    for deployment_id in (
+        "20260727T100000Z_old111",
+        "20260727T110000Z_middle1",
+        "20260727T120000Z_active1",
+        "20260727T130000Z_staged1",
+    ):
+        for name in ("orders", "mv__orders"):
+            relations.append(
+                CatalogRelation(name=f"{name}__{deployment_id}", engine="MergeTree", columns=())
+            )
+    return tuple(relations)
+
+
 def rollback_mismatched_inventory() -> AdapterDeploymentInventory:
     inventory: AdapterDeploymentInventory = rollback_deployment_inventory()
     old_event: AdapterPublishEventRecord = inventory.publish_events[0]
@@ -148,6 +163,15 @@ def _rollback_deployment(*, deployment_id: str, status: str) -> AdapterDeploymen
                     name="orders",
                 ),
                 physical_name=f"orders__{deployment_id}",
+                logical_model_name="orders",
+            ),
+            AdapterPreparedObjectMapping(
+                logical_key=AdapterMetadataObjectKey(
+                    database=None,
+                    object_type="materialized_view",
+                    name="mv__orders",
+                ),
+                physical_name=f"mv__orders__{deployment_id}",
                 logical_model_name="orders",
             ),
         ),

@@ -120,7 +120,9 @@ def execute_destruction(
             context=recording_context,
             completed_sequences=(),
             pending_sequences=tuple(statement.sequence for statement in statements),
-            remaining=tuple(relation.name for relation in current_plan.relations),
+            remaining=tuple(
+                relation.name for relation in current_plan.relations if relation.exists
+            ),
             residual_catalog_status="not_mutated",
             residual_catalog_error=None,
             failure_phase=None,
@@ -165,7 +167,9 @@ def execute_destruction(
                 _ = _record_terminal(
                     context=recording_context,
                     execution=WorkflowExecutionResult(statement_results=()),
-                    remaining=tuple(relation.name for relation in current_plan.relations),
+                    remaining=tuple(
+                        relation.name for relation in current_plan.relations if relation.exists
+                    ),
                     residual_catalog_status="not_mutated",
                     residual_catalog_error=None,
                     error_message=str(error),
@@ -199,21 +203,14 @@ def _execute_recorded_plan(*, context: DestructionRecordingContext) -> Destructi
             ) from error
         execution = error.partial_result
         _verify_completed_prefix(statements=context.statements, execution=execution)
-        recovery_error: str | None
-        execution, recovery_error = _recover_pending_tombstones(
-            statements=context.statements,
-            execution=execution,
-            connection=context.connection,
-        )
+        recovery_error: str | None = None
         if isinstance(error.cause, KeyboardInterrupt):
             try:
-                execution, interrupted_recovery_error = _recover_interrupted_drop(
+                execution = _recover_interrupted_drop(
                     context=context,
                     execution=execution,
                     failed_step_id=error.failed_step_id,
                 )
-                if interrupted_recovery_error is not None:
-                    recovery_error = interrupted_recovery_error
             except Exception as interrupted_recovery_failure:
                 recovery_error = str(interrupted_recovery_failure)
         error_message = str(error)
@@ -222,9 +219,9 @@ def _execute_recorded_plan(*, context: DestructionRecordingContext) -> Destructi
             interruption = error.cause
         if recovery_error is not None:
             error_message = (
-                f"{error_message}; ownership tombstone recovery failed: {recovery_error}"
+                f"{error_message}; interrupted DROP reconciliation failed: {recovery_error}"
             )
-            failure_phase = "ownership_recovery"
+            failure_phase = "drop_reconciliation"
     except Exception as error:
         execution = WorkflowExecutionResult(statement_results=())
         error_message = str(error)
@@ -270,13 +267,15 @@ def _recover_interrupted_drop(
     context: DestructionRecordingContext,
     execution: WorkflowExecutionResult,
     failed_step_id: str,
-) -> tuple[WorkflowExecutionResult, str | None]:
+) -> WorkflowExecutionResult:
     prefix: str = "destroy_relation_"
     if not failed_step_id.startswith(prefix):
-        return execution, None
+        return execution
     relation_index: int = int(failed_step_id.removeprefix(prefix)) - 1
-    ordered_relations: tuple[DestructionRelationEvidence, ...] = (
-        reverse_topologically_order_relations(context.plan.relations)
+    ordered_relations: tuple[DestructionRelationEvidence, ...] = tuple(
+        relation
+        for relation in reverse_topologically_order_relations(context.plan.relations)
+        if relation.exists
     )
     relation: DestructionRelationEvidence = ordered_relations[relation_index]
     remaining: tuple[str, ...] = _remaining_relations(
@@ -284,28 +283,23 @@ def _recover_interrupted_drop(
         connection=context.connection,
     )
     if relation.name in remaining:
-        return execution, None
+        return execution
     failed_statement_index: int = next(
         index
         for index, statement in enumerate(context.statements)
         if statement.step_id == failed_step_id
     )
     if len(execution.statement_results) != failed_statement_index:
-        return execution, "Interrupted DROP did not align with the confirmed workflow prefix"
+        raise DestructionConsistencyError(
+            "Interrupted DROP did not align with the confirmed workflow prefix"
+        )
     synthetic_drop: WorkflowStatementResult = WorkflowStatementResult(
         step_id=failed_step_id,
         query_result=None,
         mutation_result=AdapterMutationResult(),
         error_message=None,
     )
-    prefix_execution: WorkflowExecutionResult = WorkflowExecutionResult(
-        statement_results=(*execution.statement_results, synthetic_drop)
-    )
-    return _recover_pending_tombstones(
-        statements=context.statements,
-        execution=prefix_execution,
-        connection=context.connection,
-    )
+    return WorkflowExecutionResult(statement_results=(*execution.statement_results, synthetic_drop))
 
 
 def _record_terminal(
@@ -445,52 +439,6 @@ def _persist_terminal(
         )
     except Exception as error:
         return f"Terminal observations were not recorded: {error}"
-
-
-def _recover_pending_tombstones(
-    *,
-    statements: tuple[WarehouseStatement, ...],
-    execution: WorkflowExecutionResult,
-    connection: AdapterConnection,
-) -> tuple[WorkflowExecutionResult, str | None]:
-    completed_count: int = len(execution.statement_results)
-    if completed_count == 0:
-        return execution, None
-    completed_step_id: str = execution.statement_results[-1].step_id
-    if not completed_step_id.startswith("destroy_relation_"):
-        return execution, None
-    relation_suffix: str = completed_step_id.removeprefix("destroy_relation_")
-    tombstone_prefix: str = f"record_dropped_relation_{relation_suffix}_"
-    recovery: list[WarehouseStatement] = []
-    for statement in statements[completed_count:]:
-        if not statement.step_id.startswith(tombstone_prefix):
-            break
-        recovery.append(statement)
-    recovery_statements: tuple[WarehouseStatement, ...] = tuple(recovery)
-    if not recovery_statements:
-        return execution, None
-    try:
-        recovered: WorkflowExecutionResult = execute_warehouse_workflow(
-            statements=recovery_statements,
-            connection=connection,
-        )
-        return WorkflowExecutionResult(
-            statement_results=(*execution.statement_results, *recovered.statement_results)
-        ), None
-    except WorkflowExecutionError as error:
-        recovered_results: tuple[WorkflowStatementResult, ...] = (
-            error.partial_result.statement_results
-            if isinstance(error.partial_result, WorkflowExecutionResult)
-            else ()
-        )
-        return (
-            WorkflowExecutionResult(
-                statement_results=(*execution.statement_results, *recovered_results)
-            ),
-            str(error),
-        )
-    except Exception as error:
-        return execution, str(error)
 
 
 def _verify_completed_prefix(

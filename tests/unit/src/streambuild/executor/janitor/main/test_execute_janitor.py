@@ -34,6 +34,7 @@ from tests.unit.src.streambuild.executor.janitor.main._test_types import (
 from tests.unit.src.streambuild.executor.janitor.main.helpers import (
     JanitorWorkflowRecordingAdapterConnection,
     SequencedManagedStateAdapterConnection,
+    catalog_relations_for_managed_state,
     unavailable_rollback_test_case,
 )
 
@@ -248,13 +249,7 @@ def test_given_active_and_stale_deployments_when_applying_janitor_then_adapter_c
     assert connection.cleanup_requests == [test_case.expected_cleanup_request]
     assert connection.binding_requests == [test_case.expected_binding_request]
     assert tuple(connection.statements) == test_case.expected_statements
-    assert tuple(event.event_type for event in connection.ownership_events) == tuple(
-        "dropped"
-        for _ in (
-            *test_case.expected_binding_request.removals,
-            *test_case.expected_cleanup_request.relation_names,
-        )
-    )
+    assert connection.ownership_events == []
     assert tuple(event[:2] for event in connection.target_mutation_lock_events) == (
         ("acquire", test_case.request.database),
         ("release", test_case.request.database),
@@ -403,11 +398,13 @@ def test_given_newer_then_older_publish_when_running_janitor_then_rollback_targe
     preview_connection: RecordingAdapterConnection = RecordingAdapterConnection(
         managed_table_state=test_case.managed_table_state,
         deployment_inventory=test_case.inventory,
+        relations=catalog_relations_for_managed_state(test_case.managed_table_state),
     )
     apply_connection: JanitorWorkflowRecordingAdapterConnection = (
         JanitorWorkflowRecordingAdapterConnection(
             managed_table_state=test_case.managed_table_state,
             deployment_inventory=test_case.inventory,
+            relations=catalog_relations_for_managed_state(test_case.managed_table_state),
         )
     )
 
@@ -454,6 +451,7 @@ def test_given_newest_publication_is_missing_when_retaining_then_keeps_usable_ta
     connection: RecordingAdapterConnection = RecordingAdapterConnection(
         managed_table_state=test_case.managed_table_state,
         deployment_inventory=test_case.inventory,
+        relations=catalog_relations_for_managed_state(test_case.managed_table_state),
     )
 
     result: JanitorPreviewResult = cast(
@@ -493,41 +491,6 @@ def test_given_newest_publication_is_missing_when_retaining_then_keeps_usable_ta
                                     name="tbl__orders_enriched",
                                 ),
                                 physical_name=("tbl__payments_enriched__20260727T110000Z_stale1"),
-                                logical_model_name="orders_enriched",
-                            ),
-                        ),
-                    ),
-                ),
-                publish_events=(),
-            ),
-            request=JanitorRequest(
-                database="analytics",
-                metadata_database="metadata",
-                retention_days=7,
-                apply=False,
-            ),
-            expected_deletable=False,
-            expected_reason="physical mappings do not match deployment identity",
-        ),
-        JanitorUnsafeMappingTestCase(
-            description="keeps deployment whose physical mapping is in another database",
-            inventory=AdapterDeploymentInventory(
-                deployments=(
-                    AdapterDeploymentRecord(
-                        deployment_id="20260727T110000Z_stale1",
-                        created_at="2020-01-01 00:00:00.000",
-                        status="backfilling",
-                        replay_lineage_mode="offsets",
-                        selected_root_keys=(),
-                        warning_codes=(),
-                        prepared_object_mappings=(
-                            AdapterPreparedObjectMapping(
-                                logical_key=AdapterMetadataObjectKey(
-                                    database="other_database",
-                                    object_type="table",
-                                    name="tbl__orders_enriched",
-                                ),
-                                physical_name=("tbl__orders_enriched__20260727T110000Z_stale1"),
                                 logical_model_name="orders_enriched",
                             ),
                         ),

@@ -11,36 +11,26 @@ from hashlib import sha256
 from pathlib import Path
 from uuid import uuid4
 
-from streambuild.adapter.constants import (
-    OWNERSHIP_LOGICAL_RESOURCE_MODEL,
-    OWNERSHIP_LOGICAL_RESOURCE_SOURCE,
-)
 from streambuild.adapter.models import (
     AdapterDeploymentInventory,
     AdapterManagedSource,
     AdapterMaterializedView,
-    AdapterOwnedResourceEvent,
-    AdapterOwnedResourceSnapshot,
     AdapterQueryResult,
     AdapterTable,
     AdapterView,
     CatalogRelation,
     CatalogSnapshot,
 )
-from streambuild.adapter.types import AdapterOptionalStateStatus
 from streambuild.compiler.compile.models import (
     CompiledModel,
     CompiledProject,
     LogicalResourceKey,
 )
-from streambuild.compiler.compile.types import DesiredObjectType
+from streambuild.compiler.compile.types import DesiredObjectType, LogicalResourceType
 from streambuild.compiler.graph.constants import ALL_DEPENDENCY_EDGE_TYPES
 from streambuild.compiler.graph.main.collect_reachable_keys import collect_reachable_keys
 from streambuild.compiler.graph.types import GraphTraversalDirection
 from streambuild.compiler.pipeline.models import CompileAnalysis
-from streambuild.compiler.planner.main.build_deployment_physical_name import (
-    build_deployment_physical_name,
-)
 from streambuild.executor.destruction._helpers.ordering import (
     reverse_topologically_order_relations,
 )
@@ -101,17 +91,12 @@ def plan_destruction(
     affected_model_names: tuple[str, ...]
     affected_source_names: tuple[str, ...]
     relations: tuple[DestructionRelationEvidence, ...]
-    recorded_pipeline_names: tuple[str, ...]
-    affected_model_names, affected_source_names, relations, recorded_pipeline_names = (
-        _plan_relation_evidence(
-            request=request,
-            analysis=analysis,
-            connection=connection,
-            affected_pipeline_names=affected,
-        )
+    affected_model_names, affected_source_names, relations = _plan_relation_evidence(
+        request=request,
+        analysis=analysis,
+        connection=connection,
+        affected_pipeline_names=affected,
     )
-    if request.operation == DestructionOperation.RESET_TARGET:
-        affected = tuple(sorted(set(affected) | set(recorded_pipeline_names)))
     challenges: tuple[str, ...] = build_destruction_challenges(
         pipeline_names=affected,
         production_reset=(
@@ -180,7 +165,6 @@ def _plan_relation_evidence(
     tuple[str, ...],
     tuple[str, ...],
     tuple[DestructionRelationEvidence, ...],
-    tuple[str, ...],
 ]:
     models: tuple[CompiledModel, ...] = tuple(
         sorted(
@@ -198,111 +182,42 @@ def _plan_relation_evidence(
     source_keys, affected_source_names = _affected_sources(
         request=request,
         analysis=analysis,
+        affected_pipeline_names=affected_pipeline_names,
     )
-    logical_pipeline_names: dict[str, str] = {
-        model.key.name: model.pipeline_name for model in models
-    }
+    logical_pipeline_names: dict[str, tuple[str, ...]] = _pipeline_names_by_logical_name(
+        analysis=analysis
+    )
     catalog: CatalogSnapshot = connection.load_catalog(request.database)
-    owned_snapshot: AdapterOwnedResourceSnapshot = connection.load_owned_resources(
-        database=request.metadata_database,
-        target_database=request.database,
-    )
-    if owned_snapshot.status == AdapterOptionalStateStatus.UNAVAILABLE:
-        raise DestructionResourceError(
-            owned_snapshot.warning or "Owned-resource ledger is unavailable"
-        )
-    ledger_by_name: dict[str, AdapterOwnedResourceEvent] = {
-        event.resource_name: event
-        for event in owned_snapshot.resources
-        if event.resource_database == request.database
-    }
-    manifest_authorized_ledger_names: frozenset[str] = frozenset(ledger_by_name)
-    if request.operation == DestructionOperation.DESTROY_PIPELINES:
-        manifest_authorized_ledger_names = frozenset(
-            record.resource_name
-            for record in ledger_by_name.values()
-            if record.pipeline_name in affected_pipeline_names
-            and record.logical_resource_type != OWNERSHIP_LOGICAL_RESOURCE_SOURCE
-        )
-    recorded_pipeline_names: tuple[str, ...] = ()
-    if request.operation == DestructionOperation.RESET_TARGET:
-        impact_records: tuple[AdapterOwnedResourceEvent, ...] = tuple(
-            record
-            for record in ledger_by_name.values()
-            if not _excluded_metadata_relation(record.resource_name)
-        )
-        affected_model_names = tuple(
-            sorted(
-                set(affected_model_names)
-                | {
-                    record.logical_resource_name
-                    for record in impact_records
-                    if record.logical_resource_type == OWNERSHIP_LOGICAL_RESOURCE_MODEL
-                    and record.logical_resource_name
-                }
-            )
-        )
-        affected_source_names = tuple(
-            sorted(
-                set(affected_source_names)
-                | {
-                    record.logical_resource_name
-                    for record in impact_records
-                    if record.logical_resource_type == OWNERSHIP_LOGICAL_RESOURCE_SOURCE
-                    and record.logical_resource_name
-                }
-            )
-        )
-        recorded_pipeline_names = tuple(
-            sorted({record.pipeline_name for record in impact_records if record.pipeline_name})
-        )
     owned: dict[str, OwnedRelation] = _manifest_owned_relations(
         analysis=analysis,
         models=models,
         source_keys=source_keys,
         logical_pipeline_names=logical_pipeline_names,
-        connection=connection,
-        catalog=catalog,
-        database=request.database,
-        ledger_relation_names=frozenset(ledger_by_name),
-        manifest_authorized_ledger_names=manifest_authorized_ledger_names,
-    )
-    virtual_object_identities: frozenset[tuple[str, str, str]] = _virtual_object_identities(
-        analysis=analysis,
-        logical_keys=frozenset({model.key for model in models} | set(source_keys)),
     )
 
     inventory: AdapterDeploymentInventory = connection.load_deployment_inventory(
         request.metadata_database
     )
+    if request.operation == DestructionOperation.RESET_TARGET:
+        recorded_logical_names: set[str] = set()
+        for deployment in inventory.deployments:
+            for mapping in deployment.prepared_object_mappings:
+                recorded_logical_names.add(mapping.logical_model_name)
+        affected_model_names = tuple(
+            sorted(
+                set(affected_model_names) | (recorded_logical_names - set(affected_source_names))
+            )
+        )
     affected_logical_names: frozenset[str] = frozenset(
         (*affected_model_names, *affected_source_names)
     )
     owned = _add_virtual_inventory_relations(
         owned=owned,
         inventory=inventory,
-        catalog=catalog,
-        ledger_relation_names=frozenset(ledger_by_name),
         database=request.database,
         affected_logical_names=affected_logical_names,
-        current_object_identities=virtual_object_identities,
-        manifest_matched_relation_names=_manifest_matched_virtual_relations(
-            analysis=analysis,
-            inventory=inventory,
-            current_object_identities=virtual_object_identities,
-            connection=connection,
-            catalog=catalog,
-            database=request.database,
-        ),
         logical_pipeline_names=logical_pipeline_names,
-        operation=DestructionOperation(request.operation),
-    )
-    owned = _add_ledger_relations(
-        owned=owned,
-        records=tuple(ledger_by_name.values()),
-        catalog=catalog,
-        request=request,
-        affected_pipeline_names=frozenset(affected_pipeline_names),
+        include_all=request.operation == DestructionOperation.RESET_TARGET,
     )
     stats: dict[str, tuple[int, int]] = _load_relation_stats(
         connection=connection,
@@ -321,7 +236,7 @@ def _plan_relation_evidence(
         owned_relation_names=frozenset(owned),
     )
     _ = reverse_topologically_order_relations(relations)
-    return affected_model_names, affected_source_names, relations, recorded_pipeline_names
+    return affected_model_names, affected_source_names, relations
 
 
 def _validate_external_dependants(
@@ -367,8 +282,8 @@ def _build_plan(
         "affected_source_names": parts.affected_source_names,
         "relations": tuple(_structural_relation_payload(relation) for relation in parts.relations),
         "challenges": parts.challenges,
-        "preserves_sources": request.operation == DestructionOperation.DESTROY_PIPELINES,
-        "preserves_replay_data": request.operation == DestructionOperation.DESTROY_PIPELINES,
+        "preserves_sources": False,
+        "preserves_replay_data": False,
         "manifest_fingerprint": parts.manifest_fingerprint,
     }
     return DestructionPlan(
@@ -384,8 +299,8 @@ def _build_plan(
         affected_source_names=parts.affected_source_names,
         relations=parts.relations,
         challenges=parts.challenges,
-        preserves_sources=request.operation == DestructionOperation.DESTROY_PIPELINES,
-        preserves_replay_data=request.operation == DestructionOperation.DESTROY_PIPELINES,
+        preserves_sources=False,
+        preserves_replay_data=False,
         manifest_fingerprint=parts.manifest_fingerprint,
         plan_fingerprint=_fingerprint(plan_payload),
         created_at=parts.created_at,
@@ -433,24 +348,37 @@ def _resolve_pipeline_selection(
     if unknown:
         raise DestructionSelectionError(f"Unknown pipelines: {unknown!r}")
 
-    root_keys: set[LogicalResourceKey] = {
-        model.key
-        for model in analysis.realized_project.project.models
-        if model.pipeline_name in supplied
-    }
-    reachable: tuple[LogicalResourceKey, ...] = collect_reachable_keys(
-        graph=analysis.graph,
-        root_keys=frozenset(root_keys),
-        direction=GraphTraversalDirection.DOWNSTREAM,
-        edge_types=ALL_DEPENDENCY_EDGE_TYPES,
-    )
     pipeline_by_model_key: dict[LogicalResourceKey, str] = {
         model.key: model.pipeline_name for model in analysis.realized_project.project.models
     }
+    required_pipeline_names: set[str] = set(supplied)
+    while True:
+        root_keys: frozenset[LogicalResourceKey] = frozenset(
+            model.key
+            for model in analysis.realized_project.project.models
+            if model.pipeline_name in required_pipeline_names
+        )
+        reachable: tuple[LogicalResourceKey, ...] = collect_reachable_keys(
+            graph=analysis.graph,
+            root_keys=root_keys,
+            direction=GraphTraversalDirection.DOWNSTREAM,
+            edge_types=ALL_DEPENDENCY_EDGE_TYPES,
+        )
+        expanded_pipeline_names: set[str] = set(required_pipeline_names)
+        expanded_pipeline_names.update(
+            pipeline_by_model_key[key] for key in reachable if key in pipeline_by_model_key
+        )
+        expanded_pipeline_names.update(
+            _shared_source_pipeline_names(
+                analysis=analysis,
+                pipeline_names=frozenset(required_pipeline_names),
+            )
+        )
+        if expanded_pipeline_names == required_pipeline_names:
+            break
+        required_pipeline_names = expanded_pipeline_names
     required_dependents: frozenset[str] = frozenset(
-        pipeline_by_model_key[key]
-        for key in reachable
-        if key in pipeline_by_model_key and pipeline_by_model_key[key] not in request.pipeline_names
+        required_pipeline_names - set(request.pipeline_names)
     )
     missing: tuple[str, ...] = tuple(
         sorted(required_dependents - set(request.included_dependent_pipeline_names))
@@ -462,16 +390,102 @@ def _resolve_pipeline_selection(
 
 
 def _affected_sources(
-    *, request: DestructionRequest, analysis: CompileAnalysis
+    *,
+    request: DestructionRequest,
+    analysis: CompileAnalysis,
+    affected_pipeline_names: tuple[str, ...],
 ) -> tuple[frozenset[LogicalResourceKey], tuple[str, ...]]:
-    if request.operation == DestructionOperation.DESTROY_PIPELINES:
-        return frozenset(), ()
     managed_source_keys: frozenset[LogicalResourceKey] = frozenset(
         source.key
         for source in analysis.realized_project.project.sources
         if analysis.realized_project.resources_by_logical_key.get(source.key, ())
     )
-    return managed_source_keys, tuple(sorted(key.name for key in managed_source_keys))
+    if request.operation == DestructionOperation.RESET_TARGET:
+        selected_source_keys: frozenset[LogicalResourceKey] = managed_source_keys
+    else:
+        model_keys: frozenset[LogicalResourceKey] = frozenset(
+            model.key
+            for model in analysis.realized_project.project.models
+            if model.pipeline_name in affected_pipeline_names
+        )
+        upstream_keys: frozenset[LogicalResourceKey] = frozenset(
+            collect_reachable_keys(
+                graph=analysis.graph,
+                root_keys=model_keys,
+                direction=GraphTraversalDirection.UPSTREAM,
+                edge_types=ALL_DEPENDENCY_EDGE_TYPES,
+            )
+        )
+        declared_source_keys: frozenset[LogicalResourceKey] = frozenset(
+            pipeline.source.key
+            for pipeline in analysis.realized_project.project.pipelines
+            if pipeline.pipeline.name in affected_pipeline_names and pipeline.source is not None
+        )
+        selected_source_keys = managed_source_keys & (upstream_keys | declared_source_keys)
+    return selected_source_keys, tuple(sorted(key.name for key in selected_source_keys))
+
+
+def _shared_source_pipeline_names(
+    *, analysis: CompileAnalysis, pipeline_names: frozenset[str]
+) -> frozenset[str]:
+    managed_source_names: frozenset[str] = frozenset(
+        source.key.name
+        for source in analysis.realized_project.project.sources
+        if analysis.realized_project.resources_by_logical_key.get(source.key, ())
+    )
+    source_names: set[str] = {
+        pipeline.source.key.name
+        for pipeline in analysis.realized_project.project.pipelines
+        if pipeline.pipeline.name in pipeline_names
+        and pipeline.source is not None
+        and pipeline.source.key.name in managed_source_names
+    }
+    selected_model_keys: frozenset[LogicalResourceKey] = frozenset(
+        model.key
+        for model in analysis.realized_project.project.models
+        if model.pipeline_name in pipeline_names
+    )
+    upstream_keys: tuple[LogicalResourceKey, ...] = collect_reachable_keys(
+        graph=analysis.graph,
+        root_keys=selected_model_keys,
+        direction=GraphTraversalDirection.UPSTREAM,
+        edge_types=ALL_DEPENDENCY_EDGE_TYPES,
+    )
+    source_names.update(
+        key.name
+        for key in upstream_keys
+        if key.resource_type == LogicalResourceType.SOURCE and key.name in managed_source_names
+    )
+    pipeline_names_by_logical_name: dict[str, tuple[str, ...]] = _pipeline_names_by_logical_name(
+        analysis=analysis
+    )
+    shared_pipeline_names: set[str] = set()
+    for source_name in source_names:
+        shared_pipeline_names.update(pipeline_names_by_logical_name.get(source_name, ()))
+    return frozenset(shared_pipeline_names)
+
+
+def _pipeline_names_by_logical_name(*, analysis: CompileAnalysis) -> dict[str, tuple[str, ...]]:
+    names: dict[str, set[str]] = {}
+    pipeline_by_model_key: dict[LogicalResourceKey, str] = {
+        model.key: model.pipeline_name for model in analysis.realized_project.project.models
+    }
+    for model in analysis.realized_project.project.models:
+        names.setdefault(model.key.name, set()).add(model.pipeline_name)
+    for pipeline in analysis.realized_project.project.pipelines:
+        if pipeline.source is not None:
+            names.setdefault(pipeline.source.key.name, set()).add(pipeline.pipeline.name)
+    for source in analysis.realized_project.project.sources:
+        downstream_keys: tuple[LogicalResourceKey, ...] = collect_reachable_keys(
+            graph=analysis.graph,
+            root_keys=frozenset((source.key,)),
+            direction=GraphTraversalDirection.DOWNSTREAM,
+            edge_types=ALL_DEPENDENCY_EDGE_TYPES,
+        )
+        names.setdefault(source.key.name, set()).update(
+            pipeline_by_model_key[key] for key in downstream_keys if key in pipeline_by_model_key
+        )
+    return {name: tuple(sorted(values)) for name, values in names.items()}
 
 
 def _manifest_owned_relations(
@@ -479,12 +493,7 @@ def _manifest_owned_relations(
     analysis: CompileAnalysis,
     models: tuple[CompiledModel, ...],
     source_keys: frozenset[LogicalResourceKey],
-    logical_pipeline_names: Mapping[str, str],
-    connection: DestructionPlanningConnection,
-    catalog: CatalogSnapshot,
-    database: str,
-    ledger_relation_names: frozenset[str],
-    manifest_authorized_ledger_names: frozenset[str],
+    logical_pipeline_names: Mapping[str, tuple[str, ...]],
 ) -> dict[str, OwnedRelation]:
     owned: dict[str, OwnedRelation] = {}
     selected_keys: set[LogicalResourceKey] = {model.key for model in models} | set(source_keys)
@@ -493,66 +502,14 @@ def _manifest_owned_relations(
             name: str = resource.name
             if _excluded_metadata_relation(name):
                 continue
-            relation: CatalogRelation | None = catalog.relation(name)
-            if name in ledger_relation_names:
-                if name not in manifest_authorized_ledger_names:
-                    continue
-            else:
-                if relation is None:
-                    continue
-                if not connection.catalog_resource_matches(
-                    resource=resource,
-                    relation=relation,
-                    database=database,
-                ):
-                    raise DestructionResourceError(
-                        f"Refusing to adopt {database}.{name}: the live catalog relation does "
-                        "not exactly match the compiled desired resource"
-                    )
-            _add_owned_relation(
+            _add_associated_relation(
                 owned=owned,
                 name=name,
                 kind=_resource_kind(resource),
                 logical_name=key.name,
-                pipeline_name=logical_pipeline_names.get(key.name),
+                pipeline_names=logical_pipeline_names.get(key.name, ()),
                 ownership=DestructionOwnership.CURRENT_MANIFEST,
             )
-    return owned
-
-
-def _add_ledger_relations(
-    *,
-    owned: dict[str, OwnedRelation],
-    records: tuple[AdapterOwnedResourceEvent, ...],
-    catalog: CatalogSnapshot,
-    request: DestructionRequest,
-    affected_pipeline_names: frozenset[str],
-) -> dict[str, OwnedRelation]:
-    for record in records:
-        if _excluded_metadata_relation(record.resource_name):
-            continue
-        if request.operation == DestructionOperation.DESTROY_PIPELINES:
-            if record.logical_resource_type == OWNERSHIP_LOGICAL_RESOURCE_SOURCE:
-                continue
-            if record.pipeline_name not in affected_pipeline_names:
-                continue
-        catalog_relation: CatalogRelation | None = catalog.relation(record.resource_name)
-        if (
-            catalog_relation is not None
-            and catalog_relation.ownership_generation != record.catalog_fingerprint
-        ):
-            raise DestructionResourceError(
-                f"Refusing to destroy {record.resource_database}.{record.resource_name}: "
-                "the current catalog relation is not the generation recorded as owned"
-            )
-        _add_owned_relation(
-            owned=owned,
-            name=record.resource_name,
-            kind=DestructionRelationKind(record.resource_kind),
-            logical_name=record.logical_resource_name,
-            pipeline_name=record.pipeline_name or None,
-            ownership=DestructionOwnership.OWNERSHIP_LEDGER,
-        )
     return owned
 
 
@@ -560,50 +517,34 @@ def _add_virtual_inventory_relations(
     *,
     owned: dict[str, OwnedRelation],
     inventory: AdapterDeploymentInventory,
-    catalog: CatalogSnapshot,
-    ledger_relation_names: frozenset[str],
     database: str,
     affected_logical_names: frozenset[str],
-    current_object_identities: frozenset[tuple[str, str, str]],
-    manifest_matched_relation_names: frozenset[str],
-    logical_pipeline_names: Mapping[str, str],
-    operation: DestructionOperation,
+    logical_pipeline_names: Mapping[str, tuple[str, ...]],
+    include_all: bool,
 ) -> dict[str, OwnedRelation]:
-    reset_target: bool = operation == DestructionOperation.RESET_TARGET
     logical_name_by_published_name: dict[str, str] = {}
     for deployment in sorted(inventory.deployments, key=lambda value: value.deployment_id):
         for mapping in sorted(
             deployment.prepared_object_mappings,
             key=lambda value: (value.physical_name, value.logical_key.name),
         ):
-            mapping_identity: tuple[str, str, str] = (
-                mapping.logical_model_name,
-                mapping.logical_key.name,
-                DesiredObjectType(mapping.logical_key.object_type).value,
-            )
             logical_name_by_published_name[mapping.logical_key.name] = mapping.logical_model_name
             logical_name_by_published_name[mapping.physical_name] = mapping.logical_model_name
-            if not reset_target and (
-                mapping.logical_model_name not in affected_logical_names
-                or mapping_identity not in current_object_identities
-            ):
+            if not include_all and mapping.logical_model_name not in affected_logical_names:
                 continue
+            if mapping.logical_key.database not in {None, database}:
+                raise DestructionResourceError(
+                    "Destruction cannot mutate recorded virtual resources outside the target "
+                    f"database: {mapping.logical_key.database}.{mapping.physical_name}"
+                )
             if _excluded_metadata_relation(mapping.physical_name):
                 continue
-            _reject_live_unowned_history(
-                name=mapping.physical_name,
-                database=database,
-                owned=owned,
-                catalog=catalog,
-                ledger_relation_names=ledger_relation_names,
-                manifest_matched_relation_names=manifest_matched_relation_names,
-            )
-            _add_owned_relation(
+            _add_associated_relation(
                 owned=owned,
                 name=mapping.physical_name,
                 kind=_object_type_kind(mapping.logical_key.object_type),
                 logical_name=mapping.logical_model_name,
-                pipeline_name=logical_pipeline_names.get(mapping.logical_model_name),
+                pipeline_names=logical_pipeline_names.get(mapping.logical_model_name, ()),
                 ownership=DestructionOwnership.VIRTUAL_PHYSICAL_MAPPING,
             )
     for event in sorted(
@@ -617,47 +558,24 @@ def _add_virtual_inventory_relations(
                 continue
             if _excluded_metadata_relation(binding.logical_name):
                 continue
-            if not reset_target and binding.logical_name not in owned:
-                continue
-            binding_relation: CatalogRelation | None = catalog.relation(binding.logical_name)
-            _reject_live_unowned_history(
-                name=binding.logical_name,
-                database=database,
-                owned=owned,
-                catalog=catalog,
-                ledger_relation_names=ledger_relation_names,
-                manifest_matched_relation_names=(
-                    manifest_matched_relation_names
-                    if binding_relation is not None
-                    and binding_relation.stable_binding_name == binding.physical_name
-                    and binding.physical_name in owned
-                    else frozenset()
-                ),
-            )
             logical_name: str = logical_name_by_published_name.get(
                 binding.logical_name,
                 binding.logical_name,
             )
             if binding.logical_name in owned:
                 logical_name = sorted(owned[binding.logical_name].logical_names)[0]
-            owned = _add_owned_relation(
+            if not include_all and logical_name not in affected_logical_names:
+                continue
+            _add_associated_relation(
                 owned=owned,
                 name=binding.logical_name,
                 kind=DestructionRelationKind.VIEW,
                 logical_name=logical_name,
-                pipeline_name=logical_pipeline_names.get(logical_name),
+                pipeline_names=logical_pipeline_names.get(logical_name, ()),
                 ownership=DestructionOwnership.PUBLISHED_STABLE_BINDING,
             )
-            if reset_target and not _excluded_metadata_relation(binding.physical_name):
-                _reject_live_unowned_history(
-                    name=binding.physical_name,
-                    database=database,
-                    owned=owned,
-                    catalog=catalog,
-                    ledger_relation_names=ledger_relation_names,
-                    manifest_matched_relation_names=manifest_matched_relation_names,
-                )
-                owned = _add_owned_relation(
+            if not _excluded_metadata_relation(binding.physical_name):
+                _add_associated_relation(
                     owned=owned,
                     name=binding.physical_name,
                     kind=DestructionRelationKind.TABLE,
@@ -665,82 +583,10 @@ def _add_virtual_inventory_relations(
                         binding.physical_name,
                         logical_name,
                     ),
-                    pipeline_name=logical_pipeline_names.get(logical_name),
+                    pipeline_names=logical_pipeline_names.get(logical_name, ()),
                     ownership=DestructionOwnership.VIRTUAL_PHYSICAL_MAPPING,
                 )
     return owned
-
-
-def _reject_live_unowned_history(
-    *,
-    name: str,
-    database: str,
-    owned: dict[str, OwnedRelation],
-    catalog: CatalogSnapshot,
-    ledger_relation_names: frozenset[str],
-    manifest_matched_relation_names: frozenset[str],
-) -> None:
-    if (
-        catalog.relation(name) is not None
-        and name not in owned
-        and name not in ledger_relation_names
-        and name not in manifest_matched_relation_names
-    ):
-        raise DestructionResourceError(
-            f"Refusing to destroy {database}.{name}: historical deployment metadata does not "
-            "prove ownership of the current catalog generation"
-        )
-
-
-def _manifest_matched_virtual_relations(
-    *,
-    analysis: CompileAnalysis,
-    inventory: AdapterDeploymentInventory,
-    current_object_identities: frozenset[tuple[str, str, str]],
-    connection: DestructionPlanningConnection,
-    catalog: CatalogSnapshot,
-    database: str,
-) -> frozenset[str]:
-    desired_by_name: dict[
-        str,
-        AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterView,
-    ] = {}
-    for resources in analysis.realized_project.resources_by_logical_key.values():
-        for resource in resources:
-            if isinstance(
-                resource,
-                (AdapterManagedSource, AdapterTable, AdapterMaterializedView, AdapterView),
-            ):
-                desired_by_name[resource.name] = resource
-    matched: set[str] = set()
-    for deployment in inventory.deployments:
-        for mapping in deployment.prepared_object_mappings:
-            identity: tuple[str, str, str] = (
-                mapping.logical_model_name,
-                mapping.logical_key.name,
-                DesiredObjectType(mapping.logical_key.object_type).value,
-            )
-            relation: CatalogRelation | None = catalog.relation(mapping.physical_name)
-            desired: (
-                AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterView | None
-            ) = desired_by_name.get(mapping.logical_key.name)
-            if (
-                identity in current_object_identities
-                and mapping.physical_name
-                == build_deployment_physical_name(
-                    logical_name=mapping.logical_key.name,
-                    deployment_id=deployment.deployment_id,
-                )
-                and relation is not None
-                and desired is not None
-                and connection.catalog_resource_matches(
-                    resource=desired,
-                    relation=relation,
-                    database=database,
-                )
-            ):
-                matched.add(mapping.physical_name)
-    return frozenset(matched)
 
 
 def _add_owned_relation(
@@ -773,14 +619,25 @@ def _add_owned_relation(
     return owned
 
 
-def _virtual_object_identities(
-    *, analysis: CompileAnalysis, logical_keys: frozenset[LogicalResourceKey]
-) -> frozenset[tuple[str, str, str]]:
-    identities: set[tuple[str, str, str]] = set()
-    for key in logical_keys:
-        for resource in analysis.realized_project.resources_by_logical_key.get(key, ()):
-            identities.add((key.name, resource.name, _resource_object_type(resource).value))
-    return frozenset(identities)
+def _add_associated_relation(
+    *,
+    owned: dict[str, OwnedRelation],
+    name: str,
+    kind: DestructionRelationKind,
+    logical_name: str,
+    pipeline_names: tuple[str, ...],
+    ownership: DestructionOwnership,
+) -> None:
+    associated_pipeline_names: tuple[str | None, ...] = pipeline_names or (None,)
+    for pipeline_name in associated_pipeline_names:
+        _add_owned_relation(
+            owned=owned,
+            name=name,
+            kind=kind,
+            logical_name=logical_name,
+            pipeline_name=pipeline_name,
+            ownership=ownership,
+        )
 
 
 def _load_relation_stats(
@@ -838,7 +695,7 @@ def _build_evidence(
                 if has_parts and exists
                 else None,
                 catalog_fingerprint=(
-                    None if catalog_relation is None else _fingerprint(catalog_relation)
+                    None if catalog_relation is None else catalog_relation.ownership_generation
                 ),
                 logical_names=tuple(sorted(relation.logical_names)),
                 pipeline_names=tuple(sorted(relation.pipeline_names)),
@@ -933,18 +790,6 @@ def _resource_kind(resource: object) -> DestructionRelationKind:
         return DestructionRelationKind.MANAGED_SOURCE
     if isinstance(resource, AdapterTable):
         return DestructionRelationKind.TABLE
-    raise DestructionResourceError(f"Unsupported manifest resource: {type(resource).__name__}")
-
-
-def _resource_object_type(resource: object) -> DesiredObjectType:
-    if isinstance(resource, AdapterView):
-        return DesiredObjectType.VIEW
-    if isinstance(resource, AdapterMaterializedView):
-        return DesiredObjectType.MATERIALIZED_VIEW
-    if isinstance(resource, AdapterManagedSource):
-        return DesiredObjectType.KAFKA_TABLE
-    if isinstance(resource, AdapterTable):
-        return DesiredObjectType.TABLE
     raise DestructionResourceError(f"Unsupported manifest resource: {type(resource).__name__}")
 
 

@@ -100,10 +100,10 @@ from tests.unit.src.streambuild.executor.promotion.main.helpers import (
                 ),
             ),
             expected_statements=(
-                "CREATE DATABASE IF NOT EXISTS metadata;",
                 "CREATE OR REPLACE VIEW analytics.tbl__orders_enriched AS\n"
                 "SELECT * FROM analytics.tbl__orders_enriched__20260726T190000Z_ab12cd;",
                 "DROP VIEW IF EXISTS analytics.tbl__orders_legacy SYNC;",
+                "CREATE DATABASE IF NOT EXISTS metadata;",
                 "INSERT INTO metadata._streambuild_virtual_publications "
                 "(publication_id, deployment_id, operation, previous_deployment_id, "
                 "logical_database_name, logical_view_name, physical_database_name, "

@@ -29,17 +29,21 @@ from streambuild.executor.destruction.classes.in_memory_destruction_plan_store i
     InMemoryDestructionPlanStore,
 )
 from streambuild.executor.destruction.exceptions import (
+    DestructionDriftError,
     DestructionExternalDependencyError,
-    DestructionResourceError,
 )
 from streambuild.executor.destruction.main.assemble_destruction_workflow import (
     assemble_destruction_workflow,
 )
 from streambuild.executor.destruction.main.execute_destruction import execute_destruction
 from streambuild.executor.destruction.main.plan_destruction import plan_destruction
+from streambuild.executor.destruction.main.verify_destruction_drift import (
+    verify_destruction_drift,
+)
 from streambuild.executor.destruction.models import (
     DestructionExecutionResult,
     DestructionPlan,
+    DestructionRelationEvidence,
     DestructionRequest,
 )
 from streambuild.executor.workflow.exceptions import WorkflowExecutionError
@@ -67,7 +71,7 @@ from tests.integration.src.streambuild.executor.destruction.helpers import reali
     "test_case",
     [
         DestructionIntegrationTestCase(
-            description="destroy preserves sources and reset preserves operation evidence",
+            description="destroy removes complete scope and reset preserves operation evidence",
             expected_destroy_outcome="succeeded",
             expected_reset_outcome="succeeded",
             expected_terminal_invocation_count=2,
@@ -186,7 +190,7 @@ def test_given_real_target_when_destroying_and_resetting_then_scope_and_evidence
             analysis=analysis,
             logical_keys=model_keys,
         )
-        assert source_relation_names <= destroy_catalog_names
+        assert not source_relation_names & destroy_catalog_names
         assert "stale_raw_orders" in destroy_catalog_names
         assert not model_relation_names & destroy_catalog_names
 
@@ -201,7 +205,7 @@ def test_given_real_target_when_destroying_and_resetting_then_scope_and_evidence
             analysis=analysis,
             connection=execution_connection,
         )
-        assert "stale_raw_orders" in {relation.name for relation in reset_plan.relations}
+        assert "stale_raw_orders" not in {relation.name for relation in reset_plan.relations}
         assert "tbl__orders_enriched_backup" not in {
             relation.name for relation in reset_plan.relations
         }
@@ -233,17 +237,20 @@ def test_given_real_target_when_destroying_and_resetting_then_scope_and_evidence
             clickhouse_database
         ).relation_names()
         assert not source_relation_names & remaining_names
-        assert "stale_raw_orders" not in remaining_names
+        assert "stale_raw_orders" in remaining_names
         assert "tbl__orders_enriched_backup" in remaining_names
         assert all(
-            name.startswith("_streambuild_") or name == "tbl__orders_enriched_backup"
+            name.startswith("_streambuild_")
+            or name in {"stale_raw_orders", "tbl__orders_enriched_backup"}
             for name in remaining_names
         )
         owned_after_reset: AdapterOwnedResourceSnapshot = execution_connection.load_owned_resources(
             database=clickhouse_database,
             target_database=clickhouse_database,
         )
-        assert owned_after_reset.resources == ()
+        assert tuple(resource.resource_name for resource in owned_after_reset.resources) == (
+            "stale_raw_orders",
+        )
         invocation_count: int = int(
             clickhouse_client.query(
                 f"SELECT count() FROM {clickhouse_database}._streambuild_invocations "
@@ -270,13 +277,13 @@ def test_given_real_target_when_destroying_and_resetting_then_scope_and_evidence
     "test_case",
     [
         OwnershipIntegrationTestCase(
-            description="manual replacement refuses reset",
-            expected_error_match="not the generation recorded",
+            description="manual replacement changes the frozen generation",
+            expected_error_match="impact",
         )
     ],
     ids=lambda case: case.description,
 )
-def test_given_manually_recreated_relation_when_planning_reset_then_generation_is_refused(
+def test_given_manually_recreated_relation_when_replanning_then_frozen_generation_is_rejected(
     test_case: OwnershipIntegrationTestCase,
     clickhouse_connection_settings: ClickHouseConnectionSettings,
     clickhouse_database: str,
@@ -303,6 +310,17 @@ def test_given_manually_recreated_relation_when_planning_reset_then_generation_i
             loaded_project=loaded_project,
             adapter_profile=build_compiler_adapter_profile(ClickHouseAdapter()),
         )
+        request: DestructionRequest = DestructionRequest(
+            operation="reset_target",
+            target="test",
+            database=clickhouse_database,
+            metadata_database=clickhouse_database,
+        )
+        frozen: DestructionPlan = plan_destruction(
+            request=request,
+            analysis=analysis,
+            connection=connection,
+        )
         connection.execute_workflow_sql(
             f"DROP TABLE {clickhouse_database}.tbl__orders_enriched SYNC;"
         )
@@ -311,17 +329,23 @@ def test_given_manually_recreated_relation_when_planning_reset_then_generation_i
             "(replacement UInt64) ENGINE = MergeTree ORDER BY replacement;"
         )
 
-        with pytest.raises(DestructionResourceError, match=test_case.expected_error_match):
-            plan_destruction(
-                request=DestructionRequest(
-                    operation="reset_target",
-                    target="test",
-                    database=clickhouse_database,
-                    metadata_database=clickhouse_database,
-                ),
-                analysis=analysis,
-                connection=connection,
-            )
+        fresh: DestructionPlan = plan_destruction(
+            request=request,
+            analysis=analysis,
+            connection=connection,
+        )
+        frozen_by_name: dict[str, DestructionRelationEvidence] = {
+            relation.name: relation for relation in frozen.relations
+        }
+        fresh_by_name: dict[str, DestructionRelationEvidence] = {
+            relation.name: relation for relation in fresh.relations
+        }
+        frozen_generation: str | None = frozen_by_name["tbl__orders_enriched"].catalog_fingerprint
+        fresh_generation: str | None = fresh_by_name["tbl__orders_enriched"].catalog_fingerprint
+
+        assert fresh_generation != frozen_generation
+        with pytest.raises(DestructionDriftError, match=test_case.expected_error_match):
+            verify_destruction_drift(frozen_plan=frozen, replan=lambda: fresh)
     finally:
         connection.close()
 
@@ -331,13 +355,13 @@ def test_given_manually_recreated_relation_when_planning_reset_then_generation_i
     "test_case",
     [
         OwnershipIntegrationTestCase(
-            description="partial drop records exact tombstone",
+            description="partial drop leaves exact residual catalog state",
             expected_error_match="injected second drop failure",
         )
     ],
     ids=lambda case: case.description,
 )
-def test_given_second_drop_failure_when_destroying_then_first_drop_has_durable_tombstone(
+def test_given_second_drop_failure_when_destroying_then_catalog_has_exact_completed_prefix(
     test_case: OwnershipIntegrationTestCase,
     clickhouse_connection_settings: ClickHouseConnectionSettings,
     clickhouse_database: str,
@@ -405,15 +429,11 @@ def test_given_second_drop_failure_when_destroying_then_first_drop_has_durable_t
 
         first_name: str = drops[0].sql.split("`.`", maxsplit=1)[1].split("`", maxsplit=1)[0]
         second_name: str = drops[1].sql.split("`.`", maxsplit=1)[1].split("`", maxsplit=1)[0]
-        active: AdapterOwnedResourceSnapshot = connection.load_owned_resources(
-            database=clickhouse_database,
-            target_database=clickhouse_database,
-        )
-        active_names: frozenset[str] = frozenset(
-            resource.resource_name for resource in active.resources
-        )
-        assert first_name not in active_names
-        assert second_name in active_names
+        catalog_names: frozenset[str] = connection.load_catalog(
+            clickhouse_database
+        ).relation_names()
+        assert first_name not in catalog_names
+        assert second_name in catalog_names
     finally:
         connection.close()
 
@@ -484,9 +504,6 @@ def test_given_drop_completion_event_failure_when_destroying_then_partial_eviden
         )
         first_drop: WarehouseStatement = drops[0]
         second_drop: WarehouseStatement = drops[1]
-        first_drop_index: int = statements.index(first_drop)
-        first_tombstone: WarehouseStatement = statements[first_drop_index + 1]
-        assert first_tombstone.step_id.startswith("record_dropped_relation_0001_")
         original_observation_mutation: Callable[..., AdapterMutationResult] = (
             observation_connection.execute_workflow_mutation
         )
@@ -532,21 +549,14 @@ def test_given_drop_completion_event_failure_when_destroying_then_partial_eviden
         first_name: str = first_drop.sql.split("`.`", maxsplit=1)[1].split("`", maxsplit=1)[0]
         second_name: str = second_drop.sql.split("`.`", maxsplit=1)[1].split("`", maxsplit=1)[0]
         expected_completed: tuple[int, ...] = tuple(
-            statement.sequence for statement in statements[: first_tombstone.sequence]
+            statement.sequence for statement in statements[: first_drop.sequence]
         )
         expected_pending: tuple[int, ...] = tuple(
-            statement.sequence for statement in statements[first_tombstone.sequence :]
+            statement.sequence for statement in statements[first_drop.sequence :]
         )
         catalog_names: frozenset[str] = connection.load_catalog(
             clickhouse_database
         ).relation_names()
-        active: AdapterOwnedResourceSnapshot = connection.load_owned_resources(
-            database=clickhouse_database,
-            target_database=clickhouse_database,
-        )
-        active_names: frozenset[str] = frozenset(
-            resource.resource_name for resource in active.resources
-        )
         invocation_rows: Sequence[Sequence[object]] = clickhouse_client.query(
             f"SELECT outcome, summary_json FROM {clickhouse_database}._streambuild_invocations "
             f"WHERE invocation_id = '{result.invocation_id}'"
@@ -561,8 +571,6 @@ def test_given_drop_completion_event_failure_when_destroying_then_partial_eviden
         assert result.remaining_relation_names is not None
         assert first_name not in catalog_names
         assert second_name in catalog_names
-        assert first_name not in active_names
-        assert second_name in active_names
         assert invocation_rows[0][0] == test_case.expected_outcome
         assert summary["completedStatementSequences"] == list(expected_completed)
         assert summary["pendingStatementSequences"] == list(expected_pending)
@@ -580,14 +588,14 @@ def test_given_drop_completion_event_failure_when_destroying_then_partial_eviden
     "test_case",
     [
         VirtualHistoryIntegrationTestCase(
-            description="live pre-ledger virtual history cannot authorize reset deletion",
-            expected_error_match="historical deployment metadata does not prove ownership",
+            description="recorded virtual history authorizes reset deletion scope",
+            expected_reset_included_names=("retired_binding", "retired_physical"),
             expected_destroy_excluded_names=("retired_binding", "retired_physical"),
         )
     ],
     ids=lambda case: case.description,
 )
-def test_given_live_preledger_virtual_history_when_resetting_then_generation_is_required(
+def test_given_recorded_virtual_history_when_resetting_then_live_generations_are_frozen(
     test_case: VirtualHistoryIntegrationTestCase,
     clickhouse_connection_settings: ClickHouseConnectionSettings,
     clickhouse_database: str,
@@ -643,17 +651,16 @@ def test_given_live_preledger_virtual_history_when_resetting_then_generation_is_
             "'retired_physical', now64(3, 'UTC'));"
         )
 
-        with pytest.raises(DestructionResourceError, match=test_case.expected_error_match):
-            plan_destruction(
-                request=DestructionRequest(
-                    operation="reset_target",
-                    target="test",
-                    database=clickhouse_database,
-                    metadata_database=clickhouse_database,
-                ),
-                analysis=analysis,
-                connection=connection,
-            )
+        reset: DestructionPlan = plan_destruction(
+            request=DestructionRequest(
+                operation="reset_target",
+                target="test",
+                database=clickhouse_database,
+                metadata_database=clickhouse_database,
+            ),
+            analysis=analysis,
+            connection=connection,
+        )
         destroy: DestructionPlan = plan_destruction(
             request=DestructionRequest(
                 operation="destroy_pipelines",
@@ -666,7 +673,15 @@ def test_given_live_preledger_virtual_history_when_resetting_then_generation_is_
             connection=connection,
         )
 
+        reset_by_name: dict[str, DestructionRelationEvidence] = {
+            relation.name: relation for relation in reset.relations
+        }
         destroy_names: frozenset[str] = frozenset(relation.name for relation in destroy.relations)
+        assert set(test_case.expected_reset_included_names) <= reset_by_name.keys()
+        assert all(
+            reset_by_name[name].catalog_fingerprint
+            for name in test_case.expected_reset_included_names
+        )
         assert set(test_case.expected_destroy_excluded_names).isdisjoint(destroy_names)
     finally:
         connection.close()
@@ -765,13 +780,13 @@ def test_given_cross_database_dependant_when_planning_then_destruction_is_blocke
     "test_case",
     [
         OwnershipIntegrationTestCase(
-            description="pre-ledger live manifest mismatch refuses bootstrap",
-            expected_error_match="does not exactly match",
+            description="live manifest DDL mismatch remains associated",
+            expected_error_match="tbl__orders_enriched",
         )
     ],
     ids=lambda case: case.description,
 )
-def test_given_preledger_manifest_mismatch_when_planning_then_bootstrap_is_refused(
+def test_given_live_manifest_ddl_mismatch_when_planning_then_relation_is_included(
     test_case: OwnershipIntegrationTestCase,
     clickhouse_connection_settings: ClickHouseConnectionSettings,
     clickhouse_database: str,
@@ -797,18 +812,22 @@ def test_given_preledger_manifest_mismatch_when_planning_then_bootstrap_is_refus
             "(replacement UInt64) ENGINE = MergeTree ORDER BY replacement;"
         )
 
-        with pytest.raises(DestructionResourceError, match=test_case.expected_error_match):
-            plan_destruction(
-                request=DestructionRequest(
-                    operation="destroy_pipelines",
-                    target="test",
-                    database=clickhouse_database,
-                    metadata_database=clickhouse_database,
-                    pipeline_names=("pl__orders",),
-                ),
-                analysis=analysis,
-                connection=connection,
-            )
+        plan: DestructionPlan = plan_destruction(
+            request=DestructionRequest(
+                operation="destroy_pipelines",
+                target="test",
+                database=clickhouse_database,
+                metadata_database=clickhouse_database,
+                pipeline_names=("pl__orders",),
+            ),
+            analysis=analysis,
+            connection=connection,
+        )
+
+        by_name: dict[str, DestructionRelationEvidence] = {
+            relation.name: relation for relation in plan.relations
+        }
+        assert by_name[test_case.expected_error_match].catalog_fingerprint
     finally:
         connection.close()
 

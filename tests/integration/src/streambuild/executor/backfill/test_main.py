@@ -251,13 +251,7 @@ def test_given_changed_pipeline_when_bootstrapping_then_it_creates_metadata_and_
         key=lambda row: str(row[0]),
     )
     assert full_layout_rows == list(test_case.expected_full_layout)
-    assert {
-        "kafka__orders",
-        "raw__orders",
-        "mv__orders",
-        test_case.expected_shadow_table_name,
-        test_case.expected_shadow_materialized_view_name,
-    } <= owned_resource_names
+    assert owned_resource_names == frozenset()
 
 
 @pytest.mark.integration

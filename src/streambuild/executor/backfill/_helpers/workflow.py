@@ -5,41 +5,27 @@ from __future__ import annotations
 import math
 from hashlib import sha256
 from importlib.metadata import version
-from uuid import uuid4
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.constants import (
     METADATA_DEPLOYMENT_WATERMARKS_TABLE_NAME,
     METADATA_DEPLOYMENTS_TABLE_NAME,
     METADATA_PUBLISH_HISTORY_TABLE_NAME,
-    OWNERSHIP_LOGICAL_RESOURCE_SOURCE,
 )
 from streambuild.adapter.models import (
     AdapterDeploymentRecord,
     AdapterDeploymentReplayRequest,
-    AdapterManagedSource,
     AdapterMaterializedView,
     AdapterMetadataState,
-    AdapterOwnedResourceEvent,
-    AdapterOwnedResourceSnapshot,
     AdapterReplayRequest,
-    AdapterStableView,
-    AdapterTable,
-    AdapterView,
     CatalogRelation,
     CatalogSnapshot,
 )
-from streambuild.adapter.types import (
-    AdapterOptionalStateStatus,
-    AdapterReplayBoundaryMode,
-    AdapterReplayLowerBoundMode,
-)
+from streambuild.adapter.types import AdapterReplayBoundaryMode, AdapterReplayLowerBoundMode
 from streambuild.compiler.compile.models import (
-    DesiredKafkaTable,
     DesiredMaterializedView,
     DesiredState,
     DesiredTable,
-    DesiredView,
     ExternalSourceReplayConfig,
     ObjectKey,
 )
@@ -87,12 +73,6 @@ def assemble_virtual_build_workflow(
         desired_state=request.desired_state,
         default_database=request.default_database,
         existing_relation_names=target_catalog.relation_names(),
-    )
-    _validate_preledger_source_adoption(
-        request=request,
-        client=client,
-        target_catalog=target_catalog,
-        source_preparation=source_preparation,
     )
     population_plan: PopulationPlan = expand_population_plan(
         plan=_population_plan(
@@ -168,7 +148,6 @@ def _assemble_statements(
     preparation: tuple[WarehouseStatement, ...] = _preparation_statements(
         request=request,
         client=client,
-        source_preparation=source_preparation,
         source_realizations=source_realizations,
         start_sequence=len(preflight) + 1,
     )
@@ -276,7 +255,6 @@ def _preparation_statements(
     *,
     request: BackfillBootstrapRequest,
     client: AdapterConnection,
-    source_preparation: PopulationSourcePreparation,
     source_realizations: tuple[PopulationRealization, ...],
     start_sequence: int,
 ) -> tuple[WarehouseStatement, ...]:
@@ -289,20 +267,6 @@ def _preparation_statements(
             client.render_migrate_metadata_state(request.metadata_database), start=1
         )
     )
-    for resource in _source_resources_named(
-        request=request,
-        names=frozenset(source_preparation.preserved_relation_names),
-    ):
-        rendered.extend(
-            _ownership_rendered(
-                request=request,
-                client=client,
-                resource=resource,
-                database=request.default_database,
-                population_plan=None,
-                step_prefix="adopt_source",
-            )
-        )
     realization: PopulationRealization
     for realization in source_realizations:
         rendered.append(
@@ -313,16 +277,6 @@ def _preparation_statements(
                     database=realization.database,
                     if_not_exists=True,
                 ),
-            )
-        )
-        rendered.extend(
-            _ownership_rendered(
-                request=request,
-                client=client,
-                resource=realization.resource,
-                database=realization.database,
-                population_plan=None,
-                step_prefix="record_source",
             )
         )
     return _mutation_statements(
@@ -382,16 +336,6 @@ def _realization_statements(
                 ),
             )
         )
-        rendered.extend(
-            _ownership_rendered(
-                request=request,
-                client=client,
-                resource=realization.resource,
-                database=realization.database,
-                population_plan=population_plan,
-                step_prefix="record_virtual",
-            )
-        )
     landing_view: DesiredMaterializedView
     for landing_view in source_preparation.landing_views:
         built_resource: object = build_adapter_resource(landing_view)
@@ -408,16 +352,6 @@ def _realization_statements(
                     database=landing_view.key.database or request.default_database,
                     if_not_exists=True,
                 ),
-            )
-        )
-        rendered.extend(
-            _ownership_rendered(
-                request=request,
-                client=client,
-                resource=resource,
-                database=landing_view.key.database or request.default_database,
-                population_plan=None,
-                step_prefix="record_source",
             )
         )
     return _mutation_statements(
@@ -1002,188 +936,3 @@ def _escape_literal(value: object) -> str:
 
 def _step_segment(value: str) -> str:
     return "".join(character if character.isalnum() else "_" for character in value)
-
-
-def _ownership_rendered(
-    *,
-    request: BackfillBootstrapRequest,
-    client: AdapterConnection,
-    resource: (
-        AdapterManagedSource
-        | AdapterTable
-        | AdapterMaterializedView
-        | AdapterView
-        | AdapterStableView
-    ),
-    database: str,
-    population_plan: PopulationPlan | None,
-    step_prefix: str,
-) -> tuple[tuple[str, str], ...]:
-    logical_type, logical_name = _ownership_logical_identity(
-        request=request,
-        resource_name=resource.name,
-        population_plan=population_plan,
-    )
-    event: AdapterOwnedResourceEvent = AdapterOwnedResourceEvent(
-        event_id=f"owned_{uuid4().hex}",
-        event_type="owned",
-        target_database=request.default_database,
-        resource_database=database,
-        resource_name=resource.name,
-        resource_kind=_ownership_kind(resource),
-        pipeline_name=dict(request.pipeline_name_by_logical_name).get(logical_name, ""),
-        logical_resource_type=logical_type,
-        logical_resource_name=logical_name,
-        resource_role=(
-            _source_role(resource)
-            if logical_type == OWNERSHIP_LOGICAL_RESOURCE_SOURCE
-            else "virtual_physical"
-        ),
-    )
-    return tuple(
-        (f"{step_prefix}_{_step_segment(resource.name)}_{index}", sql)
-        for index, sql in enumerate(
-            client.render_owned_resource_events(
-                database=request.metadata_database,
-                events=(event,),
-            ),
-            start=1,
-        )
-    )
-
-
-def _ownership_logical_identity(
-    *,
-    request: BackfillBootstrapRequest,
-    resource_name: str,
-    population_plan: PopulationPlan | None,
-) -> tuple[str, str]:
-    direct_identity: tuple[str, str, str, str] | None = next(
-        (
-            identity
-            for identity in request.ownership_identity_by_resource_name
-            if identity[0] == resource_name
-        ),
-        None,
-    )
-    if direct_identity is not None:
-        return direct_identity[1], direct_identity[2]
-    desired_by_key: dict[
-        ObjectKey,
-        DesiredKafkaTable | DesiredTable | DesiredMaterializedView | DesiredView,
-    ] = {desired.key: desired for desired in request.desired_state.objects}
-    if population_plan is not None:
-        planned: PopulationObject | None = next(
-            (item for item in population_plan.objects if item.physical_name == resource_name),
-            None,
-        )
-        if planned is not None:
-            desired: DesiredKafkaTable | DesiredTable | DesiredMaterializedView | DesiredView = (
-                desired_by_key[planned.logical_key]
-            )
-            return "model", getattr(desired, "logical_model_name", None) or desired.key.name
-    desired = next(
-        (item for item in request.desired_state.objects if item.name == resource_name),
-        None,
-    )
-    if desired is None:
-        return "", ""
-    logical_name: str = getattr(desired, "logical_model_name", None) or desired.key.name
-    logical_type: str = (
-        "source" if logical_name in dict(request.pipeline_name_by_logical_name) else "model"
-    )
-    return logical_type, logical_name
-
-
-def _ownership_kind(
-    resource: (
-        AdapterManagedSource
-        | AdapterTable
-        | AdapterMaterializedView
-        | AdapterView
-        | AdapterStableView
-    ),
-) -> str:
-    if isinstance(resource, (AdapterView, AdapterStableView)):
-        return "view"
-    if isinstance(resource, AdapterMaterializedView):
-        return "materialized_view"
-    if isinstance(resource, AdapterManagedSource):
-        return "managed_source"
-    return "table"
-
-
-def _source_role(
-    resource: (
-        AdapterManagedSource
-        | AdapterTable
-        | AdapterMaterializedView
-        | AdapterView
-        | AdapterStableView
-    ),
-) -> str:
-    if isinstance(resource, AdapterManagedSource):
-        return "source_ingress"
-    if isinstance(resource, AdapterMaterializedView):
-        return "source_landing_view"
-    return "source_replay_table"
-
-
-def _source_resources_named(
-    *, request: BackfillBootstrapRequest, names: frozenset[str]
-) -> tuple[AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterView, ...]:
-    resources: list[
-        AdapterManagedSource | AdapterTable | AdapterMaterializedView | AdapterView
-    ] = []
-    for desired in request.desired_state.objects:
-        if desired.name not in names:
-            continue
-        resource: object = build_adapter_resource(desired)
-        if isinstance(
-            resource,
-            (AdapterManagedSource, AdapterTable, AdapterMaterializedView, AdapterView),
-        ):
-            resources.append(resource)
-    return tuple(resources)
-
-
-def _validate_preledger_source_adoption(
-    *,
-    request: BackfillBootstrapRequest,
-    client: AdapterConnection,
-    target_catalog: CatalogSnapshot,
-    source_preparation: PopulationSourcePreparation,
-) -> None:
-    owned_snapshot: AdapterOwnedResourceSnapshot = client.load_owned_resources(
-        database=request.metadata_database,
-        target_database=request.default_database,
-    )
-    if owned_snapshot.status == AdapterOptionalStateStatus.UNAVAILABLE:
-        raise BackfillExecutionError(
-            owned_snapshot.warning or "Owned-resource ledger is unavailable"
-        )
-    owned_by_name: dict[str, AdapterOwnedResourceEvent] = {
-        event.resource_name: event for event in owned_snapshot.resources
-    }
-    for resource in _source_resources_named(
-        request=request,
-        names=frozenset(source_preparation.preserved_relation_names),
-    ):
-        relation: CatalogRelation | None = target_catalog.relation(resource.name)
-        owned_event: AdapterOwnedResourceEvent | None = owned_by_name.get(resource.name)
-        if owned_event is not None:
-            if relation is None or relation.ownership_generation != owned_event.catalog_fingerprint:
-                raise BackfillExecutionError(
-                    f"Owned source relation '{resource.name}' is no longer the recorded "
-                    "catalog generation"
-                )
-            continue
-        if relation is None or not client.catalog_resource_matches(
-            resource=resource,
-            relation=relation,
-            database=request.default_database,
-        ):
-            raise BackfillExecutionError(
-                f"Cannot adopt pre-ledger source relation '{resource.name}' because its "
-                "catalog structure does not exactly match the compiled desired resource"
-            )

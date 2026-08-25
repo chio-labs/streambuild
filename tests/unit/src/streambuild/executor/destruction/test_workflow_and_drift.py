@@ -5,7 +5,7 @@ from typing import cast
 import pytest
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.adapter.models import AdapterOwnedResourceEvent, CatalogRelation
+from streambuild.adapter.models import CatalogRelation
 from streambuild.executor.destruction.exceptions import DestructionDriftError
 from streambuild.executor.destruction.main.assemble_destruction_workflow import (
     assemble_destruction_workflow,
@@ -35,16 +35,12 @@ from tests.unit.src.streambuild.executor.destruction.helpers import (
 _NOW: datetime = datetime(2026, 8, 24, 12, 0, tzinfo=UTC)
 
 
-class TombstoneRenderingConnection:
+class OwnershipRejectingConnection:
     def render_migrate_metadata_state(self, database: str) -> tuple[str, ...]:
-        del database
-        return ()
+        raise AssertionError(f"unexpected metadata migration for {database}")
 
-    def render_owned_resource_events(
-        self, *, database: str, events: tuple[AdapterOwnedResourceEvent, ...]
-    ) -> tuple[str, ...]:
-        del database
-        return (f"TOMBSTONE {events[0].resource_name};",)
+    def render_owned_resource_events(self, **_: object) -> tuple[str, ...]:
+        raise AssertionError("unexpected ownership event")
 
 
 @pytest.mark.parametrize(
@@ -141,13 +137,13 @@ def test_given_equivalent_dependency_graphs_when_ordering_then_input_order_does_
     "test_case",
     [
         TombstoneAdjacencyTestCase(
-            description="each drop is immediately followed by its ownership tombstone",
-            expected_statement_multiplier=2,
+            description="associated relations emit one DROP and no ownership tombstone",
+            expected_statement_multiplier=1,
         )
     ],
     ids=lambda case: case.description,
 )
-def test_given_owned_relations_when_rendering_then_each_tombstone_follows_its_drop(
+def test_given_associated_relations_when_rendering_then_only_drop_statements_are_emitted(
     test_case: TombstoneAdjacencyTestCase,
 ) -> None:
     fixture: PlanningFixture = build_planning_fixture()
@@ -166,16 +162,15 @@ def test_given_owned_relations_when_rendering_then_each_tombstone_follows_its_dr
 
     statements: tuple[WarehouseStatement, ...] = assemble_destruction_workflow(
         plan=plan,
-        connection=cast(AdapterConnection, TombstoneRenderingConnection()),
+        connection=cast(AdapterConnection, OwnershipRejectingConnection()),
     )
 
-    assert len(statements) == len(plan.relations) * test_case.expected_statement_multiplier
-    for index in range(0, len(statements), 2):
-        drop: WarehouseStatement = statements[index]
-        tombstone: WarehouseStatement = statements[index + 1]
-        assert drop.sql.startswith("DROP ")
-        assert tombstone.sql == f"TOMBSTONE {drop.sql.split('`.`', 1)[1].split('`', 1)[0]};"
-        assert tombstone.step_id.startswith("record_dropped_relation_")
+    assert len(statements) == (
+        sum(relation.exists for relation in plan.relations)
+        * test_case.expected_statement_multiplier
+    )
+    assert all(statement.sql.startswith("DROP ") for statement in statements)
+    assert all(statement.step_id.startswith("destroy_relation_") for statement in statements)
 
 
 @pytest.mark.parametrize(
