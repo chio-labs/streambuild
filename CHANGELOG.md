@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.28.3](https://github.com/chio-labs/streambuild/compare/v0.28.2...v0.28.3) (2026-08-25)
+
+
+### Bug Fixes
+
+* **destruction:** launch safely into live runs ([#184](https://github.com/chio-labs/streambuild/issues/184)) ([9d75f79](https://github.com/chio-labs/streambuild/commit/9d75f792f6aaa359cc1a9d9c2a03a22b3d65e24b))
+
 ## [0.28.2](https://github.com/chio-labs/streambuild/compare/v0.28.1...v0.28.2) (2026-08-25)
 
 
