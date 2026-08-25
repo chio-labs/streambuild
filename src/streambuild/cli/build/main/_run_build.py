@@ -90,6 +90,12 @@ def run_build(
             override=options.database,
         )
         resolved_database = database
+        observability_started_ns: int = monotonic_ns()
+        initialize_observability(
+            connection=observation_client,
+            database=options.metadata_database or database,
+        )
+        observability_ms: int = (monotonic_ns() - observability_started_ns) // 1_000_000
         preparation_options: WorkflowPreparationOptions = WorkflowPreparationOptions(
             database=options.database,
             metadata_database=options.metadata_database,
@@ -111,12 +117,6 @@ def run_build(
             adapter_profile=adapter_profile,
         )
         planning_ms: int = (monotonic_ns() - planning_started_ns) // 1_000_000
-        observability_started_ns: int = monotonic_ns()
-        initialize_observability(
-            connection=observation_client,
-            database=options.metadata_database or database,
-        )
-        observability_ms: int = (monotonic_ns() - observability_started_ns) // 1_000_000
         startup_timings: RunStartupTimings = RunStartupTimings(
             compile_ms=compile_ms,
             observability_ms=observability_ms,
