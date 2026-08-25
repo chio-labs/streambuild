@@ -260,11 +260,23 @@ def test_given_unreviewed_plan_when_executing_then_server_review_gate_blocks(
     "test_case",
     [
         DestructionRecoveryRouteTestCase(
-            description="failed durable intent creates a fresh unreviewed plan",
+            description="failed pipeline destruction retains explicit dependent intent",
             invocation_id="failed-destruction-1",
+            command="destroy pipelines",
+            operation_kind="destroy_pipelines",
             expected_plan_id="plan-1",
             expected_pipeline_names=("order_events",),
-        )
+            expected_included_pipeline_names=("included_consumer",),
+        ),
+        DestructionRecoveryRouteTestCase(
+            description="failed target reset creates a fresh unreviewed reset plan",
+            invocation_id="failed-reset-1",
+            command="reset target",
+            operation_kind="reset_target",
+            expected_plan_id="plan-1",
+            expected_pipeline_names=(),
+            expected_included_pipeline_names=(),
+        ),
     ],
     ids=lambda case: case.description,
 )
@@ -278,15 +290,15 @@ def test_given_failed_destruction_run_when_recovering_then_server_replans_record
     headers: dict[str, str] = proxy_proof_headers(username="alice")
     run: dict[str, object] = {
         "projectIdentity": logical_project_identity(project_dir=tmp_path),
-        "command": "destroy pipelines",
+        "command": test_case.command,
         "mode": "destructive",
         "outcome": "failed",
         "summary": {
-            "operationKind": "destroy_pipelines",
+            "operationKind": test_case.operation_kind,
             "target": "dev",
             "database": "analytics",
-            "originalSelection": ["order_events"],
-            "includedDependentPipelines": [],
+            "originalSelection": list(test_case.expected_pipeline_names),
+            "includedDependentPipelines": list(test_case.expected_included_pipeline_names),
             "affectedPipelines": ["order_events", "historical_derived_scope"],
             "planId": "consumed-plan",
         },
@@ -299,12 +311,19 @@ def test_given_failed_destruction_run_when_recovering_then_server_replans_record
     with (
         patch.object(WarehouseRuntime, "read_connection", read_connection),
         patch(
-            "streambuild.dev_server._helpers.server.destruction_routes.read_terminal_run",
+            "streambuild.dev_server._helpers.server.destruction_routes.read_destruction_recovery_run",
             return_value=run,
         ),
         patch(
             "streambuild.dev_server._helpers.server.destruction_routes.plan_destruction",
-            return_value=build_pipeline_destruction_route_plan(),
+            return_value=replace(
+                {
+                    "destroy_pipelines": build_pipeline_destruction_route_plan(),
+                    "reset_target": build_target_reset_route_plan(),
+                }[test_case.operation_kind],
+                requested_pipeline_names=test_case.expected_pipeline_names,
+                included_dependent_pipeline_names=(test_case.expected_included_pipeline_names),
+            ),
         ) as planner,
     ):
         response: Response = client.post(
@@ -326,7 +345,10 @@ def test_given_failed_destruction_run_when_recovering_then_server_replans_record
     assert response.json()["planId"] == test_case.expected_plan_id
     assert response.json()["reviewedAt"] is None
     assert planned_request.pipeline_names == test_case.expected_pipeline_names
-    assert planned_request.included_dependent_pipeline_names == ()
+    assert (
+        planned_request.included_dependent_pipeline_names
+        == test_case.expected_included_pipeline_names
+    )
     assert stored.status_code == 200
     store.close()
 
@@ -430,7 +452,7 @@ def test_given_invalid_durable_run_when_recovering_then_no_plan_is_created(
     with (
         patch.object(WarehouseRuntime, "read_connection", read_connection),
         patch(
-            "streambuild.dev_server._helpers.server.destruction_routes.read_terminal_run",
+            "streambuild.dev_server._helpers.server.destruction_routes.read_destruction_recovery_run",
             return_value=run,
         ),
         patch(
@@ -487,7 +509,7 @@ def test_given_new_dependency_when_recovering_then_it_is_not_silently_included(
     with (
         patch.object(WarehouseRuntime, "read_connection", read_connection),
         patch(
-            "streambuild.dev_server._helpers.server.destruction_routes.read_terminal_run",
+            "streambuild.dev_server._helpers.server.destruction_routes.read_destruction_recovery_run",
             return_value=run,
         ),
         patch(

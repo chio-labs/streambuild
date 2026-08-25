@@ -447,6 +447,47 @@ def read_terminal_run(
     ).get(invocation_id)
 
 
+def read_destruction_recovery_run(
+    *, connection: AdapterConnection, database: str, invocation_id: str
+) -> dict[str, object] | None:
+    """Return exact terminal intent, falling back to complete destruction events."""
+
+    terminal: dict[str, object] | None = read_terminal_run(
+        connection=connection,
+        database=database,
+        invocation_id=invocation_id,
+    )
+    if terminal is not None:
+        return terminal
+    events: list[dict[str, object]] = _event_streams(
+        connection=connection,
+        database=database,
+        invocation_id=invocation_id,
+        recent_limit=1,
+    ).get(invocation_id, [])
+    started: dict[str, object] | None = next(
+        (event for event in events if event["event"] == _RUN_STARTED_KIND),
+        None,
+    )
+    completed: dict[str, object] | None = next(
+        (event for event in reversed(events) if event["event"] == _RUN_COMPLETED_KIND),
+        None,
+    )
+    if started is None or completed is None:
+        return None
+    evidence: object = completed.get("operationEvidence")
+    if not isinstance(evidence, Mapping):
+        evidence = started.get("operationEvidence")
+    return {
+        "invocationId": invocation_id,
+        "projectIdentity": started.get("projectIdentity"),
+        "command": started.get("command"),
+        "mode": started.get("mode"),
+        "outcome": completed.get("outcome"),
+        "summary": dict(evidence) if isinstance(evidence, Mapping) else None,
+    }
+
+
 def _terminal_runs(
     *,
     connection: AdapterConnection,

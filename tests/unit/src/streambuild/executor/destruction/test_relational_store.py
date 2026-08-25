@@ -1,11 +1,17 @@
+import json
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 
 import pytest
 
+from streambuild.executor.destruction._helpers.plan_serialization import (
+    deserialize_destruction_plan,
+    serialize_destruction_plan,
+)
 from streambuild.executor.destruction.classes.relational_destruction_plan_store import (
     RelationalDestructionPlanStore,
 )
@@ -19,7 +25,10 @@ from streambuild.executor.destruction.types import (
     DestructionOwnership,
     DestructionRelationKind,
 )
-from tests.unit.src.streambuild.executor.destruction._test_types import DurableStoreTestCase
+from tests.unit.src.streambuild.executor.destruction._test_types import (
+    DurableStoreTestCase,
+    LegacyDestructionPlanTestCase,
+)
 from tests.unit.src.streambuild.executor.destruction.helpers import (
     MutableClock,
     build_complete_stored_destruction_plan,
@@ -70,6 +79,39 @@ def test_given_reviewed_complete_plan_when_store_restarts_then_payload_and_revie
     assert reloaded.relations[0].dependency_relation_names == test_case.expected_dependency_names
     assert second.reviewed_at(plan_id=plan.plan_id, actor=test_case.actor) == reviewed_at
     second.close()
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        LegacyDestructionPlanTestCase(
+            description="legacy plan exposes unknown DROP safety evidence",
+            expected_policy_observed=False,
+            expected_limit=None,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_legacy_payload_when_deserializing_then_drop_policy_is_not_reported_unlimited(
+    test_case: LegacyDestructionPlanTestCase,
+) -> None:
+    now: datetime = datetime(2026, 8, 24, 12, 0, tzinfo=UTC)
+    payload: dict[str, object] = json.loads(
+        serialize_destruction_plan(build_complete_stored_destruction_plan(now=now))
+    )
+    plan_payload: dict[str, object] = cast(dict[str, object], payload["plan"])
+    for field in (
+        "relation_drop_size_limit",
+        "relation_drop_size_server_limit",
+        "relation_drop_size_override",
+        "relation_drop_size_policy_observed",
+    ):
+        plan_payload.pop(field)
+
+    legacy: DestructionPlan = deserialize_destruction_plan(json.dumps(payload))
+
+    assert legacy.relation_drop_size_policy_observed is test_case.expected_policy_observed
+    assert legacy.relation_drop_size_limit == test_case.expected_limit
 
 
 @pytest.mark.parametrize(

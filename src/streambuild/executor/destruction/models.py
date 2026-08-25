@@ -93,6 +93,7 @@ class DestructionPlan:
     relation_drop_size_limit: int | None = None
     relation_drop_size_server_limit: int | None = None
     relation_drop_size_override: int | None = None
+    relation_drop_size_policy_observed: bool = False
 
     @property
     def estimated_bytes(self) -> int:
@@ -169,3 +170,4 @@ class DestructionPlanParts:
     relation_drop_size_limit: int | None
     relation_drop_size_server_limit: int | None
     relation_drop_size_override: int | None
+    relation_drop_size_policy_observed: bool

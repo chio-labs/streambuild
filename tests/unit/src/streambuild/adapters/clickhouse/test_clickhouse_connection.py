@@ -48,13 +48,17 @@ from tests.unit.src.streambuild.adapters.clickhouse.helpers import (
     [
         ClickHouseDropLimitTestCase(
             description="effective ClickHouse drop limit is exposed in bytes",
-            setting_value=50_000_000_000,
-            expected_limit=50_000_000_000,
+            setting_value=80_000_000_000,
+            server_default_value=50_000_000_000,
+            expected_limit=80_000_000_000,
+            expected_server_default=50_000_000_000,
         ),
         ClickHouseDropLimitTestCase(
             description="zero ClickHouse drop limit is exposed as unlimited",
             setting_value=0,
+            server_default_value=0,
             expected_limit=None,
+            expected_server_default=None,
         ),
     ],
     ids=lambda case: case.description,
@@ -62,16 +66,26 @@ from tests.unit.src.streambuild.adapters.clickhouse.helpers import (
 def test_given_clickhouse_drop_limit_when_reading_then_returns_effective_bytes(
     test_case: ClickHouseDropLimitTestCase,
 ) -> None:
-    raw_client: StubRawClickHouseClient = StubRawClickHouseClient(
-        FakeRawClickHouseQueryResult(
-            column_names=["value"],
-            result_rows=[[test_case.setting_value]],
+    raw_client: SequencedRawClickHouseClient = SequencedRawClickHouseClient(
+        (
+            FakeRawClickHouseQueryResult(
+                column_names=["value"],
+                result_rows=[[test_case.setting_value]],
+            ),
+            FakeRawClickHouseQueryResult(
+                column_names=["default"],
+                result_rows=[[test_case.server_default_value]],
+            ),
         )
     )
     connection: ClickHouseConnection = ClickHouseConnection(cast(RawClickHouseClient, raw_client))
 
     assert connection.load_relation_drop_size_limit() == test_case.expected_limit
-    assert connection.load_relation_drop_size_server_default() == test_case.expected_limit
+    assert connection.load_relation_drop_size_server_default() == test_case.expected_server_default
+    assert raw_client.statements == [
+        "SELECT value FROM system.settings WHERE name = 'max_table_size_to_drop'",
+        "SELECT default FROM system.settings WHERE name = 'max_table_size_to_drop'",
+    ]
 
 
 @pytest.mark.parametrize(

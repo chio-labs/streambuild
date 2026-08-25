@@ -70,7 +70,6 @@ class DestructionPlanningConnection:
         external_dependants: tuple[str, ...] = (),
         relation_drop_size_limit: int | None = None,
         relation_drop_size_server_limit: int | None = None,
-        destruction_relation_drop_size_limit: int | None = None,
     ) -> None:
         self.catalog = catalog
         self.inventory = inventory or AdapterDeploymentInventory(deployments=(), publish_events=())
@@ -82,7 +81,6 @@ class DestructionPlanningConnection:
         self.external_dependants = external_dependants
         self.relation_drop_size_limit = relation_drop_size_limit
         self.relation_drop_size_server_limit = relation_drop_size_server_limit
-        self.destruction_relation_drop_size_limit = destruction_relation_drop_size_limit
         self.catalog_databases: list[str] = []
         self.inventory_databases: list[str] = []
         self.queries: list[str] = []
@@ -287,7 +285,14 @@ def build_transitive_source_dependency_planning_fixture() -> PlanningFixture:
     )
     analysis: CompileAnalysis = cast(
         CompileAnalysis,
-        SimpleNamespace(realized_project=realized, graph=graph),
+        SimpleNamespace(
+            realized_project=realized,
+            graph=graph,
+            compiled_project=SimpleNamespace(
+                production_target=False,
+                destruction_relation_drop_size_limit=None,
+            ),
+        ),
     )
     return PlanningFixture(analysis=analysis, connection=fixture.connection)
 
@@ -391,7 +396,15 @@ def _build_planning_fixture(
         },
     )
     analysis: CompileAnalysis = cast(
-        CompileAnalysis, SimpleNamespace(realized_project=realized, graph=graph)
+        CompileAnalysis,
+        SimpleNamespace(
+            realized_project=realized,
+            graph=graph,
+            compiled_project=SimpleNamespace(
+                production_target=False,
+                destruction_relation_drop_size_limit=None,
+            ),
+        ),
     )
     inventory: AdapterDeploymentInventory = AdapterDeploymentInventory(
         deployments=(
@@ -747,6 +760,7 @@ def build_execution_plan(*, now: datetime) -> DestructionPlan:
         plan_fingerprint="p" * 64,
         created_at=now,
         expires_at=now + timedelta(minutes=5),
+        relation_drop_size_policy_observed=True,
     )
 
 

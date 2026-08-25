@@ -98,4 +98,5 @@ def destruction_plan() -> DestructionPlan:
         plan_fingerprint="plan-sha",
         created_at=created_at,
         expires_at=datetime(2099, 8, 24, 12, 15, tzinfo=UTC),
+        relation_drop_size_policy_observed=True,
     )
