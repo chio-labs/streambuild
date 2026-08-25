@@ -34,8 +34,8 @@ revision will fail before tests start.
 - Do not push partial or overlapping branches merely to start CI.
 - Once consolidated work is ready, push once and open one ready pull request so CI and configured
   auto-merge can complete delivery.
-- Do not wait interactively for CI with commands such as `gh run watch`; rely on asynchronous CI
-  completion and continue only independent local work.
+- Do not let CI watching block independent work. Background watching is allowed; foreground
+  watching is appropriate when no other useful work remains.
 - Push follow-up commits only for CI failures or correctness findings that could not reasonably
   have been found before the first push.
 - Use separate pull requests only for independently releasable changes, intentionally different
