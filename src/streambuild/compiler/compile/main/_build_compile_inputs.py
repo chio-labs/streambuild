@@ -31,7 +31,7 @@ from streambuild.compiler.discovery.models import (
     TransformStep,
     ViewStep,
 )
-from streambuild.compiler.discovery.types import PipelineMode
+from streambuild.compiler.discovery.types import ModelReferenceScope, PipelineMode
 from streambuild.compiler.macros.main._build_macro_context import build_macro_context
 from streambuild.compiler.macros.main._load_macro_registry import load_macro_registry
 from streambuild.compiler.macros.models import MacroContext, MacroRegistry
@@ -165,5 +165,10 @@ def build_compile_inputs(
         project_name=None if effective_configuration is None else effective_configuration.name,
         target_name=(
             None if effective_configuration is None else effective_configuration.target_name
+        ),
+        model_reference_scope=(
+            ModelReferenceScope.PROJECT
+            if effective_configuration is None
+            else effective_configuration.dependencies.model_reference_scope
         ),
     )
