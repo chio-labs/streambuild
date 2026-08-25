@@ -54,6 +54,7 @@ export type DestructionPlan = {
 	estimatedBytes: number;
 	challengeValues: string[];
 	expiresAt: string;
+	reviewedAt: string | null;
 };
 
 export type ReviewedDestructionPlan = DestructionPlan & {

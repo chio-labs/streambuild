@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
 	import AppTopbar from '$lib/presentation/components/app-topbar.svelte';
 	import Button from '$ui-kit/button/button.svelte';
 	import Checkbox from '$ui-kit/checkbox/checkbox.svelte';
@@ -16,7 +15,6 @@
 	import DestructionDialog from './destruction-dialog.svelte';
 	import { createDestructionState } from './state.svelte';
 	import type { PipelineModeFilter } from './types';
-	import type { DestructionExecution } from '$lib/pipeline-view/types';
 
 	const project: Project = getProject();
 	const destruction = createDestructionState();
@@ -79,9 +77,6 @@
 		void destruction.start('reset_target');
 	}
 
-	function viewExecution(result: DestructionExecution): void {
-		void goto(`/runs/${encodeURIComponent(result.invocationId)}`);
-	}
 </script>
 
 <AppTopbar title="Pipelines">
@@ -285,5 +280,4 @@
 <DestructionDialog
 	state={destruction}
 	{dependentPermissionsAvailable}
-	onExecuted={viewExecution}
 />
