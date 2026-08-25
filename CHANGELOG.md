@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.28.1](https://github.com/chio-labs/streambuild/compare/v0.28.0...v0.28.1) (2026-08-25)
+
+
+### Bug Fixes
+
+* **lifecycle:** restore association-driven destruction ([#180](https://github.com/chio-labs/streambuild/issues/180)) ([15feed1](https://github.com/chio-labs/streambuild/commit/15feed1283a35d9671efc1edb58f7b2ef4f9a2e8))
+
 ## [0.28.0](https://github.com/chio-labs/streambuild/compare/v0.27.2...v0.28.0) (2026-08-24)
 
 
