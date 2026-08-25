@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from streambuild.compiler.discovery.models import SourceFreshnessPolicy
-from streambuild.compiler.discovery.types import PipelineMode
+from streambuild.compiler.discovery.types import ModelReferenceScope, PipelineMode
 
 
 @dataclass(frozen=True)
@@ -89,6 +89,13 @@ class ProjectConfigurationErrorTestCase:
     description: str
     project_contents: str
     expected_error_fragment: str
+
+
+@dataclass(frozen=True)
+class ProjectDependencyScopeTestCase:
+    description: str
+    dependencies_toml: str
+    expected_scope: ModelReferenceScope
 
 
 @dataclass(frozen=True)

@@ -23,6 +23,11 @@ class KafkaRetentionOrigin(StrEnum):
     PROJECT = "project"
 
 
+class ModelReferenceScope(StrEnum):
+    PROJECT = "project"
+    PIPELINE = "pipeline"
+
+
 class ReplayAnchorMode(StrEnum):
     AUTO = "auto"
     NEVER = "never"

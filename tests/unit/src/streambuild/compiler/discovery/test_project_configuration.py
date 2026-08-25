@@ -22,7 +22,7 @@ from streambuild.compiler.discovery.models import (
     ModelRetentionPolicy,
     SourceFreshnessPolicy,
 )
-from streambuild.compiler.discovery.types import PipelineMode
+from streambuild.compiler.discovery.types import ModelReferenceScope, PipelineMode
 from tests.unit.src.streambuild.compiler.discovery._test_types import (
     EffectiveProjectConfigurationTestCase,
     InterpolationErrorTestCase,
@@ -36,6 +36,7 @@ from tests.unit.src.streambuild.compiler.discovery._test_types import (
     ProjectBuildLimitResolutionTestCase,
     ProjectConfigurationErrorTestCase,
     ProjectConnectionSettingsTestCase,
+    ProjectDependencyScopeTestCase,
     ProjectDeploymentReadinessDefaultsTestCase,
     ProjectDestructionLimitResolutionTestCase,
     ProjectFreshnessDefaultTestCase,
@@ -67,6 +68,45 @@ port = 8123
 [targets.dev]
 database = "dev_database"
 """
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ProjectDependencyScopeTestCase(
+            description="defaults model references to project scope",
+            dependencies_toml="",
+            expected_scope=ModelReferenceScope.PROJECT,
+        ),
+        ProjectDependencyScopeTestCase(
+            description="retains committed pipeline scope through effective resolution",
+            dependencies_toml=('[dependencies]\nmodel_reference_scope = "pipeline"\n'),
+            expected_scope=ModelReferenceScope.PIPELINE,
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_dependency_policy_when_resolving_then_effective_scope_is_retained(
+    test_case: ProjectDependencyScopeTestCase,
+    tmp_path: Path,
+) -> None:
+    write_project_toml(
+        project_dir=tmp_path,
+        contents=(
+            'name = "analytics"\ndefault_target = "dev"\n'
+            f"{test_case.dependencies_toml}[targets.dev]\n"
+        ),
+    )
+    loaded: LoadedProjectConfiguration = load_project_configuration(project_dir=tmp_path)
+
+    effective: EffectiveProjectConfiguration = resolve_effective_project_configuration(
+        loaded=loaded,
+        selected_target="dev",
+        cli_variables={},
+        environment={},
+    )
+
+    assert effective.dependencies.model_reference_scope == test_case.expected_scope
 
 
 @pytest.mark.parametrize(
@@ -749,6 +789,24 @@ def test_given_absent_local_toml_when_loading_then_returns_typed_defaults(
             expected_error_fragment=(
                 "defaults.models.retention.timestamp_column must be an unqualified column name"
             ),
+        ),
+        ProjectConfigurationErrorTestCase(
+            description="rejects an invalid model reference scope",
+            project_contents=(
+                'name = "analytics"\ndefault_target = "dev"\n'
+                '[dependencies]\nmodel_reference_scope = "repository"\n[targets.dev]\n'
+            ),
+            expected_error_fragment=(
+                "dependencies.model_reference_scope must be 'project' or 'pipeline'"
+            ),
+        ),
+        ProjectConfigurationErrorTestCase(
+            description="rejects an unknown dependency policy key",
+            project_contents=(
+                'name = "analytics"\ndefault_target = "dev"\n'
+                "[dependencies]\nunknown = true\n[targets.dev]\n"
+            ),
+            expected_error_fragment="dependencies contains unsupported keys: unknown",
         ),
         ProjectConfigurationErrorTestCase(
             description="rejects a target-level project-wide mode",

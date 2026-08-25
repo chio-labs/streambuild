@@ -4,6 +4,7 @@ from streambuild.compiler.compile.models import CompiledProject, LogicalResource
 from streambuild.compiler.graph._helpers.lineage import (
     build_lineage_downstream_edges,
     build_lineage_upstream_edges,
+    validate_model_reference_scope,
     validate_pipeline_mode_boundaries,
     validate_terminal_views,
 )
@@ -24,6 +25,7 @@ def build_project_graph_from_compiled_project(*, project: CompiledProject) -> Pr
         project=project,
         upstream_edges_by_key=upstream_edges_by_key,
     )
+    validate_model_reference_scope(project=project)
     validate_terminal_views(
         project=project,
         downstream_edges_by_key=downstream_edges_by_key,

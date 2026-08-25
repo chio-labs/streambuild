@@ -38,6 +38,7 @@ from streambuild.compiler.discovery.models import (
 from streambuild.compiler.discovery.types import (
     BoundedReplayFallback,
     ModelKind,
+    ModelReferenceScope,
     RefType,
     ReplayBoundaryMode,
     ReplayLineageMode,
@@ -469,6 +470,14 @@ class CompileProjectInputs:
     virtual_environments: bool = False
     project_name: str | None = None
     target_name: str | None = None
+    model_reference_scope: ModelReferenceScope | str = ModelReferenceScope.PROJECT
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "model_reference_scope",
+            ModelReferenceScope(self.model_reference_scope),
+        )
 
 
 @dataclass(frozen=True)
@@ -487,3 +496,11 @@ class CompiledProject:
     target_name: str | None = None
     production_target: bool = False
     destruction_relation_drop_size_limit: int | None = None
+    model_reference_scope: ModelReferenceScope | str = ModelReferenceScope.PROJECT
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "model_reference_scope",
+            ModelReferenceScope(self.model_reference_scope),
+        )

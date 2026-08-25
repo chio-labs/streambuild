@@ -97,6 +97,7 @@ def assemble_project(
         destruction_relation_drop_size_limit=(
             inputs.effective_target.destruction_relation_drop_size_limit
         ),
+        model_reference_scope=inputs.model_reference_scope,
     )
     validate_compiled_project_relation_names(project=project)
     return project
