@@ -73,6 +73,35 @@ class DestructionAsyncExecutionRouteTestCase:
 
 
 @dataclass(frozen=True)
+class DestructionRecoveryRouteTestCase:
+    description: str
+    invocation_id: str
+    expected_plan_id: str
+    expected_pipeline_names: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class DestructionRecoveryRejectionRouteTestCase:
+    description: str
+    mode: str
+    outcome: str
+    command: str
+    operation_kind: str
+    project_identity_kind: str
+    target: str
+    included_dependant_pipelines: object
+    expected_status: int
+    expected_error_fragment: str
+
+
+@dataclass(frozen=True)
+class DestructionRecoveryDependencyRouteTestCase:
+    description: str
+    newly_required_pipelines: tuple[str, ...]
+    expected_status: int
+
+
+@dataclass(frozen=True)
 class DestructionActorBindingRouteTestCase:
     description: str
     expected_status: int

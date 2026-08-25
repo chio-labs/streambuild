@@ -135,8 +135,16 @@ _MAX_TABLE_SIZE_TO_DROP_SETTING: str = "max_table_size_to_drop"
 class ClickHouseConnection(AdapterConnection):
     """A neutral adapter connection backed by the ClickHouse driver."""
 
-    def __init__(self, raw_client: RawClickHouseClient) -> None:
+    def __init__(
+        self,
+        raw_client: RawClickHouseClient,
+        *,
+        destruction_relation_drop_size_limit: int | None = None,
+    ) -> None:
         self._raw_client: RawClickHouseClient = raw_client
+        self._destruction_relation_drop_size_limit: int | None = (
+            destruction_relation_drop_size_limit
+        )
 
     @property
     def adapter_identity(self) -> AdapterIdentity:
@@ -170,10 +178,18 @@ class ClickHouseConnection(AdapterConnection):
         )
 
     def load_relation_drop_size_limit(self) -> int | None:
-        """Return ClickHouse's effective table DROP safety limit."""
+        """Return ClickHouse's server/session table DROP safety limit."""
 
+        return self._load_relation_drop_size_setting(column="value")
+
+    def load_relation_drop_size_server_default(self) -> int | None:
+        """Return ClickHouse's configured default table DROP safety limit."""
+
+        return self._load_relation_drop_size_setting(column="default")
+
+    def _load_relation_drop_size_setting(self, *, column: str) -> int | None:
         result: AdapterQueryResult = self.query(
-            f"SELECT value FROM system.settings WHERE name = '{_MAX_TABLE_SIZE_TO_DROP_SETTING}'"
+            f"SELECT {column} FROM system.settings WHERE name = '{_MAX_TABLE_SIZE_TO_DROP_SETTING}'"
         )
         if len(result.rows) != 1:
             raise AdapterResultError(
@@ -181,6 +197,12 @@ class ClickHouseConnection(AdapterConnection):
             )
         value: int = int(str(result.rows[0][0]))
         return None if value == 0 else value
+
+    @property
+    def destruction_relation_drop_size_limit(self) -> int | None:
+        """Return the finite override reserved for destruction DROP statements."""
+
+        return self._destruction_relation_drop_size_limit
 
     def load_external_dependants(
         self, *, database: str, relation_names: tuple[str, ...]

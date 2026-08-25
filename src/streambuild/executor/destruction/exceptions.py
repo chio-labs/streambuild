@@ -66,3 +66,11 @@ class DestructionDriftError(DestructionError):
 
 class DestructionRecordingError(DestructionError):
     """Required destructive-operation evidence could not be persisted."""
+
+
+class DestructionRecoveryError(DestructionError):
+    """A failed run does not contain valid recoverable destruction intent."""
+
+
+class DestructionRecoveryNotFoundError(DestructionRecoveryError):
+    """A run is not a recoverable operation in the active project."""

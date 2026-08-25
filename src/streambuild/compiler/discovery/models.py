@@ -87,6 +87,13 @@ class BuildConfig:
     max_pipelines: int | None = None
 
 
+@dataclass(frozen=True)
+class DestructionConfig:
+    """Committed finite ClickHouse table DROP ceiling for one target."""
+
+    max_table_size_to_drop_bytes: int | None = None
+
+
 @dataclass(frozen=True, repr=False)
 class ProjectTarget:
     """One committed named target before local resolution."""
@@ -97,6 +104,7 @@ class ProjectTarget:
     audit_scheduler: AuditSchedulerOverride = field(default_factory=AuditSchedulerOverride)
     sensors: SensorAutomationOverride = field(default_factory=SensorAutomationOverride)
     build: BuildConfig = field(default_factory=BuildConfig)
+    destruction: DestructionConfig = field(default_factory=DestructionConfig)
     production: bool = False
 
     def __post_init__(self) -> None:
@@ -294,6 +302,7 @@ class EffectiveProjectConfiguration:
     audit_scheduler: AuditSchedulerConfig = field(default_factory=AuditSchedulerConfig)
     sensors: SensorAutomationConfig = field(default_factory=SensorAutomationConfig)
     build: BuildConfig = field(default_factory=BuildConfig)
+    destruction: DestructionConfig = field(default_factory=DestructionConfig)
     production_target: bool = False
 
     def __post_init__(self) -> None:

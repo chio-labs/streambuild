@@ -57,6 +57,9 @@ _DECLARED_MUTATION_POLICIES: dict[tuple[str, str], str] = {
     ("POST", "/api/destruction/plans/{plan_id}/execute"): (
         "creator-bound exact challenge plus current destruction authorization"
     ),
+    ("POST", "/api/runs/{invocation_id}/recovery-plan"): (
+        "failed durable destruction intent plus current destruction authorization"
+    ),
     ("POST", "/api/sources/{name}/messages"): (
         "source.messages.read via require_message_read_authorization"
     ),

@@ -69,6 +69,8 @@ class DestructionPlanningConnection:
         catalog_matches_resources: bool = True,
         external_dependants: tuple[str, ...] = (),
         relation_drop_size_limit: int | None = None,
+        relation_drop_size_server_limit: int | None = None,
+        destruction_relation_drop_size_limit: int | None = None,
     ) -> None:
         self.catalog = catalog
         self.inventory = inventory or AdapterDeploymentInventory(deployments=(), publish_events=())
@@ -79,6 +81,8 @@ class DestructionPlanningConnection:
         self.catalog_matches_resources = catalog_matches_resources
         self.external_dependants = external_dependants
         self.relation_drop_size_limit = relation_drop_size_limit
+        self.relation_drop_size_server_limit = relation_drop_size_server_limit
+        self.destruction_relation_drop_size_limit = destruction_relation_drop_size_limit
         self.catalog_databases: list[str] = []
         self.inventory_databases: list[str] = []
         self.queries: list[str] = []
@@ -115,6 +119,9 @@ class DestructionPlanningConnection:
 
     def load_relation_drop_size_limit(self) -> int | None:
         return self.relation_drop_size_limit
+
+    def load_relation_drop_size_server_default(self) -> int | None:
+        return self.relation_drop_size_server_limit
 
     def query(self, statement: str) -> AdapterQueryResult:
         self.queries.append(statement)

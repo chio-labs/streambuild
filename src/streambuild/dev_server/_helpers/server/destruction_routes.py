@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import logging
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import datetime
 from pathlib import Path
+from typing import cast
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Request
@@ -19,6 +20,7 @@ from streambuild.adapter.exceptions import (
 from streambuild.auth.main.read_authenticated_request import read_authenticated_request
 from streambuild.auth.models import AuthenticatedRequest
 from streambuild.compiler.pipeline.models import CompileAnalysis
+from streambuild.dev_server._helpers.queries.runs_query import read_terminal_run
 from streambuild.dev_server._helpers.server.authorization_enforcement import (
     require_destruction_authorization,
 )
@@ -40,6 +42,8 @@ from streambuild.executor.destruction.exceptions import (
     DestructionPlanNotFoundError,
     DestructionPlanNotReviewedError,
     DestructionRecordingError,
+    DestructionRecoveryError,
+    DestructionRecoveryNotFoundError,
     DestructionResourceError,
     DestructionSelectionError,
 )
@@ -50,7 +54,10 @@ from streambuild.executor.destruction.models import (
     DestructionPlan,
     DestructionRequest,
 )
-from streambuild.executor.destruction.types import DestructionPlanStore
+from streambuild.executor.destruction.types import DestructionOperation, DestructionPlanStore
+from streambuild.executor.observability.main.logical_project_identity import (
+    logical_project_identity,
+)
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 _HTTP_ACCEPTED: int = 202
@@ -60,6 +67,8 @@ _HTTP_CONFLICT: int = 409
 _HTTP_GONE: int = 410
 _HTTP_BAD_GATEWAY: int = 502
 _HTTP_SERVICE_UNAVAILABLE: int = 503
+_DESTRUCTIVE_MODE: str = "destructive"
+_FAILED_OUTCOME: str = "failed"
 
 
 class _DestructionDispatchRegistry:
@@ -97,6 +106,16 @@ def register_destruction_routes(
         state=state,
         warehouse=warehouse,
         database=database,
+        authorization=authorization,
+        servable_analysis=servable_analysis,
+        store=store,
+    )
+    _ = _register_destruction_recovery_route(
+        app=app,
+        state=state,
+        warehouse=warehouse,
+        database=database,
+        project_dir=project_dir,
         authorization=authorization,
         servable_analysis=servable_analysis,
         store=store,
@@ -262,6 +281,97 @@ def _register_destruction_plan_routes(
     return app
 
 
+def _register_destruction_recovery_route(
+    *,
+    app: FastAPI,
+    state: DevServerState,
+    warehouse: WarehouseRuntime,
+    database: str | None,
+    project_dir: Path,
+    authorization: OperationAuthorizationContext,
+    servable_analysis: Callable[[], CompileAnalysis],
+    store: DestructionPlanStore,
+) -> FastAPI:
+    """Attach server-authoritative failed-run recovery planning."""
+
+    def create_recovery_plan(*, http_request: Request, invocation_id: str) -> dict[str, object]:
+        actor: AuthenticatedRequest = _actor(http_request)
+        analysis: CompileAnalysis = servable_analysis()
+        connection: AdapterConnection = _required_connection(warehouse=warehouse, database=database)
+        try:
+            with warehouse.read_connection() as read_connection:
+                if read_connection is None or database is None:
+                    raise HTTPException(
+                        status_code=_HTTP_SERVICE_UNAVAILABLE,
+                        detail="no warehouse read connection",
+                    )
+                run: dict[str, object] | None = read_terminal_run(
+                    connection=read_connection,
+                    database=database,
+                    invocation_id=invocation_id,
+                )
+            if run is None:
+                raise HTTPException(status_code=_HTTP_NOT_FOUND, detail="failed run was not found")
+            recovery_request: DestructionRequest = _recovery_request_from_run(
+                run=run,
+                analysis=analysis,
+                database=database,
+                project_dir=project_dir,
+                authorization=authorization,
+            )
+            explicit_scope: tuple[str, ...] = tuple(
+                sorted(
+                    {
+                        *recovery_request.pipeline_names,
+                        *recovery_request.included_dependent_pipeline_names,
+                    }
+                )
+            )
+            require_destruction_authorization(
+                analysis=analysis,
+                request=http_request,
+                context=authorization,
+                operation=str(recovery_request.operation),
+                affected_pipelines=explicit_scope,
+            )
+            with state.query_lock:
+                plan: DestructionPlan = plan_destruction(
+                    request=recovery_request,
+                    analysis=analysis,
+                    connection=connection,
+                )
+            require_destruction_authorization(
+                analysis=analysis,
+                request=http_request,
+                context=authorization,
+                operation=str(recovery_request.operation),
+                affected_pipelines=plan.affected_pipeline_names,
+            )
+            store.save(plan=plan, actor=str(actor.principal.user_id))
+            return _plan_payload(plan=plan)
+        except DestructionDependencyError as error:
+            raise HTTPException(
+                status_code=_HTTP_CONFLICT,
+                detail={
+                    "message": str(error),
+                    "missingPipelines": list(error.dependent_pipeline_names),
+                },
+            ) from error
+        except (DestructionExternalDependencyError, DestructionResourceError) as error:
+            raise HTTPException(status_code=_HTTP_CONFLICT, detail=str(error)) from error
+        except DestructionRecoveryNotFoundError as error:
+            raise HTTPException(status_code=_HTTP_NOT_FOUND, detail=str(error)) from error
+        except DestructionRecoveryError as error:
+            raise HTTPException(status_code=_HTTP_CONFLICT, detail=str(error)) from error
+        except (DestructionSelectionError, ValueError) as error:
+            raise HTTPException(status_code=_HTTP_BAD_REQUEST, detail=str(error)) from error
+        except AdapterError as error:
+            raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
+
+    app.post("/api/runs/{invocation_id}/recovery-plan")(create_recovery_plan)
+    return app
+
+
 def _register_destruction_execution_route(
     *,
     app: FastAPI,
@@ -405,6 +515,68 @@ def _fresh_plan(
     )
 
 
+def _recovery_request_from_run(
+    *,
+    run: Mapping[str, object],
+    analysis: CompileAnalysis,
+    database: str,
+    project_dir: Path,
+    authorization: OperationAuthorizationContext,
+) -> DestructionRequest:
+    if run.get("mode") != _DESTRUCTIVE_MODE or run.get("outcome") != _FAILED_OUTCOME:
+        raise DestructionRecoveryError("Only a terminal failed destruction run can be recovered")
+    expected_project: str | None = logical_project_identity(project_dir=project_dir)
+    if run.get("projectIdentity") != expected_project:
+        raise DestructionRecoveryNotFoundError("Failed destruction run was not found")
+    summary: object = run.get("summary")
+    if not isinstance(summary, Mapping):
+        raise DestructionRecoveryError("Failed destruction run has no complete recovery evidence")
+    recorded: Mapping[str, object] = cast(Mapping[str, object], summary)
+    operation_value: object = recorded.get("operationKind")
+    if not isinstance(operation_value, str):
+        raise DestructionRecoveryError("Failed destruction run has no recorded operation kind")
+    try:
+        operation: DestructionOperation = DestructionOperation(operation_value)
+    except ValueError as error:
+        raise DestructionRecoveryError(
+            "Failed destruction run operation kind is invalid"
+        ) from error
+    expected_command: str = (
+        "destroy pipelines"
+        if operation == DestructionOperation.DESTROY_PIPELINES
+        else "reset target"
+    )
+    if run.get("command") != expected_command:
+        raise DestructionRecoveryError("Failed destruction run command and evidence disagree")
+    current_target: str = (
+        analysis.compiled_project.target_name or authorization.selected_target or ""
+    )
+    if recorded.get("target") != current_target or recorded.get("database") != database:
+        raise DestructionRecoveryError(
+            "Failed destruction run target or database differs from the active server"
+        )
+    return DestructionRequest(
+        operation=operation,
+        target=current_target,
+        database=database,
+        metadata_database=database,
+        pipeline_names=_recorded_recovery_names(summary=recorded, field="originalSelection"),
+        included_dependent_pipeline_names=_recorded_recovery_names(
+            summary=recorded,
+            field="includedDependentPipelines",
+        ),
+    )
+
+
+def _recorded_recovery_names(*, summary: Mapping[str, object], field: str) -> tuple[str, ...]:
+    value: object = summary.get(field)
+    if not isinstance(value, list) or any(not isinstance(item, str) or not item for item in value):
+        raise DestructionRecoveryError(
+            f"Failed destruction run has invalid recorded {field} evidence"
+        )
+    return tuple(cast(list[str], value))
+
+
 def _authorize_plan(
     *,
     plan: DestructionPlan,
@@ -474,6 +646,9 @@ def _plan_payload(
         "managedSourcesIncluded": not plan.preserves_sources,
         "retainedReplayDataIncluded": not plan.preserves_replay_data,
         "estimatedBytes": plan.estimated_bytes,
+        "dropSizeLimitBytes": plan.relation_drop_size_limit,
+        "dropSizeServerLimitBytes": plan.relation_drop_size_server_limit,
+        "dropSizeOverrideBytes": plan.relation_drop_size_override,
         "challengeValues": list(plan.challenges),
         "expiresAt": plan.expires_at.isoformat(),
         "reviewedAt": None if reviewed_at is None else reviewed_at.isoformat(),

@@ -48,10 +48,19 @@ class OwnershipRejectingConnection:
     [
         DestructionWorkflowTestCase(
             description="mixed owned relations are dropped in dependency safe order",
-            expected_first_sql="DROP TABLE IF EXISTS `analytics`.`mv__events` SYNC;",
-            expected_sql_suffix=" SYNC;",
-            expected_view_sql="DROP VIEW IF EXISTS `analytics`.`vw__summary` SYNC;",
-            expected_table_sql="DROP VIEW IF EXISTS `analytics`.`tbl__orders` SYNC;",
+            expected_first_sql=(
+                "DROP TABLE IF EXISTS `analytics`.`mv__events` SYNC SETTINGS "
+                "max_table_size_to_drop = 107374182400;"
+            ),
+            expected_sql_suffix=(" SYNC SETTINGS max_table_size_to_drop = 107374182400;"),
+            expected_view_sql=(
+                "DROP VIEW IF EXISTS `analytics`.`vw__summary` SYNC SETTINGS "
+                "max_table_size_to_drop = 107374182400;"
+            ),
+            expected_table_sql=(
+                "DROP VIEW IF EXISTS `analytics`.`tbl__orders` SYNC SETTINGS "
+                "max_table_size_to_drop = 107374182400;"
+            ),
             expected_has_relation_kinds=True,
         )
     ],
@@ -61,6 +70,7 @@ def test_given_mixed_owned_relations_when_assembling_workflow_then_order_is_depe
     test_case: DestructionWorkflowTestCase,
 ) -> None:
     fixture: PlanningFixture = build_planning_fixture()
+    fixture.connection.destruction_relation_drop_size_limit = 107_374_182_400
     relations_by_name: dict[str, CatalogRelation] = {
         relation.name: relation for relation in fixture.connection.catalog.relations
     }
@@ -170,6 +180,7 @@ def test_given_associated_relations_when_rendering_then_only_drop_statements_are
         * test_case.expected_statement_multiplier
     )
     assert all(statement.sql.startswith("DROP ") for statement in statements)
+    assert all(" SETTINGS " not in statement.sql for statement in statements)
     assert all(statement.step_id.startswith("destroy_relation_") for statement in statements)
 
 

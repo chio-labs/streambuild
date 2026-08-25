@@ -35,6 +35,7 @@ from tests.unit.src.streambuild.compiler.discovery._test_types import (
     ProjectConfigurationErrorTestCase,
     ProjectConnectionSettingsTestCase,
     ProjectDeploymentReadinessDefaultsTestCase,
+    ProjectDestructionLimitResolutionTestCase,
     ProjectFreshnessDefaultTestCase,
     ProjectFreshnessErrorTestCase,
     ProjectPipelineNamingDefaultTestCase,
@@ -264,6 +265,45 @@ def test_given_project_and_target_build_limits_when_resolving_then_target_overri
     assert dev.build.max_pipelines == test_case.expected_dev_limit
     assert staging.build.max_pipelines == test_case.expected_staging_limit
     assert private.build.max_pipelines == test_case.expected_private_limit
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ProjectDestructionLimitResolutionTestCase(
+            description="selected target retains its finite destruction ceiling",
+            expected_limit_bytes=107_374_182_400,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_target_destruction_limit_when_resolving_then_bytes_are_target_scoped(
+    test_case: ProjectDestructionLimitResolutionTestCase,
+    tmp_path: Path,
+) -> None:
+    write_project_toml(
+        project_dir=tmp_path,
+        contents="""
+        name = "analytics"
+        default_target = "uat"
+
+        [targets.uat]
+        database = "analytics_uat"
+
+        [targets.uat.destruction]
+        max_table_size_to_drop = "100GiB"
+        """,
+    )
+    loaded: LoadedProjectConfiguration = load_project_configuration(project_dir=tmp_path)
+
+    effective: EffectiveProjectConfiguration = resolve_effective_project_configuration(
+        loaded=loaded,
+        selected_target="uat",
+        cli_variables={},
+        environment={},
+    )
+
+    assert effective.destruction.max_table_size_to_drop_bytes == test_case.expected_limit_bytes
 
 
 @pytest.mark.parametrize(
@@ -594,6 +634,30 @@ def test_given_absent_local_toml_when_loading_then_returns_typed_defaults(
             expected_error_fragment=("targets.dev.build.max_pipelines must be a positive integer"),
         ),
         ProjectConfigurationErrorTestCase(
+            description="rejects a numeric target destruction limit",
+            project_contents=(
+                'name = "analytics"\ndefault_target = "dev"\n'
+                "[targets.dev.destruction]\nmax_table_size_to_drop = 100\n"
+            ),
+            expected_error_fragment="must be a finite positive byte-size string",
+        ),
+        ProjectConfigurationErrorTestCase(
+            description="rejects an unlimited target destruction limit",
+            project_contents=(
+                'name = "analytics"\ndefault_target = "dev"\n'
+                '[targets.dev.destruction]\nmax_table_size_to_drop = "0GiB"\n'
+            ),
+            expected_error_fragment="must be a finite positive byte-size string",
+        ),
+        ProjectConfigurationErrorTestCase(
+            description="rejects a target destruction limit above ClickHouse UInt64",
+            project_contents=(
+                'name = "analytics"\ndefault_target = "dev"\n'
+                '[targets.dev.destruction]\nmax_table_size_to_drop = "16EiB"\n'
+            ),
+            expected_error_fragment="must be a finite positive byte-size string",
+        ),
+        ProjectConfigurationErrorTestCase(
             description="rejects a target limit without a project default",
             project_contents=(
                 'name = "analytics"\ndefault_target = "dev"\n'
@@ -774,6 +838,16 @@ def test_given_invalid_toml_contract_when_loading_then_rejects_with_field_contex
             """,
             expected_error_fragment=(
                 "streambuild_local.toml targets.private contains unsupported keys: production"
+            ),
+        ),
+        LocalConfigurationErrorTestCase(
+            description="rejects a local destruction limit override",
+            local_contents="""
+            [targets.private.destruction]
+            max_table_size_to_drop = "100GiB"
+            """,
+            expected_error_fragment=(
+                "streambuild_local.toml targets.private contains unsupported keys: destruction"
             ),
         ),
     ],

@@ -82,8 +82,16 @@
 					<div class="mt-1 truncate font-mono text-[12px]" title={plan.database}>{plan.database}</div>
 				</div>
 				<div class="bg-popover p-3">
-					<div class="text-[var(--sb-text-faint)] font-mono text-[9px] uppercase tracking-[0.14em]">Estimated storage</div>
-					<div class="mt-1 font-mono text-[12px]">{displayBytes(plan.estimatedBytes)}</div>
+					<div class="text-[var(--sb-text-faint)] font-mono text-[9px] uppercase tracking-[0.14em]">Drop safety</div>
+					<div class="mt-1 font-mono text-[12px]">
+						{plan.dropSizeLimitBytes === null ? 'unlimited' : `${displayBytes(plan.dropSizeLimitBytes)} effective`}
+					</div>
+					{#if plan.dropSizeOverrideBytes !== null}
+						<div class="text-[var(--sb-text-faint)] mt-1 font-mono text-[9.5px]">
+							{displayBytes(plan.dropSizeOverrideBytes)} StreamBuild override · {plan.dropSizeServerLimitBytes === null ? 'server unlimited' : `${displayBytes(plan.dropSizeServerLimitBytes)} server default`}
+						</div>
+					{/if}
+					<div class="text-[var(--sb-text-faint)] mt-1 font-mono text-[9.5px]">{displayBytes(plan.estimatedBytes)} estimated</div>
 				</div>
 			</section>
 

@@ -116,6 +116,9 @@ password = "project-secret"
 
 [targets.test]
 database = "analytics"
+
+[targets.test.destruction]
+max_table_size_to_drop = "100GiB"
 """.lstrip(),
             argv=("stb", "plan", "--host", "cli-host"),
             environment={
@@ -204,6 +207,8 @@ def test_given_versioned_project_when_running_plan_then_adapter_preserves_exact_
     assert connection.closed is test_case.expected_connection_closed
     assert captured_stdout == test_case.expected_stdout
     assert test_case.expected_redacted_secret not in repr(provider.config)
+    assert provider.config.settings == ()
+    assert provider.config.destruction_relation_drop_size_limit == 107_374_182_400
 
 
 @pytest.mark.parametrize(
