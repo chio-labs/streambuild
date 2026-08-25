@@ -306,6 +306,8 @@ def test_given_cross_mode_relationship_when_building_graph_then_it_is_rejected_s
             downstream_pipeline="pl__downstream",
             downstream_query='__ref("alpha")',
             expected_model_name="beta",
+            expected_upstream_name="alpha",
+            expected_edge_type="driving_input",
         ),
         ModelReferenceScopeSuccessTestCase(
             description="explicit project scope allows cross-pipeline model references",
@@ -314,6 +316,8 @@ def test_given_cross_mode_relationship_when_building_graph_then_it_is_rejected_s
             downstream_pipeline="pl__downstream",
             downstream_query='__ref("alpha")',
             expected_model_name="beta",
+            expected_upstream_name="alpha",
+            expected_edge_type="driving_input",
         ),
         ModelReferenceScopeSuccessTestCase(
             description="pipeline scope allows same-pipeline model references",
@@ -322,6 +326,8 @@ def test_given_cross_mode_relationship_when_building_graph_then_it_is_rejected_s
             downstream_pipeline="pl__models",
             downstream_query='__ref("alpha")',
             expected_model_name="beta",
+            expected_upstream_name="alpha",
+            expected_edge_type="driving_input",
         ),
         ModelReferenceScopeSuccessTestCase(
             description="pipeline scope allows shared source references",
@@ -330,6 +336,29 @@ def test_given_cross_mode_relationship_when_building_graph_then_it_is_rejected_s
             downstream_pipeline="pl__downstream",
             downstream_query='__source("orders")',
             expected_model_name="beta",
+            expected_upstream_name="orders",
+            expected_edge_type="driving_input",
+        ),
+        ModelReferenceScopeSuccessTestCase(
+            description="pipeline scope allows shared adopted source references",
+            dependencies_toml=('[dependencies]\nmodel_reference_scope = "pipeline"\n'),
+            upstream_pipeline="pl__upstream",
+            downstream_pipeline="pl__downstream",
+            downstream_query='__source("orders")',
+            expected_model_name="beta",
+            expected_upstream_name="orders",
+            expected_edge_type="driving_input",
+            source_yaml="""sources:
+  - name: orders
+    kind: stream_table
+    table_name: existing_orders
+    replay_boundary:
+      mode: offsets
+      columns:
+        _replay_partition: event_partition
+        _replay_offset: event_offset
+        _replay_timestamp: event_timestamp
+""",
         ),
     ],
     ids=lambda case: case.description,
@@ -346,14 +375,7 @@ def test_given_allowed_model_reference_scope_when_building_graph_then_dependency
     )
     write_pipeline_file(
         tmp_path / "sources" / "orders.yml",
-        """
-        sources:
-          - name: orders
-            kind: kafka
-            broker_list: kafka:9092
-            topic: source.orders
-            replay_boundary: {mode: offsets}
-        """,
+        test_case.source_yaml,
     )
     write_pipeline_file(
         tmp_path / "pipelines" / test_case.upstream_pipeline / "alpha.sql",
@@ -369,7 +391,12 @@ def test_given_allowed_model_reference_scope_when_building_graph_then_dependency
 
     graph: ProjectGraph = build_project_graph_from_compiled_project(project=project)
 
-    assert logical_key(test_case.expected_model_name) in graph.upstream_edges_by_key
+    edges: tuple[DependencyEdge, ...] = graph.upstream_edges_by_key[
+        logical_key(test_case.expected_model_name)
+    ]
+    assert tuple((edge.upstream_key.name, str(edge.edge_type)) for edge in edges) == (
+        (test_case.expected_upstream_name, test_case.expected_edge_type),
+    )
 
 
 @pytest.mark.parametrize(

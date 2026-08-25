@@ -61,6 +61,15 @@ class ModelReferenceScopeSuccessTestCase:
     downstream_pipeline: str
     downstream_query: str
     expected_model_name: str
+    expected_upstream_name: str
+    expected_edge_type: str
+    source_yaml: str = """sources:
+  - name: orders
+    kind: kafka
+    broker_list: kafka:9092
+    topic: source.orders
+    replay_boundary: {mode: offsets}
+"""
 
 
 @dataclass(frozen=True)

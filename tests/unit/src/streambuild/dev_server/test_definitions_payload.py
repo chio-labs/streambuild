@@ -7,6 +7,7 @@ from httpx import Response
 from tests.unit.src.streambuild.dev_server._test_types import (
     ConnectionSettingsPayloadTestCase,
     DefinitionsFieldTestCase,
+    DependencyPolicyPayloadTestCase,
     DevRefactorTestCase,
 )
 from tests.unit.src.streambuild.dev_server.helpers import (
@@ -67,6 +68,41 @@ def test_given_compiled_project_when_reading_definitions_then_serializes_expecte
     assert payload["project"]["database"] == "analytics"
     assert payload["project"]["dependencies"]["modelReferenceScope"] == (
         test_case.expected_model_reference_scope
+    )
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DependencyPolicyPayloadTestCase(
+            description="definitions and bootstrap expose explicit pipeline reference scope",
+            project_config_suffix=('\n[dependencies]\nmodel_reference_scope = "pipeline"\n'),
+            expected_model_reference_scope="pipeline",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_dependency_scope_when_reading_definitions_then_all_payloads_agree(
+    test_case: DependencyPolicyPayloadTestCase,
+    tmp_path: Path,
+) -> None:
+    write_dev_server_project(project_dir=tmp_path)
+    project_config_path: Path = tmp_path / "streambuild_project.toml"
+    project_config_path.write_text(
+        project_config_path.read_text(encoding="utf-8") + test_case.project_config_suffix,
+        encoding="utf-8",
+    )
+    client: TestClient = build_test_client(project_dir=tmp_path)
+
+    definitions: dict = client.get("/api/definitions").json()
+    bootstrap: dict = client.get("/api/bootstrap").json()
+
+    assert definitions["project"]["dependencies"]["modelReferenceScope"] == (
+        test_case.expected_model_reference_scope
+    )
+    assert (
+        bootstrap["definitions"]["project"]["dependencies"]["modelReferenceScope"]
+        == test_case.expected_model_reference_scope
     )
 
 

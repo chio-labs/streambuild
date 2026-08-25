@@ -227,6 +227,13 @@ class DefinitionsFieldTestCase:
 
 
 @dataclass(frozen=True)
+class DependencyPolicyPayloadTestCase:
+    description: str
+    project_config_suffix: str
+    expected_model_reference_scope: str
+
+
+@dataclass(frozen=True)
 class FailingAnalysisTestCase:
     description: str
     expected_error_fragment: str

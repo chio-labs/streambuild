@@ -5,6 +5,8 @@ from typing import cast
 import pytest
 
 from streambuild.adapter.models import AdapterManagedSource, AdapterMaterializedView, AdapterTable
+from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
+from streambuild.cli.entry._helpers.compiler_profile import build_compiler_adapter_profile
 from streambuild.compiler.compile.exceptions import (
     PipelineCompileError,
     TransformOrderByUnknownColumnError,
@@ -12,24 +14,30 @@ from streambuild.compiler.compile.exceptions import (
     TransformSqlTopLevelSetOperationError,
     TransformTtlUnknownColumnError,
 )
+from streambuild.compiler.compile.main._build_compile_inputs import build_compile_inputs
 from streambuild.compiler.compile.models import (
     CompiledModel,
     CompiledPipeline,
     CompiledProject,
     CompiledSource,
     CompiledTableModel,
+    CompileProjectInputs,
     DesiredMaterializedView,
     DesiredState,
     DesiredTable,
 )
 from streambuild.compiler.discovery._helpers.load import load_pipeline_directory
 from streambuild.compiler.discovery.models import (
+    DiscoveredProjectFile,
+    DiscoveredProjectInputs,
     ExternalTableSourceStep,
     KafkaLandingStep,
     KafkaSettings,
     LoadedPipeline,
+    LoadedProject,
     Pipeline,
     Project,
+    ProjectDependencies,
     ReplayBoundary,
     ReplayBoundaryColumns,
     ReplayOnChangePolicy,
@@ -39,6 +47,7 @@ from streambuild.compiler.discovery.models import (
 )
 from streambuild.compiler.discovery.types import (
     BoundedReplayFallback,
+    ModelReferenceScope,
     ReplayAnchorMode,
     ReplayBoundaryMode,
     ReplayLineageMode,
@@ -73,6 +82,7 @@ from tests.unit.src.streambuild.compiler.compile._test_types import (
     CompileRelationCollisionTestCase,
     CompileRelationNameErrorTestCase,
     CompileRetentionErrorTestCase,
+    ProgrammaticDependencyScopeTestCase,
 )
 from tests.unit.src.streambuild.compiler.compile.helpers import (
     build_inline_sql_pipeline,
@@ -1565,6 +1575,49 @@ def test_given_required_retention_column_missing_when_compiling_then_fails_with_
     assert error_info.value.diagnostic.resource_name == "events_table"
     assert error_info.value.diagnostic.location is not None
     assert error_info.value.diagnostic.location.path == pipeline_dir / "events_table.sql"
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ProgrammaticDependencyScopeTestCase(
+            description="programmatic project retains pipeline reference scope",
+            configured_scope="pipeline",
+            expected_scope="pipeline",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_programmatic_project_without_effective_config_when_building_then_scope_remains(
+    test_case: ProgrammaticDependencyScopeTestCase,
+    tmp_path: Path,
+) -> None:
+    source_file: DiscoveredProjectFile = DiscoveredProjectFile(
+        file_path=tmp_path / "streambuild_project.toml",
+        relative_path=Path("streambuild_project.toml"),
+        contents="",
+    )
+    loaded_project: LoadedProject = LoadedProject(
+        project=Project(
+            dependencies=ProjectDependencies(model_reference_scope=test_case.configured_scope)
+        ),
+        source_file=source_file,
+    )
+    inputs: CompileProjectInputs = build_compile_inputs(
+        discovered_inputs=DiscoveredProjectInputs(
+            project_dir=tmp_path,
+            loaded_project=loaded_project,
+            source_files=(),
+            pipeline_directories=(),
+            model_files=(),
+            test_files=(),
+            audit_files=(),
+            macro_files=(),
+        ),
+        adapter_profile=build_compiler_adapter_profile(ClickHouseAdapter()),
+    )
+
+    assert inputs.model_reference_scope == ModelReferenceScope(test_case.expected_scope)
 
 
 @pytest.mark.parametrize(

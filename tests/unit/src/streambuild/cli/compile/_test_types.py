@@ -65,6 +65,7 @@ class CompileArtifactIdentityTestCase:
     expected_dag_node_ids: tuple[str, ...]
     expected_edge: tuple[str, str, str]
     expected_model_reference_scope: str
+    project_config_suffix: str
 
 
 @dataclass(frozen=True)

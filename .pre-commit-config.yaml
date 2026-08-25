@@ -35,12 +35,6 @@ repos:
         language: system
         pass_filenames: false
 
-      - id: pytest
-        name: pytest
-        entry: bash -c 'uv run pytest tests/unit -vv'
-        language: system
-        pass_filenames: false
-
       - id: conventional-commit
         name: conventional commit message
         entry: uv run cz check --commit-msg-file

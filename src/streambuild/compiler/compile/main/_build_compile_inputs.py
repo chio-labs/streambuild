@@ -167,8 +167,12 @@ def build_compile_inputs(
             None if effective_configuration is None else effective_configuration.target_name
         ),
         model_reference_scope=(
-            ModelReferenceScope.PROJECT
-            if effective_configuration is None
-            else effective_configuration.dependencies.model_reference_scope
+            effective_configuration.dependencies.model_reference_scope
+            if effective_configuration is not None
+            else (
+                project.dependencies.model_reference_scope
+                if project is not None
+                else ModelReferenceScope.PROJECT
+            )
         ),
     )

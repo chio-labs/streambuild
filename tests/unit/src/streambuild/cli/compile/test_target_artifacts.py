@@ -342,7 +342,17 @@ def test_given_existing_static_target_when_generation_fails_then_preserves_previ
             expected_dag_node_ids=("source:orders", "model:orders_enriched"),
             expected_edge=("source:orders", "model:orders_enriched", "driving_input"),
             expected_model_reference_scope="project",
-        )
+            project_config_suffix="",
+        ),
+        CompileArtifactIdentityTestCase(
+            description="manifest records explicit pipeline model reference scope",
+            expected_manifest_sources=("orders",),
+            expected_manifest_models=("orders_enriched",),
+            expected_dag_node_ids=("source:orders", "model:orders_enriched"),
+            expected_edge=("source:orders", "model:orders_enriched", "driving_input"),
+            expected_model_reference_scope="pipeline",
+            project_config_suffix=('\n[dependencies]\nmodel_reference_scope = "pipeline"\n'),
+        ),
     ],
     ids=lambda case: case.description,
 )
@@ -353,6 +363,11 @@ def test_given_one_analysis_when_writing_manifest_and_dag_then_artifacts_agree(
     project_dir: Path = tmp_path / "project"
     target_dir: Path = project_dir / "target"
     copy_basic_project(project_dir=project_dir)
+    project_config_path: Path = project_dir / "streambuild_project.toml"
+    project_config_path.write_text(
+        project_config_path.read_text(encoding="utf-8") + test_case.project_config_suffix,
+        encoding="utf-8",
+    )
     _ = compile_project(project_dir=project_dir, target_dir=target_dir)
     manifest: dict[str, object] = json.loads((target_dir / "manifest.json").read_text())
     dag: dict[str, object] = json.loads((target_dir / "streambuild_dag.json").read_text())
