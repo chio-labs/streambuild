@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.29.0](https://github.com/chio-labs/streambuild/compare/v0.28.3...v0.29.0) (2026-08-25)
+
+
+### Features
+
+* **destruction:** add scoped recovery controls ([#186](https://github.com/chio-labs/streambuild/issues/186)) ([973f887](https://github.com/chio-labs/streambuild/commit/973f8871afe96940c52c022c5cd8bbc41bbd4041))
+
 ## [0.28.3](https://github.com/chio-labs/streambuild/compare/v0.28.2...v0.28.3) (2026-08-25)
 
 
