@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.28.2](https://github.com/chio-labs/streambuild/compare/v0.28.1...v0.28.2) (2026-08-25)
+
+
+### Bug Fixes
+
+* **destruction:** move frozen plans to refreshable page ([#182](https://github.com/chio-labs/streambuild/issues/182)) ([4f75b5c](https://github.com/chio-labs/streambuild/commit/4f75b5c7e2da7ac27e5f518eca70604932cc28a5))
+
 ## [0.28.1](https://github.com/chio-labs/streambuild/compare/v0.28.0...v0.28.1) (2026-08-25)
 
 
