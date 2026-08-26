@@ -1,3 +1,4 @@
+from collections.abc import Iterator
 from typing import cast
 from unittest.mock import MagicMock
 
@@ -7,6 +8,7 @@ from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import AdapterIdentity, AdapterWarehouseDisk, AdapterWarehouseHealth
 from streambuild.dev_server.classes.warehouse_health_reader import WarehouseHealthReader
 from tests.unit.src.streambuild.dev_server.classes._test_types import (
+    WarehouseHealthCacheTestCase,
     WarehouseHealthRetentionTestCase,
 )
 
@@ -75,7 +77,8 @@ def test_given_usable_health_then_failed_refresh_when_reading_then_evidence_stay
         usable,
         RuntimeError("provider detail must not escape"),
     ]
-    reader: WarehouseHealthReader = WarehouseHealthReader()
+    clock_values: Iterator[float] = iter((0.0, 16.0))
+    reader: WarehouseHealthReader = WarehouseHealthReader(clock=lambda: next(clock_values))
 
     first: AdapterWarehouseHealth = reader.read(
         connection=cast(AdapterConnection, connection),
@@ -95,3 +98,53 @@ def test_given_usable_health_then_failed_refresh_when_reading_then_evidence_stay
     assert len(second.disks) == test_case.expected_disk_count
     assert second.warnings == (test_case.expected_warning,)
     assert second.measured_at == test_case.expected_measured_at
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        WarehouseHealthCacheTestCase(
+            description="health inside the snapshot interval reuses measured evidence",
+            clock_values=(0.0, 10.0),
+            expected_provider_reads=1,
+            expected_second_measured_at="2026-08-23 10:00:00.000",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_recent_health_when_reading_again_then_provider_work_is_not_repeated(
+    test_case: WarehouseHealthCacheTestCase,
+) -> None:
+    usable: AdapterWarehouseHealth = AdapterWarehouseHealth(
+        availability="available",
+        status="healthy",
+        version="25.8.1.1",
+        uptime_seconds=100,
+        disks=(),
+        inode_total=100,
+        inode_free=50,
+        inode_status="healthy",
+        memory=None,
+        activity=None,
+        tables=(),
+        collection_duration_ms=2,
+    )
+    connection: MagicMock = MagicMock(spec=AdapterConnection)
+    connection.adapter_identity = AdapterIdentity(name="clickhouse")
+    connection.load_warehouse_health.return_value = usable
+    clock_values: Iterator[float] = iter(test_case.clock_values)
+    reader: WarehouseHealthReader = WarehouseHealthReader(clock=lambda: next(clock_values))
+
+    _ = reader.read(
+        connection=cast(AdapterConnection, connection),
+        database="analytics",
+        measured_at="2026-08-23 10:00:00.000",
+    )
+    second: AdapterWarehouseHealth = reader.read(
+        connection=cast(AdapterConnection, connection),
+        database="analytics",
+        measured_at="2026-08-23 10:00:10.000",
+    )
+
+    assert connection.load_warehouse_health.call_count == test_case.expected_provider_reads
+    assert second.measured_at == test_case.expected_second_measured_at
