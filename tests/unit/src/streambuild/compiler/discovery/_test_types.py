@@ -96,6 +96,7 @@ class ProjectDependencyScopeTestCase:
     description: str
     dependencies_toml: str
     expected_scope: ModelReferenceScope
+    expected_allowed_references: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True)

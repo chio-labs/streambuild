@@ -80,8 +80,20 @@ database = "dev_database"
         ),
         ProjectDependencyScopeTestCase(
             description="retains committed pipeline scope through effective resolution",
-            dependencies_toml=('[dependencies]\nmodel_reference_scope = "pipeline"\n'),
             expected_scope=ModelReferenceScope.PIPELINE,
+            expected_allowed_references=(
+                ("pl__shared_dimensions", "pl__orders"),
+                ("pl__orders", "pl__reporting"),
+            ),
+            dependencies_toml=(
+                '[dependencies]\nmodel_reference_scope = "pipeline"\n'
+                "[[dependencies.allowed_cross_pipeline_references]]\n"
+                'upstream_pipeline = "pl__shared_dimensions"\n'
+                'downstream_pipeline = "pl__orders"\n'
+                "[[dependencies.allowed_cross_pipeline_references]]\n"
+                'upstream_pipeline = "pl__orders"\n'
+                'downstream_pipeline = "pl__reporting"\n'
+            ),
         ),
     ],
     ids=lambda case: case.description,
@@ -107,6 +119,13 @@ def test_given_dependency_policy_when_resolving_then_effective_scope_is_retained
     )
 
     assert effective.dependencies.model_reference_scope == test_case.expected_scope
+    assert (
+        tuple(
+            (reference.upstream_pipeline, reference.downstream_pipeline)
+            for reference in effective.dependencies.allowed_cross_pipeline_references
+        )
+        == test_case.expected_allowed_references
+    )
 
 
 @pytest.mark.parametrize(
@@ -807,6 +826,38 @@ def test_given_absent_local_toml_when_loading_then_returns_typed_defaults(
                 "[dependencies]\nunknown = true\n[targets.dev]\n"
             ),
             expected_error_fragment="dependencies contains unsupported keys: unknown",
+        ),
+        ProjectConfigurationErrorTestCase(
+            description="rejects a non-array cross-pipeline allowlist",
+            project_contents=(
+                'name = "analytics"\ndefault_target = "dev"\n'
+                '[dependencies]\nallowed_cross_pipeline_references = "pl__orders"\n'
+                "[targets.dev]\n"
+            ),
+            expected_error_fragment="must be an array of tables",
+        ),
+        ProjectConfigurationErrorTestCase(
+            description="rejects a self cross-pipeline allowlist entry",
+            project_contents=(
+                'name = "analytics"\ndefault_target = "dev"\n'
+                "[[dependencies.allowed_cross_pipeline_references]]\n"
+                'upstream_pipeline = "pl__orders"\n'
+                'downstream_pipeline = "pl__orders"\n[targets.dev]\n'
+            ),
+            expected_error_fragment="cannot allow a pipeline to reference itself",
+        ),
+        ProjectConfigurationErrorTestCase(
+            description="rejects a duplicate directional allowlist entry",
+            project_contents=(
+                'name = "analytics"\ndefault_target = "dev"\n'
+                "[[dependencies.allowed_cross_pipeline_references]]\n"
+                'upstream_pipeline = "pl__shared"\n'
+                'downstream_pipeline = "pl__orders"\n'
+                "[[dependencies.allowed_cross_pipeline_references]]\n"
+                'upstream_pipeline = "pl__shared"\n'
+                'downstream_pipeline = "pl__orders"\n[targets.dev]\n'
+            ),
+            expected_error_fragment="duplicates pl__shared -> pl__orders",
         ),
         ProjectConfigurationErrorTestCase(
             description="rejects a target-level project-wide mode",

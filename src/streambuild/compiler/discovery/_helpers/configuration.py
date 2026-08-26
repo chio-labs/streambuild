@@ -17,6 +17,7 @@ from streambuild.compiler.discovery._helpers.model_header import (
 )
 from streambuild.compiler.discovery._helpers.source_registry import parse_freshness_policy
 from streambuild.compiler.discovery.constants import (
+    ALLOWED_CROSS_PIPELINE_REFERENCE_KEYS,
     AUDIT_DEFAULT_EVERY_KEY,
     AUDIT_DEFAULT_KEYS,
     AUDIT_DEFAULT_WARMUP_KEY,
@@ -56,6 +57,7 @@ from streambuild.compiler.discovery.constants import (
 from streambuild.compiler.discovery.exceptions import ProjectConfigError
 from streambuild.compiler.discovery.main._parse_duration_seconds import parse_duration_seconds
 from streambuild.compiler.discovery.models import (
+    AllowedCrossPipelineReference,
     AuditDefaults,
     AuditSchedulerConfig,
     AuditSchedulerOverride,
@@ -566,7 +568,66 @@ def _parse_dependencies_config(*, payload: object, file_path: Path) -> ProjectDe
         raise ProjectConfigError(
             f"{file_path} dependencies.model_reference_scope must be 'project' or 'pipeline'"
         ) from error
-    return ProjectDependencies(model_reference_scope=scope)
+    return ProjectDependencies(
+        model_reference_scope=scope,
+        allowed_cross_pipeline_references=_parse_allowed_cross_pipeline_references(
+            payload=mapping.get("allowed_cross_pipeline_references"),
+            file_path=file_path,
+        ),
+    )
+
+
+def _parse_allowed_cross_pipeline_references(
+    *, payload: object, file_path: Path
+) -> tuple[AllowedCrossPipelineReference, ...]:
+    if payload is None:
+        return ()
+    if not isinstance(payload, list):
+        raise ProjectConfigError(
+            f"{file_path} dependencies.allowed_cross_pipeline_references must be an array of tables"
+        )
+    references: list[AllowedCrossPipelineReference] = []
+    seen: set[tuple[str, str]] = set()
+    for index, item in enumerate(payload, start=1):
+        label: str = f"dependencies.allowed_cross_pipeline_references[{index}]"
+        mapping: dict[str, object] = _optional_mapping(
+            payload=item,
+            label=label,
+            file_path=file_path,
+        )
+        _validate_allowed_keys(
+            mapping=mapping,
+            allowed_keys=ALLOWED_CROSS_PIPELINE_REFERENCE_KEYS,
+            label=label,
+            file_path=file_path,
+        )
+        upstream: str = _require_non_empty_string(
+            mapping=mapping,
+            key="upstream_pipeline",
+            label=label,
+            file_path=file_path,
+        )
+        downstream: str = _require_non_empty_string(
+            mapping=mapping,
+            key="downstream_pipeline",
+            label=label,
+            file_path=file_path,
+        )
+        if upstream == downstream:
+            raise ProjectConfigError(
+                f"{file_path} {label} cannot allow a pipeline to reference itself"
+            )
+        pair: tuple[str, str] = (upstream, downstream)
+        if pair in seen:
+            raise ProjectConfigError(f"{file_path} {label} duplicates {upstream} -> {downstream}")
+        seen.add(pair)
+        references.append(
+            AllowedCrossPipelineReference(
+                upstream_pipeline=upstream,
+                downstream_pipeline=downstream,
+            )
+        )
+    return tuple(references)
 
 
 def _parse_audit_scheduler_config(

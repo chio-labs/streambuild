@@ -66,6 +66,7 @@ class CompileArtifactIdentityTestCase:
     expected_edge: tuple[str, str, str]
     expected_model_reference_scope: str
     project_config_suffix: str
+    expected_allowed_cross_pipeline_references: tuple[dict[str, str], ...] = ()
 
 
 @dataclass(frozen=True)
