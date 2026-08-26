@@ -573,6 +573,8 @@ def _desired_view(
             database_template=resource.database_template,
         ),
         logical_model_name=logical_model_name,
+        refresh=resource.refresh,
+        append=resource.append,
     )
 
 
