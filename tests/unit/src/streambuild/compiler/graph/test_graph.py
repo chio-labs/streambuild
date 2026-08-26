@@ -4,6 +4,7 @@ from types import MappingProxyType
 import pytest
 
 from streambuild.compiler.compile.models import CompiledProject
+from streambuild.compiler.discovery.exceptions import PipelineDiscoveryError
 from streambuild.compiler.graph.constants import (
     ALL_DEPENDENCY_EDGE_TYPES,
     DRIVING_DEPENDENCY_EDGE_TYPES,
@@ -22,6 +23,7 @@ from tests.unit.src.streambuild.compiler.discovery._helpers.load.helpers import 
 from tests.unit.src.streambuild.compiler.discovery.helpers import write_project_toml
 from tests.unit.src.streambuild.compiler.graph._test_types import (
     CrossModeRelationshipTestCase,
+    CrossPipelineUnknownTestCase,
     FilteredClosureTestCase,
     GraphCycleTestCase,
     ModelReferenceScopeErrorTestCase,
@@ -38,6 +40,50 @@ from tests.unit.src.streambuild.compiler.graph.helpers import (
     build_typed_graph_project,
     logical_key,
 )
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CrossPipelineUnknownTestCase(
+            description="rejects an unknown upstream pipeline in the directional allowlist",
+            unknown_pipeline="pl__missing",
+            expected_error_fragment="unknown pipeline.*pl__missing",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_allowlist_with_unknown_pipeline_when_compiling_then_discovery_rejects_it(
+    test_case: CrossPipelineUnknownTestCase,
+    tmp_path: Path,
+) -> None:
+    write_project_toml(
+        project_dir=tmp_path,
+        contents=(
+            'name = "test"\ndefault_target = "test"\n'
+            "[[dependencies.allowed_cross_pipeline_references]]\n"
+            f'upstream_pipeline = "{test_case.unknown_pipeline}"\n'
+            'downstream_pipeline = "pl__orders"\n[targets.test]\n'
+        ),
+    )
+    write_pipeline_file(
+        tmp_path / "sources" / "orders.yml",
+        """sources:
+  - name: orders
+    kind: kafka
+    broker_list: kafka:9092
+    topic: source.orders
+    replay_boundary: {mode: offsets}
+""",
+    )
+    write_pipeline_file(
+        tmp_path / "pipelines" / "pl__orders" / "orders.sql",
+        'MODEL (order_by ["order_id"]); '
+        'SELECT order_id::UInt64 AS order_id FROM __source("orders")',
+    )
+
+    with pytest.raises(PipelineDiscoveryError, match=test_case.expected_error_fragment):
+        compile_logical_project(tmp_path)
 
 
 @pytest.mark.parametrize(
@@ -260,7 +306,14 @@ def test_given_cross_mode_relationship_when_building_graph_then_it_is_rejected_s
 ) -> None:
     write_project_toml(
         project_dir=tmp_path,
-        contents='name = "test"\ndefault_target = "test"\n[targets.test]\n',
+        contents=(
+            'name = "test"\ndefault_target = "test"\n'
+            '[dependencies]\nmodel_reference_scope = "pipeline"\n'
+            "[[dependencies.allowed_cross_pipeline_references]]\n"
+            'upstream_pipeline = "pl__upstream"\n'
+            'downstream_pipeline = "pl__downstream"\n'
+            "[targets.test]\n"
+        ),
     )
     write_pipeline_file(
         tmp_path / "sources" / "orders.yml",
@@ -360,6 +413,57 @@ def test_given_cross_mode_relationship_when_building_graph_then_it_is_rejected_s
         _replay_timestamp: event_timestamp
 """,
         ),
+        ModelReferenceScopeSuccessTestCase(
+            description="directional allowlist permits a cross-pipeline driving model",
+            dependencies_toml=(
+                '[dependencies]\nmodel_reference_scope = "pipeline"\n'
+                "[[dependencies.allowed_cross_pipeline_references]]\n"
+                'upstream_pipeline = "pl__upstream"\n'
+                'downstream_pipeline = "pl__downstream"\n'
+            ),
+            upstream_pipeline="pl__upstream",
+            downstream_pipeline="pl__downstream",
+            downstream_query='__ref("alpha")',
+            expected_model_name="beta",
+            expected_upstream_name="alpha",
+            expected_edge_type="driving_input",
+        ),
+        ModelReferenceScopeSuccessTestCase(
+            description="directional allowlist permits a cross-pipeline mutable reference",
+            dependencies_toml=(
+                '[dependencies]\nmodel_reference_scope = "pipeline"\n'
+                "[[dependencies.allowed_cross_pipeline_references]]\n"
+                'upstream_pipeline = "pl__upstream"\n'
+                'downstream_pipeline = "pl__downstream"\n'
+            ),
+            upstream_pipeline="pl__upstream",
+            downstream_pipeline="pl__downstream",
+            downstream_query=(
+                '__source("orders") AS orders INNER JOIN '
+                '__ref("alpha", ref_type="mutable") AS alpha USING order_id'
+            ),
+            expected_model_name="beta",
+            expected_upstream_name="alpha",
+            expected_edge_type="mutable_reference",
+        ),
+        ModelReferenceScopeSuccessTestCase(
+            description="directional allowlist permits a cross-pipeline immutable reference",
+            dependencies_toml=(
+                '[dependencies]\nmodel_reference_scope = "pipeline"\n'
+                "[[dependencies.allowed_cross_pipeline_references]]\n"
+                'upstream_pipeline = "pl__upstream"\n'
+                'downstream_pipeline = "pl__downstream"\n'
+            ),
+            upstream_pipeline="pl__upstream",
+            downstream_pipeline="pl__downstream",
+            downstream_query=(
+                '__source("orders") AS orders INNER JOIN '
+                '__ref("alpha", ref_type="reference") AS alpha USING order_id'
+            ),
+            expected_model_name="beta",
+            expected_upstream_name="alpha",
+            expected_edge_type="reference",
+        ),
     ],
     ids=lambda case: case.description,
 )
@@ -394,8 +498,67 @@ def test_given_allowed_model_reference_scope_when_building_graph_then_dependency
     edges: tuple[DependencyEdge, ...] = graph.upstream_edges_by_key[
         logical_key(test_case.expected_model_name)
     ]
-    assert tuple((edge.upstream_key.name, str(edge.edge_type)) for edge in edges) == (
-        (test_case.expected_upstream_name, test_case.expected_edge_type),
+    edge_by_upstream_name: dict[str, DependencyEdge] = {
+        edge.upstream_key.name: edge for edge in edges
+    }
+    expected_edge: DependencyEdge = edge_by_upstream_name[test_case.expected_upstream_name]
+    assert str(expected_edge.edge_type) == test_case.expected_edge_type
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ModelReferenceScopeSuccessTestCase(
+            description="directional allowlist permits a cross-pipeline terminal view",
+            dependencies_toml=(
+                '[dependencies]\nmodel_reference_scope = "pipeline"\n'
+                "[[dependencies.allowed_cross_pipeline_references]]\n"
+                'upstream_pipeline = "pl__upstream"\n'
+                'downstream_pipeline = "pl__downstream"\n'
+            ),
+            upstream_pipeline="pl__upstream",
+            downstream_pipeline="pl__downstream",
+            downstream_query='__ref("alpha")',
+            expected_model_name="beta",
+            expected_upstream_name="alpha",
+            expected_edge_type="reference",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_allowed_cross_pipeline_view_when_graphing_then_reference_edge_is_retained(
+    test_case: ModelReferenceScopeSuccessTestCase,
+    tmp_path: Path,
+) -> None:
+    write_project_toml(
+        project_dir=tmp_path,
+        contents=(
+            f'name = "test"\ndefault_target = "test"\n{test_case.dependencies_toml}[targets.test]\n'
+        ),
+    )
+    write_pipeline_file(
+        tmp_path / "sources" / "orders.yml",
+        test_case.source_yaml,
+    )
+    write_pipeline_file(
+        tmp_path / "pipelines" / test_case.upstream_pipeline / "alpha.sql",
+        'MODEL (order_by ["order_id"]); '
+        'SELECT order_id::UInt64 AS order_id FROM __source("orders")',
+    )
+    write_pipeline_file(
+        tmp_path / "pipelines" / test_case.downstream_pipeline / "beta.sql",
+        f"MODEL (kind view); SELECT order_id::UInt64 AS order_id FROM {test_case.downstream_query}",
+    )
+    project: CompiledProject = compile_logical_project(tmp_path)
+
+    graph: ProjectGraph = build_project_graph_from_compiled_project(project=project)
+
+    edge: DependencyEdge = graph.upstream_edges_by_key[logical_key(test_case.expected_model_name)][
+        0
+    ]
+    assert (edge.upstream_key.name, str(edge.edge_type)) == (
+        test_case.expected_upstream_name,
+        test_case.expected_edge_type,
     )
 
 
@@ -429,6 +592,20 @@ def test_given_allowed_model_reference_scope_when_building_graph_then_dependency
             ),
             expected_error_fragment=("dependencies.model_reference_scope is 'pipeline'"),
         ),
+        ModelReferenceScopeErrorTestCase(
+            description="allowlist remains directional",
+            downstream_model_sql=(
+                'MODEL (order_by ["order_id"]); '
+                'SELECT order_id::UInt64 AS order_id FROM __ref("alpha")'
+            ),
+            dependencies_toml=(
+                '[dependencies]\nmodel_reference_scope = "pipeline"\n'
+                "[[dependencies.allowed_cross_pipeline_references]]\n"
+                'upstream_pipeline = "pl__downstream"\n'
+                'downstream_pipeline = "pl__upstream"\n'
+            ),
+            expected_error_fragment="no directional allowed_cross_pipeline_references entry",
+        ),
     ],
     ids=lambda case: case.description,
 )
@@ -439,8 +616,7 @@ def test_given_pipeline_scope_cross_pipeline_ref_when_graphing_then_reports_auth
     write_project_toml(
         project_dir=tmp_path,
         contents=(
-            'name = "test"\ndefault_target = "test"\n'
-            '[dependencies]\nmodel_reference_scope = "pipeline"\n[targets.test]\n'
+            f'name = "test"\ndefault_target = "test"\n{test_case.dependencies_toml}[targets.test]\n'
         ),
     )
     write_pipeline_file(
