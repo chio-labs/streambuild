@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.33.1](https://github.com/chio-labs/streambuild/compare/v0.33.0...v0.33.1) (2026-08-26)
+
+
+### Bug Fixes
+
+* prevent managed source replay overlap ([#200](https://github.com/chio-labs/streambuild/issues/200)) ([7643159](https://github.com/chio-labs/streambuild/commit/7643159ef3a2565fdd7c5d2072901cc75ca06339))
+
 ## [0.33.0](https://github.com/chio-labs/streambuild/compare/v0.32.0...v0.33.0) (2026-08-25)
 
 
