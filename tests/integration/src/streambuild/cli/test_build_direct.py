@@ -14,6 +14,10 @@ from streambuild.adapter.models import AdapterReplayRequest, CatalogRelation, Ca
 from streambuild.compiler.discovery.exceptions import PipelineDiscoveryError
 from streambuild.executor.direct.models import DirectBuildResult, DirectReplayBoundary
 from streambuild.executor.workflow.models import PublishedBuildWorkflow
+from tests.integration.src.streambuild.adapters.clickhouse.helpers import (
+    refreshed_rows,
+    start_postgres_container,
+)
 from tests.integration.src.streambuild.cli._test_types import (
     CliCrossModeBuildIntegrationTestCase,
     CliDirectAdoptedSourceFailureIntegrationTestCase,
@@ -31,6 +35,7 @@ from tests.integration.src.streambuild.cli._test_types import (
     CliDirectLandedAtStartTimeIntegrationTestCase,
     CliDirectManualWorkflowIntegrationTestCase,
     CliDirectOptionalMetadataIntegrationTestCase,
+    CliDirectPostgresRefreshIntegrationTestCase,
     CliDirectRelationRenameIntegrationTestCase,
     CliDirectSelectedAuditIntegrationTestCase,
     CliDirectSelectedBuildIntegrationTestCase,
@@ -72,6 +77,7 @@ from tests.integration.src.streambuild.cli.helpers import (
     write_direct_adopted_source_project,
     write_direct_aggregate_project,
     write_direct_build_project,
+    write_direct_postgres_refresh_project,
     write_direct_selected_graph_audits,
     write_direct_selected_graph_project,
     write_direct_view_project,
@@ -2036,6 +2042,71 @@ def test_given_adopted_source_when_building_direct_then_source_is_preserved_and_
         "orders_existing" in statement for statement in rerun_connection.command_statements
     )
     assert "adopted-audit-marker" in "\n".join(rerun_connection.query_statements)
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliDirectPostgresRefreshIntegrationTestCase(
+            description="direct build retains postgres refresh scheduling through execution",
+            refresh="1 MINUTE",
+            expected_rows=(("betfair::7", "GBR"), ("keibago::10", "JPN")),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_postgres_source_when_building_direct_then_refresh_view_lands_rows(
+    test_case: CliDirectPostgresRefreshIntegrationTestCase,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    password_env: str = "STREAMBUILD_TEST_POSTGRES_PASSWORD"
+    with start_postgres_container() as postgres:
+        monkeypatch.setenv(password_env, postgres.password)
+        write_direct_postgres_refresh_project(
+            project_root=tmp_path,
+            host=postgres.container_host,
+            port=postgres.container_port,
+            database=postgres.database,
+            user=postgres.user,
+            password_env=password_env,
+            refresh=test_case.refresh,
+        )
+        connection: AdapterConnection = build_managed_clickhouse_client(
+            clickhouse_connection_settings,
+            database=clickhouse_database,
+        )
+        try:
+            _ = execute_direct_build_directly(
+                project_root=tmp_path,
+                database=clickhouse_database,
+                connection=connection,
+                stabilization_seconds=0,
+                selectors=(),
+            )
+            rows: Sequence[Sequence[object]] = refreshed_rows(
+                client=clickhouse_client,
+                database=clickhouse_database,
+                table="pg__course",
+                expected_count=len(test_case.expected_rows),
+            )
+            refresh_count: int = int(
+                str(
+                    clickhouse_client.query(
+                        "SELECT count() FROM system.view_refreshes "
+                        f"WHERE database = '{clickhouse_database}' AND view = 'mv__pg__course'"
+                    ).result_rows[0][0]
+                )
+            )
+        finally:
+            connection.close()
+
+    assert tuple((str(row[0]), str(row[1])) for row in rows) == test_case.expected_rows
+    assert refresh_count == 1
 
 
 @pytest.mark.integration

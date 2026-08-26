@@ -409,3 +409,10 @@ class CliVirtualEnvironmentRenameIntegrationTestCase:
     renamed_view_name: str
     expected_rows: tuple[tuple[str, str], ...]
     expected_logical_model_names: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class CliDirectPostgresRefreshIntegrationTestCase:
+    description: str
+    refresh: str
+    expected_rows: tuple[tuple[str, str], ...]

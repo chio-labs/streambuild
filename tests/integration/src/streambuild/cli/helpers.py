@@ -1234,6 +1234,51 @@ def write_direct_build_project(
         (audit_root / audit_name).write_text(audit_sql, encoding="utf-8")
 
 
+def write_direct_postgres_refresh_project(
+    *,
+    project_root: Path,
+    host: str,
+    port: int,
+    database: str,
+    user: str,
+    password_env: str,
+    refresh: str,
+) -> None:
+    """Write one scheduled PostgreSQL refresh project for full direct execution."""
+
+    pipeline_root: Path = project_root / "pipelines" / "pl__pg__course"
+    source_root: Path = project_root / "sources"
+    pipeline_root.mkdir(parents=True, exist_ok=True)
+    source_root.mkdir(parents=True, exist_ok=True)
+    (project_root / "streambuild_project.toml").write_text(
+        'name = "postgres_refresh"\ndefault_target = "test"\n\n'
+        '[targets.test]\ndatabase = "analytics"\n',
+        encoding="utf-8",
+    )
+    (source_root / "unicron.yml").write_text(
+        "sources:\n"
+        "  - name: unicron__course\n"
+        "    kind: postgres\n"
+        f"    host: {host}\n"
+        f"    port: {port}\n"
+        f"    database: {database}\n"
+        "    table: course\n"
+        f"    user: {user}\n"
+        f"    password_env: {password_env}\n"
+        f"    refresh: {refresh}\n"
+        "    append: true\n",
+        encoding="utf-8",
+    )
+    (pipeline_root / "pg__course.sql").write_text(
+        'MODEL (relation_name pg__course, engine "ReplacingMergeTree()", '
+        'order_by ["course_key"]);\n'
+        "SELECT CAST(course_key AS String) AS course_key, "
+        "CAST(country_normalised AS String) AS country_normalised "
+        'FROM __source("unicron__course")\n',
+        encoding="utf-8",
+    )
+
+
 def write_direct_selected_graph_project(*, project_root: Path) -> None:
     """Write the selected-rebuild fan-in graph with replay lineage on every model."""
 
