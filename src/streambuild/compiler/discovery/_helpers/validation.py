@@ -8,6 +8,7 @@ from streambuild.compiler.discovery._helpers.replay_policy_validation import (
 )
 from streambuild.compiler.discovery.exceptions import PipelineDiscoveryError
 from streambuild.compiler.discovery.models import (
+    AllowedCrossPipelineReference,
     DiscoveredSourceFile,
     ExternalTableSourceStep,
     KafkaLandingStep,
@@ -30,6 +31,10 @@ def validate_discovered_project_inputs(
     """Reject duplicate project identities after semantic inputs are attached."""
 
     _validate_pipeline_names(loaded_pipelines)
+    _validate_cross_pipeline_references(
+        loaded_project=loaded_project,
+        loaded_pipelines=loaded_pipelines,
+    )
     validate_replay_policies_for_mode(
         default_pipeline_mode=(
             PipelineMode.DIRECT
@@ -91,6 +96,29 @@ def _validate_pipeline_names(loaded_pipelines: tuple[LoadedPipeline, ...]) -> No
         for loaded_pipeline in loaded_pipelines
     )
     _validate_unique_names(resource_kind="pipeline", names_and_paths=names_and_paths)
+
+
+def _validate_cross_pipeline_references(
+    *, loaded_project: LoadedProject | None, loaded_pipelines: tuple[LoadedPipeline, ...]
+) -> None:
+    if loaded_project is None:
+        return
+    known_pipeline_names: frozenset[str] = frozenset(
+        loaded_pipeline.pipeline.name for loaded_pipeline in loaded_pipelines
+    )
+    reference: AllowedCrossPipelineReference
+    for reference in loaded_project.project.dependencies.allowed_cross_pipeline_references:
+        unknown_names: tuple[str, ...] = tuple(
+            name
+            for name in (reference.upstream_pipeline, reference.downstream_pipeline)
+            if name not in known_pipeline_names
+        )
+        if unknown_names:
+            raise PipelineDiscoveryError(
+                f"{loaded_project.source_file.file_path} allowed cross-pipeline reference "
+                f"{reference.upstream_pipeline} -> {reference.downstream_pipeline} names unknown "
+                f"pipeline(s): {', '.join(unknown_names)}"
+            )
 
 
 def _validate_test_names(loaded_tests: tuple[LoadedSqlTest, ...]) -> None:
