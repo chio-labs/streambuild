@@ -138,6 +138,44 @@ describe('application state', () => {
 		expect(requests.requestDefinitionsPayload).not.toHaveBeenCalled();
 	});
 
+	it('given slow quality status when forcing a snapshot refresh then refresh completes without waiting', async () => {
+		const checks = deferred<[]>();
+		requests.requestWarehouseRefresh.mockResolvedValue({
+			compile: { state: 'ok', versionKey: 'version-1' },
+			warehouse: { connected: true }
+		});
+		requests.requestCheckStatuses.mockReturnValue(checks.promise);
+		const controller: AppController = createAppState();
+		controller.initializeFromBootstrap({
+			auth: {
+				config: { mode: 'disabled', loginRequired: false, proxyLogoutUrl: null },
+				session: {
+					mode: 'disabled',
+					user: {
+						id: '00000000-0000-4000-8000-000000000001',
+						username: 'local',
+						displayName: 'Local user',
+						email: null,
+						authenticationSource: 'local'
+					},
+					roles: ['admin'],
+					csrfToken: null
+				},
+				capabilities: null
+			},
+			status: { compile: { state: 'ok' }, warehouse: { connected: true } },
+			definitions: {},
+			state: {}
+		});
+		vi.clearAllMocks();
+
+		await controller.refreshLiveState({ force: true });
+
+		expect(requests.requestWarehouseRefresh).toHaveBeenCalledOnce();
+		expect(requests.requestCheckStatuses).toHaveBeenCalledOnce();
+		checks.resolve([]);
+	});
+
 	it('given bootstrap project data when initialized then legacy project requests are skipped', () => {
 		const controller: AppController = createAppState();
 		const bootstrap: BootstrapPayload = {
