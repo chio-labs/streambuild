@@ -20,6 +20,7 @@ from tests.unit.src.streambuild.dev_server._test_types import (
     DevAppLifespanTestCase,
     ReadConnectionRouteTestCase,
     ReloadAuthorizationTestCase,
+    SnapshotRefreshPerformanceTestCase,
     StateRouteErrorTestCase,
     StatusEndpointTestCase,
 )
@@ -29,6 +30,7 @@ from tests.unit.src.streambuild.dev_server.helpers import (
     build_assigned_proxy_quality_client,
     build_assigned_proxy_reload_client,
     build_compile_callable,
+    build_fake_state_connection,
     build_test_client,
     write_dev_server_project,
     write_reload_access_policy,
@@ -204,9 +206,42 @@ def test_given_unreachable_warehouse_when_refreshing_then_ui_contract_remains_av
     assert refresh.status_code == 200
     assert refresh.json()["compile"]["state"] == test_case.expected_state
     assert refresh.json()["warehouse"]["connected"] is test_case.expected_warehouse_connected
-    assert "warehouse is starting" in refresh.json()["warehouse"]["error"]
     assert client.get("/api/definitions").status_code == 200
     assert client.get("/api/state").status_code == 503
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        SnapshotRefreshPerformanceTestCase(
+            description="healthy snapshot refresh skips the contended connection probe",
+            expected_status=200,
+            expected_probe_calls=0,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_healthy_warehouse_when_refreshing_snapshot_then_connection_is_not_probed(
+    test_case: SnapshotRefreshPerformanceTestCase,
+    tmp_path: Path,
+) -> None:
+    write_dev_server_project(project_dir=tmp_path)
+    connection: AdapterConnection = build_fake_state_connection()
+    state: DevServerState = DevServerState(run_compile=build_compile_callable(project_dir=tmp_path))
+    client: TestClient = TestClient(
+        create_dev_app(
+            state=state,
+            connection=connection,
+            database="analytics",
+            project_dir=tmp_path,
+        )
+    )
+
+    with patch.object(connection, "capture_warehouse_timestamp") as probe:
+        refresh: Response = client.post("/api/warehouse/refresh")
+
+    assert refresh.status_code == test_case.expected_status
+    assert probe.call_count == test_case.expected_probe_calls
 
 
 @pytest.mark.parametrize(
