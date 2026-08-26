@@ -10,6 +10,7 @@ from streambuild.adapter.models import (
     CatalogSnapshot,
 )
 from streambuild.compiler.compile.models import (
+    CompiledPipeline,
     CompiledSource,
     DesiredMaterializedView,
     LogicalResourceKey,
@@ -40,10 +41,9 @@ def plan_preserved_managed_sources(
     resources: tuple[AdapterManagedSource | AdapterTable | AdapterMaterializedView, ...] = (
         _managed_source_resources(
             realized_project=realized_project,
-            source_keys=frozenset(
-                prerequisite.key
-                for prerequisite in plan.prerequisite_scope
-                if prerequisite.framework_managed
+            source_keys=_managed_source_keys(
+                plan=plan,
+                realized_project=realized_project,
             ),
         )
     )
@@ -81,6 +81,22 @@ def plan_preserved_managed_sources(
         ),
         tuple(realizations),
     )
+
+
+def _managed_source_keys(
+    *, plan: DirectPlan, realized_project: RealizedProject
+) -> frozenset[LogicalResourceKey]:
+    relevant_model_keys: frozenset[LogicalResourceKey] = frozenset(
+        (*plan.execution_scope, *(item.key for item in plan.prerequisite_scope))
+    )
+    source_keys: set[LogicalResourceKey] = set()
+    pipeline: CompiledPipeline
+    for pipeline in realized_project.project.pipelines:
+        if pipeline.source is None:
+            continue
+        if any(model.key in relevant_model_keys for model in pipeline.models):
+            source_keys.add(pipeline.source.key)
+    return frozenset(source_keys)
 
 
 def _managed_source_resources(

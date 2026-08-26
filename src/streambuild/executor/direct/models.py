@@ -98,6 +98,7 @@ class DirectBuildWorkflow:
     template: BuildWorkflow
     runtime_replays: tuple[DirectRuntimeReplay, ...]
     workflow_id: str
+    source_recovery_statements: tuple[WarehouseStatement, ...] = ()
 
     @property
     def mode(self) -> WorkflowMode:

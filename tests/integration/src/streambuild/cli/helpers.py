@@ -440,6 +440,7 @@ class DirectActionRecordingConnection(RecordingDelegatingConnection):
     def __init__(self, delegate: AdapterConnection) -> None:
         super().__init__(delegate)
         self.command_statements: list[str] = []
+        self.source_barrier_statements: list[str] = []
         self.realized_relation_names: list[str] = []
         self.replay_targets: list[str] = []
         self.replay_requests: list[AdapterReplayRequest] = []
@@ -471,6 +472,7 @@ class DirectActionRecordingConnection(RecordingDelegatingConnection):
         self.command_statements.extend(
             (statement.removesuffix(";"),) * int(statement.startswith("DROP "))
         )
+        self.source_barrier_statements.extend((statement,) * int(".mv__orders" in statement))
         return super().execute_workflow_sql(statement)
 
 
