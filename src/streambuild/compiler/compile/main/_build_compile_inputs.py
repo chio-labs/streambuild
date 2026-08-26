@@ -175,4 +175,13 @@ def build_compile_inputs(
                 else ModelReferenceScope.PROJECT
             )
         ),
+        allowed_cross_pipeline_references=(
+            effective_configuration.dependencies.allowed_cross_pipeline_references
+            if effective_configuration is not None
+            else (
+                project.dependencies.allowed_cross_pipeline_references
+                if project is not None
+                else ()
+            )
+        ),
     )

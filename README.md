@@ -126,6 +126,10 @@ timezone = "Europe/London"
 [dependencies]
 model_reference_scope = "pipeline"
 
+[[dependencies.allowed_cross_pipeline_references]]
+upstream_pipeline = "pl__shared_dimensions"
+downstream_pipeline = "pl__orders"
+
 [targets.dev]
 database = "analytics"
 ```
@@ -175,6 +179,12 @@ Projects default to `dependencies.model_reference_scope = "project"`, which perm
 references across pipeline directories for compatibility. Set the committed policy to `"pipeline"`
 to keep model dependencies within their owning pipeline. Managed and adopted sources remain
 shareable across pipelines under either policy.
+
+Pipeline scope can grant narrow directional exceptions with
+`dependencies.allowed_cross_pipeline_references`. Each entry permits models in
+`downstream_pipeline` to reference models in `upstream_pipeline`; reverse access requires a
+separate entry. Both pipelines must exist. These exceptions do not permit references between
+direct and virtual pipelines.
 
 ## Models
 

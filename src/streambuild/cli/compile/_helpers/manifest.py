@@ -52,7 +52,14 @@ def build_manifest_json(
         },
         "metadata": {"manifest_version": 1, "tool": "streambuild"},
         "dependencies": {
-            "model_reference_scope": str(analysis.compiled_project.model_reference_scope)
+            "model_reference_scope": str(analysis.compiled_project.model_reference_scope),
+            "allowed_cross_pipeline_references": tuple(
+                {
+                    "upstream_pipeline": reference.upstream_pipeline,
+                    "downstream_pipeline": reference.downstream_pipeline,
+                }
+                for reference in analysis.compiled_project.allowed_cross_pipeline_references
+            ),
         },
         "macros": {
             name: {

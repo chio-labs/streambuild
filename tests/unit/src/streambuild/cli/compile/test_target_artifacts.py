@@ -381,6 +381,9 @@ def test_given_one_analysis_when_writing_manifest_and_dag_then_artifacts_agree(
     assert manifest["dependencies"]["model_reference_scope"] == (
         test_case.expected_model_reference_scope
     )
+    assert tuple(manifest["dependencies"]["allowed_cross_pipeline_references"]) == (
+        test_case.expected_allowed_cross_pipeline_references
+    )
     assert not any(path.startswith("compiled/workflows/") for path in manifest["artifacts"])
 
 

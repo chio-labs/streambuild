@@ -69,6 +69,9 @@ def test_given_compiled_project_when_reading_definitions_then_serializes_expecte
     assert payload["project"]["dependencies"]["modelReferenceScope"] == (
         test_case.expected_model_reference_scope
     )
+    assert tuple(payload["project"]["dependencies"]["allowedCrossPipelineReferences"]) == (
+        test_case.expected_allowed_cross_pipeline_references
+    )
 
 
 @pytest.mark.parametrize(
@@ -101,8 +104,16 @@ def test_given_dependency_scope_when_reading_definitions_then_all_payloads_agree
         test_case.expected_model_reference_scope
     )
     assert (
+        tuple(definitions["project"]["dependencies"]["allowedCrossPipelineReferences"])
+        == test_case.expected_allowed_cross_pipeline_references
+    )
+    assert (
         bootstrap["definitions"]["project"]["dependencies"]["modelReferenceScope"]
         == test_case.expected_model_reference_scope
+    )
+    assert (
+        tuple(bootstrap["definitions"]["project"]["dependencies"]["allowedCrossPipelineReferences"])
+        == test_case.expected_allowed_cross_pipeline_references
     )
 
 

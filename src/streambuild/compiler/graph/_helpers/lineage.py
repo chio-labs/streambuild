@@ -116,6 +116,10 @@ def validate_model_reference_scope(*, project: CompiledProject) -> None:
     if project.model_reference_scope == ModelReferenceScope.PROJECT:
         return
     model_by_name: dict[str, CompiledModel] = {model.key.name: model for model in project.models}
+    allowed_pairs: frozenset[tuple[str, str]] = frozenset(
+        (reference.upstream_pipeline, reference.downstream_pipeline)
+        for reference in project.allowed_cross_pipeline_references
+    )
     downstream_model: CompiledModel
     for downstream_model in project.models:
         parsed_ref: ParsedRef
@@ -124,13 +128,15 @@ def validate_model_reference_scope(*, project: CompiledProject) -> None:
             if (
                 upstream_model is None
                 or upstream_model.pipeline_name == downstream_model.pipeline_name
+                or (upstream_model.pipeline_name, downstream_model.pipeline_name) in allowed_pairs
             ):
                 continue
             raise GraphInputError(
                 f"Model '{downstream_model.key.name}' in pipeline "
                 f"'{downstream_model.pipeline_name}' references model "
                 f"'{upstream_model.key.name}' in pipeline '{upstream_model.pipeline_name}', but "
-                "dependencies.model_reference_scope is 'pipeline'.",
+                "dependencies.model_reference_scope is 'pipeline' and no directional "
+                "allowed_cross_pipeline_references entry permits this edge.",
                 location=_reference_location(model=downstream_model, parsed_ref=parsed_ref),
             )
 

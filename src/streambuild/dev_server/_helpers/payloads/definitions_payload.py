@@ -106,7 +106,8 @@ def _project_payload(analysis: CompileAnalysis) -> dict[str, object]:
             "auditScheduler": {"enabled": False},
             "ui": {"timezone": "UTC"},
             "dependencies": {
-                "modelReferenceScope": str(analysis.compiled_project.model_reference_scope)
+                "modelReferenceScope": str(analysis.compiled_project.model_reference_scope),
+                "allowedCrossPipelineReferences": _allowed_cross_pipeline_references(analysis),
             },
         }
     return {
@@ -150,9 +151,20 @@ def _project_payload(analysis: CompileAnalysis) -> dict[str, object]:
         "auditScheduler": {"enabled": effective.audit_scheduler.enabled},
         "ui": {"timezone": effective.ui.timezone},
         "dependencies": {
-            "modelReferenceScope": str(analysis.compiled_project.model_reference_scope)
+            "modelReferenceScope": str(analysis.compiled_project.model_reference_scope),
+            "allowedCrossPipelineReferences": _allowed_cross_pipeline_references(analysis),
         },
     }
+
+
+def _allowed_cross_pipeline_references(analysis: CompileAnalysis) -> tuple[dict[str, str], ...]:
+    return tuple(
+        {
+            "upstreamPipeline": reference.upstream_pipeline,
+            "downstreamPipeline": reference.downstream_pipeline,
+        }
+        for reference in analysis.compiled_project.allowed_cross_pipeline_references
+    )
 
 
 def _serializable_connection_value(value: object) -> object:

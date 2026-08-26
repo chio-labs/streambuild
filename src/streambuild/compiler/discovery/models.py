@@ -107,16 +107,30 @@ class UiConfig:
 
 
 @dataclass(frozen=True)
+class AllowedCrossPipelineReference:
+    """One directional exception to pipeline-local model ownership."""
+
+    upstream_pipeline: str
+    downstream_pipeline: str
+
+
+@dataclass(frozen=True)
 class ProjectDependencies:
     """Committed project dependency-boundary policy."""
 
     model_reference_scope: ModelReferenceScope | str = ModelReferenceScope.PROJECT
+    allowed_cross_pipeline_references: tuple[AllowedCrossPipelineReference, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(
             self,
             "model_reference_scope",
             ModelReferenceScope(self.model_reference_scope),
+        )
+        object.__setattr__(
+            self,
+            "allowed_cross_pipeline_references",
+            tuple(self.allowed_cross_pipeline_references),
         )
 
 

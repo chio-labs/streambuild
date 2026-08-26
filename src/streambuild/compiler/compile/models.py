@@ -23,6 +23,7 @@ from streambuild.compiler.compile.types import (
     RetentionOrigin,
 )
 from streambuild.compiler.discovery.models import (
+    AllowedCrossPipelineReference,
     DiscoveredProjectInputs,
     ExternalTableSourceStep,
     KafkaLandingStep,
@@ -471,12 +472,18 @@ class CompileProjectInputs:
     project_name: str | None = None
     target_name: str | None = None
     model_reference_scope: ModelReferenceScope | str = ModelReferenceScope.PROJECT
+    allowed_cross_pipeline_references: tuple[AllowedCrossPipelineReference, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(
             self,
             "model_reference_scope",
             ModelReferenceScope(self.model_reference_scope),
+        )
+        object.__setattr__(
+            self,
+            "allowed_cross_pipeline_references",
+            tuple(self.allowed_cross_pipeline_references),
         )
 
 
@@ -497,10 +504,16 @@ class CompiledProject:
     production_target: bool = False
     destruction_relation_drop_size_limit: int | None = None
     model_reference_scope: ModelReferenceScope | str = ModelReferenceScope.PROJECT
+    allowed_cross_pipeline_references: tuple[AllowedCrossPipelineReference, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(
             self,
             "model_reference_scope",
             ModelReferenceScope(self.model_reference_scope),
+        )
+        object.__setattr__(
+            self,
+            "allowed_cross_pipeline_references",
+            tuple(self.allowed_cross_pipeline_references),
         )

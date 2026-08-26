@@ -54,6 +54,13 @@ class CrossModeRelationshipTestCase:
 
 
 @dataclass(frozen=True)
+class CrossPipelineUnknownTestCase:
+    description: str
+    unknown_pipeline: str
+    expected_error_fragment: str
+
+
+@dataclass(frozen=True)
 class ModelReferenceScopeSuccessTestCase:
     description: str
     dependencies_toml: str
@@ -77,3 +84,4 @@ class ModelReferenceScopeErrorTestCase:
     description: str
     downstream_model_sql: str
     expected_error_fragment: str
+    dependencies_toml: str = '[dependencies]\nmodel_reference_scope = "pipeline"\n'

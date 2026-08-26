@@ -124,7 +124,12 @@ LOCAL_TARGET_KEYS: frozenset[str] = TARGET_KEYS - {"build", "destruction", "prod
 BUILD_KEYS: frozenset[str] = frozenset({"max_pipelines"})
 DESTRUCTION_KEYS: frozenset[str] = frozenset({"max_table_size_to_drop"})
 UI_KEYS: frozenset[str] = frozenset({"timezone"})
-DEPENDENCIES_KEYS: frozenset[str] = frozenset({"model_reference_scope"})
+DEPENDENCIES_KEYS: frozenset[str] = frozenset(
+    {"model_reference_scope", "allowed_cross_pipeline_references"}
+)
+ALLOWED_CROSS_PIPELINE_REFERENCE_KEYS: frozenset[str] = frozenset(
+    {"upstream_pipeline", "downstream_pipeline"}
+)
 AUDIT_SCHEDULER_KEYS: frozenset[str] = frozenset({"enabled"})
 SENSORS_KEYS: frozenset[str] = frozenset({"enabled", "tick_retention_days", "maximum_event_age"})
 DEFAULTS_KEYS: frozenset[str] = frozenset(
