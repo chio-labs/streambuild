@@ -159,6 +159,13 @@ class StatusEndpointTestCase:
 
 
 @dataclass(frozen=True)
+class SnapshotRefreshPerformanceTestCase:
+    description: str
+    expected_status: int
+    expected_probe_calls: int
+
+
+@dataclass(frozen=True)
 class BootstrapEndpointTestCase:
     description: str
     expected_auth_mode: str

@@ -85,8 +85,8 @@ export function createAppState(): AppController {
 		}
 	}
 
-	// Polling reads the server's held snapshot. Only an explicit refresh reconnects
-	// and discards it, so routine polls never pay for a rebuild.
+	// Polling reads the server's held snapshot. Only an explicit refresh requests
+	// connection recovery and discards it, so routine polls never pay for a rebuild.
 	async function refreshLiveState(options?: { force?: boolean }): Promise<void> {
 		if (app.project === null) return;
 		if (liveStateRequest !== null && options?.force !== true) return liveStateRequest;
@@ -131,7 +131,8 @@ export function createAppState(): AppController {
 			const definitions: Record<string, unknown> = await loadDefinitions(versionKey, signal);
 			if (requestGeneration !== liveStateRequestGeneration) return;
 			mergeProject(definitions, state);
-			await refreshRecordedChecks();
+			if (force) void refreshRecordedChecks();
+			else await refreshRecordedChecks();
 			kafkaLagRetry.schedule(app.project);
 		} catch (error) {
 			if (error instanceof Error && error.name === 'AbortError') return;
