@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.34.3](https://github.com/chio-labs/streambuild/compare/v0.34.2...v0.34.3) (2026-08-26)
+
+
+### Performance Improvements
+
+* reduce snapshot refresh warehouse work ([#208](https://github.com/chio-labs/streambuild/issues/208)) ([86121d8](https://github.com/chio-labs/streambuild/commit/86121d8a4fd0052d72d516c09d472d77d82b2916))
+
 ## [0.34.2](https://github.com/chio-labs/streambuild/compare/v0.34.1...v0.34.2) (2026-08-26)
 
 
