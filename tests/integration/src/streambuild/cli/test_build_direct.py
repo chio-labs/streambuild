@@ -1340,6 +1340,7 @@ def test_given_creation_failure_when_rerunning_then_the_closure_completes(
                 "tbl__delta",
                 "mv__delta",
                 "mv__gamma",
+                "mv__orders",
             ),
             expected_replay_targets=("tbl__beta", "tbl__delta"),
         )
@@ -1508,6 +1509,14 @@ def test_given_aggregate_root_when_building_selected_model_then_it_uses_shared_r
     assert tuple(connection.replay_targets) == test_case.expected_replay_targets
     assert "tbl__beta" in connection.realized_relation_names
     assert "mv__beta" in connection.realized_relation_names
+    assert len(connection.source_barrier_statements) == 2
+    assert connection.source_barrier_statements[0] == (
+        f"DROP TABLE IF EXISTS {clickhouse_database}.mv__orders SYNC;"
+    )
+    assert connection.source_barrier_statements[1].startswith(
+        f"CREATE MATERIALIZED VIEW IF NOT EXISTS {clickhouse_database}.mv__orders"
+    )
+    assert f"TO {clickhouse_database}.raw__orders" in connection.source_barrier_statements[1]
 
 
 @pytest.mark.integration
@@ -1813,9 +1822,12 @@ def test_given_selection_matrix_when_building_then_exact_closure_is_reconstructe
     finally:
         delegate.close()
 
-    expected_drop_statements: tuple[str, ...] = tuple(
-        f"DROP TABLE IF EXISTS {clickhouse_database}.{name} SYNC"
-        for name in test_case.expected_drop_relation_names
+    expected_drop_statements: tuple[str, ...] = (
+        f"DROP TABLE IF EXISTS {clickhouse_database}.mv__orders SYNC",
+        *(
+            f"DROP TABLE IF EXISTS {clickhouse_database}.{name} SYNC"
+            for name in test_case.expected_drop_relation_names
+        ),
     )
     assert (initial_exit_code, selected_exit_code) == (0, 0)
     assert selected_error == ""

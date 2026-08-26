@@ -32,7 +32,7 @@ from streambuild.executor.workflow.models import (
     PublishedBuildWorkflow,
     WarehouseStatement,
 )
-from streambuild.executor.workflow.types import WorkflowPhase
+from streambuild.executor.workflow.types import StatementIntent, WorkflowMode, WorkflowPhase
 from tests.unit.src.streambuild.executor.direct.main._test_types import (
     DirectCaptureValidationTestCase,
     DirectDistinctCaptureTestCase,
@@ -40,12 +40,14 @@ from tests.unit.src.streambuild.executor.direct.main._test_types import (
     DirectFingerprintPersistenceTestCase,
     DirectNoOpWorkflowTestCase,
     DirectPersistenceFailureTestCase,
+    DirectSourceRecoveryTestCase,
     DirectSourceScopeTestCase,
     DirectWorkflowTestCase,
 )
 from tests.unit.src.streambuild.executor.direct.main.helpers import (
     DeniedFingerprintRenderingConnection,
     DistinctCaptureDirectBuildConnection,
+    FailingPausedSourceConnection,
     InvalidOffsetCaptureDirectBuildConnection,
     MismatchedCaptureDirectBuildConnection,
     RecordingDirectBuildConnection,
@@ -95,8 +97,14 @@ def test_given_selected_direct_closure_when_assembling_then_unrelated_sources_ar
     )
 
     step_ids: set[str] = {statement.step_id for statement in workflow.statements}
+    ordered_step_ids: tuple[str, ...] = tuple(
+        statement.step_id for statement in workflow.statements
+    )
     assert set(test_case.expected_source_step_ids) <= step_ids
     assert set(test_case.unexpected_source_step_ids).isdisjoint(step_ids)
+    assert ordered_step_ids.index("activate_source_mv__orders") > ordered_step_ids.index(
+        "replay_alpha"
+    )
 
 
 @pytest.mark.parametrize(
@@ -195,7 +203,7 @@ def test_given_direct_plan_when_assembling_then_complete_exact_workflow_is_autho
     )
     expected_runtime_step_ids: tuple[str, ...] = sum(expected_boundary_windows, ())
     actual_runtime_step_ids: tuple[str, ...] = tuple(
-        statement.step_id for statement in statements[-len(expected_runtime_step_ids) :]
+        statement.step_id for statement in statements[-(len(expected_runtime_step_ids) + 1) : -1]
     )
     assert actual_runtime_step_ids == expected_runtime_step_ids
     assert step_bytes == tuple(statement.sql for statement in statements)
@@ -243,6 +251,69 @@ def test_given_persistence_failure_when_executing_direct_build_then_warehouse_is
         )
 
     assert connection.workflow_mutation_statements == []
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DirectSourceRecoveryTestCase(
+            description="paused managed source is recovered after a build failure",
+            expected_failed_step_id="fail_after_source_pause",
+            expected_attempted_mutations=(
+                "DROP TABLE IF EXISTS analytics.mv__orders SYNC;",
+                "SELECT invalid;",
+                "CREATE MATERIALIZED VIEW IF NOT EXISTS analytics.mv__orders "
+                "TO analytics.raw__orders AS SELECT 1;",
+            ),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_paused_managed_source_when_direct_build_fails_then_source_is_recovered(
+    test_case: DirectSourceRecoveryTestCase,
+) -> None:
+    pause_statement: WarehouseStatement = WarehouseStatement(
+        sequence=1,
+        step_id="pause_source_mv__orders",
+        phase=WorkflowPhase.PREPARATION,
+        intent=StatementIntent.MUTATION,
+        sql="DROP TABLE IF EXISTS analytics.mv__orders SYNC;",
+    )
+    failing_statement: WarehouseStatement = WarehouseStatement(
+        sequence=2,
+        step_id="fail_after_source_pause",
+        phase=WorkflowPhase.TEARDOWN,
+        intent=StatementIntent.MUTATION,
+        sql="SELECT invalid;",
+    )
+    recovery_statement: WarehouseStatement = WarehouseStatement(
+        sequence=1,
+        step_id="recover_source_mv__orders",
+        phase=WorkflowPhase.FINALIZATION,
+        intent=StatementIntent.MUTATION,
+        sql=(
+            "CREATE MATERIALIZED VIEW IF NOT EXISTS analytics.mv__orders "
+            "TO analytics.raw__orders AS SELECT 1;"
+        ),
+    )
+    workflow: DirectBuildWorkflow = DirectBuildWorkflow(
+        template=BuildWorkflow(
+            mode=WorkflowMode.DIRECT,
+            plan_json="{}",
+            statements=(pause_statement, failing_statement),
+        ),
+        runtime_replays=(),
+        workflow_id="workflow-1",
+        source_recovery_statements=(recovery_statement,),
+    )
+    connection: FailingPausedSourceConnection = FailingPausedSourceConnection()
+
+    with pytest.raises(DirectWorkflowExecutionError) as raised:
+        execute_direct_build_workflow(workflow=workflow, connection=connection)
+
+    assert tuple(connection.attempted_mutations) == test_case.expected_attempted_mutations
+    assert raised.value.failed_step_id == test_case.expected_failed_step_id
+    assert raised.value.workflow.statements[-1].step_id == "recover_source_mv__orders"
 
 
 @pytest.mark.parametrize(
