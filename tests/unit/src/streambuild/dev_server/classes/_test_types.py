@@ -93,3 +93,11 @@ class WarehouseHealthRetentionTestCase:
     second_database: str
     expected_disk_count: int
     expected_measured_at: str
+
+
+@dataclass(frozen=True)
+class WarehouseHealthCacheTestCase:
+    description: str
+    clock_values: tuple[float, ...]
+    expected_provider_reads: int
+    expected_second_measured_at: str

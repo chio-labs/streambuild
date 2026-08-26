@@ -17,9 +17,14 @@ from streambuild.adapter.models import (
 from streambuild.compiler.compile.models import CompiledModel
 from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.compiler.planner.classes.direct_model_fingerprint import DirectModelFingerprint
+from streambuild.dev_server._helpers.payloads.state_payload import (
+    build_partitions_query,
+    build_throughputs_query,
+)
 from streambuild.dev_server.classes.dev_server_state import DevServerState
 from streambuild.dev_server.main._create_dev_app import create_dev_app
 from tests.unit.src.streambuild.dev_server._test_types import (
+    SourceObservationBatchTestCase,
     StateFieldTestCase,
     UnconfiguredFreshnessTestCase,
     ViewFreshnessTestCase,
@@ -31,6 +36,40 @@ from tests.unit.src.streambuild.dev_server.helpers import (
     changed_storage_identity,
     write_dev_server_project,
 )
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        SourceObservationBatchTestCase(
+            description="many sources compile into two batched observation statements",
+            relation_count=89,
+            expected_statement_count=2,
+            expected_union_count=88,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_many_sources_when_building_observation_queries_then_fanout_stays_constant(
+    test_case: SourceObservationBatchTestCase,
+) -> None:
+    relation_names: tuple[str, ...] = tuple(
+        f"raw__source_{index}" for index in range(test_case.relation_count)
+    )
+    windows: tuple[tuple[str, int, int], ...] = tuple(
+        (relation_name, 3600, 60) for relation_name in relation_names
+    )
+
+    statements: tuple[str, str] = (
+        build_throughputs_query(database="analytics", windows=windows),
+        build_partitions_query(database="analytics", relation_names=relation_names),
+    )
+
+    assert len(statements) == test_case.expected_statement_count
+    for statement in statements:
+        assert statement.count(" UNION ALL ") == test_case.expected_union_count
+        for relation_name in relation_names:
+            assert f"'{relation_name}' AS relation" in statement
 
 
 @pytest.mark.parametrize(
@@ -192,6 +231,9 @@ def test_given_warehouse_reads_when_reading_state_then_assembles_expected_overla
     assert tuple(sorted(model["driftReasons"])) == test_case.expected_drift_reasons
     assert model["drift"] is bool(test_case.expected_drift_reasons)
     source: dict = payload["sources"]["orders"]
+    assert source["rows"] == 1000
+    assert source["oldestEventAt"] == "2026-08-01 00:00:00.000"
+    assert source["newestEventAt"] == "2026-08-03 11:59:58.000"
     assert source["freshness"] == test_case.expected_source_freshness
     assert source["lastArrivalSeconds"] == 2.0
     assert source["kafkaLagMessages"] is None

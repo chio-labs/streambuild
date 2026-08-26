@@ -75,7 +75,7 @@ from streambuild.dev_server._helpers.payloads.state_payload import (
     build_partitions_query,
     build_parts_query,
     build_relation_stats_query,
-    build_throughput_query,
+    build_throughputs_query,
 )
 from streambuild.dev_server._helpers.queries.message_query import (
     build_messages_sql,
@@ -850,7 +850,7 @@ def build_fake_state_connection(
             ),
         ),
     )
-    lineage_relations: tuple[str, ...] = ("raw__orders", "tbl__orders_clean")
+    model_lineage_relations: tuple[str, ...] = ("tbl__orders_clean",)
     results: dict[str, AdapterQueryResult] = {
         build_activity_capabilities_query(): AdapterQueryResult(
             rows=(),
@@ -875,28 +875,42 @@ def build_fake_state_connection(
             column_names=("table", "parts"),
         ),
         build_extents_query(
-            database="analytics", relation_names=lineage_relations
+            database="analytics", relation_names=model_lineage_relations
         ): AdapterQueryResult(
-            rows=(
-                ("raw__orders", _STATE_OLDEST_EVENT, _STATE_NEWEST_EVENT, 1000),
-                ("tbl__orders_clean", _STATE_OLDEST_EVENT, _STATE_MODEL_NEWEST, 900),
-            ),
+            rows=(("tbl__orders_clean", _STATE_OLDEST_EVENT, _STATE_MODEL_NEWEST, 900),),
             column_names=("relation", "oldest", "newest", "rows"),
         ),
-        build_throughput_query(
+        build_throughputs_query(
             database="analytics",
-            relation_name="raw__orders",
-            window_seconds=3600,
-            bucket_seconds=60,
+            windows=(("raw__orders", 3600, 60),),
         ): AdapterQueryResult(
-            rows=((1754218740, 120), (1754218800, 180)),
-            column_names=("bucket", "rows"),
+            rows=(
+                ("raw__orders", 1754218740, 120),
+                ("raw__orders", 1754218800, 180),
+            ),
+            column_names=("relation", "bucket", "rows"),
         ),
         build_partitions_query(
-            database="analytics", relation_name="raw__orders"
+            database="analytics", relation_names=("raw__orders",)
         ): AdapterQueryResult(
-            rows=((0, 91822, _STATE_NEWEST_EVENT),),
-            column_names=("partition", "max_offset", "newest"),
+            rows=(
+                (
+                    "raw__orders",
+                    0,
+                    91822,
+                    _STATE_OLDEST_EVENT,
+                    _STATE_NEWEST_EVENT,
+                    1000,
+                ),
+            ),
+            column_names=(
+                "relation",
+                "partition",
+                "max_offset",
+                "oldest",
+                "newest",
+                "rows",
+            ),
         ),
         (
             "SELECT count() AS present FROM system.tables "

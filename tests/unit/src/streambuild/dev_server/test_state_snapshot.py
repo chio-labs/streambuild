@@ -1,3 +1,5 @@
+import threading
+from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -119,6 +121,51 @@ def test_given_forced_refresh_when_reading_snapshot_then_latest_overlay_is_serve
 
     assert refreshed["capturedAt"] == "build-2"
     assert snapshot.current()["capturedAt"] == "build-2"
+    assert len(calls) == test_case.expected_build_count
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        StateSnapshotTestCase(
+            description="concurrent refreshes serialize warehouse builds",
+            request_count=2,
+            expected_build_count=2,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_refresh_in_progress_when_another_starts_then_builds_do_not_overlap(
+    test_case: StateSnapshotTestCase,
+) -> None:
+    calls: list[str] = []
+    first_started: threading.Event = threading.Event()
+    release_first: threading.Event = threading.Event()
+    second_started: threading.Event = threading.Event()
+
+    def first_build() -> dict[str, object]:
+        calls.append("build-1")
+        first_started.set()
+        _ = release_first.wait(timeout=1.0)
+        return {"capturedAt": calls[-1]}
+
+    def second_build() -> dict[str, object]:
+        calls.append("build-2")
+        second_started.set()
+        return {"capturedAt": calls[-1]}
+
+    snapshot: StateSnapshot = StateSnapshot(
+        build=sequenced_state_build([first_build, second_build])
+    )
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first: Future[dict[str, object]] = executor.submit(snapshot.refresh)
+        assert first_started.wait(timeout=1.0)
+        second: Future[dict[str, object]] = executor.submit(snapshot.refresh)
+        assert not second_started.wait(timeout=0.05)
+        release_first.set()
+        _ = first.result(timeout=1.0)
+        _ = second.result(timeout=1.0)
+
     assert len(calls) == test_case.expected_build_count
 
 

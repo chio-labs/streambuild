@@ -56,6 +56,29 @@ class _ManagedTopicSource:
     kafka: KafkaSettings
 
 
+@dataclass(frozen=True)
+class _SourceStateInput:
+    """Warehouse and broker observations needed to assemble one source state."""
+
+    source: CompiledSource
+    relation_name: str
+    extent: dict[str, object]
+    newest: str | None
+    age: float | None
+    kafka_lag: KafkaLagSnapshot | None
+
+
+@dataclass(frozen=True)
+class _WarehousePartitionObservation:
+    """One retained source partition observation from the warehouse."""
+
+    partition: int
+    max_offset: int
+    oldest: str
+    newest: str
+    rows: int
+
+
 def build_state_payload(
     *,
     analysis: CompileAnalysis,
@@ -89,9 +112,29 @@ def build_state_payload(
         active_bindings=active_bindings,
     )
     lineage_relations: tuple[str, ...] = _lineage_relation_names(catalog)
-    extents: dict[str, dict[str, object]] = _extents(
-        connection=connection, database=database, relation_names=lineage_relations
+    source_relations: tuple[str, ...] = tuple(
+        analysis.realized_project.relation_name_by_logical_key[source.key]
+        for source in analysis.compiled_project.sources
+        if analysis.realized_project.relation_name_by_logical_key[source.key] in lineage_relations
     )
+    warehouse_partitions: dict[str, dict[int, _WarehousePartitionObservation]] = (
+        _warehouse_partitions(
+            connection=connection,
+            database=database,
+            relation_names=source_relations,
+        )
+    )
+    source_relation_set: frozenset[str] = frozenset(source_relations)
+    extents: dict[str, dict[str, object]] = _extents(
+        connection=connection,
+        database=database,
+        relation_names=tuple(
+            relation_name
+            for relation_name in lineage_relations
+            if relation_name not in source_relation_set
+        ),
+    )
+    extents.update(_source_extents(warehouse_partitions=warehouse_partitions))
     baselines: dict[str, AdapterDirectFingerprintRecord] | None = _fingerprint_baselines(
         analysis=analysis,
         connection=connection,
@@ -133,6 +176,7 @@ def build_state_payload(
             extents=extents,
             captured_at=captured_at,
             kafka_lag_reader=kafka_lag_reader,
+            warehouse_partitions=warehouse_partitions,
         ),
     }
 
@@ -286,6 +330,24 @@ def _extents(
     return extents
 
 
+def _source_extents(
+    *,
+    warehouse_partitions: dict[str, dict[int, _WarehousePartitionObservation]],
+) -> dict[str, dict[str, object]]:
+    extents: dict[str, dict[str, object]] = {}
+    for relation_name, observations_by_partition in warehouse_partitions.items():
+        observations: tuple[_WarehousePartitionObservation, ...] = tuple(
+            observations_by_partition.values()
+        )
+        if observations:
+            extents[relation_name] = {
+                "oldest": min(observation.oldest for observation in observations),
+                "newest": max(observation.newest for observation in observations),
+                "rows": sum(observation.rows for observation in observations),
+            }
+    return extents
+
+
 def _model_states(
     *,
     analysis: CompileAnalysis,
@@ -344,8 +406,9 @@ def _source_states(
     extents: dict[str, dict[str, object]],
     captured_at: str,
     kafka_lag_reader: KafkaLagReader | None,
+    warehouse_partitions: dict[str, dict[int, _WarehousePartitionObservation]],
 ) -> dict[str, dict[str, object]]:
-    states: dict[str, dict[str, object]] = {}
+    inputs: list[_SourceStateInput] = []
     for source in analysis.compiled_project.sources:
         relation_name: str = analysis.realized_project.relation_name_by_logical_key[source.key]
         extent: dict[str, object] = extents.get(relation_name, {})
@@ -357,31 +420,44 @@ def _source_states(
             database=database,
             reader=kafka_lag_reader,
         )
-        throughput: dict[str, object] | None = _throughput(
-            connection=connection,
-            database=database,
-            relation_name=relation_name,
-            newest_age_seconds=age,
-            has_lineage=relation_name in extents,
+        inputs.append(
+            _SourceStateInput(
+                source=source,
+                relation_name=relation_name,
+                extent=extent,
+                newest=newest,
+                age=age,
+                kafka_lag=kafka_lag,
+            )
         )
-        states[source.key.name] = {
-            "relationName": relation_name,
-            "rows": stats.get(relation_name, {}).get("rows"),
-            "oldestEventAt": _optional_str(extent.get("oldest")),
-            "newestEventAt": newest,
-            "lastArrivalSeconds": age,
-            "kafkaLagMessages": None if kafka_lag is None else kafka_lag.total_messages,
+    newest_ages: dict[str, float | None] = {
+        item.relation_name: item.age for item in inputs if item.relation_name in extents
+    }
+    throughputs: dict[str, dict[str, object]] = _throughputs(
+        connection=connection,
+        database=database,
+        newest_ages=newest_ages,
+    )
+    states: dict[str, dict[str, object]] = {}
+    for item in inputs:
+        throughput: dict[str, object] | None = throughputs.get(item.relation_name)
+        states[item.source.key.name] = {
+            "relationName": item.relation_name,
+            "rows": stats.get(item.relation_name, {}).get("rows"),
+            "oldestEventAt": _optional_str(item.extent.get("oldest")),
+            "newestEventAt": item.newest,
+            "lastArrivalSeconds": item.age,
+            "kafkaLagMessages": (None if item.kafka_lag is None else item.kafka_lag.total_messages),
             "freshness": _freshness(
-                newest=newest, captured_at=captured_at, policy=source.source.freshness
+                newest=item.newest,
+                captured_at=captured_at,
+                policy=item.source.source.freshness,
             ),
             "throughput": throughput,
             "rowsPerSecond": _rows_per_second(throughput),
             "partitions": _partitions(
-                connection=connection,
-                database=database,
-                relation_name=relation_name,
-                has_lineage=relation_name in extents,
-                kafka_lag=kafka_lag,
+                warehouse_partitions=warehouse_partitions.get(item.relation_name),
+                kafka_lag=item.kafka_lag,
             ),
         }
     return states
@@ -400,37 +476,38 @@ def _policies_by_model(
     return policies
 
 
-def _throughput(
+def _throughputs(
     *,
     connection: AdapterConnection,
     database: str,
-    relation_name: str,
-    newest_age_seconds: float | None,
-    has_lineage: bool,
-) -> dict[str, object] | None:
-    if not has_lineage:
-        return None
-    window_seconds: int
-    bucket_seconds: int
-    window_seconds, bucket_seconds = choose_throughput_window(newest_age_seconds=newest_age_seconds)
-    query: str = build_throughput_query(
+    newest_ages: dict[str, float | None],
+) -> dict[str, dict[str, object]]:
+    if not newest_ages:
+        return {}
+    windows: tuple[tuple[str, int, int], ...] = tuple(
+        (relation_name, *choose_throughput_window(newest_age_seconds=age))
+        for relation_name, age in newest_ages.items()
+    )
+    query: str = build_throughputs_query(
         database=database,
-        relation_name=relation_name,
-        window_seconds=window_seconds,
-        bucket_seconds=bucket_seconds,
+        windows=windows,
     )
-    counts_by_bucket: dict[int, int] = {}
+    counts_by_relation: dict[str, dict[int, int]] = {}
     for row in connection.query(query).named_rows():
-        counts_by_bucket[int(str(row["bucket"]))] = int(str(row["rows"]))
-    buckets: list[int] = _zero_filled_buckets(
-        counts_by_bucket=counts_by_bucket,
-        window_seconds=window_seconds,
-        bucket_seconds=bucket_seconds,
-    )
+        counts_by_relation.setdefault(str(row["relation"]), {})[int(str(row["bucket"]))] = int(
+            str(row["rows"])
+        )
     return {
-        "windowSeconds": window_seconds,
-        "bucketSeconds": bucket_seconds,
-        "buckets": buckets,
+        relation_name: {
+            "windowSeconds": window_seconds,
+            "bucketSeconds": bucket_seconds,
+            "buckets": _zero_filled_buckets(
+                counts_by_bucket=counts_by_relation.get(relation_name, {}),
+                window_seconds=window_seconds,
+                bucket_seconds=bucket_seconds,
+            ),
+        }
+        for relation_name, window_seconds, bucket_seconds in windows
     }
 
 
@@ -462,31 +539,25 @@ def _rows_per_second(throughput: dict[str, object] | None) -> float | None:
 
 def _partitions(
     *,
-    connection: AdapterConnection,
-    database: str,
-    relation_name: str,
-    has_lineage: bool,
+    warehouse_partitions: dict[int, _WarehousePartitionObservation] | None,
     kafka_lag: KafkaLagSnapshot | None,
 ) -> list[dict[str, object]] | None:
-    if not has_lineage and kafka_lag is None:
+    if warehouse_partitions is None and kafka_lag is None:
         return None
     lag_by_partition: dict[int, KafkaPartitionLag] = {
         item.partition: item for item in (() if kafka_lag is None else kafka_lag.partitions)
     }
     partitions_by_id: dict[int, dict[str, object]] = {}
-    if has_lineage:
-        query: str = build_partitions_query(database=database, relation_name=relation_name)
-        for row in connection.query(query).named_rows():
-            partition: int = int(str(row["partition"]))
-            broker_lag: KafkaPartitionLag | None = lag_by_partition.get(partition)
-            partitions_by_id[partition] = {
-                "partition": partition,
-                "maxOffset": int(str(row["max_offset"])),
-                "newestEventAt": str(row["newest"]),
-                "committedOffset": None if broker_lag is None else broker_lag.committed_offset,
-                "endOffset": None if broker_lag is None else broker_lag.end_offset,
-                "kafkaLagMessages": None if broker_lag is None else broker_lag.lag_messages,
-            }
+    for observation in (warehouse_partitions or {}).values():
+        broker_lag: KafkaPartitionLag | None = lag_by_partition.get(observation.partition)
+        partitions_by_id[observation.partition] = {
+            "partition": observation.partition,
+            "maxOffset": observation.max_offset,
+            "newestEventAt": observation.newest,
+            "committedOffset": None if broker_lag is None else broker_lag.committed_offset,
+            "endOffset": None if broker_lag is None else broker_lag.end_offset,
+            "kafkaLagMessages": None if broker_lag is None else broker_lag.lag_messages,
+        }
     for partition, broker_lag in lag_by_partition.items():
         partitions_by_id.setdefault(
             partition,
@@ -500,6 +571,31 @@ def _partitions(
             },
         )
     return [partitions_by_id[partition] for partition in sorted(partitions_by_id)]
+
+
+def _warehouse_partitions(
+    *,
+    connection: AdapterConnection,
+    database: str,
+    relation_names: tuple[str, ...],
+) -> dict[str, dict[int, _WarehousePartitionObservation]]:
+    if not relation_names:
+        return {}
+    observations: dict[str, dict[int, _WarehousePartitionObservation]] = {
+        relation_name: {} for relation_name in relation_names
+    }
+    query: str = build_partitions_query(database=database, relation_names=relation_names)
+    for row in connection.query(query).named_rows():
+        relation_name: str = str(row["relation"])
+        partition: int = int(str(row["partition"]))
+        observations[relation_name][partition] = _WarehousePartitionObservation(
+            partition=partition,
+            max_offset=int(str(row["max_offset"])),
+            oldest=str(row["oldest"]),
+            newest=str(row["newest"]),
+            rows=int(str(row["rows"])),
+        )
+    return observations
 
 
 def _kafka_lag(
@@ -635,34 +731,42 @@ def build_extents_query(*, database: str, relation_names: tuple[str, ...]) -> st
     return " UNION ALL ".join(selects)
 
 
-def build_throughput_query(
+def build_throughputs_query(
     *,
     database: str,
-    relation_name: str,
-    window_seconds: int,
-    bucket_seconds: int,
+    windows: tuple[tuple[str, int, int], ...],
 ) -> str:
-    """Landed-event counts per bucket over one window of a lineage-bearing relation."""
+    """Landed-event counts for every source in one warehouse round trip."""
 
-    return (
-        "SELECT toUnixTimestamp(toStartOfInterval("
-        f"_replay_landed_at, INTERVAL {bucket_seconds} SECOND)) AS bucket, "
-        "count() AS rows "
-        f"FROM `{database}`.`{relation_name}` "
-        f"WHERE _replay_landed_at >= now64(3) - INTERVAL {window_seconds} SECOND "
-        "GROUP BY bucket ORDER BY bucket"
-    )
+    selects: list[str] = [
+        (
+            f"SELECT '{relation_name}' AS relation, "
+            "toUnixTimestamp(toStartOfInterval("
+            f"_replay_landed_at, INTERVAL {bucket_seconds} SECOND)) AS bucket, "
+            "count() AS rows "
+            f"FROM `{database}`.`{relation_name}` "
+            f"WHERE _replay_landed_at >= now64(3) - INTERVAL {window_seconds} SECOND "
+            "GROUP BY bucket"
+        )
+        for relation_name, window_seconds, bucket_seconds in windows
+    ]
+    return " UNION ALL ".join(selects) + " ORDER BY relation, bucket"
 
 
-def build_partitions_query(*, database: str, relation_name: str) -> str:
-    """Per-partition landed offsets for one managed raw relation."""
+def build_partitions_query(*, database: str, relation_names: tuple[str, ...]) -> str:
+    """Per-partition landed offsets for every source in one warehouse round trip."""
 
-    return (
-        "SELECT _replay_partition AS partition, "
-        "max(_replay_offset) AS max_offset, "
-        "toString(max(_replay_landed_at)) AS newest "
-        f"FROM `{database}`.`{relation_name}` GROUP BY partition ORDER BY partition"
-    )
+    selects: list[str] = [
+        (
+            f"SELECT '{relation_name}' AS relation, _replay_partition AS partition, "
+            "max(_replay_offset) AS max_offset, "
+            "toString(min(_replay_landed_at)) AS oldest, "
+            "toString(max(_replay_landed_at)) AS newest, count() AS rows "
+            f"FROM `{database}`.`{relation_name}` GROUP BY partition"
+        )
+        for relation_name in relation_names
+    ]
+    return " UNION ALL ".join(selects) + " ORDER BY relation, partition"
 
 
 def choose_throughput_window(*, newest_age_seconds: float | None) -> tuple[int, int]:
