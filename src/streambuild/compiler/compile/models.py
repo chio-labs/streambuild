@@ -216,6 +216,8 @@ class DesiredMaterializedView:
     deps: tuple[ObjectKey, ...]
     spec: MaterializedViewSpec
     logical_model_name: str | None = field(default=None, compare=False)
+    refresh: str | None = field(default=None, compare=False)
+    append: bool = field(default=True, compare=False)
 
     @property
     def name(self) -> str:

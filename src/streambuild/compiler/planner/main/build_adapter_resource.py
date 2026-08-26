@@ -60,6 +60,8 @@ def build_adapter_resource(
             target_relation_name=desired_object.target_table_name,
             query=desired_object.query,
             database_template=_database_template(desired_object),
+            refresh=desired_object.refresh,
+            append=desired_object.append,
         )
     return AdapterView(
         name=desired_object.name,
