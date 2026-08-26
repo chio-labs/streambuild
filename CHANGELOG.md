@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.34.0](https://github.com/chio-labs/streambuild/compare/v0.33.1...v0.34.0) (2026-08-26)
+
+
+### Features
+
+* allow directional cross-pipeline references ([#202](https://github.com/chio-labs/streambuild/issues/202)) ([93c55d4](https://github.com/chio-labs/streambuild/commit/93c55d477a3e4901ba186b10e5e7104926e4f827))
+
 ## [0.33.1](https://github.com/chio-labs/streambuild/compare/v0.33.0...v0.33.1) (2026-08-26)
 
 
