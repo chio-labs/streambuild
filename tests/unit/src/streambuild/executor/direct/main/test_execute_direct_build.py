@@ -70,6 +70,8 @@ from tests.unit.src.streambuild.executor.workflow.helpers import (
             expected_source_step_ids=(
                 "prepare_source_kafka__orders",
                 "prepare_source_raw__orders",
+                "bootstrap_source_mv__orders",
+                "pause_source_mv__orders",
                 "activate_source_mv__orders",
             ),
             unexpected_source_step_ids=(
