@@ -2102,11 +2102,17 @@ def test_given_postgres_source_when_building_direct_then_refresh_view_lands_rows
                     ).result_rows[0][0]
                 )
             )
+            refresh_ddl: str = str(
+                clickhouse_client.query(
+                    f"SHOW CREATE TABLE {clickhouse_database}.mv__pg__course"
+                ).result_rows[0][0]
+            )
         finally:
             connection.close()
 
     assert tuple((str(row[0]), str(row[1])) for row in rows) == test_case.expected_rows
     assert refresh_count == 1
+    assert f"REFRESH EVERY {test_case.refresh} APPEND" in refresh_ddl
 
 
 @pytest.mark.integration
