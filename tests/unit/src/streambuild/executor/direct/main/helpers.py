@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from streambuild.adapter.exceptions import AdapterAuthenticationError
+from streambuild.adapter.exceptions import AdapterAuthenticationError, AdapterWarehouseError
 from streambuild.adapter.models import (
     AdapterDirectFingerprintRecord,
     AdapterMutationResult,
@@ -45,6 +45,23 @@ class RecordingDirectBuildConnection(RecordingAdapterConnection):
     ) -> AdapterOwnedResourceSnapshot:
         del database, target_database
         return AdapterOwnedResourceSnapshot(status="absent", resources=())
+
+
+class FailingPausedSourceConnection(RecordingDirectBuildConnection):
+    def __init__(self) -> None:
+        super().__init__()
+        self.attempted_mutations: list[str] = []
+
+    def execute_workflow_sql(self, statement: str) -> AdapterMutationResult:
+        self.attempted_mutations.append(statement)
+        return {
+            True: self._reject_mutation,
+            False: super().execute_workflow_sql,
+        }[statement == "SELECT invalid;"](statement)
+
+    def _reject_mutation(self, statement: str) -> AdapterMutationResult:
+        del statement
+        raise AdapterWarehouseError("injected failure while source is paused")
 
 
 class DistinctCaptureDirectBuildConnection(RecordingDirectBuildConnection):
