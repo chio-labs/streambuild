@@ -643,6 +643,14 @@ class StateSnapshotTestCase:
 
 
 @dataclass(frozen=True)
+class SourceObservationBatchTestCase:
+    description: str
+    relation_count: int
+    expected_statement_count: int
+    expected_union_count: int
+
+
+@dataclass(frozen=True)
 class ConnectionSettingsPayloadTestCase:
     description: str
     expected_settings: dict[str, str]
