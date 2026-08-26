@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.34.2](https://github.com/chio-labs/streambuild/compare/v0.34.1...v0.34.2) (2026-08-26)
+
+
+### Bug Fixes
+
+* keep snapshot refresh responsive ([#206](https://github.com/chio-labs/streambuild/issues/206)) ([0f8be78](https://github.com/chio-labs/streambuild/commit/0f8be7823f742b64504d4ab573983fe7df3df2c5))
+
 ## [0.34.1](https://github.com/chio-labs/streambuild/compare/v0.34.0...v0.34.1) (2026-08-26)
 
 
