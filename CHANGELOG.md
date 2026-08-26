@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.34.1](https://github.com/chio-labs/streambuild/compare/v0.34.0...v0.34.1) (2026-08-26)
+
+
+### Bug Fixes
+
+* preserve refreshable view scheduling ([#204](https://github.com/chio-labs/streambuild/issues/204)) ([fb52c7f](https://github.com/chio-labs/streambuild/commit/fb52c7ff01ac954bfee5150fbbc7c7580ef65551))
+
 ## [0.34.0](https://github.com/chio-labs/streambuild/compare/v0.33.1...v0.34.0) (2026-08-26)
 
 
