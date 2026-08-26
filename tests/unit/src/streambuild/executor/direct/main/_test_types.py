@@ -46,6 +46,13 @@ class DirectPersistenceFailureTestCase:
 
 
 @dataclass(frozen=True)
+class DirectSourceRecoveryTestCase:
+    description: str
+    expected_failed_step_id: str
+    expected_attempted_mutations: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class DirectFingerprintPersistenceTestCase:
     description: str
     expected_warning_fragment: str

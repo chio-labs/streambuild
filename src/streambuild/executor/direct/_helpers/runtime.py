@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import replace
 from hashlib import sha256
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
@@ -53,6 +54,7 @@ def execute_direct_build_workflow(
     captures: list[DirectReplayCapture] = []
     attempted: list[WarehouseStatement] = []
     results: list[WorkflowStatementResult] = []
+    completed_step_ids: set[str] = set()
     template_statement: WarehouseStatement
     for template_statement in workflow.template.statements:
         statement: WarehouseStatement = template_statement
@@ -76,6 +78,7 @@ def execute_direct_build_workflow(
                 emitter=emitter,
             )
             results.extend(step_execution.statement_results)
+            completed_step_ids.add(statement.step_id)
             capture_runtime: DirectRuntimeReplay | None = runtime_by_capture_step.get(
                 statement.step_id
             )
@@ -97,6 +100,16 @@ def execute_direct_build_workflow(
                 if isinstance(error, WorkflowExecutionError)
                 else statement.step_id
             )
+            recovery_statements: tuple[WarehouseStatement, ...] = _recover_managed_sources(
+                workflow=workflow,
+                connection=connection,
+                emitter=emitter,
+                cause=cause,
+                completed_step_ids=completed_step_ids,
+                failed_step_id=failed_step_id,
+                start_sequence=len(attempted) + 1,
+            )
+            attempted.extend(recovery_statements)
             raise DirectWorkflowExecutionError(
                 workflow=_exact_workflow(workflow=workflow, statements=tuple(attempted)),
                 partial_result=WorkflowExecutionResult(statement_results=tuple(results)),
@@ -110,6 +123,50 @@ def execute_direct_build_workflow(
         execution=execution,
         captures=tuple(captures),
     )
+
+
+def _recover_managed_sources(
+    *,
+    workflow: DirectBuildWorkflow,
+    connection: AdapterConnection,
+    emitter: WorkflowEventEmitter | None,
+    cause: BaseException,
+    completed_step_ids: set[str],
+    failed_step_id: str,
+    start_sequence: int,
+) -> tuple[WarehouseStatement, ...]:
+    source_was_paused: bool = failed_step_id.startswith("pause_source_") or any(
+        step_id.startswith("pause_source_") for step_id in completed_step_ids
+    )
+    if not source_was_paused:
+        return ()
+    recovered: list[WarehouseStatement] = []
+    recovery_statement: WarehouseStatement
+    for recovery_statement in workflow.source_recovery_statements:
+        activation_step_id: str = recovery_statement.step_id.replace("recover_", "activate_", 1)
+        if activation_step_id in completed_step_ids:
+            continue
+        statement: WarehouseStatement = replace(
+            recovery_statement,
+            sequence=start_sequence + len(recovered),
+        )
+        try:
+            _ = execute_warehouse_workflow(
+                statements=(statement,),
+                connection=connection,
+                emitter=emitter,
+            )
+        except (AdapterError, KeyboardInterrupt, WorkflowExecutionError) as recovery_error:
+            recovery_cause: BaseException = (
+                recovery_error.cause
+                if isinstance(recovery_error, WorkflowExecutionError)
+                else recovery_error
+            )
+            cause.add_note(
+                f"Managed source recovery '{statement.step_id}' also failed: {recovery_cause}"
+            )
+        recovered.append(statement)
+    return tuple(recovered)
 
 
 def _emit_workflow_prepared(
