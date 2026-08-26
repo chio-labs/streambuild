@@ -103,6 +103,44 @@ def test_given_established_connection_when_probe_fails_then_same_client_can_reco
     "test_case",
     [
         WarehouseRuntimeRecoveryTestCase(
+            description="explicit health check wakes the background worker",
+            failure_message="",
+            expected_attempts=2,
+            expected_state="connected",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_waiting_recovery_worker_when_requesting_health_check_then_probe_runs_immediately(
+    test_case: WarehouseRuntimeRecoveryTestCase,
+) -> None:
+    probe_completed: threading.Event = threading.Event()
+    connection_mock: MagicMock = MagicMock()
+    connection_mock.capture_warehouse_timestamp.side_effect = lambda: probe_completed.set()
+    runtime: WarehouseRuntime = WarehouseRuntime(
+        connection=cast(AdapterConnection, connection_mock),
+        observation_connection=None,
+        connection_factory=None,
+        observation_connection_factory=None,
+        database="analytics",
+    )
+
+    runtime.start()
+    first_probe_completed: bool = probe_completed.wait(timeout=1.0)
+    probe_completed.clear()
+    runtime.request_health_check()
+    requested_probe_completed: bool = probe_completed.wait(timeout=1.0)
+    runtime.close()
+
+    assert first_probe_completed is True
+    assert requested_probe_completed is True
+    assert connection_mock.capture_warehouse_timestamp.call_count == test_case.expected_attempts
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        WarehouseRuntimeRecoveryTestCase(
             description="read traffic receives an isolated bounded connection",
             failure_message="",
             expected_attempts=1,

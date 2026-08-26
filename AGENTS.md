@@ -27,9 +27,10 @@ revision will fail before tests start.
   multiple linked issues.
 - Local commits are checkpoints and do not trigger CI. Complete all related implementation and
   review before the first push.
-- Use targeted tests while developing, then run the full unit and integration suites locally before
-  pushing broad planner, executor, adapter, API, or UI behavior changes. CI is an independent gate,
-  not a substitute for locally reproducible coverage; document any suite that cannot run locally.
+- Run targeted regressions and fast local static/unit checks before pushing. Do not delay a ready
+  commit or push solely to run or wait for long full integration, browser, or end-to-end suites that
+  CI already executes; run those locally only when they are needed to reproduce or diagnose the
+  change, or when the user explicitly requests them. CI remains the required broad-suite gate.
 - Review the complete local diff against the target branch and resolve findings before pushing.
 - Do not push partial or overlapping branches merely to start CI.
 - Once consolidated work is ready, push once and open one ready pull request so CI and configured

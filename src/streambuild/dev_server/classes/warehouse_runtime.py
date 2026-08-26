@@ -103,6 +103,11 @@ class WarehouseRuntime:
                 self._attempt_connections()
         return self.connection is not None
 
+    def request_health_check(self) -> None:
+        """Wake the recovery worker without blocking the caller on warehouse traffic."""
+
+        self._retry_now.set()
+
     def status(self) -> dict[str, object]:
         """Return cheap connection and recovery state for the status endpoint."""
 
