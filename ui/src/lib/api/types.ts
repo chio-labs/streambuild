@@ -71,6 +71,14 @@ export type RunEventFeed = {
 		readRowsPerSecond?: number;
 		readBytesPerSecond?: number;
 		settings?: Record<string, string>;
+		replayOffsetProgress?: {
+			percentage: number;
+			etaSeconds: number | null;
+			completedSpan: number;
+			totalSpan: number;
+			observedPartitions: number;
+			totalPartitions: number;
+		};
 	} | null;
 };
 

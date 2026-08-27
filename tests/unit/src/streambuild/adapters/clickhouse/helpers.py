@@ -48,6 +48,7 @@ class StubRawClickHouseClient:
         self._result: FakeRawClickHouseQueryResult = result
         self.closed: bool = False
         self.query_settings: list[Mapping[str, str] | None] = []
+        self.queries: list[str] = []
 
     def command(self, *, cmd: str, settings: Mapping[str, str] | None = None) -> None:
         del cmd
@@ -56,7 +57,7 @@ class StubRawClickHouseClient:
     def query(
         self, *, query: str, settings: Mapping[str, str] | None = None
     ) -> FakeRawClickHouseQueryResult:
-        del query
+        self.queries.append(query)
         self.query_settings.append(settings)
         return self._result
 
