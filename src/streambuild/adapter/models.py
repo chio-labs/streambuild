@@ -929,6 +929,15 @@ class AdapterWarehouseActivity:
 
 
 @dataclass(frozen=True)
+class AdapterWarehouseKafkaConsumers:
+    """Managed Kafka consumer health observed inside the warehouse."""
+
+    expected_tables: int
+    polling_tables: int
+    exception_tables: int
+
+
+@dataclass(frozen=True)
 class AdapterWarehouseTable:
     """Active physical footprint for one project-database table."""
 
@@ -954,6 +963,9 @@ class AdapterWarehouseHealth:
     activity: AdapterWarehouseActivity | None
     tables: tuple[AdapterWarehouseTable, ...] | None
     collection_duration_ms: int
+    kafka_consumers: AdapterWarehouseKafkaConsumers | None = None
+    capacity_warning_fraction: float | None = None
+    capacity_critical_fraction: float | None = None
     warnings: tuple[str, ...] = ()
     stale: bool = False
     measured_at: str | None = None

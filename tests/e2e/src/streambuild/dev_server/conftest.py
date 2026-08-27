@@ -133,6 +133,20 @@ def running_lineage_server(
         'confirmation = "DEPLOY_MOVING_EVENTS"\n',
         encoding="utf-8",
     )
+    tests_dir: Path = project_dir / "tests" / "overview"
+    tests_dir.mkdir(parents=True, exist_ok=True)
+    (tests_dir / "test_overview_state.sql").write_text(
+        'TEST (name "overview target state");\n\n'
+        "WITH\n"
+        "__source__moving_events AS (\n"
+        "  SELECT 'order-1' AS order_id, now64(3) AS _replay_timestamp\n"
+        "),\n"
+        "__expected__moving_orders AS (\n"
+        "  SELECT 'order-1' AS order_id, now64(3) AS _replay_timestamp\n"
+        ")\n"
+        "SELECT 1\n",
+        encoding="utf-8",
+    )
     api_port: int = available_port()
     log_path: Path = Path(output_path) / "stb-dev.log"
     process: subprocess.Popen[str] = start_dev_process(

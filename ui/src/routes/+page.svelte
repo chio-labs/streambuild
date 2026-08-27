@@ -6,8 +6,7 @@
 	import { getProject } from '$lib/api/main/project/get-project';
 	import { auditCounts } from '$lib/domain/main/quality/audit-counts';
 	import { testCounts } from '$lib/domain/main/quality/test-counts';
-	import { driftedModels } from '$lib/domain/main/summaries/drifted-models';
-	import { freshnessSummary } from '$lib/domain/main/summaries/freshness-summary';
+	import { projectHealthSummary } from '$lib/domain/main/summaries/project-health-summary';
 	import { formatAgo } from '$lib/formatting/main/format-ago';
 	import { formatCompact } from '$lib/formatting/main/format-compact';
 	import { formatDuration } from '$lib/formatting/main/format-duration';
@@ -22,8 +21,28 @@
 	// Not "did last night's run succeed" — there are no runs. The question a
 	// streaming operator actually has is: is data moving, and does the warehouse
 	// still match my code?
-	const freshness = $derived(freshnessSummary(project));
-	const drifted = $derived(driftedModels(project));
+	const healthSummary = $derived(projectHealthSummary(project));
+	const freshness = $derived(healthSummary.freshness);
+	const ingest = $derived(healthSummary.ingest);
+	const ingestLabel = $derived(
+		ingest.state === 'healthy'
+			? 'Healthy'
+			: ingest.state === 'behind'
+				? 'Behind'
+				: ingest.state === 'error'
+					? 'Error'
+					: ingest.state === 'partial'
+						? 'Partial'
+						: 'No Kafka'
+	);
+	const ingestTone = $derived(
+		ingest.state === 'healthy' || ingest.state === 'no_kafka'
+			? 'var(--sb-success)'
+			: ingest.state === 'behind' || ingest.state === 'partial'
+				? 'var(--sb-warning)'
+				: 'var(--sb-error)'
+	);
+	const drifted = $derived(healthSummary.drifted);
 	const visibleDrifted = $derived(drifted.slice(0, 24));
 	const hiddenDriftedCount = $derived(drifted.length - visibleDrifted.length);
 	const audits = $derived(auditCounts(project.audits));
@@ -48,10 +67,8 @@
 	const totalThroughput = $derived(
 		project.sources.reduce((sum, source) => sum + source.live.rowsPerSecond, 0)
 	);
-	const laggingSources = $derived(
-		project.sources.filter(
-			(source) => source.live.freshness === 'lagging' || source.live.freshness === 'stalled'
-		)
+	const monitoredSources = $derived(
+		project.sources.filter((source) => source.live.freshness !== null).length
 	);
 
 	const worstAudit = $derived(
@@ -106,12 +123,13 @@
 				class="text-[var(--sb-text-faint)] flex items-baseline gap-2 pb-2 font-mono text-[10px] uppercase tracking-[0.14em]"
 			>
 				Ingest
-				<span class="ml-auto normal-case tracking-normal">
-					{formatRate(totalThroughput)} across {project.sources.length}
-					{project.sources.length === 1 ? 'source' : 'sources'}
-					{#if laggingSources.length}
-						· <span style:color="var(--sb-warning)">{laggingSources.length} lagging</span>
-					{/if}
+				<span class="ml-auto flex flex-wrap items-center justify-end gap-x-2 normal-case tracking-normal">
+					<strong class="font-medium uppercase" style:color={ingestTone}>{ingestLabel}</strong>
+					<span>{formatRate(totalThroughput)}</span>
+					{#if ingest.polling !== null}<span>{ingest.polling}/{ingest.managed} polling</span>{/if}
+					{#if ingest.exceptions !== null}<span>{ingest.exceptions} errors</span>{/if}
+					<span>{ingest.behind} behind</span>
+					{#if ingest.lagUnavailable}<span>{ingest.lagUnavailable} lag unavailable</span>{/if}
 				</span>
 			</div>
 
@@ -187,6 +205,15 @@
 									{#if behind}<span style:color="var(--sb-warning)"> · {behind} behind</span>{/if}
 								</span>
 							{/if}
+							{#if source.live.partitions.length > 0 && source.live.partitions.length <= PARTITION_TICK_LIMIT}
+								{@const behind = source.live.partitions.filter(
+									(partition) => partition.kafkaLagMessages !== null && partition.kafkaLagMessages > 0
+								).length}
+								<div class="text-muted-foreground pt-1 font-mono text-[10px]">
+									{source.live.partitions.length - behind}/{source.live.partitions.length} caught up
+									{#if behind}<span style:color="var(--sb-warning)"> · {behind} behind</span>{/if}
+								</div>
+							{/if}
 						</div>
 
 						<div class="ml-auto shrink-0 text-right">
@@ -224,9 +251,20 @@
 				<div
 					class="text-[var(--sb-text-faint)] flex items-baseline gap-2 pb-2 font-mono text-[10px] uppercase tracking-[0.14em]"
 				>
-					Freshness <span class="normal-case tracking-normal">— {freshness.total} models</span>
+					Expected freshness <span class="normal-case tracking-normal">— {freshness.total} models</span>
 				</div>
 				<div class="rounded-[4px] border border-border p-3.5">
+					{#if freshness.monitored === 0}
+						<div class="text-[13px] font-medium">Not configured</div>
+						<div class="text-muted-foreground mt-1 text-[12px]">
+							{monitoredSources} of {project.sources.length} source policies configured · {freshness.unmonitored}
+							models not monitored
+						</div>
+						<div class="text-muted-foreground mt-2 text-[11.5px]">
+							Live Kafka transport health remains measured in Ingest above.
+						</div>
+						<a href="/sources" class="text-primary mt-2 inline-block font-mono text-[11px] hover:underline">Review sources →</a>
+					{:else}
 					<div class="flex h-3.5 gap-[3px] overflow-hidden rounded-[2px]">
 						{#each Array(freshness.fresh) as _, index (`f${index}`)}
 							<span class="flex-1 bg-[var(--sb-success)]" title="fresh"></span>
@@ -237,11 +275,8 @@
 						{#each Array(freshness.stalled) as _, index (`s${index}`)}
 							<span class="flex-1 bg-[var(--sb-error)]" title="stalled"></span>
 						{/each}
-						{#each Array(freshness.drift) as _, index (`d${index}`)}
-							<span class="flex-1 bg-[var(--sb-stale)]" title="drift"></span>
-						{/each}
 						{#each Array(freshness.unknown) as _, index (`u${index}`)}
-							<span class="flex-1 bg-[var(--sb-text-faint)]" title="unknown: no freshness policy"></span>
+							<span class="flex-1 bg-[var(--sb-border-strong)]" title="not monitored"></span>
 						{/each}
 					</div>
 					<div class="flex flex-wrap gap-4 pt-2.5 font-mono text-[11px]">
@@ -258,12 +293,8 @@
 							stalled</span
 						>
 						<span class="flex items-center gap-1.5"
-							><span class="h-1.5 w-1.5 rounded-[2px] bg-[var(--sb-stale)]"></span>{freshness.drift}
-							drift</span
-						>
-						<span class="flex items-center gap-1.5"
-							><span class="h-1.5 w-1.5 rounded-[2px] bg-[var(--sb-text-faint)]"></span>{freshness.unknown}
-							unknown</span
+							><span class="h-1.5 w-1.5 rounded-[2px] bg-[var(--sb-border-strong)]"></span>{freshness.unmonitored}
+							not monitored</span
 						>
 					</div>
 
@@ -291,6 +322,7 @@
 							{/each}
 						</div>
 					{/if}
+					{/if}
 				</div>
 			</div>
 
@@ -300,7 +332,7 @@
 				>
 					Quality
 					<span class="normal-case tracking-normal"
-						>— checked {formatAgo(project.audits[0]?.result?.checkedAt ?? null, project.capturedAt)}</span
+						>— audits checked {formatAgo(project.audits[0]?.result?.checkedAt ?? null, project.capturedAt)}</span
 					>
 				</div>
 				<div class="rounded-[4px] border border-border p-3.5">
@@ -322,14 +354,19 @@
 								{/if}
 							</div>
 						</div>
-						<div>
+						<div data-testid="quality-tests-summary">
 							<div class="text-[var(--sb-text-faint)] pb-1 font-mono text-[10px]">Tests</div>
+							{#if tests.executed === 0 && tests.total > 0}
+								<div class="text-[13px] font-medium">Not run on {project.target}</div>
+								<div class="text-muted-foreground pt-1 font-mono text-[10.5px]">{tests.total} configured</div>
+							{:else}
 							<div class="flex items-baseline gap-1.5">
 								<span class="font-display text-[22px] font-semibold leading-none"
 									>{tests.passing}</span
 								>
 								<span class="text-muted-foreground font-mono text-[12px]">/ {tests.total}</span>
 							</div>
+							{/if}
 							<div class="flex gap-3 pt-1.5 font-mono text-[10.5px]">
 								{#if tests.failing}
 									<span style:color="var(--sb-error)">{tests.failing} fail</span>

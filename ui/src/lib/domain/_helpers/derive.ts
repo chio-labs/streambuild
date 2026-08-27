@@ -20,9 +20,11 @@ import { daysBetween } from '$lib/formatting/main/days-between';
 import { formatEngineFamily } from '$lib/formatting/main/format-engine-family';
 import type { Graph, GraphEdge, GraphNode } from '$lib/lineage/types';
 import type { Plan, Selector } from '$lib/planning/types';
+import type { WarehouseHealth } from '$lib/warehouse-health/types';
 
 type PlanEntryReason = Plan['entries'][number]['reason'];
 type ReconstructionState = ReconstructionCoverage['state'];
+type IngestHealthState = 'healthy' | 'behind' | 'error' | 'partial' | 'no_kafka';
 
 // ─── lookups ─────────────────────────────────────────────────────────────────
 
@@ -52,7 +54,14 @@ function testsForModel(project: Project, modelName: string): SqlTest[] {
 	return project.tests.filter((test) => test.targets.includes(modelName));
 }
 
-type CheckCounts = { total: number; passing: number; warning: number; failing: number };
+type CheckCounts = {
+	total: number;
+	passing: number;
+	warning: number;
+	failing: number;
+	executed: number;
+	notRun: number;
+};
 
 function auditCounts(audits: Audit[]): CheckCounts {
 	let passing = 0;
@@ -65,7 +74,8 @@ function auditCounts(audits: Audit[]): CheckCounts {
 		else if (audit.severity === 'warning') warning += 1;
 		else failing += 1;
 	}
-	return { total: audits.length, passing, warning, failing };
+	const executed: number = passing + warning + failing;
+	return { total: audits.length, passing, warning, failing, executed, notRun: audits.length - executed };
 }
 
 function testCounts(tests: SqlTest[]): CheckCounts {
@@ -76,7 +86,8 @@ function testCounts(tests: SqlTest[]): CheckCounts {
 		if (test.result.passed) passing += 1;
 		else failing += 1;
 	}
-	return { total: tests.length, passing, warning: 0, failing };
+	const executed: number = passing + failing;
+	return { total: tests.length, passing, warning: 0, failing, executed, notRun: tests.length - executed };
 }
 
 // ─── graph: logical ──────────────────────────────────────────────────────────
@@ -728,6 +739,8 @@ type FreshnessSummary = {
 	stalled: number;
 	drift: number;
 	unknown: number;
+	monitored: number;
+	unmonitored: number;
 	total: number;
 	offenders: Model[];
 };
@@ -741,23 +754,35 @@ function freshnessSummary(project: Project): FreshnessSummary {
 	const offenders: Model[] = [];
 
 	for (const model of project.models) {
-		if (model.status === 'fresh') fresh += 1;
-		if (model.status === 'lagging') {
+		const evaluatedFreshness: Model['live']['freshness'] = model.live.freshness;
+		if (evaluatedFreshness === 'fresh') fresh += 1;
+		if (evaluatedFreshness === 'lagging') {
 			lagging += 1;
 			offenders.push(model);
 		}
-		if (model.status === 'stalled') {
+		if (evaluatedFreshness === 'stalled') {
 			stalled += 1;
 			offenders.push(model);
 		}
 		if (model.status === 'drift') {
 			drift += 1;
-			offenders.push(model);
+			if (!offenders.includes(model)) offenders.push(model);
 		}
-		if (model.status === 'unknown') unknown += 1;
+		if (evaluatedFreshness === null || evaluatedFreshness === undefined) unknown += 1;
 	}
 
-	return { fresh, lagging, stalled, drift, unknown, total: project.models.length, offenders };
+	const monitored: number = fresh + lagging + stalled;
+	return {
+		fresh,
+		lagging,
+		stalled,
+		drift,
+		unknown,
+		monitored,
+		unmonitored: unknown,
+		total: project.models.length,
+		offenders
+	};
 }
 
 function driftedModels(project: Project): Model[] {
@@ -777,14 +802,77 @@ function pipelineFreshness(project: Project, pipelineName: string): FreshnessSum
 	let unknown = 0;
 	const offenders: Model[] = [];
 	for (const model of models) {
-		if (model.status === 'fresh') fresh += 1;
-		if (model.status === 'lagging') lagging += 1;
-		if (model.status === 'stalled') stalled += 1;
+		const evaluatedFreshness: Model['live']['freshness'] = model.live.freshness;
+		if (evaluatedFreshness === 'fresh') fresh += 1;
+		if (evaluatedFreshness === 'lagging') lagging += 1;
+		if (evaluatedFreshness === 'stalled') stalled += 1;
 		if (model.status === 'drift') drift += 1;
-		if (model.status === 'unknown') unknown += 1;
-		if (model.status !== 'fresh' && model.status !== 'unknown') offenders.push(model);
+		if (evaluatedFreshness === null || evaluatedFreshness === undefined) unknown += 1;
+		if (evaluatedFreshness === 'lagging' || evaluatedFreshness === 'stalled' || model.status === 'drift') {
+			offenders.push(model);
+		}
 	}
-	return { fresh, lagging, stalled, drift, unknown, total: models.length, offenders };
+	const monitored: number = fresh + lagging + stalled;
+	return {
+		fresh,
+		lagging,
+		stalled,
+		drift,
+		unknown,
+		monitored,
+		unmonitored: unknown,
+		total: models.length,
+		offenders
+	};
+}
+
+function ingestHealthSummary(project: Project) {
+	const managedSources: Source[] = project.sources.filter((source) => source.kind === 'kafka');
+	const consumers: WarehouseHealth['kafkaConsumers'] =
+		project.warehouseHealth?.kafkaConsumers ?? null;
+	const behind: number = managedSources.filter(
+		(source) => source.live.kafkaLagMessages !== null && source.live.kafkaLagMessages > 0
+	).length;
+	const lagUnavailable: number = managedSources.filter(
+		(source) => source.live.kafkaLagMessages === null
+	).length;
+	if (managedSources.length === 0) {
+		return { state: 'no_kafka' as const, managed: 0, polling: 0, exceptions: 0, behind, lagUnavailable };
+	}
+	if (consumers === null) {
+		return {
+			state: 'partial' as const,
+			managed: managedSources.length,
+			polling: null,
+			exceptions: null,
+			behind,
+			lagUnavailable
+		};
+	}
+	const state: IngestHealthState =
+		consumers.exceptionTables > 0 || consumers.pollingTables < consumers.expectedTables
+			? ('error' as const)
+			: lagUnavailable > 0
+				? ('partial' as const)
+				: behind > 0
+					? ('behind' as const)
+					: ('healthy' as const);
+	return {
+		state,
+		managed: consumers.expectedTables,
+		polling: consumers.pollingTables,
+		exceptions: consumers.exceptionTables,
+		behind,
+		lagUnavailable
+	};
+}
+
+function projectHealthSummary(project: Project) {
+	return {
+		freshness: freshnessSummary(project),
+		ingest: ingestHealthSummary(project),
+		drifted: driftedModels(project)
+	};
 }
 
 function anchorCount(project: Project, pipelineName: string): number {
@@ -827,8 +915,7 @@ export const domainDerivations = {
 	topologicalModelOrder,
 	reconstructionCoverage,
 	rootSourceFor,
-	freshnessSummary,
-	driftedModels,
+	projectHealthSummary,
 	truncatingCoverage,
 	pipelineFreshness,
 	anchorCount,

@@ -4,6 +4,7 @@
 	import { formatAgo } from '$lib/formatting/main/format-ago';
 	import { formatInteger } from '$lib/formatting/main/format-integer';
 	import { formatWarehouseBytes } from '$lib/warehouse-health/main/format-warehouse-bytes';
+	import { warehouseHealthSummary } from '$lib/warehouse-health/main/warehouse-health-summary';
 	import WarehouseHealthStatus from './warehouse-health-status.svelte';
 
 	type Props = {
@@ -38,7 +39,7 @@
 			{#if health}
 				<WarehouseHealthStatus status={health.status} />
 				<span class="text-muted-foreground text-[11.5px]">
-					{health.stale ? 'Last usable evidence. ' : ''}{health.warnings[0] ?? 'Current bounded warehouse snapshot.'}
+					{health.stale ? 'Last usable evidence. ' : ''}{warehouseHealthSummary(health)}
 				</span>
 			{:else}
 				<span class="text-muted-foreground text-[11.5px]">No warehouse diagnostics in this snapshot.</span>
@@ -51,24 +52,24 @@
 		{#if health}
 			<div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4">
 				<div class="border-b border-[var(--border-subtle)] px-3.5 py-2.5 sm:border-r xl:border-b-0">
-					<div class="text-[var(--sb-text-faint)] font-mono text-[9.5px] uppercase">Unreserved</div>
+					<div class="text-[var(--sb-text-faint)] font-mono text-[10.5px] uppercase">Available</div>
 					<div class="pt-0.5 font-mono text-[13px]">{formatWarehouseBytes(primaryDisk?.unreservedBytes ?? null)}</div>
-					<div class="text-muted-foreground truncate font-mono text-[9.5px]">{primaryDisk?.name ?? 'no disk evidence'}</div>
+					<div class="text-muted-foreground truncate font-mono text-[10.5px]">{primaryDisk?.name ?? 'no disk evidence'}</div>
 				</div>
 				<div class="border-b border-[var(--border-subtle)] px-3.5 py-2.5 xl:border-r xl:border-b-0">
-					<div class="text-[var(--sb-text-faint)] font-mono text-[9.5px] uppercase">Inodes free</div>
+					<div class="text-[var(--sb-text-faint)] font-mono text-[10.5px] uppercase">Inodes free</div>
 					<div class="pt-0.5 font-mono text-[13px]">{health.inodes.free === null ? '—' : formatInteger(health.inodes.free)}</div>
-					<div class="text-muted-foreground font-mono text-[9.5px]">main data path</div>
+					<div class="text-muted-foreground font-mono text-[10.5px]">main data path</div>
 				</div>
 				<div class="border-b border-[var(--border-subtle)] px-3.5 py-2.5 sm:border-r sm:border-b-0 xl:border-r">
-					<div class="text-[var(--sb-text-faint)] font-mono text-[9.5px] uppercase">Server RSS</div>
+					<div class="text-[var(--sb-text-faint)] font-mono text-[10.5px] uppercase">Server RSS</div>
 					<div class="pt-0.5 font-mono text-[13px]">{formatWarehouseBytes(health.memory?.residentBytes ?? null)}</div>
-					<div class="text-muted-foreground font-mono text-[9.5px]">{health.memory === null ? 'context unavailable' : health.memory.basis === 'cgroup' ? 'cgroup context' : 'host context'}</div>
+					<div class="text-muted-foreground font-mono text-[10.5px]">{health.memory === null ? 'context unavailable' : health.memory.basis === 'cgroup' ? 'cgroup context' : 'host context'}</div>
 				</div>
 				<div class="px-3.5 py-2.5">
-					<div class="text-[var(--sb-text-faint)] font-mono text-[9.5px] uppercase">Activity</div>
+					<div class="text-[var(--sb-text-faint)] font-mono text-[10.5px] uppercase">Active now</div>
 					<div class="pt-0.5 font-mono text-[13px]">{health.activity?.activeQueries ?? '—'} queries</div>
-					<div class="text-muted-foreground font-mono text-[9.5px]">{health.activity?.activeMerges ?? '—'} merges · {health.activity?.incompleteMutations ?? '—'} mutations</div>
+					<div class="text-muted-foreground font-mono text-[10.5px]">{health.activity?.activeMerges ?? '—'} merges · {health.activity?.incompleteMutations ?? '—'} mutations</div>
 				</div>
 			</div>
 		{/if}

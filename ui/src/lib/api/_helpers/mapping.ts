@@ -109,6 +109,8 @@ function warehouseHealthFromServer(value: unknown): WarehouseHealth | null {
 		collectionDurationMs: Number(health.collectionDurationMs ?? 0),
 		stale: Boolean(health.stale ?? false),
 		warnings: (health.warnings as string[]) ?? [],
+		capacityWarningFraction: nullableNumber(health.capacityWarningFraction),
+		capacityCriticalFraction: nullableNumber(health.capacityCriticalFraction),
 		disks: ((health.disks ?? []) as Payload[]).map((disk) => ({
 			name: String(disk.name ?? ''),
 			path: disk.path === null || disk.path === undefined ? null : String(disk.path),
@@ -142,6 +144,14 @@ function warehouseHealthFromServer(value: unknown): WarehouseHealth | null {
 						activeQueries: nullableNumber(activity.activeQueries),
 						activeMerges: nullableNumber(activity.activeMerges),
 						incompleteMutations: nullableNumber(activity.incompleteMutations)
+					},
+		kafkaConsumers:
+			health.kafkaConsumers === null || health.kafkaConsumers === undefined
+				? null
+				: {
+						expectedTables: Number((health.kafkaConsumers as Payload).expectedTables ?? 0),
+						pollingTables: Number((health.kafkaConsumers as Payload).pollingTables ?? 0),
+						exceptionTables: Number((health.kafkaConsumers as Payload).exceptionTables ?? 0)
 					},
 		tables:
 			health.tables === null || health.tables === undefined
@@ -252,6 +262,10 @@ function modelFromServer(model: Payload, live: Payload): Model {
 	const freshness: string | null = (live.freshness as string | null) ?? null;
 	const drift: boolean = Boolean(live.drift ?? false);
 	const activity: Payload = (live.activity ?? {}) as Payload;
+	const semanticDrift: Payload = (live.semanticDrift ?? {}) as Payload;
+	const schemaDrift: Payload = (semanticDrift.schema ?? {}) as Payload;
+	const queryDrift: Payload = (semanticDrift.query ?? {}) as Payload;
+	const physicalDrift: Payload = (semanticDrift.physicalConfiguration ?? {}) as Payload;
 	return {
 		name: model.name as string,
 		pipeline: model.pipeline as string,
@@ -291,6 +305,7 @@ function modelFromServer(model: Payload, live: Payload): Model {
 			newestRowAt: (live.newestRowAt as string | null) ?? null,
 			oldestRowAt: (live.oldestRowAt as string | null) ?? null,
 			lagSeconds: (live.lagSeconds as number | null) ?? null,
+			freshness: freshness as Model['live']['freshness'],
 			activity: {
 				state: (activity.state as Model['live']['activity']['state']) ?? 'unknown',
 				source: (activity.source as Model['live']['activity']['source']) ?? 'unavailable',
@@ -305,7 +320,34 @@ function modelFromServer(model: Payload, live: Payload): Model {
 			inSyncWithCompiled: !drift,
 			driftReasons: (live.driftReasons as string[]) ?? [],
 			ownership: ((live.ownership as string) ?? 'absent') as Model['live']['ownership'],
-			recordedCoverage: (live.recordedCoverage as Model['live']['recordedCoverage']) ?? null
+			recordedCoverage: (live.recordedCoverage as Model['live']['recordedCoverage']) ?? null,
+			semanticDrift: {
+				comparison: 'live_vs_current_compiled',
+				status: (semanticDrift.status as Model['live']['semanticDrift']['status']) ?? 'unavailable',
+				message:
+					(semanticDrift.message as string) ?? 'No live comparison evidence is available.',
+				liveDdl: (semanticDrift.liveDdl as string | null) ?? null,
+				schema: {
+					status: (schemaDrift.status as Model['live']['semanticDrift']['schema']['status']) ?? 'unavailable',
+					changes:
+						(schemaDrift.changes as Model['live']['semanticDrift']['schema']['changes']) ?? []
+				},
+				query: {
+					status: (queryDrift.status as Model['live']['semanticDrift']['query']['status']) ?? 'unavailable',
+					relationName: (queryDrift.relationName as string) ?? model.relationName,
+					live: (queryDrift.live as string | null) ?? null,
+					compiled: (queryDrift.compiled as string | null) ?? null,
+					unifiedDiff: (queryDrift.unifiedDiff as string | null) ?? null
+				},
+				physicalConfiguration: {
+					status:
+						(physicalDrift.status as Model['live']['semanticDrift']['physicalConfiguration']['status']) ??
+						'unavailable',
+					changes:
+						(physicalDrift.changes as Model['live']['semanticDrift']['physicalConfiguration']['changes']) ??
+						[]
+				}
+			}
 		},
 		status: statusFromState(freshness, drift)
 	};

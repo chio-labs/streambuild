@@ -14,6 +14,8 @@ class WarehouseHealthBrowserE2ETestCase:
     expected_adapter: str
     expected_capacity_heading: str
     expected_table_heading: str
+    expected_freshness_state: str
+    expected_test_state: str
 
 
 @dataclass(frozen=True)
