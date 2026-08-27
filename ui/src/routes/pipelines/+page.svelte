@@ -213,7 +213,7 @@
 				<th class="px-3 py-2 font-normal">Anchors</th>
 				<th class="px-3 py-2 font-normal">Audits</th>
 				<th class="px-3 py-2 font-normal">Ingest</th>
-				<th class="px-3 py-2 pr-[18px] font-normal">Freshness</th>
+				<th class="px-3 py-2 pr-[18px] font-normal">Expected freshness</th>
 			</tr>
 		</thead>
 		<tbody>
@@ -301,6 +301,9 @@
 						{/if}
 					</td>
 					<td class="px-3 pr-[18px]">
+						{#if row.freshness.monitored === 0}
+							<span class="text-muted-foreground text-[11px]">Not monitored</span>
+						{:else}
 						<div class="flex items-center gap-2">
 							<div class="flex h-3 w-[86px] gap-[2px] overflow-hidden rounded-[2px]">
 								{#each Array(row.freshness.fresh) as _, index (`f${index}`)}
@@ -312,17 +315,17 @@
 								{#each Array(row.freshness.stalled) as _, index (`s${index}`)}
 									<span class="flex-1 bg-[var(--sb-error)]"></span>
 								{/each}
-								{#each Array(row.freshness.drift) as _, index (`d${index}`)}
-									<span class="flex-1 bg-[var(--sb-stale)]"></span>
-								{/each}
-								{#each Array(row.freshness.unknown) as _, index (`u${index}`)}
-									<span class="flex-1 bg-[var(--sb-text-faint)]" title="unknown: no freshness policy"></span>
+							{#each Array(row.freshness.unknown) as _, index (`u${index}`)}
+								<span class="flex-1 bg-[var(--sb-border-strong)]" title="not monitored"></span>
 								{/each}
 							</div>
 							<span class="text-muted-foreground code text-[11px]"
-								>{row.freshness.fresh}/{row.freshness.total}</span
+								>{row.freshness.fresh} fresh{row.freshness.lagging
+									? ` · ${row.freshness.lagging} late`
+									: ''}{row.freshness.stalled ? ` · ${row.freshness.stalled} stale` : ''}</span
 							>
 						</div>
+						{/if}
 					</td>
 				</tr>
 			{/each}

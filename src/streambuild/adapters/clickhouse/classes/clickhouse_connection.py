@@ -206,10 +206,15 @@ class ClickHouseConnection(AdapterConnection):
 
         return load_clickhouse_refresh_states(connection=self, database=database)
 
-    def load_warehouse_health(self, database: str) -> AdapterWarehouseHealth:
+    def load_warehouse_health(
+        self, *, database: str, managed_source_names: tuple[str, ...] = ()
+    ) -> AdapterWarehouseHealth:
         """Read bounded ClickHouse system-table diagnostics."""
 
-        return ClickHouseWarehouseHealthReader(connection=self).read(database=database)
+        return ClickHouseWarehouseHealthReader(connection=self).read(
+            database=database,
+            managed_source_names=managed_source_names,
+        )
 
     def metadata_columns(self, *, database: str, table: str) -> frozenset[str]:
         """Return available ClickHouse columns for one framework metadata table."""

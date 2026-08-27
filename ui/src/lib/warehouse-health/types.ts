@@ -31,6 +31,8 @@ export type WarehouseHealth = {
 	collectionDurationMs: number;
 	stale: boolean;
 	warnings: string[];
+	capacityWarningFraction: number | null;
+	capacityCriticalFraction: number | null;
 	disks: WarehouseDiskHealth[];
 	inodes: {
 		total: number | null;
@@ -42,6 +44,11 @@ export type WarehouseHealth = {
 		activeQueries: number | null;
 		activeMerges: number | null;
 		incompleteMutations: number | null;
+	} | null;
+	kafkaConsumers: {
+		expectedTables: number;
+		pollingTables: number;
+		exceptionTables: number;
 	} | null;
 	tables: {
 		name: string;

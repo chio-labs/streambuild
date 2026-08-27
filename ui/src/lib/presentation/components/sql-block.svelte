@@ -62,7 +62,7 @@
 			{/if}
 			<button
 				class="text-muted-foreground hover:text-foreground {caption ? '' : 'ml-auto'} flex items-center gap-1 rounded-[3px] px-2 py-1 font-mono text-[10px]"
-				aria-label={active ? `Copy ${active.label} SQL` : 'Copy SQL'}
+				aria-label={active ? `Copy ${active.label}` : 'Copy SQL'}
 				disabled={!active}
 				onclick={copyActive}><CopyIcon size={11} /> {copied ? 'copied' : 'copy'}</button
 			>

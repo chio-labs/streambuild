@@ -104,7 +104,7 @@ def test_given_real_clickhouse_project_when_reading_health_then_snapshot_is_boun
     )
 
     health: AdapterWarehouseHealth = managed_clickhouse_client.load_warehouse_health(
-        clickhouse_database
+        database=clickhouse_database
     )
 
     assert health.tables is not None

@@ -22,7 +22,10 @@ from streambuild.adapters.clickhouse.classes.clickhouse_connection import ClickH
 from streambuild.adapters.clickhouse.classes.warehouse_health_reader import (
     ClickHouseWarehouseHealthReader,
 )
-from streambuild.adapters.clickhouse.constants import CLICKHOUSE_UNKNOWN_CAPACITY_BYTES
+from streambuild.adapters.clickhouse.constants import (
+    CLICKHOUSE_CAPACITY_WARNING_AVAILABLE_FRACTION,
+    CLICKHOUSE_UNKNOWN_CAPACITY_BYTES,
+)
 from streambuild.adapters.clickhouse.types import RawClickHouseClient
 from tests.unit.src.streambuild.adapters.clickhouse._test_types import (
     CatalogInspectionTestCase,
@@ -170,7 +173,12 @@ def test_given_clickhouse_connection_when_reading_publish_capabilities_then_guar
             expected_status="critical",
             expected_memory_basis="cgroup",
             expected_table_name="tbl__orders",
-            expected_query_count=5,
+            expected_query_count=6,
+            managed_source_names=("kafka__orders", "kafka__payments"),
+            consumer_row=(2, 1),
+            expected_polling_tables=2,
+            expected_exception_tables=1,
+            expected_consumer_query_fragment="table IN ('kafka__orders', 'kafka__payments')",
         ),
         ClickHouseWarehouseHealthTestCase(
             description="does not infer overall health from inodes when disk capacity is unknown",
@@ -200,7 +208,12 @@ def test_given_clickhouse_connection_when_reading_publish_capabilities_then_guar
             expected_status="unknown",
             expected_memory_basis="cgroup",
             expected_table_name="tbl__orders",
-            expected_query_count=5,
+            expected_query_count=6,
+            managed_source_names=("kafka__orders",),
+            consumer_row=(1, 0),
+            expected_polling_tables=1,
+            expected_exception_tables=0,
+            expected_consumer_query_fragment="table IN ('kafka__orders')",
         ),
         ClickHouseWarehouseHealthTestCase(
             description="broken disk dominates a healthy configured disk",
@@ -222,7 +235,12 @@ def test_given_clickhouse_connection_when_reading_publish_capabilities_then_guar
             expected_status="critical",
             expected_memory_basis="cgroup",
             expected_table_name="tbl__orders",
-            expected_query_count=5,
+            expected_query_count=6,
+            managed_source_names=("kafka__orders",),
+            consumer_row=(1, 0),
+            expected_polling_tables=1,
+            expected_exception_tables=0,
+            expected_consumer_query_fragment="table IN ('kafka__orders')",
         ),
     ],
     ids=lambda case: case.description,
@@ -230,42 +248,50 @@ def test_given_clickhouse_connection_when_reading_publish_capabilities_then_guar
 def test_given_clickhouse_system_metrics_when_reading_health_then_snapshot_is_truthful_and_bounded(
     test_case: ClickHouseWarehouseHealthTestCase,
 ) -> None:
-    raw_client: SequencedRawClickHouseClient = SequencedRawClickHouseClient(
-        (
-            FakeRawClickHouseQueryResult(
-                column_names=[
-                    "name",
-                    "path",
-                    "type",
-                    "is_broken",
-                    "total_space",
-                    "free_space",
-                    "unreserved_space",
-                    "keep_free_space",
-                ],
-                result_rows=[list(row) for row in test_case.disk_rows],
-            ),
-            FakeRawClickHouseQueryResult(
-                column_names=["version", "uptime_seconds"],
-                result_rows=[["25.8.1.1", 86400]],
-            ),
-            FakeRawClickHouseQueryResult(
-                column_names=["metric", "value"],
-                result_rows=[list(row) for row in test_case.metric_rows],
-            ),
-            FakeRawClickHouseQueryResult(
-                column_names=["active_queries", "active_merges", "incomplete_mutations"],
-                result_rows=[[2, 1, 3]],
-            ),
-            FakeRawClickHouseQueryResult(
-                column_names=["table", "rows", "bytes_on_disk", "active_parts"],
-                result_rows=[["tbl__orders", 500000, 64000000, 12]],
-            ),
+    query_results: list[FakeRawClickHouseQueryResult] = [
+        FakeRawClickHouseQueryResult(
+            column_names=[
+                "name",
+                "path",
+                "type",
+                "is_broken",
+                "total_space",
+                "free_space",
+                "unreserved_space",
+                "keep_free_space",
+            ],
+            result_rows=[list(row) for row in test_case.disk_rows],
+        ),
+        FakeRawClickHouseQueryResult(
+            column_names=["version", "uptime_seconds"],
+            result_rows=[["25.8.1.1", 86400]],
+        ),
+        FakeRawClickHouseQueryResult(
+            column_names=["metric", "value"],
+            result_rows=[list(row) for row in test_case.metric_rows],
+        ),
+        FakeRawClickHouseQueryResult(
+            column_names=["active_queries", "active_merges", "incomplete_mutations"],
+            result_rows=[[2, 1, 3]],
+        ),
+        FakeRawClickHouseQueryResult(
+            column_names=["polling_tables", "exception_tables"],
+            result_rows=[list(test_case.consumer_row)],
+        ),
+    ]
+    query_results.append(
+        FakeRawClickHouseQueryResult(
+            column_names=["table", "rows", "bytes_on_disk", "active_parts"],
+            result_rows=[["tbl__orders", 500000, 64000000, 12]],
         )
     )
+    raw_client: SequencedRawClickHouseClient = SequencedRawClickHouseClient(tuple(query_results))
     connection: ClickHouseConnection = ClickHouseConnection(cast(RawClickHouseClient, raw_client))
 
-    health: AdapterWarehouseHealth = connection.load_warehouse_health("analytics\\o'")
+    health: AdapterWarehouseHealth = connection.load_warehouse_health(
+        database="analytics\\o'",
+        managed_source_names=test_case.managed_source_names,
+    )
 
     assert tuple(str(disk.status) for disk in health.disks) == test_case.expected_disk_statuses
     assert tuple(disk.total_bytes for disk in health.disks) == test_case.expected_total_bytes
@@ -278,11 +304,19 @@ def test_given_clickhouse_system_metrics_when_reading_health_then_snapshot_is_tr
     assert health.activity.active_queries == 2
     assert health.tables is not None
     assert health.tables[0].name == test_case.expected_table_name
+    assert health.kafka_consumers is not None
+    assert health.kafka_consumers.polling_tables == test_case.expected_polling_tables
+    assert health.kafka_consumers.exception_tables == test_case.expected_exception_tables
+    assert health.capacity_warning_fraction == CLICKHOUSE_CAPACITY_WARNING_AVAILABLE_FRACTION
     assert len(raw_client.statements) == test_case.expected_query_count
     assert "query_id != currentQueryID()" in raw_client.statements[3]
     assert "database =" not in raw_client.statements[3]
-    assert "database = 'analytics\\\\o'''" in raw_client.statements[4]
-    assert "LIMIT 10" in raw_client.statements[4]
+    table_query_index: int = test_case.expected_query_count - 1
+    assert "database = 'analytics\\\\o'''" in raw_client.statements[table_query_index]
+    assert "LIMIT 10" in raw_client.statements[table_query_index]
+    consumer_query: str = raw_client.statements[table_query_index - 1]
+    assert "system.kafka_consumers" in consumer_query
+    assert test_case.expected_consumer_query_fragment in consumer_query
 
 
 @pytest.mark.parametrize(

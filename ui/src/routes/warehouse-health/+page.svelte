@@ -14,6 +14,7 @@
 	import WarehouseHealthStatus from '$lib/warehouse-health/components/warehouse-health-status.svelte';
 	import { formatWarehouseBytes } from '$lib/warehouse-health/main/format-warehouse-bytes';
 	import { warehouseHealthTone } from '$lib/warehouse-health/main/warehouse-health-tone';
+	import { warehouseHealthSummary } from '$lib/warehouse-health/main/warehouse-health-summary';
 
 	const project: Project = getProject();
 	const health = $derived<WarehouseHealth | null>(project.warehouseHealth);
@@ -47,6 +48,13 @@
 						measured {formatAgo(health.measuredAt, project.capturedAt)} · {health.collectionDurationMs}ms
 					</span>
 				</div>
+				<div class="px-3.5 py-3">
+					<div class="text-[13px] font-medium">{warehouseHealthSummary(health)}</div>
+					<div class="text-muted-foreground mt-1 text-[12px]">
+						Point-in-time read-only diagnostics measured {formatAgo(health.measuredAt, project.capturedAt)} in
+						{health.collectionDurationMs}ms.
+					</div>
+				</div>
 				{#if health.stale || health.warnings.length}
 					<div class="px-3.5 py-2.5 text-[11.5px]" style:color={health.stale ? 'var(--sb-warning)' : 'var(--muted-foreground)'}>
 						{health.stale ? 'Showing the last usable evidence. ' : ''}{health.warnings.join(' ')}
@@ -67,7 +75,7 @@
 							<div class="rounded-[4px] border border-border p-3.5">
 								<div class="flex items-center gap-2">
 									<span class="font-mono text-[12px] font-medium">{disk.name}</span>
-									<span class="text-muted-foreground font-mono text-[9.5px] uppercase">{disk.type ?? 'unknown type'}</span>
+									<span class="text-muted-foreground font-mono text-[12px]">{disk.type ?? 'Unknown type'}</span>
 									<span class="ml-auto"><WarehouseHealthStatus status={disk.status} /></span>
 								</div>
 								<div class="mt-3 h-2 overflow-hidden rounded-[2px] bg-[var(--sb-hover)]">
@@ -77,12 +85,12 @@
 										style:background={warehouseHealthTone(disk.status)}
 									></div>
 								</div>
-								<div class="mt-2 grid grid-cols-3 gap-3 font-mono text-[10.5px]">
-									<div><span class="text-[var(--sb-text-faint)] block text-[9px] uppercase">Unreserved</span>{formatWarehouseBytes(disk.unreservedBytes)}</div>
-									<div><span class="text-[var(--sb-text-faint)] block text-[9px] uppercase">Free</span>{formatWarehouseBytes(disk.freeBytes)}</div>
-									<div><span class="text-[var(--sb-text-faint)] block text-[9px] uppercase">Total</span>{formatWarehouseBytes(disk.totalBytes)}</div>
+								<div class="mt-2 grid grid-cols-3 gap-3 font-mono text-[12px]">
+									<div><span class="text-[var(--sb-text-faint)] block text-[11px]">Available</span>{formatWarehouseBytes(disk.unreservedBytes)}</div>
+									<div><span class="text-[var(--sb-text-faint)] block text-[11px]">Free</span>{formatWarehouseBytes(disk.freeBytes)}</div>
+									<div><span class="text-[var(--sb-text-faint)] block text-[11px]">Total</span>{formatWarehouseBytes(disk.totalBytes)}</div>
 								</div>
-								<div class="text-muted-foreground mt-2 flex gap-3 font-mono text-[9.5px]">
+								<div class="text-muted-foreground mt-2 flex gap-3 font-mono text-[12px]">
 									<span>{available === null ? 'unknown available' : `${formatPercent(available)} available`}</span>
 									<span class="truncate" title={disk.path ?? undefined}>{disk.path ?? 'path unavailable'}</span>
 								</div>
@@ -116,9 +124,9 @@
 				<div class="rounded-[4px] border border-border p-3.5">
 					<div class="text-[var(--sb-text-faint)] flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.12em]"><MergeIcon size={12} /> Current activity</div>
 					<div class="mt-3 grid grid-cols-3 gap-2 text-center font-mono">
-						<div><div class="text-[20px]">{health.activity?.activeQueries ?? '—'}</div><div class="text-muted-foreground text-[9px] uppercase">queries</div></div>
-						<div><div class="text-[20px]">{health.activity?.activeMerges ?? '—'}</div><div class="text-muted-foreground text-[9px] uppercase">merges</div></div>
-						<div><div class="text-[20px]">{health.activity?.incompleteMutations ?? '—'}</div><div class="text-muted-foreground text-[9px] uppercase">mutations</div></div>
+						<div><div class="text-[20px]">{health.activity?.activeQueries ?? '—'}</div><div class="text-muted-foreground text-[12px]">active queries</div></div>
+						<div><div class="text-[20px]">{health.activity?.activeMerges ?? '—'}</div><div class="text-muted-foreground text-[12px]">active merges</div></div>
+						<div><div class="text-[20px]">{health.activity?.incompleteMutations ?? '—'}</div><div class="text-muted-foreground text-[12px]">pending mutations</div></div>
 					</div>
 				</div>
 
@@ -154,7 +162,7 @@
 
 			<section class="flex gap-2.5 rounded-[4px] border border-border px-3.5 py-3 text-[11px] text-muted-foreground">
 				<InfoIcon size={13} class="mt-0.5 shrink-0" />
-				<p>Read-only point-in-time diagnostics from bounded ClickHouse system-table queries. Memory values remain separately labelled when only server RSS and host capacity are available. StreamBuild does not retain metric history or perform remediation.</p>
+				<p>Read-only point-in-time diagnostics from ClickHouse system tables. Memory values remain separately labelled when only server RSS and host capacity are available. StreamBuild does not retain metric history or perform remediation.</p>
 			</section>
 		</div>
 	{/if}

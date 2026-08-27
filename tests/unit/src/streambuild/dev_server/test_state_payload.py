@@ -8,11 +8,17 @@ from httpx import Response
 from streambuild.adapter.models import (
     AdapterDirectFingerprintRecord,
     AdapterDirectFingerprintSnapshot,
+    AdapterIdentity,
     AdapterWarehouseActivity,
     AdapterWarehouseDisk,
     AdapterWarehouseHealth,
+    AdapterWarehouseKafkaConsumers,
     AdapterWarehouseMemory,
     AdapterWarehouseTable,
+    CatalogColumn,
+    CatalogIdentity,
+    CatalogRelation,
+    CatalogSnapshot,
 )
 from streambuild.compiler.compile.models import CompiledModel
 from streambuild.compiler.pipeline.models import CompileAnalysis
@@ -24,6 +30,8 @@ from streambuild.dev_server._helpers.payloads.state_payload import (
 from streambuild.dev_server.classes.dev_server_state import DevServerState
 from streambuild.dev_server.main._create_dev_app import create_dev_app
 from tests.unit.src.streambuild.dev_server._test_types import (
+    ModelDriftDifferencePayloadTestCase,
+    ModelDriftUnavailablePayloadTestCase,
     SourceObservationBatchTestCase,
     StateFieldTestCase,
     UnconfiguredFreshnessTestCase,
@@ -230,6 +238,9 @@ def test_given_warehouse_reads_when_reading_state_then_assembles_expected_overla
     assert model["activity"]["approximate"] is True
     assert tuple(sorted(model["driftReasons"])) == test_case.expected_drift_reasons
     assert model["drift"] is bool(test_case.expected_drift_reasons)
+    semantic_drift: dict = model["semanticDrift"]
+    assert semantic_drift["query"]["status"] == "unavailable"
+    assert semantic_drift["query"]["unifiedDiff"] is None
     source: dict = payload["sources"]["orders"]
     assert source["rows"] == 1000
     assert source["oldestEventAt"] == "2026-08-01 00:00:00.000"
@@ -241,6 +252,117 @@ def test_given_warehouse_reads_when_reading_state_then_assembles_expected_overla
     assert source["partitions"][0]["maxOffset"] == test_case.expected_partition_max_offset
     assert len(source["throughput"]["buckets"]) == test_case.expected_bucket_count
     assert sum(source["throughput"]["buckets"]) == 300
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ModelDriftUnavailablePayloadTestCase(
+            description=(
+                "missing live relation reports unavailable comparison without fabricated diffs"
+            ),
+            expected_message=(
+                "Relation tbl__orders_clean is missing; no live comparison is possible."
+            ),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_missing_live_relation_when_reading_state_then_semantic_drift_is_unavailable(
+    test_case: ModelDriftUnavailablePayloadTestCase,
+    tmp_path: Path,
+) -> None:
+    write_dev_server_project(project_dir=tmp_path)
+    empty_catalog: CatalogSnapshot = CatalogSnapshot(
+        identity=CatalogIdentity(adapter=AdapterIdentity(name="clickhouse"), database="analytics"),
+        warehouse_timezone="UTC",
+        relations=(),
+    )
+    client: TestClient = TestClient(
+        create_dev_app(
+            state=DevServerState(run_compile=build_compile_callable(project_dir=tmp_path)),
+            connection=build_fake_state_connection(catalog=empty_catalog),
+            database="analytics",
+            project_dir=tmp_path,
+        )
+    )
+
+    response: Response = client.get("/api/state")
+    drift: dict = response.json()["models"]["orders_clean"]["semanticDrift"]
+
+    assert response.status_code == 200
+    assert drift["status"] == "unavailable"
+    assert drift["message"] == test_case.expected_message
+    assert drift["liveDdl"] is None
+    assert drift["schema"]["changes"] == []
+    assert drift["query"]["unifiedDiff"] is None
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ModelDriftDifferencePayloadTestCase(
+            description="changed live query and engine produce grouped semantic drift evidence",
+            expected_query_fragment="--- live warehouse",
+            expected_physical_field="Engine",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_changed_live_relation_when_reading_state_then_semantic_diffs_are_explicit(
+    test_case: ModelDriftDifferencePayloadTestCase,
+    tmp_path: Path,
+) -> None:
+    write_dev_server_project(project_dir=tmp_path)
+    analysis: CompileAnalysis = build_compile_callable(project_dir=tmp_path)()
+    model: CompiledModel = analysis.compiled_project.models[0]
+    live_columns: tuple[CatalogColumn, ...] = tuple(
+        CatalogColumn(name=column.name, type=column.type) for column in model.output_columns
+    )
+    changed_catalog: CatalogSnapshot = CatalogSnapshot(
+        identity=CatalogIdentity(adapter=AdapterIdentity(name="clickhouse"), database="analytics"),
+        warehouse_timezone="UTC",
+        relations=(
+            CatalogRelation(
+                name="tbl__orders_clean",
+                engine="TinyLog",
+                columns=live_columns,
+                full_engine="TinyLog",
+                definition_sql="CREATE TABLE analytics.tbl__orders_clean ENGINE = TinyLog",
+            ),
+            CatalogRelation(
+                name="mv__orders_clean",
+                engine="MaterializedView",
+                columns=(),
+                definition_sql="CREATE MATERIALIZED VIEW analytics.mv__orders_clean AS SELECT 2",
+                query_sql="SELECT 2 AS changed",
+            ),
+        ),
+    )
+    client: TestClient = TestClient(
+        create_dev_app(
+            state=DevServerState(run_compile=build_compile_callable(project_dir=tmp_path)),
+            connection=build_fake_state_connection(catalog=changed_catalog),
+            database="analytics",
+            project_dir=tmp_path,
+        )
+    )
+
+    response: Response = client.get("/api/state")
+    drift: dict = response.json()["models"]["orders_clean"]["semanticDrift"]
+    physical_changes: list[dict] = drift["physicalConfiguration"]["changes"]
+    physical_by_field: dict[str, dict] = {
+        str(change["field"]): change for change in physical_changes
+    }
+    engine_change: dict = physical_by_field[test_case.expected_physical_field]
+
+    assert response.status_code == 200
+    assert drift["status"] == "drift"
+    assert test_case.expected_query_fragment in drift["query"]["unifiedDiff"]
+    assert "+++ current compiled" in drift["query"]["unifiedDiff"]
+    assert engine_change["live"] == "tinylog"
+    assert engine_change["status"] == "drift"
+    assert "mv__orders_clean" in drift["liveDdl"]
 
 
 @pytest.mark.parametrize(
@@ -332,6 +454,8 @@ def test_given_query_only_view_when_reading_state_then_physical_freshness_is_unm
             expected_disk_status="warning",
             expected_memory_basis="server_rss_host",
             expected_table_name="tbl__orders_clean",
+            expected_polling_tables=1,
+            expected_capacity_warning_fraction=0.15,
         )
     ],
     ids=lambda case: case.description,
@@ -383,6 +507,13 @@ def test_given_available_warehouse_health_when_reading_state_then_payload_is_tru
             ),
         ),
         collection_duration_ms=4,
+        kafka_consumers=AdapterWarehouseKafkaConsumers(
+            expected_tables=1,
+            polling_tables=test_case.expected_polling_tables,
+            exception_tables=0,
+        ),
+        capacity_warning_fraction=test_case.expected_capacity_warning_fraction,
+        capacity_critical_fraction=0.05,
     )
     client: TestClient = TestClient(
         create_dev_app(
@@ -408,3 +539,9 @@ def test_given_available_warehouse_health_when_reading_state_then_payload_is_tru
         "activeMerges": 1,
         "incompleteMutations": 0,
     }
+    assert payload["kafkaConsumers"] == {
+        "expectedTables": 1,
+        "pollingTables": test_case.expected_polling_tables,
+        "exceptionTables": 0,
+    }
+    assert payload["capacityWarningFraction"] == test_case.expected_capacity_warning_fraction

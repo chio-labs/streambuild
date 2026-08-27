@@ -610,8 +610,11 @@ class FakeAdapterConnection(AdapterConnection):
         del database, logical_model_identities
         return self._fingerprints
 
-    def load_warehouse_health(self, database: str) -> AdapterWarehouseHealth:
+    def load_warehouse_health(
+        self, *, database: str, managed_source_names: tuple[str, ...] = ()
+    ) -> AdapterWarehouseHealth:
         del database
+        del managed_source_names
         return self._warehouse_health
 
     def metadata_columns(self, *, database: str, table: str) -> frozenset[str]:
@@ -831,8 +834,9 @@ def build_fake_state_connection(
     fingerprints: AdapterDirectFingerprintSnapshot = _UNAVAILABLE_FINGERPRINTS,
     additional_results: dict[str, AdapterQueryResult] | None = None,
     warehouse_health: AdapterWarehouseHealth = _UNAVAILABLE_WAREHOUSE_HEALTH,
+    catalog: CatalogSnapshot | None = None,
 ) -> FakeAdapterConnection:
-    catalog: CatalogSnapshot = CatalogSnapshot(
+    default_catalog: CatalogSnapshot = CatalogSnapshot(
         identity=CatalogIdentity(adapter=AdapterIdentity(name="clickhouse"), database="analytics"),
         warehouse_timezone="UTC",
         relations=(
@@ -1043,7 +1047,7 @@ def build_fake_state_connection(
     }
     results.update(additional_results or {})
     return FakeAdapterConnection(
-        catalog=catalog,
+        catalog=catalog or default_catalog,
         results_by_query=results,
         warehouse_timestamp=_STATE_WAREHOUSE_NOW,
         fingerprints=fingerprints,
