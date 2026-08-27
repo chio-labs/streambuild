@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.37.0](https://github.com/chio-labs/streambuild/compare/v0.36.0...v0.37.0) (2026-08-27)
+
+
+### Features
+
+* estimate replay progress from offsets ([#221](https://github.com/chio-labs/streambuild/issues/221)) ([ff032ff](https://github.com/chio-labs/streambuild/commit/ff032ff8b2c40b1eabead50348248fe4f0d8b6c6))
+* separate destructive pipeline actions ([#219](https://github.com/chio-labs/streambuild/issues/219)) ([653a976](https://github.com/chio-labs/streambuild/commit/653a9764f0ead6dfb5faea2a8170ae022bda7b34))
+
 ## [0.36.0](https://github.com/chio-labs/streambuild/compare/v0.35.1...v0.36.0) (2026-08-27)
 
 
