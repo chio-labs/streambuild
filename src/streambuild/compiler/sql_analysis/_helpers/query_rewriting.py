@@ -439,6 +439,7 @@ def analyze_catalog_tree(*, tree: dict[str, Any], dialect: str) -> SqlCatalogAna
             source_relations=(),
             direct_source=None,
             target_relation=None,
+            engine=_table_engine(create_table=create_table, dialect=dialect),
             ttl=ttl,
             settings=settings,
         )
@@ -505,6 +506,7 @@ def _view_analysis(
         source_relations=_catalog_relations(node=query_tree, visible_ctes={}),
         direct_source=_direct_relation(query_tree),
         target_relation=target_relation,
+        engine=None,
         ttl=None,
         settings=(),
     )
@@ -517,6 +519,7 @@ def _query_analysis(*, canonical_sql: str, query_tree: dict[str, Any]) -> SqlCat
         source_relations=_catalog_relations(node=query_tree, visible_ctes={}),
         direct_source=_direct_relation(query_tree),
         target_relation=None,
+        engine=None,
         ttl=None,
         settings=(),
     )
@@ -541,6 +544,23 @@ def _table_properties(
         if isinstance(settings_payload, dict):
             settings = _settings(settings_payload=settings_payload, dialect=dialect)
     return ttl, settings
+
+
+def _table_engine(*, create_table: dict[str, Any], dialect: str) -> str | None:
+    properties: Any = create_table.get(_PROPERTIES_KEY)
+    if not isinstance(properties, list):
+        return None
+    property_: Any
+    for property_ in properties:
+        if not isinstance(property_, dict):
+            continue
+        engine_property: Any = property_.get("engine_property")
+        if not isinstance(engine_property, dict):
+            continue
+        engine_expression: Any = engine_property.get("this")
+        if isinstance(engine_expression, dict):
+            return generate_sql_tree(tree=engine_expression, dialect=dialect)
+    return None
 
 
 def _ttl_sql(*, ttl_payload: dict[str, Any], dialect: str) -> str | None:

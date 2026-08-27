@@ -16,6 +16,7 @@ from tests.unit.src.streambuild.executor.reconcile._test_types import (
 from tests.unit.src.streambuild.executor.reconcile.helpers import (
     ReconcileWorkflowAdapterConnection,
     build_matching_reconcile_states,
+    build_misdirected_reconcile_states,
     build_structurally_mismatched_reconcile_states,
 )
 
@@ -38,6 +39,18 @@ from tests.unit.src.streambuild.executor.reconcile.helpers import (
                 (
                     "engine does not match",
                     "live transform materialized view not found",
+                ),
+            ),
+            expected_reconcile_id_prefix="reconcile_",
+        ),
+        ExecuteReconcileTestCase(
+            description="rejects a materialized view wired to different relations",
+            build_states=build_misdirected_reconcile_states,
+            expected_eligible_names=(),
+            expected_rejected_reason_groups=(
+                (
+                    "live transform source does not match",
+                    "live transform target does not match",
                 ),
             ),
             expected_reconcile_id_prefix="reconcile_",

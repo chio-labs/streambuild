@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import cast
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
+from streambuild.cli.build.constants import STREAMBUILD_TOOL_VERSION
 from streambuild.cli.entry.main._resolve_default_database import resolve_default_database
 from streambuild.cli.reconcile._helpers.rendering import (
     confirm_reconcile,
@@ -23,6 +24,9 @@ from streambuild.compiler.pipeline.main.analyze_project import analyze_project
 from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.compiler.planner.main.load_actual_state import load_actual_state
 from streambuild.compiler.planner.models import ActualState
+from streambuild.executor.reconcile.main.execute_direct_reconcile import (
+    execute_direct_reconcile,
+)
 from streambuild.executor.reconcile.main.execute_reconcile import execute_reconcile
 from streambuild.executor.reconcile.models import (
     ReconcilePreview,
@@ -58,37 +62,70 @@ def run_reconcile(
         selectors=selectors,
     )
     desired_state: DesiredState = selection.desired_state
-    actual_state: ActualState = load_actual_state(
-        client=client, desired_state=desired_state, database=resolved_database
-    )
-    preview: ReconcilePreview = cast(
-        ReconcilePreview,
-        execute_reconcile(
-            client=client,
-            target_database=resolved_database,
-            metadata_database=resolved_metadata_database,
-            desired_state=desired_state,
-            actual_state=actual_state,
-            selected_model_keys=selection.selected_model_keys,
-        ),
-    )
+    preview: ReconcilePreview
+    if analysis.compile_inputs.virtual_environments:
+        actual_state: ActualState = load_actual_state(
+            client=client, desired_state=desired_state, database=resolved_database
+        )
+        preview = cast(
+            ReconcilePreview,
+            execute_reconcile(
+                client=client,
+                target_database=resolved_database,
+                metadata_database=resolved_metadata_database,
+                desired_state=desired_state,
+                actual_state=actual_state,
+                selected_model_keys=selection.selected_model_keys,
+            ),
+        )
+    else:
+        preview = cast(
+            ReconcilePreview,
+            execute_direct_reconcile(
+                client=client,
+                target_database=resolved_database,
+                metadata_database=resolved_metadata_database,
+                desired_state=desired_state,
+                catalog=client.load_catalog(resolved_database),
+                models=analysis.realized_project.project.models,
+                selected_model_keys=selection.selected_model_keys,
+                tool_version=STREAMBUILD_TOOL_VERSION,
+            ),
+        )
     print(render_reconcile_preview(preview=preview, json_output=json_output))
     if not apply:
         return 0
     if not confirm_reconcile():
         print("Reconcile cancelled.")
         return 1
-    result: ReconcileResult = cast(
-        ReconcileResult,
-        execute_reconcile(
-            client=client,
-            target_database=resolved_database,
-            metadata_database=resolved_metadata_database,
-            desired_state=desired_state,
-            actual_state=actual_state,
-            selected_model_keys=selection.selected_model_keys,
-            apply=True,
-        ),
-    )
+    result: ReconcileResult
+    if analysis.compile_inputs.virtual_environments:
+        result = cast(
+            ReconcileResult,
+            execute_reconcile(
+                client=client,
+                target_database=resolved_database,
+                metadata_database=resolved_metadata_database,
+                desired_state=desired_state,
+                actual_state=actual_state,
+                selected_model_keys=selection.selected_model_keys,
+                apply=True,
+            ),
+        )
+    else:
+        result = cast(
+            ReconcileResult,
+            execute_direct_reconcile(
+                client=client,
+                target_database=resolved_database,
+                metadata_database=resolved_metadata_database,
+                desired_state=desired_state,
+                catalog=client.load_catalog(resolved_database),
+                models=analysis.realized_project.project.models,
+                selected_model_keys=selection.selected_model_keys,
+                tool_version=STREAMBUILD_TOOL_VERSION,
+                apply=True,
+            ),
+        )
     print(render_reconcile_result(result=result, json_output=json_output))
     return 0

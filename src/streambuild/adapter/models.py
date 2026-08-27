@@ -781,6 +781,7 @@ class CatalogRelation:
     name: str
     engine: str
     columns: tuple[CatalogColumn, ...]
+    full_engine: str | None = None
     order_by: tuple[str, ...] = ()
     partition_by: str | None = None
     ttl: str | None = None
@@ -791,6 +792,12 @@ class CatalogRelation:
     target_relation_name: str | None = None
     stable_binding_name: str | None = None
     ownership_generation: str | None = None
+
+    @property
+    def storage_engine(self) -> str:
+        """Return the engine including storage arguments when available."""
+
+        return self.full_engine or self.engine
 
     @property
     def source_relation_name(self) -> str | None:
