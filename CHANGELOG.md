@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.35.0](https://github.com/chio-labs/streambuild/compare/v0.34.4...v0.35.0) (2026-08-27)
+
+
+### Features
+
+* build selected pipelines from inventory ([#211](https://github.com/chio-labs/streambuild/issues/211)) ([3710347](https://github.com/chio-labs/streambuild/commit/3710347fa75affca2eb6ee971a290018fb11c1dc))
+
 ## [0.34.4](https://github.com/chio-labs/streambuild/compare/v0.34.3...v0.34.4) (2026-08-27)
 
 
