@@ -4,7 +4,10 @@ from pathlib import Path
 import pytest
 
 from streambuild.adapter.exceptions import AdapterResultError
-from streambuild.adapter.models import AdapterDirectFingerprintRecord
+from streambuild.adapter.models import (
+    AdapterDirectFingerprintRecord,
+    AdapterReplayOffsetProgressRequest,
+)
 from streambuild.cli.plan.main._render_direct_plan_json import render_direct_plan_json
 from streambuild.cli.workflow_artifacts.main._publish_build_workflow import publish_build_workflow
 from streambuild.compiler.compile.main.build_model_storage_identity import (
@@ -160,7 +163,7 @@ def test_given_direct_plan_when_assembling_then_complete_exact_workflow_is_autho
         project_root=tmp_path,
         selected_model_names=("beta",),
     )
-    connection: RecordingDirectBuildConnection = RecordingDirectBuildConnection()
+    connection: RecordingDirectBuildConnection = DistinctCaptureDirectBuildConnection()
     workflow: DirectBuildWorkflow = assemble_direct_build_workflow(
         request=request,
         client=connection,
@@ -207,7 +210,14 @@ def test_given_direct_plan_when_assembling_then_complete_exact_workflow_is_autho
     actual_runtime_step_ids: tuple[str, ...] = tuple(
         statement.step_id for statement in statements[-(len(expected_runtime_step_ids) + 1) : -1]
     )
+    runtime_statements: tuple[WarehouseStatement, ...] = statements[
+        -(len(expected_runtime_step_ids) + 1) : -1
+    ]
+    replay_progress_requests: tuple[AdapterReplayOffsetProgressRequest | None, ...] = tuple(
+        statement.replay_offset_progress for statement in runtime_statements[1::2]
+    )
     assert actual_runtime_step_ids == expected_runtime_step_ids
+    assert all(request is not None and request.ranges for request in replay_progress_requests)
     assert step_bytes == tuple(statement.sql for statement in statements)
     assert (published.artifact_root / "workflow.sql").read_text(encoding="utf-8") == (
         "\n".join(statement.sql for statement in statements)

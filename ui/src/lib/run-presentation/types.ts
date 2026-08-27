@@ -51,6 +51,7 @@ export type StatementProgressPresentation = {
 	pendingStatements: number | null;
 	percentage: number | null;
 	etaSeconds: number | null;
+	progressSource: 'clickhouse_rows' | 'replay_offsets' | null;
 };
 
 export type RunHistoryState = {

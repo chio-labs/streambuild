@@ -11,7 +11,7 @@ function progress(overrides: Partial<StatementProgress> = {}): StatementProgress
 		queryId: 'query-1',
 		statementSequence: 4,
 		stepId: 'replay_orders',
-		phase: 'replay',
+		phase: 'build',
 		observedAt: '2026-08-21 12:00:00',
 		readRows: 250,
 		totalRowsApprox: 1000,
@@ -26,7 +26,8 @@ describe('statement progress presentation', () => {
 			position: '4/10',
 			pendingStatements: 6,
 			percentage: 25,
-			etaSeconds: 30
+			etaSeconds: 30,
+			progressSource: 'clickhouse_rows'
 		});
 	});
 
@@ -34,5 +35,32 @@ describe('statement progress presentation', () => {
 		expect(
 			buildStatementProgressPresentation(progress({ totalRowsApprox: 0 }), 10)
 		).toMatchObject({ percentage: null, etaSeconds: null });
+	});
+
+	it('given replay offset progress when presenting replay then offset percentage and ETA take precedence', () => {
+		expect(
+			buildStatementProgressPresentation(
+				progress({
+					phase: 'replay',
+					replayOffsetProgress: {
+						percentage: 60,
+						etaSeconds: 20,
+						completedSpan: 600,
+						totalSpan: 1000,
+						observedPartitions: 2,
+						totalPartitions: 2
+					}
+				}),
+				10
+			)
+		).toMatchObject({ percentage: 60, etaSeconds: 20, progressSource: 'replay_offsets' });
+	});
+
+	it('given unsupported replay when presenting then ClickHouse rows do not imply replay completion', () => {
+		expect(buildStatementProgressPresentation(progress({ phase: 'replay' }), 10)).toMatchObject({
+			percentage: null,
+			etaSeconds: null,
+			progressSource: null
+		});
 	});
 });

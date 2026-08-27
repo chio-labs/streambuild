@@ -9,8 +9,13 @@ export function buildStatementProgressPresentation(
 ): StatementProgressPresentation {
 	const totalRows: number = progress.totalRowsApprox ?? 0;
 	const readRows: number = progress.readRows ?? 0;
-	const credibleTotal: boolean = progress.found && totalRows > 0 && readRows <= totalRows;
-	const percentage: number | null = credibleTotal
+	const replayOffsetProgress: StatementProgress['replayOffsetProgress'] = progress.replayOffsetProgress;
+	const replayStatement: boolean = progress.phase === 'replay';
+	const credibleTotal: boolean =
+		!replayStatement && progress.found && totalRows > 0 && readRows <= totalRows;
+	const percentage: number | null = replayOffsetProgress
+		? replayOffsetProgress.percentage
+		: credibleTotal
 		? Math.min((readRows / totalRows) * 100, 100)
 		: null;
 	const rowsPerSecond: number = progress.readRowsPerSecond ?? 0;
@@ -24,9 +29,15 @@ export function buildStatementProgressPresentation(
 				? null
 				: Math.max(totalStatements - progress.statementSequence, 0),
 		percentage,
-		etaSeconds:
-			percentage === null || rowsPerSecond <= 0
+		etaSeconds: replayOffsetProgress
+			? replayOffsetProgress.etaSeconds
+			: percentage === null || rowsPerSecond <= 0
 				? null
-				: Math.max((totalRows - readRows) / rowsPerSecond, 0)
+				: Math.max((totalRows - readRows) / rowsPerSecond, 0),
+		progressSource: replayOffsetProgress
+			? 'replay_offsets'
+			: credibleTotal
+				? 'clickhouse_rows'
+				: null
 	};
 }

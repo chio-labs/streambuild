@@ -20,6 +20,7 @@ from playwright.sync_api import (
 from tests.e2e.src.streambuild.dev_server._test_types import (
     BuildRunBrowserE2ETestCase,
     PlanBrowserE2ETestCase,
+    ReplayProgressBrowserE2ETestCase,
 )
 
 
@@ -251,3 +252,118 @@ def test_given_planned_model_when_executing_then_live_and_durable_run_surfaces_a
         ("/api/definitions", "net::ERR_ABORTED")
     }
     assert all(response.status < 400 for response in responses)
+
+
+@pytest.mark.e2e
+@pytest.mark.browser
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ReplayProgressBrowserE2ETestCase(
+            description="offset replay labels its approximate frontier estimate",
+            statement_progress_fields={
+                "replayOffsetProgress": {
+                    "percentage": 60.0,
+                    "etaSeconds": 20.0,
+                    "completedSpan": 600,
+                    "totalSpan": 1000,
+                    "observedPartitions": 2,
+                    "totalPartitions": 2,
+                }
+            },
+            expected_progress_text="approximately 60.0% by replay offsets",
+            expected_eta_count=1,
+        ),
+        ReplayProgressBrowserE2ETestCase(
+            description="unsupported replay retains an honest indeterminate state",
+            statement_progress_fields={},
+            expected_progress_text="progress denominator unavailable",
+            expected_eta_count=0,
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_active_replay_when_viewing_run_then_frontier_progress_or_fallback_is_explicit(
+    test_case: ReplayProgressBrowserE2ETestCase,
+    running_plan_server: tuple[str, dict[str, object], Path, Client, str],
+    browser_diagnostics: tuple[list[ConsoleMessage], list[Error], list[Request], list[Response]],
+    page: Page,
+) -> None:
+    del browser_diagnostics
+    base_url: str = running_plan_server[0]
+    progress_payload: dict[str, object] = {
+        "found": True,
+        "queryId": "query-progress",
+        "statementSequence": 4,
+        "stepId": "replay_moving_orders",
+        "phase": "replay",
+        "observedAt": "2026-08-27 20:00:10.000",
+        "elapsedSeconds": 10.0,
+        "readRows": 16_700_000,
+        "readBytes": 12_884_901_888,
+        "totalRowsApprox": 272_477,
+        "memoryUsageBytes": 3_865_470_566,
+        "readRowsPerSecond": 1_670_000,
+        "readBytesPerSecond": 1_288_490_188,
+        "settings": {"max_memory_usage": "10000000000"},
+        **test_case.statement_progress_fields,
+    }
+    feed_payload: dict[str, object] = {
+        "found": True,
+        "events": [
+            {
+                "event": "run_started",
+                "sequence": 1,
+                "emittedAt": "2026-08-27 20:00:00.000",
+                "stepId": None,
+                "phase": None,
+                "displayCommand": "stb build --select moving_orders",
+                "command": "build",
+                "mode": "direct",
+                "totalStatements": 6,
+                "selectedNodeCount": 1,
+            },
+            {
+                "event": "statement_started",
+                "sequence": 2,
+                "emittedAt": "2026-08-27 20:00:00.000",
+                "statementSequence": 4,
+                "stepId": "replay_moving_orders",
+                "phase": "replay",
+                "displayName": "Replay source data: moving_orders",
+                "queryId": "query-progress",
+            },
+        ],
+        "hasMore": False,
+        "status": "running",
+        "lastSignalAt": "2026-08-27 20:00:09.000",
+        "lastSignalAgeSeconds": 1,
+        "statementProgress": progress_payload,
+    }
+    page.route(
+        "**/api/runs/mock-progress/events*",
+        lambda route: route.fulfill(json=feed_payload),
+    )
+    page.route("**/api/runs", lambda route: route.fulfill(json=[]))
+    page.route(
+        "**/api/build/current*",
+        lambda route: route.fulfill(
+            json={
+                "running": False,
+                "invocationId": None,
+                "currentInvocationId": None,
+                "command": "",
+                "exitCode": None,
+                "events": [],
+                "stderr": "",
+                "forceAvailable": False,
+            }
+        ),
+    )
+
+    page.goto(f"{base_url}/runs/mock-progress", wait_until="domcontentloaded")
+
+    progress: Locator = page.get_by_label("Active statement progress")
+    expect(progress).to_contain_text(test_case.expected_progress_text, timeout=15_000)
+    expect(progress).to_contain_text("16.7M")
+    expect(progress.get_by_text("ETA 20s", exact=True)).to_have_count(test_case.expected_eta_count)

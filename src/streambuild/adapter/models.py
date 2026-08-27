@@ -995,3 +995,31 @@ class AdapterStatementProgress:
     total_rows_approx: int
     memory_usage_bytes: int
     settings: tuple[tuple[str, str], ...] = ()
+
+
+@dataclass(frozen=True)
+class AdapterReplayOffsetRange:
+    """One captured partition span used only for approximate replay progress."""
+
+    partition: int
+    lower_offset: int
+    upper_offset: int
+
+
+@dataclass(frozen=True)
+class AdapterReplayOffsetProgressRequest:
+    """Target relation and immutable captured ranges for frontier observation."""
+
+    database: str
+    relation: str
+    partition_column: str
+    offset_column: str
+    ranges: tuple[AdapterReplayOffsetRange, ...]
+
+
+@dataclass(frozen=True)
+class AdapterReplayOffsetFrontier:
+    """Greatest committed target offset observed for one replay partition."""
+
+    partition: int
+    completed_offset: int

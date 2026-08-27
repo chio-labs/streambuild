@@ -1,7 +1,12 @@
 from dataclasses import dataclass
 
 from streambuild.adapter.exceptions import AdapterWarehouseError
-from streambuild.adapter.models import AdapterStatementProgress, AdapterTargetMutationLock
+from streambuild.adapter.models import (
+    AdapterReplayOffsetFrontier,
+    AdapterReplayOffsetProgressRequest,
+    AdapterStatementProgress,
+    AdapterTargetMutationLock,
+)
 from streambuild.adapter.types import AdapterReplayBoundaryMode
 
 
@@ -27,6 +32,14 @@ class ConnectionQueryNormalizationTestCase:
     raw_result_rows: list[list[object]]
     expected_column_names: tuple[str, ...]
     expected_rows: tuple[tuple[object, ...], ...]
+
+
+@dataclass(frozen=True)
+class ClickHouseReplayFrontierTestCase:
+    description: str
+    request: AdapterReplayOffsetProgressRequest
+    expected_frontiers: tuple[AdapterReplayOffsetFrontier, ...]
+    expected_query_fragments: tuple[str, ...]
 
 
 @dataclass(frozen=True)
