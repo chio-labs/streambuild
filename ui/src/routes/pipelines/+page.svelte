@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { goto } from '$app/navigation';
 	import AppTopbar from '$lib/presentation/components/app-topbar.svelte';
 	import Button from '$ui-kit/button/button.svelte';
 	import Checkbox from '$ui-kit/checkbox/checkbox.svelte';
@@ -24,6 +25,7 @@
 		{ value: 'virtual', label: 'Virtual' }
 	];
 	let modeFilter = $state<PipelineModeFilter>('all');
+	let selected = $state<ReadonlySet<string>>(new Set());
 
 	// A pipeline is the project's real top-level unit: `stb discover` returns
 	// nothing but pipeline names, and `pipeline:<name>` is one of only two
@@ -50,18 +52,39 @@
 		direct: rows.filter((row) => row.pipeline.mode === 'direct').length,
 		virtual: rows.filter((row) => row.pipeline.mode === 'virtual').length
 	});
-	const selectablePipelineNames = $derived(
-		filteredRows
+	const buildablePipelineNames = $derived(
+		rows
+			.filter((row) =>
+				can(row.pipeline.mode === 'direct' ? 'build.direct.run' : 'deployment.create', row.pipeline.name)
+			)
+			.map((row) => row.pipeline.name)
+	);
+	const destroyablePipelineNames = $derived(
+		rows
 			.filter((row) => can('pipeline.destroy', row.pipeline.name))
 			.map((row) => row.pipeline.name)
 	);
-	const selectedCount = $derived(destruction.selected.size);
+	const selectablePipelineNames = $derived(
+		filteredRows
+			.filter(
+				(row) =>
+					buildablePipelineNames.includes(row.pipeline.name) ||
+					destroyablePipelineNames.includes(row.pipeline.name)
+			)
+			.map((row) => row.pipeline.name)
+	);
+	const selectedBuildableNames = $derived(
+		buildablePipelineNames.filter((name) => selected.has(name))
+	);
+	const selectedDestroyableNames = $derived(
+		destroyablePipelineNames.filter((name) => selected.has(name))
+	);
 	const allCurrentSelected = $derived(
 		selectablePipelineNames.length > 0 &&
-			selectablePipelineNames.every((name) => destruction.selected.has(name))
+			selectablePipelineNames.every((name) => selected.has(name))
 	);
 	const someCurrentSelected = $derived(
-		!allCurrentSelected && selectablePipelineNames.some((name) => destruction.selected.has(name))
+		!allCurrentSelected && selectablePipelineNames.some((name) => selected.has(name))
 	);
 	const resetAllowed = $derived(can('target.reset'));
 	const dependentPermissionsAvailable = $derived(
@@ -69,8 +92,32 @@
 			true
 	);
 
+	function togglePipeline(name: string): void {
+		const next: Set<string> = new Set(selected);
+		if (next.has(name)) next.delete(name);
+		else next.add(name);
+		selected = next;
+	}
+
+	function setCurrentPipelines(names: string[], checked: boolean): void {
+		const next: Set<string> = new Set(selected);
+		for (const name of names) {
+			if (checked) next.add(name);
+			else next.delete(name);
+		}
+		selected = next;
+	}
+
+	function openBuildPlan(): void {
+		const parameters: URLSearchParams = new URLSearchParams();
+		for (const name of [...selectedBuildableNames].sort()) {
+			parameters.append('select', `pipeline:${name}`);
+		}
+		void goto(`/plan?${parameters.toString()}`);
+	}
+
 	function openDestroyPlan(): void {
-		void destruction.start('destroy_pipelines');
+		void destruction.start('destroy_pipelines', selectedDestroyableNames);
 	}
 
 	function openResetPlan(): void {
@@ -80,6 +127,17 @@
 </script>
 
 <AppTopbar title="Pipelines">
+	<Button
+		size="sm"
+		class="font-mono text-[10.5px]"
+		disabled={selectedBuildableNames.length === 0}
+		title={selectedBuildableNames.length === 0
+			? 'Select pipelines you have permission to build'
+			: 'Review the selected pipelines in Plan'}
+		onclick={openBuildPlan}
+	>
+		Build{selectedBuildableNames.length > 0 ? ` (${selectedBuildableNames.length})` : ''}
+	</Button>
 	<Button
 		variant="outline"
 		size="sm"
@@ -94,11 +152,13 @@
 		variant="destructive"
 		size="sm"
 		class="font-mono text-[10.5px]"
-		disabled={selectedCount === 0}
-		title={selectedCount === 0 ? 'Select pipelines you have permission to destroy' : undefined}
+		disabled={selectedDestroyableNames.length === 0}
+		title={selectedDestroyableNames.length === 0
+			? 'Select pipelines you have permission to destroy'
+			: undefined}
 		onclick={openDestroyPlan}
 	>
-		Destroy{selectedCount > 0 ? ` (${selectedCount})` : ''}
+		Destroy{selectedDestroyableNames.length > 0 ? ` (${selectedDestroyableNames.length})` : ''}
 	</Button>
 </AppTopbar>
 
@@ -140,9 +200,9 @@
 						checked={allCurrentSelected}
 						indeterminate={someCurrentSelected}
 						disabled={selectablePipelineNames.length === 0}
-						aria-label="Select all destroyable pipelines in the current table"
+						aria-label="Select all actionable pipelines in the current table"
 						onCheckedChange={(checked) =>
-							destruction.setCurrentPipelines(selectablePipelineNames, checked === true)}
+							setCurrentPipelines(selectablePipelineNames, checked === true)}
 					/>
 				</th>
 				<th class="px-3 py-2 font-normal">Pipeline</th>
@@ -161,13 +221,13 @@
 				<tr>
 					<td class="py-2 pl-[18px] pr-1">
 						<Checkbox
-							checked={destruction.selected.has(row.pipeline.name)}
-							disabled={!can('pipeline.destroy', row.pipeline.name)}
-							aria-label="Select {row.pipeline.name} for destruction"
-							title={can('pipeline.destroy', row.pipeline.name)
+							checked={selected.has(row.pipeline.name)}
+							disabled={!selectablePipelineNames.includes(row.pipeline.name)}
+							aria-label="Select {row.pipeline.name} for an action"
+							title={selectablePipelineNames.includes(row.pipeline.name)
 								? undefined
-								: 'Requires the pipeline.destroy permission for this pipeline'}
-							onCheckedChange={() => destruction.togglePipeline(row.pipeline.name)}
+								: 'Requires build or pipeline.destroy permission for this pipeline'}
+							onCheckedChange={() => togglePipeline(row.pipeline.name)}
 						/>
 					</td>
 					<td class="px-3">
