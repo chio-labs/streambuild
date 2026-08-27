@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.35.1](https://github.com/chio-labs/streambuild/compare/v0.35.0...v0.35.1) (2026-08-27)
+
+
+### Bug Fixes
+
+* reuse Kafka metadata clients ([#214](https://github.com/chio-labs/streambuild/issues/214)) ([c714ea3](https://github.com/chio-labs/streambuild/commit/c714ea3565f8a4867b3391031bd7c7f95628848e))
+
 ## [0.35.0](https://github.com/chio-labs/streambuild/compare/v0.34.4...v0.35.0) (2026-08-27)
 
 
