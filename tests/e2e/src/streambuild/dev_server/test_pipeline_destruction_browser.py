@@ -201,9 +201,18 @@ def test_given_selected_pipeline_when_confirming_destruction_then_both_gates_are
     page.route("**/api/runs/*/statements/*", routes.fulfill_statement_read)
     page.set_viewport_size({"width": 1920, "height": 1080})
     page.goto(f"{base_url}/pipelines", wait_until="domcontentloaded")
+    expect(page.get_by_role("button", name="Reset target", exact=True)).to_have_count(0)
+    expect(page.get_by_role("button", name=re.compile(r"^Destroy"))).to_have_count(0)
+    page.get_by_role("button", name="Destructive actions…", exact=True).click()
+    drawer: Locator = page.get_by_test_id("destructive-actions-drawer")
+    expect(drawer).to_contain_text("Selected pipelines")
+    expect(drawer).to_contain_text("Entire target")
+    expect(drawer.get_by_role("button", name="Review destroy plan", exact=True)).to_be_disabled()
+    expect(drawer.get_by_role("button", name="Review target reset", exact=True)).to_be_enabled()
+    drawer.get_by_role("button", name="Close destructive actions").click()
 
     page.get_by_role("button", name=re.compile(r"^Virtual")).click()
-    expect(page.get_by_text("No pipelines match this mode", exact=True)).to_be_visible()
+    expect(page.get_by_text("No pipelines match the current filters", exact=True)).to_be_visible()
     expect(page.get_by_label(f"Select {test_case.pipeline_name} for an action")).to_have_count(0)
     page.get_by_role("button", name=re.compile(r"^Direct")).click()
     expect(page.get_by_label(f"Select {test_case.pipeline_name} for an action")).to_be_visible()
@@ -214,7 +223,18 @@ def test_given_selected_pipeline_when_confirming_destruction_then_both_gates_are
 
     page.goto(f"{base_url}/pipelines", wait_until="domcontentloaded")
     page.get_by_label(f"Select {test_case.pipeline_name} for an action").click()
-    page.get_by_role("button", name="Destroy (1)").click()
+    search: Locator = page.get_by_placeholder("Search pipelines…")
+    search.fill("no matching pipeline")
+    filter_summary: Locator = page.get_by_test_id("pipeline-filter-summary")
+    expect(filter_summary).to_contain_text("1 selected")
+    expect(filter_summary).to_contain_text("1 outside filter")
+    expect(page.get_by_label(f"Select {test_case.pipeline_name} for an action")).to_have_count(0)
+    search.fill(test_case.expected_relation_name)
+    expect(page.get_by_label(f"Select {test_case.pipeline_name} for an action")).to_be_visible()
+    page.get_by_role("button", name="Destructive actions…", exact=True).click()
+    drawer = page.get_by_test_id("destructive-actions-drawer")
+    expect(drawer).to_contain_text("1 pipeline selected")
+    drawer.get_by_role("button", name="Review destroy plan", exact=True).click()
     expect(page).to_have_url(f"{base_url}/destruction/plans/plan-1")
     expect(page.get_by_text("Frozen pipeline closure")).to_be_visible()
     expect(page.get_by_text(test_case.expected_relation_name, exact=True)).to_be_visible()
@@ -266,6 +286,82 @@ def test_given_selected_pipeline_when_confirming_destruction_then_both_gates_are
     assert routes.read_count == 2
     assert routes.recovery_request_bodies == [None]
     assert routes.statement_read_count == 0
+
+
+@pytest.mark.e2e
+@pytest.mark.browser
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DestructionBrowserE2ETestCase(
+            description="target reset is available only inside the target-wide drawer section",
+            pipeline_name="pl__moving_events",
+            expected_model_name="moving_orders",
+            expected_relation_name="tbl__moving_orders",
+            expected_invocation_id="unused",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_reset_permission_when_opening_destructive_actions_then_reset_enters_review_flow(
+    test_case: DestructionBrowserE2ETestCase,
+    running_catalog_pipeline_browser_server: tuple[str, dict[str, object], str, Path],
+    page: Page,
+) -> None:
+    base_url: str = running_catalog_pipeline_browser_server[0]
+    reset_payload: dict[str, object] = {
+        "planId": "reset-plan-1",
+        "planFingerprint": "b" * 64,
+        "operation": "reset_target",
+        "target": "test",
+        "database": "analytics",
+        "selectedPipelines": [],
+        "includedDependentPipelines": [],
+        "affectedPipelines": [test_case.pipeline_name],
+        "requiredDependentPipelines": [],
+        "blocked": False,
+        "models": [test_case.expected_model_name],
+        "resources": [],
+        "managedSourcesIncluded": True,
+        "retainedReplayDataIncluded": True,
+        "estimatedBytes": 0,
+        "dropSizeLimitBytes": 107_374_182_400,
+        "dropSizeServerLimitBytes": 50_000_000_000,
+        "dropSizeOverrideBytes": 107_374_182_400,
+        "dropSizePolicyObserved": True,
+        "challengeValues": ["RESET test"],
+        "expiresAt": "2099-08-24T12:15:00+00:00",
+        "reviewedAt": None,
+    }
+    routes: DestructionRouteRecorder = DestructionRouteRecorder(
+        plan_payload=reset_payload,
+        invocation_id=test_case.expected_invocation_id,
+    )
+    page.route("**/api/destruction/plans", routes.fulfill_plan)
+    page.route("**/api/destruction/plans/reset-plan-1", routes.fulfill_read)
+
+    page.set_viewport_size({"width": 390, "height": 844})
+    page.goto(f"{base_url}/pipelines", wait_until="domcontentloaded")
+    expect(page.get_by_placeholder("Search pipelines…")).to_be_visible()
+    expect(page.get_by_role("button", name="Reset target", exact=True)).to_have_count(0)
+    page.get_by_role("button", name="Destructive actions…", exact=True).click()
+    drawer: Locator = page.get_by_test_id("destructive-actions-drawer")
+    drawer_box: FloatRect | None = drawer.bounding_box()
+    assert drawer_box is not None
+    assert 360 <= drawer_box["width"] <= 390
+    expect(drawer.get_by_role("button", name="Review destroy plan", exact=True)).to_be_disabled()
+    expect(drawer).to_contain_text("Reset test / analytics")
+    drawer.get_by_role("button", name="Review target reset", exact=True).click()
+
+    expect(page).to_have_url(f"{base_url}/destruction/plans/reset-plan-1")
+    expect(page.get_by_text("Entire target", exact=True)).to_be_visible()
+    assert routes.request_bodies == [
+        {
+            "operation": "reset_target",
+            "pipelineNames": [],
+            "includedDependentPipelineNames": [],
+        }
+    ]
 
 
 if __name__ == "__main__":
