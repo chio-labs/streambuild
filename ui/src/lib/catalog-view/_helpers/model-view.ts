@@ -16,8 +16,13 @@ export function buildCatalogModelView(project: Project, modelName: string): Cata
 		coverage: reconstructionCoverage(project).find((row) => row.modelName === modelName),
 		artifacts: model
 			? [
-					{ label: 'Model', code: model.sql.authored },
-					{ label: 'Compiled', code: model.sql.compiled },
+					{ label: 'Authored SQL', code: model.sql.authored },
+					{ label: 'Compiled SQL', code: model.sql.compiled },
+					{
+						label: 'Live DDL',
+						code: model.live.semanticDrift.liveDdl,
+						note: 'Observed from the live warehouse at the current snapshot.'
+					},
 					{ label: 'Table DDL', code: model.sql.tableDdl },
 					{ label: 'MV DDL', code: model.sql.mvDdl },
 					{ label: 'View DDL', code: model.sql.viewDdl }

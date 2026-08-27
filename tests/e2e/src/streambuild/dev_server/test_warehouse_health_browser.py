@@ -20,6 +20,8 @@ from tests.e2e.src.streambuild.dev_server._test_types import (
             expected_adapter="clickhouse",
             expected_capacity_heading="Capacity",
             expected_table_heading="Largest project tables",
+            expected_freshness_state="Not configured",
+            expected_test_state="Not run on test",
         )
     ],
     ids=lambda case: case.description,
@@ -42,6 +44,12 @@ def test_given_available_warehouse_health_when_navigating_ui_then_summary_and_de
 
     assert page.goto(base_url, wait_until="networkidle") is not None
     expect(page.get_by_test_id("warehouse-health-summary")).to_be_visible()
+    expect(page.get_by_text(test_case.expected_freshness_state, exact=True)).to_be_visible()
+    expect(page.get_by_test_id("quality-tests-summary")).to_contain_text(
+        test_case.expected_test_state
+    )
+    expect(page.get_by_text("unknown", exact=True)).to_have_count(0)
+    expect(page.get_by_text("Current bounded warehouse snapshot.", exact=True)).to_have_count(0)
     page.get_by_role("link", name="Warehouse", exact=True).click()
 
     expect(page).to_have_url(f"{base_url}/warehouse-health")

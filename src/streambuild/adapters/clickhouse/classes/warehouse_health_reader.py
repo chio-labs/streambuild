@@ -11,6 +11,7 @@ from streambuild.adapter.models import (
     AdapterWarehouseActivity,
     AdapterWarehouseDisk,
     AdapterWarehouseHealth,
+    AdapterWarehouseKafkaConsumers,
     AdapterWarehouseMemory,
     AdapterWarehouseTable,
 )
@@ -29,14 +30,23 @@ class ClickHouseWarehouseHealthReader:
     def __init__(self, *, connection: AdapterConnection) -> None:
         self._connection: AdapterConnection = connection
 
-    def read(self, *, database: str) -> AdapterWarehouseHealth:
+    def read(
+        self, *, database: str, managed_source_names: tuple[str, ...] = ()
+    ) -> AdapterWarehouseHealth:
         """Collect diagnostics without making optional failures authoritative."""
 
-        return _load_clickhouse_warehouse_health(connection=self._connection, database=database)
+        return _load_clickhouse_warehouse_health(
+            connection=self._connection,
+            database=database,
+            managed_source_names=managed_source_names,
+        )
 
 
 def _load_clickhouse_warehouse_health(
-    *, connection: AdapterConnection, database: str
+    *,
+    connection: AdapterConnection,
+    database: str,
+    managed_source_names: tuple[str, ...],
 ) -> AdapterWarehouseHealth:
     """Collect one bounded snapshot without making optional failures authoritative."""
 
@@ -61,6 +71,7 @@ def _load_clickhouse_warehouse_health(
     inode_status: AdapterWarehouseHealthStatus = AdapterWarehouseHealthStatus.UNKNOWN
     memory: AdapterWarehouseMemory | None = None
     activity: AdapterWarehouseActivity | None = None
+    kafka_consumers: AdapterWarehouseKafkaConsumers | None = None
     tables: tuple[AdapterWarehouseTable, ...] | None = None
 
     try:
@@ -111,6 +122,32 @@ def _load_clickhouse_warehouse_health(
     except (AdapterError, KeyError, TypeError, ValueError):
         warnings.append("Current warehouse activity is unavailable.")
 
+    if managed_source_names:
+        try:
+            consumer_row: Mapping[str, object] | None = connection.query_one(
+                statement=_kafka_consumers_query(
+                    database=database,
+                    managed_source_names=managed_source_names,
+                ),
+                decode=lambda row: row,
+            )
+            if consumer_row is not None:
+                kafka_consumers = AdapterWarehouseKafkaConsumers(
+                    expected_tables=len(managed_source_names),
+                    polling_tables=int(str(consumer_row["polling_tables"])),
+                    exception_tables=int(str(consumer_row["exception_tables"])),
+                )
+            else:
+                warnings.append("Managed Kafka consumer health is unavailable.")
+        except (AdapterError, KeyError, TypeError, ValueError):
+            warnings.append("Managed Kafka consumer health is unavailable.")
+    else:
+        kafka_consumers = AdapterWarehouseKafkaConsumers(
+            expected_tables=0,
+            polling_tables=0,
+            exception_tables=0,
+        )
+
     try:
         tables = connection.query_many(
             statement=_tables_query(database),
@@ -138,6 +175,9 @@ def _load_clickhouse_warehouse_health(
         activity=activity,
         tables=tables,
         collection_duration_ms=_elapsed_ms(started_at),
+        kafka_consumers=kafka_consumers,
+        capacity_warning_fraction=CLICKHOUSE_CAPACITY_WARNING_AVAILABLE_FRACTION,
+        capacity_critical_fraction=CLICKHOUSE_CAPACITY_CRITICAL_AVAILABLE_FRACTION,
         warnings=tuple(warnings),
     )
 
@@ -204,6 +244,20 @@ def _tables_query(database: str) -> str:
         "count() AS active_parts FROM system.parts "
         f"WHERE active AND database = {quoted_database} GROUP BY table "
         "ORDER BY bytes_on_disk DESC, table LIMIT 10"
+    )
+
+
+def _kafka_consumers_query(*, database: str, managed_source_names: tuple[str, ...]) -> str:
+    quoted_database: str = quote_clickhouse_sql_string(database)
+    quoted_tables: str = ", ".join(
+        quote_clickhouse_sql_string(name) for name in managed_source_names
+    )
+    return (
+        "SELECT countDistinct(table) AS polling_tables, "
+        "countDistinctIf(table, notEmpty(exceptions.time) AND "
+        "arrayMax(exceptions.time) >= last_poll_time) AS exception_tables "
+        "FROM system.kafka_consumers "
+        f"WHERE database = {quoted_database} AND table IN ({quoted_tables})"
     )
 
 
