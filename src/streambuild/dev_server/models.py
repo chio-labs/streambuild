@@ -19,6 +19,18 @@ from streambuild.executor.destruction.classes.relational_destruction_plan_store 
 )
 
 
+@dataclass(frozen=True)
+class ReplayOffsetProgress:
+    """Approximate progress derived from committed target offset frontiers."""
+
+    percentage: float
+    eta_seconds: float | None
+    completed_span: int
+    total_span: int
+    observed_partitions: int
+    total_partitions: int
+
+
 @dataclass(frozen=True, repr=False)
 class DevExecutionContext:
     """Resolved invocation values retained across dev reloads, previews, and builds."""

@@ -1,8 +1,15 @@
+import time
+from concurrent.futures import Future, ThreadPoolExecutor
+
 import pytest
 from clickhouse_connect.driver.client import Client
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import (
+    AdapterReplayOffsetFrontier,
+    AdapterReplayOffsetProgressRequest,
+    AdapterReplayOffsetRange,
+    AdapterStatementProgress,
     AdapterWarehouseHealth,
     AdapterWarehouseTable,
     CatalogRelation,
@@ -11,6 +18,7 @@ from streambuild.adapter.models import (
 from tests.integration.src.streambuild.adapters.clickhouse._test_types import (
     ClickHouseCatalogIntegrationTestCase,
     ClickHouseClientIntegrationTestCase,
+    ClickHouseReplayProgressIntegrationTestCase,
     ClickHouseWarehouseHealthIntegrationTestCase,
     ClickHouseWarehouseTimestampIntegrationTestCase,
 )
@@ -54,6 +62,90 @@ def test_given_real_clickhouse_when_using_client_then_it_executes_expected_opera
     ).rows
 
     assert result_rows == test_case.expected_rows
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ClickHouseReplayProgressIntegrationTestCase(
+            description="offset frontier remains logical while cascading views multiply query work",
+            source_rows=20_000,
+            expected_partition=0,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_cascading_views_when_replaying_then_frontier_is_independent_of_read_rows(
+    test_case: ClickHouseReplayProgressIntegrationTestCase,
+    managed_clickhouse_client: AdapterConnection,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    root: str = f"{clickhouse_database}.replay_root"
+    cascade_one: str = f"{clickhouse_database}.replay_cascade_one"
+    cascade_two: str = f"{clickhouse_database}.replay_cascade_two"
+    columns: str = "(_replay_partition Int64, _replay_offset Int64, value UInt64)"
+    clickhouse_client.command(f"CREATE TABLE {root} {columns} ENGINE = MergeTree ORDER BY tuple()")
+    clickhouse_client.command(
+        f"CREATE TABLE {cascade_one} {columns} ENGINE = MergeTree ORDER BY tuple()"
+    )
+    clickhouse_client.command(
+        f"CREATE TABLE {cascade_two} {columns} ENGINE = MergeTree ORDER BY tuple()"
+    )
+    clickhouse_client.command(
+        f"CREATE MATERIALIZED VIEW {clickhouse_database}.replay_mv_one TO {cascade_one} "
+        f"AS SELECT * FROM {root}"
+    )
+    clickhouse_client.command(
+        f"CREATE MATERIALIZED VIEW {clickhouse_database}.replay_mv_two TO {cascade_two} "
+        "AS SELECT _replay_partition, _replay_offset, "
+        f"value + sleepEachRow(0.0001) AS value FROM {cascade_one}"
+    )
+    query_id: str = "replay-frontier-integration"
+    replay_sql: str = (
+        f"INSERT INTO {root} SELECT {test_case.expected_partition}, number, number "
+        f"FROM numbers({test_case.source_rows}) SETTINGS max_threads = 1"
+    )
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        future: Future[object] = executor.submit(
+            clickhouse_client.command,
+            replay_sql,
+            settings={"query_id": query_id},
+        )
+        time.sleep(0.5)
+        telemetry: AdapterStatementProgress | None = (
+            managed_clickhouse_client.load_statement_progress(query_id=query_id)
+        )
+        frontiers: tuple[AdapterReplayOffsetFrontier, ...] | None = (
+            managed_clickhouse_client.load_replay_offset_frontiers(
+                query_id=query_id,
+                request=AdapterReplayOffsetProgressRequest(
+                    database=clickhouse_database,
+                    relation="replay_root",
+                    partition_column="_replay_partition",
+                    offset_column="_replay_offset",
+                    ranges=(
+                        AdapterReplayOffsetRange(
+                            partition=test_case.expected_partition,
+                            lower_offset=0,
+                            upper_offset=test_case.source_rows - 1,
+                        ),
+                    ),
+                ),
+            )
+        )
+        _ = future.result(timeout=10)
+
+    assert telemetry is not None
+    assert telemetry.read_rows > test_case.source_rows
+    assert frontiers is not None
+    assert frontiers == (
+        AdapterReplayOffsetFrontier(
+            partition=test_case.expected_partition,
+            completed_offset=test_case.source_rows - 1,
+        ),
+    )
 
 
 @pytest.mark.integration

@@ -90,6 +90,13 @@ def test_given_one_run_when_emitting_then_streams_jsonl_and_persists_rows(
     assert lines[2]["writtenRows"] == 42
     assert lines[1]["stepId"] == "replay_orders"
     assert lines[1]["displayName"] == "Replay orders"
+    assert lines[1]["replayOffsetProgress"] == {
+        "database": "analytics",
+        "relation": "tbl__orders",
+        "partitionColumn": "_replay_partition",
+        "offsetColumn": "_replay_offset",
+        "ranges": [{"partition": 0, "lowerOffset": 100, "upperOffset": 200}],
+    }
     assert lines[2]["displayName"] == "Replay orders"
     assert isinstance(lines[1]["queryId"], str)
     assert lines[1]["queryId"]

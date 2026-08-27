@@ -9,6 +9,13 @@ class ClickHouseClientIntegrationTestCase:
 
 
 @dataclass(frozen=True)
+class ClickHouseReplayProgressIntegrationTestCase:
+    description: str
+    source_rows: int
+    expected_partition: int
+
+
+@dataclass(frozen=True)
 class ClickHouseWarehouseTimestampIntegrationTestCase:
     description: str
     expected_fractional_digits: int

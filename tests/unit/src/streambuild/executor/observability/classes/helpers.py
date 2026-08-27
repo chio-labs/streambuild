@@ -1,5 +1,7 @@
 from streambuild.adapter.models import (
     AdapterQueryResult,
+    AdapterReplayOffsetProgressRequest,
+    AdapterReplayOffsetRange,
     AdapterRunEventRecord,
     AdapterRunStatementRecord,
 )
@@ -70,4 +72,11 @@ def build_replay_statement() -> WarehouseStatement:
         intent=StatementIntent.MUTATION,
         sql="INSERT INTO tbl SELECT 1;",
         display_name="Replay orders",
+        replay_offset_progress=AdapterReplayOffsetProgressRequest(
+            database="analytics",
+            relation="tbl__orders",
+            partition_column="_replay_partition",
+            offset_column="_replay_offset",
+            ranges=(AdapterReplayOffsetRange(partition=0, lower_offset=100, upper_offset=200),),
+        ),
     )
