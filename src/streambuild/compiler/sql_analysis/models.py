@@ -166,6 +166,7 @@ class SqlCatalogAnalysis:
     source_relations: tuple[SqlRelationIdentity, ...]
     direct_source: SqlRelationIdentity | None
     target_relation: SqlRelationIdentity | None
+    engine: str | None
     ttl: str | None
     settings: tuple[tuple[str, str], ...]
 

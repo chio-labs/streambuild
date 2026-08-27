@@ -20,6 +20,12 @@ def parse_catalog_ddl_details(
     return analysis.ttl, analysis.settings, target_name
 
 
+def parse_catalog_engine(create_table_query: str) -> str | None:
+    """Return the storage engine expression from one catalog DDL statement."""
+
+    return _analyze(create_table_query).engine
+
+
 def parse_sorting_key(value: str) -> tuple[str, ...]:
     """Parse the current ClickHouse sorting-key projection."""
 
