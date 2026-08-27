@@ -74,6 +74,23 @@ class KafkaTopicsSnapshotTestCase:
 
 
 @dataclass(frozen=True)
+class KafkaClientReuseTestCase:
+    description: str
+    broker_list: str
+    expected_client_count: int
+    expected_query_count: int
+    expected_close_count: int
+
+
+@dataclass(frozen=True)
+class KafkaCredentialIsolationTestCase:
+    description: str
+    first_username: str
+    second_username: str
+    expected_isolated: bool
+
+
+@dataclass(frozen=True)
 class WarehouseRuntimeRecoveryTestCase:
     description: str
     failure_message: str

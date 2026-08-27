@@ -35,6 +35,13 @@ class MessageBrowserProcessE2ETestCase:
 
 
 @dataclass(frozen=True)
+class KafkaReaderReuseE2ETestCase:
+    description: str
+    consumer_group: str
+    expected_lag: int
+
+
+@dataclass(frozen=True)
 class LineageExactActivityE2ETestCase:
     description: str
     expected_title: str
