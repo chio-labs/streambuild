@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.36.0](https://github.com/chio-labs/streambuild/compare/v0.35.1...v0.36.0) (2026-08-27)
+
+
+### Features
+
+* clarify observability and catalog drift ([#217](https://github.com/chio-labs/streambuild/issues/217)) ([61bb13e](https://github.com/chio-labs/streambuild/commit/61bb13e2452fe17ec64715f51aa6dc6d2309ba65))
+
 ## [0.35.1](https://github.com/chio-labs/streambuild/compare/v0.35.0...v0.35.1) (2026-08-27)
 
 
