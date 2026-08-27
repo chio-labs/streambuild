@@ -12,8 +12,10 @@
 	import { auditCounts } from '$lib/domain/main/quality/audit-counts';
 	import { auditsForModel } from '$lib/domain/main/quality/audits-for-model';
 	import { formatRate } from '$lib/formatting/main/format-rate';
+	import { filterPipelineRows } from '$lib/pipeline-view/main/filter-pipeline-rows';
 	import type { Audit, Project } from '$lib/domain/types';
 	import DestructionDialog from './destruction-dialog.svelte';
+	import DestructiveActionsDrawer from './destructive-actions-drawer.svelte';
 	import { createDestructionState } from './state.svelte';
 	import type { PipelineModeFilter } from './types';
 
@@ -25,7 +27,9 @@
 		{ value: 'virtual', label: 'Virtual' }
 	];
 	let modeFilter = $state<PipelineModeFilter>('all');
+	let searchQuery = $state<string>('');
 	let selected = $state<ReadonlySet<string>>(new Set());
+	let destructiveActionsOpen = $state<boolean>(false);
 
 	// A pipeline is the project's real top-level unit: `stb discover` returns
 	// nothing but pipeline names, and `pipeline:<name>` is one of only two
@@ -44,9 +48,10 @@
 			};
 		})
 	);
-	const filteredRows = $derived(
+	const modeFilteredRows = $derived(
 		modeFilter === 'all' ? rows : rows.filter((row) => row.pipeline.mode === modeFilter)
 	);
+	const filteredRows = $derived(filterPipelineRows(modeFilteredRows, searchQuery));
 	const modeCounts = $derived({
 		all: rows.length,
 		direct: rows.filter((row) => row.pipeline.mode === 'direct').length,
@@ -78,6 +83,10 @@
 	);
 	const selectedDestroyableNames = $derived(
 		destroyablePipelineNames.filter((name) => selected.has(name))
+	);
+	const visiblePipelineNames = $derived(filteredRows.map((row) => row.pipeline.name));
+	const hiddenSelectedCount = $derived(
+		[...selected].filter((name) => !visiblePipelineNames.includes(name)).length
 	);
 	const allCurrentSelected = $derived(
 		selectablePipelineNames.length > 0 &&
@@ -117,10 +126,12 @@
 	}
 
 	function openDestroyPlan(): void {
+		destructiveActionsOpen = false;
 		void destruction.start('destroy_pipelines', selectedDestroyableNames);
 	}
 
 	function openResetPlan(): void {
+		destructiveActionsOpen = false;
 		void destruction.start('reset_target');
 	}
 
@@ -141,29 +152,24 @@
 	<Button
 		variant="outline"
 		size="sm"
-		class="font-mono text-[10.5px]"
-		disabled={!resetAllowed}
-		title={resetAllowed ? 'Plan a reset of the entire target' : 'Requires the target.reset permission'}
-		onclick={openResetPlan}
+		class="text-muted-foreground font-mono text-[10.5px]"
+		onclick={() => (destructiveActionsOpen = true)}
 	>
-		Reset target
-	</Button>
-	<Button
-		variant="destructive"
-		size="sm"
-		class="font-mono text-[10.5px]"
-		disabled={selectedDestroyableNames.length === 0}
-		title={selectedDestroyableNames.length === 0
-			? 'Select pipelines you have permission to destroy'
-			: undefined}
-		onclick={openDestroyPlan}
-	>
-		Destroy{selectedDestroyableNames.length > 0 ? ` (${selectedDestroyableNames.length})` : ''}
+		Destructive actions…
 	</Button>
 </AppTopbar>
 
 <div class="min-h-0 flex-1 overflow-auto">
-	<div class="flex items-center gap-2 border-b border-border px-[18px] py-2">
+	<div class="flex flex-wrap items-center gap-2 border-b border-border px-[18px] py-2">
+		<label class="relative min-w-[210px] flex-1 sm:max-w-[360px]">
+			<span class="sr-only">Search pipelines</span>
+			<input
+				type="search"
+				placeholder="Search pipelines…"
+				class="h-7 w-full rounded-[3px] border border-border bg-[var(--sb-inset)] px-2.5 font-mono text-[10.5px] outline-none placeholder:text-[var(--sb-text-faint)] focus:border-[var(--sb-border-strong)]"
+				bind:value={searchQuery}
+			/>
+		</label>
 		<span class="text-[var(--sb-text-faint)] font-mono text-[10px] uppercase tracking-[0.14em]">
 			Mode
 		</span>
@@ -188,8 +194,15 @@
 				</button>
 			{/each}
 		</div>
-		<span class="text-[var(--sb-text-faint)] ml-auto font-mono text-[10.5px]">
-			{filteredRows.length} shown
+		<span
+			class="text-[var(--sb-text-faint)] ml-auto flex items-center gap-1 font-mono text-[10.5px]"
+			data-testid="pipeline-filter-summary"
+		>
+			<span>{filteredRows.length} shown</span>
+			{#if selected.size > 0}
+				<span>·</span><span>{selected.size} selected</span>
+				{#if hiddenSelectedCount > 0}<span>·</span><span>{hiddenSelectedCount} outside filter</span>{/if}
+			{/if}
 		</span>
 	</div>
 	<table class="sb-list w-full text-left">
@@ -332,13 +345,24 @@
 			{#if filteredRows.length === 0}
 				<tr>
 					<td colspan="10" class="text-[var(--sb-text-faint)] px-[18px] py-8 text-center font-mono text-[11px]">
-						No pipelines match this mode
+						No pipelines match the current filters
 					</td>
 				</tr>
 			{/if}
 		</tbody>
 	</table>
 </div>
+
+<DestructiveActionsDrawer
+	open={destructiveActionsOpen}
+	selectedPipelineNames={selectedDestroyableNames}
+	{resetAllowed}
+	target={project.target}
+	database={project.database}
+	onOpenChange={(open) => (destructiveActionsOpen = open)}
+	onReviewDestroy={openDestroyPlan}
+	onReviewReset={openResetPlan}
+/>
 
 <DestructionDialog
 	state={destruction}
