@@ -160,6 +160,18 @@ def test_given_compiled_pipeline_when_navigating_catalog_then_identity_and_sql_r
     )
     assert state_models[test_case.parent_model]["relationName"] == test_case.expected_relation
     assert state_models[test_case.child_model]["relationName"] == test_case.expected_child_relation
+    parent_drift: dict[str, object] = cast(
+        dict[str, object], state_models[test_case.parent_model]["semanticDrift"]
+    )
+    child_drift: dict[str, object] = cast(
+        dict[str, object], state_models[test_case.child_model]["semanticDrift"]
+    )
+    assert cast(dict[str, object], parent_drift["schema"])["status"] == "in_sync"
+    parent_query_drift: dict[str, object] = cast(dict[str, object], parent_drift["query"])
+    assert parent_query_drift["status"] == "in_sync", parent_query_drift
+    assert cast(dict[str, object], parent_drift["physicalConfiguration"])["status"] == "in_sync"
+    assert parent_drift["status"] == "in_sync", parent_drift
+    assert child_drift["status"] == "in_sync", child_drift
 
     tree: Locator = page.get_by_test_id("stream-tree")
     expect(tree).to_be_visible()
@@ -189,13 +201,24 @@ def test_given_compiled_pipeline_when_navigating_catalog_then_identity_and_sql_r
     expect(page).to_have_url(f"{base_url}/catalog/{test_case.parent_model}")
     parent_sql: dict[str, object] = cast(dict[str, object], parent["sql"])
     assert parent_sql["authored"] == PARENT_AUTHORED_SQL
-    expect(page.locator('[data-sql-artifact="Model"]')).to_have_text(PARENT_AUTHORED_SQL)
-    page.get_by_role("button", name="Compiled", exact=True).click()
+    drift_panel: Locator = page.get_by_test_id("model-semantic-drift")
+    expect(drift_panel).to_be_visible()
+    expect(drift_panel).to_contain_text("Live warehouse vs current compiled definition")
+    expect(drift_panel).to_contain_text("Schema drift")
+    expect(drift_panel).to_contain_text("Query drift")
+    expect(drift_panel).to_contain_text("Physical configuration drift")
+    expect(page.locator('[data-sql-artifact="Authored SQL"]')).to_have_text(PARENT_AUTHORED_SQL)
+    page.get_by_role("button", name="Compiled SQL", exact=True).click()
     parent_compiled: str = cast(str, parent_sql["compiled"])
-    expect(page.locator('[data-sql-artifact="Compiled"]')).to_have_text(parent_compiled)
+    expect(page.locator('[data-sql-artifact="Compiled SQL"]')).to_have_text(parent_compiled)
     page.context.grant_permissions(["clipboard-read", "clipboard-write"], origin=base_url)
+    page.get_by_role("button", name="Compiled SQL", exact=True).click()
     page.get_by_role("button", name="Copy Compiled SQL", exact=True).click()
     assert page.evaluate("navigator.clipboard.readText()") == parent_compiled
+    page.get_by_role("button", name="Live DDL", exact=True).click()
+    expect(page.locator('[data-sql-artifact="Live DDL"]')).to_contain_text(
+        test_case.expected_relation
+    )
 
     page.get_by_role("link", name=test_case.child_model, exact=True).click()
     expect(page).to_have_url(f"{base_url}/catalog/{test_case.child_model}")
@@ -204,11 +227,12 @@ def test_given_compiled_pipeline_when_navigating_catalog_then_identity_and_sql_r
     ).to_be_visible()
     child_sql: dict[str, object] = cast(dict[str, object], child["sql"])
     child_compiled: str = cast(str, child_sql["compiled"])
-    compiled_panel: Locator = page.locator('[data-sql-artifact="Compiled"]')
+    page.get_by_role("button", name="Compiled SQL", exact=True).click()
+    compiled_panel: Locator = page.locator('[data-sql-artifact="Compiled SQL"]')
     expect(compiled_panel).to_have_text(child_compiled)
     expect(compiled_panel).to_contain_text(f"FROM {test_case.expected_relation}")
     expect(compiled_panel).not_to_contain_text("browser_moving_events")
-    expect(page.get_by_text(test_case.expected_child_relation, exact=True)).to_be_visible()
+    expect(page.get_by_text(test_case.expected_child_relation, exact=True).last).to_be_visible()
     page.get_by_role("button", name="Copy Compiled SQL", exact=True).click()
     assert page.evaluate("navigator.clipboard.readText()") == child_compiled
     materialized_rows: tuple[tuple[object, ...], ...] = tuple(
@@ -220,8 +244,8 @@ def test_given_compiled_pipeline_when_navigating_catalog_then_identity_and_sql_r
     assert materialized_rows == (("catalog-42",),)
     page.reload(wait_until="domcontentloaded")
     expect(page.get_by_role("heading", name=test_case.child_model, exact=True)).to_be_visible()
-    page.get_by_role("button", name="Compiled", exact=True).click()
-    expect(page.locator('[data-sql-artifact="Compiled"]')).to_have_text(child_compiled)
+    page.get_by_role("button", name="Compiled SQL", exact=True).click()
+    expect(page.locator('[data-sql-artifact="Compiled SQL"]')).to_have_text(child_compiled)
 
     assert all(message.type != "error" for message in console_messages)
     assert page_errors == []

@@ -371,6 +371,11 @@ class ClickHouseWarehouseHealthTestCase:
     expected_memory_basis: str
     expected_table_name: str
     expected_query_count: int
+    managed_source_names: tuple[str, ...]
+    consumer_row: tuple[int, int]
+    expected_polling_tables: int
+    expected_exception_tables: int
+    expected_consumer_query_fragment: str
 
 
 @dataclass(frozen=True)

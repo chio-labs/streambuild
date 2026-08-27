@@ -285,6 +285,21 @@ class WarehouseHealthPayloadTestCase:
     expected_disk_status: str
     expected_memory_basis: str
     expected_table_name: str
+    expected_polling_tables: int
+    expected_capacity_warning_fraction: float
+
+
+@dataclass(frozen=True)
+class ModelDriftUnavailablePayloadTestCase:
+    description: str
+    expected_message: str
+
+
+@dataclass(frozen=True)
+class ModelDriftDifferencePayloadTestCase:
+    description: str
+    expected_query_fragment: str
+    expected_physical_field: str
 
 
 @dataclass(frozen=True)

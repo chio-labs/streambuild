@@ -170,6 +170,30 @@ type SqlArtifacts = {
 	viewDdl: string | null;
 };
 
+type DriftStatus = 'in_sync' | 'drift' | 'unavailable';
+
+type ModelSemanticDrift = {
+	comparison: 'live_vs_current_compiled';
+	status: DriftStatus;
+	message: string;
+	liveDdl: string | null;
+	schema: {
+		status: DriftStatus;
+		changes: { column: string; live: string | null; compiled: string | null; change: string }[];
+	};
+	query: {
+		status: DriftStatus;
+		relationName: string;
+		live: string | null;
+		compiled: string | null;
+		unifiedDiff: string | null;
+	};
+	physicalConfiguration: {
+		status: DriftStatus;
+		changes: { field: string; live: string; compiled: string; status: DriftStatus }[];
+	};
+};
+
 type ModelLiveState = {
 	rows: number;
 	diskBytes: number;
@@ -178,6 +202,8 @@ type ModelLiveState = {
 	/** Start of the extent this table actually holds — may predate source retention. */
 	oldestRowAt: string | null;
 	lagSeconds: number | null;
+	/** Evaluated freshness, or null when no authored policy applies. */
+	freshness?: 'fresh' | 'lagging' | 'stalled' | null;
 	activity: ModelActivity;
 	/** Live DDL matches compiled DDL. False = drift. */
 	inSyncWithCompiled: boolean;
@@ -186,6 +212,7 @@ type ModelLiveState = {
 	ownership: OwnershipState;
 	/** From `streambuild_target_ownership.replay_coverage_json`. */
 	recordedCoverage: { from: string; to: string } | null;
+	semanticDrift: ModelSemanticDrift;
 };
 
 export type Model = {

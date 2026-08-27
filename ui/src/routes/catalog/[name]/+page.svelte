@@ -10,6 +10,7 @@
 	import SpanTrack from '$lib/presentation/components/span-track.svelte';
 	import { getProject } from '$lib/api/main/project/get-project';
 	import { createCatalogView } from '$lib/catalog-view/main/create-catalog-view';
+	import ModelDrift from '$lib/catalog-view/components/model-drift.svelte';
 	import type { Project } from '$lib/domain/types';
 
 	const project: Project = getProject();
@@ -66,6 +67,8 @@
 				{#if model.description}
 					<p class="text-muted-foreground text-[13px] leading-relaxed">{model.description}</p>
 				{/if}
+
+				<ModelDrift drift={model.live.semanticDrift} />
 
 				<!-- All four artifacts StreamBuild produces. The MV DDL in particular
 				     cannot be seen from the CLI at all. -->

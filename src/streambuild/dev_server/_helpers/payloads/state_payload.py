@@ -27,6 +27,7 @@ from streambuild.compiler.discovery.types import PipelineMode
 from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.compiler.planner.classes.direct_model_fingerprint import DirectModelFingerprint
 from streambuild.dev_server._helpers.payloads.activity_payload import read_model_activity
+from streambuild.dev_server._helpers.payloads.model_drift_payload import model_drift_payload
 from streambuild.dev_server.classes.kafka_lag_reader import KafkaLagReader
 from streambuild.dev_server.classes.kafka_topic_reader import KafkaTopicReader
 from streambuild.dev_server.classes.warehouse_health_reader import WarehouseHealthReader
@@ -99,8 +100,12 @@ def build_state_payload(
             )
     captured_at: str = connection.capture_warehouse_timestamp()
     health_reader: WarehouseHealthReader = warehouse_health_reader or WarehouseHealthReader()
+    managed_source_names: tuple[str, ...] = _managed_kafka_relation_names(analysis)
     warehouse_health: AdapterWarehouseHealth = health_reader.read(
-        connection=connection, database=database, measured_at=captured_at
+        connection=connection,
+        database=database,
+        measured_at=captured_at,
+        managed_source_names=managed_source_names,
     )
     catalog: CatalogSnapshot = connection.load_catalog(database)
     active_bindings: tuple[tuple[str, str], ...] = _active_bindings(
@@ -162,6 +167,7 @@ def build_state_payload(
         ),
         "models": _model_states(
             analysis=analysis,
+            catalog=catalog,
             baselines=baselines,
             stats=stats,
             extents=extents,
@@ -205,6 +211,15 @@ def _warehouse_health_payload(
             "incompleteMutations": health.activity.incomplete_mutations,
         }
     )
+    kafka_consumers: dict[str, int] | None = (
+        None
+        if health.kafka_consumers is None
+        else {
+            "expectedTables": health.kafka_consumers.expected_tables,
+            "pollingTables": health.kafka_consumers.polling_tables,
+            "exceptionTables": health.kafka_consumers.exception_tables,
+        }
+    )
     return {
         "availability": str(health.availability),
         "status": str(health.status),
@@ -216,6 +231,8 @@ def _warehouse_health_payload(
         "collectionDurationMs": health.collection_duration_ms,
         "stale": health.stale,
         "warnings": list(health.warnings),
+        "capacityWarningFraction": health.capacity_warning_fraction,
+        "capacityCriticalFraction": health.capacity_critical_fraction,
         "disks": [
             {
                 "name": disk.name,
@@ -236,6 +253,7 @@ def _warehouse_health_payload(
         },
         "memory": memory,
         "activity": activity,
+        "kafkaConsumers": kafka_consumers,
         "tables": (
             None
             if health.tables is None
@@ -250,6 +268,17 @@ def _warehouse_health_payload(
             ]
         ),
     }
+
+
+def _managed_kafka_relation_names(analysis: CompileAnalysis) -> tuple[str, ...]:
+    names: set[str] = set()
+    for source in analysis.compiled_project.sources:
+        if not isinstance(source.source, KafkaLandingStep):
+            continue
+        for resource in analysis.realized_project.resources_by_logical_key.get(source.key, ()):
+            if isinstance(resource, AdapterManagedSource):
+                names.add(resource.name)
+    return tuple(sorted(names))
 
 
 def _relation_stats(
@@ -351,6 +380,7 @@ def _source_extents(
 def _model_states(
     *,
     analysis: CompileAnalysis,
+    catalog: CatalogSnapshot,
     baselines: dict[str, AdapterDirectFingerprintRecord] | None,
     stats: dict[str, dict[str, int]],
     extents: dict[str, dict[str, object]],
@@ -393,6 +423,11 @@ def _model_states(
             "activity": activity_by_relation.get(relation_name),
             "drift": bool(drift_reasons),
             "driftReasons": list(drift_reasons),
+            "semanticDrift": model_drift_payload(
+                analysis=analysis,
+                model=model,
+                catalog=catalog,
+            ),
         }
     return states
 
