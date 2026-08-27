@@ -40,7 +40,7 @@ def active_table_specs_from_catalog(
                 for column in relation.columns
             ),
             storage=TableStorage(
-                engine=normalize_storage_engine(relation.engine),
+                engine=normalize_storage_engine(relation.storage_engine),
                 order_by=relation.order_by,
                 partition_by=relation.partition_by,
                 ttl=None,

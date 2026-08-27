@@ -1,4 +1,13 @@
-from streambuild.adapter.models import AdapterMetadataState
+from dataclasses import replace
+
+from streambuild.adapter.models import (
+    AdapterDirectFingerprintRecord,
+    AdapterMetadataState,
+    CatalogColumn,
+    CatalogIdentity,
+    CatalogRelation,
+    CatalogSnapshot,
+)
 from streambuild.adapters.clickhouse._helpers.metadata import render_clickhouse_metadata_state
 from streambuild.compiler.compile.models import (
     Column,
@@ -28,6 +37,23 @@ class ReconcileWorkflowAdapterConnection(RecordingAdapterConnection):
         return render_clickhouse_metadata_state(database=database, state=state)
 
 
+class DirectReconcileWorkflowAdapterConnection(RecordingAdapterConnection):
+    def __init__(self) -> None:
+        super().__init__()
+        self.direct_fingerprint_databases: list[str] = []
+        self.direct_fingerprint_records: list[AdapterDirectFingerprintRecord] = []
+
+    def render_direct_fingerprint_observations(
+        self,
+        *,
+        database: str,
+        fingerprints: tuple[AdapterDirectFingerprintRecord, ...],
+    ) -> tuple[str, ...]:
+        self.direct_fingerprint_databases.append(database)
+        self.direct_fingerprint_records.extend(fingerprints)
+        return ("INSERT_DIRECT_FINGERPRINTS",)
+
+
 def build_matching_reconcile_states() -> tuple[DesiredState, ActualState]:
     desired_table: DesiredTable = _build_desired_table()
     desired_view: DesiredMaterializedView = _build_desired_view(desired_table.key)
@@ -39,6 +65,39 @@ def build_matching_reconcile_states() -> tuple[DesiredState, ActualState]:
         )
     )
     return desired_state, actual_state
+
+
+def build_matching_direct_reconcile_state() -> tuple[DesiredState, CatalogSnapshot, ObjectKey]:
+    desired_table: DesiredTable = replace(_build_desired_table(), logical_model_name="enriched")
+    desired_view: DesiredMaterializedView = _build_desired_view(desired_table.key)
+    return (
+        _build_desired_state(desired_table, desired_view),
+        CatalogSnapshot(
+            identity=CatalogIdentity(
+                adapter=RecordingAdapterConnection().adapter_identity,
+                database="analytics",
+            ),
+            warehouse_timezone="UTC",
+            relations=(
+                CatalogRelation(
+                    name=desired_table.name,
+                    engine="MergeTree",
+                    columns=(CatalogColumn(name="order_id", type="String"),),
+                    full_engine="MergeTree()",
+                    order_by=("order_id",),
+                ),
+                CatalogRelation(
+                    name=desired_view.name,
+                    engine="MaterializedView",
+                    columns=(CatalogColumn(name="order_id", type="String"),),
+                    query_sql=desired_view.query,
+                    source_relation_names=(desired_view.source_table_name,),
+                    target_relation_name=desired_view.target_table_name,
+                ),
+            ),
+        ),
+        desired_table.key,
+    )
 
 
 def build_structurally_mismatched_reconcile_states() -> tuple[DesiredState, ActualState]:
@@ -55,6 +114,26 @@ def build_structurally_mismatched_reconcile_states() -> tuple[DesiredState, Actu
                         engine="ReplacingMergeTree()",
                         order_by=desired_table.order_by,
                     ),
+                ),
+            ),
+        )
+    )
+    return desired_state, actual_state
+
+
+def build_misdirected_reconcile_states() -> tuple[DesiredState, ActualState]:
+    desired_table: DesiredTable = _build_desired_table()
+    desired_view: DesiredMaterializedView = _build_desired_view(desired_table.key)
+    desired_state: DesiredState = _build_desired_state(desired_table, desired_view)
+    actual_state: ActualState = ActualState(
+        objects=(
+            ActualTable(key=desired_table.key, spec=desired_table.spec),
+            ActualMaterializedView(
+                key=desired_view.key,
+                spec=MaterializedViewSpec(
+                    source_table_name="raw__other",
+                    target_table_name="tbl__other",
+                    query=desired_view.query,
                 ),
             ),
         )

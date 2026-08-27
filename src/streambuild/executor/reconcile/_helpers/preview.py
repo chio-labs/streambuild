@@ -11,6 +11,7 @@ from streambuild.compiler.compile.models import (
     DesiredView,
     ObjectKey,
 )
+from streambuild.compiler.planner.main.columns_match import columns_match
 from streambuild.compiler.planner.models import (
     ActualKafkaTable,
     ActualMaterializedView,
@@ -158,8 +159,15 @@ def _classify_reconcile_target(
                 actual_table=actual_table,
             )
         )
-    if desired_mv is not None and desired_mv.key not in object_index.actual_mv_by_key:
-        reasons.append("live transform materialized view not found")
+    if desired_mv is not None:
+        actual_mv: ActualMaterializedView | None = object_index.actual_mv_by_key.get(desired_mv.key)
+        if actual_mv is None:
+            reasons.append("live transform materialized view not found")
+        else:
+            if desired_mv.source_table_name != actual_mv.spec.source_table_name:
+                reasons.append("live transform source does not match")
+            if desired_mv.target_table_name != actual_mv.spec.target_table_name:
+                reasons.append("live transform target does not match")
     if reasons:
         return (), ReconcileRejectedTarget(
             target_key=target_key,
@@ -197,12 +205,9 @@ def _table_reconcile_rejection_reasons(
         reasons.append("order_by does not match")
     if desired_table.partition_by != actual_table.partition_by:
         reasons.append("partition_by does not match")
-    desired_columns: tuple[tuple[str, str], ...] = tuple(
-        (column.name, column.type) for column in desired_table.columns
-    )
-    actual_columns: tuple[tuple[str, str], ...] = tuple(
-        (column.name, column.type) for column in actual_table.columns
-    )
-    if desired_columns != actual_columns:
+    if not columns_match(
+        desired_columns=desired_table.columns,
+        actual_columns=actual_table.columns,
+    ):
         reasons.append("columns or types do not match")
     return reasons

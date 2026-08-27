@@ -23,3 +23,9 @@ class ApplyReconcileWorkflowTestCase:
     expected_reconcile_id_prefix: str
     expected_table_fingerprint: str
     expected_view_fingerprint: str
+
+
+@dataclass(frozen=True)
+class DirectReconcileTestCase:
+    description: str
+    expected_target_names: tuple[str, ...]

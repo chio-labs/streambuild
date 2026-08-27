@@ -22,7 +22,7 @@ from streambuild.compiler.planner.constants import (
     TABLE_SCHEMA_SEED_COMPATIBILITY_SEEDABLE,
     TYPE_CHANGE_COLUMN_DIFFERENCE,
 )
-from streambuild.compiler.planner.exceptions import DeploymentPlanError
+from streambuild.compiler.planner.main.columns_match import columns_match
 from streambuild.compiler.planner.models import (
     ActualMaterializedView,
     ActualState,
@@ -39,7 +39,6 @@ from streambuild.compiler.planner.types import (
 )
 from streambuild.compiler.sql_analysis.exceptions import SqlAnalysisError
 from streambuild.compiler.sql_analysis.main._canonicalize_sql import canonicalize_sql
-from streambuild.compiler.sql_analysis.main._normalize_data_type import normalize_sql_data_type
 
 
 def classify_object_changes(
@@ -164,9 +163,9 @@ def _classify_table_column_difference(
     changed_columns: set[str] = {
         column_name
         for column_name in set(desired_columns_by_name) & set(actual_columns_by_name)
-        if not _columns_equal(
-            desired_column=desired_columns_by_name[column_name],
-            actual_column=actual_columns_by_name[column_name],
+        if not columns_match(
+            desired_columns=(desired_columns_by_name[column_name],),
+            actual_columns=(actual_columns_by_name[column_name],),
         )
     }
     if not added_column_names and not removed_column_names and not changed_columns:
@@ -225,27 +224,7 @@ def _table_specs_equal(*, desired_spec: TableSpec, actual_spec: TableSpec) -> bo
 def _columns_equal_tuple(
     *, desired_columns: tuple[Column, ...], actual_columns: tuple[Column, ...]
 ) -> bool:
-    if len(desired_columns) != len(actual_columns):
-        return False
-    return all(
-        _columns_equal(desired_column=desired_column, actual_column=actual_column)
-        for desired_column, actual_column in zip(desired_columns, actual_columns, strict=True)
+    return columns_match(
+        desired_columns=desired_columns,
+        actual_columns=actual_columns,
     )
-
-
-def _columns_equal(*, desired_column: Column, actual_column: Column) -> bool:
-    return (
-        desired_column.name == actual_column.name
-        and _normalize_clickhouse_type(desired_column.type)
-        == _normalize_clickhouse_type(actual_column.type)
-        and desired_column.default == actual_column.default
-    )
-
-
-def _normalize_clickhouse_type(type_sql: str) -> str:
-    try:
-        return normalize_sql_data_type(sql=type_sql, dialect="clickhouse")
-    except SqlAnalysisError as error:
-        raise DeploymentPlanError(
-            f"Could not normalize ClickHouse type '{type_sql}': {error}"
-        ) from None
