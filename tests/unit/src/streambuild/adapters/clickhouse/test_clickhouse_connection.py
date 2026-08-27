@@ -413,6 +413,7 @@ def test_given_clickhouse_system_rows_when_loading_catalog_then_snapshot_is_comp
     assert relation is not None
     assert binding is not None
     assert relation.engine == "ReplacingMergeTree"
+    assert relation.storage_engine == "ReplacingMergeTree(updated_at)"
     assert relation.order_by == ("order_id", "updated_at")
     assert relation.partition_by == "toYYYYMM(updated_at)"
     assert relation.ttl == "updated_at + INTERVAL '30' DAY"

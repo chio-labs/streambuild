@@ -21,6 +21,58 @@ from streambuild.executor.workflow.main._execute_observation_workflow import (
 from streambuild.executor.workflow.models import WarehouseStatement
 
 
+def build_direct_fingerprint_records(
+    *,
+    models: tuple[CompiledModel, ...],
+    database: str,
+    workflow_id: str,
+    tool_version: str,
+) -> tuple[AdapterDirectFingerprintRecord, ...]:
+    """Build direct fingerprint records for models known to match live relations."""
+
+    records: list[AdapterDirectFingerprintRecord] = []
+    for model in models:
+        definition_sql: str = model.query
+        definition_hash: str = DirectModelFingerprint.query_hash(definition_sql)
+        logical_identity: str = f"{database}.{model.key.name}"
+        identity_metadata: str = json.dumps(
+            DirectModelFingerprint.identity(model=model),
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        fingerprint_identity: str = f"{logical_identity}:{definition_hash}:{workflow_id}"
+        records.append(
+            AdapterDirectFingerprintRecord(
+                fingerprint_id=sha256(fingerprint_identity.encode()).hexdigest(),
+                logical_model_identity=logical_identity,
+                definition_sql=definition_sql,
+                definition_hash=definition_hash,
+                identity_metadata=identity_metadata,
+                workflow_id=workflow_id,
+                tool_version=tool_version,
+            )
+        )
+    return tuple(records)
+
+
+def persist_direct_fingerprint_records(
+    *,
+    records: tuple[AdapterDirectFingerprintRecord, ...],
+    database: str,
+    connection: AdapterConnection,
+) -> None:
+    """Persist direct fingerprint records and propagate persistence failures."""
+
+    rendered: tuple[str, ...] = connection.render_direct_fingerprint_observations(
+        database=database,
+        fingerprints=records,
+    )
+    statements: tuple[WarehouseStatement, ...] = assemble_direct_fingerprint_statements(
+        rendered=rendered
+    )
+    _ = execute_observation_workflow(statements=statements, connection=connection)
+
+
 def persist_direct_fingerprints(
     *,
     request: DirectBuildRequest,
@@ -54,31 +106,14 @@ def _fingerprint_records(
     model_by_name: dict[str, CompiledModel] = {
         model.key.name: model for model in request.realized_project.project.models
     }
-    records: list[AdapterDirectFingerprintRecord] = []
+    models: list[CompiledModel] = []
     for entry in request.plan.entries:
         if applied_model_names is not None and entry.model_key.name not in applied_model_names:
             continue
-        model: CompiledModel = model_by_name[entry.model_key.name]
-        definition_sql: str = model.query
-        definition_hash: str = DirectModelFingerprint.query_hash(definition_sql)
-        logical_identity: str = f"{request.database}.{model.key.name}"
-        identity_metadata: str = json.dumps(
-            DirectModelFingerprint.identity(
-                model=model,
-            ),
-            sort_keys=True,
-            separators=(",", ":"),
-        )
-        fingerprint_identity: str = f"{logical_identity}:{definition_hash}:{request.workflow_id}"
-        records.append(
-            AdapterDirectFingerprintRecord(
-                fingerprint_id=sha256(fingerprint_identity.encode()).hexdigest(),
-                logical_model_identity=logical_identity,
-                definition_sql=definition_sql,
-                definition_hash=definition_hash,
-                identity_metadata=identity_metadata,
-                workflow_id=request.workflow_id,
-                tool_version=request.tool_version,
-            )
-        )
-    return tuple(records)
+        models.append(model_by_name[entry.model_key.name])
+    return build_direct_fingerprint_records(
+        models=tuple(models),
+        database=request.database,
+        workflow_id=request.workflow_id,
+        tool_version=request.tool_version,
+    )
