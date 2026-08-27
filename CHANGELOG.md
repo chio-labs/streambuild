@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.34.4](https://github.com/chio-labs/streambuild/compare/v0.34.3...v0.34.4) (2026-08-27)
+
+
+### Bug Fixes
+
+* support direct metadata reconciliation ([#210](https://github.com/chio-labs/streambuild/issues/210)) ([ee626f3](https://github.com/chio-labs/streambuild/commit/ee626f3a7743fa3544fdcc901e1114c4b90187cc))
+
 ## [0.34.3](https://github.com/chio-labs/streambuild/compare/v0.34.2...v0.34.3) (2026-08-26)
 
 
