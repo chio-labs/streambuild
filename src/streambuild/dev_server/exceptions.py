@@ -9,6 +9,10 @@ class DevConfigurationError(DevServerError):
     """Raised when retained dev server configuration is internally inconsistent."""
 
 
+class KafkaCollectorClosedError(DevServerError):
+    """Raised when Kafka metadata is requested after its retained clients close."""
+
+
 class ProjectNotCompiledError(DevServerError):
     """Raised when a request needs definitions but the project compile is failing."""
 

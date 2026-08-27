@@ -4,56 +4,19 @@ from __future__ import annotations
 
 import threading
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
-from typing import cast
-
-from kafka import KafkaAdminClient
 
 from streambuild.compiler.discovery.models import KafkaSettings
-from streambuild.dev_server.classes.kafka_lag_reader import build_kafka_client_config
-from streambuild.dev_server.models import KafkaTopicInfo, KafkaTopicsSnapshot
+from streambuild.dev_server._helpers.broker.client import kafka_client_key
+from streambuild.dev_server.classes.kafka_topic_collector import KafkaTopicCollector
+from streambuild.dev_server.models import KafkaTopicsSnapshot
+from streambuild.dev_server.types import KafkaClientKey
 
-_CACHE_SECONDS: float = 10.0
+_CACHE_SECONDS: float = 600.0
+_FAILURE_RETRY_SECONDS: float = 600.0
 _MAX_CACHE_ENTRIES: int = 32
 _MAX_WORKERS: int = 2
-
-
-def build_kafka_topics_snapshot(*, metadata: Sequence[Mapping[str, object]]) -> KafkaTopicsSnapshot:
-    """Map raw kafka-python describe_topics metadata into the topic inventory."""
-
-    topics: list[KafkaTopicInfo] = []
-    for entry in metadata:
-        partitions: object = entry.get("partitions", ())
-        partition_list: tuple[Mapping[str, object], ...] = tuple(
-            cast("Mapping[str, object]", partition)
-            for partition in (partitions if isinstance(partitions, list | tuple) else ())
-            if isinstance(partition, Mapping)
-        )
-        replication_factor: int = 0
-        for partition in partition_list:
-            replicas: object = partition.get("replicas")
-            if isinstance(replicas, list | tuple):
-                replication_factor = max(replication_factor, len(replicas))
-        topics.append(
-            KafkaTopicInfo(
-                name=str(entry.get("topic", "")),
-                partition_count=len(partition_list),
-                replication_factor=replication_factor,
-                internal=bool(entry.get("is_internal", False)),
-            )
-        )
-    return KafkaTopicsSnapshot(topics=tuple(sorted(topics, key=lambda topic: topic.name)))
-
-
-def collect_kafka_topics(*, kafka: KafkaSettings) -> KafkaTopicsSnapshot:
-    """Read the full topic inventory from one broker list without consuming."""
-
-    admin: KafkaAdminClient = KafkaAdminClient(**build_kafka_client_config(kafka=kafka))
-    try:
-        return build_kafka_topics_snapshot(metadata=admin.describe_topics())
-    finally:
-        admin.close()
 
 
 class KafkaTopicReader:
@@ -63,13 +26,18 @@ class KafkaTopicReader:
         self,
         *,
         clock: Callable[[], float] = time.monotonic,
-        collector: Callable[..., KafkaTopicsSnapshot] = collect_kafka_topics,
+        collector: Callable[..., KafkaTopicsSnapshot] | None = None,
     ) -> None:
         self._clock = clock
+        retained_collector: KafkaTopicCollector | None = None
+        if collector is None:
+            retained_collector = KafkaTopicCollector()
+            collector = retained_collector
         self._collector = collector
+        self._retained_collector = retained_collector
         self._lock = threading.Lock()
-        self._cache: dict[str, tuple[float, KafkaTopicsSnapshot | None]] = {}
-        self._refreshing: set[str] = set()
+        self._cache: dict[KafkaClientKey, tuple[float, KafkaTopicsSnapshot | None]] = {}
+        self._refreshing: set[KafkaClientKey] = set()
         self._executor = ThreadPoolExecutor(
             max_workers=_MAX_WORKERS,
             thread_name_prefix="streambuild-kafka-topics",
@@ -78,11 +46,11 @@ class KafkaTopicReader:
     def read(self, *, kafka: KafkaSettings) -> KafkaTopicsSnapshot | None:
         """Return the cached inventory and schedule a non-blocking refresh when stale."""
 
-        key: str = kafka.broker_list
+        key: KafkaClientKey = kafka_client_key(kafka=kafka)
         now: float = self._clock()
         with self._lock:
             entry: tuple[float, KafkaTopicsSnapshot | None] | None = self._cache.get(key)
-            if entry is not None and now - entry[0] < _CACHE_SECONDS:
+            if entry is not None and now < entry[0]:
                 return entry[1]
             if key not in self._refreshing:
                 self._refreshing.add(key)
@@ -90,19 +58,28 @@ class KafkaTopicReader:
             return None if entry is None else entry[1]
 
     def close(self) -> None:
-        """Stop queued refreshes without waiting for in-flight broker requests."""
+        """Finish in-flight refreshes and close retained broker connections."""
 
-        self._executor.shutdown(wait=False, cancel_futures=True)
+        self._executor.shutdown(wait=True, cancel_futures=True)
+        if self._retained_collector is not None:
+            self._retained_collector.close()
 
-    def _refresh(self, *, key: str, kafka: KafkaSettings) -> None:
+    def _refresh(self, *, key: KafkaClientKey, kafka: KafkaSettings) -> None:
         snapshot: KafkaTopicsSnapshot | None
+        succeeded: bool = True
         try:
             snapshot = self._collector(kafka=kafka)
         except Exception:
             snapshot = None
+            succeeded = False
         with self._lock:
+            previous: tuple[float, KafkaTopicsSnapshot | None] | None = self._cache.get(key)
             if len(self._cache) >= _MAX_CACHE_ENTRIES and key not in self._cache:
-                oldest_key: str = min(self._cache, key=lambda item: self._cache[item][0])
+                oldest_key: KafkaClientKey = min(self._cache, key=lambda item: self._cache[item][0])
                 self._cache.pop(oldest_key)
-            self._cache[key] = (self._clock(), snapshot)
+            now: float = self._clock()
+            self._cache[key] = (
+                now + (_CACHE_SECONDS if succeeded else _FAILURE_RETRY_SECONDS),
+                snapshot if succeeded or previous is None else previous[1],
+            )
             self._refreshing.discard(key)
