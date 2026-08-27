@@ -102,6 +102,14 @@ class BuildRunBrowserE2ETestCase:
 
 
 @dataclass(frozen=True)
+class ReplayProgressBrowserE2ETestCase:
+    description: str
+    statement_progress_fields: dict[str, object]
+    expected_progress_text: str
+    expected_eta_count: int
+
+
+@dataclass(frozen=True)
 class SourceTopicBrowserE2ETestCase:
     description: str
     source_name: str

@@ -28,6 +28,8 @@ from streambuild.adapter.models import (
     AdapterRefreshState,
     AdapterRelationCleanupRequest,
     AdapterReplayCoverageRequest,
+    AdapterReplayOffsetFrontier,
+    AdapterReplayOffsetProgressRequest,
     AdapterRunEventRecord,
     AdapterRunStatementRecord,
     AdapterSensorState,
@@ -114,6 +116,14 @@ class AdapterConnection(ABC):
         """Return ephemeral telemetry when the adapter exposes active-query progress."""
 
         del query_id
+        return None
+
+    def load_replay_offset_frontiers(
+        self, *, query_id: str, request: AdapterReplayOffsetProgressRequest
+    ) -> tuple[AdapterReplayOffsetFrontier, ...] | None:
+        """Return committed target frontiers when the adapter supports offset observation."""
+
+        del query_id, request
         return None
 
     @abstractmethod

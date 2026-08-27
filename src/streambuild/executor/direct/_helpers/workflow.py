@@ -12,6 +12,8 @@ from streambuild.adapter.models import (
     AdapterReplayBoundary,
     AdapterReplayCoverageRequest,
     AdapterReplayLowerBound,
+    AdapterReplayOffsetProgressRequest,
+    AdapterReplayOffsetRange,
     AdapterReplayRequest,
     CatalogRelation,
 )
@@ -40,6 +42,7 @@ from streambuild.executor.direct.models import (
     DirectBuildRequest,
     DirectBuildWorkflow,
     DirectReplayCapture,
+    DirectReplayRange,
     DirectRuntimeReplay,
 )
 from streambuild.executor.population.main._build_population_replay_templates import (
@@ -497,7 +500,51 @@ def realize_direct_replay_statement(
             lower_bounds=_captured_lower_bounds(capture=capture),
         )
     )
-    return replace(template_statement, sql=_terminate_sql(rendered_sql))
+    return replace(
+        template_statement,
+        sql=_terminate_sql(rendered_sql),
+        replay_offset_progress=_replay_offset_progress_request(replay=replay, capture=capture),
+    )
+
+
+def _replay_offset_progress_request(
+    *, replay: AdapterReplayRequest, capture: DirectReplayCapture
+) -> AdapterReplayOffsetProgressRequest | None:
+    if capture.boundary_mode != AdapterReplayBoundaryMode.OFFSETS:
+        return None
+    bounds_by_partition: dict[int, tuple[int, int]] = {}
+    for replay_range in capture.ranges:
+        partition: int = int(_required_partition(replay_range=replay_range))
+        lower_offset: int = int(replay_range.lower_value)
+        upper_offset: int = int(replay_range.replay_cutoff_value)
+        previous: tuple[int, int] | None = bounds_by_partition.get(partition)
+        bounds_by_partition[partition] = (
+            lower_offset if previous is None else min(previous[0], lower_offset),
+            upper_offset if previous is None else max(previous[1], upper_offset),
+        )
+    ranges: tuple[AdapterReplayOffsetRange, ...] = tuple(
+        AdapterReplayOffsetRange(
+            partition=partition,
+            lower_offset=bounds_by_partition[partition][0],
+            upper_offset=bounds_by_partition[partition][1],
+        )
+        for partition in sorted(bounds_by_partition)
+    )
+    if not ranges:
+        return None
+    return AdapterReplayOffsetProgressRequest(
+        database=replay.database,
+        relation=replay.relations.target,
+        partition_column=replay.columns.partition,
+        offset_column=replay.columns.offset,
+        ranges=ranges,
+    )
+
+
+def _required_partition(*, replay_range: DirectReplayRange) -> str:
+    if replay_range.partition_value is None:
+        raise DirectBuildError("Captured offset replay range has no partition")
+    return replay_range.partition_value
 
 
 def _runtime_replays(

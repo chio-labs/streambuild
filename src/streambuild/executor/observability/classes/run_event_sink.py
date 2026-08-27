@@ -19,6 +19,7 @@ from streambuild.adapter.constants import (
 from streambuild.adapter.exceptions import AdapterWarehouseError
 from streambuild.adapter.models import (
     AdapterQueryResult,
+    AdapterReplayOffsetProgressRequest,
     AdapterRunEventRecord,
     AdapterRunStatementRecord,
 )
@@ -57,6 +58,26 @@ _SENSITIVE_SETTING_FRAGMENTS: tuple[str, ...] = (
 )
 _KAFKA_BROKER_LIST_SETTING: str = "kafka_broker_list"
 _BROKER_USERINFO_SEPARATOR: str = "@"
+
+
+def _replay_offset_progress_payload(*, statement: WarehouseStatement) -> dict[str, object] | None:
+    request: AdapterReplayOffsetProgressRequest | None = statement.replay_offset_progress
+    if request is None:
+        return None
+    return {
+        "database": request.database,
+        "relation": request.relation,
+        "partitionColumn": request.partition_column,
+        "offsetColumn": request.offset_column,
+        "ranges": [
+            {
+                "partition": replay_range.partition,
+                "lowerOffset": replay_range.lower_offset,
+                "upperOffset": replay_range.upper_offset,
+            }
+            for replay_range in request.ranges
+        ],
+    }
 
 
 class RunEventSink:
@@ -191,6 +212,7 @@ class RunEventSink:
                 "intent": str(statement.intent),
                 "queryId": query_id,
                 "displayName": statement.display_name,
+                "replayOffsetProgress": _replay_offset_progress_payload(statement=statement),
             },
         )
         return query_id

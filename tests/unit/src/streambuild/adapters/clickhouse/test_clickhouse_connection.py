@@ -12,6 +12,9 @@ from streambuild.adapter.exceptions import (
 )
 from streambuild.adapter.models import (
     AdapterQueryResult,
+    AdapterReplayOffsetFrontier,
+    AdapterReplayOffsetProgressRequest,
+    AdapterReplayOffsetRange,
     AdapterStatementProgress,
     AdapterWarehouseDisk,
     AdapterWarehouseHealth,
@@ -32,6 +35,7 @@ from tests.unit.src.streambuild.adapters.clickhouse._test_types import (
     ClickHouseDropLimitTestCase,
     ClickHouseOptionalHealthFailureTestCase,
     ClickHousePublishCapabilitiesTestCase,
+    ClickHouseReplayFrontierTestCase,
     ClickHouseStatementProgressTestCase,
     ClickHouseWarehouseHealthTestCase,
     ClickHouseWorkflowCorrelationTestCase,
@@ -557,6 +561,56 @@ def test_given_active_clickhouse_process_when_loading_progress_then_telemetry_is
     )
 
     assert progress == test_case.expected_progress
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ClickHouseReplayFrontierTestCase(
+            description="target offsets are observed for captured replay partitions",
+            request=AdapterReplayOffsetProgressRequest(
+                database="analytics",
+                relation="tbl__orders",
+                partition_column="_replay_partition",
+                offset_column="_replay_offset",
+                ranges=(
+                    AdapterReplayOffsetRange(partition=2, lower_offset=300, upper_offset=500),
+                    AdapterReplayOffsetRange(partition=0, lower_offset=100, upper_offset=200),
+                ),
+            ),
+            expected_frontiers=(
+                AdapterReplayOffsetFrontier(partition=0, completed_offset=150),
+                AdapterReplayOffsetFrontier(partition=2, completed_offset=450),
+            ),
+            expected_query_fragments=("FROM `analytics`.`tbl__orders`", "IN (0, 2)"),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_replay_ranges_when_loading_frontiers_then_target_offsets_are_observed(
+    test_case: ClickHouseReplayFrontierTestCase,
+) -> None:
+    raw_client: StubRawClickHouseClient = StubRawClickHouseClient(
+        FakeRawClickHouseQueryResult(
+            column_names=["partition", "completed_offset"],
+            result_rows=[[0, 150], [2, 450]],
+        )
+    )
+    connection: ClickHouseConnection = ClickHouseConnection(cast(RawClickHouseClient, raw_client))
+
+    frontiers: tuple[AdapterReplayOffsetFrontier, ...] = connection.load_replay_offset_frontiers(
+        query_id="query-123", request=test_case.request
+    )
+    cached_frontiers: tuple[AdapterReplayOffsetFrontier, ...] = (
+        connection.load_replay_offset_frontiers(query_id="query-123", request=test_case.request)
+    )
+
+    assert frontiers == test_case.expected_frontiers
+    assert cached_frontiers == frontiers
+    assert len(raw_client.queries) == 1
+    assert all(
+        fragment in raw_client.queries[-1] for fragment in test_case.expected_query_fragments
+    )
 
 
 @pytest.mark.parametrize(

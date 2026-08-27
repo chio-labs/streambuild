@@ -73,7 +73,9 @@
 				{/if}
 			</div>
 			<div class="text-[var(--sb-text-faint)] flex justify-between pt-1 font-mono text-[9.5px]">
-				<span>{presentation.percentage === null ? 'progress denominator unavailable' : `approximately ${presentation.percentage.toFixed(1)}%`}</span>
+				<span>{presentation.percentage === null
+						? 'progress denominator unavailable'
+						: `approximately ${presentation.percentage.toFixed(1)}%${presentation.progressSource === 'replay_offsets' ? ' by replay offsets' : ''}`}</span>
 				{#if presentation.etaSeconds !== null}<span>ETA {formatDuration(presentation.etaSeconds)}</span>{/if}
 			</div>
 		</div>

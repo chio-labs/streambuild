@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import threading
+import time
 from collections.abc import Mapping, Sequence
 from hashlib import sha256
 
@@ -43,6 +45,8 @@ from streambuild.adapter.models import (
     AdapterRefreshState,
     AdapterRelationCleanupRequest,
     AdapterReplayCoverageRequest,
+    AdapterReplayOffsetFrontier,
+    AdapterReplayOffsetProgressRequest,
     AdapterRunEventRecord,
     AdapterRunStatementRecord,
     AdapterSensorState,
@@ -130,6 +134,9 @@ _NODE_RESULT_REQUIRED_COLUMNS: frozenset[str] = frozenset(
 _QUERY_ID_SETTING: str = "query_id"
 _TARGET_MUTATION_LOCK_COMMENT_PREFIX: str = "streambuild-target-lock-v2:"
 _MAX_TABLE_SIZE_TO_DROP_SETTING: str = "max_table_size_to_drop"
+_REPLAY_FRONTIER_TTL_SECONDS: float = 5.0
+_REPLAY_FRONTIER_RETENTION_SECONDS: float = 60.0
+_MAX_REPLAY_FRONTIER_OBSERVATIONS: int = 128
 
 
 class ClickHouseConnection(AdapterConnection):
@@ -137,6 +144,11 @@ class ClickHouseConnection(AdapterConnection):
 
     def __init__(self, raw_client: RawClickHouseClient) -> None:
         self._raw_client: RawClickHouseClient = raw_client
+        self._replay_frontier_lock: threading.Lock = threading.Lock()
+        self._replay_frontier_observations: dict[
+            tuple[str, AdapterReplayOffsetProgressRequest],
+            tuple[float, tuple[AdapterReplayOffsetFrontier, ...]],
+        ] = {}
 
     @property
     def adapter_identity(self) -> AdapterIdentity:
@@ -318,6 +330,67 @@ class ClickHouseConnection(AdapterConnection):
             total_rows_approx=int(str(row["total_rows_approx"])),
             memory_usage_bytes=int(str(row["memory_usage"])),
             settings=settings,
+        )
+
+    def load_replay_offset_frontiers(
+        self, *, query_id: str, request: AdapterReplayOffsetProgressRequest
+    ) -> tuple[AdapterReplayOffsetFrontier, ...]:
+        """Observe the greatest committed target offset for each captured partition."""
+
+        key: tuple[str, AdapterReplayOffsetProgressRequest] = (query_id, request)
+        now: float = time.monotonic()
+        with self._replay_frontier_lock:
+            cached: tuple[float, tuple[AdapterReplayOffsetFrontier, ...]] | None = (
+                self._replay_frontier_observations.get(key)
+            )
+            if cached is not None and now - cached[0] < _REPLAY_FRONTIER_TTL_SECONDS:
+                return cached[1]
+            observed: tuple[AdapterReplayOffsetFrontier, ...] = self._read_replay_offset_frontiers(
+                request=request
+            )
+            frontiers: tuple[AdapterReplayOffsetFrontier, ...] = _merge_replay_offset_frontiers(
+                previous=() if cached is None else cached[1], observed=observed
+            )
+            retained: dict[
+                tuple[str, AdapterReplayOffsetProgressRequest],
+                tuple[float, tuple[AdapterReplayOffsetFrontier, ...]],
+            ] = {
+                observation_key: observation
+                for observation_key, observation in self._replay_frontier_observations.items()
+                if now - observation[0] <= _REPLAY_FRONTIER_RETENTION_SECONDS
+            }
+            retained[key] = (now, frontiers)
+            self._replay_frontier_observations = dict(
+                sorted(retained.items(), key=lambda item: item[1][0])[
+                    -_MAX_REPLAY_FRONTIER_OBSERVATIONS:
+                ]
+            )
+            return frontiers
+
+    def _read_replay_offset_frontiers(
+        self, *, request: AdapterReplayOffsetProgressRequest
+    ) -> tuple[AdapterReplayOffsetFrontier, ...]:
+        partitions: tuple[int, ...] = tuple(sorted({item.partition for item in request.ranges}))
+        if not partitions:
+            return ()
+        database: str = _quote_clickhouse_identifier(request.database)
+        relation: str = _quote_clickhouse_identifier(request.relation)
+        partition_column: str = _quote_clickhouse_identifier(request.partition_column)
+        offset_column: str = _quote_clickhouse_identifier(request.offset_column)
+        rendered_partitions: str = ", ".join(str(partition) for partition in partitions)
+        rows: tuple[Mapping[str, object], ...] = self.query(
+            f"SELECT toInt64({partition_column}) AS partition, "
+            f"toInt64(max({offset_column})) AS completed_offset "
+            f"FROM {database}.{relation} "
+            f"WHERE {partition_column} IN ({rendered_partitions}) "
+            "GROUP BY partition ORDER BY partition"
+        ).named_rows()
+        return tuple(
+            AdapterReplayOffsetFrontier(
+                partition=int(str(row["partition"])),
+                completed_offset=int(str(row["completed_offset"])),
+            )
+            for row in rows
         )
 
     def capture_warehouse_timestamp(self) -> str:
@@ -700,6 +773,28 @@ class ClickHouseConnection(AdapterConnection):
 
 def _qualified_lock_table(database: str) -> str:
     return f"{_quote_clickhouse_identifier(database)}.`{TARGET_MUTATION_LOCK_TABLE_NAME}`"
+
+
+def _merge_replay_offset_frontiers(
+    *,
+    previous: tuple[AdapterReplayOffsetFrontier, ...],
+    observed: tuple[AdapterReplayOffsetFrontier, ...],
+) -> tuple[AdapterReplayOffsetFrontier, ...]:
+    completed_by_partition: dict[int, int] = {
+        item.partition: item.completed_offset for item in previous
+    }
+    for item in observed:
+        completed_by_partition[item.partition] = max(
+            item.completed_offset,
+            completed_by_partition.get(item.partition, item.completed_offset),
+        )
+    return tuple(
+        AdapterReplayOffsetFrontier(
+            partition=partition,
+            completed_offset=completed_by_partition[partition],
+        )
+        for partition in sorted(completed_by_partition)
+    )
 
 
 def _quote_clickhouse_identifier(value: str) -> str:

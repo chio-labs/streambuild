@@ -3,7 +3,11 @@
 from dataclasses import dataclass
 from pathlib import Path
 
-from streambuild.adapter.models import AdapterMutationResult, AdapterQueryResult
+from streambuild.adapter.models import (
+    AdapterMutationResult,
+    AdapterQueryResult,
+    AdapterReplayOffsetProgressRequest,
+)
 from streambuild.executor.workflow.constants import WORKFLOW_PHASE_ORDER
 from streambuild.executor.workflow.exceptions import WorkflowValidationError
 from streambuild.executor.workflow.types import StatementIntent, WorkflowMode, WorkflowPhase
@@ -18,6 +22,7 @@ class WarehouseStatement:
     sql: str
     continue_on_error: bool = False
     display_name: str | None = None
+    replay_offset_progress: AdapterReplayOffsetProgressRequest | None = None
 
     def __post_init__(self) -> None:
         if not self.step_id or not self.step_id.replace("_", "").isalnum():

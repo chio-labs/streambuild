@@ -4,7 +4,12 @@ from typing import cast
 import pytest
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.adapter.models import AdapterQueryResult, AdapterStatementProgress
+from streambuild.adapter.models import (
+    AdapterQueryResult,
+    AdapterReplayOffsetFrontier,
+    AdapterReplayOffsetProgressRequest,
+    AdapterStatementProgress,
+)
 from streambuild.dev_server._helpers.queries import runs_query
 from streambuild.dev_server._helpers.queries.runs_query import (
     _assemble_runs,
@@ -45,6 +50,9 @@ class RunHistoryClockConnection:
 
 
 class StatementProgressConnection:
+    def __init__(self) -> None:
+        self.frontier_calls: int = 0
+
     def load_statement_progress(self, *, query_id: str) -> AdapterStatementProgress | None:
         assert query_id == "query-123"
         return AdapterStatementProgress(
@@ -55,6 +63,14 @@ class StatementProgressConnection:
             memory_usage_bytes=300,
             settings=(("max_threads", "1"),),
         )
+
+    def load_replay_offset_frontiers(
+        self, *, query_id: str, request: AdapterReplayOffsetProgressRequest
+    ) -> tuple[AdapterReplayOffsetFrontier, ...]:
+        assert query_id == "query-123"
+        assert request.relation == "tbl__orders"
+        self.frontier_calls += 1
+        return (AdapterReplayOffsetFrontier(partition=0, completed_offset=160),)
 
 
 @pytest.mark.parametrize(
@@ -463,6 +479,14 @@ def test_given_event_only_failure_when_recovering_then_complete_evidence_is_retu
                 "statementSequence": 4,
                 "readRowsPerSecond": 10.0,
                 "settings": {"max_threads": "1"},
+                "replayOffsetProgress": {
+                    "percentage": 60.0,
+                    "etaSeconds": 20 / 3,
+                    "completedSpan": 60,
+                    "totalSpan": 100,
+                    "observedPartitions": 1,
+                    "totalPartitions": 1,
+                },
             },
         )
     ],
@@ -471,23 +495,32 @@ def test_given_event_only_failure_when_recovering_then_complete_evidence_is_retu
 def test_given_active_query_when_reading_progress_then_metrics_are_exposed(
     test_case: DevRefactorTestCase,
 ) -> None:
+    connection: StatementProgressConnection = StatementProgressConnection()
+    events: list[dict[str, object]] = [
+        {
+            "event": "statement_started",
+            "statementSequence": 4,
+            "stepId": "replay_orders",
+            "phase": "replay",
+            "queryId": "query-123",
+            "replayOffsetProgress": {
+                "database": "analytics",
+                "relation": "tbl__orders",
+                "partitionColumn": "_replay_partition",
+                "offsetColumn": "_replay_offset",
+                "ranges": [{"partition": 0, "lowerOffset": 100, "upperOffset": 200}],
+            },
+        }
+    ]
     payload: dict[str, object] | None = _statement_progress(
-        connection=cast(AdapterConnection, StatementProgressConnection()),
-        events=[
-            {
-                "event": "statement_started",
-                "statementSequence": 4,
-                "stepId": "replay_orders",
-                "phase": "replay",
-                "queryId": "query-123",
-            }
-        ],
+        connection=cast(AdapterConnection, connection),
+        events=events,
         observed_at="2026-08-07 12:00:00.000",
     )
-
     assert payload is not None
     expected: dict[str, object] = cast(dict[str, object], test_case.expected_value)
     assert {key: payload[key] for key in expected} == expected
+    assert connection.frontier_calls == 1
 
 
 @pytest.mark.parametrize(

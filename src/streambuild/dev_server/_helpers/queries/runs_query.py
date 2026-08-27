@@ -13,11 +13,20 @@ from streambuild.adapter.constants import (
     METADATA_RUN_STATEMENTS_TABLE_NAME,
 )
 from streambuild.adapter.exceptions import AdapterError
-from streambuild.adapter.models import AdapterStatementProgress
+from streambuild.adapter.models import (
+    AdapterReplayOffsetFrontier,
+    AdapterReplayOffsetProgressRequest,
+    AdapterStatementProgress,
+)
 from streambuild.compiler.discovery.constants import (
     DEFAULT_RUN_PRESUMED_FAILED_AFTER_SECONDS,
     RUN_UNRESPONSIVE_AFTER_SECONDS,
 )
+from streambuild.dev_server._helpers.queries.replay_offset_progress import (
+    calculate_replay_offset_progress,
+    decode_replay_offset_progress_request,
+)
+from streambuild.dev_server.models import ReplayOffsetProgress
 from streambuild.dev_server.types import RunPresentationStatus
 
 _DEFAULT_RUNS_LIMIT: int = 100
@@ -392,6 +401,34 @@ def _statement_progress(
             "settings": dict(progress.settings),
         }
     )
+    replay_request: AdapterReplayOffsetProgressRequest | None = (
+        decode_replay_offset_progress_request(active.get("replayOffsetProgress"))
+    )
+    if replay_request is not None:
+        try:
+            frontiers: tuple[AdapterReplayOffsetFrontier, ...] | None = (
+                connection.load_replay_offset_frontiers(query_id=query_id, request=replay_request)
+            )
+        except AdapterError:
+            frontiers = None
+        offset_progress: ReplayOffsetProgress | None = (
+            None
+            if frontiers is None
+            else calculate_replay_offset_progress(
+                request=replay_request,
+                frontiers=frontiers,
+                elapsed_seconds=elapsed_seconds,
+            )
+        )
+        if offset_progress is not None:
+            payload["replayOffsetProgress"] = {
+                "percentage": offset_progress.percentage,
+                "etaSeconds": offset_progress.eta_seconds,
+                "completedSpan": offset_progress.completed_span,
+                "totalSpan": offset_progress.total_span,
+                "observedPartitions": offset_progress.observed_partitions,
+                "totalPartitions": offset_progress.total_partitions,
+            }
     return payload
 
 
