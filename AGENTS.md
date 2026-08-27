@@ -35,6 +35,8 @@ revision will fail before tests start.
 - Do not push partial or overlapping branches merely to start CI.
 - Once consolidated work is ready, push once and open one ready pull request so CI and configured
   auto-merge can complete delivery.
+- Pull request descriptions must contain `## Why`, `## Changes`, and `## Verification` sections in
+  that order. The pull request metadata check rejects descriptions that omit or reorder them.
 - Monitor CI after every push and follow it through completion. Keep independent work moving while
   checks run, but watch in the foreground when no other useful work remains and address failures
   before considering delivery complete.
