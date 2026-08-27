@@ -11,6 +11,8 @@ if TYPE_CHECKING:
     from streambuild.compiler.pipeline.models import CompileAnalysis
     from streambuild.dev_server.models import CompileOutcome
 
+type KafkaClientKey = tuple[str, tuple[tuple[str, str], ...]]
+
 
 class ActivityTone(StrEnum):
     """How an activity line should read: routine, good news, bad news, or caution."""
