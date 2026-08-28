@@ -6,6 +6,7 @@ from clickhouse_connect.driver.client import Client
 from playwright.sync_api import ConsoleMessage, Error, Page, Request, Response, expect
 
 from tests.e2e.src.streambuild.dev_server._test_types import (
+    KafkaNotBuiltBrowserE2ETestCase,
     WarehouseHealthBrowserE2ETestCase,
 )
 
@@ -58,6 +59,46 @@ def test_given_available_warehouse_health_when_navigating_ui_then_summary_and_de
     expect(page.get_by_text(test_case.expected_table_heading, exact=False).first).to_be_visible()
     expect(page.get_by_text(database, exact=True).first).to_be_visible()
     expect(page.get_by_role("columnheader", name="Active parts", exact=True)).to_be_visible()
+    assert page_errors == []
+    assert failed_requests == []
+
+
+@pytest.mark.e2e
+@pytest.mark.browser
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        KafkaNotBuiltBrowserE2ETestCase(
+            description="authored Kafka source added after build remains neutral",
+            expected_not_built_text="1 not built",
+            expected_live_polling_text="1/1 live polling",
+            excluded_error_text="Error",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_unbuilt_kafka_source_when_viewing_overview_then_ingest_is_not_an_error(
+    test_case: KafkaNotBuiltBrowserE2ETestCase,
+    running_partially_built_kafka_server: tuple[str, dict[str, object]],
+    browser_diagnostics: tuple[list[ConsoleMessage], list[Error], list[Request], list[Response]],
+    page: Page,
+) -> None:
+    base_url, initial_state = running_partially_built_kafka_server
+    _console_messages, page_errors, failed_requests, _responses = browser_diagnostics
+    health: dict[str, object] = cast(dict[str, object], initial_state["warehouseHealth"])
+    consumers: dict[str, object] = cast(dict[str, object], health["kafkaConsumers"])
+
+    assert consumers == {
+        "configuredTables": 2,
+        "materializedTables": 1,
+        "materializedTableNames": ["kafka__built_events"],
+        "pollingTables": 1,
+        "exceptionTables": 0,
+    }
+    assert page.goto(base_url, wait_until="networkidle") is not None
+    expect(page.get_by_text(test_case.expected_not_built_text, exact=True)).to_be_visible()
+    expect(page.get_by_text(test_case.expected_live_polling_text, exact=True)).to_be_visible()
+    expect(page.get_by_text(test_case.excluded_error_text, exact=True)).to_have_count(0)
     assert page_errors == []
     assert failed_requests == []
 
