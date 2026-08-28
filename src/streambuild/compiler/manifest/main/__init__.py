@@ -1,0 +1,1 @@
+"""Public manifest construction entrypoints."""

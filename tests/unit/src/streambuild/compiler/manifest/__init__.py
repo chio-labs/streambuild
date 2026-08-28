@@ -1,0 +1,1 @@
+"""Manifest compiler behavior tests."""

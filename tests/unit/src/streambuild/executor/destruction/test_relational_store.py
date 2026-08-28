@@ -53,6 +53,7 @@ def test_given_reviewed_complete_plan_when_store_restarts_then_payload_and_revie
         relation_drop_size_limit=107_374_182_400,
         relation_drop_size_server_limit=50_000_000_000,
         relation_drop_size_override=107_374_182_400,
+        include_orphans=True,
     )
     url: str = destruction_store_url(tmp_path=tmp_path)
     first: RelationalDestructionPlanStore = RelationalDestructionPlanStore(
@@ -77,6 +78,7 @@ def test_given_reviewed_complete_plan_when_store_restarts_then_payload_and_revie
         DestructionOwnership.OWNERSHIP_LEDGER,
     )
     assert reloaded.relations[0].dependency_relation_names == test_case.expected_dependency_names
+    assert reloaded.include_orphans is True
     assert second.reviewed_at(plan_id=plan.plan_id, actor=test_case.actor) == reviewed_at
     second.close()
 
@@ -105,6 +107,7 @@ def test_given_legacy_payload_when_deserializing_then_drop_policy_is_not_reporte
         "relation_drop_size_server_limit",
         "relation_drop_size_override",
         "relation_drop_size_policy_observed",
+        "include_orphans",
     ):
         plan_payload.pop(field)
 
@@ -112,6 +115,7 @@ def test_given_legacy_payload_when_deserializing_then_drop_policy_is_not_reporte
 
     assert legacy.relation_drop_size_policy_observed is test_case.expected_policy_observed
     assert legacy.relation_drop_size_limit == test_case.expected_limit
+    assert legacy.include_orphans is False
 
 
 @pytest.mark.parametrize(

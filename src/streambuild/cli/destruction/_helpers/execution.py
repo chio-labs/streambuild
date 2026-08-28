@@ -72,6 +72,7 @@ def run_authorized_destruction(
         database=database,
         metadata_database=database,
         pipeline_names=pipeline_names,
+        include_orphans=options.include_orphans,
     )
     planning_connection: DestructionPlanningConnection = cast(DestructionPlanningConnection, client)
     plan: DestructionPlan = plan_destruction(

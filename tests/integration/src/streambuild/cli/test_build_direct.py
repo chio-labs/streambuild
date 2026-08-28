@@ -233,6 +233,8 @@ _ADOPTED_SOURCE_TEST_CASES: tuple[CliDirectAdoptedSourceIntegrationTestCase, ...
                 ("_replay_partition=1", "1", "1"),
             ),
             expected_warehouse_written_rows=(3,),
+            expected_manifest_count=2,
+            expected_manifest_fingerprint_count=1,
         )
     ],
     ids=lambda case: case.description,
@@ -285,6 +287,13 @@ def test_given_retained_landing_rows_when_building_then_history_replays_and_live
         replay_coverage_ranges: tuple[tuple[str, str, str], ...] = direct_replay_artifact_ranges(
             project_root=tmp_path
         )
+        manifest_counts: tuple[int, int] = cast(
+            tuple[int, int],
+            clickhouse_client.query(
+                f"SELECT count(), uniqExact(manifest_fingerprint) FROM "
+                f"{clickhouse_database}._streambuild_manifests"
+            ).result_rows[0],
+        )
     finally:
         connection.close()
 
@@ -293,6 +302,10 @@ def test_given_retained_landing_rows_when_building_then_history_replays_and_live
     assert final_order_ids == test_case.expected_final_order_ids
     assert fingerprinted_relation_names == test_case.expected_fingerprinted_relations
     assert replay_coverage_ranges == test_case.expected_replay_coverage_ranges
+    assert manifest_counts == (
+        test_case.expected_manifest_count,
+        test_case.expected_manifest_fingerprint_count,
+    )
     assert tuple(payload["warehouse_written_rows"] for payload in replay_payloads) == (
         test_case.expected_warehouse_written_rows
     )

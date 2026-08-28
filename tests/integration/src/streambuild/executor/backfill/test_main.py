@@ -118,8 +118,8 @@ from tests.integration.src.streambuild.executor.backfill.helpers import (
             expected_full_layout=(
                 ("_streambuild_direct_fingerprints", "MergeTree"),
                 ("_streambuild_invocations", "MergeTree"),
+                ("_streambuild_manifests", "MergeTree"),
                 ("_streambuild_node_results", "MergeTree"),
-                ("_streambuild_owned_resources", "MergeTree"),
                 ("_streambuild_run_events", "MergeTree"),
                 ("_streambuild_run_statements", "ReplacingMergeTree"),
                 ("_streambuild_schema_versions", "MergeTree"),
@@ -153,8 +153,8 @@ from tests.integration.src.streambuild.executor.backfill.helpers import (
             expected_full_layout=(
                 ("_streambuild_direct_fingerprints", "MergeTree"),
                 ("_streambuild_invocations", "MergeTree"),
+                ("_streambuild_manifests", "MergeTree"),
                 ("_streambuild_node_results", "MergeTree"),
-                ("_streambuild_owned_resources", "MergeTree"),
                 ("_streambuild_run_events", "MergeTree"),
                 ("_streambuild_run_statements", "ReplacingMergeTree"),
                 ("_streambuild_schema_versions", "MergeTree"),
@@ -231,13 +231,6 @@ def test_given_changed_pipeline_when_bootstrapping_then_it_creates_metadata_and_
         "SELECT name, engine FROM system.tables "
         f"WHERE database = '{clickhouse_database}' ORDER BY name"
     ).result_rows
-    owned_resource_names: frozenset[str] = frozenset(
-        str(row[0])
-        for row in clickhouse_client.query(
-            f"SELECT resource_name FROM {clickhouse_database}._streambuild_owned_resources "
-            "WHERE event_type = 'owned'"
-        ).result_rows
-    )
 
     assert execution_result.bootstrap.deployment_id == test_case.deployment_id
     assert execution_result.bootstrap.root_reports[0].replay_strategy == "create_from_scratch"
@@ -251,7 +244,6 @@ def test_given_changed_pipeline_when_bootstrapping_then_it_creates_metadata_and_
         key=lambda row: str(row[0]),
     )
     assert full_layout_rows == list(test_case.expected_full_layout)
-    assert owned_resource_names == frozenset()
 
 
 @pytest.mark.integration

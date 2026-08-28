@@ -1,29 +1,40 @@
 from dataclasses import replace
+from typing import cast
 
 import pytest
 
+from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import (
     AdapterInvocationRecord,
+    AdapterManifestSnapshot,
     AdapterMetadataState,
     AdapterNodeResultRecord,
-    AdapterOwnedResourceEvent,
+    AdapterQueryResult,
 )
 from streambuild.adapters.clickhouse._helpers.metadata import (
     build_clickhouse_metadata_insert_statements,
+    load_clickhouse_manifests,
+    render_clickhouse_manifest_publication,
     render_clickhouse_metadata_migration_statements,
-    render_clickhouse_owned_resource_events,
+    render_clickhouse_metadata_migration_workflow,
 )
 from streambuild.adapters.clickhouse.models import ClickHouseMetadataStatement
 from streambuild.compiler.planner.main.build_adapter_metadata_state import (
     build_adapter_metadata_state,
 )
 from tests.unit.src.streambuild.adapters.clickhouse._test_types import (
+    ManifestLoadingTestCase,
+    ManifestMigrationDdlTestCase,
+    ManifestMigrationWorkflowTestCase,
+    ManifestPublicationTestCase,
     MetadataStateInsertStatementTestCase,
-    OwnershipMetadataTestCase,
     RenderMetadataStateDdlTestCase,
     TerminalObservationInsertTestCase,
 )
-from tests.unit.src.streambuild.adapters.clickhouse.helpers import build_metadata_state
+from tests.unit.src.streambuild.adapters.clickhouse.helpers import (
+    build_metadata_state,
+    build_test_manifest,
+)
 
 
 @pytest.mark.parametrize(
@@ -387,59 +398,199 @@ def test_given_terminal_observations_when_building_inserts_then_rows_are_structu
 @pytest.mark.parametrize(
     "test_case",
     [
-        OwnershipMetadataTestCase(
-            description="owned and dropped events are fail closed",
-            expected_fragment="throwIf(count() != 1",
+        ManifestMigrationDdlTestCase(
+            description="renders manifest table and removes legacy table",
+            expected_ddl=(
+                "CREATE TABLE IF NOT EXISTS metadata._streambuild_manifests (\n"
+                "    manifest_id String,\n"
+                "    invocation_id String,\n"
+                "    project_identity String,\n"
+                "    target_name String,\n"
+                "    target_database String,\n"
+                "    is_production Bool,\n"
+                "    project_revision Nullable(String),\n"
+                "    manifest_fingerprint String,\n"
+                "    manifest_version UInt64,\n"
+                "    pipelines Array(String),\n"
+                "    resources Array(Tuple(\n"
+                "        pipeline_name String,\n"
+                "        logical_type String,\n"
+                "        logical_name String,\n"
+                "        resource_role String,\n"
+                "        resource_database String,\n"
+                "        resource_name String,\n"
+                "        resource_kind String\n"
+                "    )),\n"
+                "    tool_version String,\n"
+                "    published_at DateTime64(6, 'UTC')\n"
+                ") ENGINE = MergeTree\n"
+                "ORDER BY (project_identity, target_name, target_database, published_at, "
+                "manifest_id)"
+            ),
+            expected_drop="DROP TABLE IF EXISTS metadata._streambuild_owned_resources SYNC",
         )
     ],
     ids=lambda case: case.description,
 )
-def test_given_owned_and_dropped_events_when_rendering_then_writes_are_fail_closed(
-    test_case: OwnershipMetadataTestCase,
+def test_given_metadata_migration_when_rendering_then_manifest_ddl_and_legacy_drop_are_exact(
+    test_case: ManifestMigrationDdlTestCase,
 ) -> None:
-    owned: AdapterOwnedResourceEvent = AdapterOwnedResourceEvent(
-        event_id="owned-1",
-        event_type="owned",
-        target_database="analytics",
-        resource_database="analytics",
-        resource_name="tbl__orders",
-        resource_kind="table",
-        pipeline_name="orders",
-        logical_resource_type="model",
-        logical_resource_name="orders",
-        resource_role="model_table",
-    )
-    dropped: AdapterOwnedResourceEvent = replace(
-        owned,
-        event_id="dropped-1",
-        event_type="dropped",
-        catalog_fingerprint="generation-1",
-    )
+    rendered: tuple[str, ...] = render_clickhouse_metadata_migration_statements("metadata")
 
-    owned_sql, dropped_sql = render_clickhouse_owned_resource_events(
-        database="metadata",
-        events=(owned, dropped),
-    )
-
-    assert "FROM system.tables" in owned_sql
-    assert test_case.expected_fragment in owned_sql
-    assert "VALUES" in dropped_sql
-    assert "generation-1" in dropped_sql
+    assert rendered[-3] == test_case.expected_ddl
+    assert rendered[-2] == test_case.expected_drop
 
 
 @pytest.mark.parametrize(
     "test_case",
     [
-        OwnershipMetadataTestCase(
-            description="migration preserves the ownership ledger",
-            expected_fragment="metadata._streambuild_owned_resources",
+        ManifestMigrationWorkflowTestCase(
+            description="records schema version seven last",
+            expected_last_statement=(
+                "INSERT INTO metadata._streambuild_schema_versions (version, applied_at) "
+                "SELECT 7, now64(3, 'UTC') WHERE NOT EXISTS (SELECT 1 FROM "
+                "metadata._streambuild_schema_versions WHERE version = 7);"
+            ),
         )
     ],
     ids=lambda case: case.description,
 )
-def test_given_metadata_migration_when_rendering_then_owned_ledger_is_preserved(
-    test_case: OwnershipMetadataTestCase,
+def test_given_metadata_migration_when_rendering_workflow_then_version_seven_marker_is_last(
+    test_case: ManifestMigrationWorkflowTestCase,
 ) -> None:
-    rendered: tuple[str, ...] = render_clickhouse_metadata_migration_statements("metadata")
+    rendered: tuple[str, ...] = render_clickhouse_metadata_migration_workflow("metadata")
 
-    assert any(test_case.expected_fragment in statement for statement in rendered)
+    assert rendered[-1] == test_case.expected_last_statement
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ManifestPublicationTestCase(
+            description="escapes every complete manifest value",
+            expected_statements=(
+                "INSERT INTO metadata._streambuild_manifests (manifest_id, invocation_id, "
+                "project_identity, target_name, target_database, is_production, "
+                "project_revision, manifest_fingerprint, manifest_version, pipelines, "
+                "resources, tool_version, published_at) VALUES\n"
+                "('manifest-\\'1', 'invocation-1', '/projects\\\\orders', 'uat', 'analytics', "
+                "false, NULL, 'fingerprint-1', 1, ['orders', 'quotes\\'live'], [('orders', "
+                "'model', 'orders', 'model_table', 'analytics', 'tbl__orders', 'table')], "
+                "'0.37.0', toDateTime64('2026-08-28 12:00:00.123456', 6, 'UTC'));",
+            ),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_complete_manifest_when_rendering_publication_then_values_are_exactly_escaped(
+    test_case: ManifestPublicationTestCase,
+) -> None:
+    rendered: tuple[str, ...] = render_clickhouse_manifest_publication(
+        database="metadata", manifest=build_test_manifest()
+    )
+
+    assert rendered == test_case.expected_statements
+
+
+class ManifestLoadingConnection:
+    def __init__(self) -> None:
+        self.statement: str | None = None
+
+    def metadata_columns(self, *, database: str, table: str) -> frozenset[str]:
+        del database, table
+        return frozenset(
+            {
+                "manifest_id",
+                "invocation_id",
+                "project_identity",
+                "target_name",
+                "target_database",
+                "is_production",
+                "project_revision",
+                "manifest_fingerprint",
+                "manifest_version",
+                "pipelines",
+                "resources",
+                "tool_version",
+                "published_at",
+            }
+        )
+
+    def query(self, statement: str) -> AdapterQueryResult:
+        self.statement = statement
+        return AdapterQueryResult(
+            rows=(
+                (
+                    "manifest-1",
+                    "invocation-1",
+                    "/projects/orders",
+                    "uat",
+                    "analytics",
+                    False,
+                    "revision-1",
+                    "fingerprint-1",
+                    1,
+                    ["orders"],
+                    [
+                        (
+                            "orders",
+                            "model",
+                            "orders",
+                            "model_table",
+                            "analytics",
+                            "tbl__orders",
+                            "table",
+                        )
+                    ],
+                    "0.37.0",
+                    "2026-08-28 12:00:00.123456",
+                ),
+            ),
+            column_names=(),
+        )
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ManifestLoadingTestCase(
+            description="preserves scoped nested manifest rows",
+            expected_query=(
+                "SELECT manifest.manifest_id, manifest.invocation_id, "
+                "manifest.project_identity, manifest.target_name, manifest.target_database, "
+                "manifest.is_production, manifest.project_revision, "
+                "manifest.manifest_fingerprint, manifest.manifest_version, "
+                "manifest.pipelines, manifest.resources, manifest.tool_version, "
+                "manifest.published_at FROM metadata._streambuild_manifests AS manifest "
+                "WHERE manifest.project_identity = '/projects/orders' "
+                "AND manifest.target_name = 'uat' "
+                "AND manifest.target_database = 'analytics' "
+                "ORDER BY manifest.published_at DESC, manifest.manifest_id DESC"
+            ),
+            expected_manifest=replace(
+                build_test_manifest(),
+                manifest_id="manifest-1",
+                project_identity="/projects/orders",
+                project_revision="revision-1",
+                pipelines=("orders",),
+            ),
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_manifest_rows_when_loading_then_scope_order_and_models_are_preserved(
+    test_case: ManifestLoadingTestCase,
+) -> None:
+    connection: ManifestLoadingConnection = ManifestLoadingConnection()
+
+    snapshot: AdapterManifestSnapshot = load_clickhouse_manifests(
+        connection=cast(AdapterConnection, connection),
+        database="metadata",
+        project_identity="/projects/orders",
+        target_name="uat",
+        target_database="analytics",
+    )
+
+    assert connection.statement == test_case.expected_query
+    assert snapshot.status == "available"
+    assert snapshot.manifests == (test_case.expected_manifest,)

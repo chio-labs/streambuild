@@ -45,9 +45,3 @@ CLICKHOUSE_FRAMEWORK_KAFKA_SETTING_KEYS: frozenset[str] = frozenset(
 )
 EMPTY_KEY_EXPRESSIONS: tuple[str, ...] = ("", "tuple()")
 EMPTY_DEFAULT_EXPRESSIONS: tuple[object, ...] = (None, "")
-
-OWNERSHIP_EVENT_ROW_LENGTH: int = 8
-OWNERSHIP_RANGE_ROW_LENGTH: int = 11
-OWNERSHIP_TABLE_EXISTS_QUERY: str = (
-    "SELECT name FROM system.tables WHERE database = '{database}' AND name = '{table}'"
-)

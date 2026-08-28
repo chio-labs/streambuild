@@ -14,10 +14,10 @@ from streambuild.adapter.models import (
     AdapterDeploymentRecord,
     AdapterIdentity,
     AdapterManagedSource,
+    AdapterManifestSnapshot,
     AdapterMaterializedView,
     AdapterMetadataObjectKey,
     AdapterMutationResult,
-    AdapterOwnedResourceSnapshot,
     AdapterPreparedObjectMapping,
     AdapterPublishEventRecord,
     AdapterQueryResult,
@@ -65,26 +65,23 @@ class DestructionPlanningConnection:
         catalog: CatalogSnapshot,
         inventory: AdapterDeploymentInventory | None = None,
         stats: tuple[tuple[str, int, int], ...] = (),
-        owned_resources: AdapterOwnedResourceSnapshot | None = None,
         catalog_matches_resources: bool = True,
         external_dependants: tuple[str, ...] = (),
         relation_drop_size_limit: int | None = None,
         relation_drop_size_server_limit: int | None = None,
+        manifests: AdapterManifestSnapshot | None = None,
     ) -> None:
         self.catalog = catalog
         self.inventory = inventory or AdapterDeploymentInventory(deployments=(), publish_events=())
         self.stats = stats
-        self.owned_resources = owned_resources or AdapterOwnedResourceSnapshot(
-            status="absent", resources=()
-        )
         self.catalog_matches_resources = catalog_matches_resources
         self.external_dependants = external_dependants
         self.relation_drop_size_limit = relation_drop_size_limit
         self.relation_drop_size_server_limit = relation_drop_size_server_limit
+        self.manifests = manifests or AdapterManifestSnapshot(status="absent", manifests=())
         self.catalog_databases: list[str] = []
         self.inventory_databases: list[str] = []
         self.queries: list[str] = []
-        self.owned_resource_load_count: int = 0
         self.catalog_match_count: int = 0
 
     def load_catalog(self, database: str) -> CatalogSnapshot:
@@ -95,12 +92,16 @@ class DestructionPlanningConnection:
         self.inventory_databases.append(database)
         return self.inventory
 
-    def load_owned_resources(
-        self, *, database: str, target_database: str
-    ) -> AdapterOwnedResourceSnapshot:
-        del database, target_database
-        self.owned_resource_load_count += 1
-        return self.owned_resources
+    def load_manifests(
+        self,
+        *,
+        database: str,
+        project_identity: str,
+        target_name: str,
+        target_database: str,
+    ) -> AdapterManifestSnapshot:
+        del database, project_identity, target_name, target_database
+        return self.manifests
 
     def catalog_resource_matches(
         self, *, resource: object, relation: object, database: str
@@ -287,8 +288,10 @@ def build_transitive_source_dependency_planning_fixture() -> PlanningFixture:
         CompileAnalysis,
         SimpleNamespace(
             realized_project=realized,
+            discovered_inputs=SimpleNamespace(project_dir=Path("/tmp/commerce")),
             graph=graph,
             compiled_project=SimpleNamespace(
+                project_name="commerce",
                 production_target=False,
                 destruction_relation_drop_size_limit=None,
             ),
@@ -399,8 +402,10 @@ def _build_planning_fixture(
         CompileAnalysis,
         SimpleNamespace(
             realized_project=realized,
+            discovered_inputs=SimpleNamespace(project_dir=Path("/tmp/commerce")),
             graph=graph,
             compiled_project=SimpleNamespace(
+                project_name="commerce",
                 production_target=False,
                 destruction_relation_drop_size_limit=None,
             ),

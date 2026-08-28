@@ -24,6 +24,7 @@ _RESET_REQUIRED_ARGUMENTS: tuple[str, ...] = ()
                 "--select",
                 "pipeline:alpha",
                 "pipeline:beta",
+                "--include-orphans",
                 "--control-store-url",
                 "sqlite:////tmp/destruction-control.db",
             ),
@@ -31,6 +32,7 @@ _RESET_REQUIRED_ARGUMENTS: tuple[str, ...] = ()
             expected_target="uat",
             expected_selectors=("pipeline:alpha", "pipeline:beta"),
             expected_control_store_url="sqlite:////tmp/destruction-control.db",
+            expected_include_orphans=True,
         ),
         DestructionParserTestCase(
             description="reset target requires the named target without selection",
@@ -56,6 +58,7 @@ def test_given_destruction_arguments_when_parsing_then_command_contract_is_expli
     assert parsed.target == test_case.expected_target
     assert tuple(getattr(parsed, "select", ())) == test_case.expected_selectors
     assert parsed.control_store_url == test_case.expected_control_store_url
+    assert bool(getattr(parsed, "include_orphans", False)) is test_case.expected_include_orphans
 
 
 @pytest.mark.parametrize(
@@ -122,6 +125,13 @@ def test_given_destruction_arguments_when_parsing_then_command_contract_is_expli
         ),
         DestructionRejectedOptionTestCase(
             "reset json is unavailable", "reset-target", _RESET_REQUIRED_ARGUMENTS, "--json", 2
+        ),
+        DestructionRejectedOptionTestCase(
+            "reset include orphans is unavailable",
+            "reset-target",
+            _RESET_REQUIRED_ARGUMENTS,
+            "--include-orphans",
+            2,
         ),
     ],
     ids=lambda case: case.description,

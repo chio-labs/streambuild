@@ -12,6 +12,9 @@ from streambuild.cli.build._helpers.rendering import render_interrupted_build_me
 from streambuild.cli.build._helpers.virtual_command import execute_virtual_build_command
 from streambuild.cli.build.exceptions import BuildPipelineLimitError
 from streambuild.cli.build.main._execute_mixed_build import execute_mixed_build_command
+from streambuild.cli.build.main._initialize_build_metadata import (
+    initialize_build_metadata,
+)
 from streambuild.cli.build.main._prepare_validated_build import prepare_validated_build
 from streambuild.cli.build.models import (
     BuildCommandOptions,
@@ -33,9 +36,6 @@ from streambuild.executor.direct.exceptions import DirectBuildError
 from streambuild.executor.observability.constants import RUN_INVOCATION_ID_ENV_VAR
 from streambuild.executor.observability.main.build_invocation_record import (
     build_invocation_record,
-)
-from streambuild.executor.observability.main.initialize_observability import (
-    initialize_observability,
 )
 from streambuild.executor.observability.main.persist_terminal_observations import (
     persist_terminal_observations,
@@ -91,9 +91,12 @@ def run_build(
         )
         resolved_database = database
         observability_started_ns: int = monotonic_ns()
-        initialize_observability(
+        initialize_build_metadata(
+            analysis=analysis,
+            invocation_id=started[0],
+            target_database=database,
+            metadata_database=options.metadata_database or database,
             connection=observation_client,
-            database=options.metadata_database or database,
         )
         observability_ms: int = (monotonic_ns() - observability_started_ns) // 1_000_000
         preparation_options: WorkflowPreparationOptions = WorkflowPreparationOptions(

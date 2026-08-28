@@ -56,6 +56,7 @@ class _SerializedPlan(BaseModel):
     relation_drop_size_server_limit: int | None = None
     relation_drop_size_override: int | None = None
     relation_drop_size_policy_observed: bool = False
+    include_orphans: bool = False
 
 
 class _SerializedEnvelope(BaseModel):
@@ -115,6 +116,7 @@ def deserialize_destruction_plan(payload_json: str) -> DestructionPlan:
             relation_drop_size_server_limit=serialized.relation_drop_size_server_limit,
             relation_drop_size_override=serialized.relation_drop_size_override,
             relation_drop_size_policy_observed=(serialized.relation_drop_size_policy_observed),
+            include_orphans=serialized.include_orphans,
         )
     except (ValidationError, TypeError, ValueError) as error:
         raise DestructionPlanCorruptError(

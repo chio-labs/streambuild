@@ -16,5 +16,6 @@ class DestructionCommandOptions:
     database: str | None
     selectors: tuple[str, ...]
     control_store_url: str
+    include_orphans: bool = False
     cli_variables: tuple[tuple[str, object], ...] = ()
     environment: Mapping[str, str] | None = None
