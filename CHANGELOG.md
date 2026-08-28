@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.38.2](https://github.com/chio-labs/streambuild/compare/v0.38.1...v0.38.2) (2026-08-28)
+
+
+### Bug Fixes
+
+* batch manual audit execution ([#227](https://github.com/chio-labs/streambuild/issues/227)) ([b9ea3d2](https://github.com/chio-labs/streambuild/commit/b9ea3d2d019640bc35697af5de342645d6fcc97a))
+
 ## [0.38.1](https://github.com/chio-labs/streambuild/compare/v0.38.0...v0.38.1) (2026-08-28)
 
 
