@@ -454,29 +454,43 @@ class AdapterDirectFingerprintSnapshot:
 
 
 @dataclass(frozen=True)
-class AdapterOwnedResourceEvent:
-    """One authoritative latest-wins ownership event for a warehouse relation."""
+class AdapterManifestResource:
+    """One physical resource recorded in a published project manifest."""
 
-    event_id: str
-    event_type: str
-    target_database: str
+    pipeline_name: str
+    logical_type: str
+    logical_name: str
+    resource_role: str
     resource_database: str
     resource_name: str
     resource_kind: str
-    pipeline_name: str
-    logical_resource_type: str
-    logical_resource_name: str
-    resource_role: str
-    catalog_fingerprint: str | None = None
-    recorded_at: str | None = None
 
 
 @dataclass(frozen=True)
-class AdapterOwnedResourceSnapshot:
-    """Availability and latest still-owned resource events for one target."""
+class AdapterManifest:
+    """One complete, immutable publication manifest."""
+
+    manifest_id: str
+    invocation_id: str
+    project_identity: str
+    target_name: str
+    target_database: str
+    is_production: bool
+    project_revision: str | None
+    manifest_fingerprint: str
+    manifest_version: int
+    pipelines: tuple[str, ...]
+    resources: tuple[AdapterManifestResource, ...]
+    tool_version: str
+    published_at: str
+
+
+@dataclass(frozen=True)
+class AdapterManifestSnapshot:
+    """Availability and complete publication history for one project target."""
 
     status: AdapterOptionalStateStatus | str
-    resources: tuple[AdapterOwnedResourceEvent, ...]
+    manifests: tuple[AdapterManifest, ...]
     warning: str | None = None
 
     def __post_init__(self) -> None:

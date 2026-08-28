@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Protocol
 
 from streambuild.adapter.models import (
     AdapterDeploymentInventory,
+    AdapterManifestSnapshot,
     AdapterQueryResult,
     CatalogSnapshot,
 )
@@ -34,6 +35,7 @@ class DestructionOwnership(StrEnum):
     VIRTUAL_PHYSICAL_MAPPING = "virtual_physical_mapping"
     PUBLISHED_STABLE_BINDING = "published_stable_binding"
     OWNERSHIP_LEDGER = "ownership_ledger"
+    HISTORICAL_MANIFEST = "historical_manifest"
 
 
 class DestructionPlanningConnection(Protocol):
@@ -42,6 +44,15 @@ class DestructionPlanningConnection(Protocol):
     def load_catalog(self, database: str) -> CatalogSnapshot: ...
 
     def load_deployment_inventory(self, database: str) -> AdapterDeploymentInventory: ...
+
+    def load_manifests(
+        self,
+        *,
+        database: str,
+        project_identity: str,
+        target_name: str,
+        target_database: str,
+    ) -> AdapterManifestSnapshot: ...
 
     def load_external_dependants(
         self, *, database: str, relation_names: tuple[str, ...]

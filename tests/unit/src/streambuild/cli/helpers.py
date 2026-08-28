@@ -20,7 +20,6 @@ from streambuild.adapter.models import (
     AdapterMetadataState,
     AdapterMutationResult,
     AdapterNodeResultRecord,
-    AdapterOwnedResourceSnapshot,
     AdapterQueryResult,
     AdapterReadinessRequest,
     AdapterReadinessRootObservation,
@@ -336,12 +335,6 @@ class RecordingAdapterConnection(AdapterConnection):
     def load_deployment_inventory(self, database: str) -> AdapterDeploymentInventory:
         del database
         return self._deployment_inventory
-
-    def load_owned_resources(
-        self, *, database: str, target_database: str
-    ) -> AdapterOwnedResourceSnapshot:
-        del database, target_database
-        return AdapterOwnedResourceSnapshot(status="absent", resources=())
 
     def load_direct_fingerprints(
         self, *, database: str, logical_model_identities: tuple[str, ...]

@@ -3,6 +3,8 @@ from typing import cast
 
 from streambuild.adapter.exceptions import AdapterWarehouseError
 from streambuild.adapter.models import (
+    AdapterManifest,
+    AdapterManifestResource,
     AdapterMutationResult,
     AdapterQueryResult,
     CatalogSnapshot,
@@ -31,6 +33,34 @@ from streambuild.compiler.planner.models import (
     PublishEventRecord,
 )
 from streambuild.compiler.sql_analysis.main._canonicalize_sql import canonicalize_sql
+
+
+def build_test_manifest() -> AdapterManifest:
+    return AdapterManifest(
+        manifest_id="manifest-'1",
+        invocation_id="invocation-1",
+        project_identity="/projects\\orders",
+        target_name="uat",
+        target_database="analytics",
+        is_production=False,
+        project_revision=None,
+        manifest_fingerprint="fingerprint-1",
+        manifest_version=1,
+        pipelines=("orders", "quotes'live"),
+        resources=(
+            AdapterManifestResource(
+                pipeline_name="orders",
+                logical_type="model",
+                logical_name="orders",
+                resource_role="model_table",
+                resource_database="analytics",
+                resource_name="tbl__orders",
+                resource_kind="table",
+            ),
+        ),
+        tool_version="0.37.0",
+        published_at="2026-08-28 12:00:00.123456",
+    )
 
 
 class FakeRawClickHouseQueryResult:
