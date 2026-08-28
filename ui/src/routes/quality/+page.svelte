@@ -14,7 +14,8 @@
 	import { auditCounts } from '$lib/domain/main/quality/audit-counts';
 	import { testCounts } from '$lib/domain/main/quality/test-counts';
 	import { formatAgo } from '$lib/formatting/main/format-ago';
-	import type { Audit, CellValue, Project, QualityDriftReason, SqlTest } from '$lib/domain/types';
+	import type { CheckRunResult } from '$lib/api/types';
+	import type { CellValue, Project, QualityDriftReason, SqlTest } from '$lib/domain/types';
 
 	const project: Project = getProject();
 
@@ -67,7 +68,7 @@
 
 	// A check that has never run is neither passing nor failing — it only shows
 	// under "All". Fabricating an outcome for it was worse than useless.
-	function auditVisible(audit: Audit): boolean {
+	function auditVisible(audit: Project['audits'][number]): boolean {
 		if (filter === 'all') return true;
 		if (!audit.result) return false;
 		if (audit.result.deferredUntil) return false;
@@ -107,27 +108,32 @@
 	let runningAll = $state<'audits' | 'tests' | null>(null);
 	let runAllProgress = $state<number>(0);
 
+	function applyAuditOutcome(name: string, outcome: CheckRunResult): void {
+		const audit: Project['audits'][number] | undefined = project.audits.find(
+			(item) => item.name === name
+		);
+		if (!audit) return;
+		audit.result = {
+			passed: outcome.passed,
+			failingRowCount: outcome.failingRowCount ?? 0,
+			sampleColumns: outcome.sampleColumns ?? [],
+			sampleRows: outcome.sampleRows ?? [],
+			checkedAt: new Date().toISOString(),
+			driftReasons: [],
+			deferredUntil: outcome.deferredUntil ?? null
+		};
+	}
+
 	async function executeAudit(name: string): Promise<void> {
 		runningCheck = name;
 		runError = null;
 		try {
-			const outcome: Awaited<ReturnType<typeof runCheck>> = await runCheck('audit', name);
+			const outcome: CheckRunResult = (await runCheck({ kind: 'audit', name })) as CheckRunResult;
 			if (outcome.deferredUntil) {
 				runError = `Audit is warming up until ${outcome.deferredUntil} UTC`;
 				return;
 			}
-			const audit: Audit | undefined = project.audits.find((item) => item.name === name);
-			if (audit) {
-					audit.result = {
-					passed: outcome.passed,
-					failingRowCount: outcome.failingRowCount ?? 0,
-					sampleColumns: outcome.sampleColumns ?? [],
-					sampleRows: outcome.sampleRows ?? [],
-					checkedAt: new Date().toISOString(),
-					driftReasons: [],
-					deferredUntil: null
-				};
-			}
+			applyAuditOutcome(name, outcome);
 		} catch (error) {
 			runError = String(error);
 		} finally {
@@ -139,7 +145,7 @@
 		runningCheck = name;
 		runError = null;
 		try {
-			const outcome: Awaited<ReturnType<typeof runCheck>> = await runCheck('test', name);
+			const outcome: CheckRunResult = (await runCheck({ kind: 'test', name })) as CheckRunResult;
 			const test: SqlTest | undefined = project.tests.find((item) => item.name === name);
 			if (test) {
 					test.result = {
@@ -163,16 +169,23 @@
 		}
 	}
 
-	// Sequential on purpose: each check is one warehouse query, and hammering a
-	// dev ClickHouse with 19 concurrent scans helps nobody.
 	async function executeAllAudits(): Promise<void> {
 		runningAll = 'audits';
 		runAllProgress = 0;
-		for (const audit of project.audits) {
-			await executeAudit(audit.name);
-			runAllProgress += 1;
+		runError = null;
+		try {
+			const outcomes: (CheckRunResult & { name: string })[] = (await runCheck({
+				kind: 'audits',
+				names: project.audits.map((audit) => audit.name)
+			})) as (CheckRunResult & { name: string })[];
+			for (const outcome of outcomes) {
+				applyAuditOutcome(outcome.name, outcome);
+			}
+		} catch (error) {
+			runError = String(error);
+		} finally {
+			runningAll = null;
 		}
-		runningAll = null;
 	}
 
 	async function executeAllTests(): Promise<void> {
@@ -195,7 +208,7 @@
 	>
 		<PlayIcon size={11} />
 		{runningAll === 'audits'
-			? `running ${runAllProgress + 1}/${project.audits.length}…`
+			? `running ${project.audits.length} audits…`
 			: 'Run audits'}
 	</button>
 	<button

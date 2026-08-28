@@ -39,6 +39,9 @@ _DECLARED_MUTATION_POLICIES: dict[tuple[str, str], str] = {
     ("POST", "/api/checks/run"): (
         "quality.test.run or quality.audit.run via require_check_authorization"
     ),
+    ("POST", "/api/audits/run"): (
+        "quality.audit.run for every requested audit via require_check_authorization"
+    ),
     ("POST", "/api/build"): (
         "build.direct.run and/or deployment.create via require_prepared_build_authorization"
     ),
