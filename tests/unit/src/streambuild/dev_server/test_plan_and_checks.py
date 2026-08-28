@@ -31,6 +31,7 @@ from streambuild.dev_server.models import DevExecutionContext
 from streambuild.dev_server.types import ActivityTone, DevServerReporter
 from streambuild.executor.observability.constants import RUN_DISPLAY_COMMAND_ENV_VAR
 from tests.unit.src.streambuild.dev_server._test_types import (
+    AuditBatchRouteTestCase,
     BuildConflictScopeTestCase,
     ChecksRunTestCase,
     ChecksStatusTestCase,
@@ -725,6 +726,41 @@ def test_given_check_request_when_running_then_returns_expected_result(
 
     assert response.status_code == test_case.expected_status
     assert response.json().get("passed", False) is test_case.expected_passed
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        AuditBatchRouteTestCase(
+            description="runs all requested audits through the batch route",
+            names=("orders_clean.order_id.not_null.1",),
+            expected_name="orders_clean.order_id.not_null.1",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_audit_names_when_running_batch_then_returns_all_results(
+    test_case: AuditBatchRouteTestCase,
+    tmp_path: Path,
+) -> None:
+    write_dev_server_project(project_dir=tmp_path)
+    state: DevServerState = DevServerState(run_compile=build_compile_callable(project_dir=tmp_path))
+    connection: FakeEmptyResultConnection = FakeEmptyResultConnection(
+        catalog=build_fake_state_connection()._catalog,
+        results_by_query={},
+        warehouse_timestamp="2026-08-03 12:00:00.000",
+    )
+    client: TestClient = TestClient(
+        create_dev_app(
+            state=state, connection=connection, database="analytics", project_dir=tmp_path
+        )
+    )
+
+    response: object = client.post("/api/audits/run", json={"names": list(test_case.names)})
+
+    assert response.status_code == 200
+    assert response.json()[0]["name"] == test_case.expected_name
+    assert response.json()[0]["passed"] is True
 
 
 @pytest.mark.parametrize(

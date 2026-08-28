@@ -70,6 +70,7 @@ from streambuild.dev_server._helpers.server.authorization_enforcement import (
 )
 from streambuild.dev_server._helpers.server.checks_execution import (
     build_checks_status_payload,
+    run_audit_batch,
     run_one_audit,
     run_one_test,
 )
@@ -103,6 +104,7 @@ from streambuild.dev_server.main._build_audit_scheduler_payload import (
     build_audit_scheduler_payload,
 )
 from streambuild.dev_server.models import (
+    AuditBatchRunRequest,
     BuildRunRequest,
     ChecksRunRequest,
     CompileOutcome,
@@ -704,6 +706,41 @@ def _register_message_routes(
     return app
 
 
+def _run_audit_batch_request(
+    *,
+    http_request: Request,
+    request: AuditBatchRunRequest,
+    analysis: CompileAnalysis,
+    connection: AdapterConnection,
+    state: DevServerState,
+    authorization: OperationAuthorizationContext,
+    database: str,
+) -> list[dict[str, object]]:
+    for name in request.names:
+        _ = require_check_authorization(
+            analysis=analysis,
+            request=http_request,
+            store=authorization.store,
+            project_dir=authorization.project_dir,
+            selected_target=authorization.selected_target,
+            kind="audit",
+            name=name,
+        )
+    try:
+        with state.query_lock:
+            return run_audit_batch(
+                analysis=analysis,
+                connection=connection,
+                names=tuple(request.names),
+                project_dir=authorization.project_dir,
+                database=database,
+            )
+    except DevServerError as error:
+        raise HTTPException(status_code=_HTTP_BAD_REQUEST, detail=str(error)) from error
+    except AdapterError as error:
+        raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
+
+
 def _register_quality_routes(
     *,
     app: FastAPI,
@@ -769,6 +806,19 @@ def _register_quality_routes(
             detail=request.name,
         )
         return payload
+
+    def run_audits(
+        *, http_request: Request, request: AuditBatchRunRequest
+    ) -> list[dict[str, object]]:
+        return _run_audit_batch_request(
+            http_request=http_request,
+            request=request,
+            analysis=servable_analysis(),
+            connection=connections.required(),
+            state=state,
+            authorization=authorization,
+            database=database or "",
+        )
 
     def read_checks_status() -> list[dict[str, object]]:
         client: AdapterConnection = connections.required()
@@ -852,6 +902,7 @@ def _register_quality_routes(
             raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
 
     app.post("/api/checks/run")(run_check)
+    app.post("/api/audits/run")(run_audits)
     app.get("/api/checks/status")(read_checks_status)
     app.get("/api/audit-scheduler")(read_audit_scheduler)
     app.get("/api/runs")(read_run_history)
