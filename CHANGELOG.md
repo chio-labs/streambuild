@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.38.1](https://github.com/chio-labs/streambuild/compare/v0.38.0...v0.38.1) (2026-08-28)
+
+
+### Bug Fixes
+
+* distinguish unbuilt Kafka sources from consumer errors ([#225](https://github.com/chio-labs/streambuild/issues/225)) ([70da2f9](https://github.com/chio-labs/streambuild/commit/70da2f95d2c93608df273bfbe67570ad3f0b294c))
+
 ## [0.38.0](https://github.com/chio-labs/streambuild/compare/v0.37.0...v0.38.0) (2026-08-28)
 
 
