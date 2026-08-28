@@ -28,6 +28,7 @@ def render_destruction_plan(plan: DestructionPlan) -> str:
         f"Affected pipelines: {_values(plan.affected_pipeline_names)}",
         f"Affected models: {_values(plan.affected_model_names)}",
         f"Affected sources: {_values(plan.affected_source_names)}",
+        f"Includes historical orphans: {_yes_no(plan.include_orphans)}",
         f"Preserves managed sources: {_yes_no(plan.preserves_sources)}",
         f"Preserves replay data: {_yes_no(plan.preserves_replay_data)}",
         f"Estimated active-part bytes: {plan.estimated_bytes}",

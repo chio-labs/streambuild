@@ -37,12 +37,9 @@ from tests.unit.src.streambuild.executor.destruction.helpers import (
 _NOW: datetime = datetime(2026, 8, 24, 12, 0, tzinfo=UTC)
 
 
-class OwnershipRejectingConnection:
+class MetadataMigrationRejectingConnection:
     def render_migrate_metadata_state(self, database: str) -> tuple[str, ...]:
         raise AssertionError(f"unexpected metadata migration for {database}")
-
-    def render_owned_resource_events(self, **_: object) -> tuple[str, ...]:
-        raise AssertionError("unexpected ownership event")
 
 
 @pytest.mark.parametrize(
@@ -184,7 +181,7 @@ def test_given_associated_relations_when_rendering_then_only_drop_statements_are
 
     statements: tuple[WarehouseStatement, ...] = assemble_destruction_workflow(
         plan=plan,
-        connection=cast(AdapterConnection, OwnershipRejectingConnection()),
+        connection=cast(AdapterConnection, MetadataMigrationRejectingConnection()),
     )
 
     assert len(statements) == (

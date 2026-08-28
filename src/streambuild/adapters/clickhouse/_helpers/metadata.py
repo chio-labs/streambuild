@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping, Sequence
 from hashlib import sha256
 from typing import cast
 
@@ -12,9 +13,9 @@ from streambuild.adapter.constants import (
     METADATA_DEPLOYMENTS_TABLE_NAME,
     METADATA_DIRECT_FINGERPRINTS_TABLE_NAME,
     METADATA_INVOCATIONS_TABLE_NAME,
+    METADATA_MANIFESTS_TABLE_NAME,
     METADATA_NODE_RESULTS_TABLE_NAME,
     METADATA_OBJECT_STATE_TABLE_NAME,
-    METADATA_OWNED_RESOURCES_TABLE_NAME,
     METADATA_PUBLISH_HISTORY_TABLE_NAME,
     METADATA_RUN_EVENTS_TABLE_NAME,
     METADATA_RUN_STATEMENTS_TABLE_NAME,
@@ -24,7 +25,6 @@ from streambuild.adapter.constants import (
     METADATA_SENSOR_OVERRIDES_TABLE_NAME,
     METADATA_SENSOR_STEPS_TABLE_NAME,
     METADATA_SENSOR_TICKS_TABLE_NAME,
-    OWNERSHIP_EVENT_DROPPED,
     REPLAY_VALUE_KIND_INTEGER,
     REPLAY_VALUE_KIND_TIMESTAMP,
     VIRTUAL_OBJECT_STATE_KIND_DEPLOYMENT,
@@ -37,11 +37,12 @@ from streambuild.adapter.models import (
     AdapterDirectFingerprintRecord,
     AdapterDirectFingerprintSnapshot,
     AdapterInvocationRecord,
+    AdapterManifest,
+    AdapterManifestResource,
+    AdapterManifestSnapshot,
     AdapterMetadataState,
     AdapterNodeResultRecord,
     AdapterObjectStateRecord,
-    AdapterOwnedResourceEvent,
-    AdapterOwnedResourceSnapshot,
     AdapterPublishEventRecord,
     AdapterQueryResult,
     AdapterRunEventRecord,
@@ -56,7 +57,7 @@ from streambuild.adapter.models import (
 from streambuild.adapter.types import AdapterOptionalStateStatus, AdapterReplayBoundaryMode
 from streambuild.adapters.clickhouse.models import ClickHouseMetadataStatement
 
-_CURRENT_STATE_SCHEMA_VERSION: int = 6
+_CURRENT_STATE_SCHEMA_VERSION: int = 7
 _BOUNDARY_PART_COUNT: int = 2
 _SNAPSHOT_FIELD_NAMES: tuple[str, ...] = (
     "binding_key",
@@ -92,20 +93,21 @@ _DIRECT_FINGERPRINT_REQUIRED_COLUMNS: frozenset[str] = frozenset(
         "applied_at",
     }
 )
-_OWNED_RESOURCE_REQUIRED_COLUMNS: frozenset[str] = frozenset(
+_MANIFEST_REQUIRED_COLUMNS: frozenset[str] = frozenset(
     {
-        "event_id",
-        "event_type",
+        "manifest_id",
+        "invocation_id",
+        "project_identity",
+        "target_name",
         "target_database",
-        "resource_database",
-        "resource_name",
-        "resource_kind",
-        "pipeline_name",
-        "logical_resource_type",
-        "logical_resource_name",
-        "resource_role",
-        "catalog_fingerprint",
-        "recorded_at",
+        "is_production",
+        "project_revision",
+        "manifest_fingerprint",
+        "manifest_version",
+        "pipelines",
+        "resources",
+        "tool_version",
+        "published_at",
     }
 )
 
@@ -128,7 +130,8 @@ def render_clickhouse_metadata_migration_statements(database: str) -> tuple[str,
         _render_sensor_steps_table(database),
         _render_sensor_overrides_table(database),
         _render_sensor_leases_table(database),
-        _render_owned_resources_table(database),
+        _render_manifests_table(database),
+        f"DROP TABLE IF EXISTS {database}._streambuild_owned_resources SYNC",
         _render_publish_history_lifecycle_columns(database),
     )
 
@@ -469,142 +472,202 @@ def _render_direct_fingerprints_table(database: str) -> str:
     )
 
 
-def _render_owned_resources_table(database: str) -> str:
+def _render_manifests_table(database: str) -> str:
     return (
-        f"CREATE TABLE IF NOT EXISTS {database}.{METADATA_OWNED_RESOURCES_TABLE_NAME} (\n"
-        "    event_id String,\n"
-        "    event_type LowCardinality(String),\n"
+        f"CREATE TABLE IF NOT EXISTS {database}.{METADATA_MANIFESTS_TABLE_NAME} (\n"
+        "    manifest_id String,\n"
+        "    invocation_id String,\n"
+        "    project_identity String,\n"
+        "    target_name String,\n"
         "    target_database String,\n"
-        "    resource_database String,\n"
-        "    resource_name String,\n"
-        "    resource_kind LowCardinality(String),\n"
-        "    pipeline_name String,\n"
-        "    logical_resource_type LowCardinality(String),\n"
-        "    logical_resource_name String,\n"
-        "    resource_role LowCardinality(String),\n"
-        "    catalog_fingerprint String,\n"
-        "    recorded_at DateTime64(6, 'UTC') DEFAULT now64(6, 'UTC')\n"
+        "    is_production Bool,\n"
+        "    project_revision Nullable(String),\n"
+        "    manifest_fingerprint String,\n"
+        "    manifest_version UInt64,\n"
+        "    pipelines Array(String),\n"
+        "    resources Array(Tuple(\n"
+        "        pipeline_name String,\n"
+        "        logical_type String,\n"
+        "        logical_name String,\n"
+        "        resource_role String,\n"
+        "        resource_database String,\n"
+        "        resource_name String,\n"
+        "        resource_kind String\n"
+        "    )),\n"
+        "    tool_version String,\n"
+        "    published_at DateTime64(6, 'UTC')\n"
         ") ENGINE = MergeTree\n"
-        "ORDER BY (target_database, resource_database, resource_name, recorded_at, event_id)"
+        "ORDER BY (project_identity, target_name, target_database, published_at, manifest_id)"
     )
 
 
-def load_clickhouse_owned_resources(
-    *, connection: AdapterConnection, database: str, target_database: str
-) -> AdapterOwnedResourceSnapshot:
-    """Load latest still-owned resource events, preserving explicit absence."""
+def load_clickhouse_manifests(
+    *,
+    connection: AdapterConnection,
+    database: str,
+    project_identity: str,
+    target_name: str,
+    target_database: str,
+) -> AdapterManifestSnapshot:
+    """Load complete manifest history for one project target, newest first."""
 
     try:
         columns: frozenset[str] = connection.metadata_columns(
             database=database,
-            table=METADATA_OWNED_RESOURCES_TABLE_NAME,
+            table=METADATA_MANIFESTS_TABLE_NAME,
         )
         if not columns:
-            return AdapterOwnedResourceSnapshot(status="absent", resources=())
-        if not _OWNED_RESOURCE_REQUIRED_COLUMNS <= columns:
-            return AdapterOwnedResourceSnapshot(
+            return AdapterManifestSnapshot(status="absent", manifests=())
+        if not _MANIFEST_REQUIRED_COLUMNS <= columns:
+            return AdapterManifestSnapshot(
                 status="unavailable",
-                resources=(),
-                warning="Owned-resource ledger has an incompatible schema",
+                manifests=(),
+                warning="Manifest table has an incompatible schema",
             )
         result: AdapterQueryResult = connection.query(
-            _latest_owned_resources_query(database=database, target_database=target_database)
+            _manifest_history_query(
+                database=database,
+                project_identity=project_identity,
+                target_name=target_name,
+                target_database=target_database,
+            )
         )
     except AdapterWarehouseError as error:
-        return AdapterOwnedResourceSnapshot(
+        return AdapterManifestSnapshot(
             status="unavailable",
-            resources=(),
-            warning=f"Owned-resource ledger unavailable: {error}",
+            manifests=(),
+            warning=f"Manifest history unavailable: {error}",
         )
-    return AdapterOwnedResourceSnapshot(
-        status="available",
-        resources=tuple(
-            AdapterOwnedResourceEvent(
-                event_id=str(row[0]),
-                event_type=str(row[1]),
-                target_database=str(row[2]),
-                resource_database=str(row[3]),
-                resource_name=str(row[4]),
-                resource_kind=str(row[5]),
-                pipeline_name=str(row[6]),
-                logical_resource_type=str(row[7]),
-                logical_resource_name=str(row[8]),
-                resource_role=str(row[9]),
-                catalog_fingerprint=str(row[10]),
-                recorded_at=str(row[11]),
-            )
-            for row in result.rows
-        ),
+    manifests: tuple[AdapterManifest, ...] = tuple(_manifest_from_row(row) for row in result.rows)
+    return AdapterManifestSnapshot(status="available", manifests=manifests)
+
+
+def _manifest_from_row(row: tuple[object, ...]) -> AdapterManifest:
+    pipelines: tuple[str, ...] = tuple(str(pipeline) for pipeline in cast(Sequence[object], row[9]))
+    resources: tuple[AdapterManifestResource, ...] = tuple(
+        _manifest_resource(resource) for resource in cast(Sequence[object], row[10])
+    )
+    project_revision: str | None = None if row[6] is None else str(row[6])
+    return AdapterManifest(
+        manifest_id=str(row[0]),
+        invocation_id=str(row[1]),
+        project_identity=str(row[2]),
+        target_name=str(row[3]),
+        target_database=str(row[4]),
+        is_production=bool(row[5]),
+        project_revision=project_revision,
+        manifest_fingerprint=str(row[7]),
+        manifest_version=int(cast(int, row[8])),
+        pipelines=pipelines,
+        resources=resources,
+        tool_version=str(row[11]),
+        published_at=str(row[12]),
     )
 
 
-def _latest_owned_resources_query(*, database: str, target_database: str) -> str:
-    table: str = f"{database}.{METADATA_OWNED_RESOURCES_TABLE_NAME}"
-    target: str = _render_sql_literal(target_database)
+def _manifest_resource(resource: object) -> AdapterManifestResource:
+    names: tuple[str, ...] = (
+        "pipeline_name",
+        "logical_type",
+        "logical_name",
+        "resource_role",
+        "resource_database",
+        "resource_name",
+        "resource_kind",
+    )
+    if isinstance(resource, Mapping):
+        mapping: Mapping[str, object] = cast(Mapping[str, object], resource)
+        values: tuple[object, ...] = tuple(mapping[name] for name in names)
+    elif isinstance(resource, Sequence) and not isinstance(resource, str | bytes):
+        values = tuple(resource)
+    else:
+        raise AdapterResultError("Manifest resource row is not a tuple")
+    if len(values) != len(names):
+        raise AdapterResultError("Manifest resource row has an incompatible shape")
+    return AdapterManifestResource(
+        pipeline_name=str(values[0]),
+        logical_type=str(values[1]),
+        logical_name=str(values[2]),
+        resource_role=str(values[3]),
+        resource_database=str(values[4]),
+        resource_name=str(values[5]),
+        resource_kind=str(values[6]),
+    )
+
+
+def _manifest_history_query(
+    *,
+    database: str,
+    project_identity: str,
+    target_name: str,
+    target_database: str,
+) -> str:
+    table: str = f"{database}.{METADATA_MANIFESTS_TABLE_NAME}"
+    source: str = f"{table} AS manifest"
     return (
-        "SELECT latest.1, latest.2, target_database, resource_database, resource_name, "
-        "latest.3, latest.4, latest.5, latest.6, latest.7, latest.8, latest.9 FROM ("
-        "SELECT target_database, resource_database, resource_name, "
-        "argMax(tuple(event_id, event_type, resource_kind, pipeline_name, "
-        "logical_resource_type, logical_resource_name, resource_role, catalog_fingerprint, "
-        "recorded_at), tuple(recorded_at, event_id)) AS latest "
-        f"FROM {table} WHERE target_database = {target} "
-        "GROUP BY target_database, resource_database, resource_name) "
-        "WHERE latest.2 = 'owned' ORDER BY resource_database, resource_name"
+        "SELECT manifest.manifest_id, manifest.invocation_id, manifest.project_identity, "
+        "manifest.target_name, manifest.target_database, manifest.is_production, "
+        "manifest.project_revision, manifest.manifest_fingerprint, manifest.manifest_version, "
+        "manifest.pipelines, manifest.resources, manifest.tool_version, manifest.published_at "
+        f"FROM {source} "
+        f"WHERE manifest.project_identity = {_render_sql_literal(project_identity)} "
+        f"AND manifest.target_name = {_render_sql_literal(target_name)} "
+        f"AND manifest.target_database = {_render_sql_literal(target_database)} "
+        "ORDER BY manifest.published_at DESC, manifest.manifest_id DESC"
     )
 
 
-def render_clickhouse_owned_resource_events(
-    *, database: str, events: tuple[AdapterOwnedResourceEvent, ...]
+def render_clickhouse_manifest_publication(
+    *, database: str, manifest: AdapterManifest
 ) -> tuple[str, ...]:
-    """Render one fail-closed append for each ownership transition."""
+    """Render one append containing a complete immutable manifest."""
 
-    return tuple(_owned_resource_event_sql(database=database, event=event) for event in events)
-
-
-def _owned_resource_event_sql(*, database: str, event: AdapterOwnedResourceEvent) -> str:
     columns: str = (
-        "event_id, event_type, target_database, resource_database, resource_name, "
-        "resource_kind, pipeline_name, logical_resource_type, logical_resource_name, "
-        "resource_role, catalog_fingerprint, recorded_at"
+        "manifest_id, invocation_id, project_identity, target_name, target_database, "
+        "is_production, project_revision, manifest_fingerprint, manifest_version, pipelines, "
+        "resources, tool_version, published_at"
     )
-    values: tuple[str, ...] = (
-        event.event_id,
-        event.event_type,
-        event.target_database,
-        event.resource_database,
-        event.resource_name,
-        event.resource_kind,
-        event.pipeline_name,
-        event.logical_resource_type,
-        event.logical_resource_name,
-        event.resource_role,
+    strings: tuple[str, ...] = (
+        manifest.manifest_id,
+        manifest.invocation_id,
+        manifest.project_identity,
+        manifest.target_name,
+        manifest.target_database,
     )
-    literals: str = ", ".join(_render_sql_literal(value) for value in values)
-    recorded_at: str = (
-        "now64(6, 'UTC')"
-        if event.recorded_at is None
-        else f"toDateTime64({_render_sql_literal(event.recorded_at)}, 6, 'UTC')"
+    pipelines: str = (
+        "[" + ", ".join(_render_sql_literal(pipeline) for pipeline in manifest.pipelines) + "]"
     )
-    if event.event_type == OWNERSHIP_EVENT_DROPPED:
-        fingerprint: str = _render_sql_literal(event.catalog_fingerprint or "")
-        return (
-            f"INSERT INTO {database}.{METADATA_OWNED_RESOURCES_TABLE_NAME} ({columns}) "
-            f"VALUES ({literals}, {fingerprint}, {recorded_at});"
-        )
-    zero_uuid: str = "00000000-0000-0000-0000-000000000000"
-    fingerprint = (
-        f"if(toString(any(uuid)) != '{zero_uuid}', toString(any(uuid)), "
-        "lower(hex(SHA256(any(create_table_query)))))"
+    rendered_resources: tuple[str, ...] = tuple(
+        _render_manifest_resource(resource) for resource in manifest.resources
     )
+    resources: str = "[" + ", ".join(rendered_resources) + "]"
+    revision: str = (
+        "NULL"
+        if manifest.project_revision is None
+        else _render_sql_literal(manifest.project_revision)
+    )
+    values: str = ", ".join(_render_sql_literal(value) for value in strings)
     return (
-        f"INSERT INTO {database}.{METADATA_OWNED_RESOURCES_TABLE_NAME} ({columns})\n"
-        f"SELECT {literals}, {fingerprint}, {recorded_at}\n"
-        "FROM system.tables "
-        f"WHERE database = {_render_sql_literal(event.resource_database)} "
-        f"AND name = {_render_sql_literal(event.resource_name)}\n"
-        "HAVING throwIf(count() != 1, 'Owned resource is absent or ambiguous') = 0;"
+        f"INSERT INTO {database}.{METADATA_MANIFESTS_TABLE_NAME} ({columns}) VALUES\n"
+        f"({values}, {str(manifest.is_production).lower()}, {revision}, "
+        f"{_render_sql_literal(manifest.manifest_fingerprint)}, {manifest.manifest_version}, "
+        f"{pipelines}, {resources}, {_render_sql_literal(manifest.tool_version)}, "
+        f"toDateTime64({_render_sql_literal(manifest.published_at)}, 6, 'UTC'));",
     )
+
+
+def _render_manifest_resource(resource: AdapterManifestResource) -> str:
+    values: tuple[str, ...] = (
+        resource.pipeline_name,
+        resource.logical_type,
+        resource.logical_name,
+        resource.resource_role,
+        resource.resource_database,
+        resource.resource_name,
+        resource.resource_kind,
+    )
+    literals: tuple[str, ...] = tuple(_render_sql_literal(value) for value in values)
+    return f"({', '.join(literals)})"
 
 
 def _render_invocations_table(database: str) -> str:

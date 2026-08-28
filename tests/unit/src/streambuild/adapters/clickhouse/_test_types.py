@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 from streambuild.adapter.exceptions import AdapterWarehouseError
 from streambuild.adapter.models import (
+    AdapterManifest,
     AdapterReplayOffsetFrontier,
     AdapterReplayOffsetProgressRequest,
     AdapterStatementProgress,
@@ -436,6 +437,26 @@ class TargetMutationLockOwnershipChangeTestCase:
 
 
 @dataclass(frozen=True)
-class OwnershipMetadataTestCase:
+class ManifestMigrationDdlTestCase:
     description: str
-    expected_fragment: str
+    expected_ddl: str
+    expected_drop: str
+
+
+@dataclass(frozen=True)
+class ManifestMigrationWorkflowTestCase:
+    description: str
+    expected_last_statement: str
+
+
+@dataclass(frozen=True)
+class ManifestPublicationTestCase:
+    description: str
+    expected_statements: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class ManifestLoadingTestCase:
+    description: str
+    expected_query: str
+    expected_manifest: AdapterManifest

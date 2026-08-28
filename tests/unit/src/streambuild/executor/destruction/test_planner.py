@@ -7,9 +7,10 @@ import pytest
 
 from streambuild.adapter.models import (
     AdapterDeploymentRecord,
+    AdapterManifest,
+    AdapterManifestResource,
+    AdapterManifestSnapshot,
     AdapterMetadataObjectKey,
-    AdapterOwnedResourceEvent,
-    AdapterOwnedResourceSnapshot,
     AdapterPreparedObjectMapping,
     AdapterPublishEventRecord,
     AdapterStableBinding,
@@ -43,12 +44,14 @@ from tests.unit.src.streambuild.executor.destruction._test_types import (
     DestructionDropOverrideTestCase,
     DestructionFrozenDropLimitTestCase,
     DuplicateSelectionTestCase,
-    OwnershipLedgerBehaviorTestCase,
+    OrphanManifestTestCase,
     PipelineDestructionPlanTestCase,
+    PlanningBehaviorTestCase,
     PreservedSourceClosureTestCase,
     StableDriftFingerprintTestCase,
     StableFingerprintTestCase,
     TargetResetPlanTestCase,
+    UnsupportedManifestVersionTestCase,
     VirtualHistoryResetTestCase,
     WarehouseDependencyFailureTestCase,
 )
@@ -61,6 +64,193 @@ from tests.unit.src.streambuild.executor.destruction.helpers import (
 )
 
 _NOW: datetime = datetime(2026, 8, 24, 12, 0, tzinfo=UTC)
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        OrphanManifestTestCase(
+            description="selected pipeline historical orphan",
+            expected_included_relation="legacy__orders",
+            expected_excluded_relations=frozenset(
+                ("vw__summary", "legacy__reassigned", "still__current")
+            ),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_orphans_when_planning_selected_pipeline_then_only_unreclaimed_are_included(
+    test_case: OrphanManifestTestCase,
+) -> None:
+    fixture: PlanningFixture = build_planning_fixture()
+    fixture.connection.catalog = replace(
+        fixture.connection.catalog,
+        relations=(
+            *fixture.connection.catalog.relations,
+            CatalogRelation(name="legacy__orders", engine="MergeTree", columns=()),
+            CatalogRelation(name="legacy__reassigned", engine="MergeTree", columns=()),
+            CatalogRelation(name="still__current", engine="MergeTree", columns=()),
+        ),
+    )
+    fixture.connection.manifests = AdapterManifestSnapshot(
+        status="available",
+        manifests=(
+            AdapterManifest(
+                manifest_id="manifest-2",
+                invocation_id="invocation-2",
+                project_identity="commerce",
+                target_name="uat",
+                target_database="analytics",
+                is_production=False,
+                project_revision=None,
+                manifest_fingerprint="fingerprint-2",
+                manifest_version=1,
+                pipelines=("alpha", "beta"),
+                resources=(
+                    AdapterManifestResource(
+                        pipeline_name="beta",
+                        logical_type="model",
+                        logical_name="reassigned",
+                        resource_role="primary",
+                        resource_database="analytics",
+                        resource_name="legacy__reassigned",
+                        resource_kind="table",
+                    ),
+                    AdapterManifestResource(
+                        pipeline_name="alpha",
+                        logical_type="model",
+                        logical_name="still_current",
+                        resource_role="primary",
+                        resource_database="analytics",
+                        resource_name="still__current",
+                        resource_kind="table",
+                    ),
+                ),
+                tool_version="0.37.0",
+                published_at="2026-08-21 10:00:00.000000",
+            ),
+            AdapterManifest(
+                manifest_id="manifest-1",
+                invocation_id="invocation-1",
+                project_identity="commerce",
+                target_name="uat",
+                target_database="analytics",
+                is_production=False,
+                project_revision=None,
+                manifest_fingerprint="fingerprint",
+                manifest_version=1,
+                pipelines=("alpha", "beta"),
+                resources=(
+                    AdapterManifestResource(
+                        pipeline_name="alpha",
+                        logical_type="model",
+                        logical_name="reassigned",
+                        resource_role="primary",
+                        resource_database="analytics",
+                        resource_name="legacy__reassigned",
+                        resource_kind="table",
+                    ),
+                    AdapterManifestResource(
+                        pipeline_name="alpha",
+                        logical_type="model",
+                        logical_name="legacy_orders",
+                        resource_role="primary",
+                        resource_database="analytics",
+                        resource_name="legacy__orders",
+                        resource_kind="table",
+                    ),
+                    AdapterManifestResource(
+                        pipeline_name="alpha",
+                        logical_type="model",
+                        logical_name="old_summary",
+                        resource_role="primary",
+                        resource_database="analytics",
+                        resource_name="vw__summary",
+                        resource_kind="view",
+                    ),
+                ),
+                tool_version="0.37.0",
+                published_at="2026-08-20 10:00:00.000000",
+            ),
+        ),
+    )
+
+    plan: DestructionPlan = plan_destruction(
+        request=DestructionRequest(
+            operation=DestructionOperation.DESTROY_PIPELINES,
+            target="uat",
+            database="analytics",
+            metadata_database="analytics",
+            pipeline_names=("alpha",),
+            include_orphans=True,
+        ),
+        analysis=fixture.analysis,
+        connection=fixture.connection,
+        now=_NOW,
+    )
+
+    relations: dict[str, DestructionRelationEvidence] = {
+        relation.name: relation for relation in plan.relations
+    }
+    assert plan.include_orphans is True
+    assert (
+        DestructionOwnership.HISTORICAL_MANIFEST
+        in relations[test_case.expected_included_relation].ownership
+    )
+    assert relations[test_case.expected_included_relation].pipeline_names == ("alpha",)
+    assert test_case.expected_excluded_relations.isdisjoint(relations)
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        UnsupportedManifestVersionTestCase(
+            description="future manifest version",
+            manifest_version=2,
+            expected_error_match="Unsupported manifest version 2; expected 1",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_unsupported_manifest_when_including_orphans_then_planning_fails_closed(
+    test_case: UnsupportedManifestVersionTestCase,
+) -> None:
+    fixture: PlanningFixture = build_planning_fixture()
+    fixture.connection.manifests = AdapterManifestSnapshot(
+        status="available",
+        manifests=(
+            AdapterManifest(
+                manifest_id="future-manifest",
+                invocation_id="invocation-1",
+                project_identity="commerce",
+                target_name="uat",
+                target_database="analytics",
+                is_production=False,
+                project_revision=None,
+                manifest_fingerprint="fingerprint",
+                manifest_version=test_case.manifest_version,
+                pipelines=("alpha",),
+                resources=(),
+                tool_version="future",
+                published_at="2026-08-21 10:00:00.000000",
+            ),
+        ),
+    )
+
+    with pytest.raises(DestructionResourceError, match=test_case.expected_error_match):
+        plan_destruction(
+            request=DestructionRequest(
+                operation=DestructionOperation.DESTROY_PIPELINES,
+                target="uat",
+                database="analytics",
+                metadata_database="analytics",
+                pipeline_names=("alpha",),
+                include_orphans=True,
+            ),
+            analysis=fixture.analysis,
+            connection=fixture.connection,
+            now=_NOW,
+        )
 
 
 @pytest.mark.parametrize(
@@ -465,7 +655,6 @@ def test_given_pipeline_destruction_when_planning_then_complete_associated_scope
     assert fixture.connection.catalog_databases == test_case.expected_catalog_databases
     assert fixture.connection.inventory_databases == test_case.expected_inventory_databases
     assert len(fixture.connection.queries) == test_case.expected_query_count
-    assert fixture.connection.owned_resource_load_count == 0
     assert fixture.connection.catalog_match_count == 0
     with pytest.raises(FrozenInstanceError):
         setattr(plan, "".join(("tar", "get")), "other")
@@ -627,91 +816,8 @@ def test_given_duplicate_pipeline_when_creating_request_then_selection_is_reject
 @pytest.mark.parametrize(
     "test_case",
     [
-        OwnershipLedgerBehaviorTestCase(
-            description="unavailable ledger is inert",
-            expected_value="injected unavailable ownership ledger",
-        )
-    ],
-    ids=lambda case: case.description,
-)
-def test_given_ownership_ledger_is_unavailable_when_planning_then_it_is_not_consulted(
-    test_case: OwnershipLedgerBehaviorTestCase,
-) -> None:
-    fixture: PlanningFixture = build_planning_fixture()
-    fixture.connection.owned_resources = AdapterOwnedResourceSnapshot(
-        status="unavailable",
-        resources=(),
-        warning=test_case.expected_value,
-    )
-
-    plan: DestructionPlan = plan_destruction(
-        request=DestructionRequest(
-            operation="reset_target",
-            target="uat",
-            database="analytics",
-            metadata_database="metadata",
-        ),
-        analysis=fixture.analysis,
-        connection=fixture.connection,
-    )
-
-    assert plan.relations
-    assert fixture.connection.owned_resource_load_count == 0
-
-
-@pytest.mark.parametrize(
-    "test_case",
-    [
-        OwnershipLedgerBehaviorTestCase(
-            description="stale ledger entry is not deletion authority",
-            expected_value="legacy_orders",
-        )
-    ],
-    ids=lambda case: case.description,
-)
-def test_given_stale_ledger_entry_when_resetting_then_unassociated_relation_is_ignored(
-    test_case: OwnershipLedgerBehaviorTestCase,
-) -> None:
-    fixture: PlanningFixture = build_planning_fixture()
-    fixture.connection.owned_resources = AdapterOwnedResourceSnapshot(
-        status="available",
-        resources=(
-            AdapterOwnedResourceEvent(
-                event_id="owned-source",
-                event_type="owned",
-                target_database="analytics",
-                resource_database="analytics",
-                resource_name=test_case.expected_value,
-                resource_kind="table",
-                pipeline_name="alpha",
-                logical_resource_type="model",
-                logical_resource_name="orders",
-                resource_role="model_table",
-                catalog_fingerprint=None,
-            ),
-        ),
-    )
-
-    plan: DestructionPlan = plan_destruction(
-        request=DestructionRequest(
-            operation="reset_target",
-            target="uat",
-            database="analytics",
-            metadata_database="metadata",
-        ),
-        analysis=fixture.analysis,
-        connection=fixture.connection,
-    )
-
-    assert test_case.expected_value not in {relation.name for relation in plan.relations}
-    assert fixture.connection.owned_resource_load_count == 0
-
-
-@pytest.mark.parametrize(
-    "test_case",
-    [
         VirtualHistoryResetTestCase(
-            description="reset includes retired pre-ledger virtual history",
+            description="reset includes retired virtual history",
             expected_reset_relation_names=("retired_binding", "retired_physical"),
             expected_destroy_excluded_names=("retired_binding", "retired_physical"),
         )
@@ -790,7 +896,7 @@ def test_given_retired_virtual_history_when_planning_then_only_reset_includes_re
 @pytest.mark.parametrize(
     "test_case",
     [
-        OwnershipLedgerBehaviorTestCase(
+        PlanningBehaviorTestCase(
             description="recorded virtual history freezes the current generation",
             expected_value="generation:old__orders__deployment_1",
         )
@@ -798,7 +904,7 @@ def test_given_retired_virtual_history_when_planning_then_only_reset_includes_re
     ids=lambda case: case.description,
 )
 def test_given_live_recorded_virtual_history_when_resetting_then_current_generation_is_frozen(
-    test_case: OwnershipLedgerBehaviorTestCase,
+    test_case: PlanningBehaviorTestCase,
 ) -> None:
     fixture: PlanningFixture = build_planning_fixture()
     fixture.connection.catalog = replace(
@@ -834,7 +940,7 @@ def test_given_live_recorded_virtual_history_when_resetting_then_current_generat
 @pytest.mark.parametrize(
     "test_case",
     [
-        OwnershipLedgerBehaviorTestCase(
+        PlanningBehaviorTestCase(
             description="recorded noncanonical virtual mapping remains authoritative",
             expected_value="customer_data",
         )
@@ -842,7 +948,7 @@ def test_given_live_recorded_virtual_history_when_resetting_then_current_generat
     ids=lambda case: case.description,
 )
 def test_given_noncanonical_virtual_mapping_when_resetting_then_recorded_association_is_used(
-    test_case: OwnershipLedgerBehaviorTestCase,
+    test_case: PlanningBehaviorTestCase,
 ) -> None:
     fixture: PlanningFixture = build_planning_fixture()
     deployment: AdapterDeploymentRecord = fixture.connection.inventory.deployments[0]
@@ -884,7 +990,7 @@ def test_given_noncanonical_virtual_mapping_when_resetting_then_recorded_associa
 @pytest.mark.parametrize(
     "test_case",
     [
-        OwnershipLedgerBehaviorTestCase(
+        PlanningBehaviorTestCase(
             description="committed production classification adds production challenge",
             expected_value="PRODUCTION",
         )
@@ -892,7 +998,7 @@ def test_given_noncanonical_virtual_mapping_when_resetting_then_recorded_associa
     ids=lambda case: case.description,
 )
 def test_given_classified_production_target_when_resetting_then_production_challenge_is_required(
-    test_case: OwnershipLedgerBehaviorTestCase,
+    test_case: PlanningBehaviorTestCase,
 ) -> None:
     fixture: PlanningFixture = build_planning_fixture(target_name="live")
     classified_analysis: CompileAnalysis = cast(
@@ -969,7 +1075,7 @@ def test_given_unmanaged_join_dependant_when_planning_then_destruction_is_blocke
 @pytest.mark.parametrize(
     "test_case",
     [
-        OwnershipLedgerBehaviorTestCase(
+        PlanningBehaviorTestCase(
             description="live DDL drift does not replace manifest association",
             expected_value="generation:tbl__orders",
         )
@@ -977,7 +1083,7 @@ def test_given_unmanaged_join_dependant_when_planning_then_destruction_is_blocke
     ids=lambda case: case.description,
 )
 def test_given_live_ddl_drift_when_planning_then_association_remains_authoritative(
-    test_case: OwnershipLedgerBehaviorTestCase,
+    test_case: PlanningBehaviorTestCase,
 ) -> None:
     fixture: PlanningFixture = build_planning_fixture()
     fixture.connection.catalog_matches_resources = False
@@ -1004,7 +1110,7 @@ def test_given_live_ddl_drift_when_planning_then_association_remains_authoritati
 @pytest.mark.parametrize(
     "test_case",
     [
-        OwnershipLedgerBehaviorTestCase(
+        PlanningBehaviorTestCase(
             description="reset without attributable pipeline remains fail closed",
             expected_value="attributable pipeline challenge",
         )
@@ -1012,7 +1118,7 @@ def test_given_live_ddl_drift_when_planning_then_association_remains_authoritati
     ids=lambda case: case.description,
 )
 def test_given_no_attributable_pipeline_when_building_challenges_then_reset_is_refused(
-    test_case: OwnershipLedgerBehaviorTestCase,
+    test_case: PlanningBehaviorTestCase,
 ) -> None:
     with pytest.raises(DestructionSelectionError, match=test_case.expected_value):
         build_destruction_challenges(pipeline_names=())
@@ -1021,7 +1127,7 @@ def test_given_no_attributable_pipeline_when_building_challenges_then_reset_is_r
 @pytest.mark.parametrize(
     "test_case",
     [
-        OwnershipLedgerBehaviorTestCase(
+        PlanningBehaviorTestCase(
             description="recorded pipeline identity constrains current manifest name",
             expected_value="tbl__orders",
         )
@@ -1029,7 +1135,7 @@ def test_given_no_attributable_pipeline_when_building_challenges_then_reset_is_r
     ids=lambda case: case.description,
 )
 def test_given_unmanaged_dependant_when_destroying_associated_relation_then_it_blocks(
-    test_case: OwnershipLedgerBehaviorTestCase,
+    test_case: PlanningBehaviorTestCase,
 ) -> None:
     fixture: PlanningFixture = build_planning_fixture()
     fixture.connection.external_dependants = (test_case.expected_value,)

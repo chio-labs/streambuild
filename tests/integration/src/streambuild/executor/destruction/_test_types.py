@@ -10,7 +10,7 @@ class DestructionIntegrationTestCase:
 
 
 @dataclass(frozen=True)
-class OwnershipIntegrationTestCase:
+class DestructionSafetyIntegrationTestCase:
     description: str
     expected_error_match: str
 
@@ -27,3 +27,10 @@ class CompletionEventFailureIntegrationTestCase:
     description: str
     expected_outcome: str
     expected_residual_status: str
+
+
+@dataclass(frozen=True)
+class OrphanCleanupIntegrationTestCase:
+    description: str
+    orphan_relation_name: str
+    expected_outcome: str

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.38.0](https://github.com/chio-labs/streambuild/compare/v0.37.0...v0.38.0) (2026-08-28)
+
+
+### Features
+
+* publish append-only StreamBuild manifests ([#223](https://github.com/chio-labs/streambuild/issues/223)) ([549a556](https://github.com/chio-labs/streambuild/commit/549a5566221f6c4b8c531ec72f63e5e6c0240533))
+
 ## [0.37.0](https://github.com/chio-labs/streambuild/compare/v0.36.0...v0.37.0) (2026-08-27)
 
 

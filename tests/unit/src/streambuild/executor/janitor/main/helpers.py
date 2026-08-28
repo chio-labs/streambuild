@@ -5,7 +5,6 @@ from streambuild.adapter.models import (
     AdapterDeploymentInventory,
     AdapterDeploymentRecord,
     AdapterMetadataObjectKey,
-    AdapterOwnedResourceEvent,
     AdapterPreparedObjectMapping,
     AdapterPublishEventRecord,
     AdapterRelationCleanupRequest,
@@ -50,7 +49,6 @@ class JanitorWorkflowRecordingAdapterConnection(RecordingAdapterConnection):
             managed_table_state=managed_table_state,
             relations=relations,
         )
-        self.ownership_events: list[AdapterOwnedResourceEvent] = []
 
     def render_replace_stable_bindings(
         self, request: AdapterBindingReplacementRequest
@@ -67,13 +65,6 @@ class JanitorWorkflowRecordingAdapterConnection(RecordingAdapterConnection):
             f"DROP TABLE IF EXISTS {request.database}.{relation_name} SYNC;"
             for relation_name in request.relation_names
         )
-
-    def render_owned_resource_events(
-        self, *, database: str, events: tuple[AdapterOwnedResourceEvent, ...]
-    ) -> tuple[str, ...]:
-        del database
-        self.ownership_events.extend(events)
-        return ()
 
 
 def unavailable_rollback_test_case() -> JanitorUnavailableRollbackTestCase:

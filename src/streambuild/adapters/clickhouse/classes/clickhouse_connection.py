@@ -33,12 +33,12 @@ from streambuild.adapter.models import (
     AdapterIdentity,
     AdapterInvocationRecord,
     AdapterManagedSource,
+    AdapterManifest,
+    AdapterManifestSnapshot,
     AdapterMaterializedView,
     AdapterMetadataState,
     AdapterMutationResult,
     AdapterNodeResultRecord,
-    AdapterOwnedResourceEvent,
-    AdapterOwnedResourceSnapshot,
     AdapterQueryResult,
     AdapterReadinessRequest,
     AdapterReadinessRootObservation,
@@ -77,12 +77,12 @@ from streambuild.adapters.clickhouse._helpers.managed_tables import (
 )
 from streambuild.adapters.clickhouse._helpers.metadata import (
     load_clickhouse_direct_fingerprints,
-    load_clickhouse_owned_resources,
+    load_clickhouse_manifests,
     render_clickhouse_direct_fingerprint_observations,
     render_clickhouse_latest_node_status_query,
+    render_clickhouse_manifest_publication,
     render_clickhouse_metadata_migration_workflow,
     render_clickhouse_metadata_state,
-    render_clickhouse_owned_resource_events,
     render_clickhouse_run_event_inserts,
     render_clickhouse_run_statement_inserts,
     render_clickhouse_sensor_retention_cleanup,
@@ -687,24 +687,31 @@ class ClickHouseConnection(AdapterConnection):
             fingerprints=fingerprints,
         )
 
-    def load_owned_resources(
-        self, *, database: str, target_database: str
-    ) -> AdapterOwnedResourceSnapshot:
-        """Load the authoritative latest owned-resource set."""
+    def load_manifests(
+        self,
+        *,
+        database: str,
+        project_identity: str,
+        target_name: str,
+        target_database: str,
+    ) -> AdapterManifestSnapshot:
+        """Load complete manifest history for one project target."""
 
-        return load_clickhouse_owned_resources(
+        return load_clickhouse_manifests(
             connection=self,
             database=database,
+            project_identity=project_identity,
+            target_name=target_name,
             target_database=target_database,
         )
 
-    def render_owned_resource_events(
-        self, *, database: str, events: tuple[AdapterOwnedResourceEvent, ...]
+    def render_manifest_publication(
+        self, *, database: str, manifest: AdapterManifest
     ) -> tuple[str, ...]:
-        """Render fail-closed ownership ledger appends."""
+        """Render one complete manifest append."""
 
         self.validate_metadata_state(database)
-        return render_clickhouse_owned_resource_events(database=database, events=events)
+        return render_clickhouse_manifest_publication(database=database, manifest=manifest)
 
     def catalog_resource_matches(
         self,
@@ -713,7 +720,7 @@ class ClickHouseConnection(AdapterConnection):
         relation: CatalogRelation,
         database: str,
     ) -> bool:
-        """Compare a pre-ledger ClickHouse relation with its compiled desired resource."""
+        """Compare a ClickHouse relation with its compiled desired resource."""
 
         return clickhouse_catalog_resource_matches(
             resource=resource,
