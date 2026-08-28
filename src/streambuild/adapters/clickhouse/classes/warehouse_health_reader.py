@@ -133,7 +133,11 @@ def _load_clickhouse_warehouse_health(
             )
             if consumer_row is not None:
                 kafka_consumers = AdapterWarehouseKafkaConsumers(
-                    expected_tables=len(managed_source_names),
+                    configured_tables=len(managed_source_names),
+                    materialized_tables=int(str(consumer_row["materialized_tables"])),
+                    materialized_table_names=tuple(
+                        str(name) for name in consumer_row["materialized_table_names"]
+                    ),
                     polling_tables=int(str(consumer_row["polling_tables"])),
                     exception_tables=int(str(consumer_row["exception_tables"])),
                 )
@@ -143,7 +147,9 @@ def _load_clickhouse_warehouse_health(
             warnings.append("Managed Kafka consumer health is unavailable.")
     else:
         kafka_consumers = AdapterWarehouseKafkaConsumers(
-            expected_tables=0,
+            configured_tables=0,
+            materialized_tables=0,
+            materialized_table_names=(),
             polling_tables=0,
             exception_tables=0,
         )
@@ -253,7 +259,14 @@ def _kafka_consumers_query(*, database: str, managed_source_names: tuple[str, ..
         quote_clickhouse_sql_string(name) for name in managed_source_names
     )
     return (
-        "SELECT countDistinct(table) AS polling_tables, "
+        "SELECT "
+        "(SELECT count() FROM system.tables "
+        f"WHERE database = {quoted_database} AND name IN ({quoted_tables}) "
+        "AND engine = 'Kafka') AS materialized_tables, "
+        "(SELECT groupArray(name) FROM system.tables "
+        f"WHERE database = {quoted_database} AND name IN ({quoted_tables}) "
+        "AND engine = 'Kafka') AS materialized_table_names, "
+        "countDistinct(table) AS polling_tables, "
         "countDistinctIf(table, notEmpty(exceptions.time) AND "
         "arrayMax(exceptions.time) >= last_poll_time) AS exception_tables "
         "FROM system.kafka_consumers "

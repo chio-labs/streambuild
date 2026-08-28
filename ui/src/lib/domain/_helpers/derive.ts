@@ -830,27 +830,51 @@ function ingestHealthSummary(project: Project) {
 	const managedSources: Source[] = project.sources.filter((source) => source.kind === 'kafka');
 	const consumers: WarehouseHealth['kafkaConsumers'] =
 		project.warehouseHealth?.kafkaConsumers ?? null;
-	const behind: number = managedSources.filter(
-		(source) => source.live.kafkaLagMessages !== null && source.live.kafkaLagMessages > 0
-	).length;
-	const lagUnavailable: number = managedSources.filter(
-		(source) => source.live.kafkaLagMessages === null
-	).length;
 	if (managedSources.length === 0) {
-		return { state: 'no_kafka' as const, managed: 0, polling: 0, exceptions: 0, behind, lagUnavailable };
-	}
-	if (consumers === null) {
 		return {
-			state: 'partial' as const,
-			managed: managedSources.length,
-			polling: null,
-			exceptions: null,
-			behind,
-			lagUnavailable
+			state: 'no_kafka' as const,
+			configured: 0,
+			materialized: 0,
+			polling: 0,
+			exceptions: 0,
+			notBuilt: 0,
+			behind: 0,
+			lagUnavailable: 0
 		};
 	}
+	if (consumers === null) {
+		const behind: number = managedSources.filter(
+			(source) => source.live.kafkaLagMessages !== null && source.live.kafkaLagMessages > 0
+		).length;
+		return {
+			state: 'partial' as const,
+			configured: managedSources.length,
+			materialized: null,
+			polling: null,
+			exceptions: null,
+			notBuilt: null,
+			behind,
+			lagUnavailable: null
+		};
+	}
+	const notBuilt: number = Math.max(
+		consumers.configuredTables - consumers.materializedTables,
+		0
+	);
+	const materializedTableNames: Set<string> = new Set(consumers.materializedTableNames);
+	const materializedSources: Source[] = managedSources.filter((source) =>
+		source.managedRelations.some(
+			(relation) => relation.kind === 'kafka_engine' && materializedTableNames.has(relation.name)
+		)
+	);
+	const behind: number = materializedSources.filter(
+		(source) => source.live.kafkaLagMessages !== null && source.live.kafkaLagMessages > 0
+	).length;
+	const lagUnavailable: number = materializedSources.filter(
+		(source) => source.live.kafkaLagMessages === null
+	).length;
 	const state: IngestHealthState =
-		consumers.exceptionTables > 0 || consumers.pollingTables < consumers.expectedTables
+		consumers.exceptionTables > 0 || consumers.pollingTables < consumers.materializedTables
 			? ('error' as const)
 			: lagUnavailable > 0
 				? ('partial' as const)
@@ -859,9 +883,11 @@ function ingestHealthSummary(project: Project) {
 					: ('healthy' as const);
 	return {
 		state,
-		managed: consumers.expectedTables,
+		configured: consumers.configuredTables,
+		materialized: consumers.materializedTables,
 		polling: consumers.pollingTables,
 		exceptions: consumers.exceptionTables,
+		notBuilt,
 		behind,
 		lagUnavailable
 	};

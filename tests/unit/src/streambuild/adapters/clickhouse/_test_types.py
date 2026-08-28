@@ -385,7 +385,10 @@ class ClickHouseWarehouseHealthTestCase:
     expected_table_name: str
     expected_query_count: int
     managed_source_names: tuple[str, ...]
-    consumer_row: tuple[int, int]
+    consumer_row: tuple[object, ...]
+    expected_configured_tables: int
+    expected_materialized_tables: int
+    expected_materialized_table_names: tuple[str, ...]
     expected_polling_tables: int
     expected_exception_tables: int
     expected_consumer_query_fragment: str

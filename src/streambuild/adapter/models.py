@@ -932,7 +932,9 @@ class AdapterWarehouseActivity:
 class AdapterWarehouseKafkaConsumers:
     """Managed Kafka consumer health observed inside the warehouse."""
 
-    expected_tables: int
+    configured_tables: int
+    materialized_tables: int
+    materialized_table_names: tuple[str, ...]
     polling_tables: int
     exception_tables: int
 

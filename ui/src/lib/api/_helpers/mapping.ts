@@ -149,7 +149,11 @@ function warehouseHealthFromServer(value: unknown): WarehouseHealth | null {
 			health.kafkaConsumers === null || health.kafkaConsumers === undefined
 				? null
 				: {
-						expectedTables: Number((health.kafkaConsumers as Payload).expectedTables ?? 0),
+						configuredTables: Number((health.kafkaConsumers as Payload).configuredTables ?? 0),
+						materializedTables: Number((health.kafkaConsumers as Payload).materializedTables ?? 0),
+						materializedTableNames: stringArray(
+							(health.kafkaConsumers as Payload).materializedTableNames
+						),
 						pollingTables: Number((health.kafkaConsumers as Payload).pollingTables ?? 0),
 						exceptionTables: Number((health.kafkaConsumers as Payload).exceptionTables ?? 0)
 					},
@@ -163,6 +167,10 @@ function warehouseHealthFromServer(value: unknown): WarehouseHealth | null {
 						activeParts: nullableNumber(table.activeParts)
 					}))
 	};
+}
+
+function stringArray(value: unknown): string[] {
+	return Array.isArray(value) ? value.map(String) : [];
 }
 
 function nullableNumber(value: unknown): number | null {

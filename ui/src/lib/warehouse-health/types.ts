@@ -46,7 +46,9 @@ export type WarehouseHealth = {
 		incompleteMutations: number | null;
 	} | null;
 	kafkaConsumers: {
-		expectedTables: number;
+		configuredTables: number;
+		materializedTables: number;
+		materializedTableNames: string[];
 		pollingTables: number;
 		exceptionTables: number;
 	} | null;

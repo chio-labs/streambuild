@@ -179,8 +179,11 @@ def test_given_clickhouse_connection_when_reading_publish_capabilities_then_guar
             expected_table_name="tbl__orders",
             expected_query_count=6,
             managed_source_names=("kafka__orders", "kafka__payments"),
-            consumer_row=(2, 1),
-            expected_polling_tables=2,
+            consumer_row=(1, ["kafka__orders"], 1, 1),
+            expected_configured_tables=2,
+            expected_materialized_tables=1,
+            expected_materialized_table_names=("kafka__orders",),
+            expected_polling_tables=1,
             expected_exception_tables=1,
             expected_consumer_query_fragment="table IN ('kafka__orders', 'kafka__payments')",
         ),
@@ -214,7 +217,10 @@ def test_given_clickhouse_connection_when_reading_publish_capabilities_then_guar
             expected_table_name="tbl__orders",
             expected_query_count=6,
             managed_source_names=("kafka__orders",),
-            consumer_row=(1, 0),
+            consumer_row=(1, ["kafka__orders"], 1, 0),
+            expected_configured_tables=1,
+            expected_materialized_tables=1,
+            expected_materialized_table_names=("kafka__orders",),
             expected_polling_tables=1,
             expected_exception_tables=0,
             expected_consumer_query_fragment="table IN ('kafka__orders')",
@@ -241,7 +247,10 @@ def test_given_clickhouse_connection_when_reading_publish_capabilities_then_guar
             expected_table_name="tbl__orders",
             expected_query_count=6,
             managed_source_names=("kafka__orders",),
-            consumer_row=(1, 0),
+            consumer_row=(1, ["kafka__orders"], 1, 0),
+            expected_configured_tables=1,
+            expected_materialized_tables=1,
+            expected_materialized_table_names=("kafka__orders",),
             expected_polling_tables=1,
             expected_exception_tables=0,
             expected_consumer_query_fragment="table IN ('kafka__orders')",
@@ -279,7 +288,12 @@ def test_given_clickhouse_system_metrics_when_reading_health_then_snapshot_is_tr
             result_rows=[[2, 1, 3]],
         ),
         FakeRawClickHouseQueryResult(
-            column_names=["polling_tables", "exception_tables"],
+            column_names=[
+                "materialized_tables",
+                "materialized_table_names",
+                "polling_tables",
+                "exception_tables",
+            ],
             result_rows=[list(test_case.consumer_row)],
         ),
     ]
@@ -309,6 +323,12 @@ def test_given_clickhouse_system_metrics_when_reading_health_then_snapshot_is_tr
     assert health.tables is not None
     assert health.tables[0].name == test_case.expected_table_name
     assert health.kafka_consumers is not None
+    assert health.kafka_consumers.configured_tables == test_case.expected_configured_tables
+    assert health.kafka_consumers.materialized_tables == test_case.expected_materialized_tables
+    assert (
+        health.kafka_consumers.materialized_table_names
+        == test_case.expected_materialized_table_names
+    )
     assert health.kafka_consumers.polling_tables == test_case.expected_polling_tables
     assert health.kafka_consumers.exception_tables == test_case.expected_exception_tables
     assert health.capacity_warning_fraction == CLICKHOUSE_CAPACITY_WARNING_AVAILABLE_FRACTION
@@ -320,6 +340,8 @@ def test_given_clickhouse_system_metrics_when_reading_health_then_snapshot_is_tr
     assert "LIMIT 10" in raw_client.statements[table_query_index]
     consumer_query: str = raw_client.statements[table_query_index - 1]
     assert "system.kafka_consumers" in consumer_query
+    assert "system.tables" in consumer_query
+    assert "engine = 'Kafka'" in consumer_query
     assert test_case.expected_consumer_query_fragment in consumer_query
 
 
