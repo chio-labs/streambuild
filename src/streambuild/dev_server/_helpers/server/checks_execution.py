@@ -7,7 +7,11 @@ from pathlib import Path
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.constants import METADATA_NODE_RESULTS_TABLE_NAME
-from streambuild.adapter.models import AdapterCurrentQualityNode, AdapterInvocationRecord
+from streambuild.adapter.models import (
+    AdapterCurrentQualityNode,
+    AdapterInvocationRecord,
+    AdapterNodeResultRecord,
+)
 from streambuild.compiler.audit_discovery.models import LoadedSqlAudit
 from streambuild.compiler.compile.types import LogicalResourceType
 from streambuild.compiler.pipeline.models import CompileAnalysis
@@ -100,45 +104,93 @@ def run_one_audit(
 ) -> dict[str, object]:
     """Execute one named audit and record its outcome like a CLI run would."""
 
-    audit: LoadedSqlAudit | None = _audit_by_name(analysis=analysis, name=name)
-    if audit is None:
-        raise DevServerError(f"Unknown audit '{name}'")
+    return run_audit_batch(
+        analysis=analysis,
+        connection=connection,
+        names=(name,),
+        project_dir=project_dir,
+        database=database,
+    )[0]
+
+
+def run_audit_batch(
+    *,
+    analysis: CompileAnalysis,
+    connection: AdapterConnection,
+    names: tuple[str, ...],
+    project_dir: Path,
+    database: str,
+) -> list[dict[str, object]]:
+    """Execute named audits with one shared setup and persistence boundary."""
+
+    audits_by_name: dict[str, LoadedSqlAudit] = {
+        audit.name or audit.file_path.stem: audit for audit in analysis.compiled_project.audits
+    }
+    unknown_names: list[str] = [name for name in names if name not in audits_by_name]
+    if unknown_names:
+        raise DevServerError(f"Unknown audit '{unknown_names[0]}'")
+    audits: tuple[LoadedSqlAudit, ...] = tuple(audits_by_name[name] for name in names)
+    if not audits:
+        return []
     started: tuple[str, str, int] = start_invocation()
+    resolver: dict[str, str] = _model_resolver(analysis)
+    referenced_model_names: tuple[str, ...] = _referenced_model_names(audits)
     warmup_state: dict[str, AuditWarmupState] = resolve_audit_warmup_states(
-        audits=(audit,),
+        audits=audits,
         anchors_by_model=load_model_anchors(
             client=connection,
             metadata_database=database,
             target_database=database,
-            model_names=audit.referenced_model_names,
+            model_names=referenced_model_names,
             virtual_environments=analysis.compile_inputs.virtual_environments,
         ),
         materialized_model_names=load_materialized_model_names(
             client=connection,
             database=database,
-            relation_name_by_model=_model_resolver(analysis),
+            relation_name_by_model=resolver,
         ),
         warehouse_now=connection.capture_warehouse_timestamp(),
     )
-    state: AuditWarmupState = warmup_state[audit.name or audit.file_path.stem]
-    result: SqlAuditResult = (
+    eligible_audits: tuple[LoadedSqlAudit, ...] = tuple(
+        audit for audit in audits if warmup_state[audit.name or audit.file_path.stem].eligible
+    )
+    executed_results: tuple[SqlAuditResult, ...] = (
         execute_sql_audits(
-            loaded_audits=(audit,),
-            resolver=_model_resolver(analysis),
+            loaded_audits=eligible_audits,
+            resolver=resolver,
             client=connection,
             dialect=analysis.adapter_profile.sql_analysis_dialect,
-        ).audit_results[0]
-        if state.eligible
-        else deferred_audit_result(audit=audit, state=state)
+        ).audit_results
+        if eligible_audits
+        else ()
     )
-    _persist_audit_observation(
+    executed_by_name: dict[str, SqlAuditResult] = {
+        audit.name or audit.file_path.stem: result
+        for audit, result in zip(eligible_audits, executed_results, strict=True)
+    }
+    results: tuple[SqlAuditResult, ...] = tuple(
+        executed_by_name.get(audit.name or audit.file_path.stem)
+        or deferred_audit_result(
+            audit=audit,
+            state=warmup_state[audit.name or audit.file_path.stem],
+        )
+        for audit in audits
+    )
+    _persist_audit_observations(
         connection=connection,
         database=database,
         project_dir=project_dir,
         started=started,
-        audit=audit,
-        result=result,
+        audits=audits,
+        results=results,
     )
+    return [
+        _audit_result_payload(name=name, result=result)
+        for name, result in zip(names, results, strict=True)
+    ]
+
+
+def _audit_result_payload(*, name: str, result: SqlAuditResult) -> dict[str, object]:
     return {
         "name": name,
         "kind": "audit",
@@ -151,6 +203,13 @@ def run_one_audit(
         "deferredUntil": result.deferred_until,
         "missingRelations": list(result.missing_relation_names),
     }
+
+
+def _referenced_model_names(audits: tuple[LoadedSqlAudit, ...]) -> tuple[str, ...]:
+    model_names: set[str] = set()
+    for audit in audits:
+        model_names.update(audit.referenced_model_names)
+    return tuple(sorted(model_names))
 
 
 def run_one_test(
@@ -316,19 +375,23 @@ def _parsed_payload(payload_json: object) -> dict[str, object] | None:
     return parsed if isinstance(parsed, dict) else None
 
 
-def _persist_audit_observation(
+def _persist_audit_observations(
     *,
     connection: AdapterConnection,
     database: str,
     project_dir: Path,
     started: tuple[str, str, int],
-    audit: LoadedSqlAudit,
-    result: SqlAuditResult,
+    audits: tuple[LoadedSqlAudit, ...],
+    results: tuple[SqlAuditResult, ...],
 ) -> None:
-    hard_failure: bool = (
+    hard_failure: bool = any(
         not result.deferred
         and (result.error_message is not None or not result.passed)
         and str(result.severity) != AuditSeverity.WARNING
+        for result in results
+    )
+    error_message: str | None = next(
+        (result.error_message for result in results if result.error_message is not None), None
     )
     invocation: AdapterInvocationRecord = build_invocation_record(
         started=started,
@@ -342,37 +405,47 @@ def _persist_audit_observation(
             materialized_outcome=None,
             deployment_id=None,
             workflow_id=None,
-            selected_node_count=1,
-            error_message=result.error_message,
+            selected_node_count=len(audits),
+            error_message=error_message,
             summary={"source": "dev_server"},
         ),
     )
-    status: str = _audit_status(result)
+    node_results: tuple[AdapterNodeResultRecord, ...] = tuple(
+        _audit_node_result(invocation=invocation, audit=audit, result=result)
+        for audit, result in zip(audits, results, strict=True)
+    )
     _ = persist_terminal_observations(
         client=connection,
         database=database,
         invocation=invocation,
-        node_results=(
-            build_node_result_record(
-                invocation=invocation,
-                identity=require_quality_identity(audit.quality_identity),
-                context=QualityResultContext(
-                    trigger=QualityResultTrigger.MANUAL,
-                    cadence_seconds=audit.cadence_seconds,
-                    warmup_seconds=audit.warmup_seconds,
-                ),
-                status=status,
-                severity=result.severity,
-                failure_count=result.failing_row_count,
-                payload={
-                    "sample_column_names": list(result.sample_column_names),
-                    "sample_rows": [list(item) for item in result.sample_rows[:5]],
-                    "eligible_at": result.deferred_until,
-                    "missing_relations": list(result.missing_relation_names),
-                },
-                error_message=result.error_message,
-            ),
+        node_results=node_results,
+    )
+
+
+def _audit_node_result(
+    *,
+    invocation: AdapterInvocationRecord,
+    audit: LoadedSqlAudit,
+    result: SqlAuditResult,
+) -> AdapterNodeResultRecord:
+    return build_node_result_record(
+        invocation=invocation,
+        identity=require_quality_identity(audit.quality_identity),
+        context=QualityResultContext(
+            trigger=QualityResultTrigger.MANUAL,
+            cadence_seconds=audit.cadence_seconds,
+            warmup_seconds=audit.warmup_seconds,
         ),
+        status=_audit_status(result),
+        severity=result.severity,
+        failure_count=result.failing_row_count,
+        payload={
+            "sample_column_names": list(result.sample_column_names),
+            "sample_rows": [list(item) for item in result.sample_rows[:5]],
+            "eligible_at": result.deferred_until,
+            "missing_relations": list(result.missing_relation_names),
+        },
+        error_message=result.error_message,
     )
 
 
