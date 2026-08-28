@@ -19,6 +19,14 @@ class WarehouseHealthBrowserE2ETestCase:
 
 
 @dataclass(frozen=True)
+class KafkaNotBuiltBrowserE2ETestCase:
+    description: str
+    expected_not_built_text: str
+    expected_live_polling_text: str
+    excluded_error_text: str
+
+
+@dataclass(frozen=True)
 class SchedulerProcessE2ETestCase:
     description: str
     expected_scheduler_state: str

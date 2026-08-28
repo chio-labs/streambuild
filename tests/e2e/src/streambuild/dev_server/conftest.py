@@ -176,6 +176,89 @@ def running_lineage_server(
 
 
 @pytest.fixture
+def running_partially_built_kafka_server(
+    e2e_clickhouse_connection_settings: E2EClickHouseConnectionSettings,
+    e2e_kafka_connection_settings: E2EKafkaConnectionSettings,
+    e2e_clickhouse_client: Client,
+    e2e_clickhouse_database: str,
+    output_path: str,
+    tmp_path: Path,
+) -> Iterator[tuple[str, dict[str, object]]]:
+    repository_root: Path = Path(__file__).resolve().parents[5]
+    project_dir: Path = prepare_lineage_browser_project(tmp_path=tmp_path)
+    create_lineage_browser_source_tables(
+        client=e2e_clickhouse_client, database=e2e_clickhouse_database
+    )
+    run_lineage_browser_build(
+        repository_root=repository_root,
+        project_dir=project_dir,
+        host=e2e_clickhouse_connection_settings.host,
+        port=e2e_clickhouse_connection_settings.port,
+        username=e2e_clickhouse_connection_settings.username,
+        password=e2e_clickhouse_connection_settings.password,
+        database=e2e_clickhouse_database,
+    )
+    topic: str = "browser.built.events"
+    producer: KafkaProducer = KafkaProducer(
+        bootstrap_servers=[e2e_kafka_connection_settings.bootstrap_server]
+    )
+    try:
+        producer.send(topic, b"1").get(timeout=10)
+    finally:
+        producer.close()
+    e2e_clickhouse_client.command(
+        f"CREATE TABLE {e2e_clickhouse_database}.kafka__built_events (kafka_value String) "
+        "ENGINE = Kafka SETTINGS "
+        f"kafka_broker_list = '{e2e_kafka_connection_settings.internal_bootstrap_server}', "
+        f"kafka_topic_list = '{topic}', kafka_group_name = 'browser-built-events', "
+        "kafka_format = 'RawBLOB'"
+    )
+    e2e_clickhouse_client.command(
+        f"CREATE TABLE {e2e_clickhouse_database}.raw__built_events (kafka_value String) "
+        "ENGINE = MergeTree ORDER BY tuple()"
+    )
+    e2e_clickhouse_client.command(
+        f"CREATE MATERIALIZED VIEW {e2e_clickhouse_database}.mv__built_events "
+        f"TO {e2e_clickhouse_database}.raw__built_events AS SELECT kafka_value "
+        f"FROM {e2e_clickhouse_database}.kafka__built_events"
+    )
+    (project_dir / "sources" / "partially_built_events.yml").write_text(
+        "sources:\n"
+        "  - name: built_events\n"
+        "    kind: kafka\n"
+        f"    broker_list: {e2e_kafka_connection_settings.bootstrap_server}\n"
+        f"    topic: {topic}\n"
+        "    replay_boundary: {mode: offsets}\n"
+        "  - name: unbuilt_events\n"
+        "    kind: kafka\n"
+        f"    broker_list: {e2e_kafka_connection_settings.bootstrap_server}\n"
+        "    topic: browser.unbuilt.events\n"
+        "    replay_boundary: {mode: offsets}\n",
+        encoding="utf-8",
+    )
+    api_port: int = available_port()
+    log_path: Path = Path(output_path) / "stb-dev-partially-built-kafka.log"
+    process: subprocess.Popen[str] = start_dev_process(
+        repository_root=repository_root,
+        project_dir=project_dir,
+        host=e2e_clickhouse_connection_settings.host,
+        port=e2e_clickhouse_connection_settings.port,
+        username=e2e_clickhouse_connection_settings.username,
+        password=e2e_clickhouse_connection_settings.password,
+        database=e2e_clickhouse_database,
+        api_port=api_port,
+        log_path=log_path,
+    )
+    try:
+        state_payload: dict[str, object] = wait_for_state_api(
+            process=process, api_port=api_port, log_path=log_path
+        )
+        yield f"http://127.0.0.1:{api_port}", state_payload
+    finally:
+        stop_process(process)
+
+
+@pytest.fixture
 def running_catalog_pipeline_browser_server(
     e2e_clickhouse_connection_settings: E2EClickHouseConnectionSettings,
     e2e_clickhouse_client: Client,

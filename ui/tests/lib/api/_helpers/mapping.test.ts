@@ -140,6 +140,13 @@ describe('project mapping', () => {
 						pressureFraction: null
 					},
 					activity: { activeQueries: 0, activeMerges: 0, incompleteMutations: 0 },
+					kafkaConsumers: {
+						configuredTables: 3,
+						materializedTables: 2,
+						materializedTableNames: ['kafka__orders', 'kafka__payments'],
+						pollingTables: 2,
+						exceptionTables: 0
+					},
 					tables: []
 				}
 			}
@@ -150,6 +157,13 @@ describe('project mapping', () => {
 		expect(project.warehouseHealth?.memory?.basis).toBe('server_rss_host');
 		expect(project.warehouseHealth?.database).toBe('analytics');
 		expect(project.warehouseHealth?.activity?.activeQueries).toBe(0);
+		expect(project.warehouseHealth?.kafkaConsumers).toEqual({
+			configuredTables: 3,
+			materializedTables: 2,
+			materializedTableNames: ['kafka__orders', 'kafka__payments'],
+			pollingTables: 2,
+			exceptionTables: 0
+		});
 	});
 
 	it('given missing optional warehouse measurements when mapped then they remain unknown', () => {

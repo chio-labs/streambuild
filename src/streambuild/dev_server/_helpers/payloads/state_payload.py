@@ -211,11 +211,13 @@ def _warehouse_health_payload(
             "incompleteMutations": health.activity.incomplete_mutations,
         }
     )
-    kafka_consumers: dict[str, int] | None = (
+    kafka_consumers: dict[str, int | list[str]] | None = (
         None
         if health.kafka_consumers is None
         else {
-            "expectedTables": health.kafka_consumers.expected_tables,
+            "configuredTables": health.kafka_consumers.configured_tables,
+            "materializedTables": health.kafka_consumers.materialized_tables,
+            "materializedTableNames": list(health.kafka_consumers.materialized_table_names),
             "pollingTables": health.kafka_consumers.polling_tables,
             "exceptionTables": health.kafka_consumers.exception_tables,
         }

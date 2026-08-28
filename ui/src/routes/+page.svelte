@@ -126,7 +126,8 @@
 				<span class="ml-auto flex flex-wrap items-center justify-end gap-x-2 normal-case tracking-normal">
 					<strong class="font-medium uppercase" style:color={ingestTone}>{ingestLabel}</strong>
 					<span>{formatRate(totalThroughput)}</span>
-					{#if ingest.polling !== null}<span>{ingest.polling}/{ingest.managed} polling</span>{/if}
+					{#if ingest.polling !== null}<span>{ingest.polling}/{ingest.materialized} live polling</span>{/if}
+					{#if ingest.notBuilt}<span>{ingest.notBuilt} not built</span>{/if}
 					{#if ingest.exceptions !== null}<span>{ingest.exceptions} errors</span>{/if}
 					<span>{ingest.behind} behind</span>
 					{#if ingest.lagUnavailable}<span>{ingest.lagUnavailable} lag unavailable</span>{/if}
