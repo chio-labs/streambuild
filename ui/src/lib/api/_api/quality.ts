@@ -18,3 +18,14 @@ export async function requestCheckRun(
 	});
 	return readApiResponse<CheckRunResult>(response, 'check run');
 }
+
+export async function requestAuditBatchRun(
+	names: string[]
+): Promise<(CheckRunResult & { name: string })[]> {
+	const response: Response = await authenticatedFetch('/api/audits/run', {
+		method: 'POST',
+		headers: { 'content-type': 'application/json' },
+		body: JSON.stringify({ names })
+	});
+	return readApiResponse<(CheckRunResult & { name: string })[]>(response, 'audit batch run');
+}

@@ -102,6 +102,12 @@ class ChecksRunRequest(BaseModel):
     name: str
 
 
+class AuditBatchRunRequest(BaseModel):
+    """POST /api/audits/run body."""
+
+    names: list[str] = Field(min_length=1)
+
+
 class BuildRunRequest(BaseModel):
     """POST /api/build body."""
 

@@ -365,6 +365,13 @@ class ChecksRunTestCase:
 
 
 @dataclass(frozen=True)
+class AuditBatchRouteTestCase:
+    description: str
+    names: tuple[str, ...]
+    expected_name: str
+
+
+@dataclass(frozen=True)
 class StaticAssetsPresenceTestCase:
     description: str
     expected_present: bool
