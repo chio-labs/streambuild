@@ -7,7 +7,6 @@ from datetime import UTC, datetime, timedelta
 from clickhouse_connect.driver.client import Client
 
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
-from streambuild.adapter.models import AdapterOwnedResourceEvent
 from streambuild.compiler.compile.models import CompiledPipeline
 from streambuild.executor.janitor.models import JanitorPreviewCandidate
 from streambuild.executor.promotion.main.execute_deployment_promotion import execute_publish
@@ -133,24 +132,6 @@ def build_janitor_integration_state(
         f"CREATE TABLE {database}.{failed_incomplete_target_table_name} "
         "(order_id String) ENGINE = MergeTree ORDER BY order_id"
     )
-    for statement in managed_client.render_owned_resource_events(
-        database=database,
-        events=(
-            AdapterOwnedResourceEvent(
-                event_id="owned-failed-incomplete-target",
-                event_type="owned",
-                target_database=database,
-                resource_database=database,
-                resource_name=failed_incomplete_target_table_name,
-                resource_kind="table",
-                pipeline_name="orders",
-                logical_resource_type="model",
-                logical_resource_name="orders_enriched",
-                resource_role="virtual_physical",
-            ),
-        ),
-    ):
-        managed_client.execute_workflow_sql(statement)
     clickhouse_client.command(
         f"INSERT INTO {database}._streambuild_virtual_object_state "
         "(state_id, observation_id, state_kind, deployment_id, logical_database_name, "

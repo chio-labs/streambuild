@@ -53,7 +53,7 @@ from tests.unit.src.streambuild.cli._test_types import CliHelpBaselineTestCase
         CliHelpBaselineTestCase(
             description="captures destroy help",
             argv=("destroy", "--help"),
-            expected_sha256="e592734b892461602c2b8fa8ff1d5c02e5fb57391bd23d2179573836b41111cf",
+            expected_sha256="3e08814afaeee21c34052f8dcd9f1eeba490685b0af5a0679a6184c34a2eb7c4",
         ),
         CliHelpBaselineTestCase(
             description="captures reset target help",

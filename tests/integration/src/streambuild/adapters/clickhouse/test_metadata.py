@@ -11,6 +11,9 @@ from streambuild.adapter.models import (
     AdapterConnectionConfig,
     AdapterCurrentQualityNode,
     AdapterDeploymentInventory,
+    AdapterManifest,
+    AdapterManifestResource,
+    AdapterManifestSnapshot,
     AdapterMetadataState,
     AdapterNodeResultRecord,
 )
@@ -19,6 +22,7 @@ from tests.integration.src.streambuild.adapters.clickhouse._test_types import (
     LatestNodeStatusIntegrationTestCase,
     LegacyNodeResultsSchemaTestCase,
     LegacyPublicationMigrationTestCase,
+    ManifestHistoryIntegrationTestCase,
     MetadataMigrationIntegrationTestCase,
 )
 from tests.integration.src.streambuild.adapters.clickhouse.helpers import (
@@ -66,8 +70,8 @@ def test_given_legacy_node_results_table_when_migrating_then_reset_instruction_i
             expected_table_names=(
                 "_streambuild_direct_fingerprints",
                 "_streambuild_invocations",
+                "_streambuild_manifests",
                 "_streambuild_node_results",
-                "_streambuild_owned_resources",
                 "_streambuild_run_events",
                 "_streambuild_run_statements",
                 "_streambuild_schema_versions",
@@ -81,7 +85,7 @@ def test_given_legacy_node_results_table_when_migrating_then_reset_instruction_i
                 "_streambuild_virtual_publications",
                 "_streambuild_virtual_replay_boundaries",
             ),
-            expected_version_rows=((6,),),
+            expected_version_rows=((7,),),
         )
     ],
     ids=lambda case: case.description,
@@ -124,6 +128,91 @@ def test_given_empty_database_when_migrating_metadata_repeatedly_then_schema_is_
 
     assert tuple(str(row[0]) for row in table_rows) == test_case.expected_table_names
     assert integer_rows(version_rows) == test_case.expected_version_rows
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ManifestHistoryIntegrationTestCase(
+            description="complete manifest rows load newest first",
+            expected_manifest_ids=("manifest-2", "manifest-1"),
+            expected_latest_revision="revision-2",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_published_manifests_when_loading_history_then_complete_rows_are_newest_first(
+    test_case: ManifestHistoryIntegrationTestCase,
+    managed_clickhouse_client: AdapterConnection,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    execute_rendered_statements(
+        client=clickhouse_client,
+        statements=managed_clickhouse_client.render_migrate_metadata_state(clickhouse_database),
+    )
+    resource: AdapterManifestResource = AdapterManifestResource(
+        pipeline_name="orders",
+        logical_type="model",
+        logical_name="orders",
+        resource_role="model_table",
+        resource_database=clickhouse_database,
+        resource_name="tbl__orders",
+        resource_kind="table",
+    )
+    older: AdapterManifest = AdapterManifest(
+        manifest_id="manifest-1",
+        invocation_id="invocation-1",
+        project_identity="/projects/orders",
+        target_name="uat",
+        target_database=clickhouse_database,
+        is_production=False,
+        project_revision=None,
+        manifest_fingerprint="fingerprint-1",
+        manifest_version=1,
+        pipelines=("orders",),
+        resources=(resource,),
+        tool_version="0.37.0",
+        published_at="2026-08-28 12:00:00.123456",
+    )
+    newer: AdapterManifest = AdapterManifest(
+        manifest_id="manifest-2",
+        invocation_id="invocation-2",
+        project_identity=older.project_identity,
+        target_name=older.target_name,
+        target_database=older.target_database,
+        is_production=True,
+        project_revision="revision-2",
+        manifest_fingerprint="fingerprint-2",
+        manifest_version=older.manifest_version,
+        pipelines=older.pipelines,
+        resources=older.resources,
+        tool_version=older.tool_version,
+        published_at=older.published_at,
+    )
+    for manifest in (older, newer):
+        execute_rendered_statements(
+            client=clickhouse_client,
+            statements=managed_clickhouse_client.render_manifest_publication(
+                database=clickhouse_database, manifest=manifest
+            ),
+        )
+
+    snapshot: AdapterManifestSnapshot = managed_clickhouse_client.load_manifests(
+        database=clickhouse_database,
+        project_identity=older.project_identity,
+        target_name=older.target_name,
+        target_database=older.target_database,
+    )
+
+    assert snapshot.status == "available"
+    assert tuple(manifest.manifest_id for manifest in snapshot.manifests) == (
+        test_case.expected_manifest_ids
+    )
+    assert snapshot.manifests[0].project_revision == test_case.expected_latest_revision
+    assert snapshot.manifests[0].resources == (resource,)
+    assert snapshot.manifests[1].project_revision is None
 
 
 @pytest.mark.integration
@@ -184,8 +273,8 @@ def test_given_v2_publication_rows_when_migrating_then_lifecycle_defaults_are_pr
             expected_table_names=(
                 "_streambuild_direct_fingerprints",
                 "_streambuild_invocations",
+                "_streambuild_manifests",
                 "_streambuild_node_results",
-                "_streambuild_owned_resources",
                 "_streambuild_run_events",
                 "_streambuild_run_statements",
                 "_streambuild_schema_versions",
@@ -199,7 +288,7 @@ def test_given_v2_publication_rows_when_migrating_then_lifecycle_defaults_are_pr
                 "_streambuild_virtual_publications",
                 "_streambuild_virtual_replay_boundaries",
             ),
-            expected_version_rows=((6,),),
+            expected_version_rows=((7,),),
         )
     ],
     ids=lambda case: case.description,

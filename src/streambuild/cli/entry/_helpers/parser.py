@@ -345,6 +345,14 @@ def _add_destruction_parsers(
         metavar="pipeline:NAME",
         help=("Select pipelines by explicit pipeline-prefixed name, e.g. --select pipeline:orders"),
     )
+    destroy_parser.add_argument(
+        "--include-orphans",
+        action="store_true",
+        help=(
+            "Include existing resources associated with selected pipelines in older manifests "
+            "when no current pipeline owns them"
+        ),
+    )
 
     reset_parser: argparse.ArgumentParser = subparsers.add_parser(
         "reset-target",

@@ -60,6 +60,13 @@ class MetadataMigrationIntegrationTestCase:
 
 
 @dataclass(frozen=True)
+class ManifestHistoryIntegrationTestCase:
+    description: str
+    expected_manifest_ids: tuple[str, ...]
+    expected_latest_revision: str
+
+
+@dataclass(frozen=True)
 class LatestNodeStatusIntegrationTestCase:
     description: str
     expected_status_rows: tuple[tuple[str, str], ...]

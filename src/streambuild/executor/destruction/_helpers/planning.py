@@ -14,6 +14,8 @@ from uuid import uuid4
 from streambuild.adapter.models import (
     AdapterDeploymentInventory,
     AdapterManagedSource,
+    AdapterManifestResource,
+    AdapterManifestSnapshot,
     AdapterMaterializedView,
     AdapterQueryResult,
     AdapterTable,
@@ -21,6 +23,7 @@ from streambuild.adapter.models import (
     CatalogRelation,
     CatalogSnapshot,
 )
+from streambuild.adapter.types import AdapterOptionalStateStatus
 from streambuild.compiler.compile.models import (
     CompiledModel,
     CompiledProject,
@@ -30,6 +33,10 @@ from streambuild.compiler.compile.types import DesiredObjectType, LogicalResourc
 from streambuild.compiler.graph.constants import ALL_DEPENDENCY_EDGE_TYPES
 from streambuild.compiler.graph.main.collect_reachable_keys import collect_reachable_keys
 from streambuild.compiler.graph.types import GraphTraversalDirection
+from streambuild.compiler.manifest.constants import MANIFEST_VERSION
+from streambuild.compiler.manifest.main.resolve_manifest_project_identity import (
+    resolve_manifest_project_identity,
+)
 from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.executor.destruction._helpers.ordering import (
     reverse_topologically_order_relations,
@@ -141,6 +148,7 @@ def plan_destruction(
         relation_drop_size_server_limit=relation_drop_size_server_limit,
         relation_drop_size_override=relation_drop_size_override,
         relation_drop_size_policy_observed=True,
+        include_orphans=request.include_orphans,
     )
     return _build_plan(
         request=request,
@@ -237,6 +245,15 @@ def _plan_relation_evidence(
         logical_pipeline_names=logical_pipeline_names,
         include_all=request.operation == DestructionOperation.RESET_TARGET,
     )
+    if request.include_orphans:
+        owned = _add_historical_manifest_relations(
+            owned=owned,
+            request=request,
+            analysis=analysis,
+            connection=connection,
+            catalog=catalog,
+            affected_pipeline_names=frozenset(affected_pipeline_names),
+        )
     stats: dict[str, tuple[int, int]] = _load_relation_stats(
         connection=connection,
         database=request.database,
@@ -333,6 +350,8 @@ def _build_plan(
         "relation_drop_size_override": parts.relation_drop_size_override,
         "relation_drop_size_policy_observed": parts.relation_drop_size_policy_observed,
     }
+    if parts.include_orphans:
+        plan_payload["include_orphans"] = True
     return DestructionPlan(
         plan_id=parts.plan_id or f"destruction_{uuid4().hex}",
         operation=DestructionOperation(request.operation),
@@ -356,6 +375,7 @@ def _build_plan(
         relation_drop_size_server_limit=parts.relation_drop_size_server_limit,
         relation_drop_size_override=parts.relation_drop_size_override,
         relation_drop_size_policy_observed=parts.relation_drop_size_policy_observed,
+        include_orphans=parts.include_orphans,
     )
 
 
@@ -562,6 +582,111 @@ def _manifest_owned_relations(
                 ownership=DestructionOwnership.CURRENT_MANIFEST,
             )
     return owned
+
+
+def _add_historical_manifest_relations(
+    *,
+    owned: dict[str, OwnedRelation],
+    request: DestructionRequest,
+    analysis: CompileAnalysis,
+    connection: DestructionPlanningConnection,
+    catalog: CatalogSnapshot,
+    affected_pipeline_names: frozenset[str],
+) -> dict[str, OwnedRelation]:
+    current_resource_names: frozenset[str] = _current_manifest_resource_names(analysis=analysis)
+    snapshot: AdapterManifestSnapshot = connection.load_manifests(
+        database=request.metadata_database,
+        project_identity=resolve_manifest_project_identity(analysis=analysis),
+        target_name=request.target,
+        target_database=request.database,
+    )
+    if snapshot.status == AdapterOptionalStateStatus.UNAVAILABLE:
+        raise DestructionResourceError(snapshot.warning or "Manifest history is unavailable")
+    if snapshot.status == AdapterOptionalStateStatus.ABSENT:
+        return owned
+    historical_resources: set[AdapterManifestResource] = _eligible_historical_resources(
+        snapshot=snapshot,
+        affected_pipeline_names=affected_pipeline_names,
+        database=request.database,
+        current_resource_names=current_resource_names,
+        catalog=catalog,
+    )
+    for resource in sorted(
+        historical_resources,
+        key=lambda value: (
+            value.resource_name,
+            value.pipeline_name,
+            value.logical_name,
+        ),
+    ):
+        try:
+            kind: DestructionRelationKind = DestructionRelationKind(resource.resource_kind)
+        except ValueError as error:
+            raise DestructionResourceError(
+                f"Unsupported historical manifest resource kind {resource.resource_kind!r} "
+                f"for {resource.resource_name!r}"
+            ) from error
+        _add_owned_relation(
+            owned=owned,
+            name=resource.resource_name,
+            kind=kind,
+            logical_name=resource.logical_name,
+            pipeline_name=resource.pipeline_name,
+            ownership=DestructionOwnership.HISTORICAL_MANIFEST,
+        )
+    return owned
+
+
+def _current_manifest_resource_names(*, analysis: CompileAnalysis) -> frozenset[str]:
+    names: set[str] = set()
+    for resources in analysis.realized_project.resources_by_logical_key.values():
+        names.update(
+            resource.name
+            for resource in resources
+            if not _excluded_metadata_relation(resource.name)
+        )
+    return frozenset(names)
+
+
+def _eligible_historical_resources(
+    *,
+    snapshot: AdapterManifestSnapshot,
+    affected_pipeline_names: frozenset[str],
+    database: str,
+    current_resource_names: frozenset[str],
+    catalog: CatalogSnapshot,
+) -> set[AdapterManifestResource]:
+    if not snapshot.manifests:
+        return set()
+    published_current_names: frozenset[str] = frozenset(
+        resource.resource_name for resource in snapshot.manifests[0].resources
+    )
+    protected_current_names: frozenset[str] = current_resource_names | published_current_names
+    latest_resources_by_name: dict[str, set[AdapterManifestResource]] = {}
+    for manifest in snapshot.manifests:
+        if manifest.manifest_version != MANIFEST_VERSION:
+            raise DestructionResourceError(
+                f"Unsupported manifest version {manifest.manifest_version}; "
+                f"expected {MANIFEST_VERSION}"
+            )
+        resources_by_name: dict[str, set[AdapterManifestResource]] = {}
+        for resource in manifest.resources:
+            resources_by_name.setdefault(resource.resource_name, set()).add(resource)
+        for name, resources in resources_by_name.items():
+            latest_resources_by_name.setdefault(name, resources)
+    eligible: set[AdapterManifestResource] = set()
+    for name, resources in latest_resources_by_name.items():
+        if name in protected_current_names or _excluded_metadata_relation(name):
+            continue
+        if catalog.relation(name) is None:
+            continue
+        for resource in resources:
+            if resource.pipeline_name not in affected_pipeline_names:
+                continue
+            if resource.resource_database != database:
+                continue
+            eligible.add(resource)
+    return eligible
 
 
 def _add_virtual_inventory_relations(

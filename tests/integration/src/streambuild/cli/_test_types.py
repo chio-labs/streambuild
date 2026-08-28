@@ -144,6 +144,8 @@ class CliDirectBuildIntegrationTestCase:
     expected_stable_view_count: int
     expected_replay_coverage_ranges: tuple[tuple[str, str, str], ...]
     expected_warehouse_written_rows: tuple[int | None, ...]
+    expected_manifest_count: int
+    expected_manifest_fingerprint_count: int
 
 
 @dataclass(frozen=True)

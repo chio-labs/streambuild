@@ -28,8 +28,6 @@ from streambuild.adapter.models import (
     AdapterMetadataState,
     AdapterMutationResult,
     AdapterNodeResultRecord,
-    AdapterOwnedResourceEvent,
-    AdapterOwnedResourceSnapshot,
     AdapterQueryResult,
     AdapterReadinessRequest,
     AdapterReadinessRootObservation,
@@ -260,19 +258,6 @@ class RecordingDelegatingConnection(AdapterConnection):
     def render_cleanup_relations(self, request: AdapterRelationCleanupRequest) -> tuple[str, ...]:
         return self._delegate.render_cleanup_relations(request)
 
-    def load_owned_resources(
-        self, *, database: str, target_database: str
-    ) -> AdapterOwnedResourceSnapshot:
-        return self._delegate.load_owned_resources(
-            database=database,
-            target_database=target_database,
-        )
-
-    def render_owned_resource_events(
-        self, *, database: str, events: tuple[AdapterOwnedResourceEvent, ...]
-    ) -> tuple[str, ...]:
-        return self._delegate.render_owned_resource_events(database=database, events=events)
-
     def catalog_resource_matches(
         self,
         *,
@@ -353,7 +338,7 @@ class FailOnceDropConnection(RecordingDelegatingConnection):
         action: Callable[[str], AdapterMutationResult] = {
             True: self._reject_drop,
             False: super().execute_workflow_sql,
-        }[not self._failed and statement.startswith("DROP ")]
+        }[not self._failed and statement.startswith("DROP ") and "._streambuild_" not in statement]
         return action(statement)
 
     def _reject_drop(self, statement: str) -> AdapterMutationResult:
@@ -470,7 +455,8 @@ class DirectActionRecordingConnection(RecordingDelegatingConnection):
 
     def execute_workflow_sql(self, statement: str) -> AdapterMutationResult:
         self.command_statements.extend(
-            (statement.removesuffix(";"),) * int(statement.startswith("DROP "))
+            (statement.removesuffix(";"),)
+            * int(statement.startswith("DROP ") and "._streambuild_" not in statement)
         )
         self.source_barrier_statements.extend((statement,) * int(".mv__orders" in statement))
         return super().execute_workflow_sql(statement)

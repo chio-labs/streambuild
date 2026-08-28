@@ -115,9 +115,23 @@ class DuplicateSelectionTestCase:
 
 
 @dataclass(frozen=True)
-class OwnershipLedgerBehaviorTestCase:
+class PlanningBehaviorTestCase:
     description: str
     expected_value: str
+
+
+@dataclass(frozen=True)
+class OrphanManifestTestCase:
+    description: str
+    expected_included_relation: str
+    expected_excluded_relations: frozenset[str]
+
+
+@dataclass(frozen=True)
+class UnsupportedManifestVersionTestCase:
+    description: str
+    manifest_version: int
+    expected_error_match: str
 
 
 @dataclass(frozen=True)

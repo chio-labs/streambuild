@@ -10,9 +10,9 @@ from clickhouse_connect.driver.client import Client
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.exceptions import AdapterWarehouseError
 from streambuild.adapter.models import (
+    AdapterManifest,
+    AdapterManifestResource,
     AdapterMutationResult,
-    AdapterOwnedResourceEvent,
-    AdapterOwnedResourceSnapshot,
 )
 from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from streambuild.cli.entry._helpers.compiler_profile import (
@@ -61,12 +61,132 @@ from tests.integration.src.streambuild.conftest import ClickHouseConnectionSetti
 from tests.integration.src.streambuild.executor.destruction._test_types import (
     CompletionEventFailureIntegrationTestCase,
     DestructionIntegrationTestCase,
-    OwnershipIntegrationTestCase,
+    DestructionSafetyIntegrationTestCase,
+    OrphanCleanupIntegrationTestCase,
     VirtualHistoryIntegrationTestCase,
 )
 from tests.integration.src.streambuild.executor.destruction.helpers import realized_relation_names
 
 _ACTOR: DestructionActor = DestructionActor(actor_id="integration", actor_name="integration")
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        OrphanCleanupIntegrationTestCase(
+            description="historical selected-pipeline orphan is dropped through frozen workflow",
+            orphan_relation_name="legacy__orders",
+            expected_outcome="succeeded",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_historical_orphan_when_destroying_selected_pipeline_then_guarded_drop_executes(
+    test_case: OrphanCleanupIntegrationTestCase,
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_database: str,
+    tmp_path: Path,
+) -> None:
+    project_root: Path = tmp_path / "project"
+    write_direct_build_project(project_root=project_root)
+    execution_connection: AdapterConnection = build_managed_clickhouse_client(
+        clickhouse_connection_settings,
+        database=clickhouse_database,
+    )
+    observation_connection: AdapterConnection = build_managed_clickhouse_client(
+        clickhouse_connection_settings,
+        database=clickhouse_database,
+    )
+    try:
+        assert (
+            run_direct_build(
+                project_root=project_root,
+                database=clickhouse_database,
+                connection=execution_connection,
+            )
+            == 0
+        )
+        execution_connection.execute_workflow_sql(
+            f"CREATE TABLE {clickhouse_database}.{test_case.orphan_relation_name} "
+            "(id UInt64) ENGINE = MergeTree ORDER BY id;"
+        )
+        historical_manifest: AdapterManifest = AdapterManifest(
+            manifest_id="historical-manifest",
+            invocation_id="historical-invocation",
+            project_identity="direct_build",
+            target_name="test",
+            target_database=clickhouse_database,
+            is_production=False,
+            project_revision=None,
+            manifest_fingerprint="historical-fingerprint",
+            manifest_version=1,
+            pipelines=("pl__orders",),
+            resources=(
+                AdapterManifestResource(
+                    pipeline_name="pl__orders",
+                    logical_type="model",
+                    logical_name="legacy_orders",
+                    resource_role="primary",
+                    resource_database=clickhouse_database,
+                    resource_name=test_case.orphan_relation_name,
+                    resource_kind="table",
+                ),
+            ),
+            tool_version="integration",
+            published_at="2020-01-01 00:00:00.000000",
+        )
+        for statement in execution_connection.render_manifest_publication(
+            database=clickhouse_database,
+            manifest=historical_manifest,
+        ):
+            execution_connection.execute_workflow_sql(statement)
+        analysis: CompileAnalysis = analyze_project(
+            pipelines_root=project_root / "pipelines",
+            loaded_project=load_project_input_for_path(path=project_root),
+            adapter_profile=build_compiler_adapter_profile(ClickHouseAdapter()),
+        )
+        request: DestructionRequest = DestructionRequest(
+            operation="destroy_pipelines",
+            target="test",
+            database=clickhouse_database,
+            metadata_database=clickhouse_database,
+            pipeline_names=("pl__orders",),
+            include_orphans=True,
+        )
+        plan: DestructionPlan = plan_destruction(
+            request=request,
+            analysis=analysis,
+            connection=execution_connection,
+        )
+        store: InMemoryDestructionPlanStore = InMemoryDestructionPlanStore()
+        store.save(plan=plan, actor="integration")
+        reviewed_at: datetime = store.mark_reviewed(plan_id=plan.plan_id, actor="integration")
+
+        result: DestructionExecutionResult = execute_destruction(
+            frozen_plan=plan,
+            actor=_ACTOR,
+            challenge_responses=plan.challenges,
+            reviewed_at=reviewed_at,
+            store=store,
+            connection=execution_connection,
+            observation_connection=observation_connection,
+            project_dir=project_root,
+            replan=lambda: plan_destruction(
+                request=request,
+                analysis=analysis,
+                connection=execution_connection,
+            ),
+        )
+
+        assert result.outcome == test_case.expected_outcome
+        assert (
+            test_case.orphan_relation_name
+            not in execution_connection.load_catalog(clickhouse_database).relation_names()
+        )
+    finally:
+        execution_connection.close()
+        observation_connection.close()
 
 
 @pytest.mark.integration
@@ -119,23 +239,6 @@ def test_given_real_target_when_destroying_and_resetting_then_scope_and_evidence
             f"CREATE TABLE {clickhouse_database}.stale_raw_orders "
             "(id UInt64) ENGINE = MergeTree ORDER BY id;"
         )
-        stale_event: AdapterOwnedResourceEvent = AdapterOwnedResourceEvent(
-            event_id="owned-stale-source",
-            event_type="owned",
-            target_database=clickhouse_database,
-            resource_database=clickhouse_database,
-            resource_name="stale_raw_orders",
-            resource_kind="table",
-            pipeline_name="pl__orders",
-            logical_resource_type="source",
-            logical_resource_name="orders",
-            resource_role="source_replay_table",
-        )
-        for statement in execution_connection.render_owned_resource_events(
-            database=clickhouse_database,
-            events=(stale_event,),
-        ):
-            execution_connection.execute_workflow_sql(statement)
         execution_connection.execute_workflow_sql(
             f"CREATE TABLE {clickhouse_database}.tbl__orders_enriched_backup "
             "(id UInt64) ENGINE = MergeTree ORDER BY id;"
@@ -245,13 +348,6 @@ def test_given_real_target_when_destroying_and_resetting_then_scope_and_evidence
             or name in {"stale_raw_orders", "tbl__orders_enriched_backup"}
             for name in remaining_names
         )
-        owned_after_reset: AdapterOwnedResourceSnapshot = execution_connection.load_owned_resources(
-            database=clickhouse_database,
-            target_database=clickhouse_database,
-        )
-        assert tuple(resource.resource_name for resource in owned_after_reset.resources) == (
-            "stale_raw_orders",
-        )
         invocation_count: int = int(
             clickhouse_client.query(
                 f"SELECT count() FROM {clickhouse_database}._streambuild_invocations "
@@ -277,7 +373,7 @@ def test_given_real_target_when_destroying_and_resetting_then_scope_and_evidence
 @pytest.mark.parametrize(
     "test_case",
     [
-        OwnershipIntegrationTestCase(
+        DestructionSafetyIntegrationTestCase(
             description="manual replacement changes the frozen generation",
             expected_error_match="impact",
         )
@@ -285,7 +381,7 @@ def test_given_real_target_when_destroying_and_resetting_then_scope_and_evidence
     ids=lambda case: case.description,
 )
 def test_given_manually_recreated_relation_when_replanning_then_frozen_generation_is_rejected(
-    test_case: OwnershipIntegrationTestCase,
+    test_case: DestructionSafetyIntegrationTestCase,
     clickhouse_connection_settings: ClickHouseConnectionSettings,
     clickhouse_database: str,
     tmp_path: Path,
@@ -355,7 +451,7 @@ def test_given_manually_recreated_relation_when_replanning_then_frozen_generatio
 @pytest.mark.parametrize(
     "test_case",
     [
-        OwnershipIntegrationTestCase(
+        DestructionSafetyIntegrationTestCase(
             description="partial drop leaves exact residual catalog state",
             expected_error_match="injected second drop failure",
         )
@@ -363,7 +459,7 @@ def test_given_manually_recreated_relation_when_replanning_then_frozen_generatio
     ids=lambda case: case.description,
 )
 def test_given_second_drop_failure_when_destroying_then_catalog_has_exact_completed_prefix(
-    test_case: OwnershipIntegrationTestCase,
+    test_case: DestructionSafetyIntegrationTestCase,
     clickhouse_connection_settings: ClickHouseConnectionSettings,
     clickhouse_database: str,
     tmp_path: Path,
@@ -697,7 +793,7 @@ def test_given_recorded_virtual_history_when_resetting_then_live_generations_are
 @pytest.mark.parametrize(
     "test_case",
     [
-        OwnershipIntegrationTestCase(
+        DestructionSafetyIntegrationTestCase(
             description="qualified dependant in another database blocks destruction",
             expected_error_match="external_reader",
         )
@@ -705,7 +801,7 @@ def test_given_recorded_virtual_history_when_resetting_then_live_generations_are
     ids=lambda case: case.description,
 )
 def test_given_cross_database_dependant_when_planning_then_destruction_is_blocked(
-    test_case: OwnershipIntegrationTestCase,
+    test_case: DestructionSafetyIntegrationTestCase,
     clickhouse_connection_settings: ClickHouseConnectionSettings,
     clickhouse_database: str,
     tmp_path: Path,
@@ -785,7 +881,7 @@ def test_given_cross_database_dependant_when_planning_then_destruction_is_blocke
 @pytest.mark.parametrize(
     "test_case",
     [
-        OwnershipIntegrationTestCase(
+        DestructionSafetyIntegrationTestCase(
             description="live manifest DDL mismatch remains associated",
             expected_error_match="tbl__orders_enriched",
         )
@@ -793,7 +889,7 @@ def test_given_cross_database_dependant_when_planning_then_destruction_is_blocke
     ids=lambda case: case.description,
 )
 def test_given_live_manifest_ddl_mismatch_when_planning_then_relation_is_included(
-    test_case: OwnershipIntegrationTestCase,
+    test_case: DestructionSafetyIntegrationTestCase,
     clickhouse_connection_settings: ClickHouseConnectionSettings,
     clickhouse_database: str,
     tmp_path: Path,

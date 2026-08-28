@@ -19,8 +19,6 @@ from streambuild.adapter.models import (
     AdapterMaterializedView,
     AdapterMetadataObjectKey,
     AdapterMutationResult,
-    AdapterOwnedResourceEvent,
-    AdapterOwnedResourceSnapshot,
     AdapterPreparedObjectMapping,
     AdapterPublishEventRecord,
     AdapterQueryResult,
@@ -598,12 +596,6 @@ class FakeAdapterConnection(AdapterConnection):
     def load_deployment_inventory(self, database: str) -> AdapterDeploymentInventory:
         return AdapterDeploymentInventory(deployments=(), publish_events=())
 
-    def load_owned_resources(
-        self, *, database: str, target_database: str
-    ) -> AdapterOwnedResourceSnapshot:
-        del database, target_database
-        return AdapterOwnedResourceSnapshot(status="absent", resources=())
-
     def load_direct_fingerprints(
         self, *, database: str, logical_model_identities: tuple[str, ...]
     ) -> AdapterDirectFingerprintSnapshot:
@@ -643,12 +635,6 @@ class FakeAdapterConnection(AdapterConnection):
 
     def render_migrate_metadata_state(self, database: str) -> tuple[str, ...]:
         return (f"CREATE DATABASE IF NOT EXISTS `{database}`;",)
-
-    def render_owned_resource_events(
-        self, *, database: str, events: tuple[AdapterOwnedResourceEvent, ...]
-    ) -> tuple[str, ...]:
-        del database, events
-        return ()
 
     def catalog_resource_matches(
         self, *, resource: object, relation: object, database: str

@@ -25,9 +25,14 @@ class DestructionRequest:
     metadata_database: str
     pipeline_names: tuple[str, ...] = ()
     included_dependent_pipeline_names: tuple[str, ...] = ()
+    include_orphans: bool = False
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "operation", DestructionOperation(self.operation))
+        if self.include_orphans and self.operation != DestructionOperation.DESTROY_PIPELINES:
+            raise DestructionValidationError(
+                "Orphan inclusion is only valid for selected pipeline destruction"
+            )
         if len(set(self.pipeline_names)) != len(self.pipeline_names):
             raise DestructionValidationError(
                 "Pipeline destruction selection contains duplicate names"
@@ -94,6 +99,7 @@ class DestructionPlan:
     relation_drop_size_server_limit: int | None = None
     relation_drop_size_override: int | None = None
     relation_drop_size_policy_observed: bool = False
+    include_orphans: bool = False
 
     @property
     def estimated_bytes(self) -> int:
@@ -171,3 +177,4 @@ class DestructionPlanParts:
     relation_drop_size_server_limit: int | None
     relation_drop_size_override: int | None
     relation_drop_size_policy_observed: bool
+    include_orphans: bool

@@ -144,15 +144,15 @@
 				</div>
 				<div class="overflow-x-auto rounded-[4px] border border-border">
 					<table class="sb-list w-full">
-						<thead><tr><th>Table</th><th class="text-right">Rows</th><th class="text-right">Disk</th><th class="text-right">Active parts</th></tr></thead>
+						<thead><tr><th class="code">Table</th><th class="code text-right">Rows</th><th class="code text-right">Disk</th><th class="code text-right">Active parts</th></tr></thead>
 						<tbody>
 							{#if health.tables === null}
-								<tr><td colspan="4" class="text-muted-foreground">Project table footprint is unavailable.</td></tr>
+								<tr><td colspan="4" class="code text-muted-foreground">Project table footprint is unavailable.</td></tr>
 							{:else if health.tables.length === 0}
-								<tr><td colspan="4" class="text-muted-foreground">No active MergeTree parts were reported for this project database.</td></tr>
+								<tr><td colspan="4" class="code text-muted-foreground">No active MergeTree parts were reported for this project database.</td></tr>
 							{:else}
 								{#each health.tables as table (table.name)}
-									<tr><td class="font-mono">{table.name}</td><td class="text-right font-mono">{table.rows === null ? '—' : formatInteger(table.rows)}</td><td class="text-right font-mono">{formatWarehouseBytes(table.bytesOnDisk)}</td><td class="text-right font-mono">{table.activeParts === null ? '—' : formatInteger(table.activeParts)}</td></tr>
+									<tr><td class="code">{table.name}</td><td class="code text-right">{table.rows === null ? '—' : formatInteger(table.rows)}</td><td class="code text-right">{formatWarehouseBytes(table.bytesOnDisk)}</td><td class="code text-right">{table.activeParts === null ? '—' : formatInteger(table.activeParts)}</td></tr>
 								{/each}
 							{/if}
 						</tbody>

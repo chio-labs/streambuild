@@ -9,6 +9,7 @@ class DestructionParserTestCase:
     expected_target: str
     expected_selectors: tuple[str, ...]
     expected_control_store_url: str | None = None
+    expected_include_orphans: bool = False
 
 
 @dataclass(frozen=True)
