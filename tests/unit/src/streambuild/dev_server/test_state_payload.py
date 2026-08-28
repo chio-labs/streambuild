@@ -508,7 +508,9 @@ def test_given_available_warehouse_health_when_reading_state_then_payload_is_tru
         ),
         collection_duration_ms=4,
         kafka_consumers=AdapterWarehouseKafkaConsumers(
-            expected_tables=1,
+            configured_tables=2,
+            materialized_tables=1,
+            materialized_table_names=("kafka__orders",),
             polling_tables=test_case.expected_polling_tables,
             exception_tables=0,
         ),
@@ -540,7 +542,9 @@ def test_given_available_warehouse_health_when_reading_state_then_payload_is_tru
         "incompleteMutations": 0,
     }
     assert payload["kafkaConsumers"] == {
-        "expectedTables": 1,
+        "configuredTables": 2,
+        "materializedTables": 1,
+        "materializedTableNames": ["kafka__orders"],
         "pollingTables": test_case.expected_polling_tables,
         "exceptionTables": 0,
     }
