@@ -191,6 +191,7 @@ def dispatch_cli_command(
                 selected_target=str(args.target),
                 database=invocation.database,
                 selectors=tuple(getattr(args, "select", ())),
+                include_orphans=bool(getattr(args, "include_orphans", False)),
                 control_store_url=(
                     getattr(args, "control_store_url", None)
                     or default_control_store_url(project_dir=project_dir)

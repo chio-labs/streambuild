@@ -17,7 +17,6 @@ from streambuild.adapter.models import (
     AdapterMaterializedView,
     AdapterMetadataState,
     AdapterMutationResult,
-    AdapterOwnedResourceSnapshot,
     AdapterQueryResult,
     AdapterReadinessRequest,
     AdapterReadinessRootObservation,
@@ -218,12 +217,6 @@ class SnapshotRecordingConnection(AdapterConnection):
     def load_deployment_inventory(self, database: str) -> AdapterDeploymentInventory:
         del database
         return AdapterDeploymentInventory(deployments=(), publish_events=())
-
-    def load_owned_resources(
-        self, *, database: str, target_database: str
-    ) -> AdapterOwnedResourceSnapshot:
-        del database, target_database
-        return AdapterOwnedResourceSnapshot(status="absent", resources=())
 
     def render_replay_coverage_query(self, request: AdapterReplayCoverageRequest) -> str:
         del request

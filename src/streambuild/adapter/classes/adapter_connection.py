@@ -16,12 +16,12 @@ from streambuild.adapter.models import (
     AdapterIdentity,
     AdapterInvocationRecord,
     AdapterManagedSource,
+    AdapterManifest,
+    AdapterManifestSnapshot,
     AdapterMaterializedView,
     AdapterMetadataState,
     AdapterMutationResult,
     AdapterNodeResultRecord,
-    AdapterOwnedResourceEvent,
-    AdapterOwnedResourceSnapshot,
     AdapterQueryResult,
     AdapterReadinessRequest,
     AdapterReadinessRootObservation,
@@ -277,24 +277,29 @@ class AdapterConnection(ABC):
         del database, fingerprints
         return ()
 
-    def load_owned_resources(
-        self, *, database: str, target_database: str
-    ) -> AdapterOwnedResourceSnapshot:
-        """Load latest authoritative relation ownership when supported."""
+    def load_manifests(
+        self,
+        *,
+        database: str,
+        project_identity: str,
+        target_name: str,
+        target_database: str,
+    ) -> AdapterManifestSnapshot:
+        """Load complete manifest history, newest first, when supported."""
 
-        del database, target_database
-        return AdapterOwnedResourceSnapshot(
+        del database, project_identity, target_name, target_database
+        return AdapterManifestSnapshot(
             status="unavailable",
-            resources=(),
-            warning=f"Adapter '{self.adapter_identity.name}' does not expose resource ownership",
+            manifests=(),
+            warning=f"Adapter '{self.adapter_identity.name}' does not expose manifest history",
         )
 
-    def render_owned_resource_events(
-        self, *, database: str, events: tuple[AdapterOwnedResourceEvent, ...]
+    def render_manifest_publication(
+        self, *, database: str, manifest: AdapterManifest
     ) -> tuple[str, ...]:
-        """Render required authoritative ownership and dropped events."""
+        """Render one complete manifest publication when supported."""
 
-        del database, events
+        del database, manifest
         return ()
 
     def catalog_resource_matches(
@@ -304,7 +309,7 @@ class AdapterConnection(ABC):
         relation: CatalogRelation,
         database: str,
     ) -> bool:
-        """Return whether a pre-ledger catalog relation exactly matches a desired resource."""
+        """Return whether a catalog relation exactly matches a desired resource."""
 
         del resource, relation, database
         return False
