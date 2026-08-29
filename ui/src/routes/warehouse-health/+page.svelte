@@ -143,16 +143,28 @@
 					Largest project tables <span class="ml-auto normal-case tracking-normal">active parts in {health.database}</span>
 				</div>
 				<div class="overflow-x-auto rounded-[4px] border border-border">
-					<table class="sb-list w-full">
-						<thead><tr><th class="code">Table</th><th class="code text-right">Rows</th><th class="code text-right">Disk</th><th class="code text-right">Active parts</th></tr></thead>
+					<table class="sb-list w-full text-left">
+						<thead>
+							<tr class="text-[var(--sb-text-faint)] font-mono text-[10px] uppercase tracking-[0.12em]">
+								<th class="px-3 py-2 font-normal">Table</th>
+								<th class="px-3 py-2 text-right font-normal">Rows</th>
+								<th class="px-3 py-2 text-right font-normal">Disk</th>
+								<th class="px-3 py-2 text-right font-normal">Active parts</th>
+							</tr>
+						</thead>
 						<tbody>
 							{#if health.tables === null}
-								<tr><td colspan="4" class="code text-muted-foreground">Project table footprint is unavailable.</td></tr>
+								<tr><td colspan="4" class="code text-muted-foreground px-3 text-[11.5px]">Project table footprint is unavailable.</td></tr>
 							{:else if health.tables.length === 0}
-								<tr><td colspan="4" class="code text-muted-foreground">No active MergeTree parts were reported for this project database.</td></tr>
+								<tr><td colspan="4" class="code text-muted-foreground px-3 text-[11.5px]">No active MergeTree parts were reported for this project database.</td></tr>
 							{:else}
 								{#each health.tables as table (table.name)}
-									<tr><td class="code">{table.name}</td><td class="code text-right">{table.rows === null ? '—' : formatInteger(table.rows)}</td><td class="code text-right">{formatWarehouseBytes(table.bytesOnDisk)}</td><td class="code text-right">{table.activeParts === null ? '—' : formatInteger(table.activeParts)}</td></tr>
+									<tr>
+										<td class="code px-3 text-[11.5px]">{table.name}</td>
+										<td class="code px-3 text-right text-[11.5px]">{table.rows === null ? '—' : formatInteger(table.rows)}</td>
+										<td class="code px-3 text-right text-[11.5px]">{formatWarehouseBytes(table.bytesOnDisk)}</td>
+										<td class="code px-3 text-right text-[11.5px]">{table.activeParts === null ? '—' : formatInteger(table.activeParts)}</td>
+									</tr>
 								{/each}
 							{/if}
 						</tbody>
