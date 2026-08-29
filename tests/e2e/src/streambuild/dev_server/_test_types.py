@@ -16,6 +16,10 @@ class WarehouseHealthBrowserE2ETestCase:
     expected_table_heading: str
     expected_freshness_state: str
     expected_test_state: str
+    expected_header_font_size: str
+    expected_header_font_weight: str
+    expected_body_font_size: str
+    expected_body_font_weight: str
 
 
 @dataclass(frozen=True)
