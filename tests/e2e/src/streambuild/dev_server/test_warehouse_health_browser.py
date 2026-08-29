@@ -23,6 +23,10 @@ from tests.e2e.src.streambuild.dev_server._test_types import (
             expected_table_heading="Largest project tables",
             expected_freshness_state="Not configured",
             expected_test_state="Not run on test",
+            expected_header_font_size="10px",
+            expected_header_font_weight="400",
+            expected_body_font_size="11.5px",
+            expected_body_font_weight="400",
         )
     ],
     ids=lambda case: case.description,
@@ -59,6 +63,28 @@ def test_given_available_warehouse_health_when_navigating_ui_then_summary_and_de
     expect(page.get_by_text(test_case.expected_table_heading, exact=False).first).to_be_visible()
     expect(page.get_by_text(database, exact=True).first).to_be_visible()
     expect(page.get_by_role("columnheader", name="Active parts", exact=True)).to_be_visible()
+    header_style: dict[str, str] = cast(
+        dict[str, str],
+        page.get_by_role("columnheader", name="Table", exact=True).evaluate(
+            "element => ({ fontSize: getComputedStyle(element).fontSize, "
+            "fontWeight: getComputedStyle(element).fontWeight })"
+        ),
+    )
+    body_style: dict[str, str] = cast(
+        dict[str, str],
+        page.locator("table.sb-list tbody td").first.evaluate(
+            "element => ({ fontSize: getComputedStyle(element).fontSize, "
+            "fontWeight: getComputedStyle(element).fontWeight })"
+        ),
+    )
+    assert header_style == {
+        "fontSize": test_case.expected_header_font_size,
+        "fontWeight": test_case.expected_header_font_weight,
+    }
+    assert body_style == {
+        "fontSize": test_case.expected_body_font_size,
+        "fontWeight": test_case.expected_body_font_weight,
+    }
     assert page_errors == []
     assert failed_requests == []
 
