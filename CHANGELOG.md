@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.38.3](https://github.com/chio-labs/streambuild/compare/v0.38.2...v0.38.3) (2026-08-29)
+
+
+### Bug Fixes
+
+* normalize warehouse table typography ([#229](https://github.com/chio-labs/streambuild/issues/229)) ([af2be5e](https://github.com/chio-labs/streambuild/commit/af2be5e5157068da118aac584d3a73024855d500))
+
 ## [0.38.2](https://github.com/chio-labs/streambuild/compare/v0.38.1...v0.38.2) (2026-08-28)
 
 
