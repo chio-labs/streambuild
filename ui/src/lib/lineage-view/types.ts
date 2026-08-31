@@ -1,5 +1,5 @@
 import type { Deployment, ModelStatus, Project } from '$lib/domain/types';
-import type { Graph, GraphMode, GraphNode } from '$lib/lineage/types';
+import type { Graph, GraphMode, GraphNode, GroupMode } from '$lib/lineage/types';
 
 export type NodeKindFilter = 'source' | 'table' | 'aggregate' | 'view';
 
@@ -21,6 +21,7 @@ export type LineageCounts = {
 
 export type LineageViewSnapshot = {
 	readonly mode: GraphMode;
+	readonly groupMode: GroupMode;
 	readonly filters: LineageFilterState;
 	readonly showDeployments: boolean;
 	readonly fullGraph: Graph;

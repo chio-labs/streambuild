@@ -6,6 +6,8 @@
 		label: string;
 		sublabel: string | null;
 		modelCount: number;
+		countLabel?: 'models' | 'objects';
+		groupKind?: 'pipeline' | 'shared sources' | 'ungrouped';
 		statusCounts: Record<ModelStatus, number>;
 		ontoggle: (groupKey: string) => void;
 	};
@@ -65,12 +67,12 @@
 				{group.label}
 			</div>
 			<div class="text-[var(--sb-text-faint)] mt-[3px] font-mono text-[9.5px] uppercase tracking-[0.1em]">
-				pipeline · {group.modelCount} models
+				{group.groupKind ?? 'pipeline'} · {group.modelCount} {group.countLabel ?? 'models'}
 			</div>
 		</div>
 		<button
 			class="text-muted-foreground hover:text-foreground grid h-[20px] w-[20px] shrink-0 place-items-center rounded-[3px]"
-			aria-label="Expand pipeline"
+			aria-label="Expand {group.groupKind ?? 'pipeline'}"
 			onclick={(event) => {
 				event.stopPropagation();
 				group.ontoggle(group.groupKey);
