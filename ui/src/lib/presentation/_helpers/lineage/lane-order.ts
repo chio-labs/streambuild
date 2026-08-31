@@ -22,6 +22,7 @@ export type LaneWeights = Map<string, number>;
  * degrades in quality rather than hanging the tab.
  */
 const EXACT_LIMIT = 16;
+const HEURISTIC_LIMIT = 64;
 
 export function weightKey(a: string, b: string): string {
 	return a < b ? `${a}\u0000${b}` : `${b}\u0000${a}`;
@@ -270,6 +271,10 @@ function orientWithDepth(order: string[], depthRank: Map<string, number>): strin
  */
 export function orderLanes(seed: string[], weights: LaneWeights): string[] {
 	if (seed.length < 3) return seed;
+	// At production scale, repeated local-search scoring takes seconds on the
+	// browser main thread. The depth seed is already deterministic and readable;
+	// preserve it rather than spending interaction latency on a cosmetic optimum.
+	if (seed.length > HEURISTIC_LIMIT) return seed;
 
 	const depthRank = new Map<string, number>(seed.map((key, index) => [key, index]));
 	const solved: string[] =

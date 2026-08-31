@@ -67,6 +67,7 @@ class LineageExactActivityE2ETestCase:
     expected_idle_state: str
     expected_stalled_state: str
     expected_source: str
+    expected_collapsed_pipelines: int
 
 
 @dataclass(frozen=True)

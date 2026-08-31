@@ -117,6 +117,7 @@ def test_given_run_command_box_when_editing_then_completes_only_pinned_context_o
             expected_idle_state="idle",
             expected_stalled_state="stalled",
             expected_source="query_views_log",
+            expected_collapsed_pipelines=3,
         )
     ],
     ids=lambda case: case.description,
@@ -260,6 +261,14 @@ def test_given_logged_activity_when_using_lineage_then_live_semantics_remain_tru
     page.get_by_role("button", name="Close inspector").click()
 
     page.get_by_role("button", name="Physical", exact=True).click()
+    canvas: Locator = page.get_by_test_id("lineage-canvas")
+    expect(canvas).to_have_attribute("data-compact", "true")
+    page.goto(f"{base_url}/lineage?mode=physical", wait_until="domcontentloaded")
+    expect(page.locator('.svelte-flow__node[data-id^="collapsed:"]')).to_have_count(
+        test_case.expected_collapsed_pipelines
+    )
+    expect(page.locator('.svelte-flow__node[data-id="rel:mv__moving_orders"]')).to_have_count(0)
+    page.get_by_role("button", name="Flat", exact=True).click()
     physical_mv: Locator = page.locator('.svelte-flow__node[data-id="rel:mv__moving_orders"]')
     physical_table: Locator = page.locator('.svelte-flow__node[data-id="rel:tbl__moving_orders"]')
     physical_mv.click(position={"x": 20, "y": 20})
