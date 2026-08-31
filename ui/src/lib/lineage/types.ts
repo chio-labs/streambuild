@@ -13,6 +13,7 @@ type RelationDeploymentState = 'active' | 'staged' | 'orphaned';
 type NodeDeployment = { deploymentId: string; state: RelationDeploymentState };
 
 export type GraphMode = 'logical' | 'physical';
+export type GroupMode = 'none' | 'boxes' | 'lanes';
 
 export type GraphNode = {
 	id: string;

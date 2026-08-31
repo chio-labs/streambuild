@@ -1,9 +1,15 @@
 import type { LineageFilterState, NodeKindFilter } from '$lib/lineage-view/types';
-import type { GraphMode } from '$lib/lineage/types';
+import type { GraphMode, GroupMode } from '$lib/lineage/types';
 import type { ModelStatus } from '$lib/domain/types';
 
 export function readLineageMode(url: URL): GraphMode {
 	return url.searchParams.get('mode') === 'physical' ? 'physical' : 'logical';
+}
+
+export function readLineageGroupMode(url: URL): GroupMode {
+	const value: string | null = url.searchParams.get('group');
+	if (value === 'none' || value === 'boxes' || value === 'lanes') return value;
+	return readLineageMode(url) === 'physical' ? 'boxes' : 'lanes';
 }
 
 export function readLineageFilters(url: URL): LineageFilterState {
