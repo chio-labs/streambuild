@@ -20,6 +20,7 @@
 	const node = $derived(data as unknown as GraphNode);
 	/** Physical mode packs many more objects in, so it renders a tighter card. */
 	const compact = $derived(Boolean((data as unknown as { compact?: boolean }).compact));
+	const lightweight = $derived(Boolean((data as unknown as { lightweight?: boolean }).lightweight));
 	/**
 	 * Present but not acted on — e.g. a source the Plan page reads without
 	 * rebuilding. Held back rather than hidden, because removing it would leave
@@ -136,7 +137,11 @@
 		: 'w-[248px] px-3 py-2.5 pl-[15px]'} {selected
 		? 'border-primary'
 		: 'border-[var(--border-strong)]'}"
-	style:box-shadow={selected ? 'var(--sb-node-shadow-selected)' : 'var(--sb-node-shadow)'}
+	style:box-shadow={lightweight
+		? 'none'
+		: selected
+			? 'var(--sb-node-shadow-selected)'
+			: 'var(--sb-node-shadow)'}
 >
 	<!-- left rail = STATUS -->
 	<span

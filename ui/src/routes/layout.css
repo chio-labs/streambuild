@@ -416,6 +416,10 @@
 	stroke-dasharray: 5 4;
 	animation: sbflow 0.9s linear infinite;
 }
+
+.sb-static-flow .sb-edge-driving-flowing path.svelte-flow__edge-path {
+	animation: none;
+}
 .sb-edge-reference path.svelte-flow__edge-path {
 	stroke: var(--sb-edge-dim);
 	stroke-width: 1.25px;

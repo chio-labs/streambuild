@@ -22,6 +22,7 @@
 	const lineageView = createLineageView();
 	const snapshot = $derived(lineageView.snapshot(page.url, project, app.deployments));
 	const mode = $derived(snapshot.mode);
+	const groupMode = $derived(snapshot.groupMode);
 	const filters = $derived(snapshot.filters);
 	const showDeployments = $derived(snapshot.showDeployments);
 	const fullGraph = $derived(snapshot.fullGraph);
@@ -58,10 +59,6 @@
 					.map((node) => node.logicalName)
 			)
 		];
-	});
-	const groupMode = $derived.by((): 'none' | 'boxes' | 'lanes' => {
-		const groupParam: string | null = page.url.searchParams.get('group');
-		return groupParam === 'boxes' ? 'boxes' : groupParam === 'none' ? 'none' : 'lanes';
 	});
 	let cyclicPairs = $state<[string, string][]>([]);
 	let canvas = $state<{ relayout: () => void; clearSelection: () => void } | undefined>();
@@ -248,17 +245,21 @@
 	<div class="flex min-h-0 flex-1 flex-col overflow-y-auto md:flex-row md:overflow-hidden">
 		<!-- canvas -->
 		<div class="min-h-[360px] min-w-0 flex-1">
-			<LineageCanvas
-				bind:this={canvas}
-				{project}
-				{graph}
-				{groupMode}
-				layoutSalt={mode}
-				bind:selectedId
-				bind:selectedIds
-				bind:fitView
-				onCycles={(pairs) => (cyclicPairs = pairs)}
-			/>
+			{#key mode}
+				<LineageCanvas
+					bind:this={canvas}
+					{project}
+					{graph}
+					{groupMode}
+					compactNodes={mode === 'physical'}
+					collapseGroupsByDefault={mode === 'physical'}
+					layoutSalt={mode}
+					bind:selectedId
+					bind:selectedIds
+					bind:fitView
+					onCycles={(pairs) => (cyclicPairs = pairs)}
+				/>
+			{/key}
 		</div>
 
 		{#if selectedNode}

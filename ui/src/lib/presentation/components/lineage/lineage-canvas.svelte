@@ -2,32 +2,38 @@
 	import { SvelteFlow, Background, Controls } from '@xyflow/svelte';
 	import type * as XYFlow from '@xyflow/svelte';
 	import '@xyflow/svelte/dist/style.css';
-	import GroupLabelOverlay from '$lib/presentation/components/lineage/group-label-overlay.svelte';
-	import type { OverlayLabel } from '$lib/presentation/components/lineage/group-label-overlay.svelte';
-	import FlowController from '$lib/presentation/components/lineage/flow-controller.svelte';
-	import { DEFAULT_FIT } from '$lib/presentation/components/lineage/flow-controller.svelte';
+	import GroupLabelOverlay, {
+		type OverlayLabel
+	} from '$lib/presentation/components/lineage/group-label-overlay.svelte';
+	import FlowController, {
+		DEFAULT_FIT
+	} from '$lib/presentation/components/lineage/flow-controller.svelte';
 	import {
 		buildFlowLayout,
 		buildGroupKeyByNodeId,
-		edgeClass,
-		type FlowLayoutResult,
-		type GroupMode
+		type FlowLayoutResult
 	} from '$lib/presentation/_helpers/lineage/flow-layout';
+	import {
+		graphTopologyKey,
+		refreshFlowEdges,
+		refreshFlowNodes
+	} from '$lib/presentation/_helpers/lineage/flow-presentation';
 	import { LINEAGE_NODE_TYPES } from '$lib/presentation/_helpers/lineage/node-types';
 	import { neighbourEdgeIds, tracePath } from '$lib/presentation/_helpers/lineage/trace';
 	import { getNodeFields } from '$lib/lineage/main/get-node-fields';
 	import type { Project } from '$lib/domain/types';
-	import type { Graph, GraphEdge } from '$lib/lineage/types';
+	import type { GroupMode } from '$lib/lineage/types';
 
 	const nodeFields = getNodeFields();
 
 	type Props = {
 		project: Project;
 		/** Already filtered by the parent. */
-		graph: Graph;
+		graph: import('$lib/lineage/types').Graph;
 		/** 'none' | 'boxes' | 'lanes' — how pipeline membership is shown. */
 		groupMode?: GroupMode;
 		compactNodes?: boolean;
+		collapseGroupsByDefault?: boolean;
 		/** Extra key mixed into the relayout trigger, e.g. the parent's mode. */
 		layoutSalt?: string;
 		selectedId?: string | null;
@@ -52,6 +58,7 @@
 		graph,
 		groupMode = 'none',
 		compactNodes = false,
+		collapseGroupsByDefault = false,
 		layoutSalt = '',
 		selectedId = $bindable(null),
 		selectedIds = $bindable(new Set<string>()),
@@ -62,37 +69,46 @@
 		fitView = $bindable(undefined),
 		onCycles
 	}: Props = $props();
-
 	const nodeTypes: XYFlow.NodeTypes = LINEAGE_NODE_TYPES;
-
 	const grouped = $derived(groupMode !== 'none');
+	function initialCollapsedGroups(): Set<string> {
+		if (!collapseGroupsByDefault || groupMode !== 'boxes') return new Set();
+		return new Set(buildGroupKeyByNodeId(project, graph, true).values());
+	}
 
-	let collapsed = $state<Set<string>>(new Set());
+	let collapsed = $state<Set<string>>(initialCollapsedGroups());
+	let expandedGroups = $state<Set<string>>(new Set());
 	let hoveredId = $state<string | null>(null);
 
 	function toggleGroup(groupKey: string): void {
 		const next: Set<string> = new Set(collapsed);
-		if (next.has(groupKey)) next.delete(groupKey);
-		else next.add(groupKey);
+		const nextExpanded: Set<string> = new Set(expandedGroups);
+		if (effectiveCollapsed.has(groupKey)) {
+			next.delete(groupKey);
+			nextExpanded.add(groupKey);
+		} else {
+			next.add(groupKey);
+			nextExpanded.delete(groupKey);
+		}
 		collapsed = next;
+		expandedGroups = nextExpanded;
 	}
 
-	// ── grouping ──────────────────────────────────────────────────────────────
-	/**
-	 * A model belongs to its pipeline. A source has no pipeline of its own, so it
-	 * joins the single pipeline it feeds — which reads correctly and matches the
-	 * pipeline page's mental model. A source feeding several pipelines goes to a
-	 * shared box rather than being arbitrarily assigned to one.
-	 */
 	const groupKeyByNodeId = $derived(buildGroupKeyByNodeId(project, graph, grouped));
+	const effectiveCollapsed = $derived.by((): Set<string> => {
+		const next: Set<string> = new Set(collapsed);
+		if (!collapseGroupsByDefault || groupMode !== 'boxes') return next;
+		for (const groupKey of groupKeyByNodeId.values()) {
+			if (!expandedGroups.has(groupKey)) next.add(groupKey);
+		}
+		return next;
+	});
 
-	// ── flow state ────────────────────────────────────────────────────────────
 	let flowNodes = $state.raw<XYFlow.Node[]>([]);
 	let flowEdges = $state.raw<XYFlow.Edge[]>([]);
 	let overlayLabels = $state.raw<OverlayLabel[]>([]);
 	let appliedKey = $state<string>('');
 
-	/** Terminal views are the only nodes whose every input is equally load-bearing. */
 	const viewTargets = $derived(
 		new Set<string>(
 			graph.nodes.filter((node) => node.logicalType === 'view').map((node) => node.id)
@@ -109,15 +125,23 @@
 			// Content, not size: a note flipping from 'rebuilding…' to '554k rows'
 			// must re-render even though the map cardinality is unchanged.
 			[...(notes ?? new Map())].map(([id, note]) => `${id}=${note.text}`).join('|'),
-			graph.nodes.length,
-			graph.nodes.map((node) => node.id).join('|').length,
-			graph.edges.map((edge) => `${edge.id}:${edge.type}:${edge.flowState}`).join('|'),
-			[...collapsed].sort().join(','),
+			graphTopologyKey(graph.nodes, graph.edges),
+			[...groupKeyByNodeId].map(([id, group]) => `${id}:${group}`).join('|'),
+			[...effectiveCollapsed].sort().join(','),
 			Object.entries(nodeFields.value)
 				.filter(([, on]) => on)
 				.map(([key]) => key)
 				.join(',')
 		].join('~')
+	);
+	const nodePresentationKey = $derived(
+		graph.nodes
+			.map(
+				(node) =>
+					`${node.id}:${node.status}:${node.rows}:${node.rowsPerSecond}:${node.failingChecks}:` +
+					`${node.warningChecks}:${node.totalChecks}:${node.drift}:${node.anchor}`
+			)
+			.join('|')
 	);
 
 	// Relayout only on a stable key — never on `nodes` — or the effect re-triggers
@@ -140,7 +164,7 @@
 				mutedIds,
 				emphasisIds,
 				notes,
-				collapsed,
+				collapsed: effectiveCollapsed,
 				groupKeyByNodeId,
 				viewTargets
 			},
@@ -152,47 +176,50 @@
 		onCycles?.(result.cycles);
 	}
 
-	// ── highlight ─────────────────────────────────────────────────────────────
 	const litEdgeIds = $derived.by((): Set<string> | null => {
 		if (selectedIds.size) return tracePath(selectedIds, flowEdges).edges;
 		if (hoveredId) return neighbourEdgeIds(hoveredId, flowEdges);
 		return null;
 	});
+	const domainNodes = $derived(new Map(graph.nodes.map((node) => [node.id, node])));
+	const domainEdges = $derived(new Map(graph.edges.map((edge) => [edge.id, edge])));
+	let appliedNodePresentationKey = $state<string>('');
+	let appliedEdgePresentationKey = $state<string>('');
+
+	$effect(() => {
+		const key: string = `${layoutKey}~${nodePresentationKey}`;
+		if (key === appliedNodePresentationKey) return;
+		appliedNodePresentationKey = key;
+		const refreshed: XYFlow.Node[] = refreshFlowNodes({
+			nodes: flowNodes,
+			edges: flowEdges,
+			domainNodes,
+			domainEdges,
+			groupKeyByNodeId,
+			viewTargets,
+			litEdgeIds
+		});
+		if (refreshed !== flowNodes) flowNodes = refreshed;
+	});
 
 	$effect(() => {
 		const lit: Set<string> | null = litEdgeIds;
-		const domainById: Map<string, GraphEdge> = new Map(
-			graph.edges.map((edge) => [edge.id, edge])
-		);
-		let changed: boolean = false;
-		const next: XYFlow.Edge[] = flowEdges.map((edge) => {
-			const domainEdge: GraphEdge | undefined = domainById.get(edge.id);
-			if (!domainEdge) return edge;
-			const dimmed: boolean = lit !== null && !lit.has(edge.id);
-			const wasBack: boolean = (edge.class ?? '').includes('sb-edge-back');
-			const nextClass: string = edgeClass(
-				domainEdge.type,
-				domainEdge.flowState,
-				dimmed,
-				wasBack,
-				viewTargets.has(domainEdge.target)
-			);
-			if (nextClass === edge.class) return edge;
-			changed = true;
-			return { ...edge, class: nextClass };
+		const key: string = `${layoutKey}~${graph.edges
+			.map((edge) => `${edge.id}:${edge.flowState}`)
+			.join('|')}~${lit === null ? '' : [...lit].sort().join('|')}`;
+		if (key === appliedEdgePresentationKey) return;
+		appliedEdgePresentationKey = key;
+		const refreshed: XYFlow.Edge[] = refreshFlowEdges({
+			nodes: flowNodes,
+			edges: flowEdges,
+			domainNodes,
+			domainEdges,
+			groupKeyByNodeId,
+			viewTargets,
+			litEdgeIds: lit
 		});
-		if (changed) flowEdges = next;
+		if (refreshed !== flowEdges) flowEdges = refreshed;
 	});
-
-	function nodeIdFromEvent(event: Event): string | null {
-		const target: HTMLElement | null = event.target as HTMLElement | null;
-		const host: HTMLElement | null | undefined = target?.closest<HTMLElement>('.svelte-flow__node');
-		const id: string | undefined = host?.dataset.id;
-		if (!id || id.startsWith('group:') || id.startsWith('lane:')) return null;
-		return id;
-	}
-
-
 	const onSelectionChange: XYFlow.OnSelectionChange = ({ nodes }): void => {
 		const nextIds: Set<string> = new Set(
 			nodes
@@ -208,8 +235,9 @@
 		}
 	};
 
-	function onCanvasHover(event: Event): void {
-		hoveredId = nodeIdFromEvent(event);
+	function hoverNode(node: XYFlow.Node): void {
+		if (node.id.startsWith('group:') || node.id.startsWith('lane:')) return;
+		hoveredId = node.id;
 	}
 
 	export function relayout(): void {
@@ -225,12 +253,12 @@
 
 <div
 	class="h-full w-full"
+	class:sb-static-flow={flowNodes.length > 150}
 	data-testid="lineage-canvas"
+	data-node-count={flowNodes.length}
+	data-compact={compactNodes}
+	data-viewport-culling={flowNodes.length > 150}
 	role="presentation"
-	onmouseover={onCanvasHover}
-	onmouseout={() => (hoveredId = null)}
-	onfocus={onCanvasHover}
-	onblur={() => (hoveredId = null)}
 >
 	<SvelteFlow
 		bind:nodes={flowNodes}
@@ -243,10 +271,15 @@
 		zoomOnScroll={false}
 		zoomActivationKey={['Meta', 'Control']}
 		panOnScroll={!embedded}
+		onlyRenderVisibleElements={flowNodes.length > 150}
 		preventScrolling={!embedded}
 		multiSelectionKey={['Meta', 'Control', 'Shift']}
 		onselectionchange={onSelectionChange}
 		onnodeclick={({ node }) => (selectedId = node.id)}
+		onnodepointerenter={({ node }) => hoverNode(node)}
+		onnodepointerleave={({ node }) => {
+			if (hoveredId === node.id) hoveredId = null;
+		}}
 		proOptions={{ hideAttribution: true }}
 	>
 		<Background bgColor="var(--background)" patternColor="var(--sb-grid)" gap={22} />

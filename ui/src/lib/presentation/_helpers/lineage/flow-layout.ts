@@ -1,7 +1,6 @@
 import type { Edge, Node } from '@xyflow/svelte';
-import { modelByName } from '$lib/domain/main/lookups/model-by-name';
 import type { ModelStatus, Project, RefType } from '$lib/domain/types';
-import type { Graph, GraphEdge, GraphNode } from '$lib/lineage/types';
+import type { Graph, GraphEdge, GraphNode, GroupMode } from '$lib/lineage/types';
 import type { OverlayLabel } from '$lib/presentation/components/lineage/group-label-overlay.svelte';
 import { layoutGraph } from '$lib/presentation/_helpers/lineage/layout';
 import {
@@ -16,8 +15,6 @@ import {
 	type LaneBand,
 	type LaneLayoutResult
 } from '$lib/presentation/_helpers/lineage/lane-layout';
-
-export type GroupMode = 'none' | 'boxes' | 'lanes';
 
 export type FlowLayoutOptions = {
 	project: Project;
@@ -61,6 +58,14 @@ export function buildGroupKeyByNodeId(
 ): Map<string, string> {
 	const map: Map<string, string> = new Map<string, string>();
 	if (!grouped) return map;
+	const pipelineByModelName: Map<string, string> = new Map(
+		project.models.map((model) => [model.name, model.pipeline])
+	);
+	const visiblePipelines: Set<string> = new Set(
+		graph.nodes
+			.map((node) => pipelineByModelName.get(node.logicalName))
+			.filter((pipeline): pipeline is string => pipeline !== undefined)
+	);
 
 	const consumersBySource: Map<string, Set<string>> = new Map<string, Set<string>>();
 	for (const model of project.models) {
@@ -75,15 +80,11 @@ export function buildGroupKeyByNodeId(
 	for (const node of graph.nodes) {
 		if (node.logicalType === 'source') {
 			const consumers: Set<string> = consumersBySource.get(node.logicalName) ?? new Set<string>();
-			const visible: string[] = [...consumers].filter((pipeline) =>
-				graph.nodes.some(
-					(candidate) => modelByName(project, candidate.logicalName)?.pipeline === pipeline
-				)
-			);
+			const visible: string[] = [...consumers].filter((pipeline) => visiblePipelines.has(pipeline));
 			map.set(node.id, visible.length === 1 ? visible[0] : '__shared_sources__');
 			continue;
 		}
-		const pipeline: string | undefined = modelByName(project, node.logicalName)?.pipeline;
+		const pipeline: string | undefined = pipelineByModelName.get(node.logicalName);
 		map.set(node.id, pipeline ?? '__ungrouped__');
 	}
 	return map;
@@ -132,6 +133,7 @@ function streamNode(node: GraphNode, options: FlowLayoutOptions): Node {
 		data: {
 			...node,
 			compact: options.compactNodes,
+			lightweight: options.graph.nodes.length > 150,
 			muted: options.mutedIds?.has(node.id) ?? false,
 			emphasis: options.emphasisIds?.has(node.id) ?? false,
 			note: options.notes?.get(node.id)
@@ -291,6 +293,13 @@ function collapsedNodes(
 				label: groupLabel(key),
 				sublabel: null,
 				modelCount: options.graph.nodes.filter((node) => keyOf(node.id) === key).length,
+				countLabel: options.compactNodes ? 'objects' : 'models',
+				groupKind:
+					key === '__shared_sources__'
+						? 'shared sources'
+						: key === '__ungrouped__'
+							? 'ungrouped'
+							: 'pipeline',
 				statusCounts: counts.get(key) ?? {},
 				ontoggle: toggleGroup
 			} as unknown as Record<string, unknown>

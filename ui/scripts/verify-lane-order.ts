@@ -139,4 +139,15 @@ console.log(`${suboptimal === 0 ? '✓' : '✗'} exact solver  ${TRIALS - subopt
 	console.log(`${quick ? '✓' : '✗'} heuristic     40 lanes in ${elapsed.toFixed(0)}ms`);
 }
 
+// ── production-scale pipeline counts stay bounded ───────────────────────────
+{
+	const { groups, weights } = randomCase(103);
+	const started: number = performance.now();
+	orderLanes(groups, weights);
+	const elapsed: number = performance.now() - started;
+	const quick: boolean = elapsed < 1000;
+	if (!quick) failures += 1;
+	console.log(`${quick ? '✓' : '✗'} production    103 lanes in ${elapsed.toFixed(0)}ms`);
+}
+
 process.exitCode = failures > 0 ? 1 : 0;

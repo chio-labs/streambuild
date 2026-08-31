@@ -9,7 +9,11 @@ import type {
 	NodeKindFilter
 } from '$lib/lineage-view/types';
 import type { Graph, GraphNode } from '$lib/lineage/types';
-import { readLineageFilters, readLineageMode } from '$lib/lineage-view/_helpers/lineage-location';
+import {
+	readLineageFilters,
+	readLineageGroupMode,
+	readLineageMode
+} from '$lib/lineage-view/_helpers/lineage-location';
 
 function filterCount(filters: LineageFilterState): number {
 	return (
@@ -87,5 +91,13 @@ export function buildLineageSnapshot(
 			? buildLogicalGraph(project)
 			: buildPhysicalGraph(project, showDeployments ? deployments : []);
 	const graph: Graph = narrowGraph(project, filters, fullGraph);
-	return { mode, filters, showDeployments, fullGraph, graph, counts: countStatuses(graph) };
+	return {
+		mode,
+		groupMode: readLineageGroupMode(url),
+		filters,
+		showDeployments,
+		fullGraph,
+		graph,
+		counts: countStatuses(graph)
+	};
 }
