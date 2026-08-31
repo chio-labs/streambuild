@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.38.5](https://github.com/chio-labs/streambuild/compare/v0.38.4...v0.38.5) (2026-08-31)
+
+
+### Documentation
+
+* require watching auto-merge completion ([#234](https://github.com/chio-labs/streambuild/issues/234)) ([1f5f50c](https://github.com/chio-labs/streambuild/commit/1f5f50c65a8a7f11d4ae2add544b6b50444ace03))
+
 ## [0.38.4](https://github.com/chio-labs/streambuild/compare/v0.38.3...v0.38.4) (2026-08-31)
 
 
