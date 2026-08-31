@@ -35,6 +35,11 @@ revision will fail before tests start.
 - Do not push partial or overlapping branches merely to start CI.
 - Once consolidated work is ready, push once and open one ready pull request so CI and configured
   auto-merge can complete delivery.
+- After auto-merge is enabled, do not invoke a manual merge while the automation is healthy. Watch
+  the pull request through merge in the foreground when no other useful work remains, or keep a
+  background watch running while continuing independent work. Use a manual merge only when there is
+  concrete evidence that auto-merge is broken or unavailable, and document that evidence and the
+  fallback reason before merging.
 - Pull request descriptions must contain `## Why`, `## Changes`, and `## Verification` sections in
   that order. The pull request metadata check rejects descriptions that omit or reorder them.
 - Monitor CI after every push and follow it through completion. Keep independent work moving while
