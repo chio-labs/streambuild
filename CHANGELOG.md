@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.38.4](https://github.com/chio-labs/streambuild/compare/v0.38.3...v0.38.4) (2026-08-31)
+
+
+### Bug Fixes
+
+* make physical lineage responsive at scale ([#232](https://github.com/chio-labs/streambuild/issues/232)) ([0d978e7](https://github.com/chio-labs/streambuild/commit/0d978e7c0322f128702b75e9a2c107af1e05ab46))
+
 ## [0.38.3](https://github.com/chio-labs/streambuild/compare/v0.38.2...v0.38.3) (2026-08-29)
 
 
