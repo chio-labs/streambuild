@@ -199,6 +199,20 @@ def test_given_selected_pipeline_when_confirming_destruction_then_both_gates_are
     )
     page.route("**/api/destruction/plans/recovery-plan-1", routes.fulfill_recovery_read)
     page.route("**/api/runs/*/statements/*", routes.fulfill_statement_read)
+    inactive_pipeline_name: str = f"retired_{test_case.pipeline_name}"
+    page.route(
+        "**/api/destruction/pipelines/inactive",
+        lambda route: route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=(
+                '{"pipelines":[{"name":"'
+                f"{inactive_pipeline_name}"
+                '","modelCount":2,"resourceCount":5,'
+                '"lastPublishedAt":"2026-08-23 10:00:00.000000"}]}'
+            ),
+        ),
+    )
     page.set_viewport_size({"width": 1920, "height": 1080})
     page.goto(f"{base_url}/pipelines", wait_until="domcontentloaded")
     expect(page.get_by_role("button", name="Reset target", exact=True)).to_have_count(0)
@@ -208,8 +222,26 @@ def test_given_selected_pipeline_when_confirming_destruction_then_both_gates_are
     expect(drawer).to_contain_text("Selected pipelines")
     expect(drawer).to_contain_text("Entire target")
     expect(drawer.get_by_role("button", name="Review destroy plan", exact=True)).to_be_disabled()
-    expect(drawer.get_by_role("button", name="Review target reset", exact=True)).to_be_enabled()
+    reset_button: Locator = drawer.get_by_role("button", name="Review target reset", exact=True)
+    expect(reset_button).to_be_disabled()
+    drawer.get_by_label("Acknowledge entire target reset").click()
+    expect(reset_button).to_be_enabled()
     drawer.get_by_role("button", name="Close destructive actions").click()
+
+    page.get_by_label("Show inactive pipelines").click()
+    inactive_selection: Locator = page.get_by_label(
+        f"Select inactive {inactive_pipeline_name} for destruction"
+    )
+    expect(inactive_selection).to_be_visible()
+    expect(page.get_by_text("retained manifest", exact=True)).to_be_visible()
+    inactive_selection.click()
+    page.get_by_role("button", name="Destructive actions…", exact=True).click()
+    drawer = page.get_by_test_id("destructive-actions-drawer")
+    expect(drawer).to_contain_text(inactive_pipeline_name)
+    expect(drawer.get_by_role("button", name="Review target reset", exact=True)).to_be_disabled()
+    drawer.get_by_role("button", name="Close destructive actions").click()
+    inactive_selection.click()
+    page.get_by_label("Show inactive pipelines").click()
 
     page.get_by_role("button", name=re.compile(r"^Virtual")).click()
     expect(page.get_by_text("No pipelines match the current filters", exact=True)).to_be_visible()
@@ -351,7 +383,11 @@ def test_given_reset_permission_when_opening_destructive_actions_then_reset_ente
     assert 360 <= drawer_box["width"] <= 390
     expect(drawer.get_by_role("button", name="Review destroy plan", exact=True)).to_be_disabled()
     expect(drawer).to_contain_text("Reset test / analytics")
-    drawer.get_by_role("button", name="Review target reset", exact=True).click()
+    reset_button: Locator = drawer.get_by_role("button", name="Review target reset", exact=True)
+    expect(reset_button).to_be_disabled()
+    drawer.get_by_label("Acknowledge entire target reset").click()
+    expect(reset_button).to_be_enabled()
+    reset_button.click()
 
     expect(page).to_have_url(f"{base_url}/destruction/plans/reset-plan-1")
     expect(page.get_by_text("Entire target", exact=True)).to_be_visible()

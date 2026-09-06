@@ -26,11 +26,15 @@ from streambuild.executor.destruction.exceptions import (
 from streambuild.executor.destruction.main.build_destruction_challenges import (
     build_destruction_challenges,
 )
+from streambuild.executor.destruction.main.list_inactive_pipelines import (
+    list_inactive_pipelines,
+)
 from streambuild.executor.destruction.main.plan_destruction import plan_destruction
 from streambuild.executor.destruction.models import (
     DestructionPlan,
     DestructionRelationEvidence,
     DestructionRequest,
+    InactivePipeline,
 )
 from streambuild.executor.destruction.types import (
     DestructionOperation,
@@ -44,6 +48,7 @@ from tests.unit.src.streambuild.executor.destruction._test_types import (
     DestructionDropOverrideTestCase,
     DestructionFrozenDropLimitTestCase,
     DuplicateSelectionTestCase,
+    InactivePipelineDestructionTestCase,
     OrphanManifestTestCase,
     PipelineDestructionPlanTestCase,
     PlanningBehaviorTestCase,
@@ -64,6 +69,163 @@ from tests.unit.src.streambuild.executor.destruction.helpers import (
 )
 
 _NOW: datetime = datetime(2026, 8, 24, 12, 0, tzinfo=UTC)
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        InactivePipelineDestructionTestCase(
+            description="removed pipeline remains attributable through manifest history",
+            expected_pipeline_name="retired",
+            expected_logical_name="retired_orders",
+            expected_manifest_relation_name="tbl__retired_orders",
+            expected_physical_relation_name="tbl__retired_orders__deployment_1",
+            expected_last_published_at="2026-08-23 10:00:00.000000",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_retained_manifest_when_listing_and_planning_then_inactive_pipeline_is_destroyable(
+    test_case: InactivePipelineDestructionTestCase,
+) -> None:
+    fixture: PlanningFixture = build_planning_fixture()
+    fixture.connection.catalog = replace(
+        fixture.connection.catalog,
+        relations=(
+            *fixture.connection.catalog.relations,
+            CatalogRelation(
+                name=test_case.expected_manifest_relation_name, engine="View", columns=()
+            ),
+            CatalogRelation(
+                name=test_case.expected_physical_relation_name,
+                engine="MergeTree",
+                columns=(),
+            ),
+        ),
+    )
+    fixture.connection.manifests = AdapterManifestSnapshot(
+        status="available",
+        manifests=(
+            AdapterManifest(
+                manifest_id="manifest-retired",
+                invocation_id="invocation-retired",
+                project_identity="commerce",
+                target_name="uat",
+                target_database="analytics",
+                is_production=False,
+                project_revision=None,
+                manifest_fingerprint="retired-fingerprint",
+                manifest_version=1,
+                pipelines=("alpha", test_case.expected_pipeline_name),
+                resources=(
+                    AdapterManifestResource(
+                        pipeline_name=test_case.expected_pipeline_name,
+                        logical_type="model",
+                        logical_name=test_case.expected_logical_name,
+                        resource_role="stable_binding",
+                        resource_database="analytics",
+                        resource_name=test_case.expected_manifest_relation_name,
+                        resource_kind="view",
+                    ),
+                ),
+                tool_version="0.38.4",
+                published_at=test_case.expected_last_published_at,
+            ),
+        ),
+    )
+    deployment: AdapterDeploymentRecord = fixture.connection.inventory.deployments[0]
+    fixture.connection.inventory = replace(
+        fixture.connection.inventory,
+        deployments=(
+            replace(
+                deployment,
+                prepared_object_mappings=(
+                    *deployment.prepared_object_mappings,
+                    AdapterPreparedObjectMapping(
+                        logical_key=AdapterMetadataObjectKey(
+                            database="analytics",
+                            object_type="view",
+                            name=test_case.expected_manifest_relation_name,
+                        ),
+                        physical_name=test_case.expected_physical_relation_name,
+                        logical_model_name=test_case.expected_logical_name,
+                    ),
+                ),
+            ),
+        ),
+    )
+    request: DestructionRequest = DestructionRequest(
+        operation="destroy_pipelines",
+        target="uat",
+        database="analytics",
+        metadata_database="analytics",
+        pipeline_names=(test_case.expected_pipeline_name,),
+    )
+
+    inactive: tuple[InactivePipeline, ...] = list_inactive_pipelines(
+        request=replace(request, pipeline_names=()),
+        analysis=fixture.analysis,
+        connection=fixture.connection,
+    )
+    plan: DestructionPlan = plan_destruction(
+        request=request,
+        analysis=fixture.analysis,
+        connection=fixture.connection,
+        now=_NOW,
+    )
+
+    assert inactive == (
+        InactivePipeline(
+            name=test_case.expected_pipeline_name,
+            model_count=1,
+            resource_count=1,
+            last_published_at=test_case.expected_last_published_at,
+        ),
+    )
+    relations: dict[str, DestructionRelationEvidence] = {
+        relation.name: relation for relation in plan.relations
+    }
+    assert plan.affected_pipeline_names == (test_case.expected_pipeline_name,)
+    assert plan.affected_model_names == (test_case.expected_logical_name,)
+    assert plan.include_orphans is True
+    assert set(relations) == {
+        test_case.expected_manifest_relation_name,
+        test_case.expected_physical_relation_name,
+    }
+    assert all(
+        relation.pipeline_names == (test_case.expected_pipeline_name,)
+        for relation in relations.values()
+    )
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        PlanningBehaviorTestCase(
+            description="unrecorded pipeline remains outside destruction ownership",
+            expected_value=r"Unknown pipelines: \('unowned',\)",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_no_manifest_ownership_when_planning_unknown_pipeline_then_request_is_rejected(
+    test_case: PlanningBehaviorTestCase,
+) -> None:
+    fixture: PlanningFixture = build_planning_fixture()
+
+    with pytest.raises(DestructionSelectionError, match=test_case.expected_value):
+        plan_destruction(
+            request=DestructionRequest(
+                operation="destroy_pipelines",
+                target="uat",
+                database="analytics",
+                metadata_database="analytics",
+                pipeline_names=("unowned",),
+            ),
+            analysis=fixture.analysis,
+            connection=fixture.connection,
+            now=_NOW,
+        )
 
 
 @pytest.mark.parametrize(
