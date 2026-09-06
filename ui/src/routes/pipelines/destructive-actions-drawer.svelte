@@ -3,6 +3,7 @@
 	import XIcon from '@lucide/svelte/icons/x';
 	import * as Dialog from '$ui-kit/dialog/main';
 	import Button from '$ui-kit/button/button.svelte';
+	import Checkbox from '$ui-kit/checkbox/checkbox.svelte';
 
 	type Props = {
 		open: boolean;
@@ -25,6 +26,11 @@
 		onReviewDestroy,
 		onReviewReset
 	}: Props = $props();
+	let resetAcknowledged = $state<boolean>(false);
+
+	$effect(() => {
+		if (!open) resetAcknowledged = false;
+	});
 </script>
 
 <Dialog.Root {open} {onOpenChange}>
@@ -96,11 +102,29 @@
 				<p class="text-muted-foreground mt-1 text-[11.5px]">
 					Remove all StreamBuild-managed resources in this target, regardless of the current pipeline selection.
 				</p>
+				<label
+					for="acknowledge-target-reset"
+					class="mt-4 flex items-start gap-2.5 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-[11.5px] leading-relaxed"
+					class:cursor-not-allowed={!resetAllowed}
+					class:opacity-60={!resetAllowed}
+				>
+					<Checkbox
+						id="acknowledge-target-reset"
+						bind:checked={resetAcknowledged}
+						disabled={!resetAllowed}
+						aria-label="Acknowledge entire target reset"
+					/>
+					<span>I understand this resets the entire target and removes all StreamBuild-managed resources.</span>
+				</label>
 				<Button
 					variant="destructive"
 					class="mt-4 w-full font-mono text-[11px]"
-					disabled={!resetAllowed}
-					title={resetAllowed ? 'Review a reset of the entire target' : 'Requires the target.reset permission'}
+					disabled={!resetAllowed || !resetAcknowledged}
+					title={!resetAllowed
+						? 'Requires the target.reset permission'
+						: !resetAcknowledged
+							? 'Acknowledge the entire target reset first'
+							: 'Review a reset of the entire target'}
 					onclick={onReviewReset}
 				>
 					Review target reset

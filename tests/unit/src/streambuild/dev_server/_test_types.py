@@ -33,6 +33,15 @@ class DestructionAuthorizationRouteTestCase:
 
 
 @dataclass(frozen=True)
+class InactivePipelineRouteTestCase:
+    description: str
+    expected_pipeline_name: str
+    expected_model_count: int
+    expected_resource_count: int
+    expected_last_published_at: str
+
+
+@dataclass(frozen=True)
 class DestructionResourceConflictRouteTestCase:
     description: str
     conflict_message: str

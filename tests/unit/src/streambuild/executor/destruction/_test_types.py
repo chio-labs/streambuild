@@ -128,6 +128,16 @@ class OrphanManifestTestCase:
 
 
 @dataclass(frozen=True)
+class InactivePipelineDestructionTestCase:
+    description: str
+    expected_pipeline_name: str
+    expected_logical_name: str
+    expected_manifest_relation_name: str
+    expected_physical_relation_name: str
+    expected_last_published_at: str
+
+
+@dataclass(frozen=True)
 class UnsupportedManifestVersionTestCase:
     description: str
     manifest_version: int

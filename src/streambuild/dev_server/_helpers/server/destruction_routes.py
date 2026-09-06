@@ -48,11 +48,15 @@ from streambuild.executor.destruction.exceptions import (
     DestructionSelectionError,
 )
 from streambuild.executor.destruction.main.execute_destruction import execute_destruction
+from streambuild.executor.destruction.main.list_inactive_pipelines import (
+    list_inactive_pipelines,
+)
 from streambuild.executor.destruction.main.plan_destruction import plan_destruction
 from streambuild.executor.destruction.models import (
     DestructionActor,
     DestructionPlan,
     DestructionRequest,
+    InactivePipeline,
 )
 from streambuild.executor.destruction.types import DestructionOperation, DestructionPlanStore
 from streambuild.executor.observability.main.logical_project_identity import (
@@ -228,6 +232,58 @@ def _register_destruction_plan_routes(
         except AdapterError as error:
             raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
 
+    def read_inactive_pipelines(*, http_request: Request) -> dict[str, object]:
+        analysis: CompileAnalysis = servable_analysis()
+        target: str = analysis.compiled_project.target_name or authorization.selected_target or ""
+        destruction_request: DestructionRequest = DestructionRequest(
+            operation=DestructionOperation.DESTROY_PIPELINES,
+            target=target,
+            database=database or "",
+            metadata_database=database or "",
+        )
+        require_destruction_authorization(
+            analysis=analysis,
+            request=http_request,
+            context=authorization,
+            operation=DestructionOperation.DESTROY_PIPELINES,
+            affected_pipelines=(),
+        )
+        connection: AdapterConnection = _required_connection(warehouse=warehouse, database=database)
+        try:
+            with state.query_lock:
+                pipelines: tuple[InactivePipeline, ...] = list_inactive_pipelines(
+                    request=destruction_request,
+                    analysis=analysis,
+                    connection=connection,
+                )
+            require_destruction_authorization(
+                analysis=analysis,
+                request=http_request,
+                context=authorization,
+                operation=DestructionOperation.DESTROY_PIPELINES,
+                affected_pipelines=tuple(pipeline.name for pipeline in pipelines),
+            )
+            return {
+                "pipelines": [
+                    {
+                        "name": pipeline.name,
+                        "modelCount": pipeline.model_count,
+                        "resourceCount": pipeline.resource_count,
+                        "lastPublishedAt": pipeline.last_published_at,
+                    }
+                    for pipeline in pipelines
+                ]
+            }
+        except DestructionResourceError as error:
+            raise HTTPException(
+                status_code=_HTTP_CONFLICT,
+                detail={"message": str(error), "reason": "resource_conflict"},
+            ) from error
+        except (DestructionSelectionError, ValueError) as error:
+            raise HTTPException(status_code=_HTTP_BAD_REQUEST, detail=str(error)) from error
+        except AdapterError as error:
+            raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(error)) from error
+
     def read_plan(*, http_request: Request, plan_id: str) -> dict[str, object]:
         actor: AuthenticatedRequest = _actor(http_request)
         actor_id: str = str(actor.principal.user_id)
@@ -275,6 +331,7 @@ def _register_destruction_plan_routes(
             raise HTTPException(status_code=_HTTP_CONFLICT, detail=str(error)) from error
         return _plan_payload(plan=plan, reviewed_at=reviewed_at)
 
+    app.get("/api/destruction/pipelines/inactive")(read_inactive_pipelines)
     app.post("/api/destruction/plans")(create_plan)
     app.get("/api/destruction/plans/{plan_id}")(read_plan)
     app.post("/api/destruction/plans/{plan_id}/review")(review_plan)

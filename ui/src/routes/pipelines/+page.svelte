@@ -30,6 +30,7 @@
 	let searchQuery = $state<string>('');
 	let selected = $state<ReadonlySet<string>>(new Set());
 	let destructiveActionsOpen = $state<boolean>(false);
+	let showInactivePipelines = $state<boolean>(false);
 
 	// A pipeline is the project's real top-level unit: `stb discover` returns
 	// nothing but pipeline names, and `pipeline:<name>` is one of only two
@@ -52,6 +53,13 @@
 		modeFilter === 'all' ? rows : rows.filter((row) => row.pipeline.mode === modeFilter)
 	);
 	const filteredRows = $derived(filterPipelineRows(modeFilteredRows, searchQuery));
+	const filteredInactivePipelines = $derived(
+		showInactivePipelines && modeFilter === 'all'
+			? destruction.inactivePipelines.filter((pipeline) =>
+					pipeline.name.toLowerCase().includes(searchQuery.trim().toLowerCase())
+				)
+			: []
+	);
 	const modeCounts = $derived({
 		all: rows.length,
 		direct: rows.filter((row) => row.pipeline.mode === 'direct').length,
@@ -65,18 +73,24 @@
 			.map((row) => row.pipeline.name)
 	);
 	const destroyablePipelineNames = $derived(
-		rows
-			.filter((row) => can('pipeline.destroy', row.pipeline.name))
-			.map((row) => row.pipeline.name)
+		[
+			...rows.map((row) => row.pipeline.name),
+			...destruction.inactivePipelines.map((pipeline) => pipeline.name)
+		].filter((name) => can('pipeline.destroy', name))
 	);
 	const selectablePipelineNames = $derived(
-		filteredRows
-			.filter(
-				(row) =>
-					buildablePipelineNames.includes(row.pipeline.name) ||
-					destroyablePipelineNames.includes(row.pipeline.name)
-			)
-			.map((row) => row.pipeline.name)
+		[
+			...filteredRows
+				.filter(
+					(row) =>
+						buildablePipelineNames.includes(row.pipeline.name) ||
+						destroyablePipelineNames.includes(row.pipeline.name)
+				)
+				.map((row) => row.pipeline.name),
+			...filteredInactivePipelines
+				.filter((pipeline) => destroyablePipelineNames.includes(pipeline.name))
+				.map((pipeline) => pipeline.name)
+		]
 	);
 	const selectedBuildableNames = $derived(
 		buildablePipelineNames.filter((name) => selected.has(name))
@@ -84,7 +98,10 @@
 	const selectedDestroyableNames = $derived(
 		destroyablePipelineNames.filter((name) => selected.has(name))
 	);
-	const visiblePipelineNames = $derived(filteredRows.map((row) => row.pipeline.name));
+	const visiblePipelineNames = $derived([
+		...filteredRows.map((row) => row.pipeline.name),
+		...filteredInactivePipelines.map((pipeline) => pipeline.name)
+	]);
 	const hiddenSelectedCount = $derived(
 		[...selected].filter((name) => !visiblePipelineNames.includes(name)).length
 	);
@@ -133,6 +150,11 @@
 	function openResetPlan(): void {
 		destructiveActionsOpen = false;
 		void destruction.start('reset_target');
+	}
+
+	function setShowInactivePipelines(checked: boolean): void {
+		showInactivePipelines = checked;
+		if (checked) void destruction.loadInactivePipelines();
 	}
 
 </script>
@@ -194,11 +216,20 @@
 				</button>
 			{/each}
 		</div>
+		<label class="ml-1 flex items-center gap-2 font-mono text-[10.5px] text-muted-foreground">
+			<Checkbox
+				checked={showInactivePipelines}
+				aria-label="Show inactive pipelines"
+				onCheckedChange={(checked) => setShowInactivePipelines(checked === true)}
+			/>
+			<span>Show inactive</span>
+			{#if destruction.loadingInactivePipelines}<span class="text-[var(--sb-text-faint)]">loading…</span>{/if}
+		</label>
 		<span
 			class="text-[var(--sb-text-faint)] ml-auto flex items-center gap-1 font-mono text-[10.5px]"
 			data-testid="pipeline-filter-summary"
 		>
-			<span>{filteredRows.length} shown</span>
+			<span>{filteredRows.length + filteredInactivePipelines.length} shown</span>
 			{#if selected.size > 0}
 				<span>·</span><span>{selected.size} selected</span>
 				{#if hiddenSelectedCount > 0}<span>·</span><span>{hiddenSelectedCount} outside filter</span>{/if}
@@ -342,7 +373,33 @@
 					</td>
 				</tr>
 			{/each}
-			{#if filteredRows.length === 0}
+			{#each filteredInactivePipelines as pipeline (pipeline.name)}
+				<tr class="bg-destructive/[0.025]">
+					<td class="py-2 pl-[18px] pr-1">
+						<Checkbox
+							checked={selected.has(pipeline.name)}
+							disabled={!can('pipeline.destroy', pipeline.name)}
+							aria-label="Select inactive {pipeline.name} for destruction"
+							onCheckedChange={() => togglePipeline(pipeline.name)}
+						/>
+					</td>
+					<td class="px-3">
+						<div class="code text-[12.5px] font-medium">{pipeline.name}</div>
+						<div class="text-[var(--sb-text-faint)] code pt-0.5 text-[10.5px]">
+							Last published {pipeline.lastPublishedAt}
+						</div>
+					</td>
+					<td class="px-3"><span class="sb-tag code text-destructive">inactive</span></td>
+					<td class="px-3"><span class="text-muted-foreground text-[11.5px]">retained manifest</span></td>
+					<td class="px-3"><span class="text-[var(--sb-text-faint)] code text-[11px]">—</span></td>
+					<td class="code px-3 text-[12px]">{pipeline.modelCount}</td>
+					<td class="px-3"><span class="text-[var(--sb-text-faint)] code text-[11px]">—</span></td>
+					<td class="px-3"><span class="text-[var(--sb-text-faint)] code text-[11px]">—</span></td>
+					<td class="px-3"><span class="code text-[11.5px]">{pipeline.resourceCount} resources</span></td>
+					<td class="px-3 pr-[18px]"><span class="text-muted-foreground text-[11px]">Not active</span></td>
+				</tr>
+			{/each}
+			{#if filteredRows.length + filteredInactivePipelines.length === 0}
 				<tr>
 					<td colspan="10" class="text-[var(--sb-text-faint)] px-[18px] py-8 text-center font-mono text-[11px]">
 						No pipelines match the current filters
@@ -351,6 +408,11 @@
 			{/if}
 		</tbody>
 	</table>
+	{#if showInactivePipelines && destruction.inactivePipelinesError}
+		<div class="border-t border-destructive/30 bg-destructive/5 px-[18px] py-3 font-mono text-[11px] text-destructive" role="alert">
+			{destruction.inactivePipelinesError}
+		</div>
+	{/if}
 </div>
 
 <DestructiveActionsDrawer

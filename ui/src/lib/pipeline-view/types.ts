@@ -26,6 +26,13 @@ export type PipelineViewFacade = {
 
 export type DestructionOperation = 'destroy_pipelines' | 'reset_target';
 
+export type InactivePipeline = {
+	name: string;
+	modelCount: number;
+	resourceCount: number;
+	lastPublishedAt: string;
+};
+
 export type DestructionResource = {
 	name: string;
 	kind: string;
