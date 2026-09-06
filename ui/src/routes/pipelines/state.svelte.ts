@@ -6,6 +6,8 @@ import type {
 	DestructionOperation,
 	DestructionPlan
 } from '$lib/pipeline-view/types';
+import { getInactivePipelines } from '$lib/inactive-pipelines/main/get-inactive-pipelines';
+import type { InactivePipeline } from '$lib/pipeline-view/types';
 import type { DestructionController } from './types';
 
 export function createDestructionState(): DestructionController {
@@ -14,6 +16,9 @@ export function createDestructionState(): DestructionController {
 	let plan = $state<DestructionPlan | null>(null);
 	let planning = $state<boolean>(false);
 	let error = $state<string | null>(null);
+	let inactivePipelines = $state<InactivePipeline[]>([]);
+	let loadingInactivePipelines = $state<boolean>(false);
+	let inactivePipelinesError = $state<string | null>(null);
 
 	function setOpen(value: boolean): void {
 		if (!value && planning) return;
@@ -77,6 +82,19 @@ export function createDestructionState(): DestructionController {
 		error = null;
 	}
 
+	async function loadInactivePipelines(): Promise<void> {
+		if (loadingInactivePipelines) return;
+		loadingInactivePipelines = true;
+		inactivePipelinesError = null;
+		try {
+			inactivePipelines = await getInactivePipelines();
+		} catch (caught) {
+			inactivePipelinesError = String(caught);
+		} finally {
+			loadingInactivePipelines = false;
+		}
+	}
+
 	return {
 		get open() {
 			return open;
@@ -93,8 +111,18 @@ export function createDestructionState(): DestructionController {
 		get error() {
 			return error;
 		},
+		get inactivePipelines() {
+			return inactivePipelines;
+		},
+		get loadingInactivePipelines() {
+			return loadingInactivePipelines;
+		},
+		get inactivePipelinesError() {
+			return inactivePipelinesError;
+		},
 		setOpen,
 		start,
-		addRequiredDependentsAndReplan
+		addRequiredDependentsAndReplan,
+		loadInactivePipelines
 	};
 }

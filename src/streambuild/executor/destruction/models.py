@@ -58,6 +58,16 @@ class DestructionRequest:
 
 
 @dataclass(frozen=True)
+class InactivePipeline:
+    """A historically published pipeline absent from the compiled project."""
+
+    name: str
+    model_count: int
+    resource_count: int
+    last_published_at: str
+
+
+@dataclass(frozen=True)
 class DestructionRelationEvidence:
     database: str
     name: str

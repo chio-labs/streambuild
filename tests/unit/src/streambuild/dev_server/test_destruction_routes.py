@@ -17,7 +17,11 @@ from streambuild.executor.destruction.exceptions import (
     DestructionDependencyError,
     DestructionResourceError,
 )
-from streambuild.executor.destruction.models import DestructionPlan, DestructionRequest
+from streambuild.executor.destruction.models import (
+    DestructionPlan,
+    DestructionRequest,
+    InactivePipeline,
+)
 from streambuild.executor.observability.main.logical_project_identity import (
     logical_project_identity,
 )
@@ -33,6 +37,7 @@ from tests.unit.src.streambuild.dev_server._test_types import (
     DestructionResourceConflictRouteTestCase,
     DestructionRestartRouteTestCase,
     DestructionReviewGateRouteTestCase,
+    InactivePipelineRouteTestCase,
 )
 from tests.unit.src.streambuild.dev_server.helpers import (
     build_assigned_proxy_operations_client,
@@ -41,6 +46,56 @@ from tests.unit.src.streambuild.dev_server.helpers import (
     build_target_reset_route_plan,
     proxy_proof_headers,
 )
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        InactivePipelineRouteTestCase(
+            description="retained manifest pipeline is exposed to an authorized administrator",
+            expected_pipeline_name="retired_orders",
+            expected_model_count=2,
+            expected_resource_count=5,
+            expected_last_published_at="2026-08-23 10:00:00.000000",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_inactive_pipeline_ownership_when_listing_then_api_returns_historical_summary(
+    tmp_path: Path,
+    test_case: InactivePipelineRouteTestCase,
+) -> None:
+    client: TestClient
+    store: ControlStore
+    client, store = build_assigned_proxy_operations_client(project_dir=tmp_path)
+    with patch(
+        "streambuild.dev_server._helpers.server.destruction_routes.list_inactive_pipelines",
+        return_value=(
+            InactivePipeline(
+                name=test_case.expected_pipeline_name,
+                model_count=test_case.expected_model_count,
+                resource_count=test_case.expected_resource_count,
+                last_published_at=test_case.expected_last_published_at,
+            ),
+        ),
+    ):
+        response: Response = client.get(
+            "/api/destruction/pipelines/inactive",
+            headers=proxy_proof_headers(username="alice"),
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "pipelines": [
+            {
+                "name": test_case.expected_pipeline_name,
+                "modelCount": test_case.expected_model_count,
+                "resourceCount": test_case.expected_resource_count,
+                "lastPublishedAt": test_case.expected_last_published_at,
+            }
+        ]
+    }
+    store.close()
 
 
 @pytest.mark.parametrize(

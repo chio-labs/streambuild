@@ -62,6 +62,7 @@ from streambuild.executor.destruction.models import (
     DestructionPlanParts,
     DestructionRelationEvidence,
     DestructionRequest,
+    InactivePipeline,
 )
 from streambuild.executor.destruction.types import (
     DestructionOperation,
@@ -83,9 +84,34 @@ def plan_destruction(
     """Build a frozen impact plan using only read-only adapter interactions."""
 
     created_at: datetime = _validated_created_at(now=now, ttl=ttl)
-    pipeline_names: tuple[str, ...] = _available_pipeline_names(
-        request=request,
-        analysis=analysis,
+    current_pipeline_names: tuple[str, ...] = _current_pipeline_names(
+        request=request, analysis=analysis
+    )
+    supplied_pipeline_names: frozenset[str] = frozenset(
+        (*request.pipeline_names, *request.included_dependent_pipeline_names)
+    )
+    historical_names_requested: bool = bool(supplied_pipeline_names - set(current_pipeline_names))
+    historical_snapshot: AdapterManifestSnapshot | None = None
+    if request.include_orphans or historical_names_requested:
+        historical_snapshot = _load_manifest_snapshot(
+            request=request,
+            analysis=analysis,
+            connection=connection,
+        )
+    pipeline_names: tuple[str, ...] = tuple(
+        sorted(
+            set(current_pipeline_names)
+            | (
+                set(
+                    _manifest_pipeline_names(
+                        snapshot=historical_snapshot,
+                        current_pipeline_names=frozenset(current_pipeline_names),
+                    )
+                )
+                if historical_snapshot is not None
+                else set()
+            )
+        )
     )
     requested: tuple[str, ...]
     included: tuple[str, ...]
@@ -115,6 +141,8 @@ def plan_destruction(
         analysis=analysis,
         connection=connection,
         affected_pipeline_names=affected,
+        current_pipeline_names=frozenset(current_pipeline_names),
+        historical_snapshot=historical_snapshot,
         relation_drop_size_limit=relation_drop_size_limit,
     )
     challenges: tuple[str, ...] = build_destruction_challenges(
@@ -148,7 +176,7 @@ def plan_destruction(
         relation_drop_size_server_limit=relation_drop_size_server_limit,
         relation_drop_size_override=relation_drop_size_override,
         relation_drop_size_policy_observed=True,
-        include_orphans=request.include_orphans,
+        include_orphans=request.include_orphans or historical_names_requested,
     )
     return _build_plan(
         request=request,
@@ -165,7 +193,54 @@ def _validated_created_at(*, now: datetime | None, ttl: timedelta) -> datetime:
     return created_at
 
 
-def _available_pipeline_names(
+def inactive_pipelines(
+    *,
+    request: DestructionRequest,
+    analysis: CompileAnalysis,
+    connection: DestructionPlanningConnection,
+) -> tuple[InactivePipeline, ...]:
+    """List manifest-owned pipelines absent from the current compiled project."""
+
+    current: frozenset[str] = frozenset(_current_pipeline_names(request=request, analysis=analysis))
+    snapshot: AdapterManifestSnapshot = _load_manifest_snapshot(
+        request=request,
+        analysis=analysis,
+        connection=connection,
+    )
+    models_by_pipeline: dict[str, set[str]] = {}
+    resources_by_pipeline: dict[str, set[str]] = {}
+    published_at_by_pipeline: dict[str, str] = {}
+    seen_resource_names: set[str] = set()
+    for manifest in snapshot.manifests:
+        resources_by_name: dict[str, set[AdapterManifestResource]] = {}
+        for resource in manifest.resources:
+            resources_by_name.setdefault(resource.resource_name, set()).add(resource)
+        for resource_name, resources in resources_by_name.items():
+            if resource_name in seen_resource_names:
+                continue
+            seen_resource_names.add(resource_name)
+            if any(resource.pipeline_name in current for resource in resources):
+                continue
+            for resource in resources:
+                name: str = resource.pipeline_name
+                if name in current:
+                    continue
+                published_at_by_pipeline.setdefault(name, manifest.published_at)
+                resources_by_pipeline.setdefault(name, set()).add(resource_name)
+                if resource.logical_type == str(LogicalResourceType.MODEL):
+                    models_by_pipeline.setdefault(name, set()).add(resource.logical_name)
+    return tuple(
+        InactivePipeline(
+            name=name,
+            model_count=len(models_by_pipeline.get(name, set())),
+            resource_count=len(resources_by_pipeline.get(name, set())),
+            last_published_at=published_at_by_pipeline[name],
+        )
+        for name in sorted(resources_by_pipeline)
+    )
+
+
+def _current_pipeline_names(
     *, request: DestructionRequest, analysis: CompileAnalysis
 ) -> tuple[str, ...]:
     pipeline_names: tuple[str, ...] = tuple(
@@ -186,6 +261,8 @@ def _plan_relation_evidence(
     analysis: CompileAnalysis,
     connection: DestructionPlanningConnection,
     affected_pipeline_names: tuple[str, ...],
+    current_pipeline_names: frozenset[str],
+    historical_snapshot: AdapterManifestSnapshot | None,
     relation_drop_size_limit: int | None,
 ) -> tuple[
     tuple[str, ...],
@@ -213,6 +290,11 @@ def _plan_relation_evidence(
     logical_pipeline_names: dict[str, tuple[str, ...]] = _pipeline_names_by_logical_name(
         analysis=analysis
     )
+    if historical_snapshot is not None:
+        logical_pipeline_names = _add_historical_logical_pipeline_names(
+            logical_pipeline_names=logical_pipeline_names,
+            snapshot=historical_snapshot,
+        )
     catalog: CatalogSnapshot = connection.load_catalog(request.database)
     owned: dict[str, OwnedRelation] = _manifest_owned_relations(
         analysis=analysis,
@@ -234,6 +316,38 @@ def _plan_relation_evidence(
                 set(affected_model_names) | (recorded_logical_names - set(affected_source_names))
             )
         )
+    inactive_pipeline_names: frozenset[str] = (
+        frozenset(affected_pipeline_names) - current_pipeline_names
+    )
+    if request.include_orphans or inactive_pipeline_names:
+        owned = _add_historical_manifest_relations(
+            owned=owned,
+            request=request,
+            analysis=analysis,
+            connection=connection,
+            catalog=catalog,
+            affected_pipeline_names=frozenset(affected_pipeline_names),
+            allow_published_pipeline_names=inactive_pipeline_names,
+            snapshot=historical_snapshot,
+        )
+        historical_model_names: frozenset[str]
+        historical_source_names: frozenset[str]
+        historical_model_names, historical_source_names = _historical_logical_names(
+            snapshot=historical_snapshot,
+            affected_pipeline_names=frozenset(affected_pipeline_names),
+            current_model_names=frozenset(
+                model.key.name for model in analysis.realized_project.project.models
+            ),
+            current_source_names=frozenset(
+                source.key.name for source in analysis.realized_project.project.sources
+            ),
+        )
+        affected_model_names = tuple(
+            sorted(set(affected_model_names) | set(historical_model_names))
+        )
+        affected_source_names = tuple(
+            sorted(set(affected_source_names) | set(historical_source_names))
+        )
     affected_logical_names: frozenset[str] = frozenset(
         (*affected_model_names, *affected_source_names)
     )
@@ -245,15 +359,6 @@ def _plan_relation_evidence(
         logical_pipeline_names=logical_pipeline_names,
         include_all=request.operation == DestructionOperation.RESET_TARGET,
     )
-    if request.include_orphans:
-        owned = _add_historical_manifest_relations(
-            owned=owned,
-            request=request,
-            analysis=analysis,
-            connection=connection,
-            catalog=catalog,
-            affected_pipeline_names=frozenset(affected_pipeline_names),
-        )
     stats: dict[str, tuple[int, int]] = _load_relation_stats(
         connection=connection,
         database=request.database,
@@ -592,21 +697,21 @@ def _add_historical_manifest_relations(
     connection: DestructionPlanningConnection,
     catalog: CatalogSnapshot,
     affected_pipeline_names: frozenset[str],
+    allow_published_pipeline_names: frozenset[str],
+    snapshot: AdapterManifestSnapshot | None,
 ) -> dict[str, OwnedRelation]:
     current_resource_names: frozenset[str] = _current_manifest_resource_names(analysis=analysis)
-    snapshot: AdapterManifestSnapshot = connection.load_manifests(
-        database=request.metadata_database,
-        project_identity=resolve_manifest_project_identity(analysis=analysis),
-        target_name=request.target,
-        target_database=request.database,
+    resolved_snapshot: AdapterManifestSnapshot = snapshot or _load_manifest_snapshot(
+        request=request,
+        analysis=analysis,
+        connection=connection,
     )
-    if snapshot.status == AdapterOptionalStateStatus.UNAVAILABLE:
-        raise DestructionResourceError(snapshot.warning or "Manifest history is unavailable")
-    if snapshot.status == AdapterOptionalStateStatus.ABSENT:
+    if resolved_snapshot.status == AdapterOptionalStateStatus.ABSENT:
         return owned
     historical_resources: set[AdapterManifestResource] = _eligible_historical_resources(
-        snapshot=snapshot,
+        snapshot=resolved_snapshot,
         affected_pipeline_names=affected_pipeline_names,
+        allow_published_pipeline_names=allow_published_pipeline_names,
         database=request.database,
         current_resource_names=current_resource_names,
         catalog=catalog,
@@ -652,16 +757,18 @@ def _eligible_historical_resources(
     *,
     snapshot: AdapterManifestSnapshot,
     affected_pipeline_names: frozenset[str],
+    allow_published_pipeline_names: frozenset[str],
     database: str,
     current_resource_names: frozenset[str],
     catalog: CatalogSnapshot,
 ) -> set[AdapterManifestResource]:
     if not snapshot.manifests:
         return set()
-    published_current_names: frozenset[str] = frozenset(
-        resource.resource_name for resource in snapshot.manifests[0].resources
-    )
-    protected_current_names: frozenset[str] = current_resource_names | published_current_names
+    published_pipelines_by_name: dict[str, set[str]] = {}
+    for resource in snapshot.manifests[0].resources:
+        published_pipelines_by_name.setdefault(resource.resource_name, set()).add(
+            resource.pipeline_name
+        )
     latest_resources_by_name: dict[str, set[AdapterManifestResource]] = {}
     for manifest in snapshot.manifests:
         if manifest.manifest_version != MANIFEST_VERSION:
@@ -676,7 +783,15 @@ def _eligible_historical_resources(
             latest_resources_by_name.setdefault(name, resources)
     eligible: set[AdapterManifestResource] = set()
     for name, resources in latest_resources_by_name.items():
-        if name in protected_current_names or _excluded_metadata_relation(name):
+        published_pipelines: set[str] = published_pipelines_by_name.get(name, set())
+        published_resource_protected: bool = bool(published_pipelines) and not (
+            published_pipelines <= allow_published_pipeline_names
+        )
+        if (
+            name in current_resource_names
+            or published_resource_protected
+            or _excluded_metadata_relation(name)
+        ):
             continue
         if catalog.relation(name) is None:
             continue
@@ -687,6 +802,102 @@ def _eligible_historical_resources(
                 continue
             eligible.add(resource)
     return eligible
+
+
+def _load_manifest_snapshot(
+    *,
+    request: DestructionRequest,
+    analysis: CompileAnalysis,
+    connection: DestructionPlanningConnection,
+) -> AdapterManifestSnapshot:
+    snapshot: AdapterManifestSnapshot = connection.load_manifests(
+        database=request.metadata_database,
+        project_identity=resolve_manifest_project_identity(analysis=analysis),
+        target_name=request.target,
+        target_database=request.database,
+    )
+    if snapshot.status == AdapterOptionalStateStatus.UNAVAILABLE:
+        raise DestructionResourceError(snapshot.warning or "Manifest history is unavailable")
+    for manifest in snapshot.manifests:
+        if manifest.manifest_version != MANIFEST_VERSION:
+            raise DestructionResourceError(
+                f"Unsupported manifest version {manifest.manifest_version}; "
+                f"expected {MANIFEST_VERSION}"
+            )
+    return snapshot
+
+
+def _manifest_pipeline_names(
+    *,
+    snapshot: AdapterManifestSnapshot,
+    current_pipeline_names: frozenset[str],
+) -> tuple[str, ...]:
+    latest_resources_by_name: dict[str, set[AdapterManifestResource]] = {}
+    for manifest in snapshot.manifests:
+        resources_by_name: dict[str, set[AdapterManifestResource]] = {}
+        for resource in manifest.resources:
+            resources_by_name.setdefault(resource.resource_name, set()).add(resource)
+        for name, resources in resources_by_name.items():
+            latest_resources_by_name.setdefault(name, resources)
+    pipeline_names: set[str] = set()
+    for resources in latest_resources_by_name.values():
+        if any(resource.pipeline_name in current_pipeline_names for resource in resources):
+            continue
+        pipeline_names.update(resource.pipeline_name for resource in resources)
+    return tuple(sorted(pipeline_names))
+
+
+def _add_historical_logical_pipeline_names(
+    *,
+    logical_pipeline_names: dict[str, tuple[str, ...]],
+    snapshot: AdapterManifestSnapshot,
+) -> dict[str, tuple[str, ...]]:
+    combined: dict[str, tuple[str, ...]] = dict(logical_pipeline_names)
+    for manifest in snapshot.manifests:
+        pipeline_names_by_logical_name: dict[str, set[str]] = {}
+        for resource in manifest.resources:
+            pipeline_names_by_logical_name.setdefault(resource.logical_name, set()).add(
+                resource.pipeline_name
+            )
+        for logical_name, pipeline_names in pipeline_names_by_logical_name.items():
+            combined.setdefault(logical_name, tuple(sorted(pipeline_names)))
+    return combined
+
+
+def _historical_logical_names(
+    *,
+    snapshot: AdapterManifestSnapshot | None,
+    affected_pipeline_names: frozenset[str],
+    current_model_names: frozenset[str],
+    current_source_names: frozenset[str],
+) -> tuple[frozenset[str], frozenset[str]]:
+    if snapshot is None:
+        return frozenset(), frozenset()
+    latest_resources_by_logical_key: dict[tuple[str, str], set[AdapterManifestResource]] = {}
+    for manifest in snapshot.manifests:
+        resources_by_logical_key: dict[tuple[str, str], set[AdapterManifestResource]] = {}
+        for resource in manifest.resources:
+            key: tuple[str, str] = (resource.logical_type, resource.logical_name)
+            resources_by_logical_key.setdefault(key, set()).add(resource)
+        for key, resources in resources_by_logical_key.items():
+            latest_resources_by_logical_key.setdefault(key, resources)
+    model_names: set[str] = set()
+    source_names: set[str] = set()
+    for (logical_type, logical_name), resources in latest_resources_by_logical_key.items():
+        pipeline_names: set[str] = {resource.pipeline_name for resource in resources}
+        if not pipeline_names or not pipeline_names <= affected_pipeline_names:
+            continue
+        if (
+            logical_type == str(LogicalResourceType.MODEL)
+            and logical_name not in current_model_names
+        ):
+            model_names.add(logical_name)
+        if (
+            logical_type == str(LogicalResourceType.SOURCE)
+            and logical_name not in current_source_names
+        ):
+            source_names.add(logical_name)
+    return frozenset(model_names), frozenset(source_names)
 
 
 def _add_virtual_inventory_relations(
