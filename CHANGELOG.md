@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.39.0](https://github.com/chio-labs/streambuild/compare/v0.38.4...v0.39.0) (2026-09-06)
+
+
+### Features
+
+* allow deleting inactive pipelines ([#236](https://github.com/chio-labs/streambuild/issues/236)) ([f208a97](https://github.com/chio-labs/streambuild/commit/f208a971aeaf2f41ac78230a6c7b30c4b89ff335))
+
+
+### Documentation
+
+* require watching auto-merge completion ([#234](https://github.com/chio-labs/streambuild/issues/234)) ([1f5f50c](https://github.com/chio-labs/streambuild/commit/1f5f50c65a8a7f11d4ae2add544b6b50444ace03))
+
 ## [0.38.4](https://github.com/chio-labs/streambuild/compare/v0.38.3...v0.38.4) (2026-08-31)
 
 
