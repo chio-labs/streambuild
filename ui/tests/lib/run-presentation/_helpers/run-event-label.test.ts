@@ -37,4 +37,26 @@ describe('destruction run labels', () => {
 		expect(labelRunEvent(event(null), context)).toBe('Drop relation (101)');
 		expect(labelRunStepId('destroy_relation_0101')).toBe('Drop relation (101)');
 	});
+
+	it('given warehouse cancellation evidence when labeling then exposes query identity and outcome', () => {
+		const cancellation: RunEvent = {
+			sequence: 4,
+			emittedAt: '2026-08-25T14:30:01Z',
+			event: 'cancellation_failed',
+			stepId: null,
+			phase: null,
+			queryId: 'query-123',
+			errorMessage: 'query remained active'
+		};
+
+		expect(labelRunEvent(cancellation, context)).toBe(
+			'Warehouse cancellation failed for query-123 · query remained active'
+		);
+		expect(
+			labelRunEvent(
+				{ ...cancellation, event: 'cancellation_requested', errorMessage: undefined },
+				context
+			)
+		).toBe('Warehouse cancellation requested for query-123');
+	});
 });

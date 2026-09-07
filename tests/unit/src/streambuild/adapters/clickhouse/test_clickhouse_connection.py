@@ -11,6 +11,7 @@ from streambuild.adapter.exceptions import (
     AdapterWarehouseError,
 )
 from streambuild.adapter.models import (
+    AdapterQueryCancellation,
     AdapterQueryResult,
     AdapterReplayOffsetFrontier,
     AdapterReplayOffsetProgressRequest,
@@ -35,6 +36,7 @@ from tests.unit.src.streambuild.adapters.clickhouse._test_types import (
     ClickHouseDropLimitTestCase,
     ClickHouseOptionalHealthFailureTestCase,
     ClickHousePublishCapabilitiesTestCase,
+    ClickHouseQueryCancellationTestCase,
     ClickHouseReplayFrontierTestCase,
     ClickHouseStatementProgressTestCase,
     ClickHouseWarehouseHealthTestCase,
@@ -583,6 +585,56 @@ def test_given_active_clickhouse_process_when_loading_progress_then_telemetry_is
     )
 
     assert progress == test_case.expected_progress
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ClickHouseQueryCancellationTestCase(
+            description="exact owned query is killed and confirmed absent",
+            query_id="query-'owned",
+            expected_cancellation=AdapterQueryCancellation(
+                query_id="query-'owned",
+                supported=True,
+                query_found=True,
+                termination_confirmed=True,
+            ),
+            expected_kill_fragment="KILL QUERY WHERE query_id = 'query-''owned' SYNC",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_owned_query_when_cancelling_then_clickhouse_kills_exact_id_and_confirms_absence(
+    test_case: ClickHouseQueryCancellationTestCase,
+) -> None:
+    raw_client: SequencedRawClickHouseClient = SequencedRawClickHouseClient(
+        (
+            FakeRawClickHouseQueryResult(
+                column_names=["kill_status", "query_id"],
+                result_rows=[["finished", test_case.query_id]],
+            ),
+            FakeRawClickHouseQueryResult(
+                column_names=[
+                    "elapsed",
+                    "read_rows",
+                    "read_bytes",
+                    "total_rows_approx",
+                    "memory_usage",
+                    "settings",
+                ],
+                result_rows=[],
+            ),
+        )
+    )
+    connection: ClickHouseConnection = ClickHouseConnection(cast(RawClickHouseClient, raw_client))
+
+    cancellation: AdapterQueryCancellation = connection.cancel_workflow_query(
+        query_id=test_case.query_id
+    )
+
+    assert cancellation == test_case.expected_cancellation
+    assert test_case.expected_kill_fragment in raw_client.statements[0]
+    assert "system.processes" in raw_client.statements[1]
 
 
 @pytest.mark.parametrize(
