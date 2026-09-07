@@ -56,6 +56,7 @@
 		lastSignalAgeSeconds,
 		record,
 		loadError,
+		cancellationError,
 		pollError,
 		notFound,
 		initialLoading,
@@ -168,13 +169,16 @@
 			mode={startedEvent?.mode ?? record?.mode ?? null}
 			onPlanCreated={openDestructionPlan}
 		/>
-		{#if ownedRunning && running}
+		{#if ownedRunning && running && status !== 'cancelling' && status !== 'cancellation_failed'}
 			<button
 				class="rounded border border-border px-2.5 py-1 font-mono text-[10.5px] text-[var(--sb-warning)]"
 				disabled={signalling || !cancelAllowed}
 				title={cancelAllowed ? undefined : 'Requires the build.cancel permission'}
 				onclick={() => void detail.requestCancel()}>Cancel</button
 			>
+		{/if}
+		{#if status === 'cancelling'}
+			<span class="font-mono text-[10.5px] text-[var(--sb-warning)]">Cancelling warehouse query…</span>
 		{/if}
 		{#if running && !ownedRunning}
 			<span class="text-[var(--sb-text-faint)] font-mono text-[10px]">
@@ -199,6 +203,11 @@
 			{#if status === 'presumed_failed' && retryHref}
 				<a href={retryHref} class="pl-2 underline">Rerun from Plan</a>
 			{/if}
+		</div>
+	{/if}
+	{#if status === 'cancellation_failed'}
+		<div class="border-b border-border px-[18px] py-2 font-mono text-[11px] text-[var(--sb-error)]" role="alert">
+			Cancellation failed — {cancellationError ?? record?.errorMessage ?? 'the warehouse did not confirm query termination'}. Check the query ID below before retrying or force-killing the worker.
 		</div>
 	{/if}
 

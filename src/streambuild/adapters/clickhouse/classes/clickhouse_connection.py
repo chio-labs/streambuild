@@ -39,6 +39,7 @@ from streambuild.adapter.models import (
     AdapterMetadataState,
     AdapterMutationResult,
     AdapterNodeResultRecord,
+    AdapterQueryCancellation,
     AdapterQueryResult,
     AdapterReadinessRequest,
     AdapterReadinessRootObservation,
@@ -137,6 +138,8 @@ _MAX_TABLE_SIZE_TO_DROP_SETTING: str = "max_table_size_to_drop"
 _REPLAY_FRONTIER_TTL_SECONDS: float = 5.0
 _REPLAY_FRONTIER_RETENTION_SECONDS: float = 60.0
 _MAX_REPLAY_FRONTIER_OBSERVATIONS: int = 128
+_QUERY_CANCELLATION_CONFIRM_SECONDS: float = 5.0
+_QUERY_CANCELLATION_POLL_SECONDS: float = 0.05
 
 
 class ClickHouseConnection(AdapterConnection):
@@ -330,6 +333,32 @@ class ClickHouseConnection(AdapterConnection):
             total_rows_approx=int(str(row["total_rows_approx"])),
             memory_usage_bytes=int(str(row["memory_usage"])),
             settings=settings,
+        )
+
+    def cancel_workflow_query(self, *, query_id: str) -> AdapterQueryCancellation:
+        """Kill one exact ClickHouse query and confirm it leaves system.processes."""
+
+        result: AdapterQueryResult = self._query(
+            statement=f"KILL QUERY WHERE query_id = {_quote_clickhouse_string(query_id)} SYNC",
+            query_id=None,
+        )
+        query_found: bool = bool(result.rows)
+        deadline: float = time.monotonic() + _QUERY_CANCELLATION_CONFIRM_SECONDS
+        while time.monotonic() < deadline:
+            if self.load_statement_progress(query_id=query_id) is None:
+                return AdapterQueryCancellation(
+                    query_id=query_id,
+                    supported=True,
+                    query_found=query_found,
+                    termination_confirmed=True,
+                )
+            time.sleep(_QUERY_CANCELLATION_POLL_SECONDS)
+        return AdapterQueryCancellation(
+            query_id=query_id,
+            supported=True,
+            query_found=query_found,
+            termination_confirmed=False,
+            detail="ClickHouse query remained active after KILL QUERY SYNC",
         )
 
     def load_replay_offset_frontiers(

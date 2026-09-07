@@ -3,6 +3,8 @@ export const RUN_OUTCOME_COLORS: Record<string, string> = {
 	succeeded: 'var(--sb-success)',
 	failed: 'var(--sb-error)',
 	cancelled: 'var(--sb-warning)',
+	cancelling: 'var(--sb-warning)',
+	cancellation_failed: 'var(--sb-error)',
 	unresponsive: 'var(--sb-warning)',
 	presumed_failed: 'var(--sb-warning)'
 };

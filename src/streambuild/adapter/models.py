@@ -1014,6 +1014,17 @@ class AdapterStatementProgress:
 
 
 @dataclass(frozen=True)
+class AdapterQueryCancellation:
+    """Adapter-confirmed outcome for one exactly identified workflow query."""
+
+    query_id: str
+    supported: bool
+    query_found: bool
+    termination_confirmed: bool
+    detail: str | None = None
+
+
+@dataclass(frozen=True)
 class AdapterReplayOffsetRange:
     """One captured partition span used only for approximate replay progress."""
 

@@ -6,7 +6,7 @@
 	import { cancelBuild } from '$lib/api/main/build/cancel-build';
 	import { fetchBuildFeed } from '$lib/api/main/build/fetch-build-feed';
 	import { getProject } from '$lib/api/main/project/get-project';
-	import type { BuildFeed, RunRecord } from '$lib/api/types';
+	import type { BuildFeed, RunRecord, RunStatus } from '$lib/api/types';
 	import { formatAgo } from '$lib/formatting/main/format-ago';
 	import { formatDuration } from '$lib/formatting/main/format-duration';
 	import { formatTimestamp } from '$lib/formatting/main/format-timestamp';
@@ -24,6 +24,8 @@
 	// build finished in another terminal should appear without re-navigating.
 	let loadError = $state<string | null>(null);
 	let ownedInvocationId = $state<string | null>(null);
+	let ownedCancellationStatus = $state<RunStatus | null>(null);
+	let ownedCancellationError = $state<string | null>(null);
 	let cancellingInvocationId = $state<string | null>(null);
 
 	const POLL_MS = 10_000;
@@ -35,6 +37,8 @@
 		try {
 			const ownership: BuildFeed = await fetchBuildFeed(0);
 			ownedInvocationId = ownership.running ? ownership.invocationId : null;
+			ownedCancellationStatus = ownership.running ? (ownership.cancellationStatus ?? null) : null;
+			ownedCancellationError = ownership.running ? (ownership.cancellationError ?? null) : null;
 			loadError = null;
 		} catch (error) {
 			loadError = (error as Error).message;
@@ -74,14 +78,23 @@
 	const scopedRuns = $derived(runsInScope(runs ?? [], scope));
 	const succeededCount = $derived(scopedRuns.filter((run) => run.status === 'succeeded').length);
 	const failedCount = $derived(
-		scopedRuns.filter((run) => run.status === 'failed' || run.status === 'presumed_failed').length
+		scopedRuns.filter(
+			(run) =>
+				run.status === 'failed' ||
+				run.status === 'presumed_failed' ||
+				run.status === 'cancellation_failed'
+		).length
 	);
 
 	const visibleRuns = $derived(
 		scopedRuns.filter((run) => {
 			if (statusFilter === 'all') return true;
 			if (statusFilter === 'succeeded') return run.status === 'succeeded';
-			return run.status === 'failed' || run.status === 'presumed_failed';
+			return (
+				run.status === 'failed' ||
+				run.status === 'presumed_failed' ||
+				run.status === 'cancellation_failed'
+			);
 		})
 	);
 
@@ -112,6 +125,17 @@
 		}
 		if (outcome === 'presumed_failed') {
 			return { label: 'Presumed failed', dot: 'var(--sb-warning)', text: 'var(--sb-warning)', border: 'var(--border)' };
+		}
+		if (outcome === 'cancelling') {
+			return { label: 'Cancelling', dot: 'var(--sb-warning)', text: 'var(--sb-warning)', border: 'var(--border)' };
+		}
+		if (outcome === 'cancellation_failed') {
+			return {
+				label: 'Cancellation failed',
+				dot: 'var(--sb-error)',
+				text: 'var(--sb-error)',
+				border: 'color-mix(in srgb, var(--sb-error) 40%, var(--border))'
+			};
 		}
 		return {
 			label: outcome,
@@ -229,7 +253,15 @@
 				</thead>
 				<tbody>
 					{#each visibleRuns as run (run.invocationId)}
-						{@const chip = statusChip(run.status)}
+						{@const displayedStatus =
+							ownedInvocationId === run.invocationId && ownedCancellationStatus !== null
+								? ownedCancellationStatus
+								: run.status}
+						{@const chip = statusChip(displayedStatus)}
+						{@const displayedError =
+							ownedInvocationId === run.invocationId && ownedCancellationError !== null
+								? ownedCancellationError
+								: run.errorMessage}
 						<tr>
 							<td class="w-[220px] px-3 py-2.5 align-top sm:px-[18px]">
 								<a
@@ -249,9 +281,9 @@
 										? run.displayCommand
 										: `stb ${run.displayCommand ?? run.command}`}
 								</div>
-								{#if run.errorMessage}
+								{#if displayedError}
 									<ErrorPreview
-										text={run.errorMessage}
+										text={displayedError}
 										title="Run error"
 										subtitle={`${run.command} · ${run.invocationId}`}
 										class="max-w-[480px] pt-1"
@@ -283,7 +315,7 @@
 										<div class="text-[var(--sb-text-faint)] pt-1 text-[10px]">The process may have been killed. Rerunning is safe.</div>
 									{/if}
 								{/if}
-								{#if ownedInvocationId === run.invocationId && run.status === 'running'}
+								{#if ownedInvocationId === run.invocationId && displayedStatus === 'running'}
 									<button class="mt-1 font-mono text-[10px] underline disabled:opacity-50" style:color="var(--sb-warning)" disabled={cancellingInvocationId !== null || !cancelAllowed} title={cancelAllowed ? undefined : 'Requires the build.cancel permission'} onclick={() => void cancelOwned(run.invocationId)}>{cancellingInvocationId === run.invocationId ? 'Cancelling...' : 'Cancel'}</button>
 								{/if}
 							</td>

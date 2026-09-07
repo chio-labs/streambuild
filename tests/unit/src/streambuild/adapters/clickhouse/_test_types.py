@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from streambuild.adapter.exceptions import AdapterWarehouseError
 from streambuild.adapter.models import (
     AdapterManifest,
+    AdapterQueryCancellation,
     AdapterReplayOffsetFrontier,
     AdapterReplayOffsetProgressRequest,
     AdapterStatementProgress,
@@ -62,6 +63,14 @@ class ClickHouseWorkflowCorrelationTestCase:
 class ClickHouseStatementProgressTestCase:
     description: str
     expected_progress: AdapterStatementProgress
+
+
+@dataclass(frozen=True)
+class ClickHouseQueryCancellationTestCase:
+    description: str
+    query_id: str
+    expected_cancellation: AdapterQueryCancellation
+    expected_kill_fragment: str
 
 
 @dataclass(frozen=True)
