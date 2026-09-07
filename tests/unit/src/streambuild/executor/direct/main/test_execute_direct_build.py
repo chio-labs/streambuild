@@ -334,7 +334,10 @@ def test_given_paused_managed_source_when_direct_build_fails_then_source_is_reco
         DirectDistinctCaptureTestCase(
             description="each replay root consumes its own process-owned capture",
             expected_capture_models=("beta", "delta"),
-            expected_replay_sql_fragments=("11 AS cutoff_offset", "21 AS cutoff_offset"),
+            expected_replay_sql_fragments=(
+                "anchor._replay_offset <= 11",
+                "anchor._replay_offset <= 21",
+            ),
         )
     ],
     ids=lambda case: case.description,
